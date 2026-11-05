@@ -137,10 +137,31 @@ function docRef(p) {
     delete: function () { applyWrite({ op: 'delete', path: p }); return Promise.resolve(); }
   };
 }
+/* a collection's documents (direct children only); select() keeps only the named fields, as Firestore's does, and
+   notes them in SELECTS */
+var SELECTS = [];
+function colDocs(p, fields) {
+  var pre = p + '/';
+  return Object.keys(DOCS).filter(function (k) { return k.indexOf(pre) === 0 && k.slice(pre.length).indexOf('/') === -1; }).sort().map(function (k) {
+    return { id: k.slice(pre.length), data: function () {
+      var d = clone(DOCS[k]);
+      if (!fields) return d;
+      var out = {};
+      fields.forEach(function (f) { if (own(d, f)) out[f] = d[f]; });
+      return out;
+    } };
+  });
+}
 function colRef(p) {
   return {
     doc: function (id) { return docRef(p + '/' + id); },
-    add: function (data) { var id = 'a' + (++ADDS); applyWrite({ op: 'set', path: p + '/' + id, data: data }); return Promise.resolve(docRef(p + '/' + id)); }
+    add: function (data) { var id = 'a' + (++ADDS); applyWrite({ op: 'set', path: p + '/' + id, data: data }); return Promise.resolve(docRef(p + '/' + id)); },
+    get: function () { return Promise.resolve({ docs: colDocs(p, null) }); },
+    select: function () {
+      var fields = Array.prototype.slice.call(arguments);
+      SELECTS.push({ path: p, fields: fields });
+      return { get: function () { return Promise.resolve({ docs: colDocs(p, fields) }); } };
+    }
   };
 }
 /* TX.pause(pathPart): the next transaction that read a document whose path holds pathPart stops just before it
@@ -381,7 +402,7 @@ var steps = [
   /* ===== C.9 cold wiring ===== */
   function () {
     check('C.9 wire() wires lib/promo-mailer.js with the same helpers (a cold instance\'s first social request works)', MAILER.wired.length === 1 && MAILER.wired[0] === H);
-    check('module: every route of ROUTES is an exported handler', Object.keys(mod.ROUTES).length === 11 &&
+    check('module: every route of ROUTES is an exported handler', Object.keys(mod.ROUTES).length === 12 &&
       Object.keys(mod.ROUTES).every(function (r) { return typeof mod[mod.ROUTES[r]] === 'function'; }));
     /* lib/api.js (Unit D) routes to these names: when its lines are there, they must match */
     var api = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
@@ -421,6 +442,28 @@ var steps = [
       var sTpls = [].concat.apply([], b.catalog.categories.map(function (c) { return c.templates; }));
       check('C.1 not published: no QR option anywhere', sTpls.every(function (t) { return t.params.every(function (p) { return p.key !== 'qr' && p.key !== 'qrLabel'; }); }));
       check('C.1 availability is the engine\'s (the sparse event lacks speakers)', sTpls.filter(function (t) { return t.id === 'speaker.individual'; })[0].available === false);
+    });
+  },
+
+  /* ===== C.1b UX-121: the catalog with every card's post, as the html route answers it ===== */
+  function () {
+    return call(mod.handleCatalog, { url: '/api/promo/social/catalog?eventId=rich&cards=1' }).then(function (r) {
+      var a = r.json, tpls = [].concat.apply([], a.catalog.categories.map(function (c) { return c.templates; }));
+      check('C.1b cards=1: 200, the catalog as before, and one card for each template in catalog order', r.status === 200 && Array.isArray(a.cards) && a.cards.length === tpls.length &&
+        a.cards.map(function (c) { return c.item.templateId; }).join() === tpls.map(function (t) { return t.id; }).join(), a.cards && a.cards.map(function (c) { return c.item; }));
+      var items = a.cards.map(function (c) { return c.item; });
+      check('C.1b each card is the template at its first size with no options; a preview when the event cannot make it, and for the Testimonial and Prediction vs Outcome',
+        items.every(function (it, i) { var t = tpls[i]; return it.format === t.formats[0].id && JSON.stringify(it.params) === '{}' &&
+          it.preview === (!t.available || it.templateId === 'generic.testimonial' || it.templateId === 'generic.prediction-outcome'); }), items);
+      return post(mod.handleHtml, '/api/promo/social/html', { eventId: 'rich', items: items }).then(function (h) {
+        var same = h.status === 200 && h.json.items.length === a.cards.length && h.json.items.every(function (x, i) { return JSON.stringify(x) === JSON.stringify(a.cards[i].answer); });
+        check('C.1b each card\'s post is exactly what the html route answers for it', same, h.status);
+        check('C.1b the cards are made with no QR options in them, as a card asks', a.cards.every(function (c) { return !own(c.item.params, 'qr'); }) && tpls[0].params.some(function (p) { return p.key === 'qr'; }));
+      });
+    }).then(function () {
+      return call(mod.handleCatalog, { url: '/api/promo/social/catalog?eventId=rich' }).then(function (r) {
+        check('C.1b without cards=1 no cards are made', r.status === 200 && !own(r.json, 'cards'));
+      });
     });
   },
 
@@ -1132,6 +1175,74 @@ var steps = [
     });
   },
 
+  /* ===== UX-124, UX-118, UX-127: a layout's text and picture changes, and the list of saved layouts ===== */
+  function () {
+    var LIST = '/api/promo/social/layouts?eventId=rich';
+    /* each change with its element's place in the template (id, of, near, alike: oneworld-social.js owPlaces) */
+    function at(id, of, near, alike) { return { id: id, of: of, near: near, alike: alike }; }
+    function ch(kind, from, to, place) { return Object.assign({ kind: kind, from: from, to: to }, place); }
+    var CH = [
+      ch('text', 'Agentic AI Summit 2027 QA', 'Agentic AI Summit 2027', at('e3', 1, ['', 'Mumbai'], 1)),
+      ch('src', 'https://img.etb2bimg.com/files/asha.jpg', 'https://img.etb2bimg.com/files/ananya.jpg', at('e1', 1, ['', ''], 1)),
+      ch('text', 'Unchanged', 'Unchanged', at('e5', 1, ['', ''], 1)),
+      ch('text', 'Agentic AI Summit 2027 QA', 'A second answer for the same element', at('e3', 1, ['', 'Mumbai'], 1)),
+      /* the same words in two elements (3 partners, 3 days): two changes, both kept */
+      ch('text', '3', '25+', at('e8', 2, ['SESSIONS', 'PARTNERS'], 1)),
+      ch('text', '3', '4', at('e10', 2, ['PARTNERS', 'DAYS'], 1))
+    ];
+    var KEPT = [CH[0], CH[1], CH[4], CH[5]];
+    var good;
+    return basePng().then(function (b) { return uploadBase('rich', KEY, b); }).then(function (r) {
+      good = r.json.url;
+      return post(mod.handleLayoutSave, LAYOUT_URL, saveBody('rich', { base: good, changes: CH }));
+    }).then(function (r) {
+      var d = layoutDoc('rich', KEY) || {};
+      check('UX-124 a save keeps its changes with their places; one that changes nothing and a second for the same element are dropped, two for the same words in two elements kept', r.status === 200 &&
+        JSON.stringify(d.changes) === JSON.stringify(KEPT), d.changes);
+      return call(mod.handleLayout, { url: LAYOUT_URL + '?eventId=rich&templateId=speaker.individual&format=ig_portrait&theme=light&bg=2' });
+    }).then(function (r) {
+      check('UX-124 a saved layout is loaded with its changes', JSON.stringify(r.json.changes) === JSON.stringify(KEPT), r.json.changes);
+      SELECTS.length = 0;
+      return call(mod.handleLayouts, { url: LIST });
+    }).then(function (r) {
+      var l = (r.json.layouts || []).filter(function (x) { return x.key === KEY; })[0] || {};
+      check('UX-124 the list: each saved layout\'s key parts, time and changes', r.status === 200 && l.templateId === 'speaker.individual' && l.format === 'ig_portrait' &&
+        l.theme === 'light' && l.bg === '2' && l.savedAt > 0 && JSON.stringify(l.changes) === JSON.stringify(KEPT), r.json);
+      check('UX-124 the list never carries elements, and reads only the fields it needs', !own(l, 'elements') && SELECTS.length === 1 &&
+        SELECTS[0].path === 'events/rich/promoSocialLayouts' && SELECTS[0].fields.indexOf('elements') === -1, SELECTS);
+      return post(mod.handleLayoutReset, LAYOUT_URL + '/reset', { eventId: 'rich', templateId: 'speaker.individual', format: 'ig_portrait', theme: 'light', bg: '2' });
+    }).then(function () {
+      return call(mod.handleLayouts, { url: LIST });
+    }).then(function (r) {
+      check('UX-124 a layout that was reset is no longer listed', r.status === 200 && !(r.json.layouts || []).some(function (x) { return x.key === KEY; }), r.json);
+      check('cleanChanges: none sent is none kept', JSON.stringify(T.cleanChanges(undefined, {})) === '[]' && JSON.stringify(T.cleanChanges(null, {})) === '[]');
+      var P = at('e2', 1, ['', ''], 1);
+      var bad = [
+        ['not a list', ch('text', 'a', 'b', P), 400],
+        ['an unknown kind', [ch('style', 'a', 'b', P)], 400],
+        ['words that are not text', [ch('text', 1, 'b', P)], 400],
+        ['words over 2,000 characters', [ch('text', 'a', 'x'.repeat(2001), P)], 400],
+        ['more than 60 changes', Array.apply(null, Array(61)).map(function (_, i) { return ch('text', 'a' + i, 'b' + i, at('e' + i, 1, ['', ''], 1)); }), 400],
+        ['a picture from a site Oneworld does not load', [ch('src', 'a', 'https://evil.example/x.png', P)], 400],
+        ['a pasted picture (kept with the element, never carried)', [ch('src', 'a', 'data:image/png;base64,AAAA', P)], 400],
+        ['an example picture', [ch('src', 'a', '/assets/promo-examples/people/p01.jpg', P)], 422],
+        ['no place: words alone, as the first version matched them', [{ kind: 'text', from: 'a', to: 'b' }], 400],
+        ['an element the template did not draw (one the user added)', [ch('text', 'a', 'b', at('c1700000000000_0', 1, ['', ''], 1))], 400],
+        ['a count that is not a whole number', [ch('text', 'a', 'b', at('e2', 1.5, ['', ''], 1))], 400],
+        ['more alike than drawn', [ch('text', 'a', 'b', at('e2', 1, ['', ''], 2))], 400],
+        ['more drawn than a layout holds', [ch('text', 'a', 'b', at('e2', 401, ['', ''], 1))], 400],
+        ['one neighbour, not two', [ch('text', 'a', 'b', at('e2', 1, [''], 1))], 400],
+        ['a neighbour over 120 characters', [ch('text', 'a', 'b', at('e2', 1, ['x'.repeat(121), ''], 1))], 400]
+      ];
+      return basePng().then(function (b) { return uploadBase('rich', KEY, b); }).then(function (up) {
+        return Promise.all(bad.map(function (c) { return post(mod.handleLayoutSave, LAYOUT_URL, saveBody('rich', { base: up.json.url, changes: c[1] })); }));
+      }).then(function (out) {
+        bad.forEach(function (c, i) { check('UX-124 a change is refused: ' + c[0], out[i].status === c[2], [out[i].status, out[i].json]); });
+        check('UX-124 a picture refused names why', out[5].json.code === 'picture-not-allowed' && out[7].json.code === 'example', [out[5].json, out[7].json]);
+      });
+    });
+  },
+
   /* ===== C.8 sign-in, the event id, a live event — every route ===== */
   function () {
     var routes = [
@@ -1142,6 +1253,7 @@ var steps = [
       ['handleArtDelete', 'DELETE', ART + 'E&slot=bg1'],
       ['handleHtml', 'JSON', '/api/promo/social/html', { items: [{ templateId: 'generic.testimonial', format: 'ig_square' }] }],
       ['handleLayout', 'GET', LAYOUT_URL + '?eventId=E&templateId=speaker.individual&format=ig_portrait&theme=light&bg=2'],
+      ['handleLayouts', 'GET', '/api/promo/social/layouts?eventId=E'],
       ['handleLayoutBase', 'RAW', LAYOUT_URL + '/base?eventId=E&key=' + KEY],
       ['handleLayoutSave', 'JSON', LAYOUT_URL, saveBody('E', { base: 'https://storage.googleapis.com/' + BUCKET + '/events/E/promo-layouts/' + KEY + '/k-0123456789abcdef.png' })],
       ['handleLayoutReset', 'JSON', LAYOUT_URL + '/reset', { templateId: 'speaker.individual', format: 'ig_portrait', theme: 'light', bg: '2' }],

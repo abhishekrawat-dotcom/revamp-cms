@@ -383,16 +383,23 @@ var EX_PHOTO = BASE + examples.EXAMPLE_PATH + 'people/p01.jpg';
   var hp = await A.post('/api/promo/social/html', { eventId: 'sparse', items: prevItems }), pv = {};
   ((hp.json || {}).items || []).forEach(function (it) { pv[it.templateId] = it; });
   var FILLED = { 'generic.who-should-attend': 'audience', 'generic.summit-highlights': 'stats', 'partner.tier-ladder': 'sponsors', 'partner.presenting-spotlight': 'sponsors',
-    'speaker.individual': 'speakers', 'speaker.combined': 'speakers', 'generic.testimonial': 'quote' };
+    'speaker.individual': 'speakers', 'speaker.combined': 'speakers', 'generic.testimonial': 'quote',
+    /* UX-135: its two paragraphs are the template's own filler until the user writes them: the card is marked */
+    'generic.prediction-outcome': 'prediction' };
   check('2: sparse previews: the lists it lacks come back as marked examples', hp.status === 200 && Object.keys(FILLED).every(function (id) {
     var it = pv[id] || {}; return it.example === true && (it.filled || []).indexOf(FILLED[id]) !== -1 && exampleMarker(it.html) && it.caption === ''; }),
     Object.keys(FILLED).map(function (id) { var it = pv[id] || {}; return [id, it.example, it.filled, it.error, exampleMarker(it.html)]; }));
-  check('2: sparse previews: what it has is drawn real, unmarked', ['generic.announcement', 'generic.prediction-outcome'].every(function (id) {
-    var it = pv[id] || {}; return typeof it.html === 'string' && !it.example && !exampleMarker(it.html); }), [pv['generic.announcement'], pv['generic.prediction-outcome']].map(function (it) { return it && [it.example, it.state, it.error]; }));
+  check('2: sparse previews: what it has is drawn real, unmarked', ['generic.announcement'].every(function (id) {
+    var it = pv[id] || {}; return typeof it.html === 'string' && !it.example && !exampleMarker(it.html); }), [pv['generic.announcement']].map(function (it) { return it && [it.example, it.state, it.error]; }));
   var hn = await A.post('/api/promo/social/html', { eventId: 'sparse', items: prevItems.map(function (x) { return { templateId: x.templateId, format: x.format, params: {} }; }) });
   var nn = {}; ((hn.json || {}).items || []).forEach(function (it) { nn[it.templateId] = it; });
-  check('2: the same posts asked for real: "needs …", no HTML, no example', Object.keys(FILLED).filter(function (id) { return id !== 'generic.testimonial'; }).every(function (id) {
+  check('2: the same posts asked for real: "needs …", no HTML, no example', Object.keys(FILLED).filter(function (id) { return id !== 'generic.testimonial' && id !== 'generic.prediction-outcome'; }).every(function (id) {
     return /^needs /.test(nn[id].error || '') && !nn[id].html && nn[id].example === undefined; }), nn);
+  check('UX-135: Prediction vs Outcome asked for real is drawn with its words as they are (it is the editor that holds its download)',
+    typeof (nn['generic.prediction-outcome'] || {}).html === 'string' && nn['generic.prediction-outcome'].example === undefined && !exampleMarker(nn['generic.prediction-outcome'].html));
+  var po = await A.post('/api/promo/social/html', { eventId: 'sparse', items: [{ templateId: 'generic.prediction-outcome', format: 'ig_portrait', preview: true,
+    params: { prediction: 'Agents were a demo', outcome: 'Agents are a line item' } }] });
+  check('UX-135: … and its card with the user\'s own two lines is not an example', po.status === 200 && po.json.items[0].example === false && !exampleMarker(po.json.items[0].html));
   check('2: the Testimonial preview speaks with an example voice, never a real person', exampleMarker((pv['generic.testimonial'] || {}).html) &&
     String((pv['generic.testimonial'] || {}).html).indexOf(examples.EXAMPLE_PATH + 'people/') !== -1);
 

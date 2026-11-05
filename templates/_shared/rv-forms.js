@@ -12,6 +12,13 @@
      a[data-rv-form="<formId>"]           a click opens that form in a pop-up (href "#rv-form-<formId>")
      a[data-register-cta]                 without data-rv-form: opens the event's default form (href "#register");
                                           with it, the form named there wins
+     data-rv-form-title / -note / -source on such a button: what the pop-up says it is for when this button opened
+                                          it ("Partner with us", "Request an invitation"), a line above the
+                                          questions ("Seats are confirmed by the ET team; there is no online
+                                          payment."), and the source the response is recorded with — the page's
+                                          live pass writes them (functions/lib/site-checks.js repair)
+     a[href="#<id>"] saying Register      when <id> is not on the page or not shown, opens the default form too:
+                                          a button never leads nowhere (deadRegisterLink)
      div.rv-block-form[data-rv-form-embed="<formId>"]
                                           the form drawn in place. data-rv-form-title="hide" leaves out its title
                                           (the section around it has a heading); its [data-rv-form-fallback]
@@ -50,7 +57,8 @@
      render(form, host, opts) -> { el, values(), setErrors({id: msg}), destroy() }
          form  a public form (spec §1.4 forms[i]) or a builder draft
          opts  { mode: 'live'|'preview'|'shared'|'ai-view'|'editor-preview', showTitle (default true), eventId,
-                 waitlist, onDone(result), consent (the payload's consent, when the form has none of its own),
+                 waitlist, onDone(result), onAgain() (the form drawn again for the next person), consent (the
+                 payload's consent, when the form has none of its own),
                  opener (the button that opened it: Submit takes that button's colour),
                  livePath (mode 'shared' only: the live site's "/e/<id>", when the event is already published) }
          Every form is drawn as one white card (the design of 21 Oct 2026): its title ("Register now" shows as
@@ -67,6 +75,8 @@
      definitions() -> the public forms payload, or null while there is none
      guessCountry(win) -> 'IN'          the visitor's country, as a Mobile field's country code starts on it
      suggestEmail(text) -> 'a@gmail.com' | ''   the address a mistyped common one probably is
+     doneHeading(form, result) -> 'You’re registered for <event>' | …   the thank-you's heading
+     doneFacts(result) -> { line: 'date · place', calendar: '/api/public/calendar?eventId=…' | '' }
      modeFor(cfg, editorMode, editing, hasEvent) -> 'live'|'preview'|'shared'|'ai-view'|null   a page's mode (Modes above)
      sharedLivePath(cfg) -> '/e/<id>' | ''   on a shared link, the live site its forms point to ('' while not live)
    The editor and the console set window.RV_FORMS_NO_AUTO = true before loading this file and use render and
@@ -114,7 +124,10 @@
     loading: 'Loading the form…',
     loadFailed: 'This form could not be loaded. Please check your connection and try again.',
     unavailable: 'This form is not available right now.',
-    again: 'Fill in again',
+    again: 'Register someone else',
+    againOther: 'Send another response',
+    calendar: 'Add to calendar',
+    thanks: 'Thank you',
     retry: 'Retry',
     close: 'Close',
     choose: 'Choose…',
@@ -142,6 +155,31 @@
     if (t && !isGenericTitle(t)) return t;
     if (n && !isGenericTitle(n)) return n;
     return DEFAULT_TITLE;
+  }
+
+  /* The thank-you's heading, in place of the form's title (which asked for details: "Please take a moment to provide
+     us with your Information" stood over "You are registered"). A registration says what happened, for which
+     event (the server sends its name with the answer: result.event); any other form says thank you. A request
+     to the team (a partner enquiry, a nomination, a ceremony invitation: result.enquiry) is not a registration,
+     so it never says registered, even when the form it was sent on counts. */
+  function isEnquiry(result) { return !!(result && str(result.enquiry)); }
+  function doneHeading(form, result) {
+    if (!form || form.counts !== true || isEnquiry(result)) return MSG.thanks;
+    var ev = result && result.event && typeof result.event === 'object' ? result.event : {};
+    var name = line(str(ev.name), 200), status = str(result && result.status);
+    if (status === 'waitlist') return name ? 'You\u2019re on the waitlist for ' + name : 'You\u2019re on the waitlist';
+    if (status === 'pending') return name ? 'Registration received for ' + name : 'Registration received';
+    return name ? 'You\u2019re registered for ' + name : 'You\u2019re registered';
+  }
+  /* the event's date and place under it ("5th – 7th December, 2026 · Taj Wellington Mews, Chennai"), and
+     its calendar file — only an address of this server's own calendar route */
+  function doneFacts(result) {
+    var ev = result && result.event && typeof result.event === 'object' ? result.event : {};
+    var cal = str(ev.calendar);
+    return {
+      line: [line(str(ev.when), 120), line(str(ev.where), 300)].filter(Boolean).join(' \u00b7 '),
+      calendar: /^\/api\/public\/calendar\?eventId=[A-Za-z0-9_-]{1,120}$/.test(cal) ? cal : ''
+    };
   }
 
   /* The consent every form ends with (field type 'consent'): ticked, or the form is not sent. Its words and
@@ -703,6 +741,8 @@
     '.rv-form .rv-form-done-mark svg{display:block;width:26px;height:26px}',
     '.rv-form .rv-form-done p{margin:0 0 10px;font-size:15px;line-height:1.6;color:var(--rvf-text);overflow-wrap:anywhere}',
     '.rv-form .rv-form-done .rv-form-actions{justify-content:flex-start}',
+    '.rv-form .rv-form-done p.rv-form-done-facts{margin:0 0 14px;font-size:15px;font-weight:600;color:var(--rvf-ink)}',
+    '.rv-form a.rv-form-btn2{text-decoration:none}',
     /* the Mobile field: one box — [+91 ⌄] | number — the Location field's suggestions; the email hint */
     '.rv-form .rv-form-phone{position:relative;display:flex;align-items:stretch;min-width:0;background:var(--rvf-fill);border:1px solid var(--rvf-line);border-radius:10px;transition:border-color .15s ease,box-shadow .15s ease,background-color .15s ease}',
     '.rv-form .rv-form-phone:hover{border-color:var(--rvf-line-strong)}',
@@ -1677,13 +1717,25 @@
       mark.setAttribute('aria-hidden', 'true');
       mark.appendChild(tickIcon(doc));
       panel.appendChild(mark);
-      if (showTitle && titleText) panel.appendChild(mk(doc, 'h3', 'rv-form-title', titleText));
+      /* in a pop-up the heading is the pop-up's own title (renderOpts onDone); a form in the page shows it here */
+      if (showTitle) panel.appendChild(mk(doc, 'h3', 'rv-form-title', doneHeading(form, result)));
+      /* a request (isEnquiry) holds no place: no date line, no calendar, and "Send another response" */
+      var counted = form.counts === true && !isEnquiry(result), facts = doneFacts(result);
+      if (counted && facts.line) panel.appendChild(mk(doc, 'p', 'rv-form-done-facts', facts.line));
       paragraphs(doc, panel, (result && result.message) || 'Thank you. Your response has been received.');
       var acts = mk(doc, 'div', 'rv-form-actions');
-      var again = mk(doc, 'button', 'rv-form-link', MSG.again);
+      /* "Add to calendar": a confirmed place at a live event with a date (a preview stores nothing to go to) */
+      if (counted && mode === 'live' && str(result && result.status) === 'confirmed' && facts.calendar) {
+        var cal = mk(doc, 'a', 'rv-form-btn2 rv-form-cal', MSG.calendar);
+        cal.setAttribute('href', facts.calendar);
+        acts.appendChild(cal);
+      }
+      /* the form again, empty, for the next person ("Fill in again" did not say what it was for) */
+      var again = mk(doc, 'button', 'rv-form-link', counted ? MSG.again : MSG.againOther);
       again.type = 'button';
       again.addEventListener('click', function () {
         st.done = false; st.touched = false;
+        if (typeof opts.onAgain === 'function') { try { opts.onAgain(); } catch (e) { /* the host's own */ } }
         build({});
         focusNode(parts[0] && parts[0].focus);
       });
@@ -1702,7 +1754,7 @@
     function send(answers, website) {
       var body = {
         eventId: str(opts.eventId), formId: str(form.id), answers: answers, website: website, consent: true,
-        source: 'website', utm: utmOf(win), ref: str(doc.referrer), preview: mode === 'preview'
+        source: line(str(opts.source), 60) || 'website', utm: utmOf(win), ref: str(doc.referrer), preview: mode === 'preview'
       };
       if (consent.version) body.consentVersion = consent.version;
       setBusy(true);
@@ -2177,20 +2229,37 @@
       return;
     }
     m.shownId = form.id;
-    m.title.textContent = formTitle(form);
+    /* what the button that opened it asks for: its own title, a line above the questions, its source */
+    var ask = askOf(m.opener);
+    m.title.textContent = ask.title || formTitle(form);
     paint(m.panel, m.opener);
     var keep = values || page.memory[form.id] || null;
-    m.ctrl = render(form, m.body, renderOpts({
+    m.ctrl = render(ask.note ? withNote(form, ask.note) : form, m.body, renderOpts({
       showTitle: false,
       opener: m.opener,
+      source: ask.source,
       values: keep,
       onInput: function (vals) { page.memory[form.id] = vals; },
-      onDone: function () { delete page.memory[form.id]; },
+      onDone: function (result) { delete page.memory[form.id]; m.title.textContent = doneHeading(form, result); },
+      onAgain: function () { m.title.textContent = ask.title || formTitle(form); },
       onClose: function () { closeModal(); },
       onBusy: function (on) { m.close.disabled = on; },
       onStale: function (vals, fields) { restale(function () { if (page.modal === m) fillModal(vals, fields); }); }
     }));
     if (errors) m.ctrl.setErrors(errors);
+  }
+
+  /* data-rv-form-title / -note / -source of the button that opened the pop-up (never HTML: set as text) */
+  function askOf(opener) {
+    var get = function (name) { return opener && opener.getAttribute ? line(str(opener.getAttribute(name)), 200) : ''; };
+    return { title: get('data-rv-form-title'), note: get('data-rv-form-note'), source: get('data-rv-form-source').slice(0, 60) };
+  }
+  /* the form with the button's line first among its intro paragraphs */
+  function withNote(form, note) {
+    var copy = {};
+    for (var k in form) if (Object.prototype.hasOwnProperty.call(form, k)) copy[k] = form[k];
+    copy.intro = note + (line(str(form.intro), 10) ? '\n' + str(form.intro) : '');
+    return copy;
   }
 
   function openModal(formId, opener, fallbackDefault, fromHash) {
@@ -2275,9 +2344,24 @@
     if (id) return id;
     return page.payload ? defaultFormId() : '';
   }
+  /* A link that says Register and leads to a part of the page that is not there or not shown (a section hidden
+     because it is empty, or deleted since the button was made): it opens the default form instead, so a
+     visitor's click is never lost. The live page's own pass marks most such buttons already; this catches the
+     ones a page hides as it runs. */
+  var REGISTER_WORDS = /^\s*(?:register|registration|sign\s*up|express\s+(?:your\s+)?interest|book\s+(?:your\s+|a\s+)?(?:seat|pass|place|spot)s?|reserve\s+(?:your\s+|a\s+)?(?:seat|spot|place)s?|request\s+(?:an?\s+)?invit(?:e|ation))\b/i;
+  function deadRegisterLink(target) {
+    var t = target && (target.nodeType === 1 ? target : target.parentElement);
+    var a = t && t.closest ? t.closest('a[href^="#"]') : null;
+    if (!a || a.closest('[data-rv-form-root]') || !REGISTER_WORDS.test(str(a.textContent))) return null;
+    var name = str(a.getAttribute('href')).slice(1);
+    try { name = decodeURIComponent(name); } catch (err) { /* as written */ }
+    if (!name || hashForm('#' + name)) return null;          // "#" alone, #register, #rv-form-…: answered elsewhere
+    var el = doc.getElementById(name);
+    return !el || !el.getClientRects().length ? a : null;
+  }
   function onClick(e) {
     if (!page.started || editing() || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    var el = ctaFor(e.target);
+    var el = ctaFor(e.target) || deadRegisterLink(e.target);
     if (!el) return;
     e.preventDefault();
     /* a page saved long ago may still hold its own register pop-up (templates/_library footer): only one opens */
@@ -2408,6 +2492,8 @@
     definitions: function () { return page.payload; },
     guessCountry: guessCountry,
     suggestEmail: suggestEmail,
+    doneHeading: doneHeading,
+    doneFacts: doneFacts,
     modeFor: modeFor,
     sharedLivePath: sharedLivePath
   };

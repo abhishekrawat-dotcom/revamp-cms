@@ -1,0 +1,301 @@
+/* ETB2B AI chat kit (etb2b-chat.css, with etb2b-chat.js): the launcher, the panel, the folded bar and the
+   bubbles and cards inside the conversation.
+
+   Colours: every one is a console token (Event_Listing.html :root). The kit reads them once, in the .rvc block
+   below, each with the console's own light value as the fallback, so a page without the tokens still gets the
+   console's look; and because the tokens are read live, the page's light / dark switch (data-theme) flips the
+   chat with no script. No colour is written anywhere else (etb2b-chat.test.js C.9 checks it).
+
+   Layers: the launcher and the folded bar sit at 65 (above popovers 50 and the sticky nav 60, below the phones'
+   Filters sheet 70, whose buttons they must not cover); the panel at 85 (above the page, below modals 90 and
+   toasts 100, so the help modal opened from it and every toast still show on top). From 601 to 880px the
+   Filters button shows beside the open panel, so there the panel drops to 69: the Filters sheet and its scrim
+   (70) open over it rather than under it, and it still sits above the nav and the popovers. On a phone the
+   panel is a full-screen sheet that covers that button, so it goes back to 85. etb2b-chat.test.js C.9 reads the
+   page's own layers from Event_Listing.html to check all of this. */
+
+.rvc{
+  --rvc-surface: var(--surface, #FFFFFF);
+  --rvc-surface-2: var(--surface-2, #F1F0EC);
+  --rvc-surface-3: var(--surface-3, #E7E5DF);
+  --rvc-border: var(--border, #E6E4DE);
+  --rvc-border-strong: var(--border-strong, #D7D4CB);
+  --rvc-text: var(--text, #1D1B17);
+  --rvc-text-muted: var(--text-muted, #6C6A60);
+  --rvc-text-faint: var(--text-faint, #9B988D);
+  --rvc-accent: var(--accent, #FF0035);
+  --rvc-accent-strong: var(--accent-strong, #D6002C);
+  --rvc-accent-soft: var(--accent-soft, #FFE3E8);
+  --rvc-accent-contrast: var(--accent-contrast, #FFFFFF);
+  --rvc-draft: var(--draft, #8A7A99);
+  --rvc-draft-soft: var(--draft-soft, #EEE8F2);
+  --rvc-ok: var(--ok, #16794F);
+  --rvc-ok-soft: var(--ok-soft, #E4F5EC);
+  --rvc-warn: var(--warn, #A9700F);
+  --rvc-warn-soft: var(--warn-soft, #FBF0DA);
+  --rvc-crit: var(--crit, #C13333);
+  --rvc-crit-soft: var(--crit-soft, #FBE8E7);
+  --rvc-shadow-sm: var(--shadow-sm, 0 3px 8px -2px rgba(20,18,12,0.08));
+  --rvc-shadow-md: var(--shadow-md, 0 14px 32px -14px rgba(20,18,12,0.22));
+  --rvc-shadow-lg: var(--shadow-lg, 0 30px 60px -24px rgba(20,18,12,0.30));
+  --rvc-r-sm: var(--r-sm, 8px);
+  --rvc-r-md: var(--r-md, 12px);
+  --rvc-r-lg: var(--r-lg, 16px);
+  --rvc-font: var(--font-body, 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif);
+  font-family: var(--rvc-font);
+  color: var(--rvc-text);
+}
+.rvc *, .rvc *::before, .rvc *::after{ box-sizing:border-box; }
+/* the kit's own boxes set display, which would beat the browser's [hidden] rule */
+.rvc [hidden]{ display:none !important; }
+.rvc button{ font-family:inherit; }
+.rvc-sr{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+.rvc :focus-visible{ outline:2px solid var(--rvc-accent); outline-offset:2px; }
+/* the console's own :focus-visible also squares corners to 4px; the kit's controls keep their shapes when focused */
+.rvc .rvc-launcher:focus-visible{ border-radius:100px; }
+.rvc .rvc-send:focus-visible{ border-radius:10px; }
+.rvc .rvc-btn:focus-visible, .rvc .rvc-close:focus-visible, .rvc .rvc-head-help:focus-visible{ border-radius:var(--rvc-r-sm); }
+.rvc .rvc-suggestion:focus-visible, .rvc .rvc-choice:focus-visible{ border-radius:10px; }
+/* a phone's full-screen sheet keeps the page behind it still */
+html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
+
+/* ---------- the face (etb2b-chat.js FACE_SVG) ---------- */
+.rvc-face{ display:block; }
+.rvc-f-line{ stroke:var(--rvc-text); stroke-width:2.5; stroke-linecap:round; }
+.rvc-f-dot{ fill:var(--rvc-accent); }
+.rvc-f-ear{ fill:var(--rvc-text-muted); }
+.rvc-f-shell{ fill:var(--rvc-surface); stroke:var(--rvc-text); stroke-width:2; }
+.rvc-f-visor{ fill:var(--rvc-text); }
+.rvc-f-glint{ fill:var(--rvc-surface); }
+
+/* ---------- the launcher: where "Need help?" was, with the same pill look ---------- */
+.rvc-launcher{
+  position:fixed; left:22px; bottom:22px; z-index:65;
+  display:inline-flex; align-items:center; gap:8px;
+  min-height:44px; margin:0; padding:6px 16px 6px 7px; border-radius:100px;
+  background:var(--rvc-surface); color:var(--rvc-text);
+  border:1px solid var(--rvc-border-strong); box-shadow:var(--rvc-shadow-md);
+  font-size:13px; font-weight:700; line-height:1.2; cursor:pointer;
+  transition:border-color .15s ease, color .15s ease;
+}
+.rvc-launcher:hover, .rvc-launcher.is-open{ border-color:var(--rvc-accent); color:var(--rvc-accent-strong); }
+.rvc-launcher:focus-visible{ outline:2px solid var(--rvc-accent); outline-offset:3px; }
+.rvc-launcher-face{ position:relative; width:30px; height:30px; border-radius:50%; background:var(--rvc-surface-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.rvc-launcher-face .rvc-face{ width:24px; height:24px; }
+.rvc-launcher-label{ white-space:nowrap; animation:rvc-label-in .45s cubic-bezier(.2,.7,.2,1) .5s both; }
+.rvc-launcher.is-quiet .rvc-launcher-label{ animation:none; }
+/* an answer that came while the panel was shut */
+.rvc-launcher-new{ position:absolute; top:-2px; right:-2px; width:11px; height:11px; border-radius:50%; background:var(--rvc-accent); border:2px solid var(--rvc-surface); display:none; }
+.rvc-launcher.has-new .rvc-launcher-new{ display:block; }
+
+/* ---------- the panel: above the launcher, on the left, never over Create Event ---------- */
+.rvc-panel{
+  position:fixed; left:22px; bottom:84px; z-index:85;
+  width:400px; max-width:calc(100vw - 44px);
+  /* the top edge stays at least 72px down, below the sticky nav */
+  height:min(640px, calc(100vh - 156px));
+  display:flex; flex-direction:column; overflow:hidden;
+  background:var(--rvc-surface); color:var(--rvc-text);
+  border:1px solid var(--rvc-border); border-radius:var(--rvc-r-lg); box-shadow:var(--rvc-shadow-lg);
+  animation:rvc-in .18s cubic-bezier(.2,.7,.2,1);
+}
+
+.rvc-head{ flex-shrink:0; display:flex; align-items:center; gap:10px; min-height:56px; padding:9px 8px 9px 14px; border-bottom:1px solid var(--rvc-border); }
+.rvc-head-face{ width:36px; height:36px; border-radius:50%; background:var(--rvc-surface-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.rvc-head-face .rvc-face{ width:28px; height:28px; }
+.rvc-head-id{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.rvc-title{ margin:0; font-size:15px; font-weight:800; letter-spacing:.02em; line-height:1.2; color:var(--rvc-text); }
+.rvc-status{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; line-height:1.3; color:var(--rvc-text-muted); }
+.rvc-status i{ width:7px; height:7px; border-radius:50%; background:var(--rvc-ok); flex-shrink:0; }
+.rvc-panel.is-busy .rvc-status i{ background:var(--rvc-accent); animation:rvc-pulse 1s ease-in-out infinite; }
+.rvc-head-help{ flex-shrink:0; display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 9px; border-radius:var(--rvc-r-sm); border:1px solid transparent; background:transparent; color:var(--rvc-text-muted); font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; }
+.rvc-head-help:hover{ background:var(--rvc-surface-2); color:var(--rvc-accent-strong); }
+.rvc-head-help-icon{ display:inline-flex; }
+.rvc-close{ flex-shrink:0; width:32px; height:32px; border-radius:var(--rvc-r-sm); border:1px solid transparent; background:transparent; color:var(--rvc-text-muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+.rvc-close:hover{ background:var(--rvc-surface-2); color:var(--rvc-text); }
+
+.rvc-thread{ flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:14px 14px 18px; }
+.rvc-thread:focus-visible{ outline-offset:-2px; }
+
+/* ---------- the welcome ---------- */
+.rvc-welcome{ display:flex; flex-direction:column; gap:8px; padding:2px 2px 0; }
+.rvc-welcome-h{ margin:0; font-size:16px; font-weight:800; line-height:1.3; color:var(--rvc-text); }
+.rvc-welcome-p{ margin:0; font-size:13px; line-height:1.55; color:var(--rvc-text-muted); }
+.rvc-suggest{ display:flex; flex-direction:column; gap:6px; margin-top:4px; }
+.rvc-suggest-hint{ margin:0 0 2px; font-size:11.5px; line-height:1.4; color:var(--rvc-text-muted); }
+.rvc-suggestion{ text-align:left; min-height:36px; padding:8px 12px; border:1px solid var(--rvc-border); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; line-height:1.4; cursor:pointer; transition:border-color .15s ease, background-color .15s ease; }
+.rvc-suggestion:hover{ border-color:var(--rvc-accent); background:var(--rvc-surface-2); }
+
+/* ---------- turns ---------- */
+.rvc-turn{ display:flex; gap:8px; min-width:0; max-width:100%; animation:rvc-rise .18s ease both; }
+.rvc-turn-body{ display:flex; flex-direction:column; gap:3px; min-width:0; }
+.rvc-meta{ display:flex; align-items:baseline; gap:6px; padding:0 4px; font-size:10.5px; font-weight:700; line-height:1.3; color:var(--rvc-text-muted); }
+.rvc-time{ font-weight:600; font-variant-numeric:tabular-nums; }
+.rvc-msg{ min-width:0; max-width:100%; padding:9px 12px; border-radius:14px; font-size:13px; line-height:1.55; overflow-wrap:anywhere; }
+.rvc-ai{ align-self:flex-start; width:100%; }
+.rvc-ai .rvc-turn-body{ flex:1; }
+.rvc-ai .rvc-msg{ background:var(--rvc-surface-2); color:var(--rvc-text); border-radius:4px 14px 14px 14px; }
+.rvc-avatar{ flex-shrink:0; width:28px; height:28px; border-radius:50%; background:var(--rvc-surface-2); display:flex; align-items:center; justify-content:center; margin-top:17px; }
+.rvc-avatar .rvc-face{ width:22px; height:22px; }
+.rvc-user{ align-self:flex-end; max-width:88%; }
+.rvc-user .rvc-turn-body{ align-items:flex-end; }
+.rvc-user .rvc-msg{ background:var(--rvc-accent-soft); color:var(--rvc-text); border-radius:14px 14px 4px 14px; white-space:pre-wrap; }
+.rvc-user.is-failed .rvc-msg{ opacity:.75; }
+.rvc-failed-note{ margin:0; padding:0 4px; font-size:11px; font-weight:700; color:var(--rvc-crit); }
+.rvc-error .rvc-msg{ background:var(--rvc-crit-soft); color:var(--rvc-crit); }
+.rvc-text{ white-space:pre-wrap; }
+.rvc-text:empty, .rvc-extra:empty, .rvc-foot:empty{ display:none; }
+.rvc-ev, .rvc-link, .rvc-row-name[href]{ color:var(--rvc-accent-strong); font-weight:600; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
+.rvc-ev:hover, .rvc-link:hover, .rvc-row-name[href]:hover{ text-decoration-thickness:2px; }
+.rvc-ev-plain{ font-weight:600; }
+.rvc-val{ font-weight:700; font-variant-numeric:tabular-nums; }
+.rvc-missing{ font-style:italic; color:var(--rvc-text-muted); }
+/* "as of 12:05 IST": muted rather than faint, which is too pale to read at this size */
+.rvc-asof{ margin:6px 0 0; font-size:11.5px; line-height:1.4; color:var(--rvc-text-muted); }
+.rvc-note{ margin:8px 0 0; font-size:12px; line-height:1.45; color:var(--rvc-text-muted); }
+.rvc-error .rvc-note{ color:var(--rvc-crit); }
+.rvc-link-line{ margin:8px 0 0; font-size:12.5px; }
+.rvc-foot{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; }
+.rvc-divider{ display:flex; align-items:center; gap:10px; margin:2px 0; font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--rvc-text-muted); }
+.rvc-divider::before, .rvc-divider::after{ content:""; flex:1; height:1px; background:var(--rvc-border); }
+.rvc-loading{ align-self:center; margin:0; font-size:12px; color:var(--rvc-text-muted); }
+
+/* ---------- buttons ---------- */
+.rvc-btn{ display:inline-flex; align-items:center; justify-content:center; gap:6px; min-height:32px; margin:0; padding:0 12px; border-radius:var(--rvc-r-sm); border:1px solid var(--rvc-border-strong); background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; font-weight:700; line-height:1.2; white-space:nowrap; cursor:pointer; transition:background-color .15s ease, border-color .15s ease; }
+.rvc-btn:hover{ background:var(--rvc-surface-2); }
+/* the stronger red, so its white words pass AA (the brighter accent does not, at this size) */
+.rvc-btn-primary{ background:var(--rvc-accent-strong); border-color:var(--rvc-accent-strong); color:var(--rvc-accent-contrast); }
+.rvc-btn-primary:hover{ background:var(--rvc-accent-strong); filter:brightness(1.06); }
+.rvc-btn[aria-disabled="true"], .rvc-choice[aria-disabled="true"]{ opacity:.6; cursor:default; }
+.rvc-btn[aria-disabled="true"]:hover{ background:var(--rvc-surface); }
+.rvc-btn[aria-busy="true"]{ cursor:progress; }
+
+/* ---------- cards inside an answer ---------- */
+.rvc-card{ margin-top:8px; border:1px solid var(--rvc-border); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); }
+.rvc-list-head{ display:flex; align-items:center; gap:8px; padding:9px 12px; border-bottom:1px solid var(--rvc-border); }
+.rvc-list-title{ flex:1; min-width:0; font-size:12.5px; font-weight:700; }
+.rvc-count{ flex-shrink:0; min-width:22px; padding:1px 8px; border-radius:100px; background:var(--rvc-surface-3); color:var(--rvc-text); font-size:11px; font-weight:800; text-align:center; font-variant-numeric:tabular-nums; }
+.rvc-rows{ list-style:none; margin:0; padding:0; }
+.rvc-row{ display:flex; flex-direction:column; gap:3px; padding:8px 12px; border-bottom:1px solid var(--rvc-border); min-width:0; }
+.rvc-row:last-child{ border-bottom:0; }
+.rvc-row-main{ display:flex; align-items:baseline; gap:8px; min-width:0; }
+.rvc-row-name{ flex:1; min-width:0; font-size:12.5px; font-weight:600; overflow-wrap:anywhere; }
+.rvc-row-val{ flex-shrink:0; font-size:12px; font-weight:700; color:var(--rvc-text-muted); font-variant-numeric:tabular-nums; }
+.rvc-row-meta{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:11.5px; color:var(--rvc-text-muted); }
+.rvc-list-more{ margin:0; padding:7px 12px; border-top:1px solid var(--rvc-border); font-size:11.5px; color:var(--rvc-text-muted); }
+
+/* status chips: the page's own status colours as the dot and the tint, the words in --text so they pass AA */
+.rvc-chip{ display:inline-flex; align-items:center; gap:5px; padding:1px 8px 1px 6px; border-radius:100px; font-size:11px; font-weight:700; line-height:1.6; color:var(--rvc-text); background:var(--rvc-surface-3); white-space:nowrap; }
+.rvc-chip i{ width:6px; height:6px; border-radius:50%; background:var(--rvc-text-faint); flex-shrink:0; }
+.rvc-tone-draft{ background:var(--rvc-draft-soft); }
+.rvc-tone-draft i{ background:var(--rvc-draft); }
+.rvc-tone-upcoming{ background:var(--rvc-accent-soft); }
+.rvc-tone-upcoming i{ background:var(--rvc-accent); }
+.rvc-tone-active, .rvc-tone-ok{ background:var(--rvc-ok-soft); }
+.rvc-tone-active i, .rvc-tone-ok i{ background:var(--rvc-ok); }
+.rvc-tone-completed, .rvc-tone-muted{ background:var(--rvc-surface-3); }
+.rvc-tone-completed i{ background:var(--rvc-text-faint); }
+.rvc-tone-muted i{ background:var(--rvc-text-muted); }
+.rvc-tone-cancelled, .rvc-tone-warn{ background:var(--rvc-warn-soft); }
+.rvc-tone-cancelled i, .rvc-tone-warn i{ background:var(--rvc-warn); }
+.rvc-tone-deleted, .rvc-tone-crit{ background:var(--rvc-crit-soft); }
+.rvc-tone-deleted i, .rvc-tone-crit i{ background:var(--rvc-crit); }
+
+/* "Opening …" with Stay here: a thin bar that fills over the wait */
+.rvc-countdown{ padding:9px 12px 10px; }
+.rvc-cd-text{ margin:0; font-size:12.5px; line-height:1.45; }
+.rvc-cd-bar{ height:3px; margin:8px 0 9px; border-radius:3px; background:var(--rvc-surface-3); overflow:hidden; }
+.rvc-cd-bar i{ display:block; height:100%; width:0; border-radius:3px; background:var(--rvc-accent); animation:rvc-fill 1.2s linear forwards; }
+.rvc-countdown.is-done .rvc-cd-bar i{ width:100%; animation:none; }
+
+.rvc-choices{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.rvc-choice{ text-align:left; min-height:36px; padding:8px 12px; border:1px solid var(--rvc-border-strong); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; cursor:pointer; }
+.rvc-choice:hover{ border-color:var(--rvc-accent); }
+.rvc-choice.is-chosen{ border-color:var(--rvc-accent); box-shadow:inset 3px 0 0 var(--rvc-accent); opacity:1; }
+
+/* ---------- thinking, and the message box ---------- */
+.rvc-busy{ flex-shrink:0; display:flex; align-items:center; gap:9px; margin:0 12px 8px; padding:7px 11px; border-radius:10px; background:var(--rvc-surface-2); color:var(--rvc-text-muted); font-size:12px; font-weight:600; line-height:1.4; }
+.rvc-spin{ flex-shrink:0; width:14px; height:14px; border-radius:50%; border:2px solid var(--rvc-border-strong); border-top-color:var(--rvc-accent); animation:rvc-spin .8s linear infinite; }
+/* its own bottom margin, so it never touches the edge when the foot note is hidden (short screens) or absent */
+.rvc-compose{ flex-shrink:0; display:flex; align-items:flex-end; gap:6px; margin:0 12px 12px; padding:5px 5px 5px 11px; border:1px solid var(--rvc-border-strong); border-radius:14px; background:var(--rvc-surface); transition:border-color .15s ease, box-shadow .15s ease; }
+.rvc-compose:focus-within{ border-color:var(--rvc-accent); box-shadow:0 0 0 3px var(--rvc-accent-soft); }
+/* five lines at most, then it scrolls */
+.rvc-input{ flex:1; min-width:0; min-height:34px; max-height:116px; margin:0; padding:7px 0; border:0; outline:0; resize:none; overflow-y:auto; background:transparent; color:var(--rvc-text); font-family:inherit; font-size:13.5px; line-height:20px; }
+.rvc-input:focus{ outline:0; }
+.rvc-input::placeholder{ color:var(--rvc-text-muted); opacity:1; }
+.rvc-input[readonly]{ color:var(--rvc-text-muted); cursor:progress; }
+.rvc-send{ flex-shrink:0; width:36px; height:36px; margin:0; padding:0; border:0; border-radius:10px; background:var(--rvc-accent); color:var(--rvc-accent-contrast); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+.rvc-send:hover{ background:var(--rvc-accent-strong); }
+.rvc-send:disabled{ background:var(--rvc-surface-3); color:var(--rvc-text-muted); cursor:progress; }
+.rvc-footnote{ flex-shrink:0; margin:-5px 14px 11px; font-size:12px; line-height:1.4; color:var(--rvc-text-muted); }
+
+/* ---------- the folded bar ----------
+   As wide as the panel it stands for, and the label may take two lines: a long change ("Draft events · created
+   26 Oct – 1 Nov 2026") cut to "Showing Draft eve…" would not say what Undo undoes. */
+.rvc-peek{
+  position:fixed; left:22px; bottom:84px; z-index:65;
+  width:400px; max-width:calc(100vw - 32px); min-height:48px;
+  display:flex; align-items:center; gap:8px; padding:5px 6px 5px 8px;
+  background:var(--rvc-surface); color:var(--rvc-text);
+  border:1px solid var(--rvc-border-strong); border-radius:var(--rvc-r-md); box-shadow:var(--rvc-shadow-md);
+  animation:rvc-in .18s cubic-bezier(.2,.7,.2,1);
+}
+.rvc-peek-face{ width:28px; height:28px; border-radius:50%; background:var(--rvc-surface-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.rvc-peek-face .rvc-face{ width:22px; height:22px; }
+.rvc-peek-label{ flex:1; min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; font-size:12.5px; font-weight:600; line-height:1.3; }
+.rvc-peek .rvc-btn{ flex-shrink:0; }
+
+/* ---------- narrower screens ---------- */
+@media (max-width:880px){
+  .rvc-launcher{ left:16px; }
+  .rvc-panel{ left:16px; width:380px; max-width:calc(100vw - 32px); z-index:69; }
+  .rvc-peek{ left:16px; }
+}
+@media (max-height:560px){
+  .rvc-footnote{ display:none; }
+}
+/* phones: a round launcher and a full-screen sheet with room for thumbs */
+@media (max-width:600px){
+  .rvc-launcher{ left:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); width:52px; height:52px; padding:0; justify-content:center; border-radius:50%; }
+  .rvc .rvc-launcher:focus-visible{ border-radius:50%; }
+  .rvc-launcher-label{ display:none; }
+  .rvc-launcher-face{ width:40px; height:40px; }
+  .rvc-launcher-face .rvc-face{ width:32px; height:32px; }
+  .rvc-panel{
+    left:0; right:0; top:0; bottom:0; width:100%; max-width:none; z-index:85;
+    height:100vh; height:100dvh;
+    border:0; border-radius:0; box-shadow:none;
+    padding:env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+  /* with the keyboard up: the visible part of the screen (etb2b-chat.js syncViewport) */
+  .rvc-panel.rvc-has-vv{ top:var(--rvc-vt, 0px); bottom:auto; height:var(--rvc-vh, 100dvh); }
+  .rvc-head{ min-height:56px; }
+  .rvc-close{ width:44px; height:44px; }
+  .rvc-head-help{ min-height:44px; }
+  .rvc-thread{ padding:12px 12px 16px; }
+  .rvc-compose{ margin:0 10px 10px; }
+  .rvc-input{ font-size:16px; line-height:22px; max-height:126px; }
+  .rvc-send{ width:44px; height:44px; }
+  .rvc-btn, .rvc-choice, .rvc-suggestion{ min-height:44px; }
+  .rvc-footnote{ margin:-4px 12px 8px; }
+  .rvc-peek{ left:16px; right:16px; width:auto; max-width:none; min-height:56px; bottom:calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .rvc-peek-face{ display:none; }
+}
+@media (max-width:380px){
+  .rvc-head-help-text{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+  .rvc-head-help{ width:44px; padding:0; justify-content:center; }
+}
+
+/* ---------- motion ---------- */
+@keyframes rvc-in{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
+@keyframes rvc-rise{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
+@keyframes rvc-label-in{ from{ opacity:0; transform:translateX(-6px); } to{ opacity:1; transform:none; } }
+@keyframes rvc-pulse{ 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
+@keyframes rvc-spin{ to{ transform:rotate(360deg); } }
+@keyframes rvc-fill{ from{ width:0; } to{ width:100%; } }
+@media (prefers-reduced-motion: reduce){
+  .rvc-panel, .rvc-peek, .rvc-turn, .rvc-launcher-label, .rvc-status i, .rvc-spin, .rvc-cd-bar i{ animation:none !important; }
+  .rvc-launcher, .rvc-btn, .rvc-suggestion, .rvc-compose{ transition:none !important; }
+  /* the countdown's bar stands still, full, and the words say what will happen */
+  .rvc-cd-bar i{ width:100%; }
+}

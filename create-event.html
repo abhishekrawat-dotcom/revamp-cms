@@ -7,11 +7,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
-  /* cross-page transitions: cross-fade into the event console instead of
-     blanking the window between documents. Chrome 126+; anywhere else the
-     at-rule is ignored and navigation behaves as before. */
-  @view-transition { navigation: auto; }
-  @media (prefers-reduced-motion: reduce){ @view-transition { navigation: none; } }
+  /* No cross-page transition (@view-transition) here: Chrome runs one only when the page left and the page opened
+     both ask for it, and no other Oneworld 2.0 page does (the console's was removed with the app shell). Asked for
+     here alone, every move from Create Event to the editor or the dashboard threw "InvalidStateError: Transition was
+     aborted because of invalid state" (QA 3 Nov 2026); dash-bot-handoff.test.js E.2 keeps it out. */
   html{ background: var(--bg); }
   :root{
     color-scheme: light;
@@ -612,6 +611,10 @@
   .callout a{ color: inherit; font-weight: 700; text-decoration: underline; }
   .callout .callout-actions{ display:flex; flex-wrap:wrap; gap: 8px; margin-top: 10px; }
   #existing-event{ margin-bottom: 14px; }
+  /* what ETB2B AI on the events dashboard filled in, at the top of step 1 (create-event-prefill.js) */
+  #ai-prefill-note{ margin-bottom: 16px; }
+  /* ETB2B AI's hero picture for this event, made only once the event is created (renderAiHeroLine) */
+  #ai-hero-line{ margin-bottom: 16px; }
 
   .pill{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; padding: 3px 9px 3px 7px; border-radius: 100px; white-space:nowrap; }
   .pill .d{ width:6px; height:6px; border-radius:50%; }
@@ -1934,6 +1937,13 @@
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
     <section class="step-wrap full" id="step-1" hidden>
+      <!-- what ETB2B AI on the events dashboard filled in from the person's message, with Undo; or why its details
+           were not used. Above all three phases, and gone once the person moves past step 1 (renderAiPrefillNote). -->
+      <div class="callout" id="ai-prefill-note" role="status" hidden></div>
+      <!-- the hero picture ETB2B AI will make once the event is created, with Change and Remove; or why it won't
+           (renderAiHeroLine, create-event-prefill.js heroLine) -->
+      <div class="callout plain" id="ai-hero-line" role="status" hidden></div>
+
       <!-- ===== PHASE 1 : pick the portal and the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
@@ -2306,6 +2316,8 @@
 <script src="templates/_shared/template-loader.js"></script>
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
+<script src="portal-fields.js"></script>
+<script src="create-event-prefill.js"></script>
 <script>
 (function(){
   'use strict';
@@ -2832,6 +2844,7 @@
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
     sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
     priorDesigns: [],            // every design name+colours/fonts shown by "Redesign with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
+    aiHero: null,               // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
     assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
   function draftId(){
@@ -2849,6 +2862,9 @@
   var saveTimer = null;
   var draftClosed = false;    // the draft was handed to the editor or discarded and removed; nothing may write it back
   var restoreNotice = '';     // what a restored draft could not be resumed with, shown on the method screen until a choice is made
+  /* ETB2B AI on the events dashboard can open this page with a new event's details (?prefill=, create-event-prefill.js) */
+  var aiPrefill = null;       // those details, held until start() fills the new draft with them, once
+  var aiNote = null;          // the note over step 1: { kind: 'filled' | 'unused' | 'missing', text, snap, res, portal } (renderAiPrefillNote; res and portal: nameAiNotePortal)
   var resumedExisting = false;   // this page load restored a draft whose event already exists on the server
   var lastSaveOk = true;      // the last save() reached localStorage
   var otherTab = '';          // '' | 'changed' | 'replaced' | 'closed' — what another tab did to the stored draft; this tab stops saving until the owner decides (renderSaveState)
@@ -3003,6 +3019,7 @@
       var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
+      S.aiHero = cleanAiHero(S.aiHero);
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
       /* an older draft lists the page header and footer as sections; they come with the design and are not a draft's to hold */
       S.sections = (S.sections || []).filter(function(sec){ return sec && (isTextSection(sec) || libBy(sec.libId)); });
@@ -3284,6 +3301,8 @@
   var BACK_LABEL = svg('<path d="M15 18l-6-6 6-6"/>', 15) + ' Back';
   function renderFoot(){
     var back = $('btn-back'), next = $('btn-next'), note = $('foot-note');
+    renderAiPrefillNote();
+    renderAiHeroLine();
     renderAiEntry();
     setTimeout(placeToasts, 0);     // once the bar has its new content
     if (busy){
@@ -4100,6 +4119,7 @@
       wireEtPicker();
       checkCurrentLink();
     }
+    nameAiNotePortal();
     guardDraftPortal(true);
   }
   /* The person's working portal, as the server has it now: it wins over the remembered one. A new draft's box
@@ -4290,8 +4310,9 @@
 
   /* Choosing the type only changes the type: the fields that depend on it re-render, and whatever was
      chosen after it — the method, the design, the content — stays. A pick made while changing the type
-     goes back to where the owner came from. The portal in the box is committed with it, and a type is
-     never taken without one. */
+     goes back to where the owner came from. A first pick for a brief ETB2B AI brought from the events
+     dashboard (S.aiPrefill.thenDetails, create-event-prefill.js) goes on to that brief's form, once. The portal in
+     the box is committed with it, and a type is never taken without one. */
   function pickCategory(k){
     if (!portalLocked() && !isRosterPortal(stepPortal)){
       /* the roster is still on its way: the click is taken once it has come, against the portal it brings */
@@ -4308,12 +4329,14 @@
     showPortalError('');
     var portal = portalLocked() ? null : commitPortal(stepPortal);
     var b = S.basics, C = CATS[k], changed = (k !== b.category);
-    var to = (S.catReturnPhase === 'details' && S.creationMethod) ? 'details' : 'method';
+    var aiBrief = !S.catReturnPhase && S.creationMethod === 'brief' && !!(S.aiPrefill && S.aiPrefill.thenDetails);
+    var to = ((S.catReturnPhase === 'details' && S.creationMethod) || aiBrief) ? 'details' : 'method';
     S.catReturnPhase = null;
+    if (S.aiPrefill && S.aiPrefill.thenDetails) S.aiPrefill.thenDetails = false;
     b.category = k;
     /* carry the date over only if the new category understands that mode */
     if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
-    var said = changed && to === 'details' ? (C.label + ' selected — form updated') : (C.label + ' selected');
+    var said = changed && to === 'details' && !aiBrief ? (C.label + ' selected — form updated') : (C.label + ' selected');
     /* a removed previous edition has already been said, with the portal */
     if (!(portal && portal.dropped)) toast(portal && portal.changed ? portalName(b.portal) + ' · ' + said : said);
     setStep1Phase(to);
@@ -6381,7 +6404,7 @@
         applyImportedTemplate(body.templateId || ('imported-' + importId));
         showStep2View('landing');
         advanceToDetails('imported');
-        toast('Design imported', { type: 'success' });
+        toast(importReport(body.repairs), { type: 'success', sticky: !!(body.repairs && body.repairs.length) });
       }).catch(function(err){
         if (!isCurrent(run)) return;
         failed = true;
@@ -6398,6 +6421,24 @@
       });
     }
     send();
+  }
+
+  /* What the import put right or took out, said to the owner (the server's site-checks.js repair): the original's
+     own scripts made its menu, film, chat and page links work, and none of them run here. */
+  function importReport(repairs){
+    var list = Array.isArray(repairs) ? repairs : [];
+    if (!list.length) return 'Design imported';
+    var links = 0, forms = 0, gone = [];
+    list.forEach(function(c){
+      if (c && c.what === 'widget') gone.push(c.label === 'Film' ? 'a film with nothing to play' : /menu/i.test(c.label) ? 'a menu button with no menu' : 'a chat that cannot answer here');
+      else if (c && (c.what === 'register' || c.what === 'nominate' || c.what === 'partner')) forms++;
+      else links++;
+    });
+    var bits = [];
+    if (forms) bits.push(forms + (forms === 1 ? ' button now opens' : ' buttons now open') + ' the event\u2019s form');
+    if (links) bits.push(links + (links === 1 ? ' link that led off this site was' : ' links that led off this site were') + ' pointed at the page or ET\u2019s pages, or hidden');
+    if (gone.length) bits.push('taken out: ' + gone.filter(function(g, i, a){ return a.indexOf(g) === i; }).join(', '));
+    return 'Design imported. ' + bits.join('; ') + '.';
   }
 
   var CORE_LIB_IDS = ['about','priorities','attend'];
@@ -9714,6 +9755,9 @@
       excluded: offSections.map(function(sec){ return sec.libId; }).filter(Boolean),
       aiDesign: own ? draftDesign() : null,                  // canvas.design field values laid over the template (draftDesign)
       sectionOrder: own ? (S.sectionOrder || null) : null,   // a section sequence accepted from an AI proposal; null = the template's own order
+      /* ETB2B AI's hero picture, made once the event was created: the editor puts it in as one undoable change
+         (editor-template-ui.js applyAiHero), or says why there is none */
+      aiHero: own ? aiHeroForHandoff() : null,
       sections: sections
     };
   }
@@ -10105,12 +10149,62 @@
     });
   }
 
-  /* the rows of the hand-off for the current path, in order — a further step is one more entry here */
+  /* the rows of the hand-off for the current path, in order — a further step is one more entry here. ETB2B AI's
+     hero picture (wantsAiHero) is made right after the event exists, and only then. */
   function handoffSteps(){
-    return [
-      { key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event', run: createEventRecord },
-      { key: 'open', label: 'Opening the editor', run: openInEditor }
-    ];
+    var steps = [{ key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event', run: createEventRecord }];
+    if (wantsAiHero()){
+      var hero = { key: 'hero', label: 'ETB2B AI is making a hero picture' };
+      hero.run = function(run){ return makeAiHero(run, hero); };
+      steps.push(hero);
+    }
+    steps.push({ key: 'open', label: 'Opening the editor', run: openInEditor });
+    return steps;
+  }
+  /* What made the picture fail, in a sentence for the editor's note: the server's own when it says one. A picture
+     that did not pass its check (hero-held: it had words, a logo or people in it, twice) is said as the server says
+     it, "No hero picture was made: …", with what the person can do instead. */
+  function aiHeroFailure(err){
+    var said = err && typeof err.said === 'string' && err.said ? err.said : '';
+    if (err && err.code === 'hero-held' && said) return said.replace(/\s+$/, '') + ' The design’s own picture is in place: you can change it in the editor, or ask ETB2B AI there for a new one.';
+    return 'ETB2B AI could not make the hero picture' + (said ? ': ' + said.replace(/\.$/, '') : '') + '. The design’s own picture is in place: you can change it in the editor.';
+  }
+  /* The one picture, made now that the event exists (POST /api/event/ai-hero, functions/lib/ai-hero.js). It never
+     fails the hand-off: a failure is kept as a note, the row says so, and the editor opens with the design's own
+     picture. What was made is kept in the draft, so a retried hand-off never asks for a second one. */
+  function makeAiHero(run, row){
+    var h = S.aiHero;
+    if (!h || !S.createdEventId || h.made) return Promise.resolve();
+    var body = { eventId: S.createdEventId, subject: h.subject || '' };
+    if (h.turnId) body.turnId = h.turnId;
+    var send = window.RevampCore && typeof RevampCore.authedFetch === 'function'
+      ? RevampCore.authedFetch('/api/event/ai-hero', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      : Promise.reject(new Error('This page did not load completely.'));
+    return Promise.resolve(send).then(readJson).then(function(r){
+      if (!isCurrent(run)) return;
+      if (!r || typeof r.url !== 'string' || !/^https:\/\/storage\.googleapis\.com\//.test(r.url)) throw new Error('The picture did not come back.');
+      h.made = { url: r.url, subject: String(r.subject || h.subject || '').slice(0, 200) };
+      h.note = '';
+      save();
+      row.label = 'ETB2B AI made a hero picture';
+    }).then(null, function(err){
+      if (!isCurrent(run)) return;
+      h.note = aiHeroFailure(err);
+      save();
+      /* held: the row says that none was made and why, in the server's first sentence ("No hero picture was made:
+         ETB2B AI made it twice, and the second picture still had words or letters in it.") */
+      var held = err && err.code === 'hero-held' && typeof err.said === 'string' ? err.said.split('. ')[0].replace(/\.?$/, '.') : '';
+      row.label = held.indexOf('No hero picture was made') === 0 ? held : 'Hero picture not made: the design’s own picture is kept';
+    });
+  }
+  /* what the editor is told about it: the picture to put in as an undoable change, or why there is none. A picture
+     made on an earlier run of the hand-off is not put in once the draft has gone another way since: a banner the
+     person added is theirs and stays, and a path off the template keeps its own pictures (heroLine says so). */
+  function aiHeroForHandoff(){
+    var h = S.aiHero;
+    if (!h || h.removed) return null;
+    if (h.made) return activeBannerUrl() || S.creationMethod !== 'template' ? null : { url: h.made.url, subject: h.made.subject };
+    return h.note ? { note: h.note } : null;
   }
 
   /* steps: [{ key, label, run: function(run) -> Promise, skip?: function() -> bool }] */
@@ -10372,32 +10466,66 @@
   /* "Create Event" everywhere in the product links here with ?new=1, and the bare page resumes the draft.
      A new event never silently replaces an unfinished one: when the stored draft holds anything its owner
      entered, they choose between continuing it and discarding it first. ?new=1&discard=1 is for a caller
-     that has already asked. */
+     that has already asked.
+     ETB2B AI on the events dashboard links here with ?new=1&prefill=<id>: a new event's details, taken from the
+     person's own message, wait in localStorage under that id (create-event-prefill.js). They fill a new draft
+     only; an unfinished one is asked about first, as above, and the discard parameter never skips that for them. */
   function init(){
     var params = new URLSearchParams(location.search);
     var startNew = params.get('new') === '1', stored = readStoredDraft();
     /* the dashboard's portal, read before the address is tidied below. It pre-sets a new draft only, once
-       it is found on ET's roster (portalArrived): a draft that is resumed keeps its own portal */
+       it is found on ET's roster (portalArrived): a draft that is resumed keeps its own portal. ETB2B AI's
+       prefill brings its own portal instead (create-event-prefill.js), which startPortal() takes first */
     queryPortal = params.get('portal') || '';
-    if (startNew) history.replaceState(null, '', location.pathname);
+    /* read before the address is tidied below, and only once: take() removes it from storage */
+    var prefillId = params.get('prefill'), prefill = prefillId ? takePrefill(prefillId) : null;
+    if (startNew || prefillId) history.replaceState(null, '', location.pathname);
+    if (prefillId && !prefill) aiNote = { kind: 'missing', text: 'ETB2B AI’s details for this event were not found. They are kept for 10 minutes after you ask: ask again on the events dashboard.' };
+    if (prefill){
+      var next = RevampPrefill.decide({ startNew: startNew, prefill: prefill, stored: !!stored, hasInput: !!stored && draftHasInput(stored),
+        discard: params.get('discard') === '1' });
+      if (next === 'ask'){ askResumeOrDiscard(stored, prefill); return; }
+      if (stored){ discardStoredDraft(stored).then(function(){ startWithPrefill(prefill); }); return; }
+      startWithPrefill(prefill);
+      return;
+    }
     if (!startNew || !stored){ start(); return; }
     if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(start); return; }
     askResumeOrDiscard(stored);
   }
+  /* ETB2B AI's details for id, or null: none, too old, already used, or unreadable (storage blocked or the script missing) */
+  function takePrefill(id){
+    if (!window.RevampPrefill) return null;
+    var ls = null;
+    try { ls = window.localStorage; } catch(e){ return null; }
+    try { return RevampPrefill.take(ls, id, Date.now()); } catch(e){ return null; }
+  }
+  function prefillName(p){ return String((p && p.basics && p.basics.name) || '').trim(); }
   function draftLabel(d){ return String((d.basics && d.basics.name) || '').trim() || 'Untitled event'; }
-  function askResumeOrDiscard(stored){
+  /* prefill: ETB2B AI's details, waiting. Continuing the draft (or closing the question) sets them aside and says
+     so; only "Discard and start new", confirmed, fills the new draft with them. */
+  function askResumeOrDiscard(stored, prefill){
     var when = stored.savedAt ? new Date(stored.savedAt) : null;
     var edited = when && !isNaN(when.getTime())
       ? ' — last edited ' + when.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+    var name = prefillName(prefill);
+    var keep = !prefill ? start : function(){
+      aiNote = { kind: 'unused', text: 'Your unfinished event is open. ETB2B AI’s details for ' + (name ? '“' + name + '”' : 'your new event') +
+        ' were not used: finish or discard this one, then ask again.' };
+      start();
+    };
+    var fresh = !prefill ? start : function(){ startWithPrefill(prefill); };
     openModal({
       title: 'You have an unfinished event',
       sub: draftLabel(stored) + edited,
       body: '<div class="callout plain">' + IC.info + '<span>This draft is kept in this browser. Continue it, or discard it and start a new event.' +
-        (stored.createdEventId ? ' Its event (' + esc(stored.createdEventId) + ') already exists and stays in your events list either way.' : '') + '</span></div>',
+        (stored.createdEventId ? ' Its event (' + esc(stored.createdEventId) + ') already exists and stays in your events list either way.' : '') +
+        (prefill ? ' ETB2B AI has the details of ' + (name ? '“' + esc(name) + '”' : 'your new event') + ' ready: they are used only if you start a new event.' : '') +
+        '</span></div>',
       confirm: 'Continue this draft',
       cancelLabel: 'Discard and start new',
-      onConfirm: start,
-      onDismiss: start,           // closing the question decides nothing: the draft is kept
+      onConfirm: keep,
+      onDismiss: keep,            // closing the question decides nothing: the draft is kept
       onCancel: function(){
         openModal({
           title: 'Discard “' + draftLabel(stored) + '”?',
@@ -10405,17 +10533,199 @@
             (stored.createdEventId ? ' The event itself is not deleted.' : ''),
           confirm: 'Discard draft',
           cancelLabel: 'Keep it',
-          onConfirm: function(){ discardStoredDraft(stored).then(start); },
-          onCancel: function(){ askResumeOrDiscard(stored); },
-          onDismiss: function(){ askResumeOrDiscard(stored); }
+          onConfirm: function(){ discardStoredDraft(stored).then(fresh); },
+          onCancel: function(){ askResumeOrDiscard(stored, prefill); },
+          onDismiss: function(){ askResumeOrDiscard(stored, prefill); }
         });
       }
     });
+  }
+  function startWithPrefill(p){ aiPrefill = p; start(); }
+  /* Fills the new draft with ETB2B AI's details (start(), after restore(), before the form is drawn) and saves it.
+     resumed: restore() found a draft after all (another tab started one a moment ago): that draft is never written
+     over, and the person is told the details were not used. */
+  function applyAiPrefill(resumed){
+    var p = aiPrefill, name = prefillName(p);
+    aiPrefill = null;
+    if (resumed){
+      aiNote = { kind: 'unused', text: 'Your unfinished event is open. ETB2B AI’s details for ' + (name ? '“' + name + '”' : 'your new event') +
+        ' were not used: finish or discard this one, then ask again.' };
+      return;
+    }
+    /* portalName: the note over step 1 names the portal the event is on ("IP event on ETCIO · …"), once its name
+       is known: ET's roster is usually still on its way here, and nameAiNotePortal() adds it when it comes */
+    var res = RevampPrefill.apply(S, CATS, p, { slugify: slugify, portalName: knownPortalName });
+    /* thenDetails: a brief that came with no type; the type picker opens as a first choice, and the pick goes on to
+       the brief form (pickCategory) */
+    S.aiPrefill = { turnId: p.turnId, at: p.at, fields: res.fields, thenDetails: res.thenDetails === true };
+    save();
+    aiNote = { kind: 'filled', text: RevampPrefill.summary(res), snap: '', res: res, portal: res.fields.indexOf('portal') !== -1 ? S.basics.portal : '' };
+  }
+  /* a portal's name only when it is known (the roster's, or the remembered working portal's): never the bare slug */
+  function knownPortalName(slug){
+    if (isRosterPortal(slug)) return portalNames[slug];
+    var name = '';
+    try { name = window.RevampPortals && typeof RevampPortals.nameOf === 'function' ? String(RevampPortals.nameOf(slug) || '') : ''; } catch(e){ name = ''; }
+    return name;
+  }
+  /* The note over step 1 names the portal ETB2B AI filled in as soon as ET's roster says its name, while the draft
+     is still on that portal (a portal off the roster is dropped by portalArrived, and is not named). */
+  function nameAiNotePortal(){
+    var n = aiNote;
+    if (!n || n.kind !== 'filled' || !n.res || !n.res.values || n.res.values.portal || !n.portal) return;
+    if (!isRosterPortal(n.portal) || S.basics.portal !== n.portal) return;
+    n.res.values.portal = portalNames[n.portal];
+    n.text = RevampPrefill.summary(n.res);
+    renderAiPrefillNote();
+  }
+  /* what the person has entered in the draft, to tell whether Undo would clear something they typed: not the save
+     time, the step or the phase (moving about is not typing), and the brief's empty headings count as nothing */
+  function aiDraftKey(){
+    var br = S.brief || {};
+    return JSON.stringify([S.basics, br.text === BRIEF_TEMPLATE ? '' : br.text, br.current, br.previous, br.comp1, br.comp2, br.future,
+      br.docName, br.themeMode, br.instructions, br.siteMode, br.etEvent, S.sections, S.template, S.creationMethod, S.excludedSections,
+      S.pulledEdition, S.designIntake, S.sectionOrder, S.aiDesign, S.useBannerTheme, S.createdEventId, S.aiHero]);
+  }
+  /* The note over step 1. It is redrawn only when what it says changes (renderFoot runs on every keystroke, and a
+     redraw would take the keyboard off its button); hidden while a job holds the screen, gone once step 1 is left. */
+  function renderAiPrefillNote(){
+    var el = $('ai-prefill-note');
+    if (!el) return;
+    /* an event made on the server from this draft (a brief whose run failed part-way) is past "start again, blank" */
+    if (aiNote && (S.step !== 1 || (aiNote.kind === 'filled' && S.createdEventId))) aiNote = null;
+    var want = aiNote && !busy ? aiNote.kind + ':' + aiNote.text : '';
+    if (el.getAttribute('data-note') === want) return;
+    el.setAttribute('data-note', want);
+    el.hidden = !want;
+    if (!want){ el.innerHTML = ''; return; }
+    var filled = aiNote.kind === 'filled';
+    el.innerHTML = IC.spark + '<span>' + esc(aiNote.text) + '<span class="callout-actions">' +
+      (filled ? '<button class="btn btn-secondary btn-sm" type="button" id="ai-prefill-undo">Undo</button>'
+        : '<button class="btn btn-secondary btn-sm" type="button" id="ai-prefill-dismiss">Dismiss</button>') + '</span></span>';
+    if (filled) $('ai-prefill-undo').onclick = undoAiPrefill;
+    else $('ai-prefill-dismiss').onclick = function(){ aiNote = null; renderAiPrefillNote(); };
+  }
+  /* ---------- ETB2B AI's hero picture (the owner, 3 Nov 2026) ----------
+     An event ETB2B AI on the dashboard starts asks for a first hero picture (S.aiHero, create-event-prefill.js).
+     The line over step 1 says plainly what will be made, with Change and Remove; nothing is made until the
+     event has been created (the hand-off's "ETB2B AI is making a hero picture" row, makeAiHero), so a draft that
+     is abandoned costs nothing. A failure there never stops the event: the editor opens with the design's own
+     picture and says why. */
+  /* a request read back from storage: only its known fields, each in its shape (anything else is no request) */
+  function cleanAiHero(h){
+    if (!h || typeof h !== 'object' || Array.isArray(h)) return null;
+    var made = h.made && typeof h.made === 'object' && typeof h.made.url === 'string' && /^https:\/\/storage\.googleapis\.com\//.test(h.made.url)
+      ? { url: h.made.url, subject: String(h.made.subject || '').slice(0, 200) } : null;
+    return { subject: String(h.subject || '').replace(/\s+/g, ' ').trim().slice(0, 200), removed: h.removed === true, made: made,
+      note: String(h.note || '').slice(0, 400), turnId: typeof h.turnId === 'string' ? h.turnId.slice(0, 40) : '', at: +h.at || 0 };
+  }
+  /* The picture's subject when the person gave none: the event's field, which its portal sets, and its place
+     ("technology leadership, Jio World Centre, Mumbai"), worded by portal-fields.js as the server words it
+     (functions/lib/ai-hero.js subjectOf). Never the event's name: an image model letters a name onto the picture. */
+  function aiHeroAutoSubject(){
+    var b = S.basics, F = window.RevampPortalFields;
+    if (!F || typeof F.subject !== 'function') return '';
+    return F.subject(b.portal, b.venue, b.city);
+  }
+  /* what that subject was made from, said after it: { portal, place } */
+  function aiHeroAutoFrom(){
+    var b = S.basics, F = window.RevampPortalFields;
+    var onTable = !!F && typeof F.fieldOf === 'function' && F.fieldOf(b.portal).portal === true;
+    return { portal: onTable, place: !!(F && typeof F.place === 'function' && F.place(b.venue, b.city)) };
+  }
+  /* the chosen design shows no hero picture: no hero section, or it is switched off (unknown until the design is read) */
+  function aiHeroNoSlot(){
+    var caps = draftCaps();
+    if (!caps) return false;
+    var c = caps.byLib && caps.byLib.hero;
+    return !c || !!excludedOn(S.template)[c.sectionId];
+  }
+  function aiHeroState(){
+    return { hero: S.aiHero, method: S.creationMethod, ownBanner: !!activeBannerUrl(), noSlot: aiHeroNoSlot(), subject: aiHeroAutoSubject(), from: aiHeroAutoFrom() };
+  }
+  /* the picture will be asked for when the event is created: a request not removed, on the template path, with
+     no banner of the person's own and a design that has a place for it */
+  function wantsAiHero(){
+    var h = S.aiHero;
+    if (!h || h.removed || h.made) return false;
+    var line = window.RevampPrefill && RevampPrefill.heroLine ? RevampPrefill.heroLine(aiHeroState()) : null;
+    return !!line && line.can === 'change' && S.creationMethod === 'template';
+  }
+  /* The line. Redrawn only when what it says changes (renderFoot runs on every keystroke, and a redraw would take
+     the keyboard off its buttons); shown on step 1 while nothing holds the screen. */
+  function renderAiHeroLine(){
+    var el = $('ai-hero-line');
+    if (!el) return;
+    var line = S.step === 1 && !busy && window.RevampPrefill && RevampPrefill.heroLine ? RevampPrefill.heroLine(aiHeroState()) : null;
+    var want = line ? line.can + ':' + line.text : '';
+    if (el.getAttribute('data-line') === want) return;
+    el.setAttribute('data-line', want);
+    el.hidden = !want;
+    if (!want){ el.innerHTML = ''; return; }
+    el.innerHTML = IC.img + '<span>' + esc(line.text) +
+      (line.can === 'change' ? '<span class="callout-actions"><button class="btn btn-secondary btn-sm" type="button" id="ai-hero-change">Change</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="ai-hero-remove">Remove</button></span>'
+      : line.can === 'restore' ? '<span class="callout-actions"><button class="btn btn-secondary btn-sm" type="button" id="ai-hero-restore">Make one after all</button></span>' : '') +
+      '</span>';
+    if ($('ai-hero-change')) $('ai-hero-change').onclick = changeAiHero;
+    if ($('ai-hero-remove')) $('ai-hero-remove').onclick = function(){ setAiHeroRemoved(true); };
+    if ($('ai-hero-restore')) $('ai-hero-restore').onclick = function(){ setAiHeroRemoved(false); };
+  }
+  /* Remove, and its way back ("Make one after all"): the request stays in the draft either way */
+  function setAiHeroRemoved(removed){
+    if (!S.aiHero || busy) return;
+    S.aiHero.removed = removed;
+    save();
+    renderAiHeroLine();
+    var btn = $(removed ? 'ai-hero-restore' : 'ai-hero-change');
+    if (btn) btn.focus();
+  }
+  /* Change: what the picture should show, in the person's words; left empty, it is the event's field and place */
+  function changeAiHero(){
+    if (!S.aiHero || busy) return;
+    openModal({
+      title: 'What should the hero picture show?',
+      sub: 'ETB2B AI makes the picture once your event is created. Leave this empty to make it from the event’s field (set by its portal) and its place.',
+      body: '<div class="field"><label class="flabel" for="ai-hero-subject">The picture shows</label>' +
+        '<input class="inp" id="ai-hero-subject" type="text" maxlength="200" placeholder="' + esc(aiHeroAutoSubject() || 'e.g. a modern retail store at night') + '" value="' + esc(S.aiHero.subject) + '"></div>',
+      confirm: 'Save',
+      onConfirm: function(){
+        var inp = $('ai-hero-subject');
+        S.aiHero.subject = String((inp && inp.value) || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
+        save();
+        renderAiHeroLine();
+      }
+    });
+  }
+
+  /* Undo puts the page back to a blank new event. When the person has typed or chosen anything since ETB2B AI
+     filled it in, that goes too, so they are asked first. */
+  function undoAiPrefill(){
+    if (!aiNote || aiNote.kind !== 'filled' || busy) return;
+    if (aiNote.snap && aiDraftKey() === aiNote.snap){ clearAiPrefill(); return; }
+    openModal({
+      title: 'Undo what ETB2B AI filled in?',
+      sub: 'Undo also clears what you typed since. This new event starts again, blank.',
+      confirm: 'Undo',
+      cancelLabel: 'Keep it',
+      onConfirm: clearAiPrefill
+    });
+  }
+  /* The draft and its files are removed, and the page opens again on a new event: the one sure way to a blank
+     page, with nothing of this draft left in the form, its pictures or the preview. */
+  function clearAiPrefill(){
+    aiNote = null;
+    renderAiPrefillNote();
+    draftClosed = true;          // nothing may write this draft back while it is being removed
+    leavingUnsaved = true;       // and the browser does not ask about leaving it
+    function again(){ window.location.replace(location.pathname + '?new=1'); }
+    discardStoredDraft(S).then(again, again);
   }
   function start(){
     var resumed = restore();
     sweepDraftFiles();
     if (resumed) save();         // an older draft has just been given its id and file slots: keep them
+    if (aiPrefill) applyAiPrefill(resumed);
     initStep1();
     if (S.basics.logo && !logoPreviewUrl){
       Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
@@ -10539,6 +10849,8 @@
     /* a draft is always picked up on the form: the hand-off is a run, not a place to be */
     S.step = 1;
     goStep(1);
+    /* the draft as ETB2B AI left it, now that the form is drawn: what Undo compares with */
+    if (aiNote && aiNote.kind === 'filled') aiNote.snap = aiDraftKey();
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

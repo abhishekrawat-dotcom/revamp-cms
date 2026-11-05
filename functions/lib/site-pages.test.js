@@ -307,8 +307,9 @@ Promise.all([
   ok(/public, max-age=60/.test(r[1].headers['cache-control'] || ''), '…cached like the home page', r[1].headers['cache-control']);
   ok(r[2].status === 200 && r[2].text === r[1].text, 'the second visit is the same page (from the cache)');
   ok(!/<html[^>]*data-rv-current-page/.test(r[0].text), 'and the cached home page is not the internal page');
-  ok(r[3].status === 404 && /not available/.test(r[3].text), 'an unknown page is the plain 404', String(r[3].status));
-  ok(r[4].status === 404 && r[5].status === 404, 'a malformed slug, or a path below a page, is a 404', r[4].status + ' ' + r[5].status);
+  /* the site is live, only the address is wrong: a 404 that says so and leads home (UX-153), not "not available" */
+  ok(r[3].status === 404 && /This page does not exist/.test(r[3].text) && /<a href="\/e\/et-awards">Go to /.test(r[3].text) && !/not available/.test(r[3].text), 'an unknown page of a live site is a 404 with the way home', r[3].status + ' ' + r[3].text.slice(-300));
+  ok(r[4].status === 404 && /This page does not exist/.test(r[4].text) && r[5].status === 404, 'a malformed page name is the same; a path below a page is a 404', r[4].status + ' ' + r[5].status);
   ok(r[6].status === 405, 'only GET and HEAD', String(r[6].status));
   ok(r[7].status === 200 && r[7].text.indexOf('rv-pages') === -1, 'a published one-page site has nothing of it');
   ok(r[8].status === 404, 'and no internal page');

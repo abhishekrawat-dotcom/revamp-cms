@@ -956,8 +956,29 @@ function registerError(status, message, code, fields) {
   if (fields) extra.fields = fields;
   return httpError(status, message, extra);
 }
-function duplicateError() {
-  return registerError(409, DUPLICATE_MESSAGE, 'duplicate', { email: DUPLICATE_MESSAGE });
+/* A second registration with the same e-mail is told what it means: already registered for this event (a form
+   that counts as a registration); any other form keeps the plain words. */
+function duplicateMessage(form, ev) {
+  if (!form || form.countsAsRegistration !== true) return DUPLICATE_MESSAGE;
+  var name = line(ev && ev.name, 200);
+  return name ? 'You\u2019re already registered for ' + name + ' with this email.' : 'You\u2019re already registered for this event with this email.';
+}
+function duplicateError(form, ev) {
+  var message = duplicateMessage(form, ev);
+  return registerError(409, message, 'duplicate', { email: message });
+}
+
+/* What a form's thank-you says about the event (templates/_shared/rv-forms.js): its name, when and where, and its
+   calendar file (GET /api/public/calendar) when it has an exact date. */
+function eventFacts(ev, eventId) {
+  ev = ev || {};
+  var venue = line(ev.venue, 300), city = line(ev.city, 120);
+  if (venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) !== -1) city = '';
+  var exact = !!ymd(ev.start) && (!ev.dateMode || ev.dateMode === 'exact');
+  return {
+    name: line(ev.name, 300), when: dateLabel(ev), where: [venue, city].filter(Boolean).join(', ') || line(ev.location, 300),
+    calendar: exact ? '/api/public/calendar?eventId=' + encodeURIComponent(eventId) : ''
+  };
 }
 
 /* The transaction, for every response that was waiting for this event (see enqueue). Everything it
@@ -965,7 +986,8 @@ function duplicateError() {
    and each form as they are at that instant, not as they were when each request arrived — and one
    response's refusal (a duplicate, a form closed meanwhile) never affects the others in the same write.
    Resolves one { value } or { error } per item; rejects (for all of them) when the event itself takes no
-   registrations. An item is { reg, formId, answers, answerLabels }. */
+   registrations. An item is { reg, formId, answers, answerLabels, enquiry } — enquiry: the kind of request it
+   is ('partner', 'nominate', 'ceremony': forms.ENQUIRIES), '' for a registration. */
 var REGISTER_BATCH = 50;
 function storeRegistrations(fb, eventId, items) {
   var refs = audienceRefs(fb, eventId), formsCol = refs.event.collection('forms');
@@ -998,12 +1020,14 @@ function storeRegistrations(fb, eventId, items) {
           var form = formsById[it.formId];
           if (!form) return { error: registerError(404, FORM_MISSING_MESSAGE, 'form-missing') };
           if (form.open === false) return { error: registerError(403, FORM_CLOSED_MESSAGE, 'form-closed') };
+          /* a request (forms.ENQUIRIES) has an id of its own: sent again, it is the same request */
+          if (it.enquiry) return { it: it, form: form, reject: true, enquiry: it.enquiry, ref: refs.regs.doc(forms.enquiryDocId(form.id, it.enquiry, it.reg.email)) };
           var reject = form.duplicates !== 'allow';
           return { it: it, form: form, reject: reject, ref: reject ? refs.regs.doc(forms.regDocId(form.id, it.reg.email)) : refs.regs.doc() };
         });
         return Promise.all(plans.map(function (p) {
           if (p.error || !p.reject) return null;
-          return Promise.all([tx.get(p.ref), loose ? tx.get(refs.regs.where('email', '==', p.it.reg.email).limit(50)) : null]);
+          return Promise.all([tx.get(p.ref), loose && !p.enquiry ? tx.get(refs.regs.where('email', '==', p.it.reg.email).limit(50)) : null]);
         })).then(function (dups) {
           var now = new Date(), nowIso = now.toISOString(), day = dayKey(now.getTime());
           var confirmed = num(ev.counters.confirmed), delta = { forms: {} }, counted = 0, submitted = 0, newLoose = false;
@@ -1012,14 +1036,21 @@ function storeRegistrations(fb, eventId, items) {
 
           var results = plans.map(function (p, i) {
             if (p.error) return { error: p.error };
-            var key = p.form.id + '\n' + p.it.reg.email;
+            var key = p.form.id + '\n' + (p.enquiry ? p.enquiry + '\n' : '') + p.it.reg.email;
+            if (p.enquiry && (seen[key] || dups[i][0].exists)) {
+              /* the same request again (a second click, a reload): already with the team, nothing more is stored */
+              var was = dups[i][0].exists ? normStatus(dups[i][0].get('status')) : 'pending';
+              return { value: { id: p.ref.id, status: was, formId: p.form.id, enquiry: p.enquiry, again: true } };
+            }
             if (p.reject) {
-              var sameForm = function (d) { return (d.get('formId') || DEFAULT_FORM_ID) === p.form.id; };
-              if (seen[key] || dups[i][0].exists || (dups[i][1] && dups[i][1].docs.some(sameForm))) return { error: duplicateError() };
+              /* a request (enquiry) is not the address's registration, so it never makes a registration a duplicate */
+              var sameForm = function (d) { return (d.get('formId') || DEFAULT_FORM_ID) === p.form.id && !d.get('enquiry'); };
+              if (seen[key] || dups[i][0].exists || (dups[i][1] && dups[i][1].docs.some(sameForm))) return { error: duplicateError(p.form, ev) };
             }
             seen[key] = true;
-            var counts = p.form.countsAsRegistration === true;
-            var status = forms.planStatus({ counts: counts, needsApproval: p.form.needsApproval === true, capacity: settings.capacity, confirmed: confirmed });
+            var counts = !p.enquiry && p.form.countsAsRegistration === true;
+            var status = p.enquiry ? 'pending'
+              : forms.planStatus({ counts: counts, needsApproval: p.form.needsApproval === true, capacity: settings.capacity, confirmed: confirmed });
             if (counts && status === 'confirmed') confirmed++;
             var doc = Object.assign({}, p.it.reg, {
               formId: p.form.id, formName: p.form.name, counts: counts,
@@ -1030,6 +1061,7 @@ function storeRegistrations(fb, eventId, items) {
               payment: { required: false, status: 'n/a', amount: 0, txnId: null },
               createdAt: nowIso, checkedInAt: null, decidedAt: null, decidedBy: null
             });
+            if (p.enquiry) doc.enquiry = p.enquiry;
             tx.set(p.ref, doc);
             addDelta(delta, contribution(doc), 1);
             submitted++;
@@ -1046,7 +1078,7 @@ function storeRegistrations(fb, eventId, items) {
                 aggAdded[d][slot.key].n++;
               });
             }
-            return { value: { id: p.ref.id, status: status, formId: p.form.id, successMessage: p.form.successMessage } };
+            return { value: { id: p.ref.id, status: status, formId: p.form.id, successMessage: p.form.successMessage, enquiry: p.enquiry || '' } };
           });
 
           if (submitted) {
@@ -1095,10 +1127,13 @@ function handleRegister(req, res) {
         if (formId && (typeof formId !== 'string' || !forms.FORM_ID_RE.test(formId))) {
           return sendPublicJson(res, 400, { error: 'This form is not linked correctly. Please reload the page and try again.', code: 'invalid' });
         }
+        /* a request (forms.ENQUIRIES: a partner enquiry, a nomination, a ceremony invitation) is answered as one */
+        var enquiry = forms.enquiryOf(line(body.source, 60));
         // A person never sees, so never fills, the "website" field; a form-filling script does. It is told
         // what a person would be told and nothing is stored — or even looked up.
         if (line(body.website, 500)) {
-          return sendPublicJson(res, 200, { ok: true, id: 'r' + crypto.randomBytes(10).toString('hex'), status: 'confirmed', formId: formId || DEFAULT_FORM_ID, message: DEFAULT_SUCCESS });
+          return sendPublicJson(res, 200, { ok: true, id: 'r' + crypto.randomBytes(10).toString('hex'), status: enquiry ? 'pending' : 'confirmed',
+            formId: formId || DEFAULT_FORM_ID, message: enquiry ? enquiry.done : DEFAULT_SUCCESS });
         }
         if (!rateLimit('register-ev:' + eventId + ':' + clientIp(req), REGISTER_EVENT_LIMIT, REGISTER_WINDOW_MS)) {
           return sendPublicJson(res, 429, { error: 'Too many registrations from this network. Please try again in a few minutes.', code: 'rate-limited' },
@@ -1134,10 +1169,10 @@ function handleRegister(req, res) {
 
               if (preview) {
                 var counts = form.countsAsRegistration === true;
-                var status = forms.planStatus({ counts: counts, needsApproval: form.needsApproval === true, capacity: settings.capacity,
+                var status = enquiry ? 'pending' : forms.planStatus({ counts: counts, needsApproval: form.needsApproval === true, capacity: settings.capacity,
                   confirmed: num(isObj(ev.counters) ? ev.counters.confirmed : 0) });
-                return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: status, formId: form.id,
-                  message: form.successMessage + forms.PREVIEW_NOTE });
+                return sendPublicJson(res, 200, { ok: true, preview: true, id: null, status: status, formId: form.id, enquiry: enquiry ? enquiry.kind : '',
+                  message: (enquiry ? enquiry.done : form.successMessage) + forms.PREVIEW_NOTE, event: eventFacts(ev, eventId) });
               }
               var reg = read.reg;
               reg.device = deviceClass(req);
@@ -1145,9 +1180,9 @@ function handleRegister(req, res) {
               /* what the visitor agreed to (the box is ticked: validateAnswers refuses a response without it);
                  its time is set again when the response is stored */
               reg.consent = forms.consentRecord(consent, new Date().toISOString());
-              return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels }).then(function (stored) {
-                sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId,
-                  message: stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage });
+              return storeRegistration(fb, eventId, { reg: reg, formId: form.id, answers: read.answers, answerLabels: read.answerLabels, enquiry: enquiry ? enquiry.kind : '' }).then(function (stored) {
+                sendPublicJson(res, 200, { ok: true, id: stored.id, status: stored.status, formId: stored.formId, enquiry: stored.enquiry || '',
+                  message: enquiry ? enquiry.done : stored.status === 'waitlist' ? WAITLIST_MESSAGE : stored.successMessage, event: eventFacts(ev, eventId) });
               });
             });
           });
@@ -1181,6 +1216,9 @@ function publicRegistration(id, r) {
     device: r.device || '', referrer: r.referrer || '',
     formId: typeof r.formId === 'string' && r.formId ? r.formId : DEFAULT_FORM_ID,
     formName: typeof r.formName === 'string' ? r.formName : '',
+    /* a request sent through the form, not a registration (forms.ENQUIRIES): 'partner' | 'nominate' | 'ceremony' */
+    enquiry: typeof r.enquiry === 'string' && Object.prototype.hasOwnProperty.call(forms.ENQUIRIES, r.enquiry) ? r.enquiry : '',
+    enquiryTitle: typeof r.enquiry === 'string' && Object.prototype.hasOwnProperty.call(forms.ENQUIRIES, r.enquiry) ? forms.ENQUIRIES[r.enquiry].title : '',
     counts: r.counts !== false,
     answers: isObj(r.answers) ? r.answers : {}, answerLabels: isObj(r.answerLabels) ? r.answerLabels : {},
     status: normStatus(r.status), notes: r.notes || '',
@@ -1715,8 +1753,15 @@ function handleTrack(req, res) {
    `conversion` is registrations as a PERCENTAGE of page views (all-time registrations / all-time
    views x 100), to one decimal place, never above 100, and 0 with no views — print it with a % sign.
    `byDay` has one entry for every day of the window, oldest first, zeros included; its `date` keys are
-   India days (YYYY-MM-DD, Asia/Kolkata).
+   India days (YYYY-MM-DD, Asia/Kolkata). GET /api/insights also takes the window as ?from=&to= (India days),
+   and gives each event its own figures in it (`window`: registrations, views, uniques and the newest day of
+   each), which is what the events dashboard's "Latest activity" shows for the period picked there.
+   `visitsCounted` says whether the live sites count their visits at all: only a page that carries the
+   counting script (templates/_shared/rv-live.js, added to every published page by lib/api.js when that
+   file is part of the release) sends POST /api/track. Without it every page-view figure is 0 because
+   nothing is counted, not because nobody came, and the Dashboard says so instead of showing the zeros.
    ===================================================================================================== */
+var VISITS_COUNTED = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-live.js'));
 
 var REF_CLASSES = [['direct', 'Direct'], ['search', 'Search'], ['social', 'Social'], ['email', 'Email'], ['referral', 'Other sites']];
 
@@ -1787,7 +1832,7 @@ function handleDashboardStats(req, res) {
             cancelled: a.totals.cancelled, checkedIn: a.totals.checkedIn,
             // every form's responses, and those waiting for an organiser's approval (counted forms / all forms)
             submissions: a.totals.submissions, pending: a.totals.pending, awaitingApproval: a.totals.awaitingApproval,
-            visitors: a.visits.visitors, uniques: a.visits.uniques,
+            visitors: a.visits.visitors, uniques: a.visits.uniques, visitsCounted: VISITS_COUNTED,
             conversion: conversionOf(a.totals.registrations, a.visits.visitors),
             capacity: settings.capacity, target: settings.target,
             byDay: byDay,
@@ -1811,6 +1856,41 @@ function handleDashboardStats(req, res) {
    and day documents only for events that have had any visit or registration. Like that list, the query
    is not ordered: an ordered query leaves out every document that lacks the field. */
 var INSIGHTS_EVENT_LIMIT = 1000;
+
+/* The India days an insights request asks about: ?from=YYYY-MM-DD&to=YYYY-MM-DD (both included, cut at today and to
+   the newest 365 days), else the last ?days= (30 by default) ending today. The events dashboard's "Latest
+   activity" sends its period this way, so a custom period that ended last week is summed over its own days only.
+   -> { days: [...] oldest first } or { error } (a period that has not started, or a date that is not one). */
+var DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+function isDayKey(v) {
+  var m = DAY_RE.exec(String(v || ''));
+  if (!m) return false;
+  var t = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  return t.getUTCFullYear() === +m[1] && t.getUTCMonth() === +m[2] - 1 && t.getUTCDate() === +m[3] && +m[1] >= 2000 && +m[1] <= 2100;
+}
+function insightsWindow(qs, nowMs) {
+  var from = qs.get('from'), to = qs.get('to');
+  if (from == null && to == null) return { days: lastDays(intParam(qs.get('days'), 30, 1, 365)) };
+  if (!isDayKey(from) || !isDayKey(to) || from > to) return { error: 'Choose the period again: "from" and "to" must be days (YYYY-MM-DD), "from" first.' };
+  var today = dayKey(nowMs);
+  if (from > today) return { error: 'That period has not started yet.' };
+  if (to > today) to = today;
+  var days = [], t = Date.parse(to + 'T00:00:00Z'), first = Date.parse(from + 'T00:00:00Z');
+  for (; t >= first && days.length < 365; t -= 86400000) days.push(new Date(t).toISOString().slice(0, 10));
+  return { days: days.reverse() };
+}
+/* One event's figures in the window: registrations and page views, and the newest day of each (null when none). */
+function eventWindow(row, days) {
+  var w = { registrations: 0, views: 0, uniques: 0, lastRegistration: null, lastView: null };
+  days.forEach(function (day) {
+    var d = row.daily[day] || {};
+    var regs = row.a.legacyDays ? num(row.a.legacyDays[day]) : num(d.registrations), views = num(d.views);
+    w.registrations += regs; w.views += views; w.uniques += num(d.uniques);
+    if (regs) w.lastRegistration = day;
+    if (views) w.lastView = day;
+  });
+  return w;
+}
 
 /* An event whose totals are not maintained yet costs a query to total. Across a whole listing that is
    one query per such event on every load, so here (and only here) the answer is remembered for a
@@ -1836,7 +1916,9 @@ function insightTotals(fb, eventId, ev) {
 function handleInsights(req, res) {
   requireAdmin(req, res, function (fb) {
     guard(res, sendJson, 'load these numbers', function () {
-      var nDays = intParam(query(req).get('days'), 30, 1, 365), days = lastDays(nDays);
+      var win = insightsWindow(query(req), Date.now());
+      if (win.error) return sendJson(res, 400, { error: win.error });
+      var days = win.days, nDays = days.length;
 
       fb.db.collection('events').limit(INSIGHTS_EVENT_LIMIT)
         .select('name', 'counters', 'createdAt', 'deletedAt', 'published', 'updatedAt').get().then(function (snap) {
@@ -1872,10 +1954,12 @@ function handleInsights(req, res) {
             return { eventId: row.id, name: line(row.ev.name, 300), published: row.ev.published === true,
               visitors: v.visitors, uniques: v.uniques, registrations: t.registrations, confirmed: t.confirmed,
               waitlist: t.waitlist, cancelled: t.cancelled, checkedIn: t.checkedIn,
-              conversion: conversionOf(t.registrations, v.visitors) };
+              conversion: conversionOf(t.registrations, v.visitors),
+              // this event's own figures in the window (the totals above are all-time)
+              window: eventWindow(row, days) };
           });
           sendJson(res, 200, {
-            days: nDays, generatedAt: new Date().toISOString(),
+            days: nDays, from: days[0], to: days[days.length - 1], generatedAt: new Date().toISOString(),
             registrations: sum.registrations, confirmed: sum.confirmed, waitlist: sum.waitlist, cancelled: sum.cancelled,
             checkedIn: sum.checkedIn, visitors: sum.visitors, uniques: sum.uniques,
             conversion: conversionOf(sum.registrations, sum.visitors),
@@ -1915,7 +1999,14 @@ module.exports = {
   handlePublicOptions, publicSiteData, seedContent,
   /* for tools/migrate-forms.js and the tests */
   counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES,
-  publicRegistration, consentCell
+  publicRegistration, consentCell,
+  /* what a form's thank-you and a repeat registration say (published-page-ux.test.js) */
+  eventFacts, duplicateMessage,
+  /* for lib/dash-bot.js: ETB2B AI on the events dashboard answers "how many registrations" with the very totals
+     and conversion the console's Insights shows, older events (scanned, kept for a minute) included */
+  insightTotals, conversionOf,
+  /* the window of GET /api/insights, for its tests */
+  insightsWindow, eventWindow
 };
 /* the small helpers lib/api-forms.js shares with this module, so the two answer alike */
 module.exports._shared = {

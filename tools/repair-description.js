@@ -4,7 +4,7 @@
    Writes a real description for an event whose description is still the owner's raw brief (the "Tagline /
    theme: …" headings Create Event asks for, stored there by the brief step before it stopped doing so). The
    description is what the event console's Basics, the published pages' meta description and schema.org data,
-   the promotions and the events listing show — two or three sentences about this edition, never the brief.
+   the promotions and the events listing show — one or two short sentences about this edition, never the brief.
 
    One short text call per event (route "event-description", lib/llm.js), from: the event's name, dates and
    venue; its latest brief (events/<id>/briefs: the owner's points, the theme, the key messages); and its

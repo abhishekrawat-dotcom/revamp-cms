@@ -540,6 +540,8 @@ function trophySceneCss(c) {
     '@media (prefers-reduced-motion:reduce){' + C + '-rays,' + C + '-halo,' + C + '-trophy,' + C + '-spark{animation:none}' + C + '-spark{opacity:.8}' + C + '-lift{transition:none}}';
 }
 
+/* the ceremony's button: its words and its form's (the same as the live pass gives an older page's "Get Tickets") */
+var CEREMONY = require('./site-checks').ENQUIRY.ceremony;
 function ceremonyHome(o) {
   var c = 'aw-cer', id = 'awards-night', photo = httpsUrl(list(o.photos)[4]);
   var facts = [o.dateLabel, o.place].map(str).filter(Boolean);
@@ -550,7 +552,9 @@ function ceremonyHome(o) {
       '<h2 class="' + c + '-title" id="' + id + '-title">Join Us at the Grand Award Ceremony</h2>' +
       '<p class="' + c + '-text">An evening with the industry’s leaders, as this edition’s winners are named on stage.</p>' +
       (facts.length ? '<p class="' + c + '-facts">' + facts.map(function (f) { return '<span>' + esc(f) + '</span>'; }).join('') + '</p>' : '') +
-      '<p class="' + c + '-cta"><a class="' + c + '-btn" href="#hero" data-register-cta>Get Tickets</a></p>' +
+      /* a seat at the ceremony is asked for, never bought: there is no online payment, and the ET team confirms
+         seats (the form says so, from the button: rv-forms.js data-rv-form-note) */
+      '<p class="' + c + '-cta"><a class="' + c + '-btn" href="#hero" data-register-cta data-rv-form-title="' + esc(CEREMONY.title) + '" data-rv-form-note="' + esc(CEREMONY.note) + '" data-rv-form-source="' + esc(CEREMONY.source) + '">' + esc(CEREMONY.title) + '</a></p>' +
     '</div></div></div></section>';
   var css = baseCss(c) + buttonCss(c) +
     '.' + c + '-card{position:relative;border-radius:calc(var(--rv-radius,12px) * 1.5);overflow:hidden;min-height:420px;display:flex;align-items:center;justify-content:center;text-align:center;background:var(--rv-surface);background-image:radial-gradient(100% 100% at 50% 0%, color-mix(in srgb,var(--theme-color) 45%, transparent), transparent 70%)}' +

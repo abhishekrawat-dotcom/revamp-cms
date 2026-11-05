@@ -188,6 +188,15 @@ ok(heroVid && !/autoplay/.test(heroVid) && !/\ssrc=/.test(heroVid) && /data-rv-s
 ok(/data-rv-bg-start="early"/.test(heroVid), 'it has no still of its own, so where it plays it starts at once (its first frame is the largest paint)');
 ok(/<video controls src="https:\/\/et\/talk\.mp4">/.test(aiOff), 'a video elsewhere on the page (with its own controls) is left alone');
 ok(count(aiOff, 'rv-hero-video.js') === 1 && hooks.applyHeroVideo(aiOff, {}) === aiOff, 'its loader is added, once, and a second run changes nothing');
+/* the pause button rv-hero-video.js adds to it is styled (it was an empty grey sliver: UX-146) — a 40px round
+   button in the hero's tone, written once */
+ok(/\.rv-hv-toggle\{position:absolute;right:16px;bottom:16px;z-index:5;width:40px;height:40px;[^}]*border-radius:50%;[^}]*background:rgba\(0,0,0,\.5\);color:#fff;/.test(aiOff) &&
+  /\.rv-hv-toggle svg\{width:16px;height:16px;fill:currentColor\}/.test(aiOff) && count(aiOff, '.rv-hv-toggle{') === 1,
+  'an AI-edit video on a dark hero has its pause button\'s rules (white icon on a dark round button)', (aiOff.match(/<style data-rv-hero-video>[\s\S]*?<\/style>/) || [''])[0]);
+var aiLight = hooks.applyHeroVideo(AI.replace('hero-on-dark', 'hero-on-light').replace('<style data-rv-style="hero">', '<style data-rv-style="hero">.hero-tagline{color:#14161b}'), {});
+ok(/\.rv-hv-toggle\{[^}]*background:rgba\(255,255,255,\.82\);color:#14161b;/.test(aiLight), 'on a light hero, a dark icon on a light round button');
+ok(core.toggleCss('light').join('\n') === core.pageCss({ host: 'hero', overlay: core.overlayFor({}, { tone: 'dark' }), poster: true }).split('\n').slice(0, 4).join('\n'),
+  'the event\'s own video and an AI-edit one draw the same button');
 var aiOn = hooks.applyHeroVideo(AI, { heroVideo: HV });
 ok(aiOn.indexOf('https://et/header.mp4') === -1, 'with the event\'s own video on, the AI\'s one is replaced');
 ok(/<section data-rv-section="hero" id="hero" class="hero-root hero-on-dark" data-rv-key="hero" data-rv-hv=""><div class="rv-hv" data-rv-hero-video aria-hidden="true"><img class="rv-hv-poster"/.test(aiOn), 'the AI hero gets its layer first: still, video, overlay', (aiOn.match(/<section[^>]*hero-root[^>]*>.{0,120}/) || [''])[0]);

@@ -60,6 +60,18 @@
   .side h3{ font-size:12.5px; font-weight:700; margin:14px 0 6px; }
   .side h3 small{ font-weight:500; color:var(--muted); }
   .tag{ display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:5px; background:var(--surface-2); color:var(--muted); margin-left:6px; vertical-align:1px; }
+  /* the site check of the proposed version (functions/lib/api.js siteCheckOf): what holds it back, what to know */
+  .chk{ border:1px solid var(--border); border-left-width:4px; border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
+  .chk.block{ border-left-color:var(--bad); background:var(--bad-soft); }
+  .chk.warn{ border-left-color:var(--warn); }
+  .chk.info{ border-left-color:var(--border); }
+  .chk .top{ display:flex; align-items:baseline; gap:8px; font-weight:700; }
+  .chk .lvl{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); white-space:nowrap; }
+  .chk.block .lvl{ background:var(--bad); color:var(--surface); }
+  .chk.warn .lvl{ background:var(--warn-soft); color:var(--warn); }
+  .chk ul{ margin:6px 0 0; padding-left:18px; } .chk li{ margin:2px 0; word-break:break-word; }
+  .chk .hint{ color:var(--muted); font-size:12px; margin-top:6px; }
+  .chk-ok{ color:var(--ok); font-size:13px; margin:0; }
   .empty{ color:var(--muted); font-size:13px; }
   .decide{ position:sticky; bottom:-28px; background:var(--surface); border-top:1px solid var(--border); margin:18px -18px -28px; padding:14px 18px 18px; }
   .decide textarea, .settings input[type=text]{ width:100%; font:inherit; font-size:13px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical; }
@@ -117,6 +129,21 @@
   /* the class that colours a change's badge */
   var TONE = { added:'added', removed:'removed', 'record-added':'added', 'record-removed':'removed' };
   function isRecord(it){ return /^record-/.test(it.type || ''); }
+  var LEVEL = { block:'Holds it back', warn:'Check', info:'Good to know' };
+
+  /* What the site check found on the proposed version: listed before the changes, so the approver sees what would
+     go live (template text, a broken picture, a button that leads nowhere) before deciding. */
+  function checksHtml(r){
+    if (r.status !== 'pending') return '';
+    if (data.checks === false) return '<h2>Before it goes live</h2><p class="empty">The proposed version could not be checked just now. Approving checks it again.</p>';
+    if (data.checks == null) return '<h2>Before it goes live</h2><p class="empty">Checking the proposed version…</p>';
+    if (!data.checks.length) return '<h2>Before it goes live</h2><p class="chk-ok">Nothing found: no template text, every picture can be shown, every button leads somewhere.</p>';
+    return '<h2>Before it goes live (' + data.checks.length + ')</h2>' + data.checks.map(function(c){
+      return '<div class="chk ' + esc(c.level) + '"><div class="top"><span class="lvl">' + esc(LEVEL[c.level] || c.level) + '</span><span>' + esc(c.title) + '</span></div>' +
+        ((c.lines || []).length ? '<ul>' + c.lines.map(function(l){ return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>' : '') +
+        (c.hint ? '<div class="hint">' + esc(c.hint) + '</div>' : '') + '</div>';
+    }).join('');
+  }
 
   function fail(message){
     main.innerHTML = '<div class="loading">' + esc(message) + '</div>';
@@ -124,7 +151,30 @@
   if (!eventId) return fail('This link is missing the event it is about.');
 
   function load(){
-    return C.fetchApproval(eventId, requestId).then(function(d){ data = d; render(); }, function(err){ fail((err && err.message) || 'The request could not be loaded.'); });
+    return C.fetchApproval(eventId, requestId).then(function(d){ data = d; render(); loadChecks(); }, function(err){ fail((err && err.message) || 'The request could not be loaded.'); });
+  }
+  /* The site check of the proposed version (?checks=1), asked for once the request is on screen: it reads the
+     pictures in storage and takes a moment. What it finds fills its box; when it holds the version back, Approve
+     gives way to the reason (the note being typed is kept). The server checks again on Approve whatever this says. */
+  function loadChecks(){
+    var r = data && data.request;
+    if (!r || r.status !== 'pending' || typeof C.authedFetch !== 'function') return;
+    var url = '/api/event/approval?eventId=' + encodeURIComponent(eventId) + '&id=' + encodeURIComponent(r.id) + '&checks=1';
+    function fill(){ var box = document.getElementById('checks-box'); if (box) box.innerHTML = checksHtml(r); }
+    C.authedFetch(url, { method: 'GET' }).then(function(res){ return res.ok ? res.json() : null; }).then(function(d){
+      if (!data || !data.request || data.request.id !== r.id) return;
+      if (!d || !Array.isArray(d.checks)) { data.checks = false; fill(); return; }
+      var could = data.canApprove !== false;
+      data.checks = d.checks; data.canApprove = d.canApprove; data.whyNot = d.whyNot;
+      fill();
+      var dec = document.querySelector('.decide');
+      if (dec && could !== (data.canApprove !== false)){
+        var typed = (document.getElementById('d-note') || {}).value || '';
+        dec.outerHTML = decideHtml();
+        var note = document.getElementById('d-note'); if (note) note.value = typed;
+        wireDecide();
+      }
+    }, function(){ data.checks = false; fill(); });
   }
 
   function changeHtml(it){
@@ -206,6 +256,7 @@
       '</dl>' +
       (r.note ? '<div class="note">' + esc(r.note) + '</div>' : '') +
       (r.decisionNote ? '<div class="note"><b>' + (r.status === 'approved' ? 'Approver’s note' : 'Reason') + ':</b> ' + esc(r.decisionNote) + '</div>' : '') +
+      '<div id="checks-box">' + checksHtml(r) + '</div>' +
 
       '<h2>Saves in this request (' + (r.saves || []).length + ')</h2>' +
       ((r.saves || []).length ? '<ul class="saves">' + r.saves.map(function(s){
@@ -249,7 +300,8 @@
     var r = data.request;
     if (r.status !== 'pending') return '';
     if (!data.canDecide) return '<div class="decide"><div class="msg">' + esc(data.whyNot || 'You cannot decide this request.') + '</div></div>';
-    /* it can be rejected but not approved (the logo unit still has a notice to answer): said, and only Reject offered */
+    /* it can be rejected but not approved (the logo unit still has a notice to answer, or the site check found what
+       holds it back — listed above): said, and only Reject offered */
     var approvable = data.canApprove !== false;
     return '<div class="decide">' + (approvable ? '' : '<div class="msg err">' + esc(data.whyNot || 'These changes cannot be approved yet.') + '</div>') +
       '<textarea id="d-note" rows="2" maxlength="1000" placeholder="Note (needed when rejecting: what should be fixed)"></textarea>' +

@@ -1231,7 +1231,7 @@
       root.classList.remove('show-ai-markers');
       if (!root.getAttribute('class')) root.removeAttribute('class');
       var EDITOR_ATTRS = ['data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown', 'data-date-format',
-        'data-ed', 'data-rv-cur-item', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped'];
+        'data-ed', 'data-rv-cur-item', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-ai-busy'];
       root.querySelectorAll(EDITOR_ATTRS.map(function (a) { return '[' + a + ']'; }).join(', ')).forEach(function (n) {
         EDITOR_ATTRS.forEach(function (a) { n.removeAttribute(a); });
       });
@@ -1283,7 +1283,8 @@
                       or imported site's is kept whole (see ownsCss).
        Selection, in-place editing and items the editor opened are left out. The shared header and footer aren't the
        page's to change. */
-    var TRANSIENT = '.ed-selected, .sec-active, [contenteditable], [data-text-original], [data-rv-open], [data-rv-aria], [data-rv-cur-item]';
+    /* data-rv-ai-busy: a section ETB2B AI is rewriting is locked for that while (editor-template-ui.js lockSection) */
+    var TRANSIENT = '.ed-selected, .sec-active, [contenteditable], [data-text-original], [data-rv-open], [data-rv-aria], [data-rv-cur-item], [data-rv-ai-busy]';
 
     /* takes the editor's selection and editing marks off a copy */
     function stripTransient(c) {
@@ -1293,6 +1294,7 @@
         m.removeAttribute('contenteditable');
         m.removeAttribute('data-text-original');
         m.removeAttribute('data-rv-cur-item');
+        m.removeAttribute('data-rv-ai-busy');
       });
       unopen(c);
       return c;

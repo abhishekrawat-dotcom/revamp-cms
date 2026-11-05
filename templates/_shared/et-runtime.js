@@ -91,8 +91,10 @@
      compact bar across the top — holding the event's name, its date and place and the links. Links that do not
      fit go under a "More" button, the ones a visitor needs least first (the gallery, the past agenda and
      sponsors, resources, FAQs, about…); a link to a section that is not on the page, or not shown, is left
-     out. The link of the section being read is marked (is-active). The menu button opens every link and the
-     main action in a panel, closed by Escape, its close button or a click beside it. The More list, the panel
+     out, and so is one that repeats a page tab of the site's own (an award site's Jury and FAQs: the page is
+     linked, once). The link of the section being read is marked (is-active). The menu button opens every link
+     and the main action in a panel — a site with pages lists them under "Pages", apart from the sections under
+     "On this page" — closed by Escape, its close button or a click beside it. The More list, the panel
      and these classes are made on the live page only and never saved; while editing the bar stays as it is
      saved, in its top state and in the page's flow, with every link on view.
 
@@ -1032,12 +1034,23 @@
     return a.getAttribute('href').length > 1 ? a : null;
   }
 
+  /* The "Skip to main content" link (site-a11y.js) moves the keyboard as well as the view, so the next Tab goes
+     on inside the main content. The scroll is done here, not by the browser, so the browser does not move the
+     focus by itself: the link kept it, and Tab walked the whole top bar again. */
+  function focusTarget(hash) {
+    var el = resolveHash(hash);
+    if (!el) return;
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    try { el.focus({ preventScroll: true }); } catch (err) { el.focus(); }
+  }
+
   document.addEventListener('click', function (e) {
     if (e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || editing()) return;
     var a = ownLink(e);
     if (!a || !goTo(a.getAttribute('href'))) return;
     e.preventDefault();
     try { history.replaceState(null, '', a.getAttribute('href')); } catch (err) { /* a page without an address of its own */ }
+    if (a.classList.contains('rv-skip')) focusTarget(a.getAttribute('href'));
   });
 
   window.addEventListener('hashchange', function () { goTo(location.hash); });
@@ -1349,6 +1362,13 @@
     /who|audience/i, /theme|topic|discussion|track/i, /partner|sponsor/i, /why|join/i];
   var CHEVRON = '<svg width="10" height="7" viewBox="0 0 10 7" fill="none" aria-hidden="true"><path d="M1 1.5l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
+  /* the site's page list (rv-pages.js reads the same): [{ slug, title }] */
+  function pagesOf() {
+    var meta = document.querySelector('meta[name="rv-pages"]'), box = document.getElementById('rv-pages');
+    var text = meta ? meta.getAttribute('content') : box ? box.textContent : '';
+    try { var list = JSON.parse(text || '[]'); return Object.prototype.toString.call(list) === '[object Array]' ? list : []; } catch (e) { return []; }
+  }
+
   function etNav(root) {
     if (root.__rvNav || editing()) return;
     var bar = root.querySelector('.rv-etnav-bar');
@@ -1382,6 +1402,19 @@
 
     function items() { return list ? Array.prototype.slice.call(list.children) : []; }
     function linkOf(li) { return li.querySelector('a[href^="#"]'); }
+    /* A section link that goes where one of the site's own pages goes (an award site's Jury, FAQs and Award
+       Categories are each a page tab and a home section): the page is the fuller one, so the section's link is not
+       offered as well — "Jury" and "FAQs" were each twice in the phone's menu. The same rule as et-nav.js
+       repeatsPage, for a bar built before it: the tab's words, the page's title or its slug as the section's id. */
+    var tabs = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab[data-rv-page-link]'));
+    var pageWords = {};
+    function wordsOf(t) { return String(t || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').replace(/^ | $/g, ''); }
+    tabs.forEach(function (a) { pageWords[wordsOf(a.textContent)] = 1; pageWords['#' + a.getAttribute('data-rv-page-link')] = 1; });
+    if (tabs.length) pagesOf().forEach(function (p) { if (p && typeof p.title === 'string' && p.title) pageWords[wordsOf(p.title)] = 1; });
+    function repeatsPage(li) {
+      var a = linkOf(li);
+      return !!a && tabs.length > 0 && (pageWords[wordsOf(a.textContent)] === 1 || pageWords[a.getAttribute('href')] === 1);
+    }
     function hiddenEl(el) { return !el || el.hidden || el.hasAttribute('data-rv-nav-empty') || el.style.display === 'none'; }
     /* the section a link goes to, when it is on the page and shown (rv-data.js hides an empty one, and its links) */
     function targetOf(li) {
@@ -1408,6 +1441,7 @@
       targets = [];
       formItems = [];
       var live = lis.filter(function (li) {
+        if (repeatsPage(li)) { li.classList.add('is-over'); return false; }
         /* a link the owner pointed at a form (rv-forms.js opens it in a pop-up) goes to no section, and is kept */
         var a = linkOf(li);
         if (a && a.hasAttribute('data-rv-form') && !hiddenEl(li) && !hiddenEl(a)) { formItems.push(li); return true; }
@@ -1531,8 +1565,25 @@
       close.type = 'button'; close.className = 'rv-etnav-close'; close.setAttribute('aria-label', 'Close menu'); close.textContent = '×';
       head.appendChild(close);
       panel.appendChild(head);
-      var links = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab')).concat(targets.map(function (t) { return linkOf(t.li); }), formItems.map(linkOf));
-      links.forEach(function (a) {
+      var tabLinks = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab'));
+      /* the tabs that are pages of this site; a tab that goes elsewhere (another site) is no page of it */
+      var pageLinks = tabLinks.filter(function (a) { return a.hasAttribute('data-rv-page-link'); });
+      var otherTabs = tabLinks.filter(function (a) { return !a.hasAttribute('data-rv-page-link'); });
+      var sectionLinks = targets.map(function (t) { return linkOf(t.li); }).concat(formItems.map(linkOf));
+      /* a site with pages lists them apart from the sections of the page in view, each under a small heading;
+         the other tabs come first, under none, as they stand first in the bar */
+      var grouped = pageLinks.length > 0 && sectionLinks.length > 0;
+      function groupHead(text) {
+        var h = document.createElement('p');
+        h.className = 'rv-etnav-drawer-group';
+        h.textContent = text;
+        h.setAttribute('style', 'margin:12px 10px 2px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--rv-muted,currentColor)');
+        panel.appendChild(h);
+      }
+      var links = grouped ? otherTabs.concat(pageLinks, sectionLinks) : tabLinks.concat(sectionLinks);
+      links.forEach(function (a, n) {
+        if (grouped && n === otherTabs.length) groupHead('Pages');
+        if (grouped && n === otherTabs.length + pageLinks.length) groupHead('On this page');
         var copy = document.createElement('a');
         copy.className = 'rv-etnav-drawer-link' + (a.getAttribute('href') === active ? ' is-active' : '');
         copy.setAttribute('href', a.getAttribute('href'));
@@ -1740,7 +1791,20 @@
   /* Tab sets on a page of our own making (an agenda by day: prev-sections.js, sessionDays) — imported pages start
      theirs in settleImported, so a page that has an imported part is left to it */
   function ownTabs() { if (!document.querySelector('.rv-imported') && document.querySelector('[data-rv-tab]')) tabSets(document); }
-  function start() { reveal(); settleImported(); emptySections(); plainDayChips(); sessionDays(); ownTabs(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); arrive(); }
+
+  /* A <details> whose summary says "Read more" (an AI-designed overview's own toggle) says "Read less" while it is
+     open, and "Read more" again when it is closed — it went on saying "Read more" over the text it had opened.
+     The words only change on the visitor's page: never while editing, where they would be saved. */
+  function detailsMoreLess() {
+    if (editing()) return;
+    document.addEventListener('toggle', function (e) {
+      var d = e.target;
+      if (!d || d.tagName !== 'DETAILS' || editing()) return;
+      var sum = d.firstElementChild;
+      if (sum && sum.tagName === 'SUMMARY') moreLess(sum, d.open);
+    }, true);
+  }
+  function start() { reveal(); settleImported(); emptySections(); plainDayChips(); sessionDays(); ownTabs(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); detailsMoreLess(); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();

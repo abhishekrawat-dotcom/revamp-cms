@@ -231,3 +231,61 @@ input:focus,select:focus,textarea:focus{border-color:var(--soft);box-shadow:0 0 
 html.ow-tall,html.ow-tall body,html.ow-tall #app{height:auto}
 html.ow-tall{overflow:hidden}
 html.ow-tall .content{overflow:visible}
+
+/* a site that is not published yet (UX-117; oneworld.js owRenderPage, owMarkStudio): the console's warning tint with
+   its ink, as the cards' state chip, so the words pass AA in both themes. The page's note and its link, the chip in
+   place of Website ↗, and the pill in the studio's bar */
+.ow-unpub{margin:0 0 16px;padding:10px 14px;border:1px solid var(--ow-warn-line);border-radius:10px;background:var(--ow-warn-soft);color:var(--ink);font-size:13px;font-weight:600;line-height:1.45}
+.ow-unpub a{color:inherit;text-decoration:underline;text-underline-offset:2px;white-space:nowrap}
+.chip.ow-unpub-chip,.ow-unpub-pill{background:var(--ow-warn-soft);color:var(--ink);border:1px solid var(--ow-warn-line)}
+.ow-unpub-pill{display:inline-flex;align-items:center;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;line-height:1.3;white-space:nowrap}
+.ui-body a{color:var(--ow-accent-text);font-weight:600}
+
+/* ============ batch B20 (promo-studio/oneworld.js, oneworld-social.js) ============ */
+/* UX-134: the event's facts in one slim line under the console's header (which names the event and its date): its
+   hashtag, its site while live (or that it is not), and on Social posts its edition and counts. No card, no logo */
+.ow-facts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;margin:0 0 14px;font-size:12.5px;line-height:1.5;color:var(--soft)}
+.ow-facts:empty{display:none}
+.ow-facts .chip{font-size:11px;text-decoration:none}
+.ow-facts a.chip:hover{background:var(--line2);color:var(--ink)}
+.ow-facts .stat{font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.ow-facts .stat span{color:var(--soft);font-weight:400;margin-left:3px}
+/* UX-138: the award mailers on an event that is not an award are folded under their heading, one click away; the
+   cards keep the grid's columns when shown (their box takes no place of its own) */
+.mgrid .ow-award-h{justify-content:flex-start;gap:10px}
+.mgrid .ow-award-tg{text-transform:none;letter-spacing:normal}
+.mgrid .ow-award-cards{display:contents}
+.mgrid .ow-award-cards[hidden]{display:none}
+/* UX-136: the mail scaled to fit the studio's stage keeps its top centre in place (oneworld.js owFitCanvas) */
+#mlCanvas{transform-origin:50% 0}
+/* … and when it is still wider than the stage at its smallest scale, it starts at the stage's left, so its left edge
+   is not pushed out of scroll reach by the centring */
+#mlStage.ow-over{justify-content:flex-start}
+/* … while the controls drawn over it (a block's name tag, its Drag / Duplicate / Delete buttons and the "+" that
+   inserts a block) are scaled back up by 1 / --s, so they stay the size they are on an unscaled mail and easy to hit.
+   The tag and the buttons keep their place 29px above the block on screen (the platform's top:-29px for .ml-hot .tb
+   and .tag in mailer-studio.css, divided by the scale) and grow down from their top; the "+" grows from its centre,
+   which sits on the block's lower edge. --s is unset on an unscaled mail, so all of this is then a no-op */
+#mlStage .ml-hot .tb,#mlStage .ml-hot .tag{top:calc(-29px / var(--s,1));transform:scale(calc(1 / var(--s,1)))}
+#mlStage .ml-hot .tb{transform-origin:100% 0}
+#mlStage .ml-hot .tag{transform-origin:0 0}
+#mlStage .ml-hot .ins{transform:scale(calc(1 / var(--s,1)));transform-origin:50% 50%}
+/* UX-136, UX-139: the team's Mailer performance page (?scope=all, inside mailer-performance.html). It has one place,
+   so no nav row; and its content takes the column of the bar above the frame (the console's 1240px, 24px in from its
+   edges, 16px on a phone and 12px on the smallest), so the logo and the page's title start at the same place. The
+   padding, not the page, is narrowed: the frame's scrollbar stays at the window's edge */
+body.ow-team .ow-bar{display:none}
+body.ow-team .content{padding:22px max(24px,calc((100% - 1240px) / 2 + 24px)) 48px}
+@media (max-width:700px){ body.ow-team .content{padding-left:16px;padding-right:16px} }
+@media (max-width:374px){ body.ow-team .content{padding-left:12px;padding-right:12px} }
+/* A narrow frame (a phone, where the console's rail leaves the frame about 270 px): the event page's tab and its two
+   buttons did not fit on one line, and "Download all (.zip)" sat off-screen to the right with the page scrolling
+   sideways. The buttons go on a line of their own under the tab, and wrap themselves when even that is too narrow;
+   the page's sides narrow too. */
+@media (max-width:560px){
+  body.ow-embed:not(.ow-team) .content{padding-left:14px;padding-right:14px}
+  .ow-bar{padding-left:14px;padding-right:14px}
+  #evNav.secnav{flex-wrap:wrap;row-gap:4px}
+  #evNav.secnav #nav-mail{margin-right:0}
+  #evNav.secnav .sp{margin-left:0;flex:1 1 100%;flex-wrap:wrap}
+}

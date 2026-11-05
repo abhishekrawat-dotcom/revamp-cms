@@ -1,9 +1,12 @@
-/* The event's description (events/<id>.description): two or three sentences about THIS edition, written for
-   the people who might attend. It is shown in the event console's Basics, the published pages' meta
-   description and schema.org data, the promotions and the events listing — so it is never the owner's raw
-   brief (the "Tagline / theme: …" headings Create Event asks for). The brief stays in events/<id>/briefs and
-   steers the AI; the description is written from it, and from the previous edition, at design time
-   (plan-structure, field eventDescription), or by tools/repair-description.js for an event made before.
+/* The event's description (events/<id>.description): one or two sentences about THIS edition, written for
+   the people who might attend, short enough for the listing card and a search result (IDEAL_LENGTH, 160
+   characters) and never longer than the console's Basics will save (MAX_LENGTH, 220 — edit-event-core.js
+   DESC.max; a longer one could not be edited there). It is shown in the event console's Basics, the
+   published pages' meta description and schema.org data, the promotions and the events listing — so it is
+   never the owner's raw brief (the "Tagline / theme: …" headings Create Event asks for). The brief stays in
+   events/<id>/briefs and steers the AI; the description is written from it, and from the previous edition,
+   at design time (plan-structure, field eventDescription), or by tools/repair-description.js for an event
+   made before.
 
      RULE                              the instruction the model is given for the description
      SCHEMA                            { eventDescription } — the answer format of a description-only call
@@ -12,7 +15,9 @@
                                           the owner's brief (it has the brief's headings), or the brief's text
                                           word for word. A description the owner wrote by hand is never replaced.
      clean(text)                       -> the model's description, tidied; '' when it is not usable (too short,
-                                          a heading or a list in it)
+                                          a heading or a list in it); one over MAX_LENGTH is cut at its last
+                                          full sentence that fits, or at a word with "…"
+     IDEAL_LENGTH, MAX_LENGTH           160 and 220 characters
      storedFacts(eventMeta)            -> the event's facts a brief step may store on the event: everything but
                                           the description
      patch(parsedDescription, stored, briefText) -> { description } | null   what plan-structure writes
@@ -23,7 +28,9 @@
 
 var ownerBrief = require('./owner-brief');
 
-var RULE = '2-3 sentences (at most 60 words) describing THIS edition for the people who might attend: what it is, who it is for and why to attend. Polished event-site prose, grounded ONLY in the owner\'s brief and the previous edition\'s real details (its name, theme, format, audience). Never invent numbers, dates, speakers or sponsors. Never list the brief\'s headings or copy its lists word for word — say what they add up to. No headings, no bullet lists, no line breaks.';
+var IDEAL_LENGTH = 160, MAX_LENGTH = 220;
+
+var RULE = '1-2 sentences, at most ' + IDEAL_LENGTH + ' characters (about 25 words), describing THIS edition for the people who might attend: what it is, who it is for and why to attend. It is the event\'s listing card and search-result line, so it must stay that short; the site\'s own sections carry the longer story. Polished event-site prose, grounded ONLY in the owner\'s brief and the previous edition\'s real details (its name, theme, format, audience). Never invent numbers, dates, speakers or sponsors. Never list the brief\'s headings or copy its lists word for word — say what they add up to. No headings, no bullet lists, no line breaks.';
 
 var SCHEMA = {
   type: 'OBJECT',
@@ -55,10 +62,12 @@ function clean(text) {
   var q = /^["'“‘](.*)["'”’]$/.exec(t);
   if (q && !/["“”]/.test(q[1])) t = q[1].trim();
   if (t.length < 40) return '';
-  if (t.length > 600) {
-    /* cut at the last full stop that fits, never mid-word */
-    var cut = t.slice(0, 600), at = cut.lastIndexOf('. ');
-    t = at > 200 ? cut.slice(0, at + 1) : cut.replace(/\s+\S*$/, '') + '…';
+  if (t.length > MAX_LENGTH) {
+    /* cut at the end of the last full sentence that fits, never mid-word; with no sentence long enough, at
+       the last whole word, marked with "…" (the whole still fits) */
+    var head = t.slice(0, MAX_LENGTH + 1), at = -1, m, ends = /[.!?](?=\s)/g;
+    while ((m = ends.exec(head))) if (m.index < MAX_LENGTH) at = m.index;
+    t = at + 1 >= 40 ? t.slice(0, at + 1) : t.slice(0, MAX_LENGTH - 1).replace(/\s+\S*$/, '').replace(/[\s,;:–—-]+$/, '') + '…';
   }
   return t;
 }
@@ -130,4 +139,4 @@ function buildPrompt(o) {
   return lines.join('\n');
 }
 
-module.exports = { RULE, SCHEMA, ACTIVITY_DETAIL, isRawBrief, replaceable, clean, storedFacts, patch, buildPrompt, dateText };
+module.exports = { IDEAL_LENGTH, MAX_LENGTH, RULE, SCHEMA, ACTIVITY_DETAIL, isRawBrief, replaceable, clean, storedFacts, patch, buildPrompt, dateText };

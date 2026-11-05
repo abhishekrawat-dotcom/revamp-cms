@@ -128,18 +128,37 @@ POST_IDS.forEach(function (id) {
     check('X.3 ' + id + ': the marked post carries the marker and the EXAMPLE ribbon', ex.isExample(html) && /data-oneworld-example="1"[^>]*>[\s\S]*EXAMPLE<\/div><\/div>\s*<\/body>/.test(html));
   }
 });
-check('X.3 the post templates\' fills: audience, stats, quote, sponsors, speakers',
+check('X.3 the post templates\' fills: audience, stats, the prediction and outcome, quote, sponsors, speakers',
   JSON.stringify(POST_IDS.map(function (id) { return ex.fillFor(id, S, {}).filled.join('+'); })) ===
-  JSON.stringify(['', 'audience', 'stats', '', 'quote', 'sponsors', 'sponsors', 'speakers', 'speakers']));
+  JSON.stringify(['', 'audience', 'stats', 'prediction', 'quote', 'sponsors', 'sponsors', 'speakers', 'speakers']));
 if (!REAL_POSTS) console.log('note: the post templates are checked against their gates as the platform wrote them; the Phase 3 engine (Unit A) is not built yet — run again once it is.');
 
 /* nothing is filled when the real list passes */
 var nothing = engine.ALL_MAILERS.map(function (m) { return m.id; }).concat(POST_IDS).filter(function (id) {
   if (/award/.test(id)) return false;                       // R is not an award: its award facts are examples by design
-  return ex.fillFor(id, R, {}).filled.length !== 0 && id !== 'generic.testimonial';
+  return ex.fillFor(id, R, {}).filled.length !== 0 && id !== 'generic.testimonial' && id !== 'generic.prediction-outcome';
 });
-check('X.3 the rich event: nothing filled outside the award mailers (and the Testimonial\'s empty quote)', !nothing.length, nothing);
+check('X.3 the rich event: nothing filled outside the award mailers (and the Testimonial\'s empty quote, and the template\'s own prediction and outcome)', !nothing.length, nothing);
 check('X.3 the rich event: a Testimonial with a quote of its own is left alone', ex.fillFor('generic.testimonial', R, { quote: 'A real quote.' }).filled.length === 0);
+
+/* UX-135: Prediction vs Outcome's two paragraphs are the template's filler until both are the user's own. Its card
+   is then marked as an example with nothing else changed (the words already are the example) */
+var PO = 'generic.prediction-outcome', poTpl = engine.getTemplate(PO);
+var poDefault = function (k) { return poTpl.params.filter(function (x) { return x.key === k; })[0].default; };
+var poNone = ex.fillFor(PO, R, {});
+check('UX-135: Prediction vs Outcome with the template\'s own words is an example', JSON.stringify(poNone.filled) === '["prediction"]' && poNone.ev === R && !poNone.state);
+check('UX-135: … and nothing else is changed: same event, same options', poNone.params && Object.keys(poNone.params).length === 0);
+check('UX-135: both paragraphs the user\'s own: not an example', ex.fillFor(PO, R, { prediction: 'Agents were a demo', outcome: 'Agents are a line item' }).filled.length === 0);
+check('UX-135: one paragraph left to the template: still an example', ex.fillFor(PO, R, { prediction: 'Agents were a demo' }).filled.join() === 'prediction' &&
+  ex.fillFor(PO, R, { prediction: 'Agents were a demo', outcome: '   ' }).filled.join() === 'prediction');
+check('UX-135: the template\'s own words typed back in (spaces and case aside) are still its filler',
+  ex.fillFor(PO, R, { prediction: '  ' + poDefault('prediction').toUpperCase() + ' ', outcome: 'Agents are a line item' }).filled.join() === 'prediction' &&
+  ex.fillFor(PO, R, { prediction: 'Agents were a demo', outcome: poDefault('outcome').replace(/ /g, '   ') }).filled.join() === 'prediction');
+check('UX-135: the headline and the labels are not the filler that counts', ex.fillFor(PO, R, { prediction: 'A', outcome: 'B', headline: poDefault('headline') }).filled.length === 0);
+check('UX-135: the marked post names what is the example', ex._test.wordsFor(['prediction']) === 'prediction and outcome' &&
+  /<meta name="oneworld-example" content="prediction">/.test(ex.markPostHtml(renderPost(PO, R, {}), ['prediction'])));
+check('UX-135: only that post has filler lines', JSON.stringify(Object.keys(ex._test.FILLER_LINES)) === '["generic.prediction-outcome"]' &&
+  ex.fillFor('constructor', R, {}).filled.length === 0);
 
 /* real items first, examples top up to the default count (decision 1) */
 var one = Object.assign(sparse(), { speakers: [person(1, 'Asha Rao', 'Keynote')] });

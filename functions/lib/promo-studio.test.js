@@ -42,7 +42,7 @@ var pStart = py.indexOf('PATCHES = [');
 var pBlock = py.slice(pStart, py.indexOf('\n]\n', pStart));
 var patchRe = /\(r'''([\s\S]*?)''',\s*r'''([\s\S]*?)''',\s*(\d+),/g, pm, patches = [];
 while ((pm = patchRe.exec(pBlock))) patches.push({ old: pm[1], neu: pm[2], times: Number(pm[3]) });
-check('twelve patches, P1 to P12', patches.length === 12, patches.length);
+check('twenty-seven patches, P1 to P27', patches.length === 27, patches.length);
 patches.forEach(function (p, i) {
   check('P' + (i + 1) + ': the platform\'s text is gone', count(studio, p.old) === 0, count(studio, p.old));
   check('P' + (i + 1) + ': its replacement is there ' + p.times + ' time(s)', count(studio, p.neu) === p.times, count(studio, p.neu));
@@ -93,7 +93,7 @@ check('oneworld.js: no arrow functions', owCode.indexOf('=>') === -1);
 /* ---- oneworld.js in a vm ---- */
 function load(search, o) {
   o = o || {};
-  var els = {}, owned = {}, bodyClass = {}, calls = { toast: [], open: [], paint: 0, nav: [], fetch: [] };
+  var els = {}, owned = {}, bodyClass = {}, calls = { toast: [], open: [], paint: 0, nav: [], fetch: [], confirm: [], sent: [], menus: 0 };
   function el(id) {
     var e = { id: id, _html: '', onclick: null, textContent: '', title: '', classList: { contains: function () { return false; } } };
     Object.defineProperty(e, 'innerHTML', { get: function () { return e._html; }, set: function (h) { setHtml(e, String(h)); } });
@@ -139,6 +139,13 @@ function load(search, o) {
     toast: function (m, ms) { calls.toast.push(arguments.length > 1 ? [m, ms] : [m]); },
     openMailer: function (id, saveId) { calls.open.push([id, saveId]); },
     closeMailer: function () {},
+    /* the platform's Download to send and Copy HTML, the menus and its in-app dialog (o.answer: what the sender picks) */
+    mlBusy: function () {}, uiOpen: function () { return Promise.resolve(true); },
+    mlFit: function () { calls.fit = (calls.fit || 0) + 1; }, mlDropShow: function () {},
+    mlDownload: function () { calls.sent.push('download'); return Promise.resolve('downloaded'); },
+    mlCopy: function () { calls.sent.push('copy'); return Promise.resolve('copied'); },
+    closeMenus: function () { calls.menus++; },
+    uiConfirm: function (title, message, opt) { calls.confirm.push({ title: title, message: message, o: opt }); return Promise.resolve(o.answer !== false); },
     /* the platform's showAnalytics is replaced by oneworld.js's own; the platform's paintAnalytics draws the dashboard */
     showAnalytics: function () { throw new Error('the platform\'s showAnalytics ran: oneworld.js should replace it'); },
     paintAnalytics: function () {
@@ -183,10 +190,11 @@ check('Refresh / Try again skip the team cache once', team.sb.owUrl('/api/analyt
 check('an event in the address wins over scope=all', load('?event=x&scope=all').sb.OW_SCOPE === 'event');
 check('the subline and the empty-state button per scope',
   ev.sb.owDashSubline() === 'Opens and clicks for every mailer of this event downloaded or copied from Oneworld.' && ev.sb.owDashPickLabel() === 'Make a mailer →' &&
-  team.sb.owDashSubline() === 'Opens and clicks for every mailer downloaded or copied from this platform.' && team.sb.owDashPickLabel() === 'Pick an event →');
+  team.sb.owDashSubline() === 'Opens and clicks for every event\'s mailers downloaded or copied from Oneworld.' && team.sb.owDashPickLabel() === 'Pick an event →');
 ev.sb.owNavLabels(); team.sb.owNavLabels();
 check('the nav reads Dashboard / Mailers on an event', ev.navEvents.textContent === 'Mailers' && ev.navEvents.title === 'This event\'s mailers', ev.navEvents);
-check('the nav reads Dashboard / Events for the team', team.navEvents.textContent === 'Events' && team.navEvents.title === 'Pick an event', team.navEvents);
+check('UX-139: the team\'s page has no nav of its own (its body is marked ow-team, which hides the row), and its nav is left as it is',
+  team.bodyClass['ow-team'] === true && ev.bodyClass['ow-team'] === false && team.navEvents.textContent === 'Events' && team.navEvents.title === 'Pick a portal and an event', [team.bodyClass, team.navEvents]);
 
 /* the toasts: kind × state */
 var TOASTS = {
@@ -240,7 +248,7 @@ var ao = load('?event=x');
 ao.sb.MAILERS = { mailers: [{ id: 'mailer.a', available: true }, { id: 'mailer.b', available: false }], event: { name: 'X' } };
 ao.sb.anOpen('p', 'x', 'mailer.a', 'X', 's1');
 check('this event\'s row: its mailer page, then the studio on that version', JSON.stringify(ao.calls.open) === JSON.stringify([['mailer.a', 's1']]) &&
-  ao.calls.nav[ao.calls.nav.length - 1] === 'events' && /ev-head/.test(ao.els.content.innerHTML), ao.calls);
+  ao.calls.nav[ao.calls.nav.length - 1] === 'events' && /class="ow-facts"/.test(ao.els.content.innerHTML), ao.calls);
 ao.sb.anOpen('p', 'x', 'mailer.b', 'X', '');
 check('a mailer the event no longer offers is said so, not swapped for another', ao.calls.open.length === 1 &&
   ao.calls.toast.pop()[0] === 'That mailer is not available for this event any more');
@@ -254,7 +262,7 @@ check('the team\'s row opens that event (no version when the row had none)', at.
 var sp = load('?scope=all'); sp.sb.showPortals();
 check('team: Events goes to the event listing', sp.win.top.location.href === '/Event_Listing.html');
 var sp2 = load('?event=x'); sp2.sb.MAILERS = { mailers: [], event: {} }; sp2.sb.showPortals();
-check('event: Mailers shows the event\'s mailer page', sp2.calls.nav[0] === 'events' && /ev-head/.test(sp2.els.content.innerHTML) && sp2.calls.fetch.length === 0);
+check('event: Mailers shows the event\'s mailer page', sp2.calls.nav[0] === 'events' && /class="ow-facts"/.test(sp2.els.content.innerHTML) && sp2.calls.fetch.length === 0);
 
 var CATALOG = { event: { name: 'X', portal: 'health' }, mailers: [{ id: 'mailer.a', available: true, suggested: 1 }], tracking: true };
 function respond(catalog, analytics) {
@@ -271,7 +279,7 @@ var sp3 = load('?event=x', { respond: respond(json(200, CATALOG), json(200, { to
 sp3.sb.showPortals();
 pending.push(settle().then(function () {
   check('event: Mailers before the catalog loaded loads it and lands on the mailer page, numbers not asked',
-    sp3.calls.paint === 0 && /ev-head/.test(sp3.els.content.innerHTML) && sp3.calls.fetch.join() === '/api/promo/mailers?eventId=x', sp3.calls);
+    sp3.calls.paint === 0 && /class="ow-facts"/.test(sp3.els.content.innerHTML) && sp3.calls.fetch.join() === '/api/promo/mailers?eventId=x', sp3.calls);
 }));
 
 /* the dashboard: oneworld.js's showAnalytics (the platform's, with the view check and Try again) */
@@ -326,7 +334,7 @@ r1.sb.showPortals();                                   // Mailers, clicked befor
 r1d.go(json(200, { totals: { sends: 3 } }));
 pending.push(settle().then(function () {
   check('Dashboard, then Mailers before its numbers came: the late numbers do not paint over the mailer page',
-    /ev-head/.test(r1.els.content.innerHTML) && r1.calls.paint === 0 && lastNav(r1) === 'events', [r1.calls.paint, r1.calls.nav]);
+    /class="ow-facts"/.test(r1.els.content.innerHTML) && r1.calls.paint === 0 && lastNav(r1) === 'events', [r1.calls.paint, r1.calls.nav]);
 }));
 var r2d = deferred();
 var r2 = load('?event=x', { respond: function (url) { return /analytics/.test(url) ? r2d.p : json(404, {}); } });
@@ -335,7 +343,7 @@ r2.sb.showAnalytics();
 r2.sb.showPortals();
 r2d.go(json(500, { error: 'x' }));
 pending.push(settle().then(function () {
-  check('… nor does a late failure write its error over it', /ev-head/.test(r2.els.content.innerHTML) && !/ml-err/.test(r2.els.content.innerHTML) && !r2.els.owDashAgain);
+  check('… nor does a late failure write its error over it', /class="ow-facts"/.test(r2.els.content.innerHTML) && !/ml-err/.test(r2.els.content.innerHTML) && !r2.els.owDashAgain);
 }));
 var r3d = deferred();
 var r3 = load('?event=x', { respond: function (url) { return /analytics/.test(url) ? r3d.p : json(404, {}); } });
@@ -344,7 +352,7 @@ r3.sb.showAnalytics();
 r3.sb.owRenderPage(); r3.sb.openMailer('mailer.a', null);   // a mailer card, then the studio, while the numbers load
 r3d.go(json(200, { totals: { sends: 3 } }));
 pending.push(settle().then(function () {
-  check('the studio opened while the numbers load: closing it still shows the mailer page', /ev-head/.test(r3.els.content.innerHTML) && r3.calls.paint === 0);
+  check('the studio opened while the numbers load: closing it still shows the mailer page', /class="ow-facts"/.test(r3.els.content.innerHTML) && r3.calls.paint === 0);
 }));
 var r4d = deferred();
 var r4 = load('?event=x', { respond: function (url) { return /analytics/.test(url) ? json(200, { totals: { sends: 1 } }) : r4d.p; } });
@@ -354,7 +362,7 @@ pending.push(settle().then(function () {
   check('Dashboard clicked while the tab loads: it shows', r4.calls.paint === 1 && lastNav(r4) === 'dash');
   r4d.go(json(200, CATALOG));
   return settle().then(function () {
-    check('… and the catalog answering later does not swap it for the mailer page', !/ev-head/.test(r4.els.content.innerHTML) &&
+    check('… and the catalog answering later does not swap it for the mailer page', !/class="ow-facts"/.test(r4.els.content.innerHTML) &&
       /Mailer performance/.test(r4.els.content.innerHTML) && lastNav(r4) === 'dash' && r4.calls.paint === 1, [r4.calls.nav, r4.els.content.innerHTML.slice(0, 80)]);
     check('… while the catalog it brought is kept for the nav\'s Mailers', !!r4.sb.MAILERS && r4.sb.MAILERS.event.name === 'X' && r4.bodyClass['ow-notrack'] === false);
   });
@@ -365,7 +373,7 @@ r5.sb.owBoot();
 r5.sb.showAnalytics();
 r5c.go(json(200, CATALOG));                            // the catalog first, then the dashboard's numbers
 pending.push(settle().then(function () {
-  check('… the other way round: the catalog first does not draw the mailer page under the Dashboard pill', !/ev-head/.test(r5.els.content.innerHTML) && lastNav(r5) === 'dash');
+  check('… the other way round: the catalog first does not draw the mailer page under the Dashboard pill', !/class="ow-facts"/.test(r5.els.content.innerHTML) && lastNav(r5) === 'dash');
   r5a.go(json(200, { totals: { sends: 1 } }));
   return settle().then(function () { check('… and the numbers then paint the dashboard', r5.calls.paint >= 1 && /Mailer performance/.test(r5.els.content.innerHTML) && lastNav(r5) === 'dash'); });
 }));
@@ -400,22 +408,22 @@ pending.push(settle(30).then(function () {
   check('the nav is labelled for the event', l1.navEvents.textContent === 'Mailers');
   l1.sb.showPortals();                                 // the nav's Mailers, right after landing
   return settle().then(function () {
-    check('Mailers after landing on the dashboard stays on the mailer page (no second read lands on it)', /ev-head/.test(l1.els.content.innerHTML) &&
+    check('Mailers after landing on the dashboard stays on the mailer page (no second read lands on it)', /class="ow-facts"/.test(l1.els.content.innerHTML) &&
       lastNav(l1) === 'events' && l1.calls.paint === 1 && dashLoads(l1).length === 1, l1.calls);
   });
 }));
 var l2 = load('?event=x', { boot: true, respond: respond(json(200, Object.assign({}, CATALOG, { tracking: false })), json(200, { totals: { sends: 0 } })) });
 pending.push(settle(30).then(function () {
-  check('an event with none opens on its mailer page', l2.calls.paint === 0 && /ev-head/.test(l2.els.content.innerHTML) && l2.calls.nav.indexOf('events') !== -1, l2.calls);
+  check('an event with none opens on its mailer page', l2.calls.paint === 0 && /class="ow-facts"/.test(l2.els.content.innerHTML) && l2.calls.nav.indexOf('events') !== -1, l2.calls);
   check('tracking off: Link tracking is hidden', l2.bodyClass['ow-notrack'] === true);
 }));
 var l3 = load('?event=x', { boot: true, respond: respond(json(200, CATALOG), json(404, { error: 'event-not-found' })) });
-pending.push(settle(30).then(function () { check('numbers that could not be had: the mailer page', l3.calls.paint === 0 && /ev-head/.test(l3.els.content.innerHTML)); }));
+pending.push(settle(30).then(function () { check('numbers that could not be had: the mailer page', l3.calls.paint === 0 && /class="ow-facts"/.test(l3.els.content.innerHTML)); }));
 var l4 = load('?event=x', { boot: true, respond: respond(json(200, CATALOG), new Promise(function () {})) });
 l4.sb.OW_PEEK_MS = 40;
 /* the 40 ms cap starts only once this file's set-up has run (the page boots after it), so the wait is counted from
    then too, not from here: the set-up of the pages below takes long enough to eat a wait started here */
-pending.push(settleAfterLoad(120).then(function () { check('numbers that never come do not hold up the mailer page (capped at OW_PEEK_MS)', l4.calls.paint === 0 && /ev-head/.test(l4.els.content.innerHTML), l4.els.content.innerHTML); }));
+pending.push(settleAfterLoad(120).then(function () { check('numbers that never come do not hold up the mailer page (capped at OW_PEEK_MS)', l4.calls.paint === 0 && /class="ow-facts"/.test(l4.els.content.innerHTML), l4.els.content.innerHTML); }));
 var l4b = load('?event=x', { boot: true, paintThrows: true, respond: respond(json(200, CATALOG), json(200, { totals: { sends: 2 } })) });
 pending.push(settle(30).then(function () {
   check('landing numbers that cannot be drawn: the dashboard\'s error and Try again', /Could not load analytics\./.test(l4b.els.content.innerHTML) && !!l4b.els.owDashAgain);
@@ -428,13 +436,13 @@ pending.push(settle(30).then(function () {
 var l6 = load('?event=x&mailer=mailer.a&version=s9', { boot: true, respond: respond(json(200, CATALOG), json(200, { totals: { sends: 2 } })) });
 pending.push(settle(30).then(function () {
   check('a deep link opens the studio on that version, over the mailer page', JSON.stringify(l6.calls.open) === JSON.stringify([['mailer.a', 's9']]) &&
-    /ev-head/.test(l6.els.content.innerHTML) && l6.calls.paint === 0, l6.calls);
+    /class="ow-facts"/.test(l6.els.content.innerHTML) && l6.calls.paint === 0, l6.calls);
   check('a deep link does not ask for the numbers', l6.calls.fetch.join() === '/api/promo/mailers?eventId=x', l6.calls.fetch);
 }));
 var l7 = load('?scope=all', { boot: true, respond: respond(json(200, CATALOG), json(200, { totals: { sends: 0 } })) });
 pending.push(settle(30).then(function () {
   check('the team\'s page is the dashboard alone (no catalog)', l7.calls.paint === 1 && l7.calls.fetch.join() === '/api/promo/analytics/all', l7.calls);
-  check('the nav is labelled for the team', l7.navEvents.textContent === 'Events' && l7.navEvents.title === 'Pick an event');
+  check('UX-139: the team\'s page is marked so its nav row is hidden', l7.bodyClass['ow-team'] === true);
 }));
 var l8 = load('', { boot: true, respond: respond(json(200, CATALOG), json(200, {})) });
 pending.push(settle(30).then(function () { check('no event and no scope: "No event"', /No event/.test(l8.els.content.innerHTML) && l8.calls.fetch.length === 0 && l8.calls.paint === 0); }));
@@ -716,6 +724,8 @@ function page2(search, o) {
     mlApplyPalette: function (p) { palettes.push(p); },
     /* the studio's panel and inspector: each draw notes the accent its colour fields would be built with
        (fldColor reads MD.pal then) and how many palettes the studio had been handed by then */
+    mlDownload: function () {}, mlCopy: function () {}, closeMenus: function () {}, mlBusy: function () {}, uiOpen: function () { return Promise.resolve(true); },
+    uiConfirm: function () { return Promise.resolve(true); }, mlFit: function () {}, mlDropShow: function () {},
     mlProps: function () { redraws.push(['mlProps', sb.MD.pal ? sb.MD.pal.accent : null, palettes.length]); },
     mlInspector: function () { redraws.push(['mlInspector', sb.MD.pal ? sb.MD.pal.accent : null, palettes.length]); }
   };
@@ -804,9 +814,28 @@ check('owSortCatalog: on an event that is not an award, the award mailers come l
   cards.sb.MAILERS.mailers.map(function (m) { return m.id; }).join() === 'mailer.announcement,mailer.speakers,mailer.reminder,mailer.agenda,mailer.blank,mailer.award-nominations,mailer.award-winners',
   cards.sb.MAILERS.mailers.map(function (m) { return m.id; }));
 var cardsHtml = cards.sb.mailerCards();
-var headAt = cardsHtml.indexOf('<div class="sec-h ow-award-h">For award events</div>');
+var headAt = cardsHtml.indexOf('<div class="sec-h ow-award-h"><span>For award events</span>');
 check('"For award events" once, after the other mailers and before the award ones', count(cardsHtml, 'For award events') === 1 && headAt > cardsHtml.indexOf('data-prev="tpl:mailer.blank"') &&
   headAt < cardsHtml.indexOf('data-prev="tpl:mailer.award-nominations"') && headAt < cardsHtml.indexOf('data-prev="tpl:mailer.award-winners"'));
+/* UX-138: folded away under it, one click away */
+var foldAt = cardsHtml.indexOf('<div class="ow-award-cards" id="owAwardCards" hidden>');
+check('UX-138: the award mailers are folded away (hidden) on an event that is not an award', foldAt > headAt && foldAt < cardsHtml.indexOf('data-prev="tpl:mailer.award-nominations"') &&
+  cardsHtml.indexOf('data-prev="tpl:mailer.award-winners"') > foldAt && /<\/div>$/.test(cardsHtml), cardsHtml.slice(headAt, headAt + 400));
+check('UX-138: … every other card stays outside the fold', cardsHtml.indexOf('data-prev="tpl:mailer.blank"') < foldAt && cardsHtml.indexOf('data-prev="tpl:mailer.agenda"') < foldAt);
+check('UX-138: the heading\'s button says how many, and what it opens', cardsHtml.indexOf('<button type="button" class="btn alt sm ow-award-tg" id="owAwardTg" data-n="2" aria-expanded="false" aria-controls="owAwardCards" ' +
+  'title="This event has no award record: these mailers show example award facts" onclick="owAwardToggle()">Show 2 mailers</button>') !== -1, cardsHtml.slice(headAt, headAt + 400));
+cards.content.innerHTML = cardsHtml;
+cards.els.owAwardTg.setAttribute('data-n', '2');          // as the page reads it from the markup checked above
+cards.sb.owAwardToggle();
+check('UX-138: Show opens the fold where it is (the cards are not drawn again), and the button says Hide', cards.els.owAwardCards.hidden === false &&
+  cards.els.owAwardTg.textContent === 'Hide' && cards.els.owAwardTg.getAttribute('aria-expanded') === 'true' && cards.sb.OW_AWARD_OPEN === true);
+check('UX-138: … and a fold opened stays open when the cards are drawn again', cards.sb.mailerCards().indexOf('<div class="ow-award-cards" id="owAwardCards">') !== -1 &&
+  cards.sb.mailerCards().indexOf('aria-expanded="true"') !== -1 && cards.sb.mailerCards().indexOf('>Hide</button>') !== -1);
+cards.sb.owAwardToggle();
+check('UX-138: Hide folds it again', cards.els.owAwardCards.hidden === true && cards.els.owAwardTg.textContent === 'Show 2 mailers' && cards.els.owAwardTg.getAttribute('aria-expanded') === 'false');
+check('UX-138: one award mailer reads "Show 1 mailer"', cards.sb.owAwardWord(1) === 'Show 1 mailer');
+check('UX-138: the fold keeps the grid\'s columns when open, and is gone when shut', cssRules.indexOf('.mgrid .ow-award-cards{display:contents}') !== -1 &&
+  cssRules.indexOf('.mgrid .ow-award-cards[hidden]{display:none}') !== -1);
 check('the catalog is whole again after the cards are drawn', cards.sb.MAILERS.mailers.length === 7);
 check('mailerArt is Oneworld\'s: a picture slot named tpl:<id>, the sections as its tooltip', cardsHtml.indexOf('<div class="art ow-prev" data-prev="tpl:mailer.announcement" data-label="Announcement" title="Sections in this mail: Header · Hero" onclick="owPrevOpen(this)" onkeydown="owPrevKeyDown(event,this)"><span class="sk"></span></div>') !== -1);
 check('… and the platform\'s card around it (its needs line on an unavailable one)', cardsHtml.indexOf('<div class="warn">needs speakers (2+)</div>') !== -1 && cardsHtml.indexOf('<div class="mcard dis">') !== -1);
@@ -848,7 +877,7 @@ check('… and an event whose catalog has no award mailers at all is not an awar
 var pv = page2('?event=x', { framed: true, boot: true, respond: sparseRespond(sparseCatalog()) });
 pending.push(settle(30).then(function () {
   check('previews wait for the banner: it is asked for, and nothing is drawn yet', pv.asked('rvBanner').length === 1 && pv.asked('rvBanner')[0].rvBanner === 'ensure' &&
-    pv.asked('rvBanner')[0].fresh === false && pv.loads(/previews/).length === 0 && /ev-head/.test(pv.content.innerHTML), pv.posted);
+    pv.asked('rvBanner')[0].fresh === false && pv.loads(/previews/).length === 0 && /class="ow-facts"/.test(pv.content.innerHTML), pv.posted);
   check('… asked of our own origin only', pv.posted.every(function (p) { return p.origin === ORIGIN; }));
   check('every slot shows its loading shimmer meanwhile', pv.slots().length === 9 && pv.slots().every(function (s) { return !s.getAttribute('data-shown'); }));
   pv.send({ rvBannerReady: { id: 99, ok: true } });                 // an answer to some other question: still waiting
@@ -1333,6 +1362,143 @@ check('the wait for mlLoad is bounded at 2 s', /var OW_PAL_WAIT_MS = 25, OW_PAL_
 var pk = page2('?event=x', { MD: { pal: { accent: '#111111' }, doc: null }, respond: function (url) { return url === '/api/promo/mailer/doc' ? R(200, { doc: { blocks: [] } }) : R(200, {}); } });
 post(pk, '/api/mailer/doc', { mailerId: 'mailer.announcement' });
 pending.push(settle(30).then(function () { check('a palette already known is not asked for again', pk.loads(/render/).length === 0 && pk.palettes.length === 0); }));
+
+/* ======================= the UX sweep's batch B20 ======================= */
+
+/* ---- UX-134: the event's facts once — one slim line, no card, no logo square ---- */
+var fx = load('?event=x');
+fx.sb.MAILERS = { mailers: [{ id: 'mailer.a', available: true }], event: { name: 'QA Summit', hashtag: '#QA26', dateLabel: '5–7 December, 2026', venue: 'Taj, Chennai',
+  siteAccent: '#ff0000', published: true, micrositeUrl: 'https://x.example/e/x' } };
+fx.sb.owRenderPage();
+var fxh = fx.els.content.innerHTML, facts = (/<div class="ow-facts">([\s\S]*?)<\/div>/.exec(fxh) || [])[1];
+check('UX-134: the mailer page opens with one slim line: the hashtag and Website ↗', facts === '<span class="hchip">#QA26</span><a class="chip" href="https://x.example/e/x" target="_blank" rel="noopener">Website ↗</a>', facts);
+check('UX-134: no event card, no logo square, and the name, date and venue (the console\'s header has them) are not repeated',
+  fxh.indexOf('ev-head') === -1 && fxh.indexOf('class="logo') === -1 && fxh.indexOf('QA Summit') === -1 && fxh.indexOf('December') === -1 && fxh.indexOf('Chennai') === -1 && fxh.indexOf('<h2>') === -1);
+check('UX-134: the number of mailers is still on the Promotional mailers tab', fxh.indexOf('Promotional mailers <span class="n">1</span>') !== -1);
+check('UX-134: a site not published: no Website ↗, the "Not published yet" chip', fx.sb.owFactsLine({ hashtag: '#QA26' }, false, '') ===
+  '<div class="ow-facts"><span class="hchip">#QA26</span><span class="chip ow-unpub-chip">Not published yet</span></div>');
+check('UX-134: no hashtag and a live site with no address: an empty line, which takes no room', fx.sb.owFactsLine({}, true, '') === '<div class="ow-facts"></div>' &&
+  cssRules.indexOf('.ow-facts:empty{display:none}') !== -1);
+[['.ow-facts', '--bg', 'the facts line'], ['.ow-facts .stat', '--bg', 'a count'], ['.ow-facts .stat span', '--bg', 'a count\'s words']].forEach(function (p) {
+  var fg = varOf(ruleBody(p[0]), 'color');
+  [['light', LIGHT], ['dark', DARK]].forEach(function (t) {
+    var r = fg ? ratio(t[1][fg] || '#000000', t[1][p[1]] || '#000000') : 0;
+    check('UX-134 AA, ' + t[0] + ': ' + p[2] + ' (' + r.toFixed(2) + ':1)', r >= 4.5, [p[0], fg, p[1]]);
+  });
+});
+
+/* ---- UX-133: an empty dashboard while nothing is recorded says so, and names who to ask ---- */
+check('UX-133: the "not being saved" note names who to ask', studio.indexOf('Ask your Oneworld admin to turn on performance tracking.') !== -1 && studio.indexOf('whoever set up') === -1);
+var paintSrc = studioFn('paintAnalytics');
+check('UX-133: the platform\'s dashboard asks owDashNotRecorded first when it has nothing to show', !!paintSrc && paintSrc.indexOf('${empty?owDashNotRecorded(a)||`<div class="card an-empty">') !== -1);
+function paintEmpty(scope, data, mailers) {
+  var x = load(scope);
+  x.sb.MAILERS = mailers || null;
+  x.sb.AN.data = data;
+  vm.runInContext(paintSrc + '\nthis.__paint = paintAnalytics;', x.sb);
+  x.sb.__paint();
+  return x.els.content.innerHTML;
+}
+var offTeam = paintEmpty('?scope=all', { backend: 'none', totals: { sends: 0, opens: 0, clicks: 0 }, series: [], sends: [] });
+check('UX-133: tracking off, nothing recorded: "Performance isn’t being recorded yet", not "No mailers generated yet"',
+  offTeam.indexOf('<h4>Performance isn’t being recorded yet</h4>') !== -1 && offTeam.indexOf('No mailers generated yet') === -1 &&
+  offTeam.indexOf('Mailers downloaded or copied before it is turned on won’t show here.') !== -1, offTeam);
+check('UX-133: … with no "Pick an event" button (making a mailer would not change this page), under the amber note',
+  offTeam.indexOf('Pick an event') === -1 && /an-note warn[\s\S]*an-empty/.test(offTeam) && !/class="card an-empty">[\s\S]*<button/.test(offTeam));
+var offEvent = paintEmpty('?event=x', { backend: 'firestore', totals: { sends: 0, opens: 0, clicks: 0 }, series: [], sends: [] }, { tracking: false, mailers: [], event: {} });
+check('UX-133: an event whose mails go out untracked says the same, though the numbers could be recorded', offEvent.indexOf('Performance isn’t being recorded yet') !== -1 && offEvent.indexOf('Make a mailer') === -1);
+var onEvent = paintEmpty('?event=x', { backend: 'firestore', totals: { sends: 0, opens: 0, clicks: 0 }, series: [], sends: [] }, { tracking: true, mailers: [], event: {} });
+check('UX-133: recorded and empty: the platform\'s own empty state, with its button', onEvent.indexOf('No mailers generated yet') !== -1 && onEvent.indexOf('Make a mailer →</button>') !== -1 &&
+  onEvent.indexOf('isn’t being recorded') === -1);
+check('UX-133: owDashNotRecorded leaves numbers being recorded to the platform', ev.sb.owDashNotRecorded({ backend: 'firestore' }) === '' && ev.sb.owDashNotRecorded(null) === '' &&
+  team.sb.owDashNotRecorded({ backend: 'none' }).indexOf('isn’t being recorded yet') !== -1);
+
+/* ---- UX-136: sizes in KB / MB ---- */
+check('UX-136: a picture\'s size reads as people read it', ev.sb.owSize(2611 * 1024) === '2.5 MB' && ev.sb.owSize(1024 * 1024) === '1.0 MB' && ev.sb.owSize(480 * 1024) === '480 KB' &&
+  ev.sb.owSize(100) === '1 KB' && ev.sb.owSize(0) === '1 KB', [ev.sb.owSize(2611 * 1024), ev.sb.owSize(480 * 1024)]);
+check('UX-136: the picture export\'s toast uses it ("PNG downloaded (2.5 MB)", not "(2611kb)")', owSrc.indexOf("toast(format.toUpperCase() + ' downloaded (' + owSize(blob.size) + ')');") !== -1 &&
+  owSrc.indexOf("'kb)'") === -1);
+
+/* ---- UX-136: the mail is scaled to fit the studio's stage, never up ---- */
+function stage(x, width, frameW, frameH) {
+  var props = {};
+  x.els.mailer.classList = { contains: function (c) { return c === 'on'; } };
+  var cls = {};
+  x.els.mlStage = { clientWidth: width, style: { setProperty: function (k, v) { props[k] = String(v); }, removeProperty: function (k) { delete props[k]; },
+    getPropertyValue: function (k) { return props[k] || ''; } },
+    classList: { add: function (c) { cls[c] = true; }, remove: function (c) { delete cls[c]; }, contains: function (c) { return !!cls[c]; } } };
+  x.els.mlCanvas = { style: { transform: '', margin: '' } };
+  x.els.mlFrame = { offsetWidth: frameW, offsetHeight: frameH };
+  x.win.getComputedStyle = function () { return { paddingLeft: '22px', paddingRight: '22px' }; };
+  return props;
+}
+var fit = load('?event=x'), fitProps = stage(fit, 750, 790, 2000);
+fit.sb.mlFit();
+var want = Math.floor((750 - 44) / 790 * 1000) / 1000;
+check('UX-136: at 1280 px (a 750 px stage) the 790 px mail is scaled to the room it has, once it is measured (mlFit)', fit.calls.fit === 1 && fitProps['--s'] === String(want) &&
+  fit.els.mlCanvas.style.transform === 'scale(' + want + ')', [fitProps, fit.els.mlCanvas.style]);
+check('UX-136: … its box takes only the room it shows (negative margins at the sides and below)',
+  fit.els.mlCanvas.style.margin === '0 ' + (-Math.floor(790 * (1 - want) / 2)) + 'px ' + (-Math.floor(2000 * (1 - want))) + 'px', fit.els.mlCanvas.style.margin);
+fit.els.mlStage.clientWidth = 1200; fit.sb.owFitCanvas();
+check('UX-136: a stage wide enough: no scale, no margins, no --s', !('--s' in fitProps) && fit.els.mlCanvas.style.transform === '' && fit.els.mlCanvas.style.margin === '');
+fit.els.mlStage.clientWidth = 480; fit.els.mlFrame.offsetWidth = 412; fit.sb.owFitCanvas();
+check('UX-136: the Mobile width (412 px) fits a 480 px stage as it is', !('--s' in fitProps) && fit.els.mlCanvas.style.transform === '');
+fit.els.mlStage.clientWidth = 200; fit.els.mlFrame.offsetWidth = 790; fit.sb.owFitCanvas();
+check('UX-136: never smaller than OW_MIN_SCALE', fitProps['--s'] === String(fit.sb.OW_MIN_SCALE));
+fit.els.mlStage.clientWidth = 0; fit.sb.owFitCanvas();
+check('UX-136: a stage not laid out (the studio closing) leaves the scale as it was', fitProps['--s'] === String(fit.sb.OW_MIN_SCALE));
+/* at the floor the mail can still be wider than the stage: it is then started at the left, not centred out of reach */
+fit.els.mlStage.clientWidth = 336; fit.sb.owFitCanvas();                      // an 800 px window: 292 px of room, 316 px of mail
+check('UX-136: held at OW_MIN_SCALE and still wider than the stage (an 800 px window), the stage starts it at the left',
+  fitProps['--s'] === String(fit.sb.OW_MIN_SCALE) && fit.els.mlStage.classList.contains('ow-over'));
+fit.els.mlStage.clientWidth = 750; fit.sb.owFitCanvas();
+check('UX-136: … and centres it again once it fits (1280 px)', fitProps['--s'] === String(want) && !fit.els.mlStage.classList.contains('ow-over'));
+[701, 702, 703, 705, 707, 709, 711, 600, 500, 360, 360.5].forEach(function (room) {
+  fit.els.mlStage.clientWidth = room + 44; fit.sb.owFitCanvas();
+  check('UX-136: a mail scaled above the floor always fits, so it stays centred (' + room + ' px of room)',
+    !fit.els.mlStage.classList.contains('ow-over') && 790 * Number(fitProps['--s']) <= room, fitProps['--s']);
+});
+fit.els.mlStage.clientWidth = 336; fit.sb.owFitCanvas(); fit.els.mlStage.clientWidth = 1200; fit.sb.owFitCanvas();
+check('UX-136: … and with room for the whole mail, unscaled and centred', !('--s' in fitProps) && !fit.els.mlStage.classList.contains('ow-over'));
+check('UX-136: the stage that starts the mail at the left', cssRules.indexOf('#mlStage.ow-over{justify-content:flex-start}') !== -1 &&
+  /\.ml-stage\{[^}]*display:flex;justify-content:center;/.test(platformCss));
+var shut = load('?event=x'), shutProps = stage(shut, 700, 790, 900);
+shut.els.mailer.classList = { contains: function () { return false; } };
+shut.sb.owFitCanvas();
+check('UX-136: with the studio shut nothing is measured or changed', !('--s' in shutProps) && shut.els.mlCanvas.style.transform === '');
+check('UX-136: it is fitted again when the window is resized', /window\.addEventListener\('resize', owFitCanvas\);/.test(owSrc));
+check('UX-136: the canvas is scaled about its top centre', cssRules.indexOf('#mlCanvas{transform-origin:50% 0}') !== -1);
+/* the drop line is placed in the scaled overlay's own space */
+fitProps['--s'] = '0.89';
+fit.els.mlDrop = { style: { top: '178px' } };
+fit.sb.mlDropShow(3);
+check('UX-136: the drop line, measured on screen, is put back into the scaled canvas', fit.els.mlDrop.style.top === Math.round(178 / 0.89) + 'px', fit.els.mlDrop.style.top);
+delete fitProps['--s'];
+fit.els.mlDrop.style.top = '178px'; fit.sb.mlDropShow(3);
+check('UX-136: … and left as it is when the mail is not scaled', fit.els.mlDrop.style.top === '178px');
+check('UX-136: the studio\'s own pointer maths read the stage\'s --s (so the scale needs nothing else)',
+  count(studio, 'getComputedStyle($("mlStage")).getPropertyValue("--s")') === 4);
+/* the controls drawn over the scaled mail keep their own size (a selected block's buttons were 15 x 14 px at 1024 px) */
+check('UX-136: a block\'s name tag and its Drag / Duplicate / Delete buttons are scaled back up by 1 / --s, kept 29 px above the block on screen',
+  cssRules.indexOf('#mlStage .ml-hot .tb,#mlStage .ml-hot .tag{top:calc(-29px / var(--s,1));transform:scale(calc(1 / var(--s,1)))}') !== -1 &&
+  cssRules.indexOf('#mlStage .ml-hot .tb{transform-origin:100% 0}') !== -1 && cssRules.indexOf('#mlStage .ml-hot .tag{transform-origin:0 0}') !== -1);
+check('UX-136: … from the platform\'s own 29 px (mailer-studio.css), so the two stay in step',
+  /\.ml-hot \.tb\{position:absolute;top:-29px;right:-1px;/.test(platformCss) && /\.ml-hot \.tag\{position:absolute;top:-29px;left:-1px;/.test(platformCss));
+check('UX-136: the "+" that inserts a block is scaled back up about its centre, on the block\'s lower edge',
+  cssRules.indexOf('#mlStage .ml-hot .ins{transform:scale(calc(1 / var(--s,1)));transform-origin:50% 50%}') !== -1 &&
+  /\.ml-hot \.ins\{position:absolute;bottom:-11px;left:50%;margin-left:-11px;width:22px;height:22px;/.test(platformCss));
+check('UX-136: no platform rule already transforms those controls (the counter-scale would replace it)',
+  !/\.ml-hot[^{]*\.(tb|tag|ins)[^{]*\{[^}]*transform/.test(platformCss) && !/\.ml-hot[^{]*\.(tb|tag|ins)[^{]*\{[^}]*transform/.test(cssRules.replace(/#mlStage \.ml-hot[^{]*\{[^}]*\}/g, '')));
+
+/* ---- UX-136, UX-139: the team's page: no nav row, its content in the bar's column ---- */
+check('UX-139: the team\'s page hides its nav row', cssRules.indexOf('body.ow-team .ow-bar{display:none}') !== -1);
+check('UX-136: its content takes the column of mailer-performance.html\'s bar (1240 px, 24 px in; 16 px and 12 px on phones)',
+  cssRules.indexOf('body.ow-team .content{padding:22px max(24px,calc((100% - 1240px) / 2 + 24px)) 48px}') !== -1 &&
+  cssRules.indexOf('@media (max-width:700px){ body.ow-team .content{padding-left:16px;padding-right:16px} }') !== -1 &&
+  cssRules.indexOf('@media (max-width:374px){ body.ow-team .content{padding-left:12px;padding-right:12px} }') !== -1);
+var mp = read('mailer-performance.html');
+check('UX-136: … which is still that bar: 1240 px, 24 px in, 16 px at 700 px and 12 px at 374 px', /\.nav-inner\{ max-width:1240px; margin:0 auto;[^}]*padding:0 24px; \}/.test(mp) &&
+  /@media \(max-width: 700px\)\{\s*\.nav-inner\{ padding:0 16px;/.test(mp) && /@media \(max-width: 374px\)\{\s*\.nav-inner\{ padding:0 12px;/.test(mp));
 
 Promise.all(pending).then(function () {
   if (failed) { console.error('promo-studio: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }

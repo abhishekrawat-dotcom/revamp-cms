@@ -31,6 +31,10 @@
    The Testimonial is always available, but a card is drawn with its default options, whose quote is empty: the
    card gets a library quote AND an example voice, so a made-up quote is never put in a real person's mouth. In the
    same way the agenda's example sessions are given example people only, never the event's real speakers.
+   The Prediction vs Outcome post is always available too, but its two paragraphs are the template's own filler
+   ("Last year set the signals…", "This year, leaders will act on it…"), which reads as this event's claim: until
+   both are the user's own, its card is marked as an example (filled: ['prediction']), with nothing else changed,
+   since the words already are the example (UX-135). The editor will not download it until then.
 
    WHY THE MARKERS. Example content must never reach a save, a download, an export, a send or the AI. The
    server's guards (promo-mailer.js, promo.js, promo-social.js, api.js checkPromoBody) refuse anything isExample
@@ -253,6 +257,16 @@ function exampleAward(ev, id) {
   };
 }
 
+/* UX-135: a post whose own words are the template's filler until the user writes them: its param keys. Left to
+   the template while a value is empty or still the template's default (spaces and case aside). */
+var FILLER_LINES = { 'generic.prediction-outcome': ['prediction', 'outcome'] };
+function squash(v) { return String(v == null ? '' : v).replace(/\s+/g, ' ').trim().toLowerCase(); }
+function fillerLeft(id, p) {
+  var keys = FILLER_LINES[id], E = eng(), t = typeof E.getTemplate === 'function' ? E.getTemplate(id) : null, own = {};
+  ((t && t.params) || []).forEach(function (x) { if (x && keys.indexOf(x.key) !== -1) own[x.key] = squash(x.default); });
+  return keys.some(function (k) { var v = squash(p[k]); return !v || v === own[k]; });
+}
+
 /* a card is drawn with default options: an empty quote gets a library quote and that quote's own example person
    as the voice (appended to the speakers and picked), with any attribution override cleared */
 function quoteFill(ev, p, base) {
@@ -275,6 +289,7 @@ function fillFor(id, ev, params, opts) {
   var rule = Object.prototype.hasOwnProperty.call(FILLS, id) ? FILLS[id] : null, base = baseOf(opts);
 
   if (id === 'generic.testimonial') return String(p.quote == null ? '' : p.quote).trim() ? none : quoteFill(ev, p, base);
+  if (Object.prototype.hasOwnProperty.call(FILLER_LINES, id)) return fillerLeft(id, p) ? { ev: ev, params: p, filled: ['prediction'], state: null } : none;
   if (gateOk(id, ev)) return none;
   var state = stateOf(id, ev);
   if (state) return { ev: ev, params: p, filled: [], state: state };
@@ -380,7 +395,7 @@ function isExample(x) {
 
 /* what the filled keys are called in a sentence */
 var WORDS = { speakers: 'speakers', sponsors: 'partners', sessions: 'sessions', points: 'discussion points', why: 'reasons to join',
-  award: 'award facts', audience: 'audience', stats: 'numbers', quote: 'quote and its speaker' };
+  award: 'award facts', audience: 'audience', stats: 'numbers', quote: 'quote and its speaker', prediction: 'prediction and outcome' };
 function wordsFor(filled) {
   var w = (Array.isArray(filled) ? filled : []).map(function (k) { return WORDS[k]; }).filter(Boolean);
   if (!w.length) return 'parts';
@@ -423,4 +438,5 @@ function markPostHtml(html, filled) {
 module.exports = {
   fillFor: fillFor, isExample: isExample, markMailHtml: markMailHtml, markPostHtml: markPostHtml, EXAMPLE_PATH: EXAMPLE_PATH
 };
-module.exports._test = { library: library, libraryProblem: libraryProblem, FILLS: FILLS, stateOf: stateOf, wordsFor: wordsFor, baseOf: baseOf, LIBRARY_FILE: LIBRARY_FILE };
+module.exports._test = { library: library, libraryProblem: libraryProblem, FILLS: FILLS, stateOf: stateOf, wordsFor: wordsFor, baseOf: baseOf, LIBRARY_FILE: LIBRARY_FILE,
+  FILLER_LINES: FILLER_LINES };

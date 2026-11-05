@@ -31,6 +31,12 @@
     .ev-portal-mini{ display:inline-flex; }
   }
 </style>
+<!-- a block of its own: the one above is the event console's header rules, kept identical to edit-event.html's -->
+<style>
+  /* the line under the tabs while a mailer ETB2B AI opened waits on the Mailers tab (mailerWaitingHtml) */
+  .promo-deep-note{ margin-top:12px; align-items:center; flex-wrap:wrap; }
+  .promo-deep-note > span{ flex:1 1 220px; min-width:0; }
+</style>
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 </head>
 <body>
@@ -99,7 +105,13 @@
 
      States, never a silent fallback: no event in the address, an event that does not exist, a Kit that did not
      load (with Try again), and signed out (auth.js sends the user to sign in). The old Promotions screens
-     (edit-event-marketing.js, sample data) are not loaded here any more. */
+     (edit-event-marketing.js, sample data) are not loaded here any more.
+
+     UX-121: only Site-look posts reads the Kit, so the tabs are drawn at once, beside the event's own request, and
+     the framed studio of the tab shown starts loading straight away; Site-look posts waits for the Kit in its own
+     pane, and a Kit that did not load is said there. On Social posts, its catalog (with every card's post) is asked
+     for beside the event and the Kit (prefetchSocial), and the frame takes that answer instead of asking again once
+     it has loaded. */
   var C = window.RevampCore;
   var $ = C.$, esc = C.esc, svg = C.svg, IC = C.IC;
   var eventId = (new URLSearchParams(location.search).get('event') || '').trim();
@@ -113,7 +125,18 @@
   function tabFrom(v){ return v === 'mailers' ? 'mailers' : v === 'site-posts' ? 'site-posts' : 'posts'; }
   var tab = tabFrom(new URLSearchParams(location.search).get('tab'));
 
-  var KIT = null, mounted = {};
+  /* ETB2B AI on the events dashboard opens Promotions on what the person asked for ("a save-the-date post and an
+     announcement mailer"): &template=<id> is one of the platform's social posts, which the Social posts frame opens
+     in its editor (promo-studio/oneworld-social.js); &post=<type> is a site-look post, which promo-posts.js opens;
+     &mailer= is the mailer deep link the Mailers frame already takes (MAILER_DEEP). A post counts only on the tab
+     the page opens on, and only for the first time that tab is mounted. A mailer named while another tab opens
+     first waits on the Mailers tab, and a line under the tabs says so until Mailers is shown. */
+  var DEEP = new URLSearchParams(location.search);
+  var SOCIAL_DEEP = tab === 'posts' && /^[a-z]+\.[a-z-]+$/.test(DEEP.get('template') || '') ? '&template=' + DEEP.get('template') : '';
+  var POST_DEEP = tab === 'site-posts' && /^[a-z-]+$/.test(DEEP.get('post') || '') ? DEEP.get('post') : '';
+  var MAILER_WAITING = tab !== 'mailers' && !!DEEP.get('mailer');
+
+  var KIT = null, KIT_P = null, mounted = {};
 
   function toast(msg, opts){ C.toast(msg, opts); }
 
@@ -208,16 +231,31 @@
     var again = $('promo-retry');
     if (again) again.onclick = init;
   }
-  function renderKitError(err){
+  /* the Kit did not load: said in Site-look posts' own pane (the only tab that reads it), with Try again */
+  function renderKitError(host, err){
     console.error('Promotions kit failed to load:', err);
-    $('view').innerHTML = head() + '<div style="padding:40px 20px">' + C.emptyState(IC.info, 'The event’s look and content did not load',
+    host.innerHTML = '<div style="padding:40px 20px">' + C.emptyState(IC.info, 'The event’s look and content did not load',
       errText(err) + ' Nothing has been lost.',
       '<button class="btn btn-primary btn-sm" type="button" id="promo-retry">Try again</button>') + '</div>';
-    $('promo-retry').onclick = function(){ renderLoading(); loadKit(true); };
+    var again = $('promo-retry');
+    if (again) again.onclick = function(){ mounted['site-posts'] = false; KIT_P = null; show(); };
   }
 
+  function mailerWaitingHtml(){
+    if (!MAILER_WAITING) return '';
+    return '<div class="callout promo-deep-note" id="promo-mailer-waiting" role="status">' + svg(IC.info, 16) +
+      '<span>ETB2B AI also opened a mailer for you. It is ready on the Mailers tab.</span>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="promo-mailer-open">Open Mailers</button></div>';
+  }
+  /* the mailer has been seen: the line goes, for good */
+  function mailerSeen(){
+    if (!MAILER_WAITING) return;
+    MAILER_WAITING = false;
+    var note = $('promo-mailer-waiting');
+    if (note){ note.hidden = true; note.innerHTML = ''; }
+  }
   function renderTabs(){
-    $('view').innerHTML = head() + tabsHtml() + TABS.map(function(t){
+    $('view').innerHTML = head() + tabsHtml() + mailerWaitingHtml() + TABS.map(function(t){
       return '<section class="promo-pane" role="tabpanel" id="pane-' + t.id + '" aria-labelledby="tab-' + t.id + '"' + (t.id === tab ? '' : ' hidden') + '>' +
         '<div id="' + t.root + '"></div></section>';
     }).join('');
@@ -237,6 +275,9 @@
       e.preventDefault();
       select(TABS[to].id, true);
     });
+    /* the line's own button: the keyboard lands on the Mailers tab, as the line goes */
+    var openMailers = $('promo-mailer-open');
+    if (openMailers) openMailers.onclick = function(){ select('mailers', true); };
     show();
   }
   function select(id, focus){
@@ -256,6 +297,7 @@
       if (k.tab === tab && f && f._rvPin && f.classList.contains('is-studio')) f._rvPin.y = window.pageYOffset || 0;
     });
     lockPage();
+    if (tab === 'mailers') mailerSeen();
     show();
   }
   /* each studio is mounted the first time its tab is shown, and kept: switching tabs loses nothing. Site-look
@@ -268,11 +310,19 @@
       return;
     }
     var t = TABS.filter(function(x){ return x.id === tab; })[0];
-    var host = $(t.root), ctx = { eventId: eventId, kit: KIT, toast: toast };
+    var host = $(t.root);
     if (tab === 'site-posts') {
       if (!window.RevampPromoPosts) { host.innerHTML = '<p class="promo-quiet">The posts studio did not load. Reload the page.</p>'; return; }
       mounted['site-posts'] = true;
-      window.RevampPromoPosts.mount(host, ctx);
+      if (!KIT) {
+        host.innerHTML = '<div class="promo-state" role="status"><span class="spin"></span><b>Loading this event’s look and content…</b></div>';
+        kitPromise(!KIT_P).then(function(kit){
+          KIT = kit || {};
+          if ($(t.root) === host) mountSitePosts(host);
+        }, function(err){ if ($(t.root) === host) renderKitError(host, err); });
+        return;
+      }
+      mountSitePosts(host);
       return;
     }
     /* Social posts and Mailers are the promotional platform's own studios (promo-social-studio.html,
@@ -282,8 +332,12 @@
        listener below). */
     if (tab === 'posts') {
       mounted.posts = true;
-      host.innerHTML = '<iframe class="promo-social-frame" id="promo-social-frame" title="Social posts" src="promo-social-studio.html?event=' +
+      var frame = '<iframe class="promo-social-frame" id="promo-social-frame" title="Social posts" src="promo-social-studio.html?event=' +
         encodeURIComponent(eventId) + '"></iframe>';
+      /* the post ETB2B AI opened rides on the frame's address, as a mailer's does on its frame (SOCIAL_DEEP is
+         checked above: lower-case letters, a dot and hyphens only) */
+      host.innerHTML = SOCIAL_DEEP ? frame.replace('"></iframe>', SOCIAL_DEEP + '"></iframe>') : frame;
+      SOCIAL_DEEP = '';
       watchFrame(FRAMES.social);
       return;
     }
@@ -294,6 +348,31 @@
     host.innerHTML = '<iframe class="promo-mailer-frame" id="promo-mailer-frame" title="Mailers" src="promo-mailer-studio.html?event=' +
       encodeURIComponent(eventId) + (MAILER_DEEP ? MAILER_DEEP : '') + '"></iframe>';
     watchFrame(FRAMES.mailer);
+  }
+  function mountSitePosts(host){
+    var ctx = { eventId: eventId, kit: KIT, toast: toast };
+    /* the post ETB2B AI opened (POST_DEEP): its editor, or why the event cannot make it yet */
+    if (POST_DEEP) { ctx.open = POST_DEEP; POST_DEEP = ''; }
+    window.RevampPromoPosts.mount(host, ctx);
+  }
+  /* the event's Kit, asked for once a page (fresh: asked for again, after a failure); KIT is set as soon as it
+     comes, so Site-look posts opened after that mounts at once */
+  function kitPromise(fresh){
+    if (!KIT_P || fresh) {
+      var p = KIT_P = withSession(function(){ return window.RevampPromo.load(eventId, !!fresh); });
+      p.then(function(kit){ if (KIT_P === p) KIT = kit || {}; }, function(){});
+    }
+    return KIT_P;
+  }
+  /* UX-121: Social posts' catalog with every card's post (cards=1), asked for now, beside the event and the Kit,
+     instead of after its frame has loaded; the frame takes it once (promo-studio/oneworld-social.js owCatalog) and
+     asks itself when this did not answer. Only when the page opens on Social posts. */
+  function prefetchSocial(){
+    if (tab !== 'posts' || !window.RevampAuth || typeof RevampAuth.authedFetch !== 'function') return;
+    var p = RevampAuth.authedFetch('/api/promo/social/catalog?eventId=' + encodeURIComponent(eventId) + '&cards=1').then(function(r){
+      return r.text().then(function(text){ return { status: r.status, text: text }; });
+    }).then(null, function(){ return null; });
+    window.RevampSocialPrefetch = { eventId: eventId, catalog: p, used: false };
   }
   var MAILER_DEEP = (function(){
     var q = new URLSearchParams(location.search), m = q.get('mailer'), v = q.get('version');
@@ -429,14 +508,6 @@
     }
   });
 
-  function loadKit(fresh){
-    return withSession(function(){ return window.RevampPromo.load(eventId, fresh); }).then(function(kit){
-      KIT = kit || {};
-      mounted = {};
-      renderTabs();
-    }, renderKitError);
-  }
-
   function init(){
     if (!eventId) { renderEventError(null, 'none'); return; }
     $('ev-name').textContent = 'Loading…';
@@ -444,11 +515,15 @@
     renderEventRail('rail', { activeSection: 'marketing', eventId: eventId });
     renderLoading();
     window.RevampPromo.use(eventId);
-    var kitP = withSession(function(){ return window.RevampPromo.load(eventId); });
-    kitP.catch(function(){});
+    /* the Kit (for Site-look posts and the mail banner) and Social posts' catalog start beside the event, and the
+       tabs are drawn at once, so the studio's frame loads while the event is still on its way; an event that does
+       not exist replaces them with its message (renderEventError) */
+    kitPromise(false);
+    prefetchSocial();
+    mounted = {};
+    renderTabs();
     withSession(function(){ return C.fetchEvent(eventId); }).then(function(ev){
       paintHeader(ev);
-      return kitP.then(function(kit){ KIT = kit || {}; mounted = {}; renderTabs(); }, renderKitError);
     }, function(err){ renderEventError(err); });
   }
 

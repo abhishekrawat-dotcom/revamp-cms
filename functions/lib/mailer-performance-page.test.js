@@ -70,8 +70,10 @@ check('the viewport is set for phones', page.indexOf('<meta name="viewport" cont
    to the "Latest Activity" panel, and the list / card switch to the row above the table) */
 var listing = fs.readFileSync(path.join(ROOT, 'Event_Listing.html'), 'utf8');
 var MENU = '\'<a class="popover-item" href="mailer-performance.html" id="menu-mailer-performance">\' + REPORT_IC.mailers + \' Mailer performance</a>\'';
+/* the "Latest activity" panel's Mailer opens row links to it too, as its own drill-down (QA F4): that is not a menu */
+var activityCode = listing.slice(listing.indexOf('     LATEST ACTIVITY —'), listing.indexOf('     APP RENDER'));
 check('the ⋯ menu lists Mailer performance once, under a "Reports" heading after the deleted events',
-  count(listing, MENU) === 1 && count(listing, 'href="mailer-performance.html"') === 1 &&
+  count(listing, MENU) === 1 && count(listing.replace(activityCode, ''), 'href="mailer-performance.html"') === 1 && activityCode.length > 1000 &&
   listing.indexOf('<div class="popover-label">Reports</div>') > listing.indexOf('data-special="deleted"') &&
   listing.indexOf(MENU) > listing.indexOf('<div class="popover-label">Reports</div>'));
 check('…and the Activity log beside it', listing.indexOf('<a class="popover-item" href="activity-log.html" id="menu-activity-log">') > listing.indexOf(MENU));

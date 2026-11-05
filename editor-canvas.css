@@ -48,6 +48,11 @@ html[data-rv-editing] [data-rv-section].is-hidden-sec::before{
 /* Shared header/footer can't be edited per template. */
 html[data-rv-editing] [data-rv-locked]{ cursor:not-allowed; }
 
+/* A section ETB2B AI is rewriting (editor-template-ui.js lockSection): dimmed and not clickable until its answer is in;
+   the caption over it is the editor's. Opacity and an outline only, so nothing moves. */
+html[data-rv-editing] [data-rv-section][data-rv-ai-busy]{ outline:2px dashed #8A5A9E; outline-offset:-2px; cursor:progress; }
+html[data-rv-editing] [data-rv-section][data-rv-ai-busy] > *{ opacity:.45; pointer-events:none !important; }
+
 /* AI-provenance badges (Generate-from-Brief review gate) — editor-template-ui.js renders these as plain
    child spans on any section editor-fill.js stamped data-ai-generated / data-ai-skipped (a Generate-from-
    -Brief draft only). Deliberately NOT hover-gated like [data-editable] above — the whole point is to be

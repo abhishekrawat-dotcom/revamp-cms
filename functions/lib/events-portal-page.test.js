@@ -39,9 +39,12 @@ var portalCode = INLINE.slice(INLINE.indexOf('PORTALS — the dashboard works on
 check('D.3 the portal code is one block, with no link to index.html in it', portalCode.length > 5000 && portalCode.indexOf('index.html') === -1);
 check('D.3 the switcher button says "Portal" until it is known (never a guessed name)', /<button class="mp-btn" id="btn-portals-nav" type="button" aria-haspopup="listbox">\s*Portal\s*<svg/.test(PAGE) && PAGE.indexOf('Brandequity') === -1);
 var scripts = PAGE.match(/<script\b[^>]*>/g) || [];
-check('D.3 scripts: the theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, then the inline script',
-  JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script>']), scripts);
-check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
+/* with ETB2B AI's (8bebdc9): event-lifecycle.js between the picker and the inline script, the chat after it; and
+   edit-event-core.js (B07: the API calls of Clone, Delete and Restore) before auth.js */
+check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, then ETB2B AI\'s two',
+  JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>',
+    '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
 check('D.3 the server sends portal-picker.js', require('./access').isServableFile('portal-picker.js') === true && fs.existsSync(path.join(ROOT, 'portal-picker.js')));
 check('D.3 th.col-portal right after "Event name"', count(PAGE, '<th class="col-portal">Portal</th>') === 1 && /<th>Event name<\/th>\n\s*<th class="col-portal">Portal<\/th>/.test(PAGE));
 check('D.3 #portal-notice right after #special-banner', count(PAGE, 'id="portal-notice"') === 1 && /<div id="special-banner"><\/div>\n\s*<!--[^\n]*-->\n\s*<div id="portal-notice"><\/div>/.test(PAGE));
@@ -82,7 +85,14 @@ check('D.3 the switcher menu is at most 340 px wide and 60vh tall, its list scro
   check('D.3 counts are --text-muted (the page\'s --text-faint would fail AA)', /\.pn-opt \.pn-count\{[^}]*color:var\(--text-muted\)/.test(CSS) && ratio(block(/:root\{/)['text-faint'], block(/:root\{/).surface) < 4.5);
 })();
 
-/* the toolbar, the ⋯ menu, the KPI and the Latest Activity markup at dc1a8e1, copied here: they must not change */
+/* the toolbar, the ⋯ menu, the KPI and the Latest Activity markup at dc1a8e1, copied here: they must not change.
+   ETB2B AI's branch (8bebdc9, merged after this change) rewrote two of them, the KPI cards and the Latest activity
+   panel, to show real figures only: those two are held to its copies below instead, which this change must leave
+   alone just the same. */
+var BOT_8BEBDC9 = {
+  kpiCards: "function card(label, icon, n, sub){\n      var value = loading ? '<div class=\"kpi-skel skel\"></div><span class=\"sr-only\">Loading</span>'\n        : ok ? '<span class=\"kpi-num\" title=\"' + fmtNum(n) + '\">' + fmtCompact(n) + '</span>'\n        : '<span class=\"kpi-num kpi-none\" aria-label=\"No figure\">—</span>';\n      return '<div class=\"kpi-card fade-in\">' +\n        '<div class=\"kpi-top\"><span class=\"kpi-label\">' + label + '</span><span class=\"kpi-icon\">' + icon + '</span></div>' +\n        value + '<span class=\"kpi-sub\">' + (ok || loading ? sub : (p ? 'Could not be loaded' : 'No figure for that period')) + '</span>' +\n      '</div>';\n    }\n    $('kpi-grid').innerHTML =\n      card('Visitors', IC.users, vis, 'Page views of these events’ sites') +\n      card('New registrations', IC.ticket, reg, 'People who registered on these events’ sites') +\n      '<div class=\"kpi-card is-none fade-in\">' +\n        '<div class=\"kpi-top\"><span class=\"kpi-label\">Revenue</span><span class=\"kpi-icon\">' + IC.wallet + '</span></div>' +\n        '<span class=\"kpi-num kpi-none\" aria-label=\"No figure\">—</span><span class=\"kpi-sub\">Payments are not part of Oneworld 2.0 yet</span>' +\n      '</div>' + note;",
+  activityMarkup: "<div class=\"card panel-card\" id=\"activity-card\">\n      <div class=\"panel-card-head\">\n        <div>\n          <h3>Latest activity</h3>\n          <p class=\"panel-sub\">Real figures across all your events, for the period you pick</p>\n        </div>\n        <div class=\"panel-card-head-right\">\n          <!-- every change on every event, with who made it (activity-log.html) -->\n          <a class=\"btn btn-secondary btn-sm\" href=\"activity-log.html\" id=\"btn-activity-log\">\n            <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" aria-hidden=\"true\"><path d=\"M12 8v4l3 2\"/><path d=\"M3.05 11a9 9 0 1 1 .5 4\"/><path d=\"M3 4v5h5\"/></svg>\n            Full activity log\n          </a>\n          <div class=\"popover-wrap\">\n            <button class=\"btn btn-secondary btn-sm\" id=\"btn-activity-range\">\n              <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"4.5\" width=\"18\" height=\"16\" rx=\"2.5\"/><path d=\"M3 9.5h18M8 3v3M16 3v3\"/></svg>\n              <span id=\"activity-range-label\">Last 30 days</span>\n              <svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.3\"><path d=\"M6 9l6 6 6-6\"/></svg>\n            </button>\n            <div class=\"popover range-popover\" id=\"activity-range-popover\" hidden></div>\n          </div>\n        </div>\n      </div>\n      <div class=\"panel-card-body\" id=\"activity-body\"></div>\n    </div>"
+};
 var DC1A8E1 = {
   toolbar: "<div class=\"toolbar\">\n      <div class=\"toolbar-filters-group\">\n        <div class=\"search-box\">\n          <svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M21 21l-4.3-4.3\"/></svg>\n          <input type=\"text\" id=\"search-input\" placeholder=\"Search events…\">\n          <button class=\"clear-btn\" id=\"btn-clear-search\" hidden aria-label=\"Clear search\">\n            <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.3\"><path d=\"M18 6L6 18M6 6l12 12\"/></svg>\n          </button>\n          <span class=\"kbd\" id=\"search-kbd\">/</span>\n        </div>\n\n        <div class=\"popover-wrap desk-only\">\n          <button class=\"toolbar-btn\" id=\"btn-type\">Event Type <svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.3\"><path d=\"M6 9l6 6 6-6\"/></svg></button>\n          <div class=\"popover\" id=\"type-popover\" hidden></div>\n        </div>\n        <div class=\"popover-wrap desk-only\">\n          <button class=\"toolbar-btn\" id=\"btn-portal\">Portal <svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.3\"><path d=\"M6 9l6 6 6-6\"/></svg></button>\n          <div class=\"popover\" id=\"portal-popover\" hidden></div>\n        </div>\n        <button class=\"toolbar-btn mobile-only\" id=\"btn-mobile-filters\">\n          <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M4 5h16M7 12h10M10 19h4\"/></svg>\n          Filters\n        </button>\n\n        <button class=\"toolbar-btn qr-toolbar-btn desk-only\" id=\"btn-qr-toolbar\">\n          <svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1\"/><path d=\"M14 14h3v3h-3zM20 14v3M14 20h3M20 20h.01\"/></svg>\n          QR Codes\n        </button>\n      </div>\n\n      <div class=\"toolbar-right-group\">\n        <span class=\"result-line\" id=\"result-line\"></span>\n\n        <!-- the one action on this toolbar: Mailer performance and the Activity log are in the ⋯ menu above the\n             table (Reports), and the view switch sits on that row too, beside the table it changes -->\n        <a class=\"btn btn-primary btn-create\" href=\"create-event.html?new=1\" id=\"btn-create-event\">\n          <svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.4\" aria-hidden=\"true\"><path d=\"M12 5v14M5 12h14\"/></svg>\n          Create Event\n        </a>\n      </div>\n    </div>\n    ",
   moreMarkup: "<div class=\"popover-wrap\">\n        <button class=\"icon-btn\" id=\"btn-more\" aria-haspopup=\"true\" aria-label=\"More\">\n          <svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"5\" cy=\"12\" r=\"1.5\"/><circle cx=\"12\" cy=\"12\" r=\"1.5\"/><circle cx=\"19\" cy=\"12\" r=\"1.5\"/></svg>\n        </button>\n        <div class=\"popover right\" id=\"more-menu\" hidden></div>\n      </div>",
@@ -95,14 +105,25 @@ function slice(s, a, b, incl) { var i = s.indexOf(a); if (i < 0) return null; va
 [
   ['toolbar', 'the toolbar', '<div class="toolbar">', '<div class="chip-row" id="chip-row">', false],
   ['moreMarkup', 'the ⋯ menu\'s markup', '<div class="popover-wrap">\n        <button class="icon-btn" id="btn-more"', '<div class="popover right" id="more-menu" hidden></div>\n      </div>', true],
-  ['moreMenu', 'the ⋯ menu\'s items', '$(\'more-menu\').innerHTML =', '\' Activity log</a>\';', true],
-  ['kpiMarkup', 'the KPI section', '<section id="insights-section">', '</section>', true],
-  ['kpiCards', 'the KPI cards', 'function card(label, icon, value){', 'card(\'Total Revenue\', IC.wallet, fmtRupee(rev));', true],
-  ['activityMarkup', 'the Latest Activity panel', '<div class="card panel-card" id="activity-card">', '<div class="panel-card-body" id="activity-body"></div>\n    </div>', true]
+  /* the ⋯ menu's items, the KPI section and the KPI cards were held here until both branches had merged; B07 changes
+     them on purpose (UX-034: Cancelled only while an event is cancelled, counts a dash until loaded; UX-039: a line
+     saying what the cards count; UX-025: Revenue says "Payments: not available yet") and pins the new ones below */
+  ['activityMarkup', 'the Latest Activity panel', '<div class="card panel-card" id="activity-card">', '<div class="panel-card-body" id="activity-body"></div>\n    </div>', true, BOT_8BEBDC9, 'ETB2B AI\'s (8bebdc9)']
 ].forEach(function (d) {
-  var now = slice(PAGE, d[2], d[3], d[4]);
-  check('D.3 ' + d[1] + ' is byte-identical to dc1a8e1', typeof DC1A8E1[d[0]] === 'string' && DC1A8E1[d[0]].length > 300 && now === DC1A8E1[d[0]], now && now.length);
+  var now = slice(PAGE, d[2], d[3], d[4]), was = (d[5] || DC1A8E1)[d[0]];
+  check('D.3 ' + d[1] + ' is byte-identical to ' + (d[6] || 'dc1a8e1'), typeof was === 'string' && was.length > 300 && now === was, now && now.length);
 });
+/* B07: what replaced the three pins above; B10 (UX-018) moved Draft Events out of the ⋯ menu into a Drafts tab */
+check('D.3 B10 the ⋯ menu: Cancelled only while some event is cancelled (or it is the view shown), Deleted Events always, then the Reports; no Draft Events',
+  /function renderMoreMenu\(\)\{[\s\S]*?\(cancelled \|\| state\.specialView === 'cancelled' \? item\('cancelled'[\s\S]*?item\('deleted', IC\.trash2, 'Deleted Events'[\s\S]*?Mailer performance<\/a>[\s\S]*?Activity log<\/a>/.test(INLINE) &&
+  INLINE.indexOf("item('draft'") === -1 && /var TABS = \[\['draft','Drafts'\],\['upcoming','Upcoming'\],\['active','Active'\],\['completed','Completed'\]\];/.test(INLINE));
+check('D.3 B07 the KPI section keeps its title, period picker and grid, and has the line saying what the cards count',
+  /<section id="insights-section">\n\s*<div class="insights-head">\n\s*<div>\n\s*<h2 id="insights-title">Upcoming Event Insights<\/h2>\n\s*<p class="insights-scope" id="insights-scope"><\/p>\n\s*<\/div>/.test(PAGE) &&
+  PAGE.indexOf('<span id="range-label">Last 30 days</span>') !== -1 && count(PAGE, 'id="kpi-grid"') === 1);
+check('D.3 B07 the KPI cards: Visitors and New registrations as before (ETB2B AI\'s), Revenue honestly "Payments: not available yet"',
+  INLINE.indexOf(BOT_8BEBDC9.kpiCards.split('\n    $(\'kpi-grid\').innerHTML =')[0]) !== -1 &&
+  INLINE.indexOf("card('Visitors', IC.users, vis, 'Page views of these events’ sites') +\n      card('New registrations', IC.ticket, reg, 'People who registered on these events’ sites') +") !== -1 &&
+  INLINE.indexOf('<span class="kpi-sub">Payments: not available yet</span>') !== -1 && INLINE.indexOf('Payments are not part of Oneworld') === -1);
 check('D.3 Create Event is still alone on the toolbar, with its working default href', DC1A8E1.toolbar.indexOf('<a class="btn btn-primary btn-create" href="create-event.html?new=1" id="btn-create-event">') !== -1);
 
 /* (comments may quote code in backticks, as dc1a8e1's do, so they are taken out first) */
@@ -149,8 +170,13 @@ function varSource(name) { var at = INLINE.indexOf('var ' + name + ' = {'); if (
 var H = { window: {}, Date: Date };
 H.window.RevampPortals = { nameOf: function (s) { return s === 'retail' ? 'ETRetail' : ''; }, chipHtml: function (o) { return '<span class="rvp-chip" data-chip-for="' + o.eventId + '"><button data-set-portal="' + o.eventId + '">Set portal</button></span>'; } };
 vm.createContext(H);
-var FNS = ['esc', 'svg', 'typeLabel', 'hashToEventNo', 'lifecycleOf', 'mapApiEventToRow', 'inWorkingPortal', 'workingPortal', 'onRoster', 'portalNameOf', 'portalCounts', 'portalsWithEvents',
-  'createHref', 'matches', 'quickActionIcon', 'rowActionsHTML', 'portalCellHTML'];
+/* the lifecycle rule is event-lifecycle.js's since ETB2B AI's merge (window.RevampLifecycle), and the search is
+   searchHit (the event's own cells) with portalSearchHit (its portal's name) */
+H.window.RevampLifecycle = require('../../event-lifecycle.js');
+var FNS = ['esc', 'svg', 'typeLabel', 'searchLine', 'searchCells', 'searchHit', 'portalSearchHit', 'mapApiEventToRow', 'inWorkingPortal', 'workingPortal', 'onRoster', 'portalNameOf', 'portalCounts', 'portalsWithEvents',
+  'createHref', 'matches', 'quickActionIcon', 'rowActionsHTML', 'portalCellHTML',
+  /* B07: the row menu marks Delete and Restore "Approvers only" for anyone else (no approvers known here: everyone may) */
+  'mayRemove', 'whoMayRemove', 'listingMe', 'hasDateFilters', 'listFiltered'];
 vm.runInContext([varSource('EVENT_TYPES'), varSource('TYPE_TAG_CLASS'), 'function svg(d, w){ return \'<svg>\' + d + \'</svg>\'; }'].concat(FNS.filter(function (n) { return n !== 'svg'; }).map(fnSource)).join('\n') +
   '\nvar IC = new Proxy({}, { get: function(t, k){ return "[" + String(k) + "]"; } });', H);
 H.PORTAL_ROSTER = ROSTER; H.rosterState = 'ready';
@@ -426,6 +452,14 @@ function page(o) {
     localStorage: { getItem: function (k) { return Object.prototype.hasOwnProperty.call(mem, k) ? mem[k] : null; }, setItem: function (k, v) { mem[k] = String(v); }, removeItem: function (k) { delete mem[k]; } },
     fetch: function (url) {
       log.fetch.push({ method: 'GET', url: url });
+      /* since ETB2B AI's merge the Insights cards and Latest activity read the period's own figures: here each event's
+         window is its counters, so the totals are the ones this test has always counted */
+      if (/^\/api\/insights\?/.test(url)) return Promise.resolve(response(200, { byDay: [], events: (o.items || ITEMS).map(function (e) {
+        var c = e.counters || {};
+        return { eventId: e.id, name: e.name, window: { views: c.views || 0, registrations: c.registrations || 0, uniques: 0, lastRegistration: null, lastView: null } };
+      }) }));
+      if (/^\/api\/activity\/all\?/.test(url)) return Promise.resolve(response(200, { items: [], next: null }));
+      if (url === '/api/promo/analytics/all') return Promise.resolve(response(200, { available: false, backend: 'none', series: [], totals: { sends: 0, opens: 0, clicks: 0 } }));
       return Promise.resolve(response(200, { items: o.items || ITEMS }));
     },
     RevampAuth: {
@@ -440,6 +474,7 @@ function page(o) {
   ctx.window = ctx;
   vm.createContext(ctx);
   if (!o.noPicker) vm.runInContext(PICKER, ctx, { filename: 'portal-picker.js' });
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
   vm.runInContext(INLINE, ctx, { filename: 'Event_Listing.html (inline)' });
   function $(id) { return d.getElementById(id); }
   return {
@@ -483,9 +518,9 @@ async function main() {
   S.$('portal-popover').querySelector('[data-portal="none"]').click();
   check('D.4 …picking "No portal yet" lists the rows with none, with the chip "Portal: No portal yet"', JSON.stringify(S.rows()) === JSON.stringify(['np-live']) && S.$('chip-row').textContent.indexOf('Portal: No portal yet') !== -1);
   S.$('chip-clear-all').click();
-  check('D.4 tab counts in All portals: every portal', JSON.stringify(S.tabs()) === JSON.stringify({ active: 3, upcoming: 1, completed: 0 }), S.tabs());
+  check('D.4 tab counts in All portals: every portal (Drafts is a tab since B10)', JSON.stringify(S.tabs()) === JSON.stringify({ draft: 2, upcoming: 1, active: 3, completed: 0 }), S.tabs());
   S.$('btn-more').click();
-  check('D.4 the ⋯ menu counts every portal\'s drafts in All portals', S.$('more-menu').querySelector('[data-special="draft"]').textContent.trim().slice(-1) === '2');
+  check('D.4 the Drafts tab counts every portal\'s drafts in All portals', S.tabs().draft === 2 && !S.$('more-menu').querySelector('[data-special="draft"]'));
   check('D.4 the "No portal yet" notice: the count (Deleted not counted), Show them, Review suggested portals', S.notice().indexOf('2 events have no portal yet.') !== -1 && !!S.$('pn-show-none') &&
     S.$('portal-notice').querySelector('a[href="portal-review.html"]').textContent === 'Review suggested portals');
 
@@ -522,10 +557,11 @@ async function main() {
   check('D.4 Enter picks: the list is on ETHRWorld', S.btn() === 'ETHRWorld' && menu.hidden === true && S.doc.activeElement === S.$('btn-portals-nav'));
   check('D.4 …only its events', JSON.stringify(S.rows()) === JSON.stringify(['hr-live']) && !S.$('results-view').classList.contains('all-portals'), S.rows());
   check('D.4 …the result line names the portal', S.result() === 'Showing 1–1 of 1 event on ETHRWorld', S.result());
-  check('D.4 …the tab counts follow it', JSON.stringify(S.tabs()) === JSON.stringify({ active: 1, upcoming: 1, completed: 0 }), S.tabs());
-  check('D.4 …and the totals (Active on ETHRWorld: 9 visitors, 5 registrations)', JSON.stringify(S.kpi()) === JSON.stringify(['9', '5', '₹0']), S.kpi());
+  check('D.4 …the tab counts follow it', JSON.stringify(S.tabs()) === JSON.stringify({ draft: 1, upcoming: 1, active: 1, completed: 0 }), S.tabs());
+  /* the third card is Revenue, a dash since ETB2B AI's merge: payments are not part of Oneworld 2.0 yet */
+  check('D.4 …and the totals (Active on ETHRWorld: 9 visitors, 5 registrations)', JSON.stringify(S.kpi()) === JSON.stringify(['9', '5', '—']), S.kpi());
   S.$('btn-more').click();
-  check('D.4 …and the ⋯ menu\'s counts (one ETHRWorld draft)', S.$('more-menu').querySelector('[data-special="draft"]').textContent.trim().slice(-1) === '1');
+  check('D.4 …and the Drafts tab\'s count (one ETHRWorld draft)', S.tabs().draft === 1);
   S.$('btn-more').click();
   check('D.4 …Create Event starts on it: ?new=1&portal=hr', S.create() === 'create-event.html?new=1&portal=hr');
   check('D.4 …the toolbar\'s Portal filter is hidden (the switcher is the portal control here)', S.$('btn-portal').parentNode.hidden === true);
@@ -566,7 +602,9 @@ async function main() {
   /* Show them when the current list has none of them: the list that has */
   S.$('pn-show-none').click();
   await flush();
-  check('D.4 Show them opens the list that holds the events with no portal (here Drafts)', JSON.stringify(S.rows()) === JSON.stringify(['np-draft']) && S.$('special-banner').textContent.indexOf('Draft events') !== -1, S.rows());
+  /* (B10, UX-018: Drafts is a tab, selected, rather than a ⋯ view under a banner) */
+  check('D.4 Show them opens the list that holds the events with no portal (here Drafts)', JSON.stringify(S.rows()) === JSON.stringify(['np-draft']) &&
+    S.$('status-tabs').querySelector('[aria-selected="true"]').getAttribute('data-tab') === 'draft', S.rows());
   /* the ⋯ menu's Set portal on that draft */
   var menuBtn = S.$('table-body').querySelector('[data-row-menu-btn]');
   menuBtn.click();
@@ -578,7 +616,8 @@ async function main() {
   S.dom.key(S.$('rvp-select'), 'Escape');
   check('D.4 …Escape closes it and focus goes back to the row\'s ⋯ button', !S.$('rv-portal-dialog') && S.doc.activeElement === menuBtn);
   S.$('pn-back').click();
-  S.$('special-banner').querySelector('button').click();
+  /* (B10: back to Active by its tab; Drafts has no banner now) */
+  S.$('status-tabs').querySelector('[data-tab="active"]').click();
 
   /* a 409: somebody set it meanwhile */
   S = page({ store: {}, server: 'all', patch: function () { return response(409, { error: 'This event\'s portal was changed to ETRetail meanwhile. Reload to see it.', code: 'portal-changed', current: 'retail', currentName: 'ETRetail' }); } });
@@ -686,13 +725,14 @@ async function main() {
   await flush();
   check('D.4 a portal with no events: "ETAuto has no events yet", Create Event on it, Show all portals', S.$('table-body').textContent.indexOf('ETAuto has no events yet') !== -1 &&
     S.$('table-body').querySelector('a.btn-primary').getAttribute('href') === 'create-event.html?new=1&portal=auto' && !!S.$('table-body').querySelector('[data-empty-all-portals]') &&
-    S.$('table-body').querySelector('td').getAttribute('colspan') === '6');
+    /* five columns on one portal since B07 took the Payment column out (UX-025) */
+    S.$('table-body').querySelector('td').getAttribute('colspan') === '5');
   S.$('card-list').querySelector('[data-empty-all-portals]').click();
   await flush();
   check('D.4 …Show all portals (from the cards too, on a phone): every portal for this visit, Back to ETAuto, nothing saved', S.btn() === 'ETAuto' && S.rows().length === 3 &&
     S.notice().indexOf('Showing every portal for now.') !== -1 && S.$('pn-back').textContent === 'Back to ETAuto' && S.puts().length === 0 && S.create() === 'create-event.html?new=1&portal=auto');
   S.$('search-input').value = 'nothing like it'; S.dom.fire(S.$('search-input'), 'input');
-  check('D.4 "No events match" stays for a search with no result (colspan 7 in All portals)', S.$('table-body').textContent.indexOf('No events match') !== -1 && S.$('table-body').querySelector('td').getAttribute('colspan') === '7');
+  check('D.4 "No events match" stays for a search with no result (colspan 6 in All portals, with the Portal column)', S.$('table-body').textContent.indexOf('No events match') !== -1 && S.$('table-body').querySelector('td').getAttribute('colspan') === '6');
 
   /* ======== phones: the Filters sheet carries the Portal choice ======== */
   S = page({ store: {}, server: null, phone: true });

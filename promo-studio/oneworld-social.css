@@ -76,3 +76,23 @@ button.thumb{width:100%;margin:0;padding:0;border:0;border-bottom:1px solid var(
 .ow-sugg-list{display:flex;flex-direction:column;gap:4px;margin-top:6px}
 .ow-sugg-list button{text-align:left;padding:6px 9px;border-radius:7px;border:1px solid var(--line3);background:var(--panel);color:var(--ink2);font-size:12px;line-height:1.35}
 .ow-sugg-list button:hover{border-color:var(--ow-accent);color:var(--ow-accent-text)}
+
+/* ---- UX-121, UX-127: the cards' count while they are drawn, and a card that shows (or has) a saved layout ---- */
+.ow-thumbs-note{margin:0 0 10px;font-size:12.5px;font-weight:600;color:var(--soft)}
+.ow-saved{position:absolute;top:8px;left:8px;z-index:3;font-size:10.5px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:5px;pointer-events:none;
+  background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok)}
+
+/* ---- UX-124: under the editor's bar, which sizes of this post are saved ---- */
+.ow-size-note{flex:none;padding:7px 16px;font-size:12.5px;font-weight:600;line-height:1.4;background:var(--panel2);color:var(--ink2);border-bottom:1px solid var(--line)}
+.ow-size-note[hidden]{display:none}
+
+/* ---- UX-127: while a layout loads and its picture comes, the stage waits under a spinner, never half drawn ---- */
+#edCanvas.ow-wait .ed-stagewrap{visibility:hidden}
+.ow-stage-spin{display:none}
+#edCanvas.ow-wait .ow-stage-spin{display:flex;position:absolute;inset:0;z-index:5;align-items:center;justify-content:center;gap:10px;font-size:13px;font-weight:600;color:var(--soft)}
+
+/* ---- UX-135: under the editor's bar while Prediction vs Outcome shows the template's own prediction and outcome,
+   with the Example badge its card carries (oneworld-social.js owFillerNote) ---- */
+.ow-filler-note{display:flex;align-items:center;gap:10px;flex:none;padding:7px 16px;font-size:12.5px;font-weight:600;line-height:1.4;background:var(--ow-accent-soft);color:var(--ow-accent-text);border-bottom:1px solid var(--line)}
+.ow-filler-note[hidden]{display:none}
+.ow-filler-note .ow-ex{position:static;flex:none}

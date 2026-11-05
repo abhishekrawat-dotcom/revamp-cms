@@ -190,11 +190,14 @@
       wireCanvasEvents();
       /* a page saved before its look last changed carries the ET logo in the right version from now on —
          checked again once the page has laid out (the nav's row is measured) */
+      /* what the editor puts right by itself (the ET logo's version, heading sizes) is part of the page as it opened,
+         named in the chip and saved apart from the person's changes (bakeAuto, UX-076); never while ETB2B AI is
+         applying a change, when the page holds half of it */
       var putRight = [];
       if (syncEtLogos()) putRight.push('the ET logo and menu');
       if (calmHeadings()) putRight.push('heading sizes');
       if (putRight.length) bakeAuto(putRight);
-      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && syncEtLogos()) bakeAuto(['the ET logo and menu']); }, ms); });
+      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && !aiWorking && syncEtLogos()) bakeAuto(['the ET logo and menu']); }, ms); });
       /* opened from the preview's "Apply in editor": that theme */
       var askedTheme = new URLSearchParams(location.search).get('theme');
       var ti = themesInfo();
@@ -220,6 +223,9 @@
       loadSiteInfo();
       ownerLogoOffer();
       logoUnitNotice();
+      /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
+         them into it), so the picture's own step, and its Undo, hold the picture alone */
+      if (pendingAiHero) { var heroDraft = pendingAiHero; pendingAiHero = null; applyAiHero(heroDraft); }
       return true;
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -395,7 +401,65 @@
       return seedSnapshot(draft);
     }).then(function (kept) {
       if (kept) forgetHandoff();
+      pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
     });
+  }
+  var pendingAiHero = null;
+
+  /* ETB2B AI's hero picture from the event's own record (events/<id>.aiHero, functions/lib/ai-hero.js), for an editor
+     that opens with no copy of the site in this browser and no hand-off: the person changed browser (or cleared it)
+     before saving, and the hand-off's picture lived only in the other browser's copy (QA follow-up 2). It is put in
+     exactly as the hand-off puts it (applyAiHero: one step of its own, which Undo takes back to the design's own
+     picture). Only while no site has ever been saved: a saved site is what the person chose, picture or not.
+     A picture that did not pass its check (status 'held') was never stored: the person is told so, in the server's
+     words ("No hero picture was made: …"), as the hand-off tells them.
+     -> { aiHero: { url, subject } }, { aiHero: { note } } or null */
+  function aiHeroFromEvent() {
+    var ev = currentEvent, h = ev && ev.aiHero;
+    if (!eventId || !h || typeof h !== 'object') return null;
+    if (ev.site && +ev.site.version > 0) return null;
+    if (h.status === 'held' && typeof h.why === 'string' && h.why.indexOf('No hero picture was made') === 0) {
+      return { aiHero: { note: h.why.slice(0, 300) + ' The design\u2019s own picture is in place: you can change it here, or ask ETB2B AI for a new one.' } };
+    }
+    if (h.status !== 'made' || typeof h.url !== 'string' || !h.url) return null;
+    return { aiHero: { url: h.url, subject: typeof h.subject === 'string' ? h.subject : '' } };
+  }
+
+  /* ETB2B AI's hero picture, for an event it started on the events dashboard: made on the server once Create Event
+     had created the event (functions/lib/ai-hero.js), and brought here by the hand-off (draft.aiHero). It goes in
+     AFTER the first undo step (at the end of boot(), once the records' overlay is in that step too), as a step of
+     its own, so Undo (the toast's, or the top bar's) brings the design's own picture back. Only this event's own stored picture is ever put in. A hand-off that says why no picture was
+     made gets that note, said plainly. -> true when the picture was put in */
+  function applyAiHero(draft) {
+    var a = draft && draft.aiHero;
+    if (!a || typeof a !== 'object' || !canvas) return false;
+    if (typeof a.note === 'string' && a.note) { showToast(a.note.slice(0, 400)); return false; }
+    var url = typeof a.url === 'string' ? a.url : '';
+    var own = 'https://storage.googleapis.com/';
+    if (url.indexOf(own) !== 0 || url.indexOf('/events/' + eventId + '/generated/') === -1 || /[\s"'<>()]/.test(url)) return false;
+    var els = heroPictureEls();
+    if (!els.length) { showToast('ETB2B AI made a hero picture, but this design has no place for one.'); return false; }
+    els.forEach(function (el) { canvas.setPicture(el, url); });
+    if (!commitNow()) return false;
+    var subject = typeof a.subject === 'string' ? a.subject.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+    offerUndo('ETB2B AI made this hero picture' + (subject ? ': ' + subject : '') + '. Undo puts the design\u2019s own picture back.');
+    return true;
+  }
+  /* The hero's picture on this design: what its content.map hero rule fills with the event's banner
+     ({hero.bannerUrl}, or a generated site's {hero.psdBanner.compositeImageData}), in every copy of the section. */
+  function heroPictureEls() {
+    var map = (canvas.template && canvas.template.content && canvas.template.content.map) || [], out = [];
+    map.forEach(function (m) {
+      if (!m || m.from !== 'hero' || !m.section) return;
+      (m.fill || []).forEach(function (r) {
+        if (!r || typeof r.attr !== 'string' || r.name !== 'src' || !/\{hero\.(?:bannerUrl|psdBanner\.compositeImageData)\}/.test(String(r.value || ''))) return;
+        Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-section="' + m.section + '"]'), function (sec) {
+          var found = r.attr === ':self' ? [sec] : sec.querySelectorAll(r.attr);
+          Array.prototype.forEach.call(found, function (el) { if (out.indexOf(el) === -1) out.push(el); });
+        });
+      });
+    });
+    return out;
   }
 
   /* Real, confirmed bug this closes: a Generate-from-Brief event's AI-written content only ever reached
@@ -410,11 +474,14 @@
      revamp.editor.handoff.v1 shape) — a plain reopen now tries it before giving up, same as the fromCreate
      path, just sourced from the server instead of localStorage. A 404 (not a Generate-from-Brief event / nothing ever generated)
      correctly falls through to the real blank-template case, unchanged. */
+  var draftFetch = null;         // asked once per opening: the server-first check and the rules below share it
   function fetchServerDraft() {
-    return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+    if (draftFetch) return draftFetch;
+    draftFetch = fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
       .then(function (res) { return res.ok ? res.body : null; })
       .catch(function () { return null; });
+    return draftFetch;
   }
 
   /* Has the site been generated again since this browser's copy was made? The copy records which generation
@@ -442,8 +509,91 @@
     if (!saved.sourceDraftId && res && res.draftId) sourceDraftId = res.draftId;
   }
 
+  /* ---------- which copy opens ----------
+     The site saved on the server (GET /api/event/site) is the truth: every browser and every colleague opens the
+     latest saved version. This browser's copy is a cache and a buffer for work not saved yet; it is opened instead
+     only while it holds changes of the person's own made on that same version, and when it holds changes made on
+     an older one the person is asked (workSafety.openPlan). A new Create Event result, a site that has never been
+     saved, or a saved site that cannot be read, goes by this browser's copy as before (resolveFromBrowser). */
+  function fetchSavedSite() {
+    if (!eventId) return Promise.resolve(null);
+    // the event says when its site has never been saved: nothing to ask for (a save made since is asked about on Save)
+    if (currentEvent && !(currentEvent.site && +currentEvent.site.version)) return Promise.resolve(null);
+    return RevampCore.fetchSite(eventId).then(function (site) { return site || null; }, function (err) {
+      if (window.console) console.warn('[RevampTemplateUI] The saved site could not be read; this browser\'s copy is shown:', err);
+      return undefined;
+    });
+  }
   function resolveInitialContent() {
-    return localGet(storeKey).then(function (saved) {
+    draftFetch = null;
+    return Promise.all([localGet(storeKey), fetchSavedSite()]).then(function (got) {
+      var saved = got[0], site = got[1];
+      savedMark = readMark();
+      if (site === undefined) {
+        showNotice('saved-site', { kind: 'warn', dismissible: true,
+          text: 'The version saved on the server could not be checked, so this browser\'s copy is shown. Reload to check again before you save.' });
+      }
+      var created = (site && site.eventCreatedAt) || (currentEvent && currentEvent.createdAt) || null;
+      // a copy this browser kept for an earlier event at the same address is not this event's
+      if (saved && saved.eventCreatedAt && created && saved.eventCreatedAt !== created) saved = undefined;
+      var newRun = isNewRun(saved);
+      var gen = /^gen-/.test(templateId || '');
+      var generation = gen && site && site.snapshot && !newRun ? fetchServerDraft() : Promise.resolve(null);
+      return generation.then(function (res) {
+        var generationNewer = !!(res && res.draftId && site && Date.parse(res.generatedAt || '') > Date.parse(site.updatedAt || ''));
+        var plan = workSafety.openPlan({ site: site, templateId: templateId, local: saved, mark: savedMark, hash: snapHash, newRun: newRun, generationNewer: generationNewer });
+        baseVersion = plan.baseVersion;
+        if (plan.take === 'server') return takeSavedSite(site, saved, res, plan.why);
+        if (plan.take === 'ask') return askAboutOlderCopy(saved, site, res, plan);
+        return resolveFromBrowser(saved);
+      });
+    });
+  }
+  /* this open puts a Create Event result on the page: a new run for this event, or the hand-off of its first one */
+  function isNewRun(saved) {
+    if (!fromCreate()) return false;
+    var draftId = new URLSearchParams(location.search).get('draft') || null;
+    if (saved && saved.snapshot) return !!(draftId && saved.sourceDraftId !== draftId);
+    var handed = readHandoffDraft();
+    return !!(handed && handed.sections && handed.sections.length);
+  }
+  /* The saved version on the canvas, as the first step: nothing is unsaved. why 'newer': this browser had an older
+     copy, so the person is told which version opened. */
+  function takeSavedSite(site, saved, res, why) {
+    canvas.restore(site.snapshot, restoreOpts());
+    // read back, as restoreLocal does: the first step is the page as it stands, so opening is not a change
+    undoStack = [canvas.snapshot(site.snapshot)]; undoPtr = 0;
+    // the generation it was saved after, so a later regeneration is still told apart (resolveFromBrowser)
+    sourceDraftId = (res && res.draftId) || (saved && saved.sourceDraftId) || sourceDraftId;
+    onSavedVersion(site.version);
+    if (why === 'newer') showToast('Opened version ' + site.version + (site.updatedBy ? ', saved by ' + site.updatedBy : '') + (site.updatedAt ? ' on ' + when(site.updatedAt) : '') + '.');
+  }
+  /* This browser holds changes made on an older version than the one saved: the person chooses. The page behind
+     the question is this browser's copy; "Open version N" puts the saved one on top of it as a step, so Undo brings
+     the copy back while the editor stays open. */
+  function askAboutOlderCopy(saved, site, res, plan) {
+    canvas.restore(saved.snapshot, restoreOpts());
+    var mine = canvas.snapshot(saved.snapshot);
+    undoStack = [mine]; undoPtr = 0;
+    sourceDraftId = saved.sourceDraftId || null;
+    localEdited = true;
+    var words = workSafety.olderCopyWords({ base: plan.baseVersion, localAt: saved.savedAt ? when(new Date(+saved.savedAt).toISOString()) : '',
+      version: site.version, by: site.updatedBy || '', at: site.updatedAt ? when(site.updatedAt) : '' });
+    return ask({ title: words.title, text: words.text, more: words.more, modal: true, actions: [
+      { key: 'keep', label: words.keep, kind: 'secondary' },
+      { key: 'open', label: words.open, kind: 'primary', autofocus: true }
+    ] }).then(function (answer) {
+      if (answer !== 'open') return;          // kept: Save asks before it replaces the newer version (baseVersion)
+      canvas.restore(site.snapshot, restoreOpts());
+      undoStack = [mine, canvas.snapshot(site.snapshot)]; undoPtr = 1;
+      sourceDraftId = (res && res.draftId) || sourceDraftId;
+      onSavedVersion(site.version);
+      showToast('Opened version ' + site.version + '. Undo brings back this browser\'s changes.');
+    });
+  }
+
+  function resolveFromBrowser(saved) {
+    return Promise.resolve().then(function () {
       var arriving = fromCreate();
       var draftId = new URLSearchParams(location.search).get('draft') || null;
 
@@ -464,6 +614,8 @@
         // read back rather than reused: restore() repairs what older saves got wrong, and the first undo step
         // must be the page as it stands, or opening the editor would itself count as a change
         undoStack = [canvas.snapshot(saved.snapshot)]; undoPtr = 0;
+        // a copy from before this was kept may hold anything of the person's own
+        localEdited = saved.edited !== false;
       }
 
       /* A gen-<id> (Generate-from-Brief) template's local snapshot is NOT unconditionally trusted on a
@@ -495,12 +647,16 @@
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
         if (saved && saved.snapshot) { restoreLocal(); return; }
-        return seedSnapshot(null);
+        /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above.
+           With no hand-off in this browser at all, the event's own record brings it (aiHeroFromEvent) */
+        return seedSnapshot(null).then(function () { pendingAiHero = draft || aiHeroFromEvent(); });
       }
 
       if (!/^gen-/.test(templateId || '')) {
         if (saved && saved.snapshot) { restoreLocal(); return; }
-        return seedSnapshot(null);
+        /* no copy of the site in this browser: ETB2B AI's hero picture, when the event has one and no site was ever
+           saved, goes in as the hand-off puts it (aiHeroFromEvent) */
+        return seedSnapshot(null).then(function () { pendingAiHero = aiHeroFromEvent(); });
       }
 
       return fetchServerDraft().then(function (res) {
@@ -1319,7 +1475,11 @@
   function seedSnapshot(draft) {
     var snap = canvas.snapshot();
     undoStack = [snap]; undoPtr = 0;
-    return localPut(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, handoff: draft, event: draft && draft.event, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
+    // what Create Event handed over is the person's own work, not saved yet; a page as it mounted is not
+    localEdited = !!draft;
+    var rec = localRecord(snap);
+    rec.handoff = draft; rec.event = draft && draft.event;
+    return localPut(storeKey, rec);
   }
 
   /* ---------- save / undo ----------
@@ -1336,7 +1496,14 @@
     // second Generate-from-Brief run later in the SAME browser would no longer be able to tell this apart
     // from a never-regenerated draft (see resolveInitialContent()'s staleness check), and a real manual
     // edit made just after a correct seed would look exactly like an old, pre-fix snapshot again.
-    return localPut(storeKey, { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION });
+    return localPut(storeKey, localRecord(snap));
+  }
+  /* This browser's copy also says which saved version it was made on (baseVersion), whether it holds changes of
+     the person's own (edited) and which event it belongs to (eventCreatedAt): what decides, when the editor next
+     opens, between it and the version saved on the server (workSafety.openPlan). */
+  function localRecord(snap) {
+    return { eventId: eventId, templateId: templateId, savedAt: Date.now(), snapshot: snap, sourceDraftId: sourceDraftId, fillVersion: FILL_LOGIC_VERSION,
+      baseVersion: baseVersion, edited: localEdited, eventCreatedAt: (currentEvent && currentEvent.createdAt) || null };
   }
 
   /* This browser's copy (RevampStore) through two calls that never reject: a browser that gives the page no
@@ -1363,7 +1530,9 @@
   function saveLocal(snap) { persist(snap); }
 
 
-  function record(typing) {
+  /* automatic: a step the editor made by itself as the page opened (the ET logo in the right version, headings
+     held to the type scale), not a change of the person's own — unless they were typing then */
+  function record(typing, automatic) {
     clearTimeout(commitTimer); commitTimer = null;
     if (!canvas || remounting) return false;
     keepFormSectionsShown(canvas.doc);
@@ -1371,6 +1540,7 @@
     if (!typing) typingPtr = -1;
     var snap = canvas.snapshot(undoStack[undoPtr]);
     if (canvas.sameSnapshot(snap, undoStack[undoPtr])) return false;
+    if (!automatic || editingEl) localEdited = true;
     if (replacing && canvas.sameSnapshot(snap, undoStack[undoPtr - 1])) {
       // typed back to what it was before this edit session: no step left to undo
       undoStack = undoStack.slice(0, undoPtr);
@@ -1395,21 +1565,28 @@
   }
   function commitNow() { return record(false); }
   function commitTyping() { return record(true); }
+  /* the editor's own update as the page opens; never while ETB2B AI is applying a change (the page holds half of it) */
+  function commitAutomatic() { return aiWorking ? false : record(false, true); }
 
   function commit() {
     clearTimeout(commitTimer);
-    commitTimer = setTimeout(commitNow, 400);
+    commitTimer = setTimeout(function () { if (!aiWorking) commitNow(); }, 400);
   }
 
+  /* While ETB2B AI is applying a change the page holds half of it: nothing is recorded then (its own one step
+     comes when it is done), so flush() waits too. */
   function flush() {
-    if (!canvas || remounting) return;
+    if (!canvas || remounting || aiWorking) return;
     clearTimeout(typingTimer); typingTimer = null;
     if (editingEl) commitTyping();
     else if (commitTimer) commitNow();
   }
 
+  /* Undo and Redo wait while ETB2B AI is applying a change: a step taken then would undo an edit from before it,
+     drop the half of the change already on the page, and leave its card saying it was made (QA, UX-090). */
   function step(by) {
     if (!canvas || remounting) return;
+    if (aiWorking) { busyToast(); return; }
     deselect();       // leaves any text being edited, which records it
     flush();          // either may just have added the newest step, so the pointer is read after them
     var ptr = undoPtr + by;
@@ -1418,6 +1595,10 @@
     dismissUndoToast();
     undoPtr = ptr;
     canvas.restore(undoStack[undoPtr], restoreOpts());
+    /* a step back or forward is the person's own page unless it is the one saved, or that page with only what the
+       editor updated by itself as it opened (Undo after "Open version N" brings their changes back: the next
+       opening must not take them for nothing) */
+    localEdited = !savedMark || (savedMark.hash !== snapHash(undoStack[undoPtr]) && !autoOnly());
     updateHistoryButtons();
     saveLocal(undoStack[undoPtr]);
     scheduleServerSave();
@@ -1432,8 +1613,22 @@
 
   function updateHistoryButtons() {
     var u = document.getElementById('btn-tpl-undo'), r = document.getElementById('btn-tpl-redo');
-    if (u) u.disabled = undoPtr <= 0;
-    if (r) r.disabled = undoPtr >= undoStack.length - 1;
+    var busy = aiWorking ? workSafety.busyLine('working') : '';
+    [[u, undoPtr <= 0], [r, undoPtr >= undoStack.length - 1]].forEach(function (pair) {
+      var b = pair[0];
+      if (!b) return;
+      if (!b.hasAttribute('data-title')) b.setAttribute('data-title', b.title || '');
+      b.disabled = !!busy || pair[1];
+      b.title = busy || b.getAttribute('data-title');
+    });
+  }
+  /* said when something that changes the page is tried while ETB2B AI is applying a change: once in a while, not on
+     every click */
+  var busyToastAt = 0;
+  function busyToast() {
+    if (Date.now() - busyToastAt < 2500) return;
+    busyToastAt = Date.now();
+    showToast('One moment — ' + workSafety.busyLine('working').replace(/ — one moment$/, '') + '.');
   }
 
   /* "Deleted — Undo": the button undoes the newest step, so the toast goes as soon as that step is no longer
@@ -1680,7 +1875,11 @@
   }
 
   function positionToolbars() {
+    positionBusyPills();
     if (!canvas || remounting || !selToolbar) return;
+    /* while ETB2B AI is applying a change neither pill shows: their tools would change the page under it (UX-090).
+       Anything still selected gets its pills back when the change is on the page (setAiWorking). */
+    if (aiWorking) { selToolbar.hidden = true; secToolbar.hidden = true; return; }
     var fr = frame.getBoundingClientRect();
     var selBox = null, elBox = null;
 
@@ -1733,6 +1932,8 @@
   function onToolbarClick(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn || !selectedEl) return;
+    // the element's tools wait too while ETB2B AI is applying a change (onSecToolbarClick says why)
+    if (aiWorking) { busyToast(); return; }
     var action = btn.getAttribute('data-action');
     if (action !== 'link') closeLinkPop();
     if (TEXT_FORMAT_ACTIONS[action]) {
@@ -1878,18 +2079,24 @@
         }
         if (!r) return fail('Could not reach the AI. The section is unchanged — check your connection and try again.');
         if (!r.ok || !r.body || r.body.error || !r.body.html) return fail((r.body && r.body.error) || 'The AI could not redesign this section (error ' + r.status + '). It is unchanged — try again.');
-        if (!isLive(sec)) return fail('The section was removed while the AI was working, so there was nothing to replace.');
-        deselect();
-        flush();                        // what was pending stays its own undo step
-        var fresh = canvas.replaceSection(sec, r.body.html, r.body.css);
-        if (!fresh) return fail('The AI did not return a usable section. It is unchanged — try again.');
-        fresh.setAttribute('data-ai-generated', 'true');       // written by the AI: asked about before publishing
-        commitNow();
-        if (keptLists.length) applySubcollectionOverlay();     // the event's records, drawn into the new design
-        if (open && handle && handle.close) handle.close();
-        selectSectionOnly(fresh);
-        canvas.scrollToSection(fresh);
-        offerUndo('“' + name + '” redesigned' + (r.body.summary ? ': ' + r.body.summary : '.'));
+        /* an answer that comes while ETB2B AI is applying a change in the chat waits until that change is on the
+           page, so it is a step of its own and not half of the chat's (UX-090) */
+        var waited = aiWorking;
+        whenAiIdle(function () {
+          open = document.contains(ask);
+          if (!isLive(sec)) return fail(waited ? 'ETB2B AI changed this section meanwhile, so the redesign was not put over it. Try again.' : 'The section was removed while the AI was working, so there was nothing to replace.');
+          deselect();
+          flush();                        // what was pending stays its own undo step
+          var fresh = canvas.replaceSection(sec, r.body.html, r.body.css);
+          if (!fresh) return fail('The AI did not return a usable section. It is unchanged — try again.');
+          fresh.setAttribute('data-ai-generated', 'true');       // written by the AI: asked about before publishing
+          commitNow();
+          if (keptLists.length) applySubcollectionOverlay();     // the event's records, drawn into the new design
+          if (open && handle && handle.close) handle.close();
+          selectSectionOnly(fresh);
+          canvas.scrollToSection(fresh);
+          offerUndo('“' + name + '” redesigned' + (r.body.summary ? ': ' + r.body.summary : '.'));
+        });
       });
     }
   }
@@ -1905,7 +2112,7 @@
               the rules written here are added to the section and win over the template's where they meet.
        JS     runs on the published and previewed site, once, with `section` as this section's element
               (et-runtime.js). It never runs inside the editor. */
-  var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-filled'];
+  var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-filled', 'data-rv-ai-busy'];
   function devSource(sec) {
     var copy = sec.cloneNode(true);
     // an embedded form's preview is the editor's drawing, not the section's markup
@@ -2095,6 +2302,8 @@
     $('rv-dev-apply').addEventListener('click', function () {
       problem.hidden = true;
       function fail(text, where) { problem.textContent = text; problem.hidden = false; if (where) show(where); }
+      // ETB2B AI began applying a change while this was open: the code waits here, to be applied as a step of its own
+      if (aiWorking) return fail(workSafety.busyLine('working') + '. Apply again when it is done.');
       if (!isLive(sec)) return fail('This section is no longer on the page. Pick another one.');
       var t = document.createElement('template');
       t.innerHTML = val('html').trim();
@@ -2160,7 +2369,17 @@
     urlBox.value = /^https?:/i.test(current || '') ? current : '';
     var busy = false;
     function fail(text) { problem.textContent = text; problem.hidden = false; }
-    function done(url) { if (handle && handle.close) handle.close(); apply(url); host.showToast('Picture updated'); }
+    function done(url) {
+      /* ETB2B AI began applying a change while this was open: the picture waits here (an upload is kept as its
+         address), so it goes on the page as a step of its own once the change is done (UX-090) */
+      if (aiWorking) {
+        urlBox.value = url;
+        if (uploadBtn) { uploadBtn.disabled = false; uploadBtn.textContent = 'Upload from your computer'; }
+        fail(workSafety.busyLine('working') + '. Press “Use this picture” again when it is done.');
+        return;
+      }
+      if (handle && handle.close) handle.close(); apply(url); host.showToast('Picture updated');
+    }
     function useAddress() {
       if (busy) return;
       problem.hidden = true;
@@ -2771,6 +2990,9 @@
   function onSecToolbarClick(e) {
     var btn = e.target.closest('[data-action]');
     if (!btn || !activeSectionEl) return;
+    /* while ETB2B AI is applying a change the section's tools wait, like the canvas: a step recorded now would hold
+       half of its change, and the section it is rewriting could be hidden or deleted under it (QA, UX-090) */
+    if (aiWorking) { busyToast(); return; }
     var action = btn.getAttribute('data-action'), sec = activeSectionEl;
     if (action === 'duplicate-section') {
       duplicateSection(sec);
@@ -2802,7 +3024,9 @@
     var name = sec.getAttribute('data-sec-name') || 'this section';
     var actions = [
       { label: 'Cancel', kind: 'secondary', autofocus: true },
+      /* asked before ETB2B AI began applying a change (it was still thinking): the dialog stays until it is done */
       { label: 'Delete', kind: 'danger', onClick: function () {
+        if (aiWorking) { busyToast(); return false; }
         if (!sec.isConnected) return;
         deselect();
         var autoKind = sec.getAttribute('data-rv-auto');
@@ -2819,6 +3043,7 @@
     ];
     if (!sec.classList.contains('is-hidden-sec')) {
       actions.unshift({ label: 'Hide instead', kind: 'ghost', aside: true, onClick: function () {
+        if (aiWorking) { busyToast(); return false; }
         if (!sec.isConnected) return;
         setSectionHidden(sec, true);
         offerUndo('"' + name + '" is hidden. It is not shown on the site.');
@@ -3173,6 +3398,8 @@
     canvas.doc.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
+      // while ETB2B AI is applying a change the page waits: an edit now would be mixed into its one undo step
+      if (aiWorking) { busyToast(); return; }
       // a click with no mouse behind it is the browser "pressing" a <button> or link for Space / Enter typed
       // into its label (an FAQ question is a <button>): that is typing, not picking something else
       if (editingEl && e.detail === 0) return;
@@ -3274,10 +3501,22 @@
   }
 
   /* Leaving by any road — a link, the back button, reload, closing the tab, switching away on a phone —
-     records what is still pending first. */
+     records what is still pending first. Closing or reloading the tab with work only this browser has, a save on
+     its way, or ETB2B AI still busy is asked by the browser (it shows its own words); leave() asks for the ways out
+     that this page starts. While ETB2B AI is applying a change nothing is recorded: the page holds half of it. */
   function wireLeaving() {
-    window.addEventListener('pagehide', flush);
-    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(); });
+    window.addEventListener('pagehide', function () {
+      if (aiWorking) { stopAiTurn(true); return; }
+      flush();
+    });
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden' && !aiWorking) flush(); });
+    window.addEventListener('beforeunload', function (e) {
+      if (leavingNow || !eventId || !canvas) return;
+      if (!aiWorking) flush();            // words still being typed count
+      if (aiState === 'ready' && !saving && !hasUnsavedWork()) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
   }
 
   /* ---------- design: the Design panel and the style toolbar (custom_editor.html) ----------
@@ -3817,13 +4056,21 @@
     var nodes = visibleTextNodes(sec, '[data-editable="text"], [data-editable="button"]').filter(function (n) { return re.test(n.nodeValue); });
     return nodes.length ? { node: nodes[0], nodes: nodes, re: re } : null;
   }
-  // returns the first element whose text changed, or null when the text is no longer there
-  function applyTextEdit(edit) {
+  /* returns the first element whose text changed, or null when the text is no longer there. log: each text's words
+     before and after go in it ({ sectionId, before, after, aiMarked }), so this change can later be taken back on its
+     own (undoByInverse) */
+  function applyTextEdit(edit, log) {
     var at = locateTextEdit(edit);
     if (!at) return null;
     var replacement = String(edit.replace == null ? '' : edit.replace);
     var all = new RegExp(at.re.source, 'g');
-    at.nodes.forEach(function (node) { node.nodeValue = node.nodeValue.replace(all, function () { return replacement; }); });
+    var sec = canvas.sectionByKey(edit.sectionId);
+    var aiMarked = !!(sec && sec.hasAttribute('data-ai-generated'));
+    at.nodes.forEach(function (node) {
+      var was = node.nodeValue;
+      node.nodeValue = was.replace(all, function () { return replacement; });
+      if (log && node.nodeValue !== was) log.push({ sectionId: edit.sectionId, before: was, after: node.nodeValue, aiMarked: aiMarked });
+    });
     return at.node.parentElement;
   }
 
@@ -3843,7 +4090,7 @@
   function keepCheckpoint(t) {
     var key = checkpointKey(t.turnId);
     if (!key || !t.before) return;
-    localPut(key, { before: t.before, after: t.after, formIds: t.formIds, pageChanged: t.pageChanged, at: Date.now() });
+    localPut(key, { before: t.before, after: t.after, formIds: t.formIds, pageChanged: t.pageChanged, inverse: t.inverse || null, at: Date.now() });
     /* only the newest few are kept in this browser */
     var kept = aiTurns.filter(function (x) { return x.turnId && x.before; });
     kept.slice(0, Math.max(0, kept.length - AI_CHECKPOINTS_KEPT)).forEach(function (x) {
@@ -3852,39 +4099,110 @@
       if (x.button && x.status !== 'undone') { x.button.disabled = true; x.button.title = 'This change is too long ago to undo from the chat. Use Undo in the top bar.'; }
     });
   }
-  function reportTurn(turnId, status, done, notDone) {
-    if (!eventId || !turnId || !window.RevampAuth) return;
-    RevampAuth.authedFetch('/api/chat/turn', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [] }) }).catch(function () {});
+  /* -> a promise that settles either way. keepalive: sent as the page goes (the tab is closing) */
+  function reportTurn(turnId, status, done, notDone, keepalive) {
+    if (!eventId || !turnId || !window.RevampAuth) return Promise.resolve();
+    var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [] }) };
+    if (keepalive) opts.keepalive = true;
+    return Promise.resolve(RevampAuth.authedFetch('/api/chat/turn', opts)).then(function () {}, function () {});
   }
   function markUndone(t, note) {
     t.status = 'undone';
     if (t.button) { t.button.disabled = true; t.button.textContent = 'Undone'; }
     if (t.card) { t.card.status('undone'); t.card.note(note || 'The page is back to how it was before this change.'); }
+    syncCardSaves(isDirty());
   }
-  /* -> Promise<boolean undone> */
+  /* Takes back a change of settings and wording only (t.inverse), leaving everything done since: each text the change
+     reworded gets its old words back where it still reads as the change left it, and the settings go back to how they
+     were, if nothing has changed them since. -> null when it cannot be done so (the settings were changed since),
+     else { left: [texts changed again since, left as they are] } */
+  function undoByInverse(t) {
+    var inv = t.inverse, cur = canvas.snapshot(undoStack[undoPtr]);
+    if (!inv || !t.before || !t.after) return null;
+    var designBack = inv.design && inv.design.length;
+    if (designBack && (cur.html !== t.after.html || cur.body !== t.after.body || cur.design !== t.after.design)) return null;
+    var left = [];
+    /* every text of the section, shown or not: an answer in a closed accordion item is still the one it changed */
+    function textsOf(sec) {
+      var out = [];
+      Array.prototype.forEach.call(sec.querySelectorAll('[data-editable="text"], [data-editable="button"]'), function (el) {
+        var walker = canvas.doc.createTreeWalker(el, NodeFilter.SHOW_TEXT), n;
+        while ((n = walker.nextNode())) if (out.indexOf(n) === -1) out.push(n);
+      });
+      return out;
+    }
+    (inv.text || []).slice().reverse().forEach(function (c) {
+      var sec = canvas.sectionByKey(c.sectionId);
+      var node = sec ? textsOf(sec).filter(function (n) { return n.nodeValue === c.after; })[0] : null;
+      if (!node) { left.push(c); return; }
+      node.nodeValue = c.before;
+      if (c.aiMarked) sec.setAttribute('data-ai-generated', 'true');
+    });
+    if (designBack) {
+      var back = canvas.snapshot(undoStack[undoPtr]);
+      back.html = t.before.html; back.body = t.before.body; back.design = t.before.design;
+      canvas.restore(back, restoreOpts());
+      syncEtLogos();             // the ET logo in the version the old look needs
+    }
+    if (left.length === (inv.text || []).length && !designBack) return { left: left, nothing: true };
+    commitNow();
+    return { left: left };
+  }
+  /* -> Promise<boolean undone>; t.undoWhy says why not: 'busy' (ETB2B AI is applying a change), 'gone' (its
+     checkpoint is not in this browser), 'kept' (the person kept their later edits), 'changed' (what it changed has
+     been changed again since) */
   function undoAiTurn(t, quiet) {
     if (!t || t.status === 'undone' || !canvas || remounting) return Promise.resolve(false);
-    if (aiWorking) { showToast('One moment — ETB2B AI is still applying a change.'); return Promise.resolve(false); }
+    t.undoWhy = '';
+    if (aiWorking) { t.undoWhy = 'busy'; showToast('One moment — ETB2B AI is still applying a change.'); return Promise.resolve(false); }
     deselect();
     flush();
     var later = aiTurns.filter(function (x) { return x.order > t.order && x.status !== 'undone' && x.status !== 'failed' && x.pageChanged; });
     var newest = t.pageChanged && t.ptr === undoPtr && !later.length;
     /* the page exactly as this change left it (after a reload, say): nothing done since would be lost, so no question */
     var untouched = !newest && !later.length && t.after && canvas.sameSnapshot && canvas.sameSnapshot(canvas.snapshot(), t.after);
+    var note = '';
     if (t.pageChanged && !newest && !untouched) {
-      if (!t.before) { showToast('This change is too long ago to undo from the chat. Use Undo in the top bar.', { kind: 'error' }); return Promise.resolve(false); }
-      var also = later.length ? ' The ' + later.length + ' change' + (later.length === 1 ? '' : 's') + ' ETB2B AI made after it, and any edits since, will be undone too.' : ' Any edits you made after it will be undone too.';
-      if (!quiet && !window.confirm('Undo this change?' + also)) return Promise.resolve(false);
+      // said by the caller: the card already reads it, and "undo that" answers with it
+      if (!t.before) { t.undoWhy = 'gone'; return Promise.resolve(false); }
+      /* settings and wording only: taken back on their own, so the person's later edits stay (QA, UX-092) */
+      var alone = later.length ? null : undoByInverse(t);
+      if (alone && alone.nothing) {
+        t.undoWhy = 'changed';
+        if (t.card) t.card.note('Nothing to take back: the words this change wrote have been changed again since.');
+        return Promise.resolve(false);
+      }
+      if (alone) {
+        note = 'Undone — the page is back to how it was before this change; your later edits stay.' +
+          (alone.left.length ? ' ' + alone.left.length + (alone.left.length === 1 ? ' text it changed was' : ' texts it changed were') + ' edited again since, so ' + (alone.left.length === 1 ? 'it was' : 'they were') + ' left as you have ' + (alone.left.length === 1 ? 'it' : 'them') + '.' : '');
+        return Promise.resolve(finishUndo(t, [t], note));
+      }
+      if (!quiet) {
+        var own = Math.max(0, undoPtr - t.ptr - later.length);
+        var q = workSafety.undoQuestion(later.length, own);
+        return ask({ title: q.title, text: q.text, actions: [
+          { key: 'keep', label: 'Keep my edits', kind: 'secondary', autofocus: true },
+          { key: 'undo', label: 'Undo all of it', kind: 'danger' }
+        ] }).then(function (answer) {
+          if (answer !== 'undo') { t.undoWhy = 'kept'; return false; }
+          if (!canvas || remounting || aiWorking) return false;
+          canvas.restore(t.before, restoreOpts()); commitNow();
+          return finishUndo(t, [t].concat(later), '');
+        });
+      }
     }
     if (t.pageChanged) {
       if (newest) undo();
       else { canvas.restore(t.before, restoreOpts()); commitNow(); }
     }
-    var gone = [t].concat(newest ? [] : later);
-    gone.forEach(function (x) { markUndone(x); reportTurn(x.turnId, 'undone'); });
+    return Promise.resolve(finishUndo(t, [t].concat(newest ? [] : later), note));
+  }
+  /* the change (and what went with it) marked undone, the server told, and the forms it made deleted */
+  function finishUndo(t, gone, note) {
+    gone.forEach(function (x) { markUndone(x, x === t ? note : ''); reportTurn(x.turnId, 'undone'); });
     var forms = [].concat.apply([], gone.map(function (x) { return x.formIds || []; }));
-    if (!forms.length || !formsApi()) return Promise.resolve(true);
+    if (!forms.length || !formsApi()) return true;
     return formsApi().deleteCreated(forms).then(function (results) {
       var said = ['Undone — the page is back to how it was before this change.'];
       results.forEach(function (r) {
@@ -4369,7 +4687,8 @@
 
     var bubble = appendChatMsg('ai', result.summary);
     var card = taskCard(bubble.parentNode);
-    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, card: card, result: result, startedAt: Date.now() };
+    // live: made in this session, so its card offers Save while the page is not saved (drawCardSave)
+    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, card: card, result: result, startedAt: Date.now(), bubble: bubble, live: true };
     /* the change as steps, planned before anything is done — each lit as it runs and as it ends */
     var S = {};
     // the new picture is made first (before forms, before the page changes): every later step may need it
@@ -4408,6 +4727,7 @@
     deselect();
     flush();                          // what was pending stays its own undo step
     t.before = canvas.snapshot();     // the page as it was just before this change: its checkpoint
+    currentAiTurn = t;
     setAiWorking(true);
     card.onProgress = function (n, of) { setChatStatus('working', 'Applying your change — ' + n + ' of ' + of + ' steps done'); };
     card.onProgress(0, card.count());
@@ -4429,6 +4749,7 @@
       }
       return applyPage(made);
     }).then(null, function (err) {
+      if (t.stopped) return t;
       var why = (err && err.message) || 'a form could not be created';
       if (S.forms && S.forms.state !== 'done') S.forms.set('fail', why);
       card.steps().forEach(function (st) { if (st.state === 'wait' || st.state === 'run') st.set('fail', 'not done'); });
@@ -4551,6 +4872,11 @@
       var formIds = (made.forms || []).map(function (f) { return f.id; });
       var leftOut = applyAiDesignToCanvas(canvas, design);
       var changedEls = [], done = [], said = [];
+      /* each setting as the canvas reads it once set: read again before the change is called made, so a setting that
+         did not hold is not reported as done */
+      var designSet = {};
+      Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) designSet[k] = canvas.design.get(k); });
+      var textChanges = [];             // { sectionId, before, after } for each text whose words changed
       Object.keys(design).forEach(function (k) { if (leftOut.indexOf(k) === -1) done.push(plainText(designChangeHtml(k, design[k]))); });
       if (S.design) {
         if (leftOut.length === Object.keys(design).length) S.design.set('fail', 'this site has no such setting');
@@ -4559,7 +4885,7 @@
       Object.keys(textBy).forEach(function (sid) {
         var missed = 0;
         textBy[sid].forEach(function (te) {
-          var el = applyTextEdit(te);
+          var el = applyTextEdit(te, textChanges);
           if (!el) { missed++; said.push('“' + te.find + '” in “' + sectionLabel(te.sectionId) + '” was no longer there.'); return; }
           changedEls.push(el);
           clearAiGenerated(el);
@@ -4601,8 +4927,15 @@
         job.step.set('run');
         // the rework that puts the new picture in (a background or a picture for a section that has no place for one)
         var withPic = !!job.edit && !!madePic && usesNew(job.edit);
-        return requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
+        var asked = requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add));
+        /* The section is locked on the canvas while it is rewritten (the request above has already read it), and its
+           words are noted: an answer that comes back after they changed is not put over them (QA, UX-092). */
+        var wordsBefore = sectionWords(job.sec);
+        lockSection(job.sec, true);
+        return asked.then(function (code) {
+          lockSection(job.sec, false);
           if (!isLive(job.sec)) throw new Error('the section was removed meanwhile');
+          if (sectionWords(job.sec) !== wordsBefore) throw new Error('you edited it meanwhile, so it was left as you had it');
           /* the logo unit is never the new picture's to change: a rewrite that leaves it reading differently is
              taken back, section and CSS */
           var unitBefore = withPic ? P.unitState(canvas.doc) : null;
@@ -4642,6 +4975,7 @@
             } else job.step.set('done');
           });
         }).then(null, function (err) {
+          lockSection(job.sec, false);
           if (job.add && isLive(job.sec)) canvas.removeSection(job.sec);       // an empty shell is not left behind
           var why = (err && err.message) || 'the AI could not do it';
           // the picture was made and paid for: it waits in the tray to be placed
@@ -4650,6 +4984,9 @@
           job.step.set('fail', why);
         });
       })).then(function () {
+        /* the editor is being left and the change was reported as not finished (stopAiTurn): nothing more is
+           recorded or reported — the requests cut off by leaving would otherwise say "Failed to fetch" over it */
+        if (t.stopped) return t;
         card.note('');
         // buttons that open a form, and forms put in the page: after the sections are written, in the same step
         if (ctaLinks.length || formEmbeds.length) {
@@ -4657,6 +4994,16 @@
           applyFormOps(made.ids || {}, ctaLinks, formEmbeds, changedEls, done, said);
           if (done.length > doneBefore) S.formOps.set('done', said.length > saidBefore ? said.slice(saidBefore).join(' ') : '');
           else S.formOps.set('fail', said.slice(saidBefore).join(' ') || 'not done');
+        }
+        /* a setting that does not read as it was set (the page changed under the change) is not reported as made */
+        var slipped = Object.keys(designSet).filter(function (k) { return canvas.design.get(k) !== designSet[k]; });
+        if (slipped.length) {
+          slipped.forEach(function (k) {
+            var line = plainText(designChangeHtml(k, design[k])), at = done.indexOf(line);
+            if (at !== -1) done.splice(at, 1);
+          });
+          said.push('Not kept: ' + slipped.map(designLabel).join(', ') + ' — the page changed while it was being applied.');
+          if (S.design) S.design.set(slipped.length === Object.keys(designSet).length ? 'fail' : 'done', 'not kept: ' + slipped.map(designLabel).join(', '));
         }
         var redraw = changedEls.some(function (el) { return el.querySelector && el.querySelector('[data-rv-repeat-template]'); });
         /* An undo step only when something the AI did took effect (each one is in `done`). Otherwise — a picture
@@ -4681,7 +5028,13 @@
         t.ptr = undoPtr;
         t.after = changed ? canvas.snapshot() : null;        // the page as this change left it
         var notAll = said.concat(notDone);
-        t.status = !changed && !formIds.length ? 'failed' : notAll.length ? 'partly' : 'applied';
+        t.status = workSafety.turnStatus(done, notAll, changed, formIds.length);
+        /* Nothing took effect: the page goes back exactly as it was, so marks the editor set while it ran (retag,
+           a section shell) leave nothing behind, and there is no Undo for a change that did not happen. */
+        if (t.status === 'failed' && !changed && t.before) { canvas.restore(t.before, restoreOpts()); sectionsChanged(); }
+        /* a change of settings and wording only can be undone on its own later, leaving the person's later edits */
+        var onlyWords = !ops.length && !jobs.length && !formIds.length && !ctaLinks.length && !formEmbeds.length && !(madePic && madePic.placed);
+        t.inverse = changed && onlyWords ? { design: Object.keys(designSet).filter(function (k) { return slipped.indexOf(k) === -1; }), text: textChanges } : null;
         /* A made picture that is not on the page waits in the tray, and the card's last line says so — also when it
            was put back to protect Content's records or the logo unit and nothing else changed (QA follow-up 2, F3:
            the card ended with only "Nothing on the page changed.") — unless a step already says where it is. */
@@ -4769,6 +5122,8 @@
   function finishAiCard(t, kept) {
     var card = t.card;
     card.status(t.status === 'applying' ? 'run' : t.status);
+    // the AI's own sentence, when it did not happen or only in part, reads as what it set out to do (QA, UX-091)
+    if (t.bubble) markPlan(t.bubble, t.status);
     if (t.status === 'failed') { card.note('Nothing on the page changed.' + (kept ? ' ' + kept : '')); return; }
     if (kept) card.note(kept);
     var foot = card.foot;
@@ -4785,6 +5140,17 @@
     }
     t.button = b;
     if (t.status === 'undone') markUndone(t);
+    // made in this session: kept only in this browser until Save, which its card offers (QA, UX-093)
+    else if (t.live) drawCardSave(t);
+  }
+  /* "What I tried: …" / "What I planned: …" before the AI's sentence, greyed */
+  function markPlan(bubble, status) {
+    var lead = workSafety.planLead(status), had = bubble.querySelector ? bubble.querySelector('.chat-plan-lead') : null;
+    if (had) had.remove();
+    bubble.classList.toggle('is-plan', !!lead);
+    if (!lead) return;
+    var b = document.createElement('span'); b.className = 'chat-plan-lead'; b.textContent = lead;
+    bubble.insertBefore(b, bubble.firstChild);
   }
   /* a turn read back from the server: its steps as they ended (what changed, what could not be done) */
   function drawAiOutcome(t, done, notDone) {
@@ -4796,7 +5162,10 @@
   /* ETB2B AI's state, in its header and over its message box: ready, thinking (waiting for its answer) or working
      (applying a change). While it is not ready the box takes no message, and the strip above it says what it is
      doing — it never looks ready while it is busy (the owner, 28 Oct 2026). */
+  var aiState = 'ready';             // 'ready' | 'thinking' | 'working', for Save, Publish, Undo, Redo and leaving
   function setChatStatus(state, text) {
+    aiState = state === 'thinking' || state === 'working' ? state : 'ready';
+    syncBusyControls();
     var panel = document.getElementById('panel-chat'), pill = document.getElementById('chat-status'), strip = document.getElementById('chat-busy');
     var input = document.getElementById('chat-input'), send = document.getElementById('chat-send'), attach = document.getElementById('chat-attach');
     var busy = state !== 'ready';
@@ -4819,11 +5188,32 @@
     if (send) send.disabled = busy;
     if (attach) attach.disabled = busy;
   }
-  /* while a change is being applied the next message waits: two changes at once would overwrite each other */
+  /* Save, Publish changes, Undo and Redo wait while ETB2B AI is busy, and their titles say why */
+  function syncBusyControls() {
+    var line = workSafety.busyLine(aiState), pub = document.getElementById('btn-publish');
+    if (pub) {
+      if (!pub.hasAttribute('data-title')) pub.setAttribute('data-title', pub.title || '');
+      pub.disabled = !!line || !eventId || !canvas || remounting;
+      pub.title = line || pub.getAttribute('data-title');
+    }
+    renderSiteState();
+    updateHistoryButtons();
+  }
+  /* while a change is being applied the next message waits: two changes at once would overwrite each other. The
+     same flag reaches every control that changes the page or its undo history: Save, Publish changes, Undo, Redo,
+     the canvas and the side panels wait until the change is on the page (QA, UX-089 / UX-090). */
+  var currentAiTurn = null;         // the change being applied, while there is one
   function setAiWorking(on) {
     aiWorking = !!on;
+    if (!on) currentAiTurn = null;
     setChatStatus(on ? 'working' : 'ready');
+    if (!on) repositionToolbars();    // the pills that waited (positionToolbars)
+    if (!on) afterAiQueue.splice(0).forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
+  /* what changes the page in its own time (an answer from the server) waits until ETB2B AI's change is on the page,
+     so it is a step of its own and not part of the AI's */
+  var afterAiQueue = [];
+  function whenAiIdle(fn) { if (aiWorking) afterAiQueue.push(fn); else fn(); }
 
   /* ---------- a section's code, asked of the AI ----------
      requestSectionCode: the section as it stands (devSource: no editor marks, records as their one model
@@ -4890,6 +5280,47 @@
     if (oldUnit) logoUnitNotice();
     return fresh;
   }
+  /* A section being rewritten by ETB2B AI is locked on the canvas: dimmed, not clickable (editor-canvas.css), with
+     "ETB2B AI is rewriting this section…" over it. The mark is the editor's own: never in a snapshot or a saved page
+     (editor-canvas.js counts it as transient). */
+  var busyPills = [];               // { sec, el } — the caption over each locked section
+  function lockSection(sec, on) {
+    if (!sec || sec.nodeType !== 1) return;
+    if (on) {
+      sec.setAttribute('data-rv-ai-busy', '');
+      var pill = document.createElement('div');
+      pill.className = 'tpl-ai-busy';
+      pill.setAttribute('role', 'status');
+      pill.textContent = 'ETB2B AI is rewriting this section…';
+      frame.appendChild(pill);
+      busyPills.push({ sec: sec, el: pill });
+    } else {
+      sec.removeAttribute('data-rv-ai-busy');
+      busyPills = busyPills.filter(function (p) { if (p.sec !== sec) return true; p.el.remove(); return false; });
+    }
+    positionBusyPills();
+  }
+  /* each caption at the top of its section, kept inside the canvas as it scrolls */
+  function positionBusyPills() {
+    if (!busyPills.length) return;
+    var fr = frame.getBoundingClientRect();
+    busyPills.forEach(function (p) {
+      if (!canvas || remounting || !p.sec.isConnected) { p.el.hidden = true; return; }
+      var r = canvas.screenRect(p.sec);
+      p.el.hidden = r.bottom <= fr.top || r.top >= fr.bottom;
+      if (p.el.hidden) return;
+      p.el.style.top = Math.max(8, Math.min(r.top - fr.top + 12, r.bottom - fr.top - p.el.offsetHeight - 8)) + 'px';
+      p.el.style.left = Math.max(8, r.left - fr.left + (r.width - p.el.offsetWidth) / 2) + 'px';
+    });
+  }
+  /* what a section says (its texts and buttons): an answer for it is not put over words changed since it was asked */
+  function sectionWords(sec) {
+    if (!sec || !sec.querySelectorAll) return '';
+    return Array.prototype.map.call(sec.querySelectorAll('[data-editable="text"], [data-editable="button"]'), function (el) {
+      return String(el.textContent || '').replace(/\s+/g, ' ').trim();
+    }).join('\u0001');
+  }
+
   /* an empty section of its own type, for the AI to write into */
   function addBlankSection(name, afterSec) {
     var doc = canvas.doc, base = String(name || 'section').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'section';
@@ -4980,15 +5411,17 @@
           var bubble = appendChatMsg('ai', h.answer);
           drawHistoryPicture(bubble, h);
           if (h.kind !== 'edit') return;
-          var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, card: taskCard(bubble.parentNode) };
+          var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, card: taskCard(bubble.parentNode), bubble: bubble };
           aiTurns.push(t);
           if (h.status === 'applying') { t.card.status('failed'); t.card.note('This change was still being applied when the editor was closed; its result is not known.'); return; }
           drawAiOutcome(t, h.done || [], h.notDone || []);
           if (t.status === 'undone' || t.status === 'failed') return;
           /* Undo needs the checkpoint kept in this browser */
           return localGet(checkpointKey(h.id)).then(function (kept) {
-            if (kept && kept.before) { t.before = kept.before; t.after = kept.after || null; t.formIds = kept.formIds || []; t.pageChanged = kept.pageChanged !== false; return; }
-            if (t.button) { t.button.disabled = true; t.button.title = 'This change was made in another browser or too long ago. Use Undo in the top bar.'; }
+            if (kept && kept.before) { t.before = kept.before; t.after = kept.after || null; t.formIds = kept.formIds || []; t.pageChanged = kept.pageChanged !== false; t.inverse = kept.inverse || null; return; }
+            /* the top bar's Undo has nothing from before this session: the card says how to get back instead (QA, UX-093) */
+            if (t.button) { t.button.disabled = true; t.button.title = workSafety.UNDO_GONE; }
+            t.card.note(workSafety.UNDO_GONE);
           });
         });
       }, Promise.resolve()).then(function () {
@@ -5181,7 +5614,7 @@
     function drawWelcome() {
       welcome = document.createElement('div');
       welcome.className = 'chat-welcome';
-      welcome.innerHTML = '<h4>Hi, I’m ETB2B AI.</h4><p>Tell me what to change on this site, or ask me anything about it. I make each change straight away, show you every step as I do it, and every change has an Undo. Nothing goes live until you publish.</p><div class="chat-suggest"></div>';
+      welcome.innerHTML = '<h4>Hi, I’m ETB2B AI.</h4><p>Tell me what to change on this site, or ask me anything about it. I make each change straight away, show you every step as I do it, and every change has an Undo. Press Save to keep your changes; nothing goes live until you publish.</p><div class="chat-suggest"></div>';
       ['What can you change on this page?', 'Make the buttons rounder', 'Rewrite the hero tagline to sound more premium', 'Add a short FAQ section before the footer'].forEach(function (q) {
         var b = document.createElement('button'); b.type = 'button'; b.textContent = q;
         b.addEventListener('click', function () { if (input.disabled) return; input.value = q; go(); });
@@ -5386,7 +5819,13 @@
             var last = lastAiTurn();
             var reply = appendChatMsg('ai', body.summary);
             if (!last) { reply.textContent = 'There is no change of mine on the page to undo. Undo in the top bar steps back through your own edits.'; return; }
-            undoAiTurn(last).then(function (ok) { if (!ok) reply.textContent = 'I left it as it is.'; });
+            undoAiTurn(last).then(function (ok) {
+              if (ok) return;
+              reply.textContent = last.undoWhy === 'gone' ? workSafety.UNDO_GONE.replace('Ask ETB2B AI to change it back', 'Ask me to change it back')
+                : last.undoWhy === 'busy' ? 'One moment — I am still applying a change. Ask again when it is done.'
+                : last.undoWhy === 'changed' ? 'There is nothing of that change left to take back: its words have been changed again since.'
+                : 'I left it as it is.';
+            });
             if (!eventId) pushLocal('assistant', body.summary + ' (undone)');
             return;
           }
@@ -5430,6 +5869,7 @@
         { label: 'Show me', onClick: revealLogoUnit },
         /* checked and fine: the note comes off the unit, so it is not shown again the next time the site opens */
         { label: 'Looks right', onClick: function () {
+          if (aiWorking) { busyToast(); return; }
           Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { el.removeAttribute('data-rv-logo-note'); });
           commitNow();
           logoUnitNotice();
@@ -5500,7 +5940,7 @@
       logoUnitNotice();
     }
     darkPending[src] = true;
-    RevampCore.logoUnitDark(eventId, src).then(function (r) {
+    RevampCore.logoUnitDark(eventId, src).then(function (r) { whenAiIdle(function () {
       delete darkPending[src];
       var t = target();
       if (!t) return;
@@ -5512,13 +5952,13 @@
         t.pic.parentNode.insertBefore(copy, t.pic.nextSibling);
       } else tell(t, (r && r.note) || DARK_COPY_FAILED);
       commitNow();
-    }, function () {
+    }); }, function () { whenAiIdle(function () {
       delete darkPending[src];
       var t = target();
       if (!t) return;
       tell(t, DARK_COPY_FAILED);
       commitNow();
-    });
+    }); });
   }
   /* The saved page still has the logo unit's notice open (the server refused it). Where this page has it too, it is
      shown and the logo brought up; where this page has answered it — the saved version came from elsewhere — the page
@@ -5580,7 +6020,9 @@
     var clash = heroTone && drawnFor && drawnFor !== heroTone && unitUrl === design.logoUnitUrl;
     var before = null, putAt = -1;
     function noticeGone() { var n = document.querySelector('#ed-notices [data-notice="owner-logo"]'); if (n) n.remove(); }
-    function putIn() {
+    /* byItself: put in as the page opened (an Undo step, but not the person's own change: commitAutomatic) */
+    function putIn(byItself) {
+      if (aiWorking) { busyToast(); return; }
       /* an Undo or a reload of the canvas since the offer was made puts new elements in: found again */
       if (!unit.isConnected) unit = canvas && canvas.doc && canvas.doc.querySelector('[data-rv-logo-unit]');
       if (!unit) return;
@@ -5615,7 +6057,7 @@
         hasCopy = true;
       }
       clearAiGenerated(pic);
-      commitNow();
+      if (byItself) commitAutomatic(); else commitNow();
       putAt = undoPtr;
       logoUnitNotice();
       if (!hasCopy && !/no copy of it for a dark background/.test(about)) darkCopyFor(unit);
@@ -5623,6 +6065,7 @@
     /* Undo on the notice takes back the logo, not whatever was done last: the editor's own Undo when that
        is still the newest step, else the unit as it was put back, as a step of its own */
     function takeBack() {
+      if (aiWorking) { busyToast(); return; }
       if (putAt !== -1 && putAt === undoPtr) { undo(); return; }
       var now = canvas && canvas.doc && canvas.doc.querySelector('[data-rv-logo-unit]');
       if (!now || !before) return;
@@ -5635,7 +6078,7 @@
     try { if (localStorage.getItem(key)) return; } catch (e) { /* storage blocked: asked as if new */ }
     before = unit.cloneNode(true);
     if (automatic && !clash) {
-      putIn();
+      putIn(true);
       tagAutoStep(previous ? 'the previous edition’s logo in the banner' : 'the event’s logo in the banner');
       /* what there is to check about the logo is on the unit's own notice (logoUnitNotice), to be answered */
       showNotice('owner-logo', {
@@ -5713,19 +6156,24 @@
      Opening a site can change it before anybody touches it: the event's records are drawn in (Content), the ET logo
      is brought up to date, section headings are held to the type scale, the owner's new logo goes into the banner.
      Those changes are the starting point, not edits: they are no Undo step (the logo's is, so it can be taken back,
-     and it is named like the rest), the chip says "Updated automatically" rather than "Unsaved changes", and Save
-     keeps them as a version of their own, recorded as automatic (PUT /api/event/site, automatic: true), before the
-     person's changes — so the summary of their save, and of the approval request, names only what they changed.
-     That can only be told apart when the page opened as this browser last saved it; otherwise they go with the
-     person's save, as before. */
+     and it is named like the rest), the chip says "Updated automatically" rather than "Unsaved changes", leaving
+     does not ask about them, and Save keeps them as a version of their own, recorded as automatic and in nobody's
+     name (PUT /api/event/site, automatic: true), before the person's changes — so the summary of their save, and of
+     the approval request, names only what they changed.
+     That can be told apart whenever the page opened as a saved version with nothing of the person's own on it: the
+     version saved on the server, which every browser opens (workSafety.openPlan takes it and onSavedVersion marks it
+     as this browser's), including after "Open version N" over an older copy, or this browser's own last save. A copy
+     holding the person's unsaved changes opens as "Unsaved changes", and the updates then go with their save. */
   var autoNames = [];        // what changed by itself since the page opened ("the ET logo and menu", "FAQs from Content")
   var autoPoints = [];       // [{ ptr, hash, html, names }]: an undo step holding them, and the page that is saved for it
-  var openedSaved = false;   // the page opened as this browser last saved it
+  var openedSaved = false;   // the page opened as a saved version, nothing of the person's own on it
+  var openPtr = 0;           // the undo step the page opened on (1 after "Open version N" over this browser's older copy)
   var autoReady = false;     // the page has opened: a change made by itself now updates autoPoints at once
 
   function noteOpening() {
-    var mark = readMark();
+    var mark = savedMark || readMark();
     autoNames = []; autoPoints = []; autoReady = false;
+    openPtr = undoPtr;
     openedSaved = !!(mark && mark.hash && undoStack[undoPtr] && mark.hash === snapHash(undoStack[undoPtr]));
   }
   function noteAuto(names) {
@@ -5752,14 +6200,14 @@
     if (before.previous !== after.previous) names.push('the previous edition’s speaker profiles');
     return names.length ? names : ['the event’s records from Content'];
   }
-  /* a change the editor made by itself: part of the page as it opened while nobody has changed anything yet, an
-     ordinary step once somebody has */
+  /* a change the editor made by itself: part of the page as it opened while nobody has changed anything yet, a step
+     of the editor's own (not the person's: commitAutomatic) once somebody has */
   function bakeAuto(names) {
-    if (!canvas || remounting) return;
-    if (undoPtr !== 0 || editingEl) { commit(); return; }
-    var snap = canvas.snapshot(undoStack[0]);
-    if (canvas.sameSnapshot(snap, undoStack[0])) return;
-    undoStack[0] = snap;
+    if (!canvas || remounting || aiWorking) return;
+    if (undoPtr !== openPtr || editingEl) { commitAutomatic(); return; }
+    var snap = canvas.snapshot(undoStack[openPtr]);
+    if (canvas.sameSnapshot(snap, undoStack[openPtr])) return;
+    undoStack[openPtr] = snap;
     persist(snap);
     noteAuto(names);
     if (autoReady) settleAuto();
@@ -5773,13 +6221,13 @@
   function settleAuto() {
     autoReady = true;
     autoPoints = [];
-    if (!openedSaved || !autoNames.length || !canvas || undoPtr !== 0) return;
-    autoPoints.push({ ptr: 0, hash: snapHash(undoStack[0]), html: canvas.serialize(), names: autoNames.slice() });
+    if (!openedSaved || !autoNames.length || !canvas || undoPtr !== openPtr) return;
+    autoPoints.push({ ptr: openPtr, hash: snapHash(undoStack[openPtr]), html: canvas.serialize(), names: autoNames.slice() });
   }
   /* an automatic change that is an Undo step of its own, right after the page opened (ownerLogoOffer) */
   function tagAutoStep(name) {
-    if (!openedSaved || !canvas || undoPtr !== 1) return;
-    autoPoints.push({ ptr: 1, hash: snapHash(undoStack[1]), html: canvas.serialize(), names: autoNames.concat([name]) });
+    if (!openedSaved || !canvas || undoPtr !== openPtr + 1) return;
+    autoPoints.push({ ptr: openPtr + 1, hash: snapHash(undoStack[openPtr + 1]), html: canvas.serialize(), names: autoNames.concat([name]) });
   }
   /* the latest of those steps that the page still stands on, or null */
   function autoPoint() {
@@ -5792,14 +6240,168 @@
   /* nothing but those changes since the page opened */
   function autoOnly() { var p = autoPoint(); return !!p && p.ptr === undoPtr; }
 
+  /* workSafety:begin
+     What the editor decides about keeping work, that needs nothing but what it is given: which copy of the site
+     opens (this browser's or the one saved on the server), what a save that meets a newer saved version says, what
+     is asked before the editor is left, how an ETB2B AI change that ran is reported, and why Save, Publish, Undo
+     and Redo wait while ETB2B AI is busy. functions/lib/editor-safety.test.js runs the code between the two
+     workSafety marks in node, so nothing in it may use the rest of this file. */
+  var workSafety = (function () {
+    function isVersion(v) { return typeof v === 'number' && isFinite(v) && v >= 0 && Math.floor(v) === v; }
+
+    /* ETB2B AI's state ('ready', 'thinking': waiting for its answer, 'working': applying it) -> why Save,
+       Publish changes, Undo and Redo wait, or '' when they need not */
+    function busyLine(state) {
+      if (state === 'working') return 'ETB2B AI is still changing the page — one moment';
+      if (state === 'thinking') return 'ETB2B AI is still working on your request — one moment';
+      return '';
+    }
+
+    /* Which copy of the site the editor opens. The server's saved version is the truth; this browser's copy wins
+       only while it holds changes of the person's own made on that same version.
+       o: { site: GET /api/event/site ({ version, snapshot, updatedAt, updatedBy, templateId, eventCreatedAt }),
+                null when the site has never been saved, undefined when it could not be read;
+            templateId: the site being opened;
+            local: this browser's copy ({ snapshot, savedAt, baseVersion, edited, eventCreatedAt }) or nothing;
+            mark: what this browser last saved or opened from the server ({ version, hash }) or nothing;
+            hash(snapshot): the editor's fingerprint of a snapshot;
+            newRun: this open puts a new Create Event result on the page;
+            generationNewer: the site was generated again after it was last saved }
+       -> { take: 'browser' (the editor's own rules for this browser's copy, the hand-off and the generation)
+                | 'server' (the saved version) | 'ask' (this browser holds changes made on an older version),
+            baseVersion: the saved version a save from this editor is made on (the server refuses another),
+            why } */
+    function openPlan(o) {
+      var site = o.site, mark = o.mark || null;
+      var local = o.local && o.local.snapshot ? o.local : null;
+      var localBase = local && isVersion(local.baseVersion) ? local.baseVersion : mark && isVersion(mark.version) ? mark.version : 0;
+      if (site === undefined) return { take: 'browser', baseVersion: localBase, why: 'unreadable' };
+      if (!site || !site.version) return { take: 'browser', baseVersion: 0, why: 'never-saved' };
+      /* a page saved without a snapshot (an editor of the previous release), or for another site: it cannot be
+         reopened, and a save from here is still asked about */
+      if (!site.snapshot || (site.templateId && o.templateId && site.templateId !== o.templateId)) return { take: 'browser', baseVersion: localBase, why: 'not-reopenable' };
+      // a new Create Event result, or a site generated again since its last save, is what the person asked for
+      if (o.newRun || o.generationNewer) return { take: 'browser', baseVersion: site.version, why: 'new-run' };
+      // a copy made for an earlier event at the same address is not this event's
+      if (local && local.eventCreatedAt && site.eventCreatedAt && local.eventCreatedAt !== site.eventCreatedAt) local = null;
+      if (!local) return { take: 'server', baseVersion: site.version, why: 'fresh' };
+      var localHash = o.hash(local.snapshot);
+      if (localHash === o.hash(site.snapshot)) return { take: 'server', baseVersion: site.version, why: 'same' };
+      /* nothing of the person's own is waiting in this browser: the copy is what it last saved or opened, or it
+         differs only by what the editor updated by itself when it opened */
+      if ((mark && mark.hash === localHash) || local.edited === false) {
+        return { take: 'server', baseVersion: site.version, why: localBase && localBase < site.version ? 'newer' : 'same' };
+      }
+      if (localBase === site.version) return { take: 'browser', baseVersion: site.version, why: 'unsaved' };
+      return { take: 'ask', baseVersion: localBase, why: 'older-changes' };
+    }
+
+    /* The question when this browser holds changes made on an older version than the one saved.
+       c: { base: the version they were made on (0: never saved), localAt, version, by, at } (times in words) */
+    function olderCopyWords(c) {
+      var lead = c.base
+        ? 'This browser has changes to this site' + (c.localAt ? ' from ' + c.localAt : '') + ', made on version ' + c.base + ', that were not saved.'
+        : 'This browser has its own copy of this site' + (c.localAt ? ' from ' + c.localAt : '') + ', which was never saved.';
+      return {
+        title: 'A newer version was saved',
+        text: lead + ' Since then, version ' + c.version + ' was saved' + (c.by ? ' by ' + c.by : '') + (c.at ? ' on ' + c.at : '') + '.',
+        more: 'Open version ' + c.version + ' to work on what was saved: Undo in the top bar brings this browser’s changes back while the editor stays open. ' +
+          'Keep my changes opens them instead, and Save then asks before it replaces version ' + c.version + '.',
+        open: 'Open version ' + c.version, keep: 'Keep my changes'
+      };
+    }
+
+    /* What Save says when the server holds a version this editor did not open (PUT /api/event/site answered 409).
+       cur: { version, updatedBy }; me: this person, as the server names them; at: when it was saved, in words */
+    function conflictWords(cur, me, at) {
+      var v = cur.version, on = at ? ' on ' + at : '';
+      var mine = !!me && cur.updatedBy === me;
+      return {
+        title: 'A newer version was saved',
+        text: mine
+          ? 'You saved version ' + v + on + ' in another tab or browser while this editor was open. Replace it with what is in this editor? Version ' + v + ' is kept in the history.'
+          : (cur.updatedBy || 'Someone') + ' saved version ' + v + on + ' while you were editing. Replace it with yours? Theirs is kept in the history.',
+        open: 'Open version ' + v + ' instead',
+        replace: mine ? 'Replace it' : 'Replace with mine'
+      };
+    }
+
+    /* What is asked before the editor is left. s: { ai: ETB2B AI's state, saving, dirty }
+       -> null (leave at once) | { kind: 'wait' } (a save is on its way: it finishes first) |
+          { kind: 'ai' | 'unsaved', title, text } */
+    function leaveAsk(s) {
+      var rest = s.dirty ? ' Your other changes stay only in this browser until you save.' : '';
+      if (s.ai === 'working') return { kind: 'ai', title: 'ETB2B AI is still changing the page', text: 'Leave anyway? This change will be lost.' + rest };
+      if (s.ai === 'thinking') return { kind: 'ai', title: 'ETB2B AI is still working on your request', text: 'Leave anyway? The change you asked for will not be made.' + rest };
+      if (s.saving) return { kind: 'wait' };
+      if (s.dirty) return { kind: 'unsaved', title: 'Leave without saving?', text: 'You have changes that are not saved. They stay only in this browser until you save.' };
+      return null;
+    }
+    /* Whether leaving would leave work behind unsaved (leaveAsk's dirty). s: { dirty: the page is not the saved
+       version, savedVersion: 0 when the site was never saved, edited: the page holds something of the person's own
+       (an edit, an ETB2B AI change, what Create Event handed over) }. A site never saved is never the saved version,
+       but a default page left as it opened is the same page next time: nothing to ask about (QA, B04 verify). */
+    function unsavedWork(s) {
+      if (!s.dirty) return false;
+      return !!s.savedVersion || !!s.edited;
+    }
+    /* Whether an ETB2B AI change's card says "In this browser only until you Save", with its Save: only while the
+       page has unsaved changes and this change is one of them. A change a save has kept is not, whatever is edited
+       after it (QA, B04 verify: a saved navy change said it again once Why now was typed in), and a change that
+       only made forms is on the server already. c: { status, pageChanged, ptr: the undo step the change made,
+       savedPtr: the step the newest save in this session kept, -1 for none } */
+    function cardAsksSave(c, dirty) {
+      if (!dirty || !c.pageChanged || (c.status !== 'applied' && c.status !== 'partly')) return false;
+      return !(c.ptr >= 0 && c.savedPtr >= c.ptr);
+    }
+
+    /* How an ETB2B AI change ended. done: what took effect; notDone: what could not be done; changed: the page
+       was changed; forms: how many forms it made. 'partly' only when something really happened. */
+    function turnStatus(done, notDone, changed, forms) {
+      if (!((changed && done.length > 0) || forms > 0)) return 'failed';
+      return notDone.length ? 'partly' : 'applied';
+    }
+    /* the AI's own sentence above a change that did not happen, or happened in part: marked as what it set out to do */
+    function planLead(status) {
+      return status === 'failed' ? 'What I tried: ' : status === 'partly' ? 'What I planned: ' : '';
+    }
+
+    /* Undo of an ETB2B AI change that the page can only lose together with what came after it.
+       laterAi: changes ETB2B AI made after it; ownSteps: the person's own edits since -> { title, text } */
+    function undoQuestion(laterAi, ownSteps) {
+      var gone = [];
+      if (laterAi) gone.push(laterAi === 1 ? 'the change ETB2B AI made after it' : 'the ' + laterAi + ' changes ETB2B AI made after it');
+      if (ownSteps) gone.push(ownSteps === 1 ? 'the edit you made since' : 'the ' + ownSteps + ' edits you made since');
+      return {
+        title: 'Undo this change?',
+        text: 'The page goes back to how it was before this change' + (gone.length ? ', so ' + gone.join(' and ') + ' will be undone too' : '') +
+          '. Undo in the top bar brings it all back.'
+      };
+    }
+    /* said where a change can no longer be undone from the chat (another browser, or too long ago) */
+    var UNDO_GONE = 'This change can’t be undone here: it was made in another browser, or too long ago. Ask ETB2B AI to change it back, or change it yourself on the page.';
+
+    return { busyLine: busyLine, openPlan: openPlan, olderCopyWords: olderCopyWords, conflictWords: conflictWords, leaveAsk: leaveAsk,
+      unsavedWork: unsavedWork, cardAsksSave: cardAsksSave,
+      turnStatus: turnStatus, planLead: planLead, undoQuestion: undoQuestion, UNDO_GONE: UNDO_GONE };
+  })();
+  /* workSafety:end */
+
   /* ---------- save to staging / publish changes ----------
      The editor keeps every change in this browser as it is made. Nothing reaches the server until Save: that
      stores the site as a new version, puts it on the staging address and records what changed, by whom.
      Publish changes sends everything saved since what is live for approval; approving it is what makes it
      live (see "SAVE -> STAGING -> APPROVAL -> LIVE" in functions/lib/api.js). */
-  var siteInfo = null;          // { savedVersion, publishedVersion, published, pending, required } from the server
-  var savedMark = null;         // { version, hash } — what this browser last saved, to tell "unsaved" from "saved"
+  var siteInfo = null;          // { savedVersion, publishedVersion, published, pending, required, me } from the server
+  var savedMark = null;         // { version, hash } — what this browser last saved or opened from the server
   var saving = false, stateTimer = null;
+  var savingNow = null;         // the save on its way, while there is one (leaving waits for it)
+  /* The saved version this editor's page is made on (workSafety.openPlan, then each save): the server refuses a
+     save made on another one, and the person is asked. */
+  var baseVersion = 0;
+  /* whether this browser's copy holds changes of the person's own that are not saved (an edit, an ETB2B AI change),
+     rather than only what the editor updated by itself as it opened: kept with the copy, read when it next opens */
+  var localEdited = false;
 
   function markKey() { return 'rv-site-saved:' + eventId; }
   function readMark() { try { return JSON.parse(localStorage.getItem(markKey()) || 'null'); } catch (e) { return null; } }
@@ -5813,16 +6415,24 @@
     if (!savedMark || !siteInfo || !siteInfo.savedVersion) return true;
     return savedMark.hash !== snapHash(undoStack[undoPtr]);
   }
+  /* what leaving asks about: isDirty() is true for a site never saved, which Save needs, but only the person's own
+     work there is worth a question (workSafety.unsavedWork) */
+  function hasUnsavedWork() {
+    // what the editor updated by itself as it opened is nothing of the person's: it makes the same updates next time
+    return workSafety.unsavedWork({ dirty: isDirty() && !autoOnly(), savedVersion: siteInfo ? siteInfo.savedVersion : baseVersion, edited: localEdited });
+  }
 
   function loadSiteInfo() {
     if (!eventId) return Promise.resolve();
-    savedMark = readMark();
+    // set as the page opened (resolveInitialContent); read here only when that could not
+    if (!savedMark) savedMark = readMark();
     return RevampCore.fetchApproval(eventId).then(function (a) {
       siteInfo = {
         savedVersion: a.savedVersion || 0, published: !!a.published, publishedVersion: a.publishedVersion || 0,
-        pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false
+        pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false,
+        me: a.me || ''
       };
-    }, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true }; })
+    }, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true, me: '' }; })
       .then(renderSiteState);
   }
   function reviewHref(id) { return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(id); }
@@ -5837,7 +6447,7 @@
     if (!v) { kind = 'warn'; text = 'Not saved yet'; title = 'Save puts this site on the staging address.'; }
     else if (dirty && autoOnly()) {
       kind = 'plain'; text = 'Updated automatically'; href = '/preview/' + eventId + '?staged=1';
-      title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Save to put this on staging; it is kept apart from your own changes.';
+      title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Nothing of yours is waiting to be saved; Save keeps these updates apart from your own changes.';
     }
     else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Staging still shows version ' + v + '. Save to update it.'; href = '/preview/' + eventId + '?staged=1'; }
     else if (siteInfo.pending && siteInfo.pending.toVersion === v) { kind = 'wait'; text = 'v' + v + ' · waiting for approval'; href = reviewHref(siteInfo.pending.id); title = 'Sent for approval by ' + siteInfo.pending.requestedBy + '. Open the review page.'; }
@@ -5846,9 +6456,14 @@
     chip.className = 'site-state ' + kind;
     chip.textContent = text; chip.title = title;
     if (href) { chip.href = href; chip.target = '_blank'; chip.rel = 'noopener'; } else { chip.removeAttribute('href'); }
-    save.disabled = saving || !dirty;
+    /* while ETB2B AI is busy a save would keep half of its change: Save waits, and says why */
+    var busy = workSafety.busyLine(aiState);
+    if (!save.hasAttribute('data-title')) save.setAttribute('data-title', save.title || '');
+    save.disabled = saving || !dirty || !!busy;
+    save.title = busy || save.getAttribute('data-title');
     save.textContent = saving ? 'Saving…' : 'Save';
     if (pub) pub.textContent = siteInfo.required ? 'Publish changes' : 'Publish';
+    syncCardSaves(dirty);
   }
   /* The site lives in this browser's copy until Save; a change only moves the chip to "Unsaved changes". */
   function scheduleServerSave() {
@@ -5866,14 +6481,69 @@
   }
   function when(iso) { var d = new Date(iso || ''); return isNaN(d) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
 
+  function cancelled() { return Object.assign(new Error('cancelled'), { cancelled: true }); }
+  /* One question in the editor's own dialog (host.openDialog). spec: { title, text, more, modal, actions: [{ key,
+     label, kind, aside, autofocus }] } -> Promise<the key of the button pressed, or '' when it was closed> */
+  function ask(spec) {
+    return new Promise(function (resolve) {
+      if (!host || !host.openDialog) { resolve(''); return; }
+      var answer = '';
+      host.openDialog({
+        title: spec.title, modal: !!spec.modal,
+        bodyHtml: '<p>' + escHtml(spec.text) + '</p>' + (spec.more ? '<p>' + escHtml(spec.more) + '</p>' : ''),
+        actions: spec.actions.map(function (a) {
+          return { label: a.label, kind: a.kind, aside: a.aside, autofocus: a.autofocus, onClick: function () { answer = a.key; } };
+        }),
+        onClose: function () { resolve(answer); }
+      });
+    });
+  }
+
+  /* the editor is from now on on this saved version, with what is on the canvas as that version: Save is
+     clean, and the next save is made on it */
+  function onSavedVersion(version) {
+    baseVersion = version;
+    localEdited = false;
+    writeMark({ version: version, hash: snapHash(undoStack[undoPtr]) });
+    persist(undoStack[undoPtr]);
+  }
+
+  /* "Open version N instead": the saved site replaces what is in this editor as a step of its own, so Undo in
+     the top bar brings back what was there; the editor is on that version from then on */
+  function openSavedVersion() {
+    return RevampCore.fetchSite(eventId).then(function (site) {
+      if (!site || !site.snapshot || !canvas || remounting) throw new Error('The saved version could not be opened here. Reload the editor to see it.');
+      deselect();
+      flush();
+      canvas.restore(site.snapshot, restoreOpts());
+      commitNow();
+      onSavedVersion(site.version);
+      siteInfo = siteInfo || { required: true };
+      siteInfo.savedVersion = site.version;
+      renderSiteState();
+      showToast('Opened version ' + site.version + '. Undo brings back what you had.');
+      // Content's records are drawn as they are today, as on opening
+      drawRecords(false);
+    }).catch(function (err) {
+      showToast('Could not open the saved version — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
+    });
+  }
+
   /* -> a promise of the save's answer; rejects when it was not saved (the reason has been shown) */
   function saveToStaging(opts) {
     opts = opts || {};
     if (!canvas || !eventId) return Promise.reject(new Error('no site'));
     if (saving) return Promise.reject(new Error('busy'));
+    /* a save while ETB2B AI is busy would keep half of its change (QA: an empty new section went to staging) */
+    var busy = workSafety.busyLine(aiState);
+    if (busy) { showToast(busy + '.'); return Promise.reject(cancelled()); }
     deselect();
     flush();
+    /* The page and the snapshot sent are one and the same: the page as it stands is recorded first if it differs
+       from the newest step, so what is saved is never a page the editor would not reopen. */
+    if (!canvas.sameSnapshot(canvas.snapshot(undoStack[undoPtr]), undoStack[undoPtr])) commitNow();
     var snap = undoStack[undoPtr], hash = snapHash(snap), html = canvas.serialize();
+    var keptPtr = undoPtr;            // the step this save keeps: the ETB2B AI changes up to it are saved (syncCardSaves)
     var auto = openedSaved && savedMark ? autoPoint() : null;
     saving = true; renderSiteState();
     /* the editor's own updates first, as a version of their own (UX-076); when that cannot be done (a conflict, a
@@ -5881,10 +6551,12 @@
     function sendAuto() {
       if (!auto) return Promise.resolve(null);
       return RevampCore.saveSite(eventId, {
-        templateId: templateId, baseVersion: savedMark.version || 0, snapshot: undoStack[auto.ptr], html: auto.html,
+        templateId: templateId, baseVersion: baseVersion, snapshot: undoStack[auto.ptr], html: auto.html,
         automatic: true, note: 'Updated automatically: ' + auto.names.join(', ')
       }).then(function (out) {
+        // the version they are (or the one already showing them): the person's own save is made on it
         writeMark({ version: out.version, hash: auto.hash });
+        baseVersion = out.version;
         autoPoints = []; openedSaved = false;
         return out;
       }, function (err) {
@@ -5894,37 +6566,41 @@
     }
     var autoOut = null;
     function send(force) {
-      return RevampCore.saveSite(eventId, {
-        templateId: templateId, baseVersion: force ? 0 : ((savedMark && savedMark.version) || 0), snapshot: snap, html: html, force: force
-      });
+      return RevampCore.saveSite(eventId, { templateId: templateId, baseVersion: force ? 0 : baseVersion, snapshot: snap, html: html, force: force });
     }
+    /* The server holds a version this editor was not opened on: someone (or this person, elsewhere) saved in the
+       meantime. Only then is the person asked, and they can also open that version instead. */
     function conflict(err) {
       if (!err || err.status !== 409 || err.code !== 'site-conflict') throw err;
       var cur = err.current || {};
-      /* never saved from this browser, and nobody else has either: nothing can be overwritten */
+      /* nobody has saved this site: nothing can be overwritten */
       if (!cur.version) return send(true);
-      /* this browser has never saved this site but the same person may have, elsewhere; either way they are told */
-      return new Promise(function (resolve, reject) {
-        var m = modal(
-          '<div class="modal-body"><h3>Save over version ' + cur.version + '?</h3>' +
-          '<p>Staging holds version ' + cur.version + (cur.updatedBy ? ', saved by ' + escHtml(cur.updatedBy) : '') + (cur.updatedAt ? ' on ' + escHtml(when(cur.updatedAt)) : '') +
-          '. Saving puts what is in this editor on staging as version ' + (cur.version + 1) + '. Version ' + cur.version + ' is kept in the history.</p></div>' +
-          '<div class="modal-foot"><button class="btn btn-secondary" data-close id="sv-no">Cancel</button><button class="btn btn-primary" id="sv-yes">Save as version ' + (cur.version + 1) + '</button></div>');
-        var done = false;
-        m.querySelector('#sv-yes').addEventListener('click', function () { done = true; m.remove(); send(true).then(resolve, reject); });
-        m.addEventListener('click', function () { setTimeout(function () { if (!done && !m.isConnected) { done = true; reject(Object.assign(new Error('cancelled'), { cancelled: true })); } }, 0); });
+      var words = workSafety.conflictWords(cur, siteInfo && siteInfo.me, when(cur.updatedAt));
+      return ask({ title: words.title, text: words.text, actions: [
+        { key: '', label: 'Cancel', kind: 'ghost', aside: true },
+        { key: 'open', label: words.open, kind: 'secondary' },
+        { key: 'replace', label: words.replace, kind: 'primary', autofocus: true }
+      ] }).then(function (answer) {
+        if (answer === 'replace') return send(true);
+        if (answer === 'open') { saving = false; openSavedVersion(); }
+        throw cancelled();
       });
     }
-    return sendAuto().then(function (a) {
+    savingNow = sendAuto().then(function (a) {
       autoOut = a;
       /* nothing but the automatic updates to save */
       if (a && hash === auto.hash) return a;
       return send(false).then(null, conflict);
     }).then(function (out) {
-      saving = false;
+      saving = false; savingNow = null;
       writeMark({ version: out.version, hash: hash });
+      baseVersion = out.version;
+      // what was saved is this browser's copy; an edit made while the save was on its way is still unsaved
+      if (undoStack[undoPtr] === snap) localEdited = false;
+      persist(undoStack[undoPtr]);
       siteInfo = siteInfo || { required: true };
       siteInfo.savedVersion = out.version;
+      savedPtr = keptPtr;
       renderSiteState();
       if (!opts.quiet) {
         var autoTold = autoOut && !autoOut.unchanged ? 'updated automatically (' + auto.names.join(', ') + ')' : '';
@@ -5938,10 +6614,11 @@
       }
       return out;
     }, function (err) {
-      saving = false; renderSiteState();
+      saving = false; savingNow = null; renderSiteState();
       if (!(err && err.cancelled)) showToast('Could not save — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
       throw err;
     });
+    return savingNow;
   }
 
   function showPublished(result) {
@@ -5961,6 +6638,9 @@
      Where approval has been switched off (Review page → Who approves), it publishes at once instead. */
   function publish() {
     if (!canvas || !eventId || saving) return;
+    // Publish saves first: while ETB2B AI is busy that would send half of its change for approval
+    var busy = workSafety.busyLine(aiState);
+    if (busy) { showToast(busy + '.'); return; }
     deselect();
     flush();
     if (logoUnitGate()) return;
@@ -6026,34 +6706,123 @@
   }
 
   /* Every way out of the editor that this page starts itself (the event rail, Back to events) comes through
-     here, so what is still pending is recorded before the page goes. */
+     here: what is still pending is recorded, and the person is asked before work only this browser has, a save on
+     its way or a change ETB2B AI is still making is left behind (workSafety.leaveAsk). Closing or reloading the tab
+     is asked by the browser itself (wireLeaving). */
+  var leavingNow = false;       // the person chose to go: the browser does not ask again
   function leave(url) {
     flush();
-    location.href = url;
+    function go() { leavingNow = true; location.href = url; }
+    var q = workSafety.leaveAsk({ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork() });
+    if (!q) { go(); return; }
+    if (q.kind === 'wait') {
+      // the server is finishing the version: this browser records it before the page goes, then asks again if need be
+      showToast('Finishing the save first…');
+      var again = function () { leave(url); };
+      (savingNow || Promise.resolve()).then(again, again);
+      return;
+    }
+    if (q.kind === 'ai') {
+      ask({ title: q.title, text: q.text, actions: [
+        { key: 'stay', label: 'Stay', kind: 'secondary', autofocus: true },
+        { key: 'go', label: 'Leave anyway', kind: 'danger' }
+      ] }).then(function (answer) {
+        if (answer !== 'go') return;
+        // the conversation and the History say the change was not finished, before the page goes
+        stopAiTurn(false).then(go, go);
+      });
+      return;
+    }
+    ask({ title: q.title, text: q.text, actions: [
+      { key: 'stay', label: 'Stay', kind: 'ghost', aside: true },
+      { key: 'discard', label: 'Leave without saving', kind: 'secondary' },
+      { key: 'save', label: 'Save and leave', kind: 'primary', autofocus: true }
+    ] }).then(function (answer) {
+      if (answer === 'discard') go();
+      // not saved (the reason has been shown, or the person cancelled): the editor stays
+      else if (answer === 'save') saveToStaging({ quiet: true }).then(go, function () {});
+    });
+  }
+
+  /* The editor is left while ETB2B AI is applying a change. The change was never recorded as a step, so it is not
+     in this browser's copy: the turn is reported as not finished, which the conversation and the History then say
+     (instead of "still being applied"). keepalive: the tab is closing, so the request must outlive the page. */
+  var STOPPED_LINE = 'The editor was closed before this change was finished, so it was not kept.';
+  function stopAiTurn(keepalive) {
+    var t = currentAiTurn;
+    if (!aiWorking || !t || t.status !== 'applying') return Promise.resolve();
+    t.status = 'failed';
+    t.stopped = true;
+    // a slow answer does not keep the person on the page
+    return Promise.race([reportTurn(t.turnId, 'failed', [], [STOPPED_LINE], keepalive), pause(1500)]);
+  }
+
+  /* An ETB2B AI change made in this session stays only in this browser until Save: its card says so, with a Save
+     beside Undo, until a save keeps it (renderSiteState keeps them in step; workSafety.cardAsksSave decides). */
+  var cardSaves = [];
+  var savedPtr = -1;                // the undo step the newest save in this session kept (-1: none yet)
+  function drawCardSave(t) {
+    if (!eventId || !t.card || !t.card.foot) return;
+    var foot = t.card.foot;
+    var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-primary btn-sm chat-save'; b.textContent = 'Save';
+    b.title = 'Save the site to staging, so the change is kept on the server';
+    b.addEventListener('click', function () { saveToStaging().then(null, function () {}); });
+    var note = document.createElement('span'); note.className = 'ai-task-local'; note.textContent = 'In this browser only until you Save.';
+    foot.insertBefore(b, t.button ? t.button.nextSibling : foot.firstChild);
+    foot.appendChild(note);
+    cardSaves.push({ t: t, button: b, note: note });
+    syncCardSaves(isDirty());
+  }
+  function syncCardSaves(dirty) {
+    cardSaves.forEach(function (c) {
+      var show = workSafety.cardAsksSave({ status: c.t.status, pageChanged: c.t.pageChanged, ptr: c.t.ptr, savedPtr: savedPtr }, !!dirty);
+      c.button.hidden = c.note.hidden = !show;
+      c.button.disabled = saving || !!workSafety.busyLine(aiState);
+    });
+  }
+
+  /* The side panels change the page through these. While ETB2B AI is applying a change they wait (and say so),
+     like the canvas: a step recorded in between would hold half of its change. Selecting waits too (Layers → a
+     section's name, Forms → Show on page): it brings up the pills whose tools change the page (QA, UX-090). */
+  function whenPageFree(fn) {
+    return function () {
+      if (aiWorking) { busyToast(); return false; }
+      return fn.apply(null, arguments);
+    };
   }
 
   window.RevampTemplateUI = {
-    openDevZone: openDevZone,
+    openDevZone: whenPageFree(openDevZone),
     open: open, leave: leave, handoffFor: handoffFor,
     setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty() }; }, undo: undo, redo: redo, flush: flush,
+    /* why Save, Publish changes, Undo and Redo wait while ETB2B AI is busy ('' when they need not): the Ctrl/Cmd+S
+       shortcuts say it rather than doing nothing */
+    busyLine: function () { return workSafety.busyLine(aiState); },
     /* true (and the logo unit's notice brought up) when publishing has to wait for it */
     logoUnitGate: logoUnitGate,
-    addRepeatItem: addRepeatItem, removeRepeatItem: removeRepeatItem,
-    getDesign: getDesign, setDesign: setDesign, designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: applyTheme,
-    sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: applySectionEdges,
-    selectedStyle: selectedStyle, styleSelected: styleSelected,
-    listSections: listSections, librarySections: librarySections, selectSection: selectSection, moveSection: moveSection,
+    addRepeatItem: whenPageFree(addRepeatItem), removeRepeatItem: whenPageFree(removeRepeatItem),
+    getDesign: getDesign, setDesign: whenPageFree(setDesign), designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: whenPageFree(applyTheme),
+    sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: whenPageFree(applySectionEdges),
+    selectedStyle: selectedStyle, styleSelected: whenPageFree(styleSelected),
+    listSections: listSections, librarySections: librarySections, selectSection: whenPageFree(selectSection), moveSection: whenPageFree(moveSection),
     pages: function () { return sitePages().map(function (p) { return { slug: p.slug, title: p.title }; }); },
     currentPage: function () { return currentPage; }, showPage: function (slug) { return showPage(slug); },
-    setHidden: setHidden, duplicateSection: duplicateSection, deleteSection: deleteSection, renameSection: renameSection,
-    insertSection: insertSection, addBlock: addBlock,
+    setHidden: whenPageFree(setHidden), duplicateSection: whenPageFree(duplicateSection), deleteSection: whenPageFree(deleteSection), renameSection: whenPageFree(renameSection),
+    insertSection: whenPageFree(insertSection), addBlock: whenPageFree(addBlock),
     /* forms (editor-forms.js): formsChanged() after the event's forms changed — previews drawn again and the
        live view told (onFormsChange(fn)); unlinkForm(id) before a form is deleted; placeFormSection(id, afterEl);
        revealElement(el) selects and shows a button or embed */
     formsChanged: formsChanged,
     heroVideoChanged: heroVideoChanged,
     onFormsChange: function (fn) { if (typeof fn === 'function') formsListeners.push(fn); },
-    unlinkForm: unlinkForm, placeFormSection: placeFormSection, revealElement: revealElement,
+    /* a form deleted while ETB2B AI is applying a change: the page lets go of it once the change is on the page, as
+       a step of its own, and the delete waits for that (forms-builder.js waits for beforeDelete's promise) */
+    unlinkForm: function (formId) {
+      // said, so the Forms panel does not look stuck while it waits
+      if (aiWorking) showToast('The form is deleted once ETB2B AI has finished changing the page.');
+      return new Promise(function (done, fail) { whenAiIdle(function () { try { done(unlinkForm(formId)); } catch (err) { fail(err); } }); });
+    },
+    placeFormSection: whenPageFree(placeFormSection), revealElement: whenPageFree(revealElement),
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers,
     /* for editor-ai-mode.js ("Edit with AI" live view): the mounted canvas (null while there is none),
        onChange(fn) after every change to the page, and leaveEditing() — stops typing in place and lets go of the

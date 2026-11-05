@@ -10,6 +10,15 @@
   margin-top: 10px;
 }
 
+/* The grid sits on a Bootstrap .row, whose ::before and ::after (content " ", display table, for floats) are grid
+   items too: ::before took the first cell, so the first quote started in the second column with an empty cell
+   beside it. The grid needs neither. */
+#leaders .quote-grid::before,
+#leaders .quote-grid::after {
+  content: none;
+  display: none;
+}
+
 #leaders .quote-card {
   background: #F7F4EF;
   border-radius: 16px;
