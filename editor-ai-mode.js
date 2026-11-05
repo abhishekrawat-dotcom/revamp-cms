@@ -414,6 +414,8 @@
         e.preventDefault();
         var save = document.getElementById('btn-save');
         if (save && !save.hidden && !save.disabled) save.click();
+        // while ETB2B AI is busy Save waits, and says why (UI.save shows it)
+        else if (save && !save.hidden && UI.busyLine && UI.busyLine()) UI.save().then(null, function () {});
       }
     });
     /* Should the live view still be about to load another document (a script setting location, a handler
