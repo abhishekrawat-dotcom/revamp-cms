@@ -9,7 +9,8 @@
 //   POST   /api/event/restore           handleEventRestore    undo of the above
 //   POST   /api/event/clone             handleEventClone      a new, unpublished event copied from another
 //
-// All five are admin routes (lib/http.js's requireAdmin). lib/api.js's router sends them here.
+// All five are admin routes (lib/http.js's requireAdmin). lib/api.js's router sends them here. Deleting and
+// restoring are for approvers only (see "WHO MAY DELETE AND RESTORE" below).
 //
 // Two rules hold for everything in this file, for the reason lib/http.js gives at its top: a handler
 // answers the request on every path, and nothing may throw inside a stream or promise callback — an
@@ -341,6 +342,31 @@ function readEventIdFrom(value) {
   return isEventId(id) && !isImportId(id) ? id : '';
 }
 
+/* ---------- WHO MAY DELETE AND RESTORE ----------
+   Deleting an event is for approvers only (the owner's rule, 2026-11-03: team members draft, edit and ask for
+   approval; lib/access.js notAnApprover is the one reading of it). It takes a live site off the web at once.
+   Restoring is for approvers too: it reverses an approver's decision, and it puts a published event's site
+   back on the web exactly as it was, which would otherwise be a way round approval.
+   The wizard's discard (?discard=1) is not covered: it removes only a draft its own creator made under a day
+   ago and nobody has worked on (discardBlocker), which is cancelling Create Event, not deleting an event.
+   approvers: config/approvals' list, read as lib/api.js approvalsConfig reads it (trimmed, lower case, e-mail
+   addresses only); this file cannot require lib/api.js, which loads it. */
+function approversOf(fb) {
+  return fb.db.collection('config').doc('approvals').get().then(function (snap) {
+    var d = snap && snap.exists ? (snap.data() || {}) : {};
+    return (Array.isArray(d.approvers) ? d.approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); })
+      .filter(function (e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); });
+  });
+}
+/* Resolves when the caller may `what` ("delete an event"); else rejects with 403 { code: 'not-an-approver',
+   approvers } and the sentence that names who can. */
+function mustBeApprover(fb, decoded, what) {
+  return approversOf(fb).then(function (approvers) {
+    var why = require('./access').notAnApprover(approvers, actorOf(decoded), what);
+    if (why) throw reject(403, why, { code: 'not-an-approver', approvers: approvers });
+  });
+}
+
 /* ---------- DELETE /api/event?eventId=&discard=1 ----------
    The Create Event wizard makes the event before it generates or imports a site for it, so an owner who
    cancels half-way has an empty draft they never asked to keep. A soft delete would hold its address for
@@ -406,14 +432,16 @@ function handleEventDelete(req, res) {
       if (!eventId) return sendJson(res, 400, { error: 'A valid eventId is required.' });
       if (queryOf(req).get('discard') === '1') return handleEventDiscard(req, res, fb, decoded, eventId);
       var ref = eventRef(fb, eventId), now = new Date().toISOString(), result = null;
-      fb.db.runTransaction(function (tx) {
-        return tx.get(ref).then(function (snap) {
-          // a shell (no createdAt) is not an event: marking it deleted would reserve an address nobody used
-          if (!isTaken(snap)) throw reject(404, 'No event found for "' + eventId + '".');
-          var d = snap.data() || {};
-          if (d.deletedAt) { result = { changed: false, deletedAt: d.deletedAt, name: d.name }; return; }
-          tx.update(ref, { deletedAt: now, deletedBy: actorOf(decoded), updatedAt: now });
-          result = { changed: true, deletedAt: now, name: d.name };
+      mustBeApprover(fb, decoded, 'delete an event').then(function () {
+        return fb.db.runTransaction(function (tx) {
+          return tx.get(ref).then(function (snap) {
+            // a shell (no createdAt) is not an event: marking it deleted would reserve an address nobody used
+            if (!isTaken(snap)) throw reject(404, 'No event found for "' + eventId + '".');
+            var d = snap.data() || {};
+            if (d.deletedAt) { result = { changed: false, deletedAt: d.deletedAt, name: d.name }; return; }
+            tx.update(ref, { deletedAt: now, deletedBy: actorOf(decoded), updatedAt: now });
+            result = { changed: true, deletedAt: now, name: d.name };
+          });
         });
       }).then(function () {
         if (!result.changed) return;
@@ -436,15 +464,17 @@ function handleEventRestore(req, res) {
         if (!eventId) return sendJson(res, 400, { error: 'A valid eventId is required.' });
         var ref = eventRef(fb, eventId), now = new Date().toISOString(), result = null;
         var FieldValue = admin.firestore.FieldValue;
-        fb.db.runTransaction(function (tx) {
-          return tx.get(ref).then(function (snap) {
-            if (!isTaken(snap)) throw reject(404, 'No event found for "' + eventId + '".');
-            var d = snap.data() || {};
-            // a draft that is being removed for good (see handleEventDiscard) has already lost content
-            if (d.discardingAt) throw reject(409, 'This draft is being removed and cannot be restored.', { code: 'discarding' });
-            result = { changed: !!d.deletedAt, published: d.published === true, name: d.name };
-            if (!d.deletedAt) return;
-            tx.update(ref, { deletedAt: FieldValue.delete(), deletedBy: FieldValue.delete(), updatedAt: now });
+        mustBeApprover(fb, decoded, 'restore a deleted event').then(function () {
+          return fb.db.runTransaction(function (tx) {
+            return tx.get(ref).then(function (snap) {
+              if (!isTaken(snap)) throw reject(404, 'No event found for "' + eventId + '".');
+              var d = snap.data() || {};
+              // a draft that is being removed for good (see handleEventDiscard) has already lost content
+              if (d.discardingAt) throw reject(409, 'This draft is being removed and cannot be restored.', { code: 'discarding' });
+              result = { changed: !!d.deletedAt, published: d.published === true, name: d.name };
+              if (!d.deletedAt) return;
+              tx.update(ref, { deletedAt: FieldValue.delete(), deletedBy: FieldValue.delete(), updatedAt: now });
+            });
           });
         }).then(function () {
           if (!result.changed) return;

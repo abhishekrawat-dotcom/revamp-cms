@@ -141,6 +141,18 @@ function deny(req, res, urlPath, why) {
   res.end();
 }
 
+/* WHO MAY TAKE THINGS AWAY. Deleting an event and taking a live site offline are for approvers only (the
+   owner's rule, 2026-11-03); team members draft, edit and ask for approval. An approver is an address in
+   config/approvals' `approvers` (lib/api.js approvalsConfig reads that document) — and while none are named,
+   every signed-in member approves (the approval rule's own reading), so may do these too.
+   -> '' when `email` may, else the sentence that says who can. `what` finishes "Only an approver (…) can …". */
+function notAnApprover(approvers, email, what) {
+  const list = (Array.isArray(approvers) ? approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(Boolean);
+  if (!list.length) return '';
+  if (list.indexOf(String(email || '').trim().toLowerCase()) !== -1) return '';
+  return 'Only an approver (' + list.join(', ') + ') can ' + (what || 'do that') + '.';
+}
+
 /* lets the request through to next() only for public paths or an allowed, signed-in user (req.user) */
 function gate(req, res, next) {
   const urlPath = req.url.split('?')[0];
@@ -154,4 +166,4 @@ function gate(req, res, next) {
   }, function () { deny(req, res, urlPath, 'signin'); });
 }
 
-module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate, isServableFile, isPublic };
+module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate, isServableFile, isPublic, notAnApprover };
