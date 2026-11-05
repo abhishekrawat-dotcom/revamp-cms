@@ -30,3 +30,12 @@
   #overview .ovr-img{text-align:right}
   #overview .container{max-width:100%;margin:auto}
 }
+
+/* With no picture of its own (Create Event's overview picture), the overview's words take the row: its four figures
+   are the next section, not a picture beside them. */
+#overview .row.description:not(:has(.ovr-img img, .ovr-img video)) > .ovr-img{display:none}
+#overview .row.description:not(:has(.ovr-img img, .ovr-img video)) > .col-md-5{width:100%;max-width:100%;flex:0 0 100%}
+#overview .row.description:not(:has(.ovr-img img, .ovr-img video)) .second_content{max-width:820px}
+@media screen and (min-width:1200px){
+  #overview .row.description:not(:has(.ovr-img img, .ovr-img video)) .page_hdng4 h2{max-width:900px}
+}

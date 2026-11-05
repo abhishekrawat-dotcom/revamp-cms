@@ -309,6 +309,29 @@ ok(hooks.repeatedHeadingIds([{ parsed: { sections: [{ id: 'overview', html: '<h2
   ok(!/=>/.test(code) && !/(^|[\s;(])(let|const)\s/.test(code) && code.indexOf('`') === -1, 'et-runtime.js stays ES5');
 })();
 
+/* ---------- the October template items (OCT-1 to OCT-3), re-checked on 5 Nov ---------- */
+(function () {
+  var T = path.join(__dirname, '..', '..', 'templates');
+  function tf(p) { return fs.readFileSync(path.join(T, p), 'utf8'); }
+  var maw = JSON.parse(tf('making-ai-work/template.json'));
+  var ov = tf('making-ai-work/sections/overview/index.html'), st = tf('making-ai-work/sections/overview-stats/index.html'), ct = tf('making-ai-work/sections/contact-us/index.html');
+  ok(ov.indexOf('custom_section_img_17912743388829') === -1 && ct.indexOf('5443c52a18ecaf0d0d3d') === -1 && !/<img[^>]*cntnd-hdng/.test(ct),
+    'OCT-1: making-ai-work shows no picture of text: the four figures and the "Contact Us" heading are words');
+  ok((st.match(/<li class="ovr-stat[^"]*"><span class="ovr-stat-num">[^<]+<\/span><span class="ovr-stat-label">[^<]+<\/span><\/li>/g) || []).length === 4 && /DAY TO QUESTION/i.test(st.replace(/<[^>]+>/g, ' ')),
+    'OCT-1: the figures are their own section, four cards of a figure and its label');
+  var statsMap = maw.content.map.filter(function (m) { return m.from === 'stats'; })[0], contactMap = maw.content.map.filter(function (m) { return m.from === 'contact'; })[0];
+  ok(statsMap && statsMap.section === 'overview-stats' && statsMap.fill[0].list === '.ovr-stats > .ovr-stat' && statsMap.fill[0].items === 'stats.items' &&
+    JSON.stringify(statsMap.fill[0].fill) === JSON.stringify([{ text: '.ovr-stat-num', value: '{v}' }, { text: '.ovr-stat-label', value: '{k}' }]) &&
+    maw.sections.some(function (s) { return s.id === 'overview-stats'; }), 'OCT-1: the figures are filled from Create Event\'s Stats strip (figure and label)');
+  ok(contactMap && contactMap.intro && contactMap.intro.heading === '.page_hdng4 h2.cntnd-hdng' && /<h2 class="cntnd-hdng">Contact Us<\/h2>/.test(ct), 'OCT-1: the Contact heading is an h2, filled from Contact\'s own heading');
+  var conv = tf('cx-leaders-forum/sections/conventions-box/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/@media screen and \(max-width: 1199px\) \{\s*#conventions-box \.conventions-grid \{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/.test(conv) &&
+    /@media screen and \(min-width: 576px\) and \(max-width: 767px\) \{\s*#conventions-box \.conventions-grid \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/.test(conv),
+    'OCT-2: the CX agenda cards go three a row below 1200 px and two on large phones, so a long word is never cut off');
+  var lead = tf('cx-leaders-forum/sections/leaders/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  ok(/#leaders \.quote-grid::before,\s*#leaders \.quote-grid::after \{\s*content: none;\s*display: none;/.test(lead), 'OCT-3: the quotes grid starts in its first cell (the .row\'s ::before takes none)');
+})();
+
 Promise.all(pending).then(function () {
   if (failures.length) {
     console.error('published-page-ux: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - '));

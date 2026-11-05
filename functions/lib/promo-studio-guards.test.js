@@ -373,6 +373,10 @@ function page(o) {
 
   /* ---- the new rules in oneworld.css: the console's tokens, AA in both themes ---- */
   var css = read('promo-studio/oneworld.css').replace(/\/\*[\s\S]*?\*\//g, '');
+  /* the release re-check of 5 Nov: at 390 the frame is 270 px and "Download all (.zip)" sat off-screen beside the tab */
+  var narrow = (/@media \(max-width:560px\)\{([\s\S]*?)\n\}/.exec(css) || [])[1] || '';
+  check('a narrow frame: the mailers bar wraps, its buttons on a line of their own that wraps too',
+    /#evNav\.secnav\{flex-wrap:wrap/.test(narrow) && /#evNav\.secnav \.sp\{margin-left:0;flex:1 1 100%;flex-wrap:wrap\}/.test(narrow) && /body\.ow-embed:not\(\.ow-team\) \.content\{padding-left:14px;padding-right:14px\}/.test(narrow), narrow);
   function block(sel) {
     var at = css.indexOf(sel + '{');
     if (at === -1) return {};

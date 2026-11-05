@@ -504,8 +504,9 @@
 
   /* fetchApproval's answer for this event (who approves, the signed-in person, its recent requests) and, when
      the newest request was rejected, its reason (rejectNote). null until it has arrived, or when it could not
-     be read: the header and Visibility then go by the event alone, and the server still decides. */
-  var APPROVAL = null;
+     be read: the header and Visibility then go by the event alone, and the server still decides.
+     APPROVAL_FAILED: it could not be read (not merely not arrived yet). */
+  var APPROVAL = null, APPROVAL_FAILED = false;
 
   /* ============================================================
      SUBCOLLECTION LOADING  (Speakers, Agenda, Sponsors, Gallery, FAQ, Contact)
@@ -5801,7 +5802,11 @@
     if (st.rejected) notes.push('The last request was rejected' + (st.rejected.decidedBy ? ' by ' + st.rejected.decidedBy : '') +
       (st.rejected.note ? ': “' + st.rejected.note + '”' : '') + '.');
     if (st.live){
-      if (may) acts.push('<button class="btn btn-danger" type="button" id="vis-offline">Take the site offline…</button>');
+      /* the button only once who approves is known: drawn before, a team member who is not an approver saw it
+         for a few seconds and then lost it. If that cannot be read, the button is drawn and the server decides
+         (it refuses anybody who is not an approver, and the dialog says so). */
+      if (!APPROVAL && !APPROVAL_FAILED) notes.push('Checking who can take the site offline…');
+      else if (may) acts.push('<button class="btn btn-danger" type="button" id="vis-offline">Take the site offline…</button>');
       else notes.push('Only an approver can take the site offline' + (APPROVAL && APPROVAL.approvers && APPROVAL.approvers.length ? ' (' + APPROVAL.approvers.join(', ') + ')' : '') + '.');
     }
 
@@ -6330,10 +6335,14 @@
     }).then(function(a){
       if (!EV || EV.id !== id) return;
       APPROVAL = a;
+      APPROVAL_FAILED = false;
       paintState();
       if (routeId() === 'settings/visibility') render();
     }, function(err){
       console.error('Could not read the approval state:', err);
+      if (!EV || EV.id !== id || APPROVAL) return;
+      APPROVAL_FAILED = true;
+      if (routeId() === 'settings/visibility') render();
     });
   }
 

@@ -445,6 +445,28 @@ var steps = [
     });
   },
 
+  /* ===== C.1b UX-121: the catalog with every card's post, as the html route answers it ===== */
+  function () {
+    return call(mod.handleCatalog, { url: '/api/promo/social/catalog?eventId=rich&cards=1' }).then(function (r) {
+      var a = r.json, tpls = [].concat.apply([], a.catalog.categories.map(function (c) { return c.templates; }));
+      check('C.1b cards=1: 200, the catalog as before, and one card for each template in catalog order', r.status === 200 && Array.isArray(a.cards) && a.cards.length === tpls.length &&
+        a.cards.map(function (c) { return c.item.templateId; }).join() === tpls.map(function (t) { return t.id; }).join(), a.cards && a.cards.map(function (c) { return c.item; }));
+      var items = a.cards.map(function (c) { return c.item; });
+      check('C.1b each card is the template at its first size with no options; a preview when the event cannot make it, and for the Testimonial and Prediction vs Outcome',
+        items.every(function (it, i) { var t = tpls[i]; return it.format === t.formats[0].id && JSON.stringify(it.params) === '{}' &&
+          it.preview === (!t.available || it.templateId === 'generic.testimonial' || it.templateId === 'generic.prediction-outcome'); }), items);
+      return post(mod.handleHtml, '/api/promo/social/html', { eventId: 'rich', items: items }).then(function (h) {
+        var same = h.status === 200 && h.json.items.length === a.cards.length && h.json.items.every(function (x, i) { return JSON.stringify(x) === JSON.stringify(a.cards[i].answer); });
+        check('C.1b each card\'s post is exactly what the html route answers for it', same, h.status);
+        check('C.1b the cards are made with no QR options in them, as a card asks', a.cards.every(function (c) { return !own(c.item.params, 'qr'); }) && tpls[0].params.some(function (p) { return p.key === 'qr'; }));
+      });
+    }).then(function () {
+      return call(mod.handleCatalog, { url: '/api/promo/social/catalog?eventId=rich' }).then(function (r) {
+        check('C.1b without cards=1 no cards are made', r.status === 200 && !own(r.json, 'cards'));
+      });
+    });
+  },
+
   /* the presenter rule, straight */
   function () {
     return Promise.all([T.socialEventFor(FB, 'rich', {}), T.socialEventFor(FB, 'sparse', {})]).then(function (r) {

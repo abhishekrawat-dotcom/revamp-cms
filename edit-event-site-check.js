@@ -5,10 +5,12 @@
    WHY (the UX sweep of 3 Nov 2026, UX-140 / UX-143 / UX-144): a template nobody had filled in, a test and a page
    with a broken picture were live, and an older site's header still showed last year's boxed logo — and nothing in
    the console said so. Publishing now refuses what blocks; this panel says it for pages that went live before.
+   What a live page shows already holds no next version back (siteCheckOf's alreadyLive): it is listed as a check
+   to put right, so a repair can go live while the rest is still being put right (UX-144).
 
    Shown above every section of the console, only when there is something to fix or to know (a block or a check).
    An item that can be put right in one click carries its button ("Update this site's header and footer",
-   "Correct the picture's address"): that saves the repaired site as a new version (POST /api/event/site/repair)
+   "Correct the picture's address", "Write it a heading of its own"): that saves the repaired site as a new version (POST /api/event/site/repair)
    and, for a live site, sends it for approval like any edit (POST /api/event/approval/request) — nothing goes live
    from here. A live site with a newer saved version (a repair waiting for approval) is checked as saved too: what that
    version already puts right says so, with no button to press again. Plain ES5; builds everything with
@@ -104,7 +106,8 @@
     styles();
     var blocks = r.blocks != null ? r.blocks : shown.filter(function (x) { return x.level === 'block'; }).length;
     box = el('details', 'site-check' + (blocks ? ' has-block' : ''));
-    box.open = blocks > 0;
+    /* open when something holds the next version back, or a one-click repair is waiting to be pressed */
+    box.open = blocks > 0 || shown.some(function (x) { return !!(x.action && x.action.kind); });
     var sum = el('summary');
     sum.appendChild(el('span', 'sc-dot'));
     sum.appendChild(el('span', null, r.of === 'live' ? 'Your live site: ' + shown.length + (shown.length === 1 ? ' thing to look at' : ' things to look at')
@@ -158,7 +161,8 @@
     busy = true;
     button.disabled = true;
     msg.className = 'sc-msg';
-    msg.textContent = 'Saving the site with this put right…';
+    /* a heading is written by ETB2B AI first, which takes a few seconds more */
+    msg.textContent = kind === 'headings' ? 'ETB2B AI is writing the heading, then the site is saved with it…' : 'Saving the site with this put right…';
     call('POST', '/api/event/site/repair', { eventId: eventId, repairs: [kind] }).then(function (saved) {
       if (!saved.published) {
         msg.textContent = 'Saved as version ' + saved.version + '. It goes live when the site is published.' + EDITOR_NOTE;

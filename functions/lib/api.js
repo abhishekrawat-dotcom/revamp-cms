@@ -9840,7 +9840,9 @@ function handleApprovalGet(req, res) {
            logo unit's notice does. The site editor reads this view on every open, and does not wait for it. */
         var wantChecks = qs.get('checks') === '1';
         return page.then(function (html) {
-          return html == null || !wantChecks ? { html: html, check: null } : siteCheckOf(fb, eventId, data, html, { records: true }).then(function (check) {
+          return html == null || !wantChecks ? { html: html, check: null } : livePageOf(fb, eventId, data).then(function (livePage) {
+            return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage });
+          }).then(function (check) {
             return { html: html, check: check };
           }, function (err) {
             console.error('api: the site check of ' + eventId + ' v' + request.toVersion + ' failed — ' + (err && err.message));
@@ -9995,9 +9997,17 @@ function handleApprovalSettingsPut(req, res) {
      siteCheckOf(fb, eventId, data, html, opts) -> Promise<{ items, blocking }>
        items: [{ code, level: 'block' | 'warn' | 'info', title, lines: [text], hint, action? }]
        opts: { forms (the public forms payload, when read), records: true to read Content's records too,
-               live: true for the page that is live (says why search engines are kept away), probe (tests) }
+               live: true for the page that is live (says why search engines are kept away), probe (tests),
+               livePage: the page of the version that is live now (livePageOf), when a newer one is checked }
    'block' holds a version back: publishing it, asking for its approval and approving it all refuse (409
    'site-check', the items with the answer) — never the version already live going out again.
+   A version of a site that is live is held back only by what it would put live that is not live already: a
+   problem the live page shows too (the same template text, sample, picture address or logo) is said as a 'warn'
+   with alreadyLive: true, so a repair — a picture's address put right, ET's header and footer — can go live while
+   the rest still waits to be put right, and the live site is never kept worse than the version waiting for it.
+   The check of the live page itself (live: true) is said the same way: what it shows already holds no next
+   version back. (UX-144: the national-data-center-symposium repair was refused for the "Sponsor 1" the live
+   page already showed, so its broken picture stayed live.)
      placeholders  template text a visitor would read ("Event name goes here", "Sponsor 1")        block
      samples       a real template's samples of its design (data-rv-sample: another event's quotes) block
      pictures      a picture whose address cannot be shown (a mistyped bucket, or no such picture) block
@@ -10005,11 +10015,141 @@ function handleApprovalSettingsPut(req, res) {
      et-chrome     an AI-designed site built before ET's header and footer (its logo boxed, no phone
                    menu, no legal links) — with the repair that puts them in (POST /api/event/site/repair) warn
      records       sample entries in Content (a sponsor named "Sponsor 1")                        warn
+     headings      a section whose heading repeats an earlier one's (or the hero's line) — on an AI-designed
+                   site with the repair that has ETB2B AI write it one of its own (UX-155)          warn
      payment       a button that promises tickets or payment, which this release does not take    warn
      buttons       what the live page puts right on its way out (site-checks.js repair)           info, warn when hidden
      search        kept out of search engines, and why (the live page only)                       info
    ===================================================================================================== */
 var SITE_CHECK_CODE = 'site-check';
+
+/* ---- headings that repeat (UX-155) ----
+   Generation writes a section again when its heading repeats one before it (repeatedHeadingIds); a page made
+   before that (agentic-summit-2027: "Not more AI. Better AI." over its overview and the next section) still shows
+   it, so the site check says so and its repair has ETB2B AI write the later section a heading of its own. */
+/* each section's heading in page order: the banner's (its h1) and every other section's first h2; the header and
+   footer have none. page: the site page the section is on (data-rv-page, templates/_shared/rv-pages.js: none or
+   "home" is the home page). -> [{ id, text, words, page }] */
+function sectionHeadings(html) {
+  html = String(html || '');
+  var tokens = tokenizeHtml(html), out = [];
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t !== 'open') continue;
+    var id = attrValue(t, 'data-rv-section');
+    if (!id) continue;
+    var end = elementEnd(tokens, i);
+    if (end === -1) continue;
+    if (id !== 'nav' && id !== 'footer') {
+      var tag = id === 'hero' ? 'h1' : 'h2';
+      var m = new RegExp('<' + tag + '\\b[^>]*>([\\s\\S]*?)<\\/' + tag + '\\s*>', 'i').exec(html.slice(t.s, tokens[end].e));
+      var words = m ? headingWords('<h2>' + m[1] + '</h2>') : '';
+      if (words) out.push({ id: id, text: headingText('<h2>' + m[1] + '</h2>'), words: words, page: String(attrValue(t, 'data-rv-page') || 'home') });
+    }
+    i = end;                                        // a section inside a section is part of it
+  }
+  return out;
+}
+/* the sections whose heading repeats an earlier one's on the same page of the site (the banner's line included); the
+   first keeps it. An award site's FAQ page may share a heading with the home page's: a visitor never sees both.
+   -> [{ id, text, firstId }] */
+function repeatedPageHeadings(html) {
+  var seen = {}, out = [];
+  sectionHeadings(html).forEach(function (h) {
+    var key = h.page + '|' + h.words;
+    if (Object.prototype.hasOwnProperty.call(seen, key)) { if (h.id !== 'hero') out.push({ id: h.id, text: h.text, firstId: seen[key] }); }
+    else seen[key] = h.id;
+  });
+  return out;
+}
+/* html with the words of the first <tag> inside the element marked data-rv-section="id" (or, with no id, the first
+   <tag> of html) set to text; the tag and its attributes stay. -> html, or null when there is no such heading */
+function withHeadingText(html, id, tag, text) {
+  html = String(html || '');
+  var tokens = tokenizeHtml(html), from = 0, to = tokens.length - 1;
+  if (id) {
+    from = -1;
+    for (var i = 0; i < tokens.length; i++) if (tokens[i].t === 'open' && attrValue(tokens[i], 'data-rv-section') === id) { from = i; break; }
+    if (from === -1) return null;
+    to = elementEnd(tokens, from);
+    if (to === -1) return null;
+  }
+  for (var k = from; k <= to; k++) {
+    if (tokens[k].t !== 'open' || tokens[k].name !== tag) continue;
+    var close = elementEnd(tokens, k);
+    if (close === -1 || close === k) return null;
+    return html.slice(0, tokens[k].e) + escHtmlText(text) + html.slice(tokens[close].s);
+  }
+  return null;
+}
+/* a section's words as a visitor reads them (no markup, no scripts or styles), cut to max */
+function sectionWords(html, id, max) {
+  var tokens = tokenizeHtml(String(html || '')), from = -1;
+  for (var i = 0; i < tokens.length; i++) if (tokens[i].t === 'open' && attrValue(tokens[i], 'data-rv-section') === id) { from = i; break; }
+  if (from === -1) return '';
+  var end = elementEnd(tokens, from);
+  var part = String(html).slice(tokens[from].s, end === -1 ? undefined : tokens[end].e)
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  return part.length > max ? part.slice(0, max) + '…' : part;
+}
+var HEADINGS_SCHEMA = { type: 'OBJECT', properties: { headings: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+  id: { type: 'STRING' }, heading: { type: 'STRING' } }, required: ['id', 'heading'] } } }, required: ['headings'] };
+var HEADING_MAX_CHARS = 70, HEADING_MAX_WORDS = 10;
+/* ETB2B AI writes each repeated section (repeatedPageHeadings) a heading of its own from that section's words, in
+   the page's style. A heading is refused when it is any other heading on the page (or another new one), when it is
+   too long, or when it copies a run of three or more of the section's own words (the sentence under it, its small
+   label): the
+   section would then say the same thing twice, as before. A refused answer is asked for once more, told why.
+   -> Promise<{ id: heading }>, or a 502 'ai-heading' httpError when the second answer is unusable too (nothing is
+   changed then) */
+function plainWords(s) { return String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function writeSectionHeadings(fb, eventId, data, page, reps) {
+  var taken = sectionHeadings(page), ids = reps.map(function (r) { return r.id; });
+  var keep = taken.filter(function (h) { return ids.indexOf(h.id) === -1; });
+  var words = {};
+  reps.forEach(function (r) { words[r.id] = sectionWords(page, r.id, 1500); });
+  var base = [
+    'You write section headings for an event\'s website. Some sections repeat the heading of a section before them, so a visitor reads the same heading twice. Write each of the sections below a heading of its own.',
+    'Event: ' + String(data.name || eventId).slice(0, 200) + '.',
+    'Headings already on the page, which no new heading may repeat or closely echo: ' + keep.map(function (h) { return '"' + h.text + '"'; }).join(', ') + '.',
+    'Rules: say what THAT section is about, from its own words below, but in NEW words: never copy a sentence, a phrase or the small label from its words, because the heading sits right above them and would say the same thing twice. ' +
+      HEADING_MAX_WORDS + ' words at most and ' + HEADING_MAX_CHARS + ' characters at most; the same voice, capitalisation and punctuation as the heading it had; plain words only (no HTML, no quotation marks, no emoji); never invent facts, numbers or names that are not in its words; two new headings never the same.',
+    'Sections:'
+  ].concat(reps.map(function (r) {
+    return '- id: ' + r.id + '; its heading now: "' + r.text + '"; its words: "' + words[r.id].replace(/"/g, '\'') + '"';
+  })).concat(['Answer with one entry per section, by its id.']).join('\n');
+  function ask(prompt) {
+    return llm.callJson(prompt, HEADINGS_SCHEMA, { route: 'site-heading', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(fb, eventId, 'site-heading') }).then(function (r) {
+      var list = r && r.parsed && Array.isArray(r.parsed.headings) ? r.parsed.headings : [];
+      var used = keep.map(function (h) { return h.words; }), out = {}, why = [];
+      reps.forEach(function (rep) {
+        var got = list.filter(function (x) { return x && x.id === rep.id; })[0];
+        var text = got ? String(got.heading || '').replace(/<[^>]*>/g, '').replace(/^["“”'‘’\s]+|["“”'‘’\s]+$/g, '').replace(/\s+/g, ' ').trim() : '';
+        var w = headingWords('<h2>' + escHtmlText(text) + '</h2>');
+        if (!text || !w) return why.push(rep.id + ': no heading');
+        if (text.length > HEADING_MAX_CHARS || text.split(' ').length > HEADING_MAX_WORDS) return why.push(rep.id + ': "' + text + '" is too long');
+        if (used.indexOf(w) !== -1) return why.push(rep.id + ': "' + text + '" is another heading on the page');
+        /* three words or more found together in the section's words: a copy (two can meet by chance) */
+        if (w.split(' ').length >= 3 && (' ' + plainWords(words[rep.id]) + ' ').indexOf(' ' + w + ' ') !== -1) return why.push(rep.id + ': "' + text + '" copies the section\'s own words');
+        used.push(w);
+        out[rep.id] = text;
+      });
+      return { out: out, why: why, code: r && (r.code || r.error) };
+    });
+  }
+  return ask(base).then(function (first) {
+    if (!first.why.length) return first;
+    return ask(base + '\nYour last answer could not be used: ' + first.why.join('; ') + '. Write each of them again, in new words, keeping to the rules.');
+  }).then(function (got) {
+    if (got.why.length) {
+      console.error('api: the new headings for ' + eventId + ' were not usable — ' + (got.code || got.why.join('; ')));
+      throw httpError(502, 'ETB2B AI did not write a heading of its own for ' + (reps.length === 1 ? 'that section' : 'each of those sections') + ' just now. Nothing was changed. Try again, or change the heading in the site editor.', { code: 'ai-heading' });
+    }
+    return got.out;
+  });
+}
+
 var SITE_CHECK_PICTURES_MAX = 80, SITE_CHECK_LINES_MAX = 12;
 /* whether an object of ours exists, for a few minutes: the review page asks again on every open */
 var STORAGE_SEEN = new Map(), STORAGE_SEEN_TTL_MS = 5 * 60 * 1000;
@@ -10148,33 +10288,35 @@ function siteCheckOf(fb, eventId, data, html, opts) {
   var records = opts.records ? contentNames(fb, eventId) : Promise.resolve(null);
 
   var samples = siteChecks.sampleHits(page, TOKEN_KIT, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
+  var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
   return Promise.all([pictureProblems(fb, page, opts.probe), logoProblems(fb, data, ins.logos), records]).then(function (got) {
     var pics = got[0], logos = got[1], siteData = got[2], items = [];
-    if (ins.placeholders.length) {
-      items.push({ code: 'placeholders', level: 'block', title: 'Template text is still on the page',
-        lines: capLines(ins.placeholders.map(function (h) { return quoteText(h.text) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
-        hint: 'Write the event’s own words in the site editor, or take the section out, then save.' });
-    }
+    /* each kind that holds a version back, split in two when the live page has some of it already (onLive) */
+    blockUnlessLive(items, 'placeholders', ins.placeholders, onLive.placeholder, function (list) {
+      return { title: 'Template text is still on the page',
+        lines: capLines(list.map(function (h) { return quoteText(h.text) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
+        hint: 'Write the event’s own words in the site editor, or take the section out, then save.' };
+    });
     /* another event's quotes, people or logos the template shows as samples of its design */
-    if (samples.length) {
-      items.push({ code: 'samples', level: 'block', title: 'Samples from the template are still on the page',
-        lines: capLines(samples.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
-        hint: 'They belong to another event (its quotes, people or logos). Put this event’s own in, or take them out, in the site editor, then save.' });
-    }
-    if (pics.length) {
-      var fixable = pics.filter(function (p) { return p.fixUrl; }).length;
-      items.push({ code: 'pictures', level: 'block', title: pics.length === 1 ? '1 picture cannot be shown' : pics.length + ' pictures cannot be shown',
-        lines: capLines(pics.map(function (p) { return quoteText(p.url.split('/').pop(), 60) + ': ' + p.why; })),
+    blockUnlessLive(items, 'samples', samples, onLive.sample, function (list) {
+      return { title: 'Samples from the template are still on the page',
+        lines: capLines(list.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
+        hint: 'They belong to another event (its quotes, people or logos). Put this event’s own in, or take them out, in the site editor, then save.' };
+    });
+    blockUnlessLive(items, 'pictures', pics, onLive.picture, function (list) {
+      var fixable = list.filter(function (p) { return p.fixUrl; }).length;
+      return { title: list.length === 1 ? '1 picture cannot be shown' : list.length + ' pictures cannot be shown',
+        lines: capLines(list.map(function (p) { return quoteText(p.url.split('/').pop(), 60) + ': ' + p.why; })),
         hint: fixable ? 'The right address of ' + (fixable === 1 ? 'it' : fixable + ' of them') + ' is known. Correct it here, or replace the picture in the site editor.' : 'Replace it in the site editor, then save.',
-        action: fixable ? { kind: 'pictures', label: fixable === 1 ? 'Correct the picture’s address' : 'Correct the pictures’ addresses' } : null });
-    }
+        action: fixable ? { kind: 'pictures', label: fixable === 1 ? 'Correct the picture’s address' : 'Correct the pictures’ addresses' } : null };
+    });
     var chromeAction = ins.generated && ins.hasNav && ins.hasFooter ? { kind: 'et-chrome', label: 'Update this site’s header and footer' } : null;
-    if (logos.wrong.length) {
-      items.push({ code: 'logo-year', level: 'block', title: 'The ' + (logos.wrong[0].where === 'footer' ? 'footer' : 'header') + ' logo shows another year',
-        lines: logos.wrong.map(function (l) { return (l.where === 'footer' ? 'Footer' : 'Header') + ': ' + l.years.join(', ') + ' — this edition is ' + logos.want; }),
+    blockUnlessLive(items, 'logo-year', logos.wrong, onLive.logo, function (list) {
+      return { title: 'The ' + (list[0].where === 'footer' ? 'footer' : 'header') + ' logo shows another year',
+        lines: list.map(function (l) { return (l.where === 'footer' ? 'Footer' : 'Header') + ': ' + l.years.join(', ') + ' — this edition is ' + logos.want; }),
         hint: chromeAction ? 'ET’s header and footer use the portal’s logo and this edition’s name and date.' : 'Replace the logo in the site editor with this edition’s, then save.',
-        action: chromeAction });
-    }
+        action: chromeAction };
+    });
     if (ins.generated && ((ins.hasNav && !ins.etNav) || (ins.hasFooter && !ins.etFooter))) {
       var lines = [];
       if (ins.hasNav && !ins.etNav) lines.push('The header has no menu button on phones' + (logos.notUnit ? ', and shows the logo as it was uploaded, in a box, not this edition’s logo' : '') + '.');
@@ -10188,6 +10330,14 @@ function siteCheckOf(fb, eventId, data, html, opts) {
       items.push({ code: 'records', level: 'warn', title: 'Sample entries in Content',
         lines: sample.map(function (r) { return r.label + ': ' + r.items.slice(0, 5).map(function (t) { return quoteText(t, 50); }).join(', ') + (r.items.length > 5 ? ' …' : ''); }),
         hint: 'Rename or delete them there. The page shows Content’s entries as they were when the site was last saved in the editor.' });
+    }
+    var reps = repeatedPageHeadings(page);
+    if (reps.length) {
+      items.push({ code: 'headings', level: 'warn', title: reps.length === 1 ? 'Two sections have the same heading' : reps.length + ' sections repeat another section’s heading',
+        lines: capLines(reps.map(function (r) { return quoteText(r.text, 70) + ' — ' + siteChecks.sectionName(r.id) + ' repeats ' + (r.firstId === 'hero' ? 'the banner' : siteChecks.sectionName(r.firstId)); })),
+        hint: ins.generated ? 'Visitors read the same heading twice. ETB2B AI can write the later section a heading of its own from what that section says, as a new saved version' + (opts.live ? ' sent for approval' : '') + '; or change it in the site editor.'
+          : 'Visitors read the same heading twice. Give the later section a heading of its own in the site editor, then save.',
+        action: ins.generated ? { kind: 'headings', label: reps.length === 1 ? 'Write it a heading of its own' : 'Write them headings of their own' } : null });
     }
     if (after.payment.length) {
       items.push({ code: 'payment', level: 'warn', title: 'A button promises tickets or payment',
@@ -10214,6 +10364,54 @@ function siteCheckOf(fb, eventId, data, html, opts) {
   });
 }
 
+/* What the live page shows already, as four tests of one problem each (siteCheckOf): the same template text, the
+   same sample, a picture at the same address, a logo of the same picture in the same place. livePage: that page's
+   HTML, or null for a site that is not live (then nothing is live already, and every test says no). */
+function alreadyLiveTest(livePage, data) {
+  var none = function () { return false; };
+  if (livePage == null) return { placeholder: none, sample: none, picture: none, logo: none };
+  livePage = String(livePage);
+  var ins = siteChecks.inspect(livePage, TOKEN_KIT);
+  var texts = ins.placeholders.map(function (h) { return h.text; });
+  var samples = siteChecks.sampleHits(livePage, TOKEN_KIT, templateSamples((data && data.site && data.site.templateId) || (data && data.templateId) || ''))
+    .map(function (h) { return (h.picture ? 'picture:' : 'text:') + h.text; });
+  var urls = siteChecks.storageRefs(livePage).map(function (r) { return r.url; });
+  var logos = ins.logos.map(function (l) { return l.where + ' ' + l.src; });
+  return {
+    placeholder: function (h) { return texts.indexOf(h.text) !== -1; },
+    sample: function (h) { return samples.indexOf((h.picture ? 'picture:' : 'text:') + h.text) !== -1; },
+    picture: function (p) { return urls.indexOf(p.url) !== -1; },
+    logo: function (l) { return logos.indexOf(l.where + ' ' + l.src) !== -1; }
+  };
+}
+/* One kind of problem that holds a version back, pushed onto items: what the live page does not show yet as a
+   'block'; what it shows already as a 'warn' (alreadyLive), which says so first — fixing it is still asked for,
+   but it holds nothing back. build(list) -> { title, lines, hint, action? }. A one-click repair is offered once:
+   on the 'block' when both are there. */
+var ALREADY_LIVE_HINT = 'The live site shows this already, so it does not hold the next version back. ';
+function blockUnlessLive(items, code, list, onLive, build) {
+  var fresh = [], old = [];
+  (list || []).forEach(function (x) { (onLive(x) ? old : fresh).push(x); });
+  var blockItem = null;
+  if (fresh.length) { blockItem = Object.assign({ code: code, level: 'block' }, build(fresh)); items.push(blockItem); }
+  if (old.length) {
+    var warn = Object.assign({ code: code, level: 'warn', alreadyLive: true }, build(old));
+    warn.hint = ALREADY_LIVE_HINT + warn.hint;
+    if (blockItem && blockItem.action && warn.action && blockItem.action.kind === warn.action.kind) warn.action = null;
+    items.push(warn);
+  }
+}
+/* The page of the version that is live now, as it was saved (its kept version, else the published page), to check
+   a newer version against (siteCheckOf's livePage) -> Promise<html | null>: null for a site that is not live, or a
+   page that cannot be read (then every problem holds the version back, as for a first publication) */
+function livePageOf(fb, eventId, data) {
+  if (!data || data.published !== true) return Promise.resolve(null);
+  var v = +data.publishedVersion || 0;
+  return (v ? readObject(fb, versionPath(eventId, v)) : Promise.resolve(null)).then(function (text) {
+    return text != null ? text : readObject(fb, publishedObjectPath(eventId));
+  }).then(function (text) { return text == null ? null : text; }, function () { return null; });
+}
+
 /* The refusal when a version has what blocks it (409 'site-check'), worded for whoever asked. who: 'owner' |
    'approver'. -> httpError, or null when nothing blocks */
 function siteCheckError(check, who) {
@@ -10229,9 +10427,12 @@ function siteCheckError(check, who) {
     : 'This site cannot go live yet: ' + what + '. Put ' + (block.length > 1 ? 'these' : 'this') + ' right in the site editor, save, and send it again.';
   return httpError(409, text, { code: SITE_CHECK_CODE, checks: check.items });
 }
-/* -> Promise that rejects with siteCheckError when the page has what blocks it */
+/* -> Promise that rejects with siteCheckError when the page has what blocks it (for a site that is live: what it
+   would put live that the live page does not show already) */
 function siteCheckGate(fb, eventId, data, html, who, forms) {
-  return siteCheckOf(fb, eventId, data, html, { forms: forms }).then(function (check) {
+  return livePageOf(fb, eventId, data).then(function (livePage) {
+    return siteCheckOf(fb, eventId, data, html, { forms: forms, livePage: livePage });
+  }).then(function (check) {
     var err = siteCheckError(check, who);
     if (err) throw err;
     return check;
@@ -10256,7 +10457,10 @@ function handleSiteCheck(req, res) {
       if (of === 'live' && !published) return sendJson(res, 200, Object.assign(base, { items: [], blocking: false, found: false }));
       return readObject(fb, of === 'live' ? publishedObjectPath(eventId) : sitePath(eventId, 'page.html')).then(function (html) {
         if (html == null) return sendJson(res, 200, Object.assign(base, { items: [], blocking: false, found: false }));
-        return siteCheckOf(fb, eventId, data, html, { records: true, live: of === 'live' }).then(function (check) {
+        /* the saved version of a live site is checked against the live page, as asking for its approval will be */
+        return (of === 'saved' ? livePageOf(fb, eventId, data) : Promise.resolve(null)).then(function (livePage) {
+          return siteCheckOf(fb, eventId, data, html, { records: true, live: of === 'live', livePage: livePage });
+        }).then(function (check) {
           sendJson(res, 200, Object.assign(base, { items: check.items, blocking: check.blocking, found: true }));
         });
       });
@@ -10265,20 +10469,22 @@ function handleSiteCheck(req, res) {
 }
 
 /* ---------- POST /api/event/site/repair ----------
-   Body { eventId, repairs: ['et-chrome' | 'pictures'] } -> 200 { version, repaired: [text], summary }.
+   Body { eventId, repairs: ['et-chrome' | 'pictures' | 'headings'] } -> 200 { version, repaired: [text], summary }.
    Puts right, in the site as last saved, what the site check offers to: 'et-chrome' — an AI-designed site built
    before ET's header and footer gets them (et-nav.js, et-footer.js: the portal's logo for its ground, never
    boxed, this edition's name, date and place, a phone menu, Register, the portal's privacy, terms and contact),
    as the brand-world-summit-2026 site was on 19 Oct; 'pictures' — a picture whose address has a mistyped bucket
-   is pointed at this product's storage, where that picture is. The page, the editor's snapshot and the stored
+   is pointed at this product's storage, where that picture is; 'headings' — a section of an AI-designed site whose
+   heading repeats an earlier one's gets one of its own, written by ETB2B AI from that section's words
+   (writeSectionHeadings; UX-155). The page, the editor's snapshot and the stored
    sections change together, as one new saved version with its line in the history: the editor reopens it as
    it is, and nothing goes live from here — the console then sends it for approval like any edit. */
 function handleSiteRepair(req, res) {
   withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
-    var wanted = (Array.isArray(body.repairs) ? body.repairs : []).filter(function (r, i, a) { return (r === 'et-chrome' || r === 'pictures') && a.indexOf(r) === i; });
-    if (!wanted.length) return sendJson(res, 400, { error: '"repairs" must name what to put right: "et-chrome", "pictures".' });
+    var wanted = (Array.isArray(body.repairs) ? body.repairs : []).filter(function (r, i, a) { return (r === 'et-chrome' || r === 'pictures' || r === 'headings') && a.indexOf(r) === i; });
+    if (!wanted.length) return sendJson(res, 400, { error: '"repairs" must name what to put right: "et-chrome", "pictures", "headings".' });
     var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
     var HTML = 'text/html; charset=utf-8', JSON_TYPE = 'application/json; charset=utf-8';
     acquireSiteLock(fb, eventId, token, function (data) {
@@ -10328,6 +10534,33 @@ function handleSiteRepair(req, res) {
             var plan = data.designPlan && data.designPlan.sections;
             if (Array.isArray(plan) && JSON.stringify(plan) !== JSON.stringify(fix(plan))) planPatch = fix(plan);
             done.push(fixes.length === 1 ? '1 picture’s address' : fixes.length + ' pictures’ addresses');
+          });
+        });
+        if (wanted.indexOf('headings') !== -1) chain = chain.then(function () {
+          var reps = repeatedPageHeadings(page);
+          if (!reps.length) return;
+          if (!/^gen-/.test(siteTemplateIdOf(data) || '')) throw httpError(409, 'Only a site the AI designed has its headings written here. Change the heading in the site editor.', { code: 'not-ai-designed' });
+          return writeSectionHeadings(fb, eventId, data, page, reps).then(function (written) {
+            /* the page, the editor's snapshot and the stored sections, as the other repairs change them */
+            reps.forEach(function (r) {
+              var next = withHeadingText(page, r.id, 'h2', written[r.id]);
+              if (next == null) throw httpError(409, 'The heading of “' + siteChecks.sectionName(r.id) + '” could not be found in the saved site. Open the site editor, save it once, and try again.', { code: 'section-missing' });
+              page = next;
+              if (snap) snap.nodes = snap.nodes.map(function (n) {
+                if (typeof n !== 'string' || !new RegExp('^<[a-z][\\w-]*\\b[^>]*\\sdata-rv-section="' + r.id + '"', 'i').test(n)) return n;
+                return withHeadingText(n, r.id, 'h2', written[r.id]) || n;
+              });
+            });
+            var sections = sectionsPatch || data.generatedSections;
+            if (Array.isArray(sections)) {
+              var patched = sections.map(function (sec) {
+                if (!sec || !written[sec.id] || typeof sec.html !== 'string') return sec;
+                var html = withHeadingText(sec.html, null, 'h2', written[sec.id]);
+                return html == null ? sec : Object.assign({}, sec, { html: html });
+              });
+              if (JSON.stringify(patched) !== JSON.stringify(sections)) sectionsPatch = patched;
+            }
+            done.push(reps.map(function (r) { return siteChecks.sectionName(r.id) + '’s heading (now “' + written[r.id] + '”)'; }).join(', '));
           });
         });
         return chain.then(function () {
@@ -11480,7 +11713,7 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, chatView: chatView, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
-  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
+  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
   replaceSiteSection: replaceSiteSection, etChromeFor: etChromeFor, searchVerdicts: searchVerdicts, handleSitemapXml: handleSitemapXml, handleSiteRepair: handleSiteRepair, handleSiteCheck: handleSiteCheck,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont,

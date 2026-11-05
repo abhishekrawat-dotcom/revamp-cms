@@ -1532,6 +1532,56 @@ function respJson(r) { return r.json(); }
   artHeld.ok(); await flush(80);
   check('UX-121: … and the cards use that answer (no second request)', Pf.htmlCalls().length === 1 && !!Pf.$('th-generic_announcement').querySelector('img'));
 
+  /* UX-121 (re-check of 5 Nov): the cards' posts come with the catalog (cards=1), made from the same reading of the
+     event, and the art is asked for beside it; a catalog Promotions asked for early is taken once, for this event only */
+  function cardsOf(c) {
+    var out = [];
+    c.catalog.categories.forEach(function (cat) {
+      cat.templates.forEach(function (t) {
+        var it = { templateId: t.id, format: t.formats[0].id, params: {}, preview: !t.available || t.id === 'generic.testimonial' || t.id === 'generic.prediction-outcome' };
+        var sz = SIZES[it.format];
+        out.push({ item: it, answer: { templateId: it.templateId, format: it.format, width: sz[0], height: sz[1], caption: '', html: postHtml(it.templateId, it.format) } });
+      });
+    });
+    return out;
+  }
+  var Cc = boot({ routes: { 'GET /api/promo/social/catalog': function (q) { var c = catalog({}); if (q.cards === '1') c.cards = cardsOf(c); return new Response(JSON.stringify(c), { status: 200 }); } } });
+  await flush(120);
+  var catCalls = Cc.calls.filter(function (c) { return c.path === '/api/promo/social/catalog'; });
+  check('UX-121: the catalog is asked for with the cards\' posts in it', catCalls.length === 1 && catCalls[0].q.cards === '1', catCalls.map(function (c) { return c.url; }));
+  check('UX-121: the cards are drawn from the catalog\'s posts: no html request', Cc.htmlCalls().length === 0 && !!Cc.$('th-generic_announcement').querySelector('img'), Cc.htmlCalls().length);
+  check('UX-121: the platform\'s code reads the catalog without the cards', Cc.run('typeof CAT.cards') === 'undefined' && Cc.run('CAT.catalog.categories.length') === 2);
+  check('UX-121: the art is asked for once, beside the catalog, and the page takes that answer', Cc.calls.filter(function (c) { return c.path === '/api/promo/social/art'; }).length === 1 &&
+    Cc.calls.findIndex(function (c) { return c.path === '/api/promo/social/art'; }) < Cc.calls.findIndex(function (c) { return c.path === '/api/promo/social/catalog'; }));
+  var preCat = catalog({}); preCat.cards = cardsOf(preCat);
+  var Pp = boot();
+  Pp.ctx.parent.RevampSocialPrefetch = { eventId: 'qa-1', catalog: Promise.resolve({ status: 200, text: JSON.stringify(preCat) }), used: false };
+  await flush(120);
+  check('UX-121: the catalog Promotions asked for early is taken: the frame asks for no catalog and no posts', Pp.calls.filter(function (c) { return c.path === '/api/promo/social/catalog'; }).length === 0 &&
+    Pp.htmlCalls().length === 0 && Pp.ctx.parent.RevampSocialPrefetch.used === true && !!Pp.$('th-generic_announcement').querySelector('img'));
+  var Po = boot();
+  Po.ctx.parent.RevampSocialPrefetch = { eventId: 'another-event', catalog: Promise.resolve({ status: 200, text: JSON.stringify(preCat) }), used: false };
+  await flush(120);
+  check('UX-121: … never another event\'s', Po.calls.filter(function (c) { return c.path === '/api/promo/social/catalog'; }).length === 1 && Po.ctx.parent.RevampSocialPrefetch.used === false);
+  /* the posts' pictures and font sheets are asked for together as soon as the catalog's posts are there, through the
+     caches the drawing reads: the drawing asks for none of them again */
+  var held = deferred(), Pw = boot({ shot: function () { return held.p; },
+    routes: { 'GET /api/promo/social/catalog': function (q) { var c = catalog({}); c.cards = cardsOf(c); return new Response(JSON.stringify(c), { status: 200 }); } } });
+  await flush(120);
+  var picCalls = Pw.calls.filter(function (c) { return c.path === '/api/promo/image'; }).map(function (c) { return c.q.url; });
+  var OK_PICS = ['https://img.etb2bimg.com/speaker.jpg', STORE + 'promo-art/logo.png', STORE + 'promo-art/bg1.png'];
+  function times(list, u) { return list.filter(function (x) { return x === u; }).length; }
+  check('UX-121: the posts\' outside pictures (an <img>\'s, a style\'s background) are asked for at once, before a card is drawn', Pw.shots.length <= 1 &&
+    OK_PICS.concat(['https://img.etb2bimg.com/broken-logo.png']).every(function (u) { return picCalls.indexOf(u) !== -1; }), picCalls);
+  check('UX-121: … and the font stylesheet once', Pw.fetches.filter(function (u) { return /fonts\.googleapis\.com\/css2\?family=Inter/.test(u); }).length === 1, Pw.fetches.filter(function (u) { return /fonts/.test(u); }));
+  held.ok(new Blob(['png'], { type: 'image/png' })); await flush(200);
+  var picCalls2 = Pw.calls.filter(function (c) { return c.path === '/api/promo/image'; }).map(function (c) { return c.q.url; });
+  check('UX-121: drawing the cards asks for no picture that came a second time (one that failed is asked again, as before)', OK_PICS.every(function (u) { return times(picCalls2, u) === 1; }), picCalls2);
+  var Pe = boot();
+  Pe.ctx.parent.RevampSocialPrefetch = { eventId: 'qa-1', catalog: Promise.resolve({ status: 503, text: '{"error":"down"}' }), used: false };
+  await flush(120);
+  check('UX-121: … and one that failed is asked for again by the frame', Pe.calls.filter(function (c) { return c.path === '/api/promo/social/catalog'; }).length === 1 && !!Pe.$('th-generic_announcement').querySelector('img'));
+
   /* UX-121: the count above the cards, and the cards kept in this browser */
   var held2 = [];
   var P1 = boot({ shot: function (rec) { var d = deferred(); held2.push(d); return d.p; } });

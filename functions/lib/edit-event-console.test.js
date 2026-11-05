@@ -243,6 +243,11 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   var seoFn = (/function viewSEO\(\)\{[\s\S]*?\n  \}\n/.exec(page) || [''])[0];
   check('URL & SEO reads the live page and shows no made-up address', /C\.readSiteHead\(html\)/.test(page) && /fetch\(location\.origin \+ '\/e\/' \+ encodeURIComponent\(EV\.id\)/.test(page) && seoFn && seoFn.indexOf('etoneworld') === -1 && seoFn.indexOf('<input') === -1 && seoFn.indexOf('<textarea') === -1, seoFn.slice(0, 200));
   check('Visibility: Publish is the header\'s, taking offline is the real unpublish', /pub\.onclick = doPublish/.test(page) && /off\.onclick = takeOffline/.test(page) && /C\.unpublishEvent\(EV\.id\)/.test(page) && /C\.mayTakeOffline\(APPROVAL\)/.test(page));
+  /* the release re-check of 5 Nov: a team member who is not an approver saw "Take the site offline…" for 2-9 s, until
+     who approves had been read; now it is drawn only once that is known (or could not be read: the server decides) */
+  check('Visibility: no offline button before who approves is known; "Checking…" until then, and the button if that read fails',
+    /if \(!APPROVAL && !APPROVAL_FAILED\) notes\.push\('Checking who can take the site offline…'\);\s*else if \(may\) acts\.push\('<button class="btn btn-danger" type="button" id="vis-offline">/.test(page) &&
+    /APPROVAL_FAILED = true;\s*if \(routeId\(\) === 'settings\/visibility'\) render\(\);/.test(page) && /APPROVAL = a;\s*APPROVAL_FAILED = false;/.test(page));
   check('Visibility: what cannot be done yet is listed as such, not offered as a select', /panel\('Not available yet'/.test(page) && !/Password protected<\/option>/.test(page) && !/Take offline automatically/.test(page));
   check('the header carries the state chips and paints them on every view', /<span class="ev-state" id="ev-state" hidden><\/span>/.test(page) && /function paintState\(\)/.test(page) && /paintState\(\);\n  \}/.test(page) && /setTimeout\(loadApproval, 0\)/.test(page));
   check('Basics: no maxlength on the description; the over-limit line is there from the start', !/maxlength="' \+ DESC_MAX/.test(page) && /id="b-desc-over" role="status" hidden/.test(page) && /' too long: it can be up to ' \+\n?\s*DESC_MAX/.test(page) && /var DESC_MIN = C\.DESC\.min, DESC_IDEAL = C\.DESC\.ideal, DESC_MAX = C\.DESC\.max;/.test(page));

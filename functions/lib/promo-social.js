@@ -4,7 +4,9 @@
    them (app/src/server.ts /api/catalog, /api/assets, /api/psd|background|logo, /api/preview, /api/download and
    /api/editor/*) on Oneworld's data and storage:
 
-     GET    /api/promo/social/catalog?eventId=           the event's header facts, the formats, the templates
+     GET    /api/promo/social/catalog?eventId=[&cards=1] the event's header facts, the formats, the templates; with
+                                                         cards=1 also each template's card post (cardItem), as the
+                                                         html route would answer it, from the same reading of the event
      GET    /api/promo/social/art?eventId=               which uploaded pictures the posts use
      POST   /api/promo/social/art?eventId=&slot=&from=   (raw, ≤ 8 MiB) a background, the logo, or a PSD's unit
      POST   /api/promo/social/art/psd  { eventId, name, bytes, canvasWidth, canvasHeight, found }   a PSD's summary
@@ -361,18 +363,47 @@ function withQueryEvent(req, res, cb, raw) {
 /* a raw route's refusal, once its upload has arrived */
 function refuseRaw(req, res, status, body) { drainThen(req, function () { sendJson(res, status, body); }); }
 
-/* GET /api/promo/social/catalog?eventId= — the platform's /api/catalog (server.ts:260-275) */
+/* The templates whose card is a preview with only its gap filled even when the event can make them: the Testimonial
+   (no quote of its own) and Prediction vs Outcome (the template's own words, UX-135). The same rule as the cards'
+   own (promo-studio/oneworld-social.js owCardItem); a card asked for otherwise is simply asked for again there. */
+var CARD_PREVIEW_IDS = ['generic.testimonial', 'generic.prediction-outcome'];
+/* a template's card post: its first size with its default options, a preview when the event cannot make it yet */
+function cardItem(t) {
+  return { templateId: t.id, format: (t.formats && t.formats[0] && t.formats[0].id) || 'ig_square', params: {},
+    preview: !t.available || CARD_PREVIEW_IDS.indexOf(t.id) !== -1 };
+}
+
+/* GET /api/promo/social/catalog?eventId=[&cards=1] — the platform's /api/catalog (server.ts:260-275). UX-121: with
+   cards=1 the answer also carries every card's post ({ item, answer } with answer as the html route gives it),
+   made from the same reading of the event, so the Social posts tab draws its first card one round trip sooner. A
+   card that cannot be made here is left out, and the page asks the html route for it. */
 function handleCatalog(req, res) {
   withQueryEvent(req, res, function (fb, decoded, q, eventId) {
-    Promise.all([H.loadLiveEvent(fb, eventId), socialEventFor(fb, eventId, req)]).then(function (r) {
+    var withCards = q.get('cards') === '1';
+    Promise.all([H.loadLiveEvent(fb, eventId), socialEventFor(fb, eventId, req), withCards ? artRef(fb, eventId).get() : null]).then(function (r) {
       var got = r[1], ev = got.ev;
       return Promise.resolve(engine.buildCatalog(ev)).then(function (catalog) {
+        var cards;
+        if (withCards) {
+          var art = r[2] && r[2].exists ? r[2].data() : {};
+          var ctx = { ev: ev, art: art, brand: engine.getBrand(ev.portal), captionOnly: false, base: H.publicBaseFor(req) };
+          cards = [];
+          catalog.categories.forEach(function (c) {
+            c.templates.forEach(function (t) {
+              if (cards.length >= NUMBERS.htmlItems) return;
+              var item = cardItem(t);
+              try { cards.push({ item: item, answer: renderItem(item, ctx) }); }
+              catch (err) { console.error('promo-social: a card could not be made (' + String(t.id).slice(0, 80) + ') — ' + (err && err.stack || err)); }
+            });
+          });
+        }
+        /* the QR options go on after the cards are made: a card asks with no options, as before */
         if (ev.qrUrl) {
           catalog.categories.forEach(function (c) {
             c.templates.forEach(function (t) { t.params = t.params.concat(qrOptions(ev.qrUrl)); });
           });
         }
-        sendJson(res, 200, {
+        var out = {
           event: {
             name: ev.name, hashtag: ev.hashtag, edition: ev.edition, dateLabel: ev.dateLabel, venue: ev.venue || ev.city,
             counts: { speakers: ev.speakers.length, sponsorTiers: ev.sponsorTiers.length, sessions: ev.sessions.length },
@@ -381,7 +412,9 @@ function handleCatalog(req, res) {
           /* FORMATS[f] already carries its id (the platform's own note) */
           formats: engine.DEFAULT_FORMATS.map(function (f) { return Object.assign({}, engine.FORMATS[f]); }),
           catalog: catalog
-        });
+        };
+        if (cards) out.cards = cards;
+        sendJson(res, 200, out);
       });
     }).catch(function (err) { fail(res, 'catalog', err); });
   });

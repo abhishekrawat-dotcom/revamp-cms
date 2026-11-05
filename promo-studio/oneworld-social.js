@@ -115,7 +115,8 @@ var OWS = {
   uploading: [],                                                // the elements a picture is being uploaded for (owUploadPicture)
   layouts: null, layoutsP: null,                                // the event's saved layouts (owLayouts)
   orig: {}, carried: 0,                                         // the stage's template words and pictures by element; changes carried in
-  cardsStale: {}, idb: null, zipSaid: '', zipBusy: false       // cards to draw again; the kept cards' store; the ZIP's summary; a ZIP being drawn
+  cardsStale: {}, idb: null, zipSaid: '', zipBusy: false,      // cards to draw again; the kept cards' store; the ZIP's summary; a ZIP being drawn
+  artEarly: null                                                // the art asked for beside the catalog, until the page takes it (owArt)
 };
 
 /* ---------- small helpers ---------- */
@@ -178,7 +179,7 @@ function api(u, o) {
 }
 function owRoute(u, o) {
   var path = u.split('?')[0], q = new URLSearchParams(u.split('?')[1] || '');
-  if (path === '/api/catalog') return owAuthed('/api/promo/social/catalog?eventId=' + OW_E).then(function (r) { if (r.ok && r.clone) owPrefetchCards(r.clone()); return r; });
+  if (path === '/api/catalog') return owCatalog();
   if (path === '/api/assets') return owArt();
   /* the platform's event page also asked for its mailers; they are Promotions → Mailers here */
   if (path === '/api/mailers') return Promise.resolve(owResp('null', 200));
@@ -193,22 +194,101 @@ function owRoute(u, o) {
   if (/^\/api\/promo\//.test(path)) return owAuthed(u, owWithEvent(o));
   return Promise.resolve(owFail(404, 'That is not part of Oneworld\'s social posts.'));
 }
-/* UX-121: the cards' posts and the saved layouts are asked for as soon as the catalog has come, beside the art the
-   page asks for next, instead of after it; loadThumbs then finds them asked for already (owCachedHtml, owLayouts) */
-function owPrefetchCards(r) {
-  r.json().then(function (cat) {
-    var tpls = [];
-    ((cat && cat.catalog && cat.catalog.categories) || []).forEach(function (c) { (c.templates || []).forEach(function (t) { tpls.push(t); }); });
-    if (!tpls.length) return;
-    owCachedHtml(tpls.map(owCardItem));
-    owLayouts();
-  }).then(null, function () { /* the page asks for them itself */ });
+/* UX-121: the catalog comes with every card's post in it (GET …/catalog?cards=1, made from the same reading of the
+   event), so the first card is drawn one round trip sooner. Promotions (marketing.html) asks for it while this frame
+   is still loading, beside the event and its kit, and this frame takes that answer, once and for this event only
+   (owTakePrefetch); without it, or when it failed, the frame asks itself. The posts go into the cards' cache
+   (owSeedCards) and the platform's code reads the catalog as before. The saved layouts and the art are asked for at
+   the same time (owEarly), not after the catalog. */
+function owCatalog() {
+  owEarly();
+  var url = '/api/promo/social/catalog?eventId=' + OW_E + '&cards=1';
+  var pre = owTakePrefetch();
+  var got = pre ? pre.then(function (x) {
+    return x && x.status === 200 && typeof x.text === 'string' ? owResp(x.text, 200) : owAuthed(url);
+  }) : owAuthed(url);
+  return got.then(function (r) {
+    if (!r.ok) return r;
+    return r.text().then(function (text) {
+      var j = null;
+      try { j = JSON.parse(text); } catch (e) { j = null; }
+      if (!j || typeof j !== 'object') return owResp(text, r.status);
+      owSeedCards(j.cards);
+      delete j.cards;
+      owPrefetchCards(j);
+      return owJson(j, r.status);
+    });
+  });
+}
+/* Promotions' early catalog for this event, taken once: a promise of { status, text } or null */
+function owTakePrefetch() {
+  try {
+    var P = owFramed() ? window.parent.RevampSocialPrefetch : null;
+    if (!P || P.eventId !== EVENT_ID || P.used || !P.catalog) return null;
+    P.used = true;
+    return Promise.resolve(P.catalog).then(null, function () { return null; });
+  } catch (e) { return null; }           // a frame of another page: nothing to take
+}
+/* the cards' posts that came with the catalog, kept as the html route's answers would be (owCachedHtml); being the
+   newest reading of the event, each takes the place of one kept before. Their pictures and font stylesheets are
+   asked for at once, all together (owWarm), instead of one card at a time as each is drawn. */
+function owSeedCards(cards) {
+  if (!Array.isArray(cards)) return;
+  var htmls = [];
+  cards.forEach(function (c) {
+    if (!c || !c.item || !c.answer || typeof c.answer !== 'object') return;
+    var key = owHtmlKey({ templateId: c.item.templateId, format: c.item.format, params: c.item.params || {}, preview: c.item.preview === true });
+    OWS.htmlCache[key] = Promise.resolve(c.answer);
+    if (typeof c.answer.html === 'string') htmls.push(c.answer.html);
+  });
+  owWarm(htmls);
+}
+/* the outside pictures (an <img>'s, a style's url()) and the @import-ed font stylesheets of these posts, asked for
+   now through the same session caches the drawing reads (owBlobFor, owFontSheet), so a card waits for none of them
+   when it is drawn; a failure here is the drawing's to report, as before */
+var OW_SRC_RE = /<img\b[^>]*?\ssrc\s*=\s*(["'])(https?:\/\/[^"']+)\1/gi, OW_STYLE_ATTR_RE = /\sstyle\s*=\s*"([^"]*)"/gi;
+var OW_IMPORT_RE = /@import\s+url\(\s*(['"]?)(https:\/\/[^'")]+)\1\s*\)/gi;
+function owWarm(htmls) {
+  var pics = [], sheets = [], m;
+  (htmls || []).forEach(function (html) {
+    OW_SRC_RE.lastIndex = 0;
+    while ((m = OW_SRC_RE.exec(html))) { var src = m[2].replace(/&amp;/g, '&'); if (pics.indexOf(src) === -1) pics.push(src); }
+    /* a background in a style attribute, as owInline reads them (a stylesheet's url()s are fonts, not pictures) */
+    OW_STYLE_ATTR_RE.lastIndex = 0;
+    while ((m = OW_STYLE_ATTR_RE.exec(html))) {
+      owStyleUrls(m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')).forEach(function (u) { if (pics.indexOf(u) === -1) pics.push(u); });
+    }
+    OW_IMPORT_RE.lastIndex = 0;
+    while ((m = OW_IMPORT_RE.exec(html))) if (sheets.indexOf(m[2]) === -1) sheets.push(m[2]);
+  });
+  pics.slice(0, 24).forEach(function (u) { owBlobFor(u).then(null, function () { /* the drawing says so */ }); });
+  sheets.slice(0, 12).forEach(function (u) { owFontSheet(u); });
+}
+/* the saved layouts and the event's art, asked for beside the catalog; owArt takes the early answer once */
+function owEarly() {
+  owLayouts();
+  if (!OWS.artEarly) OWS.artEarly = owArtFetch();
+}
+/* the cards' posts and the saved layouts the catalog's templates need: what the catalog did not bring is asked for
+   now, beside the art the page asks for next, instead of after it; loadThumbs then finds them asked for already
+   (owCachedHtml, owLayouts) */
+function owPrefetchCards(cat) {
+  var tpls = [];
+  ((cat && cat.catalog && cat.catalog.categories) || []).forEach(function (c) { (c.templates || []).forEach(function (t) { tpls.push(t); }); });
+  if (!tpls.length) return;
+  owCachedHtml(tpls.map(owCardItem));
+  owLayouts();
 }
 /* the art the event has (which slots are filled), kept for the upload strip */
-function owArt() {
+function owArtFetch() {
   return owAuthed('/api/promo/social/art?eventId=' + OW_E).then(function (r) {
-    return owRead(r).then(function (j) { if (r.ok) OWS.art = j; return owJson(j, r.status); });
+    return owRead(r).then(function (j) { if (r.ok) OWS.art = j; return { status: r.status, j: j }; });
   });
+}
+function owArt() {
+  var early = OWS.artEarly;
+  OWS.artEarly = null;                    // taken once: an upload's refresh asks again
+  return (early || owArtFetch()).then(function (x) { return owJson(x.j, x.status); });
 }
 /* the Insert tab's speakers and sponsors: those with a picture, as the platform's editor asked for (no all=1) */
 function owRoster() {

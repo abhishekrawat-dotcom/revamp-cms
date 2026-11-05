@@ -73,6 +73,9 @@ var PROFILES = {
      without a deploy). 45 s sits inside the route's own 55 s deadline, so a slow answer is still answered in
      time, and a Claude call that fails fast leaves Gemini the rest. */
   'dash-bot': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 45000, maxOutputTokens: 6000 },
+  /* the site check's repair of a repeated heading (lib/api.js writeSectionHeadings): a few words per section, from
+     that section's own words, in the page's voice */
+  'site-heading': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 3000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 

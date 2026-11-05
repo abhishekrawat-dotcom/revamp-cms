@@ -364,6 +364,116 @@ pending.push(hooks.siteCheckOf(fakeFb({ 'events/a/logo/summit-2025.svg': '<svg><
   ok(y && y.lines.join('|') === 'Header: 2025 — this edition is 2026 / 2027', 'the year in an edition\'s name and the year it is held in are both its own: only another year holds it back', y && y.lines);
 }));
 
+/* ---------- 8b. a newer version of a live site is held back only by what the live page does not show already (UX-144) ----------
+   The NDCS repair (its picture's typo put right) was refused for the "Sponsor 1" the live page already showed, so
+   the broken picture stayed live. */
+var ndcsFirst = pending[0];   // the first NDCS check counts the pictures it asks about: these run after it
+var NDCS_FIXED = NDCS.replace('revamp-cms.firebaneapp', 'revamp-cms.firebasestorage.app').replace(/<img src="[^"]*missing\.png" alt="m">/, '');
+pending.push(ndcsFirst.then(function () { return hooks.siteCheckOf(fb, 'national-data-center-symposium', DATA, NDCS_FIXED, { livePage: NDCS }).then(function (r) {
+  var codes = r.items.map(function (x) { return x.code + ':' + x.level; });
+  ok(!r.blocking && hooks.siteCheckError(r, 'owner') === null && hooks.siteCheckError(r, 'approver') === null, 'the repaired NDCS can be sent for approval and approved: nothing it adds holds it back', codes);
+  var ph = r.items.filter(function (x) { return x.code === 'placeholders'; })[0];
+  ok(ph && ph.level === 'warn' && ph.alreadyLive === true && ph.lines[0] === '“Sponsor 1” — Convening partners' && /^The live site shows this already, so it does not hold the next version back\. Write the event’s own words/.test(ph.hint), 'the "Sponsor 1" the live page shows is still said, as a check, with why it holds nothing back', ph);
+  ok(!r.items.some(function (x) { return x.code === 'pictures'; }), 'and the corrected picture is not said at all', codes);
+}); }));
+/* what the version would add is held back, and only that; a repair button is offered once */
+var NDCS_WORSE = NDCS.replace('<p>Symposium sections</p>', '<p>Symposium sections</p><span>Speaker Name</span><img src="https://storage.googleapis.com/revamp-cms.firebasestorage.app/events/ndcs/generated/gone.png" alt="g">');
+pending.push(ndcsFirst.then(function () { return hooks.siteCheckOf(fakeFb({ 'events/ndcs/generated/fiber.png': 'x', 'events/ndcs/generated/ok.png': 'x' }), 'national-data-center-symposium', DATA, NDCS_WORSE, { livePage: NDCS }).then(function (r) {
+  var codes = r.items.map(function (x) { return x.code + ':' + x.level + (x.alreadyLive ? ':live' : ''); });
+  ok(r.blocking && codes.join() === 'placeholders:block,pictures:block,placeholders:warn:live,pictures:warn:live,et-chrome:warn,payment:warn,buttons:info', 'new template text and a new broken picture hold it back; what is live already is a check', codes);
+  var blockPh = r.items[0], blockPic = r.items[1], livePic = r.items[3];
+  ok(blockPh.lines.length === 1 && /^“Speaker Name”/.test(blockPh.lines[0]), 'only the new template text holds it back', blockPh.lines);
+  ok(blockPic.title === '1 picture cannot be shown' && /“gone\.png”/.test(blockPic.lines[0]) && !blockPic.action, 'only the new broken picture holds it back (no address to correct it to)', blockPic);
+  ok(livePic.title === '2 pictures cannot be shown' && livePic.action && livePic.action.kind === 'pictures', 'the live ones keep their one-click repair, offered once', livePic);
+  var err = hooks.siteCheckError(r, 'owner');
+  ok(err && /template text is still on the page \(“Speaker Name”\); 1 picture cannot be shown \(“gone\.png”\)/.test(err.message), 'the refusal names only what the version adds', err && err.message);
+}); }));
+/* the console's check of the live page itself: what it shows holds no next version back, and its repairs stay */
+pending.push(ndcsFirst.then(function () { return hooks.siteCheckOf(fb, 'national-data-center-symposium', DATA, NDCS, { live: true }).then(function (r) {
+  var pics = r.items.filter(function (x) { return x.code === 'pictures'; })[0];
+  ok(!r.blocking && pics && pics.level === 'warn' && pics.alreadyLive && pics.action && pics.action.kind === 'pictures', 'the live NDCS: its problems are checks to put right, the picture with its button, and none holds the next version back', r.items.map(function (x) { return x.code + ':' + x.level; }));
+}); }));
+/* the live page the gate compares against: the live version as it was saved, else the published page */
+var LIVE_FB = fakeFb({ 'events/n2/site/versions/4/page.html': 'v4 as saved', 'events/n2/published/index.html': 'v4 as published', 'events/n3/published/index.html': 'n3 published' });
+pending.push(ndcsFirst.then(function () { return Promise.all([
+  hooks.livePageOf(LIVE_FB, 'n2', { published: true, publishedVersion: 4 }),
+  hooks.livePageOf(LIVE_FB, 'n3', { published: true, publishedVersion: 2 }),
+  hooks.livePageOf(LIVE_FB, 'n2', { published: false, publishedVersion: 4 }),
+  hooks.livePageOf(LIVE_FB, 'n4', { published: true, publishedVersion: 1 })
+]).then(function (r) {
+  ok(r[0] === 'v4 as saved' && r[1] === 'n3 published' && r[2] === null && r[3] === null, 'the live version as saved, else the published page; nothing for a site that is not live or cannot be read', r);
+}); }));
+/* the gate itself: a first publication of the same page is held back as before; the repair of the live site is not */
+var GATE_FB = fakeFb({ 'events/ndcs/generated/fiber.png': 'x', 'events/ndcs/generated/ok.png': 'x', 'events/ndcs2/site/versions/7/page.html': NDCS });
+pending.push(ndcsFirst.then(function () { return hooks.siteCheckGate(GATE_FB, 'ndcs2', Object.assign({}, DATA, { published: true, publishedVersion: 7 }), NDCS_FIXED, 'owner', null).then(function (check) {
+  ok(check && !check.blocking, 'the gate lets the live site\'s repair through');
+}, function (err) { ok(false, 'the gate lets the live site\'s repair through', err && err.message); }); }));
+pending.push(ndcsFirst.then(function () { return hooks.siteCheckGate(GATE_FB, 'ndcs3', Object.assign({}, DATA, { published: false }), NDCS_FIXED, 'owner', null).then(function () {
+  ok(false, 'a site that is not live yet is still held back by its template text');
+}, function (err) { ok(err && err.status === 409 && /“Sponsor 1”/.test(err.message), 'a site that is not live yet is still held back by its template text', err && err.message); }); }));
+
+/* ---------- 8c. a heading two sections share (UX-155: Agentic's "Not more AI. Better AI." twice in a row) ---------- */
+var AGENTIC_TWICE = page('<header data-rv-section="nav" id="nav"><h2>Agentic Summit</h2></header>' +
+  '<section data-rv-section="hero" id="hero"><h1 class="hero-tagline">THE NEXT PHASE IS NOT MORE AI</h1></section>' +
+  '<section data-rv-section="overview" id="overview"><h2 class="overview-h2">Not more AI. Better AI.</h2><p>Enterprises are moving AI from pilots into production.</p></section>' +
+  '<section data-rv-section="key-discussion-points" id="key-discussion-points"><p class="key-discussion-points-label">Key Discussion Points</p>' +
+  '<h2 class="key-discussion-points-h2">NOT MORE AI. <em>BETTER</em> AI.</h2><p>Three conversations that decide whether agents scale.</p><style>.x{}</style></section>' +
+  '<section data-rv-section="speakers" id="speakers"><h2>Speakers</h2><div><h2>Not more AI. Better AI.</h2></div></section>' +
+  '<footer data-rv-section="footer" id="footer"><h2>Not more AI. Better AI.</h2></footer>',
+  'id="gen" data-rv-template-id="gen-agentic-summit-2027" class="microsite rv-generated"');
+var twiceReps = hooks.repeatedPageHeadings(AGENTIC_TWICE);
+ok(twiceReps.length === 1 && twiceReps[0].id === 'key-discussion-points' && twiceReps[0].firstId === 'overview' && twiceReps[0].text === 'NOT MORE AI. BETTER AI.',
+  'the later of two sections with the same heading (case and markup aside) is found; a heading further inside a section, the header and the footer are not section headings', twiceReps);
+ok(hooks.repeatedPageHeadings(AGENTIC_TWICE.replace('Not more AI. Better AI.</h2><p>Enterprises', 'Why enterprise AI is stuck in pilots</h2><p>Enterprises')).length === 0, 'headings of their own: nothing to say');
+ok(hooks.repeatedPageHeadings(page('<section data-rv-section="hero"><h1>Better AI</h1></section><section data-rv-section="why"><h2>Better AI.</h2></section>'))[0].firstId === 'hero', 'a section that repeats the banner\'s line is found too');
+ok(hooks.repeatedPageHeadings(page('<section data-rv-section="faq-home"><h2>FAQs</h2></section><section data-rv-section="faq" data-rv-page="faq"><h2>FAQs</h2></section>' +
+  '<section data-rv-section="jury" data-rv-page="jury"><h2>FAQs</h2></section><section data-rv-section="more" data-rv-page="faq"><h2>FAQs</h2></section>')).map(function (r) { return r.id + '<' + r.firstId; }).join() === 'more<faq',
+  'an award site\'s pages are each their own: only a heading repeated on the same page counts');
+pending.push(hooks.siteCheckOf(fakeFb({}), 'agentic-summit-2027', { name: 'Agentic Summit 2027' }, AGENTIC_TWICE, { live: true }).then(function (r) {
+  var h = r.items.filter(function (x) { return x.code === 'headings'; })[0];
+  ok(h && h.level === 'warn' && h.title === 'Two sections have the same heading' && h.lines[0] === '“NOT MORE AI. BETTER AI.” — Key discussion points repeats Overview' &&
+    h.action && h.action.kind === 'headings' && /ETB2B AI can write the later section a heading of its own/.test(h.hint), 'the console says so, with ETB2B AI\'s repair on an AI-designed site', h);
+}));
+pending.push(hooks.siteCheckOf(fakeFb({}), 'cx', { name: 'CX' }, AGENTIC_TWICE.replace('data-rv-template-id="gen-agentic-summit-2027" class="microsite rv-generated"', 'data-rv-template-id="cx-leaders-forum"'), {}).then(function (r) {
+  var h = r.items.filter(function (x) { return x.code === 'headings'; })[0];
+  ok(h && !h.action && /in the site editor/.test(h.hint), 'a template site is told to change it in the site editor', h);
+}));
+var renamed = hooks.withHeadingText(AGENTIC_TWICE, 'key-discussion-points', 'h2', 'Three conversations & what scales');
+ok(renamed.indexOf('<h2 class="key-discussion-points-h2">Three conversations &amp; what scales</h2>') !== -1 && renamed.indexOf('<h2 class="overview-h2">Not more AI. Better AI.</h2>') !== -1 &&
+  renamed.replace('<h2 class="key-discussion-points-h2">Three conversations &amp; what scales</h2>', '<h2 class="key-discussion-points-h2">NOT MORE AI. <em>BETTER</em> AI.</h2>') === AGENTIC_TWICE,
+  'only that section\'s heading changes, its words escaped and its tag kept: every other byte as it was');
+ok(hooks.withHeadingText(AGENTIC_TWICE, 'no-such', 'h2', 'x') === null && hooks.withHeadingText('<p>none</p>', null, 'h2', 'x') === null, 'no such section or heading: null, nothing written');
+ok(hooks.withHeadingText('<section data-rv-section="k"><h2 class="a">old</h2></section>', null, 'h2', 'New') === '<section data-rv-section="k"><h2 class="a">New</h2></section>', 'and a stored section\'s own html');
+/* ETB2B AI's answer, faked: the prompt carries the section's own words and the headings it may not take */
+var llmMod = require('./llm'), realCall = llmMod.callJson, asked = [];
+function fakeHeadings(answer) { llmMod.callJson = function (prompt, schema, opts) { asked.push({ prompt: prompt, schema: schema, opts: opts }); return Promise.resolve(answer); }; }
+pending.push(Promise.resolve().then(function () {
+  fakeHeadings({ parsed: { headings: [{ id: 'key-discussion-points', heading: '“Where agents earn their place”' }] } });
+  return hooks.writeSectionHeadings(fakeFb({}), 'agentic-summit-2027', { name: 'Agentic Summit 2027' }, AGENTIC_TWICE, twiceReps);
+}).then(function (got) {
+  ok(got['key-discussion-points'] === 'Where agents earn their place' && asked.length === 1, 'the new heading, its quotation marks taken off, in one answer', got);
+  var q = asked[0];
+  ok(q && q.opts.route === 'site-heading' && /Three conversations that decide whether agents scale\./.test(q.prompt) && /"Not more AI\. Better AI\."/.test(q.prompt) && /"THE NEXT PHASE IS NOT MORE AI"/.test(q.prompt) &&
+    !/<style|\.x\{\}/.test(q.prompt) && /never invent facts/.test(q.prompt) && /never copy a sentence/.test(q.prompt), 'asked on its own route, with the section\'s words (no markup or styles), the headings already on the page, and not to copy its words', q && q.prompt);
+  /* the browser check of 5 Nov: the heading copied the sentence under it, so the section said it twice. Refused, and asked once more with why */
+  asked.length = 0;
+  var answers = [{ parsed: { headings: [{ id: 'key-discussion-points', heading: 'Three conversations that decide whether agents scale.' }] } }, { parsed: { headings: [{ id: 'key-discussion-points', heading: 'What it takes for agents to scale' }] } }];
+  llmMod.callJson = function (prompt, schema, opts) { asked.push({ prompt: prompt }); return Promise.resolve(answers.shift()); };
+  return hooks.writeSectionHeadings(fakeFb({}), 'agentic-summit-2027', { name: 'A' }, AGENTIC_TWICE, twiceReps).then(function (got) {
+    ok(got['key-discussion-points'] === 'What it takes for agents to scale' && asked.length === 2 && /copies the section's own words/.test(asked[1].prompt), 'a heading that copies the sentence under it is asked for again, told why, and the second one is taken', [got, asked.length]);
+  });
+}).then(function () {
+  asked.length = 0;
+  fakeHeadings({ parsed: { headings: [{ id: 'key-discussion-points', heading: 'not more ai, better ai' }] } });
+  return hooks.writeSectionHeadings(fakeFb({}), 'agentic-summit-2027', { name: 'A' }, AGENTIC_TWICE, twiceReps).then(function () { ok(false, 'a heading that repeats one on the page is refused'); },
+    function (err) { ok(err.status === 502 && err.body.code === 'ai-heading' && /Nothing was changed/.test(err.message) && asked.length === 2, 'a heading that repeats one on the page twice over is refused, and nothing changes', err.message); });
+}).then(function () {
+  ok(hooks.writeSectionHeadings.length === 5, 'writeSectionHeadings(fb, eventId, data, page, reps)');
+  fakeHeadings({ code: 'ai-timeout', error: 'slow' });
+  return hooks.writeSectionHeadings(fakeFb({}), 'agentic-summit-2027', { name: 'A' }, AGENTIC_TWICE, twiceReps).then(function () { ok(false, 'no answer: refused'); },
+    function (err) { ok(err.status === 502 && err.body.code === 'ai-heading', 'no answer from the model: refused the same way'); });
+}).then(function () { llmMod.callJson = realCall; }, function (err) { llmMod.callJson = realCall; throw err; }));
+
 /* ---------- 9. the one-click header and footer: the page and the editor's snapshot change together ---------- */
 var SAVED = '<html><body id="gen" data-rv-template-id="gen-a" class="microsite rv-generated">' +
   '<style data-rv-style="nav">.old-nav{}</style><header data-rv-section="nav" id="nav" class="nav-root" data-rv-key="nav"><a class="nav-brand">old</a></header>' +
