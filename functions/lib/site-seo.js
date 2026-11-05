@@ -97,6 +97,8 @@ function robotsTxt(base) {
     'Allow: /api/public/',
     'Allow: /favicon.ico',
     'Disallow: /preview/',
+    /* a shareable preview link (lib/share-preview.js): noindex already, and the final Disallow: / covers it too */
+    'Disallow: /s/',
     'Disallow: /api/',
     'Disallow: /'
   ];

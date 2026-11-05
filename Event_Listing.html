@@ -1,7 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The doctype and the viewport line keep this page in standards mode at the phone's own width: without them a phone
+     laid it out 980 px wide in quirks mode, and none of its phone rules (or ETB2B AI's phone sheet) applied. -->
 <!-- ET Oneworld - Self-Serve Microsite Builder : Event Listing (v2 — premium dashboard redesign) -->
 <title>Events &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js), drawn in this page's own colour tokens -->
+<link rel="stylesheet" href="etb2b-chat.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   :root{
@@ -83,6 +92,9 @@
   *{ box-sizing:border-box; }
   html,body{ margin:0; padding:0; }
   body{ background:var(--bg); color:var(--text); font-family:var(--font-body); font-size:14px; line-height:1.5; -webkit-font-smoothing:antialiased; }
+  /* This page was drawn in quirks mode, where a table does not take the page's line height. Standards mode (the doctype
+     the phones need) passes it on, and every row of the list grew by a sixth: tables keep the height they were drawn at. */
+  table{ line-height:normal; }
   h1,h2,h3,h4{ font-family:var(--font-display); font-weight:700; margin:0; text-wrap:balance; }
   p{ margin:0; }
   a{ color:inherit; text-decoration:none; }
@@ -175,12 +187,18 @@
   .kpi-card{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:18px 20px; display:flex; flex-direction:column; gap:8px; box-shadow:var(--shadow-xs); }
   .kpi-card .kpi-top{ display:flex; align-items:center; justify-content:space-between; }
   .kpi-card .kpi-label{ font-size:11.5px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--text-faint); }
-  .kpi-card .kpi-icon{ color:var(--text-faint); }
+  /* flex: an icon alone on a line gets the line's full height in standards mode, which made the card taller */
+  .kpi-card .kpi-icon{ color:var(--text-faint); display:flex; }
   .kpi-card .kpi-num{ font-family:var(--font-mono); font-size:29px; font-weight:600; letter-spacing:-0.01em; }
   .kpi-delta{ font-size:12px; font-weight:700; display:flex; align-items:center; gap:4px; }
   .kpi-delta.up{ color:var(--ok); } .kpi-delta.down{ color:var(--crit); }
   .kpi-delta .vs{ color:var(--text-faint); font-weight:600; }
   .kpi-skel{ height:29px; width:70%; background:var(--surface-3); border-radius:6px; }
+  .kpi-card .kpi-sub{ font-size:12px; color:var(--text-muted); }
+  /* a dash where there is no figure (it failed to load, or there is nothing to count), muted so it never reads as a zero */
+  .kpi-card .kpi-num.kpi-none{ color:var(--text-faint); }
+  .kpi-card.is-none{ background:var(--surface-2); box-shadow:none; }
+  .kpi-note{ grid-column:1 / -1; font-size:12.5px; color:var(--text-muted); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 
   /* ---------- popovers (generic) ---------- */
   .popover-wrap{ position:relative; }
@@ -270,7 +288,8 @@
   .status-dot.draft{ background:var(--draft); }
   .status-dot.deleted{ background:var(--crit); }
   .ev-name-main{ min-width:0; }
-  .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:inline; cursor:pointer; }
+  /* a block as wide as its words: as an inline box its lines took the card's taller line height in standards mode */
+  .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:block; width:fit-content; max-width:100%; cursor:pointer; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
   .ev-meta-line{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); margin-top:7px; flex-wrap:wrap; }
   .ev-meta-line .dotsep{ color:var(--text-faint); }
@@ -288,7 +307,8 @@
   .ev-date-cell .d3{ font-size:11px; color:var(--accent-strong); margin-top:3px; font-weight:700; }
   .ev-date-cell .unset{ color:var(--text-faint); font-style:italic; }
   .vis-num{ font-weight:700; font-size:15.5px; letter-spacing:-.01em; }
-  .live-tag{ display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; color:var(--ok); }
+  /* a line of its own (flex, not inline-flex): alone on a line, an inline box takes the line's full height in standards mode */
+  .live-tag{ display:flex; width:fit-content; align-items:center; gap:5px; font-size:11px; font-weight:700; color:var(--ok); }
   .live-tag i{ width:6px; height:6px; border-radius:50%; background:var(--ok); animation:pulse 1.6s ease infinite; }
   @keyframes pulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
 
@@ -339,6 +359,8 @@
   /* ---------- empty / error ---------- */
   .empty-state{ text-align:center; padding:60px 20px; color:var(--text-muted); }
   .empty-state .ico{ color:var(--text-faint); margin-bottom:10px; }
+  /* a block: inline, standards mode gives the icon a line box with a descender gap under it (3-5 px taller than before the doctype) */
+  .empty-state > svg{ display:block; margin:0 auto; }
   .empty-state h3{ font-size:16px; color:var(--text); margin-bottom:6px; }
   .empty-state p{ font-size:13px; max-width:40ch; margin:0 auto; }
   .empty-state .btn{ margin-top:16px; }
@@ -443,7 +465,22 @@
   .activity-row-main{ flex:1; min-width:0; }
   .activity-row-label{ font-size:13.5px; font-weight:700; color:var(--text); }
   .activity-row-desc{ font-size:11.5px; color:var(--text-muted); margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .activity-row-total{ font-size:17px; font-weight:700; letter-spacing:-.01em; flex-shrink:0; font-family:var(--font-mono); }
+  /* the button's own colour is the browser's black, unreadable in dark mode: the page's text colour instead */
+  .activity-row-total{ font-size:17px; font-weight:700; letter-spacing:-.01em; flex-shrink:0; font-family:var(--font-mono); color:var(--text); }
+  .activity-row-label, .activity-row-desc{ display:block; }
+  .act-total-skel{ display:inline-block; width:44px; height:16px; vertical-align:middle; }
+  .act-total-none{ color:var(--text-faint); }
+  /* a row with no figure behind it (newsletters): it reads as the others, and opens nothing */
+  .activity-row.is-static{ cursor:default; }
+  .activity-row.is-static:hover{ background:none; }
+  .activity-row.is-static .activity-row-chevron{ width:12px; }   /* the chevron's room, so its dash lines up with the others */
+  .is-none .activity-row-icon{ opacity:.6; }
+  .act-foot{ margin-top:12px; }
+  .act-changes{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; }
+  .act-changes li{ display:flex; flex-direction:column; gap:2px; padding:8px 2px; border-bottom:1px solid var(--border); min-width:0; }
+  .act-changes li:last-child{ border-bottom:none; }
+  .act-change-what{ font-size:12.5px; font-weight:600; color:var(--text); overflow-wrap:anywhere; }
+  .act-change-meta{ font-size:11.5px; color:var(--text-muted); overflow-wrap:anywhere; }
   .activity-row-chevron{ color:var(--text-faint); flex-shrink:0; display:flex; transition:transform .2s ease; }
   .activity-row[aria-expanded="true"] .activity-row-chevron{ transform:rotate(180deg); color:var(--text); }
 
@@ -473,8 +510,6 @@
   .act-kpi-tile.highlight{ background:var(--accent-soft); border-color:transparent; }
   .act-kpi-tile.highlight .act-kpi-value{ color:var(--accent-strong); }
   .act-kpi-tile.highlight .act-kpi-label{ color:var(--accent-strong); opacity:.85; }
-  .act-trend{ display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; margin-top:5px; }
-  .act-trend.up{ color:var(--ok); } .act-trend.down{ color:var(--crit); }
   .act-empty{ font-size:12.5px; color:var(--text-muted); padding:6px 2px; }
 
   /* ---------- view toggle (list / grid) ---------- */
@@ -491,6 +526,9 @@
   /* ---------- help / support ---------- */
   .help-fab{ position:fixed; bottom:22px; left:22px; z-index:80; display:flex; align-items:center; gap:8px; padding:11px 16px; border-radius:100px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--shadow-md); font-size:13px; font-weight:700; color:var(--text); }
   .help-fab:hover{ border-color:var(--accent); color:var(--accent-strong); }
+  /* ETB2B AI takes this corner once it has mounted (etb2b-chat.js sets html.rvc-ready only then), and its panel's
+     header carries "Email Customer Care". Until then, or if its scripts fail to load, "Need help?" stays as it was. */
+  html.rvc-ready .help-fab{ display:none; }
   .modal-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:90; display:flex; align-items:center; justify-content:center; padding:20px; }
   .modal-card{ background:var(--surface); border-radius:var(--r-lg); max-width:440px; width:100%; box-shadow:var(--shadow-lg); overflow:hidden; }
   .modal-card-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
@@ -499,7 +537,8 @@
   .modal-card-body{ padding:16px 18px; display:flex; flex-direction:column; gap:12px; }
   .modal-card-foot{ padding:12px 18px; border-top:1px solid var(--border); display:flex; align-items:center; gap:8px; }
   .finput{ width:100%; padding:9px 11px; border-radius:7px; border:1px solid var(--border-strong); background:var(--bg); color:var(--text); font-size:13.5px; font-family:var(--font-body); }
-  textarea.finput{ resize:vertical; min-height:90px; line-height:1.5; }
+  /* block: as an inline box it sat on a text line, which adds a gap under it in standards mode */
+  textarea.finput{ display:block; resize:vertical; min-height:90px; line-height:1.5; }
   .finput:focus{ outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   .flabel{ display:block; font-size:11.5px; font-weight:700; color:var(--text-muted); margin-bottom:5px; }
   .email-row{ display:flex; align-items:center; gap:8px; background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:var(--font-mono); font-size:12px; }
@@ -586,6 +625,8 @@
   @keyframes fadeIn{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
   @media (prefers-reduced-motion: reduce){ *{ animation:none !important; transition:none !important; } }
 </style>
+</head>
+<body>
 
 <header class="main-nav">
   <div class="main-nav-inner">
@@ -773,8 +814,8 @@
     <div class="card panel-card" id="activity-card">
       <div class="panel-card-head">
         <div>
-          <h3>Latest Activity on this Portal</h3>
-          <p class="panel-sub">Platform-wide activity for the selected period</p>
+          <h3>Latest activity</h3>
+          <p class="panel-sub">Real figures across all your events, for the period you pick</p>
         </div>
         <div class="panel-card-head-right">
           <!-- every change on every event, with who made it (activity-log.html) -->
@@ -806,12 +847,16 @@
 <div class="gt-tooltip" id="gt-tooltip" hidden></div>
 
 <div id="sheet-root"></div>
+<!-- ETB2B AI mounts here (dash-bot-client.js): its launcher takes "Need help?"'s corner, bottom-left -->
+<div id="rv-dash-bot"></div>
 <div id="toast-region"></div>
 
 <script src="theme-toggle.js"></script>
 <script src="auth.js"></script>
 <!-- ET's portal roster, the person's working portal and the Set portal window (window.RevampPortals) -->
 <script src="portal-picker.js"></script>
+<!-- the one rule for Draft / Upcoming / Active / Completed, shared with ETB2B AI's server so the two never disagree -->
+<script src="event-lifecycle.js"></script>
 <script>
 (function(){
 
@@ -923,23 +968,10 @@
      EVENT_FIELDS that event doc has: name, slug, category, status, start, end, venue, city, payment,
      templateId, createdBy, createdAt, updatedAt, ...) — this maps that straight onto the row shape every
      render function in this file already expects (metaLine/dateCellHTML/payCellHTML/statusLabel etc.). */
-  /* Where an event sits in the list. The record's own `status` says "draft" from the day the event is made
-     and nothing moves it on, so the tab is worked out from what is true of the event: a site that is not
-     live is a Draft; a live one is Upcoming until it starts, Active while it runs and Completed once it has
-     ended (an event with no end runs to the end of the day it starts; one with no date yet is Upcoming).
-     Cancelled and deleted events stay where they were put. */
-  function lifecycleOf(ev, now){
-    if (ev.deletedAt || ev.status === 'deleted') return 'deleted';
-    if (ev.status === 'cancelled') return 'cancelled';
-    if (ev.published !== true) return 'draft';
-    var start = ev.start ? new Date(ev.start).getTime() : NaN;
-    var end = ev.end ? new Date(ev.end).getTime() : NaN;
-    if (isNaN(start) && isNaN(end)) return 'upcoming';
-    if (isNaN(end)){ var d = new Date(start); d.setHours(23, 59, 59, 999); end = d.getTime(); }
-    if (end < now) return 'completed';
-    if (isNaN(start) || start <= now) return 'active';
-    return 'upcoming';
-  }
+  /* Where an event sits in the list (Draft, Upcoming, Active, Completed, Cancelled, Deleted) is worked out by
+     event-lifecycle.js (window.RevampLifecycle), loaded before this script. It was this page's own function
+     until ETB2B AI needed the very same answer on the server: one rule, so the tabs here and what the bot says
+     about an event can never disagree. */
 
   function mapApiEventToRow(ev){
     var counters = ev.counters || {};
@@ -949,15 +981,44 @@
       eventNo: hashToEventNo(ev.id),
       type: ev.category || 'ip',
       /* the event's stored portal (a roster slug, '' for none yet) and its name, both from the server; the two
-         facts Set portal's window needs are kept beside them */
+         facts Set portal's window needs are kept beside them (published is kept further down) */
       portal: typeof ev.portal === 'string' ? ev.portal : '', portalName: typeof ev.portalName === 'string' ? ev.portalName : '',
-      hasGeneratedSite: ev.hasGeneratedSite === true, published: ev.published === true,
-      status: lifecycleOf(ev, Date.now()),
+      hasGeneratedSite: ev.hasGeneratedSite === true,
+      status: window.RevampLifecycle.of(ev, Date.now()),
       start: ev.start || null, end: ev.end || null,
       registrations: Number(counters.registrations) || 0, regTarget: null, visitors: Number(counters.views) || 0, crmLeads: 0,
       payment: { type: (ev.payment && ev.payment.type) || 'free', amount: (ev.payment && ev.payment.amount) || 0, txns: (ev.payment && ev.payment.txns) || 0 },
-      createdBy: ev.createdBy || '—'
+      createdBy: ev.createdBy || '—',
+      /* kept for the list's own date and "created by you" filters (and so ETB2B AI's filters can be shown here):
+         when it was made and last changed, whether its site is live and where, and its date as words when the
+         date is a month or a quarter rather than a day */
+      createdAt: ev.createdAt || null, updatedAt: ev.updatedAt || null,
+      published: ev.published === true, publishedPath: ev.publishedPath || null,
+      templateId: ev.templateId || null, dateLabel: ev.dateLabel || '', dateMode: ev.dateMode || '',
+      client: typeof ev.client === 'string' ? ev.client : '',
+      searchIn: searchCells(ev)
     };
+  }
+  /* What the search looks through: the event's own name, venue, city and client, each on its own, read exactly as
+     ETB2B AI's server reads them (functions/lib/dash-bot.js, searchHit and displayLine). So a search typed here and
+     one ETB2B AI runs or shows here ("Show these in the list") always pick the same events. The words the table
+     puts in for a missing value ("Venue to be confirmed", "Untitled event") are not searched. */
+  function searchLine(v, max){
+    return (typeof v === 'string' ? v : '').replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+  }
+  function searchCells(ev){
+    return [searchLine(ev.name, 200), searchLine(ev.venue, 200), searchLine(ev.city, 120), searchLine(ev.client, 200)].map(function(v){ return v.toLowerCase(); });
+  }
+  function searchHit(e, q){
+    q = searchLine(q, 80).toLowerCase();
+    return !q || (e.searchIn || []).some(function(v){ return v.indexOf(q) !== -1; });
+  }
+  /* The search also finds an event by its portal's name as the list shows it ("ETCIO", or "No portal yet" for
+     none). ETB2B AI's server looks at the same name (dash-bot.js searchHit), so "Show these in the list" still
+     shows exactly the events the bot listed. */
+  function portalSearchHit(e, q){
+    q = searchLine(q, 80).toLowerCase();
+    return !!q && searchLine(e.portal ? portalNameOf(e.portal) : 'No portal yet', 120).toLowerCase().indexOf(q) !== -1;
   }
 
   /* GET /api/events, admin-gated — same Authorization: Bearer <token> pattern every other authed call in
@@ -978,8 +1039,6 @@
       });
     });
   }
-
-  var RANGE_FACTOR = { today:0.05, '7':0.27, '10':0.36, '30':1 };
 
   var SEGMENT_DIMENSIONS = { company:'Top Company', designation:'Top Designation', source:'Top Source', device:'Mobile vs Desktop' };
   var SEG_PALETTE = ['#FF0035','#0F9E8E','#D97706','#7C3AED','#2563EB','#65A30D'];
@@ -1017,7 +1076,6 @@
   }
   var EVENT_AUDIENCE = {};
   var IP_EVENT_IDS = [];
-  var IP_ACTIVITY = {};
   /* Rebuilds every EVENTS-derived structure (audience segmentation + activity breakdown, both IP-events-only
      and still deterministic mock, just no longer seeded from fake rows) — called once at startup (EVENTS is
      empty, so this is a no-op) and again by loadAndRender() every time EVENTS itself changes (the real
@@ -1029,32 +1087,20 @@
     /* No event gets an audience breakdown or activity figures here: the only ones this page could show are
        generated (generateAudience above — sample companies, shares and trends), and a live event must not
        carry invented registrants. The panels that read these lists stay hidden until real figures exist. */
-
-    IP_ACTIVITY = {};
-    IP_EVENT_IDS.forEach(function(id){
-      var e = findEvent(id);
-      function r(i){ var x = Math.sin(e.eventNo * 17.3 + i * 5.11) * 10000; return x - Math.floor(x); }
-      IP_ACTIVITY[id] = {
-        mailersSent: Math.round((e.registrations || e.visitors || 10) * (1.3 + r(1) * 2.1)),
-        lastRegDays: Math.floor(r(2) * 12),
-        lastVisitDays: Math.floor(r(3) * 8),
-        lastMailerDays: Math.floor(r(4) * 18)
-      };
-    });
   }
   recomputeDerived();
-
-  /* ---- portal-wide activity metrics (30-day baseline, scaled by the selected range) ---- */
-  var PORTAL_ACTIVITY_BASE = { registrations:5240, visitors:21860, mailersSent:312400, newslettersSent:58200, subscribers:2140 };
 
   /* =========================================================
      STATE
   ========================================================= */
   var state = {
     tab: 'active',
-    specialView: null,          // null | 'cancelled' | 'deleted'
+    specialView: null,          // null | 'draft' | 'cancelled' | 'deleted'
     search: '',
     filters: { types: [], portals: [], payment: [] },   // portals ('none' = no portal yet) is read only in All portals
+    created: null,              // null | {from, to}: made between these days (YYYY-MM-DD, India time, both included)
+    starts: null,               // null | {from, to}: starts between these days
+    mine: false,                // only the events the signed-in person created
     /* the portal the list is on: 'all' or a roster slug. portalChosen: the person has chosen one (here or on another
        device); portalKnown: this browser or the server has answered, so the switcher can name it; portalSettled:
        the server has answered (or was given its 3 s); portalTouched: the person switched during this visit, so a
@@ -1082,17 +1128,130 @@
   };
   var PAGE_SIZE = 5;
 
-  try {
-    var parts = (location.hash||'').replace('#','').split('&').reduce(function(acc,p){
-      var kv=p.split('='); if(kv[0]) acc[kv[0]]=decodeURIComponent(kv[1]||''); return acc;
-    }, {});
-    if (parts.tab && ['active','upcoming','completed'].indexOf(parts.tab)!==-1) state.tab = parts.tab;
-    if (parts.q) state.search = parts.q;
-  } catch(e){}
+  /* ---- days: the list's date filters work in whole days, India time, both ends included ---- */
+  var MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var IST_OFFSET_MIN = 330;
+  function pad2(n){ return (n < 10 ? '0' : '') + n; }
+  /* "YYYY-MM-DD" that is a real calendar day between 2000 and 2100 (so "2026-02-30" is not one) */
+  function validDay(s){
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s == null ? '' : s));
+    if (!m) return false;
+    var y = +m[1], mo = +m[2], d = +m[3];
+    if (y < 2000 || y > 2100 || mo < 1 || mo > 12 || d < 1) return false;
+    var t = new Date(Date.UTC(y, mo - 1, d));
+    return t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+  }
+  /* The India-time day a stored date falls on. A date typed into Create Event ("2026-11-20T09:30", no zone) is
+     already a wall-clock time in India, so its own day is the answer; a server time ("…Z", such as createdAt)
+     is moved to India time first, so an event made at 1 am in Mumbai counts on that day, not the evening before. */
+  function istDay(v){
+    var s = String(v == null ? '' : v);
+    var m = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}):(\d{2})(?::\d{2}(?:\.\d+)?)?)?(Z|[+-]\d{2}:?\d{2})?$/.exec(s);
+    if (m && !m[4]) return validDay(m[1]) ? m[1] : '';
+    var t = Date.parse(s);
+    if (isNaN(t)) return '';
+    var d = new Date(t + IST_OFFSET_MIN * 60000);
+    return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate());
+  }
+  /* {from, to} with at least one real day; a reversed pair is turned round. Anything else is no filter (null). */
+  function cleanRange(r){
+    if (!r || typeof r !== 'object') return null;
+    var from = validDay(r.from) ? r.from : '', to = validDay(r.to) ? r.to : '';
+    if (!from && !to) return null;
+    if (from && to && from > to){ var x = from; from = to; to = x; }
+    return { from: from, to: to };
+  }
+  function inDays(iso, range){
+    if (!range) return true;
+    var day = istDay(iso);
+    if (!day) return false;
+    return (!range.from || day >= range.from) && (!range.to || day <= range.to);
+  }
+  /* "26 Oct – 1 Nov 2026", "1 – 30 Nov 2026", "from 26 Oct 2026" */
+  function fmtDayRange(r){
+    function parts(s){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? { y:+m[1], m:+m[2], d:+m[3] } : null; }
+    function full(p){ return p.d + ' ' + MONTH_SHORT[p.m - 1] + ' ' + p.y; }
+    var a = parts(r && r.from), b = parts(r && r.to);
+    if (a && b){
+      if (r.from === r.to) return full(a);
+      if (a.y === b.y && a.m === b.m) return a.d + ' – ' + full(b);
+      if (a.y === b.y) return a.d + ' ' + MONTH_SHORT[a.m - 1] + ' – ' + full(b);
+      return full(a) + ' – ' + full(b);
+    }
+    if (a) return 'from ' + full(a);
+    if (b) return 'until ' + full(b);
+    return '';
+  }
+
+  /* ---- the address keeps the list's view, so a link, a reload or Back shows the same list ----
+     #tab=active|upcoming|completed  &q=<search>  &view=draft|cancelled|deleted  &type=ip,awards
+     &created=2026-10-26..2026-11-01  &starts=2026-11-01..2026-11-30  &mine=1
+     Only tab and q existed before; "#tab=upcoming&q=x" means exactly what it always did. A key that is junk (an
+     unknown tab or type, an impossible day) is left out, never guessed at. */
+  function parseListingHash(hash){
+    var out = {};
+    String(hash == null ? '' : hash).replace(/^#/, '').split('&').forEach(function(p){
+      if (!p) return;
+      var i = p.indexOf('='), k = i === -1 ? p : p.slice(0, i), v = i === -1 ? '' : p.slice(i + 1);
+      try { v = decodeURIComponent(v); } catch(e){ return; }
+      if (k === 'tab'){ if (['active','upcoming','completed'].indexOf(v) !== -1) out.tab = v; }
+      else if (k === 'q'){ if (v) out.search = v; }
+      else if (k === 'view'){ if (['draft','cancelled','deleted'].indexOf(v) !== -1) out.specialView = v; }
+      else if (k === 'type'){
+        var types = [];
+        v.split(',').forEach(function(t){ if (Object.prototype.hasOwnProperty.call(EVENT_TYPES, t) && types.indexOf(t) === -1) types.push(t); });
+        if (types.length) out.types = types;
+      }
+      else if (k === 'created' || k === 'starts'){
+        var ends = v.split('..');
+        var range = ends.length === 2 ? cleanRange({ from: ends[0], to: ends[1] }) : null;
+        if (range) out[k] = range;
+      }
+      else if (k === 'mine'){ if (v === '1') out.mine = true; }
+    });
+    return out;
+  }
+  function listingHash(s){
+    var h = '#tab=' + s.tab + (s.search ? '&q=' + encodeURIComponent(s.search) : '');
+    if (s.specialView) h += '&view=' + s.specialView;
+    if (s.filters && s.filters.types && s.filters.types.length) h += '&type=' + s.filters.types.map(encodeURIComponent).join(',');
+    if (s.created) h += '&created=' + s.created.from + '..' + s.created.to;
+    if (s.starts) h += '&starts=' + s.starts.from + '..' + s.starts.to;
+    if (s.mine) h += '&mine=1';
+    return h;
+  }
+  /* what the address says, with every key it leaves out back at its default */
+  function applyHashState(p){
+    state.tab = p.tab || 'active';
+    state.search = p.search || '';
+    state.specialView = p.specialView || null;
+    state.filters.types = p.types ? p.types.slice() : [];
+    state.created = p.created || null;
+    state.starts = p.starts || null;
+    state.mine = p.mine === true;
+  }
+  try { applyHashState(parseListingHash(location.hash)); } catch(e){}
 
   function syncHash(){
-    try { history.replaceState(null, '', '#tab='+state.tab+(state.search?('&q='+encodeURIComponent(state.search)):'')); } catch(e){}
+    try {
+      var h = listingHash(state);
+      if (h === location.hash) return;
+      /* a page opened with no address keeps its plain one until the list is changed */
+      if (!location.hash && h === '#tab=active') return;
+      history.replaceState(null, '', h);
+    } catch(e){}
   }
+  function showSearch(){
+    $('search-input').value = state.search;
+    $('btn-clear-search').hidden = !state.search;
+    $('search-kbd').hidden = !!state.search;
+  }
+  /* an address typed or pasted over this one (the page itself only ever replaces it, which fires nothing) */
+  window.addEventListener('hashchange', function(){
+    try { applyHashState(parseListingHash(location.hash)); } catch(e){ return; }
+    state.page = 1;
+    closeAll(); showSearch(); renderApp();
+  });
 
   /* =========================================================
      HELPERS
@@ -1132,6 +1291,14 @@
   ========================================================= */
   function closeAll(){
     document.querySelectorAll('.popover').forEach(function(p){ p.hidden = true; });
+    /* a row menu moved to <body> while open (placeRowMenu) goes back into its row; one whose row was redrawn
+       meanwhile has no row to go back to and is dropped */
+    Array.prototype.forEach.call(document.body.children, function(p){
+      if (!p.classList || !p.classList.contains('row-menu')) return;
+      var home = p._rvHome;
+      if (home && document.body.contains(home)) home.insertBefore(p, p._rvNext && p._rvNext.parentNode === home ? p._rvNext : null);
+      else p.parentNode.removeChild(p);
+    });
     state.openPopover = null;
     state.openRowMenu = null;
     state.venuePopoverFor = null;
@@ -1141,11 +1308,58 @@
     var el = $(id);
     if (el){ el.hidden = false; state.openPopover = id; }
   }
+  /* Was the click inside one of these? Asked of the path the click took when it happened (composedPath), not of the
+     element now: "Custom range" redraws its own popover, so by the time its click reaches here the button is no
+     longer in the page, closest() finds nothing, and the popover used to shut on the very click that opened its
+     date fields. */
+  function clickWasIn(e, sel){
+    var path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+    for (var i = 0; i < path.length; i++){ if (path[i] && path[i].nodeType === 1 && path[i].matches(sel)) return true; }
+    return !!(e.target && e.target.closest && e.target.closest(sel));
+  }
   document.addEventListener('click', function(e){
-    if (e.target.closest('.popover-wrap') || e.target.closest('.row-actions') || e.target.closest('#venue-quickview') || e.target.closest('[data-venue-id]')) return;
+    if (clickWasIn(e, '.popover-wrap, .row-actions, .row-menu, #venue-quickview, [data-venue-id]')) return;
     closeAll();
   });
   document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAll(); });
+
+  /* A row's ⋯ menu sits in the table's card, which scrolls (overflow:auto): drawn there, a menu below the last row
+     was cut off at the card's edge and scrolled the card instead (UX-021). So, once open, it is pinned to the screen
+     beside its button — under it, or above it when the screen has no room below — and kept inside the window. */
+  function placeRowMenu(panel, btn){
+    if (!panel || !btn) return;
+    /* pinned to the screen only from the page's top level: inside a card, a lift or animation on the card turns
+       "fixed" into "fixed to the card", and the menu landed a screen lower on phones. So the open menu is moved to
+       <body> (its items keep their handlers) and put back where it came from when it closes (closeAll). */
+    if (panel.parentNode !== document.body){
+      panel._rvHome = panel.parentNode; panel._rvNext = panel.nextSibling;
+      document.body.appendChild(panel);
+    }
+    var r = btn.getBoundingClientRect(), gap = 6, edge = 8;
+    panel.style.position = 'fixed';
+    panel.style.right = 'auto';
+    panel.style.left = '0px'; panel.style.top = '0px';
+    var w = panel.offsetWidth, h = panel.offsetHeight;
+    var left = Math.min(Math.max(edge, r.right - w), window.innerWidth - w - edge);
+    var top = r.bottom + gap;
+    if (top + h > window.innerHeight - edge){
+      if (r.top - gap - h >= edge) top = r.top - gap - h;
+      else top = Math.max(edge, window.innerHeight - edge - h);
+    }
+    panel.style.left = Math.max(edge, left) + 'px';
+    panel.style.top = top + 'px';
+  }
+  /* a pinned menu would stay where it was while its row moves away: scrolling the page or the table, or resizing,
+     closes it (capture, so the table card's own scrolling counts too) */
+  function closePinnedRowMenu(){
+    var open = state.openPopover && $(state.openPopover);
+    if (open && open.classList.contains('row-menu')){
+      closeAll();
+      document.querySelectorAll('[data-row-menu-btn].force-show').forEach(function(b){ b.classList.remove('force-show'); });
+    }
+  }
+  window.addEventListener('scroll', closePinnedRowMenu, true);
+  window.addEventListener('resize', closePinnedRowMenu);
 
   /* =========================================================
      GLOBAL TOOLTIPS (fixed-position, escapes overflow clipping)
@@ -1412,7 +1626,7 @@
   /* Switching is the person's choice: the list moves at once, then it is saved for them (F2). A save that fails
      keeps the choice in this browser and says so. */
   function switchPortal(v){
-    if (v !== 'all' && !(rosterState !== 'ready' || onRoster(v))) return;
+    if (v !== 'all' && !(rosterState !== 'ready' || onRoster(v))) return false;
     state.portal = v;
     state.portalReturn = '';
     state.portalChosen = true; state.portalKnown = true; state.portalSettled = true; state.portalTouched = true;
@@ -1423,6 +1637,7 @@
     if (window.RevampPortals) window.RevampPortals.setWorking(v).then(null, function(err){
       toast((err && err.message) || 'Your portal choice is kept in this browser only.');
     });
+    return true;
   }
   /* "Show them" (the events with no portal yet) and "Show all portals" look at every portal for this visit only:
      nothing is saved, Create Event keeps starting on the working portal, and Back returns to it */
@@ -1570,8 +1785,10 @@
     var review = '<a class="pn-link" href="portal-review.html">Review suggested portals</a>';
     if (state.portalReturn){
       var onlyNone = state.filters.portals.length === 1 && state.filters.portals[0] === 'none';
+      /* one other portal looked at for now (ETB2B AI's "Show this portal's drafts"): named, not "every portal" */
+      var onlyOne = state.filters.portals.length === 1 && !onlyNone ? state.filters.portals[0] : '';
       html += '<div class="portal-notice">' + IC.globe + '<span class="pn-text">' +
-        (onlyNone ? 'Showing the events with no portal yet.' : 'Showing every portal for now.') + '</span>' +
+        (onlyNone ? 'Showing the events with no portal yet.' : onlyOne ? 'Showing ' + esc(portalNameOf(onlyOne)) + ' for now.' : 'Showing every portal for now.') + '</span>' +
         '<button type="button" class="pn-link" id="pn-back">Back to ' + esc(portalNameOf(state.portalReturn)) + '</button>' +
         (onlyNone ? review : '') + '</div>';
     } else {
@@ -1644,17 +1861,6 @@
   /* =========================================================
      INSIGHTS
   ========================================================= */
-  function computeRangeDayCount(rs){
-    if (rs.mode === 'today') return 1;
-    if (rs.mode !== 'custom') return parseInt(rs.mode, 10);
-    if (!rs.start || !rs.end) return 30;
-    var d = (new Date(rs.end) - new Date(rs.start)) / 86400000;
-    return Math.max(1, Math.round(d) + 1);
-  }
-  function computeRangeFactor(rs){
-    if (rs.mode !== 'custom') return RANGE_FACTOR[rs.mode];
-    return Math.min(1.6, Math.max(0.03, computeRangeDayCount(rs) / 30));
-  }
   function computeRangeLabel(rs){
     if (rs.mode === 'today') return 'Today';
     if (rs.mode === '7') return 'Last 7 days';
@@ -1663,8 +1869,9 @@
     if (rs.start && rs.end) return fmtDate(rs.start) + ' → ' + fmtDate(rs.end);
     return 'Custom range';
   }
-  function rangeFactor(){ return computeRangeFactor(state.range); }
-  function rangeLabelText(){ return computeRangeLabel(state.range); }
+  /* the Insights period's label: a custom period whose dates were never applied is read as the last 30 days
+     (activityPeriod), so it is called that, as Latest activity's picker does */
+  function rangeLabelText(){ return activityRangeLabel(state.range); }
 
   function renderInsightsTitle(){
     var base = state.specialView ? 'upcoming' : state.tab;
@@ -1672,35 +1879,59 @@
     $('range-label').textContent = rangeLabelText();
   }
 
+  /* The three cards for the tab's events in the period picked beside them (QA follow-up, UX-022): visitors and new
+     registrations are those events' own figures for those days, from GET /api/insights?from=&to= (the very read
+     Latest activity makes, kept in the same place, so one period is read once). They used to add up all-time
+     counters under a "Last 30 days" label, and right beside Latest activity's real figures for the 30 days that read
+     as a contradiction. A figure that is loading, failed or has no source shows a dash and says why, never a 0.
+     Payments are not part of this release, so the third card says that instead of a revenue figure (it summed the
+     ticket prices set on paid events, which is no revenue, and has no period). */
   function renderKPIs(){
     if (state.loading){
-      $('kpi-grid').innerHTML = ['Total Visitors','Total Registrations','Total Revenue'].map(function(l){
+      $('kpi-grid').innerHTML = ['Visitors','New registrations','Revenue'].map(function(l){
         return '<div class="kpi-card"><div class="kpi-top"><span class="kpi-label">'+l+'</span></div><div class="kpi-skel skel"></div></div>';
       }).join('');
       return;
     }
-    // Computed from the real event list (no synthetic baseline) — there's no real period-over-period
-    // history yet, so the "vs previous period" delta that used to be invented here is dropped rather
-    // than faked.
     var bucket = state.specialView ? 'upcoming' : state.tab;
-    var list = EVENTS.filter(function(e){ return e.status === bucket && inWorkingPortal(e); });
-    var vis = 0, reg = 0, rev = 0;
-    list.forEach(function(e){
-      vis += e.visitors || 0;
-      reg += e.registrations || 0;
-      if (e.payment && e.payment.type === 'paid') rev += e.payment.amount || 0;
-    });
+    var inTab = {};
+    /* the tab's events on the working portal, as the list shows them (inWorkingPortal) */
+    EVENTS.forEach(function(e){ if (e.status === bucket && inWorkingPortal(e)) inTab[e.id] = true; });
+    var p = activityPeriod(state.range);
+    var part = p ? ensureFigures(p, 'insights') : null;
+    var vis = 0, reg = 0, note = '';
+    var ok = !!(part && part.state === 'ok'), loading = !!(part && part.state === 'loading');
+    if (ok){
+      part.data.events.forEach(function(ev){
+        if (!ev || !inTab[ev.eventId] || !ev.window) return;
+        vis += Math.max(0, Number(ev.window.views) || 0);
+        reg += Math.max(0, Number(ev.window.registrations) || 0);
+      });
+      if (p.cut) note = '<p class="kpi-note">These figures cover the last 365 days of that period (' + esc(fmtDayRange(p)) + ').</p>';
+    } else if (!p){
+      note = '<p class="kpi-note">That period has not started yet. Pick one that has.</p>';
+    } else if (part.state === 'error'){
+      note = '<p class="kpi-note">These figures could not be loaded. <button type="button" class="btn btn-secondary btn-sm" id="kpi-retry">Try again</button></p>';
+    }
 
-    function card(label, icon, value){
+    function card(label, icon, n, sub){
+      var value = loading ? '<div class="kpi-skel skel"></div><span class="sr-only">Loading</span>'
+        : ok ? '<span class="kpi-num" title="' + fmtNum(n) + '">' + fmtCompact(n) + '</span>'
+        : '<span class="kpi-num kpi-none" aria-label="No figure">—</span>';
       return '<div class="kpi-card fade-in">' +
         '<div class="kpi-top"><span class="kpi-label">' + label + '</span><span class="kpi-icon">' + icon + '</span></div>' +
-        '<span class="kpi-num">' + value + '</span>' +
+        value + '<span class="kpi-sub">' + (ok || loading ? sub : (p ? 'Could not be loaded' : 'No figure for that period')) + '</span>' +
       '</div>';
     }
     $('kpi-grid').innerHTML =
-      card('Total Visitors', IC.users, fmtCompact(vis)) +
-      card('Total Registrations', IC.ticket, fmtCompact(reg)) +
-      card('Total Revenue', IC.wallet, fmtRupee(rev));
+      card('Visitors', IC.users, vis, 'Page views of these events’ sites') +
+      card('New registrations', IC.ticket, reg, 'People who registered on these events’ sites') +
+      '<div class="kpi-card is-none fade-in">' +
+        '<div class="kpi-top"><span class="kpi-label">Revenue</span><span class="kpi-icon">' + IC.wallet + '</span></div>' +
+        '<span class="kpi-num kpi-none" aria-label="No figure">—</span><span class="kpi-sub">Payments are not part of Oneworld 2.0 yet</span>' +
+      '</div>' + note;
+    var retry = $('kpi-retry');
+    if (retry) retry.addEventListener('click', function(){ loadPart(p, 'insights'); renderKPIs(); });
   }
 
   function renderRangePopover(){
@@ -1831,14 +2062,21 @@
     state.filters.types.forEach(function(k){ chips.push({ label:'Type: '+EVENT_TYPES[k], onRemove:function(){ toggleInArray(state.filters.types,k); } }); });
     if (state.portal === 'all') state.filters.portals.forEach(function(k){ chips.push({ label:'Portal: '+portalNameOf(k), onRemove:function(){ toggleInArray(state.filters.portals,k); } }); });
     state.filters.payment.forEach(function(k){ chips.push({ label:'Payment: '+(k==='paid'?'Paid':'Free'), onRemove:function(){ toggleInArray(state.filters.payment,k); } }); });
+    /* the date and "created by you" filters (set from the address or by ETB2B AI) show as chips like the rest,
+       so what hides an event is always on screen and one ✕ away */
+    if (state.created) chips.push({ label:'Created ' + fmtDayRange(state.created), onRemove:function(){ state.created = null; } });
+    if (state.starts) chips.push({ label:'Starts ' + fmtDayRange(state.starts), onRemove:function(){ state.starts = null; } });
+    if (state.mine) chips.push({ label:'Created by you', onRemove:function(){ state.mine = false; } });
     if (!chips.length){ $('chip-row').innerHTML=''; return; }
-    $('chip-row').innerHTML = chips.map(function(c,i){ return '<span class="fchip">'+esc(c.label)+'<button data-chip="'+i+'">'+IC.x+'</button></span>'; }).join('') +
+    $('chip-row').innerHTML = chips.map(function(c,i){ return '<span class="fchip">'+esc(c.label)+'<button type="button" data-chip="'+i+'" aria-label="Remove filter: '+esc(c.label)+'">'+IC.x+'</button></span>'; }).join('') +
       '<button class="chip-clear" id="chip-clear-all">Clear all</button>';
     $('chip-row').querySelectorAll('[data-chip]').forEach(function(b){
       b.addEventListener('click', function(){ chips[parseInt(b.getAttribute('data-chip'),10)].onRemove(); state.page=1; renderResults(); renderToolbarButtons(); });
     });
-    $('chip-clear-all').addEventListener('click', function(){ state.filters = {types:[],portals:[],payment:[]}; state.page=1; renderResults(); renderToolbarButtons(); });
+    $('chip-clear-all').addEventListener('click', function(){ state.filters = {types:[],portals:[],payment:[]}; clearDateFilters(); state.page=1; renderResults(); renderToolbarButtons(); });
   }
+  function clearDateFilters(){ state.created = null; state.starts = null; state.mine = false; }
+  function hasDateFilters(){ return !!(state.created || state.starts || state.mine); }
 
   /* =========================================================
      SEARCH
@@ -1874,11 +2112,18 @@
        never hide rows in a one-portal view, where it has no chip and nobody could see why */
     if (state.portal === 'all' && state.filters.portals.length && state.filters.portals.indexOf(e.portal || 'none') === -1) return false;
     if (state.filters.payment.length && state.filters.payment.indexOf(e.payment.type) === -1) return false;
-    if (state.search){
-      var hay = (e.name + ' ' + e.venue + ' ' + e.city + ' ' + (e.portal ? portalNameOf(e.portal) : 'No portal yet') + ' ' + typeLabel(e.type) + ' ' + e.createdBy).toLowerCase();
-      if (hay.indexOf(state.search.toLowerCase()) === -1) return false;
-    }
+    if (state.created && !inDays(e.createdAt, state.created)) return false;
+    if (state.starts && !inDays(e.start, state.starts)) return false;
+    if (state.mine && !isMine(e)) return false;
+    /* the search looks through the event's own cells (searchHit) and the name of its portal ("No portal yet" for
+       none); ETB2B AI's server searches the very same (functions/lib/dash-bot.js searchHit) */
+    if (state.search && !searchHit(e, state.search) && !portalSearchHit(e, state.search)) return false;
     return true;
+  }
+  /* createdBy is the creator's sign-in email (functions/lib/api.js), so "mine" is the signed-in person's own */
+  function isMine(e){
+    var me = listingMe().email.toLowerCase();
+    return !!me && String(e.createdBy || '').toLowerCase() === me;
   }
   function sortValue(e, field){
     if (field==='start') return e.start ? new Date(e.start).getTime() : -Infinity;
@@ -2012,6 +2257,8 @@
     if (state.page > totalPages) state.page = totalPages;
     var pageList = list.slice((state.page-1)*PAGE_SIZE, state.page*PAGE_SIZE);
 
+    /* every change to what the list shows passes through here, so the address always matches it */
+    syncHash();
     renderChips();
     renderPortalNotice();
     /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
@@ -2036,7 +2283,7 @@
     }
 
     if (!total){
-      var hasFilters = state.search || state.filters.types.length || (allPortals && state.filters.portals.length) || state.filters.payment.length;
+      var hasFilters = state.search || state.filters.types.length || (allPortals && state.filters.portals.length) || state.filters.payment.length || hasDateFilters();
       var emptyHTML;
       if (hasFilters){
         emptyHTML = '<div class="empty-state">' + IC.plusOutline + '<h3 style="margin-top:12px;">No events match</h3><p>Try a different search term, or clear your filters.</p>' +
@@ -2057,7 +2304,7 @@
       }
       $('table-body').innerHTML = '<tr><td colspan="' + cols + '">' + emptyHTML + '</td></tr>';
       $('card-list').innerHTML = emptyHTML;
-      var ec = $('empty-clear'); if (ec) ec.addEventListener('click', function(){ state.search=''; $('search-input').value=''; $('btn-clear-search').hidden=true; state.filters={types:[],portals:[],payment:[]}; state.page=1; renderResults(); renderToolbarButtons(); });
+      var ec = $('empty-clear'); if (ec) ec.addEventListener('click', function(){ state.search=''; $('search-input').value=''; $('btn-clear-search').hidden=true; state.filters={types:[],portals:[],payment:[]}; clearDateFilters(); state.page=1; renderResults(); renderToolbarButtons(); });
       /* in the table and in the cards alike (the table is hidden on phones) */
       document.querySelectorAll('[data-empty-all-portals]').forEach(function(b){ b.addEventListener('click', function(){ showAllPortalsForNow(''); }); });
       $('pagination').innerHTML = '';
@@ -2174,6 +2421,7 @@
         if (state.openPopover === panelId){ closeAll(); btn.classList.remove('force-show'); return; }
         closeAll();
         $(panelId).hidden = false; state.openPopover = panelId;
+        placeRowMenu($(panelId), btn);
         btn.classList.add('force-show');
       });
     });
@@ -2202,6 +2450,9 @@
       case 'set-portal':
         /* the ⋯ menu closes behind the window, so focus comes back to its ⋯ button */
         var wrap = from && from.closest ? from.closest('.popover-wrap') : null;
+        /* an open row menu sits in <body> (placeRowMenu): its row is where it came from */
+        var panel = !wrap && from && from.closest ? from.closest('.row-menu') : null;
+        if (panel && panel._rvHome) wrap = panel._rvHome;
         openSetPortalFor(id, wrap ? wrap.querySelector('[data-row-menu-btn]') : null); break;
       case 'edit': case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
@@ -2584,94 +2835,235 @@
   }
 
   /* =========================================================
-     LATEST ACTIVITY ON THIS PORTAL — platform-wide flow metrics for the
-     selected period (Today / 7 / 10 / 30 days / Custom), not a per-event log.
+     LATEST ACTIVITY — what happened across all the events in the period picked beside it (Today, the last 7,
+     10 or 30 days, or a custom period), in real figures only. Each row reads the source the rest of Oneworld 2.0
+     reads for it, so it never disagrees with an event's own Dashboard, Mailer performance or the Activity log:
+       New registrations, Visitors   GET /api/insights?from=&to=   (functions/lib/api-audience.js: every event's
+                                     day by day totals; an older event's registrations are read from its records)
+       Mailer opens                  GET /api/promo/analytics/all  (functions/lib/promo-track.js: the tracked
+                                     mailers' opens and clicks, kept by day for the last 30 India days)
+       Changes to events             GET /api/activity/all?from=&to=   (the Activity log)
+     A row with no figure says so in words, with a dash where the number would be: never a made-up number.
+     Newsletters and subscribers have no source in Oneworld 2.0 (it sends no mail yet), so their row says that.
+     Each period is read once, after the events list has loaded and once the card is (nearly) on screen: the
+     figures add up every event's days, which is not worth reading for someone who never scrolls down to them.
+     The day figures (GET /api/insights) are the exception: the Insights cards at the top read them for their own
+     period straight away, and this card reuses that read when its period is the same.
+     They are kept while the page stays open (a reload of the events list reads them again).
   ========================================================= */
-  var ACTIVITY_METRICS = [
-    { key:'registrations',   label:'New Registrations', desc:'Registrations recorded across live and upcoming IP events', icon:IC.ticket,    color:'act-blue',   kind:'events', metricCol:'Registrations', dateCol:'Last Registration' },
-    { key:'visitors',        label:'Visitors',          desc:'Visitors who viewed an IP event microsite',                 icon:IC.users,     color:'act-teal',   kind:'events', metricCol:'Visitors',      dateCol:'Last Visit' },
-    { key:'mailersSent',     label:'Mailers Sent',      desc:'Promotional mailers dispatched for IP events',              icon:IC.mail,      color:'act-amber',  kind:'events', metricCol:'Mailers Sent',  dateCol:'Last Mailer Sent' },
-    { key:'newslettersSent', label:'Newsletters Sent',  desc:'Newsletter performance across the portal',                  icon:IC.newspaper, color:'act-violet', kind:'newsletter' },
-    { key:'subscribers',     label:'New Subscribers',   desc:'Subscriber growth across the portal',                       icon:IC.userPlus,  color:'act-rose',   kind:'subscribers' }
+  var ACTIVITY_ROWS = [
+    { key:'registrations', label:'New registrations', desc:'People who registered on your events’ sites', icon:IC.ticket, color:'act-blue' },
+    { key:'visitors', label:'Visitors', desc:'Page views of your events’ sites', icon:IC.users, color:'act-teal' },
+    { key:'mailers', label:'Mailer opens', desc:'Opens of the mailers made in Promotions', icon:IC.mail, color:'act-amber' },
+    { key:'changes', label:'Changes to events', desc:'Edits, publishing and approvals, from the Activity log', icon:IC.edit, color:'act-violet' },
+    { key:'newsletters', label:'Newsletters and subscribers', desc:'Not part of Oneworld 2.0 yet, so there is nothing to count', icon:IC.newspaper, color:'act-rose', none:true }
   ];
-
-  function activityEventRows(key, f){
-    var rows = IP_EVENT_IDS.map(function(id){
-      var e = findEvent(id);
-      var act = IP_ACTIVITY[id];
-      var value, lastDays;
-      if (key === 'registrations'){ value = Math.round((e.registrations||0) * f); lastDays = act.lastRegDays; }
-      else if (key === 'visitors'){ value = Math.round((e.visitors||0) * f); lastDays = act.lastVisitDays; }
-      else { value = Math.round((act.mailersSent||0) * f); lastDays = act.lastMailerDays; }
-      return { id:id, name:e.name, value:value, lastDays:lastDays };
-    }).filter(function(r){ return r.value > 0; }).sort(function(a,b){ return b.value - a.value; });
-    return rows.slice(0, 6);
+  var CHANGES_LIMIT = 100;       // the Activity log's largest page: past it the row reads "100+", never a guess
+  var CHANGES_SHOWN = 8;
+  var EVENTS_SHOWN = 6;
+  var activityCache = {};        // "from..to" -> { insights, changes }: each { state: 'loading' | 'ok' | 'error', data }
+  var mailerFigures = null;      // the same for every period (Mailer performance's 30 days), read once
+  var activityInView = false;    // the card has come near the screen (always true where the browser cannot tell)
+  var activityWatch = null;
+  /* reads nothing until the card is within 300 px of the screen; a browser without IntersectionObserver reads at once */
+  function watchActivityCard(){
+    if (activityInView || activityWatch) return;
+    if (typeof window.IntersectionObserver !== 'function'){ activityInView = true; return; }
+    activityWatch = new IntersectionObserver(function(entries){
+      if (!entries.some(function(e){ return e.isIntersecting; })) return;
+      activityInView = true;
+      activityWatch.disconnect();
+      renderActivity();
+    }, { rootMargin: '300px 0px' });
+    activityWatch.observe($('activity-card'));
   }
+  function forgetActivity(){ activityCache = {}; mailerFigures = null; }
 
-  function renderActivityEventsTable(m, f){
-    var rows = activityEventRows(m.key, f);
-    if (!rows.length) return '<p class="act-empty">No IP events with activity in this period.</p>';
+  function todayIst(){ return istDay(new Date().toISOString()); }
+  function addDaysTo(day, n){ return new Date(Date.parse(day + 'T00:00:00Z') + n * 86400000).toISOString().slice(0, 10); }
+  /* The period picked, as India days { from, to } (both included), never past today; null when it has not begun.
+     A custom period with no dates yet (the picker left open) is the last 30 days, as its label then says. */
+  function activityPeriod(rs){
+    var today = todayIst(), from, to;
+    if (rs.mode === 'today'){ from = today; to = today; }
+    else if (rs.mode === 'custom' && validDay(rs.start) && validDay(rs.end)){ from = rs.start; to = rs.end; }
+    else { var n = parseInt(rs.mode, 10); if (!(n > 0)) n = 30; from = addDaysTo(today, 1 - n); to = today; }
+    if (from > to){ var x = from; from = to; to = x; }
+    if (from > today) return null;
+    if (to > today) to = today;
+    /* the server adds up at most a year of days (GET /api/insights): a longer custom period is its newest 365 */
+    var cut = from < addDaysTo(to, -364);
+    if (cut) from = addDaysTo(to, -364);
+    return { from: from, to: to, cut: cut };
+  }
+  function activityRangeLabel(rs){
+    if (rs.mode === 'custom' && !(validDay(rs.start) && validDay(rs.end))) return 'Last 30 days';
+    return computeRangeLabel(rs);
+  }
+  /* the start of an India day as a server time, for the Activity log's from / to (to is the day after, not included) */
+  function istDayStart(day, plusDays){ return new Date(Date.parse(day + 'T00:00:00+05:30') + (plusDays || 0) * 86400000).toISOString(); }
+
+  /* GET a JSON answer with the person's sign-in, as loadEvents() does; rejects on any failure */
+  function getJson(url){
+    if (!window.RevampAuth || typeof window.RevampAuth.getIdToken !== 'function') return Promise.reject(new Error('Not signed in.'));
+    return window.RevampAuth.getIdToken().then(function(token){
+      return fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+    }).then(function(res){
+      return res.json().catch(function(){ return null; }).then(function(data){
+        if (!res.ok || !data || typeof data !== 'object') throw new Error((data && data.error) || ('Could not load (' + res.status + ')'));
+        return data;
+      });
+    });
+  }
+  /* Reads one part into holder[part] and redraws the panel when it lands. An answer of the wrong shape is a failure
+     (shown as one), never a zero. */
+  function readPart(holder, part, url, shapeOk){
+    holder[part] = { state:'loading' };
+    getJson(url).then(function(data){
+      if (!shapeOk(data)) throw new Error('An answer this panel cannot read.');
+      holder[part] = { state:'ok', data: data };
+    }).catch(function(err){
+      holder[part] = { state:'error', message: String((err && err.message) || '') };
+    }).then(function(){ if (!state.loading){ renderKPIs(); renderActivity(); } });   // the Insights cards read the same figures
+  }
+  function periodKey(p){ return p.from + '..' + p.to; }
+  function loadPart(p, part){
+    var entry = activityCache[periodKey(p)];
+    if (part === 'insights') readPart(entry, 'insights', '/api/insights?from=' + p.from + '&to=' + p.to,
+      function(d){ return Array.isArray(d.byDay) && Array.isArray(d.events); });
+    else if (part === 'changes') readPart(entry, 'changes', '/api/activity/all?limit=' + CHANGES_LIMIT + '&from=' + encodeURIComponent(istDayStart(p.from)) +
+      '&to=' + encodeURIComponent(istDayStart(p.to, 1)), function(d){ return Array.isArray(d.items); });
+    else {
+      if (!mailerFigures) mailerFigures = {};
+      readPart(mailerFigures, 'all', '/api/promo/analytics/all', function(d){ return typeof d.available === 'boolean' && Array.isArray(d.series); });
+    }
+  }
+  /* one part of one period's figures, read the first time it is asked for: the Insights cards ask for 'insights'
+     as soon as the events have loaded, Latest activity for 'insights' and 'changes' once its card is near the
+     screen, and a period both show is read once */
+  function ensureFigures(p, part){
+    var key = periodKey(p);
+    if (!activityCache[key]) activityCache[key] = {};
+    if (!activityCache[key][part]) loadPart(p, part);
+    return activityCache[key][part];
+  }
+  function activityData(p){
+    var insights = ensureFigures(p, 'insights'), changes = ensureFigures(p, 'changes');
+    if (!mailerFigures) loadPart(p, 'mailers');
+    return { insights: insights, changes: changes, mailers: mailerFigures.all };
+  }
+  function partOf(key){ return key === 'registrations' || key === 'visitors' ? 'insights' : key; }
+
+  function sumDays(list, field, p){
+    var n = 0;
+    (list || []).forEach(function(d){ if (d && d.date >= p.from && d.date <= p.to) n += Math.max(0, Number(d[field]) || 0); });
+    return n;
+  }
+  /* One row's figure: { loading } | { error } | { none: why there is no number } | { value, more } */
+  function activityFigure(row, p, data){
+    if (row.none) return { none: row.desc };
+    var part = data[partOf(row.key)];
+    if (!part || part.state === 'loading') return { loading: true };
+    if (part.state === 'error') return { error: true };
+    var d = part.data;
+    if (row.key === 'registrations') return { value: sumDays(d.byDay, 'registrations', p) };
+    if (row.key === 'visitors') return { value: sumDays(d.byDay, 'views', p) };
+    if (row.key === 'changes') return { value: d.items.length, more: !!d.next };
+    /* mailers: counted only while tracking is on, and kept for 30 days */
+    if (!d.available) return { none: 'Mailer tracking is not switched on yet, so no opens are counted' };
+    var first = d.series.length ? String(d.series[0].date || '') : '';
+    if (!first || p.from < first) return { none: 'Mailer opens are kept for the last 30 days: pick a shorter period' };
+    return { value: sumDays(d.series, 'opens', p), clicks: sumDays(d.series, 'clicks', p) };
+  }
+  function daysAgo(day){
+    var today = todayIst();
+    if (!validDay(day)) return '—';
+    return fmtRelativeDays(Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(day + 'T00:00:00Z')) / 86400000));
+  }
+  function whenIst(iso){
+    var t = Date.parse(iso);
+    if (isNaN(t)) return '—';
+    var d = new Date(t + IST_OFFSET_MIN * 60000);
+    return d.getUTCDate() + ' ' + MONTH_SHORT[d.getUTCMonth()] + ', ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
+  }
+  function retryHTML(key){
+    return '<p class="act-empty">These figures could not be loaded.</p>' +
+      '<button type="button" class="btn btn-secondary btn-sm" data-act-retry="' + key + '">Try again</button>';
+  }
+  /* the events with the most of it in the period, from their own window figures */
+  function activityEventsTable(row, data, p){
+    var field = row.key === 'registrations' ? 'registrations' : 'views';
+    var lastField = row.key === 'registrations' ? 'lastRegistration' : 'lastView';
+    var rows = data.insights.data.events.filter(function(e){ return e && e.window && Number(e.window[field]) > 0; })
+      .sort(function(a, b){ return b.window[field] - a.window[field]; });
+    var label = row.key === 'registrations' ? 'registrations' : 'visitors';
+    if (!rows.length) return '<p class="act-empty">No ' + label + ' on your events ' + periodWords(p) + '.</p>';
+    var more = rows.length > EVENTS_SHOWN ? '<p class="act-empty">' + fmtNum(rows.length) + ' events had ' + label + ' in this period; the ' + EVENTS_SHOWN + ' with the most are shown.</p>' : '';
     return '<div class="act-table-wrap"><table class="act-table"><thead><tr>' +
-      '<th>Event Name</th><th>' + m.metricCol + '</th><th>' + m.dateCol + '</th><th></th>' +
-    '</tr></thead><tbody>' + rows.map(function(r){
+      '<th>Event</th><th>' + (row.key === 'registrations' ? 'Registrations' : 'Visitors') + '</th><th>' + (row.key === 'registrations' ? 'Last registration' : 'Last visit') + '</th><th></th>' +
+    '</tr></thead><tbody>' + rows.slice(0, EVENTS_SHOWN).map(function(e){
       return '<tr>' +
-        '<td class="act-event-name">' + esc(r.name) + '</td>' +
-        '<td class="mono">' + fmtNum(r.value) + '</td>' +
-        '<td>' + fmtRelativeDays(r.lastDays) + '</td>' +
-        '<td><a class="act-view-btn" href="edit-event.html?event=' + r.id + '#design/editor">View &rarr;</a></td>' +
+        '<td class="act-event-name">' + esc(e.name || e.eventId) + '</td>' +
+        '<td class="mono">' + fmtNum(e.window[field]) + '</td>' +
+        '<td>' + daysAgo(e.window[lastField]) + '</td>' +
+        '<td><a class="act-view-btn" href="edit-event.html?event=' + encodeURIComponent(e.eventId) + '#dashboard">Dashboard &rarr;</a></td>' +
       '</tr>';
-    }).join('') + '</tbody></table></div>';
+    }).join('') + '</tbody></table></div>' + more;
   }
-
-  function renderNewsletterPanel(f){
-    var sent = Math.round(PORTAL_ACTIVITY_BASE.newslettersSent * f);
-    var opened = Math.round(sent * 0.42);
-    var clicked = Math.round(sent * 0.11);
-    var openRate = sent ? Math.round((opened/sent)*100) : 0;
-    return '<div class="act-kpi-row">' +
-      '<div class="act-kpi-tile"><div class="act-kpi-label">Sent</div><div class="act-kpi-value mono">' + fmtCompact(sent) + '</div></div>' +
-      '<div class="act-kpi-tile"><div class="act-kpi-label">Opened</div><div class="act-kpi-value mono">' + fmtCompact(opened) + '</div></div>' +
-      '<div class="act-kpi-tile"><div class="act-kpi-label">Clicked</div><div class="act-kpi-value mono">' + fmtCompact(clicked) + '</div></div>' +
-      '<div class="act-kpi-tile highlight"><div class="act-kpi-label">Gross Open Rate</div><div class="act-kpi-value mono">' + openRate + '%</div></div>' +
-    '</div>';
-  }
-
-  function renderSubscriberPanel(f){
-    var subs = Math.round(PORTAL_ACTIVITY_BASE.subscribers * f);
-    var unsub = Math.round(subs * 0.09);
-    var recent = Math.round(subs * 0.35);
-    var seed = Math.sin(subs * 3.7) * 10000; seed -= Math.floor(seed);
-    var trendUp = seed > 0.35;
-    var trendPct = Math.round(seed * 18) + 2;
-    return '<div class="act-kpi-row">' +
-      '<div class="act-kpi-tile"><div class="act-kpi-label">Subscribers</div><div class="act-kpi-value mono">' + fmtCompact(subs) + '</div>' +
-        '<div class="act-trend ' + (trendUp?'up':'down') + '">' + (trendUp?IC.arrowUp:IC.arrowDown) + ' ' + trendPct + '% vs previous period</div></div>' +
-      '<div class="act-kpi-tile"><div class="act-kpi-label">Unsubscribers</div><div class="act-kpi-value mono">' + fmtCompact(unsub) + '</div></div>' +
-      '<div class="act-kpi-tile"><div class="act-kpi-label">Recent Subscribers</div><div class="act-kpi-value mono">' + fmtCompact(recent) + '</div></div>' +
-    '</div>';
+  /* "today", "on 2 Nov 2026", "in 26 Oct – 1 Nov 2026" */
+  function periodWords(p){ return p.from === p.to ? (p.from === todayIst() ? 'today' : 'on ' + fmtDayRange(p)) : 'in ' + fmtDayRange(p); }
+  function activityPanel(row, fig, data, p){
+    if (fig.error) return retryHTML(row.key);
+    if (fig.none) return '<p class="act-empty">' + esc(fig.none) + '.</p>' +
+      (row.key === 'mailers' ? '<a class="act-view-btn" href="mailer-performance.html">Mailer performance &rarr;</a>' : '');
+    if (row.key === 'registrations' || row.key === 'visitors') return activityEventsTable(row, data, p);
+    if (row.key === 'mailers'){
+      return '<div class="act-kpi-row">' +
+        '<div class="act-kpi-tile"><div class="act-kpi-label">Opens</div><div class="act-kpi-value mono">' + fmtNum(fig.value) + '</div></div>' +
+        '<div class="act-kpi-tile"><div class="act-kpi-label">Clicks</div><div class="act-kpi-value mono">' + fmtNum(fig.clicks) + '</div></div>' +
+      '</div><p class="act-foot"><a class="act-view-btn" href="mailer-performance.html">Mailer performance &rarr;</a></p>';
+    }
+    var items = data.changes.data.items.slice(0, CHANGES_SHOWN);
+    if (!items.length) return '<p class="act-empty">No changes to your events ' + periodWords(p) + '.</p>';
+    return '<ul class="act-changes">' + items.map(function(it){
+      return '<li><span class="act-change-what">' + (esc(it.detail) || esc(it.action) || '—') + '</span>' +
+        '<span class="act-change-meta">' + esc(it.byLabel || it.by || '') + ' · ' + esc(it.eventName || it.eventId || '') + ' · ' + whenIst(it.at) + '</span></li>';
+    }).join('') + '</ul>';      // "Full activity log" is the card's own button, right above
   }
 
   function renderActivity(){
-    $('activity-range-label').textContent = computeRangeLabel(state.activityRange);
+    var rs = state.activityRange;
+    $('activity-range-label').textContent = activityRangeLabel(rs);
     if (state.loading){
       $('activity-body').innerHTML = Array(5).fill(0).map(function(){ return '<div class="skel skel-line" style="height:14px;margin-bottom:16px;"></div>'; }).join('');
       return;
     }
-    var f = computeRangeFactor(state.activityRange);
-    $('activity-body').innerHTML = '<div class="activity-accordion">' + ACTIVITY_METRICS.map(function(m){
-      var total = Math.round(PORTAL_ACTIVITY_BASE[m.key] * f);
-      var isOpen = state.activityOpenKey === m.key;
-      var panelHTML = m.kind === 'events' ? renderActivityEventsTable(m, f)
-        : m.kind === 'newsletter' ? renderNewsletterPanel(f)
-        : renderSubscriberPanel(f);
-      return '<div class="activity-item ' + m.color + '">' +
-        '<button type="button" class="activity-row" data-act-key="' + m.key + '" aria-expanded="' + isOpen + '">' +
-          '<span class="activity-row-icon">' + m.icon + '</span>' +
-          '<span class="activity-row-main"><div class="activity-row-label">' + m.label + '</div><div class="activity-row-desc">' + m.desc + '</div></span>' +
-          '<span class="activity-row-total mono">' + fmtCompact(total) + '</span>' +
+    var p = activityPeriod(rs);
+    if (!p){
+      $('activity-body').innerHTML = '<p class="act-empty">That period has not started yet. Pick one that has.</p>';
+      return;
+    }
+    watchActivityCard();
+    /* until the card is near the screen every row waits, as if loading, and nothing is read */
+    var data = activityInView ? activityData(p) : { insights: null, changes: null, mailers: null };
+    $('activity-body').innerHTML = (p.cut ? '<p class="act-empty">These figures cover the last 365 days of that period (' + fmtDayRange(p) + ').</p>' : '') +
+      '<div class="activity-accordion">' + ACTIVITY_ROWS.map(function(row){
+      var fig = activityFigure(row, p, data);
+      var total = fig.loading ? '<span class="skel act-total-skel" aria-hidden="true"></span><span class="sr-only">Loading</span>'
+        : (fig.error || fig.none) ? '<span class="act-total-none" aria-label="No figure">—</span>'
+        : '<span title="' + fmtNum(fig.value) + (fig.more ? ' or more' : '') + '">' + fmtCompact(fig.value) + (fig.more ? '+' : '') + '</span>';
+      var desc = fig.error ? 'Could not be loaded. Open this row to try again' : fig.none ? fig.none : row.desc;
+      var head = '<span class="activity-row-icon">' + row.icon + '</span>' +
+        '<span class="activity-row-main"><span class="activity-row-label">' + row.label + '</span><span class="activity-row-desc">' + esc(desc) + '</span></span>' +
+        '<span class="activity-row-total mono">' + total + '</span>';
+      /* a row with nothing behind it opens nothing */
+      if (row.none) return '<div class="activity-item ' + row.color + ' is-none"><div class="activity-row is-static">' + head + '<span class="activity-row-chevron" aria-hidden="true"></span></div></div>';
+      var isOpen = state.activityOpenKey === row.key && !fig.loading;
+      return '<div class="activity-item ' + row.color + '">' +
+        '<button type="button" class="activity-row" data-act-key="' + row.key + '" aria-expanded="' + isOpen + '"' + (fig.loading ? ' aria-busy="true"' : '') + '>' + head +
           '<span class="activity-row-chevron">' + IC.chevDown + '</span>' +
         '</button>' +
-        (isOpen ? '<div class="activity-panel fade-in"><div class="activity-panel-inner">' + panelHTML + '</div></div>' : '') +
+        (isOpen ? '<div class="activity-panel fade-in"><div class="activity-panel-inner">' + activityPanel(row, fig, data, p) + '</div></div>' : '') +
       '</div>';
     }).join('') + '</div>';
 
@@ -2679,6 +3071,12 @@
       btn.addEventListener('click', function(){
         var key = btn.getAttribute('data-act-key');
         state.activityOpenKey = (state.activityOpenKey === key) ? null : key;
+        renderActivity();
+      });
+    });
+    $('activity-body').querySelectorAll('[data-act-retry]').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        loadPart(p, partOf(btn.getAttribute('data-act-retry')));
         renderActivity();
       });
     });
@@ -2706,7 +3104,9 @@
      No backend here, so this is a mailto: link, not an actual send.
   ========================================================= */
   var HELP_EMAIL = 'customercare@economictimesb2b.com';
-  function openHelpModal(){
+  /* returnTo: the control that opened it ("Need help?", or "Email Customer Care" in ETB2B AI's panel), which gets
+     the focus back when the window closes, so a keyboard user is left where they were */
+  function openHelpModal(returnTo){
     var root = $('sheet-root');
     root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
       '<div class="modal-card-head"><div><h3>Need help?</h3><p>Send your query about this dashboard or an event, straight to our team.</p></div>' +
@@ -2718,7 +3118,10 @@
       '</div>' +
       '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Cancel</button><button class="btn btn-primary" id="help-send" style="margin-left:auto;">' + IC.mail + ' Send via email</button></div>' +
     '</div></div>';
-    function close(){ root.innerHTML=''; }
+    function close(){
+      root.innerHTML='';
+      if (returnTo && typeof returnTo.focus === 'function' && returnTo.isConnected !== false){ try { returnTo.focus(); } catch(e){} }
+    }
     $('help-close').addEventListener('click', close);
     $('help-cancel').addEventListener('click', close);
     $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
@@ -2735,10 +3138,153 @@
       toast('Opening your email app…');
       close();
     });
+    /* the window is where the keyboard is now (its controls were behind the page before) */
+    try { $('help-message').focus(); } catch(e){}
   }
-  $('btn-help').addEventListener('click', openHelpModal);
+  $('btn-help').addEventListener('click', function(){ openHelpModal($('btn-help')); });
   $('venue-quickview').addEventListener('mouseenter', cancelCloseQV);
   $('venue-quickview').addEventListener('mouseleave', scheduleCloseQV);
+
+  /* =========================================================
+     THE LIST'S ONE DOOR FOR ETB2B AI — window.RvListing (dash-bot-client.js uses nothing else on this page)
+     The bot changes what the list shows and can put it back exactly ("do it, then undo"); it reads no figure
+     from here: every fact it states comes from its server. Nothing in here deletes, cancels, publishes or
+     changes an event.
+  ========================================================= */
+  var LISTING_SORTS = { start:1, registrations:1, visitors:1, payment:1 };
+  function listingMe(){
+    var u = null;
+    try { u = window.RevampAuth && typeof window.RevampAuth.currentUser === 'function' ? window.RevampAuth.currentUser() : null; } catch(e){}
+    return { email: u && u.email ? String(u.email) : '', name: u && u.displayName ? String(u.displayName) : '' };
+  }
+  /* A deep copy of what decides the list, put back by restore(). Read only: "shown" (how many events match),
+     "portal" (the portal scope the list shows: a roster slug, 'none' for the events with no portal yet, '' for every
+     portal; one value in the Portal filter of All portals counts as that one) and "working" (the portal the person
+     works in, saved for them: a slug or 'all'). listPortal and portalReturn are the list's own portal state, which
+     restore() puts back while the working portal is unchanged. ETB2B AI's answers and lists follow "portal". */
+  function listScope(){
+    if (state.portal !== 'all') return state.portal;
+    return state.filters.portals.length === 1 ? state.filters.portals[0] : '';
+  }
+  function listingSnapshot(){
+    return JSON.parse(JSON.stringify({
+      tab: state.tab, specialView: state.specialView, search: state.search, filters: state.filters,
+      created: state.created, starts: state.starts, mine: state.mine, sort: state.sort, page: state.page, view: state.view,
+      portal: listScope(),
+      working: workingPortal(), listPortal: state.portal, portalReturn: state.portalReturn,
+      shown: state.loading ? 0 : getFilteredSorted().length
+    }));
+  }
+  /* a portal scope ETB2B AI may put the list on: 'all', 'none' or a portal on ET's roster (any slug's shape until
+     the roster has come, as the Portal filter takes it) */
+  function scopeOk(v){ return v === 'all' || v === 'none' || (typeof v === 'string' && /^[a-z0-9]{1,40}$/.test(v) && (rosterState !== 'ready' || onRoster(v))); }
+  /* The list on a portal scope, WITHOUT moving the portal the person works in: their own portal is shown as it
+     is; any other portal (or the events with no portal yet) is looked at "for now" over every portal, as "Show
+     them" does, with the notice's way back; every portal is All portals, or a look at every portal for now. */
+  function showScope(v){
+    var working = workingPortal();
+    if (v === working){ state.portal = working; state.portalReturn = ''; state.filters.portals = []; return; }
+    state.portalTouched = true;
+    state.portalReturn = working === 'all' ? '' : working;
+    state.portal = 'all';
+    state.filters.portals = v === 'all' ? [] : [v];
+  }
+  /* only the keys this page knows, once each (a snapshot may come back from the tab's storage) */
+  function knownKeys(list, table){
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function(t){ if (typeof t === 'string' && Object.prototype.hasOwnProperty.call(table, t) && out.indexOf(t) === -1) out.push(t); });
+    return out;
+  }
+  function knownTypes(list){ return knownKeys(list, EVENT_TYPES); }
+  /* the Portal filter's values: 'none' (no portal yet) and a roster slug, once each; until the roster has come, any
+     value of a slug's shape (matches() reads the filter only in All portals, and a slug no event has hides nothing
+     that a chip does not name) */
+  function knownPortalFilters(list){
+    var out = [];
+    (Array.isArray(list) ? list : []).forEach(function(v){
+      if (typeof v !== 'string' || out.indexOf(v) !== -1) return;
+      if (v === 'none' || (/^[a-z0-9]{1,40}$/.test(v) && (rosterState !== 'ready' || onRoster(v)))) out.push(v);
+    });
+    return out;
+  }
+  /* Puts the list on ETB2B AI's view: {view, search, types, mine, created, starts, sort[, portal]}. The list then
+     shows exactly what the bot's card says, so a filter it does not name (a portal or payment pick) is cleared
+     too; a missing view or sort keeps the current one. portal, when given, is the portal scope to show
+     (showScope, which never moves the portal the person works in). Returns the list as it was before, for Undo. */
+  function listingApply(patch){
+    var before = listingSnapshot();
+    var p = patch && typeof patch === 'object' ? patch : {};
+    if (p.view === 'active' || p.view === 'upcoming' || p.view === 'completed'){ state.tab = p.view; state.specialView = null; }
+    else if (p.view === 'draft' || p.view === 'cancelled'){ state.specialView = p.view; }
+    state.search = typeof p.search === 'string' ? p.search.trim().slice(0, 80) : '';
+    state.filters = { types: knownTypes(p.types), portals: [], payment: [] };
+    if (scopeOk(p.portal)) showScope(p.portal);
+    state.mine = p.mine === true;
+    state.created = cleanRange(p.created);
+    state.starts = cleanRange(p.starts);
+    if (p.sort && LISTING_SORTS[p.sort.field]) state.sort = { field: p.sort.field, dir: p.sort.dir === 'desc' ? 'desc' : 'asc' };
+    state.page = 1;
+    closeAll(); showSearch();
+    renderApp(); syncHash();
+    scrollResultsIntoView();
+    return before;
+  }
+  /* The list exactly as a snapshot had it: tab, view, search, filters, sort, page, list / cards, and the portal it
+     was looking at while the person still works in the same portal. The portal they work in is their saved choice
+     (the switcher): it is moved back only with opts.portal, which dash-bot-client.js passes when the Undo takes
+     back a switch ETB2B AI itself made ("switch to ETAuto"). */
+  function listingRestore(snap, opts){
+    if (!snap || typeof snap !== 'object') return false;
+    if (opts && opts.portal === true && (snap.working === 'all' || (scopeOk(snap.working) && snap.working !== 'none')) && snap.working !== workingPortal()) switchPortal(snap.working);
+    if (typeof snap.working === 'string' && snap.working === workingPortal() && (snap.listPortal === 'all' || snap.listPortal === snap.working)){
+      state.portal = snap.listPortal;
+      state.portalReturn = state.portal === 'all' && snap.working !== 'all' ? snap.working : '';
+    }
+    var f = snap.filters && typeof snap.filters === 'object' ? snap.filters : {};
+    state.tab = ['active','upcoming','completed'].indexOf(snap.tab) !== -1 ? snap.tab : 'active';
+    state.specialView = ['draft','cancelled','deleted'].indexOf(snap.specialView) !== -1 ? snap.specialView : null;
+    state.search = typeof snap.search === 'string' ? snap.search : '';
+    state.filters = { types: knownTypes(f.types), portals: knownPortalFilters(f.portals), payment: knownKeys(f.payment, { paid:1, free:1 }) };
+    state.created = cleanRange(snap.created);
+    state.starts = cleanRange(snap.starts);
+    state.mine = snap.mine === true;
+    if (snap.sort && LISTING_SORTS[snap.sort.field]) state.sort = { field: snap.sort.field, dir: snap.sort.dir === 'desc' ? 'desc' : 'asc' };
+    state.page = Math.max(1, parseInt(snap.page, 10) || 1);
+    state.view = snap.view === 'grid' ? 'grid' : 'list';
+    closeAll(); showSearch(); applyView();
+    renderApp(); syncHash();
+    return true;
+  }
+  /* After a change the top of the list comes into view: the search box, the chips and the status tabs above
+     the table say what is being shown, so scrolling to the table itself would hide exactly that. */
+  function scrollResultsIntoView(){
+    var reduce = false;
+    try { reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch(e){}
+    try { window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); } catch(e){ try { window.scrollTo(0, 0); } catch(e2){} }
+  }
+  var listingReadyDone = null;
+  var listingReady = new Promise(function(resolve){ listingReadyDone = resolve; });
+  function markListingReady(){ if (listingReadyDone){ listingReadyDone(); listingReadyDone = null; } }
+  /* ETB2B AI's "switch to ETAuto": the switcher's own switchPortal (saved for the person). -> the list as it was
+     before (with the portal worked in then), for Undo, or null when that portal is not one to switch to */
+  function listingSetPortal(v){
+    if (v !== 'all' && !(typeof v === 'string' && /^[a-z0-9]{1,40}$/.test(v))) return null;
+    var before = listingSnapshot();
+    if (!switchPortal(v)) return null;
+    syncHash();
+    scrollResultsIntoView();
+    return before;
+  }
+  window.RvListing = {
+    snapshot: listingSnapshot,
+    apply: listingApply,
+    restore: listingRestore,
+    setPortal: listingSetPortal,
+    openHelp: function(returnTo){ openHelpModal(returnTo); },
+    me: listingMe,
+    /* settles once the first load of the events has finished, or failed */
+    ready: function(){ return listingReady; }
+  };
 
   /* The real network fetch (GET /api/events) that replaces the old synchronous mock/localStorage data —
      unlike those, this can genuinely fail (not signed in yet, token expired, offline, server error), so
@@ -2746,6 +3292,7 @@
   function loadAndRender(){
     $('error-slot').innerHTML = '';
     state.loading = true;
+    forgetActivity();             // a reload (or Try again) reads the activity figures afresh too
     renderApp();
     /* the first list also waits (at most 3 s, and only when this browser remembers nothing) for the working portal */
     Promise.all([loadEvents(), portalWait]).then(function(got){
@@ -2755,10 +3302,12 @@
       recomputeDerived();
       state.loading = false;
       renderApp();
+      markListingReady();
     }).catch(function(err){
       state.loading = false;
       renderApp();
       renderErrorBanner(loadAndRender);
+      markListingReady();
       console.warn('[Event Listing] Could not load events: ' + (err && err.message));
     });
   }
@@ -2772,9 +3321,15 @@
       loadAndRender();
     } catch(err){
       renderErrorBanner(init);
+      markListingReady();
     }
   }
   init();
 
 })();
 </script>
+<!-- ETB2B AI: the chat kit, then this page's side of the bot (it reaches the list only through window.RvListing) -->
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+</body>
+</html>

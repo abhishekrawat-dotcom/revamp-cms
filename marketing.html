@@ -31,6 +31,12 @@
     .ev-portal-mini{ display:inline-flex; }
   }
 </style>
+<!-- a block of its own: the one above is the event console's header rules, kept identical to edit-event.html's -->
+<style>
+  /* the line under the tabs while a mailer ETB2B AI opened waits on the Mailers tab (mailerWaitingHtml) */
+  .promo-deep-note{ margin-top:12px; align-items:center; flex-wrap:wrap; }
+  .promo-deep-note > span{ flex:1 1 220px; min-width:0; }
+</style>
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 </head>
 <body>
@@ -112,6 +118,17 @@
   /* the old screens' tab names (and any other value) still arrive from bookmarks and links: they open Social posts */
   function tabFrom(v){ return v === 'mailers' ? 'mailers' : v === 'site-posts' ? 'site-posts' : 'posts'; }
   var tab = tabFrom(new URLSearchParams(location.search).get('tab'));
+
+  /* ETB2B AI on the events dashboard opens Promotions on what the person asked for ("a save-the-date post and an
+     announcement mailer"): &template=<id> is one of the platform's social posts, which the Social posts frame opens
+     in its editor (promo-studio/oneworld-social.js); &post=<type> is a site-look post, which promo-posts.js opens;
+     &mailer= is the mailer deep link the Mailers frame already takes (MAILER_DEEP). A post counts only on the tab
+     the page opens on, and only for the first time that tab is mounted. A mailer named while another tab opens
+     first waits on the Mailers tab, and a line under the tabs says so until Mailers is shown. */
+  var DEEP = new URLSearchParams(location.search);
+  var SOCIAL_DEEP = tab === 'posts' && /^[a-z]+\.[a-z-]+$/.test(DEEP.get('template') || '') ? '&template=' + DEEP.get('template') : '';
+  var POST_DEEP = tab === 'site-posts' && /^[a-z-]+$/.test(DEEP.get('post') || '') ? DEEP.get('post') : '';
+  var MAILER_WAITING = tab !== 'mailers' && !!DEEP.get('mailer');
 
   var KIT = null, mounted = {};
 
@@ -216,8 +233,21 @@
     $('promo-retry').onclick = function(){ renderLoading(); loadKit(true); };
   }
 
+  function mailerWaitingHtml(){
+    if (!MAILER_WAITING) return '';
+    return '<div class="callout promo-deep-note" id="promo-mailer-waiting" role="status">' + svg(IC.info, 16) +
+      '<span>ETB2B AI also opened a mailer for you. It is ready on the Mailers tab.</span>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="promo-mailer-open">Open Mailers</button></div>';
+  }
+  /* the mailer has been seen: the line goes, for good */
+  function mailerSeen(){
+    if (!MAILER_WAITING) return;
+    MAILER_WAITING = false;
+    var note = $('promo-mailer-waiting');
+    if (note){ note.hidden = true; note.innerHTML = ''; }
+  }
   function renderTabs(){
-    $('view').innerHTML = head() + tabsHtml() + TABS.map(function(t){
+    $('view').innerHTML = head() + tabsHtml() + mailerWaitingHtml() + TABS.map(function(t){
       return '<section class="promo-pane" role="tabpanel" id="pane-' + t.id + '" aria-labelledby="tab-' + t.id + '"' + (t.id === tab ? '' : ' hidden') + '>' +
         '<div id="' + t.root + '"></div></section>';
     }).join('');
@@ -237,6 +267,9 @@
       e.preventDefault();
       select(TABS[to].id, true);
     });
+    /* the line's own button: the keyboard lands on the Mailers tab, as the line goes */
+    var openMailers = $('promo-mailer-open');
+    if (openMailers) openMailers.onclick = function(){ select('mailers', true); };
     show();
   }
   function select(id, focus){
@@ -256,6 +289,7 @@
       if (k.tab === tab && f && f._rvPin && f.classList.contains('is-studio')) f._rvPin.y = window.pageYOffset || 0;
     });
     lockPage();
+    if (tab === 'mailers') mailerSeen();
     show();
   }
   /* each studio is mounted the first time its tab is shown, and kept: switching tabs loses nothing. Site-look
@@ -272,6 +306,8 @@
     if (tab === 'site-posts') {
       if (!window.RevampPromoPosts) { host.innerHTML = '<p class="promo-quiet">The posts studio did not load. Reload the page.</p>'; return; }
       mounted['site-posts'] = true;
+      /* the post ETB2B AI opened (POST_DEEP): its editor, or why the event cannot make it yet */
+      if (POST_DEEP) { ctx.open = POST_DEEP; POST_DEEP = ''; }
       window.RevampPromoPosts.mount(host, ctx);
       return;
     }
@@ -282,8 +318,12 @@
        listener below). */
     if (tab === 'posts') {
       mounted.posts = true;
-      host.innerHTML = '<iframe class="promo-social-frame" id="promo-social-frame" title="Social posts" src="promo-social-studio.html?event=' +
+      var frame = '<iframe class="promo-social-frame" id="promo-social-frame" title="Social posts" src="promo-social-studio.html?event=' +
         encodeURIComponent(eventId) + '"></iframe>';
+      /* the post ETB2B AI opened rides on the frame's address, as a mailer's does on its frame (SOCIAL_DEEP is
+         checked above: lower-case letters, a dot and hyphens only) */
+      host.innerHTML = SOCIAL_DEEP ? frame.replace('"></iframe>', SOCIAL_DEEP + '"></iframe>') : frame;
+      SOCIAL_DEEP = '';
       watchFrame(FRAMES.social);
       return;
     }

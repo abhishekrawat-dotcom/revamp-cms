@@ -371,7 +371,9 @@ function callClaudeJson(prompt, schema, opts) {
       return { parsed: outcome.parsed, provider: 'claude', model: model, usage: bill() };
     });
   }
-  return attempt('strict', true).catch(function (err) {
+  /* opts.plain: a route whose schema strict mode is known to refuse starts in plain mode, rather than paying a
+     refused strict request on every call */
+  return attempt(opts.plain === true ? 'plain' : 'strict', true).catch(function (err) {
     /* nothing above should throw; if it does, the caller still gets an answer it can show */
     logCall(opts, model, 'strict', started, attempts, promptText.length, { code: 'ai-unavailable', detail: 'client error: ' + String((err && err.message) || err), usage: spent }, apiKey);
     return failure('ai-unavailable', { provider: 'claude', usage: bill() });

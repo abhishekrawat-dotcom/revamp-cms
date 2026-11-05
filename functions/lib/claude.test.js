@@ -315,6 +315,16 @@ async function run() {
   ok(claudeMod.costUsd('claude-opus-5-5', { input: 0, output: 0, cacheWrite: 1000000, cacheRead: 1000000 }) === 5.2, 'cache writes and reads at their own prices');
   ok(claudeMod.costUsd('some-other-model', { input: 5, output: 5 }) === null && claudeMod.costUsd('claude-opus-5-5', null) === null, 'no price known, no cost made up');
 
+  /* opts.plain: a route whose schema strict mode refuses (the editor chat's) starts in plain mode — one request,
+     the schema in the prompt and no structured-output parameters — instead of a refused strict request first */
+  script = [answerWith('{"a":"b"}')]; seen = []; logged = []; captureLogs();
+  var plainR; try { plainR = await callClaudeJson('p', SCHEMA, { route: 'chat-edit', plain: true }); } finally { releaseLogs(); }
+  ok(plainR && plainR.parsed && plainR.parsed.a === 'b' && seen.length === 1 && !seen[0].body.output_config && !seen[0].body.thinking &&
+    JSON.stringify(seen[0].body.messages).indexOf('Reply with ONE JSON object') !== -1 && JSON.stringify(seen[0].body.messages).indexOf('additionalProperties') !== -1, 'plain: true sends ONE plain request, the schema in the prompt, and reads its answer', JSON.stringify({ r: plainR, n: seen.length }));
+  ok(logged.length === 1 && JSON.parse(logged[0]).mode === 'plain' && JSON.parse(logged[0]).attempts === 1, 'plain: true logs one plain attempt', logged.join(' || '));
+  ok(/'chat-edit':\s*\{[^}]*plain:\s*true/.test(require('fs').readFileSync(require('path').join(__dirname, 'llm.js'), 'utf8')) &&
+    /plain:\s*profile\.plain === true/.test(require('fs').readFileSync(require('path').join(__dirname, 'llm.js'), 'utf8')), 'llm.js: the editor chat route starts in plain mode, and the route profile reaches claude.js');
+
   /* an answer cut off by the time limit has still been billed for what had arrived */
   var realFetch = global.fetch;
   global.fetch = function (url, init) {
