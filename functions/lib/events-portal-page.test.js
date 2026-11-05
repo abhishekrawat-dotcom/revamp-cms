@@ -113,9 +113,10 @@ function slice(s, a, b, incl) { var i = s.indexOf(a); if (i < 0) return null; va
   var now = slice(PAGE, d[2], d[3], d[4]), was = (d[5] || DC1A8E1)[d[0]];
   check('D.3 ' + d[1] + ' is byte-identical to ' + (d[6] || 'dc1a8e1'), typeof was === 'string' && was.length > 300 && now === was, now && now.length);
 });
-/* B07: what replaced the three pins above */
-check('D.3 B07 the ⋯ menu: Draft and Deleted Events always, Cancelled only while some event is cancelled (or it is the view shown), then the Reports',
-  /function renderMoreMenu\(\)\{[\s\S]*?item\('draft', IC\.file, 'Draft Events', n\('draft'\)\) \+\n\s*\(cancelled \|\| state\.specialView === 'cancelled' \? item\('cancelled'[\s\S]*?item\('deleted', IC\.trash2, 'Deleted Events'[\s\S]*?Mailer performance<\/a>[\s\S]*?Activity log<\/a>/.test(INLINE));
+/* B07: what replaced the three pins above; B10 (UX-018) moved Draft Events out of the ⋯ menu into a Drafts tab */
+check('D.3 B10 the ⋯ menu: Cancelled only while some event is cancelled (or it is the view shown), Deleted Events always, then the Reports; no Draft Events',
+  /function renderMoreMenu\(\)\{[\s\S]*?\(cancelled \|\| state\.specialView === 'cancelled' \? item\('cancelled'[\s\S]*?item\('deleted', IC\.trash2, 'Deleted Events'[\s\S]*?Mailer performance<\/a>[\s\S]*?Activity log<\/a>/.test(INLINE) &&
+  INLINE.indexOf("item('draft'") === -1 && /var TABS = \[\['draft','Drafts'\],\['upcoming','Upcoming'\],\['active','Active'\],\['completed','Completed'\]\];/.test(INLINE));
 check('D.3 B07 the KPI section keeps its title, period picker and grid, and has the line saying what the cards count',
   /<section id="insights-section">\n\s*<div class="insights-head">\n\s*<div>\n\s*<h2 id="insights-title">Upcoming Event Insights<\/h2>\n\s*<p class="insights-scope" id="insights-scope"><\/p>\n\s*<\/div>/.test(PAGE) &&
   PAGE.indexOf('<span id="range-label">Last 30 days</span>') !== -1 && count(PAGE, 'id="kpi-grid"') === 1);
@@ -517,9 +518,9 @@ async function main() {
   S.$('portal-popover').querySelector('[data-portal="none"]').click();
   check('D.4 …picking "No portal yet" lists the rows with none, with the chip "Portal: No portal yet"', JSON.stringify(S.rows()) === JSON.stringify(['np-live']) && S.$('chip-row').textContent.indexOf('Portal: No portal yet') !== -1);
   S.$('chip-clear-all').click();
-  check('D.4 tab counts in All portals: every portal', JSON.stringify(S.tabs()) === JSON.stringify({ active: 3, upcoming: 1, completed: 0 }), S.tabs());
+  check('D.4 tab counts in All portals: every portal (Drafts is a tab since B10)', JSON.stringify(S.tabs()) === JSON.stringify({ draft: 2, upcoming: 1, active: 3, completed: 0 }), S.tabs());
   S.$('btn-more').click();
-  check('D.4 the ⋯ menu counts every portal\'s drafts in All portals', S.$('more-menu').querySelector('[data-special="draft"]').textContent.trim().slice(-1) === '2');
+  check('D.4 the Drafts tab counts every portal\'s drafts in All portals', S.tabs().draft === 2 && !S.$('more-menu').querySelector('[data-special="draft"]'));
   check('D.4 the "No portal yet" notice: the count (Deleted not counted), Show them, Review suggested portals', S.notice().indexOf('2 events have no portal yet.') !== -1 && !!S.$('pn-show-none') &&
     S.$('portal-notice').querySelector('a[href="portal-review.html"]').textContent === 'Review suggested portals');
 
@@ -556,11 +557,11 @@ async function main() {
   check('D.4 Enter picks: the list is on ETHRWorld', S.btn() === 'ETHRWorld' && menu.hidden === true && S.doc.activeElement === S.$('btn-portals-nav'));
   check('D.4 …only its events', JSON.stringify(S.rows()) === JSON.stringify(['hr-live']) && !S.$('results-view').classList.contains('all-portals'), S.rows());
   check('D.4 …the result line names the portal', S.result() === 'Showing 1–1 of 1 event on ETHRWorld', S.result());
-  check('D.4 …the tab counts follow it', JSON.stringify(S.tabs()) === JSON.stringify({ active: 1, upcoming: 1, completed: 0 }), S.tabs());
+  check('D.4 …the tab counts follow it', JSON.stringify(S.tabs()) === JSON.stringify({ draft: 1, upcoming: 1, active: 1, completed: 0 }), S.tabs());
   /* the third card is Revenue, a dash since ETB2B AI's merge: payments are not part of Oneworld 2.0 yet */
   check('D.4 …and the totals (Active on ETHRWorld: 9 visitors, 5 registrations)', JSON.stringify(S.kpi()) === JSON.stringify(['9', '5', '—']), S.kpi());
   S.$('btn-more').click();
-  check('D.4 …and the ⋯ menu\'s counts (one ETHRWorld draft)', S.$('more-menu').querySelector('[data-special="draft"]').textContent.trim().slice(-1) === '1');
+  check('D.4 …and the Drafts tab\'s count (one ETHRWorld draft)', S.tabs().draft === 1);
   S.$('btn-more').click();
   check('D.4 …Create Event starts on it: ?new=1&portal=hr', S.create() === 'create-event.html?new=1&portal=hr');
   check('D.4 …the toolbar\'s Portal filter is hidden (the switcher is the portal control here)', S.$('btn-portal').parentNode.hidden === true);
@@ -601,7 +602,9 @@ async function main() {
   /* Show them when the current list has none of them: the list that has */
   S.$('pn-show-none').click();
   await flush();
-  check('D.4 Show them opens the list that holds the events with no portal (here Drafts)', JSON.stringify(S.rows()) === JSON.stringify(['np-draft']) && S.$('special-banner').textContent.indexOf('Draft events') !== -1, S.rows());
+  /* (B10, UX-018: Drafts is a tab, selected, rather than a ⋯ view under a banner) */
+  check('D.4 Show them opens the list that holds the events with no portal (here Drafts)', JSON.stringify(S.rows()) === JSON.stringify(['np-draft']) &&
+    S.$('status-tabs').querySelector('[aria-selected="true"]').getAttribute('data-tab') === 'draft', S.rows());
   /* the ⋯ menu's Set portal on that draft */
   var menuBtn = S.$('table-body').querySelector('[data-row-menu-btn]');
   menuBtn.click();
@@ -613,7 +616,8 @@ async function main() {
   S.dom.key(S.$('rvp-select'), 'Escape');
   check('D.4 …Escape closes it and focus goes back to the row\'s ⋯ button', !S.$('rv-portal-dialog') && S.doc.activeElement === menuBtn);
   S.$('pn-back').click();
-  S.$('special-banner').querySelector('button').click();
+  /* (B10: back to Active by its tab; Drafts has no banner now) */
+  S.$('status-tabs').querySelector('[data-tab="active"]').click();
 
   /* a 409: somebody set it meanwhile */
   S = page({ store: {}, server: 'all', patch: function () { return response(409, { error: 'This event\'s portal was changed to ETRetail meanwhile. Reload to see it.', code: 'portal-changed', current: 'retail', currentName: 'ETRetail' }); } });

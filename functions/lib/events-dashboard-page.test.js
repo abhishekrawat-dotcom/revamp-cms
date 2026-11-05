@@ -325,7 +325,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.2 apply(): the results come into view (smooth)', S.scrolled.length >= 1 && S.scrolled[S.scrolled.length - 1].top === 0 && S.scrolled[S.scrolled.length - 1].behavior === 'smooth');
   var chips = S.$('chip-row').innerHTML;
   check('D.2 the created chip says the range and has a ✕ with a name', chips.indexOf('Created 26 Oct – 1 Nov 2026') !== -1 && /<button type="button" data-chip="0" aria-label="Remove filter: Created 26 Oct – 1 Nov 2026"><svg/.test(chips), chips);
-  check('D.2 the Draft banner says what is shown', S.$('special-banner').innerHTML.indexOf('Showing <strong>Draft events</strong>') !== -1);
+  /* B10 (UX-018): Drafts is a tab now, selected like the others, so it has no banner of its own */
+  check('D.2 the Drafts tab is the one selected (no banner for it)', /aria-selected="true" data-tab="draft"/.test(S.$('status-tabs').innerHTML) && S.$('special-banner').innerHTML === '', S.$('status-tabs').innerHTML);
 
   /* the chip's ✕ */
   S.$('chip-row').querySelectorAll('[data-chip]')[0].fire('click');
@@ -382,7 +383,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   /* the help window, opened from the panel, gives the focus back */
   var opener = S.doc.createElement('button');
   L.openHelp(opener);
-  check('D.2 openHelp(): the page\'s own help window', /<h3>Need help\?<\/h3>/.test(S.$('sheet-root').innerHTML) && S.$('sheet-root').innerHTML.indexOf('customercare@economictimesb2b.com') !== -1);
+  /* (B10, UX-029: its heading has an id now, which names the dialog) */
+  check('D.2 openHelp(): the page\'s own help window', /<h3 id="help-title">Need help\?<\/h3>/.test(S.$('sheet-root').innerHTML) && S.$('sheet-root').innerHTML.indexOf('customercare@economictimesb2b.com') !== -1);
   check('D.2 openHelp(): the focus moves into it', S.$('help-message').focused === 1);
   S.$('help-close').fire('click');
   check('D.2 closing it gives the focus back to what opened it', S.$('sheet-root').innerHTML === '' && opener.focused === 1);

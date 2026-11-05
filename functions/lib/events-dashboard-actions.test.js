@@ -235,14 +235,16 @@ async function main() {
   var S = page();
   await flush();
   check('the Active tab lists the running event', JSON.stringify(S.rows()) === JSON.stringify(['live-summit']), S.rows());
-  check('UX-016 an Active row: Event setup, Clone event, Copy event link, Delete event; no "Mark as completed"',
-    JSON.stringify(S.menu('live-summit').map(function (x) { return x[0]; })) === JSON.stringify(['setup', 'duplicate', 'copylink', 'delete']) &&
+  /* (B10, UX-031: a published event's menu also has QR codes) */
+  check('UX-016 an Active row: Event setup, Clone event, Copy event link, QR codes, Delete event; no "Mark as completed"',
+    JSON.stringify(S.menu('live-summit').map(function (x) { return x[0]; })) === JSON.stringify(['setup', 'duplicate', 'copylink', 'qr', 'delete']) &&
     S.menu('live-summit').every(function (x) { return x[2] === false; }) && /Delete event/.test(S.$('rowmenu-row-live-summit').innerHTML) &&
     / danger"/.test(S.$('rowmenu-row-live-summit').innerHTML), S.menu('live-summit'));
   check('UX-022 the "Updated" button says when the list was read', /^Updated \d/.test(S.$('sync-label').textContent), S.$('sync-label').textContent);
   check('UX-022 the top bar has Events only', S.$('main-nav-links').querySelectorAll('a').length === 1 && S.$('main-nav-links').textContent.trim() === 'Events' &&
     S.$('main-nav-links').querySelector('a').getAttribute('aria-current') === 'page');
-  check('UX-034 the ⋯ menu: Draft and Deleted Events with their counts, no Cancelled (nothing is cancelled)', JSON.stringify(S.more()) === JSON.stringify({ draft: '1', deleted: '1' }), S.more());
+  /* B10 (UX-018): Drafts is a tab with its count, no longer in the ⋯ menu */
+  check('UX-034 the ⋯ menu: Deleted Events with its count, no Cancelled (nothing is cancelled); Drafts is a tab', JSON.stringify(S.more()) === JSON.stringify({ deleted: '1' }) && S.tabs().draft === '1', [S.more(), S.tabs()]);
   check('UX-025 the table has no Payment column, five columns on All portals with the Portal one', S.$('table-wrap').querySelectorAll('th').length === 6 &&
     S.$('table-wrap').textContent.indexOf('Payment') === -1);
 
@@ -267,13 +269,13 @@ async function main() {
   var clone = S.calls('POST', /^\/api\/event\/clone$/);
   check('UX-016 POST /api/event/clone with the source, the address and the name', clone.length === 1 && JSON.stringify(clone[0].body) === JSON.stringify({ sourceEventId: 'live-summit', eventId: 'live-summit-2027', name: 'Live Summit 2027' }), clone);
   check('…the window closes, the list is read again from the server', !S.dialog() && S.calls('GET', /^\/api\/events$/).length === before + 1);
-  check('…a toast says where the copy is, with Open copy', S.toasts().some(function (t) { return /“Live Summit 2027” is ready in Draft Events\.Open copy/.test(t); }), S.toasts());
+  check('…a toast says where the copy is, with Open copy', S.toasts().some(function (t) { return /“Live Summit 2027” is ready in Drafts\.Open copy/.test(t); }), S.toasts());
   S.toastButton('Open copy').click();
   check('…Open copy opens the copy\'s console', S.nav[S.nav.length - 1] === 'edit-event.html?event=live-summit-2027', S.nav);
-  S.view('draft');
-  check('…and the copy is in Draft Events (from the server, not made up on the page)', S.rows().indexOf('live-summit-2027') !== -1 && S.more().draft === '2', [S.rows(), S.more()]);
+  S.tab('draft');
+  check('…and the copy is in Drafts (from the server, not made up on the page)', S.rows().indexOf('live-summit-2027') !== -1 && S.tabs().draft === '2', [S.rows(), S.tabs()]);
   check('UX-034 the Draft view has no Insights', S.$('insights-section').hidden === true);
-  S.$('btn-back-tabs').click();
+  S.tab('active');
 
   /* a taken address: the next free one at first; then the server's 409 with a suggestion to use */
   S = page({ taken: ['upcoming-one-copy'] });
@@ -354,8 +356,10 @@ async function main() {
   S = page({ approvers: ['boss@timesinternet.in'] });
   await flush();
   var items = S.menu('live-summit');
+  /* Delete is found by its action: B10 (UX-031) put QR codes before it on a published event's menu */
+  var del = items.filter(function (x) { return x[0] === 'delete'; })[0];
   check('a team member who is not an approver: Delete stays in the menu, muted, "Approvers only", not red',
-    items[3][0] === 'delete' && items[3][2] === true && /Approvers only/.test(items[3][1]) && /is-locked/.test(S.$('rowmenu-row-live-summit').innerHTML) && !/ danger"/.test(S.$('rowmenu-row-live-summit').innerHTML), items);
+    !!del && del[2] === true && /Approvers only/.test(del[1]) && /is-locked/.test(S.$('rowmenu-row-live-summit').innerHTML) && !/ danger"/.test(S.$('rowmenu-row-live-summit').innerHTML), items);
   check('…Clone stays open to everyone', items[1][0] === 'duplicate' && items[1][2] === false);
   S.act('live-summit', 'delete');
   check('…clicking it opens nothing, sends nothing, and says who can', !S.dialog() && S.calls('DELETE', /./).length === 0 &&
@@ -364,7 +368,7 @@ async function main() {
   check('…Restore in Deleted Events is the same, and the banner says an approver can restore them', S.menu('gone-one')[0][2] === true && /an approver can restore them/.test(S.$('special-banner').textContent));
   S = page({ approvers: ['Asha.Rao@timesinternet.in'] });
   await flush();
-  check('an approver (any case) gets Delete in red', S.menu('live-summit')[3][2] === false && / danger"/.test(S.$('rowmenu-row-live-summit').innerHTML));
+  check('an approver (any case) gets Delete in red', S.menu('live-summit').filter(function (x) { return x[0] === 'delete'; })[0][2] === false && / danger"/.test(S.$('rowmenu-row-live-summit').innerHTML));
   /* the approvers could not be read: both stay offered, the server decides, and its 403 is said and corrects the menu */
   S = page({ approvers: ['boss@timesinternet.in'], approvalsFail: true });
   await flush();
@@ -372,14 +376,14 @@ async function main() {
   S.act('live-summit', 'delete'); S.$('dlg-ok').click(); await flush();
   check('…the server\'s refusal is said in the window, and nothing moves', !!S.dialog() && S.$('dlg-error').textContent === 'Only an approver (boss@timesinternet.in) can delete an event.' && S.rows().indexOf('live-summit') !== -1, S.$('dlg-error').textContent);
   S.$('dlg-cancel').click();
-  check('…and from then on the menu marks it "Approvers only"', S.menu('live-summit')[3][2] === true);
+  check('…and from then on the menu marks it "Approvers only"', S.menu('live-summit').filter(function (x) { return x[0] === 'delete'; })[0][2] === true);
 
   /* ======== a failed load (UX-027) ======== */
   S = page({ liveFail: 500 });
   await flush();
   check('UX-027 a 5xx: "Our server had a problem", with Try again, where the list would be', /Our server had a problem/.test(S.table()) && /Nothing has been lost/.test(S.table()) && !!S.$('table-body').querySelector('[data-load-retry]'), S.table());
   check('…no "No active events", no "Create your first event", no Create Event button there', !/No active events|first event|Create Event/.test(S.table()));
-  check('…no counts: a dash on every tab and in the ⋯ menu', JSON.stringify(S.tabs()) === JSON.stringify({ active: '–', upcoming: '–', completed: '–' }) && JSON.stringify(S.more()) === JSON.stringify({ draft: '–', deleted: '–' }), [S.tabs(), S.more()]);
+  check('…no counts: a dash on every tab and in the ⋯ menu', JSON.stringify(S.tabs()) === JSON.stringify({ draft: '–', upcoming: '–', active: '–', completed: '–' }) && JSON.stringify(S.more()) === JSON.stringify({ deleted: '–' }), [S.tabs(), S.more()]);
   check('…no Insights and no Latest activity, and no banner on top of it', S.$('insights-section').hidden === true && S.$('lower-panels').hidden === true && S.$('error-slot').innerHTML === '');
   check('…the "Updated" button says it did not load', S.$('sync-label').textContent === 'Not loaded');
   S.o.liveFail = 0;
@@ -411,6 +415,9 @@ async function main() {
   /* ======== the empty states (UX-035) and views (UX-034) ======== */
   S = page({ items: baseItems().filter(function (e) { return e.id !== 'live-summit'; }), deleted: [] });
   await flush();
+  /* B10 (UX-018): with nothing live, a page opened with no address and nothing remembered lands on Upcoming */
+  check('UX-018 nothing live: the page opens on Upcoming, not an empty Active', S.$('status-tabs').querySelector('[aria-selected="true"]').getAttribute('data-tab') === 'upcoming' && S.rows().length === 2, S.rows());
+  S.tab('active');
   check('UX-035 an empty Active tab: "Nothing is live right now", with Show upcoming (2), no "Create your first event"',
     /Nothing is live right now/.test(S.table()) && /Events show here while they run\./.test(S.table()) && /Show upcoming \(2\)/.test(S.table()) && !/first event/.test(S.table()), S.table());
   S.$('table-body').querySelector('[data-empty-tab]').click();
