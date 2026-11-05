@@ -8737,7 +8737,9 @@ function handleSiteGet(req, res) {
    Nothing is stored when nothing changed: a page and an editor state the same as the saved ones answer the saved
    version with unchanged: true. `automatic: true` is the editor's own load-time updates (an ET logo brought up
    to date, the records it drew in), saved apart from the person's changes so that their summary names only
-   what they changed: kept only when a reader would see a difference, and recorded as automatic. */
+   what they changed: kept only when a reader would see a difference, and recorded as automatic, in nobody's
+   name (recordSave). When the page they make is the staged page already, no version is made but the editor's
+   state is kept beside it, so the next opening has nothing left to update. */
 function handleSitePut(req, res) {
   withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
@@ -8796,6 +8798,20 @@ function handleSitePut(req, res) {
           var seen = [];
           try { seen = diffPages(beforeHtml, pageHtml); } catch (e) { seen = [{ type: 'unknown' }]; }
           same = !seen.length;
+        }
+        /* The editor's own updates on a page staging already shows (the records Content drew into it since the
+           editor last saved, stageContent): no version, but the editor's state is kept beside the page, as every
+           save keeps it, so the next opening, in any browser, starts from it and has nothing to update (UX-076).
+           Only when the page it makes is byte for byte the staged one: a state is never kept beside another page. */
+        var catchUp = same && automatic && pageHtml === beforeHtml && beforeSnapshot != null && snapshotText !== beforeSnapshot;
+        if (catchUp) {
+          return saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8').then(function () {
+            return commitSiteLock(fb, eventId, token, { site: Object.assign({}, previous, { snapshotVersion: current }) });
+          }).then(function () {
+            sendJson(res, 200, { version: current, updatedAt: previous.updatedAt || null, unchanged: true, summary: 'no change', changes: 0,
+              stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
+            return null;
+          });
         }
         if (same) {
           return releaseSiteLock(fb, eventId, token).then(function () {
@@ -9772,10 +9788,14 @@ function reviewPathOf(eventId, id) { return '/review.html?event=' + encodeURICom
    a save fails — what it cannot do is logged, and the save stands. -> { changeId, summary, items }
    opts.kind: '' for a person's save; 'content' when it only brought in what changed in Content (stageContent);
    'automatic' for the editor's own load-time updates (PUT /api/event/site, automatic: true). The approval page
-   lists those apart from the person's changes. */
+   lists those apart from the person's changes. An automatic version is nobody's change: it is recorded, and told
+   in the History, as AUTOMATIC_BY's, with who pressed Save kept as savedBy (UX-076: an untouched Save recorded
+   "4 sections edited" under the person's name). */
+var AUTOMATIC_BY = 'Site editor (automatic)';
 function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note, opts) {
   var HTML = 'text/html; charset=utf-8', now = new Date().toISOString(), actor = actorOf(decoded);
   var kind = (opts && opts.kind) || '';
+  var by = kind === 'automatic' ? AUTOMATIC_BY : actor;
   var items = [];
   try { items = diffPages(beforeHtml || '', pageHtml); } catch (e) { console.error('api: could not compare versions of ' + eventId + ' — ' + e.message); }
   var summary = beforeHtml == null ? 'first saved version' : summarise(items);
@@ -9785,14 +9805,15 @@ function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note, o
     saveObject(fb, stagingObjectPath(eventId), pageHtml, HTML)
   ]).then(function () {
     var change = {
-      at: now, by: actor, version: version, baseVersion: version - 1, summary: summary,
+      at: now, by: by, version: version, baseVersion: version - 1, summary: summary,
       items: beforeHtml == null ? [] : items, note: String(note || '').trim().slice(0, 500)
     };
     if (kind) change.kind = kind;
+    if (by !== actor) change.savedBy = actor;
     return eventDocRef(fb, eventId).collection('changes').add(change);
   }).then(function (ref) {
     var named = beforeHtml == null ? '' : sectionNames(items);   // which sections: "Hero, Speakers, Agenda"
-    logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version + ' — ' + told + summary + (named ? ' (' + named + ')' : ''), { area: 'site', changeId: ref.id, version: version });
+    logActivity(fb, eventId, by === actor ? decoded : by, 'site-saved', 'version ' + version + ' — ' + told + summary + (named ? ' (' + named + ')' : ''), { area: 'site', changeId: ref.id, version: version });
     return { changeId: ref.id, summary: summary, items: items };
   }).then(null, function (err) {
     console.error('api: the save of ' + eventId + ' v' + version + ' was stored but not recorded — ' + (err && err.message));
@@ -9934,8 +9955,9 @@ function handleApprovalRequest(req, res) {
         items = items.map(function (i) {
           return autoKeys[i.section + '|' + i.type] && !ownKeys[i.section + '|' + i.type] && !/^record-/.test(i.type) ? Object.assign({}, i, { auto: true }) : i;
         });
+        /* who changed it: the people who saved, not the site editor's own updates */
         var people = [];
-        saves.forEach(function (c) { if (c.by && people.indexOf(c.by) === -1) people.push(c.by); });
+        saves.forEach(function (c) { if (c.by && c.kind !== 'automatic' && people.indexOf(c.by) === -1) people.push(c.by); });
         var pendingId = data.approval && data.approval.id;
         var doc = {
           status: 'pending', eventId: eventId, updatedAt: now, fromVersion: liveVersion, toVersion: version,

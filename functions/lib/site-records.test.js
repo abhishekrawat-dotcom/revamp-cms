@@ -208,6 +208,43 @@ function rows(extra) {
   check('1.22 every list, with and without each value: a second draw of the same records changes nothing', steady);
 })();
 
+/* ===================== 1b. the site editor's side (its source: it needs a browser to run) =====================
+   The editor draws the same lists in the browser (applyGenericRepeat), and what it changes by itself as the page
+   opens is told apart from the person's changes (UX-076) on B04's opening, where every browser opens the version
+   saved on the server. */
+(function () {
+  var ED = require('fs').readFileSync(require('path').join(__dirname, '../../editor-template-ui.js'), 'utf8');
+  function body(name) {
+    var i = ED.indexOf('function ' + name + '(');
+    if (i === -1) return '';
+    var open = ED.indexOf('{', i), depth = 0;
+    for (var j = open; j < ED.length; j++) { if (ED[j] === '{') depth++; else if (ED[j] === '}' && --depth === 0) return ED.slice(i, j + 1); }
+    return '';
+  }
+  function code(name) { return body(name).replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, ''); }
+  var field = code('setGenericRepeatField');
+  check('1b.1 the editor, like the server, takes away a picture or link the record lacks, from the sample item as from a drawn card (no "refill")',
+    /function setGenericRepeatField\(fieldEl, field, value, kind\)/.test(field) && !/\brefill\b/.test(field + code('fillGenericRepeatClone') + code('applyGenericRepeat')) && code('applyGenericRepeat').length > 0 &&
+    /if \(isLink && fieldEl\.tagName === 'A'\) fieldEl\.removeAttribute\('href'\);/.test(field) &&
+    /if \(fieldEl\.tagName === 'IMG'\) fieldEl\.removeAttribute\('src'\); else fieldEl\.style\.backgroundImage = '';/.test(field) &&
+    field.indexOf("removeAttribute('src')") < field.indexOf("setAttribute('hidden', '')"));
+  check('1b.2 a fresh browser\'s opening counts as opened as saved: B04 takes the saved version and marks it as this browser\'s',
+    /onSavedVersion\(site\.version\)/.test(code('takeSavedSite')) && /writeMark\(\{ version: version, hash: snapHash\(undoStack\[undoPtr\]\) \}\)/.test(code('onSavedVersion')) &&
+    /openPtr = undoPtr;/.test(code('noteOpening')) && /mark\.hash === snapHash\(undoStack\[undoPtr\]\)/.test(code('noteOpening')) && /var mark = savedMark \|\| readMark\(\);/.test(code('noteOpening')));
+  check('1b.3 the updates are part of the step the page opened on, also after "Open version N" over an older copy (step 1)',
+    /if \(undoPtr !== openPtr \|\| editingEl\) \{ commitAutomatic\(\); return; \}/.test(code('bakeAuto')) && /undoStack\[openPtr\] = snap;/.test(code('bakeAuto')) && /aiWorking/.test(code('bakeAuto')) &&
+    /undoPtr !== openPtr\) return;/.test(code('settleAuto')) && /ptr: openPtr,/.test(code('settleAuto')) && /undoPtr !== openPtr \+ 1\) return;/.test(code('tagAutoStep')));
+  var chip = code('renderSiteState');
+  check('1b.4 the chip says "Updated automatically", never "Unsaved changes", for them', chip.indexOf("text = 'Updated automatically'") !== -1 && chip.indexOf("dirty && autoOnly()") < chip.indexOf("text = 'Unsaved changes'"));
+  var saveFn = code('saveToStaging');
+  check('1b.5 Save keeps them first, on the version this editor is on, as automatic; the person\'s save is then made on what that answered',
+    /baseVersion: baseVersion, snapshot: undoStack\[auto\.ptr\], html: auto\.html,\s*automatic: true/.test(saveFn) && /writeMark\(\{ version: out\.version, hash: auto\.hash \}\);\s*baseVersion = out\.version;/.test(saveFn) &&
+    /if \(a && hash === auto\.hash\) return a;/.test(saveFn));
+  check('1b.6 they are no reason to ask before leaving, nor the person\'s own after an Undo, and the owner\'s logo put in by itself is the editor\'s step',
+    /dirty: isDirty\(\) && !autoOnly\(\)/.test(code('hasUnsavedWork')) && /&& !autoOnly\(\)\);/.test(code('step')) &&
+    /if \(byItself\) commitAutomatic\(\); else commitNow\(\);/.test(ED) && /putIn\(true\);\s*tagAutoStep\(/.test(ED));
+})();
+
 /* ===================== 2. the routes ===================== */
 var NOW = '2026-02-01T00:00:00.000Z';
 function save(path, text) { return FB.bucket.file(path).save(text); }
@@ -268,6 +305,10 @@ function addFaq(id, fid, q, a) { FB.docs['events/' + id + '/faqs/' + fid] = { qu
     html: page5.replace('<a href="#faq">FAQ</a>', '<a href="#faq" style="white-space: nowrap;">FAQ</a>') } });
   var c6 = changes(ID).filter(function (c) { return c.version === 6; })[0];
   check('2.14 automatic updates a reader would see: a version of their own, recorded as automatic', r.status === 200 && r.body.version === 6 && c6 && c6.kind === 'automatic' && c6.note === 'Updated automatically: the ET logo and menu', c6);
+  /* UX-076: an untouched Save recorded "4 sections edited" under the person's name; the editor's own updates are nobody's */
+  var a6 = Object.keys(FB.docs).filter(function (k) { return k.indexOf('events/' + ID + '/activity/') === 0; }).map(function (k) { return FB.docs[k]; }).filter(function (a) { return a.version === 6; })[0];
+  check('2.14b …in nobody\'s name: the site editor\'s, with who pressed Save kept apart, in the history line and the History', c6 && c6.by === 'Site editor (automatic)' && c6.savedBy === 'owner@timesinternet.in' &&
+    a6 && a6.by === 'Site editor (automatic)' && /updated automatically when the site editor opened/.test(a6.detail), { change: c6, activity: a6 });
   r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID, templateId: 'gen-cr-live', baseVersion: 6, snapshot: { nodes: ['mine'] },
     html: file('events/' + ID + '/site/page.html').replace('<p>The plan for the summit.</p>', '<p>The plan, day by day.</p>') } });
   check('2.15 then the person\'s save', r.status === 200 && r.body.version === 7, r.text);
@@ -284,6 +325,7 @@ function addFaq(id, fid, q, a) { FB.docs['events/' + id + '/faqs/' + fid] = { qu
     req.items.filter(function (i) { return i.type === 'record-added'; }).map(function (i) { return i.after; }).sort().join('|') === 'Is lunch served?|Is there parking at the venue?', types);
   check('2.18 the saves say which were Content and which automatic', req && req.saves.filter(function (s) { return s.kind === 'content'; }).map(function (s) { return s.version; }).join() === '3,8' &&
     req.saves.filter(function (s) { return s.kind === 'automatic'; }).map(function (s) { return s.version; }).join() === '6', req && req.saves);
+  check('2.18b "Changes by" names the people who changed it, not the site editor\'s own updates', req && req.contributors.slice().sort().join() === 'editor@timesinternet.in,owner@timesinternet.in', req && req.contributors);
   r = await call('GET', '/api/event/approval?eventId=' + ID, { token: 'approver' });
   check('2.19 the approval page is given the items with their marks', r.status === 200 && r.body.request.items.some(function (i) { return i.auto; }) && r.body.request.saves.some(function (s) { return s.kind === 'content'; }), r.text.slice(0, 300));
 
@@ -352,6 +394,31 @@ function addFaq(id, fid, q, a) { FB.docs['events/' + id + '/faqs/' + fid] = { qu
   var c4p = changes(ID4).filter(function (c) { return c.version === 2; })[0];
   check('2.32 one FAQ on two pages: drawn on both, counted once', r.status === 200 && r.body.summary === 'Content: 1 FAQ added' && count(file('events/' + ID4 + '/site/page.html'), 'Who can enter?') === 2 &&
     c4p && c4p.summary === 'Content: 1 FAQ added' && c4p.items.length === 1, r.text.slice(0, 300));
+
+  /* UX-076: the editor opens a page whose records Content drew in after its last save (the editor's state is behind
+     the page); its own updates are the very page staging shows: no version, nothing in anybody's name, and the state
+     is kept beside the page so the next opening has nothing to update. An automatic page that is only alike is not. */
+  var ID5 = 'cr-catchup', P5 = sitePage();
+  FB.docs['events/' + ID5] = { name: 'Catch up', createdAt: NOW, templateId: 'gen-cr-catchup', site: { version: 1, snapshotVersion: 1, templateId: 'gen-cr-catchup', updatedBy: 'owner@timesinternet.in' } };
+  await save('events/' + ID5 + '/site/page.html', P5);
+  await save('events/' + ID5 + '/site/snapshot.json', JSON.stringify({ nodes: ['v1'] }));
+  addFaq(ID5, 'k1', 'Is there parking?', 'Yes.');
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: ID5 } });
+  var staged5 = file('events/' + ID5 + '/site/page.html'), before5 = changes(ID5).length;
+  check('2.33 Content drew the FAQ in: version 2, the editor\'s state still version 1\'s', r.status === 200 && r.body.version === 2 && FB.docs['events/' + ID5].site.snapshotVersion === 1, r.text);
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID5, templateId: 'gen-cr-catchup', baseVersion: 2, snapshot: { nodes: ['v1', 'faq drawn'] }, automatic: true,
+    note: 'Updated automatically: FAQs from Content', html: staged5.replace('<h3 class="q" data-rv-field="t">', '<h3 data-rv-field="t" class="q">') } });
+  check('2.34 a page only alike: nothing stored, the state neither', r.status === 200 && r.body.unchanged === true && file('events/' + ID5 + '/site/snapshot.json') === JSON.stringify({ nodes: ['v1'] }), r.text);
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID5, templateId: 'gen-cr-catchup', baseVersion: 2, snapshot: { nodes: ['v1', 'faq drawn'] }, automatic: true,
+    note: 'Updated automatically: FAQs from Content', html: staged5 } });
+  var ev5 = FB.docs['events/' + ID5];
+  check('2.35 the very page staging shows: no version and no history line, but the editor\'s state is kept beside it', r.status === 200 && r.body.unchanged === true && r.body.version === 2 &&
+    ev5.site.version === 2 && ev5.site.snapshotVersion === 2 && ev5.site.contentBase === 1 && !ev5.siteLock && changes(ID5).length === before5 &&
+    file('events/' + ID5 + '/site/snapshot.json') === JSON.stringify({ nodes: ['v1', 'faq drawn'] }) && file('events/' + ID5 + '/site/page.html') === staged5, { body: r.body, site: ev5.site });
+  r = await call('GET', '/api/event/site?eventId=' + ID5, { token: 'owner' });
+  check('2.36 the next opening gets that state, as version 2, saved by whoever last saved', r.status === 200 && r.body.version === 2 && r.body.snapshot && r.body.snapshot.nodes.join() === 'v1,faq drawn' && r.body.updatedBy === 'editor@timesinternet.in', r.text.slice(0, 300));
+  r = await call('PUT', '/api/event/site', { token: 'owner', body: { eventId: ID5, templateId: 'gen-cr-catchup', baseVersion: 2, snapshot: { nodes: ['v1', 'faq drawn'] }, html: staged5 } });
+  check('2.37 a person\'s Save of the same page and state after it: "nothing new"', r.status === 200 && r.body.unchanged === true && changes(ID5).length === before5, r.text);
 
   if (failures.length) { console.error('site-records: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - ')); process.exit(1); }
   console.log('site-records: all ' + checks + ' checks passed');
