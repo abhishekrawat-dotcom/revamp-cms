@@ -27,6 +27,9 @@ function fnSrc(src, name) {
   return m ? m[0] : '';
 }
 function varSrc(src, name) {
+  /* one line, or a table that opens with "{" at the end of its line and closes with "  };" */
+  var block = new RegExp('\\n  var ' + name + ' = \\{\\n[\\s\\S]*?\\n  \\};\\n').exec(src);
+  if (block) return block[0];
   var m = new RegExp('\\n  var ' + name + '\\b[^\\n]*\\n').exec(src);
   return m ? m[0] : '';
 }
@@ -193,10 +196,10 @@ check('2 the console no longer reads a table of portal names', !/\bPORTALS\b/.te
 var NAMES = ['shownPortal', 'rosterName', 'paintPortalChip', 'openSetPortal', 'portalSet', 'paintHeader', 'errText', 'localIso', 'fgroup', 'viewBasics', 'wireBasics',
   'regSettings', 'buildRegForms', 'wireSetForm',
   /* the header's state chips and Basics' share picture, which the header and Basics now run through */
-  'paintState', 'shareUrlOf', 'sharePictureField', 'wireSharePicture'];
+  'paintState', 'shareUrlOf', 'shareAutoState', 'sharePictureField', 'wireSharePicture'];
 var CONSOLE_FNS = {};
 NAMES.forEach(function (n) { CONSOLE_FNS[n] = fnSrc(MAIN, n); check('2 found function ' + n, !!CONSOLE_FNS[n]); });
-var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF', 'APPROVAL', 'SHARE_AUTO', 'SHARE_OWN'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');
+var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF', 'APPROVAL', 'SHARE_AUTO', 'SHARE_OWN', 'SHARE_LATER', 'SHARE_WHY'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');
 
 /* a node the page builds itself (the Registration panel): what its markup holds, found by #id */
 function builtNode() {

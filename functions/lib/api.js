@@ -281,6 +281,10 @@ const { safeFetch } = require('./safe-fetch');
 const siteA11y = require('./site-a11y');
 const siteSeo = require('./site-seo');
 const sitePages = require('./site-pages');
+/* the picture a link to a site shows: its banner's background with the logo unit on it (share-card.js). It draws
+   an SVG unit with this file's own rasterise and the year font the unit carries, as the logo-unit code does */
+const shareCard = require('./share-card');
+shareCard.wire({ rasterise: rasterise, embeddedYearFont: embeddedYearFont });
 /* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
 const siteChecks = require('./site-checks');
 
@@ -9259,7 +9263,9 @@ function contentMapFor(templateId) {
            shareLive: with shareView, when the event is already published: 'changed' (the saved site has changes
            the live one has not) or 'same' — the ribbon says so, and #rv-site-config says live with the live
            site's path, so its forms send a guest there instead of saying the site is not open,
-           pageBase: the address its internal-page links start from ('/s/<token>') } */
+           pageBase: the address its internal-page links start from ('/s/<token>'),
+           report: an object the page pass fills in: { shareCard } — what the page's share card needs
+           (share-card.js planOf), so a publish or a serve can have it made } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -9501,7 +9507,7 @@ function publishTransform(html, opts) {
   if (opts.pictures) page = pictures.rewriteHtml(page, opts.pictures);
   /* ---- 8. accessibility and search (site-a11y.js pagePass): zoom, readable colours on an AI-designed site,
      alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
-  page = siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
+  page = siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId, report: opts.report }, TOKEN_KIT);
   /* ---- 8b. buttons that lead nowhere put right, what an import cannot run taken out, and a live page that is a
      test or an unfilled template kept out of search engines (liveRepair, site-checks.js) ---- */
   page = liveRepair(page, event, opts.eventId, mode, opts.forms);
@@ -9516,6 +9522,24 @@ function shareRibbonText(opts) {
   if (opts.shareLive === 'same') return 'Preview — this version is live';
   return opts.shareLive ? 'Preview — changes not live yet' : 'Preview — not live yet';
 }
+/* The live page a publish (or an approval) is about to write, with its share card (share-card.js) when it can be had
+   in time: the page is transformed, the card it needs is made and recorded (waited for at most share-card.js
+   PUBLISH_WAIT_MS), and the page is transformed again knowing it. Never rejects and never holds the publish up: a
+   card that fails, or is not ready in time, leaves the page with the picture it would have had, and a card that
+   is still being made reaches the page at its next visit (its cached copy is dropped once the card is stored).
+   -> Promise<page> */
+function liveWithShareCard(fb, eventId, data, pageHtml, transformOpts) {
+  var report = {};
+  var live = publishTransform(pageHtml, Object.assign({}, transformOpts, { report: report }));
+  return shareCard.atPublish(fb, eventId, data, report.shareCard, function () { forgetCachedPage(eventId); }).then(function (rec) {
+    if (!rec) return live;
+    return publishTransform(pageHtml, Object.assign({}, transformOpts, { event: Object.assign({}, data, { shareCard: rec }) }));
+  }, function (err) {
+    console.error('api: the share card of ' + eventId + ' was not waited for — ' + (err && err.message));
+    return live;
+  });
+}
+
 /* the tokenizer above, for site-a11y.js's page pass */
 var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrValue, classListOf: classListOf, writeTag: writeTag,
   setAttr: setAttr, dropAttr: dropAttr, elementEnd: elementEnd };
@@ -9648,10 +9672,11 @@ function handleEventPublish(req, res) {
         if (note) throw logoNoteError(note, 'owner');
         /* template text, a picture that cannot be shown, last year's logo: refused before anything changes */
         return (alreadyLive ? Promise.resolve() : siteCheckGate(fb, eventId, data, pageHtml, 'owner', got[1])).then(function () {
-          var live = publishTransform(pageHtml, {
+          return liveWithShareCard(fb, eventId, data, pageHtml, {
             eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
             templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
           });
+        }).then(function (live) {
           livePages = publishedPagesOf(live);
           return readObject(fb, livePath).then(function (before) {
             undo.push(function () { return restoreObject(fb, livePath, before, HTML); });
@@ -9903,10 +9928,11 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
       if (note) throw logoNoteError(note, 'approver');
       /* an approval of a version that has what blocks it (siteCheckGate): refused, worded for the approver */
       return (opts && opts.logoGate && !alreadyLive ? siteCheckGate(fb, eventId, data, pageHtml, 'approver', got[1]) : Promise.resolve()).then(function () {
-        var live = publishTransform(pageHtml, {
+        return liveWithShareCard(fb, eventId, data, pageHtml, {
           eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
           templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
         });
+      }).then(function (live) {
         livePages = publishedPagesOf(live);
         return readObject(fb, livePath).then(function (before) {
           undo = function () { return restoreObject(fb, livePath, before, HTML); };
@@ -11020,15 +11046,22 @@ function handlePublicPage(req, res, eventId, slug) {
          serialize() output, stored as it came, linking its CSS and scripts by the absolute address of
          whichever host the editor ran on and carrying no runtime. It goes through the same transform
          here, on its way out, so that it too is root-relative and can take registrations. */
+      /* what the page's share card needs (share-card.js), read by the page pass below: a live page whose card is
+         missing, or was made for what the page showed before, has it made in the background, keeps the picture it
+         had meanwhile, and is dropped from this instance's cache once the card is stored, so the next visitor (or
+         crawler) gets it — a site live before cards existed gets one without being published again */
+      var report = {};
+      function afterSend() { shareCard.afterServe(fb, eventId, data, report.shareCard, function () { forgetCachedPage(eventId); }); }
       if (!data.publishedVersion) {
         return Promise.all([html, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
           var formsPayload = got[1];
           html = publishTransform(html, {
             eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload, pictures: got[2],
-            publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
+            publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || ''), report: report
           });
           return withHeroVideo(fb, html, data).then(function (page) {
             send(cachePage(key, page));
+            afterSend();
           });
         });
       }
@@ -11040,13 +11073,14 @@ function handlePublicPage(req, res, eventId, slug) {
          then the banner video as the event has it now (withHeroVideo). */
       return pictures.prepare(fb, html).then(function (pics) {
         var page = pictures.rewriteHtml(ensureFormsRuntime(html), pics);
-        page = siteA11y.pagePass(page, { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId }, TOKEN_KIT);
+        page = siteA11y.pagePass(page, { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId, report: report }, TOKEN_KIT);
         /* and the buttons put right, an import's dead parts taken out, a test kept out of search (liveRepair) —
            so a page published before these needs no new publish */
         page = liveRepair(page, data, eventId, 'live', null);
         return withHeroVideo(fb, page, data);
       }).then(function (page) {
         send(cachePage(key, page));
+        afterSend();
       });
     });
   }).catch(function (err) {
