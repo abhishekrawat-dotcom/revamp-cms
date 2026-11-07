@@ -393,10 +393,11 @@
     }).then(function (kept) {
       if (kept) forgetHandoff();
       pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
-      /* what Create Event handed over for a gallery design or an imported one is saved as the site's first version
-         once the page is ready (saveFirstVersion): the person's content is then on the server, for every computer and
-         colleague, as Create Event's "Saving your event" screen says for both. A generated site ("gen-") is not: its
-         page is made on the server, and Create Event's brief path never shows that screen. */
+      /* what Create Event handed over for a gallery design is saved as the site's first version once the page is
+         ready (saveFirstVersion): the person's content is then on the server, for every computer and colleague, as
+         Create Event's "Saving your event" screen says (an imported design, handed over with no sections, is marked in
+         resolveFromBrowser). A generated site ("gen-") is not: its page is made on the server, and Create Event's
+         brief path never shows that screen. */
       if (fromCreate() && !/^gen-/.test(templateId || '')) firstSaveDue = true;
     });
   }
@@ -664,6 +665,17 @@
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
         if (saved && saved.snapshot) { restoreLocal(); return; }
+        /* An imported design is one finished page, so Create Event hands it over with no sections: the page as it
+           mounts is the person's page. It is still saved as the site's first version (saveFirstVersion), as the
+           "Saving your event" screen promises, so it opens the same on any computer. Only when this browser has this
+           event's own hand-off, which shows the event was just made here; without one (another browser) nothing is saved. */
+        if (draft && /^imported-/.test(templateId || '')) {
+          return seedSnapshot(null).then(function (kept) {
+            if (kept) forgetHandoff();
+            pendingAiHero = draft;
+            firstSaveDue = true;
+          });
+        }
         /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above.
            With no hand-off in this browser at all, the event's own record brings it (aiHeroFromEvent) */
         return seedSnapshot(null).then(function () { pendingAiHero = draft || aiHeroFromEvent(); });

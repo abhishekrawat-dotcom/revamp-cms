@@ -42,6 +42,14 @@ function fnSrc(src, name) {
   var open = src.indexOf('{', src.indexOf(')', at));
   return src.slice(at, open) + balanced(src, open);
 }
+/* a function of editor-template-ui.js's own scope, to the closing brace at its own indent: fnSrc reads an apostrophe in a
+   comment ("doesn't") as a quote, and resolveFromBrowser's comments have several */
+function topFn(src, name) {
+  var at = src.indexOf('\n  function ' + name + '(');
+  if (at === -1) return null;
+  var end = src.indexOf('\n  }\n', at);
+  return end === -1 ? null : src.slice(at + 1, end + 4);
+}
 var TECH = JSON.parse(F.read('templates/retail-leadership-summit/template.json'));
 
 /* =====================================================================================================
@@ -724,14 +732,56 @@ async function main() {
   check('UX-042 editor: the Content\'s sponsors keep their logos and links on the page', JSON.stringify(tp) ===
     JSON.stringify({ tiers: [{ t: 'Gold', logos: [{ n: 'Acme', logo: 'https://x/a.png', url: 'https://acme.com' }] }, { t: '', logos: [{ n: 'Loose', logo: '', url: '' }] }] }), tp);
   check('UX-042 editor: glimpses keep their captions', JSON.stringify(X.translateGallery([{ imageUrl: 'https://x/1.jpg', caption: 'Day 1' }])) === JSON.stringify({ items: [{ url: 'https://x/1.jpg', caption: 'Day 1' }] }));
-  check('UX-042 editor: the first save comes once the page has its saved-state answer', ED.indexOf('loadSiteInfo().then(saveFirstVersion);') !== -1 &&
-    /if \(fromCreate\(\) && !\/\^gen-\/\.test\(templateId \|\| ''\)\) firstSaveDue = true;/.test(ED));
-  /* the hand-off screen says "keeps your page as its first saved version" on both of its paths (a gallery design and an
-     imported one), so the editor saves both; only a generated site, whose page the server made, is left out */
-  var dueRule = /if \(fromCreate\(\) && (.+?)\) firstSaveDue = true;/.exec(ED);
-  var due = function (tpl) { return vm.runInNewContext('(function(){ var templateId = ' + JSON.stringify(tpl) + '; return ' + dueRule[1] + '; })()', {}); };
-  check('regression: an imported design from Create Event is saved as version 1 too (the hand-off screen says so)',
-    !!dueRule && due('imported-abc123') === true && due('retail-leadership-summit') === true && due('gen-qa-x') === false);
+  check('UX-042 editor: the first save comes once the page has its saved-state answer', ED.indexOf('loadSiteInfo().then(saveFirstVersion);') !== -1);
+  /* The hand-off screen says "keeps your page as its first saved version" on both of its paths: a gallery design (handed
+     over with its sections) and an imported one (handed over with none, being one finished page). The editor's real
+     opening path (resolveFromBrowser, then saveFirstVersion) is run for each, not the condition alone: an earlier test
+     passed on the condition while the imported path never reached it. Only a generated site, whose page the server
+     made, is left out, and nothing is saved without this event's own hand-off in this browser. */
+  function arrive(o) {
+    var store = {}, L = { saves: 0 };
+    if (o.handoff) store['revamp.editor.handoff.v1'] = JSON.stringify(o.handoff);
+    var C = {
+      L: L, console: { warn: function () {}, error: function () {} }, Promise: Promise, URLSearchParams: URLSearchParams,
+      setTimeout: function (f) { f(); }, location: { search: o.search },
+      localStorage: { getItem: function (k) { return k in store ? store[k] : null; }, setItem: function (k, v) { store[k] = String(v); }, removeItem: function (k) { delete store[k]; } }
+    };
+    C.window = C;
+    vm.createContext(C);
+    vm.runInContext('var HANDOFF_KEY = "revamp.editor.handoff.v1", FILL_LOGIC_VERSION = 2, FIRST_SAVE_DELAY_MS = 0;' +
+      'var eventId = "qa-ux-b08-x", templateId = ' + JSON.stringify(o.templateId) + ', storeKey = "k";' +
+      'var firstSaveDue = false, pendingAiHero = null, sourceDraftId = null, baseVersion = 0, localEdited = false, undoStack = [], undoPtr = 0;' +
+      'var currentEvent = { slug: "qa-ux-b08-x", createdAt: "2026-11-07T10:00:00Z" }, siteInfo = { savedVersion: 0 };' +
+      'var canvas = { snapshot: function () { return { page: 1 }; }, restore: function () {} };' +
+      'var RevampFill = { fromHandoff: function () { return {}; }, apply: function () { return { skipped: [] }; } };' +
+      'function localGet() { return Promise.resolve(undefined); } function localPut() { return Promise.resolve(true); }' +
+      'function renderAiProvenanceBadges() {} function showToast() {} function showNotice() {} function applyAiDesignToCanvas() {} function restoreOpts() { return {}; }' +
+      'function fetchServerDraft() { return Promise.resolve(null); }' +
+      'function saveToStaging() { L.saves++; return Promise.resolve({ version: 1 }); }' +
+      ['fromCreate', 'handoffFor', 'readHandoffDraft', 'forgetHandoff', 'applyHandoffDraft', 'seedSnapshot', 'localRecord', 'aiHeroFromEvent',
+        'resolveFromBrowser', 'saveFirstVersion'].map(function (n) { return topFn(ED, n); }).join('\n'), C);
+    return C.resolveFromBrowser(undefined).then(function () {
+      L.due = C.firstSaveDue;
+      C.saveFirstVersion();
+      return tick();
+    }).then(function () { L.handoffLeft = 'revamp.editor.handoff.v1' in store; return L; });
+  }
+  function handoffOf(slug, tplId, sections) {
+    return { v: 1, draftId: 'd1', event: { slug: slug, name: 'QA' }, template: { id: tplId, name: 'QA', site: '/x' }, excluded: [], excludedSections: [], aiHero: null, sections: sections };
+  }
+  var FROM = '?from=create&eventId=qa-ux-b08-x';
+  var I1 = await arrive({ templateId: 'imported-abc123', search: FROM, handoff: handoffOf('qa-ux-b08-x', 'imported-abc123', []) });
+  check('regression: an imported design from Create Event (handed over with no sections) is saved as version 1 on the real opening path', I1.due === true && I1.saves === 1, I1);
+  check('regression: …and its hand-off has done its job and is forgotten', I1.handoffLeft === false, I1);
+  var I2 = await arrive({ templateId: 'retail-leadership-summit', search: FROM, handoff: handoffOf('qa-ux-b08-x', 'retail-leadership-summit', [{ libId: 'hero', name: 'Hero', data: { title: 'QA' } }]) });
+  check('UX-042 a gallery design from Create Event is saved as version 1 on the real opening path', I2.due === true && I2.saves === 1 && I2.handoffLeft === false, I2);
+  var I3 = await arrive({ templateId: 'imported-abc123', search: FROM });
+  var I4 = await arrive({ templateId: 'imported-abc123', search: FROM, handoff: handoffOf('qa-ux-b08-other', 'imported-abc123', []) });
+  check('regression: an imported design opened with no hand-off of this event in this browser (another browser, another event\'s) saves nothing',
+    I3.saves === 0 && I4.saves === 0 && I4.handoffLeft === true, [I3, I4]);
+  var I5 = await arrive({ templateId: 'imported-abc123', search: '?eventId=qa-ux-b08-x', handoff: handoffOf('qa-ux-b08-x', 'imported-abc123', []) });
+  var I6 = await arrive({ templateId: 'gen-qa-x', search: FROM, handoff: handoffOf('qa-ux-b08-x', 'gen-qa-x', []) });
+  check('UX-042 nothing is saved on a plain open (not from Create Event), nor for a generated site', I5.saves === 0 && I6.saves === 0, [I5, I6]);
   function firstSave(o) {
     var L = { saves: 0, notices: [] };
     var C = { L: L, setTimeout: function (f) { f(); }, Promise: Promise };
