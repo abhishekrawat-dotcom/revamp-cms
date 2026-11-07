@@ -11,7 +11,7 @@
 //   UX-055  the gallery's picture takes the wheel only once clicked, and the editor's outlines are not drawn on it;
 //   UX-056  text over its length says what the site does with it, under the counter and in the "things to check" list;
 //   UX-057  a busy screen has one way out (no footer Cancel beside its own), and "Reading …" closes when reading ends;
-//   UX-058  for Awards and Custom Events the brief card says what it builds and the conference designs wait behind
+//   UX-058  for Awards and Client Events the brief card says what it builds and the conference designs wait behind
 //           "Use a conference design anyway".
 // The page runs in a vm over a fake DOM (fixtures/create-event-page.js). No network, no Firebase, no browser, no AI.
 // Exits 1 on failure.
@@ -276,7 +276,7 @@ async function main() {
   check('UX-058 …which opens them', a.$('tpl-gallery-wrap').hidden === false && a.$('tpl-anyway').hidden === true && a.$('tpl-carousel').hidden === false &&
     a.$('tpl-carousel-catnote').hidden === false && a.ce('previewTarget().id') === 'tech500' && a.$('btn-rail-preview').hidden === false);
   a.ce('galleryAnyway = false; S.basics.category = "Client"; renderTemplateCarousel();');
-  check('UX-058 Custom Events the same, in its own words', a.$('tpl-gallery-wrap').hidden === true && /custom event it builds the sections this event needs/.test(a.$('dc-fit').textContent));
+  check('UX-058 Client Events the same, in its own words', a.$('tpl-gallery-wrap').hidden === true && /client event it builds the sections this event needs/.test(a.$('dc-fit').textContent));
   a.ce('S.template = "tech500"; renderTemplateCarousel();');
   check('UX-058 a draft that already has a gallery design sees the gallery as before', a.$('tpl-gallery-wrap').hidden === false);
   a.ce('S.template = null; S.basics.category = "IP"; renderTemplateCarousel();');

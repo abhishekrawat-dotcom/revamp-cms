@@ -2099,7 +2099,7 @@
               </span>
               <h3>Generate from a brief</h3>
               <p>Give ETB2B AI an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
-              <!-- for a type the gallery has no design made for (Awards, Custom Events): what this path builds for it (renderMethodFit) -->
+              <!-- for a type the gallery has no design made for (Awards, Client Event): what this path builds for it (renderMethodFit) -->
               <p class="dc-fit" id="dc-fit" hidden></p>
               <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
             </div>
@@ -6025,13 +6025,13 @@
     var list = templatesForCategory();
     return list[tplCarouselIdx] || list[0] || null;
   }
-  /* Awards and Custom Events: no gallery design was made for them, while Generate from a brief builds their
+  /* Awards and Client Events: no gallery design was made for them, while Generate from a brief builds their
      kind of site, so that card says what it builds for them and the conference designs wait behind "Use a
      conference design anyway" (UX-058). A draft that already has a gallery design, or an owner who opened
      them, sees the gallery as before. -> true while it is folded away. */
   var METHOD_FIT = {
     Awards: 'For awards it builds an award site: the Nominate button, the award categories, the jury and the nomination dates.',
-    Client: 'For a custom event it builds the sections this event needs from what you give it, not a conference layout.'
+    Client: 'For a client event it builds the sections this event needs from what you give it, not a conference layout.'
   };
   var galleryAnyway = false;      // "Use a conference design anyway" was pressed on this page load
   /* what the brief card adds for this event's type: '' where the gallery has designs made for it */
