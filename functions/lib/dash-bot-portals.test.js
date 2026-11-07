@@ -12,7 +12,9 @@
      P.10 an answer across portals says its scope and each event's portal (QA follow-up 2 F6, plan §15d)
      P.11 off the dashboard (ai-everywhere plan §4c, §9a): the portal in view is the one worked in, the prompt never
           says "the list shows … for now", lists follow it, a switch moves the working portal, "no portal" is a
-          list, and the event the person is in is never tagged with its own portal
+          list, and the event the person is in is never tagged with its own portal. Since owner decision 10 (8 Nov
+          2026) these are the pages with no event (Mailer performance here); a page of one event is locked to it, so
+          there a list, a switch, a filter or another portal's event is the scoped line
    No network, no AI: the model is stubbed and Firestore is in memory. */
 'use strict';
 var passed = 0, failed = 0;
@@ -295,27 +297,42 @@ var ON_CIO = { portal: 'cio', working: 'cio' };
     a.action.pointer.href === '/edit-event.html?event=auto-tech#content/basics', a.action);
 
   /* ===== P.11 off the dashboard ===== */
-  /* a page off the dashboard sends only the portal the person works in */
-  var CON = { page: 'console', eventId: 'auto-tech', tab: 'content/speakers' };
-  var oc = ctxWith('How many registrations here?', { working: 'cio' }, [], CON);
+  /* a page off the dashboard sends only the portal the person works in; on a page with no event (Mailer
+     performance) the portals work as on the dashboard, with lists in the chat */
+  var OFF = { page: 'mailer-performance', eventId: '', tab: '' };
+  var oc = ctxWith('Which drafts are there?', { working: 'cio' }, [], OFF);
   check('P.11 off the dashboard the portal in view is the one worked in', oc.view.portal === 'cio' && oc.view.working === 'cio' && oc.onDashboard === false, oc.view);
   var ocp = T.buildPrompt(oc);
   check('P.11 the prompt says where the person works, never "the list shows … for now"', ocp.indexOf('Asha works in ETCIO (portal "cio").') !== -1 && ocp.indexOf('for now') === -1 && ocp.indexOf('the list shows') === -1, ocp.slice(ocp.indexOf('WHERE'), ocp.indexOf('WHERE') + 600));
   check('P.11 …and that lists follow it', /Lists are about the portal Asha works in unless the person names another one/.test(ocp));
-  a = await T.cleanAnswer({ kind: 'reply', text: 'Here are the drafts.', list: { statuses: ['draft'] } }, ctxWith('Which drafts are there?', { working: 'cio' }, [], CON));
+  a = await T.cleanAnswer({ kind: 'reply', text: 'Here are the drafts.', list: { statuses: ['draft'] } }, ctxWith('Which drafts are there?', { working: 'cio' }, [], OFF));
   check('P.11 a list off the dashboard is on the portal worked in', !!a.list && same(ids(a.list), ['cio-draft']) && /in ETCIO/.test(a.list.title), a.list);
-  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'hr' }, text: 'Switching.' }, ctxWith('switch to ETHRWorld', { working: 'cio' }, [], CON));
+  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'hr' }, text: 'Switching.' }, ctxWith('switch to ETHRWorld', { working: 'cio' }, [], OFF));
   check('P.11 "switch to ETHRWorld" off the dashboard: the working portal is moved (the page does it, undoably)', a.kind === 'portal' && same(a.action, { type: 'portal', portal: 'hr', label: 'ETHRWorld' }), a);
-  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'cio' }, text: 'Switching.' }, ctxWith('switch to ETCIO', { working: 'cio' }, [], CON));
+  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'cio' }, text: 'Switching.' }, ctxWith('switch to ETCIO', { working: 'cio' }, [], OFF));
   check('P.11 …to the one already worked in: said so, nothing done', a.kind === 'reply' && !a.action && partsText(a.parts) === 'You already work in ETCIO.', a);
-  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'none' }, text: 'Showing them.' }, ctxWith('show the events with no portal', { working: 'cio' }, [], CON));
+  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'none' }, text: 'Showing them.' }, ctxWith('show the events with no portal', { working: 'cio' }, [], OFF));
   check('P.11 "the events with no portal" off the dashboard: a list of them, never a filter of a list that is not there', a.kind === 'reply' && !a.action && !!a.list && same(ids(a.list).sort(), ['odd-portal', 'unsorted']), a);
-  a = await T.cleanAnswer({ kind: 'filter', filter: { view: 'draft', portal: 'hr' }, text: 'Showing ETHRWorld drafts.' }, ctxWith('Show ETHRWorld\'s drafts', { working: 'cio' }, [], CON));
+  a = await T.cleanAnswer({ kind: 'filter', filter: { view: 'draft', portal: 'hr' }, text: 'Showing ETHRWorld drafts.' }, ctxWith('Show ETHRWorld\'s drafts', { working: 'cio' }, [], OFF));
   check('P.11 a filter off the dashboard is the same rule as a list, on the portal named', a.kind === 'reply' && !a.action && !!a.list && same(ids(a.list), ['hr-draft']) && /in ETHRWorld/.test(a.list.title) && a.notes.indexOf('filter-as-list') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['hr-draft'], text: '{{hr-draft}} is a draft.' }, ctxWith('Is the HR summit a draft?', { working: 'cio' }, [], OFF));
+  check('P.11 …and another portal\'s event is tagged with its portal', partsText(a.parts) === 'HR Future of Work Summit (ETHRWorld) is a draft.', partsText(a.parts));
+
+  /* inside an event (owner decision 10): the portals are the dashboard's business; this page is locked to its event */
+  var CON = { page: 'console', eventId: 'auto-tech', tab: 'content/speakers' };
+  var cp = T.buildPrompt(ctxWith('How many registrations here?', { working: 'cio' }, [], CON));
+  check('P.11 inside an event the prompt has no portal line, no roster and no switch', cp.indexOf('works in ETCIO') === -1 && cp.indexOf('ET PORTALS') === -1 && cp.indexOf('- "portal"') === -1, cp.slice(cp.indexOf('WHERE'), cp.indexOf('WHERE') + 400));
+  var LOCKED = 'I work on Autotech Summit 2026 here only: use the events dashboard for other events, a new event or another portal.';
+  a = await T.cleanAnswer({ kind: 'portal', switchTo: { portal: 'hr' }, text: 'Switching.' }, ctxWith('switch to ETHRWorld', { working: 'cio' }, [], CON));
+  check('P.11 inside an event "switch to ETHRWorld": the scoped line, no switch', a.kind === 'refuse' && a.action.type === 'refuse' && partsText(a.parts) === LOCKED && a.notes.indexOf('scope-portal') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', text: 'Here are the drafts.', list: { statuses: ['draft'] } }, ctxWith('Which drafts are there?', { working: 'cio' }, [], CON));
+  check('P.11 …a list of the portal\'s drafts: the scoped line', a.kind === 'refuse' && !a.list && a.notes.indexOf('scope-list') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'filter', filter: { view: 'draft', portal: 'hr' }, text: 'Showing ETHRWorld drafts.' }, ctxWith('Show ETHRWorld\'s drafts', { working: 'cio' }, [], CON));
+  check('P.11 …a filter: the scoped line', a.kind === 'refuse' && !a.list && a.notes.indexOf('scope-filter') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['hr-draft'], text: '{{hr-draft}} is a draft.' }, ctxWith('Is the HR summit a draft?', { working: 'cio' }, [], CON));
+  check('P.11 …another portal\'s event: the scoped line, never its name', a.kind === 'refuse' && partsText(a.parts) === LOCKED, partsText(a.parts));
   a = await T.cleanAnswer({ kind: 'reply', events: ['auto-tech'], text: '{{auto-tech}} has {{auto-tech.registrations}} registrations so far.' }, ctxWith('How many registrations here?', { working: 'cio' }, [], CON));
   check('P.11 the event the person is in is not tagged with its own portal, though it is on another one', partsText(a.parts).indexOf('Autotech Summit 2026 (ETAuto)') === -1 && partsText(a.parts).indexOf('Autotech Summit 2026') === 0, partsText(a.parts));
-  a = await T.cleanAnswer({ kind: 'reply', events: ['hr-draft'], text: '{{hr-draft}} is a draft.' }, ctxWith('Is the HR summit a draft?', { working: 'cio' }, [], CON));
-  check('P.11 …while another event on another portal still is', partsText(a.parts) === 'HR Future of Work Summit (ETHRWorld) is a draft.', partsText(a.parts));
   a = await T.cleanAnswer({ kind: 'open', open: { target: 'promotions', tab: '' }, text: 'Opening its promotions.' }, ctxWith('Open its promotions', { working: 'cio' }, [], CON));
   check('P.11 "open its promotions" with no event named: the event the person is in, with no line about its portal',
     !!a.action && a.action.url === '/marketing.html?event=auto-tech&tab=posts' && partsText(a.parts).indexOf('It is on ETAuto') === -1, a);

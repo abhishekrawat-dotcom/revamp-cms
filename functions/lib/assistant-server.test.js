@@ -12,8 +12,8 @@
      S.7  an approver's ?all=1 shows the events side's turns; a person never reads or reports another's
      S.8  the editor's memory never holds the events side's answer (a planted event name stays out)
      S.9  the wiring: the helpers handed over, the 1 MB body for four thumbnails
-     S.10 a page whose event cannot be used (deleted): the answer says the person's own conversation kept it, and
-          Stop is recorded there
+     S.10 a page whose event cannot be used (deleted): FAIL CLOSED (owner decision 10), the fixed refusal with no
+          model call and nothing kept anywhere, never the assistant for every event
    Production is never touched: the Firestore here is a stand-in, and the tokens are made up. */
 'use strict';
 var passed = 0, failed = 0;
@@ -251,7 +251,9 @@ var CONV = 'events/' + MAIN + '/aiChats/u-asha';
   /* ===== S.8 the editor's memory holds the person's words, never the events side's answer ===== */
   scripted['dash-bot'].push({ kind: 'reply', events: [INJ], text: '{{' + INJ + '}} is a draft.' });
   c = await call('POST', '/api/dash-bot', { message: 'is the other one a draft?', view: { working: 'cio' }, place: EDITOR, handedFrom: 'edit' });
-  check('S.8 the events side names another event (its typed name shown, as data)', c.status === 200 && /PLANTED/.test(c.body.parts.map(function (p) { return p.t === 'event' ? p.name : p.v; }).join('')), c.body);
+  /* owner decision 10: inside an event the events side never names another one, even when the model does */
+  check('S.8 the events side, asked about another event inside this one: the scoped line, never its (planted) name', c.status === 200 && c.body.kind === 'refuse' &&
+    c.body.action.what === 'other-event' && !/PLANTED/.test(JSON.stringify(c.body)) && JSON.stringify(c.body).indexOf(INJ) === -1, c.body);
   scripted['chat-edit'].push(editAnswer({ kind: 'reply', summary: 'OK.' }));
   await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'shorten the overview', sections: SECTIONS });
   var editPrompt = calls.filter(function (x) { return x.route === 'chat-edit'; }).pop().prompt;
@@ -286,20 +288,16 @@ var CONV = 'events/' + MAIN + '/aiChats/u-asha';
   var kept = FB.docs[CONV + '/turns/' + c.body.turnId];
   check('S.9 the turn keeps the files\' names only, never a thumbnail', kept && kept.attachments.length === 4 && kept.attachments[0].name === 'p1.png' && JSON.stringify(kept).indexOf(PNG.slice(0, 40)) === -1, kept && kept.attachments);
 
-  /* ===== S.10 an event the server cannot use: the person's own conversation, and the answer says so ===== */
+  /* ===== S.10 an event the server cannot use: FAIL CLOSED (owner decision 10) ===== */
   FB.docs['events/qa-aie-gone'] = { name: 'QA AIE Gone', category: 'ip', deletedAt: '2026-11-05T00:00:00.000Z', createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-11-05T00:00:00.000Z' };
-  var globalBefore = under('dashChats/u-asha/turns/').length, goneLines = activityOf('qa-aie-gone').length;
-  scripted['dash-bot'].push({ kind: 'reply', text: 'Hello.' });
+  var globalBefore = under('dashChats/u-asha/turns/').length, goneLines = activityOf('qa-aie-gone').length, modelBefore = calls.filter(function (x) { return x.route === 'dash-bot'; }).length;
   c = await call('POST', '/api/dash-bot', { message: 'hello there', view: { working: 'cio' }, place: { page: 'console', eventId: 'qa-aie-gone', tab: 'dashboard' } });
-  var goneId = c.body && c.body.turnId;
-  check('S.10 a deleted event in the place: the answer says scope "global", with no eventId', c.status === 200 && c.body.scope === 'global' && !('eventId' in c.body) && !!goneId, c.body);
-  check('S.10 …the turn is in the person\'s own conversation, none in the deleted event\'s', under('dashChats/u-asha/turns/').length === globalBefore + 1 && !!FB.docs['dashChats/u-asha/turns/' + goneId] &&
-    !Object.keys(FB.docs).some(function (k) { return k.indexOf('events/qa-aie-gone/aiChats') === 0; }));
-  c = await call('POST', '/api/dash-bot/turn', { turnId: goneId, status: 'stopped' });
   await wait();
-  check('S.10 /api/dash-bot/turn without the event records Stop there', c.status === 200 && FB.docs['dashChats/u-asha/turns/' + goneId].status === 'stopped' && activityOf('qa-aie-gone').length === goneLines, c.body);
-  c = await call('POST', '/api/dash-bot/turn', { turnId: goneId, status: 'undone', eventId: 'qa-aie-gone' });
-  check('S.10 …and with the page\'s event it is not found (what the page used to send)', c.status === 404);
+  check('S.10 a deleted event in the place: the fixed refusal, with the dashboard one click away (scope "none", no event, no turn)', c.status === 200 && c.body.kind === 'refuse' &&
+    c.body.action.what === 'unconfirmed' && c.body.action.pointer.href === '/Event_Listing.html' && c.body.scope === 'none' && !('eventId' in c.body) && !c.body.turnId, c.body);
+  check('S.10 …the model is not asked, and nothing is kept: not in the person\'s own conversation, not in the deleted event\'s, no History line',
+    calls.filter(function (x) { return x.route === 'dash-bot'; }).length === modelBefore && under('dashChats/u-asha/turns/').length === globalBefore &&
+    !Object.keys(FB.docs).some(function (k) { return k.indexOf('events/qa-aie-gone/aiChats') === 0; }) && activityOf('qa-aie-gone').length === goneLines);
   scripted['dash-bot'].push({ kind: 'reply', events: [MAIN], text: '{{' + MAIN + '}} has {{' + MAIN + '.registrations}} registrations so far.' });
   c = await call('POST', '/api/dash-bot', { message: 'how many registrations here?', view: { working: 'cio' }, place: { page: 'console', eventId: MAIN, tab: 'dashboard' } });
   check('S.10 a live event in the place: scope "event" with its id', c.status === 200 && c.body.scope === 'event' && c.body.eventId === MAIN && !!FB.docs[CONV + '/turns/' + c.body.turnId], c.body);

@@ -268,7 +268,7 @@ var LIST = {
   check('D.1 no DELETE, publish, unpublish, approve or send call', !/'DELETE'|\/publish|unpublish|\/approve|\/send\b|\/payment/i.test(SRC));
   /* "portal" (the dashboard's own switcher, plan §17) joins them: no destructive action is in it */
   check('D.1 the action switch knows filter, portal, navigate, create, refuse (and undo) only',
-    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).sort().join(',') === 'create,filter,navigate,portal,refuse,undo',
+    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).filter(function (x, i, all) { return all.indexOf(x) === i; }).sort().join(',') === 'create,filter,navigate,portal,refuse,undo',
     SRC.match(/action\.type === '([a-z]+)'/g));
   check('D.1 the answer is drawn by the kit (no innerHTML here)', SRC.indexOf('innerHTML') === -1 && SRC.indexOf('insertAdjacentHTML') === -1 && SRC.indexOf('document.write') === -1);
   check('D.1 NAV_OK is one regex literal (the integration test reads it from here)', /\bvar NAV_OK = \/\^\\\/\(\?:edit-event[^\n]*\$\/;/.test(SRC));
@@ -282,10 +282,10 @@ var LIST = {
     '/marketing.html?event=a1&tab=site-posts&post=announce&mailer=mailer.reminder', '/marketing.html?event=a1&tab=mailers&mailer=mailer.award-nominations',
     '/marketing.html?event=a1&tab=posts&template=partner.presenting-spotlight',
     '/audience-registrations.html?event=a1', '/preview/a1?draft=1', '/e/a1', '/activity-log.html', '/activity-log.html?event=a1', '/mailer-performance.html',
-    '/create-event.html?new=1', '/create-event.html?new=1&prefill=AbCdEf012345'];
+    '/create-event.html?new=1', '/create-event.html?new=1&prefill=AbCdEf012345', '/Event_Listing.html'];
   var BAD = ['https://evil/', '//evil.example/x', '/\\evil', 'javascript:alert(1)', '/edit-event.html?event=a#x', '/edit-event.html?event=A1', '/edit-event.html?event=a1#design',
     '/edit-event.html?event=a1&x=1', '/marketing.html?event=a1&tab=sales', '/marketing.html?event=a1&tab=posts&template=../x', '/preview/a1', '/e/a1/../admin',
-    '/create-event.html?new=1&discard=1', '/create-event.html?new=1&prefill=short', '/Event_Listing.html', '/api/event?eventId=a1', ' /e/a1', '/e/a1\n'];
+    '/create-event.html?new=1&discard=1', '/create-event.html?new=1&prefill=short', '/Event_Listing.html?x=1', '/event_listing.html', '/api/event?eventId=a1', ' /e/a1', '/e/a1\n'];
   check('D.1 NAV_OK lets every page ETB2B AI may open through', GOOD.every(function (u) { return NAV.test(u); }), GOOD.filter(function (u) { return !NAV.test(u); }));
   check('D.1 NAV_OK keeps everything else out', BAD.every(function (u) { return !NAV.test(u); }), BAD.filter(function (u) { return NAV.test(u); }));
   check('D.1 the countdown is 1.2 s', P0.ctx.RevampDashBot.NAV_DELAY_MS === 1200);
@@ -893,11 +893,13 @@ var LIST = {
   var Pe0 = await conPage({ answers: [hello('TurnConsole001')] });
   var oc = Pe0.kit.mounts[0] && Pe0.kit.mounts[0].opts;
   check('D.2 the console: the panel mounts with the kit id "ai" (the dashboard keeps "dash")', !!oc && oc.id === 'ai' && Pe0.kit.mounts[0].host === Pe0.host);
-  check('D.2 …its header says whose conversation it is: "This event" (named once the history has come)', oc.scope === 'This event');
-  check('D.2 …the welcome speaks of this event', oc.welcome.heading === 'Hi Asha, I’m ETB2B AI.' && oc.welcome.text === 'I can answer questions about this event from its real numbers, open its pages, set up its promotions, and start a new event.', oc.welcome);
-  check('D.2 …suggestions for an event, each one only fills the box', same(oc.suggestions.map(function (x) { return x.text; }), ['How many registrations does this event have?', 'Open this event’s speakers', 'Make a save-the-date post for this event', 'Create an IP event called … on … in …']));
-  check('D.2 …quick ideas stay after the first turn (they fill, never send)', oc.quickIdeas.length === 2 && oc.quickIdeas.every(function (q) { return q.label && q.text; }));
-  check('D.2 …the foot note does not speak of a list that is not here', oc.footNote === 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.');
+  check('D.2 …its header says it works on this event only: "This event only" (named once the history has come)', oc.scope === 'This event only');
+  var DT = Pe0.ctx.RevampDashBot.TEXT;
+  check('D.2 …the welcome says it works on this event only, never that it starts a new one', oc.welcome.heading === 'Hi Asha, I’m ETB2B AI.' && oc.welcome.text === DT.welcomeEvent &&
+    /^I work on this event only/.test(oc.welcome.text) && !/start a new event/.test(oc.welcome.text), oc.welcome);
+  check('D.2 …suggestions for this event only, each one only fills the box', same(oc.suggestions.map(function (x) { return x.text; }), ['How many registrations does this event have?', 'Open this event’s speakers', 'Make a save-the-date post for this event', 'Open this event’s registrations']));
+  check('D.2 …quick ideas stay after the first turn (they fill, never send)', oc.quickIdeas.length === 2 && oc.quickIdeas.every(function (q) { return q.label && q.text && !/Create an/.test(q.text); }));
+  check('D.2 …the foot note says this event only', oc.footNote === 'ETB2B AI works on this event only. It never deletes, cancels, publishes or approves anything.');
   check('D.2 …"Email Customer Care" mails Customer Care, naming the page', oc.help && oc.help.label === 'Email Customer Care' && oc.help.href === 'mailto:customercare@economictimesb2b.com?subject=' + encodeURIComponent('ETB2B EventSphere help: Event console'), oc.help);
   check('D.2 …the attach button takes pictures here, for the event\'s site editor', oc.attach && oc.attach.max === 4 && /image\/png/.test(oc.attach.accept) && !/pdf/.test(oc.attach.accept) && oc.attach.label === 'Attach a picture' && typeof oc.attach.add === 'function', oc.attach);
   check('D.2 …it is placed bottom-right, under the page\'s own windows', same(oc.placement, { right: 22, bottom: 22, compact: false }) && same(oc.zIndex, { launcher: 65, panel: 69 }));
@@ -905,22 +907,33 @@ var LIST = {
   var cc = Pe0.botCalls()[0];
   check('D.2 the request: place { console, qa-main, content/speakers } and, with no list, only the portal worked in', cc && same(cc.body.place, { page: 'console', eventId: 'qa-main', tab: 'content/speakers' }) && same(cc.body.view, { working: 'cio' }), cc && cc.body);
   check('D.2 …the event is only inside place (the QA guard reads a top-level eventId)', !('eventId' in cc.body) && !('slug' in cc.body));
+
+  /* ======== owner decision 10: the page's own lock, inside an event ========
+     The server never sends any of these inside an event; an answer from an older or a tampered server is still
+     neither shown nor done here. Each is said plainly, with the dashboard one click away, and reported failed. */
+  function navHere(id, url, label) {
+    return ok({ turnId: id, kind: 'open', parts: [{ t: 'text', v: 'Opening it.' }], list: null,
+      action: { type: 'navigate', url: url, label: label || 'Promotions of QA Main', target: 'promotions', eventId: 'qa-main' }, choices: null, asOf: '2026-11-03T06:35:00.000Z', notes: [] });
+  }
+  function lockedSaid(P, b) {
+    b = b || P.last();
+    return !!b && b.content === DT.otherEvent && b.links.some(function (l) { return l.href === '/Event_Listing.html' && l.label === 'Open the dashboard'; }) &&
+      P.assigned.length === 0 && P.kit.chat.folds.length === 0 && b.countdowns.length === 0 && b.lists.length === 0;
+  }
   var Pe1 = await conPage({ answers: [filterAnswer('TurnConsole002')] });
   await Pe1.say('Show drafts from last week');
-  check('D.2 a filter off the dashboard (an older server): said plainly, nothing folds, reported failed in the event\'s conversation',
-    /^That could not be done here\. The events list is on the events dashboard: ask me there to change it\.$/.test(Pe1.last().notes[0] || '') && Pe1.kit.chat.folds.length === 0 &&
-    same(Pe1.turnCalls(), [{ turnId: 'TurnConsole002', status: 'failed', note: 'The events list is on the events dashboard: ask me there to change it.', eventId: 'qa-main' }]), [Pe1.last().notes, Pe1.turnCalls()]);
-  /* reported to the conversation the server says kept the turn, not the page's address: on the page of an event the
-     server could not use (deleted, say), the turn is in the person's own conversation (scope "global") */
+  check('D.2s a filter inside an event: not done, the plain line with Open the dashboard, reported failed in the event\'s conversation',
+    lockedSaid(Pe1) && same(Pe1.turnCalls(), [{ turnId: 'TurnConsole002', status: 'failed', note: 'about another event', eventId: 'qa-main' }]), [Pe1.last(), Pe1.turnCalls()]);
+  /* reported to the conversation the server says kept the turn, not the page's address */
   var glAnswer = filterAnswer('TurnConsoleG01'); glAnswer.body.scope = 'global';
   var PeG = await conPage({ answers: [glAnswer] });
   await PeG.say('Show drafts from last week');
-  check('D.2 an answer kept in the person\'s own conversation (scope "global") is reported there, without the page\'s event',
-    same(PeG.turnCalls(), [{ turnId: 'TurnConsoleG01', status: 'failed', note: 'The events list is on the events dashboard: ask me there to change it.' }]), PeG.turnCalls());
+  check('D.2s an answer kept in the person\'s own conversation (scope "global") is reported there, without the page\'s event',
+    same(PeG.turnCalls(), [{ turnId: 'TurnConsoleG01', status: 'failed', note: 'about another event' }]), PeG.turnCalls());
   var evAnswer = filterAnswer('TurnConsoleE01'); evAnswer.body.scope = 'event'; evAnswer.body.eventId = 'qa-main';
   var PeE = await conPage({ answers: [evAnswer] });
   await PeE.say('Show drafts from last week');
-  check('D.2 …and one kept in the event\'s (scope "event") is reported with that event', PeE.turnCalls().length === 1 && PeE.turnCalls()[0].eventId === 'qa-main', PeE.turnCalls());
+  check('D.2s …and one kept in the event\'s (scope "event") is reported with that event', PeE.turnCalls().length === 1 && PeE.turnCalls()[0].eventId === 'qa-main', PeE.turnCalls());
   var relG = null;
   var PeS = await conPage({ answer: function (call) { return call.url === '/api/dash-bot' ? { hold: new Promise(function (r) { relG = r; }) } : null; } });
   var stopG = PeS.say('hello');
@@ -928,21 +941,80 @@ var LIST = {
   await stopG;
   var lateG = navAnswer('TurnConsoleS01', '/edit-event.html?event=autotech-2026#design/editor'); lateG.body.scope = 'global';
   relG(lateG); await flush(); await flush();
-  check('D.2 Stop on such an answer: reported stopped to the person\'s own conversation', same(PeS.turnCalls(), [{ turnId: 'TurnConsoleS01', status: 'stopped' }]), PeS.turnCalls());
-  var Pe2 = await conPage({ answers: [ok({ turnId: 'TurnConsole003', kind: 'reply', parts: [{ t: 'text', v: 'Here.' }], list: LIST, action: null, asOf: 'x', notes: [] }), navAnswer('TurnConsole004', '/marketing.html?event=qa-main&tab=posts', 'Promotions of QA Main')] });
+  check('D.2 Stop on such an answer: reported stopped to the person\'s own conversation, nothing opened', same(PeS.turnCalls(), [{ turnId: 'TurnConsoleS01', status: 'stopped' }]) && PeS.assigned.length === 0, PeS.turnCalls());
+  var Pe2 = await conPage({ answers: [ok({ turnId: 'TurnConsole003', kind: 'reply', parts: [{ t: 'text', v: 'Here.' }], list: LIST, action: null, asOf: 'x', notes: [] }), navHere('TurnConsole004', '/marketing.html?event=qa-main&tab=posts')] });
   await Pe2.say('Which events go live this month?');
-  check('D.2 a list off the dashboard: drawn, with no "Show these in the list"', Pe2.last().lists.length === 1 && !Pe2.last().buttons.some(function (x) { return x.label === 'Show these in the list'; }));
+  check('D.2s a list of events inside an event: never drawn, the plain line instead', lockedSaid(Pe2) && Pe2.kit.chat.bubbles.every(function (b) { return b.lists.length === 0; }), Pe2.last());
   await Pe2.say('Open its promotions');
   Pe2.clock.tick(1200);
-  check('D.2 navigate off the dashboard: "Opening …", then the page (through the shell\'s leave)', same(Pe2.assigned, ['/marketing.html?event=qa-main&tab=posts']) && Pe2.session.getItem('rv.assistant.open.console') === '1', [Pe2.assigned, Pe2.session._m]);
+  check('D.2 this event\'s own page opens: "Opening …", then the page (through the shell\'s leave)', same(Pe2.assigned, ['/marketing.html?event=qa-main&tab=posts']) && Pe2.session.getItem('rv.assistant.open.console') === '1', [Pe2.assigned, Pe2.session._m]);
+  var PeD = await conPage({ answers: [ok({ turnId: 'TurnConsoleD01', kind: 'open', parts: [{ t: 'text', v: 'Opening it.' }], list: null, action: { type: 'navigate', url: '/Event_Listing.html', label: 'the events dashboard', target: 'dashboard' }, choices: null, asOf: 'x', notes: [] })] });
+  await PeD.say('Take me back to the dashboard');
+  PeD.clock.tick(1200);
+  check('D.2 …and so does the events dashboard, to leave this event', same(PeD.assigned, ['/Event_Listing.html']), PeD.assigned);
+  var Pe4 = await conPage({ answers: [navAnswer('TurnConsoleO01', '/edit-event.html?event=autotech-2026#design/editor')] });
+  await Pe4.say('Open the Autotech editor');
+  Pe4.clock.tick(5000);
+  check('D.2s another event\'s page inside an event: never opened, its name never drawn, the plain line instead', lockedSaid(Pe4) && Pe4.kit.chat.bubbles.length === 1 &&
+    same(Pe4.turnCalls(), [{ turnId: 'TurnConsoleO01', status: 'failed', note: 'about another event', eventId: 'qa-main' }]), [Pe4.last(), Pe4.assigned]);
+  var odd = navHere('TurnConsoleO02', '/edit-event.html?event=autotech-2026#content/speakers'); odd.body.action.eventId = 'qa-main';
+  var Pe5 = await conPage({ answers: [odd] });
+  await Pe5.say('Open the speakers');
+  Pe5.clock.tick(5000);
+  check('D.2s …even when the action says this event but its address is another\'s', lockedSaid(Pe5), Pe5.assigned);
+  var Pe6 = await conPage({ answers: [navHere('TurnConsoleO03', '/mailer-performance.html', 'Mailer performance')] });
+  await Pe6.say('How did all my mailers do?');
+  Pe6.clock.tick(5000);
+  check('D.2s …and a page of every event (Mailer performance) is not opened from inside one', lockedSaid(Pe6), Pe6.assigned);
+  var refOther = ok({ turnId: 'TurnConsoleR01', kind: 'refuse', parts: [{ t: 'text', v: 'Publishing stays with you.' }], list: null,
+    action: { type: 'refuse', what: 'publish', pointer: { text: 'Publishing stays with you.', href: '/edit-event.html?event=autotech-2026', hrefLabel: 'Open Autotech 2026' } }, choices: null, asOf: 'x', notes: [] });
+  var Pe7 = await conPage({ answers: [refOther] });
+  await Pe7.say('publish it');
+  check('D.2s a refusal whose link is another event\'s: that link never drawn', lockedSaid(Pe7) && !Pe7.last().links.some(function (l) { return /autotech/.test(l.href); }), Pe7.last().links);
+  var scopedLine = ok({ turnId: 'TurnConsoleR02', kind: 'refuse', parts: [{ t: 'text', v: 'I work on QA Main here only: use the events dashboard for other events, a new event or another portal.' }], list: null,
+    action: { type: 'refuse', what: 'other-event', pointer: { text: '', href: '/Event_Listing.html', hrefLabel: 'Open the dashboard' } }, choices: null, asOf: 'x', notes: ['scope-locked'] });
+  var Pe8 = await conPage({ answers: [scopedLine] });
+  await Pe8.say('How is Autotech doing?');
+  var b8 = Pe8.last();
+  check('D.2s the server\'s scoped line: its words once, with Open the dashboard, nothing else done', b8.content.length === 1 && b8.content[0].v.indexOf('I work on QA Main here only') === 0 &&
+    b8.notes.length === 0 && b8.links.length === 1 && b8.links[0].href === '/Event_Listing.html' && b8.links[0].label === 'Open the dashboard' && Pe8.turnCalls().length === 0 && Pe8.assigned.length === 0, b8);
+  var Pe9 = await conPage({ answers: [ok({ turnId: 'TurnConsoleC01', kind: 'choose', parts: [{ t: 'text', v: 'Which one?' }], list: null, action: null, asOf: 'x', notes: [],
+    choices: [{ eventId: 'qa-main', name: 'QA Main', action: navHere('x', '/edit-event.html?event=qa-main').body.action }, { eventId: 'autotech-2026', name: 'Autotech 2026', action: navAnswer('x', '/edit-event.html?event=autotech-2026').body.action }] })] });
+  await Pe9.say('Open the console');
+  check('D.2s a choice that offers another event: no choices drawn, the plain line', lockedSaid(Pe9) && !Pe9.kit.chat.bubbles.some(function (b) { return b.choices_; }), Pe9.last());
+  var leakParts = ok({ turnId: 'TurnConsoleL01', kind: 'reply', parts: [{ t: 'event', id: 'autotech-2026', name: 'Autotech 2026', href: '/edit-event.html?event=autotech-2026' }, { t: 'text', v: ' has 9 registrations.' }], list: null, action: null, asOf: 'x', notes: [] });
+  var Pe10 = await conPage({ answers: [leakParts] });
+  await Pe10.say('How is Autotech doing?');
+  check('D.2s an answer linking to another event: never drawn (its name and its number stay out)', lockedSaid(Pe10) && JSON.stringify(Pe10.kit.chat.bubbles.map(function (b) { return b.content; })).indexOf('Autotech') === -1, Pe10.kit.chat.bubbles.map(function (b) { return b.content; }));
   var Pe3 = await conPage({ answers: [createAnswer('TurnConsole005')] });
   await Pe3.say('Create an IP event called Retail Leadership Summit on 12 Feb 2027 at Jio World Centre, Mumbai');
   Pe3.clock.tick(1200);
-  check('D.2 create off the dashboard: the prefill is kept and Create Event opens', !!Pe3.local.getItem('revamp.createEvent.prefill.v1.TurnConsole005') && same(Pe3.assigned, ['/create-event.html?new=1&prefill=TurnConsole005']));
+  check('D.2s a new event inside an event: no prefill kept, Create Event not opened', lockedSaid(Pe3) && !Pe3.local.getItem('revamp.createEvent.prefill.v1.TurnConsole005') && Pe3.assigned.length === 0, [Pe3.assigned, Pe3.last()]);
+  var portsE = portalsStub('cio');
+  var PpE = await conPage({ portals: portsE, answers: [switchAnswer('TurnPortalE001', 'auto', 'ETAuto')] });
+  await PpE.say('switch to ETAuto');
+  var PeL = await conPage({});
+  var eL = await rejection(PeL.say(new Array(4002).join('x')));
+  check('D.2s a message too long inside an event: refused here, and the sentence offers no new event', eL && eL.message === 'Keep the message under 4,000 characters.' && PeL.botCalls().length === 0, eL && eL.message);
+  check('D.2s a portal switch inside an event: the working portal never moves, nothing to undo', lockedSaid(PpE) && portsE.sets.length === 0 && PpE.ctx.RevampDashBot.brain.changedAt() === 0, [portsE.sets, PpE.last()]);
+  var S = Pe0.ctx.RevampDashBot._scope;
+  check('D.2s urlEvent: the event of every page address on the whitelist, none for a page of every event',
+    S.urlEvent('/edit-event.html?event=a-1#design/editor') === 'a-1' && S.urlEvent('/marketing.html?event=a-1&tab=posts') === 'a-1' && S.urlEvent('/audience-registrations.html?event=a-1') === 'a-1' &&
+    S.urlEvent('/preview/a-1?draft=1') === 'a-1' && S.urlEvent('/e/a-1') === 'a-1' && S.urlEvent('/activity-log.html?event=a-1') === 'a-1' && S.urlEvent('/activity-log.html') === '' &&
+    S.urlEvent('/mailer-performance.html') === '' && S.urlEvent('/Event_Listing.html') === '' && S.urlEvent('/e/a-10') === 'a-10');
+  check('D.2s inScope: off an event everything on the whitelist; inside one only its pages, the dashboard, a refusal staying there, and Undo',
+    S.inScope({ type: 'create' }, { eventId: '' }) && S.inScope({ type: 'navigate', url: '/e/a-1' }, { eventId: 'a-1' }) && !S.inScope({ type: 'navigate', url: '/e/a-10' }, { eventId: 'a-1' }) &&
+    S.inScope({ type: 'navigate', url: '/Event_Listing.html' }, { eventId: 'a-1' }) && !S.inScope({ type: 'navigate', url: '/activity-log.html' }, { eventId: 'a-1' }) &&
+    S.inScope({ type: 'refuse', pointer: { text: 'x' } }, { eventId: 'a-1' }) && !S.inScope({ type: 'refuse', pointer: { href: '/e/b' } }, { eventId: 'a-1' }) &&
+    S.inScope({ type: 'undo' }, { eventId: 'a-1' }) && !S.inScope({ type: 'filter' }, { eventId: 'a-1' }) && !S.inScope({ type: 'portal' }, { eventId: 'a-1' }) &&
+    !S.inScope({ type: 'create' }, { eventId: 'a-1' }) && !S.inScope({ type: 'navigate', url: '/e/a-1', eventId: 'b' }, { eventId: 'a-1' }));
 
-  /* the working portal off the dashboard, with Undo */
+  /* the working portal off the dashboard, with Undo, on a page with no event (Mailer performance): inside an event
+     the portal never moves (owner decision 10) */
+  var MP = { page: 'mailer-performance', noListing: true, search: '' };
+  function mpPage(extra) { var o = {}; Object.keys(MP).forEach(function (k) { o[k] = MP[k]; }); Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; }); if (!o.portals) o.portals = portalsStub(); return page(o); }
   var ports = portalsStub('cio');
-  var Pp = await conPage({ portals: ports, answers: [switchAnswer('TurnPortalE001', 'auto', 'ETAuto'), ok({ turnId: 'TurnPortalE002', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
+  var Pp = await mpPage({ portals: ports, answers: [switchAnswer('TurnPortalE001', 'auto', 'ETAuto'), ok({ turnId: 'TurnPortalE002', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
   await Pp.say('switch to ETAuto');
   var bp = Pp.last();
   check('D.2 portal off the dashboard: RevampPortals.setWorking("auto")', same(ports.sets, ['auto']), ports.sets);
@@ -950,15 +1022,15 @@ var LIST = {
   check('D.2 …the panel folds to "Now working in ETAuto", with Undo on the card', Pp.kit.chat.folds.length === 1 && Pp.kit.chat.folds[0].label === 'Now working in ETAuto' && bp.buttons.some(function (x) { return x.undo; }));
   bp.buttons.filter(function (x) { return x.undo; })[0].click();
   await flush();
-  check('D.2 portal Undo: back to the portal worked in before ("cio"), reported undone in the event\'s conversation', same(ports.sets, ['auto', 'cio']) &&
-    same(Pp.turnCalls(), [{ turnId: 'TurnPortalE001', status: 'undone', eventId: 'qa-main' }]) && bp.buttons.filter(function (x) { return x.undo; })[0].textContent === 'Undone', [ports.sets, Pp.turnCalls()]);
+  check('D.2 portal Undo: back to the portal worked in before ("cio"), reported undone in the person\'s own conversation', same(ports.sets, ['auto', 'cio']) &&
+    same(Pp.turnCalls(), [{ turnId: 'TurnPortalE001', status: 'undone' }]) && bp.buttons.filter(function (x) { return x.undo; })[0].textContent === 'Undone', [ports.sets, Pp.turnCalls()]);
   var ports2 = portalsStub('all');
-  var Pp2 = await conPage({ portals: ports2, answers: [switchAnswer('TurnPortalE003', 'hr', 'ETHRWorld'), ok({ turnId: 'TurnPortalE004', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
+  var Pp2 = await mpPage({ portals: ports2, answers: [switchAnswer('TurnPortalE003', 'hr', 'ETHRWorld'), ok({ turnId: 'TurnPortalE004', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
   await Pp2.say('work in ETHRWorld'); await Pp2.say('undo that'); await flush();
   check('D.2 "undo that" off the dashboard puts the working portal back, and says so', same(ports2.sets, ['hr', 'all']) && Pp2.last().content === 'Done, you are back in the portal you worked in before.', [ports2.sets, Pp2.last().content]);
-  /* changedAt and undoLocal: what the shell uses for a bare "undo that" in the site editor (no AI call) */
+  /* changedAt and undoLocal: what the shell uses for a bare "undo that" (no AI call) */
   var ports5 = portalsStub('cio');
-  var Pq5 = await conPage({ portals: ports5, answers: [switchAnswer('TurnPortalE007', 'auto', 'ETAuto')] });
+  var Pq5 = await mpPage({ portals: ports5, answers: [switchAnswer('TurnPortalE007', 'auto', 'ETAuto')] });
   var br5 = Pq5.ctx.RevampDashBot.brain;
   check('D.2u changedAt: 0 before any change', br5.changedAt() === 0);
   var t5 = Date.now();
@@ -967,27 +1039,31 @@ var LIST = {
   check('D.2u …then the time of the switch made in this tab', at5 >= t5 && at5 <= Date.now(), at5);
   var u5 = await br5.undoLocal();
   await flush();
-  check('D.2u undoLocal: switched back with no AI call, said in the panel, reported undone in the event\'s conversation', u5 && u5.ok === true && same(ports5.sets, ['auto', 'cio']) &&
+  check('D.2u undoLocal: switched back with no AI call, said in the panel, reported undone', u5 && u5.ok === true && same(ports5.sets, ['auto', 'cio']) &&
     Pq5.botCalls().length === 1 && Pq5.last().content === 'Done, you are back in the portal you worked in before.' &&
-    Pq5.turnCalls().some(function (t) { return t.turnId === 'TurnPortalE007' && t.status === 'undone' && t.eventId === 'qa-main'; }), [u5, ports5.sets, Pq5.last().content, Pq5.turnCalls()]);
+    Pq5.turnCalls().some(function (t) { return t.turnId === 'TurnPortalE007' && t.status === 'undone'; }), [u5, ports5.sets, Pq5.last().content, Pq5.turnCalls()]);
   check('D.2u …the card\'s Undo is spent too, and changedAt is 0 again', br5.changedAt() === 0 && Pq5.kit.chat.bubbles[0].buttons.filter(function (x) { return x.undo; })[0].textContent === 'Undone');
   var u6 = await br5.undoLocal();
   check('D.2u undoLocal with nothing standing: says so, and nothing changes', u6 && u6.ok === false && same(ports5.sets, ['auto', 'cio']) && Pq5.last().content === Pq5.ctx.RevampDashBot.TEXT.nothingToUndo);
-  var Pq6 = await page({ page: 'console', noListing: true, search: '?event=qa-main', answers: [switchAnswer('TurnPortalE008', 'auto', 'ETAuto')], portals: portalsStub('cio'), quiet: true });
+  var Pq6 = await page({ page: 'mailer-performance', noListing: true, search: '', answers: [switchAnswer('TurnPortalE008', 'auto', 'ETAuto')], portals: portalsStub('cio'), quiet: true });
   await Pq6.say('switch to ETAuto');
   Pq6.ctx.RevampPortals = undefined;
   var u7 = await Pq6.ctx.RevampDashBot.brain.undoLocal();
   check('D.2u a portal that cannot be switched back from this page: said plainly, the change stays undoable', u7 && u7.ok === false &&
     Pq6.last().content === 'The portal could not be switched from this page. Use the portal switcher on the events dashboard.' && Pq6.ctx.RevampDashBot.brain.changedAt() > 0, [u7, Pq6.last().content]);
   var ports3 = portalsStub('cio', true);
-  var Pp3 = await conPage({ portals: ports3, answers: [switchAnswer('TurnPortalE005', 'auto', 'ETAuto')] });
+  var Pp3 = await mpPage({ portals: ports3, answers: [switchAnswer('TurnPortalE005', 'auto', 'ETAuto')] });
   await Pp3.say('switch to ETAuto'); await flush();
   check('D.2 the account could not be told: the card says the choice is kept in this browser', Pp3.last().notes.some(function (n) { return /kept in this browser only/.test(n); }), Pp3.last().notes);
-  var Pp4 = await page({ page: 'console', noListing: true, search: '?event=qa-main', answers: [switchAnswer('TurnPortalE006', 'auto', 'ETAuto')], quiet: true });
+  var Pp4 = await page({ page: 'mailer-performance', noListing: true, search: '', answers: [switchAnswer('TurnPortalE006', 'auto', 'ETAuto')], quiet: true });
   await Pp4.say('switch to ETAuto');
   check('D.2 no portal picker on the page (and none loaded yet): said, reported failed, no Undo', /The portal could not be switched from this page/.test(Pp4.last().notes[0] || '') &&
     Pp4.turnCalls()[0].status === 'failed' && !Pp4.last().buttons.some(function (x) { return x.undo; }), Pp4.last().notes);
   check('D.2 …and the shell has asked for /portal-picker.js on a page without it', Pp4.scripts.indexOf('/portal-picker.js') !== -1, Pp4.scripts);
+  var Pmp = await mpPage({ answers: [createAnswer('TurnMP000005')] });
+  await Pmp.say('Create an IP event called Retail Leadership Summit on 12 Feb 2027 at Jio World Centre, Mumbai');
+  Pmp.clock.tick(1200);
+  check('D.2 create on a page with no event: the prefill is kept and Create Event opens', !!Pmp.local.getItem('revamp.createEvent.prefill.v1.TurnMP000005') && same(Pmp.assigned, ['/create-event.html?new=1&prefill=TurnMP000005']));
 
   /* ======== Stop (UX-097): the late answer is neither drawn nor done, and its turn says stopped ======== */
   var release = null;
@@ -1111,7 +1187,7 @@ var LIST = {
   var ech = Peh.kit.chat;
   check('D.6 in an event: GET /api/chat/history?eventId=qa-main (not the dashboard\'s)', Peh.calls.some(function (c) { return c.url === '/api/chat/history?eventId=qa-main' && c.method === 'GET'; }) &&
     !Peh.calls.some(function (c) { return c.url === '/api/dash-bot/history'; }), Peh.calls.map(function (c) { return c.url; }));
-  check('D.6 …the header names the event', same(ech.scopes, ['This event: QA AIE Main']), ech.scopes);
+  check('D.6 …the header names the event it works on only', same(ech.scopes, ['Working on QA AIE Main only']), ech.scopes);
   check('D.6 …"Earlier in this conversation", the four turns in order, then "Now"', n2 === 4 && same(ech.dividers, ['Earlier in this conversation', 'Now']) && ech.users.length === 4 &&
     same(ech.users.map(function (u) { return u.text; }), EH.turns.map(function (t) { return t.question; })), [n2, ech.dividers]);
   check('D.6 …an editor change shown plainly here, with its done lines and no Undo', ech.bubbles[0].content === 'Done.' && ech.bubbles[0].notes.indexOf('Done: Hero: background made darker') !== -1 &&

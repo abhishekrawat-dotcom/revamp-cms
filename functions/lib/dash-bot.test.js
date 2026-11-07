@@ -249,7 +249,7 @@ function turnsOf(key) {
 function partsText(parts) { return (parts || []).map(function (p) { return p.t === 'event' ? p.name : p.v; }).join(''); }
 
 /* every address ETB2B AI may send anyone to (dash-bot-client.js NAV_OK, plan §5b) */
-var NAV_OK = /^\/(edit-event\.html\?event=[a-z0-9-]+(#(content|settings)\/[a-z-]+|#dashboard|#activity|#design\/editor)?|marketing\.html\?event=[a-z0-9-]+&tab=(posts|site-posts|mailers)(&template=[a-z]+\.[a-z-]+)?(&post=[a-z-]+)?(&mailer=mailer\.[a-z-]+)?|audience-registrations\.html\?event=[a-z0-9-]+|preview\/[a-z0-9-]+\?draft=1|e\/[a-z0-9-]+|activity-log\.html(\?event=[a-z0-9-]+)?|mailer-performance\.html|create-event\.html\?new=1(&prefill=[A-Za-z0-9]{10,40})?)$/;
+var NAV_OK = /^\/(edit-event\.html\?event=[a-z0-9-]+(#(content|settings)\/[a-z-]+|#dashboard|#activity|#design\/editor)?|marketing\.html\?event=[a-z0-9-]+&tab=(posts|site-posts|mailers)(&template=[a-z]+\.[a-z-]+)?(&post=[a-z-]+)?(&mailer=mailer\.[a-z-]+)?|audience-registrations\.html\?event=[a-z0-9-]+|preview\/[a-z0-9-]+\?draft=1|e\/[a-z0-9-]+|activity-log\.html(\?event=[a-z0-9-]+)?|mailer-performance\.html|create-event\.html\?new=1(&prefill=[A-Za-z0-9]{10,40})?|Event_Listing\.html)$/;
 
 /* ---------- the fixtures (plan §12 A) ---------- */
 
@@ -1061,12 +1061,18 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   /* -- the prompt -- */
   ctx = await placeCtx('How many registrations here?', CONSOLE);
   var pp = T.buildPrompt(ctx);
-  check('A.20 off the dashboard the prompt says where the person is, the event only by its token', pp.indexOf('WHERE ASHA IS: the console of {{autotech-2026}} (content/speakers). "This event", "here" and "this page" mean {{autotech-2026}}: put its id in `events`.') !== -1 &&
+  check('A.20 off the dashboard the prompt says where the person is, the event only by its token', pp.indexOf('WHERE ASHA IS: the console of {{autotech-2026}} (content/speakers). "This event", "here", "this page", "we", "our" and a question that names no event mean {{autotech-2026}}.') !== -1 &&
     pp.indexOf('WHAT ASHA IS LOOKING AT') === -1 && pp.indexOf('events shown') === -1, pp.slice(pp.indexOf('WHERE'), pp.indexOf('WHERE') + 300));
   check('A.20 …and opens on the place, not the dashboard', /^You are ETB2B AI in ETB2B EventSphere, ET B2B's event-site CMS, on the console of \{\{autotech-2026\}\} \(content\/speakers\)\./.test(pp) && pp.indexOf('on the events dashboard of') === -1);
   check('A.20 …with no old name of the product in it', !/Oneworld/.test(pp) && !/Oneworld/.test(T.buildPrompt(await placeCtx('hi', { page: 'nowhere-known', eventId: '', tab: '' }))));
   check('A.20 the event the person is in is marked THIS EVENT in the fenced table, and only it', /\nautotech-2026 \| [^\n]* \| THIS EVENT\n/.test(pp) && (pp.match(/THIS EVENT\n/g) || []).length === 1);
-  check('A.20 off the dashboard a filter is offered as a list instead', pp.indexOf('"filter" is only for the dashboard\'s own list, which is not on this page') !== -1 && pp.indexOf('change the events list on this dashboard') === -1);
+  /* owner decision 10: inside an event nothing that reaches other events is even offered */
+  check('A.20 inside an event the prompt offers no filter, list, new event or portal switch, and says it works on this event only',
+    pp.indexOf('- "filter"') === -1 && pp.indexOf('- "create"') === -1 && pp.indexOf('- "portal"') === -1 && pp.indexOf('CREATE EVENT') === -1 && pp.indexOf('ET PORTALS') === -1 &&
+    pp.indexOf('{{#count}}') === -1 && pp.indexOf('add a `list` rule') === -1 && pp.indexOf('Here you work on ONE event only, {{autotech-2026}}') !== -1 &&
+    pp.indexOf('answer kind "refuse" with refuse.action "other-event"') !== -1, pp.slice(0, 1500));
+  var cePrompt = T.buildPrompt(await placeCtx('hi', { page: 'create-event', eventId: '', tab: '' }));
+  check('A.20 …while a page with no event (Create Event) still offers a filter as a list', cePrompt.indexOf('"filter" is only for the dashboard\'s own list, which is not on this page') !== -1 && cePrompt.indexOf('change the events list on this dashboard') === -1 && cePrompt.indexOf('other-event') === -1);
   check('A.20 "handoff" is not offered outside the editor', pp.indexOf('- "handoff"') === -1);
   /* an old event, past the 300 newest, is still in the table when the person is in it */
   var oldCaps = T.CAPS.promptEvents;
@@ -1092,27 +1098,45 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   a = await T.cleanAnswer({ kind: 'open', open: { target: 'promotions', tab: 'mailers', carry: false }, text: 'Opening its mailers.' }, await placeCtx('Open its mailers', CONSOLE));
   check('A.20 "open its mailers" with no event named: the event the person is in', !!a.action && a.action.url === '/marketing.html?event=autotech-2026&tab=mailers' && a.notes.indexOf('this-event') !== -1 && NAV_OK.test(a.action.url), a.action);
   a = await T.cleanAnswer({ kind: 'open', open: { target: 'editor', tab: '', carry: false }, notFound: 'Retail Next', text: 'Opening it.' }, await placeCtx('Open the Retail Next editor', CONSOLE));
-  check('A.20 …never when the person named an event that is not there', !a.action && a.notes.indexOf('this-event') === -1, a);
-  /* a follow-up right after an answer about another event is about that one: "it" never means the page's event by
-     default (the context leak: Other Expo's question, then "and when does it start?" answered about this event) */
+  check('A.20 …never when the person named an event that is not there: the scoped line, with the dashboard one click away',
+    a.kind === 'refuse' && a.action.what === 'other-event' && a.action.pointer.href === '/Event_Listing.html' && a.notes.indexOf('scope-not-found') !== -1 && a.notes.indexOf('this-event') === -1, a);
+  /* owner decision 10: inside an event, a follow-up right after a question about another event is about that one,
+     and is answered with the scoped line, never about this event by default and never about the other one */
   var OTHER_TURN = { question: 'How many registrations does Autotech 2025 have?', answer: 'Autotech Summit 2025 has 9 registrations so far.',
     answerRaw: '{{autotech-2025}} has {{autotech-2025.registrations}} registrations so far.', kind: 'reply', status: 'answered', events: ['autotech-2025'], brain: 'dash', at: '2026-11-03T05:00:00.000Z' };
   var THIS_TURN = { question: 'How many registrations here?', answer: 'Autotech Summit 2026 has 42 registrations so far.',
     answerRaw: '{{autotech-2026}} has {{autotech-2026.registrations}} registrations so far.', kind: 'reply', status: 'answered', events: ['autotech-2026'], brain: 'dash', at: '2026-11-03T05:00:00.000Z' };
   var EDIT_TURN = { question: 'make the hero darker', answer: 'Done.', kind: 'edit', status: 'applied', at: '2026-11-03T05:00:00.000Z' };
+  /* the scoped refusal of a question about another event, as it is kept */
+  var LOCKED_TURN = { question: 'How is Autotech 2025 doing?', answer: 'I work on Autotech Summit 2026 here only: use the events dashboard for other events, a new event or another portal.',
+    answerRaw: 'I work on {{autotech-2026}} here only: use the events dashboard for other events, a new event or another portal.', kind: 'reply', dashKind: 'refuse', status: 'refused', events: [],
+    notes: ['scope-locked', 'scope-other-id'], brain: 'dash', at: '2026-11-03T05:00:00.000Z' };
   ctx = await placeCtx('and its visitors?', CONSOLE, null, { turns: [OTHER_TURN] });
   pp = T.buildPrompt(ctx);
-  check('A.20 follow-up: the prompt binds only "this event", "here" and "this page" to the page; "it" and "its" follow the conversation',
-    pp.indexOf('"It", "its" and a follow-up ("and when does it start?") mean the event the conversation was just about, which can be another one: put that event\'s id in `events`.') !== -1 &&
-    pp.indexOf('A question that names no event means {{autotech-2026}} only when the conversation was not just about another event.') !== -1 && pp.indexOf('"here", "it"') === -1, pp.slice(pp.indexOf('WHERE'), pp.indexOf('WHERE') + 600));
-  check('A.20 follow-up: …and the memory names the other event by its token', pp.indexOf('You: {{autotech-2025}} has {{autotech-2025.registrations}} registrations so far.') !== -1, pp.slice(pp.indexOf('THE CONVERSATION'), pp.indexOf('THE CONVERSATION') + 400));
+  check('A.20 follow-up: the prompt says "it" right after another event means that one, which is refused as "other-event"',
+    pp.indexOf('"It", "its" and a follow-up mean {{autotech-2026}} too, except right after the person asked about another event: then they mean that other event, so answer kind "refuse" with refuse.action "other-event".') !== -1,
+    pp.slice(pp.indexOf('WHERE'), pp.indexOf('WHERE') + 600));
+  check('A.20 follow-up: …and the memory names the other event only as "another event", its figures withheld (no other id reaches the model)',
+    pp.indexOf('You: another event has (withheld) registrations so far.') !== -1 && pp.indexOf('autotech-2025') === -1, pp.slice(pp.indexOf('THE CONVERSATION'), pp.indexOf('THE CONVERSATION') + 400));
+  check('A.20 follow-up: the EVENTS table holds this event alone', (pp.match(/\n[a-z0-9-]+ \| [^\n]*\| THIS EVENT/g) || []).length === 1 &&
+    pp.slice(pp.indexOf('<<<EVENTS'), pp.indexOf('EVENTS-' + ctx.nonce + '>>>')).split('\n').length === 3 && !ctx.byId['autotech-2025'] && ctx.events.length === 1, pp.slice(pp.indexOf('<<<EVENTS'), pp.indexOf('<<<EVENTS') + 400));
   a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2025'], text: '{{autotech-2025}} has {{autotech-2025.visitors}} visitors so far.' }, ctx);
-  check('A.20 follow-up: "and its visitors?" after a question about another event is answered about that event', /^Autotech Summit 2025 has /.test(partsText(a.parts)) && same(a.events, ['autotech-2025']) && a.notes.indexOf('this-event') === -1, [partsText(a.parts), a.events]);
+  check('A.20 follow-up: "and its visitors?" answered about the other event: never shown, the scoped line instead',
+    a.kind === 'refuse' && partsText(a.parts) === 'I work on Autotech Summit 2026 here only: use the events dashboard for other events, a new event or another portal.' &&
+    !/2025/.test(JSON.stringify(a.parts)) && same(a.events, []) && a.notes.indexOf('scope-other-id') !== -1, [partsText(a.parts), a.events, a.notes]);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: '{{autotech-2026}} has {{autotech-2026.visitors}} visitors so far.' }, ctx);
+  check('A.20 follow-up: …and answered about this event instead ("its" meant the other one): the scoped line too', a.kind === 'refuse' && a.notes.indexOf('scope-follow-up') !== -1, a.notes);
   a = await T.cleanAnswer({ kind: 'promo', promo: { post: '', sitePost: '', mailer: 'mailer.reminder' }, text: 'Opening its reminder mailer.' }, await placeCtx('open its reminder mailer', CONSOLE, null, { turns: [OTHER_TURN] }));
-  check('A.20 follow-up: "open its …" naming no event right after another event never opens this event\'s Promotions: the person is asked which',
-    !a.action && a.kind === 'reply' && partsText(a.parts) === T.MSG.whichEvent && a.notes.indexOf('follow-up-elsewhere') !== -1 && a.notes.indexOf('this-event') === -1, a);
+  check('A.20 follow-up: "open its …" naming no event right after another event: nothing opens, the scoped line',
+    a.kind === 'refuse' && a.action.type === 'refuse' && a.action.what === 'other-event' && a.notes.indexOf('scope-follow-up') !== -1 && a.notes.indexOf('this-event') === -1, a);
   a = await T.cleanAnswer({ kind: 'promo', events: ['autotech-2025'], promo: { post: '', sitePost: '', mailer: 'mailer.reminder' }, text: 'Opening its reminder mailer.' }, await placeCtx('open its reminder mailer', CONSOLE, null, { turns: [OTHER_TURN] }));
-  check('A.20 follow-up: …and when the model names the event the conversation was about, that one opens', !!a.action && a.action.url === '/marketing.html?event=autotech-2025&tab=mailers&mailer=mailer.reminder', a.action);
+  check('A.20 follow-up: …and when the model names the other event, its Promotions never open', a.kind === 'refuse' && a.action.type === 'refuse' && JSON.stringify(a).indexOf('marketing.html') === -1, a.action);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: '{{autotech-2026}} has {{autotech-2026.visitors}} visitors so far.' }, await placeCtx('and its visitors?', CONSOLE, null, { turns: [LOCKED_TURN] }));
+  check('A.20 follow-up: right after the scoped line, "its" is still the other event: the scoped line again', a.kind === 'refuse' && a.notes.indexOf('scope-follow-up') !== -1, a.notes);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: '{{autotech-2026}} has {{autotech-2026.visitors}} visitors so far.' }, await placeCtx('ok, how many visitors does this event have?', CONSOLE, null, { turns: [LOCKED_TURN] }));
+  check('A.20 follow-up: …until the person says "this event": answered', a.kind === 'reply' && /^Autotech Summit 2026 has /.test(partsText(a.parts)), partsText(a.parts));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: '{{autotech-2026}} has {{autotech-2026.visitors}} visitors so far.' }, await placeCtx('how many visitors do we have?', CONSOLE, null, { turns: [LOCKED_TURN] }));
+  check('A.20 follow-up: …or asks with no follow-up word: answered', a.kind === 'reply' && /^Autotech Summit 2026 has /.test(partsText(a.parts)), partsText(a.parts));
   a = await T.cleanAnswer({ kind: 'open', open: { target: 'promotions', tab: 'mailers', carry: false }, text: 'Opening its mailers.' }, await placeCtx('Open its mailers', CONSOLE, null, { turns: [OTHER_TURN, THIS_TURN] }));
   check('A.20 follow-up: after an answer about this event, "its" is this event again', !!a.action && a.action.url === '/marketing.html?event=autotech-2026&tab=mailers' && a.notes.indexOf('this-event') !== -1, a.action);
   a = await T.cleanAnswer({ kind: 'open', open: { target: 'promotions', tab: 'mailers', carry: false }, text: 'Opening its mailers.' }, await placeCtx('Open its mailers', CONSOLE, null, { turns: [OTHER_TURN, EDIT_TURN] }));
@@ -1122,13 +1146,26 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.20 lastTurnElsewhere: only the newest turn counts, and an editor turn or none names no other event',
     T.lastTurnElsewhere([OTHER_TURN], 'autotech-2026') === true && T.lastTurnElsewhere([OTHER_TURN, THIS_TURN], 'autotech-2026') === false &&
     T.lastTurnElsewhere([THIS_TURN, OTHER_TURN], 'autotech-2026') === true && T.lastTurnElsewhere([EDIT_TURN], 'autotech-2026') === false && T.lastTurnElsewhere([], 'autotech-2026') === false && T.lastTurnElsewhere(null, 'autotech-2026') === false);
-  a = await T.cleanAnswer({ kind: 'filter', filter: { view: 'draft', search: '', types: [], mine: false, createdFrom: '2026-10-26', createdTo: '2026-11-01', startFrom: '', startTo: '', sort: '', dir: '', portal: '' }, text: 'Here are last week\'s drafts.' },
-    await placeCtx('Show drafts from last week', CONSOLE));
-  check('A.20 a filter off the dashboard is answered as the same list in the chat', a.kind === 'reply' && !a.action && !!a.list && JSON.stringify(idsOf(a.list)) === '["qa-draft"]' && a.notes.indexOf('filter-as-list') !== -1, a);
-  a = await T.cleanAnswer({ kind: 'filter', filter: {}, text: 'Showing it.' }, await placeCtx('Show it', CONSOLE));
+  var CREATE_PAGE = { page: 'create-event', eventId: '', tab: '' };
+  var DRAFTS_LAST_WEEK = { kind: 'filter', filter: { view: 'draft', search: '', types: [], mine: false, createdFrom: '2026-10-26', createdTo: '2026-11-01', startFrom: '', startTo: '', sort: '', dir: '', portal: '' }, text: 'Here are last week\'s drafts.' };
+  a = await T.cleanAnswer(clone(DRAFTS_LAST_WEEK), await placeCtx('Show drafts from last week', CREATE_PAGE));
+  check('A.20 a filter on a page with no event and no list is answered as the same list in the chat', a.kind === 'reply' && !a.action && !!a.list && JSON.stringify(idsOf(a.list)) === '["qa-draft"]' && a.notes.indexOf('filter-as-list') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'filter', filter: {}, text: 'Showing it.' }, await placeCtx('Show it', CREATE_PAGE));
   check('A.20 …and one with nothing to list by is a plain "sorry", never an empty list', a.kind === 'reply' && !a.list && partsText(a.parts) === T.MSG.sorry, partsText(a.parts));
-  a = await T.cleanAnswer({ kind: 'reply', notFound: 'Retail Next', text: 'I could not find it.' }, await placeCtx('Tell me about Retail Next', CONSOLE));
+  a = await T.cleanAnswer({ kind: 'reply', notFound: 'Retail Next', text: 'I could not find it.' }, await placeCtx('Tell me about Retail Next', CREATE_PAGE));
   check('A.20 a name no event has: said, with no "search the list" off the dashboard', a.kind === 'reply' && !a.choices && /I could not find an event called “Retail Next”/.test(partsText(a.parts)), a);
+  /* owner decision 10: inside an event the same asks get the scoped line, never a list of events */
+  a = await T.cleanAnswer(clone(DRAFTS_LAST_WEEK), await placeCtx('Show drafts from last week', CONSOLE));
+  check('A.20 inside an event a filter is the scoped line: no list, no action', a.kind === 'refuse' && !a.list && a.action.what === 'other-event' && a.notes.indexOf('scope-filter') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', list: { title: '', statuses: [], site: '', when: 'starts', types: [], mine: false, portal: '', createdFrom: '', createdTo: '', startFrom: '2026-11-01', startTo: '2026-11-30', search: '', sort: '', dir: '', limit: 0 }, text: 'Here are your events this month.' },
+    await placeCtx('Which events go live this month?', CONSOLE));
+  check('A.20 inside an event a list of events is the scoped line (a list of one would be a wrong count)', a.kind === 'refuse' && !a.list && a.notes.indexOf('scope-list') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', text: 'You have {{#count}} events.' }, await placeCtx('How many events do I have?', CONSOLE));
+  check('A.20 …and so is a count over events', a.kind === 'refuse' && a.notes.indexOf('scope-list') !== -1, a.notes);
+  a = await T.cleanAnswer({ kind: 'reply', notFound: 'Retail Next', text: 'I could not find it.' }, await placeCtx('Tell me about Retail Next', CONSOLE));
+  check('A.20 inside an event a name that is not this event: the scoped line, never "could not find" (it may well exist elsewhere)', a.kind === 'refuse' && !/could not find/.test(partsText(a.parts)) && a.notes.indexOf('scope-not-found') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], notFound: 'Autotech', text: '{{autotech-2026}} has {{autotech-2026.registrations}} registrations so far.' }, await placeCtx('How many registrations does Autotech have?', CONSOLE));
+  check('A.20 …but this event\'s own shorter name is this event: answered, and nothing is said missing', a.kind === 'reply' && partsText(a.parts) === 'Autotech Summit 2026 has 42 registrations so far.', partsText(a.parts));
 
   /* -- handoff -- */
   a = await T.cleanAnswer({ kind: 'handoff', text: '' }, await placeCtx('make the hero darker', EDITOR));
@@ -1268,25 +1305,21 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.20 …the matching tab: a sponsor\'s logo opens Sponsors', linkPart && linkPart.href === '/edit-event.html?event=autotech-2026#content/sponsors', linkPart);
   a = await T.cleanAnswer({ kind: 'reply', text: 'OK.' }, await placeCtx('what is this?', EDITOR, [pic(1, 'acme.png')], { handedFrom: 'edit' }));
   check('A.20 in the editor nothing is added about attachments (the editor\'s ETB2B AI says what it does with a picture)', partsText(a.parts) === 'OK.', partsText(a.parts));
-  /* a new event started from inside another, with its logo: as on the dashboard, Create Event takes the logo, and
-     the answer never also says the picture is for this event's site (one message, never two opposite ones) */
+  /* owner decision 10: inside an event, attachments never start a new event. The prompt does not offer it, and a
+     create the model returns all the same is the scoped line: nothing goes to Create Event */
   ctx = await placeCtx('Start a new IP event called Retail Next in Mumbai with this logo', CONSOLE, [pic(1, 'logo.png')]);
   pp = T.buildPrompt(ctx);
-  check('A.20 in-event create: the prompt offers the files roles here too, and says a picture can be a new event\'s logo',
-    /- files: one entry per attached file \(ATTACHED below\)/.test(pp) && pp.indexOf('When the person starts a NEW event with kind "create", give every picture a role in `create.files` (its number `n`): "logo" for the one picture the person says is the new event\'s logo, else "none".') !== -1,
+  check('A.20 in-event: the prompt offers no files roles and no new event, and says pictures here are never for another or a new event',
+    !/- files: one entry per attached file/.test(pp) && pp.indexOf('starts a NEW event') === -1 && pp.indexOf('They are never used for another event or a new one: for that, answer kind "refuse" with refuse.action "other-event".') !== -1,
     pp.slice(pp.indexOf('ATTACHED TO'), pp.indexOf('ATTACHED TO') + 900));
   var cIn = clone(CRE); cIn.create.files = [{ n: 1, role: 'logo' }];
   a = await T.cleanAnswer(cIn, ctx);
-  check('A.20 in-event create with a logo: the logo goes to Create Event, and nothing says the picture was not used',
-    a.kind === 'create' && same(a.action.files, [{ n: 1, role: 'logo' }]) && partsText(a.parts) === 'Starting Create Event.' &&
-    !a.parts.some(function (p) { return p.t === 'event' && /^Open Content/.test(p.name); }) && a.notes.indexOf('attachments-unused') === -1, [partsText(a.parts), a.action.files, a.notes]);
-  var cIn2 = clone(CRE); cIn2.create.files = [];
-  a = await T.cleanAnswer(cIn2, await placeCtx('Start a new IP event called Retail Next in Mumbai with this logo', CONSOLE, [pic(1, 'logo.png')]));
-  check('A.20 in-event create: a logo the model gave no role is still taken, from the person\'s words', same(a.action.files, [{ n: 1, role: 'logo' }]) && partsText(a.parts).indexOf(T.MSG.attachInEvent) === -1, [partsText(a.parts), a.action.files]);
-  var cIn3 = clone(CRE); cIn3.create.files = [{ n: 1, role: 'none' }];
-  a = await T.cleanAnswer(cIn3, await placeCtx('Start a new IP event called Retail Next in Mumbai with this photo', CONSOLE, [pic(1, 'stage.jpg')]));
-  check('A.20 in-event create with a picture nobody called the logo: Create Event\'s own sentence, once, and never the site sentence',
-    same(a.action.files, [{ n: 1, role: 'none' }]) && partsText(a.parts).split(T.MSG.attachBanner).length === 2 && partsText(a.parts).indexOf(T.MSG.attachInEvent) === -1, partsText(a.parts));
+  check('A.20 in-event create with a logo: the scoped line, no Create Event, no file handed on',
+    a.kind === 'refuse' && a.action.type === 'refuse' && a.action.what === 'other-event' && !a.action.files && !a.action.prefill && a.notes.indexOf('scope-create') !== -1 &&
+    partsText(a.parts) === 'I work on Autotech Summit 2026 here only: use the events dashboard for other events, a new event or another portal.', [partsText(a.parts), a.action, a.notes]);
+  var cIn3 = clone(CRE); cIn3.create.files = [];
+  a = await T.cleanAnswer(cIn3, await placeCtx('Start a new IP event called Retail Next in Mumbai', EDITOR));
+  check('A.20 …in the editor too', a.kind === 'refuse' && a.action.what === 'other-event', a.action);
   check('A.20 …the editor is not offered the files roles (its pictures are the page\'s)', !/- files: one entry per attached file/.test(T.buildPrompt(await placeCtx('Start a new event with this logo', EDITOR, [pic(1, 'logo.png')]))));
 
   /* -- the route: the conversation per place, the History, the day, Stop -- */
@@ -1318,22 +1351,28 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   memP = calls[calls.length - 1].prompt;
   check('A.20 route: a site editor turn is remembered as one neutral line, never its answer', memP.indexOf('[In the site editor they asked: “make the hero darker” — the page was changed]') !== -1 && memP.indexOf('PLANTED ANSWER') === -1,
     memP.slice(memP.indexOf('THE CONVERSATION'), memP.indexOf('THE CONVERSATION') + 600));
-  answers.push({ kind: 'reply', text: 'Hello.' });
+  /* FAIL CLOSED (owner decision 10): a page of one event whose event this person's list does not have gets the
+     fixed refusal: no model call, nothing kept anywhere, no History line, never the assistant for every event */
+  var callsBefore = calls.length;
   out = await ask('hello', 'pia', { place: { page: 'console', eventId: 'gone' } });
-  check('A.20 route: a deleted event in the address: the dashboard\'s conversation, no History line', turnsOf('u-pia').length === 1 && !Object.keys(FB.docs).some(function (k) { return k.indexOf('events/gone/aiChats') === 0; }) && activityLines.length === 3, activityLines.length);
-  check('A.20 route: …and the answer says so (scope "global", no eventId), so the page does not report it to the event', out.body.scope === 'global' && !('eventId' in out.body) && out.body.turnId === turnsOf('u-pia')[0].id, out.body);
-  var goneId = out.body.turnId;
-  var goneOut = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: goneId, status: 'stopped', eventId: 'gone' }, 'pia');
-  check('A.20 route: a report sent to the dropped event\'s conversation is not found there', goneOut.status === 404);
-  goneOut = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: goneId, status: 'stopped' }, 'pia');
   await tick();
-  check('A.20 route: …and without it, the person\'s own conversation records it', goneOut.status === 200 && FB.docs['dashChats/u-pia/turns/' + goneId].status === 'stopped' && activityLines.length === 3, [goneOut, activityLines.length]);
+  check('A.20 route: a deleted event in the address: the fixed refusal, with the dashboard one click away', out.status === 200 && out.body.kind === 'refuse' &&
+    partsText(out.body.parts) === T.MSG.unconfirmed && out.body.action.pointer.href === '/Event_Listing.html' && out.body.scope === 'none' && out.body.notes.indexOf('scope-unconfirmed') !== -1, out.body);
+  check('A.20 route: …the model is not asked, and nothing is kept: no turn id, no conversation, no History line', calls.length === callsBefore && !out.body.turnId && !('eventId' in out.body) &&
+    turnsOf('u-pia').length === 0 && !Object.keys(FB.docs).some(function (k) { return k.indexOf('events/gone/aiChats') === 0; }) && activityLines.length === 3, [calls.length - callsBefore, turnsOf('u-pia').length, activityLines.length]);
+  for (var unc of [{ page: 'console', eventId: 'no-such-event' }, { page: 'promotions', eventId: '' }, { page: 'editor' }, { page: 'registrations', eventId: 'Bad ID' }, { page: 'activity-log', eventId: 'gone' }]) {
+    out = await ask('Which events go live this month?', 'pia', { place: unc });
+    check('A.20 route: fail closed for ' + JSON.stringify(unc) + ': the fixed refusal, the model not asked', out.status === 200 && partsText(out.body.parts) === T.MSG.unconfirmed && calls.length === callsBefore, out.body);
+  }
+  answers.push({ kind: 'reply', text: 'Hello.' });
+  out = await ask('hello', 'pia', { place: { page: 'activity-log', eventId: '' } });
+  check('A.20 route: the all-events Activity log (no event in its address) keeps the assistant for every event', out.status === 200 && out.body.kind === 'reply' && out.body.scope === 'global' && calls.length === callsBefore + 1, out.body);
   answers.push({ kind: 'handoff', text: '' });
   var beforeHand = eventTurns('autotech-2026', 'u-pia').length, linesHand = activityLines.length;
   out = await ask('make the hero darker', 'pia', { place: EDITOR });
   await tick();
   check('A.20 route: a handoff in the editor: kind handoff, no turn id, nothing kept, no History line', out.status === 200 && out.body.kind === 'handoff' && !out.body.turnId && eventTurns('autotech-2026', 'u-pia').length === beforeHand && activityLines.length === linesHand, out.body);
-  check('A.20 route: …and it still took one of today\'s messages (the model was asked)', FB.docs['dashChats/u-pia/days/2026-11-03'].turns === 5);
+  check('A.20 route: …and it still took one of today\'s messages (the model was asked)', FB.docs['dashChats/u-pia/days/2026-11-03'].turns === 11, FB.docs['dashChats/u-pia/days/2026-11-03'].turns);
   answers.push({ kind: 'reply', text: 'It has 42.' });
   out = await ask('how many registrations does this event have?', 'pia', { place: EDITOR, handedFrom: 'edit' });
   await tick();

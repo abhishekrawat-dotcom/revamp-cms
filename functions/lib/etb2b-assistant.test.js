@@ -272,7 +272,7 @@ function fakeBrain(name, script) {
   Pal2.ctx.location.search = '';
   await Pal2.opts().send('And yesterday?', {});
   check('S.2 …opened with an event, then switched to another or to All events: every message stays that event\'s, as the panel shows',
-    alB2.sent.length === 2 && alB2.sent.every(function (x) { return x.opts.place.eventId === 'qa-main'; }) && Pal2.opts().scope === 'This event' &&
+    alB2.sent.length === 2 && alB2.sent.every(function (x) { return x.opts.place.eventId === 'qa-main'; }) && Pal2.opts().scope === 'This event only' &&
     Pal2.opts().attach.label === 'Attach a picture', alB2.sent.map(function (x) { return x.opts.place; }));
 
   var never = [
@@ -362,7 +362,7 @@ function fakeBrain(name, script) {
   check('S.3 …with the editor\'s welcome, suggestions, quick ideas, attach, dock, half sheet and wrap attributes', eo.welcome.text === 'I change this page when you ask.' && eo.attach === adapter.attach &&
     eo.attach.max === 6 && same(eo.dock, adapter.dock) && eo.phoneSheet === 'half' && eo.phoneQuery === '(max-width: 720px)' && same(eo.wrapAttrs, { 'data-keep-selection': '' }) &&
     same(eo.suggestions, adapter.suggestions) && same(eo.quickIdeas, adapter.quickIdeas), eo);
-  check('S.3 …kept clear of the editor\'s floating toolbars (the mount\'s data-keep-clear), id "ai", the event\'s scope', eo.keepClear === '.tpl-sel-toolbar:not([hidden])' && eo.id === 'ai' && eo.scope === 'This event');
+  check('S.3 …kept clear of the editor\'s floating toolbars (the mount\'s data-keep-clear), id "ai", the event\'s scope', eo.keepClear === '.tpl-sel-toolbar:not([hidden])' && eo.id === 'ai' && eo.scope === 'This event only');
   await eo.send('Make the hero darker', { attachments: [] });
   check('S.3 a page message goes to the editor\'s brain, with the place', editB.sent.length === 1 && dashE.sent.length === 0 && same(editB.sent[0].opts.place, { page: 'editor', eventId: 'qa-main', tab: '' }));
   await eo.send('How many registrations does this event have?', { attachments: [] });
@@ -437,7 +437,9 @@ function fakeBrain(name, script) {
   check('S.3 …a page change the editor\'s AI already undid no longer counts: "undo that" then switches the portal back', dashV.undos === 1 && editV.undos === 0, [dashV.undos, editV.undos]);
   check('S.3 …no undo ever reached a brain\'s send (no AI call)', editU.sent.every(function (x) { return x.text !== 'undo that' && x.text !== 'undo'; }) && dashU.sent.every(function (x) { return x.text !== 'undo that'; }));
 
-  /* the same with the real dash brain: "switch to ETAuto" in the editor, then "undo that" */
+  /* the same with the real dash brain: "switch to ETAuto" in the editor. Owner decision 10: the editor is a page of
+     one event, so the dash brain never moves the portal there (the server answers the scoped line; an answer that
+     says otherwise is not carried out), and "undo that" goes to the editor's own undo */
   var working = [], cachedPortal = 'hr';
   var portalsR = { setWorking: function (to) { working.push(to); cachedPortal = to; return Promise.resolve(); }, cachedWorking: function () { return cachedPortal; } };
   var editR = fakeBrain('edit');
@@ -449,16 +451,13 @@ function fakeBrain(name, script) {
   function aiCalls(Pp) { return Pp.calls.filter(function (c) { return c.url === '/api/dash-bot'; }).length; }
   await Prd.opts().send('Switch to ETAuto', {});
   await settle();
-  check('S.3 the real dash brain in the editor: "Switch to ETAuto" moves the working portal (one AI call)', aiCalls(Prd) === 1 && same(working, ['auto']), [aiCalls(Prd), working]);
-  await Prd.opts().send('undo that', {});
-  await settle();
   var lastRd = Prd.kit.chat.bubbles[Prd.kit.chat.bubbles.length - 1];
-  check('S.3 …"undo that" switches back at once: no AI call, the editor\'s undo not used, the panel says so',
-    aiCalls(Prd) === 1 && same(working, ['auto', 'hr']) && editR.undos === 0 && lastRd && lastRd.content === Prd.ctx.RevampDashBot.TEXT.portalUndone, [aiCalls(Prd), working, editR.undos, lastRd && lastRd.content]);
-  check('S.3 …and the turn is reported undone, in the event\'s conversation', Prd.calls.some(function (c) {
-    return c.url === '/api/dash-bot/turn' && c.body && c.body.turnId === 'TurnSwitch0009' && c.body.status === 'undone' && c.body.eventId === 'qa-main'; }), Prd.calls.map(function (c) { return c.url; }));
+  check('S.3 the real dash brain in the editor: a portal switch is never carried out there, and the panel says it works on this event only',
+    aiCalls(Prd) === 1 && same(working, []) && lastRd && lastRd.content === Prd.ctx.RevampDashBot.TEXT.otherEvent, [aiCalls(Prd), working, lastRd && lastRd.content]);
+  check('S.3 …and the turn is reported failed, in the event\'s conversation', Prd.calls.some(function (c) {
+    return c.url === '/api/dash-bot/turn' && c.body && c.body.turnId === 'TurnSwitch0009' && c.body.status === 'failed' && c.body.eventId === 'qa-main'; }), Prd.calls.map(function (c) { return c.url; }));
   await Prd.opts().send('undo that', {});
-  check('S.3 …"undo that" once more: nothing of the dash brain left, so the editor\'s own undo', editR.undos === 1 && aiCalls(Prd) === 1 && same(working, ['auto', 'hr']));
+  check('S.3 …"undo that": nothing of the dash brain to take back, so the editor\'s own undo, with no AI call', editR.undos === 1 && aiCalls(Prd) === 1 && same(working, []));
 
   var routed = [];
   var Pr = await shellPage({ page: 'editor', search: '?slug=qa-main', brains: { dash: fakeBrain('dash'), edit: fakeBrain('edit') } });
@@ -513,7 +512,7 @@ function fakeBrain(name, script) {
     /application\/pdf/.test(mo.attach.accept) && /\.docx/.test(mo.attach.accept) && mo.attach.hint === 'I use attachments to start a new event: a PDF or text brief, and the event’s logo.');
   var Pcon = await shellPage({ dash: true, page: 'console', path: '/edit-event.html', search: '?event=qa-main', keepClear: '.savebar.on', globals: { RevampPortals: { setWorking: function () {}, cachedWorking: function () { return 'cio'; } } } });
   var co = Pcon.opts();
-  check('S.4 the console: id "ai", "This event", kept clear of its save bar', co.id === 'ai' && co.scope === 'This event' && co.keepClear === '.savebar.on');
+  check('S.4 the console: id "ai", "This event only", kept clear of its save bar', co.id === 'ai' && co.scope === 'This event only' && co.keepClear === '.savebar.on');
   check('S.4 …help is a mail to Customer Care naming the page', co.help.href === 'mailto:customercare@economictimesb2b.com?subject=ETB2B%20EventSphere%20help%3A%20Event%20console', co.help.href);
   co.help.onClick();
   check('S.4 …which opens through a link (the page is not left)', same(Pcon.anchors, [co.help.href]) && Pcon.assigned.length === 0);
@@ -557,7 +556,7 @@ function fakeBrain(name, script) {
   var ch = Pev.kit.chat;
   check('S.5 inside an event: GET /api/chat/history?eventId=qa-main, both brains\' turns in order', n === 3 && Pev.calls.some(function (c) { return c.url === '/api/chat/history?eventId=qa-main'; }) &&
     same(ch.users.map(function (u) { return u.text; }), ['Make the hero darker', 'How many registrations?', 'Stop that']), ch.users);
-  check('S.5 …"Earlier in this conversation" … "Now"; the header names the event in one line', same(ch.dividers, ['Earlier in this conversation', 'Now']) && same(ch.scopes, ['This event: QA AIE Main with a line break']), ch.scopes);
+  check('S.5 …"Earlier in this conversation" … "Now"; the header names the event in one line', same(ch.dividers, ['Earlier in this conversation', 'Now']) && same(ch.scopes, ['Working on QA AIE Main with a line break only']), ch.scopes);
   check('S.5 …the dash turn drawn by the dash brain; editor changes as plain lines with no Undo', ch.bubbles[1].content === 'dash: How many registrations?' &&
     ch.bubbles[0].notes.join('|') === 'Done: Hero darker|Done in the site editor, then undone.' && ch.bubbles[2].content === 'Stopped — nothing on the page changed.' && !ch.bubbles[2].notes.length,
     ch.bubbles.map(function (b) { return [b.content, b.notes]; }));
@@ -569,7 +568,7 @@ function fakeBrain(name, script) {
   await Peh.opts().loadHistory(Peh.kit.chat);
   check('S.5 in the editor its own brain replays the event\'s conversation (its changes come back with their Undo)', !!editWriter && !Peh.calls.some(function (c) { return /chat\/history/.test(c.url); }));
   check('S.5 …a dash turn it meets goes to the dash brain (writer.other), and writer.event names the event', Peh.kit.chat.bubbles.some(function (b) { return b.content === 'dash: from dash'; }) &&
-    same(Peh.kit.chat.scopes, ['This event: QA Main']));
+    same(Peh.kit.chat.scopes, ['Working on QA Main only']));
   var Pbad = await shellPage({ page: 'console', search: '?event=qa-main', brains: { dash: histB }, answer: function (u) { return /chat\/history/.test(u) ? { status: 403, body: { error: 'no' } } : null; } });
   var hx = await rejection(Pbad.opts().loadHistory(Pbad.kit.chat));
   check('S.5 an event conversation that cannot be read rejects, with words for the kit', hx && /^Your earlier messages could not be loaded \(403\)\.$/.test(hx.message), hx && hx.message);
@@ -652,6 +651,11 @@ function fakeBrain(name, script) {
   check('S.7 the editor (before its own attach path is there): a PDF is for Create Event', cf(file('brief.pdf', 'application/pdf', 9), POL.editor) === 'In the editor I can use pictures. A brief is read by Create Event’s Generate from a brief.');
   check('S.7 which policy where', P0.A.policyFor({ page: 'dashboard' }).name === 'start' && P0.A.policyFor({ page: 'create-event' }).name === 'start' && P0.A.policyFor({ page: 'console', eventId: 'a1' }).name === 'event' &&
     P0.A.policyFor({ page: 'activity-log', eventId: '' }).name === 'start' && P0.A.policyFor({ page: 'editor', eventId: 'a1' }).name === 'editor');
+  /* owner decision 10: on a page that is always about one event an attachment never starts a new event, even when
+     its address carries no event (the server then refuses all the same) */
+  check('S.7 a page of one event with no event in its address still never takes a brief or a logo for a new event',
+    ['console', 'promotions', 'review', 'registrations'].every(function (pg) { return P0.A.policyFor({ page: pg, eventId: '' }).name === 'event'; }) &&
+    P0.A.policyFor({ page: 'mailer-performance', eventId: '' }).name === 'start');
   check('S.7 a name is one line with no path', T.cleanName('C:\\fake\\path\\my\nlogo.png') === 'my logo.png' && T.cleanName('') === 'file' && T.cleanName(new Array(300).join('x')).length === 120);
 
   /* reading a file: a picture re-encoded, a PDF by its first bytes, a text file's words */

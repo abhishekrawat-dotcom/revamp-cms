@@ -13,7 +13,8 @@
        dashboard history on pages with no event, that event's ETB2B AI history inside an event (one conversation
        for both brains);
      - it routes each message to a BRAIN. The "dash brain" (dash-bot-client.js, POST /api/dash-bot) answers on
-       every page: questions from real data, opening pages, promotions, a new event, portals. The "edit brain"
+       every page: questions from real data, opening pages, promotions, a new event, portals; inside an event, that
+       event only (owner decision 10: the panel's line says "Working on <event> only"). The "edit brain"
        (editor-chat-client.js, POST /api/chat-edit) exists only in the site editor, where it changes the page and
        makes pictures. In the editor a fixed rule (route(), below) picks the brain; either brain may hand the
        message to the other once ("handoff"), never back; "undo that" there is local and costs no AI call, and goes
@@ -116,8 +117,10 @@
      and the assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
     scopeGlobal: 'Your events',
-    scopeEvent: 'This event',
-    scopeEventNamed: 'This event: ',
+    /* inside an event ETB2B AI works on that event only (owner decision 10), and the panel's line says so; it is
+       one line under the title, cut with … at a phone's width (the whole name is its title) */
+    scopeEvent: 'This event only',
+    scopeEventNamed: 'Working on {name} only',
     earlier: 'Earlier in this conversation',
     now: 'Now',
     historyFailed: 'Your earlier messages could not be loaded',
@@ -340,9 +343,12 @@
       accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg',
       doc: TEXT.docInEditor, other: TEXT.otherEvent }
   };
+  /* the pages that are always about one event: there an attachment never starts a new event (owner decision 10),
+     even when the address carries no event the server could confirm */
+  var EVENT_PAGES = { console: 1, promotions: 1, review: 1, registrations: 1 };
   function policyFor(p) {
     if (p && p.page === 'editor') return POLICIES.editor;
-    return p && p.eventId ? POLICIES.event : POLICIES.start;
+    return p && (p.eventId || own(EVENT_PAGES, p.page)) ? POLICIES.event : POLICIES.start;
   }
   /* a file's name as it is shown and sent: one line, no path, at most 120 characters */
   function cleanName(n) {
@@ -777,7 +783,7 @@
   function setScope(text) { if (chatRef && isFn(chatRef.setScope)) { try { chatRef.setScope(text); } catch (e) { /* the line is a nicety */ } } }
   function setScopeEvent(ev) {
     var name = ev && typeof ev === 'object' ? oneLine(ev.name, 80) : '';
-    if (name) setScope(TEXT.scopeEventNamed + name);
+    if (name) setScope(fill(TEXT.scopeEventNamed, { name: name }));
   }
   function tellOpen(v) {
     openListeners.forEach(function (fn) { try { fn(!!v); } catch (e) { /* a listener's own trouble */ } });

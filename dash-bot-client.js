@@ -2,8 +2,9 @@
 
    The assistant's shell (etb2b-assistant.js, window.RevampAssistant) mounts the shared chat kit (etb2b-chat.js)
    bottom-right on every page a team member uses and hands this brain the messages it answers: on the events
-   dashboard all of them, inside an event every one about that event's numbers, its other pages, promotions,
-   portals or a new event, and in the site editor those the editor's own ETB2B AI does not take. Each message goes
+   dashboard all of them, inside an event every one about that event's numbers, its other pages and promotions (and
+   anything about other events, a new event or portals, which it turns away there: owner decision 10), and in the
+   site editor those the editor's own ETB2B AI does not take. Each message goes
    to POST /api/dash-bot with where the person is (place: { page, eventId, tab }), what the dashboard's list is
    showing (on the dashboard only), the attachments' thumbnails and words, and does what the answer says at once.
    That is ETB2B AI's "do it, then undo": there is no Apply or Discard step, and everything it changes can be put back.
@@ -28,6 +29,11 @@
    There is no action here that deletes, cancels, publishes, approves, sends or pays: those stay manual, and
    nothing in this file could do them.
 
+   LOCKED TO THE EVENT (owner decision 10, 8 Nov 2026): on a page of one event the server keeps every answer on that
+   event, and this brain checks again before it does anything (inScope): a page of another event, an all-events
+   page, a new event, a filter, a portal switch, a choice or a list naming another event is never opened or shown,
+   and the panel says plainly that ETB2B AI works on this event here, with the dashboard one click away.
+
    Every page it opens is checked again against NAV_OK, one whitelist, right before it is opened. Every name and
    number it shows came from the server; from the page it reads only what the dashboard's list is showing
    (RvListing) and the portal the person works in. The history is the shell's to load: the person's own dashboard
@@ -47,8 +53,9 @@
   var doc = root.document;
 
   /* The only pages ETB2B AI may open, the same list the server builds its links from (functions/lib/dash-bot.js
-     urlFor). Anything else, however it got into an answer, is not opened. */
-  var NAV_OK = /^\/(?:edit-event\.html\?event=[a-z0-9-]+(?:#(?:content|settings)\/[a-z-]+|#dashboard|#activity|#design\/editor)?|marketing\.html\?event=[a-z0-9-]+&tab=(?:posts|site-posts|mailers)(?:&template=[a-z]+\.[a-z-]+)?(?:&post=[a-z-]+)?(?:&mailer=mailer\.[a-z-]+)?|audience-registrations\.html\?event=[a-z0-9-]+|preview\/[a-z0-9-]+\?draft=1|e\/[a-z0-9-]+|activity-log\.html(?:\?event=[a-z0-9-]+)?|mailer-performance\.html|create-event\.html\?new=1(?:&prefill=[A-Za-z0-9]{10,40})?)$/;
+     urlFor). Anything else, however it got into an answer, is not opened. The events dashboard is how a page locked
+     to one event is left (owner decision 10). */
+  var NAV_OK = /^\/(?:edit-event\.html\?event=[a-z0-9-]+(?:#(?:content|settings)\/[a-z-]+|#dashboard|#activity|#design\/editor)?|marketing\.html\?event=[a-z0-9-]+&tab=(?:posts|site-posts|mailers)(?:&template=[a-z]+\.[a-z-]+)?(?:&post=[a-z-]+)?(?:&mailer=mailer\.[a-z-]+)?|audience-registrations\.html\?event=[a-z0-9-]+|preview\/[a-z0-9-]+\?draft=1|e\/[a-z0-9-]+|activity-log\.html(?:\?event=[a-z0-9-]+)?|mailer-performance\.html|create-event\.html\?new=1(?:&prefill=[A-Za-z0-9]{10,40})?|Event_Listing\.html)$/;
 
   /* long enough to read "Opening …" and press Stay here, short enough not to feel like waiting */
   var NAV_DELAY_MS = 1200;
@@ -64,16 +71,23 @@
   var TURN_ID = /^[A-Za-z0-9]{10,40}$/;
   var EVENT_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
   var UNDO_PREFIX = 'rv.dashBot.undo.';
+  var DASHBOARD_URL = '/Event_Listing.html';
   var PREFILL_PREFIX = 'revamp.createEvent.prefill.v1.';
 
   /* Every sentence this brain says on its own. The product is ETB2B EventSphere (owner decision 6) and the
      assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
     welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions.',
-    welcomeEvent: 'I can answer questions about this event from its real numbers, open its pages, set up its promotions, and start a new event.',
+    /* inside an event ETB2B AI works on that event only (owner decision 10): no new event from here */
+    welcomeEvent: 'I work on this event only: I can answer questions from its real numbers, open its pages and set up its promotions. Other events and new ones are on the events dashboard.',
     footNote: 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.',
     footNoteElsewhere: 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.',
+    footNoteEvent: 'ETB2B AI works on this event only. It never deletes, cancels, publishes or approves anything.',
+    /* an answer this page would not act on: about another event than the one the page is locked to */
+    otherEvent: 'That was about another event, so I didn’t do it. I work on this event only here: use the events dashboard for other events.',
+    openDashboard: 'Open the dashboard',
     tooLong: 'Keep the message under 4,000 characters. For a longer brief, ask me to start a new event from a brief, then paste it on Create Event.',
+    tooLongEvent: 'Keep the message under 4,000 characters.',
     session: 'Your session has ended. Sign in again.',
     offline: 'You’re offline. Check your connection and try again.',
     unreachable: 'Could not reach ETB2B AI. Check your connection and try again.',
@@ -119,7 +133,7 @@
     { label: 'How many registrations does this event have?', text: 'How many registrations does this event have?' },
     { label: 'Open this event’s speakers', text: 'Open this event’s speakers' },
     { label: 'Make a save-the-date post for this event', text: 'Make a save-the-date post for this event' },
-    { label: 'Create an IP event called … on … in …', text: 'Create an IP event called … on … in …' }
+    { label: 'Open this event’s registrations', text: 'Open this event’s registrations' }
   ];
   /* small chips under the box once the conversation has a turn: they fill it, never send (UX-095) */
   var QUICK = [
@@ -307,7 +321,8 @@
     var message = str(text).trim();
     if (!message) return Promise.resolve();
     if (inFlight) return inFlight;                       // one request at a time (the kit locks its box too)
-    if (message.length > MAX_MESSAGE) return Promise.reject(problem(TEXT.tooLong, false));
+    /* inside an event no new event is started from here (owner decision 10): the sentence offers none */
+    if (message.length > MAX_MESSAGE) return Promise.reject(problem(placeNow().eventId ? TEXT.tooLongEvent : TEXT.tooLong, false));
     stopPending();                                       // typing again means staying here
     var here = placeNow();
     var recs = isArr(o.attachments) ? o.attachments.filter(function (r) { return r && typeof r === 'object'; }) : [];
@@ -386,6 +401,52 @@
     return parts.map(function (p) { return p && typeof p.v === 'string' ? p.v : (p && p.name ? str(p.name) : ''); }).join(' ');
   }
 
+  /* ---------- locked to the event (owner decision 10) ---------- */
+  /* The event a page address ETB2B AI may open is about ('' for a page of every event, or the dashboard). */
+  var URL_EVENT = /^\/(?:edit-event\.html\?event=|marketing\.html\?event=|audience-registrations\.html\?event=|activity-log\.html\?event=|preview\/|e\/)([a-z0-9][a-z0-9-]{0,79})(?:[?#&]|$)/;
+  function urlEvent(url) { var m = URL_EVENT.exec(str(url)); return m ? m[1] : ''; }
+  /* On a page of one event, whether an address stays on it: one of that event's own pages, or the dashboard (to
+     leave). Off an event every address on the whitelist does. */
+  function urlInScope(url, here) {
+    if (!here.eventId) return true;
+    return str(url) === DASHBOARD_URL || urlEvent(url) === here.eventId;
+  }
+  /* Whether this page may carry out an action. Inside an event: only a page of that event (or the dashboard), a
+     refusal whose link stays there, and Undo; never a new event, a filter or a portal switch. The server already
+     refuses all of these; this is the second lock, so a stale or tampered answer still changes nothing elsewhere. */
+  function inScope(action, here) {
+    if (!here.eventId || !action || typeof action !== 'object') return true;
+    if (action.eventId != null && str(action.eventId) !== here.eventId) return false;
+    if (action.type === 'navigate') return urlInScope(action.url, here);
+    if (action.type === 'refuse') {
+      var p = action.pointer && typeof action.pointer === 'object' ? action.pointer : {};
+      return p.href == null || urlInScope(p.href, here);
+    }
+    return action.type === 'undo';
+  }
+  /* an answer's own parts, its list and its choices, inside an event: none may link to another event */
+  function partsInScope(parts, here) {
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (p && typeof p === 'object' && p.href != null && !urlInScope(p.href, here)) return false;
+    }
+    return true;
+  }
+  function listInScope(list, here) {
+    var items = list && Array.isArray(list.items) ? list.items : [];
+    if (here.eventId && list) return false;              // a list of events is never shown inside an event
+    for (var i = 0; i < items.length; i++) if (items[i] && !urlInScope(items[i].href, here)) return false;
+    return true;
+  }
+  /* what the panel says instead of an action it would not carry out: the same plain line, with the dashboard one
+     click away, and the turn reported as not done */
+  function refuseOther(ctx, bubble) {
+    bubble.note(TEXT.otherEvent);
+    bubble.link(DASHBOARD_URL, TEXT.openDashboard);
+    report(ctx.turnId, 'failed', 'about another event');
+    return false;
+  }
+
   function draw(body, extra) {
     extra = extra || {};
     var here = extra.place || placeNow();
@@ -414,6 +475,16 @@
     }
     var parts = Array.isArray(body.parts) ? body.parts : [];
     var list = body.list && typeof body.list === 'object' ? body.list : null;
+    /* inside an event, an answer about another one is neither shown nor carried out (the server never sends one) */
+    var choicesNow = body.kind === 'choose' && Array.isArray(body.choices) ? body.choices : [];
+    if (here.eventId && (!inScope(action, here) || !partsInScope(parts, here) || !listInScope(list, here) ||
+        choicesNow.some(function (c) { return !c || typeof c !== 'object' || !inScope(c.action, here) || (c.eventId != null && str(c.eventId) !== here.eventId); }))) {
+      var bo = chat.ai(TEXT.otherEvent, {});
+      if (body.notKept) bo.note(TEXT.notKept);
+      bo.link(DASHBOARD_URL, TEXT.openDashboard);
+      report(ctx.turnId, 'failed', 'about another event');
+      return;
+    }
     ctx.shown = partsText(parts);
     var startsCreate = body.kind === 'create' && !!action;
     var bubble = chat.ai(parts.length ? parts : (list ? 'Here is what I found.' : (startsCreate ? TEXT.creating : '')), bubbleOpts(parts, list, body.asOf));
@@ -426,6 +497,7 @@
   /* the whole action vocabulary of the dash brain */
   function runAction(action, bubble, ctx, shownText) {
     if (!action || typeof action !== 'object') return false;
+    if (!inScope(action, ctx.place || placeNow())) return refuseOther(ctx, bubble);
     if (action.type === 'filter') return runFilter(action, bubble, ctx);
     if (action.type === 'portal') return runPortal(action, bubble, ctx);
     if (action.type === 'navigate') return runNavigate(action, bubble, ctx);
@@ -1024,7 +1096,7 @@
       text: inEvent ? TEXT.welcomeEvent : TEXT.welcome,
       suggestions: inEvent ? SUGGESTIONS_EVENT : SUGGESTIONS,
       quickIdeas: inEvent ? QUICK_EVENT : QUICK,
-      footNote: dash ? TEXT.footNote : TEXT.footNoteElsewhere
+      footNote: dash ? TEXT.footNote : inEvent ? TEXT.footNoteEvent : TEXT.footNoteElsewhere
     };
   }
 
@@ -1040,7 +1112,9 @@
     onMount: function (c) { chat = c || null; }
   };
 
-  root.RevampDashBot = { NAV_OK: NAV_OK, NAV_DELAY_MS: NAV_DELAY_MS, TEXT: TEXT, brain: brain };
+  root.RevampDashBot = { NAV_OK: NAV_OK, NAV_DELAY_MS: NAV_DELAY_MS, TEXT: TEXT, brain: brain,
+    /* pure parts, for functions/lib/dash-bot-client.test.js */
+    _scope: { urlEvent: urlEvent, urlInScope: urlInScope, inScope: inScope, DASHBOARD_URL: DASHBOARD_URL } };
   /* the shell usually loads after this file and picks the brain up itself; loaded later, it is told here */
   if (root.RevampAssistant && typeof root.RevampAssistant.registerBrain === 'function') root.RevampAssistant.registerBrain('dash', brain);
 })(typeof window !== 'undefined' ? window : this);

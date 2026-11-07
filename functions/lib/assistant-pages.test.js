@@ -423,7 +423,7 @@ var SHELL_RUNS = !SHELL_LOADED || SHELL_LOADED.error || !exists('dash-bot-client
   .then(function () { return shellOn({ page: 'activity-log', path: '/activity-log.html', search: '?event=qa-a' }); })
   .then(function (S) {
     var L = 'the Activity log opened with ?event=qa-a: ';
-    check(L + 'the panel reads "This event", with that event\'s conversation and attachment rules', !!S.chat && S.kit.opts.scope === 'This event' &&
+    check(L + 'the panel reads "This event only", with that event\'s conversation and attachment rules', !!S.chat && S.kit.opts.scope === 'This event only' &&
       S.kit.opts.attach && S.kit.opts.attach.label === S.A.policyFor({ page: 'activity-log', eventId: 'qa-a' }).label, S.kit.opts && S.kit.opts.scope);
     S.ctx.location.search = '?event=qa-b&area=content';               // another event picked in the filter
     return S.ask('how many registrations here?').then(function (post) {
