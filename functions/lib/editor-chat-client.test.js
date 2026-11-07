@@ -2,7 +2,7 @@
 // §11a U4): editor-chat-client.js, the editor's place in the one ETB2B AI panel, with its seam in
 // editor-template-ui.js (RevampTemplateUI.chat), editor-ai-mode.js and custom_editor.html.
 //   E.1  the files: ES5, nothing typed becomes markup, no old chat panel (#panel-chat, #chat-*), no navy or purple,
-//        the mount, the scripts in order, the docking reserve, "AI badges", the seam's names, Stop's wording
+//        the mount, the scripts in order, the docking reserve, the AI markers switch, the seam's names, Stop's wording
 //   E.2  the pure parts: goToFor, contentUrl, focusLabel, isPicture, wouldCover, recFor
 //   E.3  joining the panel: only once the editor has its site; the kit's options for the editor (id, the
 //        welcome, suggestions that only fill, the honest foot note, data-keep-selection, numbered pictures)
@@ -572,9 +572,11 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   check('E.1 the floating panel\'s top stays below the tools rail (--rvc-ed-top), never over its Undo / Redo',
     /\.rvc:not\(\.rvc-is-docked\):not\(\.rvc-phone\) \.rvc-panel\{ ?max-height: ?calc\(100vh - var\(--rvc-bottom\) - var\(--rvc-gap\) - var\(--rvc-lift\) - var\(--rvc-ed-top, ?98px\) - 8px\); ?\}/.test(PAGE));
   check('E.1 the change card is styled in the panel\'s palette (.rvc .ai-task, --rvc-* tokens)', /\.rvc \.ai-task\{[^}]*var\(--rvc-/.test(PAGE));
-  var markers = /<button[^>]*id="btn-ai-markers"[^>]*>[\s\S]*?<\/button>/.exec(PAGE);
-  check('E.1 #btn-ai-markers shows "AI badges" and says what it does (UX-100)', !!markers && />\s*AI badges\s*</.test(markers[0]) &&
-    /aria-label="AI badges: show which sections ETB2B AI wrote"/i.test(markers[0]), markers && markers[0].slice(0, 240));
+  /* UX-100: the unexplained sparkle beside "Edit with AI" is gone from the top bar; B14 (UX-078) made it a labelled
+     switch in the Layers panel, which says what it does */
+  check('E.1 no AI-markers sparkle in the top bar beside the mode switch (UX-100)', PAGE.indexOf('id="btn-ai-markers"') === -1);
+  check('E.1 …it is the Layers panel\'s "Show AI markers" switch, labelled, saying what it marks (UX-100, B14)',
+    /<label for="ai-markers-toggle">Show AI markers<\/label>/.test(PAGE) && /Marks the sections AI wrote, to check before you publish/.test(PAGE) && /<input type="checkbox" id="ai-markers-toggle">/.test(PAGE));
 
   /* the seam (editor-template-ui.js) and the modes (editor-ai-mode.js), by their names */
   var chatObj = /chat: \{\s*attachView:[\s\S]*?eventName:[^\n]*\n\s*\}/.exec(UI_SRC);
