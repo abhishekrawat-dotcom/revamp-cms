@@ -322,14 +322,39 @@ function headingLevels(headings) {
      3. a picture without alt text gets alt="" (it is read as a file name otherwise; the editor's own alt text,
         and the alt the live data writes for a speaker's photo, are left as they are);
      4. the outline of headings: aria-level where a heading skips a level (headingLevels; marked data-rv-level);
-     5. a page with no main landmark: <main data-rv-main> around its sections, between the top bar and the footer
-        (not on an imported page, which keeps its own structure);
+     5. a page with no main landmark: <main data-rv-main id="rv-main"> around its sections, between the top bar
+        and the footer (not on an imported page, which keeps its own structure); a "Skip to main content" link
+        first in <body>, to the main landmark (theirs or ours), so a keyboard user does not tab through the whole
+        top bar first (et-runtime.js moves the focus there) — on an imported page its main's tags are never
+        changed: the link goes to its id, or to a place of ours just before it; a page with no h1 (the event's name only in its logo picture) gets one, visually hidden,
+        at the top of its hero — never an imported page;
      6. search and sharing: the schema.org Event (site-seo.js), a picture for link previews when the owner set
-        none (the banner, the hero's picture, the hero video's poster), and on a live page robots
-        "max-image-preview:large". Each tag carries data-rv-seo and is written afresh every run.
+        none (shareCandidates: the banner video's still, the hero's picture, a picture of the page's own, the
+        logo unit, the portal's logo), a description that ends at a word (site-seo.js shareDescription — a page
+        published before is cut the same way), and on a live page robots "max-image-preview:large". Each tag
+        carries data-rv-seo and is written afresh every run;
+     7. the words of the ET top bar a visitor cannot read: "About Vertical" names the portal (et-nav.js aboutLabel)
+        on a page built before the bar said so;
+     8. a contact's e-mail and phone shown as plain text become links (mailto:, tel:), and on an AI-designed site a
+        play glyph that plays nothing is not shown (visitorLinks) — never on an imported page.
+   What 5 and 8 add to <head> and the top of <body> (the skip link, the hidden h1, their rules) carries
+   data-rv-a11y and is written afresh every run; what 8 does in the page is seen on the next run and kept.
    Any failure leaves the page exactly as it came: a page is never lost to this pass. */
 var siteSeo = require('./site-seo');
 var etFooter = require('./et-footer');
+var etNav = require('./et-nav');
+var heroVideoCore = require('../../templates/_shared/rv-hero-video-core.js');
+
+/* the skip link, hidden until it has the keyboard's focus, and the visually hidden h1 (data-rv-a11y) */
+var A11Y_CSS = '.rv-skip{position:fixed;left:12px;top:-200px;z-index:2147483647;padding:10px 16px;border-radius:8px;background:#ffffff;color:#14161b;' +
+  'font:600 15px/1.2 system-ui,-apple-system,"Segoe UI",Arial,sans-serif;text-decoration:underline;box-shadow:0 4px 18px rgba(0,0,0,.25)}' +
+  '.rv-skip:focus{top:12px;outline:3px solid #14161b;outline-offset:2px}' +
+  '.rv-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;' +
+  'clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}' +
+  '.rv-skip-to{position:absolute;width:1px;height:1px;overflow:hidden}' +
+  'main[data-rv-main]:focus,#rv-main:focus{outline:none}';
+var MAIN_ID = 'rv-main';
+function escText(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 function pagePass(html, opts, kit) {
   try { return pagePassUnsafe(String(html == null ? '' : html), opts || {}, kit); }
@@ -360,7 +385,7 @@ function pagePassUnsafe(html, opts, kit) {
   /* our own head tags from an earlier run go: they are written again below */
   for (i = 0; i < tokens.length; i++) {
     t = tokens[i];
-    if (t.t === 'open' && kit.attrOf(t, 'data-rv-seo')) {
+    if (t.t === 'open' && (kit.attrOf(t, 'data-rv-seo') || kit.attrOf(t, 'data-rv-a11y'))) {
       var end = kit.elementEnd(tokens, i);
       if (end === -1) continue;
       for (var k = i; k <= end; k++) out[k] = '';
@@ -396,9 +421,15 @@ function pagePassUnsafe(html, opts, kit) {
     }
   }
 
+  /* where a page with no h1 gets one: the top of its hero (the event's name, visually hidden) */
+  var h1Name = !imported && opts.event && typeof opts.event.name === 'string' ? opts.event.name.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+  var h1At = h1Name ? hiddenH1Place(tokens, out, kit) : -1;
+
   /* ---- 3. pictures without alt text; 4. the outline of headings ---- */
   var headings = [], templateDepth = 0;
   for (i = 0; i < tokens.length; i++) {
+    /* the hidden h1 opens the outline where it goes */
+    if (i === h1At) headings.push({ virtual: true, level: 1, tagLevel: 1, inTemplate: false });
     t = tokens[i];
     if (t.t === 'close' && t.name === 'template') { templateDepth = Math.max(0, templateDepth - 1); continue; }
     if (t.t !== 'open' || out[i] === '') continue;
@@ -416,13 +447,14 @@ function pagePassUnsafe(html, opts, kit) {
   }
   headingLevels(headings).forEach(function (r, n) {
     var h = headings[n], tk = tokens[h.i];
-    if (h.authored) return;                                  // an author's own aria-level is theirs
+    if (h.virtual || h.authored) return;                     // an author's own aria-level is theirs
     if (r.level !== h.tagLevel) {
       if (A(tk, 'aria-level') !== String(r.level) || !h.ours) { kit.setAttr(tk, 'aria-level', String(r.level)); kit.setAttr(tk, 'data-rv-level', ''); rewrite(h.i); }
     } else if (h.ours) { kit.dropAttr(tk, 'aria-level'); kit.dropAttr(tk, 'data-rv-level'); rewrite(h.i); }
   });
 
-  /* ---- 5. the main landmark ---- */
+  /* ---- 5. the main landmark, the skip link to it ---- */
+  var mainId = '';
   var hasMain = tokens.some(function (x, n) { return x.t === 'open' && out[n] !== '' && (x.name === 'main' || String(A(x, 'role') || '').toLowerCase() === 'main'); });
   if (!hasMain && !imported) {
     for (i = 0; i < tokens.length; i++) {
@@ -446,18 +478,43 @@ function pagePassUnsafe(html, opts, kit) {
         c = chEnd;
       }
       if (first !== -1) {
-        out[first] = '<main data-rv-main>' + out[first];
+        out[first] = '<main data-rv-main id="' + MAIN_ID + '" tabindex="-1">' + out[first];
         if (footer !== -1) out[footer] = '</main>' + out[footer];
         else out[close] = '</main>' + out[close];
+        mainId = MAIN_ID;
       }
       break;
     }
+  }
+  /* the page's own main landmark (or ours from an earlier run): the skip link's target, by its id. An imported
+     page keeps its tags as they came: a main of its own with no id gets a place for the link to go to just
+     before it (out of the flow, so nothing in its layout moves), written afresh every run like the link */
+  for (i = 0; i < tokens.length && hasMain; i++) {
+    t = tokens[i];
+    if (t.t !== 'open' || out[i] === '' || !(t.name === 'main' || String(A(t, 'role') || '').toLowerCase() === 'main')) continue;
+    mainId = A(t, 'id') || '';
+    if (!mainId && imported) {
+      mainId = MAIN_ID;
+      out[i] = '<span class="rv-skip-to" id="' + MAIN_ID + '" tabindex="-1" data-rv-a11y></span>' + out[i];
+    } else if (!mainId) {
+      mainId = MAIN_ID;
+      kit.setAttr(t, 'id', MAIN_ID);
+      if (A(t, 'tabindex') == null) kit.setAttr(t, 'tabindex', '-1');
+      rewrite(i);
+    }
+    break;
+  }
+  var a11yCss = false;
+  if (mainId && bodyOpen !== -1 && /^[A-Za-z][\w:.-]*$/.test(mainId)) {
+    out[bodyOpen] += '<a class="rv-skip" href="#' + escAttr(mainId) + '" data-rv-a11y>Skip to main content</a>\n';
+    a11yCss = true;
   }
 
   /* ---- 6. search and sharing ---- */
   var head = [];
   var event = opts.event || {};
   var canonical = '', ogImage = '', twitterCard = -1, description = '', title = '';
+  function decode(s) { return String(s || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
   for (i = 0; i < tokens.length; i++) {
     t = tokens[i];
     if (out[i] === '') continue;
@@ -466,11 +523,15 @@ function pagePassUnsafe(html, opts, kit) {
       var prop = String(A(t, 'property') || '').toLowerCase(), nm = String(A(t, 'name') || '').toLowerCase();
       if (prop === 'og:image') ogImage = A(t, 'content') || '';
       if (nm === 'twitter:card') twitterCard = i;
+      /* a description published before it was cut at a word ("…with governe") is cut at one now */
+      if (nm === 'description' || prop === 'og:description' || nm === 'twitter:description') {
+        var said = decode(A(t, 'content') || ''), cut = siteSeo.shareDescription(said);
+        if (cut !== said) { kit.setAttr(t, 'content', cut); rewrite(i); }
+      }
       if (nm === 'description') description = A(t, 'content') || '';
       if (prop === 'og:title') title = A(t, 'content') || '';
     }
   }
-  function decode(s) { return String(s || '').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
   var originOf = /^(https?:\/\/[^\/\s"'<>]+)/.exec(decode(canonical));
   function absolute(u) {
     u = decode(u).trim();
@@ -478,11 +539,15 @@ function pagePassUnsafe(html, opts, kit) {
     if (/^\/(?!\/)[^\s"'<>]*$/.test(u) && originOf) return originOf[1] + u;
     return '';
   }
-  var pictures = heroPictures(tokens, out, kit).map(absolute).filter(Boolean);
-  if (!ogImage && pictures.length) {
-    head.push('<meta property="og:image" content="' + escAttr(pictures[0]) + '" data-rv-seo>');
-    head.push('<meta name="twitter:image" content="' + escAttr(pictures[0]) + '" data-rv-seo>');
-    if (twitterCard !== -1 && A(tokens[twitterCard], 'content') !== 'summary_large_image') { kit.setAttr(tokens[twitterCard], 'content', 'summary_large_image'); rewrite(twitterCard); }
+  var portalSlug = portalOfPage(tokens, kit);
+  var share = shareCandidates(tokens, out, kit, event, portalSlug);
+  var pictures = share.pictures.map(absolute).filter(Boolean);
+  var shareImage = pictures[0] || share.logos.map(absolute).filter(Boolean)[0] || '';
+  if (!ogImage && shareImage) {
+    head.push('<meta property="og:image" content="' + escAttr(shareImage) + '" data-rv-seo>');
+    head.push('<meta name="twitter:image" content="' + escAttr(shareImage) + '" data-rv-seo>');
+    /* a picture fills the large card; a logo (a wordmark, a lock-up) is shown small, never cropped across it */
+    if (pictures.length && twitterCard !== -1 && A(tokens[twitterCard], 'content') !== 'summary_large_image') { kit.setAttr(tokens[twitterCard], 'content', 'summary_large_image'); rewrite(twitterCard); }
   }
   var footerSlug = '';
   tokens.some(function (x) { if (x.t === 'open' && x.name === 'footer' && A(x, 'data-rv-et-footer')) { footerSlug = A(x, 'data-rv-et-footer'); return true; } return false; });
@@ -494,6 +559,25 @@ function pagePassUnsafe(html, opts, kit) {
   });
   if (ld) head.push('<script type="application/ld+json" data-rv-seo>' + siteSeo.scriptJson(ld) + '</script>');
   if (opts.mode === 'live') head.push('<meta name="robots" content="index, follow, max-image-preview:large" data-rv-seo>');
+
+  /* ---- 7. "About Vertical" in the ET top bar says whose ---- */
+  for (i = 0; i + 2 < tokens.length; i++) {
+    t = tokens[i];
+    if (t.t !== 'open' || t.name !== 'a' || out[i] === '' || A(t, 'href') !== '#about-vertical') continue;
+    var words = tokens[i + 1], shut = tokens[i + 2];
+    if (words.t !== 'text' || shut.t !== 'close' || shut.name !== 'a' || !etNav.ABOUT_VERTICAL.test(decode(out[i + 1]).replace(/\s+/g, ' ').trim())) continue;
+    out[i + 1] = escText(etNav.aboutLabel(portalSlug));
+  }
+
+  /* ---- 8. a contact's e-mail and phone are links; a play glyph that plays nothing is not shown ---- */
+  var extraCss = imported ? '' : visitorLinks(html, tokens, out, kit, generated);
+
+  /* the hidden h1, last: nothing above writes its hero's tag again after it */
+  if (h1At !== -1) {
+    out[h1At] += '<h1 class="rv-sr-only" data-rv-a11y>' + escText(h1Name) + '</h1>\n';
+    a11yCss = true;
+  }
+  if (a11yCss || extraCss) head.unshift('<style data-rv-a11y>' + (a11yCss ? A11Y_CSS : '') + extraCss + '</style>');
 
   var headText = head.length ? head.join('\n') + '\n' : '';
   if (headText) {
@@ -526,7 +610,188 @@ function heroPictures(tokens, out, kit) {
   return banner.concat(painted, posters).filter(function (u, n, all) { return all.indexOf(u) === n; });
 }
 
+/* The pictures a link preview may use when the owner set none, best first (UX-148: a site whose hero is a video
+   was shared with no picture at all). { pictures: [photos], logos: [lock-ups and wordmarks] }:
+     the banner video's still (the event's own video, put on the page as it is served), the hero's pictures
+     (heroPictures), then the first picture of the page's own (contentPicture) — then, only when there is no
+     picture, the logo unit and the portal's wordmark. The logo unit is a transparent picture: a preview shows it on
+     whatever ground it likes (black on LinkedIn), so a photograph of the page comes before it. */
+function shareCandidates(tokens, out, kit, event, portalSlug) {
+  var A = kit.attrValue, pictures = [], logos = [];
+  var hv = heroVideoCore.clean(event && event.heroVideo);
+  if (hv && hv.posterUrl) pictures.push(hv.posterUrl);
+  pictures = pictures.concat(heroPictures(tokens, out, kit));
+  var own = contentPicture(tokens, out, kit);
+  if (own) pictures.push(own);
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t !== 'open' || out[i] === '' || t.name !== 'img' || kit.classListOf(t).indexOf('rv-lu-img') === -1) continue;
+    var src = String(A(t, 'src') || '').trim();
+    if (src && !/\.svg(\?|#|$)/i.test(src) && !/^data:/i.test(src)) { logos.push(src); break; }
+  }
+  var wordmark = portalSlug ? etNav.logoOf(portalSlug, 'light').onLight : '';
+  if (/^\/templates\/_shared\/img\/portals\/[a-z0-9-]+\.png$/.test(wordmark)) logos.push(wordmark);
+  return { pictures: pictures.filter(function (u, n, all) { return all.indexOf(u) === n; }), logos: logos };
+}
+
+/* The first picture of the page's own that can stand for it in a preview: outside the hero (already counted), the
+   top bar, the footer and the partners' rows (their logos), not a logo, an icon or a record's photo (a speaker's
+   face), not an SVG, not an empty placeholder and not a thumbnail. A gallery photo (a glimpse) may be one. */
+function contentPicture(tokens, out, kit) {
+  var A = kit.attrValue, skipTo = -1;
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (i <= skipTo || t.t !== 'open' || out[i] === '') continue;
+    var sec = String(A(t, 'data-rv-section') || ''), id = String(A(t, 'id') || '');
+    var away = (t.name === 'template' && !t.selfClosing) || /^(header|footer|nav)$/.test(t.name) || /^(nav|header|footer|hero)$/.test(sec) ||
+      id === 'hero' || id === 'banner' || /partner|sponsor|logo|client|exhibitor/i.test(sec + ' ' + id);
+    if (away) { var end = kit.elementEnd(tokens, i); if (end !== -1) skipTo = end; continue; }
+    if (t.name !== 'img') continue;
+    var src = String(A(t, 'src') || '').trim(), field = A(t, 'data-rv-field');
+    if (!/^(https?:\/\/|\/(?!\/))/i.test(src) || /\.svg(\?|#|$)/i.test(src)) continue;
+    if (kit.attrOf(t, 'data-rv-et-logo') || kit.attrOf(t, 'data-rv-logo') || (field != null && field !== 'imageUrl')) continue;
+    if (/logo|icon|avatar|badge|flag/i.test(String(A(t, 'class') || '') + ' ' + String(A(t, 'alt') || '') + ' ' + src.split('?')[0].split('/').pop())) continue;
+    var w = parseInt(A(t, 'width'), 10), h = parseInt(A(t, 'height'), 10);
+    if ((w > 0 && w < 300) || (h > 0 && h < 160)) continue;
+    return src;
+  }
+  return '';
+}
+
+/* the ET portal the page belongs to: its common footer's (et-footer.js), else its top bar's wordmark (et-nav.js) */
+function portalOfPage(tokens, kit) {
+  var A = kit.attrValue, slug = '';
+  for (var i = 0; i < tokens.length && !slug; i++) {
+    var t = tokens[i];
+    if (t.t !== 'open') continue;
+    var f = t.name === 'footer' ? A(t, 'data-rv-et-footer') : null;
+    if (f && f !== 'et') slug = f;
+    var m = t.name === 'img' && kit.attrOf(t, 'data-rv-et-logo') ? /^\/templates\/_shared\/img\/portals\/([a-z0-9-]+?)(?:-light)?\.png$/.exec(String(A(t, 'data-rv-on-light') || A(t, 'src') || '').split('?')[0]) : null;
+    if (m) slug = m[1];
+  }
+  return slug;
+}
+
+/* where the hidden h1 goes on a page that has none: right inside its hero (or banner); -1 when the page has an
+   h1 (outside a <template>) or no hero */
+function hiddenH1Place(tokens, out, kit) {
+  var A = kit.attrValue, hero = -1, depth = 0;
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t === 'close' && t.name === 'template') { depth = Math.max(0, depth - 1); continue; }
+    if (t.t !== 'open' || out[i] === '') continue;
+    if (t.name === 'template' && !t.selfClosing) { depth++; continue; }
+    if (t.name === 'h1' && !depth) return -1;
+    if (hero === -1 && !t.selfClosing && (A(t, 'data-rv-section') === 'hero' || A(t, 'id') === 'hero' || A(t, 'id') === 'banner')) hero = i;
+  }
+  return hero;
+}
+
+/* Step 8 of the page pass, on every page but an imported one (which keeps its own structure):
+     - a contact's e-mail and phone that the page shows as plain text (<span data-rv-field="email">, as the
+       AI-designed contact cards have them) become links, so a phone can tap to write or call (UX-156). The page is
+       published with its records already in it, so this is where every page gets them, those published before
+       too. The words stay as they were, inside <a href="mailto:…|tel:+…" data-rv-contact>; an e-mail may break
+       after its "@" on a narrow screen, where it broke before its last letter ("…@timesinternet.i / n"). Only a
+       field outside any link or button and any <template>, holding the one address and nothing else, and not in
+       a part the page hides for having no records (data-rv-empty: there the card is the model's sample, "name@
+       example.com"); a field done on an earlier run already holds its link and is left as it is.
+     - on an AI-designed page, a "play" glyph that plays nothing — a round play badge drawn on a card that has no
+       video and is no link (BWS's Knowledge Series) — is not shown: it looked like a video that would not start
+       (UX-155). Such a page carries no script of its own, so nothing could ever make it play.
+   -> the rules the page then needs, '' when it needs none */
+var CONTACT_CSS = 'a[data-rv-contact]{color:inherit;text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px}' +
+  'a[data-rv-contact]:hover{text-decoration-thickness:2px}a[data-rv-contact="email"]{word-break:normal;overflow-wrap:anywhere}';
+var INERT_GLYPH_CSS = '[data-rv-inert-glyph]{display:none!important}';
+/* what a drawn glyph is made of; anything else inside (words, a picture, a link) makes it more than a glyph */
+var GLYPH_PARTS = { svg: 1, path: 1, polygon: 1, polyline: 1, circle: 1, ellipse: 1, rect: 1, line: 1, g: 1, use: 1, title: 1, defs: 1, i: 1, span: 1 };
+var NOT_A_GLYPH = /^(a|button|input|select|textarea|summary|label|option|video|audio|iframe|object|embed|img|picture|svg|source|form)$/;
+
+/* the address of a contact's e-mail or phone, as a link: 'mailto:…' | 'tel:+91…' (digits only) | '' when the
+   words are not one address (two numbers, "Write to us", a half-written address) or are a sample's
+   ("name@example.com", "+00 00000 00000") */
+function contactHref(type, value) {
+  var v = String(value == null ? '' : value).trim();
+  if (type === 'email') {
+    var ok = v.length <= 254 && /^[^\s@<>"'&()]+@[^\s@<>"'&()]+\.[^\s@<>"'&()]+$/.test(v) && !/@(.+\.)?example\.[a-z.]+$/i.test(v);
+    return ok ? 'mailto:' + v : '';
+  }
+  if (type !== 'phone' || !/^\+?[\d\s().-]+$/.test(v)) return '';
+  var digits = v.replace(/\D/g, '');
+  return digits.length >= 6 && digits.length <= 15 && /[1-9]/.test(digits) ? 'tel:' + (v.charAt(0) === '+' ? '+' : '') + digits : '';
+}
+/* what the page hides while a list has no records (rv-live.css) */
+var HIDDEN_EMPTY = ['data-rv-empty', 'data-rv-hidden-empty', 'data-rv-bind-empty', 'data-rv-nav-empty'];
+function decodeText(s) { return String(s || '').replace(/&nbsp;|&#160;/g, ' ').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
+
+function visitorLinks(html, tokens, out, kit, generated) {
+  var A = kit.attrValue, inLink = 0, inTemplate = 0, hiddenTo = -1, contacts = false, glyphs = false;
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (out[i] === '') continue;
+    if (t.t === 'open' && i > hiddenTo && HIDDEN_EMPTY.some(function (n) { return kit.attrOf(t, n); })) hiddenTo = kit.elementEnd(tokens, i);
+    if (t.t === 'close') {
+      if (t.name === 'template') inTemplate = Math.max(0, inTemplate - 1);
+      else if (t.name === 'a' || t.name === 'button') inLink = Math.max(0, inLink - 1);
+      continue;
+    }
+    if (t.t !== 'open' || t.selfClosing) continue;
+    if (t.name === 'template') { inTemplate++; continue; }
+    if (t.name === 'a' || t.name === 'button') {
+      if (kit.attrOf(t, 'data-rv-contact')) contacts = true;          // made on an earlier run: its rules are written again
+      inLink++;
+      continue;
+    }
+    if (inTemplate || inLink) continue;
+    var field = A(t, 'data-rv-field');
+    if (field === 'email' || field === 'phone') {
+      if (i <= hiddenTo || kit.elementEnd(tokens, i) !== i + 2 || tokens[i + 1].t !== 'text') continue;
+      var raw = out[i + 1], value = decodeText(raw).trim(), href = contactHref(field, value);
+      if (!href) continue;
+      var at = field === 'email' ? value.lastIndexOf('@') : -1;
+      var shown = at > 0 ? escText(value.slice(0, at + 1)) + '<wbr>' + escText(value.slice(at + 1)) : escText(value);
+      out[i + 1] = /^\s*/.exec(raw)[0] + '<a href="' + escAttr(href) + '" data-rv-contact="' + field + '">' + shown + '</a>' + /\s*$/.exec(raw)[0];
+      contacts = true;
+      continue;
+    }
+    var marked = !!kit.attrOf(t, 'data-rv-inert-glyph'), inert = generated && inertPlayGlyph(tokens, i, out, kit);
+    if (inert === marked) { glyphs = glyphs || inert; continue; }
+    /* the tag as the page wrote it, so nothing put before or after it in this pass is lost */
+    var was = html.slice(t.s, t.e);
+    if (out[i].indexOf(was) === -1) continue;
+    if (inert) kit.setAttr(t, 'data-rv-inert-glyph', ''); else kit.dropAttr(t, 'data-rv-inert-glyph');
+    out[i] = out[i].replace(was, function () { return kit.writeTag(t); });
+    glyphs = glyphs || inert;
+  }
+  return (contacts ? CONTACT_CSS : '') + (glyphs ? INERT_GLYPH_CSS : '');
+}
+
+/* a "play" badge that is only a drawing: a class that says play ("resources-play", "play-btn"; not "display"),
+   nothing that makes it a control, and inside it only an SVG or a ▶ character */
+function inertPlayGlyph(tokens, i, out, kit) {
+  var t = tokens[i];
+  if (NOT_A_GLYPH.test(t.name)) return false;
+  if (!kit.classListOf(t).some(function (c) { return c.toLowerCase().split(/[-_]+/).indexOf('play') !== -1; })) return false;
+  if (['href', 'role', 'tabindex', 'onclick', 'contenteditable', 'data-rv-form', 'data-register-cta'].some(function (n) { return kit.attrOf(t, n); })) return false;
+  var end = kit.elementEnd(tokens, i), drawn = false;
+  if (end <= i) return false;
+  for (var j = i + 1; j < end; j++) {
+    var x = tokens[j];
+    if (x.t === 'comment') continue;
+    if (x.t === 'text') {
+      var s = decodeText(out[j]).replace(/&#(9654|9658|x25b6|x25ba);/gi, '\u25b6');
+      if (/[^\s\u25b6\u25ba\u23f5\ufe0e\ufe0f]/.test(s)) return false;
+      if (/\S/.test(s)) drawn = true;
+      continue;
+    }
+    if ((x.t === 'open' || x.t === 'close') && GLYPH_PARTS[x.name]) { if (x.t === 'open' && x.name === 'svg') drawn = true; continue; }
+    return false;
+  }
+  return drawn;
+}
+
 function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 
 module.exports = { palette: palette, readingVars: readingVars, guardCss: guardCss, viewportContent: viewportContent, headingLevels: headingLevels,
-  pagePass: pagePass, heroPictures: heroPictures, parseColour: parseColour, resolve: resolve };
+  pagePass: pagePass, heroPictures: heroPictures, shareCandidates: shareCandidates, contentPicture: contentPicture, contactHref: contactHref,
+  parseColour: parseColour, resolve: resolve };

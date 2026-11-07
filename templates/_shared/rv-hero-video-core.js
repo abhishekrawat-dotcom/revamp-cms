@@ -37,6 +37,7 @@
      looksAt(html) -> { host: 'banner'|'hero'|'none', tone, scrim }   from a page's markup
      videoTag(hv, cls) -> '<video …></video>'            lazy: preload="none", the address in data-rv-src
      heroLayer(hv) -> html                               the AI hero's layer
+     toggleCss(ink) -> [css rule]                        the pause button's rules, for a banner of 'dark' or 'light' words
      pageCss(o) -> css                                   o: { host, overlay, tone }
      editorLayer(hv, o) -> html                          the editor canvas's still (never saved)
      editorBadge() -> html                               its "Video background" badge (never saved)
@@ -223,19 +224,29 @@
     return '<div class="rv-hv" data-rv-hero-video aria-hidden="true">' + posterImg(hv) + videoTag(hv) + '<div class="rv-hv-overlay"></div></div>';
   }
 
+  /* The button that pauses the video (WCAG 2.2.2), made by rv-hero-video.js once the video plays: a 40px round
+     button with its icon at the banner's bottom right. ink: the words of the banner ('dark' on a light banner,
+     'light' on a dark one). Every page whose video rv-hero-video.js starts needs these rules — the event's own
+     video (pageCss) and a video an AI edit wrote into the hero (lib/api.js applyHeroVideo), which without them
+     showed the button as an empty grey sliver. */
+  function toggleCss(ink) {
+    var dark = ink === 'dark';
+    return [
+      '.rv-hv-toggle{position:absolute;right:16px;bottom:16px;z-index:5;width:40px;height:40px;padding:0;margin:0;border-radius:50%;' +
+        'display:inline-flex;align-items:center;justify-content:center;cursor:pointer;line-height:0;' +
+        (dark ? 'background:rgba(255,255,255,.82);color:#14161b;border:1px solid rgba(20,22,27,.35)}' : 'background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.55)}'),
+      '.rv-hv-toggle:hover{opacity:.9}',
+      '.rv-hv-toggle:focus-visible{outline:3px solid ' + (dark ? '#14161b' : '#fff') + ';outline-offset:2px}',
+      '.rv-hv-toggle svg{width:16px;height:16px;fill:currentColor}'
+    ];
+  }
+
   /* The page's rules for the video, its layer and its pause button. o: { host, overlay (overlayFor), poster: bool } */
   function pageCss(o) {
     var ov = o.overlay;
-    var css = [
-      /* the button that pauses the video (WCAG 2.2.2) — made by rv-hero-video.js once the video plays */
-      '.rv-hv-toggle{position:absolute;right:16px;bottom:16px;z-index:5;width:40px;height:40px;padding:0;margin:0;border-radius:50%;' +
-        'display:inline-flex;align-items:center;justify-content:center;cursor:pointer;line-height:0;' +
-        (ov.ink === 'dark' ? 'background:rgba(255,255,255,.82);color:#14161b;border:1px solid rgba(20,22,27,.35)}' : 'background:rgba(0,0,0,.5);color:#fff;border:1px solid rgba(255,255,255,.55)}'),
-      '.rv-hv-toggle:hover{opacity:.9}',
-      '.rv-hv-toggle:focus-visible{outline:3px solid ' + (ov.ink === 'dark' ? '#14161b' : '#fff') + ';outline-offset:2px}',
-      '.rv-hv-toggle svg{width:16px;height:16px;fill:currentColor}',
+    var css = toggleCss(ov.ink).concat([
       '@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}'
-    ];
+    ]);
     if (o.host === 'banner') {
       css.push('#banner .overlay-lyr{background:' + ov.rgba + '!important}');
       css.push('#banner .bnr-bg-video video.rv-hv-video{transition:opacity .6s ease}');
@@ -288,6 +299,6 @@
   return {
     LIMITS: LIMITS, TYPES: TYPES, AUTO: AUTO,
     parseColour: parseColour, hexOf: hexOf, luminance: lum, contrast: contrast, minOpacity: minOpacity, inkFor: inkFor, overlayFor: overlayFor,
-    clean: clean, looksAt: looksAt, videoTag: videoTag, heroLayer: heroLayer, pageCss: pageCss, editorLayer: editorLayer, editorBadge: editorBadge, editorCss: editorCss
+    clean: clean, looksAt: looksAt, videoTag: videoTag, heroLayer: heroLayer, toggleCss: toggleCss, pageCss: pageCss, editorLayer: editorLayer, editorBadge: editorBadge, editorCss: editorCss
   };
 });

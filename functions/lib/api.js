@@ -105,7 +105,7 @@
 //                          GET/POST/DELETE /api/promo/icons (Promotions → Mailers, the platform's mailer studio)
 //     lib/promo-social.js  Promotions → Social posts (the platform's post templates): GET /api/promo/social/catalog,
 //                          GET/POST/DELETE /api/promo/social/art, POST /api/promo/social/art/psd,
-//                          POST /api/promo/social/html, GET/POST /api/promo/social/layout,
+//                          POST /api/promo/social/html, GET/POST /api/promo/social/layout, GET /api/promo/social/layouts,
 //                          POST /api/promo/social/layout/base, POST /api/promo/social/layout/reset,
 //                          POST /api/promo/social/picture
 //     lib/promo-previews.js  POST /api/promo/mailer/previews (each mailer card's live preview of this event's mail)
@@ -281,6 +281,8 @@ const { safeFetch } = require('./safe-fetch');
 const siteA11y = require('./site-a11y');
 const siteSeo = require('./site-seo');
 const sitePages = require('./site-pages');
+/* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
+const siteChecks = require('./site-checks');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
    one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
@@ -1190,6 +1192,9 @@ function handleChatTurn(req, res) {
       if (!snap.exists) return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
       var was = snap.data(), patch = { status: status, updatedAt: new Date().toISOString() };
       if (status !== 'undone') { patch.done = lines(body.done); patch.notDone = lines(body.notDone); }
+      /* A change where nothing took effect is not "applied" or "partly", whatever an editor (an older one, cached in
+         a browser) says: it is kept, and written in the History, as not applied (QA, UX-091). */
+      if ((status === 'applied' || status === 'partly') && !patch.done.length) status = patch.status = 'failed';
       return ref.update(patch).then(function () {
         sendJson(res, 200, { turnId: turnId, status: status });
         if (was.status === status) return;
@@ -5269,6 +5274,11 @@ function buildSectionCodePrompt(payload) {
     '- Responsive without script: grids and splits collapse to one column under 820px (use @media (max-width: 820px)); nothing may cause sideways scrolling; pictures are width:100%, height:auto or object-fit:cover inside a sized frame.',
     genDesign.MOBILE_RULES,
     '- Give the page visual rhythm: do not build two neighbouring sections the same way. Follow each section\'s own "layout" below exactly.',
+    /* a heading said twice reads as a mistake (Agentic: "Not more AI. Better AI." over two sections); the sections
+       are written in several answers at once, so each is told (repeatedHeadingIds writes a repeat again) */
+    '- Every section\'s heading (h2) is its own: never the words of another section\'s heading, nor the hero\'s line "' + (design.heroTagline || '') + '". Sections are written by several writers at the same moment, so make each heading say what that section alone is about.',
+    /* a red round play glyph on a card that plays nothing (BWS Knowledge Series) reads as a broken video */
+    '- Nothing may look like a control that is not one: never draw a play button or triangle, a pause, a download or an external-link icon on anything that is not a real link to that video, file or page (none is given to you, so draw none).',
     '- MOTION, kept light: put the attribute data-rv-reveal on blocks that should ease into view as the visitor scrolls to them — a section\'s heading block, its picture, its cards (cards that are siblings follow one another automatically). Values: data-rv-reveal (rises), data-rv-reveal="left" or "right" (slides in from that side — good for the two halves of a split), "zoom" (pictures), "fade". Use it in most sections below the hero, on a few blocks each; never on the nav, never on a section\'s root element, never on a data-rv-repeat-template item. The page does the animating: do not write opacity:0, keyframes or transitions for it yourself. Besides that, give cards, buttons and pictures a gentle hover (transition: transform .25s ease, box-shadow .25s ease; a 3–4px lift or a slight picture zoom). Nothing loops, blinks or moves on its own.',
     '- CAROUSELS: any section with a row of more items than fit may be a carousel — speakers, partner logos, photos, testimonials, and also discussion topics, tracks or reasons to attend when there are many — but only where it suits the content; a short list is better laid out in full. Mark the wrapper with data-rv-carousel and the element that directly holds the items with data-rv-carousel-track. MOVING ON ITS OWN (data-rv-carousel="auto") is for logos and photos only, and at most one in what you write: many things moving at once tires a visitor (the server keeps no more than two on a page, never in neighbouring sections). Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
   ];
@@ -5289,6 +5299,8 @@ function buildSectionCodePrompt(payload) {
   }
   /* the site's forms runtime opens the registration form from such a button (templates/_shared/rv-forms.js) */
   lines.push('', 'Every button whose action is to register gets data-register-cta and href="#register".');
+  /* payment is not part of this release (the owner's standing rule): no button may promise a sale */
+  lines.push('', 'NO TICKETS OR PAYMENT: this site takes no payment, so no button or line offers tickets, passes for sale, prices or checkout ("Get Tickets", "Buy Passes", "Pay now"). A seat is registered for or requested ("Register Now", "Request an invitation").');
 
   /* Numbering the sections ("01", "02" tabs before each heading) is not what an event site does, and when a
      section without records is hidden the count jumps (04, then 07). Items inside a list may be numbered. */
@@ -5355,6 +5367,10 @@ function buildSectionCodePrompt(payload) {
     lines.push('', 'In THIS answer write ONLY these sections, in this order — the others are being written at the same moment from this same brief, to the same rules: ' + JSON.stringify(write));
   } else {
     lines.push('', 'Write every one of these sections.');
+  }
+  /* written again because its heading repeated another's (repeatedHeadingIds): the headings it must not take */
+  if (payload.takenHeadings && payload.takenHeadings.length) {
+    lines.push('', 'HEADINGS ALREADY ON THE PAGE — give the sections you write here headings of their own, never these words again: ' + JSON.stringify(payload.takenHeadings));
   }
 
   lines.push('',
@@ -5444,6 +5460,47 @@ function emptyPictureBox(html, css) {
     if (!painted) return true;
   }
   return false;
+}
+
+/* A section's heading (its first h2) as plain words — case, markup and punctuation aside — so that "Not more AI.
+   Better AI." and "NOT MORE AI. BETTER AI." are the same heading. */
+function headingText(html) {
+  var m = /<h2\b[^>]*>([\s\S]*?)<\/h2\s*>/i.exec(String(html || ''));
+  return m ? m[1].replace(/<[^>]*>/g, ' ').replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/&[a-z#0-9]+;/gi, '').replace(/\s+/g, ' ').trim() : '';
+}
+function headingWords(html) { return headingText(html).toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function writtenSections(answers) {
+  var got = {};
+  (answers || []).forEach(function (r) {
+    ((r && r.parsed && r.parsed.sections) || []).forEach(function (s) { if (s && s.id) got[slugifyId(s.id)] = s; });
+  });
+  return got;
+}
+/* the planned sections (written by the model) whose heading repeats one before it on the page: the hero's line,
+   or an earlier section's heading. The sections are written in several answers at once and could not see each
+   other (Agentic Summit: "Not more AI. Better AI." over its overview and the next section). The first keeps it. */
+function repeatedHeadingIds(answers, designPlan) {
+  var got = writtenSections(answers), seen = {};
+  var tagline = headingWords('<h2>' + String((designPlan && designPlan.design && designPlan.design.heroTagline) || '').replace(/</g, ' ') + '</h2>');
+  if (tagline) seen[tagline] = 1;
+  return ((designPlan && designPlan.sections) || []).filter(function (p) { return p && p.id && !p.prebuilt; }).map(function (p) { return p.id; })
+    .filter(function (id) {
+      var w = got[id] ? headingWords(got[id].html) : '';
+      if (!w) return false;
+      if (seen[w]) return true;
+      seen[w] = 1;
+      return false;
+    });
+}
+/* the headings a section written again must not take: every other written section's, and the hero's line.
+   -> { shown: [as written], words: [as compared] } */
+function takenHeadings(answers, designPlan, rewriting) {
+  var got = writtenSections(answers), shown = [], words = [];
+  function take(text, w) { if (w && words.indexOf(w) === -1) { words.push(w); shown.push(text); } }
+  var tagline = String((designPlan && designPlan.design && designPlan.design.heroTagline) || '').replace(/\s+/g, ' ').trim();
+  take(tagline, headingWords('<h2>' + tagline.replace(/</g, ' ') + '</h2>'));
+  Object.keys(got).forEach(function (id) { if (rewriting.indexOf(id) === -1) take(headingText(got[id].html), headingWords(got[id].html)); });
+  return { shown: shown, words: words };
 }
 
 // Matches Gemini's returned sections back to the planned id list (nav/hero + designPlan.sections + footer),
@@ -5673,14 +5730,24 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     })).then(function (answers) {
       /* a section that came back without its styles (or not at all) shows as bare text on the page: it is
          written once more on its own, and the second answer replaces the first */
-      var again = answers.some(function (r) { return r.error; }) ? [] : unstyledSectionIds(answers, designPlan);
+      var failedAnswer = answers.some(function (r) { return r.error; });
+      var again = failedAnswer ? [] : unstyledSectionIds(answers, designPlan);
+      /* a section whose heading repeats one before it is written again too, told which headings are taken */
+      var repeated = failedAnswer ? [] : repeatedHeadingIds(answers, designPlan);
+      repeated.forEach(function (id) { if (again.indexOf(id) === -1) again.push(id); });
       if (!again.length) return answers;
-      console.warn('generate-content: ' + eventId + ' — written again, unstyled or missing: ' + again.join(', '));
-      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: again });
+      var taken = takenHeadings(answers, designPlan, again);
+      console.warn('generate-content: ' + eventId + ' — written again, unstyled, missing or with a repeated heading: ' + again.join(', '));
+      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: again, takenHeadings: taken.shown });
       return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') })
         .then(function (r) {
           if (r.error || !r.parsed || !Array.isArray(r.parsed.sections)) return answers;
-          var fixed = r.parsed.sections.filter(function (s) { return s && again.indexOf(slugifyId(s.id)) !== -1 && String(s.css || '').trim().length >= UNSTYLED_CSS_CHARS && !emptyPictureBox(s.html, s.css); });
+          /* a second answer replaces the first only when it is better: styled, no empty picture box and — for a
+             repeated heading — a heading of its own this time */
+          var fixed = r.parsed.sections.filter(function (s) {
+            return s && again.indexOf(slugifyId(s.id)) !== -1 && String(s.css || '').trim().length >= UNSTYLED_CSS_CHARS && !emptyPictureBox(s.html, s.css) &&
+              (repeated.indexOf(slugifyId(s.id)) === -1 || taken.words.indexOf(headingWords(s.html)) === -1);
+          });
           var ids = fixed.map(function (s) { return slugifyId(s.id); });
           return answers.map(function (a) {
             return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || ids.indexOf(slugifyId(s.id)) === -1; }) }) });
@@ -5833,7 +5900,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
          "Express Interest" taken away (28 Oct 2026) — the hero and the footer keep the award's button. */
       if (got.award) {
         navFor.cta = false;
-        navFor.tabs = sitePages.map(function (pg) { return { label: AWARD_TAB_LABELS[pg.slug] || pg.title, page: pg.slug }; });
+        /* the page's title too: a home-section link of the same words ("Award Categories") is left out of the bar (et-nav.js repeatsPage) */
+        navFor.tabs = sitePages.map(function (pg) { return { label: AWARD_TAB_LABELS[pg.slug] || pg.title, page: pg.slug, title: pg.title }; });
       }
       var navSection;
       /* never a reason to lose a whole site: a bar that cannot be made from the stored records is made from
@@ -6535,6 +6603,17 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
   findImageRefs = findImageRefs || findImportImageRefs;
   var linked = extractStylesheetLinks(html);
   var bodyHtml = stripBuilderBadge(extractBodyInner(linked.html));
+  /* What the original's own scripts made work, and this page cannot (site-checks.js repair): its addresses on
+     the original's host (/nominate, /about — on this host they reach the CMS's sign-in) lead to the form or the
+     part of the page they stand for, its "#" privacy, terms and social links to ET's, and a menu with no menu,
+     a film with no film and a chat launcher are taken out. Its home link is left for the live page (the event's
+     address is not known yet). Each change is listed for the owner (repairs). */
+  var importRepairs = [];
+  try {
+    var fixedBody = siteChecks.repair(bodyHtml, TOKEN_KIT, { imported: true, homeHref: false });
+    bodyHtml = fixedBody.html;
+    importRepairs = fixedBody.changes;
+  } catch (e) { console.error('import-lovable: the page could not be put right — ' + e.message); }
 
   return Promise.all(linked.cssHrefs.map(function (href) {
     return getCss(href).then(function (text) { return (text == null) ? null : { href: href, text: text }; });
@@ -6616,11 +6695,13 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
             { importedAt: now, flattenedHtmlPath: flattenedHtmlPath, sectionHtmlPath: sectionHtmlPath,
               /* the list of sections, for the template; their markup is in Storage (sectionsPath) */
               sectionsPath: sectionsDoc ? sectionsPath : null,
-              sections: sectionsDoc ? sectionsDoc.sections.map(function (x) { return { id: x.id, name: x.name }; }) : null },
+              sections: sectionsDoc ? sectionsDoc.sections.map(function (x) { return { id: x.id, name: x.name }; }) : null,
+              /* what was put right or taken out at import, for the owner (site-checks.js repair) */
+              importRepairs: importRepairs.slice(0, 200) },
             docFields || {}
           ), { merge: true });
         })
-        .then(function () { return { templateId: 'imported-' + importId }; });
+        .then(function () { return { templateId: 'imported-' + importId, repairs: importRepairs }; });
     });
   });
 }
@@ -6658,7 +6739,7 @@ function runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName) {
         return processLovableImport(fb, importId, html, getCss, getImage, findImportImageRefs, { sourceZipName: sourceZipName });
       });
     })
-    .then(function (result) { sendJson(res, 200, { templateId: result.templateId }); })
+    .then(function (result) { sendJson(res, 200, { templateId: result.templateId, repairs: result.repairs || [] }); })
     .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
 }
 
@@ -6791,7 +6872,7 @@ function validateImportUrl(rawUrl) {
 function runImportLovableFromUrl(fb, res, importId, url) {
   scrapeLovableUrl(url)
     .then(function (rawHtml) { return importRenderedPage(fb, importId, url, rawHtml); })
-    .then(function (result) { sendJson(res, 200, { templateId: result.templateId }); })
+    .then(function (result) { sendJson(res, 200, { templateId: result.templateId, repairs: result.repairs || [] }); })
     .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
 }
 
@@ -8093,8 +8174,11 @@ function cleanSettings(v) {
   if (has(v, 'seo')) {
     var s = v.seo;
     if (!isPlainObject(s)) return { error: '"settings.seo" must be an object.' };
-    if ((e = unknown(s, ['canonicalUrl', 'description', 'shareImageUrl'], 'settings.seo'))) return { error: e };
+    if ((e = unknown(s, ['canonicalUrl', 'description', 'shareImageUrl', 'noindex'], 'settings.seo'))) return { error: e };
     var seo = {};
+    /* the site stays live for anyone with its address, but search engines are asked not to list it (its robots
+       meta and header say noindex, and the sitemap leaves it out) */
+    if (has(s, 'noindex')) { if (typeof s.noindex !== 'boolean') return { error: '"settings.seo.noindex" must be true or false.' }; seo.noindex = s.noindex; }
     if (has(s, 'canonicalUrl')) { if ((e = checkHttpUrl('The canonical address', s.canonicalUrl, 500))) return { error: e }; seo.canonicalUrl = (s.canonicalUrl || '').trim(); }
     if (has(s, 'description')) { if ((e = checkText('The search description', s.description, 320, false))) return { error: e }; seo.description = s.description || ''; }
     if (has(s, 'shareImageUrl')) {
@@ -9084,7 +9168,10 @@ function applyHeroVideo(html, event) {
     if (hv.posterUrl) head.push('<link rel="preload" as="image" href="' + escHtmlAttr(hv.posterUrl) + '" fetchpriority="high" data-rv-hero-video>');
     head.push('<style data-rv-hero-video>' + heroVideoCore.pageCss({ host: place, overlay: overlay, poster: !!hv.posterUrl }) + '</style>');
   } else if (lazyfied) {
-    head.push('<style data-rv-hero-video>@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}</style>');
+    /* rv-hero-video.js gives this video its pause button too: it needs the button's rules (in the hero's tone)
+       or it shows as an empty grey sliver at the hero's edge */
+    head.push('<style data-rv-hero-video>' + heroVideoCore.toggleCss(look.tone === 'light' ? 'dark' : 'light').join('\n') +
+      '\n@media (prefers-reduced-motion:reduce){[data-rv-bg-video]{display:none!important}}</style>');
   }
   if (!head.length) return out.join('');
   var headText = head.join('\n') + '\n';
@@ -9296,11 +9383,12 @@ function publishTransform(html, opts) {
   /* the description's headings are the owner's brief, not a summary to show (owner-brief.js): their free
      text, else what the owner said sets the event apart */
   var ownerUsp = event.designPlan && event.designPlan.owner && event.designPlan.owner.usp;
-  var description = String(seo.description || ownerBrief.withoutHeadings(event.description) || ownerUsp || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  /* at most what a search result shows, cut at a word (site-seo.js shareDescription), never mid-word */
+  var description = siteSeo.shareDescription(String(seo.description || ownerBrief.withoutHeadings(event.description) || ownerUsp || ''));
   if (!description && name) {
     /* nothing written for it yet: say what is known (when and where), so a shared link is not a bare title */
     var facts = [event.dateLabel, event.venue, event.city].map(function (v) { return typeof v === 'string' ? v.trim() : ''; }).filter(Boolean);
-    if (facts.length) description = (name + ' — ' + facts.join(', ')).slice(0, 300);
+    if (facts.length) description = siteSeo.shareDescription(name + ' — ' + facts.join(', '));
   }
   var pageUrl = mode === 'live' ? (cleanCanonical(seo.canonicalUrl) || (opts.publicBase ? opts.publicBase + publicPathOf(opts.eventId) : '')) : '';
   var shareImage = String(seo.shareImageUrl || '').trim();
@@ -9414,6 +9502,9 @@ function publishTransform(html, opts) {
   /* ---- 8. accessibility and search (site-a11y.js pagePass): zoom, readable colours on an AI-designed site,
      alt text, the outline of headings, the main landmark, the schema.org Event and a link-preview picture ---- */
   page = siteA11y.pagePass(page, { mode: mode, event: event, templateId: opts.templateId }, TOKEN_KIT);
+  /* ---- 8b. buttons that lead nowhere put right, what an import cannot run taken out, and a live page that is a
+     test or an unfilled template kept out of search engines (liveRepair, site-checks.js) ---- */
+  page = liveRepair(page, event, opts.eventId, mode, opts.forms);
   /* ---- 9. internal pages: each page link's address, so the pages work with no script ---- */
   if (sitePageList.length && opts.eventId) page = sitePages.setPageLinks(page, mode === 'live' ? publicPathOf(opts.eventId) : opts.pageBase || '/preview/' + opts.eventId, TOKEN_KIT);
   return page;
@@ -9430,6 +9521,25 @@ var TOKEN_KIT = { tokenizeHtml: tokenizeHtml, attrOf: attrOf, attrValue: attrVal
   setAttr: setAttr, dropAttr: dropAttr, elementEnd: elementEnd };
 
 function cleanCanonical(v) { return (typeof v === 'string' && /^https?:\/\/[^\s"'<>]+$/i.test(v.trim())) ? v.trim() : ''; }
+
+/* The repairs a page gets on its way to a visitor (site-checks.js repair): a Register button opens the form, a
+   partner button that leads nowhere opens a partner enquiry, a link to a section that is not shown is hidden, an
+   imported page's links to this host's own addresses lead to its sections, and what an import cannot run is
+   taken out. On a live page, its robots meta says noindex when the event is a test, an unfilled template or one
+   its owner keeps out of search (noindexReason). Never the saved page; idempotent; a failure leaves the page as
+   it came. */
+function liveRepair(page, event, eventId, mode, forms) {
+  try {
+    event = event || {};
+    var fixed = siteChecks.repair(page, TOKEN_KIT, { eventId: eventId, homeHref: eventId ? publicPathOf(eventId) : '', portal: event.portal, forms: forms });
+    page = fixed.html;
+    if (mode === 'live') page = siteChecks.robots(page, TOKEN_KIT, !!siteChecks.noindexReason(Object.assign({ id: eventId }, event), page, TOKEN_KIT));
+    return page;
+  } catch (err) {
+    console.error('api: the live repairs of ' + eventId + ' failed, page left as it was — ' + (err && err.stack || err));
+    return page;
+  }
+}
 
 /* ---------- the logo unit's notice: answered before anything goes live ----------
    What the owner has to check about the hero's logo unit travels on the unit (data-rv-logo-note: a year that could
@@ -9536,14 +9646,17 @@ function handleEventPublish(req, res) {
         var alreadyLive = !legacyHtml && data.published === true && +data.publishedVersion === version;
         var note = alreadyLive ? null : unansweredLogoNote(pageHtml);
         if (note) throw logoNoteError(note, 'owner');
-        var live = publishTransform(pageHtml, {
-          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
-          templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
-        });
-        livePages = publishedPagesOf(live);
-        return readObject(fb, livePath).then(function (before) {
-          undo.push(function () { return restoreObject(fb, livePath, before, HTML); });
-          return saveObject(fb, livePath, live, HTML);
+        /* template text, a picture that cannot be shown, last year's logo: refused before anything changes */
+        return (alreadyLive ? Promise.resolve() : siteCheckGate(fb, eventId, data, pageHtml, 'owner', got[1])).then(function () {
+          var live = publishTransform(pageHtml, {
+            eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
+            templateId: (changes.site || previousSite).templateId || data.templateId, origins: [cleanOrigin(body.origin)]
+          });
+          livePages = publishedPagesOf(live);
+          return readObject(fb, livePath).then(function (before) {
+            undo.push(function () { return restoreObject(fb, livePath, before, HTML); });
+            return saveObject(fb, livePath, live, HTML);
+          });
         });
       }).then(function () {
         return commitSiteLock(fb, eventId, token, Object.assign(changes, {
@@ -9657,6 +9770,10 @@ function handleApprovalRequest(req, res) {
         if (after == null) throw httpError(409, 'The saved site could not be found. Save it again, then send it for approval.', { code: 'site-not-saved' });
         var logoNote = unansweredLogoNote(after);
         if (logoNote) throw logoNoteError(logoNote, 'owner');
+        /* what would hold the version back at approval is said now, to the person asking (siteCheckGate) */
+        return siteCheckGate(fb, eventId, data, after, 'owner', null).then(function () { return r; });
+      }).then(function (r) {
+        var before = r[0], after = r[1];
         var saves = r[2].docs.map(function (d) { var c = d.data(); return { id: d.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note || '', items: c.items || [] }; })
           .filter(function (c) { return c.version <= version; });
         /* what the reviewer is shown: live against proposed when the live version's page was kept, else the
@@ -9718,11 +9835,26 @@ function handleApprovalGet(req, res) {
         /* a request whose version's logo unit still carries its notice cannot be approved (publishVersion's logoGate):
            said before the approver tries, so they can reject it with the reason */
         var pendingNew = request && request.status === 'pending' && !(data.published === true && +data.publishedVersion === request.toVersion);
-        var page = pendingNew && !why ? readObject(fb, versionPath(eventId, request.toVersion)).then(function (t) {
+        var page = pendingNew ? readObject(fb, versionPath(eventId, request.toVersion)).then(function (t) {
           return t != null ? t : siteVersionOf(data) === request.toVersion ? readObject(fb, sitePath(eventId, 'page.html')) : null;
         }).then(null, function () { return null; }) : Promise.resolve(null);
+        /* and, asked for with ?checks=1 (the review page, after its first paint), what the site check finds on it
+           (siteCheckOf): listed for the approver before they decide, and what blocks it keeps Approve away, as the
+           logo unit's notice does. The site editor reads this view on every open, and does not wait for it. */
+        var wantChecks = qs.get('checks') === '1';
         return page.then(function (html) {
+          return html == null || !wantChecks ? { html: html, check: null } : livePageOf(fb, eventId, data).then(function (livePage) {
+            return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage });
+          }).then(function (check) {
+            return { html: html, check: check };
+          }, function (err) {
+            console.error('api: the site check of ' + eventId + ' v' + request.toVersion + ' failed — ' + (err && err.message));
+            return { html: html, check: null };
+          });
+        }).then(function (pg) {
+        var html = pg.html, check = pg.check;
         var logoNote = unansweredLogoNote(html);
+        var checkErr = siteCheckError(check, 'approver');
         var canDecide = !!request && request.status === 'pending' && !why;
         sendJson(res, 200, {
           eventId: eventId, name: data.name || eventId, me: actorOf(decoded),
@@ -9730,8 +9862,9 @@ function handleApprovalGet(req, res) {
           publishedPath: data.published === true ? publicPathOf(eventId) : null, savedVersion: siteVersionOf(data),
           /* canDecide: may approve or reject; canApprove: may approve too (not while the logo unit's notice is open,
              said in whyNot — it can still be rejected with that reason) */
-          request: request, canDecide: canDecide, canApprove: canDecide && !logoNote,
-          whyNot: why || (logoNote ? logoNoteError(logoNote, 'approver').message : ''),
+          request: request, canDecide: canDecide, canApprove: canDecide && !logoNote && !checkErr,
+          whyNot: why || (logoNote ? logoNoteError(logoNote, 'approver').message : checkErr ? checkErr.message : ''),
+          checks: check ? check.items : null,
           approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required,
           requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null }; }),
           logoNote: !!logoNote
@@ -9750,9 +9883,10 @@ function publishedPagesOf(html) {
 }
 
 /* Makes one kept version the live page. The caller has decided that it may. */
-/* opts.logoGate: refuse a version whose logo unit still carries its notice (logoNoteError, worded for an approver)
-   unless it is the version already live — an approval, never tools/republish-current.js, which re-publishes what is
-   live as it is */
+/* opts.logoGate: refuse a version whose logo unit still carries its notice (logoNoteError, worded for an approver),
+   or that the site check holds back (siteCheckGate: template text, a picture that cannot be shown, last year's
+   logo), unless it is the version already live — an approval, never tools/republish-current.js, which re-publishes
+   what is live as it is */
 function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
   var HTML = 'text/html; charset=utf-8', token = crypto.randomBytes(12).toString('hex'), now = new Date().toISOString();
   var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null, livePages = null;
@@ -9767,14 +9901,17 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
       var alreadyLive = data.published === true && +data.publishedVersion === version;
       var note = opts && opts.logoGate && !alreadyLive ? unansweredLogoNote(pageHtml) : null;
       if (note) throw logoNoteError(note, 'approver');
-      var live = publishTransform(pageHtml, {
-        eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
-        templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
-      });
-      livePages = publishedPagesOf(live);
-      return readObject(fb, livePath).then(function (before) {
-        undo = function () { return restoreObject(fb, livePath, before, HTML); };
-        return saveObject(fb, livePath, live, HTML);
+      /* an approval of a version that has what blocks it (siteCheckGate): refused, worded for the approver */
+      return (opts && opts.logoGate && !alreadyLive ? siteCheckGate(fb, eventId, data, pageHtml, 'approver', got[1]) : Promise.resolve()).then(function () {
+        var live = publishTransform(pageHtml, {
+          eventId: eventId, event: data, mode: 'live', publicBase: base, forms: got[1], pictures: got[2],
+          templateId: (data.site && data.site.templateId) || data.templateId, origins: [cleanOrigin(origin)]
+        });
+        livePages = publishedPagesOf(live);
+        return readObject(fb, livePath).then(function (before) {
+          undo = function () { return restoreObject(fb, livePath, before, HTML); };
+          return saveObject(fb, livePath, live, HTML);
+        });
       });
     }).then(function () {
       return commitSiteLock(fb, eventId, token, Object.assign({
@@ -9856,6 +9993,706 @@ function handleApprovalSettingsPut(req, res) {
   });
 }
 
+/* =====================================================================================================
+   THE SITE CHECK (lib/site-checks.js) — what is wrong with a page before it goes live, and with a page that
+   is live, in words an owner and an approver can act on (the UX sweep of 3 Nov 2026: a template nobody had
+   filled in went live, a picture's address had a typo, Register buttons led nowhere, and nothing said so).
+     siteCheckOf(fb, eventId, data, html, opts) -> Promise<{ items, blocking }>
+       items: [{ code, level: 'block' | 'warn' | 'info', title, lines: [text], hint, action? }]
+       opts: { forms (the public forms payload, when read), records: true to read Content's records too,
+               live: true for the page that is live (says why search engines are kept away), probe (tests),
+               livePage: the page of the version that is live now (livePageOf), when a newer one is checked }
+   'block' holds a version back: publishing it, asking for its approval and approving it all refuse (409
+   'site-check', the items with the answer) — never the version already live going out again.
+   A version of a site that is live is held back only by what it would put live that is not live already: a
+   problem the live page shows too (the same template text, sample, picture address or logo) is said as a 'warn'
+   with alreadyLive: true, so a repair — a picture's address put right, ET's header and footer — can go live while
+   the rest still waits to be put right, and the live site is never kept worse than the version waiting for it.
+   The check of the live page itself (live: true) is said the same way: what it shows already holds no next
+   version back. (UX-144: the national-data-center-symposium repair was refused for the "Sponsor 1" the live
+   page already showed, so its broken picture stayed live.)
+     placeholders  template text a visitor would read ("Event name goes here", "Sponsor 1")        block
+     samples       a real template's samples of its design (data-rv-sample: another event's quotes) block
+     pictures      a picture whose address cannot be shown (a mistyped bucket, or no such picture) block
+     logo-year     the header or footer logo showing another year than this edition's            block
+     et-chrome     an AI-designed site built before ET's header and footer (its logo boxed, no phone
+                   menu, no legal links) — with the repair that puts them in (POST /api/event/site/repair) warn
+     records       sample entries in Content (a sponsor named "Sponsor 1")                        warn
+     headings      a section whose heading repeats an earlier one's (or the hero's line) — on an AI-designed
+                   site with the repair that has ETB2B AI write it one of its own (UX-155)          warn
+     payment       a button that promises tickets or payment, which this release does not take    warn
+     buttons       what the live page puts right on its way out (site-checks.js repair)           info, warn when hidden
+     search        kept out of search engines, and why (the live page only)                       info
+   ===================================================================================================== */
+var SITE_CHECK_CODE = 'site-check';
+
+/* ---- headings that repeat (UX-155) ----
+   Generation writes a section again when its heading repeats one before it (repeatedHeadingIds); a page made
+   before that (agentic-summit-2027: "Not more AI. Better AI." over its overview and the next section) still shows
+   it, so the site check says so and its repair has ETB2B AI write the later section a heading of its own. */
+/* each section's heading in page order: the banner's (its h1) and every other section's first h2; the header and
+   footer have none. page: the site page the section is on (data-rv-page, templates/_shared/rv-pages.js: none or
+   "home" is the home page). -> [{ id, text, words, page }] */
+function sectionHeadings(html) {
+  html = String(html || '');
+  var tokens = tokenizeHtml(html), out = [];
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t !== 'open') continue;
+    var id = attrValue(t, 'data-rv-section');
+    if (!id) continue;
+    var end = elementEnd(tokens, i);
+    if (end === -1) continue;
+    if (id !== 'nav' && id !== 'footer') {
+      var tag = id === 'hero' ? 'h1' : 'h2';
+      var m = new RegExp('<' + tag + '\\b[^>]*>([\\s\\S]*?)<\\/' + tag + '\\s*>', 'i').exec(html.slice(t.s, tokens[end].e));
+      var words = m ? headingWords('<h2>' + m[1] + '</h2>') : '';
+      if (words) out.push({ id: id, text: headingText('<h2>' + m[1] + '</h2>'), words: words, page: String(attrValue(t, 'data-rv-page') || 'home') });
+    }
+    i = end;                                        // a section inside a section is part of it
+  }
+  return out;
+}
+/* the sections whose heading repeats an earlier one's on the same page of the site (the banner's line included); the
+   first keeps it. An award site's FAQ page may share a heading with the home page's: a visitor never sees both.
+   -> [{ id, text, firstId }] */
+function repeatedPageHeadings(html) {
+  var seen = {}, out = [];
+  sectionHeadings(html).forEach(function (h) {
+    var key = h.page + '|' + h.words;
+    if (Object.prototype.hasOwnProperty.call(seen, key)) { if (h.id !== 'hero') out.push({ id: h.id, text: h.text, firstId: seen[key] }); }
+    else seen[key] = h.id;
+  });
+  return out;
+}
+/* html with the words of the first <tag> inside the element marked data-rv-section="id" (or, with no id, the first
+   <tag> of html) set to text; the tag and its attributes stay. -> html, or null when there is no such heading */
+function withHeadingText(html, id, tag, text) {
+  html = String(html || '');
+  var tokens = tokenizeHtml(html), from = 0, to = tokens.length - 1;
+  if (id) {
+    from = -1;
+    for (var i = 0; i < tokens.length; i++) if (tokens[i].t === 'open' && attrValue(tokens[i], 'data-rv-section') === id) { from = i; break; }
+    if (from === -1) return null;
+    to = elementEnd(tokens, from);
+    if (to === -1) return null;
+  }
+  for (var k = from; k <= to; k++) {
+    if (tokens[k].t !== 'open' || tokens[k].name !== tag) continue;
+    var close = elementEnd(tokens, k);
+    if (close === -1 || close === k) return null;
+    return html.slice(0, tokens[k].e) + escHtmlText(text) + html.slice(tokens[close].s);
+  }
+  return null;
+}
+/* a section's words as a visitor reads them (no markup, no scripts or styles), cut to max */
+function sectionWords(html, id, max) {
+  var tokens = tokenizeHtml(String(html || '')), from = -1;
+  for (var i = 0; i < tokens.length; i++) if (tokens[i].t === 'open' && attrValue(tokens[i], 'data-rv-section') === id) { from = i; break; }
+  if (from === -1) return '';
+  var end = elementEnd(tokens, from);
+  var part = String(html).slice(tokens[from].s, end === -1 ? undefined : tokens[end].e)
+    .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ').replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ').replace(/&amp;/gi, '&').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+  return part.length > max ? part.slice(0, max) + '…' : part;
+}
+var HEADINGS_SCHEMA = { type: 'OBJECT', properties: { headings: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+  id: { type: 'STRING' }, heading: { type: 'STRING' } }, required: ['id', 'heading'] } } }, required: ['headings'] };
+var HEADING_MAX_CHARS = 70, HEADING_MAX_WORDS = 10;
+/* ETB2B AI writes each repeated section (repeatedPageHeadings) a heading of its own from that section's words, in
+   the page's style. A heading is refused when it is any other heading on the page (or another new one), when it is
+   too long, or when it copies a run of three or more of the section's own words (the sentence under it, its small
+   label): the
+   section would then say the same thing twice, as before. A refused answer is asked for once more, told why.
+   -> Promise<{ id: heading }>, or a 502 'ai-heading' httpError when the second answer is unusable too (nothing is
+   changed then) */
+function plainWords(s) { return String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9]+/g, ' ').trim(); }
+function writeSectionHeadings(fb, eventId, data, page, reps) {
+  var taken = sectionHeadings(page), ids = reps.map(function (r) { return r.id; });
+  var keep = taken.filter(function (h) { return ids.indexOf(h.id) === -1; });
+  var words = {};
+  reps.forEach(function (r) { words[r.id] = sectionWords(page, r.id, 1500); });
+  var base = [
+    'You write section headings for an event\'s website. Some sections repeat the heading of a section before them, so a visitor reads the same heading twice. Write each of the sections below a heading of its own.',
+    'Event: ' + String(data.name || eventId).slice(0, 200) + '.',
+    'Headings already on the page, which no new heading may repeat or closely echo: ' + keep.map(function (h) { return '"' + h.text + '"'; }).join(', ') + '.',
+    'Rules: say what THAT section is about, from its own words below, but in NEW words: never copy a sentence, a phrase or the small label from its words, because the heading sits right above them and would say the same thing twice. ' +
+      HEADING_MAX_WORDS + ' words at most and ' + HEADING_MAX_CHARS + ' characters at most; the same voice, capitalisation and punctuation as the heading it had; plain words only (no HTML, no quotation marks, no emoji); never invent facts, numbers or names that are not in its words; two new headings never the same.',
+    'Sections:'
+  ].concat(reps.map(function (r) {
+    return '- id: ' + r.id + '; its heading now: "' + r.text + '"; its words: "' + words[r.id].replace(/"/g, '\'') + '"';
+  })).concat(['Answer with one entry per section, by its id.']).join('\n');
+  function ask(prompt) {
+    return llm.callJson(prompt, HEADINGS_SCHEMA, { route: 'site-heading', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(fb, eventId, 'site-heading') }).then(function (r) {
+      var list = r && r.parsed && Array.isArray(r.parsed.headings) ? r.parsed.headings : [];
+      var used = keep.map(function (h) { return h.words; }), out = {}, why = [];
+      reps.forEach(function (rep) {
+        var got = list.filter(function (x) { return x && x.id === rep.id; })[0];
+        var text = got ? String(got.heading || '').replace(/<[^>]*>/g, '').replace(/^["“”'‘’\s]+|["“”'‘’\s]+$/g, '').replace(/\s+/g, ' ').trim() : '';
+        var w = headingWords('<h2>' + escHtmlText(text) + '</h2>');
+        if (!text || !w) return why.push(rep.id + ': no heading');
+        if (text.length > HEADING_MAX_CHARS || text.split(' ').length > HEADING_MAX_WORDS) return why.push(rep.id + ': "' + text + '" is too long');
+        if (used.indexOf(w) !== -1) return why.push(rep.id + ': "' + text + '" is another heading on the page');
+        /* three words or more found together in the section's words: a copy (two can meet by chance) */
+        if (w.split(' ').length >= 3 && (' ' + plainWords(words[rep.id]) + ' ').indexOf(' ' + w + ' ') !== -1) return why.push(rep.id + ': "' + text + '" copies the section\'s own words');
+        used.push(w);
+        out[rep.id] = text;
+      });
+      return { out: out, why: why, code: r && (r.code || r.error) };
+    });
+  }
+  return ask(base).then(function (first) {
+    if (!first.why.length) return first;
+    return ask(base + '\nYour last answer could not be used: ' + first.why.join('; ') + '. Write each of them again, in new words, keeping to the rules.');
+  }).then(function (got) {
+    if (got.why.length) {
+      console.error('api: the new headings for ' + eventId + ' were not usable — ' + (got.code || got.why.join('; ')));
+      throw httpError(502, 'ETB2B AI did not write a heading of its own for ' + (reps.length === 1 ? 'that section' : 'each of those sections') + ' just now. Nothing was changed. Try again, or change the heading in the site editor.', { code: 'ai-heading' });
+    }
+    return got.out;
+  });
+}
+
+var SITE_CHECK_PICTURES_MAX = 80, SITE_CHECK_LINES_MAX = 12;
+/* whether an object of ours exists, for a few minutes: the review page asks again on every open */
+var STORAGE_SEEN = new Map(), STORAGE_SEEN_TTL_MS = 5 * 60 * 1000;
+function storageExists(fb, objectPath) {
+  var hit = STORAGE_SEEN.get(objectPath);
+  if (hit && Date.now() - hit.at < STORAGE_SEEN_TTL_MS) return Promise.resolve(hit.ok);
+  return fb.bucket.file(objectPath).exists().then(function (r) {
+    if (STORAGE_SEEN.size > 2000) STORAGE_SEEN.clear();
+    STORAGE_SEEN.set(objectPath, { at: Date.now(), ok: !!r[0] });
+    return !!r[0];
+  });
+}
+function quoteText(s, max) { s = String(s || ''); max = max || 90; return '“' + (s.length > max ? s.slice(0, max - 1) + '…' : s) + '”'; }
+function capLines(lines) {
+  return lines.length > SITE_CHECK_LINES_MAX ? lines.slice(0, SITE_CHECK_LINES_MAX - 1).concat(['…and ' + (lines.length - SITE_CHECK_LINES_MAX + 1) + ' more']) : lines;
+}
+/* The years this edition goes by: the one in its name ("… Summit 2026") and the one it is held in (its start date).
+   Both, as either can be on its logo: an edition named for 2026 but held in January 2027 shows 2026 rightly. The
+   name's comes first, as the one people read. -> [2026, 2027] | [] */
+function editionYearsOf(data) {
+  var out = siteChecks.yearsIn((data && data.name) || '').slice(0, 1);
+  var m = /^(\d{4})-/.exec(String((data && data.start) || ''));
+  if (m && out.indexOf(+m[1]) === -1) out.push(+m[1]);
+  return out;
+}
+
+/* The pictures of storage.googleapis.com a page names that cannot be shown: one of ours that is not there, or one
+   in another bucket that answers it has no such picture (asked of storage itself: probeUrl) — a mistyped bucket's
+   fix is ours, when the same picture is there. A picture that cannot be asked about right now is not reported.
+   probe: (url) -> Promise<HTTP status, 0 when unknown> (tests pass their own). -> Promise<[{ url, why, fixUrl }]> */
+function probeUrl(url) {
+  return safeFetch(url, { timeoutMs: 6000, maxBytes: 4096, headers: { Range: 'bytes=0-0' } }).then(function (r) { return r.status; }, function (err) {
+    return err && err.code === 'too-large' ? 200 : 0;                     // too large to read is there
+  });
+}
+var pictureProbe = probeUrl;          // a test sets its own (_testHooks.setPictureProbe): no network in tests
+function pictureProblems(fb, html, probe) {
+  var ours = fb && fb.bucket && fb.bucket.name ? String(fb.bucket.name).toLowerCase() : '';
+  if (!ours) return Promise.resolve([]);
+  probe = probe || pictureProbe;
+  var refs = siteChecks.storageRefs(html).slice(0, SITE_CHECK_PICTURES_MAX);
+  return Promise.all(refs.map(function (r) {
+    if (r.bucket === ours) {
+      return storageExists(fb, r.path).then(function (ok) { return ok ? null : { url: r.url, why: 'there is no such picture in storage', fixUrl: '' }; }, function () { return null; });
+    }
+    return probe(r.url).then(function (status) {
+      if (!(status >= 400 && status < 500)) return null;                   // there, or not known now
+      var why = siteChecks.nearBucket(r.bucket, ours) ? 'its address names “' + r.bucket + '”, a typo of this product’s storage (“' + ours + '”)'
+        : 'its address answers that there is no such picture (' + status + ')';
+      return storageExists(fb, r.path).then(function (ok) {
+        return { url: r.url, why: why, fixUrl: ok ? r.url.replace(/^(https:\/\/storage\.googleapis\.com\/)[^\/]+/i, '$1' + ours) : '' };
+      }, function () { return { url: r.url, why: why, fixUrl: '' }; });
+    });
+  })).then(function (list) { return list.filter(Boolean); });
+}
+
+/* The header and footer logos against this edition: a year they say (their file's name, the words of an SVG of
+   ours) that is not this edition's -> 'year'; no year to read, but the site has a logo unit for this edition and
+   they show another picture -> 'unit'. -> Promise<{ wrong: [{ where, years }], notUnit: bool }> */
+function logoProblems(fb, data, logos) {
+  var want = editionYearsOf(data), design = (data && data.designPlan && data.designPlan.design) || {};
+  var unitUrls = [design.logoUnitUrl, design.logoUnitDarkUrl].filter(Boolean);
+  var ours = fb && fb.bucket && fb.bucket.name ? String(fb.bucket.name).toLowerCase() : '';
+  return Promise.all((logos || []).map(function (l) {
+    var file = String(l.src).replace(/[?#].*$/, '').split('/').pop() || '';
+    try { file = decodeURIComponent(file); } catch (e) { /* as written */ }
+    var years = siteChecks.yearsIn(file);
+    var ref = siteChecks.storageRefs(l.src)[0];
+    var svg = ref && ref.bucket === ours && /\.svg$/i.test(ref.path) ? readObject(fb, ref.path).then(null, function () { return null; }) : Promise.resolve(null);
+    return svg.then(function (text) {
+      /* only the words an SVG draws as text: the numbers of its outlines are coordinates, not years */
+      var words = [], re = /<text\b[^>]*>([\s\S]*?)<\/text>/gi, m;
+      while (text && (m = re.exec(text))) words.push(m[1].replace(/<[^>]+>/g, ' '));
+      siteChecks.yearsIn(words.join(' ')).forEach(function (y) { if (years.indexOf(y) === -1) years.push(y); });
+      return { where: l.where, src: l.src, years: years };
+    });
+  })).then(function (list) {
+    return {
+      wrong: want.length ? list.filter(function (l) { return l.years.length && !l.years.some(function (y) { return want.indexOf(y) !== -1; }); }) : [],
+      notUnit: unitUrls.length > 0 && list.some(function (l) { return unitUrls.indexOf(l.src) === -1; }),
+      want: want.join(' / ')
+    };
+  });
+}
+
+/* A real template's samples of its design (data-rv-sample in the index.html of each of its sections: another event's
+   quotes, people and logos), read from disk once per file version. -> { texts, srcs } */
+var TEMPLATE_SAMPLES = {};
+function templateSamples(templateId) {
+  var none = { texts: [], srcs: [] };
+  if (typeof templateId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,80}$/.test(templateId) || /^(gen|imported)-/.test(templateId)) return none;
+  try {
+    var dir = path.join(TEMPLATES_DIR, templateId, 'sections');
+    var files = fs.readdirSync(dir).map(function (d) { return path.join(dir, d, 'index.html'); }).filter(function (f) { return fs.existsSync(f); });
+    var stamp = files.map(function (f) { return f + ':' + fs.statSync(f).mtimeMs; }).join('|');
+    var hit = TEMPLATE_SAMPLES[templateId];
+    if (hit && hit.stamp === stamp) return hit.samples;
+    var samples = { texts: [], srcs: [] };
+    files.forEach(function (f) {
+      var text = fs.readFileSync(f, 'utf8');
+      if (text.indexOf('data-rv-sample') === -1) return;
+      var got = siteChecks.samplesOf(text, TOKEN_KIT);
+      samples.texts = samples.texts.concat(got.texts);
+      samples.srcs = samples.srcs.concat(got.srcs);
+    });
+    TEMPLATE_SAMPLES[templateId] = { stamp: stamp, samples: samples };
+    return samples;
+  } catch (e) { return none; }
+}
+
+/* The words of Content's records a visitor would read as names (site-checks.js recordPlaceholders), read with only
+   those fields: a sponsor's or speaker's logo and photo can be stored inline and are not wanted here.
+   -> Promise<{ partners, speakers, faqs, sessions, contacts } | null> (null: could not be read; nothing is said) */
+var CONTENT_NAMES = { partners: ['name'], speakers: ['name'], faqs: ['question'], sessions: ['title'], contacts: ['name', 'email', 'phone'] };
+function contentNames(fb, eventId) {
+  var ref = eventDocRef(fb, eventId), kinds = Object.keys(CONTENT_NAMES);
+  return Promise.all(kinds.map(function (k) {
+    var q = ref.collection(k);
+    return (typeof q.select === 'function' ? q.select.apply(q, CONTENT_NAMES[k]) : q).limit(300).get();
+  })).then(function (snaps) {
+    var out = {};
+    kinds.forEach(function (k, i) { out[k] = snaps[i].docs.map(function (d) { return d.data() || {}; }); });
+    return out;
+  }, function (err) {
+    console.error('api: the site check could not read the records of ' + eventId + ' — ' + (err && err.message));
+    return null;
+  });
+}
+function siteCheckOf(fb, eventId, data, html, opts) {
+  opts = opts || {};
+  data = data || {};
+  var page = String(html == null ? '' : html);
+  var ins = siteChecks.inspect(page, TOKEN_KIT);
+  var fixed = siteChecks.repair(page, TOKEN_KIT, { eventId: eventId, homeHref: publicPathOf(eventId), portal: data.portal, forms: opts.forms });
+  var after = siteChecks.inspect(fixed.html, TOKEN_KIT);
+  var records = opts.records ? contentNames(fb, eventId) : Promise.resolve(null);
+
+  var samples = siteChecks.sampleHits(page, TOKEN_KIT, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
+  var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
+  return Promise.all([pictureProblems(fb, page, opts.probe), logoProblems(fb, data, ins.logos), records]).then(function (got) {
+    var pics = got[0], logos = got[1], siteData = got[2], items = [];
+    /* each kind that holds a version back, split in two when the live page has some of it already (onLive) */
+    blockUnlessLive(items, 'placeholders', ins.placeholders, onLive.placeholder, function (list) {
+      return { title: 'Template text is still on the page',
+        lines: capLines(list.map(function (h) { return quoteText(h.text) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
+        hint: 'Write the event’s own words in the site editor, or take the section out, then save.' };
+    });
+    /* another event's quotes, people or logos the template shows as samples of its design */
+    blockUnlessLive(items, 'samples', samples, onLive.sample, function (list) {
+      return { title: 'Samples from the template are still on the page',
+        lines: capLines(list.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
+        hint: 'They belong to another event (its quotes, people or logos). Put this event’s own in, or take them out, in the site editor, then save.' };
+    });
+    blockUnlessLive(items, 'pictures', pics, onLive.picture, function (list) {
+      var fixable = list.filter(function (p) { return p.fixUrl; }).length;
+      return { title: list.length === 1 ? '1 picture cannot be shown' : list.length + ' pictures cannot be shown',
+        lines: capLines(list.map(function (p) { return quoteText(p.url.split('/').pop(), 60) + ': ' + p.why; })),
+        hint: fixable ? 'The right address of ' + (fixable === 1 ? 'it' : fixable + ' of them') + ' is known. Correct it here, or replace the picture in the site editor.' : 'Replace it in the site editor, then save.',
+        action: fixable ? { kind: 'pictures', label: fixable === 1 ? 'Correct the picture’s address' : 'Correct the pictures’ addresses' } : null };
+    });
+    var chromeAction = ins.generated && ins.hasNav && ins.hasFooter ? { kind: 'et-chrome', label: 'Update this site’s header and footer' } : null;
+    blockUnlessLive(items, 'logo-year', logos.wrong, onLive.logo, function (list) {
+      return { title: 'The ' + (list[0].where === 'footer' ? 'footer' : 'header') + ' logo shows another year',
+        lines: list.map(function (l) { return (l.where === 'footer' ? 'Footer' : 'Header') + ': ' + l.years.join(', ') + ' — this edition is ' + logos.want; }),
+        hint: chromeAction ? 'ET’s header and footer use the portal’s logo and this edition’s name and date.' : 'Replace the logo in the site editor with this edition’s, then save.',
+        action: chromeAction };
+    });
+    if (ins.generated && ((ins.hasNav && !ins.etNav) || (ins.hasFooter && !ins.etFooter))) {
+      var lines = [];
+      if (ins.hasNav && !ins.etNav) lines.push('The header has no menu button on phones' + (logos.notUnit ? ', and shows the logo as it was uploaded, in a box, not this edition’s logo' : '') + '.');
+      if (ins.hasFooter && !ins.etFooter) lines.push('The footer has no privacy, terms or contact links.');
+      items.push({ code: 'et-chrome', level: 'warn', title: 'This site was built before ET’s header and footer', lines: lines,
+        hint: 'In the event console, one click puts them in as a new saved version' + (opts.live ? ' and sends it for approval' : '') + '. Nothing else on the page changes.',
+        action: chromeAction });
+    }
+    var sample = siteData ? siteChecks.recordPlaceholders(siteData) : [];
+    if (sample.length) {
+      items.push({ code: 'records', level: 'warn', title: 'Sample entries in Content',
+        lines: sample.map(function (r) { return r.label + ': ' + r.items.slice(0, 5).map(function (t) { return quoteText(t, 50); }).join(', ') + (r.items.length > 5 ? ' …' : ''); }),
+        hint: 'Rename or delete them there. The page shows Content’s entries as they were when the site was last saved in the editor.' });
+    }
+    var reps = repeatedPageHeadings(page);
+    if (reps.length) {
+      items.push({ code: 'headings', level: 'warn', title: reps.length === 1 ? 'Two sections have the same heading' : reps.length + ' sections repeat another section’s heading',
+        lines: capLines(reps.map(function (r) { return quoteText(r.text, 70) + ' — ' + siteChecks.sectionName(r.id) + ' repeats ' + (r.firstId === 'hero' ? 'the banner' : siteChecks.sectionName(r.firstId)); })),
+        hint: ins.generated ? 'Visitors read the same heading twice. ETB2B AI can write the later section a heading of its own from what that section says, as a new saved version' + (opts.live ? ' sent for approval' : '') + '; or change it in the site editor.'
+          : 'Visitors read the same heading twice. Give the later section a heading of its own in the site editor, then save.',
+        action: ins.generated ? { kind: 'headings', label: reps.length === 1 ? 'Write it a heading of its own' : 'Write them headings of their own' } : null });
+    }
+    if (after.payment.length) {
+      items.push({ code: 'payment', level: 'warn', title: 'A button promises tickets or payment',
+        lines: capLines(after.payment.map(function (p) { return quoteText(p.label, 50) + ' — ' + p.section; })),
+        hint: 'Online payment is not available yet. Use words such as “Register” or “Request an invitation”.' });
+    }
+    if (fixed.changes.length) {
+      /* a button hidden, or what an import cannot run taken out, is worth a look; a menu link hidden with its empty
+         section is what the menu does anyway */
+      var hides = fixed.changes.some(function (c) { return c.what !== 'nav' && /^(?:is hidden|taken out)/.test(c.how); });
+      items.push({ code: 'buttons', level: hides ? 'warn' : 'info', title: 'Put right on the live page as it is shown',
+        lines: capLines(fixed.changes.map(function (c) { return quoteText(c.label, 50) + ' (' + c.section + ') ' + c.how; })),
+        hint: 'Nothing to do: visitors get these. Change them in the site editor to make them part of the site.' });
+    }
+    if (opts.live) {
+      var why = siteChecks.noindexReason(Object.assign({ id: eventId }, data), page, TOKEN_KIT);
+      if (why) items.push({ code: 'search', level: 'info', title: 'Kept out of search engines',
+        lines: [why === 'owner' ? 'Its settings say so.' : why === 'test' ? 'Its name says it is a test (' + quoteText(data.name, 60) + ').' : 'Its page is still the template (' + quoteText((ins.placeholders.filter(function (h) { return h.strong; })[0] || {}).text || 'Event name goes here') + ').'],
+        hint: 'It stays live for anyone with its address; search engines are asked not to list it, and the sitemap leaves it out.' });
+    }
+    var order = { block: 0, warn: 1, info: 2 };
+    items.sort(function (a, b) { return order[a.level] - order[b.level]; });
+    return { items: items, blocking: items.some(function (x) { return x.level === 'block'; }) };
+  });
+}
+
+/* What the live page shows already, as four tests of one problem each (siteCheckOf): the same template text, the
+   same sample, a picture at the same address, a logo of the same picture in the same place. livePage: that page's
+   HTML, or null for a site that is not live (then nothing is live already, and every test says no). */
+function alreadyLiveTest(livePage, data) {
+  var none = function () { return false; };
+  if (livePage == null) return { placeholder: none, sample: none, picture: none, logo: none };
+  livePage = String(livePage);
+  var ins = siteChecks.inspect(livePage, TOKEN_KIT);
+  var texts = ins.placeholders.map(function (h) { return h.text; });
+  var samples = siteChecks.sampleHits(livePage, TOKEN_KIT, templateSamples((data && data.site && data.site.templateId) || (data && data.templateId) || ''))
+    .map(function (h) { return (h.picture ? 'picture:' : 'text:') + h.text; });
+  var urls = siteChecks.storageRefs(livePage).map(function (r) { return r.url; });
+  var logos = ins.logos.map(function (l) { return l.where + ' ' + l.src; });
+  return {
+    placeholder: function (h) { return texts.indexOf(h.text) !== -1; },
+    sample: function (h) { return samples.indexOf((h.picture ? 'picture:' : 'text:') + h.text) !== -1; },
+    picture: function (p) { return urls.indexOf(p.url) !== -1; },
+    logo: function (l) { return logos.indexOf(l.where + ' ' + l.src) !== -1; }
+  };
+}
+/* One kind of problem that holds a version back, pushed onto items: what the live page does not show yet as a
+   'block'; what it shows already as a 'warn' (alreadyLive), which says so first — fixing it is still asked for,
+   but it holds nothing back. build(list) -> { title, lines, hint, action? }. A one-click repair is offered once:
+   on the 'block' when both are there. */
+var ALREADY_LIVE_HINT = 'The live site shows this already, so it does not hold the next version back. ';
+function blockUnlessLive(items, code, list, onLive, build) {
+  var fresh = [], old = [];
+  (list || []).forEach(function (x) { (onLive(x) ? old : fresh).push(x); });
+  var blockItem = null;
+  if (fresh.length) { blockItem = Object.assign({ code: code, level: 'block' }, build(fresh)); items.push(blockItem); }
+  if (old.length) {
+    var warn = Object.assign({ code: code, level: 'warn', alreadyLive: true }, build(old));
+    warn.hint = ALREADY_LIVE_HINT + warn.hint;
+    if (blockItem && blockItem.action && warn.action && blockItem.action.kind === warn.action.kind) warn.action = null;
+    items.push(warn);
+  }
+}
+/* The page of the version that is live now, as it was saved (its kept version, else the published page), to check
+   a newer version against (siteCheckOf's livePage) -> Promise<html | null>: null for a site that is not live, or a
+   page that cannot be read (then every problem holds the version back, as for a first publication) */
+function livePageOf(fb, eventId, data) {
+  if (!data || data.published !== true) return Promise.resolve(null);
+  var v = +data.publishedVersion || 0;
+  return (v ? readObject(fb, versionPath(eventId, v)) : Promise.resolve(null)).then(function (text) {
+    return text != null ? text : readObject(fb, publishedObjectPath(eventId));
+  }).then(function (text) { return text == null ? null : text; }, function () { return null; });
+}
+
+/* The refusal when a version has what blocks it (409 'site-check'), worded for whoever asked. who: 'owner' |
+   'approver'. -> httpError, or null when nothing blocks */
+function siteCheckError(check, who) {
+  var block = (check && check.items || []).filter(function (x) { return x.level === 'block'; });
+  if (!block.length) return null;
+  var what = block.map(function (x) {
+    /* the first case, short: "“Sponsor 1”", "“fiber.png”", "Header: 2026" */
+    var first = x.lines && x.lines[0] ? ' (' + x.lines[0].replace(/(?: — |”: ).*$/, function (m) { return m.charAt(0) === '”' ? '”' : ''; }) + (x.lines.length > 1 ? ' …' : '') + ')' : '';
+    return x.title.charAt(0).toLowerCase() + x.title.slice(1) + first;
+  }).join('; ');
+  var text = who === 'approver'
+    ? 'These changes cannot go live yet: ' + what + '. Reject this request with the reason, so they can be put right in the site editor and sent again.'
+    : 'This site cannot go live yet: ' + what + '. Put ' + (block.length > 1 ? 'these' : 'this') + ' right in the site editor, save, and send it again.';
+  return httpError(409, text, { code: SITE_CHECK_CODE, checks: check.items });
+}
+/* -> Promise that rejects with siteCheckError when the page has what blocks it (for a site that is live: what it
+   would put live that the live page does not show already) */
+function siteCheckGate(fb, eventId, data, html, who, forms) {
+  return livePageOf(fb, eventId, data).then(function (livePage) {
+    return siteCheckOf(fb, eventId, data, html, { forms: forms, livePage: livePage });
+  }).then(function (check) {
+    var err = siteCheckError(check, who);
+    if (err) throw err;
+    return check;
+  });
+}
+
+/* ---------- GET /api/event/site-check?eventId=&of=live|saved ----------
+   The site check of the page that is live (of=live, the default) or of the site as last saved (of=saved), for
+   the event console: what blocks, what to know, and what can be put right in one click (an item's action:
+   'et-chrome', 'pictures' — POST /api/event/site/repair). -> { eventId, of, published, publishedVersion,
+   savedVersion, approvalVersion (the version waiting for approval, 0 when none), items, blocking, found } */
+function handleSiteCheck(req, res) {
+  withAdmin(req, res, function (fb) {
+    var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
+    if (!eventId) return;
+    var of = qs.get('of') === 'saved' ? 'saved' : 'live';
+    loadLiveEvent(fb, eventId).then(function (data) {
+      var published = data.published === true, base = {
+        eventId: eventId, of: of, published: published, publishedVersion: published ? (+data.publishedVersion || 0) : 0, savedVersion: siteVersionOf(data),
+        approvalVersion: data.approval && +data.approval.toVersion || 0
+      };
+      if (of === 'live' && !published) return sendJson(res, 200, Object.assign(base, { items: [], blocking: false, found: false }));
+      return readObject(fb, of === 'live' ? publishedObjectPath(eventId) : sitePath(eventId, 'page.html')).then(function (html) {
+        if (html == null) return sendJson(res, 200, Object.assign(base, { items: [], blocking: false, found: false }));
+        /* the saved version of a live site is checked against the live page, as asking for its approval will be */
+        return (of === 'saved' ? livePageOf(fb, eventId, data) : Promise.resolve(null)).then(function (livePage) {
+          return siteCheckOf(fb, eventId, data, html, { records: true, live: of === 'live', livePage: livePage });
+        }).then(function (check) {
+          sendJson(res, 200, Object.assign(base, { items: check.items, blocking: check.blocking, found: true }));
+        });
+      });
+    }).catch(function (err) { sendFailure(res, 'site check', err, 'The site could not be checked. Please try again.'); });
+  });
+}
+
+/* ---------- POST /api/event/site/repair ----------
+   Body { eventId, repairs: ['et-chrome' | 'pictures' | 'headings'] } -> 200 { version, repaired: [text], summary }.
+   Puts right, in the site as last saved, what the site check offers to: 'et-chrome' — an AI-designed site built
+   before ET's header and footer gets them (et-nav.js, et-footer.js: the portal's logo for its ground, never
+   boxed, this edition's name, date and place, a phone menu, Register, the portal's privacy, terms and contact),
+   as the brand-world-summit-2026 site was on 19 Oct; 'pictures' — a picture whose address has a mistyped bucket
+   is pointed at this product's storage, where that picture is; 'headings' — a section of an AI-designed site whose
+   heading repeats an earlier one's gets one of its own, written by ETB2B AI from that section's words
+   (writeSectionHeadings; UX-155). The page, the editor's snapshot and the stored
+   sections change together, as one new saved version with its line in the history: the editor reopens it as
+   it is, and nothing goes live from here — the console then sends it for approval like any edit. */
+function handleSiteRepair(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var wanted = (Array.isArray(body.repairs) ? body.repairs : []).filter(function (r, i, a) { return (r === 'et-chrome' || r === 'pictures' || r === 'headings') && a.indexOf(r) === i; });
+    if (!wanted.length) return sendJson(res, 400, { error: '"repairs" must name what to put right: "et-chrome", "pictures", "headings".' });
+    var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
+    var HTML = 'text/html; charset=utf-8', JSON_TYPE = 'application/json; charset=utf-8';
+    acquireSiteLock(fb, eventId, token, function (data) {
+      return siteVersionOf(data) ? null : httpError(409, 'This site has not been saved yet. Open the site editor and save it first.', { code: 'site-not-saved' });
+    }).then(function (data) {
+      var version = siteVersionOf(data), undo = [];
+      return Promise.all([readObject(fb, sitePath(eventId, 'page.html')), readObject(fb, sitePath(eventId, 'snapshot.json'))]).then(function (r) {
+        var before = r[0], page = r[0], snapText = r[1], snap = null;
+        try { snap = snapText != null ? JSON.parse(snapText) : null; } catch (e) { snap = null; }
+        if (page == null) throw httpError(409, 'The saved site could not be found. Open the site editor, save it once, and try again.', { code: 'site-not-saved' });
+        /* a site saved before the editor's snapshot was kept on the server has none: its page and its stored
+           sections are put right, and it stays without one, as before (handleSiteGet) */
+        if (!snap || !Array.isArray(snap.nodes)) snap = null;
+        var nodesOf = function () { return snap ? snap.nodes : []; };
+        var done = [], sectionsPatch = null, planPatch = null, chain = Promise.resolve();
+        if (wanted.indexOf('et-chrome') !== -1) chain = chain.then(function () {
+          if (!/^gen-/.test(siteTemplateIdOf(data) || '')) throw httpError(409, 'Only a site the AI designed has ET’s header and footer.', { code: 'not-ai-designed' });
+          return etChromeFor(fb, eventId, data, page).then(function (built) {
+            ['nav', 'footer'].forEach(function (id) {
+              var next = replaceSiteSection(page, nodesOf(), id, built[id], !snap);
+              if (!next) throw httpError(409, 'The site’s ' + (id === 'nav' ? 'header' : 'footer') + ' could not be found in the saved site. Open the site editor, save it once, and try again.', { code: 'section-missing' });
+              page = next.page;
+              if (snap) snap.nodes = next.nodes;
+            });
+            sectionsPatch = Array.isArray(data.generatedSections) ? data.generatedSections.map(function (s) {
+              return s && (s.id === 'nav' || s.id === 'footer') ? Object.assign({}, s, { html: built[s.id].html, css: built[s.id].css }) : s;
+            }) : null;
+            done.push('ET header and footer');
+          });
+        });
+        if (wanted.indexOf('pictures') !== -1) chain = chain.then(function () {
+          return pictureProblems(fb, page).then(function (pics) {
+            var fixes = pics.filter(function (p) { return p.fixUrl; });
+            /* every place the address is written: the page, the editor's snapshot, the stored sections and the plan's
+               pictures (an editor opened without its own copy mounts the site from those) */
+            function fix(v) {
+              if (typeof v === 'string') return fixes.reduce(function (t, f) { return t.split(f.url).join(f.fixUrl); }, v);
+              if (Array.isArray(v)) return v.map(fix);
+              if (isPlainObject(v)) { var o = {}; Object.keys(v).forEach(function (k) { o[k] = fix(v[k]); }); return o; }
+              return v;
+            }
+            if (!fixes.length) return;
+            page = fix(page);
+            if (snap) snap.nodes = fix(snap.nodes);
+            var sections = sectionsPatch || data.generatedSections;
+            if (Array.isArray(sections) && JSON.stringify(sections) !== JSON.stringify(fix(sections))) sectionsPatch = fix(sections);
+            var plan = data.designPlan && data.designPlan.sections;
+            if (Array.isArray(plan) && JSON.stringify(plan) !== JSON.stringify(fix(plan))) planPatch = fix(plan);
+            done.push(fixes.length === 1 ? '1 picture’s address' : fixes.length + ' pictures’ addresses');
+          });
+        });
+        if (wanted.indexOf('headings') !== -1) chain = chain.then(function () {
+          var reps = repeatedPageHeadings(page);
+          if (!reps.length) return;
+          if (!/^gen-/.test(siteTemplateIdOf(data) || '')) throw httpError(409, 'Only a site the AI designed has its headings written here. Change the heading in the site editor.', { code: 'not-ai-designed' });
+          return writeSectionHeadings(fb, eventId, data, page, reps).then(function (written) {
+            /* the page, the editor's snapshot and the stored sections, as the other repairs change them */
+            reps.forEach(function (r) {
+              var next = withHeadingText(page, r.id, 'h2', written[r.id]);
+              if (next == null) throw httpError(409, 'The heading of “' + siteChecks.sectionName(r.id) + '” could not be found in the saved site. Open the site editor, save it once, and try again.', { code: 'section-missing' });
+              page = next;
+              if (snap) snap.nodes = snap.nodes.map(function (n) {
+                if (typeof n !== 'string' || !new RegExp('^<[a-z][\\w-]*\\b[^>]*\\sdata-rv-section="' + r.id + '"', 'i').test(n)) return n;
+                return withHeadingText(n, r.id, 'h2', written[r.id]) || n;
+              });
+            });
+            var sections = sectionsPatch || data.generatedSections;
+            if (Array.isArray(sections)) {
+              var patched = sections.map(function (sec) {
+                if (!sec || !written[sec.id] || typeof sec.html !== 'string') return sec;
+                var html = withHeadingText(sec.html, null, 'h2', written[sec.id]);
+                return html == null ? sec : Object.assign({}, sec, { html: html });
+              });
+              if (JSON.stringify(patched) !== JSON.stringify(sections)) sectionsPatch = patched;
+            }
+            done.push(reps.map(function (r) { return siteChecks.sectionName(r.id) + '’s heading (now “' + written[r.id] + '”)'; }).join(', '));
+          });
+        });
+        return chain.then(function () {
+          if (!done.length || page === before) throw httpError(409, 'There is nothing to put right in the saved site.', { code: 'nothing-to-repair' });
+          var next = version + 1, previous = data.site || {};
+          undo.push(function () { return restoreObject(fb, sitePath(eventId, 'page.html'), before, HTML); });
+          if (snap) undo.push(function () { return restoreObject(fb, sitePath(eventId, 'snapshot.json'), snapText, JSON_TYPE); });
+          return Promise.all([
+            snap ? saveObject(fb, sitePath(eventId, 'snapshot.json'), JSON.stringify(snap), JSON_TYPE) : null,
+            saveObject(fb, sitePath(eventId, 'page.html'), page, HTML)
+          ]).then(function () {
+            var changes = {
+              site: { version: next, snapshotVersion: snap ? next : (previous.snapshotVersion != null ? previous.snapshotVersion : 0), templateId: previous.templateId || data.templateId || null, updatedAt: now, updatedBy: actor },
+              updatedAt: now
+            };
+            if (sectionsPatch) changes.generatedSections = sectionsPatch;
+            if (planPatch) changes['designPlan.sections'] = planPatch;
+            return commitSiteLock(fb, eventId, token, changes);
+          }).then(function () {
+            return recordSave(fb, eventId, decoded, next, before, page, 'Put right from the site check: ' + done.join(', ')).then(function (rec) {
+              sendJson(res, 200, { version: next, repaired: done, summary: rec.summary, published: data.published === true });
+            });
+          });
+        });
+      }).then(null, function (err) {
+        return Promise.all(undo.map(function (step) { return step(); })).then(function () { return releaseSiteLock(fb, eventId, token); }).then(function () { throw err; });
+      });
+    }).catch(function (err) { sendFailure(res, 'site repair', err, 'The site could not be put right. Nothing was changed. Please try again.'); });
+  });
+}
+
+/* ET's header and footer for an AI-designed site, built as generation builds them (runGenerateDesignedContent):
+   the bar from the event's facts, its plan and its sources (et-nav.js), the footer from its portal (et-footer.js,
+   with "What's Happening" when ET answers in time). Both are the event's own portal (events/<id>.portal,
+   sitePortalOf), never one worked out from the sources: an event with none set yet gets the ET Business Verticals
+   bar and the ET B2B footer. eventsOf: the portal's events (footerEvents; a test passes its own).
+   -> Promise<{ nav: { html, css }, footer: { html, css } }> */
+function etChromeFor(fb, eventId, data, page, eventsOf) {
+  var ref = eventDocRef(fb, eventId);
+  return Promise.all([
+    ref.collection('sources').get(),
+    ref.collection('briefs').orderBy('createdAt', 'desc').limit(1).get().then(null, function () { return null; })
+  ]).then(function (r) {
+    var sources = r[0].docs.map(function (d) { return d.data(); });
+    var brief = r[1] && !r[1].empty ? r[1].docs[0].data().extracted : null;
+    var plan = data.designPlan || {}, design = plan.design || {}, planned = plan.sections || [];
+    var meta = eventFacts(data, null), owner = plan.owner || (brief && brief.owner);
+    var order = pageSectionOrder(page).filter(function (id) { return id !== 'nav' && id !== 'footer'; });
+    var portal = sitePortalOf(data, sources);
+    /* the key is there, so et-nav.js takes the portal as given and guesses none from the sources */
+    var navOpts = { order: order, sources: sources, owner: owner, portal: portal.portal };
+    /* an award site: a link to each of its pages and no button in the bar, as generation makes it */
+    var pages = Array.isArray(data.generatedPages) ? data.generatedPages : [];
+    if (data.category === 'awards' && pages.length) {
+      navOpts.cta = false;
+      navOpts.tabs = pages.map(function (pg) { return { label: AWARD_TAB_LABELS[pg.slug] || pg.title, page: pg.slug }; });
+    }
+    var nav = etNav.sectionFor(Object.assign({}, meta, { designPlan: plan }), navOpts);
+    function firstOf(kind) { return planned.filter(function (x) { return x.kind === kind; })[0]; }
+    var contact = firstOf('contact'), partners = firstOf('partners');
+    var buttons = ownerBrief.buttons(owner, { register: contact ? contact.id : 'footer', partner: partners ? partners.id : '' });
+    var place = [meta.venue, meta.city].filter(function (v, i, list) { return v && list.indexOf(v) === i; }).join(', ') || meta.location || '';
+    return (eventsOf || footerEvents)(portal.portal).then(function (list) {
+      var footer = siteFooter({ portal: portal.portal, series: portal.series, events: list, design: design, eventName: meta.name,
+        date: meta.dateLabel || meta.date || genDesign.dateLabel(data.start, data.end), place: place, button: buttons.primary });
+      return { nav: { html: nav.html, css: nav.css }, footer: { html: footer.html, css: footer.css } };
+    });
+  });
+}
+/* the ids of a page's sections, in page order */
+function pageSectionOrder(html) {
+  var ids = [];
+  tokenizeHtml(html).forEach(function (t) {
+    var id = t.t === 'open' ? attrValue(t, 'data-rv-section') : null;
+    if (id && ids.indexOf(id) === -1) ids.push(id);
+  });
+  return ids;
+}
+/* One section of a saved site replaced: its element and its stylesheet in the page, and the same two among the
+   editor's snapshot nodes. The new element keeps the old one's section marks (data-rv-section, data-rv-key).
+   noNodes: the site has no snapshot, so only the page is asked for. -> { page, nodes } or null when the section
+   is not in both */
+function replaceSiteSection(page, nodes, id, built, noNodes) {
+  var tokens = tokenizeHtml(page), out = tokens.map(function (t) { return page.slice(t.s, t.e); });
+  var at = -1, sheet = -1;
+  for (var i = 0; i < tokens.length; i++) {
+    var t = tokens[i];
+    if (t.t !== 'open') continue;
+    if (sheet === -1 && t.name === 'style' && attrValue(t, 'data-rv-style') === id) sheet = i;
+    if (at === -1 && attrValue(t, 'data-rv-section') === id) at = i;
+  }
+  var end = at === -1 ? -1 : elementEnd(tokens, at);
+  if (end === -1) return null;
+  var html = withSectionMarks(built.html, id, attrValue(tokens[at], 'data-rv-key') || id);
+  for (var k = at; k <= end; k++) out[k] = '';
+  out[at] = html;
+  var sheetText = '<style data-rv-style="' + id + '">' + built.css + '</style>';
+  if (sheet !== -1 && tokens[sheet + 1] && tokens[sheet + 1].t === 'raw') out[sheet + 1] = built.css;
+  else if (sheet !== -1 && tokens[sheet + 1] && tokens[sheet + 1].t === 'close') out[sheet] = out[sheet] + built.css;
+  else out[at] = sheetText + html;
+  var nodeAt = -1, sheetAt = -1;
+  nodes.forEach(function (n, j) {
+    if (typeof n !== 'string') return;
+    var head = /^<([a-z][\w-]*)\b[^>]*>/i.exec(n);
+    if (!head) return;
+    if (sheetAt === -1 && new RegExp('^<style\\b[^>]*\\bdata-rv-style="' + id + '"').test(n)) sheetAt = j;
+    else if (nodeAt === -1 && new RegExp('\\sdata-rv-section="' + id + '"').test(head[0])) nodeAt = j;
+  });
+  if (noNodes) return { page: out.join(''), nodes: nodes };
+  if (nodeAt === -1) return null;
+  var nextNodes = nodes.slice();
+  nextNodes[nodeAt] = html;
+  if (sheetAt !== -1) nextNodes[sheetAt] = sheetText;
+  else nextNodes.splice(nodeAt, 0, sheetText);
+  return { page: out.join(''), nodes: nextNodes };
+}
+function withSectionMarks(html, id, key) {
+  var tokens = tokenizeHtml(html);
+  for (var i = 0; i < tokens.length; i++) {
+    if (tokens[i].t !== 'open') continue;
+    var t = tokens[i];
+    if (attrValue(t, 'data-rv-section') == null) setAttr(t, 'data-rv-section', id);
+    if (attrValue(t, 'data-rv-key') == null) setAttr(t, 'data-rv-key', key);
+    return html.slice(0, t.s) + writeTag(t) + html.slice(t.e);
+  }
+  return html;
+}
+/* ---- end of the site check ---- */
+
 /* ---- Activity log (Part 1): GET /api/event/history ----
    The event's history, newest first: every recorded action with who and when, its area, and — for a save
    or an approval request — what changed, before and after. A page at a time: ?limit=50&before=<next>,
@@ -9929,21 +10766,27 @@ function fieldChanges(prev, next, skip) {
 
 /* ---------- POST /api/event/unpublish ----------
    Body { eventId } -> 200 { ok, published: false }. /e/<id> reads the event on every request, so the page
-   stops being served at once, on every instance. The stored page is kept: publishing again replaces it. */
+   stops being served at once, on every instance. The stored page is kept: publishing again replaces it.
+   Approvers only (lib/access.js notAnApprover): anybody else gets 403 { code: 'not-an-approver' } and the
+   site stays live. */
 function handleEventUnpublish(req, res) {
   withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
     var now = new Date().toISOString(), ref = eventDocRef(fb, eventId), wasPublished = false;
-    fb.db.runTransaction(function (tx) {
-      return tx.get(ref).then(function (snap) {
-        var state = eventStateOf(snap);
-        if (state !== 'live') throw notLiveError(state, eventId);
-        wasPublished = snap.data().published === true;
-        if (!wasPublished) return;
-        tx.update(ref, {
-          published: false, publishedPath: null, publishedUrl: fieldDelete(),
-          unpublishedAt: now, unpublishedBy: actorOf(decoded), updatedAt: now
+    approvalsConfig(fb).then(function (cfg) {
+      var why = require('./access').notAnApprover(cfg.approvers, actorOf(decoded), 'take a live site offline');
+      if (why) throw httpError(403, why, { code: 'not-an-approver' });
+      return fb.db.runTransaction(function (tx) {
+        return tx.get(ref).then(function (snap) {
+          var state = eventStateOf(snap);
+          if (state !== 'live') throw notLiveError(state, eventId);
+          wasPublished = snap.data().published === true;
+          if (!wasPublished) return;
+          tx.update(ref, {
+            published: false, publishedPath: null, publishedUrl: fieldDelete(),
+            unpublishedAt: now, unpublishedBy: actorOf(decoded), updatedAt: now
+          });
         });
       });
     }).then(function () {
@@ -10006,14 +10849,19 @@ function handleEventLiveView(req, res) {
    These answer HTML, not JSON, and are read by people who have never heard of this CMS: every failure
    is a small plain page, never a JSON body or a stack trace.
    ===================================================================================================== */
-function messagePage(title, message) {
+/* link: { href (root-relative), label } — the way on, where there is one (an event's home page) */
+function messagePage(title, message, link) {
+  var way = link && /^\/(?!\/)[^\s"'<>]*$/.test(String(link.href || '')) && link.label
+    ? '<p class="way"><a href="' + escHtmlAttr(link.href) + '">' + escHtmlText(link.label) + '</a></p>' : '';
   return '<!DOCTYPE html>\n<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
     '<meta name="robots" content="noindex"><title>' + escHtmlText(title) + '</title>' +
     '<link rel="icon" type="image/svg+xml" href="' + SITE_FAVICON + '">' +
     '<style>html,body{height:100%;margin:0}body{display:flex;align-items:center;justify-content:center;background:#f6f7f9;color:#191b1f;' +
     'font:16px/1.5 Inter,-apple-system,"Segoe UI",Arial,sans-serif}main{max-width:460px;padding:32px 24px;text-align:center}' +
-    'img{height:28px;margin-bottom:28px}h1{font-size:22px;margin:0 0 10px}p{margin:0;color:#5b616b}</style></head>' +
-    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p></main></body></html>\n';
+    'img{height:28px;margin-bottom:28px}h1{font-size:22px;margin:0 0 10px}p{margin:0;color:#5b616b}' +
+    '.way{margin-top:24px}.way a{display:inline-block;padding:11px 20px;border-radius:8px;background:#c8161d;color:#fff;font-weight:600;text-decoration:none}' +
+    '.way a:hover{background:#a81219}.way a:focus-visible{outline:3px solid #191b1f;outline-offset:2px}</style></head>' +
+    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p>' + way + '</main></body></html>\n';
 }
 
 /* ---- delivery (lib/delivery.js): compression, and what the browser is given to show a page sooner ----
@@ -10062,6 +10910,15 @@ function sendHtml(req, res, status, html, cacheControl, packed) {
 function sendNotAvailable(req, res) {
   sendHtml(req, res, 404, messagePage('This event page is not available', 'It may not be published yet, or it may have been taken down.'), 'no-store');
 }
+/* /e/<id>/<slug> of a live site with no page at that address: the site is there, so this is no dead end */
+function noSuchPageHtml(eventId, event) {
+  var name = event && typeof event.name === 'string' ? event.name.replace(/\s+/g, ' ').trim().slice(0, 120) : '';
+  return messagePage('This page does not exist', 'The address may be mistyped, or the page may have been renamed or removed.',
+    { href: publicPathOf(eventId), label: name ? 'Go to ' + name : 'Go to the event’s home page' });
+}
+function sendNoSuchPage(req, res, eventId, event) {
+  sendHtml(req, res, 404, noSuchPageHtml(eventId, event), 'no-store');
+}
 
 /* The published pages this instance has served lately, so a busy page is not downloaded from Storage and
    compressed again for every visitor. The key carries the publish it belongs to (version and time), so a
@@ -10093,7 +10950,7 @@ function packPage(entry) {
 /* html: the page as stored; the entry holds it as delivered (lib/delivery.js) and compressed both ways */
 function cachePage(key, html) {
   if (PAGE_CACHE.size >= PAGE_CACHE_MAX) PAGE_CACHE.delete(PAGE_CACHE.keys().next().value);     // oldest first
-  var entry = packPage({ at: Date.now(), source: html });
+  var entry = packPage({ at: Date.now(), source: html, noindex: siteChecks.isNoindexPage(html) });
   PAGE_CACHE.set(key, entry);
   return entry;
 }
@@ -10125,8 +10982,9 @@ function selectSitePage(html, slug) { return sitePages.selectPage(html, slug, TO
 /* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
    anything else is the same plain 404, which gives nothing away about what exists.
    GET /e/<eventId>/<slug> — one of its internal pages: the same published document with that page selected
-   (selectSitePage), cached under its own key next to the home page's; a slug the document has no page for is
-   the same 404. */
+   (selectSitePage), cached under its own key next to the home page's. A slug the document has no page for (or
+   one that cannot be a page name) is a 404 that says the page does not exist and leads to the event's home page
+   (sendNoSuchPage): the site itself is live, so this is no dead end. */
 function handlePublicPage(req, res, eventId, slug) {
   var fb = getFirebase();
   if (fb.error) {
@@ -10141,14 +10999,19 @@ function handlePublicPage(req, res, eventId, slug) {
     var slugKey = slug ? key + '|page:' + slug : '';
     /* the page as served: the document itself, or one of its internal pages selected on it */
     function send(entry) {
-      if (!slug) return sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
-      var chosen = selectSitePage(entry.source, slug);
-      if (!chosen.found) return sendNotAvailable(req, res);
-      var own = cachePage(slugKey, chosen.html);
-      sendHtml(req, res, 200, own.html, LIVE_PAGE_CACHE_CONTROL, own.packed);
+      if (!slug) return sendLivePage(entry);
+      var chosen = sitePages.SLUG_RE.test(slug) ? selectSitePage(entry.source, slug) : { found: false };
+      /* the site is live, only this address is wrong (a mistyped or an old page name): say so, and the way home */
+      if (!chosen.found) return sendNoSuchPage(req, res, eventId, data);
+      sendLivePage(cachePage(slugKey, chosen.html));
+    }
+    /* a page kept out of search says so in its header too (X-Robots-Tag), as its robots meta does */
+    function sendLivePage(entry) {
+      if (entry.noindex) res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+      sendHtml(req, res, 200, entry.html, LIVE_PAGE_CACHE_CONTROL, entry.packed);
     }
     var hitPage = slugKey ? cachedPage(slugKey) : null;
-    if (hitPage) return sendHtml(req, res, 200, hitPage.html, LIVE_PAGE_CACHE_CONTROL, hitPage.packed);
+    if (hitPage) return sendLivePage(hitPage);
     var hit = cachedPage(key);
     if (hit) return send(hit);
     return readObject(fb, publishedObjectPath(eventId)).then(function (html) {
@@ -10178,6 +11041,9 @@ function handlePublicPage(req, res, eventId, slug) {
       return pictures.prepare(fb, html).then(function (pics) {
         var page = pictures.rewriteHtml(ensureFormsRuntime(html), pics);
         page = siteA11y.pagePass(page, { mode: 'live', event: data, templateId: (data.site && data.site.templateId) || data.templateId }, TOKEN_KIT);
+        /* and the buttons put right, an import's dead parts taken out, a test kept out of search (liveRepair) —
+           so a page published before these needs no new publish */
+        page = liveRepair(page, data, eventId, 'live', null);
         return withHeroVideo(fb, page, data);
       }).then(function (page) {
         send(cachePage(key, page));
@@ -10335,7 +11201,10 @@ function shareRoute(handlerName) {
 /* =====================================================================================================
    GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
    published event's /e/<id> (and /e/<id>/<slug> for each of its internal pages, event.publishedPages) at the address this server is reached at (PUBLIC_BASE_URL when set), except one
-   whose owner gave it a canonical address elsewhere (that address is the one to list, and it is not ours).
+   whose owner gave it a canonical address elsewhere (that address is the one to list, and it is not ours), and
+   one kept out of search: its owner said so (settings.seo.noindex), it is a test ("test event 5"), or its live
+   page is still the template itself ("Event name goes here") — the same reasons its page and header say
+   noindex (site-checks.js noindexReason). The page is read for that once per publish (SEARCH_VERDICTS).
    Built at most every 10 minutes per instance; a failure to read the events is a 503, never an empty list
    a crawler would believe.
    ===================================================================================================== */
@@ -10349,8 +11218,62 @@ function sendText(req, res, status, type, text, cacheControl) {
   res.writeHead(status, headers);
   res.end(req.method === 'HEAD' ? undefined : body);
 }
+/* Whether each live page is still the template itself, read off its stored page once per publish (the key is
+   the publish: version and time) and kept for the life of this instance. A page that cannot be read now is
+   listed as before, and read again next time. -> Promise<{ eventId: true }> for the ones to leave out */
+var SEARCH_VERDICTS = new Map(), SEARCH_VERDICTS_MAX = 2000, SEARCH_READS_AT_ONCE = 6;
+function searchVerdicts(fb, docs) {
+  var hidden = {}, todo = [];
+  docs.forEach(function (d) {
+    var e = d.data() || {}, key = d.id + '|' + (e.publishedVersion || 0) + '|' + (e.publishedAt || '');
+    if (SEARCH_VERDICTS.has(key)) { if (SEARCH_VERDICTS.get(key)) hidden[d.id] = true; }
+    else todo.push({ id: d.id, key: key });
+  });
+  function next() {
+    var job = todo.shift();
+    if (!job) return Promise.resolve();
+    return readObject(fb, publishedObjectPath(job.id)).then(function (html) {
+      var template = html != null && siteChecks.noindexReason({}, html, TOKEN_KIT) === 'template';
+      if (SEARCH_VERDICTS.size >= SEARCH_VERDICTS_MAX) SEARCH_VERDICTS.clear();
+      SEARCH_VERDICTS.set(job.key, template);
+      if (template) hidden[job.id] = true;
+    }, function (err) {
+      console.error('api: /sitemap.xml could not read the page of ' + job.id + ' — ' + (err && err.message));
+    }).then(next);
+  }
+  var lanes = [];
+  for (var n = 0; n < SEARCH_READS_AT_ONCE; n++) lanes.push(next());
+  return Promise.all(lanes).then(function () { return hidden; });
+}
 function handleRobotsTxt(req, res) {
   sendText(req, res, 200, 'text/plain; charset=utf-8', siteSeo.robotsTxt(publicBaseFor(req, '')), 'public, max-age=3600');
+}
+
+/* GET /api/public/calendar?eventId=<id> — the event as a calendar file (site-seo.js calendarIcs): the
+   registration form's "Add to calendar" (rv-forms.js). Public, as the site is: only a live, published event with
+   an exact date has one; anything else is a plain 404. A phone opens the file in its calendar app; a computer
+   downloads it, to open in Outlook, Apple Calendar or Google Calendar. */
+function calendarHeaders(eventId, body) {
+  return { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="' + eventId + '.ics"',
+    'Cache-Control': 'public, max-age=300', 'Content-Length': Buffer.byteLength(body, 'utf8'), 'X-Content-Type-Options': 'nosniff' };
+}
+function handlePublicCalendar(req, res) {
+  var eventId = queryOf(req).get('eventId') || '';
+  var plain = 'text/plain; charset=utf-8';
+  if (!isEventId(eventId)) return sendText(req, res, 404, plain, 'There is no event at this address.\n', 'no-store');
+  var fb = getFirebase();
+  if (fb.error) return sendText(req, res, 503, plain, 'The calendar file is not available right now. Please try again in a few minutes.\n', 'no-store');
+  liveEventSnap(fb, eventId).then(function (snap) {
+    if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendText(req, res, 404, plain, 'There is no event at this address.\n', 'no-store');
+    var data = snap.data(), seo = (data.settings && data.settings.seo) || {};
+    var ics = siteSeo.calendarIcs(data, { id: eventId, url: cleanCanonical(seo.canonicalUrl) || publicBaseFor(req, '') + publicPathOf(eventId) });
+    if (!ics) return sendText(req, res, 404, plain, 'This event has no date yet.\n', 'no-store');
+    res.writeHead(200, calendarHeaders(eventId, ics));
+    res.end(req.method === 'HEAD' ? undefined : ics);
+  }).catch(function (err) {
+    console.error('api: /api/public/calendar for ' + eventId + ' failed — ' + (err && err.stack || err));
+    sendText(req, res, 502, plain, 'The calendar file is not available right now. Please try again in a few minutes.\n', 'no-store');
+  });
 }
 function handleSitemapXml(req, res) {
   var base = publicBaseFor(req, '');
@@ -10359,14 +11282,23 @@ function handleSitemapXml(req, res) {
   }
   var fb = getFirebase();
   if (fb.error) return sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
-  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'settings', 'publishedPages').get().then(function (snap) {
-    var entries = [];
-    snap.docs.forEach(function (d) {
+  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'publishedVersion', 'settings', 'publishedPages', 'name').get().then(function (snap) {
+    var listed = snap.docs.filter(function (d) {
       var e = d.data() || {};
-      if (eventStateOf(d) !== 'live' || !isEventId(d.id)) return;
+      if (eventStateOf(d) !== 'live' || !isEventId(d.id)) return false;
       /* the QA harness's short-lived test copies (always "qa-…", deleted after each run) are no site to list */
-      if (/^qa-/.test(d.id)) return;
-      if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return;
+      if (/^qa-/.test(d.id)) return false;
+      if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return false;
+      /* kept out of search by its owner, or a test */
+      return !siteChecks.noindexReason(Object.assign({ id: d.id }, e), null, TOKEN_KIT);
+    });
+    return searchVerdicts(fb, listed).then(function (hidden) { return { listed: listed, hidden: hidden }; });
+  }).then(function (got) {
+    var entries = [];
+    got.listed.forEach(function (d) {
+      var e = d.data() || {};
+      /* a live page that is still the template itself */
+      if (got.hidden[d.id]) return;
       var lastmod = typeof e.publishedAt === 'string' ? e.publishedAt : '';
       entries.push({ loc: base + publicPathOf(d.id), lastmod: lastmod });
       /* its internal pages, as the publish recorded them (publishedPagesOf) */
@@ -10621,6 +11553,8 @@ var ROUTES = {
   'POST /api/event/hero-video/check': heroVideo('handleHeroVideoCheck'),
 
   'GET /api/event/site': handleSiteGet,
+  'GET /api/event/site-check': handleSiteCheck,
+  'POST /api/event/site/repair': handleSiteRepair,
   'PUT /api/event/site': handleSitePut,
   'POST /api/event/publish': handleEventPublish,
   'POST /api/event/approval/request': handleApprovalRequest,
@@ -10687,6 +11621,7 @@ var ROUTES = {
   'DELETE /api/promo/social/art': promoSocial('handleArtDelete'),
   'POST /api/promo/social/html': promoSocial('handleHtml'),
   'GET /api/promo/social/layout': promoSocial('handleLayout'),
+  'GET /api/promo/social/layouts': promoSocial('handleLayouts'),
   'POST /api/promo/social/layout/base': promoSocial('handleLayoutBase'),
   'POST /api/promo/social/layout': promoSocial('handleLayoutSave'),
   'POST /api/promo/social/layout/reset': promoSocial('handleLayoutReset'),
@@ -10702,6 +11637,8 @@ var ROUTES = {
   'DELETE /api/event/leads/bulk': handleLeadsBulkDelete,
 
   'GET /api/public/site-data': audience('handlePublicSiteData'),
+  'GET /api/public/calendar': handlePublicCalendar,
+  'HEAD /api/public/calendar': handlePublicCalendar,
   'POST /api/register': audience('handleRegister'),
   'POST /api/track': audience('handleTrack')
 };
@@ -10724,7 +11661,9 @@ function routeApi(req, res) {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
     var eventId = '', slug = '';
     if (page) { try { eventId = decodeURIComponent(page[2]); slug = page[3] ? decodeURIComponent(page[3]) : ''; } catch (e) { eventId = ''; } }
-    if (!page || !isEventId(eventId) || (slug && !sitePages.SLUG_RE.test(slug))) return sendNotAvailable(req, res);
+    /* a live site's page name that cannot be one ("Award-FAQs") is still asked of the site: its 404 leads home */
+    var badSlug = slug && !sitePages.SLUG_RE.test(slug);
+    if (!page || !isEventId(eventId) || (badSlug && (page[1] !== 'e' || slug.length > 120))) return sendNotAvailable(req, res);
     return page[1] === 'e' ? handlePublicPage(req, res, eventId, slug) : handlePreviewPage(req, res, eventId, slug);
   }
 
@@ -10777,6 +11716,10 @@ module.exports._testHooks = {
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, chatView: chatView, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
+  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
+  replaceSiteSection: replaceSiteSection, etChromeFor: etChromeFor, searchVerdicts: searchVerdicts, handleSitemapXml: handleSitemapXml, handleSiteRepair: handleSiteRepair, handleSiteCheck: handleSiteCheck,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
-  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont
+  buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont,
+  /* published pages' UX (published-page-ux.test.js) */
+  noSuchPageHtml: noSuchPageHtml, messagePage: messagePage, routeApi: routeApi, repeatedHeadingIds: repeatedHeadingIds, takenHeadings: takenHeadings, headingWords: headingWords, calendarHeaders: calendarHeaders
 };

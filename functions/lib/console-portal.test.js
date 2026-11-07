@@ -111,6 +111,8 @@ function makeDom() {
 /* the top bar both pages share: the name, the date line and the chip, inside the line that holds them */
 function topbar(dom, withChip) {
   dom.els['ev-name'] = dom.el('ev-name', 'h1');
+  /* the console's state chips beside the name (RevampCore.siteState); Promotions has none, and paintState skips it */
+  dom.els['ev-state'] = dom.el('ev-state', 'span', { class: 'ev-state', hidden: '' });
   var sub = dom.el('', 'span', { class: 'ev-sub' });
   dom.els['ev-meta'] = dom.el('ev-meta', 'span', { class: 'meta' });
   dom.els['ev-meta'].parentNode = sub;
@@ -189,10 +191,12 @@ check('2 the console\'s window title before an event loads says Oneworld 2.0', /
 check('2 the console no longer reads a table of portal names', !/\bPORTALS\b/.test(MAIN));
 
 var NAMES = ['shownPortal', 'rosterName', 'paintPortalChip', 'openSetPortal', 'portalSet', 'paintHeader', 'errText', 'localIso', 'fgroup', 'viewBasics', 'wireBasics',
-  'regSettings', 'buildRegForms', 'wireSetForm'];
+  'regSettings', 'buildRegForms', 'wireSetForm',
+  /* the header's state chips and Basics' share picture, which the header and Basics now run through */
+  'paintState', 'shareUrlOf', 'sharePictureField', 'wireSharePicture'];
 var CONSOLE_FNS = {};
 NAMES.forEach(function (n) { CONSOLE_FNS[n] = fnSrc(MAIN, n); check('2 found function ' + n, !!CONSOLE_FNS[n]); });
-var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');
+var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF', 'APPROVAL', 'SHARE_AUTO', 'SHARE_OWN'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');
 
 /* a node the page builds itself (the Registration panel): what its markup holds, found by #id */
 function builtNode() {
@@ -211,7 +215,7 @@ function loadConsole(o) {
   var sb = {
     console: { log: function () {}, error: function () {} }, setTimeout: function (fn) { fn(); }, Promise: Promise,
     document: { title: '', get activeElement() { return dom.activeElement; }, body: dom.body, getElementById: dom.$, createElement: builtNode },
-    $: dom.$, esc: escHtml, svg: function () { return ''; }, IC: {}, TYPES: { ip: 'IP Event', awards: 'Awards' },
+    $: dom.$, esc: escHtml, svg: function () { return ''; }, IC: {}, TYPES: { ip: 'IP Event', awards: 'Awards' }, comma: RC.comma,
     fmtDT: function (v) { return v ? '12 Nov 2026' : 'Date to be announced'; }, fmtDate: function () { return '12 Nov 2026'; },
     panel: function (t, s, body) { return '<section>' + body + '</section>'; }, vhead: function () { return ''; },
     imgTag: function () { return ''; }, logoUnitCallout: function () { return ''; },
@@ -224,7 +228,10 @@ function loadConsole(o) {
         updates.push({ id: id, patch: JSON.parse(JSON.stringify(patch)), opts: opts ? JSON.parse(JSON.stringify(opts)) : undefined });
         return o.update ? o.update(patch, opts) : Promise.resolve({ ok: true });
       },
-      fetchEvent: function (id) { fetches.push(id); return o.fetch ? o.fetch(id) : Promise.reject(new Error('fetchEvent was not expected here')); }
+      fetchEvent: function (id) { fetches.push(id); return o.fetch ? o.fetch(id) : Promise.reject(new Error('fetchEvent was not expected here')); },
+      /* edit-event-core.js's own: the description's lengths, Basics' checklist rows and where the site stands */
+      DESC: RC.DESC, basicsGaps: RC.basicsGaps, siteState: RC.siteState,
+      publicUrl: function (ev) { return 'https://oneworld.example/e/' + ev.id; }
     }
   };
   sb.window = sb;
@@ -255,6 +262,10 @@ function loadConsole(o) {
   check('2 … the chip was asked for this event', n.sb.RevampPortals.log.chip.length === 1 && n.sb.RevampPortals.log.chip[0].eventId === 'ev-2');
   check('2 … the line that holds it knows (the phone hides the date line for the button)', n.sub.classList.contains('has-portal-chip'));
   check('2 … the title says Oneworld 2.0', n.sb.document.title === 'Edit — Untitled event — Oneworld 2.0');
+  /* both on one header: where the site stands beside the name, the portal chip under it */
+  var stateC = c.$('ev-state'), stateN = n.$('ev-state');
+  check('2 the header also paints where the site stands, with a portal and without one', stateC.hidden === false && /class="ev-chip ev-chip-mute"[^>]*>.*Draft/.test(stateC.innerHTML) &&
+    stateN.hidden === false && /class="ev-chip ev-chip-ok"/.test(stateN.innerHTML) && /View live site/.test(stateN.innerHTML) && host.hidden === false, [stateC.innerHTML, stateN.innerHTML]);
   chipClick(host);
   var op = n.sb.RevampPortals.log.open[0];
   check('2 Set portal opens RevampPortals\' dialog for this event, with no portal current, and the site\'s facts', !!op && op.eventId === 'ev-2' &&

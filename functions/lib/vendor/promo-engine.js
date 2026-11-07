@@ -1774,6 +1774,10 @@ var YESNO_FIELD = (key, label, hint, def = "yes") => ({
   options: [{ value: "yes", label: "Show" }, { value: "no", label: "Hide" }],
   ...hint ? { hint } : {}
 });
+var ONOFF_FIELD = (key, label, hint, def = "no") => ({
+  ...YESNO_FIELD(key, label, hint, def),
+  options: [{ value: "yes", label: "On" }, { value: "no", label: "Off" }]
+});
 var isNoProp = (v) => String(v ?? "yes").toLowerCase() === "no";
 var SPEAKER_COLS = { cards: 3, circle: 4, feature: 2, rows: 2, tiles: 2, checker: 4 };
 var COLS = (max = 4) => ({
@@ -2092,9 +2096,9 @@ var BLOCK_SCHEMAS = {
         default: "1.55",
         options: [{ value: "1.35", label: "Tight" }, { value: "1.55", label: "Normal" }, { value: "1.8", label: "Airy" }]
       },
-      YESNO_FIELD("italic", "Italic", void 0, "no"),
-      YESNO_FIELD("underline", "Underline", void 0, "no"),
-      YESNO_FIELD("caps", "Small caps / letter-spaced", void 0, "no"),
+      ONOFF_FIELD("italic", "Italic"),
+      ONOFF_FIELD("underline", "Underline"),
+      ONOFF_FIELD("caps", "Small caps / letter-spaced"),
       ALIGN
     ],
     make: () => ({ text: "Write your copy here.", size: 15, align: "left", weight: "400", tone: "body", lh: "1.55" })
@@ -2201,8 +2205,8 @@ var BLOCK_SCHEMAS = {
         options: [{ value: "sm", label: "Small" }, { value: "md", label: "Medium" }, { value: "lg", label: "Large" }]
       },
       { key: "fontSize", label: "Text size (px)", type: "number", default: "14" },
-      YESNO_FIELD("full", "Full width", "Spans the column \u2014 the usual mobile-first CTA.", "no"),
-      YESNO_FIELD("caps", "Uppercase label", void 0, "no"),
+      ONOFF_FIELD("full", "Full width", "Spans the column \u2014 the usual mobile-first CTA."),
+      ONOFF_FIELD("caps", "Uppercase label"),
       ALIGN
     ],
     make: (e) => ({
@@ -2560,7 +2564,7 @@ var BLOCK_SCHEMAS = {
         default: "99",
         hint: "99 is a pill. Outlook on Windows squares every band off regardless."
       },
-      YESNO_FIELD("caps", "Uppercase", void 0, "no"),
+      ONOFF_FIELD("caps", "Uppercase"),
       ...SECTION_BG
     ],
     make: () => ({

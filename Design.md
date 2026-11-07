@@ -24,7 +24,6 @@ Revamp CMS is a static, framework-free HTML/CSS/vanilla-JS prototype. There is n
 | --- | --- | --- |
 | `edit-event.html` and section workbenches | `'revamp-edit-event-' + EV.id` | `RevampCore.loadState()` / `saveState()` |
 | `create-event.html` | `'revamp.createEvent.draft.v1'` | direct `localStorage` calls, bypasses RevampCore |
-| `edit-event-marketing.js` | `KEY` (page-local) | direct `localStorage` calls, bypasses RevampCore |
 | `payment/html_version/data.js` | own key | direct `localStorage` calls, separate sub-app |
 
 `RevampCore.loadState(key)` merges saved JSON onto a default shape: `{sections:null, nav:null, checklist:null, published:false, theme:'ET Red'}`.
@@ -33,7 +32,7 @@ Revamp CMS is a static, framework-free HTML/CSS/vanilla-JS prototype. There is n
 
 **Known issue: the palette is not centralized — three different `:root` definitions exist with drifting values.**
 
-**`edit-event.css`** (shared by `edit-event.html`, `dashboard.html`, `edit-event-dashboard.html`, `edit-event-marketing.html`):
+**`edit-event.css`** (shared by `edit-event.html`, `dashboard.html`):
 ```
 --bg:#FAF7F6  --surface:#FFFFFF  --surface-2:#F3EEED  --surface-3:#E9E2E0
 --border:#E0D7D5  --text:#241B1A  --text-muted:#756865
@@ -59,7 +58,7 @@ Fonts are loaded via a repeated per-page Google Fonts `<link>` (not a shared par
 
 - **`sidebar.html`** — static nav partial (rail-only) with hardcoded links to `dashboard.html`, `edit-event.html#content`, `custom_editor.html`, `edit-event.html#audience/payments`, `marketing.html`, `audience-registrations.html`, `settings.html`.
 - **`sidebar.js`** — defines `renderSidebar(targetId, options)` (full workspace sidebar with nav groups) and `renderEventRail(targetId, options)` (7-icon per-event rail: dashboard/content/design/payment/marketing/audience/settings). Both inject via `.innerHTML` and wire click handlers that set `location.href`.
-- **Selected-event context travels via the URL**, not shared storage: `?event=<id>`, read with `new URLSearchParams(location.search).get('event')` on `edit-event.html`, `audience-registrations.html`, `marketing.html`, `settings.html`, `custom_editor.html`, `edit-event-marketing.html`. There is no global "current event" key — each page independently falls back to `'1'` or `EVENTS[0].id` when the param is missing.
+- **Selected-event context travels via the URL**, not shared storage: `?event=<id>`, read with `new URLSearchParams(location.search).get('event')` on `edit-event.html`, `audience-registrations.html`, `marketing.html`, `settings.html`, `custom_editor.html`. There is no global "current event" key — each page independently falls back to `'1'` or `EVENTS[0].id` when the param is missing.
 - `payment/html_version/` is a fully separate sub-app with its own `sidebar.js` and `data.js`.
 
 ## Component Patterns — currently duplicated, not shared
@@ -84,7 +83,7 @@ No templating/includes exist, so several UI primitives are reimplemented per pag
   edit-event.css                (shared token/style sheet)
   edit-event-core.js            (shared RevampCore module)
   edit-event-dashboard.html / .js
-  edit-event-marketing.html / .js
+  edit-event-marketing.html     (redirect: old links to marketing.html)
   marketing.html                 (59 lines — thin wrapper)
   settings.html                  (39 lines — thin wrapper)
   sidebar.html / sidebar.js

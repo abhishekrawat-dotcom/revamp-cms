@@ -63,6 +63,13 @@
      .previewUrl(eventId)         -> absolute URL of /preview/<id> (a string, not a promise)
      .publicUrl(event)            -> absolute URL of the event's public page, location.origin + /e/<id>
                                    (a string, not a promise; '' when the event has no id)
+     .siteState(event, approval)  -> where the site stands: live / offline / draft, a request waiting or
+                                   rejected, newer changes not live, and the chips that say so (see the function)
+     .mayTakeOffline(approval)    -> false only when approvers are named and the signed-in person is not one
+     .basicsGaps(fields)          -> the six Basics rows ({key, label, field, why}; why '' when it is done)
+     .readSiteHead(html)          -> what a page tells search engines and link previews (title, description,
+                                   canonical, image, robots / noindex, eventLd), read from its own tags
+     .DESC                        {min, ideal, max}: the short description's lengths (Basics' counter and rule)
      .stageEvent(eventId, html)   POST   /api/event/stage — the older Preview; kept for cached editors
      .fetchSiteData(eventId)      GET    /api/public/site-data -> what the site shows (section 5 shape)
      Content
@@ -210,8 +217,9 @@ window.RevampCore = (function(){
   }
 
   /* deterministic pseudo-random — no longer used to seed fake event/attendee data (that's gone, see
-     fetchEvent/fetchRegistrations below), but kept: other files (edit-event-marketing.js,
-     audience-registrations.html) still call RevampCore.rnd for unrelated deterministic-random UI bits. */
+     fetchEvent/fetchRegistrations below). No page calls RevampCore.rnd any more either: its last caller,
+     edit-event-marketing.js, was deleted when that old page became a redirect to Promotions (UX-137). It stays
+     exported only so that taking it off RevampCore is a change of its own. */
   function rnd(seed){ var x = Math.sin(seed) * 10000; return x - Math.floor(x); }
 
   var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
@@ -503,6 +511,145 @@ window.RevampCore = (function(){
     }
     if (!path && id) path = '/e/' + encodeURIComponent(id);
     return path ? location.origin + path : '';
+  }
+
+  /* ---- where the event's site stands ----
+     The one reading of an event's publishing state, so the console's header, its Dashboard and Settings ›
+     Visibility can never disagree. Built only from what the server recorded:
+       event     as fetchEvent gives it: published, publishedAt, publishedVersion, unpublishedAt, site.version,
+                 and approval { id, toVersion, requestedBy, requestedAt } while a request is waiting
+       approval  optional, fetchApproval's answer: its `requests` (newest first) say whether the last one was
+                 rejected; `rejectNote` is that request's reason when the page fetched it
+     -> { live, offline, liveVersion, savedVersion, publishedAt, newer, pending, rejected, chips }
+     chips: the primary state first (Live since <date> / Offline / Draft), then at most one about changes
+     (Waiting for approval / Changes rejected / Newer changes not published): { text, short, tone, title, href };
+     `short` is the same in a word or two, for a narrow top bar. */
+  function reviewPathOf(eventId, requestId){
+    return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(requestId);
+  }
+  function siteState(event, approval){
+    var e = event || {}, id = String(e.eventId || e.id || '').trim();
+    var live = e.published === true;
+    var liveVersion = live ? (+e.publishedVersion || 0) : 0;
+    var savedVersion = (e.site && +e.site.version) || 0;
+    var offline = !live && !!e.unpublishedAt;
+    var a = e.approval && typeof e.approval === 'object' && e.approval.id ? e.approval : null;
+    var pending = a ? { id: String(a.id), toVersion: +a.toVersion || 0, requestedBy: a.requestedBy || '', requestedAt: a.requestedAt || null,
+      reviewPath: reviewPathOf(id, a.id) } : null;
+    /* a rejection matters only while nothing newer has been asked for: the newest request is the one that counts */
+    var last = !pending && approval && Array.isArray(approval.requests) ? approval.requests[0] : null;
+    var rejected = last && last.status === 'rejected' && last.id ? { id: String(last.id), toVersion: +last.toVersion || 0,
+      decidedBy: last.decidedBy || '', decidedAt: last.decidedAt || null, note: String((approval && approval.rejectNote) || ''),
+      reviewPath: reviewPathOf(id, last.id) } : null;
+    var newer = live && savedVersion > liveVersion && !pending;
+    var when = live && readDate(e.publishedAt) ? fmtDate(e.publishedAt) : '';
+
+    var chips = [];
+    if (live) chips.push({ text: when ? 'Live since ' + when : 'Live', short: 'Live', tone: 'ok',
+      title: (liveVersion ? 'Version ' + liveVersion + ' of the site is live' : 'The site is live') + (when ? ', published on ' + when : '') + '.' });
+    else if (offline) chips.push({ text: 'Offline', short: 'Offline', tone: 'mute',
+      title: 'The site was taken offline' + (readDate(e.unpublishedAt) ? ' on ' + fmtDate(e.unpublishedAt) : '') + '. Its address shows “This page is not available”.' });
+    else chips.push({ text: 'Draft', short: 'Draft', tone: 'mute', title: savedVersion ? 'The site is saved but has not been published.' : 'The site has not been saved yet.' });
+
+    if (pending) chips.push({ text: 'Waiting for approval · Review', short: 'Waiting for approval', tone: 'warn', href: pending.reviewPath,
+      title: (pending.toVersion ? 'Version ' + pending.toVersion + ' was' : 'Changes were') + ' sent for approval' +
+        (pending.requestedBy ? ' by ' + pending.requestedBy : '') + (readDate(pending.requestedAt) ? ' on ' + fmtDate(pending.requestedAt) : '') + '.' });
+    else if (rejected) chips.push({ text: 'Changes rejected · Review', short: 'Rejected', tone: 'bad', href: rejected.reviewPath,
+      title: 'Rejected' + (rejected.decidedBy ? ' by ' + rejected.decidedBy : '') + (rejected.note ? ': ' + rejected.note : '.') });
+    else if (newer) chips.push({ text: 'Newer changes not published', short: 'Not published', tone: 'warn',
+      title: 'Version ' + savedVersion + ' is saved; version ' + liveVersion + ' is live.' });
+
+    return { live: live, offline: offline, liveVersion: liveVersion, savedVersion: savedVersion, publishedAt: live ? (e.publishedAt || null) : null,
+      newer: newer, pending: pending, rejected: rejected, chips: chips };
+  }
+
+  /* ---- what a published page tells search engines and link previews ----
+     readSiteHead(html) -> { title, description, canonical, ogTitle, image, robots, noindex, eventLd }, read from
+     the page's own tags (the ones lib/api.js publishTransform and lib/site-a11y.js pagePass write), so Settings ›
+     URL & SEO shows what the live page really carries. Plain text matching, no DOM: it runs anywhere. A value
+     the page does not carry is ''. eventLd is true when a schema.org Event is given (JSON-LD). */
+  function decodeEntities(s){
+    return String(s || '').replace(/&(#x[0-9a-f]+|#\d+|quot|apos|amp|lt|gt|nbsp);/gi, function(m, x){
+      var k = x.toLowerCase();
+      if (k.charAt(0) === '#'){
+        var n = k.charAt(1) === 'x' ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10);
+        if (!(isFinite(n) && n > 0 && n < 0x110000)) return m;
+        return String.fromCodePoint ? String.fromCodePoint(n) : String.fromCharCode(n);
+      }
+      return { quot: '"', apos: "'", amp: '&', lt: '<', gt: '>', nbsp: ' ' }[k];
+    });
+  }
+  function tagAttrs(tag){
+    var out = {}, re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g, m;
+    while ((m = re.exec(tag))) out[m[1].toLowerCase()] = decodeEntities(m[3] != null ? m[3] : (m[4] != null ? m[4] : m[5]));
+    return out;
+  }
+  function readSiteHead(html){
+    var text = String(html || '');
+    var end = text.search(/<\/head\s*>/i);
+    var head = (end === -1 ? text.slice(0, 400000) : text.slice(0, end)).replace(/<!--[\s\S]*?-->/g, '');
+    var out = { title: '', description: '', canonical: '', ogTitle: '', image: '', robots: '', noindex: false, eventLd: false };
+    var t = /<title\b[^>]*>([\s\S]*?)<\/title\s*>/i.exec(head);
+    if (t) out.title = decodeEntities(t[1]).replace(/\s+/g, ' ').trim();
+    (head.match(/<meta\b[^>]*>/gi) || []).forEach(function(tag){
+      var a = tagAttrs(tag), key = String(a.name || a.property || '').toLowerCase(), v = String(a.content || '').replace(/\s+/g, ' ').trim();
+      if (key === 'description' && !out.description) out.description = v;
+      else if (key === 'og:title' && !out.ogTitle) out.ogTitle = v;
+      else if (key === 'og:image' && !out.image) out.image = v;
+      else if (key === 'robots' && !out.robots) out.robots = v;
+    });
+    (head.match(/<link\b[^>]*>/gi) || []).some(function(tag){
+      var a = tagAttrs(tag);
+      if (!/(^|\s)canonical(\s|$)/i.test(a.rel || '')) return false;
+      out.canonical = String(a.href || '').trim();
+      return true;
+    });
+    var re = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi, m;
+    while ((m = re.exec(head))){
+      if (!/application\/ld\+json/i.test(tagAttrs('<x ' + m[1] + '>').type || '')) continue;
+      try {
+        var ld = JSON.parse(m[2]), list = Array.isArray(ld) ? ld : (ld && ld['@graph'] ? ld['@graph'] : [ld]);
+        if (list.some(function(x){ return x && (x['@type'] === 'Event' || (Array.isArray(x['@type']) && x['@type'].indexOf('Event') !== -1)); })) out.eventLd = true;
+      } catch (e) { /* a block that does not parse gives a search engine nothing either */ }
+    }
+    out.noindex = /(^|[\s,])(noindex|none)([\s,]|$)/i.test(out.robots);
+    return out;
+  }
+
+  /* Who may take a live site offline (and delete an event): an approver, by the owner's rule — one of
+     config/approvals' `approvers`, or anybody signed in while none are named. `approval` is fetchApproval's
+     answer ({ me, approvers }); without it nothing is known here and the server decides (it refuses with
+     403 'not-an-approver'). */
+  function mayTakeOffline(approval){
+    if (!approval || !Array.isArray(approval.approvers) || !approval.approvers.length) return true;
+    var me = String(approval.me || '').trim().toLowerCase();
+    return approval.approvers.map(function(x){ return String(x || '').trim().toLowerCase(); }).indexOf(me) !== -1;
+  }
+
+  /* ---- the event's basics: what Basics asks for, and whether each is there ----
+     Basics' own checklist (as the form is typed) and the Dashboard (from the stored event) both read this.
+     fields: { name, start, end, venue, city, desc, cat, portal } as text; portal is the portal's slug as shown,
+     '' while the event has none (a stored value off ET's roster counts as none). DESC is the short description's lengths:
+     at least `min`; `ideal` reads best on the listing card and in a search result; `max` is the most a save
+     takes, and the server's description writer keeps to it too (functions/lib/event-description.js MAX_LENGTH). */
+  var DESC = { min: 40, ideal: 160, max: 220 };
+  function basicsGaps(fields){
+    var f = fields || {};
+    function t(k){ return String(f[k] == null ? '' : f[k]).trim(); }
+    var a = readDate(t('start')), b = readDate(t('end'));
+    var endBad = !!(a && b && b.d <= a.d);
+    var n = t('desc').length;
+    return [
+      { key: 'name', label: 'Event name', field: 'b-name', why: t('name') ? '' : 'Add the event name' },
+      { key: 'date', label: 'Date', field: endBad ? 'b-end' : 'b-start',
+        why: !a ? 'Add a start date and time' : (endBad ? 'The end is before the start' : '') },
+      { key: 'place', label: 'Venue or city', field: 'b-venue', why: (t('venue') || t('city')) ? '' : 'Add a venue or a city' },
+      { key: 'desc', label: 'Short description', field: 'b-desc',
+        why: n < DESC.min ? 'Add at least ' + DESC.min + ' characters (now ' + n + ')'
+           : (n > DESC.ideal ? 'Shorten to ' + DESC.ideal + ' characters (now ' + n + ')' : '') },
+      { key: 'cat', label: 'Category', field: 'b-cat', why: t('cat') ? '' : 'Choose a category' },
+      { key: 'portal', label: 'Portal', field: 'b-portal', why: t('portal') ? '' : 'Choose the portal it belongs to' }
+    ];
   }
 
   /* ---- the saved site ----
@@ -1087,6 +1234,7 @@ window.RevampCore = (function(){
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
+    siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
     uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
