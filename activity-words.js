@@ -6,9 +6,10 @@
 
      RevampActivityWords.AREAS                  [[id, label]] in the order both filters list them
      RevampActivityWords.areaLabel(id)          'Content'
-     RevampActivityWords.actionLabel(action, area)
-                                                'Event created', 'Site saved', 'Mailer saved' (an action the table
-                                                does not know is turned into words, never shown as its code)
+     RevampActivityWords.actionLabel(action, area, detail)
+                                                'Event created', 'Site saved', 'Mailer saved', 'Social post layout
+                                                reset' (an action the table does not know is turned into words,
+                                                never shown as its code)
      RevampActivityWords.isPlatform(by)         true for the platform's own changes
      RevampActivityWords.personName(by)         'Sachitanand Rai' for sachitanand.rai@timesinternet.in, 'Platform
                                                 (automated)' for the platform; the address itself goes on hover
@@ -20,7 +21,7 @@
    addresses that wrapped mid-word, and field keys ("templateId", "logoUrl"). The codes are still in each log's CSV.
 
    ES5 on purpose (var, function, no arrows): the pages serve it as it is, with no build step; node's tests require
-   it (functions/lib/activity-words.test.js). */
+   it (functions/lib/events-dashboard-b11.test.js, the UX-015 checks). */
 (function (root, factory) {
   var api = factory();
   if (typeof module === 'object' && module && module.exports) module.exports = api;
@@ -49,9 +50,23 @@
     'repaired': 'Platform repair', 'ai-chat': 'ETB2B AI', 'portal-set': 'Portal set',
     'preview-link-shared': 'Preview link shared', 'preview-link-stopped': 'Preview link stopped'
   };
-  /* Promotions records its mailers with the general verbs (lib/promo-mailer.js: created / updated / deleted with
-     area 'promotions'), which are not an event being created or deleted */
-  var PROMOTION_ACTIONS = { 'created': 'Mailer saved', 'updated': 'Mailer changed', 'deleted': 'Mailer deleted' };
+  /* Promotions records with the general verbs (created / updated / deleted, area 'promotions'), which are not an
+     event being created or deleted, and two parts of it share them: its mailers (lib/promo-mailer.js) and its social
+     posts (lib/promo-social.js). Only the entry's detail tells them apart: a mailer's names the mailer ("Mailer “A”
+     (Invite) saved", "2 versions of the Invite mailer deleted"), and a social post's begins "Post art", "Post
+     picture" or "Post layout". Calling every one a mailer read "Mailer deleted — Post layout reset: Square · 1:1"
+     when no mailer was touched. */
+  var MAILER_ACTIONS = { 'created': 'Mailer saved', 'updated': 'Mailer changed', 'deleted': 'Mailer deleted' };
+  /* a social post's part (the detail's first words), then its verb: art and pictures are uploaded ('updated') or
+     removed ('deleted', also when a new PSD clears them); a layout is saved or reset to the platform's */
+  var POST_ACTIONS = {
+    'Post art': { 'updated': 'Social post art added', 'deleted': 'Social post art removed' },
+    'Post picture': { 'updated': 'Social post picture added', 'deleted': 'Social post picture removed' },
+    'Post layout': { 'updated': 'Social post layout saved', 'deleted': 'Social post layout reset' }
+  };
+  var POST_OTHER = { 'created': 'Social post saved', 'updated': 'Social post changed', 'deleted': 'Social post removed' };
+  /* a Promotions entry whose detail names neither (none is written today): said as Promotions', not as a mailer's */
+  var PROMOTIONS_OTHER = { 'created': 'Saved in Promotions', 'updated': 'Changed in Promotions', 'deleted': 'Removed from Promotions' };
   /* and the AI's description of the event, written with the site's design (area 'event') */
   var EVENT_AREA_ACTIONS = { 'updated': 'Description written' };
 
@@ -66,9 +81,24 @@
     return 'Event';
   }
 
-  function actionLabel(action, area) {
+  /* a Promotions entry's words, from its verb and its detail (see MAILER_ACTIONS above); '' when the verb is not one
+     of the three, which the general table then says */
+  function promotionsLabel(a, detail) {
+    var d = String(detail == null ? '' : detail).trim();
+    if (/^Post /.test(d)) {
+      for (var part in POST_ACTIONS) {
+        if (own(POST_ACTIONS, part) && d.indexOf(part) === 0 && own(POST_ACTIONS[part], a)) return POST_ACTIONS[part][a];
+      }
+      return own(POST_OTHER, a) ? POST_OTHER[a] : '';
+    }
+    if (/\bmailer\b/i.test(d)) return own(MAILER_ACTIONS, a) ? MAILER_ACTIONS[a] : '';
+    return own(PROMOTIONS_OTHER, a) ? PROMOTIONS_OTHER[a] : '';
+  }
+
+  /* detail: the entry's own detail, which Promotions' words need (above); every other area is said from its action */
+  function actionLabel(action, area, detail) {
     var a = String(action == null ? '' : action);
-    if (area === 'promotions' && own(PROMOTION_ACTIONS, a)) return PROMOTION_ACTIONS[a];
+    if (area === 'promotions') { var p = promotionsLabel(a, detail); if (p) return p; }
     if (area === 'event' && own(EVENT_AREA_ACTIONS, a)) return EVENT_AREA_ACTIONS[a];
     if (own(ACTIONS, a)) return ACTIONS[a];
     return words(a) || 'Change';

@@ -149,8 +149,46 @@ check('UX-038 the theme switch is in the page\'s top-right corner, not under the
 var AWORDS = require('../../activity-words.js');
 check('UX-015 actions in words, an unknown one turned into words, never its code', AWORDS.actionLabel('content-added') === 'Content added' && AWORDS.actionLabel('site-saved') === 'Site saved' &&
   AWORDS.actionLabel('ai-chat') === 'ETB2B AI' && AWORDS.actionLabel('approval-requested') === 'Sent for approval' && AWORDS.actionLabel('shiny-new-thing') === 'Shiny new thing' && AWORDS.actionLabel('') === 'Change');
-check('UX-015 Promotions\' and the AI description\'s "created/updated/deleted" are not called an event being created or deleted', AWORDS.actionLabel('created', 'promotions') === 'Mailer saved' &&
-  AWORDS.actionLabel('deleted', 'promotions') === 'Mailer deleted' && AWORDS.actionLabel('updated', 'event') === 'Description written' && AWORDS.actionLabel('updated', 'content') === 'Basic details changed' && AWORDS.actionLabel('created') === 'Event created');
+check('UX-015 the AI description\'s and a Basics edit\'s "updated" are not called an event being changed; a bare "created" is the event\'s', AWORDS.actionLabel('updated', 'event') === 'Description written' &&
+  AWORDS.actionLabel('updated', 'content') === 'Basic details changed' && AWORDS.actionLabel('created') === 'Event created' && AWORDS.actionLabel('deleted') === 'Event deleted');
+/* Promotions' two parts share the verbs, so each entry is said from its detail: these are the details
+   lib/promo-mailer.js and lib/promo-social.js really write (the verifier's shot read "Mailer deleted — Post layout
+   reset: Square · 1:1" and "Mailer changed — Post art: Logo uploaded") */
+var PROMO_SAID = [
+  ['created', 'Mailer “Launch invite” (Invite) saved as a new version', 'Mailer saved'],
+  ['updated', 'Mailer “Launch invite” (Invite) saved', 'Mailer changed'],
+  ['updated', 'Mailer “Launch invite” renamed to “Final invite”', 'Mailer changed'],
+  ['deleted', 'Mailer “Launch invite” (Invite) deleted', 'Mailer deleted'],
+  ['deleted', '2 versions of the Invite mailer deleted', 'Mailer deleted'],
+  ['updated', 'Post art: Logo uploaded', 'Social post art added'],
+  ['updated', 'Post art: Logo from the PSD uploaded', 'Social post art added'],
+  ['deleted', 'Post art: Background 2 removed', 'Social post art removed'],
+  ['deleted', 'Post art: PSD background cleared by a new PSD', 'Social post art removed'],
+  ['updated', 'Post picture uploaded', 'Social post picture added'],
+  ['updated', 'Post layout saved: Square · 1:1', 'Social post layout saved'],
+  ['deleted', 'Post layout reset: Square · 1:1', 'Social post layout reset']
+];
+var promoWrong = PROMO_SAID.filter(function (c) { return AWORDS.actionLabel(c[0], 'promotions', c[1]) !== c[2]; }).map(function (c) { return [c[1], AWORDS.actionLabel(c[0], 'promotions', c[1])]; });
+check('UX-015 Promotions: a mailer\'s entry says Mailer…, a social post\'s says Social post… (never "Mailer deleted" for a post layout reset)', promoWrong.length === 0, promoWrong);
+check('UX-015 …a Promotions entry that names neither is Promotions\', not a mailer\'s; another verb is said by the general table', AWORDS.actionLabel('updated', 'promotions', '') === 'Changed in Promotions' &&
+  AWORDS.actionLabel('deleted', 'promotions') === 'Removed from Promotions' && AWORDS.actionLabel('file-uploaded', 'promotions', 'Post art: Logo uploaded') === 'File uploaded');
+/* and every entry the two Promotions writers make today is one of the shapes above: each logActivity(…, { area:
+   'promotions' }) call's detail begins "Post art: ", "Post picture" or "Post layout" (social posts) or names the
+   mailer (mailers). A new kind of entry written with other words fails here, so its words are added above first. */
+function promoCalls(file) {
+  return read(file).split('\n').filter(function (l) { return l.indexOf('logActivity(') !== -1 && l.indexOf("area: 'promotions'") !== -1; }).map(function (l) {
+    var tail = l.slice(l.indexOf('logActivity('));
+    var verb = /decoded, (?:[a-z]+ \? '[a-z]+' : )?'([a-z]+)', /.exec(tail);
+    return { verb: verb && verb[1], detail: verb ? tail.slice(verb.index + verb[0].length).replace(/^'/, '') : '' };
+  });
+}
+var postCalls = promoCalls('functions/lib/promo-social.js'), mailerCalls = promoCalls('functions/lib/promo-mailer.js');
+check('UX-015 lib/promo-social.js\'s six Promotions entries are each said as a social post\'s', postCalls.length === 6 && postCalls.every(function (c) {
+  return /^Post (art: |picture|layout)/.test(c.detail) && /^Social post (art|picture|layout) /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
+}), postCalls.map(function (c) { return [c.verb, c.detail.slice(0, 40), AWORDS.actionLabel(c.verb, 'promotions', c.detail)]; }));
+check('UX-015 lib/promo-mailer.js\'s four Promotions entries are each said as a mailer\'s', mailerCalls.length === 4 && mailerCalls.every(function (c) {
+  return /^Mailer /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
+}), mailerCalls.map(function (c) { return [c.verb, c.detail.slice(0, 40), AWORDS.actionLabel(c.verb, 'promotions', c.detail)]; }));
 check('UX-015 a person by name from their address; the platform as the platform; a non-address as it is', AWORDS.personName('sachitanand.rai@timesinternet.in') === 'Sachitanand Rai' &&
   AWORDS.personName('ASHA_RAO@timesinternet.in') === 'Asha Rao' && AWORDS.personName('platform') === 'Platform (automated)' && AWORDS.personName('') === 'Platform (automated)' && AWORDS.personName('system') === 'Platform (automated)' &&
   AWORDS.personName('qa-agent') === 'qa-agent' && AWORDS.personName('12@x.in') === '12@x.in');
@@ -168,6 +206,25 @@ check('UX-015 …and one stored as Settings before is read as Content, by all th
   aq.areaOf({ action: 'updated', area: 'settings' }) === 'content' && apiAct.areaOf({ action: 'updated', area: 'settings' }) === 'content' && aq.entryOf('x', { action: 'updated', area: 'settings', at: '2026-11-01T00:00:00Z' }).area === 'content');
 check('UX-015 …while Promotions\' and the description\'s own areas, and real settings, stay', activity.areaOf({ action: 'updated', area: 'promotions' }) === 'promotions' &&
   aq.areaOf({ action: 'updated', area: 'event' }) === 'event' && apiAct.areaOf({ action: 'settings-changed', area: 'settings' }) === 'settings' && activity.areaOf({ action: 'status-changed' }) === 'settings');
+/* …and both logs hand the entry's detail to those words: a row of each, drawn by the page's own function (the
+   console's escaping is the shared kit's, so the Activity log's same-shaped one stands in for it) */
+var alogRowCtx = { AW: AWORDS, AREA_LABEL: { promotions: 'Promotions' }, when: function () { return '7 Nov 2026, 11:05 am'; }, encodeURIComponent: encodeURIComponent };
+vm.createContext(alogRowCtx);
+var alogSrc = ALOG.slice(ALOG.lastIndexOf('<script>'), ALOG.lastIndexOf('</script>'));
+vm.runInContext([fnSource(alogSrc, 'esc'), fnSource(alogSrc, 'eventHref'), fnSource(alogSrc, 'rowHtml'), 'this.rowHtml = rowHtml;'].join('\n'), alogRowCtx);
+var conRowCtx = { AW: AWORDS, EV: { id: 'qa-ev' }, LOG_AREA_BADGE: { promotions: 'b-accent' }, histLines: function () { return []; }, histWhen: function () { return '7 Nov 2026, 11:05 am'; }, histApprovedBy: function () { return ''; }, encodeURIComponent: encodeURIComponent };
+vm.createContext(conRowCtx);
+vm.runInContext([fnSource(alogSrc, 'esc'), fnSource(CONSOLE, 'actionLabel'), fnSource(CONSOLE, 'areaLabel'), fnSource(CONSOLE, 'isPlatform'), fnSource(CONSOLE, 'whoLabel'), fnSource(CONSOLE, 'logRow'), 'this.logRow = logRow;'].join('\n'), conRowCtx);
+var postReset = { at: '2026-11-07T05:35:00Z', by: 'qa.agent@timesinternet.in', area: 'promotions', action: 'deleted', detail: 'Post layout reset: Square · 1:1', eventId: 'qa-ev', eventName: 'QA event' };
+var aRow = alogRowCtx.rowHtml(postReset), cRow = conRowCtx.logRow(postReset);
+check('UX-015 the all-events log draws a social post\'s layout reset as one, not as a mailer deleted', aRow.indexOf('<div class="what-act">Social post layout reset</div>') !== -1 && aRow.indexOf('Mailer') === -1, aRow);
+check('UX-015 …and so does the console\'s', cRow.indexOf('<div class="alog-act">Social post layout reset</div>') !== -1 && cRow.indexOf('Mailer') === -1, cRow);
+var mailerRow = conRowCtx.logRow({ at: '2026-11-07T05:35:00Z', by: 'qa.agent@timesinternet.in', area: 'promotions', action: 'deleted', detail: 'Mailer “Launch invite” (Invite) deleted' });
+check('UX-015 …while a mailer\'s deletion still reads Mailer deleted', mailerRow.indexOf('<div class="alog-act">Mailer deleted</div>') !== -1, mailerRow);
+check('UX-015 both CSVs and the all-events search say the same words (each call hands over the detail)', (ALOG.match(/AW\.actionLabel\(it\.action, it\.area, it\.detail\)/g) || []).length === 3 &&
+  ALOG.indexOf('AW.actionLabel(it.action, it.area)') === -1 && CONSOLE.indexOf('actionLabel(h.action, h.area, h.detail)') !== -1 && !/actionLabel\(h\.action, (h\.)?area\)/.test(CONSOLE));
+check('UX-015 activity-words.js names the tests that check it (there is no activity-words.test.js)', read('activity-words.js').indexOf('functions/lib/activity-words.test.js') === -1 &&
+  read('activity-words.js').indexOf('functions/lib/events-dashboard-b11.test.js') !== -1 && !fs.existsSync(path.join(__dirname, 'activity-words.test.js')));
 var alogFilters = (/<form class="filters"[\s\S]*?<\/form>/.exec(ALOG) || [''])[0];
 var alogOrder = (alogFilters.match(/<label for="f-[a-z]+">[^<]+<\/label>/g) || []).map(function (l) { return l.replace(/<[^>]+>/g, ''); });
 check('UX-015 the all-events log\'s filters: Event · Person · Area · From · To · Search', same(alogOrder, ['Event', 'Person', 'Area', 'From', 'To', 'Search']), alogOrder);

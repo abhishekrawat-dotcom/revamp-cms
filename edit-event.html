@@ -4867,7 +4867,8 @@
   var LOG_AREA_BADGE = { site:'b-info', content:'b-ok', forms:'b-review', design:'b-accent', publishing:'b-warn',
     registrations:'b-info', promotions:'b-accent', settings:'b-mute', event:'b-mute' };
   var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
-  function actionLabel(a, area){ return AW.actionLabel(a, area); }
+  /* detail: Promotions' mailers and social posts share their verbs, and only the entry's detail tells them apart */
+  function actionLabel(a, area, detail){ return AW.actionLabel(a, area, detail); }
   function areaLabel(id){ return AW.areaLabel(id); }
   function isPlatform(by){ return AW.isPlatform(by); }
   /* a person by name ("Sachitanand Rai"); their address is on hover in the list and in the CSV */
@@ -4969,7 +4970,7 @@
       var rows = [['When (IST)', 'Time (ISO)', 'Person', 'Person email', 'Area', 'Action', 'Action code', 'What changed', 'Item', 'Before', 'After', 'Version', 'Approval']];
       all.forEach(function(h){
         var lines = histLines(h);
-        var head = [histWhen(h.at), h.at || '', whoLabel(h.by), isPlatform(h.by) ? '' : String(h.by), areaLabel(h.area), actionLabel(h.action, h.area), h.action || '', AW.detailText(h)];
+        var head = [histWhen(h.at), h.at || '', whoLabel(h.by), isPlatform(h.by) ? '' : String(h.by), areaLabel(h.area), actionLabel(h.action, h.area, h.detail), h.action || '', AW.detailText(h)];
         var tail = [h.version || '', histApprovedBy(h)];
         if (!lines.length) rows.push(head.concat(['', '', ''], tail));
         lines.forEach(function(l){ rows.push(head.concat([l.what, l.before, l.after], tail)); });
@@ -4998,7 +4999,7 @@
       '<div class="alog-when" title="' + esc(h.at || '') + '">' + esc(histWhen(h.at)) + '</div>' +
       '<div class="alog-who' + (isPlatform(h.by) ? ' platform' : '') + '" title="' + esc(isPlatform(h.by) ? who : String(h.by)) + '">' + esc(who) + '</div>' +
       '<div class="alog-area"><span class="badge ' + (LOG_AREA_BADGE[area] || 'b-mute') + '">' + esc(areaLabel(area)) + '</span></div>' +
-      '<div class="alog-what"><div class="alog-act">' + esc(actionLabel(h.action, area)) + (h.version ? ' · version ' + esc(String(h.version)) : '') + '</div>' +
+      '<div class="alog-what"><div class="alog-act">' + esc(actionLabel(h.action, area, h.detail)) + (h.version ? ' · version ' + esc(String(h.version)) : '') + '</div>' +
         '<div class="alog-detail">' + esc(AW.detailText(h) || '—') + '</div>' +
         (a ? '<div class="alog-appr">' + esc(histApprovedBy(h)) + review + '</div>' : '') + more + '</div>' +
     '</li>';

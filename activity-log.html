@@ -355,7 +355,7 @@
     var q = $('f-q').value.trim().toLowerCase();
     if (!q) return S.items;
     return S.items.filter(function(it){
-      var hay = [AW.personName(it.by), it.by, it.eventName, it.eventId, AREA_LABEL[it.area], AW.actionLabel(it.action, it.area), it.action, AW.detailText(it)].concat((it.fields || []).map(function(c){ return AW.fieldLabel(c.field) + ' ' + c.field + ' ' + c.before + ' ' + c.after; })).join(' ').toLowerCase();
+      var hay = [AW.personName(it.by), it.by, it.eventName, it.eventId, AREA_LABEL[it.area], AW.actionLabel(it.action, it.area, it.detail), it.action, AW.detailText(it)].concat((it.fields || []).map(function(c){ return AW.fieldLabel(c.field) + ' ' + c.field + ' ' + c.before + ' ' + c.after; })).join(' ').toLowerCase();
       return hay.indexOf(q) !== -1;
     });
   }
@@ -376,7 +376,7 @@
       '<td class="ev"><a href="' + esc(eventHref(it.eventId)) + '">' + esc(it.eventName || it.eventId) + '</a>' + (it.eventDeleted ? ' <span class="deleted">(deleted)</span>' : '') +
         '<span class="ev-addr">/e/' + esc(it.eventId) + '</span></td>' +
       '<td class="area"><span class="tag ' + esc(it.area) + '">' + esc(AREA_LABEL[it.area] || AW.areaLabel(it.area)) + '</span></td>' +
-      '<td class="what"><div class="what-act">' + esc(AW.actionLabel(it.action, it.area)) + (it.version != null ? ' · version ' + esc(it.version) : '') + '</div>' +
+      '<td class="what"><div class="what-act">' + esc(AW.actionLabel(it.action, it.area, it.detail)) + (it.version != null ? ' · version ' + esc(it.version) : '') + '</div>' +
         '<div>' + (esc(detail) || '<span class="muted">—</span>') + '</div>' + changes + '</td>' +
       '</tr>';
   }
@@ -401,7 +401,7 @@
     var rows = [['When (IST)', 'Person', 'Person email', 'Event', 'Event id', 'Area', 'Action', 'Action code', 'What changed', 'Version', 'Field', 'Before', 'After']];
     visible().forEach(function(it){
       var head = [when(it.at), AW.personName(it.by), AW.isPlatform(it.by) ? '' : it.by, it.eventName, it.eventId, AREA_LABEL[it.area] || it.area,
-        AW.actionLabel(it.action, it.area), it.action, AW.detailText(it), it.version != null ? it.version : ''];
+        AW.actionLabel(it.action, it.area, it.detail), it.action, AW.detailText(it), it.version != null ? it.version : ''];
       if (!it.fields || !it.fields.length) rows.push(head.concat(['', '', '']));
       else it.fields.forEach(function(c){ rows.push(head.concat([AW.fieldLabel(c.field), c.before, c.after])); });
     });
