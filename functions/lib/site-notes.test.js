@@ -245,8 +245,9 @@ function text(html) { return html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&'
     /if \(!quiet\)\{ openDrawer\(id\); return true; \}/.test(reg));
   check('UX-070: changes are sent one after another', /SAVING = SAVING\.then\(function\(\)\{/.test(reg));
   check('UX-070: closing the drawer saves what was typed', /function closeDrawer\(\)\{[\s\S]{0,700}sendText\(row, notes\.value, tags\.value\)/.test(reg));
-  check('UX-070: messages sit beside the drawer, or above its foot on a narrow screen', /body:has\(\.drawer\) \.toast-host\{ right:calc\(460px \+ 18px\); \}/.test(reg) &&
-    /@media \(max-width: 900px\)\{ body:has\(\.drawer\) \.toast-host\{ right:18px; bottom:80px; \} \}/.test(reg));
+  /* the message is RevampCore.toast's (UX-006, bottom centre): while the drawer is open it is centred on the rest of the page */
+  check('UX-070: messages sit beside the drawer, or above its foot on a narrow screen', /body:has\(\.drawer\) \.rv-toasts\{ left:calc\(\(100% - 460px\) \/ 2\); \}/.test(reg) &&
+    /@media \(max-width: 900px\)\{ body:has\(\.drawer\) \.rv-toasts\{ left:50%; \} body:has\(\.drawer\)\{ --rv-toast-bottom:80px; \} \}/.test(reg));
   check('UX-070: a place reads as the visitor gave it', !/' \(typed, not from the list\)'/.test(reg) && /function placeOf\(r\)\{ return r\.location \|\| ''; \}/.test(reg));
   /* the drawer's pure helpers, run as they are written */
   var src = ['tagsOf', 'textChanges', 'savedText'].map(function (name) {

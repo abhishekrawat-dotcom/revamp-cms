@@ -172,7 +172,8 @@
   }
   .login-hint{ margin-top: 10px; color: var(--text-muted); font-size: 12.5px; text-align: center; }
 
-  .login-foot{ margin-top: 28px; display:flex; justify-content:space-between; align-items:center; }
+  /* the theme switch sits in the page's corner, where every other page has it, not under the sign-in button (UX-007) */
+  .login-foot{ position: fixed; top: 16px; right: 16px; z-index: 5; display:flex; align-items:center; }
 
   @media (prefers-reduced-motion: reduce){
     *{ transition: none !important; animation: none !important; }

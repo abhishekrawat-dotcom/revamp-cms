@@ -572,10 +572,8 @@
   }
   @media (min-width:881px){ .mobile-only{ display:none !important; } }
 
-  #toast-region{ position:fixed; bottom:22px; right:22px; display:flex; flex-direction:column; gap:8px; z-index:100; }
-  .toast{ background:var(--text); color:var(--bg); font-size:13px; font-weight:600; padding:11px 16px; border-radius:8px; box-shadow:var(--shadow-md); opacity:0; transform:translateY(6px); transition:opacity .18s ease, transform .18s ease; max-width:340px; }
-  .toast.show{ opacity:1; transform:translateY(0); }
-  .toast-btn{ background:none; border:none; padding:0; margin-left:10px; color:var(--bg); font-size:13px; font-weight:800; text-decoration:underline; }
+  /* the messages are RevampCore.toast's, drawn the same on every page (UX-006); this keeps them above the dialogs */
+  #toast-region{ z-index:100; }
 
   /* ---------- portals: the dashboard works on one ET portal at a time (the top-bar switcher), or on all of them
      with a Portal column. Words on these grounds are --text or --text-muted (AA in light and dark); links are
@@ -903,12 +901,10 @@
     alertLg:  svg('<path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9L2.6 17.1A2 2 0 0 0 4.3 20h15.4a2 2 0 0 0 1.7-2.9L13.7 3.9a2 2 0 0 0-3.4 0z"/>', 40)
   };
 
-  function toast(msg){
-    var region = $('toast-region');
-    var t = document.createElement('div'); t.className='toast'; t.textContent = msg;
-    region.appendChild(t);
-    requestAnimationFrame(function(){ t.classList.add('show'); });
-    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 220); }, 2800);
+  /* RevampCore.toast, the one message of every page (UX-006): kind 'error' for something that did not happen
+     (red, read out at once, stays until dismissed), 'info' for neither; a confirmation otherwise */
+  function toast(msg, kind){
+    window.RevampCore.toast(msg, { kind: kind || 'success' });
   }
 
   /* =========================================================
@@ -1168,14 +1164,14 @@
     if (!day) return false;
     return (!range.from || day >= range.from) && (!range.to || day <= range.to);
   }
-  /* "26 Oct – 1 Nov 2026", "1 – 30 Nov 2026", "from 26 Oct 2026" */
+  /* "26 Oct – 1 Nov 2026", "1–30 Nov 2026" (RevampCore.fmtRange's style), "from 26 Oct 2026" */
   function fmtDayRange(r){
     function parts(s){ var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || ''); return m ? { y:+m[1], m:+m[2], d:+m[3] } : null; }
     function full(p){ return p.d + ' ' + MONTH_SHORT[p.m - 1] + ' ' + p.y; }
     var a = parts(r && r.from), b = parts(r && r.to);
     if (a && b){
       if (r.from === r.to) return full(a);
-      if (a.y === b.y && a.m === b.m) return a.d + ' – ' + full(b);
+      if (a.y === b.y && a.m === b.m) return a.d + '–' + full(b);
       if (a.y === b.y) return a.d + ' ' + MONTH_SHORT[a.m - 1] + ' – ' + full(b);
       return full(a) + ' – ' + full(b);
     }
@@ -1296,14 +1292,9 @@
     return String(n);
   }
 
-  function fmtDate(iso){
-    var d = new Date(iso);
-    return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
-  }
-  function fmtTime(iso){
-    var d = new Date(iso);
-    return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
-  }
+  /* RevampCore's one way of writing a date and a time, as India time (UX-010): "5 Dec 2026", "10:41 am" */
+  function fmtDate(iso){ return window.RevampCore.fmtDate(iso, { ist: true }); }
+  function fmtTime(iso){ return window.RevampCore.fmtTime(iso, { ist: true }); }
   function fmtRelativeDays(n){
     if (n <= 0) return 'Today';
     if (n === 1) return 'Yesterday';
@@ -1639,7 +1630,7 @@
     closeAll();
     renderApp();
     if (window.RevampPortals) window.RevampPortals.setWorking(v).then(null, function(err){
-      toast((err && err.message) || 'Your portal choice is kept in this browser only.');
+      toast((err && err.message) || 'Your portal choice is kept in this browser only.', 'info');
     });
     return true;
   }
@@ -1738,7 +1729,7 @@
   function openSetPortalFor(id, opener){
     var e = findEvent(id);
     if (!e || e.portal) return;
-    if (!window.RevampPortals){ toast('The portal list did not load. Reload the page and try again.'); return; }
+    if (!window.RevampPortals){ toast('The portal list did not load. Reload the page and try again.', 'error'); return; }
     window.RevampPortals.openSetPortal({
       eventId: e.id, eventName: e.name, current: '', hasGeneratedSite: e.hasGeneratedSite, published: e.published,
       returnFocus: opener || null,
@@ -1761,15 +1752,7 @@
   }
   /* a toast with one button (the Set portal toast's View) — it stays a little longer, so the button can be reached */
   function toastAction(msg, label, run){
-    var region = $('toast-region');
-    var t = document.createElement('div'); t.className = 'toast';
-    var text = document.createElement('span'); text.textContent = msg; t.appendChild(text);
-    var b = document.createElement('button'); b.type = 'button'; b.className = 'toast-btn'; b.textContent = label;
-    b.addEventListener('click', function(){ t.remove(); run(); });
-    t.appendChild(b);
-    region.appendChild(t);
-    requestAnimationFrame(function(){ t.classList.add('show'); });
-    setTimeout(function(){ t.classList.remove('show'); setTimeout(function(){ t.remove(); }, 220); }, 6000);
+    window.RevampCore.toast(msg, { action: { label: label, onClick: run } });
   }
   /* the cell (and the card line) for an event's portal: its name, or the "No portal yet" chip with Set portal */
   function portalCellHTML(e){
@@ -2004,8 +1987,8 @@
     if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.range.mode='30'; closeAll(); renderApp(); });
     if (applyBtn) applyBtn.addEventListener('click', function(){
       var s = $('range-start').value, e = $('range-end').value;
-      if (!s || !e){ toast('Pick both a start and end date.'); return; }
-      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.'); return; }
+      if (!s || !e){ toast('Pick both a start and end date.', 'error'); return; }
+      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.', 'error'); return; }
       state.range.start = s; state.range.end = e;
       closeAll(); renderApp();
     });
@@ -2043,8 +2026,8 @@
     if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.activityRange.mode='30'; closeAll(); renderActivity(); });
     if (applyBtn) applyBtn.addEventListener('click', function(){
       var s = $('arange-start').value, e = $('arange-end').value;
-      if (!s || !e){ toast('Pick both a start and end date.'); return; }
-      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.'); return; }
+      if (!s || !e){ toast('Pick both a start and end date.', 'error'); return; }
+      if (new Date(s) > new Date(e)){ toast('Start date must be before end date.', 'error'); return; }
       state.activityRange.start = s; state.activityRange.end = e;
       closeAll(); renderActivity();
     });
@@ -2710,14 +2693,14 @@
         openQRModal(id, menuButtonOf(from)); break;
       case 'copylink':
         var url = eventPublicUrl(e);
-        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied — ' + url); }).catch(function(){ toast(url); }); }
-        else toast(url);
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied — ' + url); }).catch(function(){ toast(url, 'info'); }); }
+        else toast(url, 'info');
         break;
       case 'delete':
-        if (!mayRemove()){ toast(whoMayRemove()); break; }
+        if (!mayRemove()){ toast(whoMayRemove(), 'error'); break; }
         openDeleteDialog(e, menuButtonOf(from)); break;
       case 'restore':
-        if (!mayRemove()){ toast(whoMayRemove()); break; }
+        if (!mayRemove()){ toast(whoMayRemove(), 'error'); break; }
         openRestoreDialog(e, menuButtonOf(from)); break;
     }
   }
@@ -2862,7 +2845,7 @@
       state.refreshing = false;
       refreshAgain = false;
       renderSync();
-      toast('The list could not be read again (' + loadFailedWords({ status: Number(err && err.status) || 0, offline: navigator.onLine === false, message: '' }).title.toLowerCase() + '). It still shows what it had.');
+      toast('The list could not be read again (' + loadFailedWords({ status: Number(err && err.status) || 0, offline: navigator.onLine === false, message: '' }).title.toLowerCase() + '). It still shows what it had.', 'error');
       return false;
     });
   }
@@ -2874,7 +2857,7 @@
   var CLONE_CHECK_MS = 350;
   function openCloneDialog(e, opener){
     var C = window.RevampCore;
-    if (!C || typeof C.cloneEvent !== 'function'){ toast('Clone could not start. Reload the page and try again.'); return; }
+    if (!C || typeof C.cloneEvent !== 'function'){ toast('Clone could not start. Reload the page and try again.', 'error'); return; }
     var name = (e.name + ' (Copy)').slice(0, 200);
     var slugTouched = false, seq = 0, timer = null;
     var d = openDialog({
@@ -2953,7 +2936,7 @@
      Undo, which is a Restore. */
   function openDeleteDialog(e, opener){
     var C = window.RevampCore;
-    if (!C || typeof C.deleteEvent !== 'function'){ toast('Delete could not start. Reload the page and try again.'); return; }
+    if (!C || typeof C.deleteEvent !== 'function'){ toast('Delete could not start. Reload the page and try again.', 'error'); return; }
     var lines = ['<p class="dlg-text">It moves to Deleted Events, where an approver can restore it with its content and registrations.</p>'];
     if (e.published) lines.push('<p class="dlg-text">Its live site stops showing at once: ' + '<span class="mono">' + esc(C.publicUrl(e)) + '</span>. Restoring the event brings it back.</p>');
     if (e.registrations) lines.push('<p class="dlg-text">Its ' + fmtNum(e.registrations) + ' registration' + (e.registrations === 1 ? ' is' : 's are') + ' kept.</p>');
@@ -2986,7 +2969,7 @@
      for approvers too (otherwise it would put a site back on the web without an approval) */
   function openRestoreDialog(e, opener){
     var C = window.RevampCore;
-    if (!C || typeof C.restoreEvent !== 'function'){ toast('Restore could not start. Reload the page and try again.'); return; }
+    if (!C || typeof C.restoreEvent !== 'function'){ toast('Restore could not start. Reload the page and try again.', 'error'); return; }
     var to = landsIn(e);
     var body = '<p class="dlg-text">' + (e.published
       ? 'Its site goes live again at <span class="mono">' + esc(C.publicUrl(e)) + '</span>, as it was when it was deleted.'
@@ -3000,7 +2983,7 @@
   /* d: the Restore window, or null for the delete toast's Undo (a failure is then a toast of its own) */
   function restoreNow(e, d){
     var C = window.RevampCore;
-    if (!C || typeof C.restoreEvent !== 'function'){ toast('Restore could not start. Reload the page and try again.'); return; }
+    if (!C || typeof C.restoreEvent !== 'function'){ toast('Restore could not start. Reload the page and try again.', 'error'); return; }
     C.restoreEvent(e.id).then(function(){
       if (d) d.close();
       var to = landsIn(e), row = findEvent(e.id) || e;
@@ -3010,7 +2993,7 @@
       toastAction('“' + e.name + '” is back in ' + viewName(to) + '.', 'Show it', function(){ showBucket(to); });
     }, function(err){
       var msg = removeError(err, 'restored');
-      if (d){ d.setBusy(false); d.error(msg); } else toast(msg);
+      if (d){ d.setBusy(false); d.error(msg); } else toast(msg, 'error');
     });
   }
 
@@ -3124,8 +3107,8 @@
         $('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
       });
       $('qr-copy-link').addEventListener('click', function(){
-        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url); }); }
-        else toast(url);
+        if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url, 'info'); }); }
+        else toast(url, 'info');
       });
       mount('qr-ag-code');
     }
@@ -3376,12 +3359,8 @@
     if (!validDay(day)) return '—';
     return fmtRelativeDays(Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(day + 'T00:00:00Z')) / 86400000));
   }
-  function whenIst(iso){
-    var t = Date.parse(iso);
-    if (isNaN(t)) return '—';
-    var d = new Date(t + IST_OFFSET_MIN * 60000);
-    return d.getUTCDate() + ' ' + MONTH_SHORT[d.getUTCMonth()] + ', ' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
-  }
+  /* "3 Nov 2026, 12:30 pm", India time: RevampCore's one way of writing a moment (UX-010) */
+  function whenIst(iso){ return window.RevampCore.fmtDate(iso, { time: true, ist: true }); }
   function retryHTML(key){
     return '<p class="act-empty">These figures could not be loaded.</p>' +
       '<button type="button" class="btn btn-secondary btn-sm" data-act-retry="' + key + '">Try again</button>';
@@ -3647,16 +3626,16 @@
     $('help-cancel').addEventListener('click', close);
     $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
     $('help-copy-email').addEventListener('click', function(){
-      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(HELP_EMAIL).then(function(){ toast('Email address copied'); }).catch(function(){ toast(HELP_EMAIL); }); }
-      else toast(HELP_EMAIL);
+      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(HELP_EMAIL).then(function(){ toast('Email address copied'); }).catch(function(){ toast(HELP_EMAIL, 'info'); }); }
+      else toast(HELP_EMAIL, 'info');
     });
     $('help-send').addEventListener('click', function(){
       var subject = $('help-subject').value.trim() || 'Support request — Events dashboard';
       var message = $('help-message').value.trim();
-      if (!message){ toast('Add a quick note so our team knows what you need.'); return; }
+      if (!message){ toast('Add a quick note so our team knows what you need.', 'error'); return; }
       var mailto = 'mailto:' + HELP_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message);
       window.location.href = mailto;
-      toast('Opening your email app…');
+      toast('Opening your email app…', 'info');
       close();
     });
     /* the window is where the keyboard is now (its controls were behind the page before) */
@@ -3847,9 +3826,6 @@
       wireViewToggle();
       applyView();
       startPortals();
-      /* the toasts (Clone, Delete, Restore, Updated) are read out by screen readers as they come */
-      $('toast-region').setAttribute('role', 'status');
-      $('toast-region').setAttribute('aria-live', 'polite');
       loadAndRender();
       loadApprovers();
       loadCreateDrafts();

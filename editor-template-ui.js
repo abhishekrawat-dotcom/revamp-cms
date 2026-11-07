@@ -69,6 +69,17 @@
   var mountOpts = null, remounting = false, deviceName = 'desktop', aiMarkersOn = false;
 
   function showToast(msg, opts) { return host && host.showToast ? host.showToast(msg, opts) : null; }
+  /* A failure in words for the person at the screen (UX-008): a server fault or a lost connection is said the
+     console's way (RevampCore.errText: "Something went wrong on our side…", never "Internal error: Firestore
+     DEADLINE_EXCEEDED"), and a refused session as "sign in again, then try once more" (UX-013). A refusal made
+     here in the page has no status and is said as it is. */
+  function whyNot(err) {
+    if (err && (typeof err.status === 'number' || err.code === 'revamp/signed-out') && window.RevampCore && RevampCore.errText) {
+      if (err.status >= 500 && window.console) console.error('[editor] request failed:', err);
+      return RevampCore.errText(err);
+    }
+    return err && err.message ? err.message : 'please try again.';
+  }
   function showNotice(id, opts) { if (host && host.showNotice) host.showNotice(id, opts); }
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
   function sectionsChanged() { if (chatFocusRedraw) chatFocusRedraw(); if (host && host.onSectionsChanged) host.onSectionsChanged(); }
@@ -248,6 +259,7 @@
     document.getElementById('btn-publish').disabled = true;
     document.getElementById('btn-preview').disabled = true;
     document.body.classList.add('ed-load-failed');
+    document.body.classList.toggle('ed-no-event', !!spec.noEvent);
     var panel = document.createElement('div');
     panel.className = 'tpl-load-error';
     panel.setAttribute('role', 'alert');
@@ -269,6 +281,7 @@
     var panel = frame && frame.querySelector('.tpl-load-error');
     if (panel) panel.remove();
     document.body.classList.remove('ed-load-failed');
+    document.body.classList.remove('ed-no-event');
   }
 
   var RETRY = { label: 'Try again', onClick: function () { start(); } };
@@ -283,13 +296,16 @@
     return m ? +m[1] : 0;
   }
 
+  /* in the words every page uses for it (RevampCore.loadErrorText, UX-008); with no event there is nothing for
+     Preview, Publish or the event's rail to lead to, so they are put away (noEvent) */
   function eventLoadError(err) {
     var status = statusOf(err);
     if (status === 401) return SIGNING_IN;
-    if (status === 404) {
-      return { title: 'We could not find this event', text: 'It may have been deleted, or the link may be out of date.', actions: [BACK_TO_EVENTS] };
+    var said = window.RevampCore && RevampCore.loadErrorText ? RevampCore.loadErrorText({ status: status }) : null;
+    if (status === 404 || status === 403) {
+      return { title: said ? said.title : 'Event not found', text: said ? said.text : 'This event doesn’t exist or was deleted.', actions: [BACK_TO_EVENTS], noEvent: true };
     }
-    return { title: 'Could not load this event', text: 'Check your connection and try again. Nothing has been changed.', actions: [RETRY, BACK_TO_EVENTS] };
+    return { title: said ? said.title : 'Couldn’t load this event', text: said ? said.text : 'The event could not be loaded. Check your connection and try again.', actions: [RETRY, BACK_TO_EVENTS] };
   }
 
   function noSiteError() {
@@ -6438,7 +6454,8 @@
     scrim.addEventListener('click', function (e) { if (e.target === scrim || (e.target.closest && e.target.closest('[data-close]'))) scrim.remove(); });
     return scrim;
   }
-  function when(iso) { var d = new Date(iso || ''); return isNaN(d) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+  /* "3 Nov 2026, 12:24 pm": RevampCore's one way of writing a moment, as in the console (UX-010); '' with none */
+  function when(iso) { return window.RevampCore && RevampCore.fmtDate && iso ? RevampCore.fmtDate(iso, { time: true }).replace(/^—$/, '') : ''; }
 
   function cancelled() { return Object.assign(new Error('cancelled'), { cancelled: true }); }
   /* One question in the editor's own dialog (host.openDialog). spec: { title, text, more, modal, actions: [{ key,
@@ -6484,7 +6501,7 @@
       // Content's records are drawn as they are today, as on opening
       drawRecords(false);
     }).catch(function (err) {
-      showToast('Could not open the saved version — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
+      showToast('Could not open the saved version — ' + whyNot(err), { kind: 'error' });
     });
   }
 
@@ -6544,7 +6561,7 @@
       return out;
     }, function (err) {
       saving = false; savingNow = null; renderSiteState();
-      if (!(err && err.cancelled)) showToast('Could not save — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
+      if (!(err && err.cancelled)) showToast('Could not save — ' + whyNot(err), { kind: 'error' });
       throw err;
     });
     return savingNow;
@@ -6590,7 +6607,7 @@
     }).catch(function (err) {
       if (err && (err.cancelled || err.message === 'busy')) return;
       if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return; }
-      if (err && err.status) showToast('Could not publish — ' + err.message, { kind: 'error' });
+      if (err && (err.status || err.code === 'revamp/signed-out')) showToast('Could not publish — ' + whyNot(err), { kind: 'error' });
     });
   }
 
@@ -6629,7 +6646,7 @@
         send.disabled = false; send.textContent = 'Send for approval';
         /* the saved page still has the logo unit's notice open: the dialog goes, and the notice and the logo come up */
         if (err && err.code === 'logo-unit-unanswered') { m.remove(); logoNoteRefused(err); return; }
-        showToast('Could not send for approval — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
+        showToast('Could not send for approval — ' + whyNot(err), { kind: 'error' });
       });
     });
   }

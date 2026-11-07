@@ -51,7 +51,8 @@ check('D.3 th.col-portal right after "Event name"', count(PAGE, '<th class="col-
 check('D.3 #portal-notice right after #special-banner', count(PAGE, 'id="portal-notice"') === 1 && /<div id="special-banner"><\/div>\n\s*<!--[^\n]*-->\n\s*<div id="portal-notice"><\/div>/.test(PAGE));
 check('D.3 the notice links to the review page as portal-review.html', INLINE.indexOf('<a class="pn-link" href="portal-review.html">Review suggested portals</a>') !== -1);
 var CSS = PAGE.slice(PAGE.indexOf('<style>'), PAGE.indexOf('</style>'));
-var portalCss = CSS.slice(CSS.indexOf('.toast-btn{'), CSS.indexOf('.fade-in{'));
+/* the portal rules follow the toast's (whose look is RevampCore's now, UX-006) */
+var portalCss = CSS.slice(CSS.indexOf('#toast-region{'), CSS.indexOf('.fade-in{'));
 check('D.3 the portal CSS uses tokens only (no new hex colour, no rgb)', portalCss.length > 2000 && !/#[0-9a-fA-F]{3,8}\b/.test(portalCss) && !/rgba?\(/.test(portalCss), portalCss.match(/#[0-9a-fA-F]{3,8}\b/g));
 check('D.3 the Portal column and the cards\' portal line show only in All portals', /\.ev-table \.col-portal\{ display:none; \}/.test(CSS) && /#results-view\.all-portals \.ev-table \.col-portal\{ display:table-cell; \}/.test(CSS) &&
   /\.ev-card-portal\{ display:none;/.test(CSS) && /#results-view\.all-portals \.ev-card-portal\{ display:flex; \}/.test(CSS));
@@ -475,6 +476,8 @@ function page(o) {
   ctx.window = ctx;
   vm.createContext(ctx);
   if (!o.noPicker) vm.runInContext(PICKER, ctx, { filename: 'portal-picker.js' });
+  /* the page writes its dates and messages with edit-event-core.js (RevampCore.fmtDate, .toast), as it loads it */
+  if (!ctx.RevampCore) vm.runInContext(fs.readFileSync(path.join(ROOT, 'edit-event-core.js'), 'utf8'), ctx, { filename: 'edit-event-core.js' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
   vm.runInContext(INLINE, ctx, { filename: 'Event_Listing.html (inline)' });
   function $(id) { return d.getElementById(id); }
@@ -593,10 +596,10 @@ async function main() {
   check('D.4 …it PATCHes { eventId, portal, ifPortal: "" }', JSON.stringify(patched) === JSON.stringify([{ eventId: 'np-live', portal: 'cio', ifPortal: '' }]), patched);
   check('D.4 …the row has the portal now, so it leaves the "No portal yet" list', S.rows().length === 0 && !S.$('rv-portal-dialog'));
   var toastEl = S.$('toast-region').children[S.$('toast-region').children.length - 1];
-  check('D.4 …the toast names it, with View (the row left the view)', toastEl && toastEl.textContent === '“Retail Leaders Summit” is now on ETCIO.View' && !!toastEl.querySelector('.toast-btn'), S.toasts());
+  check('D.4 …the toast names it, with View (the row left the view)', toastEl && toastEl.textContent === '“Retail Leaders Summit” is now on ETCIO.View' && !!toastEl.querySelector('.rv-toast-act'), S.toasts());
   check('D.4 …the notice counts one fewer', S.notice().indexOf('Showing the events with no portal yet.') !== -1 && (S.$('pn-back').click(), S.notice().indexOf('1 event has no portal yet.') !== -1), S.notice());
   check('D.4 Back returns to ETHRWorld', S.btn() === 'ETHRWorld' && JSON.stringify(S.rows()) === JSON.stringify(['hr-live']));
-  toastEl.querySelector('.toast-btn').click();
+  toastEl.querySelector('.rv-toast-act').click();
   await flush();
   check('D.4 View switches to the event\'s portal (and saves it)', S.btn() === 'ETCIO' && JSON.stringify(S.rows().sort()) === JSON.stringify(['cio-live', 'np-live']) && S.puts()[S.puts().length - 1] === 'cio');
 

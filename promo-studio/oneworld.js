@@ -890,11 +890,14 @@ function owOnMessage(e) {
     done({ ok: !!b.ok, error: b.error ? String(b.error) : '' });
   }
 }
-/* A toast is fixed to this frame's bottom edge, which in a tall frame may be far below the window: while the page
-   scrolls (and neither the studio nor the whole-mail view has the window) the console shows it instead */
+/* In Promotions (which has said the frame is tall) every message is shown by the page around the frame: RevampCore's
+   one message of every page (UX-006), at the window's bottom centre and above the frame even while the studio or the
+   whole-mail view has the window. A toast of this frame's own would sit at the frame's bottom edge, which in a tall
+   frame may be far below what is shown, and look like no other page's. Elsewhere (Mailer performance, the studio on
+   its own) the studio keeps its own. */
 var owToast = toast;
 toast = function (m, ms) {
-  if (owFramed() && owTall() && !owStudioOpen() && !OW_LB) { owPost({ rvToast: { m: String(m), ms: ms } }); return; }
+  if (owFramed() && owTall()) { owPost({ rvToast: { m: String(m), ms: ms } }); return; }
   return owToast.apply(this, arguments);
 };
 

@@ -338,7 +338,7 @@ async function main() {
   await flush();
   S.view('deleted');
   check('UX-034 Deleted Events is filled from GET /api/events?deleted=1', S.calls('GET', /^\/api\/events\?deleted=1$/).length === 1 && JSON.stringify(S.rows()) === JSON.stringify(['gone-one']), S.rows());
-  check('…its row says when and by whom, and its name opens nothing (the console cannot open a deleted event)', /Deleted 01 Nov 2026 by boss@timesinternet\.in/.test(S.table()) &&
+  check('…its row says when and by whom, and its name opens nothing (the console cannot open a deleted event)', /Deleted 1 Nov 2026 by boss@timesinternet\.in/.test(S.table()) &&
     !S.$('table-body').querySelector('a.ev-link') && !!S.$('table-body').querySelector('span.ev-link'), S.table());
   check('…its ⋯ menu has Restore only (no Delete permanently)', JSON.stringify(S.menu('gone-one')) === JSON.stringify([['restore', 'Restore', false]]), S.menu('gone-one'));
   check('…no Insights here either, and the banner says what can be done', S.$('insights-section').hidden === true && /Showing Deleted events · restore any of them from its ⋯ menu/.test(S.$('special-banner').textContent), S.$('special-banner').textContent);

@@ -289,3 +289,13 @@ body.ow-team .content{padding:22px max(24px,calc((100% - 1240px) / 2 + 24px)) 48
   #evNav.secnav #nav-mail{margin-right:0}
   #evNav.secnav .sp{margin-left:0;flex:1 1 100%;flex-wrap:wrap}
 }
+
+/* A phone (UX-009). The mail editor needs the mail and its panel side by side: at 390px the mail was 44px wide and
+   the panel ran off the screen with no way to reach it. Below 700px it says so in their place and keeps only Back
+   (the mailers list, Download and Copy HTML stay usable there). The event's hashtag chip wraps inside its card. */
+@media (max-width:699px){
+  #mailer.on .ed-top .ed-pick, #mailer.on .ed-top .acts, #mailer.on .ed-top .sp, #mailer.on .ed-body{display:none}
+  #mailer.on::after{content:"The mail editor needs a larger screen. Open this mailer on a computer, or on a tablet held sideways, to change it.";
+    flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px;text-align:center;font-size:15px;line-height:1.5;font-weight:600}
+}
+.hchip{max-width:100%;overflow-wrap:anywhere}

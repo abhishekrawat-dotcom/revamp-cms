@@ -12,6 +12,10 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<!-- This page is every event's mailers. An address naming one event (?event=) is that event's Mailers in Promotions,
+     which also says "Event not found" for one that does not exist, as every event page does (UX-008), instead of this
+     page quietly showing all events. -->
+<script>(function(){try{var id=new URLSearchParams(location.search).get("event");if(id)location.replace("marketing.html?event="+encodeURIComponent(id)+"&tab=mailers");}catch(e){}})();</script>
 <style>
   :root{
     --bg:#F7F7F4; --surface:#FFFFFF; --surface-2:#F1F0EC; --surface-3:#E7E5DF;
@@ -58,8 +62,9 @@
   /* the brand mark is dark lettering: on the dark theme it sits on a light chip so it stays readable */
   :root[data-theme="dark"] .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; }
   @media (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; } }
-  .nav-back{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); text-decoration:none; white-space:nowrap; }
-  .nav-back:hover{ background:var(--surface-2); color:var(--text); }
+  /* the console's Back to events button: the same look and words on every page (UX-007) */
+  .nav-back{ display:flex; align-items:center; gap:7px; padding:7px 13px 7px 10px; border-radius:9px; border:1px solid var(--border); background:var(--surface-2); font-size:13px; font-weight:700; color:var(--text); text-decoration:none; white-space:nowrap; }
+  .nav-back:hover{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-strong); }
   .nav-back svg{ flex-shrink:0; }
   .nav-back-short{ display:none; }
   .nav-right{ margin-left:auto; display:flex; align-items:center; gap:10px; flex-shrink:0; }
@@ -100,7 +105,7 @@
   <div class="nav-inner">
     <a class="nav-brand" href="Event_Listing.html"><img src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></a>
     <a class="nav-back" href="Event_Listing.html" aria-label="Back to events">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
       <span class="nav-back-long">Back to events</span><span class="nav-back-short">Events</span>
     </a>
     <div class="nav-right">

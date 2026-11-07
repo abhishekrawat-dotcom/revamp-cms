@@ -1053,11 +1053,13 @@ window.addEventListener('message', function (e) {
   if (e.origin !== location.origin || e.source !== window.parent || !e.data) return;
   if (e.data.rvSocialTall) document.documentElement.classList.add('ow-tall');
 });
-/* The platform's toast (SRC index.html:2124). In a frame taller than the window its bottom edge can be far below
-   what is shown, so while the frame is tall and not filling the window the console shows it instead. */
+/* The platform's toast (SRC index.html:2124). In Promotions (which has said the frame is tall) the page around the
+   frame shows every message: RevampCore's one message of every page (UX-006), at the window's bottom centre and above
+   the frame even while the editor has the window; its own would sit at the frame's bottom edge, which in a tall frame
+   can be far below what is shown. */
 var owToastTimer = null;
 function toast(m, ms) {
-  if (owTall() && !owFull() && owFramed()) { owTell({ rvToast: { m: String(m == null ? '' : m), ms: ms } }); return; }
+  if (owTall() && owFramed()) { owTell({ rvToast: { m: String(m == null ? '' : m), ms: ms } }); return; }
   var t = $('toast');
   if (!t) return;
   t.textContent = m; t.classList.add('on');

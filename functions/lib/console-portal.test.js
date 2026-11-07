@@ -232,6 +232,8 @@ function loadConsole(o) {
       fetchEvent: function (id) { fetches.push(id); return o.fetch ? o.fetch(id) : Promise.reject(new Error('fetchEvent was not expected here')); },
       /* edit-event-core.js's own: the description's lengths, Basics' checklist rows and where the site stands */
       DESC: RC.DESC, basicsGaps: RC.basicsGaps, siteState: RC.siteState,
+      /* the console's failure wording is RevampCore's (UX-008 / UX-013) */
+      errText: RC.errText,
       publicUrl: function (ev) { return 'https://oneworld.example/e/' + ev.id; }
     }
   };

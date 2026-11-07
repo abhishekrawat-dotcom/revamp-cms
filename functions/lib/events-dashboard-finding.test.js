@@ -459,7 +459,8 @@ async function main() {
   S.tab('upcoming');
   function fmt(n) { var x = dayOf(n).split('-'); return +x[2] + ' ' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][+x[1] - 1] + ' ' + x[0]; }
   var a = dayOf(3).split('-'), b = dayOf(5).split('-');
-  var range = a[1] === b[1] ? +a[2] + ' – ' + fmt(5) : fmt(3).replace(/ \d{4}$/, a[0] === b[0] ? '' : ' ' + a[0]) + ' – ' + fmt(5);
+  /* RevampCore.fmtRange's style (UX-010): "5–7 Dec 2026", "30 Nov – 2 Dec 2026" */
+  var range = a[1] === b[1] ? +a[2] + '–' + fmt(5) : fmt(3).replace(/ \d{4}$/, a[0] === b[0] ? '' : ' ' + a[0]) + ' – ' + fmt(5);
   check('UX-030 a multi-day event shows its range and its start time as entered', S.cell('up-near').indexOf(range) === 0 && /10:41 am/.test(S.cell('up-near')) && /In 3 days/.test(S.cell('up-near')), [S.cell('up-near'), range]);
   check('UX-030 a one-day event with an end: the day and its hours', S.cell('up-far') === fmt(40) + '9:00 am – 6:00 pm', S.cell('up-far'));
   check('UX-030 a month booked in Create Event shows its words ("' + MONTH_LABEL + '"), not "Date not set"', S.cell('up-month') === MONTH_LABEL, S.cell('up-month'));

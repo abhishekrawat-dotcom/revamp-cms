@@ -57,8 +57,11 @@
   /* the brand mark is dark lettering: on the dark theme it sits on a light chip so it stays readable */
   :root[data-theme="dark"] .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; }
   @media (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; } }
-  .nav-back{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); text-decoration:none; }
-  .nav-back:hover{ background:var(--surface-2); color:var(--text); }
+  /* the console's Back to events button: the same look and words on every page (UX-007) */
+  .nav-back{ display:flex; align-items:center; gap:7px; padding:7px 13px 7px 10px; border-radius:9px; border:1px solid var(--border); background:var(--surface-2); font-size:13px; font-weight:700; color:var(--text); text-decoration:none; white-space:nowrap; }
+  .nav-back:hover{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-strong); }
+  .nav-back-short{ display:none; }
+  @media (max-width: 480px){ .nav-back-long{ display:none; } .nav-back-short{ display:inline; } }
   .nav-right{ margin-left:auto; display:flex; align-items:center; gap:10px; }
 
   .app{ max-width:1240px; margin:0 auto; padding:22px 24px 70px; display:flex; flex-direction:column; gap:14px; }
@@ -138,9 +141,9 @@
 <header class="nav">
   <div class="nav-inner">
     <a class="nav-brand" href="Event_Listing.html"><img src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></a>
-    <a class="nav-back" href="Event_Listing.html">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
-      Events
+    <a class="nav-back" href="Event_Listing.html" aria-label="Back to events">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+      <span class="nav-back-long">Back to events</span><span class="nav-back-short">Events</span>
     </a>
     <div class="nav-right">
       <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
@@ -185,6 +188,8 @@
 </main>
 
 <script src="theme-toggle.js"></script>
+<!-- RevampCore: the one way every page writes a date (UX-010) -->
+<script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
 <script>
 (function(){
@@ -198,16 +203,8 @@
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
 
-  var IST = null;
-  try { IST = new Intl.DateTimeFormat('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', hour12:true }); } catch (e) { IST = null; }
-  function when(iso){
-    var d = new Date(iso || '');
-    if (isNaN(d.getTime())) return '—';
-    if (IST) return IST.format(d);
-    var t = new Date(d.getTime() + 330 * 60000);   // no Intl time zones: shift to IST by hand
-    function p(n){ return (n < 10 ? '0' : '') + n; }
-    return t.getUTCFullYear() + '-' + p(t.getUTCMonth() + 1) + '-' + p(t.getUTCDate()) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes());
-  }
+  /* "3 Nov 2026, 12:30 pm", India time: RevampCore's one way of writing a moment, as in the console (UX-010) */
+  function when(iso){ return window.RevampCore.fmtDate(iso, { time: true, ist: true }); }
   /* a date picked in the browser is a whole day in India */
   function dayStart(v, plusDays){
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '')) return '';

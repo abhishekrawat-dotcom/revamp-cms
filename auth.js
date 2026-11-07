@@ -7,9 +7,10 @@
      .authedFetch(url, opts)             -> Promise<Response>  THE way a page calls /api/*: sends a fresh
                                              `Authorization: Bearer` token, keeps the __session cookie in
                                              step, retries once on 401 with a forced token refresh and, on a
-                                             second 401, sends the user to sign-in. Same-origin URLs only.
+                                             second 401, keeps the page and puts the "signed out" box over it
+                                             (sign in again in place). Same-origin URLs only.
                                              Rejects with { status: 401, code: 'revamp/signed-out' } when
-                                             nobody is signed in.
+                                             nobody is signed in or the session was refused.
      .signInWithGoogle()                 -> Promise<User>  (popup)
      .signOutUser()                      -> Promise<void>  signs out and stays on the page
      .signOutAndLeave()                  -> Promise<void>  signs out, then goes to the sign-in page
@@ -344,7 +345,10 @@
           throw tokenFailure(err);
         }).then(function (again) {
           if (again.status !== 401) return again;
-          redirectToSignIn();
+          /* The server refused even a brand-new token. Leaving for the sign-in page here would throw away
+             whatever was being saved (UX-013): the page stays as it is, under the "You have been signed out"
+             box, and the caller is told 'revamp/signed-out', so it can say "sign in again, then press Save". */
+          showSignedOutOverlay();
           throw signedOutError();
         });
       });
@@ -523,8 +527,9 @@
       errorBox.textContent = '';
       btn.disabled = true;
       btn.textContent = 'Signing in…';
-      // success needs nothing here: the auth-state callback removes the dialog for any signed-in user
-      signInWithGoogle().catch(function (err) {
+      // the auth-state callback removes the dialog for a new sign-in; signing in again as the same person (the
+      // server had refused their token) is not a change of user to Firebase, so the dialog is closed here too
+      signInWithGoogle().then(function () { hideSignedOutOverlay(); }, function (err) {
         if (!overlay) return;
         btn.disabled = false;
         btn.textContent = 'Sign in again';

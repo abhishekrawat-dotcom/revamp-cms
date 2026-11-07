@@ -303,10 +303,12 @@ pending.push(settle().then(function () {
   L.message({ rvToast: { m: long, ms: 6000 } }, mw);
   L.message({ rvToast: { m: '   ' } }, sw);
   L.message({ rvToast: 'no object' }, sw);
-  check('rvToast is shown by the console, at most 300 characters', L.toasts.length === 2 && L.toasts[0].m === '✓ Saved — your edits will reload next time' &&
+  check('rvToast is shown by the console, at most 300 characters, without the platform\'s own ✓', L.toasts.length === 2 && L.toasts[0].m === 'Saved — your edits will reload next time' &&
     L.toasts[1].m === long.slice(0, 300), L.toasts.map(function (t) { return t.m.length; }));
-  check('a usual toast is plain (the platform\'s words carry their own ✓); a long one (6 s) is shown as a refusal, kept up as long',
-    L.toasts[0].opts && L.toasts[0].opts.kind === 'info' && L.toasts[1].opts && L.toasts[1].opts.kind === 'error', L.toasts.map(function (t) { return t.opts; }));
+  /* UX-006: RevampCore.toast reads the kind from the words (kind 'auto'), and keeps it up as long as the frame asked */
+  check('its kind is read from its words (RevampCore.toast kind "auto"), for as long as the frame asked',
+    L.toasts[0].opts && L.toasts[0].opts.kind === 'auto' && L.toasts[0].opts.duration === 2200 && L.toasts[1].opts && L.toasts[1].opts.duration === 6000,
+    L.toasts.map(function (t) { return t.opts; }));
   var markup = '<img src=x onerror=alert(1)>';
   L.message({ rvToast: { m: markup } }, sw);
   var last = L.toasts[L.toasts.length - 1];
@@ -422,9 +424,15 @@ pending.push(settle().then(function () {
 
 /* the console's toast() is what keeps a relayed toast from being markup: it writes the words through esc() */
 var core = read('edit-event-core.js');
-var toastSrc = (/\n  function toast\(msg, kind\)\{([\s\S]*?)\n  \}\n/.exec(core) || [])[1] || '';
-check('the console\'s toast() uses its words only escaped', !!toastSrc && count(toastSrc, 'esc(msg)') === 1 &&
-  count(toastSrc.replace(/\besc\(msg\)/g, ''), 'msg') === 0, toastSrc.slice(0, 200));
+/* run as it is, over the small DOM: the words land as text, never as an element (UX-006 made it one toast for every page) */
+var toastDom = require('./fixtures/mini-dom').makeDom();
+var toastCtx = { window: {}, document: toastDom.document, console: { log: function () {}, error: function () {}, warn: function () {} }, setTimeout: function () {}, clearTimeout: function () {} };
+toastCtx.window = toastCtx;
+vm.runInNewContext(core, toastCtx, { filename: 'edit-event-core.js' });
+toastCtx.RevampCore.toast('<img src=x onerror=alert(1)>', { kind: 'auto' });
+var toastHostEl = toastDom.document.getElementById('rv-toasts');
+check('the console\'s toast() uses its words only escaped', !!toastHostEl && toastHostEl.querySelectorAll('img').length === 0 &&
+  toastHostEl.textContent === '<img src=x onerror=alert(1)>', toastHostEl && toastHostEl.innerHTML);
 var escSrc = (/\n  function esc\(s\)\{[\s\S]*?\n  \}\n/.exec(core) || [])[0];
 var coreEsc = escSrc ? vm.runInNewContext('(' + escSrc.trim() + ')') : function () { return null; };
 check('… and its esc() turns markup into text', coreEsc('<img src=x onerror=alert(1)>') === '&lt;img src=x onerror=alert(1)&gt;' &&

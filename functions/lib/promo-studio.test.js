@@ -1109,7 +1109,9 @@ pending.push(settleAfterLoad().then(function () {
     JSON.stringify(gr.asked('rvToast').pop()) === JSON.stringify({ rvToast: { m: 'Downloaded — saved edits included', ms: 5000 } }));
   gr.els.mailer.classList.add('on');
   gr.sb.toast('Section moved');
-  check('tall, studio open: the studio\'s own toast', JSON.stringify(gr.toasts.pop()) === JSON.stringify(['Section moved']) && gr.asked('rvToast').length === 1);
+  /* UX-006: the console's message sits above the frame even while the studio has the window, and looks like every page's */
+  check('tall, studio open: still the console\'s', gr.toasts.length === 0 && gr.asked('rvToast').length === 2 &&
+    JSON.stringify(gr.asked('rvToast').pop()) === JSON.stringify({ rvToast: { m: 'Section moved' } }));
   gr.els.mailer.classList.remove('on');
 }));
 var team = page2('?scope=all', { framed: true, height: 800 });

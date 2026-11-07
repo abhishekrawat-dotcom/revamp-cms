@@ -756,6 +756,8 @@
   .tpl-load-error .btn-secondary{ background:#fff; color:#241B1A; border-color:#D5CAC7; }
   .tpl-load-error .btn-secondary:hover{ background:#F3EEED; }
   body.ed-load-failed .ed-rail, body.ed-load-failed .global-toolbar, body.ed-load-failed .side-panel{ display:none; }
+  /* no event at all (UX-008): no Preview, no Publish and no event rail, only the way back */
+  body.ed-no-event #btn-preview, body.ed-no-event #btn-publish, body.ed-no-event .ed-workspace > .rail{ display:none; }
   /* the event's name gives way to the controls beside it, never runs into them */
   .topbar .ev-title{ padding-right:4px; }
   .tpl-iframe{ display:block; border:0; transform-origin: top left; }
@@ -866,22 +868,6 @@
   .variant-lightbox-body{ overflow:auto; background:var(--bg); flex:1; }
   .variant-lightbox-body .variant-thumb-scale{ position:static; transform-origin: top left; }
   .variant-lightbox-foot{ display:flex; justify-content:flex-end; gap:9px; padding:12px 16px; border-top:1px solid var(--border); }
-
-  #toast-region{ position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); display:flex; flex-direction:column; gap:8px; z-index: 100; align-items:center; }
-  .toast{
-    background: var(--text); color: var(--bg); font-size: 13px; font-weight:600; padding: 10px 16px; border-radius: 8px;
-    box-shadow: var(--shadow-md); opacity: 0; transform: translateY(6px); transition: opacity .18s ease, transform .18s ease;
-    max-width: 360px; text-align:center;
-  }
-  .toast.show{ opacity: 1; transform: translateY(0); }
-  /* a toast that carries a button or stays until it is closed */
-  .toast.has-acts{ display:flex; align-items:center; gap:10px; text-align:left; max-width:460px; }
-  .toast.has-acts .toast-msg{ flex:1; }
-  .toast button{ flex-shrink:0; border:none; background:none; color:inherit; font:inherit; font-weight:800; cursor:pointer; border-radius:5px; padding:3px 7px; }
-  .toast button.toast-act{ text-decoration:underline; }
-  .toast button:hover{ background: color-mix(in srgb, currentColor 16%, transparent); }
-  .toast.error{ background:#3A1B18; color:#fff; border-left:4px solid #ED1C24; }
-  .toast.error svg{ flex-shrink:0; color:#FF8A84; }
 
   /* notices that stay above the canvas until dealt with; several can show at once */
   .ed-notices{ flex-shrink:0; display:flex; flex-direction:column; }
@@ -1535,7 +1521,6 @@
   <div id="gt-style-pop-body"></div>
   <div class="pop-actions"><button class="btn btn-primary btn-sm" type="button" id="gt-style-pop-done">Done</button></div>
 </div>
-<div id="toast-region" role="status" aria-live="polite"></div>
 
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
@@ -1658,55 +1643,14 @@
      showToast(msg, { kind:'error' })                 stays until closed, announced at once
      showToast(msg, { action:{ label, onClick } })    carries one button (e.g. Undo)
      showToast(msg, { sticky:true })                  stays until closed
-     Returns { dismiss() }. */
-  var TOAST_ERR_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5h.01"/></svg>';
+     Returns { dismiss() }. It is RevampCore.toast, the one message of every page (UX-006): the same place and
+     look as in the console, Promotions, Create Event and the events list. */
   function showToast(msg, opts){
     opts = opts || {};
-    var region = document.getElementById('toast-region');
-    var t = document.createElement('div');
-    var isError = opts.kind === 'error';
-    var stays = isError || !!opts.sticky;
-    var timer = null, gone = false;
-    t.className = 'toast' + (isError ? ' error' : '');
-    function dismiss(){
-      if (gone) return;
-      gone = true;
-      clearTimeout(timer);
-      t.classList.remove('show');
-      setTimeout(function(){ t.remove(); }, 200);
-    }
-    if (isError) t.setAttribute('role', 'alert');
-    if (!stays && !opts.action){
-      t.textContent = msg;
-    } else {
-      t.classList.add('has-acts');
-      if (isError) t.insertAdjacentHTML('beforeend', TOAST_ERR_SVG);
-      var text = document.createElement('span');
-      text.className = 'toast-msg';
-      text.textContent = msg;
-      t.appendChild(text);
-      if (opts.action){
-        var act = document.createElement('button');
-        act.type = 'button';
-        act.className = 'toast-act';
-        act.textContent = opts.action.label;
-        act.addEventListener('click', function(){ dismiss(); opts.action.onClick(); });
-        t.appendChild(act);
-      }
-      if (stays){
-        var x = document.createElement('button');
-        x.type = 'button';
-        x.setAttribute('aria-label', 'Dismiss');
-        x.innerHTML = '&times;';
-        x.addEventListener('click', dismiss);
-        t.appendChild(x);
-      }
-    }
-    region.appendChild(t);
-    requestAnimationFrame(function(){ t.classList.add('show'); });
-    // long enough to read the message and reach its button
-    if (!stays) timer = setTimeout(dismiss, opts.action ? 8000 : 2600);
-    return { dismiss: dismiss };
+    /* a failure is always marked by its caller; anything else gets the tick when it reports something done */
+    var kind = opts.kind === 'error' ? 'error' : (opts.kind || (window.RevampCore.toastKind(msg) === 'success' ? 'success' : 'info'));
+    var close = window.RevampCore.toast(msg, { kind: kind, action: opts.action, sticky: opts.sticky, duration: opts.duration });
+    return { dismiss: close };
   }
 
   /* ---------- notices: stay above the canvas until dealt with ----------
