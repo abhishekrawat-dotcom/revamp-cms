@@ -96,7 +96,9 @@
     var ev = encodeURIComponent(String(eventId == null ? '' : eventId));
     if (section === 'dashboard') return '/edit-event.html?event=' + ev + '#dashboard';
     if (section === 'content')   return '/edit-event.html?event=' + ev + '#content/basics';
-    if (section === 'design')    return '/edit-event.html?event=' + ev + '#design/editor';
+    /* straight to the site editor, which finds the event's site itself: through the console the event was
+       loaded twice before the site could start opening (UX-077) */
+    if (section === 'design')    return '/custom_editor.html?event=' + ev;
     if (section === 'payment')   return '/edit-event.html?event=' + ev + '#payment';
     if (section === 'marketing') return '/marketing.html?event=' + ev;
     if (section === 'audience')  return '/audience-registrations.html?event=' + ev;

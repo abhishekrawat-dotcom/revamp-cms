@@ -28,7 +28,8 @@
                                              call before navigating to another CMS page right after sign-in
      .mountAccountMenu(el)               -> void  renders the signed-in user's avatar and a menu with Sign
                                              out into el. Any element marked [data-rv-account] gets one
-                                             automatically when the page loads.
+                                             automatically when the page loads; marked data-rv-account-theme
+                                             too, the menu also has the light/dark switch (theme-toggle.js).
      .isAllowedEmail(email)              -> boolean  — a @timesinternet.in address (ALLOWED_DOMAIN)
 
    Access: only Google accounts on ALLOWED_DOMAIN may use the CMS. The server enforces it
@@ -463,6 +464,9 @@
         'background:transparent;color:var(--rv-text);' + font + 'font-size:13px;font-weight:500;line-height:1.3;text-align:left;cursor:pointer;}',
       '.rv-acct-item:hover:not(:disabled){background:var(--rv-surface-2);}',
       '.rv-acct-item:disabled{cursor:default;color:var(--rv-muted);}',
+      /* the light/dark switch in the menu (data-rv-account-theme): its state at the right edge */
+      '.rv-acct-mode{display:flex;align-items:center;justify-content:space-between;gap:10px;}',
+      '.rv-acct-mode b{font-weight:600;font-size:12px;color:var(--rv-muted);}',
       '.rv-auth-overlay{position:fixed;inset:0;z-index:2147483647;box-sizing:border-box;width:100vw;height:100vh;max-width:none;max-height:none;' +
         'margin:0;padding:16px;border:0;background:var(--rv-bg);color:var(--rv-text);' + font + 'align-items:center;justify-content:center;overflow:auto;}',
       '.rv-auth-overlay[open]{display:flex;}',
@@ -656,6 +660,24 @@
       emailEl.className = user.displayName ? 'rv-acct-email' : 'rv-acct-name';
       emailEl.textContent = user.email || '';
       who.appendChild(emailEl);
+      /* The light/dark switch, on a page whose top bar has no room for it (the site editor, UX-078):
+         theme-toggle.js switches, and the menu stays open so the change can be seen and taken back. */
+      var modes = el.hasAttribute('data-rv-account-theme') ? window.RevampColorMode : null;
+      var mode = null;
+      if (modes) {
+        mode = document.createElement('button');
+        mode.type = 'button';
+        mode.className = 'rv-acct-item rv-acct-mode';
+        mode.setAttribute('role', 'menuitemcheckbox');
+        mode.innerHTML = '<span>Dark mode</span><b></b>';
+        var paintMode = function () {
+          var on = modes.current() === 'dark';
+          mode.setAttribute('aria-checked', on ? 'true' : 'false');
+          mode.querySelector('b').textContent = on ? 'On' : 'Off';
+        };
+        paintMode();
+        mode.addEventListener('click', function () { modes.toggle(); paintMode(); });
+      }
       var item = document.createElement('button');
       item.type = 'button';
       item.className = 'rv-acct-item';
@@ -667,6 +689,7 @@
         signOutAndLeave();
       });
       pop.appendChild(who);
+      if (mode) pop.appendChild(mode);
       pop.appendChild(item);
       // leaving the menu with Tab closes it rather than stranding it open behind the focus
       pop.addEventListener('focusout', function (e) {
@@ -679,7 +702,7 @@
       document.addEventListener('keydown', onDocKey, true);
       window.addEventListener('resize', onResize);
       window.addEventListener('scroll', onScroll, true);
-      item.focus();
+      (mode || item).focus();
     }
 
     function close(returnFocus) {
