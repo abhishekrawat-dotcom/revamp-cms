@@ -24,8 +24,8 @@
    RevampCore.openPublishFlow(eventId, opts) = open(eventId, opts).
    opts: from ('console' | 'editor'), name (the event's), opener (focus goes back there; it shows the busy state
    unless busy(on) is given), toast(text, { kind }), onDone(result), onError(err) -> true when the page dealt with
-   it, editorUrl (the console: where "Open the site editor" goes), approval (fetchApproval's answer, when the page
-   has just read it). */
+   it, editorUrl (the console: where "Open the site editor" goes), recheck (true: when there is something to send
+   after all, resolve { kind: 'recheck', approval } and send nothing, so the page asks its own questions first). */
 (function () {
   'use strict';
 
@@ -409,6 +409,11 @@
       return { a: a, plan: plan };
     }).then(function (x) {
       setBusy(opts, false);
+      /* opts.recheck: the page went round its own questions before sending (the editor's sample words and AI check)
+         because what it read as it opened said there was nothing to send. When the server now has something to send
+         (the request was decided, Content saved a newer version), the page gets the fresh reading back to ask them
+         first, instead of this sending round them. */
+      if (opts.recheck && (x.plan.kind === 'ask' || x.plan.kind === 'direct')) return { kind: 'recheck', approval: x.a };
       return step(eventId, x.a, x.plan, opts, toast);
     }, function (err) {
       setBusy(opts, false);

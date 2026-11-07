@@ -213,7 +213,48 @@ check('12 a colour kept in a CSS variable: "Site colours", "Theme fill colour", 
 var mixed = D.diffPages(pg('<section data-rv-section="a"><p>x</p></section>', '--theme-color:#111111'), pg('<section data-rv-section="a"><p>x</p></section>', '--theme-color:#222222;--rv-gap-size:12px'));
 check('12 colours and other settings together: "Site design"', mixed[0].name === 'Site design' && /Gap size: 12px/.test(mixed[0].after), mixed);
 
+/* ======================= 13 the editor's reading is out of date (B06 fix) ======================= */
+/* siteInfo is read as the editor opens; a press that went round the sample-words and AI questions because it said
+   "nothing new" or "waiting" must not send when the server has something to send after all */
+check('13 the editor\'s press goes round its questions only with recheck, once', /function startPublish\(again\)\{/.test(handler) &&
+  /if \(plan !== 'send'\)\{ window\.RevampTemplateUI\.publish\(again \? null : \{ recheck: function\(\)\{ startPublish\(true\); \} \}\); return; \}/.test(handler) &&
+  /addEventListener\('click', function\(\)\{ startPublish\(false\); \}\);/.test(handler));
+const pub2 = body(EDITOR, 'publish');
+check('13 the editor hands recheck to the flow, takes the fresh reading and starts the press again', /recheck: typeof o\.recheck === 'function'/.test(pub2) &&
+  /if \(out && out\.kind === 'recheck'\) \{ takeApproval\(out\.approval\); renderSiteState\(\); o\.recheck\(\); \}/.test(pub2));
+check('13 one reading of fetchApproval for the editor (opening and recheck)', /return asked\.then\(takeApproval,/.test(EDITOR) && /function takeApproval\(a\) \{\s*siteInfo = \{/.test(EDITOR));
+
+function flowWith(answer) {
+  var calls = { request: 0, publish: 0, toasts: [] };
+  var C = { fetchApproval: function () { return Promise.resolve(answer); }, fetchSite: function () { return Promise.resolve({}); },
+    requestApproval: function () { calls.request++; return Promise.resolve({}); }, publishEvent: function () { calls.publish++; return Promise.resolve({}); } };
+  var sty = [];
+  var c = vm.createContext({ window: { RevampCore: C }, console: console, location: { origin: 'https://x' }, document: {
+    getElementById: function (id) { return sty.filter(function (st) { return st.id === id; })[0] || null; },
+    createElement: function () { return {}; }, head: { appendChild: function (st) { sty.push(st); } } } });
+  vm.runInContext(FLOW, c, { filename: 'publish-flow.js' });
+  return { open: c.window.RevampPublishFlow.open, calls: calls };
+}
 var asyncChecks = [];
+(function () {
+  var f = flowWith(A({ savedVersion: 3 }));
+  asyncChecks.push(f.open('qa-ev', { from: 'editor', recheck: true, busy: function () {}, toast: function (t) { f.calls.toasts.push(t); } }).then(function (out) {
+    check('13 something to send after all: the flow sends nothing and hands back the fresh reading', out.kind === 'recheck' && out.approval.savedVersion === 3 && f.calls.request === 0 && f.calls.publish === 0, out);
+  }));
+})();
+(function () {
+  var f = flowWith(A({ savedVersion: 3, required: false }));
+  asyncChecks.push(f.open('qa-ev', { from: 'editor', recheck: true, busy: function () {} }).then(function (out) {
+    check('13 ...with approval switched off too: nothing is published round the questions', out.kind === 'recheck' && f.calls.publish === 0, out);
+  }));
+})();
+(function () {
+  var f = flowWith(A({ savedVersion: 6, published: true, publishedVersion: 6 }));
+  asyncChecks.push(f.open('qa-ev', { from: 'editor', recheck: true, busy: function () {}, toast: function (t) { f.calls.toasts.push(t); } }).then(function (out) {
+    check('13 still nothing new: said as before, recheck changes nothing', out.kind === 'nothing-new' && /Nothing new to publish/.test(f.calls.toasts[0] || ''), out);
+  }));
+})();
+
 Promise.all(asyncChecks).then(function () {
   console.log(failed ? 'publish-flow: ' + failed + ' FAILED, ' + passed + ' passed' : 'publish-flow: all ' + passed + ' checks passed');
   process.exitCode = failed ? 1 : 0;

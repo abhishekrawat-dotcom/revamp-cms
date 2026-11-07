@@ -7356,18 +7356,20 @@
        (siteInfo is set by a save): that answer may be older than the save, so it is asked again */
     var asked = approvalAsk && !siteInfo ? approvalAsk : RevampCore.fetchApproval(eventId);
     approvalAsk = null;
-    return asked.then(function (a) {
-      siteInfo = {
-        savedVersion: a.savedVersion || 0, published: !!a.published, publishedVersion: a.publishedVersion || 0,
-        pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false,
-        me: a.me || '',
-        /* the newest request when it is not the one waiting: a rejection is told on the chip and under the top bar
-           (UX-103) */
-        last: !(a.request && a.request.status === 'pending') && Array.isArray(a.requests) && a.requests[0] ? a.requests[0] : null
-      };
-      paintDecision(a);
-    }, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true, me: '', last: null }; })
+    return asked.then(takeApproval, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true, me: '', last: null }; })
       .then(renderSiteState);
+  }
+  /* fetchApproval's answer -> siteInfo, and what became of the last request under the top bar */
+  function takeApproval(a) {
+    siteInfo = {
+      savedVersion: a.savedVersion || 0, published: !!a.published, publishedVersion: a.publishedVersion || 0,
+      pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false,
+      me: a.me || '',
+      /* the newest request when it is not the one waiting: a rejection is told on the chip and under the top bar
+         (UX-103) */
+      last: !(a.request && a.request.status === 'pending') && Array.isArray(a.requests) && a.requests[0] ? a.requests[0] : null
+    };
+    paintDecision(a);
   }
   /* what became of the last request for approval, for whoever asked (publish-flow.js decisionNotice): a line under the
      top bar on the next visit, "Priya rejected version 5: “…”", until it is dismissed (UX-103) */
@@ -7582,7 +7584,12 @@
      and who approves, a new one is asked for with a note, and where approval has been switched off (Review page ›
      Who approves) it asks once and publishes. The AI-written sections, the logo unit's notice and the sample words
      are asked about before (custom_editor.html). */
-  function publish() {
+  /* o.recheck: custom_editor.html went round its questions (sample words, the AI check) because siteInfo said there
+     was nothing to send. siteInfo was read as the editor opened, so the server may have moved on (the request was
+     decided, Content saved a newer version): then the flow sends nothing, siteInfo takes the fresh reading, and
+     o.recheck() starts the press again, questions first. */
+  function publish(o) {
+    o = o || {};
     if (!canvas || !eventId || saving || publishBusy) return;
     // Publish saves first: while ETB2B AI is busy that would send half of its change for approval
     var busy = workSafety.busyLine(aiState);
@@ -7612,8 +7619,11 @@
           paintDecision(null);
         },
         /* the saved page still has the logo unit's notice open: the dialog goes, and the notice and the logo come up */
-        onError: function (err) { if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return true; } return false; }
+        onError: function (err) { if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return true; } return false; },
+        recheck: typeof o.recheck === 'function'
       });
+    }).then(function (out) {
+      if (out && out.kind === 'recheck') { takeApproval(out.approval); renderSiteState(); o.recheck(); }
     }).catch(function (err) {
       publishBusy = false; renderSiteState();
       if (err && (err.cancelled || err.message === 'busy')) return;

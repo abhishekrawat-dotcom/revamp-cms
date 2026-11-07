@@ -2733,17 +2733,20 @@
   });
 
   /* ---------- publish ---------- */
-  document.getElementById('btn-publish').addEventListener('click', function(){
+  document.getElementById('btn-publish').addEventListener('click', function(){ startPublish(false); });
+  function startPublish(again){
     /* nothing to send (the live site already shows the last save, or a request already holds it): Publish says so, or
-       shows the request, without asking anybody to tick a list first (UX-104) */
+       shows the request, without asking anybody to tick a list first (UX-104). That reading was taken as the editor
+       opened: if the server has something to send after all (the request was decided, Content saved a newer
+       version), the press starts again once with the fresh reading, so the questions below are asked first. */
     var plan = window.RevampTemplateUI.publishPlan ? window.RevampTemplateUI.publishPlan() : 'send';
-    if (plan !== 'send'){ window.RevampTemplateUI.publish(); return; }
+    if (plan !== 'send'){ window.RevampTemplateUI.publish(again ? null : { recheck: function(){ startPublish(true); } }); return; }
     /* the logo unit's notice comes first: nothing goes live while it is open, so the AI review is not asked for yet */
     if (window.RevampTemplateUI.logoUnitGate && window.RevampTemplateUI.logoUnitGate()) return;
     /* then sample words an added section or block came with: asked about, with "Show them"; "… anyway" goes on (UX-081) */
     if (window.RevampTemplateUI.placeholderGate && window.RevampTemplateUI.placeholderGate(publishOn)) return;
     publishOn();
-  });
+  }
   function publishOn(){
     /* only the AI-written sections nobody has checked yet: once ticked they are not asked about again (UX-104) */
     var info = window.RevampTemplateUI.aiProvenanceSections();
