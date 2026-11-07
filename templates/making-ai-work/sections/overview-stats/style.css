@@ -1,0 +1,38 @@
+/* The overview's four headline figures, drawn as the live page's picture drew them: deep blue cards with two cut
+   corners, a thin light-blue edge, a large figure and a short capitalised label under it. The cut corners are a
+   clip-path; the edge is the card's own background showing 1 px around its face (::before, clipped the same way
+   and inset), since a border would be cut off at the corners. Four in a row on a wide screen, two by two below; each figure at the same height in its card, its label under it. */
+#overview-stats{background:#002156;padding:8px 0 72px;margin-bottom:0}
+#overview-stats .ovr-stats{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4, minmax(0, 1fr));gap:20px}
+#overview-stats .ovr-stat{
+  --cut:34px;
+  position:relative;display:flex;flex-direction:column;justify-content:flex-start;gap:12px;min-height:200px;padding:52px 28px 30px;
+  background:#5C8FE0;
+  clip-path:polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  isolation:isolate
+}
+#overview-stats .ovr-stat::before{
+  content:"";position:absolute;inset:1px;z-index:-1;
+  background:radial-gradient(120% 90% at 85% 15%, #1A5BD8 0%, #0B3A9C 45%, #06296F 100%);
+  clip-path:polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)))
+}
+#overview-stats .ovr-stat:nth-child(even){
+  clip-path:polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut))
+}
+#overview-stats .ovr-stat:nth-child(even)::before{
+  clip-path:polygon(var(--cut) 0, 100% 0, 100% calc(100% - var(--cut)), calc(100% - var(--cut)) 100%, 0 100%, 0 var(--cut))
+}
+#overview-stats .ovr-stat-num{display:block;color:#FFFFFF;font-family:Geist, Arial, sans-serif;font-size:64px;font-weight:500;line-height:1;letter-spacing:-1px;overflow-wrap:anywhere}
+#overview-stats .ovr-stat-label{display:block;color:rgba(255, 255, 255, 0.86);font-family:Geist, Arial, sans-serif;font-size:13px;font-weight:500;line-height:1.35;letter-spacing:0.2px;text-transform:uppercase;overflow-wrap:break-word}
+
+@media screen and (max-width:1199px){
+  #overview-stats .ovr-stats{grid-template-columns:repeat(2, minmax(0, 1fr))}
+  #overview-stats .ovr-stat{min-height:170px;padding-top:40px}
+}
+@media screen and (max-width:767px){
+  #overview-stats{padding:0 0 48px}
+  #overview-stats .ovr-stats{gap:12px}
+  #overview-stats .ovr-stat{--cut:22px;min-height:136px;padding:30px 16px 20px;gap:8px}
+  #overview-stats .ovr-stat-num{font-size:40px}
+  #overview-stats .ovr-stat-label{font-size:11px}
+}

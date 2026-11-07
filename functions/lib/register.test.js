@@ -95,6 +95,31 @@ var bare = F.validateAnswers({ fields: F.withConsent([F.defaultFields()[0]]) }, 
 var firstErr = F.firstFieldError({ fields: F.withConsent([F.defaultFields()[0]]) }, bare.errors);
 ok(firstErr && firstErr.message === 'Please tick the box to agree before you submit.' && eq(Object.keys(firstErr.fields), ['consent']), 'a response without it is refused with the owner\'s sentence', JSON.stringify(firstErr));
 
+/* ---------- a request sent through the form, not a registration (UX-145) ----------
+   "Partner with us", "Start a nomination" and "Request an invitation" open the event's form with their own source:
+   such a response is a request for the ET team, kept out of the registration totals, and the visitor is thanked
+   for what they asked — never told they are registered. */
+ok(F.enquiryOf('partner-enquiry').kind === 'partner' && F.enquiryOf('NOMINATION-ENQUIRY').kind === 'nominate' && F.enquiryOf(' ceremony-invitation ').kind === 'ceremony', 'the three sources are the three requests');
+ok(F.enquiryOf('website') === null && F.enquiryOf('') === null && F.enquiryOf(null) === null && F.enquiryOf('constructor') === null && F.enquiryOf('toString') === null, 'any other source is a registration');
+Object.keys(F.ENQUIRIES).forEach(function (k) {
+  var q = F.ENQUIRIES[k];
+  ok(q.done && q.done !== F.DEFAULT_SUCCESS && !/\bregistered\b|look forward to seeing/i.test(q.done) && !/\b(?:e-?mail|ticket|paid|payment)\b/i.test(q.done), k + ': thanked for the request, never as registered, promising no e-mail or ticket', q.done);
+});
+ok(/confirm your seat/.test(F.ENQUIRIES.ceremony.done) && /no online payment/.test(F.ENQUIRIES.ceremony.note), 'the ceremony: the team confirms the seat, and there is no online payment');
+var eqId = F.enquiryDocId('register', 'partner', 'a@b.in');
+ok(/^eq-[0-9a-f]{40}$/.test(eqId) && eqId !== F.regDocId('register', 'a@b.in') && eqId !== F.enquiryDocId('register', 'ceremony', 'a@b.in') && eqId === F.enquiryDocId('register', 'partner', 'a@b.in'),
+  'a request has an id of its own: never the address\'s registration, one per kind, the same when sent again');
+var asked = { formId: 'register', counts: false, status: 'pending', enquiry: 'ceremony' };
+ok(eq(d(null, asked), { forms: { register: { n: 1, pending: 1 } }, submissions: 1 }), 'stored as asked (counts: false, pending), it moves no registration total: only its form\'s responses and what awaits the team', JSON.stringify(d(null, asked)));
+var pubAsked = A.publicRegistration('eq-1', Object.assign({ email: 'a@b.in' }, asked));
+ok(pubAsked.enquiry === 'ceremony' && pubAsked.enquiryTitle === 'Request an invitation' && pubAsked.counts === false && pubAsked.status === 'pending', 'the console reads it as the request it is', JSON.stringify(pubAsked));
+ok(A.publicRegistration('x', { enquiry: 'constructor' }).enquiry === '' && A.publicRegistration('x', {}).enquiryTitle === '', 'nothing else reads as a request');
+ok(/var enquiry = forms\.enquiryOf\(line\(body\.source, 60\)\);/.test(src) && /enquiry: enquiry \? enquiry\.kind : ''/.test(src) && /message: enquiry \? enquiry\.done : stored\.status === 'waitlist'/.test(src),
+  'the register route reads the request off the source, stores it as one and answers in its words');
+ok(/var counts = !p\.enquiry && p\.form\.countsAsRegistration === true;/.test(src) && /var status = p\.enquiry \? 'pending'/.test(src) && /refs\.regs\.doc\(forms\.enquiryDocId\(form\.id, it\.enquiry, it\.reg\.email\)\)/.test(src),
+  'in the transaction: never counted, awaiting the team, under its own id');
+ok(/=== p\.form\.id && !d\.get\('enquiry'\)/.test(src), 'a request never makes the same address\'s registration a duplicate');
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

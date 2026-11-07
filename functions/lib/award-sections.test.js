@@ -80,7 +80,8 @@ home.forEach(function (s) {
   if (!band && s.id !== 'award-categories') check('home ' + s.id + ': heading size from rv-type', s.css.indexOf('font-size:clamp(1.75rem,3vw,2.375rem)') !== -1);
   var sc = scopeSectionCss(s.css, s.id, sectionRootInfo(s.html));
   check('home ' + s.id + ': scoped like any other section', /\[data-rv-section="/.test(sc) && sc.length > s.css.length / 2);
-  check('home ' + s.id + ': no text in an attribute value besides alt / labels', !/\b(?:title|data-label|placeholder)="/.test(s.html));
+  /* data-rv-form-title / -note are what a button tells the forms runtime (rv-forms.js), not words on the page */
+  check('home ' + s.id + ': no text in an attribute value besides alt / labels', !/\s(?:title|data-label|placeholder)="/.test(s.html));
   check('home ' + s.id + ': CSS content is never text', (s.css.match(/(?:^|[;{])content:([^;}]*)/g) || []).every(function (x) { return /content:(""|counter\()/.test(x); }), (s.css.match(/(?:^|[;{])content:([^;}]*)/g) || []).join(' '));
 });
 
@@ -180,7 +181,7 @@ check('bound jury page: none anywhere -> no page', aw.pageSections('award-jury',
 
 /* the two calls to act */
 var rc = byId(home, 'recognition').html, cer = byId(aw.homeSections({}, { edition: 'E', dateLabel: '20 January 2027', place: 'Mumbai' }), 'awards-night').html;
-check('calls: enter (the award\'s main button) and the night (a seat)', /<a class="aw-rec-btn" href="#hero" data-register-cta>Nominate Now<\/a>/.test(rc) && /<a class="aw-cer-btn" href="#hero" data-register-cta>Get Tickets<\/a>/.test(cer));
+check('calls: enter (the award\'s main button) and the night (an invitation asked for, never a ticket: payment is off)', /<a class="aw-rec-btn" href="#hero" data-register-cta>Nominate Now<\/a>/.test(rc) && /<a class="aw-cer-btn" href="#hero" data-register-cta data-rv-form-title="Request an invitation" data-rv-form-note="Seats are confirmed by the ET team; there is no online payment\." data-rv-form-source="ceremony-invitation">Request an invitation<\/a>/.test(cer) && !/Ticket/i.test(cer));
 check('calls: the night\'s date and venue', cer.indexOf('<span>20 January 2027</span><span>Mumbai</span>') !== -1);
 
 /* partners */

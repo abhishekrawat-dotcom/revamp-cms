@@ -36,8 +36,13 @@
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
     <span>Back to events</span>
   </a>
-  <span class="ev-title">
-    <h1 id="ev-name">&nbsp;</h1>
+  <!-- with-state: this title has the state chips, and on a phone lays the name over the state and Set portal (edit-event.css) -->
+  <span class="ev-title with-state">
+    <span class="ev-name-row">
+      <h1 id="ev-name">&nbsp;</h1>
+      <!-- where the site stands (RevampCore.siteState), and the way to the live site: painted by paintHeader() -->
+      <span class="ev-state" id="ev-state" hidden></span>
+    </span>
     <span class="ev-sub">
       <span class="meta" id="ev-meta"></span>
       <!-- "No portal yet" and Set portal, while the event has no portal (paintHeader) -->
@@ -75,6 +80,7 @@
 <script src="portal-picker.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="sidebar.js"></script>
+<script src="edit-event-site-check.js"></script>
 <!-- the registration forms builder; the form runtime draws its preview (it does nothing else on this page) -->
 <script>window.RV_FORMS_NO_AUTO = true;</script>
 <script src="templates/_shared/rv-forms.js"></script>
@@ -487,25 +493,29 @@
      FORMATTERS
      ============================================================ */
   /* ============================================================
-     PERSISTED PROTOTYPE STATE
+     PAGE STATE
 
-     A per-browser copy of the few things that are not on the server yet (published, checklist). The
-     six content tabs also keep their loaded records on S, in memory, for the life of the page.
+     The six content tabs keep their loaded records on S, in memory, for the life of the page. Nothing
+     about the event is kept in this browser any more: whether the site is live, and what is ready, are
+     read from the server (RevampCore.siteState, the Dashboard). The prototype used to keep a per-browser
+     "published" flag and checklist under this key, which made a live site look like a draft on another
+     computer; the stale copy is removed so it can never be read again.
      ============================================================ */
-  var KEY = 'revamp-edit-event-' + eventSlug;
-  var S = { checklist: null, published: false };
-  try {
-    var raw = localStorage.getItem(KEY);
-    if (raw) { var p = JSON.parse(raw); for (var k in p) if (p.hasOwnProperty(k)) S[k] = p[k]; }
-  } catch(e){}
-  function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} }
+  var S = {};
+  try { localStorage.removeItem('revamp-edit-event-' + eventSlug); } catch(e){}
+
+  /* fetchApproval's answer for this event (who approves, the signed-in person, its recent requests) and, when
+     the newest request was rejected, its reason (rejectNote). null until it has arrived, or when it could not
+     be read: the header and Visibility then go by the event alone, and the server still decides.
+     APPROVAL_FAILED: it could not be read (not merely not arrived yet). */
+  var APPROVAL = null, APPROVAL_FAILED = false;
 
   /* ============================================================
      SUBCOLLECTION LOADING  (Speakers, Agenda, Sponsors, Gallery, FAQ, Contact)
 
      These six tabs' content lives in real per-event Firestore subcollections now
      (RevampCore.fetchSub/createSub/updateSub/deleteSub — see edit-event-core.js),
-     not in this file's own S/save()/localStorage. Each one is fetched lazily, the
+     never in this browser's storage. Each one is fetched lazily, the
      first time its tab is actually opened — render() below gates on SUB[key] and
      shows the same loading-spinner treatment init() uses for the event itself
      while the fetch is in flight, then re-renders once the flag flips true. A
@@ -788,12 +798,15 @@
 
     { id:'activity', label:'Activity log', icon:IC.clock, tabs:[] },
 
+    /* not available yet: one honest panel inside the event (viewPayment), never a demo of another event */
+    { id:'payment', label:'Payment', icon:IC.card, tabs:[] },
+
+    /* Social links and Advanced are gone: neither saved anything, and the site shows neither (its footer's
+       social row is the ET vertical's own). Old addresses to them lead to the tab that covers the same ground. */
     { id:'settings', label:'Settings', icon:IC.gear, tabs:[
         { id:'form',       label:'Registration forms' },
         { id:'seo',        label:'URL & SEO' },
-        { id:'links',      label:'Social links' },
-        { id:'visibility', label:'Visibility' },
-        { id:'advanced',   label:'Advanced' }
+        { id:'visibility', label:'Visibility' }
     ]}
   ];
 
@@ -865,11 +878,11 @@
     if (sec === 'marketing'){
       return { url: RevampRail.href('marketing', EV.id) + (tab ? '&tab=' + encodeURIComponent(tab) : '') };
     }
-    if (sec === 'payment' || (sec === 'audience' && tab === 'payments')){
-      return { url: RevampRail.href('payment', EV.id) };
-    }
+    if (sec === 'payment' || (sec === 'audience' && tab === 'payments')) return { sec: 'payment', tab: null };
     /* the log used to be Settings › History; old links and bookmarks still lead to it */
     if (sec === 'settings' && tab === 'history') return { sec: 'activity', tab: null };
+    if (sec === 'settings' && tab === 'links') return { sec: 'settings', tab: 'seo' };
+    if (sec === 'settings' && tab === 'advanced') return { sec: 'settings', tab: 'visibility' };
     if (sec === 'audience'){
       if (tab === 'insights') return { sec: 'dashboard', tab: null };
       return { url: RevampRail.href('audience', EV.id) };
@@ -1005,7 +1018,8 @@
      the listing card, a search result and the social share card —
      repainted on every keystroke, so the form is never guesswork.
      ============================================================ */
-  var DESC_MIN = 40, DESC_IDEAL = 160, DESC_MAX = 220;
+  /* the short description's lengths, shared with the Dashboard's Basics row (RevampCore.DESC) */
+  var DESC_MIN = C.DESC.min, DESC_IDEAL = C.DESC.ideal, DESC_MAX = C.DESC.max;
 
   /* the shared formatters take an ISO-ish string; toISOString() would shift
      the value into UTC and can move a late-evening event to the next day */
@@ -1090,9 +1104,13 @@
       '<div class="field c12">' +
         '<div class="flabel-row"><label for="b-desc">Short description</label>' +
           '<span class="ctr" id="b-count"><span class="meter"><i></i></span><span class="t"></span></span></div>' +
-        '<textarea class="inp" id="b-desc" maxlength="' + DESC_MAX + '" style="min-height:88px" ' +
+        /* no maxlength: a description written before the limit (many AI-written ones are longer) must still be
+           editable — typing into a full maxlength box does nothing at all. The limit is said under the field as
+           soon as the page opens (paintCount) and kept at save (problems). */
+        '<textarea class="inp" id="b-desc" style="min-height:88px" aria-describedby="b-desc-over b-desc-hint" ' +
           'placeholder="One or two lines that say what this event is.">' + esc(e.description || '') + '</textarea>' +
-        '<p class="hint">' + DESC_MIN + ' to ' + DESC_IDEAL + ' characters reads best; ' + DESC_MAX + ' at most.</p></div>' +
+        '<p class="field-over" id="b-desc-over" role="status" hidden></p>' +
+        '<p class="hint" id="b-desc-hint">' + DESC_MIN + ' to ' + DESC_IDEAL + ' characters reads best; ' + DESC_MAX + ' at most.</p></div>' +
 
       /* the address is the event's id: it is fixed when the event is created */
       '<div class="field c12"><label for="b-slug">Site address</label>' +
@@ -1112,6 +1130,10 @@
     /* the banner video (hero-video-ui.js, mounted by mountHeroVideo): saved on its own, as it is changed —
        it is not part of this form's Save */
     if (window.RevampHeroVideoUI) form += panel('Banner video', 'A silent loop behind the top of the site', '<div id="b-herovideo"></div>');
+    /* the picture a shared link of the site shows (settings.seo.shareImageUrl): the owner's own, else the one the
+       published page picks by itself (functions/lib/site-a11y.js shareCandidates). Saved as it is chosen, like the
+       logo; it reaches the live site with the next publish, which is written into the page */
+    form += panel('Share picture', 'What a link to the site shows on WhatsApp, LinkedIn and X', sharePictureField(e));
 
     var side =
       '<div class="pvc">' +
@@ -1135,16 +1157,9 @@
     return vhead('Basics', 'The event’s name, date, venue and description. They are shown on the site wherever its design uses them, and in the events list.') +
 
       '<div class="bx">' +
-        '<div class="bx-main">' + form +
-
-          panel('Danger zone', 'Reversible, but not from here',
-            '<div class="danger-row">' +
-              '<div class="dt"><b>Archive this event</b>' +
-              '<span>The site goes offline and the event moves out of active listings. ' +
-              'Registrations, payments and reports are kept.</span></div>' +
-              '<button class="btn btn-danger btn-sm" type="button" data-save="Archive requested">Archive event</button>' +
-            '</div>') +
-        '</div>' +
+        /* The Danger zone's archive button is gone: it only showed a toast and changed nothing. Taking the site
+           offline is in Settings › Visibility (approvers only, as deleting an event is). */
+        '<div class="bx-main">' + form + '</div>' +
         '<aside class="bx-side">' + side + '</aside>' +
       '</div>' +
 
@@ -1158,6 +1173,76 @@
   /* The banner video's settings. An upload keeps going when the owner moves to another tab (the component it
      started in saves it and says so); the settings shown when they come back are then brought up to date. */
   var HERO_VIDEO_UI = null;
+  /* ---------- the share picture (Basics) ---------- */
+  var SHARE_AUTO = 'Automatic: the banner’s picture, else the first picture of the site.';
+  var SHARE_OWN = 'Shared links of the site show this picture.';
+  function shareUrlOf(e){ return (e && e.settings && e.settings.seo && typeof e.settings.seo.shareImageUrl === 'string') ? e.settings.seo.shareImageUrl : ''; }
+  function sharePictureField(e){
+    var url = shareUrlOf(e);
+    return '<div class="field c12"><div class="logo-box ev-logo ev-share" role="group" aria-label="Share picture">' +
+        '<span class="lprev" id="b-share-prev">' + (imgTag(url) || svg(IC.image, 18)) + '</span>' +
+        '<span class="lt" id="b-share-state">' + esc(url ? SHARE_OWN : SHARE_AUTO) + '</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="b-share-btn">' + (url ? 'Replace' : 'Upload') + '</button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" id="b-share-auto"' + (url ? '' : ' hidden') + '>Use automatic</button>' +
+      '</div>' +
+      '<p class="hint">A JPG or PNG, about 1200 × 630 px and under 1 MB, shows everywhere. It is on the live site after the next publish; WhatsApp and LinkedIn may keep showing an earlier picture for a link already shared.</p></div>';
+  }
+  function wireSharePicture(){
+    var btn = $('b-share-btn'), auto = $('b-share-auto'), busy = false;
+    if (!btn) return;
+    function show(url, text){
+      var prev = $('b-share-prev'), st = $('b-share-state');
+      if (prev) prev.innerHTML = imgTag(url) || svg(IC.image, 18);
+      if (st) st.textContent = text || (url ? SHARE_OWN : SHARE_AUTO);
+      btn.textContent = url ? 'Replace' : 'Upload';
+      if (auto) auto.hidden = !url;
+    }
+    function save(url){
+      return C.updateEvent(EV.id, { settings: { seo: { shareImageUrl: url } } }).then(function(res){
+        EV.settings = EV.settings || {};
+        EV.settings.seo = Object.assign({}, EV.settings.seo || {}, { shareImageUrl: url });
+        if (res && res.updatedAt){ EV.updatedAt = res.updatedAt; EV.detailsUpdatedAt = res.updatedAt; }
+      });
+    }
+    function setBusy(on){ busy = on; btn.disabled = on; if (auto) auto.disabled = on; }
+    btn.addEventListener('click', function(){
+      if (busy) return;
+      var inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = 'image/jpeg,image/png';
+      inp.onchange = function(){
+        var file = inp.files && inp.files[0];
+        if (!file) return;
+        /* the formats every link preview shows (WebP and SVG are not shown everywhere) */
+        if (!/^image\/(jpeg|png)$/.test(file.type)){ notify('Use a JPG or PNG picture: WhatsApp, LinkedIn and X do not all show other kinds.'); return; }
+        setBusy(true);
+        var was = shareUrlOf(EV);
+        show(was, 'Uploading…');
+        C.uploadImage(EV.id, 'media', file).then(function(up){
+          return save(up.url).then(function(){ return up.url; });
+        }).then(function(url){
+          show(url);
+          notify('Share picture saved. It is on the live site after the next publish.');
+        }, function(err){
+          show(was);
+          notify('The share picture could not be saved: ' + ((err && err.message) || 'please try again'));
+        }).then(function(){ setBusy(false); });
+      };
+      inp.click();
+    });
+    if (auto) auto.addEventListener('click', function(){
+      if (busy) return;
+      setBusy(true);
+      var was = shareUrlOf(EV);
+      save('').then(function(){
+        show('');
+        notify('The site picks its share picture by itself again (after the next publish).');
+      }, function(err){
+        show(was);
+        notify('That could not be saved: ' + ((err && err.message) || 'please try again'));
+      }).then(function(){ setBusy(false); });
+    });
+  }
+
   function mountHeroVideo(){
     var box = $('b-herovideo');
     if (!box || !window.RevampHeroVideoUI) return;
@@ -1257,6 +1342,18 @@
       box.className = 'ctr' + (n > DESC_IDEAL ? ' over' : (n > DESC_IDEAL * 0.9 ? ' warn' : ''));
       box.querySelector('i').style.width = pct + '%';
       box.querySelector('.t').textContent = n + ' / ' + DESC_IDEAL;
+      /* over the most a save takes: said at once, also for a description stored before the limit, and with
+         what a save of the other fields does (they are saved as they are; problems() only judges a changed
+         description) */
+      var over = $('b-desc-over');
+      if (over){
+        var extra = n - DESC_MAX;
+        over.hidden = extra <= 0;
+        over.textContent = extra > 0
+          ? 'This description is ' + comma(extra) + (extra === 1 ? ' character' : ' characters') + ' too long: it can be up to ' +
+            DESC_MAX + ' characters. Shorten it to save a change to it; the other fields can be saved as they are.'
+          : '';
+      }
     }
 
     /* ---- the three surfaces in the rail ---- */
@@ -1311,19 +1408,9 @@
     function paintReady(){
       var host = $('b-rdy');
       if (!host) return;
-      var s = span(), n = trimmed('desc').length;
-      var endBad = !!(s.a && s.b && s.b <= s.a);
-      var items = [
-        { label:'Event name', field:'b-name', why: trimmed('name') ? '' : 'Add the event name' },
-        { label:'Date', field: endBad ? 'b-end' : 'b-start',
-          why: !s.a ? 'Add a start date and time' : (endBad ? 'The end is before the start' : '') },
-        { label:'Venue or city', field:'b-venue', why: place() ? '' : 'Add a venue or a city' },
-        { label:'Short description', field:'b-desc',
-          why: n < DESC_MIN ? 'Add at least ' + DESC_MIN + ' characters (now ' + n + ')'
-             : (n > DESC_IDEAL ? 'Shorten to ' + DESC_IDEAL + ' characters (now ' + n + ')' : '') },
-        { label:'Category', field:'b-cat', why: v('cat') ? '' : 'Choose a category' },
-        { label:'Portal', field:'b-portal', why: v('portal') ? '' : 'Choose the portal it belongs to' }
-      ];
+      /* the same rows the Dashboard's "Basics" counts, from the fields as typed (the portal among them) */
+      var items = C.basicsGaps({ name: v('name'), start: v('start'), end: v('end'), venue: v('venue'), city: v('city'),
+        desc: v('desc'), cat: v('cat'), portal: v('portal') });
       var done = items.filter(function(i){ return !i.why; }).length;
 
       host.innerHTML = items.map(function(i){
@@ -1394,6 +1481,7 @@
        on the server and put into an AI-designed site's hero (POST /api/event/logo-unit). A site already
        saved is the owner's page: the editor offers the new logo there, and puts it in itself where the hero
        still shows the unit that was made automatically. */
+    wireSharePicture();
     var logoBtn = $('b-logo-btn'), logoBusy = false;
     function logoState(text){ var el = $('b-logo-state'); if (el) el.textContent = text; }
     if (logoBtn) logoBtn.addEventListener('click', function(){
@@ -4655,45 +4743,106 @@
   }
 
   /* ============================================================
-     VIEW : SEO / HISTORY
+     VIEW : URL & SEO
+
+     What search engines and link previews really read: the live page's own tags, fetched from its public
+     address and read by RevampCore.readSiteHead — never fields that save nothing, an address on a domain that
+     does not exist, or ticks that are always on. Each value says where it comes from, because it is not
+     edited here: the title and description are Basics', the picture is the site's banner picture. A site
+     that is not live has no page to read, and is told so.
      ============================================================ */
+  var SEO = { id: '', at: 0, loading: false, head: null, error: '' };
+  function loadSeo(){
+    var mine = SEO = { id: EV.id, at: 0, loading: true, head: null, error: '' };
+    /* the page exactly as a visitor (or a crawler) is given it: same server, no sign-in */
+    fetch(location.origin + '/e/' + encodeURIComponent(EV.id), { credentials: 'omit', cache: 'no-store' }).then(function(res){
+      if (!res.ok) throw new Error(res.status === 404 ? 'The live page did not answer: it may have just been taken offline.' : 'The live page answered with an error (' + res.status + ').');
+      return res.text();
+    }).then(function(html){
+      mine.head = C.readSiteHead(html);
+    }, function(err){
+      mine.error = (err && err.message) || 'The live page could not be read.';
+    }).then(function(){
+      mine.loading = false; mine.at = Date.now();
+      if (SEO === mine && routeId() === 'settings/seo') render();
+    });
+  }
+
+  function wireSeo(){
+    document.querySelectorAll('[data-seo="refresh"]').forEach(function(b){
+      b.onclick = function(){ if (SEO.loading) return; loadSeo(); render(); };
+    });
+  }
+
+  function seoRow(label, value, from){
+    return '<div class="kv-row"><span class="k">' + esc(label) + '</span><span class="v">' + value +
+      (from ? '<span class="seo-from">' + esc(from) + '</span>' : '') + '</span></div>';
+  }
+  function seoCheck(ok, label, text){
+    return '<div class="seo-check"><span class="dash-dot dash-dot-' + (ok ? 'ok' : 'warn') + '" aria-hidden="true"></span>' +
+      '<span><b>' + esc(label) + '</b><span>' + esc(text) + '</span></span></div>';
+  }
+
   function viewSEO(){
-    var slug = EV.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    return vhead('SEO', 'How this site appears in search results and when shared on social.') +
+    var url = C.publicUrl(EV);
+    var head = vhead('URL & SEO', 'What search engines and link previews read from the live site, and where each part comes from.');
+    var sources = '<div class="kv">' +
+        seoRow('Title', 'The event name', 'Basics › Event name') +
+        seoRow('Description', 'The short description', 'Basics › Short description') +
+        seoRow('Address', '<span class="num">' + esc(url) + '</span>', 'The event’s public address') +
+        seoRow('Picture in link previews', 'The site’s banner picture', 'Set in the site editor') +
+      '</div>';
+
+    if (EV.published !== true){
+      return head + panel('Not live yet', '',
+        '<p class="seo-lead">Search engines and link previews read the live page. Once the site is published, this shows the title, description, address and picture it carries, read from the page itself. Nothing is listed while it is not live.</p>' +
+        sources);
+    }
+
+    /* read once a minute at most; the answer draws this view again (loadSeo) */
+    if (SEO.id !== EV.id || (!SEO.loading && Date.now() - SEO.at > 60000)) loadSeo();
+    var h = SEO.head;
+    var refresh = '<button class="btn btn-secondary btn-sm" type="button" data-seo="refresh"' + (SEO.loading ? ' disabled' : '') + '>' +
+      (SEO.loading ? 'Reading…' : 'Read it again') + '</button>';
+    if (!h){
+      return head + panel('The live page', '', SEO.error
+        ? '<div class="callout" role="alert">' + svg(IC.info, 15) + '<span>' + esc(SEO.error) + '</span></div><p style="margin:12px 0 0">' + refresh + '</p>'
+        : '<p class="seo-lead" aria-busy="true">Reading the live page…</p>');
+    }
+
+    var n = h.description.length;
+    var shown = n > 155 ? h.description.slice(0, 155).replace(/\s+\S*$/, '') + ' …' : h.description;
+    var where = h.canonical.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › ');
+    var picture = h.image
+      ? '<span class="seo-pic">' + imgTag(h.image) + '</span>'
+      : '<span class="seo-none">None: a shared link shows the title and description only.</span>';
+
+    return head +
       '<div class="split">' +
         '<div>' +
-          panel('Search listing', '',
-            '<div class="frow">' +
-              '<div class="field c12"><label>Page title <span class="pill-req">Required</span></label>' +
-                '<input class="inp" value="' + esc(EV.name) + ' | ET Oneworld"></div>' +
-              '<div class="field c12"><label>Meta description</label>' +
-                '<textarea class="inp">Join India’s leading voices at ' + esc(EV.name) + '. ' + esc(fmtDate(EV.start)) + ', ' + esc(EV.venue) + '. Register now.</textarea>' +
-                '<p class="hint">Aim for 150–160 characters. Google truncates beyond that.</p></div>' +
-              '<div class="field c12"><label>Canonical URL</label>' +
-                '<input class="inp" value="https://etoneworld.com/' + esc(slug) + '"></div>' +
-            '</div>') +
-          panel('Social share card', '',
-            '<div class="frow">' +
-              '<div class="field c6"><label>OG title</label><input class="inp" value="' + esc(EV.name) + '"></div>' +
-              '<div class="field c6"><label>OG image</label><input class="inp" value="social-card.png"></div>' +
-            '</div>') +
+          panel('What the live page carries', 'Read just now from ' + url, '<div class="kv">' +
+              seoRow('Title', h.title ? esc(h.title) : '<span class="seo-none">None</span>', 'Basics › Event name') +
+              seoRow('Description', h.description ? esc(h.description) + ' <span class="seo-n">(' + n + ' characters)</span>' : '<span class="seo-none">None</span>', 'Basics › Short description') +
+              seoRow('Address', h.canonical ? '<a href="' + esc(h.canonical) + '" target="_blank" rel="noopener">' + esc(h.canonical) + '</a>' : '<span class="seo-none">None given</span>', '') +
+              seoRow('Picture in link previews', picture, h.image ? '' : 'The site has no banner picture') +
+            '</div>' +
+            '<p class="seo-foot">A change in Basics reaches these the next time the site is published. ' + refresh + '</p>') +
         '</div>' +
         '<div>' +
-          panel('Search preview', 'How Google is likely to render it',
-            '<div style="border:1px solid var(--border);border-radius:10px;padding:14px;background:var(--surface-2)">' +
-              '<div style="font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);margin-bottom:3px">etoneworld.com › ' + esc(slug) + '</div>' +
-              '<div style="font-size:16px;color:#1a0dab;font-weight:600;line-height:1.3;margin-bottom:3px">' + esc(EV.name) + ' | ET Oneworld</div>' +
-              '<div style="font-size:12.5px;color:var(--text-muted);line-height:1.5">Join India’s leading voices at ' + esc(EV.name) + '. ' + esc(fmtDate(EV.start)) + ', ' + esc(EV.venue) + '. Register now.</div>' +
+          panel('Search preview', 'Roughly how a search result shows it',
+            '<div class="mock mock-serp">' +
+              '<div class="u">' + esc(where || url) + '</div>' +
+              '<div class="t">' + esc(h.title || EV.name || '') + '</div>' +
+              '<div class="d">' + esc(shown || '') + '</div>' +
             '</div>') +
-          panel('Health checks', '',
-            '<div class="check-list">' +
-              [['Title set', true], ['Meta description set', true], ['OG image present', true],
-               ['Canonical URL set', true], ['Sitemap submitted', false], ['Structured data (Event schema)', false]].map(function(c){
-                return '<div class="check-row' + (c[1] ? ' done' : '') + '" style="cursor:default">' +
-                  '<span class="cb">' + svg(IC.check, 12) + '</span>' +
-                  '<span class="ct">' + esc(c[0]) + '</span></div>';
-              }).join('') +
-            '</div>') +
+          panel('Checks', 'Worked out from the page',
+            seoCheck(!!h.title, 'Title', h.title ? 'Given' : 'Missing: give the event a name in Basics') +
+            seoCheck(n > 0 && n <= 160, 'Description', !n ? 'Missing: add a short description in Basics'
+              : (n > 160 ? n + ' characters: a search result shows about the first 155' : n + ' characters')) +
+            seoCheck(!!h.image, 'Picture for link previews', h.image ? 'Given' : 'None: put a banner picture on the site') +
+            seoCheck(h.eventLd, 'Event details for search results', h.eventLd ? 'Date, place and organiser are given'
+              : 'Not given: the event needs an exact start date in Basics') +
+            seoCheck(!h.noindex, 'Search engines may list it', h.noindex ? 'No: the page asks search engines not to list it' : 'Yes')) +
         '</div>' +
       '</div>';
   }
@@ -5037,6 +5186,117 @@
     persistGalleryOrder();
   }
 
+  /* ---- photos on their way in ----
+     A photo is uploaded first (RevampCore.uploadImage, kind 'gallery': the file goes to Storage, up to 8 MB)
+     and only then recorded with its address (createSub) — a picture is never put inside the record, which
+     the server caps at 256 KB and which is why an ordinary 365 KB photo used to be refused. Until its record
+     exists a photo is a card of its own here, so it is never invisible: "Uploading…" over the picture itself,
+     then either the stored photo or "Not added" with the reason, Retry and Remove. These cards are kept apart
+     from S.gallery, which only ever holds what the server has stored. */
+  var GAL_PENDING = [];
+  var GAL_TYPES = 'image/jpeg,image/png,image/webp,image/gif';
+  var GAL_HINT = 'JPG, PNG, WebP or GIF, up to 8 MB each. Landscape photos look best.';
+  var galSeq = 0;
+
+  /* the kinds of photo the gallery takes (GAL_TYPES); the browser can also show each of them as a preview */
+  function galKind(file){
+    var type = String(file.type || '').toLowerCase();
+    if (type === 'image/jpg' || type === 'image/pjpeg') type = 'image/jpeg';
+    if (!type){
+      var m = /\.([a-z0-9]+)$/i.exec(String(file.name || ''));
+      type = m ? ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' }[m[1].toLowerCase()] || '') : '';
+    }
+    return GAL_TYPES.split(',').indexOf(type) !== -1 ? type : '';
+  }
+  /* why a photo was not added, in words; `fixable` is false when sending the same file again cannot help */
+  function galWhy(err, file){
+    var status = err && typeof err.status === 'number' ? err.status : 0;
+    if (status === 415) return { text: 'This is not a photo the site can show. Use JPG, PNG, WebP or GIF.', fixable: false };
+    if (status === 413) return { text: 'It is ' + (file.size / 1048576).toFixed(1) + ' MB; a photo can be up to 8 MB.', fixable: false };
+    return { text: errText(err), fixable: true };
+  }
+  function galForget(p){
+    GAL_PENDING = GAL_PENDING.filter(function(x){ return x !== p; });
+    if (p.preview){ try { URL.revokeObjectURL(p.preview); } catch(e){} }
+  }
+  function galBatchDone(batch){
+    if (!batch || --batch.left > 0) return;
+    if (batch.ok === 1) notify('“' + batch.last + '” was added to the gallery');
+    else if (batch.ok > 1) notify(batch.ok + ' photos were added to the gallery');
+  }
+  function galSend(p){
+    p.state = 'sending'; p.error = '';
+    /* counted as a write that is out, so leaving the page asks first; the tab is not held while it uploads */
+    SUB_BUSY.gallery = (SUB_BUSY.gallery || 0) + 1;
+    var up = p.up ? Promise.resolve(p.up)
+      : !galKind(p.file) ? Promise.reject(Object.assign(new Error('not a photo'), { status: 415 }))
+      : C.uploadImage(EV.id, 'gallery', p.file);
+    return up.then(function(u){
+      p.up = u;             // a retry after the record failed does not send the file again
+      p.order = Math.max(p.order, nextOrder(galAll()));
+      return C.createSub('gallery', EV.id, { imageUrl: u.url, caption: '', order: p.order });
+    }).then(function(res){
+      S.gallery = galAll().concat([{ id: res.id, imageUrl: p.up.url, caption: '', order: p.order }]).sort(byOrder);
+      galForget(p);
+      if (p.batch){ p.batch.ok++; p.batch.last = p.name; }
+      else notify('“' + p.name + '” was added to the gallery');
+      return true;
+    }, function(err){
+      var why = galWhy(err, p.file);
+      /* a file that is not a photo, or too big, is the card's to say; anything else is worth a log line */
+      if (why.fixable) console.error('Gallery photo not added:', err);
+      p.state = 'failed';
+      p.error = why.text;
+      p.fixable = why.fixable;
+      /* the card says it on the Gallery tab; anywhere else the console says it */
+      if (routeId() !== 'content/gallery') notifyError('“' + p.name + '” could not be added to the gallery. ' + p.error);
+      return false;
+    }).then(function(ok){
+      SUB_BUSY.gallery--;
+      galBatchDone(p.batch);
+      p.batch = null;
+      keepSaved();
+      flushReloads();
+      if (routeId() === 'content/gallery') render();
+      return ok;
+    });
+  }
+  function galAdd(files){
+    var order0 = nextOrder(galAll()) + GAL_PENDING.length;
+    var batch = { left: files.length, ok: 0, last: '' };
+    var mine = files.map(function(file, idx){
+      var preview = '';
+      if (galKind(file)) try { preview = URL.createObjectURL(file); } catch(e){}
+      var p = { key: 'galp' + (++galSeq), file: file, name: String(file.name || 'Photo ' + (idx + 1)), preview: preview,
+        order: order0 + idx, state: 'sending', error: '', up: null, batch: batch };
+      GAL_PENDING.push(p);
+      return p;
+    });
+    mine.forEach(galSend);
+    if (routeId() === 'content/gallery') render();
+  }
+  function galPendingById(key){
+    for (var i = 0; i < GAL_PENDING.length; i++) if (GAL_PENDING[i].key === key) return GAL_PENDING[i];
+    return null;
+  }
+  function galPendingCard(p){
+    var busy = p.state === 'sending';
+    return '<div class="media-card gal-pending' + (busy ? '' : ' failed') + '" data-galp="' + esc(p.key) + '"' + (busy ? ' aria-busy="true"' : '') + '>' +
+        '<div class="media-thumb">' + (imgTag(p.preview) || svg(IC.image, 24)) +
+          (busy ? '<span class="gal-veil"><span class="spin"></span></span>' : '') + '</div>' +
+        '<div class="media-meta">' +
+          '<b title="' + esc(p.name) + '">' + esc(p.name) + '</b>' +
+          (busy
+            ? '<span class="gal-state" role="status">Uploading…</span>'
+            : '<span class="gal-state gal-err" role="alert">Not added. ' + esc(p.error) + '</span>' +
+              '<div class="media-acts gal-acts">' +
+                (p.fixable ? '<button class="btn btn-secondary btn-sm" type="button" data-galretry="' + esc(p.key) + '">Retry</button>' : '') +
+                '<button class="btn btn-ghost btn-sm" type="button" data-galdrop="' + esc(p.key) + '">Remove</button>' +
+              '</div>') +
+        '</div>' +
+      '</div>';
+  }
+
   function viewGallery(){
     var items = galAll();
     var cards = items.map(function(g, i){
@@ -5059,18 +5319,22 @@
             '</div>' +
           '</div>' +
         '</div>';
-    }).join('');
+    }).join('') + GAL_PENDING.map(galPendingCard).join('');
 
+    var sending = GAL_PENDING.filter(function(p){ return p.state === 'sending'; }).length;
+    var addBtn = '<button class="btn btn-primary btn-sm" type="button" id="gal-add">' + svg(IC.plus, 13) + ' Upload photos</button>';
+    var hint = '<p class="hint gal-hint" id="gal-hint">' + esc(GAL_HINT) + '</p>';
     /* one way to add at a time: the button in the empty state, or the one in the header */
-    var body = items.length ? ('<div class="media-grid">' + cards + '</div>')
-      : emptyState(IC.image, 'No photos yet',
-          'Upload a few photos from past editions. Landscape shots work best.',
-          '<button class="btn btn-primary btn-sm" type="button" id="gal-add">' + svg(IC.plus, 13) + ' Upload photos</button>');
+    var body = (items.length || GAL_PENDING.length) ? ('<div class="media-grid">' + cards + '</div>' + hint)
+      : emptyState(IC.image, 'No photos yet', 'Upload a few photos from past editions. ' + GAL_HINT, addBtn);
+
+    var sub = items.length ? items.length + (items.length === 1 ? ' image' : ' images') : '';
+    if (sending) sub += (sub ? ' · ' : '') + sending + ' uploading';
 
     return vhead('Gallery', 'Photos from past editions, shown in the Gallery section of the site in the order set here.',
-        items.length ? '<button class="btn btn-primary btn-sm" type="button" id="gal-add">' + svg(IC.plus, 13) + ' Upload photos</button>' : '') +
-      panel('Photos', items.length ? items.length + (items.length === 1 ? ' image' : ' images') : '', body) +
-      '<input type="file" accept="image/*" id="gal-file" style="display:none" multiple>';
+        (items.length || GAL_PENDING.length) ? addBtn : '') +
+      panel('Photos', sub, body) +
+      '<input type="file" accept="' + GAL_TYPES + '" id="gal-file" style="display:none" multiple aria-describedby="gal-hint">';
   }
 
   function wireGallery(){
@@ -5081,29 +5345,25 @@
     if (fileInput) fileInput.onchange = function(){
       var files = Array.prototype.slice.call(fileInput.files || []);
       fileInput.value = '';
-      if (!files.length) return;
-      var order0 = nextOrder(galAll());
-      files.forEach(function(file, idx){
-        /* readImage() (defined under Speakers' photo helpers) is the same FileReader-based
-           dataURL reader cropToSquare/shrinkLogo build on — reused as-is, no cropping needed here */
-        readImage(file, function(img, err){
-          if (err){ notifyError((file.name ? '“' + file.name + '”: ' : '') + err); return; }
-          /* STOPGAP: no Storage upload endpoint for gallery images yet, so the dataURL itself is
-             stored directly in imageUrl — see the same note on Speakers' photo/logo fields above.
-             Should move to a real upload (functions/lib/api.js's buildHeroImage() pattern) once
-             one exists. */
-          var item = { imageUrl: img.src, caption: '', order: order0 + idx };
-          /* the photo is drawn once it is stored; several chosen together arrive in any order */
-          subWrite('gallery',
-            C.createSub('gallery', EV.id, item).then(function(res){
-              item.id = res.id;
-              S.gallery = galAll().concat([item]).sort(byOrder);
-            }),
-            null, (file.name ? '“' + file.name + '”' : 'The photo') + ' was not saved.'
-          ).then(function(ok){ if (ok) render(); });
-        });
-      });
+      if (files.length) galAdd(files);
     };
+
+    document.querySelectorAll('[data-galretry]').forEach(function(b){
+      b.onclick = function(){
+        var p = galPendingById(b.getAttribute('data-galretry'));
+        if (!p || p.state === 'sending' || !p.fixable) return;
+        galSend(p);
+        render();
+      };
+    });
+    document.querySelectorAll('[data-galdrop]').forEach(function(b){
+      b.onclick = function(){
+        var p = galPendingById(b.getAttribute('data-galdrop'));
+        if (!p || p.state === 'sending') return;
+        galForget(p);
+        render();
+      };
+    });
 
     document.querySelectorAll('[data-galcap]').forEach(function(inp){
       var id = inp.getAttribute('data-galcap');
@@ -5506,97 +5766,135 @@
   }
 
   /* ============================================================
-     SETTINGS : social links, visibility
+     SETTINGS › VISIBILITY, and PAYMENT
+
+     Visibility shows where the site stands as the server has it (RevampCore.siteState: the reading the
+     header's chip and the Dashboard use too), and its buttons are the real actions: Publish is the header's
+     Publish (doPublish), and taking the site offline is POST /api/event/unpublish — for approvers only, the
+     owner's rule, which the server enforces as well. What the product cannot do yet is listed as such,
+     never offered as a control that saves nothing.
      ============================================================ */
-  function viewSocialLinks(){
-    var links = [
-      ['LinkedIn','https://linkedin.com/company/et-oneworld', true],
-      ['X (Twitter)','https://x.com/ETOneworld', true],
-      ['Instagram','https://instagram.com/etoneworld', true],
-      ['YouTube','https://youtube.com/@etoneworld', true],
-      ['Facebook','', false],
-      ['WhatsApp channel','', false]
-    ];
-    var rows = links.map(function(l, i){
-      return '<div class="frow" style="align-items:end;margin-bottom:12px">' +
-          '<div class="field c3"><label>' + esc(l[0]) + '</label>' +
-            '<button class="tgl" type="button" data-rem="s' + i + '" aria-pressed="' + l[2] + '">' +
-            '<span class="track"><i></i></span>' + (l[2] ? 'Shown' : 'Hidden') + '</button></div>' +
-          '<div class="field c8"><label>URL</label>' +
-            '<input class="inp" value="' + esc(l[1]) + '" placeholder="Paste the profile URL"></div>' +
-        '</div>';
-    }).join('');
-
-    return vhead('Social links', 'The icon row in the site footer. Empty links are hidden automatically.',
-        '<button class="btn btn-primary btn-sm" type="button" data-save="Social links saved">Save changes</button>') +
-      panel('Icons in the footer', '4 of 6 shown', rows);
-  }
-
   function viewVisibility(){
-    var live = !!S.published;
-    return vhead('Visibility', 'Who can reach this site right now.') +
+    var st = C.siteState(EV, APPROVAL), url = C.publicUrl(EV), may = C.mayTakeOffline(APPROVAL);
+    var asks = !APPROVAL || APPROVAL.required !== false;
+    var title, text;
+    if (st.live){
+      title = 'Live and public';
+      text = 'Published' + (st.publishedAt ? ' on ' + fmtDate(st.publishedAt) : '') + '. Anyone with the address can open it.';
+    } else if (st.offline){
+      title = 'Offline';
+      text = 'Taken offline' + (EV.unpublishedAt ? ' on ' + fmtDate(EV.unpublishedAt) : '') + (EV.unpublishedBy ? ' by ' + EV.unpublishedBy : '') +
+        '. Its address shows “This page is not available” until the site is published again.';
+    } else {
+      title = 'Not live yet';
+      text = 'Only signed-in team members can see it, in Preview. Search engines cannot list it.';
+    }
+
+    var acts = [], notes = [];
+    if (st.pending){
+      acts.push('<a class="btn btn-secondary" href="' + esc(st.pending.reviewPath) + '" target="_blank" rel="noopener">Waiting for approval · Review</a>');
+      notes.push('Changes were sent for approval' + (st.pending.requestedBy ? ' by ' + st.pending.requestedBy : '') + '. They go live when an approver approves them.');
+    } else if (!st.savedVersion){
+      acts.push('<button class="btn btn-primary" type="button" data-goto="design/editor">Open the site editor</button>');
+      notes.push('Save the site in the editor first: Publish sends the site as it was last saved.');
+    } else if (!st.live || st.newer){
+      acts.push('<button class="btn btn-primary" type="button" id="vis-publish">' + (st.live ? 'Publish the newer changes' : 'Publish') + '</button>');
+      notes.push(asks ? 'Publish sends the saved site for approval; it goes live when an approver approves it.' : 'Approval is switched off: Publish makes the saved site live at once.');
+    }
+    if (st.rejected) notes.push('The last request was rejected' + (st.rejected.decidedBy ? ' by ' + st.rejected.decidedBy : '') +
+      (st.rejected.note ? ': “' + st.rejected.note + '”' : '') + '.');
+    if (st.live){
+      /* the button only once who approves is known: drawn before, a team member who is not an approver saw it
+         for a few seconds and then lost it. If that cannot be read, the button is drawn and the server decides
+         (it refuses anybody who is not an approver, and the dialog says so). */
+      if (!APPROVAL && !APPROVAL_FAILED) notes.push('Checking who can take the site offline…');
+      else if (may) acts.push('<button class="btn btn-danger" type="button" id="vis-offline">Take the site offline…</button>');
+      else notes.push('Only an approver can take the site offline' + (APPROVAL && APPROVAL.approvers && APPROVAL.approvers.length ? ' (' + APPROVAL.approvers.join(', ') + ')' : '') + '.');
+    }
+
+    return vhead('Visibility', 'Whether the site is live, and the way to publish it or take it offline.') +
       '<div class="panel"><div class="panel-body">' +
-        '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">' +
-          '<span style="width:46px;height:46px;border-radius:13px;display:grid;place-items:center;background:' +
-            (live ? 'var(--ok-soft);color:var(--ok)' : 'var(--surface-2);color:var(--text-faint)') + '">' +
-            svg(live ? IC.globe : IC.lock, 22) + '</span>' +
-          '<div style="flex:1;min-width:200px">' +
-            '<b style="font-size:15px;display:block">' + (live ? 'Live and public' : 'Private draft') + '</b>' +
-            '<span style="font-size:12.5px;color:var(--text-muted)">' +
-              (live ? 'Anyone with the link can open it, and search engines may index it.'
-                    : 'Only signed-in team members can open it. Nothing is indexed.') + '</span>' +
+        '<div class="vis-state">' +
+          '<span class="vis-ico vis-ico-' + (st.live ? 'live' : 'off') + '">' + svg(st.live ? IC.globe : IC.lock, 22) + '</span>' +
+          '<div class="vis-text">' +
+            '<b>' + esc(title) + '</b>' +
+            '<span>' + esc(text) + '</span>' +
+            '<span class="vis-url">' + (st.live
+              ? '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(url) + ' ↗</a>'
+              : 'Its address' + (st.offline ? ' is ' : ' will be ') + '<span class="num">' + esc(url) + '</span>') + '</span>' +
           '</div>' +
-          '<button class="btn ' + (live ? 'btn-secondary' : 'btn-primary') + '" type="button" id="btn-vis">' +
-            (live ? 'Make private' : 'Make it live') + '</button>' +
         '</div>' +
+        (acts.length ? '<div class="vis-acts">' + acts.join('') + '</div>' : '') +
+        (notes.length ? '<ul class="vis-notes">' + notes.map(function(n){ return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>' : '') +
       '</div></div>' +
-      panel('Access rules', '',
-        '<div class="frow">' +
-          '<div class="field c6"><label>Who can view</label><select class="inp">' +
-            '<option' + (live ? ' selected' : '') + '>Anyone with the link</option>' +
-            '<option' + (live ? '' : ' selected') + '>Team members only</option>' +
-            '<option>Password protected</option>' +
-            '<option>Invited email addresses only</option>' +
-          '</select></div>' +
-          '<div class="field c6"><label>Search engine indexing</label><select class="inp">' +
-            '<option>Allow indexing</option><option>Block indexing (noindex)</option></select></div>' +
-          '<div class="field c6"><label>Take offline automatically</label><select class="inp">' +
-            '<option>Never</option><option>7 days after the event</option><option>30 days after the event</option></select></div>' +
-          '<div class="field c6"><label for="vis-cutoff">Registration cut-off</label><select class="inp" id="vis-cutoff" disabled aria-describedby="vis-cutoff-na">' +
-            '<option>Not available yet</option></select>' +
-            '<span class="hint" id="vis-cutoff-na" style="font-size:12px;color:var(--text-muted)">Not available yet. To stop taking registrations, turn off “Registration open” in Settings › ' +
-            '<a href="#settings/form" data-goto="settings/form">Registration forms</a>.</span></div>' +
-        '</div>');
+      panel('Not available yet', '',
+        '<ul class="na-list">' +
+          '<li><b>A password, or only invited e-mail addresses.</b> A live site is open to anyone with its address.</li>' +
+          '<li><b>Taking the site offline on a set date.</b> Take it offline here when the time comes.</li>' +
+          '<li><b>A switch to keep a live site out of search results.</b> Whether the live page lets search engines list it is shown in ' +
+            '<a href="#settings/seo" data-goto="settings/seo">URL &amp; SEO</a>.</li>' +
+          '<li><b>A registration cut-off.</b> To stop taking registrations, turn off “Registration open” in ' +
+            '<a href="#settings/form" data-goto="settings/form">Registration forms</a>.</li>' +
+        '</ul>');
   }
 
   function wireVisibility(){
-    var b = $('btn-vis');
-    if (!b) return;
-    b.onclick = function(){
-      S.published = !S.published; save(); render();
-      notify(S.published ? 'This site is now live' : 'Switched to private draft');
+    var pub = $('vis-publish');
+    if (pub) pub.onclick = doPublish;
+    var off = $('vis-offline');
+    if (off) off.onclick = takeOffline;
+  }
+
+  /* POST /api/event/unpublish, after a question that names the address. The server refuses anybody who is not
+     an approver (403 'not-an-approver'), and the dialog then says so. */
+  function takeOffline(){
+    var url = C.publicUrl(EV);
+    var m = openModal(
+      '<div class="modal-head"><h3>Take the site offline?</h3></div>' +
+      '<div class="modal-body"><div class="confirm-msg">' +
+        '<p><b>' + esc(url) + '</b> will show “This page is not available” to everyone, at once, until the site is published again.</p>' +
+        '<p>The event, its content, its registrations and the saved site are all kept.</p>' +
+      '</div></div>' +
+      '<div class="modal-foot">' +
+        '<span class="modal-err" id="off-err" role="alert"></span>' +
+        '<button class="btn btn-secondary" type="button" id="off-keep">Keep it live</button>' +
+        '<button class="btn btn-danger" type="button" id="off-go">Take it offline</button>' +
+      '</div>',
+      /* focus starts on the safe answer, so a stray Enter never takes a site down */
+      { style: 'width:min(480px,100%)', initialFocus: '#off-keep' });
+    $('off-keep').onclick = m.close;
+    $('off-go').onclick = function(){
+      $('off-err').textContent = '';
+      m.busy(true, $('off-go'), 'Taking it offline…');
+      C.unpublishEvent(EV.id).then(function(){
+        m.close();
+        EV.published = false; EV.publishedPath = null;
+        EV.unpublishedAt = new Date().toISOString();
+        EV.unpublishedBy = APPROVAL && APPROVAL.me ? APPROVAL.me : '';
+        paintHeader();
+        render();
+        notify('The site is offline. ' + url + ' now shows “This page is not available”.');
+      }, function(err){
+        console.error('Unpublish failed:', err);
+        m.busy(false, $('off-go'));
+        $('off-err').textContent = 'The site is still live. ' + errText(err);
+      });
     };
+  }
+
+  /* Payment is out of scope for now. The rail's Payment item leads here, inside the event, with the rail and
+     header kept — never to the old prototype, which showed another event's figures. */
+  function viewPayment(){
+    return vhead('Payment', 'Taking payment for passes, and the invoices that go with it.') +
+      '<div class="panel"><div class="panel-body">' + emptyState(IC.card, 'Payment is not available yet',
+        'Online payment and invoices are not part of Oneworld 2.0 yet. Registrations are free and are not affected.',
+        '<button class="btn btn-secondary btn-sm" type="button" data-goto="content/basics">Back to Content</button>') +
+      '</div></div>';
   }
 
   /* ============================================================
      ROUTER
      ============================================================ */
-  /* ---------- settings views (shell-local) ---------- */
-
-  /* generic on/off pills used by the settings lists */
-  function wireReminders(){
-    document.querySelectorAll('[data-rem]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var on = b.getAttribute('aria-pressed') === 'true';
-        b.setAttribute('aria-pressed', String(!on));
-        b.lastChild.textContent = !on ? 'On' : 'Off';
-        var row = b.closest('.sec-row');
-        if (row) row.classList.toggle('off', on);
-        notify('Setting ' + (!on ? 'enabled' : 'turned off'));
-      });
-    });
-  }
-
   /* ============================================================
      VIEW : SETTINGS › REGISTRATION FORMS
 
@@ -5761,27 +6059,6 @@
     };
   }
 
-  function viewSetAdv(){
-    var opts = [
-      ['Show a live registration counter on the site','Social proof on the hero block.', false],
-      ['Collect GST details at payment','Adds GSTIN and billing address to checkout.', true],
-      ['Allow calendar download (.ics)','Adds an "Add to calendar" button after registering.', true],
-      ['Index this site in search engines','Turn off for private or client-only events.', true]
-    ];
-    var rows = opts.map(function(o, i){
-      return '<div class="sec-row' + (o[2] ? '' : ' off') + '">' +
-        '<span class="sn"><b>' + esc(o[0]) + '</b><span>' + esc(o[1]) + '</span></span>' +
-        '<button class="tgl" type="button" data-rem="a' + i + '" aria-pressed="' + o[2] + '">' +
-          '<span class="track"><i></i></span>' + (o[2] ? 'On' : 'Off') + '</button>' +
-      '</div>';
-    }).join('');
-
-    return vhead('Advanced settings', 'Behaviour switches that change how the event runs, not how it looks.') +
-      '<p style="margin:0 0 14px;font-size:13px;color:var(--text-muted)">Approval, capacity and whether registration is open are set per form and for the event in ' +
-        '<a href="#settings/form" data-goto="settings/form">Settings › Registration forms</a>.</p>' +
-      panelFlush('Registration & privacy', '', '<div>' + rows + '</div>');
-  }
-
   /* ------------------------------------------------------------------
      Everything the dashboard file is allowed to touch. Keeping it to an
      explicit bundle means edit-event-dashboard.js can be edited on its own
@@ -5795,12 +6072,26 @@
     EV: EV, S: S,
     vhead:  function(t, sub, right){ return vhead(t, sub, right); },
     go:     function(r){ return go(r, true); },
-    render: function(){ return render(); },
-    save:   function(){ return save(); }
+    render: function(){ return render(); }
   });
   /* the section files report through the console's own two kinds of message */
   CTX.toast = notify;
   CTX.toastError = notifyError;
+  /* what the Dashboard reads besides the event (see edit-event-dashboard.js): who approves and the recent
+     requests, the publishing state fetched again, what the site shows of each Content list, and the
+     Activity log's own wording for its rows */
+  CTX.approval = function(){ return APPROVAL; };
+  CTX.refreshState = function(){ return refreshState(); };
+  CTX.isAward = isAwardEvent;
+  CTX.contentCounts = function(){
+    return Promise.all([fetchTab('speakers'), fetchTab('agenda'), fetchTab('sponsors')]).then(function(){
+      keepSaved();
+      paintTabCounts();
+      /* the site shows confirmed speakers and sponsors only (isConfirmed), and every session */
+      return { speakers: spkAll().filter(isConfirmed).length, agenda: agAll().length, sponsors: ptAll().filter(isConfirmed).length };
+    });
+  };
+  CTX.log = { when: histWhen, who: whoLabel, action: actionLabel };
 
   var VIEWS = {
     'dashboard':            function(){ return DASH.view(CTX); },
@@ -5815,11 +6106,10 @@
 
     'settings/form':        viewSetForm,
     'settings/seo':         viewSEO,
-    'settings/links':       viewSocialLinks,
     'settings/visibility':  viewVisibility,
-    'settings/advanced':    viewSetAdv,
 
-    'activity':             viewActivity
+    'activity':             viewActivity,
+    'payment':              viewPayment
   };
 
   function render(){
@@ -5867,14 +6157,9 @@
     LEAVE = NOT_DIRTY;
     $('view').innerHTML = tabsHTML() + fn();
 
-    /* generic wiring available on every view ([data-tab] and [data-goto] are handled by the one
-       listener boot() puts on #view, so they also work on the loading and error states) */
-    document.querySelectorAll('[data-save]').forEach(function(b){
-      b.addEventListener('click', function(e){
-        e.stopPropagation();
-        notify(b.getAttribute('data-save'));
-      });
-    });
+    /* [data-tab] and [data-goto] are handled by the one listener boot() puts on #view, so they also work on
+       the loading and error states. There is no generic "saved" wiring any more: a button says something
+       was saved only from the code that saved it. */
 
     /* per-view wiring */
     if (r === 'dashboard') DASH.wire(CTX);
@@ -5887,7 +6172,7 @@
     if (r === 'content/contact') wireContact();
     if (r === 'settings/visibility') wireVisibility();
     if (r === 'settings/form') wireSetForm();
-    if (['settings/advanced','settings/links'].indexOf(r) >= 0) wireReminders();
+    if (r === 'settings/seo') wireSeo();
 
     paintWriting();
   }
@@ -5907,7 +6192,12 @@
      "Publish changes" makes. */
   function doPublish(){
     C.publishEvent(EV.id).then(function(out){
-      notify('Published. Version ' + out.publishedVersion + ' is live at ' + out.publishedPath);
+      /* where approval is switched off it is live now: the header, the Dashboard and Visibility say so */
+      EV.published = true; EV.publishedAt = out.publishedAt; EV.publishedVersion = out.publishedVersion;
+      EV.publishedPath = out.publishedPath || EV.publishedPath;
+      paintHeader();
+      if (routeId() === 'dashboard' || routeId() === 'settings/visibility') render();
+      notify('Published. Version ' + out.publishedVersion + ' is live at ' + C.publicUrl(EV));
     }, function(err){
       if (!err || err.code !== 'approval-required') throw err;
       return C.requestApproval(EV.id).then(function(r){
@@ -6009,6 +6299,71 @@
     $('ev-meta').textContent = metaBits.join('  |  ');
     document.title = 'Edit — ' + name + ' — Oneworld 2.0';
     paintPortalChip();
+    paintState();
+  }
+
+  /* Where the site stands, next to the name on every view: Draft / Live since <date> / Offline, then a
+     request waiting (it links to its review page), a rejection, or newer changes not yet live — and, while it
+     is live, the way to the live site. Links open a new tab, so nothing typed here is ever lost to them. */
+  function paintState(){
+    var box = $('ev-state');
+    if (!box) return;
+    var st = C.siteState(EV, APPROVAL);
+    var chips = st.chips.map(function(c, i){
+      var cls = 'ev-chip ev-chip-' + c.tone + (i ? ' ev-chip-more' : '');
+      /* the whole wording, and a word or two for a narrow top bar (edit-event.css shows one of them) */
+      var words = '<span class="ev-chip-long">' + esc(c.text) + '</span><span class="ev-chip-short">' + esc(c.short || c.text) + '</span>';
+      return c.href
+        ? '<a class="' + cls + '" href="' + esc(c.href) + '" target="_blank" rel="noopener" title="' + esc(c.title || '') + '">' + words + '</a>'
+        : '<span class="' + cls + '" title="' + esc(c.title || '') + '">' + words + '</span>';
+    }).join('');
+    var live = st.live ? '<a class="ev-live" href="' + esc(C.publicUrl(EV)) + '" target="_blank" rel="noopener">View live site ↗</a>' : '';
+    box.innerHTML = chips + live;
+    box.hidden = false;
+  }
+
+  /* Who approves, the signed-in person and the event's recent requests (GET /api/event/approval); when the
+     newest request was rejected, its reason too. Read once the console is up, and again by the Dashboard's
+     Refresh. A failure leaves APPROVAL as it was: the header then goes by the event alone. */
+  function loadApproval(){
+    var id = EV.id;
+    return C.fetchApproval(id).then(function(a){
+      var last = !a.request && a.requests && a.requests[0];
+      if (!last || last.status !== 'rejected') return a;
+      return C.fetchApproval(id, last.id).then(function(one){
+        a.rejectNote = (one && one.request && one.request.decisionNote) || '';
+        return a;
+      }, function(){ return a; });
+    }).then(function(a){
+      if (!EV || EV.id !== id) return;
+      APPROVAL = a;
+      APPROVAL_FAILED = false;
+      paintState();
+      if (routeId() === 'settings/visibility') render();
+    }, function(err){
+      console.error('Could not read the approval state:', err);
+      if (!EV || EV.id !== id || APPROVAL) return;
+      APPROVAL_FAILED = true;
+      if (routeId() === 'settings/visibility') render();
+    });
+  }
+
+  /* The event's publishing state fetched again (it changes on the review page and in the editor, not here):
+     only those fields are taken, so nothing typed in a form on this page is touched. */
+  var STATE_FIELDS = ['published', 'publishedAt', 'publishedVersion', 'publishedPath', 'unpublishedAt', 'unpublishedBy',
+    'site', 'approval', 'lastApproval'];
+  function refreshState(){
+    var id = EV.id;
+    return Promise.all([
+      C.fetchEvent(id).then(function(fresh){
+        if (!EV || EV.id !== id) return;
+        STATE_FIELDS.forEach(function(k){
+          if (Object.prototype.hasOwnProperty.call(fresh, k)) EV[k] = fresh[k]; else delete EV[k];
+        });
+        paintState();
+      }),
+      loadApproval()
+    ]);
   }
 
   /* Preview, Publish and the rail only mean something once there is an event behind them. */
@@ -6022,6 +6377,7 @@
     setChrome(false);
     $('ev-name').textContent = 'Loading…';
     $('ev-meta').textContent = '';
+    $('ev-state').hidden = true;
     $('rail').innerHTML = '';
     $('view').innerHTML =
       '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;' +
@@ -6043,6 +6399,7 @@
     setChrome(false);
     $('ev-name').textContent = title;
     $('ev-meta').textContent = '';
+    $('ev-state').hidden = true;
     $('rail').innerHTML = '';
     document.title = 'Edit Event — Oneworld 2.0';
     /* the way out is the top bar's "Back to events", which stays on screen in every state */
@@ -6131,6 +6488,7 @@
 
     go(location.hash.slice(1));
     setTimeout(loadTabCounts, 0);
+    setTimeout(loadApproval, 0);
   }
 
   function isAuthError(err){

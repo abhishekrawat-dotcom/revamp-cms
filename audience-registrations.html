@@ -240,6 +240,9 @@
     if (!from && id === 'register') return 'Register now';
     return (from || id) + ' (deleted)';
   }
+  /* the form, and what was asked through it when it was a request rather than a registration (a partner enquiry,
+     a nomination, a ceremony invitation: the button that opened the form said so) */
+  function formLabelOf(r){ return formNameOf(formIdOf(r), r) + (r.enquiryTitle ? ' · ' + r.enquiryTitle : ''); }
   function answerValue(v){
     if (v === true) return 'Yes';
     if (v === false) return 'No';
@@ -422,7 +425,6 @@
     var shown = rows.slice(0, S.shown);
     box.innerHTML = '<div class="rep-wrap"><table class="rep-tbl"><thead><tr>' + cols.map(function(c){ return '<th scope="col">' + esc(c[0]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       shown.map(function(r){
-        var fid = formIdOf(r);
         return '<tr tabindex="0" data-id="' + esc(r.id) + '" aria-label="' + esc((r.name || r.email) + ', ' + statusLabel(r)) + '">' +
           '<td class="nm" data-label="Name"><b>' + esc(r.name || '—') + '</b></td>' +
           '<td data-label="Email"><span class="clip">' + esc(r.email) + '</span></td>' +
@@ -430,7 +432,7 @@
           '<td data-label="Company"><span class="clip">' + esc(r.company || '—') + '</span></td>' +
           '<td data-label="Designation"><span class="clip">' + esc(r.designation || '—') + '</span></td>' +
           '<td data-label="Location"><span class="clip" title="' + esc(placeOf(r)) + '">' + esc(r.location || r.city || '—') + '</span></td>' +
-          '<td data-label="Form"><span class="clip">' + esc(formNameOf(fid, r)) + '</span></td>' +
+          '<td data-label="Form"><span class="clip">' + esc(formLabelOf(r)) + '</span></td>' +
           '<td data-label="Status">' + statusBadge(r) + '</td>' +
           '<td data-label="Submitted (IST)" style="white-space:nowrap">' + esc(ist(r.createdAt)) + '</td>' +
           '<td data-label="Checked in">' + (counts(r) ? (r.checkedInAt ? 'Yes' : 'No') : '—') + '</td>' +
@@ -512,7 +514,7 @@
       '<div class="drawer-bg" id="dr-bg"></div>' +
       '<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dr-title">' +
         '<div class="drawer-head"><div style="flex:1;min-width:0"><h3 id="dr-title">' + esc(r.name || r.email || 'Response') + '</h3>' +
-          '<div class="sub">' + esc(formNameOf(fid, r)) + ' · ' + esc(ist(r.createdAt)) + ' IST</div><div style="margin-top:6px">' + statusBadge(r) + '</div></div>' +
+          '<div class="sub">' + esc(formLabelOf(r)) + ' · ' + esc(ist(r.createdAt)) + ' IST</div><div style="margin-top:6px">' + statusBadge(r) + '</div></div>' +
           '<button class="btn btn-ghost btn-sm" type="button" id="dr-close" aria-label="Close">' + C.svg('<path d="M18 6L6 18M6 6l12 12"/>', 15) + '</button></div>' +
         '<div class="drawer-body">' +
           (r.status === 'pending' ?
@@ -525,7 +527,7 @@
           '</div>' +
           (answers ? '<div class="dsec"><h4>Answers</h4>' + answers + '</div>' : '') +
           '<div class="dsec"><h4>Where it came from</h4>' +
-            row('Form', formNameOf(fid, r) + (counts(r) ? ' · counts as a registration' : ' · does not count as a registration')) +
+            row('Form', formLabelOf(r) + (counts(r) ? ' · counts as a registration' : r.enquiry ? ' · a request, not a registration' : ' · does not count as a registration')) +
             row('Source', r.source) + row('UTM source', utm.source) + row('UTM medium', utm.medium) + row('UTM campaign', utm.campaign) +
             row('Device', r.device) + row('Referrer', r.referrer) +
             row('Consent', consentOf(r) ? consentOf(r) + ' IST' : 'Not recorded (sent before the consent box)') +

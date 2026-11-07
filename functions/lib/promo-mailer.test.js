@@ -700,6 +700,27 @@ var steps = [
       check('catalog: tracking false when it does not run here', r.status === 200 && r.json && r.json.tracking === false);
     });
   },
+  /* UX-117: the catalog says whether the site is live, and gives its address (the page's Website ↗) only then */
+  function () {
+    reset();
+    return call(mod.handleCatalog, '/api/promo/mailers?eventId=demo').then(function (r) {
+      var e = (r.json && r.json.event) || {};
+      check('catalog: a site that is not published says so, with no address to open', r.status === 200 && e.published === false && !('micrositeUrl' in e), e);
+      kit.event.published = true;
+      return call(mod.handleCatalog, '/api/promo/mailers?eventId=demo');
+    }).then(function (r) {
+      var e = (r.json && r.json.event) || {};
+      check('catalog: a published site says so, with its address', r.status === 200 && e.published === true && e.micrositeUrl === BASE + '/e/demo', e);
+      check('a mail keeps the site\'s address either way (it works once the site is published)', engine.renderDoc(docOf('mailer.announcement'), ev).indexOf(BASE + '/e/demo') !== -1);
+      delete kit.event.published;
+    }, function (err) { delete kit.event.published; throw err; });
+  },
+  function () {
+    var sp = pm.sitePublished;
+    check('sitePublished: the Kit decides; the stored event only without one',
+      sp({ kit: { event: { published: true } }, stored: {} }) === true && sp({ kit: { event: { published: false } }, stored: { published: true } }) === false &&
+      sp({ kit: { event: {} }, stored: { published: true } }) === false && sp({ kit: null, stored: { published: true } }) === true && sp({}) === false && sp(null) === false);
+  },
 
   /* the catalog's event carries the portal's name, which the studio shows (promo-studio/oneworld.js S.portalName) */
   function () {

@@ -591,6 +591,27 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
 
   ok(chatPicture.MAX_PEOPLE_PICTURES === hooks.MAX_PEOPLE_PICTURES, 'the chat keeps the same cap on pictures of people as site generation');
 
+  /* QA, UX-091: all five section rewrites of "make the buttons rounder" failed, the editor (an older one) reported
+     "partly" with nothing done, and the History said ETB2B AI changed the site. Nothing done is "not applied". */
+  answers.push(edit('I\'m turning the square-cornered buttons into fully rounded pills.', { sectionEdits: [{ sectionId: 'overview', instruction: 'Round the buttons into pills.' }, { sectionId: 'agenda', instruction: 'Round the buttons into pills.' }] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'make the buttons rounder', sections: SECTIONS });
+  var noneId = out.body.turnId;
+  out = await call('POST', '/api/chat/turn', { eventId: EV, turnId: noneId, status: 'partly', done: [], notDone: ['“Overview” was not changed: the AI could not answer (error 504).', '“Agenda” was not changed: the AI could not answer (error 504).'] });
+  var none = turnsOf(EV, 'u-asha').filter(function (t) { return t.id === noneId; })[0];
+  ok(out.status === 200 && out.body.status === 'failed' && none && none.status === 'failed' && none.notDone.length === 2 && !none.done.length,
+    'UX-091: a change reported "partly" with nothing done is kept as not applied, with what could not be done', JSON.stringify(none && { s: none.status, d: none.done, n: none.notDone }));
+  await wait();
+  ok(activityOf(EV).some(function (l) { return l.detail === 'ETB2B AI could not apply: “make the buttons rounder”'; }) &&
+    !activityOf(EV).some(function (l) { return /changed the site: “make the buttons rounder”/.test(l.detail); }),
+    'UX-091: the History says ETB2B AI could not apply it, not that it changed the site', JSON.stringify(activityOf(EV).map(function (l) { return l.detail; }).slice(-3)));
+  answers.push(edit('I\'m making the overview heading shorter.', { textEdits: [{ sectionId: 'overview', find: 'Where India meets', replace: 'India meets' }] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'shorten the overview heading', sections: SECTIONS });
+  var partId = out.body.turnId;
+  out = await call('POST', '/api/chat/turn', { eventId: EV, turnId: partId, status: 'partly', done: ['Overview: “Where India meets” → “India meets”'], notDone: ['“Agenda” was not changed.'] });
+  ok(out.status === 200 && out.body.status === 'partly' && turnsOf(EV, 'u-asha').filter(function (t) { return t.id === partId; })[0].status === 'partly', 'UX-091: "partly" stays when something really changed');
+  await wait();
+  ok(activityOf(EV).some(function (l) { return /^ETB2B AI changed the site: “shorten the overview heading” — Overview:/.test(l.detail); }), 'UX-091: … and the History says what changed');
+
   /* ---------- one assistant everywhere (ai-everywhere plan §5, §9b; B15 UX-096, UX-097, UX-098) ---------- */
   var EVH = 'qa-chat-hand';
   FB.docs['events/' + EVH] = { name: 'QA Handoff Summit', createdAt: '2026-11-05T00:00:00Z' };

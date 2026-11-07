@@ -209,7 +209,7 @@ var TAB_LABELS = {
   form: 'Registration forms', seo: 'URL & SEO', links: 'Social links', visibility: 'Visibility', advanced: 'Advanced',
   posts: 'Social posts', 'site-posts': 'Site-look posts', mailers: 'Mailers'
 };
-/* the dashboard's own views; "deleted" is not one ETB2B AI offers: deleted events are not in the list */
+/* the dashboard's own views; "deleted" is not one ETB2B AI offers: it reads the live events only (liveEventDocs) */
 var FILTER_VIEWS = ['active', 'upcoming', 'completed', 'draft', 'cancelled'];
 var VIEW_LABELS = { active: 'Active', upcoming: 'Upcoming', completed: 'Completed', draft: 'Draft', cancelled: 'Cancelled', deleted: 'Deleted' };
 var TYPES = ['ip', 'client', 'awards'];
@@ -258,15 +258,17 @@ var METRIC_LABELS = {
 var MAILER_FIELDS = ['mailerOpens', 'mailerClicks'];
 
 /* The refusals: fixed sentences, and the page that really has the control, built from the one event when the
-   answer names exactly one. Delete, cancel, unpublish and restore point nowhere: no screen does them for real
-   today (the dashboard's row actions change only the page), and pointing at one that does not would mislead. */
+   answer names exactly one. Delete and restore are real now, on this very dashboard (an approver's row menu, and
+   the Deleted Events view): no address opens a row's menu, and the console has no Delete, so their sentences say
+   where the control is instead of linking away from it. Cancel and unpublish point nowhere: nothing here cancels
+   an event, and pointing at a screen that does not do it would mislead. */
 var REFUSALS = {
-  delete: { text: 'Deleting or cancelling an event is never done by ETB2B AI. It stays a manual step for you.', link: null },
-  cancel: { text: 'Deleting or cancelling an event is never done by ETB2B AI. It stays a manual step for you.', link: null },
+  delete: { text: 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.', link: null },
+  cancel: { text: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it from its row in this list (More actions, then Delete event) and restore it later.', link: null },
   publish: { text: 'Publishing stays with you. Open the event and use Publish at the top.', link: 'console' },
   unpublish: { text: 'Taking a live site down is never done by ETB2B AI. It stays a manual step for you.', link: null },
   approve: { text: 'Approvals stay with the approvers. Site changes are approved from the Review changes link in the approval request; registrations on the event\'s Registrations page.', link: 'registrations' },
-  restore: { text: 'Restoring a deleted event is never done by ETB2B AI. It stays a manual step for you.', link: null },
+  restore: { text: 'Restoring a deleted event is never done by ETB2B AI. An approver restores it from Deleted Events: More (⋯) above this list, then Deleted Events, then Restore on its row.', link: null },
   send: { text: 'Sending mail, WhatsApp or social posts isn\'t part of this release. I can open the mailer or post, ready to download.', link: 'promotions' },
   pay: { text: 'Payments aren\'t part of this release.', link: null },
   'edit-site': { text: 'Changing a site is done in its editor, and ETB2B AI in the editor can do it for you.', link: 'editor' },

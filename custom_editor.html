@@ -392,6 +392,17 @@
   .rvc .ai-task-foot .btn:focus-visible, .rvc .chat-use-pic:focus-visible, .rvc .ai-step-show:focus-visible{ outline:2px solid var(--rvc-accent); outline-offset:2px; border-radius:var(--rvc-r-sm); }
   @keyframes rvSpin{ to{ transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce){ .rvc .ai-step.is-run::before{ animation:none; } .rvc .ai-task-bar i{ transition:none; } }
+  /* a change made in this session is kept only in this browser until Save (B04): said under its buttons, with Save beside Undo */
+  .rvc .ai-task-foot{ flex-wrap:wrap; }
+  .rvc .ai-task-foot .chat-save[hidden], .rvc .ai-task-local[hidden]{ display:none; }
+  .rvc .ai-task-local{ flex-basis:100%; font-size:11.5px; color:var(--rvc-text-muted); }
+  /* the AI's own sentence above a change that did not happen, or happened only in part: what it set out to do (B04) */
+  .rvc .is-plan{ color:var(--rvc-text-muted); }
+  .rvc .chat-plan-lead{ font-weight:700; }
+  /* over a section ETB2B AI is rewriting (editor-template-ui.js lockSection); it floats over the site, so one dark
+     pill in both themes, like the toolbars */
+  .tpl-ai-busy{ position:absolute; z-index:39; padding:6px 12px; border-radius:999px; background:#241B1A; color:#fff; font-size:12px; font-weight:600; white-space:nowrap; pointer-events:none; box-shadow: var(--shadow-md); }
+  .tpl-ai-busy[hidden]{ display:none; }
   /* the Design panel's theme cards */
   .dp-theme-list{ display:flex; flex-direction:column; gap:8px; }
   .dp-theme{ display:flex; align-items:center; gap:12px; width:100%; padding:8px; border:1px solid var(--border); border-radius:10px; background: var(--surface); text-align:left; cursor:pointer; font:inherit; color: var(--text); }
@@ -2560,6 +2571,8 @@
       e.preventDefault();
       var b = document.getElementById('btn-save');
       if (!b.hidden && !b.disabled) b.click();
+      // while ETB2B AI is busy Save waits; save() says why rather than the shortcut doing nothing
+      else if (!b.hidden && window.RevampTemplateUI.busyLine && window.RevampTemplateUI.busyLine()) window.RevampTemplateUI.save().then(null, function(){});
     }
   });
 

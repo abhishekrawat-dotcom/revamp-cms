@@ -113,6 +113,13 @@ const YESNO_FIELD = (key: string, label: string, hint?: string, def = "yes"): Fi
   options: [{ value: "yes", label: "Show" }, { value: "no", label: "Hide" }],
   ...(hint ? { hint } : {}),
 });
+/** ONEWORLD PORT (UX-120): a yes/no that switches a style on (italic, underline, capitals, full width) reads On / Off;
+ *  Show / Hide stays for a part of a block that can be left out. Same values ("yes" / "no"), so the renderer reads
+ *  both alike and a saved mailer is unchanged; only the settings panel's words differ. */
+const ONOFF_FIELD = (key: string, label: string, hint?: string, def = "no"): Field => ({
+  ...YESNO_FIELD(key, label, hint, def),
+  options: [{ value: "yes", label: "On" }, { value: "no", label: "Off" }],
+});
 const isNoProp = (v: any) => String(v ?? "yes").toLowerCase() === "no";
 
 /** Natural columns for each speaker layout. A "photo left, details right" card
@@ -377,9 +384,9 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         hint: "Overrides Colour above with a hex you choose. Leave empty to use the contrast-checked tone instead." },
       { key: "lh", label: "Line height", type: "select", default: "1.55",
         options: [{ value: "1.35", label: "Tight" }, { value: "1.55", label: "Normal" }, { value: "1.8", label: "Airy" }] },
-      YESNO_FIELD("italic", "Italic", undefined, "no"),
-      YESNO_FIELD("underline", "Underline", undefined, "no"),
-      YESNO_FIELD("caps", "Small caps / letter-spaced", undefined, "no"),
+      ONOFF_FIELD("italic", "Italic"),
+      ONOFF_FIELD("underline", "Underline"),
+      ONOFF_FIELD("caps", "Small caps / letter-spaced"),
       ALIGN,
     ],
     make: () => ({ text: "Write your copy here.", size: 15, align: "left", weight: "400", tone: "body", lh: "1.55" }),
@@ -439,8 +446,8 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { key: "size", label: "Size", type: "select", default: "md",
         options: [{ value: "sm", label: "Small" }, { value: "md", label: "Medium" }, { value: "lg", label: "Large" }] },
       { key: "fontSize", label: "Text size (px)", type: "number", default: "14" },
-      YESNO_FIELD("full", "Full width", "Spans the column — the usual mobile-first CTA.", "no"),
-      YESNO_FIELD("caps", "Uppercase label", undefined, "no"),
+      ONOFF_FIELD("full", "Full width", "Spans the column — the usual mobile-first CTA."),
+      ONOFF_FIELD("caps", "Uppercase label"),
       ALIGN,
     ],
     make: (e) => ({ label: e.ctaLabel || "Register now", href: e.ctaUrl || siteUrl(e), note: "", align: "left",
@@ -644,7 +651,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { key: "size", label: "Text size (px)", type: "number", default: "26" },
       { key: "radius", label: "Corner radius (px)", type: "number", default: "99",
         hint: "99 is a pill. Outlook on Windows squares every band off regardless." },
-      YESNO_FIELD("caps", "Uppercase", undefined, "no"),
+      ONOFF_FIELD("caps", "Uppercase"),
       ...SECTION_BG,
     ],
     make: () => ({

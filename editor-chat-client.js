@@ -37,7 +37,7 @@
   var TEXT = {
     welcome: function (eventName) {
       return 'I change this page when you ask, make new pictures for it, answer questions about ' + (eventName || 'this event') +
-        ' and open its other pages. Every change has an Undo, and nothing goes live until you publish.';
+        ' and open its other pages. Every change has an Undo. Press Save to keep your changes; nothing goes live until you publish.';
     },
     /* they only start the message (UX-095): each is cheap and safe on any site page */
     suggestions: [

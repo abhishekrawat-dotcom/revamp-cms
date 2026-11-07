@@ -58,7 +58,7 @@ Role-based access isn't implemented yet — `index.html` mentions "Roles, access
 | Dashboard | `dashboard.html`, `edit-event-dashboard.html/js` | Per-event stats, Preview and Publish actions |
 | Event listing | `Event_Listing.html` | Filter by type/date/audience, per-event QR code, activity stats, Create Event entry point |
 | Registrations | `audience-registrations.html` | Registrant list, email/message composer, scheduled sends |
-| Marketing | `marketing.html`, `edit-event-marketing.html/js` | Promotions section |
+| Marketing | `marketing.html` (`edit-event-marketing.html` only sends old links there) | Promotions section |
 | Settings | `settings.html` | Canonical URL, form fields, duplicate-email handling, confirmation email behavior, footer icons |
 | Payments | `payment/html_version/*.html` | Plans, transactions, invoice listing, tax invoice, credit note |
 | Design import | `import-figma-design/index.html` | Pulls a Figma frame via URL + personal access token, generates absolutely-positioned HTML, node tree, live preview, download |

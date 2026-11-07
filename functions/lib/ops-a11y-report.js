@@ -7,7 +7,8 @@
    it. Nothing needs repairing by hand: a page published before the pass existed gets it on its way out (lib/api.js
    handlePublicPage), and every publish from now on writes it; the stored page and the saved site are never touched.
    This lists, per page, what visitors now get — so the change can be checked before and after it goes live:
-   zoom allowed, headings re-levelled, pictures given alt="", a main landmark added, the reading colours of an
+   zoom allowed, headings re-levelled, pictures given alt="", a main landmark and the skip link to it added, contact
+   e-mails and phone numbers made links, the reading colours of an
    AI-designed site (and how many text colours were made to read), the schema.org Event, the link-preview picture.
    Needs the same credentials as the server (tools/.env.local locally, see lib/firebase.js). */
 const fs = require('fs');
@@ -56,7 +57,10 @@ function main() {
             if (lv) lines.push(lv + ' heading(s) re-levelled');
             var alts = count(/<img\b[^>]*\salt=""/g, out) - count(/<img\b[^>]*\salt=""/g, html);
             if (alts) lines.push(alts + ' picture(s) given alt=""');
-            if (/<main data-rv-main>/.test(out) && !/<main data-rv-main>/.test(html)) lines.push('main landmark added');
+            if (/<main data-rv-main[\s>]/.test(out) && !/<main data-rv-main[\s>]/.test(html)) lines.push('main landmark added');
+            if (/class="rv-skip"/.test(out) && !/class="rv-skip"/.test(html)) lines.push('skip link added');
+            var contacts = count(/data-rv-contact=/g, out) - count(/data-rv-contact=/g, html);
+            if (contacts) lines.push(contacts + ' contact e-mail / phone made a link');
             var before = sheets(html), after = sheets(out);
             var restyled = Object.keys(after).filter(function (k) { return before[k] !== after[k]; });
             if (restyled.length) lines.push('text colours made to read in ' + restyled.length + ' section(s): ' + restyled.join(', '));
