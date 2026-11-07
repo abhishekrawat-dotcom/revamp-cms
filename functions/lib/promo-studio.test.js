@@ -904,10 +904,26 @@ pending.push(settle(30).then(function () {
   pv.ros[pv.ros.length - 1].fire(400);
   check('each frame is scaled to its card (400px wide: 0.5)', ann.style['--ow-s'] === '0.5', ann.style);
   var spk = pv.slot('tpl:mailer.speakers');
-  check('an example: the badge and its note beside the mail, not in it', spk.innerHTML === '<span class="ow-ex">Example</span><span class="ow-ex-note">Example speakers — add yours to use this</span>' &&
+  /* UX-130: the note names the console place where the real ones are added, and links there; its click and its
+     Enter go to the console, never to the whole-mail view the rest of the picture opens */
+  check('an example: the badge and its note beside the mail, not in it, linking to where the real ones are added',
+    spk.innerHTML === '<span class="ow-ex">Example</span><span class="ow-ex-note">Example speakers — <a href="/edit-event.html?event=x#content/speakers" target="_top" ' +
+      'onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">add yours in Content → Speakers</a></span>' &&
     frameOf(spk) && frameOf(spk).srcdoc === '<html>SPEAKERS</html>', spk.innerHTML);
-  check('example award facts say they are for award events', pv.slot('tpl:mailer.award-nominations').innerHTML.indexOf('Example award details — for award events') !== -1);
-  check('award-winners says Oneworld does not record winners yet', pv.slot('tpl:mailer.award-winners').innerHTML.indexOf('Example winners — Oneworld does not record award winners yet') !== -1);
+  check('example award facts say they are for award events (a fact: no link)', pv.slot('tpl:mailer.award-nominations').innerHTML.indexOf('Example award details — for award events</span>') !== -1 &&
+    pv.slot('tpl:mailer.award-nominations').innerHTML.indexOf('<a ') === -1);
+  check('award-winners says winners are not recorded yet, naming no product and offering no link', pv.slot('tpl:mailer.award-winners').innerHTML.indexOf('Example winners — award winners are not recorded yet</span>') !== -1 &&
+    pv.slot('tpl:mailer.award-winners').innerHTML.indexOf('<a ') === -1);
+  /* the lists that used to come only from the brief now have their place: Content → Basics, at the field */
+  [['points', 'content/basics/topics', 'Example key points'], ['why', 'content/basics/topics', 'Example reasons to join'],
+    ['audience', 'content/basics/audience', 'Example “who should attend” list'], ['stats', 'content/basics/numbers', 'Example numbers'],
+    ['sponsors', 'content/sponsors', 'Example partners'], ['sessions', 'content/agenda', 'Example agenda']].forEach(function (c) {
+    var html = pv.sb.owExampleNote('mailer.x', [c[0]]);
+    var place = c[1].indexOf('content/basics') === 0 ? 'Content → Basics' : c[1] === 'content/sponsors' ? 'Content → Sponsors' : 'Content → Agenda';
+    check('a mailer example of ' + c[0] + ' links to ' + c[1], html.indexOf(c[2] + ' — <a href="/edit-event.html?event=x#' + c[1] + '" target="_top"') === 0 &&
+      html.indexOf('>add yours in ' + place + '</a>') !== -1, html);
+  });
+  check('no mailer note says "add yours" without a link any more', !/add yours to use this/.test(owSrc) && !/Oneworld does not record/.test(owSrc));
   var rem = pv.slot('tpl:mailer.reminder');
   check('a past event: the real mail with its chip, no Example badge', rem.innerHTML === '<span class="ow-chip">Past event</span>' && frameOf(rem).srcdoc === '<html>REMINDER</html>', rem.innerHTML);
   var ag = pv.slot('tpl:mailer.agenda');
