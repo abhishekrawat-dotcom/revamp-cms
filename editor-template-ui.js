@@ -5925,6 +5925,13 @@
      copy, which showed the picture that was there). Where none can be made, the owner is told on the unit's
      notice — it is about the logo, and answered like the rest. */
   var darkPending = {};          // the pictures whose copy for a dark background is being made (logoUnitGate waits)
+  /* The copy (or the word that none could be made) comes back from the server a moment after the picture went in, and
+     the editor puts it beside the picture by itself: it is never the person's own change (UX-076, B05 verify: after
+     the owner's logo went in as the editor opened, the copy arriving was taken for an edit of the person's, the chip
+     said "Unsaved changes" and an untouched Save made "1 section edited" in their name). commitAutoStep keeps it with
+     the editor's automatic updates while nothing of the person's is on the page; after an edit of theirs (their own
+     Replace image) it is a step on top of it, saved with it. */
+  var DARK_COPY_NAME = 'the logo’s copy for a dark background';
   function darkCopyFor(unit) {
     if (!unit || !eventId || !window.RevampCore || !RevampCore.logoUnitDark) return;
     var hero = unit.closest('.hero-root');
@@ -5959,13 +5966,13 @@
         if (t.pic.getAttribute('width') && t.pic.getAttribute('height')) { copy.setAttribute('width', t.pic.getAttribute('width')); copy.setAttribute('height', t.pic.getAttribute('height')); }
         t.pic.parentNode.insertBefore(copy, t.pic.nextSibling);
       } else tell(t, (r && r.note) || DARK_COPY_FAILED);
-      commitNow();
+      commitAutoStep(DARK_COPY_NAME);
     }); }, function () { whenAiIdle(function () {
       delete darkPending[src];
       var t = target();
       if (!t) return;
       tell(t, DARK_COPY_FAILED);
-      commitNow();
+      commitAutoStep(DARK_COPY_NAME);
     }); });
   }
   /* The saved page still has the logo unit's notice open (the server refused it). Where this page has it too, it is
@@ -6236,7 +6243,7 @@
      of the editor's own (not the person's: commitAutomatic) once somebody has */
   function bakeAuto(names) {
     if (!canvas || remounting || aiWorking) return;
-    if (undoPtr !== openPtr || editingEl) { commitAutomatic(); return; }
+    if (undoPtr !== openPtr || editingEl) { commitAutoStep(names); return; }
     var snap = canvas.snapshot(undoStack[openPtr]);
     if (canvas.sameSnapshot(snap, undoStack[openPtr])) return;
     undoStack[openPtr] = snap;
@@ -6260,6 +6267,24 @@
   function tagAutoStep(name) {
     if (!openedSaved || !canvas || undoPtr !== openPtr + 1) return;
     autoPoints.push({ ptr: openPtr + 1, hash: snapHash(undoStack[openPtr + 1]), html: canvas.serialize(), names: autoNames.concat([name]) });
+  }
+  /* A change the editor makes by itself once the page has opened, as an Undo step of its own (the logo's copy for a
+     dark background answered by the server after the owner's logo went in, the ET logo checked again once the page has
+     laid out): recorded as the editor's (commitAutomatic), and, when the page held nothing of the person's own just
+     before — only the opening's updates (the latest automatic step), or exactly the version this browser last saved —
+     tagged as one more of those updates, so the chip still says "Updated automatically" and Save keeps them apart
+     (UX-076). While the person is typing, or after an edit of theirs, it is only recorded: it goes with their save. */
+  function commitAutoStep(names) {
+    if (!canvas || remounting || aiWorking) return false;
+    var p = editingEl ? null : autoOnly() ? autoPoint() : null;
+    var asSaved = !p && !editingEl && !localEdited && !!savedMark && !!savedMark.hash && savedMark.hash === snapHash(undoStack[undoPtr]);
+    if (!commitAutomatic()) return false;
+    if (!p && !asSaved) return true;
+    var told = p ? p.names.slice() : [];
+    (Array.isArray(names) ? names : [names]).forEach(function (n) { if (n && told.indexOf(n) === -1) told.push(n); });
+    openedSaved = true;               // the page stands on a saved version with nothing of the person's on it
+    autoPoints.push({ ptr: undoPtr, hash: snapHash(undoStack[undoPtr]), html: canvas.serialize(), names: told });
+    return true;
   }
   /* the latest of those steps that the page still stands on, or null */
   function autoPoint() {

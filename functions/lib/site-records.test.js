@@ -232,7 +232,7 @@ function rows(extra) {
     /onSavedVersion\(site\.version\)/.test(code('takeSavedSite')) && /writeMark\(\{ version: version, hash: snapHash\(undoStack\[undoPtr\]\) \}\)/.test(code('onSavedVersion')) &&
     /openPtr = undoPtr;/.test(code('noteOpening')) && /mark\.hash === snapHash\(undoStack\[undoPtr\]\)/.test(code('noteOpening')) && /var mark = savedMark \|\| readMark\(\);/.test(code('noteOpening')));
   check('1b.3 the updates are part of the step the page opened on, also after "Open version N" over an older copy (step 1)',
-    /if \(undoPtr !== openPtr \|\| editingEl\) \{ commitAutomatic\(\); return; \}/.test(code('bakeAuto')) && /undoStack\[openPtr\] = snap;/.test(code('bakeAuto')) && /aiWorking/.test(code('bakeAuto')) &&
+    /if \(undoPtr !== openPtr \|\| editingEl\) \{ commitAutoStep\(names\); return; \}/.test(code('bakeAuto')) && /undoStack\[openPtr\] = snap;/.test(code('bakeAuto')) && /aiWorking/.test(code('bakeAuto')) &&
     /undoPtr !== openPtr\) return;/.test(code('settleAuto')) && /ptr: openPtr,/.test(code('settleAuto')) && /undoPtr !== openPtr \+ 1\) return;/.test(code('tagAutoStep')));
   var chip = code('renderSiteState');
   check('1b.4 the chip says "Updated automatically", never "Unsaved changes", for them', chip.indexOf("text = 'Updated automatically'") !== -1 && chip.indexOf("dirty && autoOnly()") < chip.indexOf("text = 'Unsaved changes'"));
@@ -243,6 +243,62 @@ function rows(extra) {
   check('1b.6 they are no reason to ask before leaving, nor the person\'s own after an Undo, and the owner\'s logo put in by itself is the editor\'s step',
     /dirty: isDirty\(\) && !autoOnly\(\)/.test(code('hasUnsavedWork')) && /&& !autoOnly\(\)\);/.test(code('step')) &&
     /if \(byItself\) commitAutomatic\(\); else commitNow\(\);/.test(ED) && /putIn\(true\);\s*tagAutoStep\(/.test(ED));
+
+  /* B05 verify (round 6, UX-076): the owner's logo went in as the editor opened (an automatic step), then the server's
+     answer with the logo's copy for a dark background was recorded as the person's step: a fresh browser said
+     "Unsaved changes" and an untouched Save made "1 section edited" in their name. The editor's real undo and
+     automatic-update code is run here on a stand-in canvas (a page is a plain object). */
+  var dark = code('darkCopyFor');
+  check('1b.10 the logo\'s copy for a dark background, and the word that none could be made, are the editor\'s own step',
+    (dark.match(/commitAutoStep\(DARK_COPY_NAME\);/g) || []).length === 2 && !/commitNow\(\)/.test(dark));
+  function editorAuto() {
+    var names = ['snapHash', 'record', 'commitNow', 'commitTyping', 'commitAutomatic', 'commitAutoStep', 'noteOpening', 'noteAuto', 'bakeAuto', 'settleAuto', 'tagAutoStep', 'autoPoint', 'autoOnly'];
+    var src = 'var undoStack = [], undoPtr = 0, typingPtr = -1, commitTimer = null, remounting = false, aiWorking = false, editingEl = null, localEdited = false, savedMark = null;\n' +
+      'var autoNames = [], autoPoints = [], openedSaved = false, openPtr = 0, autoReady = false, page = {};\n' +
+      'var canvas = { snapshot: function () { return JSON.parse(JSON.stringify(page)); }, sameSnapshot: function (a, b) { return JSON.stringify(a) === JSON.stringify(b); }, serialize: function () { return JSON.stringify(page); } };\n' +
+      'function noop() {} var keepFormSectionsShown = noop, dismissUndoToast = noop, updateHistoryButtons = noop, saveLocal = noop, scheduleServerSave = noop, repositionToolbars = noop,' +
+      ' sectionsChanged = noop, designChanged = noop, pageChanged = noop, logoUnitNotice = noop, persist = noop; function readMark() { return null; }\n' +
+      names.map(body).join('\n') + '\n' +
+      'out.open = function (p, saved) { page = p; undoStack = [canvas.snapshot()]; undoPtr = 0; localEdited = false; savedMark = saved ? { version: 1, hash: snapHash(undoStack[0]) } : null; noteOpening(); settleAuto(); };\n' +
+      'out.change = function (f) { f(page); };\n' +
+      'out.st = function () { var p = autoPoint(); return { ptr: undoPtr, autoOnly: autoOnly(), edited: localEdited, names: p ? p.names.join(", ") : "", saveAuto: !!(openedSaved && savedMark && p && p.hash === snapHash(undoStack[undoPtr])) }; };\n' +
+      'out.saved = function () { savedMark = { version: 2, hash: snapHash(undoStack[undoPtr]) }; localEdited = false; autoPoints = []; openedSaved = false; };\n' +
+      'out.typing = function (on) { editingEl = on ? {} : null; };\n' +
+      'out.fns = { commitNow: commitNow, commitAutomatic: commitAutomatic, commitAutoStep: commitAutoStep, tagAutoStep: tagAutoStep, bakeAuto: bakeAuto };';
+    var out = {};
+    require('vm').runInNewContext(src, { out: out, JSON: JSON, setTimeout: setTimeout, clearTimeout: clearTimeout });
+    return out;
+  }
+  var DARK = 'the logo’s copy for a dark background', E;
+  function logoIn(E) { E.change(function (p) { p.logo = 'owner-logo.png'; }); E.fns.commitAutomatic(); E.fns.tagAutoStep('the event’s logo in the banner'); }
+  E = editorAuto(); E.open({ hero: 'Trendies Awards 2027', logo: 'made-for-it.png' }, true); logoIn(E);
+  E.change(function (p) { p.dark = 'owner-logo-on-dark.png'; }); E.fns.commitAutoStep(DARK);
+  var a1 = E.st();
+  check('1b.11 the copy answered after the owner\'s logo went in as the page opened: still "Updated automatically", nothing of the person\'s, and Save keeps both as the editor\'s one version',
+    a1.ptr === 2 && a1.autoOnly && !a1.edited && a1.saveAuto && a1.names === 'the event’s logo in the banner, ' + DARK, JSON.stringify(a1));
+  E = editorAuto(); E.open({ hero: 'Trendies Awards 2027', logo: 'made-for-it.png' }, true); logoIn(E);
+  E.change(function (p) { p.dark = 'owner-logo-on-dark.png'; }); E.fns.commitNow();
+  check('1b.12 (the fault it fixes: recorded as the person\'s step, the page was "Unsaved changes" and Save went in their name)', !E.st().autoOnly && E.st().edited, JSON.stringify(E.st()));
+  E = editorAuto(); E.open({ hero: 'x', logo: 'made-for-it.png' }, true); logoIn(E);
+  E.change(function (p) { p.et = 'et-logo-v2'; }); E.fns.bakeAuto(['the ET logo and menu']);
+  check('1b.13 the ET logo checked again after the owner\'s logo went in stays an automatic update too', E.st().autoOnly && !E.st().edited && /the ET logo and menu$/.test(E.st().names), JSON.stringify(E.st()));
+  E = editorAuto(); E.open({ hero: 'x', logo: 'made-for-it.png' }, true); logoIn(E);
+  E.change(function (p) { p.hero = 'Trendies Awards 2027 — Mumbai'; }); E.fns.commitNow();
+  E.change(function (p) { p.dark = 'owner-logo-on-dark.png'; }); E.fns.commitAutoStep(DARK);
+  var a4 = E.st();
+  check('1b.14 after an edit of the person\'s the copy is a step on top of it, saved with their changes (never tagged as automatic)', a4.ptr === 3 && !a4.autoOnly && a4.edited && !a4.saveAuto, JSON.stringify(a4));
+  E = editorAuto(); E.open({ hero: 'x', logo: 'made-for-it.png' }, true); logoIn(E);
+  E.typing(true); E.change(function (p) { p.hero = 'typed'; p.dark = 'owner-logo-on-dark.png'; }); E.fns.commitAutoStep(DARK); E.typing(false);
+  check('1b.15 while the person is typing, the step holds their words: it is theirs, not an automatic update', !E.st().autoOnly && E.st().edited, JSON.stringify(E.st()));
+  E = editorAuto(); E.open({ hero: 'x', logo: 'owner-logo.png' }, true);
+  E.change(function (p) { p.logo = 'owner-new.png'; }); E.fns.commitNow(); E.saved();
+  E.change(function (p) { p.dark = 'owner-new-on-dark.png'; }); E.fns.commitAutoStep(DARK);
+  var a6 = E.st();
+  check('1b.16 the copy answered after the person saved (their Replace image, or Save pressed before it came): an automatic update of the version just saved',
+    a6.autoOnly && !a6.edited && a6.saveAuto && a6.names === DARK, JSON.stringify(a6));
+  E = editorAuto(); E.open({ hero: 'x', logo: 'made-for-it.png' }, false);
+  E.change(function (p) { p.dark = 'copy.png'; }); E.fns.commitAutoStep(DARK);
+  check('1b.17 on a site never saved there is no saved version to update: only recorded, as the editor\'s', !E.st().autoOnly && !E.st().edited && E.st().ptr === 1, JSON.stringify(E.st()));
 
   /* B05 verify (round 4): every site saved before records carried their ids opened as "Updated automatically:
      speakers from Content, FAQs from Content" with Save on, though drawing the records added only those ids, and an
