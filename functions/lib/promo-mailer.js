@@ -17,6 +17,7 @@
                                        ·  { eventId, mailerIds? } (none, or several) -> .zip
      POST /api/promo/mailer/ai         { eventId, action: subjects|rewrite|polish|enhance, … }
      GET  /api/promo/icons?eventId=    POST /api/promo/icons?eventId=&name=  (raw)    DELETE /api/promo/icons?eventId=&id=
+     POST /api/promo/mailer/picture?eventId=   (raw, ≤ 8 MB)   a picture swapped into the mail, kept public for inboxes
 
    THE EVENT. The engine reads an EventEntity (promo-engine/src/model/types.ts), which the platform builds from
    ET's API. Here it is built from Oneworld's own event (entityOf): the Promotions kit (lib/promo.js buildKit —
@@ -1020,11 +1021,87 @@ function handleIconDelete(req, res) {
   });
 }
 
+/* ---------- a picture for the mail (B18, UX-123: "click a picture to swap it") ----------
+   POST /api/promo/mailer/picture?eventId= — the raw bytes of one picture, at most 8 MB. An inbox loads every picture of
+   a mail from its address and cannot sign in, so it is kept as a public file in the event's own folder
+   (events/<id>/promo-mail/). It is made fit for email first: turned upright, at most 1600 px on its long edge (twice the
+   mail's 800 px, so it is sharp on a phone or a laptop screen), and stored as a JPEG, or as a PNG when it has see-through
+   parts (a logo): Outlook and many mail apps show neither WebP nor SVG. A picture that is text (an SVG) carrying an
+   example address is refused, as every other route refuses example content. Answers { url, width, height, bytes }. */
+var MAIL_PICTURE_MAX = 8 * 1024 * 1024, MAIL_PICTURE_EDGE = 1600;
+var MAIL_PICTURE_TOO_LARGE = 'That picture is larger than 8 MB. Choose a smaller one.';
+var MAIL_PICTURE_UNREADABLE = 'That file is not a picture we can read. Upload a JPG, PNG, GIF or WebP.';
+/* raw bytes -> { data, type, ext, width, height }; rejects with { status, message } */
+var MAIL_PICTURE_PIXELS = 40e6;
+var MAIL_PICTURE_TOO_MANY_PIXELS = 'That picture has too many pixels to use. Choose one under 40 megapixels.';
+function mailPicture(sharp, raw) {
+  var opts = { limitInputPixels: MAIL_PICTURE_PIXELS };
+  /* whatever sharp cannot read is said in words a sender can act on, never as the library's own message */
+  function refused(err) {
+    if (err && err.status === 400) throw err;
+    var e = new Error(/pixel limit/i.test(String(err && err.message)) ? MAIL_PICTURE_TOO_MANY_PIXELS : MAIL_PICTURE_UNREADABLE);
+    e.status = 400;
+    throw e;
+  }
+  return Promise.resolve().then(function () { return sharp(raw, opts).metadata(); }).then(function (m) {
+    if (!m || !m.width || !m.height) refused(null);
+    if (m.width * (m.pageHeight || m.height) > MAIL_PICTURE_PIXELS) refused({ message: 'pixel limit' });
+    var alpha = !!m.hasAlpha;
+    var pipe = sharp(raw, opts).rotate().resize(MAIL_PICTURE_EDGE, MAIL_PICTURE_EDGE, { fit: 'inside', withoutEnlargement: true });
+    pipe = alpha ? pipe.png() : pipe.flatten({ background: '#ffffff' }).jpeg({ quality: 84 });
+    return pipe.toBuffer({ resolveWithObject: true });
+  }).then(function (out) {
+    var png = out.info.format === 'png';
+    return { data: out.data, type: png ? 'image/png' : 'image/jpeg', ext: png ? 'png' : 'jpg', width: out.info.width, height: out.info.height };
+  }, refused);
+}
+function handlePicture(req, res) {
+  H.withAdmin(req, res, function (fb, decoded) {
+    var eventId = H.eventIdOr400(res, queryOf(req).get('eventId'));
+    if (!eventId) return;
+    var chunks = [], size = 0, refused = false;
+    req.on('data', function (c) {
+      if (refused) return;
+      size += c.length;
+      if (size > MAIL_PICTURE_MAX) { refused = true; sendJson(res, 413, { error: MAIL_PICTURE_TOO_LARGE }); req.destroy(); return; }
+      chunks.push(c);
+    });
+    req.on('end', function () {
+      if (refused) return;
+      var raw = Buffer.concat(chunks);
+      /* inside the chain: this runs in a stream event, where a throw would be caught by nobody */
+      Promise.resolve().then(function () {
+        if (!raw.length) return sendJson(res, 400, { error: 'Choose a picture to upload.' });
+        /* a picture made of text (an SVG) is searched for example content; a raster file's bytes are not words */
+        if (raw.subarray(0, 4096).indexOf(0) === -1 && refuseExample(res, raw.toString('utf8'))) return;
+        var sharp;
+        try { sharp = require('sharp'); } catch (e) { return sendJson(res, 503, { error: 'Pictures cannot be uploaded right now. Please try again in a little while.' }); }
+        var live = typeof H.loadLiveEvent === 'function' ? H.loadLiveEvent(fb, eventId) : Promise.resolve();
+        return live.then(function () { return mailPicture(sharp, raw); }).then(function (pic) {
+          var objectPath = 'events/' + eventId + '/promo-mail/picture-' + Date.now().toString(36) + '-' + crypto.randomBytes(6).toString('hex') + '.' + pic.ext;
+          var file = fb.bucket.file(objectPath);
+          return file.save(pic.data, { resumable: false, metadata: { contentType: pic.type, cacheControl: 'public, max-age=31536000, immutable' } })
+            .then(function () { return file.makePublic(); })
+            .then(function () {
+              sendJson(res, 200, { url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + objectPath, width: pic.width, height: pic.height, bytes: pic.data.length });
+              logActivity(fb, eventId, decoded, 'updated', 'Mailer picture uploaded', { area: 'promotions' });
+            });
+        }, function (err) {
+          if (err && err.status === 400) return sendJson(res, 400, { error: err.message });
+          throw err;
+        });
+      }).catch(function (err) { fail(res, 'picture', err); });
+    });
+  });
+}
+
 module.exports = {
   wire, eventFor, handleCatalog, handleSaves, handleRoster, handleDoc, handleRelayout, handleImport, handleRender, handleBlock,
-  handleSave, handleRename, handleDelete, handleReset, handleDownload, handleAi, handleIcons, handleIconUpload, handleIconDelete
+  handleSave, handleRename, handleDelete, handleReset, handleDownload, handleAi, handleIcons, handleIconUpload, handleIconDelete,
+  handlePicture
 };
 /* for the mailer previews (lib/promo-previews.js): the saved versions, and how a saved mail follows the banner */
 module.exports._internal = { savesOf, metaOf, withCurrentBanner };
 module.exports._test = { entityOf, awardOf, toLlmSchema, uniqueName, absolute, deliverables, pickDownload, tracker, trackingOn,
-  withCurrentBanner, isOwnBanner, bannerStateFor, exampleRefusal, relayoutKeepingAutoUrl, paletteOf, sitePublished };
+  withCurrentBanner, isOwnBanner, bannerStateFor, exampleRefusal, relayoutKeepingAutoUrl, paletteOf, sitePublished, mailPicture,
+  MAIL_PICTURE_MAX, MAIL_PICTURE_EDGE };
