@@ -9759,7 +9759,7 @@ function handleEventPublish(req, res) {
        check is always made: nothing in the request can skip it (a body key "__approvalChecked" used to). */
     return approvalsConfig(fb).then(function (cfg) {
       if (cfg.required) {
-        return sendJson(res, 409, { error: 'Changes go live once they are approved. Save the site, then use “Publish changes” to send it for approval.', code: 'approval-required' });
+        return sendJson(res, 409, { error: 'Changes go live once they are approved. Save the site, then use “Send for approval…” to send it.', code: 'approval-required' });
       }
       publishAfterCheck();
     }).catch(function (err) { sendFailure(res, 'publish', err, 'The site could not be published. Please try again.'); });

@@ -1169,9 +1169,9 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
     /An approver deletes it on the events dashboard, from its row: More actions \(⋯\), then Delete event\. It then waits in Deleted Events, where an approver can restore it\./.test(T.REFUSALS.delete.away) &&
     /there is no Cancel for an event yet/.test(T.REFUSALS.cancel.away) && /More \(⋯\) above the list, then Deleted Events, then Restore on its row/.test(T.REFUSALS.restore.away));
   a = await T.cleanAnswer({ kind: 'refuse', refuse: { action: 'publish' }, events: [], text: 'x' }, await placeCtx('publish the site', EDITOR));
-  check('A.20 publish in the editor: its own Publish changes, and no link away from the editor', partsText(a.parts) === 'Publishing stays with you. Use Publish changes at the top of the editor.' &&
+  check('A.20 publish in the editor: its own Send for approval…, and no link away from the editor', partsText(a.parts) === 'Publishing stays with you. Use Send for approval… at the top of the editor.' &&
     !a.action.pointer.href && a.events.length === 1, [partsText(a.parts), a.action.pointer]);
-  check('A.20 …which is the editor\'s real top-bar button', /id="btn-publish"[^>]*>Publish changes</.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'custom_editor.html'), 'utf8')));
+  check('A.20 …which is the editor\'s real top-bar button (B06: the console\'s words)', /id="btn-publish"[^>]*>Send for approval…</.test(require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'custom_editor.html'), 'utf8')));
   a = await T.cleanAnswer({ kind: 'refuse', refuse: { action: 'unpublish' }, events: [], text: 'x' }, await placeCtx('take the site offline', EDITOR));
   check('A.20 take offline in the editor: only an approver, in Settings › Visibility', partsText(a.parts) === T.REFUSALS.unpublish.text, partsText(a.parts));
 

@@ -266,14 +266,15 @@ var MAILER_FIELDS = ['mailerOpens', 'mailerClicks'];
    an event, and pointing at a screen that does not do it would mislead.
    `away` is the same sentence asked anywhere but the dashboard (the console, the editor, Promotions, review, …):
    there is no list on those pages, so it names the dashboard the control is on. `inEditor` is publish's in the
-   site editor, which has its own Publish changes at the top: no link away from the person's work there. */
+   site editor, which has its own Send for approval… at the top: no link away from the person's work there. */
 var REFUSALS = {
   delete: { text: 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.', link: null,
     away: 'Deleting an event is never done by ETB2B AI. An approver deletes it on the events dashboard, from its row: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.' },
   cancel: { text: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it from its row in this list (More actions, then Delete event) and restore it later.', link: null,
     away: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it on the events dashboard, from its row (More actions, then Delete event), and restore it later.' },
-  publish: { text: 'Publishing stays with you. Open the event and use Publish at the top.', link: 'console',
-    inEditor: 'Publishing stays with you. Use Publish changes at the top of the editor.' },
+  /* the button's own words, the same in the console and the editor since B06 (publish-flow.js buttonState) */
+  publish: { text: 'Publishing stays with you. Open the event and use Send for approval… at the top.', link: 'console',
+    inEditor: 'Publishing stays with you. Use Send for approval… at the top of the editor.' },
   /* owner decision 4 (2026-11-03): only an approver takes a live site offline, from Settings › Visibility */
   unpublish: { text: 'Taking a live site offline is never done by ETB2B AI. Only an approver can, in the event\'s Settings › Visibility: Take the site offline.', link: null },
   approve: { text: 'Approvals stay with the approvers. Site changes are approved from the Review changes link in the approval request; registrations on the event\'s Registrations page.', link: 'registrations' },

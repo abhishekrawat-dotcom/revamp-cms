@@ -3558,7 +3558,8 @@
     var pictures = left.filter(function (el) { return el.getAttribute('data-editable') === 'image'; }).length;
     var sample = (left.filter(function (el) { return el.getAttribute('data-editable') !== 'image'; })[0] || {}).textContent || '';
     var pub = document.getElementById('btn-publish');
-    var words = editorWords.placeholderAsk(left.length - pictures, pictures, sample, pub ? pub.textContent : '');
+    // "Send for approval anyway", without the button's "…" (B06)
+    var words = editorWords.placeholderAsk(left.length - pictures, pictures, sample, pub ? pub.textContent.replace(/…$/, '') : '');
     ask({ title: words.title, text: words.text, actions: [
       { key: 'anyway', label: words.anyway, kind: 'secondary', aside: true },
       { key: 'show', label: words.show, kind: 'primary', autofocus: true }
