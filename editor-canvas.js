@@ -119,7 +119,10 @@
 
     if (isSvg(el)) { if (drawsSomething(el)) mark(el, 'image'); return; }
     if (el.tagName === 'IMG') { mark(el, 'image'); return; }
-    if (el.tagName === 'A' && /\S/.test(el.textContent)) { mark(el, 'button'); return; }
+    /* the pictures and icons inside it are picked on their own, as they are when the page is put back from a
+       snapshot (the "already marked" branch above): tagged the same both ways, a page read back as it opens is
+       the page that was saved, and opening the editor does not by itself count as a change (UX-076) */
+    if (el.tagName === 'A' && /\S/.test(el.textContent)) { mark(el, 'button'); descend(el, true); return; }
     if (!insideText && ownText(el)) { mark(el, 'text'); descend(el, true); return; }
     descend(el, insideText);
   }

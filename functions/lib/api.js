@@ -280,7 +280,9 @@ function spreadOf(px, at) {
 const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
-const { diffPages, summarise } = require('./page-diff');
+const { diffPages, summarise, listed, changeCount } = require('./page-diff');
+/* the event's records drawn into a saved site on the server (Content reaches the staged copy at once) */
+const siteRecords = require('./site-records');
 const { safeFetch } = require('./safe-fetch');
 /* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
 const siteA11y = require('./site-a11y');
@@ -8726,13 +8728,25 @@ function handleSiteGet(req, res) {
 }
 
 /* ---------- PUT /api/event/site ----------
-   Body { eventId, templateId, baseVersion, snapshot, html, origin, force? } -> 200 { version, updatedAt }.
+   Body { eventId, templateId, baseVersion, snapshot, html, origin, force?, note?, automatic? } -> 200 { version, updatedAt }.
    `baseVersion` is the version the editor loaded (0 for a first save). If the stored version is different
    and `force` is not true: 409 { error, code: 'site-conflict', current: { version, updatedAt, updatedBy } }
-   and nothing is written — the editor asks its user which copy to keep.
+   and nothing is written — the editor asks its user which copy to keep. Versions that only brought Content
+   in (stageContent: site.contentBase is the last version made by anything else) are no conflict, whichever of
+   them the editor is on: the editor draws the event's records into the page when it opens it, and this save
+   draws today's records in again below.
 
    The page is stored with the saving origin already made root-relative (see rewriteOrigins), so what is
-   kept does not depend on which host the editor happened to be opened on. */
+   kept does not depend on which host the editor happened to be opened on, and with the event's records as
+   they are now (siteRecords.renderRecords): a record changed in Content while the editor was open is not
+   taken off the staged copy by the next save.
+
+   Nothing is stored when nothing changed: a page and an editor state the same as the saved ones answer the saved
+   version with unchanged: true. `automatic: true` is the editor's own load-time updates (an ET logo brought up
+   to date, the records it drew in), saved apart from the person's changes so that their summary names only
+   what they changed: kept only when a reader would see a difference, and recorded as automatic, in nobody's
+   name (recordSave). When the page they make is the staged page already, no version is made but the editor's
+   state is kept beside it, so the next opening has nothing left to update. */
 function handleSitePut(req, res) {
   withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
@@ -8747,6 +8761,8 @@ function handleSitePut(req, res) {
     if (templateProblem) return sendJson(res, 400, { error: templateProblem });
     if (body.origin != null && body.origin !== '' && !cleanOrigin(body.origin)) return sendJson(res, 400, { error: '"origin" must be the address of the editor (location.origin).' });
     if (body.force != null && typeof body.force !== 'boolean') return sendJson(res, 400, { error: '"force" must be true or false.' });
+    if (body.automatic != null && typeof body.automatic !== 'boolean') return sendJson(res, 400, { error: '"automatic" must be true or false.' });
+    var automatic = body.automatic === true;
 
     var snapshotText;
     try { snapshotText = JSON.stringify(body.snapshot); } catch (e) { return sendJson(res, 400, { error: 'The editor state could not be read.' }); }
@@ -8757,6 +8773,11 @@ function handleSitePut(req, res) {
       var current = siteVersionOf(data);
       if (body.force === true || baseVersion === current) return null;
       var site = data.site || {};
+      /* Every version after contentBase was made by Content alone (any other save writes the site afresh,
+         without contentBase), so a save built on contentBase or on any of them is no conflict: an editor on
+         version 9 meets the Content version 10 made since, not somebody's work (a Save that answered "Nothing
+         new to save" leaves the editor on a Content version — B05 verify). */
+      if (baseVersion && site.contentBase != null && +site.contentBase <= baseVersion && baseVersion < current) return null;
       return httpError(409, current
         ? 'This site was changed' + (site.updatedBy ? ' by ' + site.updatedBy : '') + ' after you opened it.'
         : 'This site has no saved version yet — reload the editor.', {
@@ -8764,25 +8785,63 @@ function handleSitePut(req, res) {
         current: { version: current, updatedAt: site.updatedAt || null, updatedBy: site.updatedBy || null }
       });
     }).then(function (data) {
-      var previous = data.site || {}, version = siteVersionOf(data) + 1;
+      var previous = data.site || {}, current = siteVersionOf(data), version = current + 1;
       var templateId = body.templateId || previous.templateId || data.templateId || null;
-      var beforeHtml = null;
+      var beforeHtml = null, beforeSnapshot = null;
       /* the page as it was, read before it is replaced: what this save is compared with */
-      return readObject(fb, sitePath(eventId, 'page.html')).then(function (text) { beforeHtml = siteVersionOf(data) ? text : null; }).then(function () {
+      return Promise.all([
+        readObject(fb, sitePath(eventId, 'page.html')),
+        current ? readObject(fb, sitePath(eventId, 'snapshot.json')) : Promise.resolve(null),
+        readRecordRows(fb, eventId).then(null, function (err) {
+          console.error('api: the records of ' + eventId + ' could not be read for a save — the page is kept as sent: ' + (err && err.message));
+          return null;
+        })
+      ]).then(function (got) {
+        beforeHtml = current ? got[0] : null;
+        beforeSnapshot = got[1];
+        if (got[2]) pageHtml = siteRecords.renderRecords(pageHtml, got[2]).html;
+        var same = beforeHtml != null && pageHtml === beforeHtml && (automatic || snapshotText === beforeSnapshot);
+        if (!same && automatic && beforeHtml != null) {
+          var seen = [];
+          try { seen = diffPages(beforeHtml, pageHtml); } catch (e) { seen = [{ type: 'unknown' }]; }
+          same = !seen.length;
+        }
+        /* The editor's own updates on a page staging already shows (the records Content drew into it since the
+           editor last saved, stageContent): no version, but the editor's state is kept beside the page, as every
+           save keeps it, so the next opening, in any browser, starts from it and has nothing to update (UX-076).
+           Only when the page it makes is byte for byte the staged one: a state is never kept beside another page. */
+        var catchUp = same && automatic && pageHtml === beforeHtml && beforeSnapshot != null && snapshotText !== beforeSnapshot;
+        if (catchUp) {
+          return saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8').then(function () {
+            return commitSiteLock(fb, eventId, token, { site: Object.assign({}, previous, { snapshotVersion: current }) });
+          }).then(function () {
+            sendJson(res, 200, { version: current, updatedAt: previous.updatedAt || null, unchanged: true, summary: 'no change', changes: 0,
+              stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
+            return null;
+          });
+        }
+        if (same) {
+          return releaseSiteLock(fb, eventId, token).then(function () {
+            sendJson(res, 200, { version: current, updatedAt: previous.updatedAt || null, unchanged: true, summary: 'no change', changes: 0,
+              stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
+            return null;
+          });
+        }
         return Promise.all([
           saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8'),
           saveObject(fb, sitePath(eventId, 'page.html'), pageHtml, 'text/html; charset=utf-8')
-        ]);
-      }).then(function () {
-        return commitSiteLock(fb, eventId, token, {
-          site: { version: version, snapshotVersion: version, templateId: templateId, updatedAt: now, updatedBy: actor },
-          updatedAt: now
-        });
-      }).then(function () {
+        ]).then(function () {
+          return commitSiteLock(fb, eventId, token, {
+            site: { version: version, snapshotVersion: version, templateId: templateId, updatedAt: now, updatedBy: actor },
+            updatedAt: now
+          });
+        }).then(function () { return true; });
+      }).then(function (stored) {
+        if (!stored) return;
         /* a save is somebody pressing Save: every one is a kept version, on staging, with its own line in
            the history saying what changed */
-        return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note).then(function (rec) {
-          sendJson(res, 200, { version: version, updatedAt: now, changeId: rec.changeId, summary: rec.summary, changes: rec.items.length,
+        return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note, { kind: automatic ? 'automatic' : '' }).then(function (rec) {
+          sendJson(res, 200, { version: version, updatedAt: now, changeId: rec.changeId, summary: rec.summary, changes: changeCount(rec.items),
             stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
         });
       }, function (err) {
@@ -9736,27 +9795,130 @@ function whyNotApprover(cfg, email, requestedBy) {
 function reviewPathOf(eventId, id) { return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(id); }
 
 /* After a save: keeps the version's page, puts it on staging, and records what changed. Never the reason
-   a save fails — what it cannot do is logged, and the save stands. -> { changeId, summary, items } */
-function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note) {
+   a save fails — what it cannot do is logged, and the save stands. -> { changeId, summary, items }
+   opts.kind: '' for a person's save; 'content' when it only brought in what changed in Content (stageContent);
+   'automatic' for the editor's own load-time updates (PUT /api/event/site, automatic: true). The approval page
+   lists those apart from the person's changes. An automatic version is nobody's change: it is recorded, and told
+   in the History, as AUTOMATIC_BY's, with who pressed Save kept as savedBy (UX-076: an untouched Save recorded
+   "4 sections edited" under the person's name). */
+var AUTOMATIC_BY = 'Site editor (automatic)';
+function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note, opts) {
   var HTML = 'text/html; charset=utf-8', now = new Date().toISOString(), actor = actorOf(decoded);
+  var kind = (opts && opts.kind) || '';
+  var by = kind === 'automatic' ? AUTOMATIC_BY : actor;
   var items = [];
   try { items = diffPages(beforeHtml || '', pageHtml); } catch (e) { console.error('api: could not compare versions of ' + eventId + ' — ' + e.message); }
   var summary = beforeHtml == null ? 'first saved version' : summarise(items);
+  var told = kind === 'automatic' ? 'updated automatically when the site editor opened: ' : '';
   return Promise.all([
     saveObject(fb, versionPath(eventId, version), pageHtml, HTML),
     saveObject(fb, stagingObjectPath(eventId), pageHtml, HTML)
   ]).then(function () {
-    return eventDocRef(fb, eventId).collection('changes').add({
-      at: now, by: actor, version: version, baseVersion: version - 1, summary: summary,
+    var change = {
+      at: now, by: by, version: version, baseVersion: version - 1, summary: summary,
       items: beforeHtml == null ? [] : items, note: String(note || '').trim().slice(0, 500)
-    });
+    };
+    if (kind) change.kind = kind;
+    if (by !== actor) change.savedBy = actor;
+    return eventDocRef(fb, eventId).collection('changes').add(change);
   }).then(function (ref) {
     var named = beforeHtml == null ? '' : sectionNames(items);   // which sections: "Hero, Speakers, Agenda"
-    logActivity(fb, eventId, decoded, 'site-saved', 'version ' + version + ' — ' + summary + (named ? ' (' + named + ')' : ''), { area: 'site', changeId: ref.id, version: version });
+    logActivity(fb, eventId, by === actor ? decoded : by, 'site-saved', 'version ' + version + ' — ' + told + summary + (named ? ' (' + named + ')' : ''), { area: 'site', changeId: ref.id, version: version });
     return { changeId: ref.id, summary: summary, items: items };
   }).then(null, function (err) {
     console.error('api: the save of ' + eventId + ' v' + version + ' was stored but not recorded — ' + (err && err.message));
     return { changeId: '', summary: summary, items: items };
+  });
+}
+
+/* ---------- Content reaches the staged copy (the owner, 3 Nov 2026) ----------
+   A speaker, session, sponsor, picture, FAQ or contact added, changed or removed in the console is drawn into the
+   saved site at once and kept as a version of its own ("Content: 1 FAQ added", by whoever changed it), on the
+   staging address. It goes live like any edit: with the next approval (handleApprovalRequest draws Content in
+   first, so a request always holds it). A site that is not live yet simply shows it from then on.
+
+   The event's records, by console resource, as GET /api/event/<resource> lists them -> Promise<rows> */
+var RECORD_RESOURCES = ['speakers', 'sessions', 'agenda-groups', 'faqs', 'partners', 'contacts', 'gallery'];
+function readRecordRows(fb, eventId) {
+  return Promise.all(RECORD_RESOURCES.map(function (name) {
+    return RESOURCES[name].col(fb, eventId).get().then(function (snap) {
+      return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }).sort(byRecordOrder);
+    });
+  })).then(function (lists) {
+    var rows = {};
+    RECORD_RESOURCES.forEach(function (name, i) { rows[name] = lists[i]; });
+    return rows;
+  });
+}
+/* the kinds a real template shows through its own content.map lists, which only the site editor draws
+   (editor-fill.js): with records of that kind, the editor has to open and save the site to show them */
+var MAP_KIND = { speakers: 'speakers', sessions: 'sessions', agenda: 'sessions', partners: 'partners', glimpses: 'glimpses', faq: 'faq', contact: 'contact' };
+function editorDrawnKinds(templateId, rows) {
+  var map = contentMapFor(templateId) || [], items = siteRecords.itemsByKind(rows), out = [];
+  map.forEach(function (m) {
+    var kind = MAP_KIND[m && m.from];
+    if (kind && items[kind] && items[kind].length && out.indexOf(kind) === -1) out.push(kind);
+  });
+  return out;
+}
+
+/* Draws the event's records into its saved site and keeps the result as a new version, when that changes what a
+   visitor would see. -> Promise<{ notSaved } | { version, staged, summary, items, changeId, unplaced, needsEditor,
+   published, publishedVersion }> — staged false when the saved site already shows Content as it is. */
+function stageContent(fb, eventId, decoded) {
+  var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
+  return loadLiveEvent(fb, eventId).then(function (data) {
+    if (!siteVersionOf(data)) return { notSaved: true, published: data.published === true };
+    return acquireSiteLock(fb, eventId, token, null).then(function (data) {
+      var site = data.site || {}, current = siteVersionOf(data), templateId = site.templateId || data.templateId || null;
+      var answer = { version: current, staged: false, summary: '', items: [], unplaced: [], needsEditor: [],
+        published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 };
+      return Promise.all([readObject(fb, sitePath(eventId, 'page.html')), readRecordRows(fb, eventId)]).then(function (got) {
+        var page = got[0];
+        if (page == null) throw httpError(409, 'The saved site could not be found. Open the site editor and save it again.', { code: 'site-not-saved' });
+        var drawn = siteRecords.renderRecords(page, got[1]);
+        answer.unplaced = drawn.unplaced;
+        answer.needsEditor = editorDrawnKinds(templateId, got[1]);
+        var items = [];
+        if (drawn.changed) { try { items = diffPages(page, drawn.html); } catch (e) { items = [{ type: 'unknown' }]; } }
+        /* nothing a visitor would see (a page that only gains its records' ids): no new version */
+        if (!items.length) return releaseSiteLock(fb, eventId, token).then(function () { return answer; });
+        var version = current + 1;
+        return saveObject(fb, sitePath(eventId, 'page.html'), drawn.html, 'text/html; charset=utf-8').then(function () {
+          /* the editor's own state is not changed: it draws the records itself when it opens; contentBase is the
+             last version made by anything but Content (it stays through a run of Content versions), and a save
+             built on it or on any of those versions is no conflict (handleSitePut) */
+          return commitSiteLock(fb, eventId, token, {
+            site: Object.assign({}, site, { version: version, updatedAt: now, updatedBy: actor, contentBase: site.contentBase != null ? +site.contentBase : current }),
+            updatedAt: now
+          });
+        }).then(function () {
+          return recordSave(fb, eventId, decoded, version, page, drawn.html, '', { kind: 'content' });
+        }).then(function (rec) {
+          return Object.assign(answer, { version: version, staged: true, summary: rec.summary, items: rec.items.slice(0, 20), changeId: rec.changeId });
+        });
+      }).then(null, function (err) {
+        return releaseSiteLock(fb, eventId, token).then(function () { throw err; });
+      });
+    });
+  });
+}
+
+/* ---------- POST /api/event/site/records ----------
+   Body { eventId } -> 200 stageContent's answer, plus pending (the request waiting for approval: { id, toVersion,
+   reviewPath } or null) and approvalRequired. The console calls it once a change in Content has been saved. */
+function handleSiteRecords(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    stageContent(fb, eventId, decoded).then(function (out) {
+      return Promise.all([loadLiveEvent(fb, eventId), approvalsConfig(fb)]).then(function (r) {
+        var a = r[0].approval;
+        out.pending = a && a.id ? { id: a.id, toVersion: +a.toVersion || 0, reviewPath: reviewPathOf(eventId, a.id) } : null;
+        out.approvalRequired = r[1].required;
+        sendJson(res, 200, out);
+      });
+    }).catch(function (err) { sendFailure(res, 'site records', err, 'The change is saved in Content, but it could not be put on the site’s staged copy. Please try again.'); });
   });
 }
 
@@ -9766,7 +9928,8 @@ function handleApprovalRequest(req, res) {
     if (!eventId) return;
     var note = String(body.note || '').trim().slice(0, 1000), actor = actorOf(decoded), now = new Date().toISOString();
     var ref = eventDocRef(fb, eventId);
-    loadLiveEvent(fb, eventId).then(function (data) {
+    /* what changed in Content since the last save goes in with the request: it is drawn into the site first */
+    stageContent(fb, eventId, decoded).then(function () { return loadLiveEvent(fb, eventId); }).then(function (data) {
       var version = siteVersionOf(data);
       if (!version) throw httpError(409, 'Save the site first: there is nothing to send for approval yet.', { code: 'site-not-saved' });
       var liveVersion = data.published === true ? (+data.publishedVersion || 0) : 0;
@@ -9784,7 +9947,7 @@ function handleApprovalRequest(req, res) {
         return siteCheckGate(fb, eventId, data, after, 'owner', null).then(function () { return r; });
       }).then(function (r) {
         var before = r[0], after = r[1];
-        var saves = r[2].docs.map(function (d) { var c = d.data(); return { id: d.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note || '', items: c.items || [] }; })
+        var saves = r[2].docs.map(function (d) { var c = d.data(); return { id: d.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note || '', items: c.items || [], kind: c.kind || '' }; })
           .filter(function (c) { return c.version <= version; });
         /* what the reviewer is shown: live against proposed when the live version's page was kept, else the
            saves one after another */
@@ -9792,14 +9955,28 @@ function handleApprovalRequest(req, res) {
         /* a first publication has no "before": the whole site is new, and listing every section as added says nothing */
         if (before != null) { try { items = diffPages(before, after); } catch (e) { items = []; } }
         if (liveVersion && before == null) saves.forEach(function (c) { items = items.concat(c.items); });
+        /* kept within one document, and never cut unsaid: what is past the caps is counted in the last item, which the
+           summary counts too (page-diff listed; UX-114: a silent cut at 60 left a fourth FAQ out and said "3 FAQs added") */
+        items = listed(items);
+        /* a change only the editor's automatic updates made (no person's save touched that section the same way)
+           is listed apart on the review page */
+        var autoKeys = {}, ownKeys = {};
+        saves.forEach(function (c) {
+          if (c.kind === 'content') return;
+          c.items.forEach(function (i) { (c.kind === 'automatic' ? autoKeys : ownKeys)[i.section + '|' + i.type] = 1; });
+        });
+        items = items.map(function (i) {
+          return autoKeys[i.section + '|' + i.type] && !ownKeys[i.section + '|' + i.type] && !/^record-|^more$/.test(i.type) ? Object.assign({}, i, { auto: true }) : i;
+        });
+        /* who changed it: the people who saved, not the site editor's own updates */
         var people = [];
-        saves.forEach(function (c) { if (c.by && people.indexOf(c.by) === -1) people.push(c.by); });
+        saves.forEach(function (c) { if (c.by && c.kind !== 'automatic' && people.indexOf(c.by) === -1) people.push(c.by); });
         var pendingId = data.approval && data.approval.id;
         var doc = {
           status: 'pending', eventId: eventId, updatedAt: now, fromVersion: liveVersion, toVersion: version,
-          firstPublish: !liveVersion, note: note, items: items.slice(0, 80), summary: !liveVersion ? 'first publication of the site' : summarise(items),
+          firstPublish: !liveVersion, note: note, items: items, summary: !liveVersion ? 'first publication of the site' : summarise(items),
           contributors: people,
-          saves: saves.map(function (c) { return { id: c.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note }; })
+          saves: saves.map(function (c) { var o = { id: c.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note }; if (c.kind) o.kind = c.kind; return o; })
         };
         var target = pendingId ? ref.collection('approvals').doc(pendingId) : ref.collection('approvals').doc();
         return (pendingId ? target.get() : Promise.resolve(null)).then(function (snap) {
@@ -11624,6 +11801,7 @@ var ROUTES = {
   'GET /api/event/site-outline': handleSiteOutline,
   'POST /api/event/site/repair': handleSiteRepair,
   'PUT /api/event/site': handleSitePut,
+  'POST /api/event/site/records': handleSiteRecords,
   'POST /api/event/publish': handleEventPublish,
   'POST /api/event/approval/request': handleApprovalRequest,
   'POST /api/event/theme': handleEventTheme,

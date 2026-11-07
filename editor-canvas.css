@@ -19,6 +19,15 @@ html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; o
 
 /* The repeated item (card, tile, question) the selected element belongs to: what "Add item" and "Remove item" act on. */
 html[data-rv-editing] [data-rv-cur-item]{ outline:1.5px dashed #ED1C24; outline-offset:3px; }
+/* the event's records (editor-template-ui.js recordOf): picked as a whole card, never a word inside it */
+html[data-rv-editing] [data-rv-repeat-template] [data-editable]:hover,
+html[data-rv-editing] [data-rv-item][data-rv-id] [data-editable]:hover{ outline:none; }
+html[data-rv-editing] [data-rv-repeat-template]:hover,
+html[data-rv-editing] [data-rv-item][data-rv-id]:hover{ outline:1.5px dashed #8aa; outline-offset:3px; cursor:pointer; }
+html[data-rv-editing] [data-rv-repeat-template].ed-selected,
+html[data-rv-editing] [data-rv-item].ed-selected,
+html[data-rv-editing] [data-rv-empty-state].ed-selected{ outline:2px solid #ED1C24 !important; outline-offset:3px; }
+html[data-rv-editing] [data-rv-empty-state] [data-rv-content-link]{ text-decoration:underline; text-underline-offset:3px; font-weight:600; }
 
 /* A hidden section is not on the live site. Here it stays where it was as a slim bar, so it can be found and shown
    again: its content is put away and the bar's label is a pseudo-element, so nothing extra is saved with the page. */

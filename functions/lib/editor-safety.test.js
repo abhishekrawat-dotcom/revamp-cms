@@ -199,8 +199,13 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-072: this browser\'s copy keeps its base version, whether it holds the person\'s own changes, and its event', /baseVersion: baseVersion/.test(rec) && /edited: localEdited/.test(rec) && /eventCreatedAt:/.test(rec));
   var record = body('record');
   check('7 UX-072: a step is the person\'s own unless the editor made it by itself as the page opened', /if \(!automatic \|\| editingEl\) localEdited = true;/.test(record));
-  check('7 UX-072: Undo or Redo to a page that is not the saved one is the person\'s own (Undo after "Open version N")', /localEdited = !savedMark \|\| savedMark\.hash !== snapHash\(undoStack\[undoPtr\]\);/.test(body('step')));
-  check('7 UX-072: the opening\'s own updates are recorded as automatic', /if \(putRight\) commitAutomatic\(\);/.test(SRC) && /syncEtLogos\(\)\) commitAutomatic\(\);/.test(SRC) && /record\(false, true\)/.test(body('commitAutomatic')));
+  check('7 UX-072: Undo or Redo to a page that is not the saved one is the person\'s own (Undo after "Open version N"), unless it differs only by the opening\'s own updates (UX-076)',
+    /localEdited = !savedMark \|\| \(savedMark\.hash !== snapHash\(undoStack\[undoPtr\]\) && !autoOnly\(\)\);/.test(body('step')));
+  /* B05 (UX-076): the opening's updates are part of the page as it opened (bakeAuto); once the person has changed
+     something they are a step of the editor's own, never the person's (commitAutomatic) */
+  check('7 UX-072: the opening\'s own updates are recorded as automatic', /if \(putRight\.length\) bakeAuto\(putRight\);/.test(SRC) && /syncEtLogos\(\)\) bakeAuto\(\['the ET logo and menu'\]\);/.test(SRC) &&
+    /if \(undoPtr !== openPtr \|\| editingEl\) \{ commitAutoStep\(names\); return; \}/.test(body('bakeAuto')) && /if \(!commitAutomatic\(\)\) return false;/.test(body('commitAutoStep')) &&
+    /record\(false, true\)/.test(body('commitAutomatic')));
 
   var save = body('saveToStaging');
   check('7 UX-072: Save is made on the version this editor opened (not only this browser\'s mark)', /baseVersion: force \? 0 : baseVersion/.test(save) && !/savedMark && savedMark\.version/.test(save));
@@ -301,7 +306,7 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-073: leaving asks by workSafety.leaveAsk: Save and leave, Leave without saving, Stay', /workSafety\.leaveAsk\(\{ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork\(\) \}\)/.test(leave) &&
     /label: 'Save and leave'/.test(leave) && /label: 'Leave without saving'/.test(leave) && /label: 'Stay'/.test(leave) && /saveToStaging\(\{ quiet: true \}\)\.then\(go, function \(\) \{\}\)/.test(leave));
   check('7 UX-073 (B04 verify): what leaving asks about is the person\'s own work (hasUnsavedWork), while Save still sees a site never saved as unsaved',
-    /workSafety\.unsavedWork\(\{ dirty: isDirty\(\), savedVersion: siteInfo \? siteInfo\.savedVersion : baseVersion, edited: localEdited \}\)/.test(body('hasUnsavedWork')) &&
+    /workSafety\.unsavedWork\(\{ dirty: isDirty\(\) && !autoOnly\(\), savedVersion: siteInfo \? siteInfo\.savedVersion : baseVersion, edited: localEdited \}\)/.test(body('hasUnsavedWork')) &&
     /if \(!savedMark \|\| !siteInfo \|\| !siteInfo\.savedVersion\) return true;/.test(body('isDirty')) && /var dirty = isDirty\(\)/.test(state));
   check('7 UX-073: a save on its way is waited for, so this browser records the version', /\(savingNow \|\| Promise\.resolve\(\)\)\.then\(again, again\);/.test(leave));
   check('7 UX-073: leaving while ETB2B AI applies a change records the turn as not finished first', /stopAiTurn\(false\)\.then\(go, go\);/.test(leave) && /reportTurn\(t\.turnId, 'failed', \[\], \[STOPPED_LINE\], keepalive\)/.test(body('stopAiTurn')));
