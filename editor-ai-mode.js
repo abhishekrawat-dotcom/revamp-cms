@@ -1,15 +1,18 @@
 /* The site editor's two modes (custom_editor.html): "Edit with AI" and "Edit myself".
 
    "Edit myself" is the editor as it always was: the canvas (editor-canvas.js) with selection, typing in place,
-   the panels, the section tools and the chat beside it. Nothing here changes it.
+   the panels, the section tools, and ETB2B AI docked as a column beside the canvas. Nothing here changes it.
 
    "Edit with AI" shows the site as its draft preview shows it (/preview/<id>?draft=1), full width, with ETB2B AI
-   (the editor's own chat panel) floating at the bottom right. The page in it is a throw-away copy: the
+   (the one panel of every console page, etb2b-assistant.js; editor-chat-client.js is the editor's part of it)
+   floating at the bottom right. The page in it is a throw-away copy: the
    editor's page (canvas.serialize()) put through the preview's own transform (POST /api/event/live-view ->
    lib/api.js publishTransform, liveView), shown in a frame of its own (the "live view") and drawn again after
    every change. So the site's runtime runs there as on the preview — carousels, reveals, the nav, pop-ups —
    while the canvas, the one copy that is edited, saved and published, stays exactly as it is, out of sight.
-   Changes still only ever happen on the canvas: through the chat (Apply), Undo / Redo, Save, Publish.
+   Changes still only ever happen on the canvas: through ETB2B AI, Undo / Redo, Save, Publish. After a change of
+   ETB2B AI the live view goes to the first changed section (just below the site's bar) and outlines it for two
+   seconds, "Changed by ETB2B AI"; the change's card says Done once that is on screen (show, UX-094).
 
    In the live view
      - pointing at a section outlines it and offers "Ask AI about this section"; a click (or Enter on a link or
@@ -34,14 +37,25 @@
      ready()           custom_editor.html calls it once the site is on the canvas
      mode()            "ai" | "manual"
      setMode(m, opts)  opts.section: the section to show
+     onModeChange(fn)  fn(mode) after a switch
      openAt(key)       "Edit with AI" at that section; false when the site is not open yet
+     show(key) -> Promise<bool>   "Edit with AI": the live view drawn at that section and the section outlined;
+                       true once a live view that has it is on screen (whenShown), false when there is none
+     whenShown(key) -> Promise<bool>   settles with the next live view put on screen
+     sectionRect(key)  that section's box in the window, as much of it as the live view shows, or null
+     setChatOpen(open) ETB2B AI's panel opened or closed (editor-chat-client.js): a phone keeps the page above it
      eventId()         the event this editor has open */
 (function () {
   'use strict';
 
   var UI = null;
   var mode = 'manual', isReady = false;
-  var toggle = null, layer = null, viewport = null, status = null, hoverBox = null, pickBox = null, hint = null;
+  var toggle = null, layer = null, viewport = null, status = null, hoverBox = null, pickBox = null, flashBox = null, hint = null;
+  var modeListeners = [];
+  var shownWaiters = [];              // whenShown(): [{ key, resolve }] until the next live view is on screen
+  var flashKey = '', flashTimer = 0;
+  var FLASH_MS = 2000;
+  var FLASH_TAG = 'Changed by ETB2B AI';
   var current = null;                 // the live view's iframe on show
   var renderSeq = 0, renderTimer = null, scale = 1, fallbackSaid = false;
   var hoverKey = '', overlayFrame = 0;
@@ -174,12 +188,21 @@
     pickBox.className = 'ai-live-pick';
     pickBox.hidden = true;
     pickBox.innerHTML = '<span class="ai-live-tag"></span>';
+    // what ETB2B AI just changed, outlined for a moment (show)
+    flashBox = document.createElement('div');
+    flashBox.className = 'ai-live-pick ai-live-flash';
+    flashBox.hidden = true;
+    var flashTag = document.createElement('span');
+    flashTag.className = 'ai-live-tag';
+    flashTag.textContent = FLASH_TAG;
+    flashBox.appendChild(flashTag);
     status = document.createElement('div');
     status.className = 'ai-live-status';
     status.setAttribute('role', 'status');
     status.hidden = true;
     layer.appendChild(viewport);
     layer.appendChild(pickBox);
+    layer.appendChild(flashBox);
     layer.appendChild(hoverBox);
     layer.appendChild(status);
     frame.appendChild(layer);
@@ -243,11 +266,9 @@
         return body.html;
       });
     }).then(null, function (err) {
-      if (window.console) console.warn('[editor-ai-mode] live view from the editor’s copy:', err && err.message);
-      // said where the mode is explained, not as an alarm: the page shown is the same, less the preview's finishing
-      if (!fallbackSaid && hint) {
-        hint.textContent = 'Live view (the preview could not be prepared, so this is the editor’s copy) — click any section to ask ETB2B AI about it';
-      }
+      /* the page shown is the same, less the preview's finishing: that is for the console, not the person (UX-097),
+         whose hint stays "Live view — click any section to ask ETB2B AI about it" */
+      if (!fallbackSaid && window.console) console.info('[editor-ai-mode] the preview could not be prepared, so the live view is the editor’s copy:', err && err.message);
       fallbackSaid = true;
       return localPage(UI.canvas() || c);
     });
@@ -296,6 +317,8 @@
       if (hadFocus) { try { ifr.contentWindow.focus(); } catch (e) { /* the browser decides */ } }
       setStatus('');
       hoverKey = '';
+      // mount()'s own "shown" above is this frame's flag; the waiters are settled by resolveShown, below
+      resolveShown(ifr);
       drawOverlay();
     }
     ifr.addEventListener('load', function () {
@@ -317,6 +340,61 @@
     var page = UI.currentPage ? UI.currentPage() : 'home';
     if (page && page !== 'home' && /^[a-z0-9-]{1,40}$/.test(page)) html = String(html).replace(/<html\b/i, '<html data-rv-current-page="' + page + '"');
     ifr.srcdoc = html;
+  }
+
+  /* ---------- a change of ETB2B AI, shown (UX-094) ----------
+     show(key): the live view is drawn again at that section (just below the site's own bar, goToPlace), and when
+     the new live view is on screen the section is outlined for two seconds, "Changed by ETB2B AI". whenShown()
+     settles at that moment: the change's card says Done only then. resolveShown(ifr) is that moment, called by
+     mount() once the new live view is on screen. */
+  function resolveShown(ifr) {
+    var doc = ifr && ifr.contentDocument, waiting = shownWaiters;
+    shownWaiters = [];
+    waiting.forEach(function (w) {
+      var there = !!(doc && byKey(doc, w.key));
+      if (there) flash(w.key);
+      w.resolve(there);
+    });
+  }
+  function flash(key) {
+    flashKey = key;
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(function () { flashKey = ''; drawOverlay(); }, FLASH_MS);
+    drawOverlay();
+  }
+  function whenShown(key) {
+    if (mode !== 'ai' || !key) return Promise.resolve(false);
+    return new Promise(function (resolve) { shownWaiters.push({ key: String(key), resolve: resolve }); });
+  }
+  function settleShown() {
+    var waiting = shownWaiters;
+    shownWaiters = [];
+    waiting.forEach(function (w) { w.resolve(false); });
+  }
+  function show(key) {
+    var c = UI && UI.canvas();
+    if (mode !== 'ai' || !key || !c) return Promise.resolve(false);
+    var p = whenShown(key);
+    // the change's own redraw is still waiting on its timer: this one, at the change, takes its place
+    clearTimeout(renderTimer);
+    render({ key: String(key), frac: 0 });
+    return p;
+  }
+  /* the section's box in this window, as much of it as the live view shows (scaled, under its frame) */
+  function sectionRect(key) {
+    if (mode !== 'ai' || !current || !viewport || !key) return null;
+    var sec = byKey(current.contentDocument, key);
+    if (!sec) return null;
+    var r = sec.getBoundingClientRect(), v = viewport.getBoundingClientRect();
+    var left = v.left + (parseFloat(current.style.left) || 0);
+    var top = v.top + Math.max(0, r.top * scale), bottom = v.top + Math.min(viewport.clientHeight, (r.top + r.height) * scale);
+    if (bottom - top < 1) return null;
+    return { left: left + r.left * scale, right: left + (r.left + r.width) * scale, top: top, bottom: bottom };
+  }
+  /* ETB2B AI's panel opened or closed: a phone keeps the live view above the half sheet */
+  function setChatOpen(open) {
+    document.body.classList.toggle('ai-chat-open', !!open);
+    if (mode === 'ai') { fitAll(); drawOverlay(); }
   }
 
   function sectionAt(target) {
@@ -433,14 +511,13 @@
     ['wheel', 'touchstart', 'keydown', 'mousedown'].forEach(function (type) { win.addEventListener(type, onTouch, { passive: true, once: true }); });
   }
 
-  /* the chat's selected section, as long as the chat still takes its messages to be about it */
+  /* the chat's selected section, as long as the chat still takes its messages to be about it (its "Selected" chip
+     not taken off) */
   function referenceKey() {
-    var chip = document.querySelector('#panel-chat .chat-focus');
-    if (chip && chip.hidden) return '';
-    var list = UI.listSections ? UI.listSections() : [];
-    for (var i = 0; i < list.length; i++) if (list[i].current) return list[i].key || '';
-    return '';
+    var f = UI.chat && typeof UI.chat.focus === 'function' ? UI.chat.focus() : null;
+    return f && f.sectionId ? String(f.sectionId) : '';
   }
+  function assistant() { var A = window.RevampAssistant; return A && typeof A.open === 'function' && typeof A.isOpen === 'function' ? A : null; }
   function referenceName(key) {
     var list = UI.listSections ? UI.listSections() : [];
     for (var i = 0; i < list.length; i++) if (list[i].key === key) return list[i].name || key;
@@ -473,10 +550,11 @@
       if (!layer || mode !== 'ai') return;
       var doc = current && current.contentDocument;
       var ref = referenceKey();
-      var refSec = doc && ref ? byKey(doc, ref) : null;
+      var refSec = doc && ref && ref !== flashKey ? byKey(doc, ref) : null;
       if (refSec) pickBox.firstChild.textContent = 'ETB2B AI: ' + referenceName(ref);
       placeBox(pickBox, refSec);
-      placeBox(hoverBox, doc && hoverKey && hoverKey !== ref ? byKey(doc, hoverKey) : null);
+      placeBox(flashBox, doc && flashKey ? byKey(doc, flashKey) : null);
+      placeBox(hoverBox, doc && hoverKey && hoverKey !== ref && hoverKey !== flashKey ? byKey(doc, hoverKey) : null);
     });
   }
 
@@ -487,10 +565,9 @@
     var sec = c && key ? c.sectionByKey(key) : null;
     if (!sec) return;
     UI.selectSection(sec);         // the same reference a click on the canvas gives; brings it into view there too
-    var chat = document.getElementById('panel-chat');
-    if (chat && chat.hidden) {
-      var launcher = document.getElementById('chat-launcher');
-      if (launcher) launcher.click();
+    var A = assistant();
+    if (A && !A.isOpen()) {
+      A.open();                      // the panel opens with its message box ready
       /* on a phone the chat takes the bottom of the window and the live view the rest: what was tapped is
          brought up into the part still showing */
       var win = current && current.contentWindow;
@@ -500,10 +577,7 @@
           if (y > room - 48) win.scrollBy(0, y - room / 3);
         });
       }
-    } else if (chat) {
-      var box = document.getElementById('chat-input');
-      if (box) { try { box.focus({ preventScroll: true }); } catch (e) { box.focus(); } }
-    }
+    } else if (A && typeof A.focusInput === 'function') A.focusInput();
     drawOverlay();
   }
 
@@ -529,16 +603,15 @@
       layer.hidden = false;
       fitAll();
       render(place);
-      var chat = document.getElementById('panel-chat');
-      if (chat && chat.hidden && !narrow() && opts.openChat !== false) {
-        var launcher = document.getElementById('chat-launcher');
-        if (launcher) launcher.click();
-      }
+      var A = assistant();
+      if (A && !A.isOpen() && !narrow() && opts.openChat !== false) A.open();
     } else {
       var at = placeIn(current && current.contentDocument);
       mode = 'manual';
       renderSeq++;                     // a live view still on its way is not shown
       clearTimeout(renderTimer);
+      settleShown();                   // nothing more will be shown here: whoever waits is told now
+      flashKey = '';
       document.body.classList.remove('ed-mode-ai');
       layer.hidden = true;
       if (current) { drop(current); current = null; }
@@ -554,6 +627,8 @@
     }
     if (!opts.keep) remember(mode);
     drawToggle();
+    // ETB2B AI's panel takes the mode's shape: docked beside the canvas, or floating over the live view
+    modeListeners.forEach(function (fn) { try { fn(mode); } catch (err) { if (window.console) console.error(err); } });
   }
 
   function ready() {
@@ -568,13 +643,10 @@
        now (POST /api/event/live-view puts the event's forms in the page) */
     if (UI.onFormsChange) UI.onFormsChange(function () { if (mode === 'ai') scheduleRender(); });
     // the chat's selected section shown on the live view follows the chip (picked, dismissed, replaced)
-    var chip = document.querySelector('#panel-chat .chat-focus');
-    if (chip && window.MutationObserver) new MutationObserver(drawOverlay).observe(chip, { attributes: true, childList: true, subtree: true, characterData: true });
-    // on a phone the open chat takes the bottom of the window: the live view keeps the rest
-    var chat = document.getElementById('panel-chat');
-    function chatOpen() { document.body.classList.toggle('ai-chat-open', !!chat && !chat.hidden); fitAll(); drawOverlay(); }
-    if (chat && window.MutationObserver) new MutationObserver(chatOpen).observe(chat, { attributes: true, attributeFilter: ['hidden'] });
-    chatOpen();
+    if (UI.chat && typeof UI.chat.onFocusChange === 'function') UI.chat.onFocusChange(drawOverlay);
+    // whether ETB2B AI's panel is open is told by editor-chat-client.js (setChatOpen); until then, as it is now
+    var A = assistant();
+    setChatOpen(!!A && A.isOpen());
 
     var asked = qs.get('mode'), section = qs.get('section') || '';
     if (asked || section) {
@@ -596,6 +668,11 @@
     ready: ready,
     mode: function () { return mode; },
     setMode: setMode,
+    onModeChange: function (fn) { if (typeof fn === 'function') modeListeners.push(fn); },
+    show: show,
+    whenShown: whenShown,
+    sectionRect: sectionRect,
+    setChatOpen: setChatOpen,
     eventId: function () { return EVENT_ID; },
     openAt: function (section) {
       if (!isReady) return false;

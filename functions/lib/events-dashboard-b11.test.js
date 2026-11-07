@@ -255,10 +255,13 @@ check('UX-015 both pages load activity-words.js and read their words from it', A
 check('UX-015 the all-events log no longer prints the action\'s code under the sentence (the CSV keeps it)', ALOG.indexOf('what-action mono') === -1 && /'Action code'/.test(ALOG) && /'Action code'/.test(CONSOLE) &&
   /'Person email'/.test(ALOG) && /'Person email'/.test(CONSOLE));
 
-/* ES5 (no build step serves these): the shared words, the Activity log's script, the dashboard's */
+/* ES5 (no build step serves these): the shared words, the Activity log's script, the dashboard's. The Activity log's
+   own script is its last plain <script>, read up to its own </script>: ETB2B AI's scripts (etb2b-chat.js…) load
+   after it, as on every page */
 var esbuild = null;
 try { esbuild = require('esbuild'); } catch (e) { /* the word check still runs */ }
-[['activity-words.js', read('activity-words.js')], ['activity-log.html (inline)', ALOG.slice(ALOG.lastIndexOf('<script>') + 8, ALOG.lastIndexOf('</script>'))], ['Event_Listing.html (inline)', INLINE]].forEach(function (f) {
+var ALOG_JS = ALOG.slice(ALOG.lastIndexOf('<script>') + 8, ALOG.indexOf('</script>', ALOG.lastIndexOf('<script>')));
+[['activity-words.js', read('activity-words.js')], ['activity-log.html (inline)', ALOG_JS], ['Event_Listing.html (inline)', INLINE]].forEach(function (f) {
   var code = f[1].replace(/\/\*[\s\S]*?\*\//g, '');
   check(f[0] + ' is ES5 by its words (no let, const, arrows, template strings)', !/\blet\s|\bconst\s/.test(code) && code.indexOf('=>') === -1 && code.indexOf('`') === -1);
   if (esbuild) { var r = (function () { try { esbuild.transformSync(f[1], { loader: 'js', target: 'es5' }); return true; } catch (e) { return String(e.message).split('\n')[0]; } })(); check(f[0] + ' is ES5 by esbuild', r === true, r); }

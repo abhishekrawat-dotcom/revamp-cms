@@ -9,6 +9,8 @@
 <link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="promo.css">
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 <style>
   /* The date line and, while the event has no portal, "No portal yet" with Set portal beside it (paintHeader),
      as in the event console. Only the console's tokens, so it follows the light and dark switch. On a phone or a
@@ -36,6 +38,8 @@
   /* the line under the tabs while a mailer ETB2B AI opened waits on the Mailers tab (mailerWaitingHtml) */
   .promo-deep-note{ margin-top:12px; align-items:center; flex-wrap:wrap; }
   .promo-deep-note > span{ flex:1 1 220px; min-width:0; }
+  /* a studio opened full-window covers the whole page: ETB2B AI is hidden with it, and so kept out of Tab's way */
+  html.promo-studio-open .rvc{ visibility:hidden; }
 </style>
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 </head>
@@ -530,5 +534,11 @@
   init();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page and its event.
+     It hides while a studio is open full-window (the rule in the head); the framed studios never carry it. -->
+<div id="rv-assistant" data-rv-assistant="promotions"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>

@@ -88,6 +88,8 @@
     .nav-back{ padding:8px; }
   }
 </style>
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 </head>
 <body>
 <header class="nav">
@@ -110,5 +112,11 @@
 
 <script src="theme-toggle.js"></script>
 <script src="auth.js"></script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page.
+     The mailer dashboard in the frame never carries it. -->
+<div id="rv-assistant" data-rv-assistant="mailer-performance"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>

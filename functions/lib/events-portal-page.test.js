@@ -42,10 +42,11 @@ var scripts = PAGE.match(/<script\b[^>]*>/g) || [];
 /* with ETB2B AI's (8bebdc9): event-lifecycle.js between the picker and the inline script, the chat after it;
    edit-event-core.js (B07: the API calls of Clone, Delete and Restore) before auth.js; and Create Event's drafts
    (create-drafts.js, UX-048) and (B11, UX-032) the vendored QR library, which draws the QR Codes dialog's code, between
-   the picker and event-lifecycle.js */
-check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, qrcode-generator.js, event-lifecycle.js, the inline script, then ETB2B AI\'s two',
+   the picker and event-lifecycle.js; the one assistant (ai-everywhere) adds etb2b-assistant.js last, as on every
+   page (assistant-pages.test.js) */
+check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, qrcode-generator.js, event-lifecycle.js, the inline script, then ETB2B AI\'s three',
   JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="event-lifecycle.js">', '<script>',
-    '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+    '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">', '<script src="etb2b-assistant.js">']), scripts);
 check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="create-drafts.js"><\/script>\n<!--[^\n]*-->\n<script src="assets\/vendor\/qrcode-generator.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
 check('D.3 the server sends portal-picker.js', require('./access').isServableFile('portal-picker.js') === true && fs.existsSync(path.join(ROOT, 'portal-picker.js')));
 check('D.3 th.col-portal right after "Event name"', count(PAGE, '<th class="col-portal">Portal</th>') === 1 && /<th>Event name<\/th>\n\s*<th class="col-portal">Portal<\/th>/.test(PAGE));

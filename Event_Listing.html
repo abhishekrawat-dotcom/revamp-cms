@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
 <link rel="stylesheet" href="app-logo.css">
-<!-- ETB2B AI's launcher and panel (etb2b-chat.js), drawn in this page's own colour tokens -->
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
@@ -506,6 +506,9 @@
   /* what the help window says once the email app was asked to open: nothing was sent from here */
   .help-note{ font-size:12.5px; line-height:1.5; color:var(--text); background:var(--info-soft); border-radius:8px; padding:10px 12px; }
   .help-note b{ font-weight:700; }
+  /* A row's ⋯ menu, once open, is pinned to the screen from <body> (placeRowMenu) and can reach the bottom-right
+     corner: it opens above ETB2B AI's launcher (65) and panel (69), and under the page's dialogs (90). */
+  body > .popover.row-menu{ z-index:70; }
   .modal-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:90; display:flex; align-items:center; justify-content:center; padding:20px; }
   .modal-card{ background:var(--surface); border-radius:var(--r-lg); max-width:440px; width:100%; box-shadow:var(--shadow-lg); overflow:hidden; }
   .modal-card-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
@@ -852,8 +855,8 @@
 <div class="gt-tooltip" id="gt-tooltip" hidden></div>
 
 <div id="sheet-root"></div>
-<!-- ETB2B AI mounts here (dash-bot-client.js): its launcher has the bottom-left corner the old "Need help?" pill had (Help is in the top bar now) -->
-<div id="rv-dash-bot"></div>
+<!-- ETB2B AI mounts here (etb2b-assistant.js), bottom-right as on every page (Help is in the top bar); the toasts may lie over it for their few seconds -->
+<div id="rv-dash-bot" data-rv-assistant="dashboard"></div>
 <div id="toast-region"></div>
 
 <script src="theme-toggle.js"></script>
@@ -4049,8 +4052,10 @@
 
 })();
 </script>
-<!-- ETB2B AI: the chat kit, then this page's side of the bot (it reaches the list only through window.RvListing) -->
+<!-- ETB2B AI: the chat kit, the events side of the bot (it reaches the list only through window.RvListing), then the
+     one assistant that mounts it here as on every other page -->
 <script src="etb2b-chat.js"></script>
 <script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>
