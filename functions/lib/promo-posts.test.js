@@ -511,6 +511,12 @@ function lum(hex) {
     check(id + ': keeps its why', card.querySelector('.ps-card-body').textContent.indexOf(need.why) !== -1);
     var a = card.querySelector('a');
     check(id + ': keeps its fix link', need.fix ? !!a && a.getAttribute('href') === '/edit-event.html?event=qa-sparse#' + need.fix[1] : !a);
+    /* UX-130: every example names the console place its real items are typed and links there; who should attend,
+       key topics and the event's own numbers have theirs in Content → Basics, at the field */
+    var place = { stats: ['content/basics/numbers', 'Add headline numbers in Content → Basics'], audience: ['content/basics/audience', 'Add who should attend in Content → Basics'],
+      topics: ['content/basics/topics', 'Add key topics in Content → Basics'] }[id];
+    check(id + ': its fix names the real place and links there', !!need.fix && !!a && /in Content → (Speakers|Sponsors|Agenda|Basics)$/.test(a.textContent) &&
+      (!place || (need.fix[1] === place[0] && a.textContent === place[1])) && !/Not available for this event/.test(card.textContent), a && a.textContent);
     var pp = th.querySelector('.pp');
     check(id + ': the example drawn and marked data-example', !!pp && pp.getAttribute('data-example') === '1', th.innerHTML.slice(0, 200));
     check(id + ': no chip on an example', !card.querySelector('.ps-chip'));

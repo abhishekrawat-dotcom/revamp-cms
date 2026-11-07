@@ -796,20 +796,24 @@ function owDraw(html, W, H, o) {
 }
 
 /* ---------- the template cards (owner B: this event's real posts, larger, with a full-size view) ---------- */
-/* what an example fills, in words, and where the real ones are added (promo-posts.js fixLink) */
+/* what an example fills, in words, and where the real ones are added: go is the console's route (promo-posts.js
+   fixLink; a third part is the field on the tab, edit-event.html showPlace), at its name on screen. Who should
+   attend and the event's own numbers are typed in Content → Basics (UX-130); a quote or a prediction only ever
+   in the post itself. Mailers (oneworld.js OW_FIX) and Site-look posts (promo-posts.js) say the same. */
 var OW_FILL = {
-  speakers: { w: 'speakers', go: 'content/speakers' },
-  sponsors: { w: 'partners', go: 'content/sponsors' },
-  sessions: { w: 'sessions', go: 'content/agenda' },
-  stats: { w: 'numbers', go: 'content/speakers' },
-  audience: { w: 'audience', tail: 'the event’s brief has no “who should attend” list' },
+  speakers: { w: 'speakers', go: 'content/speakers', at: 'Content → Speakers' },
+  sponsors: { w: 'partners', go: 'content/sponsors', at: 'Content → Sponsors' },
+  sessions: { w: 'sessions', go: 'content/agenda', at: 'Content → Agenda' },
+  stats: { w: 'numbers', go: 'content/basics/numbers', at: 'Content → Basics' },
+  audience: { w: '“who should attend” list', go: 'content/basics/audience', at: 'Content → Basics' },
   quote: { w: 'quote and its speaker', tail: 'open it and type the real quote in Options' },
   prediction: { w: 'prediction and outcome', tail: 'open it and write this event’s own' }
 };
 var OW_STATE = { past: 'Past event', 'no-date-venue': 'No date or venue yet', 'no-date': 'No date yet', closed: 'Nominations closed' };
 function owStateLabel(s) { return OW_STATE[s] || 'Not ready yet'; }
 function owFirstFormat(t) { return (t.formats && t.formats[0] && t.formats[0].id) || 'ig_square'; }
-/* the note under an example: what is an example, and a link to add the real ones (none where there is no place to) */
+/* the note under an example: what is an example, and a link to the place in the console where the real ones are
+   added ("add yours in Content → Speakers"); for what only the post itself holds, how to put it in there */
 function owNoteEl(filled) {
   var keys = (filled || []).filter(function (k) { return OW_FILL[k]; });
   var words = keys.map(function (k) { return OW_FILL[k].w; });
@@ -822,7 +826,7 @@ function owNoteEl(filled) {
     var a = document.createElement('a');
     a.setAttribute('href', owFixLink(OW_FILL[go].go));
     a.setAttribute('target', '_top');
-    a.textContent = 'add yours to use this';
+    a.textContent = 'add yours in ' + OW_FILL[go].at;
     d.appendChild(a);
   } else d.appendChild(document.createTextNode(tail ? OW_FILL[tail].tail : 'not this event’s own'));
   return d;

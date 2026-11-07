@@ -220,6 +220,32 @@ ok(content.contacts[0].label === 'Partnerships' && content.social[0].kind === 'l
 var empty = P.contentFrom(null, null, {});
 ok(empty.speakers.length === 0 && empty.audience.length === 0 && empty.topics.length === 0 && empty.stats.length === 0 && empty.overview === '', 'content: an event with nothing has empty lists, never samples');
 
+/* UX-130: who should attend, key topics and the event's own numbers are typed in Content → Basics and read before
+   the brief; the brief fills only a field never saved, and its numbers are the owner's exact "Expected scale" */
+var BRIEF = { audience: 'CIOs; CTOs', tracks: ['AI'], owner: { scale: '500+ CXOs, 20 countries, 2 days, around 40 speakers' } };
+var fromBrief = P.detailsOf({}, BRIEF);
+ok(fromBrief.whoShouldAttend.join() === 'CIOs,CTOs' && fromBrief.keyTopics.join() === 'AI' &&
+  JSON.stringify(fromBrief.headlineNumbers) === JSON.stringify([{ value: '500+', label: 'CXOs' }, { value: '20', label: 'Countries' }]) &&
+  JSON.stringify(fromBrief.from) === JSON.stringify({ whoShouldAttend: 'brief', keyTopics: 'brief', headlineNumbers: 'brief' }),
+  'details: from the brief while nothing is saved on the event (its days and a guessed number left out)', JSON.stringify(fromBrief));
+var saved = P.detailsOf({ whoShouldAttend: [' Heads of HR ', '', 'Heads of HR', 'CHROs'], keyTopics: ['People analytics'],
+  headlineNumbers: [{ value: '1,200', label: 'Attendees' }, { value: '50', label: 'Speakers' }, { value: '', label: 'Half' }, { value: '12', label: 'Years' }] }, BRIEF);
+ok(saved.whoShouldAttend.join() === 'Heads of HR,CHROs' && saved.keyTopics.join() === 'People analytics' &&
+  JSON.stringify(saved.headlineNumbers) === JSON.stringify([{ value: '1,200', label: 'Attendees' }, { value: '12', label: 'Years' }]) &&
+  saved.from.whoShouldAttend === 'event' && saved.from.headlineNumbers === 'event',
+  'details: the event\'s own win over the brief (trimmed, no repeats, a half pair and a counted kind left out)', JSON.stringify(saved));
+var none = P.detailsOf({ whoShouldAttend: [], keyTopics: [], headlineNumbers: [] }, BRIEF);
+ok(none.whoShouldAttend.length === 0 && none.keyTopics.length === 0 && none.headlineNumbers.length === 0 && none.from.keyTopics === 'event',
+  'details: a list saved empty is the owner\'s "none", which the brief does not fill');
+ok(JSON.stringify(P.detailsOf(null, null)) === JSON.stringify({ from: { whoShouldAttend: '', keyTopics: '', headlineNumbers: '' }, whoShouldAttend: [], keyTopics: [], headlineNumbers: [] }),
+  'details: nothing anywhere is nothing', JSON.stringify(P.detailsOf(null, null)));
+var withOwn = P.contentFrom(site, BRIEF, { start: '2027-02-18', whoShouldAttend: ['CHROs'], keyTopics: ['Hybrid work'], headlineNumbers: [{ value: '300+', label: 'Attendees' }] });
+ok(withOwn.audience.join() === 'CHROs' && withOwn.topics.join() === 'Hybrid work' &&
+  JSON.stringify(withOwn.stats) === JSON.stringify([{ value: '300+', label: 'Attendees' }, { value: '2', label: 'Speakers' }, { value: '1', label: 'Session' }, { value: '1', label: 'Partner' }, { value: '1', label: 'Day' }]),
+  'content: the event\'s own details first, its numbers before the counts of its records (which stay as they are)', JSON.stringify([withOwn.audience, withOwn.topics, withOwn.stats]));
+ok(/Numbers \(the event's own, then counts of what is on the site\): 300\+ Attendees, 2 Speakers/.test(P.factSheet({ event: { name: 'X' }, content: withOwn })),
+  'the AI copy is told which numbers are the event\'s own');
+
 /* ---------- the image route's addresses ---------- */
 function allowed(url, ev) { return P.imageUrlProblem(url, BUCKET, ev || 'qa-gen') === ''; }
 ok(allowed(OWN + 'generated/hero-bg.png?v=2'), 'image: this event\'s own file');
