@@ -747,7 +747,7 @@
       keepSaved();
       flushReloads();
     }
-    return Promise.resolve(work).then(function(v){ done(); return v; }, function(err){ done(); throw err; });
+    return Promise.resolve(work).then(function(v){ done(); contentChanged(); return v; }, function(err){ done(); throw err; });
   }
 
   function subWrite(tabKey, work, okText, what, free){
@@ -766,6 +766,7 @@
       keepSaved();
       if (okText) notify(okText);
       flushReloads();
+      contentChanged();
       return true;
     }, function(err){
       done();
@@ -6218,7 +6219,8 @@
     /* the view that is about to be replaced has been left; the new one registers itself if it
        has a form to guard */
     LEAVE = NOT_DIRTY;
-    $('view').innerHTML = tabsHTML() + fn();
+    $('view').innerHTML = tabsHTML() + (SUB_ROUTE_KEY[r] ? siteBarHTML() : '') + fn();
+    wireSiteBar();
 
     /* [data-tab] and [data-goto] are handled by the one listener boot() puts on #view, so they also work on
        the loading and error states. There is no generic "saved" wiring any more: a button says something
@@ -6268,6 +6270,118 @@
         setTimeout(function(){ location.href = r.reviewPath; }, 1200);
       });
     }).catch(function(err){ notifyError(err, { what: 'Could not publish.' }); });
+  }
+
+  /* ============================================================
+     CONTENT REACHES THE SITE
+
+     The owner, 3 Nov 2026: what is added in Content for a site that is live goes through approval, like a change
+     made in the site editor. A change saved in a Content tab is drawn into the saved site at once
+     (C.stageSiteContent: a version of its own on the staging address, "Content: 1 FAQ added"), and the bar above
+     the tab says where it is — on the staged copy, waiting for approval, or not shown by this design — with the
+     next step. Changes made one after another go onto the site together, a moment after the last one.
+     ============================================================ */
+  var SITE_BAR = null;                 // the last answer of stageSiteContent, or { busy } / { error }
+  var siteBarTimer = null, siteBarAsk = 0;
+  /* a Content tab -> the kind of record the site shows from it */
+  var TAB_KIND = { speakers:'speakers', agenda:'sessions', sponsors:'partners', gallery:'glimpses', faq:'faq', contact:'contact' };
+  var KIND_WORDS = { speakers:'speakers', sessions:'sessions', partners:'sponsors', glimpses:'gallery pictures', faq:'FAQs', contact:'contacts' };
+  function siteSaved(){ return !!(EV && EV.site && +EV.site.version > 0); }
+  function siteTemplate(){ return String((EV && ((EV.site && EV.site.templateId) || EV.templateId)) || ''); }
+  function liveVersion(){ return EV && EV.published === true ? (+EV.publishedVersion || 0) : 0; }
+
+  function contentChanged(){
+    if (!siteSaved() || /^imported-/.test(siteTemplate())) return;
+    siteBarAsk++;
+    clearTimeout(siteBarTimer);
+    SITE_BAR = { busy: true };
+    paintSiteBar();
+    siteBarTimer = setTimeout(stageContentNow, 1200);
+  }
+  function stageContentNow(){
+    siteBarTimer = null;
+    /* the last write is still on its way: the site is drawn once it has landed */
+    if (writesOut()){ siteBarTimer = setTimeout(stageContentNow, 600); return; }
+    var ask = siteBarAsk;
+    SITE_BAR = { busy: true };
+    paintSiteBar();
+    C.stageSiteContent(EV.id).then(function(out){
+      if (ask !== siteBarAsk) return;
+      SITE_BAR = out || {};
+      if (out && out.version && EV.site) EV.site.version = out.version;
+      if (out && 'pending' in out) EV.approval = out.pending ? { id: out.pending.id, toVersion: out.pending.toVersion } : null;
+      paintSiteBar();
+    }, function(err){
+      if (ask !== siteBarAsk) return;
+      SITE_BAR = { error: (err && err.message) || 'Please try again.' };
+      paintSiteBar();
+    });
+  }
+
+  function siteBarHTML(){
+    if (!siteSaved()) return '';
+    return '<div class="site-bar" id="site-bar" role="status" aria-live="polite"></div>';
+  }
+  function barButton(act, label, primary){
+    return '<button type="button" class="btn ' + (primary ? 'btn-primary' : 'btn-secondary') + ' btn-sm" data-site-bar="' + act + '">' + esc(label) + '</button>';
+  }
+  function barLink(href, label){
+    return '<a class="btn btn-secondary btn-sm" href="' + esc(href) + '" target="_blank" rel="noopener">' + esc(label) + '</a>';
+  }
+  /* -> { tone, text (HTML), acts (HTML) }, or null when there is nothing to say */
+  function siteBarState(){
+    var kind = TAB_KIND[cur.tab] || '', words = KIND_WORDS[kind] || 'these', b = SITE_BAR || {};
+    var tpl = siteTemplate(), v = EV.site ? +EV.site.version || 0 : 0, live = liveVersion();
+    var pending = EV.approval && EV.approval.id ? EV.approval : null;
+    var staged = barLink('/preview/' + encodeURIComponent(EV.id) + '?staged=1', 'See the staged copy');
+    var editor = '<a class="btn btn-secondary btn-sm" href="' + esc(editorUrl()) + '">Open the site editor</a>';
+    var send = barButton('publish', b.approvalRequired === false ? 'Publish' : 'Send for approval', true);
+    var review = pending ? barLink('/review.html?event=' + encodeURIComponent(EV.id) + '&request=' + encodeURIComponent(pending.id), 'Review') : '';
+    if (/^imported-/.test(tpl)) return { tone: '', text: 'This site was imported, so it shows its own copy of this content: changes made here do not reach it.', acts: '' };
+    if (b.busy) return { tone: '', text: '<span class="spin"></span> Putting this change on the site’s staged copy…', acts: '' };
+    if (b.error) return { tone: 'bad', text: 'This change is saved here, but the site’s staged copy could not be updated: ' + esc(b.error), acts: barButton('retry', 'Try again', true) };
+    if (b.needsEditor && b.needsEditor.indexOf(kind) !== -1) {
+      return { tone: 'warn', text: 'This design shows ' + words + ' through the site editor: open it and save to bring this change onto the site.', acts: editor };
+    }
+    if (b.unplaced && b.unplaced.indexOf(kind) !== -1) {
+      return { tone: 'warn', text: 'The site has no section for ' + words + ' yet. The site editor adds one when it opens: open it and save to show them.', acts: editor };
+    }
+    var what = b.staged && b.summary ? ' (' + esc(b.summary) + ')' : '';
+    if (live && v > live) {
+      if (pending && pending.toVersion >= v) return { tone: 'wait', text: 'Version ' + v + what + ' is waiting for approval. The live site shows it once it is approved.', acts: review };
+      if (pending) return { tone: 'wait', text: 'Version ' + v + what + ' is on the staged copy. The request waiting for approval holds version ' + pending.toVersion + ', without this change.', acts: barButton('publish', 'Add it to the request', true) + review };
+      return { tone: 'wait', text: (b.staged ? 'Version ' + v + what + ' is on the staged copy. ' : 'The staged copy (version ' + v + ') has changes the live site does not show yet. ') +
+        (b.approvalRequired === false ? 'Publish it to put it live.' : 'The live site shows it once it is approved.'), acts: send + staged };
+    }
+    if (!live) {
+      if (!b.staged && !/^gen-/.test(tpl)) return null;
+      return { tone: '', text: (b.staged ? 'On the site’s staged copy as version ' + v + what + '. ' : 'Changes here go onto the site’s staged copy at once. ') + 'The site shows them once it is published.', acts: b.staged ? staged : '' };
+    }
+    /* a real template draws some kinds of record only in the site editor (the server says which after a change),
+       so nothing is promised about it before then */
+    if (!/^gen-/.test(tpl)) return null;
+    return { tone: '', text: 'Changes here go onto the site’s staged copy at once, and reach the live site once they are approved.', acts: '' };
+  }
+  function paintSiteBar(){
+    var el = $('site-bar');
+    if (!el || !EV) return;
+    var st = siteBarState();
+    el.hidden = !st;
+    if (!st) return;
+    el.className = 'site-bar' + (st.tone ? ' is-' + st.tone : '');
+    el.innerHTML = (st.tone === 'bad' || st.tone === 'warn' ? svg(IC_ALERT, 16) : svg(IC.info, 16)) + '<div class="grow">' + st.text + '</div>' +
+      (st.acts ? '<div class="acts">' + st.acts + '</div>' : '');
+  }
+  function wireSiteBar(){
+    var el = $('site-bar');
+    if (!el) return;
+    paintSiteBar();
+    el.onclick = function(e){
+      var b = e.target && e.target.closest ? e.target.closest('[data-site-bar]') : null;
+      if (!b) return;
+      if (b.getAttribute('data-site-bar') === 'retry') stageContentNow();
+      if (b.getAttribute('data-site-bar') === 'publish') doPublish();
+    };
   }
 
   /* ============================================================

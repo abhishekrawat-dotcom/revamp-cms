@@ -196,7 +196,7 @@
   "sections": [
     { "id": "banner",          "name": "Banner",                    "etId": null, "widget": "et-banner" },
     { "id": "awaits",          "name": "What awaits you",            "etId": null, "repeat": { "item": ".row > .events-wdgt-box", "label": "h3" } },
-    { "id": "stats",           "name": "Stats strip",                "etId": null, "repeat": { "item": "#stats-4 .stats-box > section", "label": ".stats-label" } },
+    { "id": "stats",           "name": "Key numbers",                "etId": null, "repeat": { "item": "#stats-4 .stats-box > section", "label": ".stats-label" } },
     { "id": "overview",        "name": "Overview",                   "etId": null },
     { "id": "priorities",      "name": "Key Discussion Points",      "etId": null, "repeat": { "item": "#agenda-highlights .cards-grid > .card", "label": ".card-title" } },
     { "id": "partners",        "name": "Brands At The Summit",       "etId": null, "repeat": { "item": "#brands-bnr .tier-group", "label": ".tier-name" } },

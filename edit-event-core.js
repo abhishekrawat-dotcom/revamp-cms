@@ -59,9 +59,11 @@
                                    snapshot}, or null when the site has never been saved
      .fetchSiteOutline(eventId)   GET    /api/event/site-outline -> {of: 'live'|'saved'|'none', version, places,
                                    previous, logo}: what the site shows of the Content tabs (the console's notes)
-     .saveSite(eventId, {templateId, baseVersion, snapshot, html, force})
-                                  PUT    /api/event/site -> {version, updatedAt}; 409 -> err.current
+     .saveSite(eventId, {templateId, baseVersion, snapshot, html, force, note, automatic})
+                                  PUT    /api/event/site -> {version, updatedAt, unchanged?}; 409 -> err.current
                                    {version, updatedAt, updatedBy} (someone else saved first)
+     .stageSiteContent(eventId)   POST   /api/event/site/records -> Content drawn into the saved site as a
+                                   version of its own (see the function)
      .publishEvent(eventId)       POST   /api/event/publish -> {publishedPath, publishedUrl, publishedAt,
                                    publishedVersion}; 409 when no site was ever saved. Publishes the SAVED
                                    site. (publishEvent(eventId, html) — the older form — still works.)
@@ -714,8 +716,18 @@ window.RevampCore = (function(){
     };
     if (site.force === true) body.force = true;
     if (site.note) body.note = String(site.note);
+    /* the editor's own load-time updates, saved apart from the person's changes (recorded as automatic) */
+    if (site.automatic === true) body.automatic = true;
     // 409 -> err.current {version, updatedAt, updatedBy}: someone saved on top of baseVersion
     return api('PUT', '/api/event/site', body);  // -> {version, updatedAt}
+  }
+
+  /* After a change in Content: the event's records drawn into the saved site, kept as a version of its own on the
+     staging address (POST /api/event/site/records) -> { notSaved } | { staged, version, summary, items, unplaced,
+     needsEditor, published, publishedVersion, pending: { id, toVersion, reviewPath } | null, approvalRequired } */
+  function stageSiteContent(eventId){
+    return need(eventId, 'stageSiteContent: eventId') ||
+      api('POST', '/api/event/site/records', { eventId: String(eventId).trim() });
   }
 
   /* What the site shows: the event's details and Content-tab records, in the shape of the public
@@ -1434,7 +1446,7 @@ window.RevampCore = (function(){
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
-    fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
+    fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,

@@ -566,6 +566,9 @@ async function browserPart() {
     pg.on('request', serve);
     if (size.device) await pg.emulate(puppeteer.KnownDevices[size.device]);
     else await pg.setViewport({ width: size.w, height: size.h, deviceScaleFactor: 1 });
+    /* the colours checked here are the light theme's: headless Chrome otherwise follows the computer's own
+       appearance, and a Mac that turns Dark by itself in the evening made this test fail with nothing changed */
+    await pg.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
     await pg.goto(ORIGIN + url, { waitUntil: 'networkidle0', timeout: 30000 });
     await new Promise(function (r) { setTimeout(r, 300); });
     return pg;
