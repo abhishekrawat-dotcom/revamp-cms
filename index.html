@@ -1,7 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The doctype and the viewport line (UX-038): without them a phone laid this page out 980 px wide in quirks mode,
+     where the phone rule below never applied and the sign-in button sat under the marketing panel. -->
 <title>Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<link rel="stylesheet" href="app-logo.css">
 <style>
   :root{
     --bg: #FAF7F6;
@@ -136,9 +145,8 @@
 
   /* ============ LOGIN VIEW ============ */
   #view-login{
-    min-height: 100vh; display: grid; grid-template-columns: minmax(0,5fr) minmax(0,6fr);
+    min-height: 100vh; display: grid; grid-template-columns: minmax(0,5fr) minmax(0,6fr); position: relative;
   }
-  @media (max-width: 860px){ #view-login{ grid-template-columns: 1fr; } .login-art{ display:none; } }
 
   .login-art{
     background: linear-gradient(180deg, var(--accent-soft), var(--surface-2));
@@ -172,20 +180,36 @@
   }
   .login-hint{ margin-top: 10px; color: var(--text-muted); font-size: 12.5px; text-align: center; }
 
-  /* the theme switch sits in the page's corner, where every other page has it, not under the sign-in button (UX-007) */
-  .login-foot{ position: fixed; top: 16px; right: 16px; z-index: 5; display:flex; align-items:center; }
+  /* the theme switch, in the page's top-right corner on every width (it floated alone under the button) */
+  .login-theme{ position: absolute; top: 16px; right: 16px; z-index: 2; display: inline-flex; align-items: center; }
+  /* the logo over the card, for phones only: on a wide screen it is in the panel on the left */
+  .login-brand-phone{ display: none; margin-bottom: 24px; }
+  .login-brand-phone .brand-logo-img{ height: 28px; }
+
+  /* Phones (UX-038): the sign-in card first, near the top, so "Continue with Google" is in view on a short screen.
+     This comes after .login-art's own rule on purpose: it used to come before it, so display:flex won and the
+     panel never hid. */
+  @media (max-width: 860px){
+    #view-login{ grid-template-columns: 1fr; }
+    .login-art{ display: none; }
+    .login-form-wrap{ align-items: flex-start; padding: 72px 20px 32px; }
+    .login-brand-phone{ display: block; }
+  }
 
   @media (prefers-reduced-motion: reduce){
     *{ transition: none !important; animation: none !important; }
   }
 </style>
+</head>
+<body>
 
 <div id="app">
 
   <section id="view-login">
     <div class="login-art">
       <div class="brand-mark">
-        <img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">
+        <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ET Oneworld">
+        <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ET Oneworld">
       </div>
 
       <div class="art-illustration" aria-hidden="true">
@@ -223,8 +247,14 @@
       </div>
     </div>
 
+    <div class="login-theme"><span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span></div>
+
     <div class="login-form-wrap">
       <div class="login-card">
+        <div class="login-brand-phone">
+          <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ET Oneworld">
+          <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ET Oneworld">
+        </div>
         <!-- shown until it is known whether someone is already signed in, so a signed-in visitor is
              forwarded without ever being offered the sign-in button -->
         <p class="login-status" id="login-checking" role="status">Checking your session&hellip;</p>
@@ -241,9 +271,6 @@
           <p class="login-hint" id="sso-hint" hidden>Finish signing in in the Google window that opened. If you closed it, this button comes back in a few seconds.</p>
         </div>
 
-        <div class="login-foot">
-          <span data-theme-toggle-target style="display:inline-flex;align-items:center;margin-left:auto;"></span>
-        </div>
       </div>
     </div>
   </section>
@@ -400,3 +427,5 @@
     });
   })();
 </script>
+</body>
+</html>

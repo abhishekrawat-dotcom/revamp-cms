@@ -9015,7 +9015,10 @@ var EDITOR_ONLY_ATTRS = ['data-rv-logo-note', 'data-editable', 'contenteditable'
   /* which of a site's pages is shown (rv-pages.js): written as the page is served (sitePages.selectPage), never stored */
   'data-rv-current-page',
   /* an imported page's motion has been taken over (et-runtime.js startMotion): true of one visit only */
-  'data-rv-motion-ready'];
+  'data-rv-motion-ready',
+  /* the sample words an added section or block came with, kept so the editor can mark them until they are replaced
+     (editor-template-ui.js markPlaceholders) */
+  'data-rv-placeholder'];
 var EDITOR_ONLY_CLASSES = ['ed-selected', 'sec-active', 'show-ai-markers'];
 var AI_BADGE_CLASSES = ['ai-prov-badge', 'ai-skip-badge', 'ai-media-skip-badge'];
 var RUNTIME_SCRIPT = /\/(?:templates\/_shared\/(?:rv-data|rv-live|rv-forms|rv-blend|rv-award-cta|rv-pages)\.js|editor-fill\.js)$/;

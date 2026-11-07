@@ -10,6 +10,10 @@ html[data-rv-editing] [data-editable]{ cursor:pointer; }
 html[data-rv-editing] [data-editable]:hover{ outline:1.5px dashed #8aa; outline-offset:2px; }
 html[data-rv-editing] [data-editable].ed-selected{ outline:2px solid #ED1C24 !important; outline-offset:2px; }
 html[data-rv-editing] [data-editable][contenteditable="true"]{ cursor:text; outline:2px solid #B3151B !important; outline-offset:2px; }
+/* Words or a picture box an added section or block came with, not replaced yet (editor-template-ui.js
+   markPlaceholders): marked, so sample copy is not taken for the event's own before it goes live. Pointed at,
+   selected or typed into, the outlines above win. */
+html[data-rv-editing] [data-rv-placeholder]{ outline:1.5px dashed #C98A1B; outline-offset:2px; }
 
 html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; outline-offset:-2px; }
 

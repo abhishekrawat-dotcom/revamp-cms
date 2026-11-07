@@ -34,7 +34,9 @@
      selectedStyle() -> { fontFamily, fontSize, fontWeight, color } of the selected text or button, or null;
      styleSelected({ fontFamily, fontSize, fontWeight, color }) restyles that one element.
      host.onDesignChange() is called whenever the design shown by those may have changed, and
-     host.onSelectionChange({ kind, canStyle } | null) whenever another element, or none, is selected.
+     host.onSelectionChange({ kind, canStyle } | null) whenever another element, or none, is selected;
+     host.styleSelection(button) opens the selected text's own font, size, weight and color under the "Aa" of its
+     toolbar (UX-075).
    Internal pages (templates/_shared/rv-pages.js): a site whose page carries <meta name="rv-pages"> has a page
    switcher in the top bar; the canvas shows one page at a time (the top bar and footer on every page), the
    section list, moves and the section picker work on the page shown, and a section added there is on that page.
@@ -146,7 +148,9 @@
 
   function start() {
     clearLoadError();
+    setOpening('Loading the event…');
     if (!eventId) { currentEvent = null; return boot(urlTemplateId); }
+    prefetchApproval();
     return RevampCore.fetchEvent(eventId).then(function (ev) {
       currentEvent = ev;
       heroVideo = ev.heroVideo || null;
@@ -155,11 +159,15 @@
       var tplId = (ev.site && ev.site.templateId) || ev.templateId || urlTemplateId;
       if (!tplId) { showLoadError(noSiteError()); return false; }
       if (tplId !== urlTemplateId) {
-        // the address names another site than the event's own (an old or hand-edited link, or none at all)
-        var url = new URL(location.href);
-        url.searchParams.set('template', tplId);
-        location.replace(url.href);
-        return new Promise(function () {});
+        /* the address names another site than the event's own, or none (the event rail's Design link carries only
+           the event, so the console is not loaded first just to look it up — UX-077): the address is put right in
+           place and the site opens at once, without loading this page, and the event, a second time */
+        try {
+          var url = new URL(location.href);
+          url.searchParams.set('template', tplId);
+          history.replaceState(history.state, '', url.href);
+        } catch (e) { /* the address stays as it was; the event's own site opens either way */ }
+        urlTemplateId = tplId;
       }
       return boot(tplId);
     }, function (err) {
@@ -179,12 +187,15 @@
     var earlyDraft = fromCreate() ? readHandoffDraft() : null;
 
     mountOpts = { sectionOrder: earlyDraft && earlyDraft.sectionOrder };
+    setOpening('Loading the site…');
     return RevampCanvas.mount(frame, templateId, mountOpts).then(function (c) {
       canvas = c;
+      setOpening('Opening the latest version…');
       return resolveInitialContent();
     }).then(function () {
       // real Content-tab data (speakers/partners/faq/contacts/glimpses) overlaid on top of whatever base
       // content resolveInitialContent() just settled on — see applySubcollectionOverlay()'s own comment.
+      setOpening('Adding your Content-tab records…');
       return applySubcollectionOverlay();
     }).then(function () {
       if (!pageWired) {
@@ -225,6 +236,7 @@
       loadSiteInfo().then(saveFirstVersion);
       ownerLogoOffer();
       logoUnitNotice();
+      setOpening(null);
       focusAskedSection();
       /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
          them into it), so the picture's own step, and its Undo, hold the picture alone */
@@ -249,6 +261,37 @@
     })[0];
     if (sec) setTimeout(function () { if (isLive(sec)) selectSection(sec); }, 400);
   }
+  /* ---------- while the site opens (UX-077) ----------
+     Until the site is on the canvas, filled with the event's own content, the canvas says so — the event's name
+     and the step under way (#stage-loading in custom_editor.html) — and the editor's tools wait, marked unavailable
+     (the page's own handlers check data-opening). step: the line under way; null once it is over either way (the
+     site is open, or a lasting message stands in its place). */
+  function setOpening(step) {
+    var on = step !== null && step !== undefined;
+    var root = document.querySelector('.ed'), main = document.querySelector('.ed-main'), box = document.getElementById('stage-loading');
+    if (root) { if (on) root.setAttribute('data-opening', ''); else root.removeAttribute('data-opening'); }
+    if (main) { if (on) main.setAttribute('aria-busy', 'true'); else main.removeAttribute('aria-busy'); }
+    Array.prototype.forEach.call(document.querySelectorAll('.ed-rail button'), function (b) {
+      if (on) b.setAttribute('aria-disabled', 'true'); else b.removeAttribute('aria-disabled');
+    });
+    if (!box) return;
+    box.hidden = !on;
+    if (!on) return;
+    var title = document.getElementById('stage-loading-title'), line = document.getElementById('stage-loading-step');
+    var name = currentEvent && currentEvent.name;
+    if (title) title.textContent = name ? 'Opening ' + name + '…' : eventId ? 'Opening the site…' : 'Opening the design…';
+    if (line) line.textContent = step;
+  }
+  /* Who approves, which version is live and what waits for approval (GET /api/event/approval): asked as the editor
+     opens, beside the event and the site, not after everything else — the Save button and the state chip beside it
+     come with the site (UX-077). loadSiteInfo() takes the answer. (Not askApproval(): that is Publish's "Send for
+     approval" question.) */
+  var approvalAsk = null;
+  function prefetchApproval() {
+    approvalAsk = eventId && window.RevampCore && RevampCore.fetchApproval ? RevampCore.fetchApproval(eventId) : null;
+    // answered before loadSiteInfo() is there to take it: a refusal is not left unhandled meanwhile
+    if (approvalAsk) approvalAsk.then(null, function () {});
+  }
 
   /* ---------- when the site cannot be opened ----------
      A lasting panel where the canvas would be, saying what happened in the owner's words and offering what can
@@ -256,6 +299,7 @@
      on a site are put away. */
   function showLoadError(spec) {
     clearLoadError();
+    setOpening(null);
     document.getElementById('btn-publish').disabled = true;
     document.getElementById('btn-preview').disabled = true;
     document.body.classList.add('ed-load-failed');
@@ -360,8 +404,12 @@
       meta = 'Template preview';
     }
     if (nameEl) { nameEl.textContent = name || '\u00a0'; nameEl.title = name; }
-    if (metaEl) metaEl.textContent = meta;
+    // cut short in a narrow top bar: the whole line is in its tooltip (UX-078)
+    if (metaEl) { metaEl.textContent = meta; metaEl.title = meta; }
     document.title = (name ? name + ' - ' : '') + 'Site editor';
+    // the canvas's "Opening \u2026" names the event as soon as it is known
+    var opening = document.getElementById('stage-loading-title');
+    if (opening && name && ev && document.querySelector('.ed[data-opening]')) opening.textContent = 'Opening ' + name + '\u2026';
   }
 
   /* The hand-off is one slot in this browser holding the newest Create Event result, whichever event that
@@ -1659,6 +1707,7 @@
     clearTimeout(commitTimer); commitTimer = null;
     if (!canvas || remounting) return false;
     keepFormSectionsShown(canvas.doc);
+    settlePlaceholders();
     var replacing = typing && typingPtr === undoPtr && undoPtr > 0;
     if (!typing) typingPtr = -1;
     var snap = canvas.snapshot(undoStack[undoPtr]);
@@ -1890,6 +1939,9 @@
   function buildToolbar(el) {
     var type = el.getAttribute('data-editable');
     var link = canLink(el) ? '<button data-action="link" title="Where this leads when clicked">Link</button>' : '';
+    /* the font, size, weight and color of this one text or button, right where it is selected: the Theme panel's
+       settings are the whole site's (UX-075) */
+    var look = host && host.styleSelection ? '<button class="tpl-tb-style" data-action="text-style" title="Font, size, weight and color of this ' + (type === 'button' ? 'button' : 'text') + ' only" aria-label="Style this ' + (type === 'button' ? 'button' : 'text') + '" aria-haspopup="dialog"><span aria-hidden="true">Aa</span></button>' : '';
     var html = '';
     if (type === 'text') {
       html +=
@@ -1897,13 +1949,14 @@
         '<button class="icon-only" data-action="italic" title="Italic"><i>I</i></button>' +
         '<button class="icon-only" data-action="underline" title="Underline"><u>U</u></button>' +
         '<button class="icon-only" data-action="strikethrough" title="Strikethrough"><s>S</s></button>' +
+        (look ? '<span class="tpl-tb-sep"></span>' + look : '') +
         '<span class="tpl-tb-sep"></span>' +
         '<button class="icon-only" data-action="align-left" title="Align left">&#8676;</button>' +
         '<button class="icon-only" data-action="align-center" title="Align center">&#8596;</button>' +
         '<button class="icon-only" data-action="align-right" title="Align right">&#8677;</button>' +
         (link ? '<span class="tpl-tb-sep"></span>' + link : '');
     } else if (type === 'button') {
-      html += link;
+      html += look + (look && link ? '<span class="tpl-tb-sep"></span>' : '') + link;
     } else if (type === 'image') {
       html += '<button data-action="replace-image" title="Replace image">Replace image</button>' +
         '<button data-action="alt-text" title="Alt text">Alt text</button>' + link;
@@ -2042,21 +2095,11 @@
     } else if (action === 'link') {
       if (linkPop.hidden) openLinkPop(); else closeLinkPop();
     } else if (action === 'replace-image') {
-      var picEl = selectedEl;
-      openPictureDialog('Replace image', canvas.pictureOf(picEl), function (url) {
-        if (!picEl.isConnected) return;
-        /* a logo unit whose own picture the owner has replaced no longer needs the note about the one it replaced —
-           not so the ET logo beside an event name set in type (rv-lu-et), which the note is not about — and the
-           new picture gets its copy for a dark background (darkCopyFor) */
-        var unit = picEl.closest ? picEl.closest('[data-rv-logo-unit]') : null;
-        var ownPicture = !!unit && picEl.classList.contains('rv-lu-img');
-        if (ownPicture) unit.removeAttribute('data-rv-logo-note');
-        canvas.setPicture(picEl, url); clearAiGenerated(picEl); commitNow(); repositionToolbars();
-        if (ownPicture) { logoUnitNotice(); darkCopyFor(unit); }
-      });
+      replacePicture(selectedEl, 'Replace image');
     } else if (action === 'alt-text') {
-      var alt = prompt('Alt text', selectedEl.getAttribute('alt') || selectedEl.getAttribute('data-alt') || '');
-      if (alt !== null) { if (selectedEl.tagName === 'IMG') selectedEl.setAttribute('alt', alt); else selectedEl.setAttribute('data-alt', alt); clearAiGenerated(selectedEl); commitNow(); }
+      askAltText(selectedEl);
+    } else if (action === 'text-style') {
+      if (host.styleSelection) host.styleSelection(btn, selectedEl.getAttribute('data-editable'));
     } else if (action === 'duplicate') {
       if (editingEl) exitEdit(editingEl);
       var clone = selectedEl.cloneNode(true);
@@ -2352,7 +2395,24 @@
     }
     function dirty() { return loaded && (val('html') !== loaded.html || val('css') !== loaded.css || val('js') !== loaded.js); }
     function close() { scrim.remove(); document.removeEventListener('keydown', onKey, true); }
-    function askClose() { if (!dirty() || window.confirm('Close without applying your changes?')) close(); }
+    /* Code changed here and not applied is asked about in the editor's own dialog, over this one, with "Keep editing"
+       focused and the way that throws it away in red — not the browser's grey box (UX-079). One question at a time:
+       the Escape that closes the question is not also taken for another "Close". */
+    var asking = false;
+    function askUnapplied(title, text, goLabel) {
+      if (asking) return Promise.resolve(false);
+      asking = true;
+      return ask({ title: title, text: text, actions: [
+        { key: 'stay', label: 'Keep editing', kind: 'secondary', autofocus: true },
+        { key: 'go', label: goLabel, kind: 'danger' }
+      ] }).then(function (key) { asking = false; return key === 'go'; });
+    }
+    function askClose() {
+      if (asking) return;
+      if (!dirty()) { close(); return; }
+      askUnapplied('Close without applying your changes?', 'What you changed in the code here is not on the page yet. Closing now throws it away.', 'Close without applying')
+        .then(function (go) { if (go) close(); });
+    }
     function onKey(e) {
       // Escape first closes the editor's own find box
       if (e.key === 'Escape') { if (scrim.querySelector('.CodeMirror-dialog')) return; e.stopPropagation(); askClose(); }
@@ -2373,8 +2433,12 @@
     });
     pick.value = String(secs.indexOf(sec));
     pick.addEventListener('change', function () {
-      if (dirty() && !window.confirm('Switch section without applying your changes?')) { pick.value = String(secs.indexOf(sec)); return; }
-      load(secs[+pick.value]);
+      var to = +pick.value;
+      if (!dirty()) { load(secs[to]); return; }
+      // the picker shows the section being edited until the answer is in
+      pick.value = String(secs.indexOf(sec));
+      askUnapplied('Switch section without applying your changes?', 'What you changed in this section’s code is not on the page yet. Switching now throws it away.', 'Switch without applying')
+        .then(function (go) { if (go && document.contains(scrim)) { pick.value = String(to); load(secs[to]); } });
     });
     Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-tab]'), function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-dev-tab')); }); });
     $('rv-dev-close').addEventListener('click', askClose);
@@ -2425,8 +2489,9 @@
   /* ---------- choosing a picture ----------
      For a picture on the page and for a section's background: a file from the computer (stored with the event,
      RevampCore.uploadImage) or the web address of a picture that is already online. The picture is only set
-     once it is known to load. apply(url) does the setting. */
-  function openPictureDialog(title, current, apply) {
+     once it is known to load. apply(url) does the setting; said: what is said once it has (else "Picture updated";
+     false: nothing, apply() says it). */
+  function openPictureDialog(title, current, apply, said) {
     var canUpload = !!(eventId && window.RevampCore && RevampCore.uploadImage);
     var handle = host.openDialog({
       title: title,
@@ -2458,7 +2523,10 @@
         fail(workSafety.busyLine('working') + '. Press “Use this picture” again when it is done.');
         return;
       }
-      if (handle && handle.close) handle.close(); apply(url); host.showToast('Picture updated');
+      if (handle && handle.close) handle.close();
+      /* apply() answers false when the picture could not go where it was meant to (and has said why); said false:
+         apply() says it itself (the Theme panel's background picture, with Undo) */
+      if (apply(url) !== false && said !== false) host.showToast(said || 'Picture updated');
     }
     function useAddress() {
       if (busy) return;
@@ -2492,6 +2560,61 @@
           fail((err && err.message) || 'The picture could not be uploaded. Please try again.');
         });
       });
+    }
+  }
+
+  /* A picture on the page replaced: from its toolbar (Replace image) and from the logo's notice (Replace logo). */
+  function replacePicture(picEl, title) {
+    if (!picEl || !picEl.isConnected) return;
+    openPictureDialog(title, canvas.pictureOf(picEl), function (url) {
+      if (!picEl.isConnected) return;
+      /* a logo unit whose own picture the owner has replaced no longer needs the note about the one it replaced —
+         not so the ET logo beside an event name set in type (rv-lu-et), which the note is not about — and the
+         new picture gets its copy for a dark background (darkCopyFor) */
+      var unit = picEl.closest ? picEl.closest('[data-rv-logo-unit]') : null;
+      var ownPicture = !!unit && picEl.classList.contains('rv-lu-img');
+      if (ownPicture) unit.removeAttribute('data-rv-logo-note');
+      canvas.setPicture(picEl, url); clearAiGenerated(picEl); commitNow(); repositionToolbars();
+      if (ownPicture) { logoUnitNotice(); darkCopyFor(unit); }
+    });
+  }
+
+  /* A picture's description (its alt text), asked in the editor's own dialog with what it is for, in place of the
+     browser's bare "Alt text" box (UX-079). Saved as one undo step; empty marks the picture as decoration. */
+  function askAltText(el) {
+    if (!el || !el.isConnected || !host || !host.openDialog) return;
+    var isImg = el.tagName === 'IMG', was = (isImg ? el.getAttribute('alt') : el.getAttribute('data-alt')) || '';
+    var handle = host.openDialog({
+      title: 'Describe this picture',
+      bodyHtml:
+        '<label for="rv-alt-text" style="display:block;margin:0 0 6px;font-size:12px;font-weight:700;">What it shows</label>' +
+        '<textarea id="rv-alt-text" rows="3" maxlength="300" style="width:100%;resize:vertical;" placeholder="e.g. The main hall set up for the opening keynote"></textarea>' +
+        '<p style="margin:8px 0 0;font-size:12px;opacity:.75;">Read out to people who cannot see the picture, and used by search engines. Leave it empty for a picture that is only decoration.</p>',
+      actions: [
+        { label: 'Cancel', kind: 'secondary' },
+        { label: 'Save', kind: 'primary', onClick: function () { return save(); } }
+      ]
+    });
+    var box = document.getElementById('rv-alt-text');
+    if (!box) return;
+    box.value = was;
+    box.focus();
+    box.select();
+    box.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.shiftKey) return;
+      e.preventDefault();
+      if (save() !== false && handle && handle.close) handle.close();
+    });
+    // false keeps the dialog open: ETB2B AI is changing the page, and the description waits here until it is done
+    function save() {
+      var alt = box.value.replace(/\s+/g, ' ').trim();
+      if (!el.isConnected || alt === was.replace(/\s+/g, ' ').trim()) return true;
+      if (aiWorking) { busyToast(); return false; }
+      el.setAttribute(isImg ? 'alt' : 'data-alt', alt);
+      clearAiGenerated(el);
+      commitNow();
+      showToast(alt ? 'Description saved.' : 'Saved as a picture that is only decoration.');
+      return true;
     }
   }
 
@@ -2982,13 +3105,16 @@
   }
   function renderPageSwitch(pages) {
     if (!pageSwitch) {
-      var acts = document.querySelector('.topbar .topbar-acts'), before = document.getElementById('btn-preview');
-      if (!acts) return;
+      /* in the tools row, beside the device switch, not in the top bar: there it squeezed the event's name to one
+         letter (UX-078). The row's right-hand part never scrolls away and stays in "Edit with AI" too, where the
+         live view shows the page picked here. */
+      var row = document.querySelector('.ed-rail .rail-fixed');
+      if (!row) return;
       pageSwitch = document.createElement('label');
       pageSwitch.className = 'ed-page-switch';
       pageSwitch.hidden = true;
       pageSwitch.innerHTML = '<span class="ed-page-switch-label">Page</span><select id="ed-page-select" aria-label="Page of the site shown"></select>';
-      acts.insertBefore(pageSwitch, before && before.parentNode === acts ? before : acts.firstChild);
+      row.insertBefore(pageSwitch, row.firstChild);
       pageSwitch.querySelector('select').addEventListener('change', function (e) { showPage(e.target.value); });
     }
     var select = pageSwitch.querySelector('select');
@@ -3004,6 +3130,9 @@
       });
     }
     select.value = currentPage;
+    // a tight tools row narrows the switch (custom_editor.html .is-snugger) and can cut a long page name: in full on hover
+    var shown = want.filter(function (p) { return p.slug === currentPage; })[0];
+    select.title = shown ? shown.title : '';
   }
 
   /* ---------- section toolbar (move / add / duplicate / hide / delete) ---------- */
@@ -3023,7 +3152,8 @@
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
     }
-    html += '<button class="icon-only" data-action="dev-section" title="Developer zone: this section’s HTML, CSS and JS" aria-label="Developer zone">&lt;/&gt;</button>';
+    /* the developer zone is not on every section's pill: it is for developers, under the tools row's ⋯ More, where it
+       opens on the section selected (UX-080) */
     html += '<button class="danger" data-action="delete-section" title="Delete section">Delete</button>';
     secToolbar.innerHTML = html;
   }
@@ -3084,8 +3214,6 @@
       host.pickSection(sec);
     } else if (action === 'add-item') {
       selectNewItem(addRepeatItem(sec));
-    } else if (action === 'dev-section') {
-      openDevZone(sec);
     } else if (action === 'redesign-section') {
       openRedesignDialog(sec);
     } else if (action === 'section-background') {
@@ -3246,12 +3374,85 @@
       el = canvas.createGenericSection(spec.name, spec.html, restoreOpts().siteCss);
       name = spec.name;
     }
+    // a ready-made design comes with sample words and empty picture boxes, marked until they are replaced
+    var samples = spec.libraryId ? 0 : markPlaceholders(el);
     canvas.insertSection(el, isLive(afterEl) ? afterEl : activeSectionEl);
     commitNow();
     selectSectionOnly(el);
     canvas.scrollToSection(el);
-    showToast('Added "' + name + '".');
+    showToast('Added "' + name + '".' + (samples ? ' Its sample text has a dashed amber outline until you write this event’s own over it.' : ''));
     return el;
+  }
+
+  /* ---------- placeholders (UX-081) ----------
+     What a ready-made design or a new block brings with it ("A clear overview of what awaits", "New heading", an
+     empty picture box) is marked with what it said (data-rv-placeholder), outlined on the canvas (editor-canvas.css)
+     and listed before publishing. It stops being one as soon as its words differ or the box shows a picture, by any
+     road — typed, ETB2B AI, a paste (editorWords.placeholderLeft); the mark then comes off as the change is recorded
+     (settlePlaceholders, in record()). The mark never reaches a published page (api.js EDITOR_ONLY_ATTRS).
+     -> how many were marked */
+  function markPlaceholders(root) {
+    var n = 0;
+    var all = [root].concat(Array.prototype.slice.call(root.querySelectorAll('[data-editable]')));
+    all.forEach(function (el) {
+      var kind = el.getAttribute('data-editable');
+      if (kind !== 'text' && kind !== 'button' && kind !== 'image') return;
+      if (kind === 'image' ? canvas.pictureOf(el) : !/\S/.test(el.textContent)) return;
+      el.setAttribute('data-rv-placeholder', kind === 'image' ? '' : el.textContent.replace(/\s+/g, ' ').trim());
+      n++;
+    });
+    return n;
+  }
+  function settlePlaceholders() {
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-placeholder]'), function (el) {
+      if (!editorWords.placeholderLeft(el.getAttribute('data-editable'), el.getAttribute('data-rv-placeholder'), el.textContent, !!canvas.pictureOf(el))) {
+        el.removeAttribute('data-rv-placeholder');
+      }
+    });
+  }
+  // the ones still on the site: a hidden section is not saved, so it never goes live
+  function shownPlaceholders() {
+    if (!canvas || remounting || !canvas.doc) return [];
+    return Array.prototype.filter.call(canvas.doc.querySelectorAll('[data-rv-placeholder]'), function (el) {
+      return !el.closest('.is-hidden-sec') &&
+        editorWords.placeholderLeft(el.getAttribute('data-editable'), el.getAttribute('data-rv-placeholder'), el.textContent, !!canvas.pictureOf(el));
+    });
+  }
+  /* the first one brought into view and selected — on its own page, in the manual editor (as revealLogoUnit) */
+  function showPlaceholders() {
+    var first = shownPlaceholders()[0];
+    if (!first) return;
+    function go() {
+      if (!first.isConnected) return;
+      var sec = first.closest('[data-rv-section]');
+      if (sec && pagesLib() && sitePages().length && !onShownPage(sec)) {
+        var on = pagesLib().pageOfElement(sec);
+        if (on !== '*') showPage(on);
+      }
+      revealElement(first);
+    }
+    var aiMode = window.RevampEditorMode;
+    if (aiMode && aiMode.mode && aiMode.mode() === 'ai') { aiMode.setMode('manual'); setTimeout(go, 120); } else go();
+  }
+  /* Before publishing: true when some are left — the person is asked, and go() runs only on "… anyway". */
+  function placeholderGate(go) {
+    if (!canvas || remounting) return false;
+    flush();
+    settlePlaceholders();
+    var left = shownPlaceholders();
+    if (!left.length) return false;
+    var pictures = left.filter(function (el) { return el.getAttribute('data-editable') === 'image'; }).length;
+    var sample = (left.filter(function (el) { return el.getAttribute('data-editable') !== 'image'; })[0] || {}).textContent || '';
+    var pub = document.getElementById('btn-publish');
+    var words = editorWords.placeholderAsk(left.length - pictures, pictures, sample, pub ? pub.textContent : '');
+    ask({ title: words.title, text: words.text, actions: [
+      { key: 'anyway', label: words.anyway, kind: 'secondary', aside: true },
+      { key: 'show', label: words.show, kind: 'primary', autofocus: true }
+    ] }).then(function (key) {
+      if (key === 'show') showPlaceholders();
+      else if (key === 'anyway' && typeof go === 'function') go();
+    });
+    return true;
   }
 
   /* ---------- Add elements (heading / text / button / image / divider / spacer) ----------
@@ -3317,12 +3518,17 @@
       showToast('Added the form “' + (formName(opts.formId) || opts.formId) + '”. Visitors fill it in right here on the page.');
       return embed;
     }
-    var src = '';
-    if (kind === 'image') {
-      src = (prompt('Image URL', 'https://') || '').trim();
-      if (!src || src === 'https://') return null;
-      if (!/^https?:\/\/[^\s"<>]+$/i.test(src)) { showToast('That is not a picture’s web address. It should start with https://', { kind: 'error' }); return null; }
+    /* a picture is chosen first, in the same dialog as Replace image — from the computer or by its web address —
+       and goes where the selection was when Image was pressed (UX-079) */
+    if (kind === 'image' && !opts.src) {
+      var at0 = sec === activeSectionEl ? blockAnchor(sec) : null;
+      openPictureDialog('Add a picture', '', function (url) {
+        if (!isLive(sec) || sec.classList.contains('is-hidden-sec')) { showToast('The section you were adding to is no longer on the page, so the picture was not added.', { kind: 'error' }); return false; }
+        return !!addBlock('image', { src: url, section: sec, after: at0 && at0.isConnected && sec.contains(at0) ? at0 : null });
+      }, 'Added a picture.');
+      return null;
     }
+    var src = kind === 'image' ? opts.src : '';
     if (editingEl) exitEdit(editingEl);
     var node = canvas.doc.createElement(spec.tag);
     node.className = spec.cls;
@@ -3330,15 +3536,18 @@
     if (spec.text) node.textContent = spec.text;
     if (kind === 'button') node.setAttribute('href', '#');
     if (kind === 'image') { node.setAttribute('src', src); node.setAttribute('alt', ''); }
-    var anchor = blockAnchor(sec);
+    var anchor = opts.after !== undefined ? opts.after : blockAnchor(sec);
     if (anchor) anchor.after(node); else contentBox(sec).appendChild(node);
     canvas.ensureBlockStyle();
+    // "New heading", "Write your text here." and "Button" are placeholders until they are written over
+    markPlaceholders(node);
     clearAiGenerated(node);
     commitNow();
     selectElement(node);
     node.scrollIntoView({ block: 'nearest' });
     repositionToolbars();
-    showToast('Added ' + (/^[aeiou]/.test(spec.name) ? 'an ' : 'a ') + spec.name + '.');
+    // a picture says so itself as the dialog closes (openPictureDialog)
+    if (kind !== 'image') showToast('Added ' + (/^[aeiou]/.test(spec.name) ? 'an ' : 'a ') + spec.name + '.');
     return node;
   }
 
@@ -3594,12 +3803,12 @@
      has nothing for (a theme colour on a design whose colours are fixed, corners where there are no buttons or
      cards) is refused with the reason, so nothing reports a change that did not happen. */
   var NOTHING_TO_CHANGE = {
-    themeColor: 'This design uses fixed colors, so there is no site-wide theme color to change. Select a text and use “Selected text” to change its color.',
-    textColor: 'This design sets the color of each text itself. Select a text and use “Selected text” to change its color.',
-    bodyFont: 'This design sets the font of each text itself. Select a text and use “Selected text” to change its font.',
+    themeColor: 'This design uses fixed colors, so there is no site-wide theme color to change. Click a text on the page and use Aa on its toolbar to change its color.',
+    textColor: 'This design sets the color of each text itself. Click a text on the page and use Aa on its toolbar to change its color.',
+    bodyFont: 'This design sets the font of each text itself. Click a text on the page and use Aa on its toolbar to change its font.',
     sectionSpacing: 'This design sets the space between its sections itself, so this setting has nothing to change.',
     radius: 'This design has no buttons or cards for the corner setting to round.',
-    bgColor: 'This design gives each section its own fixed background, so there is no page background to change. Ask in Chat to recolor a section.',
+    bgColor: 'This design gives each section its own fixed background, so there is no page background to change. Ask ETB2B AI to recolor a section.',
     bgImage: 'Each section of this design has its own background. To change a section’s picture, select the section and use “Background picture”.',
     bgOpacity: 'Each section of this design has its own background, so there is no page picture to fade.',
     reveals: 'This design has no scroll effects to switch off.'
@@ -5930,22 +6139,34 @@
     var unit = shownLogoNotes()[0];
     var row = document.querySelector('#ed-notices [data-notice="logo-unit"]');
     if (!unit) { logoNoticeShown = ''; if (row && host && host.clearNotice) host.clearNotice('logo-unit'); return; }
-    var text = 'Logo unit: ' + unit.getAttribute('data-rv-logo-note') + ' Answer this before publishing.';
-    if (row && text === logoNoticeShown) return;           // as it is: not drawn again on every change
-    logoNoticeShown = text;
-    showNotice('logo-unit', {
-      kind: 'warn', text: text,
-      actions: [
-        { label: 'Show me', onClick: revealLogoUnit },
-        /* checked and fine: the note comes off the unit, so it is not shown again the next time the site opens */
-        { label: 'Looks right', onClick: function () {
-          if (aiWorking) { busyToast(); return; }
-          Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { el.removeAttribute('data-rv-logo-note'); });
-          commitNow();
-          logoUnitNotice();
-        } }
-      ]
-    });
+    /* one line saying what to check, the generator's whole note behind Details, in plain words; that it must be
+       answered before publishing is said by Publish itself (logoUnitGate), not on every view (UX-082) */
+    var note = unit.getAttribute('data-rv-logo-note');
+    var text = editorWords.logoHeadline(note), details = editorWords.plainLogoNote(note);
+    var canReplace = !!unit.querySelector('img.rv-lu-img:not(.rv-lu-dark)');
+    var drawn = text + '\n' + details + '\n' + canReplace;
+    if (row && drawn === logoNoticeShown) return;           // as it is: not drawn again on every change
+    logoNoticeShown = drawn;
+    var actions = [
+      { label: 'Show me', onClick: revealLogoUnit },
+      /* checked and fine: the note comes off the unit, so it is not shown again the next time the site opens */
+      { label: 'Looks right', onClick: function () {
+        if (aiWorking) { busyToast(); return; }
+        Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-logo-note]'), function (el) { el.removeAttribute('data-rv-logo-note'); });
+        commitNow();
+        logoUnitNotice();
+      } }
+    ];
+    /* this edition's own artwork in its place: the logo brought into view and the picture dialog opened on it. A
+       logo set in type (the event's name, where no picture could be used) has no picture to replace. */
+    if (canReplace) actions.push({ label: 'Replace logo', onClick: function () {
+      if (aiWorking) { busyToast(); return; }
+      var u = shownLogoNotes()[0], pic = u && u.querySelector('img.rv-lu-img:not(.rv-lu-dark)');
+      if (!pic) return;
+      revealLogoUnit();
+      replacePicture(pic, 'Replace the logo');
+    } });
+    showNotice('logo-unit', { kind: 'warn', text: text, details: details, actions: actions });
   }
   /* the unit with the open note (else the hero's unit) brought into view and its picture selected, so the
      toolbar offers Replace image: in the manual editor (not the AI live view), on the home page (the banner's) */
@@ -5975,10 +6196,12 @@
       showToast('The logo\'s copy for a dark background is still being made. Publish again in a moment.', { kind: 'error' });
       return true;
     }
-    if (!shownLogoNotes().length) return false;
+    var open = shownLogoNotes();
+    if (!open.length) return false;
     logoUnitNotice();
     revealLogoUnit();
-    showToast('Answer the logo unit\'s notice first: check the logo, then press “Looks right” or replace the picture.', { kind: 'error' });
+    var pic = open[0].querySelector('img.rv-lu-img:not(.rv-lu-dark)');
+    showToast('Answer the logo check before publishing: look at the logo, then press “Looks right”' + (pic ? ' or “Replace logo”' : '') + ' in the notice above the page.', { kind: 'error' });
     return true;
   }
   var DARK_COPY_FAILED = 'In a dark theme the banner stays light, so the logo shows as drawn: its copy for a dark background could not be made just now. Replace the picture again to try once more.';
@@ -6367,6 +6590,79 @@
   })();
   /* workSafety:end */
 
+  /* editorWords:begin — what the editor says about the logo's check (UX-082) and about copy that came with a section
+     or block the owner added (UX-081), and when such copy still counts as a placeholder. Plain functions of their
+     arguments that use nothing of the editor or the page: functions/lib/editor-tools.test.js runs this block as it is.
+       logoHeadline(note)  the notice's one line, read from the note the generator wrote on the logo
+       plainLogoNote(note) the note itself, for "Details", without the words only the team uses ("logo unit", "lock-up")
+       placeholderLeft(kind, original, text, hasPicture)  true while a marked element still shows what it came with
+       placeholderAsk(texts, pictures, sample, publishLabel)  the question before publishing while some are left */
+  var editorWords = (function () {
+    function squash(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+
+    /* Read from the note's first sentence that says something: a note is several of them, joined (the owner's upload
+       first, then the previous edition's logo). The earliest one a rule finds decides the line. */
+    var LOGO_LINES = [
+      [/The year in (the logo unit|your logo) was changed from (\S+) to (\S+?)(?=[\s;,.]|$)/, function (m) {
+        return m[1] === 'your logo' ? 'Check your logo: its year was changed from ' + m[2] + ' to ' + m[3] + '.'
+          : 'Check the logo: the year in the previous edition’s logo was changed from ' + m[2] + ' to ' + m[3] + '.';
+      }],
+      [/Your uploaded logo could not be (used|checked)/, function (m) { return 'Your uploaded logo could not be ' + m[1] + ', so the banner does not show it.'; }],
+      [/The previous edition's logo shows (\S+) and could not be updated/, function (m) { return 'Check the logo: the previous edition’s logo shows ' + m[1] + ', so the event’s name is shown instead.'; }],
+      [/The previous edition's logo could not be used/, function () { return 'Check the logo: the previous edition’s logo could not be used, so the event’s name is shown instead.'; }],
+      [/Your logo shows (\S+), not (\S+?),/, function (m) { return 'Check your logo: it shows ' + m[1] + ', not ' + m[2] + '.'; }],
+      [/could not be cropped out cleanly/, function () { return 'Check the logo: it still carries a mark that is not this edition’s own.'; }],
+      [/was cropped out of/, function () { return 'Check the logo: part of it was cropped out.'; }],
+      [/could not be (read|checked)|too large a file/, function () { return 'Check the logo: it could not be checked for you.'; }],
+      [/taller than it is wide/, function () { return 'Check the logo: the previous edition’s logo is used whole.'; }],
+      [/for a dark background/, function () { return 'Check the logo: it has no copy for a dark background.'; }],
+      [/^Your logo was checked/, function () { return 'Check your logo: it is used exactly as you uploaded it.'; }]
+    ];
+    function logoHeadline(note) {
+      var n = squash(note), best = null;
+      if (!n) return '';
+      LOGO_LINES.forEach(function (rule) {
+        var m = rule[0].exec(n);
+        if (m && (!best || m.index < best.m.index)) best = { m: m, say: rule[1] };
+      });
+      return best ? best.say(best.m) : 'Check the logo at the top of the site.';
+    }
+    function plainLogoNote(note) {
+      return squash(note)
+        .replace(/\b(t|T)he logo unit\b/g, '$1he logo').replace(/\blogo unit\b/gi, 'logo')
+        .replace(/\block-ups\b/g, 'logos').replace(/\block-up\b/g, 'logo')
+        .replace(/\bthe hero\b/g, 'the banner');
+    }
+
+    /* A placeholder is marked with what it said when it came (data-rv-placeholder); it stops being one once its
+       words are different by any road (typed, ETB2B AI, a paste), or, for a picture box, once it shows a picture.
+       Emptied, it is not a placeholder either: nothing of it would go live. */
+    function placeholderLeft(kind, original, text, hasPicture) {
+      if (kind === 'image') return !hasPicture;
+      var now = squash(text);
+      return now !== '' && now === squash(original);
+    }
+    function placeholderAsk(texts, pictures, sample, publishLabel) {
+      texts = texts || 0; pictures = pictures || 0;
+      var parts = [];
+      if (texts) parts.push(texts === 1 ? '1 placeholder text' : texts + ' placeholder texts');
+      if (pictures) parts.push(pictures === 1 ? '1 empty picture' : pictures + ' empty pictures');
+      var one = texts + pictures === 1;
+      sample = squash(sample);
+      if (sample.length > 60) sample = sample.slice(0, 57).replace(/\s+\S*$/, '') + '…';
+      return {
+        title: parts.join(' and ') + (one ? ' is' : ' are') + ' still on the page',
+        text: (one ? 'It came' : 'They came') + ' with a section or block you added' + (sample ? ', such as “' + sample + '”' : '') +
+          ', and would go live as ' + (one ? 'it is' : 'they are') + '. Write this event’s own words in, or delete what the site does not need. ' +
+          (one ? 'It has' : 'They have') + ' a dashed amber outline on the page.',
+        show: one ? 'Show it' : 'Show them',
+        anyway: squash(publishLabel || 'Publish') + ' anyway'
+      };
+    }
+    return { logoHeadline: logoHeadline, plainLogoNote: plainLogoNote, placeholderLeft: placeholderLeft, placeholderAsk: placeholderAsk };
+  })();
+  /* editorWords:end */
+
   /* ---------- save to staging / publish changes ----------
      The editor keeps every change in this browser as it is made. Nothing reaches the server until Save: that
      stores the site as a new version, puts it on the staging address and records what changed, by whom.
@@ -6405,7 +6701,11 @@
     if (!eventId) return Promise.resolve();
     // set as the page opened (resolveInitialContent); read here only when that could not
     if (!savedMark) savedMark = readMark();
-    return RevampCore.fetchApproval(eventId).then(function (a) {
+    /* the answer to the question asked as the editor opened (prefetchApproval) — unless something was saved meanwhile
+       (siteInfo is set by a save): that answer may be older than the save, so it is asked again */
+    var asked = approvalAsk && !siteInfo ? approvalAsk : RevampCore.fetchApproval(eventId);
+    approvalAsk = null;
+    return asked.then(function (a) {
       siteInfo = {
         savedVersion: a.savedVersion || 0, published: !!a.published, publishedVersion: a.publishedVersion || 0,
         pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false,
@@ -6746,6 +7046,15 @@
     busyLine: function () { return workSafety.busyLine(aiState); },
     /* true (and the logo unit's notice brought up) when publishing has to wait for it */
     logoUnitGate: logoUnitGate,
+    /* true when copy that came with an added section or block is still on the page: the person is asked, and
+       go() runs on "… anyway" (UX-081) */
+    placeholderGate: placeholderGate,
+    /* "… changed across the whole site — Undo" for a change made from the Theme panel or the "Aa" pop-over: the
+       change is recorded first, so Undo takes back that change and nothing older (UX-075) */
+    offerUndo: function (msg) { flush(); if (!aiWorking) offerUndo(msg); },
+    /* a picture from the computer or by its web address, checked to load first: apply(url), then said is shown
+       (the Theme panel's background picture) */
+    pickPicture: function (title, current, apply, said) { openPictureDialog(title, current, apply, said); },
     addRepeatItem: whenPageFree(addRepeatItem), removeRepeatItem: whenPageFree(removeRepeatItem),
     getDesign: getDesign, setDesign: whenPageFree(setDesign), designOptions: designOptions, checkImageUrl: checkImageUrl, themesInfo: themesInfo, applyTheme: whenPageFree(applyTheme),
     sectionEdgesInfo: sectionEdgesInfo, applySectionEdges: whenPageFree(applySectionEdges),
