@@ -101,6 +101,18 @@ check('UX-005 the dashboard keeps no table of its own', /\n  var EVENT_TYPES = \
   check('UX-014 ' + f[0] + ': #FF6B70 and the warm dark ground, for the computer\'s dark and for the switch\'s', /--accent:\s*#FF6B70;/.test(sysDark) && /--accent:\s*#FF6B70;/.test(dark) && /--bg:\s*#171514;/.test(dark) && /--bg:\s*#171514;/.test(sysDark));
   check('UX-014 ' + f[0] + ': no #FF0035 / #FF4D6D red and no cool greys left', !/#FF0035|#FF4D6D|#F7F7F4|#1B1A16|#141310/i.test(f[1]));
 });
+/* ETB2B AI's kit (etb2b-chat.css) is drawn on the dashboard and on every other page: it must not bring back the
+   palette this batch took off the dashboard, whether it reads the page's tokens (with fallbacks) or writes its own
+   palette. Another branch writes the kit's own palette as the dashboard's old values; when the two meet, this fails
+   until the kit's values are the console's (light #ED1C24, dark #FF6B70, warm neutrals). */
+var KIT = read('etb2b-chat.css');
+var OLD_DASH = ['#F7F7F4', '#F1F0EC', '#E7E5DF', '#E6E4DE', '#D7D4CB', '#1D1B17', '#6C6A60', '#9B988D', '#FF0035', '#D6002C', '#FFE3E8', '#141310', '#1B1A16',
+  '#232219', '#2C2A20', '#332F24', '#3E3A2C', '#EFEBDF', '#A6A192', '#726E60', '#FF4D6D', '#FF7A90', '#3A0C14', '#1B0508'];
+var kitOld = OLD_DASH.filter(function (h) { return KIT.toUpperCase().indexOf(h) !== -1; });
+check('UX-014 ETB2B AI\'s kit carries none of the dashboard\'s old reds and cool greys', kitOld.length === 0, kitOld);
+var kitDark = (/\[data-theme="dark"\] \.rvc\{[^}]*\}/.exec(KIT) || [''])[0];
+check('UX-014 …its red is the console\'s #ED1C24 (and #FF6B70 in a dark palette of its own, if it writes one)', /--rvc-accent:\s*(var\(--accent,\s*)?#ED1C24\)?;/i.test(KIT) &&
+  (!kitDark || /--rvc-accent:\s*#FF6B70;/i.test(kitDark)), kitDark.slice(0, 200));
 check('UX-014 the Figma import page reads the app\'s choice before it paints, and has the switch', FIGMA.indexOf('localStorage.getItem("revamp-theme")') !== -1 &&
   FIGMA.indexOf('<script src="../theme-toggle.js"></script>') !== -1 && FIGMA.indexOf('<span data-theme-toggle-target') !== -1);
 check('UX-014 …and its dark palette answers the switch (:root[data-theme="dark"]), not only the computer', /:root\[data-theme="dark"\]\{\n    --bg:#171514;[\s\S]*?--accent:#FF6B70;/.test(FIGMA));
@@ -131,7 +143,7 @@ check('UX-040 the meta line clips a dot that would start a line: the row reaches
 
 /* ---- UX-024 ETB2B AI is on the dashboard ---- */
 check('UX-024 the dashboard mounts ETB2B AI (its kit, its client, its mount point)', PAGE.indexOf('<script src="etb2b-chat.js"></script>') !== -1 && PAGE.indexOf('<script src="dash-bot-client.js"></script>') !== -1 &&
-  PAGE.indexOf('<div id="rv-dash-bot"></div>') !== -1 && PAGE.indexOf('<link rel="stylesheet" href="etb2b-chat.css">') !== -1);
+  /<div id="rv-dash-bot"(?: [a-z-]+="[^"]*")*><\/div>/.test(PAGE) && PAGE.indexOf('<link rel="stylesheet" href="etb2b-chat.css">') !== -1);
 
 /* ---- UX-028 Help ---- */
 check('UX-028 Help is a top-bar button beside the theme switch; the floating pill is gone', /<button class="nav-help-btn" id="btn-help" type="button" aria-label="Help" aria-haspopup="dialog">/.test(PAGE) &&
