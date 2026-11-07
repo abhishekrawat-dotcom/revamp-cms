@@ -4783,6 +4783,9 @@
     if (S.step === 1 && S.step1Phase === 'method' && !busy) renderAboutNote(carouselTemplate());
     if (S.step === 1 && S.step1Phase === 'details' && !busy){
       if ($('cat-bar-portal')) $('cat-bar-portal').textContent = S.basics.portal ? portalName(S.basics.portal) : '';
+      /* the section list's "About ETCIO" row names both portals (aboutPortalNote), and a portal dropped above
+         changes which rows start off: the list and its count are drawn again (the form beside it is left alone) */
+      if ($('sec-list')){ renderSecList(); refreshProgress(); }
       wireEtPicker();
       checkCurrentLink();
     }
@@ -4923,7 +4926,11 @@
     if (!own || !Object.prototype.hasOwnProperty.call(ABOUT_PORTALS, tplId)) return '';
     var named = ABOUT_PORTALS[tplId];
     if (named.indexOf(own) !== -1) return '';
-    var theirs = portalName(named[0]), mine = portalName(own);
+    /* Names only, never a portal's code ("cio", "retail"): before ET's roster has answered — a draft resumed on
+       another computer draws its section list at once — the other portal is named by the section's own heading
+       ("About ETCIO" -> ETCIO) and this event's portal is "this event". portalArrived draws it again with the
+       roster's names. */
+    var theirs = knownPortalName(named[0]) || ABOUT_HEADINGS[tplId].replace(/^About\s+/, ''), mine = knownPortalName(own) || 'this event';
     return short ? theirs + '’s own text, so it starts off for ' + mine + '. Switch it on to rewrite it in the site editor.'
       : 'Its “' + ABOUT_HEADINGS[tplId] + '” section is ' + theirs + '’s own text, so it starts switched off for ' + mine + '. Switch it on to rewrite it in the site editor.';
   }
@@ -7751,6 +7758,13 @@
     var tpl = templateById(S.template);
     var active = activeSection();
     var n = 0;
+    /* the list is drawn again after a switch is pressed or the roster comes: a row or switch that had the keyboard
+       focus gets it back, so a keyboard user is not sent to the top of the page */
+    var had = document.activeElement, refocus = '';
+    if (had && had !== host && typeof host.contains === 'function' && host.contains(had) && typeof had.getAttribute === 'function'){
+      if (had.getAttribute('data-sec-toggle')) refocus = '[data-sec-toggle="' + had.getAttribute('data-sec-toggle') + '"]';
+      else if (had.getAttribute('data-sec')) refocus = '[data-sec="' + had.getAttribute('data-sec') + '"]';
+    }
     host.innerHTML = secListRows().map(function(row){
       if (row.design){
         var r = row.design;
@@ -7787,6 +7801,9 @@
         schedulePreview();
       });
     });
+    var back = null;
+    try { back = refocus ? host.querySelector(refocus) : null; } catch(e){ back = null; }
+    if (back && typeof back.focus === 'function') back.focus();
   }
 
   /* =========================================================

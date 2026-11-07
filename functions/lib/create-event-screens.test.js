@@ -118,6 +118,36 @@ async function main() {
   var pay = p.ce('buildEditorPayload()');
   check('UX-050 the hand-off hides another portal\'s About on the site', pay.excludedSections.indexOf('about-us') !== -1, pay.excludedSections);
 
+  /* A draft resumed on another computer (the dashboard's Drafts > Resume) draws its section list before ET's roster
+     has answered: the About row's line never shows a portal's code, and the list is drawn again with the roster's
+     names when it comes. nameOf answers '' before the roster, as portal-picker.js does. */
+  var r = F.load();
+  r.ctx.RevampPortals.nameOf = function () { return ''; };
+  r.ctx.__t500 = TECH500;
+  r.ce('S.basics.portal = "retail"; S.basics.category = "IP"; setTemplateInfo(templateById("tech500"), window.__t500); commitTemplate("tech500");');
+  await tick();
+  r.ce('S.creationMethod = "template"; S.step = 1; S.step1Phase = "details"; renderBuildWorkspace($("step1-build-host"));');
+  var early = r.$('sec-list').innerHTML;
+  check('UX-050 before the roster has come, the About row names ETCIO from its own heading and this event, never a code',
+    /About ETCIO<small class="sub">ETCIO’s own text, so it starts off for this event\. Switch it on/.test(early) &&
+    !/cio’s|for retail/.test(early), early.slice(-700));
+  check('UX-050 …the gallery card\'s sentence too', r.ce('aboutPortalNote("tech500")') ===
+    'Its “About ETCIO” section is ETCIO’s own text, so it starts switched off for this event. Switch it on to rewrite it in the site editor.' &&
+    r.ce('aboutPortalNote("cx-leaders-forum")').indexOf('ETBrandEquity.com’s own text') !== -1);
+  await r.ce('loadPortalRoster()');
+  r.ce('portalArrived()');
+  var late = r.$('sec-list').innerHTML;
+  check('UX-050 …and once the roster comes the list is drawn again with its names, nothing else picked',
+    /About ETCIO<small class="sub">ETCIO’s own text, so it starts off for ETRetail\./.test(late) && late.indexOf('this event') === -1, late.slice(-700));
+  /* a switch pressed with the keyboard keeps the focus when the list is drawn again */
+  var host = r.$('sec-list'), asked = '', focused = 0;
+  host.contains = function () { return true; };
+  host.querySelector = function (sel) { asked = sel; return { focus: function () { focused++; } }; };
+  r.doc.activeElement = { getAttribute: function (k) { return k === 'data-sec-toggle' ? 'about-us' : null; } };
+  r.ce('renderSecList()');
+  check('UX-050 …a switch that had the focus gets it back after the list is drawn again', asked === '[data-sec-toggle="about-us"]' && focused === 1, asked);
+  r.doc.activeElement = null;
+
   /* =====================================================================================================
      UX-051 phones
      ===================================================================================================== */
