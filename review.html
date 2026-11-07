@@ -541,8 +541,15 @@
       el.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
     });
   }
+  /* a change names its section by its key (data-rv-key), which is how a second copy of one section type is told apart
+     ("speakers-2", the site editor's ensureKey), so the key is looked for first; then the type (data-rv-section), for
+     a page saved before sections had keys. Looking only at the type missed every copied section (UX-109). */
+  function sectionIn(d, key){
+    var q = key.replace(/["\\]/g, '\\$&');
+    return d.querySelector('[data-rv-section][data-rv-key="' + q + '"]') || d.querySelector('[data-rv-section="' + q + '"]');
+  }
   function jumpTo(el){
-    var key = el.getAttribute('data-section'), sel = '[data-rv-section="' + key.replace(/["\\]/g, '\\$&') + '"]', hit = false;
+    var key = el.getAttribute('data-section'), hit = false;
     var view = document.querySelector('.view');
     if (narrow() && view && view.scrollIntoView) view.scrollIntoView({ block: 'start' });
     syncBusy = true;
@@ -550,7 +557,7 @@
       if (pane.hidden) return;
       var f = pane.querySelector('iframe');
       try {
-        var d = f && f.contentDocument, s = d && d.querySelector(sel);
+        var d = f && f.contentDocument, s = d && sectionIn(d, key);
         if (!s || !s.getBoundingClientRect().height) return;
         s.scrollIntoView({ block: 'center' });
         var was = [s.style.outline, s.style.outlineOffset];

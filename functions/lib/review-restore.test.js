@@ -334,6 +334,21 @@ function pages() {
   ok(/data-section="' \+ esc\(it\.section\)/.test(script) && /s\.scrollIntoView\(\{ block: 'center' \}\)/.test(script) && /s\.style\.outline = '3px solid #ED1C24'/.test(script) && /\}, 2000\);/.test(script), 'UX-109 a change shows its section: scrolled to the middle, outlined for 2 s');
   ok(/<div class="box-load" role="status">Loading the page…<\/div>/.test(script) && /f\.addEventListener\('load', function\(\)\{ var l = f\.parentNode\.querySelector\('\.box-load'\)/.test(script), 'UX-109 each pane says it is loading until its page has come');
   ok(/framed\(proposed\)/.test(script) && /'frame=1'/.test(script), 'UX-109/110 the panes ask for the page without its ribbon');
+  /* UX-109: a change in a copied section (key "speakers-2") is found by its key, then by its type for an older page */
+  var SI = null;
+  try { SI = vm.runInNewContext(fnSrc(script, 'sectionIn') + '; sectionIn', {}); } catch (e) { /* said below */ }
+  ok(typeof SI === 'function', 'UX-109 sectionIn was found');
+  if (typeof SI !== 'function') SI = function () { return undefined; };
+  function fakeDoc(map) { var asked = []; return { asked: asked, querySelector: function (q) { asked.push(q); return map[q] || null; } }; }
+  var copyDoc = fakeDoc({ '[data-rv-section][data-rv-key="speakers-2"]': 'JURY', '[data-rv-section="speakers"]': 'SPEAKERS' });
+  ok(SI(copyDoc, 'speakers-2') === 'JURY' && copyDoc.asked[0] === '[data-rv-section][data-rv-key="speakers-2"]', 'UX-109 a second copy of a section type is found by its key', JSON.stringify(copyDoc.asked));
+  var oldDoc = fakeDoc({ '[data-rv-section="speakers"]': 'SPEAKERS' });
+  ok(SI(oldDoc, 'speakers') === 'SPEAKERS' && oldDoc.asked.length === 2, 'UX-109 a page with no keys: found by its type', JSON.stringify(oldDoc.asked));
+  ok(SI(fakeDoc({}), 'gone') === null, 'UX-109 a section on neither: none (the miss is said)');
+  var quoteDoc = fakeDoc({});
+  SI(quoteDoc, 'a"b');
+  ok(quoteDoc.asked[0] === '[data-rv-section][data-rv-key="a\\"b"]', 'UX-109 a quote in a key cannot break the selector', JSON.stringify(quoteDoc.asked));
+  ok(/s = d && sectionIn\(d, key\);/.test(script) && script.indexOf("sel = '[data-rv-section=\"'") === -1, 'UX-109 jumpTo looks a section up with sectionIn');
   /* UX-110: the labels, run */
   var W = vm.runInNewContext('var data; ' + fnSrc(script, 'liveVersion') + fnSrc(script, 'paneWords') + fnSrc(script, 'versionsWords') +
     '; ({ set: function (d) { data = d; }, pane: paneWords, versions: versionsWords })', {});
