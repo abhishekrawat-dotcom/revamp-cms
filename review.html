@@ -24,6 +24,8 @@
     --ok:#4FAE7A; --ok-soft:#1F3524; --warn:#D6A544; --warn-soft:#3A2E14; --bad:#F0857D; --bad-soft:#3B1E1C;
   }
   *{ box-sizing:border-box; }
+  /* hidden means hidden, also on a .btn (which sets its own display) */
+  [hidden]{ display:none !important; }
   html,body{ height:100%; margin:0; }
   /* the console's font (UX-007): a requester who presses Publish lands on a page of the same product */
   body{ background:var(--bg); color:var(--text); font:14px/1.5 Inter,"Segoe UI",system-ui,-apple-system,Arial,sans-serif; display:flex; flex-direction:column; }
@@ -54,7 +56,8 @@
   main > .decide{ grid-column:1; grid-row:2; }
   .side{ overflow:auto; border-right:1px solid var(--border); background:var(--surface); padding:16px 18px 28px; }
   .side h2{ font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:22px 0 8px; }
-  .side h2:first-child{ margin-top:0; }
+  /* only the list's own first heading: one that opens a box filled later (the site check) keeps its space */
+  .side > h2:first-child{ margin-top:0; }
   .who{ display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:13px; margin:0; }
   .who dt{ color:var(--muted); } .who dd{ margin:0; word-break:break-word; }
   .note{ background:var(--surface-2); border-radius:8px; padding:9px 12px; font-size:13px; margin-top:10px; white-space:pre-wrap; }
@@ -347,7 +350,7 @@
     if (!lv || !p || !p.version) return '';
     if (r && !(r.status === 'approved' && r.toVersion === lv)) return '';
     var head = r ? '<h2>Undo this approval</h2>' : '<h2>The live version</h2>';
-    var lead = '<p>Version ' + lv + ' is live. Version ' + esc(p.version) + ' was live before it' + (p.at ? ' (from ' + esc(when(p.at)) + ')' : '') + '.</p>';
+    var lead = '<p>Version ' + lv + ' is live. Version ' + esc(p.version) + ' was live before it' + (p.at ? ' (it went live on ' + esc(when(p.at)) + ')' : '') + '.</p>';
     if (!data.mayTakeDown){
       return head + '<div class="restore">' + lead + '<p class="empty" style="margin:0">Only an approver' + (data.approvers.length ? ' (' + esc(data.approvers.join(', ')) + ')' : '') +
         ' can put version ' + esc(p.version) + ' back or take the site offline.</p></div>';

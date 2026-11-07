@@ -154,6 +154,7 @@ function settle() { return new Promise(function (r) { setTimeout(r, 15); }); }
   await save('events/rs-one/published/index.html', page('V7-ONE'));
   r = await call('GET', '/api/event/approval?eventId=rs-one&id=reqA', { token: 'member' });
   ok(r.status === 200 && r.body.previousLive && r.body.previousLive.version === 6 && r.body.mayTakeDown === false, 'the approval view names the version live before (6), and a member may not put it back', r.text.slice(0, 400));
+  ok(r.body.previousLive.at === null, 'when version 6 went live is not recorded: no date is made up', JSON.stringify(r.body.previousLive));
   r = await call('GET', '/api/event/approval?eventId=rs-one&id=reqA', { token: 'boss' });
   ok(r.body.mayTakeDown === true && r.body.previousLive.version === 6, '…an approver may', JSON.stringify(r.body.previousLive));
 
@@ -177,7 +178,7 @@ function settle() { return new Promise(function (r) { setTimeout(r, 15); }); }
   var acts = sub('events/rs-one/activity/').filter(function (a) { return a.action === 'published'; });
   ok(acts.length === 1 && acts[0].detail === 'version 6 put back in place of version 7' && acts[0].version === 6 && acts[0].area === 'publishing', 'the History says so', JSON.stringify(acts));
   r = await call('GET', '/api/event/approval?eventId=rs-one', { token: 'boss' });
-  ok(r.body.publishedVersion === 6 && r.body.previousLive && r.body.previousLive.version === 7, 'now the version live before is 7: the restore can itself be undone', JSON.stringify(r.body.previousLive));
+  ok(r.body.publishedVersion === 6 && r.body.previousLive && r.body.previousLive.version === 7 && r.body.previousLive.at === T2, 'now the version live before is 7 (it went live when it was approved): the restore can itself be undone', JSON.stringify(r.body.previousLive));
 
   /* a version no longer kept is not offered; a site not live has nothing to replace */
   FB.docs['events/rs-gone'] = { name: 'Gone', createdAt: NOW, site: { version: 3 }, published: true, publishedVersion: 3, publishedAt: T2 };

@@ -10205,9 +10205,10 @@ function recordPublish(fb, eventId, version, actor, how, replaced) {
       .then(null, function (err) { console.error('api: could not note that ' + eventId + ' v' + version + ' went live — ' + (err && err.message)); });
   } catch (err) { console.error('api: could not note that ' + eventId + ' v' + version + ' went live — ' + (err && err.message)); return Promise.resolve(); }
 }
-/* The versions that have been live, newest first: [{ version, at }]. From the publishes noted above and, for what went
-   live before they were noted, the approved requests (each one's version went live when it was decided, and its
-   fromVersion was live until then). requests: [{ status, toVersion, fromVersion, decidedAt, requestedAt }]. */
+/* The versions that have been live, newest first: [{ version, at, before }]. From the publishes noted above and, for
+   what went live before they were noted, the approved requests (each one's version went live when it was decided, and
+   its fromVersion was live until then: `before`, placed just before the request, its own start not known).
+   requests: [{ status, toVersion, fromVersion, decidedAt, requestedAt }]. */
 function liveVersionsFrom(publishes, requests) {
   var list = [];
   (publishes || []).forEach(function (p) { if (+p.version > 0 && p.at) list.push({ version: +p.version, at: String(p.at) }); });
@@ -10218,14 +10219,17 @@ function liveVersionsFrom(publishes, requests) {
     if (+r.fromVersion > 0) list.push({ version: +r.fromVersion, at: String(r.requestedAt || r.decidedAt), before: true });
   });
   list.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : (a.before ? 1 : 0) - (b.before ? 1 : 0); });
-  return list.map(function (x) { return { version: x.version, at: x.at }; });
+  return list.map(function (x) { return { version: x.version, at: x.at, before: !!x.before }; });
 }
-/* the version that was live before the one live now -> { version, at } | null (at: when it went live) */
+/* the version that was live before the one live now -> { version, at } | null; at: when it last went live before
+   then, or null when that is not recorded */
 function previousLiveOf(list, liveVersion) {
   var i = 0;
   while (i < list.length && list[i].version === liveVersion) i++;
-  if (i === 0) return null;          // the live version is not in the record: nothing to say which came before it
-  return i < list.length ? list[i] : null;
+  if (i === 0 || i >= list.length) return null;   // the live version is not in the record: nothing says what came before it
+  var v = list[i].version, at = null;
+  for (var j = i; j < list.length && at == null; j++) if (list[j].version === v && !list[j].before) at = list[j].at;
+  return { version: v, at: at };
 }
 function liveVersionsOf(fb, eventId) {
   var ref = eventDocRef(fb, eventId);
