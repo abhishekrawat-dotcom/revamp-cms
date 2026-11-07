@@ -2324,7 +2324,7 @@ var BLOCK_SCHEMAS = {
       },
       {
         key: "max",
-        label: "Max speakers",
+        label: "Most speakers shown",
         type: "number",
         hint: "The most that can appear in this section."
       },
@@ -2333,7 +2333,7 @@ var BLOCK_SCHEMAS = {
         label: "Speakers on this event",
         type: "multipick",
         source: "speakers",
-        hint: "Every speaker of this event. Tick who appears, up to the most allowed above."
+        hint: "Tick who appears in the mail."
       },
       { key: "note", label: "Note below", type: "text", rich: true },
       ...SECTION_BG,
@@ -2419,7 +2419,7 @@ var BLOCK_SCHEMAS = {
       { ...COLS(5), showWhen: { style: ["cards", "bordered", "plain"] } },
       {
         key: "max",
-        label: "Max partners",
+        label: "Most partners shown",
         type: "number",
         hint: "The most that can appear in this section."
       },
@@ -2428,7 +2428,7 @@ var BLOCK_SCHEMAS = {
         label: "Partners on this event",
         type: "multipick",
         source: "sponsors",
-        hint: "Every partner of this event. Tick who appears, up to the most allowed above."
+        hint: "Tick who appears in the mail."
       },
       ...SECTION_BG,
       {
@@ -2490,7 +2490,7 @@ var BLOCK_SCHEMAS = {
       { key: "day2Text", label: "Second day, intro line", type: "textarea", showWhen: { style: ["days"] } },
       {
         key: "max",
-        label: "Max sessions",
+        label: "Most sessions shown",
         type: "number",
         hint: "The most that can appear in this section."
       },
@@ -2501,7 +2501,7 @@ var BLOCK_SCHEMAS = {
         label: "Sessions on this event",
         type: "multipick",
         source: "sessions",
-        hint: "Every session of this event. Tick which appear, up to the most allowed above."
+        hint: "Tick which sessions appear in the mail."
       },
       ...SECTION_BG,
       {

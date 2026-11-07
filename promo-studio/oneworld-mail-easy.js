@@ -31,7 +31,7 @@
    Browser code is ES5 (no let, const or arrow functions), as the rest of Oneworld's. */
 
 /* ---------- state kept across the panel's redraws ---------- */
-var OWE = { adv: false, help: false, blkAdv: false, more: false, popFrom: null, rosterTimer: null, focusAfter: null };
+var OWE = { adv: false, help: false, blkAdv: false, more: false, popFrom: null, rosterTimer: null, focusAfter: null, shown: null };
 /* the settings that hold a picture (the engine's PICTURE_PROPS, blocks.ts tagPictures) */
 var OW_PICTURE_KEYS = ['url', 'logo', 'logoLight', 'photo', 'image'];
 var OW_PICTURE_MAX = 8 * 1024 * 1024;          // the server's limit (lib/promo-mailer.js MAIL_PICTURE_MAX)
@@ -129,17 +129,24 @@ function owRosterNone(kind) {
   return 'This event has no ' + owEsc(kind) + ' yet. <a href="' + owEsc(owConsoleLink(home[1])) + '" target="_top">Add them in ' + owEsc(home[0]) + '</a>.';
 }
 /* a list that has reached its most (it said "raise Max above", a field the overview does not show) */
-function owLimitNote(max) { return 'All ' + max + ' places are taken. Untick one to swap, or allow more in this section’s settings.'; }
+function owLimitNote(max) { return 'All ' + max + ' places are taken. Untick one to swap someone in, or show more in this section’s settings.'; }
 
 /* ================= "+ Add a section" ================= */
 
+/* within a group, the ones people reach for first: a heading before a title band, a picture before a collage */
+var OW_ADD_FIRST = ['heading', 'text', 'bullets', 'button', 'quote', 'hero', 'image', 'banner', 'mosaic', 'logobar',
+  'speakers', 'speaker', 'sponsors', 'contacts', 'meta', 'sessions', 'stats', 'pricing', 'footer', 'social'];
+function owAddOrder(a, b) {
+  var i = OW_ADD_FIRST.indexOf(a.type), j = OW_ADD_FIRST.indexOf(b.type);
+  return (i === -1 ? 99 : i) - (j === -1 ? 99 : j);
+}
 /* the addable blocks in their groups, in order: [{ id, name, blocks }], More last (with Custom HTML at its end) */
 function owAddGroups(blocks) {
   var add = (blocks || []).filter(function (b) { return b && b.addable; });
   var known = {}, out = [];
   OW_GROUPS.forEach(function (g) { known[g[0]] = true; });
   OW_GROUPS.forEach(function (g) {
-    var bs = add.filter(function (b) { return b.group === g[0]; });
+    var bs = add.filter(function (b) { return b.group === g[0]; }).sort(owAddOrder);
     if (bs.length) out.push({ id: g[0], name: g[1], blocks: bs });
   });
   var more = add.filter(function (b) { return !known[b.group] && b.group !== 'advanced'; })
@@ -232,7 +239,7 @@ function owSnippet(b) {
   var t = q.title || q.text || q.name || q.label || q.flag || q.eyebrow || '';
   if (!t && Array.isArray(q.items) && q.items.length) {
     var it = q.items[0] || {};
-    t = typeof it === 'string' ? it : (it.name || it.title || it.text || it.label || '');
+    t = typeof it === 'string' ? it : (it.name || it.title || it.text || (it.label && it.value ? it.label + ': ' + it.value : it.label || it.value) || '');
     if (q.items.length > 1 && t) t += ' and ' + (q.items.length - 1) + ' more';
   }
   t = String(t).replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/(\*\*|__|~~|==|\*)/g, '').replace(/\s+/g, ' ').trim();
@@ -280,7 +287,12 @@ mlProps = function () {
   var b = MD.sel ? MD.doc.blocks[blockIndex(MD.sel)] : null;
   host.appendChild(owPinned());
   host.appendChild(b ? owBlockPanel(b) : owOverview());
-  if (keep) host.scrollTop = keep;
+  /* the same view drawn again keeps its place (a tick halfway down a list); another section, or back to the
+     overview, starts at the top, where its name and "← All sections" are (they were left out of sight under the
+     pinned subject) */
+  var same = OWE.shown === (MD.sel || '');
+  OWE.shown = MD.sel || '';
+  if (keep && same) host.scrollTop = keep;
   if (actId && $(actId) && $(actId).focus) { try { $(actId).focus(); } catch (x) { /* a nicety */ } }
   if (OWE.focusAfter) { var f = OWE.focusAfter; OWE.focusAfter = null; var n = host.querySelector(f); if (n && n.focus) { try { n.focus(); } catch (x) { /* a nicety */ } } }
   owWatchRoster();

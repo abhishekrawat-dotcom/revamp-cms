@@ -16,7 +16,8 @@ into Oneworld, by line range, unchanged except PATCHES (listed below):
 
 promo-studio/oneworld.js is Oneworld's own (hand-written): the request helper on Oneworld's routes and
 sign-in, the event this page is for (or the whole team's view, ?scope=all), and the few functions it replaces
-(it loads last, so its function declarations win). The ranges below were read from the platform's index.html
+(it loads after the studio, so its function declarations win; promo-studio/oneworld-mail-easy.js, the "Edit myself"
+layout of batch B18, loads after it in turn). The ranges below were read from the platform's index.html
 of 2026-10-28; when the platform changes, check them against the file and run this again. Every range is
 checked by its first line, and every patch by how many times its text is found, before anything is written.
 """
@@ -264,6 +265,10 @@ async function fmtApply(el,btn,onchange){
     (r'''toast(`Limit of ${max} reached — raise Max above to add more`);''',
      r'''toast(owLimitNote(max),undefined,"info");''',
      1, '… and so does Select all on a full list'),
+    (r'''const pill=$("mlState"); pill.style.display="";''',
+     r'''const pill=$("mlState"); pill.style.display=(MD.dirty||MD.saved)?"":"none";''',
+     1, 'a draft not changed and not saved shows no state beside "New draft", which already says it (it read "New draft" '
+        'and "Not saved yet" side by side)'),
     (r'''pill.textContent=MD.dirty?"unsaved":(MD.saved?"saved":"generated");''',
      r'''pill.textContent=MD.dirty?"Unsaved changes":(MD.saved?"Saved":"Not saved yet");''',
      1, 'the bar says where the mail stands in words: "Unsaved changes", "Saved", "Not saved yet" (not "generated")'),

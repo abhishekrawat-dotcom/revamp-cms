@@ -42,7 +42,7 @@ var pStart = py.indexOf('PATCHES = [');
 var pBlock = py.slice(pStart, py.indexOf('\n]\n', pStart));
 var patchRe = /\(r'''([\s\S]*?)''',\s*r'''([\s\S]*?)''',\s*(\d+),/g, pm, patches = [];
 while ((pm = patchRe.exec(pBlock))) patches.push({ old: pm[1], neu: pm[2], times: Number(pm[3]) });
-check('forty-eight patches, P1 to P48', patches.length === 48, patches.length);
+check('forty-nine patches, P1 to P49', patches.length === 49, patches.length);
 patches.forEach(function (p, i) {
   check('P' + (i + 1) + ': the platform\'s text is gone', count(studio, p.old) === 0, count(studio, p.old));
   check('P' + (i + 1) + ': its replacement is there ' + p.times + ' time(s)', count(studio, p.neu) === p.times, count(studio, p.neu));

@@ -47,7 +47,8 @@
        picture sizes read in KB / MB (UX-136); the dashboard does not say "nothing made yet" while nothing can be
        recorded (UX-133); the team's page has no nav of its own and lines up with the bar above it (UX-136, UX-139).
 
-   Function declarations here replace the platform's of the same name: this file is the last script. Oneworld's
+   Function declarations here replace the platform's of the same name: this file loads after the studio (only the
+   "Edit myself" layout, promo-studio/oneworld-mail-easy.js, batch B18, comes after it and replaces mlProps). Oneworld's
    own versions: mark and crumbs (this page keeps no URL or crumb trail of its own), showPortals (the event's
    mailer page, or the event listing), showAnalytics (the platform's, with the OW_VIEW check and Try again),
    anOpen, anToggleVer (by row index), mlExport, and mailerArt and savedCardHtml (a card's live preview).

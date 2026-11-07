@@ -2579,7 +2579,7 @@ async function mlDownload(){
 }
 function mlStatus(){
   mlHistPush();                      // every mutation path reaches here or mlProps
-  const pill=$("mlState"); pill.style.display="";
+  const pill=$("mlState"); pill.style.display=(MD.dirty||MD.saved)?"":"none";
   pill.className="pill"+(MD.dirty?"":" cache");
   pill.textContent=MD.dirty?"Unsaved changes":(MD.saved?"Saved":"Not saved yet");
   // Which version is open, so Save is never ambiguous about what it overwrites.

@@ -102,6 +102,7 @@ check('words typed in the mail go through the one door (owMailEdit)', count(stud
   studio.indexOf('mlSetProp(ed,txt); MD.dirty=true; mlProps(); mlRender(0);') === -1);
 check('an empty list says where to add its people, never "in the API"', studio.indexOf(' in the API.') === -1 && count(studio, 'owRosterNone(spk?"speakers":ses?"sessions":"partners")') === 1);
 check('no "raise Max above" left', studio.indexOf('raise Max above') === -1 && count(studio, 'owLimitNote(max)') === 2);
+check('a draft not changed and not saved shows no state pill beside "New draft"', count(studio, 'pill.style.display=(MD.dirty||MD.saved)?"":"none";') === 1);
 check('the cards open a design with "Edit" (UX-132)', studio.indexOf('Open in studio →') === -1 && studio.indexOf('>Continue “') === -1 && count(studio, '>Edit “${escapeHtml(saves[0].name)}” →</button>') === 1);
 check('a card\'s need reads "Needs …"', count(studio, '<div class="warn">Needs ${m.missing.map(escapeHtml).join(", ")}</div>') === 1);
 check('saved work is listed under "Saved" (UX-132)', studio.indexOf('Recently updated</div>') === -1 && count(studio, '<div class="sec-h">Saved</div>') === 1);
@@ -175,6 +176,7 @@ var groups = E.owAddGroups(engine.blockPalette());
 check('the groups in order: Text, Pictures, People, Event details, Footer, More', groups.map(function (g) { return g.name; }).join(' · ') === 'Text · Pictures · People · Event details · Footer · More', groups.map(function (g) { return g.name; }));
 var moreG = groups[groups.length - 1].blocks.map(function (b) { return b.type; });
 check('More holds the rare ones, Custom HTML last', moreG[moreG.length - 1] === 'html' && moreG.indexOf('lozenges') !== -1 && moreG.indexOf('heading') === -1, moreG);
+check('within a group, the usual ones first: Heading, Paragraph, List of points … Title band last', groups[0].blocks.map(function (b) { return b.type; }).join() === 'heading,text,bullets,button,quote,hero', groups[0].blocks.map(function (b) { return b.type; }));
 check('a block that cannot be added is not offered', E.owAddGroups([{ type: 'a', label: 'A', group: 'text', addable: false }]).length === 0);
 check('a block in no known group goes under More', E.owAddGroups([{ type: 'a', label: 'A', group: 'weird', addable: true }])[0].name === 'More');
 var addHtml = E.owAddHtml(groups, false);
@@ -230,7 +232,7 @@ var F = sandbox();
 /* plain words */
 check('an empty list links to where its people are added', F.owRosterNone('speakers') === 'This event has no speakers yet. <a href="/edit-event.html?event=qa-ux-b18-mail-t#content/speakers" target="_top">Add them in Content › Speakers</a>.' &&
   F.owRosterNone('partners').indexOf('#content/sponsors') !== -1 && F.owRosterNone('sessions').indexOf('Content › Agenda') !== -1);
-check('a full list says how to swap without "Max"', F.owLimitNote(6) === 'All 6 places are taken. Untick one to swap, or allow more in this section’s settings.');
+check('a full list says how to swap without "Max"', F.owLimitNote(6) === 'All 6 places are taken. Untick one to swap someone in, or show more in this section’s settings.');
 /* the contrast check is silent unless it fails */
 check('a readable text colour says nothing', F.owContrastWarning({ key: 'color' }, '#333333', '#ffffff') === '');
 check('a pale text colour on white warns, and says which way to go', /^Hard to read: .*\(1\.\d to 1; it needs 4\.5\)\. Pick a darker one\.$/.test(F.owContrastWarning({ key: 'color' }, '#eeeeee', '#ffffff')), F.owContrastWarning({ key: 'color' }, '#eeeeee', '#ffffff'));
@@ -246,6 +248,7 @@ var rows = F.owSectionsHtml([{ id: 'h1', type: 'heading', props: { text: '**Why*
 check('each section is a button with its plain name and its first words, markers taken out', rows.indexOf('<button type="button" class="ow-row" data-id="h1"><b>Heading</b><span>Why attend now</span></button>') !== -1, rows);
 check('… a list shows its first entry and how many more', rows.indexOf('<span>Ananya Rao and 2 more</span>') !== -1);
 check('… and the selected one is marked for screen readers', rows.indexOf('data-id="s1" aria-current="true"') !== -1);
+check('… a tile shows its label and value', F.owSnippet({ props: { items: [{ label: 'When', value: '10 December, 2026' }, { label: 'Where', value: 'Mumbai' }] } }) === 'When: 10 December, 2026 and 1 more');
 check('a mail with no sections says so', F.owSectionsHtml([], null).indexOf('This mail has no sections yet.') !== -1);
 check('a long first line is cut on a word, with an ellipsis', /…$/.test(F.owSnippet({ props: { text: new Array(20).join('word ') } })) && F.owSnippet({ props: { text: new Array(20).join('word ') } }).length <= 47);
 /* the people and pictures */
