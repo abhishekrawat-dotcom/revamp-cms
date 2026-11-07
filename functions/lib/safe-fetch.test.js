@@ -38,6 +38,8 @@ var helper = http.createServer(function (req, res) {
   if (req.url === '/slow-body') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.write('start'); return; }   // never ends
   if (req.url === '/pdf') { res.writeHead(200, { 'Content-Type': 'application/pdf' }); return res.end('%PDF'); }
   if (req.url === '/echo-headers') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(req.headers)); }
+  if (req.url === '/big-head') { res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': 50 * 1024 * 1024 }); return res.end(); }
+  if (req.url === '/method') { res.writeHead(200, { 'Content-Type': 'text/plain', 'X-Method': req.method }); return res.end(req.method === 'HEAD' ? undefined : 'body'); }
   if (req.url === '/secret') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('INTERNAL SECRET'); }
   res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('no');
 });
@@ -137,6 +139,16 @@ async function run() {
 
   var echoed = JSON.parse((await viaHelper('/echo-headers', { headers: { Cookie: 'a=b', Authorization: 'Bearer x', 'X-Extra': '1' } })).body.toString());
   ok(!echoed.cookie && !echoed.authorization && echoed['x-extra'] === '1' && /^RevampCMS-Fetcher/.test(echoed['user-agent']), 'no cookie or credential is sent; the User-Agent is fixed', JSON.stringify(echoed));
+
+  /* --- HEAD (the site check's outside links, link-check.js): asked without the body, under the same rules --- */
+  var head = await viaHelper('/method', { method: 'HEAD' });
+  ok(head.status === 200 && head.headers['x-method'] === 'HEAD' && head.body.length === 0, 'method HEAD is sent as HEAD and answers with no body', head.headers['x-method']);
+  ok((await viaHelper('/method')).headers['x-method'] === 'GET', 'GET stays the default');
+  ok(await codeOf(viaHelper('/big-head', { method: 'HEAD', maxBytes: 1024 })) === 'resolved:200', 'a HEAD answer naming a large size is not "too large": nothing is sent');
+  hits.length = 0;
+  ok(await codeOf(viaHelper('/to-metadata', { method: 'HEAD' })) === 'blocked-address' && await codeOf(viaHelper('/to-loopback', { method: 'HEAD' })) === 'bad-url',
+    'a HEAD redirected to the metadata service or loopback is refused like a GET');
+  ok(!hits.some(function (h) { return /\/secret/.test(h); }), 'and the internal address is never reached', hits.join(', '));
 
   var err = await safeFetch('http://10.0.0.1/').catch(function (e) { return e; });
   ok(err instanceof Error && err.code === 'blocked-address' && /private or internal/.test(err.message), 'the error says why in words fit to show', err && err.message);

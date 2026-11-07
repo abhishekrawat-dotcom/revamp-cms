@@ -2,8 +2,10 @@
 
      checkPublicUrl(url)        -> Promise<{ ok, reason, code }>       (never rejects)
      safeFetch(url, options)    -> Promise<{ status, headers, body: Buffer, finalUrl }>
-       options: { timeoutMs = 15000, maxBytes = 5 MB, maxRedirects = 3, accept, headers }
+       options: { timeoutMs = 15000, maxBytes = 5 MB, maxRedirects = 3, accept, headers, method = 'GET' }
          accept: content types the answer may have — "text/html", a prefix "image/", or a RegExp
+         method: 'GET' or 'HEAD' (a HEAD answer has no body: the site check asks whether a link answers at
+                 all, without downloading what it leads to — link-check.js)
        rejects with an Error whose message can be shown to the user and whose .code is one of
        "bad-url" | "blocked-address" | "too-large" | "timeout" | "bad-type" | "unreachable"
 
@@ -123,7 +125,7 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
     var timer = setTimeout(function () { finish(fetchError('timeout')); }, Math.max(1, deadlineAt - Date.now()));
 
     var options = {
-      method: 'GET', host: target.host, port: pinned.port, path: url.pathname + url.search, headers: headers, agent: false,
+      method: opts.method, host: target.host, port: pinned.port, path: url.pathname + url.search, headers: headers, agent: false,
       /* the connection goes to the address that was checked; the name is never resolved again */
       lookup: function (hostname, lookupOptions, cb) {
         if (typeof lookupOptions === 'function') { cb = lookupOptions; lookupOptions = {}; }
@@ -144,7 +146,8 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
       }
       if (status >= 200 && status < 300 && !typeAccepted(opts.accept, res.headers['content-type'])) return finish(fetchError('bad-type'));
       var declared = +res.headers['content-length'];
-      if (declared && declared > opts.maxBytes && !res.headers['content-encoding']) return finish(fetchError('too-large'));
+      /* a HEAD answer names the size of what a GET would send, and sends none of it */
+      if (opts.method !== 'HEAD' && declared && declared > opts.maxBytes && !res.headers['content-encoding']) return finish(fetchError('too-large'));
 
       var encoding = String(res.headers['content-encoding'] || '').trim().toLowerCase();
       var stream = res;
@@ -172,6 +175,7 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
 function safeFetch(raw, options) {
   options = options || {};
   var opts = {
+    method: options.method === 'HEAD' ? 'HEAD' : 'GET',
     maxBytes: options.maxBytes > 0 ? options.maxBytes : DEFAULT_MAX_BYTES,
     accept: options.accept || null,
     headers: options.headers || null

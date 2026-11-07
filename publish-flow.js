@@ -13,6 +13,14 @@
    Every dialog takes the focus, keeps Tab inside, closes on Escape and gives the focus back (UX-113). The page stays
    where it is: nothing navigates away (the console used to jump to the review page).
 
+   Before it goes live (owner decision #11, part 3.2: the check before Publish): the send and publish dialogs list what
+   the site check finds on the site as saved (GET /api/event/site-check?of=saved&advisory=1, functions/lib/api.js
+   siteCheckOf with lib/site-advisory.js) — links and pictures that do not work, empty sections, dates or a place that
+   are not the event's, the banner's logo, forms switched off, and what the server refuses to send — each with a link
+   to the place to put it right (the section in the site editor, the console's tab). It is advice: Send and Publish
+   never wait for it and are never stopped by it (what blocks is the server's to refuse, as before). Other sites are
+   slow to answer, so the list shows what is known at once and fills in (QA_POLLS asks at most).
+
    Who approves is named from config/approvals (fetchApproval's approvers): EventSphere sends no e-mail, so the person
    asking is told exactly whom to send the link to, and can copy a ready message (UX-102).
 
@@ -25,7 +33,9 @@
    opts: from ('console' | 'editor'), name (the event's), opener (focus goes back there; it shows the busy state
    unless busy(on) is given), toast(text, { kind }), onDone(result), onError(err) -> true when the page dealt with
    it, editorUrl (the console: where "Open the site editor" goes), recheck (true: when there is something to send
-   after all, resolve { kind: 'recheck', approval } and send nothing, so the page asks its own questions first). */
+   after all, resolve { kind: 'recheck', approval } and send nothing, so the page asks its own questions first),
+   showSection(key) -> true when the page showed that section (the site editor: a "put it right" link of the check
+   before Publish selects the section in place instead of opening the editor again). */
 (function () {
   'use strict';
 
@@ -199,6 +209,49 @@
     return 'The site as saved' + (at ? ' on ' + at : '') + (by ? ' by ' + by : '') + ' (version ' + version + ')';
   }
 
+  /* What the check before Publish found, for the send and publish dialogs (owner decision #11, part 3.2).
+     r: GET /api/event/site-check?of=saved&advisory=1's answer, or null when it could not be read; direct: approval is
+     switched off (Publish, not Send). -> { state (the line above the list), html (the list), fixes: [Fix] } —
+     a fix link carries data-rvpf-fix="<n>", its place in fixes. Pure: tested in node. */
+  var QA_LEVEL = { block: 'Holds it back', warn: 'Check', info: 'Good to know' };
+  var QA_LINES_SHOWN = 4;
+  function checksView(r, direct) {
+    var verb = direct ? 'publishing it' : 'sending it';
+    if (!r || !Array.isArray(r.items)) {
+      return { state: 'The site could not be checked just now. You can still go on: ' + (direct ? 'publishing checks it again.' : 'the approver’s page checks it again.'), html: '', fixes: [] };
+    }
+    if (r.found === false) return { state: 'The saved site could not be found to check.', html: '', fixes: [] };
+    var items = r.items, fixes = [];
+    var blocks = items.filter(function (x) { return x.level === 'block'; }).length;
+    var looks = items.filter(function (x) { return x.level === 'warn'; }).length;
+    var still = num(r.pending);
+    var state = !items.length ? 'Nothing to fix found: the links, pictures, sections, dates, place, logo and forms were all checked.'
+      : blocks ? (blocks === 1 ? '1 thing must' : blocks + ' things must') + ' be put right before it can go live' + (looks ? ', and ' + looks + ' more to look at.' : '.')
+      : looks ? (looks === 1 ? '1 thing' : looks + ' things') + ' to look at. ' + (looks === 1 ? 'It does' : 'They do') + ' not stop you ' + verb + '.'
+      : 'Nothing to fix found.';
+    if (still) state += ' Still checking ' + still + (still === 1 ? ' link' : ' links') + ' on other sites…';
+    var html = items.map(function (x) {
+      var lines = Array.isArray(x.lines) ? x.lines : [];
+      var shown = lines.slice(0, QA_LINES_SHOWN), more = lines.length - shown.length;
+      var links = (Array.isArray(x.fix) ? x.fix : []).filter(function (f) { return f && f.href && f.label; }).map(function (f) {
+        fixes.push(f);
+        return '<a class="rvpf-qa-fix" href="' + esc(f.href) + '" target="_blank" rel="noopener" data-rvpf-fix="' + (fixes.length - 1) + '">' + esc(f.label) + '</a>';
+      });
+      return '<li class="rvpf-qa-item is-' + esc(x.level) + '">' +
+        '<div class="rvpf-qa-top"><span class="rvpf-qa-lvl">' + esc(QA_LEVEL[x.level] || x.level) + '</span><span>' + esc(x.title) + '</span></div>' +
+        (shown.length ? '<ul>' + shown.map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + (more > 0 ? '<li class="rvpf-muted">…and ' + more + ' more</li>' : '') + '</ul>' : '') +
+        (x.hint ? '<p class="rvpf-qa-hint">' + esc(x.hint) + '</p>' : '') +
+        (links.length ? '<p class="rvpf-qa-fixes">Put it right: ' + links.join(' ') + '</p>' : '') +
+        '</li>';
+    }).join('');
+    return { state: state, html: html ? '<ul class="rvpf-qa-list">' + html + '</ul>' : '', fixes: fixes };
+  }
+  /* the box the dialogs keep for it, filled by watchChecks */
+  function checksBox() {
+    return '<section class="rvpf-qa" aria-labelledby="rvpf-qa-h"><h3 id="rvpf-qa-h">Before it goes live</h3>' +
+      '<p class="rvpf-qa-state" role="status" aria-live="polite">Checking the site: its links, pictures, sections, dates, place, logo and forms…</p><div class="rvpf-qa-body"></div></section>';
+  }
+
   /* ============================================================
      THE LOOK — the console's and the editor's own colour tokens (edit-event.css), both themes
      ============================================================ */
@@ -231,6 +284,22 @@
     '.rvpf-box .btn{min-height:40px}',
     '.rvpf-box a.btn{text-decoration:none;display:inline-flex;align-items:center}',
     '.rvpf-ok{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--ok-soft);color:var(--ok);flex-shrink:0}',
+    /* the check before Publish: a calm list under the note, never in the way of Send */
+    '.rvpf-qa{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--surface-2)}',
+    '.rvpf-qa h3{margin:0 0 4px;font-size:13px;font-weight:700;color:var(--text)}',
+    '.rvpf-qa-state{margin:0;font-size:13px;color:var(--text)}',
+    '.rvpf-qa-list{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}',
+    '.rvpf-qa-item{border:1px solid var(--border);border-left-width:4px;border-radius:9px;padding:8px 10px;background:var(--surface);font-size:12.5px}',
+    '.rvpf-qa-item.is-block{border-left-color:var(--accent);background:var(--accent-soft)}',
+    '.rvpf-qa-item.is-warn{border-left-color:var(--warn)}',
+    '.rvpf-qa-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;font-weight:700;color:var(--text)}',
+    '.rvpf-qa-lvl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}',
+    '.rvpf-qa-item.is-block .rvpf-qa-lvl{background:var(--accent);color:var(--accent-contrast,#fff)}',
+    '.rvpf-qa-item.is-warn .rvpf-qa-lvl{background:var(--warn-soft);color:var(--text)}',
+    '.rvpf-qa-item ul{margin:4px 0 0;padding-left:18px}.rvpf-qa-item li{margin:2px 0;overflow-wrap:anywhere}',
+    '.rvpf-qa-hint{margin:4px 0 0;color:var(--text-muted)}',
+    '.rvpf-qa-fixes{margin:6px 0 0;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline;color:var(--text-muted)}',
+    '.rvpf-qa-fix{color:var(--text);font-weight:700;text-decoration:underline;text-underline-offset:2px;display:inline-block;padding:4px 0}',
     '@media (max-width:720px){.rvpf-scrim{align-items:flex-end;padding:0}.rvpf-box{width:100%;max-height:92vh;border-radius:16px 16px 0 0;border-bottom:0}}',
     /* the line under the top bar that tells what became of the last request (UX-103) */
     '.rvpf-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;padding:9px 16px;border-bottom:1px solid var(--border);background:var(--surface-2);color:var(--text);font-size:13px;line-height:1.45}',
@@ -511,6 +580,50 @@
     }, a, name, opts);
   }
 
+  /* Fills the dialog's "Before it goes live" box with the check of the site as saved, and again while other sites
+     are still being asked (each later ask waits on the server for their answers, QA_WAIT_MS at most). Stops as the
+     dialog goes. A "put it right" link shows the place: the section in the editor this is open in (opts.showSection),
+     the console's own tab; any other opens in a new tab, so nothing here is left behind. */
+  var QA_POLLS = 6, QA_FIRST_WAIT_MS = 2500, QA_WAIT_MS = 6000;
+  function watchChecks(eventId, d, direct, opts) {
+    var C = window.RevampCore, box = d.box.querySelector('.rvpf-qa'), asked = 0, fixes = [];
+    if (!box) return;
+    function alive() { return document.body.contains(d.box); }
+    function paint(r) {
+      var v = checksView(r, direct);
+      fixes = v.fixes;
+      box.querySelector('.rvpf-qa-state').textContent = v.state;
+      box.querySelector('.rvpf-qa-body').innerHTML = v.html;
+    }
+    box.addEventListener('click', function (e) {
+      var a = e.target && e.target.closest ? e.target.closest('[data-rvpf-fix]') : null;
+      if (!a || d.box.getAttribute('aria-busy') === 'true') return;
+      var f = fixes[+a.getAttribute('data-rvpf-fix')];
+      if (!f) return;
+      if (f.where === 'editor' && opts.from === 'editor' && typeof opts.showSection === 'function') {
+        e.preventDefault();
+        d.close(true);
+        if (f.key) opts.showSection(f.key);
+      } else if (f.where === 'console' && opts.from === 'console' && f.route) {
+        e.preventDefault();
+        d.close(true);
+        location.hash = f.route;            // the console's own router takes it from there (and asks about unsaved work)
+      }
+    });
+    function ask(wait) {
+      asked++;
+      C.authedFetch('/api/event/site-check?eventId=' + encodeURIComponent(eventId) + '&of=saved&advisory=1&wait=' + wait, { method: 'GET' }).then(function (res) {
+        return res && res.ok ? res.json() : null;
+      }).then(function (r) {
+        if (!alive()) return;
+        paint(r);
+        if (r && num(r.pending) > 0 && asked < QA_POLLS) ask(QA_WAIT_MS);
+      }, function () { if (alive()) paint(null); });
+    }
+    if (!C || typeof C.authedFetch !== 'function') { paint(null); return; }
+    ask(QA_FIRST_WAIT_MS);
+  }
+
   function ask(eventId, a, plan, name, opts, toast) {
     var C = window.RevampCore;
     return new Promise(function (done) {
@@ -523,11 +636,13 @@
           (plan.updates ? '<p class="rvpf-note">A request' + (p && p.requestedBy ? ' by ' + esc(p.requestedBy) : '') + ' is already waiting (version ' + plan.updates + '). Sending adds the newer saves to it.</p>' : '') +
           '<p class="rvpf-who">' + esc(who.line) + ' You get the link to send once the request is made.</p>' +
           '<div class="rvpf-field"><label for="rvpf-note">Note for the approver (optional)</label>' +
-            '<textarea id="rvpf-note" rows="3" maxlength="1000" placeholder="What changed and why"></textarea></div>',
+            '<textarea id="rvpf-note" rows="3" maxlength="1000" placeholder="What changed and why"></textarea></div>' +
+          checksBox(),
         actions: [{ key: 'cancel', label: 'Cancel' }, { key: 'send', label: 'Send for approval', kind: 'primary' }],
         focus: '#rvpf-note'
       });
       d.onClose = function () { done(outcome); };
+      watchChecks(eventId, d, false, opts);
       d.on('send', function () {
         d.error('');
         d.busy(true, 'send', 'Sending…');
@@ -562,11 +677,13 @@
       var d = dialog({
         title: 'Publish the site?', opener: opts.opener,
         body: '<p>' + esc(savedLine(a, plan.version)) + ' goes live at <b>' + esc(url) + '</b> at once.</p>' +
-          '<p class="rvpf-muted">Approval is switched off for this team, so nobody else checks it first.</p>',
+          '<p class="rvpf-muted">Approval is switched off for this team, so nobody else checks it first.</p>' +
+          checksBox(),
         actions: [{ key: 'cancel', label: 'Cancel' }, { key: 'publish', label: 'Publish', kind: 'primary' }],
         focus: '[data-rvpf="cancel"]'
       });
       d.onClose = function () { done(outcome); };
+      watchChecks(eventId, d, true, opts);
       d.on('publish', function () {
         d.error('');
         d.busy(true, 'publish', 'Publishing…');
@@ -640,7 +757,8 @@
     open: open, planOf: planOf, buttonState: buttonState, paintButton: paintButton, decisionNotice: decisionNotice, paintDecision: paintDecision,
     aiUncheckedOf: aiUncheckedOf, approverWords: approverWords,
     _test: { planOf: planOf, buttonState: buttonState, approverWords: approverWords, copyMessage: copyMessage, decisionNotice: decisionNotice,
-      aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, setBusy: setBusy, CSS: CSS }
+      aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, setBusy: setBusy, CSS: CSS,
+      checksView: checksView, checksBox: checksBox }
   };
   if (window.RevampCore) window.RevampCore.openPublishFlow = open;
 })();
