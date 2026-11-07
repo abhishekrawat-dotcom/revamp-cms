@@ -359,6 +359,21 @@ check('UX-007 the review page: the console\'s font, "Back to events" (then "Back
   REVIEW.indexOf('family=Inter:') !== -1 && REVIEW.indexOf('Manrope') === -1 && /<a class="back-btn" id="back" href="\/Event_Listing\.html"><svg[^>]*>[\s\S]*?<\/svg><span>Back to events<\/span><\/a>/.test(REVIEW) &&
   REVIEW.indexOf('&larr;') === -1 && REVIEW.indexOf('<span>Back to the event</span>') !== -1 &&
   /<span data-theme-toggle-target[^>]*><\/span>\s*<span data-rv-account><\/span>\s*<\/header>/.test(REVIEW));
+(function () {
+  /* the review page's neutrals are the console's, in both themes (its own warmer and cooler greys made it look like another product) */
+  function tok(css, name) { var m = new RegExp('--' + name + ':\\s*(#[0-9A-Fa-f]{3,6})').exec(css); return m ? m[1].toUpperCase() : null; }
+  var cLight = CSS.slice(0, CSS.indexOf('@media (prefers-color-scheme: dark)')), cDark = CSS.slice(CSS.indexOf(':root[data-theme="dark"]'));
+  var rLight = (/:root\{([^}]*)\}/.exec(REVIEW) || [])[1] || '', rDark = (/:root\[data-theme="dark"\]\{([^}]*)\}/.exec(REVIEW) || [])[1] || '';
+  var off = [];
+  ['bg', 'surface-2', 'border', 'text'].forEach(function (n) {
+    if (tok(rLight, n) !== tok(cLight, n)) off.push('light ' + n);
+    if (tok(rDark, n) !== tok(cDark, n)) off.push('dark ' + n);
+  });
+  if (tok(rLight, 'muted') !== tok(cLight, 'text-muted')) off.push('light muted');
+  if (tok(rDark, 'muted') !== tok(cDark, 'text-muted')) off.push('dark muted');
+  if (tok(rDark, 'surface') !== tok(cDark, 'surface')) off.push('dark surface');
+  check('UX-007 the review page has the console\'s neutral colours in light and dark', off.length === 0 && !!rLight && !!rDark, off);
+})();
 var SIGNIN = read('index.html');
 /* done by B11 (UX-038) on main: the switch's own box in the top-right corner */
 check('UX-007 sign-in: the theme switch sits in the page\'s corner, not under the sign-in button', /\.login-theme\{ position: absolute; top: 16px; right: 16px;/.test(SIGNIN) &&
