@@ -1,17 +1,19 @@
 /* Promotions: what every social post and mailer of one event is made from, and the AI copy for them.
 
      GET  /api/promo/kit?eventId=          handleKit    the event's brand and content (the Kit)
+     GET  /api/promo/details?eventId=      handleDetails what the brief says for Content › Basics' three details
      GET  /api/promo/image?eventId=&url=   handleImage  one picture of the kit, served from our own address
      POST /api/promo/write                 handleWrite  copy by the AI: a caption, subject lines, an intro, headlines
                                                         (at most 30 per person in 10 minutes; never from example content)
 
-   All three are admin routes. lib/api.js routes them here (loaded on demand, like api-events.js) and hands
+   All four are admin routes. lib/api.js routes them here (loaded on demand, like api-events.js) and hands
    this file, through wire(), the helpers the two share — the admin wrappers, the saved-site reader, the
    public address, the AI usage recorder — so that neither file requires the other.
 
    THE KIT is the contract with promo-kit.js (its header comment has the shape; keep the two in step).
    Nothing in it is invented: a list the event has no data for is empty, a number is a count of real
-   records, and a picture is one the site itself shows. The page screens say what is missing.
+   records or one of the event's own (typed in Content › Basics, or the exact figures of the owner's brief:
+   detailsOf), and a picture is one the site itself shows. The page screens say what is missing.
 
    Where the brand comes from, first found wins:
      1. the saved site, events/<id>/site/page.html — what a visitor really sees, after every design edit
@@ -37,6 +39,7 @@ const { readPage } = require('./page-diff');
 const { safeFetch } = require('./safe-fetch');
 const { publicSiteData } = require('./api-audience');
 const ownerBrief = require('./owner-brief');
+const promoDetails = require('./promo-details');
 const llm = require('./llm');
 const pictures = require('./pictures');
 
@@ -595,8 +598,33 @@ function topicsOf(brief) {
   return unique((Array.isArray(brief.keyMessages) ? brief.keyMessages : []).map(function (t) { return oneLine(t, 220); }).filter(Boolean)).slice(0, 6);
 }
 
+/* The three details typed in Content › Basics (lib/promo-details.js), each read from the event first and from
+   the brief only while it was never saved there: an empty list saved on the event is the owner's "none", and
+   stays none. The headline numbers from the brief are the exact ones of the owner's "Expected scale".
+   -> { whoShouldAttend, keyTopics, headlineNumbers, from: { <field>: 'event' | 'brief' | '' } } */
+function detailsOf(ev, brief) {
+  ev = ev || {};
+  brief = brief || {};
+  var fromBrief = {
+    whoShouldAttend: audienceOf(brief.audience),
+    keyTopics: topicsOf(brief),
+    headlineNumbers: promoDetails.numbersFromScale(brief.owner && brief.owner.scale)
+  };
+  var out = { from: {} };
+  Object.keys(fromBrief).forEach(function (k) {
+    var saved = Array.isArray(ev[k]);
+    var list = !saved ? fromBrief[k]
+      : k === 'headlineNumbers' ? promoDetails.ownNumbers(ev[k])
+      : unique(ev[k].map(function (t) { return oneLine(t, k === 'keyTopics' ? 220 : 160); }).filter(Boolean)).slice(0, 12);
+    out[k] = list;
+    out.from[k] = saved ? 'event' : list.length ? 'brief' : '';
+  });
+  return out;
+}
+
 /* publicSiteData's records (confirmed speakers and partners only, no contact details of theirs), in the
-   kit's own field names */
+   kit's own field names. Who should attend, the key topics and the event's own numbers are detailsOf's: the
+   event's own numbers come before the counts of its records. */
 function contentFrom(site, brief, ev) {
   site = site || {};
   var groups = {}, tiers = {}, days = {}, names = {};
@@ -617,13 +645,14 @@ function contentFrom(site, brief, ev) {
   var contacts = (site.contacts || []).map(function (c) { return { label: c.label || '', name: c.name || '', email: c.email || '', phone: c.phone || '' }; });
   var social = (site.social || []).map(function (s) { return { kind: s.kind, url: s.url }; });
   ev = ev || {};
+  var details = detailsOf(ev, brief);
   return {
     /* the description's headings are the owner's brief, not copy (owner-brief.js): its free text only */
     overview: ownerBrief.withoutHeadings(ev.description).slice(0, 8000) || oneLine(brief && brief.theme, 1200),
     speakers: speakers, partners: partners, sessions: sessions,
-    audience: audienceOf(brief && brief.audience),
-    topics: topicsOf(brief),
-    stats: statsOf({ speakers: speakers, partners: partners, sessions: sessions, start: ev.start, end: ev.end }),
+    audience: details.whoShouldAttend,
+    topics: details.keyTopics,
+    stats: details.headlineNumbers.concat(statsOf({ speakers: speakers, partners: partners, sessions: sessions, start: ev.start, end: ev.end })),
     contacts: contacts, social: social
   };
 }
@@ -780,9 +809,7 @@ function buildKit(fb, eventId, req, opts) {
     return null;
   });
   var siteRead = publicSiteData(fb, eventId, { admin: true });
-  var briefRead = ref.collection('briefs').orderBy('createdAt', 'desc').limit(1).get().then(function (s) {
-    return s.empty ? null : (s.docs[0].data() || {}).extracted || null;
-  }, function () { return null; });
+  var briefRead = readBrief(fb, eventId);
   /* nobody waits on these when the event turns out not to be there */
   [pageRead, siteRead].forEach(function (p) { p.catch(function () {}); });
   return H.loadLiveEvent(fb, eventId).then(function (ev) {
@@ -830,6 +857,27 @@ function handleKit(req, res) {
     if (!eventId) return;
     buildKit(fb, eventId, req, {}).then(function (kit) { sendJson(res, 200, kit); })
       .catch(function (err) { H.sendFailure(res, 'promo kit', err, 'Could not load this event\'s brand and content. Please try again.'); });
+  });
+}
+
+/* GET /api/promo/details?eventId= -> { fromBrief: { whoShouldAttend, keyTopics, headlineNumbers } }: what the
+   event's latest brief says for the three details of Content › Basics (lib/promo-details.js). The console fills
+   a field that was never saved with it, so the field shows what the posts and mailers use. Read from what the
+   brief reader already stored: no model is asked. */
+function readBrief(fb, eventId) {
+  return fb.db.collection('events').doc(eventId).collection('briefs').orderBy('createdAt', 'desc').limit(1).get().then(function (s) {
+    return s.empty ? null : (s.docs[0].data() || {}).extracted || null;
+  }, function () { return null; });
+}
+function handleDetails(req, res) {
+  H.withAdmin(req, res, function (fb) {
+    var eventId = H.eventIdOr400(res, queryOf(req).get('eventId'));
+    if (!eventId) return;
+    Promise.all([H.loadLiveEvent(fb, eventId), readBrief(fb, eventId)]).then(function (r) {
+      /* the brief's side only: an empty event, so nothing saved on it hides what the brief says */
+      var d = detailsOf({}, r[1]);
+      sendJson(res, 200, { fromBrief: { whoShouldAttend: d.whoShouldAttend, keyTopics: d.keyTopics, headlineNumbers: d.headlineNumbers } });
+    }).catch(function (err) { H.sendFailure(res, 'promo details', err, 'Could not read what the event brief says. Please try again.'); });
   });
 }
 
@@ -959,7 +1007,7 @@ function factSheet(kit) {
   add('Overview', oneLine(c.overview, 900));
   if (c.audience.length) add('Who it is for', c.audience.join('; '));
   if (c.topics.length) add('Themes', c.topics.slice(0, 10).join('; '));
-  if (c.stats.length) add('Numbers (counts of what is on the site)', c.stats.map(function (s) { return s.value + ' ' + s.label; }).join(', '));
+  if (c.stats.length) add('Numbers (the event\'s own, then counts of what is on the site)', c.stats.map(function (s) { return s.value + ' ' + s.label; }).join(', '));
   if (c.speakers.length) {
     lines.push('Speakers (' + c.speakers.length + '):');
     c.speakers.slice(0, 24).forEach(function (s) { lines.push('- ' + s.name + [s.designation, s.company].filter(Boolean).map(function (x) { return ', ' + x; }).join('')); });
@@ -1189,11 +1237,11 @@ function wire(helpers) { H = helpers; }
 
 /* imageUrlProblem and importIdOf: the social posts' layouts (lib/promo-social.js) accept a picture address only
    when the image route would fetch it for the event, by this same rule */
-module.exports = { wire, handleKit, handleImage, handleWrite, buildKit, imageUrlProblem, importIdOf };
+module.exports = { wire, handleKit, handleDetails, handleImage, handleWrite, buildKit, imageUrlProblem, importIdOf };
 
 /* the pure parts, and the two network checks (run there against a stand-in lib/safe-fetch.js), for promo.test.js */
 module.exports._test = {
   brandFromSources, templateFiles, samplePictures, registerAnchor, readSavedPage, hashtagOf, editionOf, placeOf, daysOf, statsOf,
-  audienceOf, topicsOf, contentFrom, eventFrom, imageUrlProblem, importIdOf, inSomeImport, familiesInFontUrl, fontCssUrl, templateRadius,
+  audienceOf, topicsOf, detailsOf, contentFrom, eventFrom, imageUrlProblem, importIdOf, inSomeImport, familiesInFontUrl, fontCssUrl, templateRadius,
   factSheet, writeRequest, cleanWrite, writeWarning, cutChars, cutWords, kindNote, darkCopyOfUnit, checkFontCss, measureUnit, portalInfo
 };
