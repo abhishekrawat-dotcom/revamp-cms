@@ -135,7 +135,7 @@ function eventPhase(event: EventEntity): "early" | "mid" | "near" | null {
  *  plus the block palette + field schemas the studio's settings panel renders from. */
 export function buildMailerCatalog(event?: EventEntity): {
   mailers: MailerCatalogEntry[];
-  blocks: { type: string; label: string; icon: string; addable: boolean; fields: Field[] }[];
+  blocks: { type: string; label: string; icon: string; group: string; addable: boolean; fields: Field[] }[];
 } {
   const phase = event ? eventPhase(event) : null;
   const mailers = ALL_MAILERS.map((m): MailerCatalogEntry => {

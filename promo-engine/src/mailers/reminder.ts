@@ -17,7 +17,8 @@ export const reminderMailer: Mailer = {
   id: "mailer.reminder",
   group: "Reminder",
   label: "Final Call / Countdown",
-  description: "Urgency send: days-to-go band, one-line pitch, stat tiles, speaker strip and a single hard CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The reminder: days to go, a one-line pitch, the headline numbers, a row of speakers and one Register button.",
   params(event) {
     const d = daysToGo(event);
     return [

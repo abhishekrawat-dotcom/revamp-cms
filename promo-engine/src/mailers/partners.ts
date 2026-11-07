@@ -16,7 +16,8 @@ export const partnersMailer: Mailer = {
   id: "mailer.partners",
   group: "Partner",
   label: "Partner Line-up",
-  description: "Sponsor-focused send: logos stacked by tier (presenting → associate), with a thank-you note and CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "All about the partners: their logos by tier (the presenting partner first), a thank-you note and a Register button.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM, ...BANNER_PARAMS,
@@ -32,7 +33,7 @@ export const partnersMailer: Mailer = {
   },
   requires(event) {
     const n = event.sponsorTiers.reduce((a, t) => a + t.sponsors.length, 0);
-    return { ok: n >= 1, missing: n ? [] : ["sponsors"] };
+    return { ok: n >= 1, missing: n ? [] : ["partners"] };
   },
   build(event, params) {
     const groups = selectSponsors(event, params);
@@ -70,7 +71,8 @@ export const partnerSpotlightMailer: Mailer = {
   id: "mailer.partner-spotlight",
   group: "Partner",
   label: "Presenting Partner Spotlight",
-  description: "One partner front and centre: big logo lockup, an about note, and the rest of the roster below.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "One partner in focus: its logo large, a few words about it, and the other partners below.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM,
@@ -86,7 +88,7 @@ export const partnerSpotlightMailer: Mailer = {
   },
   requires(event) {
     const n = event.sponsorTiers.reduce((a, t) => a + t.sponsors.length, 0);
-    return { ok: n >= 1, missing: n ? [] : ["sponsors"] };
+    return { ok: n >= 1, missing: n ? [] : ["partners"] };
   },
   build(event, params) {
     const groups = selectSponsors(event, params);

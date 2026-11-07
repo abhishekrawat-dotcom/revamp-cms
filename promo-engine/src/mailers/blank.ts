@@ -24,7 +24,8 @@ export const blankMailer: Mailer = {
   id: "mailer.blank",
   group: "Blank",
   label: "Blank canvas",
-  description: "Start with nothing but the masthead and the legal footer, and build the mail block by block.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Start with only the logo at the top and the footer, and add the sections you want.",
   // Nothing to bulk-download: an unbuilt blank would just add an empty file to
   // the ZIP. You build this one in the studio and download it from there.
   bulk: false,
