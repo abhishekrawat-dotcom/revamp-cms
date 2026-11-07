@@ -432,10 +432,22 @@ function owFieldValue(b, f, schema) {
    mounted only as it comes near the window and scaled to the card. */
 var OW_PREV = {}, OW_PREV_BUSY = {}, OW_PREV_MAX_SAVES = 40;
 var OW_FILLED_WORDS = { speakers: 'speakers', sponsors: 'partners', sessions: 'agenda', points: 'key points', why: 'reasons to join',
-  award: 'award details', audience: 'audience', stats: 'numbers', quote: 'quote' };
-/* where in the console each example's real data is added (promo-posts.js fixLink's routes) */
-var OW_FIX = { speakers: ['Add speakers in Content → Speakers', 'content/speakers'], sponsors: ['Add partners in Content → Sponsors', 'content/sponsors'],
-  sessions: ['Add sessions in Content → Agenda', 'content/agenda'] };
+  award: 'award details', audience: '“who should attend” list', stats: 'numbers', quote: 'quote' };
+/* Where in the console each example's real data is added (UX-130), as Social posts (oneworld-social.js OW_FILL) and
+   Site-look posts (promo-posts.js) say it: go is the console's route (a third part is the field on the tab,
+   edit-event.html showPlace), at its name on screen, add the lightbox's link. Key points, reasons to join and who
+   should attend come from Content → Basics' Key topics and Who should attend (the mail's engine takes either for
+   the other two); numbers from its Headline numbers. */
+var OW_FIX = {
+  speakers: { go: 'content/speakers', at: 'Content → Speakers', add: 'Add speakers' },
+  sponsors: { go: 'content/sponsors', at: 'Content → Sponsors', add: 'Add partners' },
+  sessions: { go: 'content/agenda', at: 'Content → Agenda', add: 'Add sessions' },
+  points: { go: 'content/basics/topics', at: 'Content → Basics', add: 'Add key topics or who should attend' },
+  why: { go: 'content/basics/topics', at: 'Content → Basics', add: 'Add key topics or who should attend' },
+  audience: { go: 'content/basics/audience', at: 'Content → Basics', add: 'Add who should attend' },
+  stats: { go: 'content/basics/numbers', at: 'Content → Basics', add: 'Add headline numbers' }
+};
+function owFixHref(route) { return '/edit-event.html?event=' + encodeURIComponent(EVENT_ID) + '#' + route; }
 var OW_STATES = { past: 'Past event', closed: 'Nominations closed', 'no-date': 'No date yet', 'no-date-venue': 'No date or venue yet' };
 function owSlot(key, ver, label, tip) {
   return '<div class="art ow-prev" data-prev="' + escapeHtml(key) + '"' + (ver ? ' data-ver="' + escapeHtml(String(ver)) + '"' : '') +
@@ -564,12 +576,20 @@ function owPrevRetry() {
   });
   owMountPreviews();
 }
-/* the words beside an example card: what is made up, and how it becomes real */
+/* The words beside an example card (HTML): what is made up, and the place in the console where the real ones are
+   added, linked ("add yours in Content → Speakers"). A fact no one can add here (award winners are not recorded;
+   award details belong to award events) is said as it is, with no link. The link opens the console in place of
+   Promotions, and neither its click nor its Enter opens the whole mail as the rest of the picture does. */
 function owExampleNote(mailerId, filled) {
-  if (mailerId === 'mailer.award-winners') return 'Example winners — Oneworld does not record award winners yet';
+  if (mailerId === 'mailer.award-winners') return 'Example winners — award winners are not recorded yet';
   filled = filled || [];
-  var words = filled.map(function (k) { return OW_FILLED_WORDS[k] || k; }).join(' and ');
-  return 'Example ' + words + (filled.indexOf('award') !== -1 ? ' — for award events' : ' — add yours to use this');
+  var words = escapeHtml(filled.map(function (k) { return OW_FILLED_WORDS[k] || k; }).join(' and '));
+  if (filled.indexOf('award') !== -1) return 'Example ' + words + ' — for award events';
+  var fix = filled.map(function (k) { return OW_FIX[k]; }).filter(Boolean)[0];
+  /* every list a mailer can lack has a place (promo-examples.js FILLS); one added later without one says only this */
+  if (!fix) return 'Example ' + words + ' — not this event’s own';
+  return 'Example ' + words + ' — <a href="' + escapeHtml(owFixHref(fix.go)) + '" target="_top" onclick="event.stopPropagation()" onkeydown="event.stopPropagation()">add yours in ' +
+    escapeHtml(fix.at) + '</a>';
 }
 function owMailerIdOf(key) {
   if (key.indexOf('tpl:') === 0) return key.slice(4);
@@ -586,7 +606,7 @@ function owShowSlot(slot, it) {
       slot.setAttribute('role', 'button');
       slot.setAttribute('tabindex', '0');
       slot.setAttribute('aria-label', 'See the whole mail' + (owLabelOf(slot) ? ': ' + owLabelOf(slot) : ''));
-      slot.innerHTML = it.example ? '<span class="ow-ex">Example</span><span class="ow-ex-note">' + escapeHtml(owExampleNote(owMailerIdOf(slot.getAttribute('data-prev') || ''), it.filled)) + '</span>'
+      slot.innerHTML = it.example ? '<span class="ow-ex">Example</span><span class="ow-ex-note">' + owExampleNote(owMailerIdOf(slot.getAttribute('data-prev') || ''), it.filled) + '</span>'
         : it.state ? '<span class="ow-chip">' + escapeHtml(OW_STATES[it.state] || 'Not available yet') + '</span>' : '';
     } else if (it.error === 'too large') {
       slot.classList.add('ow-err');
@@ -683,12 +703,12 @@ function owLbInfo(key, it) {
   var missing = (it.missing && it.missing.length ? it.missing : m.missing) || [];
   if (it.example) {
     var filled = it.filled || [];
-    if (id === 'mailer.award-winners') out.note = 'Example — Oneworld does not record award winners yet, so this mailer cannot be made.';
+    if (id === 'mailer.award-winners') out.note = 'Example — award winners are not recorded yet, so this mailer cannot be made.';
     else if (filled.indexOf('award') !== -1) out.note = 'Example — this mailer is for award events, and this event has no award record.';
     else {
       out.note = 'Example — to use this mailer, add ' + missing.join('; ') + '.';
-      /* where to add it, when the console has a place for it (key points and reasons to join come from the brief) */
-      filled.forEach(function (k) { if (!out.link && OW_FIX[k]) out.link = OW_FIX[k]; });
+      /* where to add it in the console: every list a mailer can lack has its place (UX-130) */
+      filled.forEach(function (k) { if (!out.link && OW_FIX[k]) out.link = [OW_FIX[k].add + ' in ' + OW_FIX[k].at, OW_FIX[k].go]; });
     }
   } else if (it.state) {
     out.chip = OW_STATES[it.state] || 'Not available yet';
@@ -715,7 +735,7 @@ function owLightbox(key, it, from) {
       '<button type="button" class="btn ghost sm ow-lb-x" aria-label="Close" title="Close (Esc)" onclick="owLightboxClose()">✕</button>' +
     '</div>' +
     (info.note ? '<div class="ow-lb-note' + (it.example ? '' : ' ow-lb-quiet') + '">' + escapeHtml(info.note) +
-      (info.link ? ' <a href="' + escapeHtml('/edit-event.html?event=' + encodeURIComponent(EVENT_ID) + '#' + info.link[1]) + '" target="_top">' + escapeHtml(info.link[0]) + '</a>' : '') +
+      (info.link ? ' <a href="' + escapeHtml(owFixHref(info.link[1])) + '" target="_top">' + escapeHtml(info.link[0]) + '</a>' : '') +
     '</div>' : '');
   var pageEl = document.createElement('div');
   pageEl.className = 'ow-lb-page';

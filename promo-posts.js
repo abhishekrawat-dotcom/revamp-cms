@@ -485,8 +485,9 @@
     },
     {
       id: 'stats', label: 'Key numbers', blurb: 'The event’s own numbers, big.', headline: 'headline',
-      /* the numbers are counted from the event's own speakers, sessions, partners and days */
-      need: function (kit) { return statsOf(kit).length ? '' : { why: 'The event has nothing to count yet: no speakers, sessions, partners or dates.', fix: ['Add speakers in Content → Speakers', 'content/speakers'] }; },
+      /* the event's own headline numbers (Content → Basics, UX-130), then the counts of its own speakers, sessions,
+         partners and days; with none of either, its example note leads to the place its own are typed */
+      need: function (kit) { return statsOf(kit).length ? '' : { why: 'The event has no numbers yet: none of its own, and no speakers, sessions, partners or dates to count.', fix: ['Add headline numbers in Content → Basics', 'content/basics/numbers'] }; },
       groups: function (D) {
         var f = [{ key: 'kicker', label: 'Kicker', def: '' }, { key: 'headline', label: 'Headline', def: 'In numbers' }];
         statsOf(D.kit).slice(0, 6).forEach(function (s, i) {
@@ -513,11 +514,12 @@
       }
     },
     listType('audience', 'Who should attend', 'The people this event is for.', 'audience', 'au', 'Who should attend', 'bar',
-      /* "no post": the card beside this line shows an example list, and only that preview ever does */
-      { why: 'The event’s brief has no “who should attend” list, and no post makes one up.', fix: null },
+      /* "no post": the card beside this line shows an example list, and only that preview ever does; the list is
+         typed in Content → Basics (UX-130), else it is the brief's */
+      { why: 'The event has no “who should attend” list yet, and no post makes one up.', fix: ['Add who should attend in Content → Basics', 'content/basics/audience'] },
       function (D, items) { return 'Who should attend ' + eventOf(D.kit).name + ':\n' + items.map(function (t) { return '• ' + t; }).join('\n'); }),
     listType('topics', 'Key topics', 'What the event will discuss.', 'topics', 'tp', 'Key topics', 'num',
-      { why: 'The event’s brief has no topics or tracks, and no post makes them up.', fix: null },
+      { why: 'The event has no key topics yet, and no post makes them up.', fix: ['Add key topics in Content → Basics', 'content/basics/topics'] },
       function (D, items) { return 'On the agenda at ' + eventOf(D.kit).name + ':\n' + items.map(function (t) { return '• ' + t; }).join('\n'); }),
     {
       id: 'session', label: 'Session spotlight', blurb: 'One post for each session, with its speakers.', per: 'session', headline: 'kicker',
