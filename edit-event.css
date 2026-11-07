@@ -451,6 +451,20 @@
   .empty .empty-site svg{ flex-shrink:0; margin-top:2px; }
   .empty .empty-site a{ color: inherit; font-weight:700; text-decoration: underline; text-underline-offset: 2px; }
 
+  /* where a change made in Content is on the site (edit-event.html, CONTENT REACHES THE SITE): a quiet line,
+     amber while it is not live yet, red only when the staged copy could not be updated */
+  .site-bar{
+    display:flex; align-items:center; gap:10px 12px; flex-wrap:wrap; margin:0 0 16px; padding:10px 14px;
+    border:1px solid var(--border); border-radius:11px; background: var(--surface); color: var(--text-muted); font-size:13px; line-height:1.5;
+  }
+  .site-bar[hidden]{ display:none; }
+  .site-bar > svg{ flex-shrink:0; }
+  .site-bar .grow{ flex:1; min-width:220px; }
+  .site-bar .acts{ display:flex; gap:8px; flex-wrap:wrap; }
+  .site-bar .spin{ margin-right:6px; vertical-align:-2px; }
+  .site-bar.is-wait, .site-bar.is-warn{ background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+  .site-bar.is-bad{ background: var(--accent-soft); border-color: transparent; color: var(--accent-strong); }
+
   /* ============ PAGINATION ============ */
   .pager{
     display:flex; align-items:center; gap:9px; padding:11px 14px; flex-wrap:wrap;

@@ -775,11 +775,12 @@ async function main() {
      ===================================================================================================== */
   var X = { console: console };
   vm.createContext(X);
-  vm.runInContext([fnSrc(ED, 'byOrder'), fnSrc(ED, 'translatePartners'), fnSrc(ED, 'translateGallery')].join('\n'), X);
+  vm.runInContext([fnSrc(ED, 'byOrder'), fnSrc(ED, 'recId'), fnSrc(ED, 'translatePartners'), fnSrc(ED, 'translateGallery')].join('\n'), X);
   var tp = X.translatePartners([{ name: 'Acme', tierId: 't1', logoUrl: 'https://x/a.png', url: 'https://acme.com', order: 1 }, { name: 'Loose', order: 2 }], [{ id: 't1', name: 'Gold', order: 1 }]);
   check('UX-042 editor: the Content\'s sponsors keep their logos and links on the page', JSON.stringify(tp) ===
-    JSON.stringify({ tiers: [{ t: 'Gold', logos: [{ n: 'Acme', logo: 'https://x/a.png', url: 'https://acme.com' }] }, { t: '', logos: [{ n: 'Loose', logo: '', url: '' }] }] }), tp);
-  check('UX-042 editor: glimpses keep their captions', JSON.stringify(X.translateGallery([{ imageUrl: 'https://x/1.jpg', caption: 'Day 1' }])) === JSON.stringify({ items: [{ url: 'https://x/1.jpg', caption: 'Day 1' }] }));
+    /* each card also carries its record's id (B05: data-rv-id), '' for a record that has none */
+    JSON.stringify({ tiers: [{ t: 'Gold', logos: [{ id: '', n: 'Acme', logo: 'https://x/a.png', url: 'https://acme.com' }] }, { t: '', logos: [{ id: '', n: 'Loose', logo: '', url: '' }] }] }), tp);
+  check('UX-042 editor: glimpses keep their captions', JSON.stringify(X.translateGallery([{ imageUrl: 'https://x/1.jpg', caption: 'Day 1' }])) === JSON.stringify({ items: [{ id: '', url: 'https://x/1.jpg', caption: 'Day 1' }] }));
   check('UX-042 editor: the first save comes once the page has its saved-state answer', ED.indexOf('loadSiteInfo().then(saveFirstVersion);') !== -1);
   /* The hand-off screen says "keeps your page as its first saved version" on both of its paths: a gallery design (handed
      over with its sections) and an imported one (handed over with none, being one finished page). The editor's real

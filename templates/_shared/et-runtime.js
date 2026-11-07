@@ -1754,6 +1754,64 @@
     }
   }
 
+  /* A section whose only list is empty leaves the page with the menu's links to it, as one without any records
+     does (the owner, UX-147: AutoTech's empty agenda still showed its heading, three day chips and a Register
+     button over nothing). The editor marks such a section when the site is saved (editor-template-ui.js markEmpty)
+     and the server when Content changes (functions/lib/site-records.js); a page saved under the earlier rule, which
+     kept a section on show for its Register button, is put right here, by the same rule: the rest of the section
+     is a heading and a line or two, and it holds no form other than a Register button the page has elsewhere.
+     Never while editing: the editor shows the place with its notice instead. */
+  function textLength(el) {
+    var text = '';
+    (function walk(node) {
+      if (node.nodeType === 3) { text += node.nodeValue; return; }
+      if (node.nodeType !== 1 || /^(STYLE|SCRIPT|TEMPLATE|NOSCRIPT)$/.test(node.tagName)) return;
+      for (var c = node.firstChild; c; c = c.nextSibling) walk(c);
+    })(el);
+    return text.replace(/\s+/g, ' ').trim().length;
+  }
+  function holdsForm(el) {
+    return Array.prototype.some.call(el.querySelectorAll('a[data-rv-form], a[data-register-cta], [data-rv-form-embed]'), function (n) {
+      if (!n.hasAttribute('data-register-cta')) return true;
+      return !Array.prototype.some.call(document.querySelectorAll('a[data-register-cta]'), function (o) { return !el.contains(o) && !o.closest('[data-rv-empty]'); });
+    });
+  }
+  function emptySections() {
+    if (editing()) return;
+    each(document.querySelectorAll('[data-rv-empty]'), function (list) {
+      var sec = list.hasAttribute('data-rv-section') ? null : list.closest('[data-rv-section]');
+      if (!sec || sec.hasAttribute('data-rv-empty') || /^(nav|footer|hero)$/.test(sec.getAttribute('data-rv-section'))) return;
+      /* every list of records in it is empty */
+      if (Array.prototype.some.call(sec.querySelectorAll('[data-rv-repeat-template], [data-rv-item]'), function (it) { return !it.closest('[data-rv-empty]'); })) return;
+      if (textLength(sec) - textLength(list) > 600 || holdsForm(sec)) return;
+      sec.setAttribute('data-rv-empty', list.getAttribute('data-rv-empty'));
+      if (!sec.id) return;
+      each(document.querySelectorAll('a[href="#' + sec.id + '"]'), function (a) {
+        if (!a.hasAttribute('data-register-cta') && !a.hasAttribute('data-rv-form') && a.closest('[data-rv-section="nav"], [data-rv-section="footer"]')) a.setAttribute('data-rv-nav-empty', '');
+      });
+    });
+  }
+
+  /* An agenda's day chips drawn by its design (plain words, not buttons) never look like a chosen tab: they
+     choose nothing. The real day tabs are the page's own (sessionDays), built from the sessions' days. */
+  function plainDayChips() {
+    if (editing()) return;
+    each(document.querySelectorAll('[data-rv-repeat-template="sessions"], [data-rv-item="sessions"]'), function (item) {
+      var sec = item.closest('[data-rv-section]');
+      if (!sec || sec.hasAttribute('data-rv-plain-chips')) return;
+      sec.setAttribute('data-rv-plain-chips', '');
+      each(sec.querySelectorAll('span[class], li[class]'), function (el) {
+        if (el.closest('[data-rv-repeat-template], [data-rv-item], a, button, [role="tab"], [role="tablist"], [data-rv-carousel], [data-rv-carousel-track]')) return;
+        var on = Array.prototype.filter.call(el.classList, function (c) { return /^(is-)?(on|active|selected|current)$|[-_](on|active|selected|current)$/i.test(c); });
+        var base = Array.prototype.filter.call(el.classList, function (c) { return on.indexOf(c) === -1; });
+        if (!on.length || !base.length || !el.parentElement) return;
+        var like = Array.prototype.filter.call(el.parentElement.children, function (c) { return c !== el && c.tagName === el.tagName && base.every(function (b) { return c.classList.contains(b); }); });
+        if (like.length < 1 || like.some(function (c) { return on.some(function (o) { return c.classList.contains(o); }); })) return;
+        on.forEach(function (c) { el.classList.remove(c); });
+      });
+    });
+  }
+
   /* Tab sets on a page of our own making (an agenda by day: prev-sections.js, sessionDays) — imported pages start
      theirs in settleImported, so a page that has an imported part is left to it */
   function ownTabs() { if (!document.querySelector('.rv-imported') && document.querySelector('[data-rv-tab]')) tabSets(document); }
@@ -1770,7 +1828,7 @@
       if (sum && sum.tagName === 'SUMMARY') moreLess(sum, d.open);
     }, true);
   }
-  function start() { reveal(); settleImported(); sessionDays(); ownTabs(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); detailsMoreLess(); arrive(); }
+  function start() { reveal(); settleImported(); emptySections(); plainDayChips(); sessionDays(); ownTabs(); carousels(); etNavs(document); easeIn(document); watchForReveals(); sectionScripts(document); watchHeadings(); detailsMoreLess(); arrive(); }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
