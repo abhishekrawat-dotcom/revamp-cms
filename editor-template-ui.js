@@ -3186,8 +3186,8 @@
   function buildSecToolbar(sec) {
     var hidden = sec.classList.contains('is-hidden-sec');
     var html =
-      '<button class="icon-only" data-action="move-up" title="Move this section up"' + (moveTarget(sec, -1) === undefined ? ' disabled' : '') + '>&#8593;</button>' +
-      '<button class="icon-only" data-action="move-down" title="Move this section down"' + (moveTarget(sec, 1) === undefined ? ' disabled' : '') + '>&#8595;</button>' +
+      '<button class="icon-only" data-action="move-up" title="Move this section up" aria-label="Move this section up"' + (moveTarget(sec, -1) === undefined ? ' disabled' : '') + '>&#8593;</button>' +
+      '<button class="icon-only" data-action="move-down" title="Move this section down" aria-label="Move this section down"' + (moveTarget(sec, 1) === undefined ? ' disabled' : '') + '>&#8595;</button>' +
       '<span class="tpl-tb-sep"></span>';
     if (hidden) {
       html += '<button data-action="toggle-hide" title="Show this section on the site again">Show</button>';
@@ -3821,7 +3821,7 @@
      links out of the Tab order, which walked a keyboard user through dozens of them with no way back to the tools.
      On the stop, Enter picks a section (the one selected, else the first of the page shown) and moves to its tools,
      and the up and down arrows pick the section before or after it. Escape from a section's or an element's tools
-     comes back to the stop (onGlobalKey). Tab inside the page itself (after a click in it, or leaving a text being
+     comes back to the stop. Tab inside the page itself (after a click in it, or leaving a text being
      edited) also comes back to the stop. */
   function canvasStop() { return canvas && canvas.iframe ? canvas.iframe.parentNode : null; }
   function wireCanvasKeys() {
@@ -3853,15 +3853,23 @@
       e.preventDefault();
       stop.focus();
     }, true);
+    /* Escape from a section's or an element's tools lets go of the selection (as everywhere, onGlobalKey) and puts
+       the focus back on the page's stop, where the keyboard user came from, instead of losing it with the tools.
+       The tools outlive a fresh mount of the canvas, so they are wired once and find the stop of the canvas shown. */
+    [selToolbar, secToolbar].forEach(function (bar) {
+      if (!bar || bar.__rvEsc) return;
+      bar.__rvEsc = true;
+      bar.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        deselect();
+        var back = canvasStop();
+        if (back) back.focus();
+      });
+    });
   }
 
   function onGlobalKey(e) {
-    if (e.key === 'Escape') {
-      var inTools = selToolbar && (selToolbar.contains(document.activeElement) || secToolbar.contains(document.activeElement));
-      deselect();
-      if (inTools && canvasStop()) canvasStop().focus();
-      return;
-    }
+    if (e.key === 'Escape') { deselect(); return; }
     var mod = e.ctrlKey || e.metaKey;
     if (!mod || editingEl) return;
     if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }

@@ -778,13 +778,15 @@
   .tpl-viewport{ flex:1; width:100%; min-height:0; overflow:hidden; border-radius:10px; position:relative; }
   /* Mobile (UX-083): the page as a phone shows it, centred on the stage inside a phone's dark edge
      (editor-canvas.js phoneBox places and sizes it, and says where: --phone-*); the desktop page's white card makes
-     way for it. The edge lies over the page and lets clicks through, so its round inner corners cover the page's
-     square ones. */
-  .frame.tpl-frame:has(> .tpl-viewport[data-device="mobile"]){ background:transparent; box-shadow:none; outline:0; }
+     way for it (fit() marks the card .is-phone, which every browser reads, where :has() is missing in some). The edge
+     lies over the page and lets clicks through, so its round inner corners cover the page's square ones. Its shadow
+     is kept within the 16px phoneBox leaves round the edge: the canvas clips what goes further, which cut a deeper
+     shadow off flat along its bottom. */
+  .frame.tpl-frame.is-phone{ background:transparent; box-shadow:none; outline:0; }
   .tpl-viewport[data-device="mobile"] .tpl-iframe{ background:#fff; }
   .tpl-viewport[data-device="mobile"]::before{ content:''; position:absolute; z-index:4; pointer-events:none; box-sizing:border-box;
     left:calc(var(--phone-left) - 10px); top:calc(var(--phone-top) - 10px); width:calc(var(--phone-width) + 20px); height:calc(var(--phone-height) + 20px);
-    border:10px solid #1c1a1f; border-radius:38px; box-shadow:0 0 0 1px var(--border), var(--shadow-lg); }
+    border:10px solid #1c1a1f; border-radius:38px; box-shadow:0 0 0 1px var(--border), 0 6px 14px -6px rgba(0,0,0,.45); }
   /* the page is one keyboard stop (UX-085): its ring is drawn over the page, which would otherwise cover it */
   .tpl-viewport:focus{ outline:none; }
   .tpl-viewport:focus-visible::after{ content:''; position:absolute; inset:0; z-index:5; border:3px solid var(--accent); border-radius:10px; pointer-events:none; }
@@ -2040,24 +2042,6 @@
      a face without its greeting. */
   (function(){
     var chat = document.getElementById('panel-chat'), launcher = document.getElementById('chat-launcher');
-    /* The greeting is said once per person, not on every open (UX-087): it folds to the face 8 seconds after the
-       page opens, or at the first click on the editor or the page, and stays folded on later visits (remembered in
-       this browser for the person signed in). The canvas also keeps a gutter clear of the face (.stage). */
-    function greetedKey(){
-      var u = window.RevampAuth && RevampAuth.currentUser ? RevampAuth.currentUser() : null;
-      return 'revamp.aiGreeted.' + ((u && u.uid) || 'anyone');
-    }
-    function greeted(){ try { return localStorage.getItem(greetedKey()) === '1'; } catch(e){ return false; } }
-    function quiet(){
-      launcher.classList.add('is-quiet');
-      try { localStorage.setItem(greetedKey(), '1'); } catch(e){ /* storage blocked: it folds for this visit only */ }
-    }
-    if (greeted()) launcher.classList.add('is-quiet');
-    if (window.RevampAuth && RevampAuth.whenResolved) RevampAuth.whenResolved().then(function(){ if (greeted()) launcher.classList.add('is-quiet'); }, function(){});
-    setTimeout(quiet, 8000);
-    // a click in the canvas moves the focus into its frame, which this window hears as losing it
-    document.addEventListener('mousedown', quiet, { capture: true, once: true });
-    window.addEventListener('blur', function(){ if (document.activeElement && document.activeElement.tagName === 'IFRAME') quiet(); });
     function setOpen(open){
       chat.hidden = !open;
       // the chat stands beside the canvas, not over it: the canvas is fitted again to the room that is left
@@ -2065,7 +2049,7 @@
       launcher.hidden = open;
       launcher.setAttribute('aria-expanded', open ? 'true' : 'false');
       if (open){
-        quiet();
+        launcher.classList.add('is-quiet');
         var box = document.getElementById('chat-input');
         if (box) box.focus();
       } else launcher.focus();
@@ -2100,6 +2084,32 @@
       railBtns.forEach(function(b){ b.classList.remove('active'); });
     });
   });
+  /* ETB2B AI's greeting is said once per person, not on every open (UX-087): it folds to the launcher's face 8 seconds
+     after the page opens, or at the first click on the editor or the page, and stays folded on later visits
+     (remembered in this browser for the person signed in). The canvas also keeps a gutter clear of the face (.stage).
+     It is kept apart from the launcher's own script above, so that a page whose launcher is drawn some other way
+     simply has no greeting to fold: then it finds no #chat-launcher and does nothing. */
+  (function(){
+    var launcher = document.getElementById('chat-launcher');
+    if (!launcher) return;
+    function greetedKey(){
+      var u = window.RevampAuth && RevampAuth.currentUser ? RevampAuth.currentUser() : null;
+      return 'revamp.aiGreeted.' + ((u && u.uid) || 'anyone');
+    }
+    function greeted(){ try { return localStorage.getItem(greetedKey()) === '1'; } catch(e){ return false; } }
+    function quiet(){
+      launcher.classList.add('is-quiet');
+      try { localStorage.setItem(greetedKey(), '1'); } catch(e){ /* storage blocked: it folds for this visit only */ }
+    }
+    if (greeted()) launcher.classList.add('is-quiet');
+    if (window.RevampAuth && RevampAuth.whenResolved) RevampAuth.whenResolved().then(function(){ if (greeted()) launcher.classList.add('is-quiet'); }, function(){});
+    setTimeout(quiet, 8000);
+    // a mouse click anywhere, the launcher's included, folds it; opening the chat from the keyboard is a click too
+    document.addEventListener('mousedown', quiet, { capture: true, once: true });
+    launcher.addEventListener('click', quiet);
+    // a click in the canvas moves the focus into its frame, which this window hears as losing it
+    window.addEventListener('blur', function(){ if (document.activeElement && document.activeElement.tagName === 'IFRAME') quiet(); });
+  })();
   /* ---------- section picker ----------
      One way to add a section, from the section pill's "+ Section", the tools row's "Sections" and the Layers
      menu's "Add section below": the site's own sections first (RevampTemplateUI.librarySections()), then the

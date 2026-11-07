@@ -1204,8 +1204,10 @@
 
     function fit() {
       var w = DEVICES[device];
-      // the editor page draws the phone's edge round a Mobile page (custom_editor.html .tpl-viewport[data-device])
+      // the editor page draws the phone's edge round a Mobile page (custom_editor.html .tpl-viewport[data-device]),
+      // and the white card it sits on makes way for the phone (.is-phone)
       viewport.setAttribute('data-device', device);
+      frame.classList.toggle('is-phone', device === 'mobile');
       if (device === 'mobile') {
         var box = phoneBox(viewport.clientWidth, viewport.clientHeight);
         scale = box.scale;
@@ -1519,7 +1521,9 @@
       },
       onResize: null,         // set by the editor: called after every re-fit
       onNavigate: null,       // set by the editor: the canvas has loaded another document and can no longer be used
-      destroy: function () { resizing.disconnect(); viewport.remove(); }
+      // the card is the editor page's and outlives this canvas: without one it is white again, as the message of a
+      // reopen that fails expects
+      destroy: function () { resizing.disconnect(); viewport.remove(); frame.classList.remove('is-phone'); }
     };
 
     /* the frame changes size with the window and whenever a side panel opens or closes */

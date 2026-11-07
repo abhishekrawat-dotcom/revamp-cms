@@ -123,6 +123,8 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('1 align and duplicate are pictures, not ⇤ ↔ ⇥ ⧉', !/&#8676;|&#8596;|&#8677;|&#10697;/.test(tb) && /TB_ICON\.alignLeft/.test(tb) && /TB_ICON\.alignCenter/.test(tb) && /TB_ICON\.alignRight/.test(tb) && /TB_ICON\.duplicate/.test(tb));
   var iconButtons = tb.match(/<button class="icon-only[^"]*"[^>]*>/g) || [];
   check('1 every icon button of the toolbar has a name', iconButtons.length >= 10 && iconButtons.every(function (b) { return /aria-label="[^"]+"/.test(b); }), iconButtons.filter(function (b) { return !/aria-label=/.test(b); }));
+  var secButtons = body('buildSecToolbar').match(/<button class="icon-only[^"]*"[^>]*>/g) || [];
+  check('1 the section pill\'s ↑ and ↓ have their names too', secButtons.length === 2 && /aria-label="Move this section up"/.test(secButtons[0]) && /aria-label="Move this section down"/.test(secButtons[1]), secButtons);
   var icons = vm.createContext({});
   vm.runInContext(SRC.slice(SRC.indexOf('  var TB_SVG = '), SRC.indexOf('  function buildToolbar(')) + '; this.TB_ICON = TB_ICON;', icons);
   check('1 the pictures are drawn and hidden from screen readers', ['alignLeft', 'alignCenter', 'alignRight', 'duplicate'].every(function (k) {
@@ -243,9 +245,22 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('4 fit() puts a Mobile page in that box and leaves Desktop as it was', /viewport\.setAttribute\('data-device', device\);/.test(fit) && /var box = phoneBox\(viewport\.clientWidth, viewport\.clientHeight\);/.test(fit) &&
     /iframe\.style\.marginLeft = box\.left \+ 'px';/.test(fit) && /iframe\.style\.marginLeft = '';/.test(fit) && /scale = Math\.min\(1, viewport\.clientWidth \/ w\);/.test(fit));
   check('4 the editor page draws a phone round it, over the page so its corners are round, and the white card makes way',
-    /\.frame\.tpl-frame:has\(> \.tpl-viewport\[data-device="mobile"\]\)\{ background:transparent; box-shadow:none; outline:0; \}/.test(STYLE) &&
+    /\.frame\.tpl-frame\.is-phone\{ background:transparent; box-shadow:none; outline:0; \}/.test(STYLE) &&
     /\.tpl-viewport\[data-device="mobile"\]::before\{[^}]*pointer-events:none;[^}]*left:calc\(var\(--phone-left\) - 10px\);[^}]*border:10px solid #1c1a1f; border-radius:38px;/.test(STYLE) &&
     /viewport\.style\.setProperty\('--phone-width', Math\.round\(box\.width \* scale\) \+ 'px'\);/.test(fit) && /viewport\.style\.removeProperty\(k\)/.test(fit));
+  check('4 the card is marked by a class, not by :has() (missing in Firefox before 121), and is white again once the canvas is gone',
+    noComments(STYLE).indexOf(':has(') === -1 && /frame\.classList\.toggle\('is-phone', device === 'mobile'\);/.test(fit) &&
+    /destroy: function \(\) \{ resizing\.disconnect\(\); viewport\.remove\(\); frame\.classList\.remove\('is-phone'\); \}/.test(CANVAS));
+  // the phone's shadow reaches no further than the room phoneBox leaves round its edge, or the canvas cuts it off flat
+  var phoneRule = (STYLE.match(/\.tpl-viewport\[data-device="mobile"\]::before\{[^}]*\}/) || [''])[0];
+  var shadow = (/box-shadow:([^;]*);/.exec(phoneRule) || [])[1] || '';
+  var gap = +((CANVAS.match(/var PHONE = \{[^}]*gap: (\d+)/) || [])[1]);
+  var reach = shadow.split(/,(?![^(]*\))/).map(function (layer) {
+    var n = (layer.match(/-?\d+(?:\.\d+)?px|\b0\b/g) || []).map(function (x) { return parseFloat(x) || 0; });
+    // x y blur spread: the furthest any side goes past the edge
+    return Math.max(Math.abs(n[0] || 0), Math.abs(n[1] || 0)) + (n[2] || 0) + (n[3] || 0);
+  });
+  check('4 the phone\'s shadow stays within the ' + gap + 'px round its edge', gap > 0 && reach.length === 2 && reach.every(function (r) { return r <= gap; }) && shadow.indexOf('--shadow-lg') === -1, { shadow: shadow, reach: reach, gap: gap });
   check('4 the selection pills follow the page wherever it sits (measured on screen)', /var f = iframe\.getBoundingClientRect\(\);/.test(body('screenRect', CANVAS)));
 })();
 
@@ -266,18 +281,19 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
     var on = {};
     return { on: on, addEventListener: function (t, fn) { (on[t] = on[t] || []).push(fn); }, focused: 0, focus: function () { this.focused++; } };
   }
-  var stop = target(), canvasDoc = target(), firstTool = { focused: 0, focus: function () { this.focused++; } };
+  var stop = target(), canvasDoc = target(), firstTool = { focused: 0, focus: function () { this.focused++; } }, selBar = target(), deselected = 0;
   var secsList = [{ n: 'hero' }, { n: 'agenda' }, { n: 'faq' }], timers = [], picked = [];
   var c = vm.createContext({
     canvas: { iframe: { parentNode: stop }, doc: canvasDoc }, remounting: false, aiWorking: false, activeSectionEl: null, selectedEl: null,
-    secToolbar: { hidden: false, querySelector: function () { return firstTool; } },
+    secToolbar: { hidden: false, querySelector: function () { return firstTool; }, on: {}, addEventListener: function (t, fn) { (this.on[t] = this.on[t] || []).push(fn); } },
+    selToolbar: selBar, deselect: function () { deselected++; },
     pageSections: function () { return secsList; }, positionToolbars: function () {}, busyToast: function () {},
     setTimeout: function (fn) { timers.push(fn); }
   });
   vm.runInContext(body('canvasStop') + body('wireCanvasKeys') + '; function selectSection(s) { activeSectionEl = s; selectedEl = null; this.picked = (this.picked || []).concat(s.n); } this.wire = wireCanvasKeys;', c);
   c.wire();
   c.wire();
-  check('5 wired once per page', stop.on.keydown.length === 1 && canvasDoc.on.keydown.length === 1);
+  check('5 wired once per page, and the tools once for good', stop.on.keydown.length === 1 && canvasDoc.on.keydown.length === 1 && selBar.on.keydown.length === 1 && c.secToolbar.on.keydown.length === 1);
   function key(el, k, extra) { var e = { key: k, target: stop, prevented: false, preventDefault: function () { this.prevented = true; } }; Object.keys(extra || {}).forEach(function (x) { e[x] = extra[x]; }); el.on.keydown[0](e); return e; }
   var e = key(stop, 'ArrowDown');
   check('5 ↓ on the page picks its first section', e.prevented && c.activeSectionEl === secsList[0]);
@@ -296,17 +312,24 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   var t = { key: 'Tab', prevented: false, preventDefault: function () { this.prevented = true; } };
   canvasDoc.on.keydown[0](t);
   check('5 Tab inside the page comes back to its stop instead of walking the site\'s links', t.prevented && stop.focused === 1);
-  check('5 Escape from a section\'s or an element\'s tools comes back to the page', /var inTools = selToolbar && \(selToolbar\.contains\(document\.activeElement\) \|\| secToolbar\.contains\(document\.activeElement\)\);\s*\n\s*deselect\(\);\s*\n\s*if \(inTools && canvasStop\(\)\) canvasStop\(\)\.focus\(\);/.test(body('onGlobalKey')));
+  var before = stop.focused;
+  c.secToolbar.on.keydown[0]({ key: 'Escape' });
+  check('5 Escape from a section\'s tools lets go of it and comes back to the page', deselected === 1 && stop.focused === before + 1);
+  selBar.on.keydown[0]({ key: 'Escape' });
+  check('5 … and so from an element\'s tools', deselected === 2 && stop.focused === before + 2);
+  selBar.on.keydown[0]({ key: 'b' });
+  check('5 … other keys in the tools are theirs', deselected === 2 && stop.focused === before + 2);
+  check('5 Escape elsewhere still lets go of the selection, as before', /if \(e\.key === 'Escape'\) \{ deselect\(\); return; \}/.test(body('onGlobalKey')));
   check('5 wired with every mount of the canvas', /canvas\.win\.addEventListener\('keydown', onGlobalKey\);\s*\n\s*wireCanvasKeys\(\);/.test(body('wireCanvasEvents')));
 })();
 
 /* ======================= 6 UX-087 the greeting, once per person ======================= */
 (function () {
-  var iife = blockFrom(INLINE, "(function(){\n    var chat = document.getElementById('panel-chat'), launcher = document.getElementById('chat-launcher');", ')();');
-  check('6 the launcher script is there', !!iife);
+  var iife = blockFrom(INLINE, "(function(){\n    var launcher = document.getElementById('chat-launcher');\n    if (!launcher) return;", ')();');
+  check('6 the greeting\'s script is there, apart from the launcher\'s', !!iife && iife.indexOf('setOpen') === -1);
   function run(store, uid) {
     var classes = {}, timers = [], listeners = {}, winListeners = {};
-    function el() { return { hidden: false, classList: { add: function (c) { classes[c] = 1; }, contains: function (c) { return !!classes[c]; } }, setAttribute: function () {}, addEventListener: function () {}, focus: function () {} }; }
+    function el() { return { hidden: false, classList: { add: function (c) { classes[c] = 1; }, contains: function (c) { return !!classes[c]; } }, setAttribute: function () {}, addEventListener: function (t, fn) { (this.on = this.on || {})[t] = fn; }, focus: function () {} }; }
     var els = { 'panel-chat': el(), 'chat-launcher': el(), 'chat-close': el(), 'chat-input': el() };
     var c = vm.createContext({
       document: { getElementById: function (id) { return els[id]; }, addEventListener: function (t, fn, o) { listeners[t] = { fn: fn, o: o }; }, activeElement: null },
@@ -316,7 +339,7 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
       setTimeout: function (fn, ms) { timers.push({ fn: fn, ms: ms }); }, Event: function () {}
     });
     vm.runInContext(iife, c);
-    return { classes: classes, timers: timers, listeners: listeners, winListeners: winListeners, doc: c.document };
+    return { classes: classes, timers: timers, listeners: listeners, winListeners: winListeners, doc: c.document, launcher: els['chat-launcher'] };
   }
   var store = {};
   var first = run(store, 'u1');
@@ -333,6 +356,13 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   fourth.doc.activeElement = { tagName: 'IFRAME' };
   fourth.winListeners.blur();
   check('6 … so does the first click on the page itself (the focus goes into the canvas)', fourth.classes['is-quiet'] === 1);
+  var fifth = run({}, 'u5');
+  fifth.launcher.on.click();
+  check('6 … and opening the chat from the keyboard', fifth.classes['is-quiet'] === 1);
+  var none = vm.createContext({ document: { getElementById: function () { return null; }, addEventListener: function () { throw new Error('wired with no launcher'); } }, setTimeout: function () { throw new Error('timed with no launcher'); } });
+  check('6 a page without this launcher has no greeting to fold, and nothing is wired', (function () { try { vm.runInContext(iife, none); return true; } catch (e) { return String(e.message); } })() === true);
+  var launch = blockFrom(INLINE, "(function(){\n    var chat = document.getElementById('panel-chat'), launcher = document.getElementById('chat-launcher');", ')();');
+  check('6 the launcher\'s own script is as it was (opening it still quiets the greeting)', !!launch && /if \(open\)\{\n\s*launcher\.classList\.add\('is-quiet'\);/.test(launch) && launch.indexOf('aiGreeted') === -1);
   var pad = /\.stage\{[^}]*padding: var\(--stage-pad-top\) 24px (\d+)px;/.exec(STYLE);
   check('6 the canvas keeps a gutter clear of the launcher\'s face (22px + 62px from the bottom)', pad && +pad[1] >= 84 + 16, pad && pad[1]);
 })();
