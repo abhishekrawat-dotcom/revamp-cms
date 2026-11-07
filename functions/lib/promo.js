@@ -12,7 +12,8 @@
 
    THE KIT is the contract with promo-kit.js (its header comment has the shape; keep the two in step).
    Nothing in it is invented: a list the event has no data for is empty, a number is a count of real
-   records, and a picture is one the site itself shows. The page screens say what is missing.
+   records or one of the event's own (typed in Content › Basics, or the exact figures of the owner's brief:
+   detailsOf), and a picture is one the site itself shows. The page screens say what is missing.
 
    Where the brand comes from, first found wins:
      1. the saved site, events/<id>/site/page.html — what a visitor really sees, after every design edit
