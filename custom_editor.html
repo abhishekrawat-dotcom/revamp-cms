@@ -1224,8 +1224,9 @@
       <h1 id="ed-event-name">&nbsp;</h1>
       <span class="meta" id="ed-event-meta"></span>
     </span>
-    <!-- Only what acts on this site is up here (UX-078): the light/dark switch is in the account menu
-         (data-rv-account-theme), the AI markers switch is in the Layers panel, and the page switcher is in the tools row. -->
+    <!-- Only what acts on this site is up here (UX-078): the AI markers switch is in the Layers panel and the page
+         switcher is in the tools row. The light/dark switch and the account end the bar, as on every page (UX-007):
+         as a 32px icon it leaves the event's name its room (measured at 1024 to 1440 px). -->
     <span class="topbar-acts">
       <!-- the editor's two modes (editor-ai-mode.js): "Edit with AI" shows the site as its draft preview does,
            with ETB2B AI floating over it; "Edit myself" is the canvas with every editing tool. Shown once the
@@ -1257,8 +1258,9 @@
       <a class="site-state" id="site-state" hidden></a>
       <button class="btn btn-secondary" type="button" id="btn-save" title="Save to staging (Ctrl/⌘ + S)" hidden disabled>Save</button>
       <button class="btn btn-primary" type="button" id="btn-publish" disabled>Publish changes</button>
-      <!-- the signed-in user's avatar, with Dark mode and Sign out: auth.js renders it into any [data-rv-account] -->
-      <span data-rv-account data-rv-account-theme></span>
+      <!-- the light/dark switch (theme-toggle.js), then the signed-in user's avatar and Sign out (auth.js) -->
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+      <span data-rv-account></span>
     </span>
   </header>
 

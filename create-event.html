@@ -1986,9 +1986,10 @@
       <!-- where the draft is: in the person's account, or on this computer only while the account cannot be reached
            (renderSaveState); not shown until something has been entered -->
       <span class="save-state" id="save-state" title="Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer." hidden><span class="d"></span>Saved to your account</span>
-      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <button class="btn btn-secondary btn-sm" id="btn-save-exit">Save &amp; exit</button>
-      <!-- the signed-in user's avatar and Sign out: auth.js renders it into any [data-rv-account] -->
+      <!-- the light/dark switch, then the signed-in user's avatar and Sign out, side by side as on every page (UX-007);
+           only the builder's close button comes after them -->
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <span data-rv-account></span>
       <button class="icon-btn" id="btn-close" title="Close builder" aria-label="Close builder">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>

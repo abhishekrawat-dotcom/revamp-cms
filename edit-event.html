@@ -50,8 +50,6 @@
   <span class="topbar-acts">
     <!-- what is saved, on every view: "All changes saved" / "Unsaved changes" / "Saving…" (paintSaveState) -->
     <span class="save-state" id="ev-save" role="status" hidden></span>
-    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
-    <span data-rv-account></span>
     <button class="btn btn-secondary" type="button" id="btn-preview">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
       <span>Preview</span>
@@ -62,6 +60,9 @@
       <span>Share preview</span>
     </button>
     <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
+    <!-- the light/dark switch and the account end the top bar on every page (UX-007) -->
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span data-rv-account></span>
   </span>
 </header>
 

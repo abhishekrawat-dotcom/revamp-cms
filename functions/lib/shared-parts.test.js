@@ -273,9 +273,32 @@ check('UX-008 Mailer performance with ?event=: that event\'s Mailers in Promotio
 
 /* ======================= UX-007 one top bar ======================= */
 var BACK = /<span class="nav-back-long">Back to events<\/span><span class="nav-back-short">Events<\/span>/;
-check('UX-007 Registrations: the console\'s order (theme switch, account menu, Preview) and an account menu to sign out; no event switcher',
-  /<span class="topbar-acts">\s*<span data-theme-toggle-target[^>]*><\/span>\s*<span data-rv-account><\/span>\s*<button class="btn btn-secondary" type="button" id="btn-preview"/.test(REG) &&
+check('UX-007 Registrations: an account menu to sign out, and no event switcher',
+  /<span class="topbar-acts">\s*<button class="btn btn-secondary" type="button" id="btn-preview"/.test(REG) &&
   REG.indexOf('event-select') === -1 && REG.indexOf('fillPicker') === -1 && REG.indexOf('.event-picker') === -1);
+/* One top bar: on every page with an account (the sign-in page has none, and keeps its switch in the corner), the
+   light/dark switch and the account menu sit side by side, one of each, and end the bar: after the page's own
+   actions (Preview, Share preview, Save, Publish). Only Create Event's close button comes after them, as the builder's
+   way out. The site editor's switch was inside its account menu, and the console, Promotions and Registrations put
+   the pair before Preview: the editor, the events list and the logs put it last. */
+var PAIR = '<span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>\\s*(?:<!--[^>]*-->\\s*)?<span data-rv-account></span>';
+var EDITOR_PAGE = read('custom_editor.html'), CREATE = read('create-event.html'), LIST = read('Event_Listing.html'), PROMO = read('marketing.html');
+var HEADERS = { 'edit-event.html': CONSOLE, 'custom_editor.html': EDITOR_PAGE, 'marketing.html': PROMO, 'audience-registrations.html': REG,
+  'activity-log.html': ALOG, 'mailer-performance.html': MP, 'review.html': REVIEW, 'Event_Listing.html': LIST, 'create-event.html': CREATE, 'portal-review.html': read('portal-review.html') };
+var badEnd = Object.keys(HEADERS).filter(function (f) {
+  var page = HEADERS[f];
+  var after = f === 'create-event.html' ? '\\s*<button class="icon-btn" id="btn-close"' : '\\s*(?:</span>|</div>)?\\s*(?:</div>\\s*)?</header>';
+  return count(page, 'data-theme-toggle-target') !== 1 || count(page, '<span data-rv-account') !== 1 || !new RegExp(PAIR + after).test(page);
+});
+check('UX-007 every page with an account: the light/dark switch and the account menu side by side, one of each, at the end of the top bar', badEnd.length === 0, badEnd);
+check('UX-007 … so the site editor\'s switch is in its top bar like every other page\'s, not inside its account menu',
+  EDITOR_PAGE.indexOf('data-rv-account-theme></span>') === -1);
+check('UX-007 … and the console, Promotions and Registrations have Preview, Share preview and Publish before the pair, as the editor has',
+  new RegExp('id="btn-publish">Publish</button>\\s*(?:<!--[^>]*-->\\s*)?' + PAIR + '\\s*</span>\\s*</header>').test(CONSOLE) &&
+  new RegExp('<span>Preview</span>\\s*</button>\\s*(?:<!--[^>]*-->\\s*)?' + PAIR + '\\s*</span>\\s*</header>').test(PROMO) &&
+  new RegExp('<span>Preview</span>\\s*</button>\\s*(?:<!--[^>]*-->\\s*)?' + PAIR + '\\s*</span>\\s*</header>').test(REG));
+var backs = Object.keys(HEADERS).filter(function (f) { return f !== 'create-event.html' && HEADERS[f].indexOf('Back to events') === -1; });
+check('UX-007 … and every one of them but Create Event (Save & exit and Close, the builder\'s own ways out) says "Back to events"', backs.length === 0, backs);
 check('UX-007 the activity log: "Back to events" (Events on a phone) in the console\'s button look',
   BACK.test(ALOG) && /\.nav-back\{[^}]*border:1px solid var\(--border\); background:var\(--surface-2\); font-size:13px; font-weight:700; color:var\(--text\);/.test(ALOG) &&
   ALOG.indexOf('\n      Events\n    </a>') === -1);
