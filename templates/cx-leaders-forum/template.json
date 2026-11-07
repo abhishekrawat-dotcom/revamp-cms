@@ -167,7 +167,7 @@
   "sectionsNotes": "repeat = the section's repeating cards for the editor's Layout items: item = selector for one card (its parent is the list), label = what the list shows for it. toggle = items that open on click (an accordion): item, the class that opens it, and the element whose aria-expanded follows.",
   "sections": [
     { "id": "banner",            "name": "Banner",                          "etId": null, "widget": "et-banner" },
-    { "id": "stats-3",           "name": "Stats strip",                     "etId": null, "repeat": { "item": ".stat-box", "label": "h3" } },
+    { "id": "stats-3",           "name": "Key numbers",                     "etId": null, "repeat": { "item": ".stat-box", "label": "h3" } },
     { "id": "overview-",         "name": "Overview",                        "etId": null },
     { "id": "conventions-box",   "name": "The Editorial Agenda",            "etId": null, "repeat": { "item": ".conventions-grid li", "label": ".conventions-cntnd h3" } },
     { "id": "pillars",           "name": "The CX Investment Stack",         "etId": null, "repeat": { "item": ".cards-container > .pillar-col", "label": ".layer-title" } },

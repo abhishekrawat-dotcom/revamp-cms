@@ -934,8 +934,8 @@ async function main() {
   });
   check('12. every listed design is a gallery design', Object.keys(ABOUT).every(function (id) { return TEMPLATES.some(function (t) { return t.id === id; }); }));
   p.ce('S.basics.portal = "hr"');
-  check('12. on an ETHRWorld event, tech500\'s card warns', p.ce('aboutPortalNote("tech500")') === 'Its “About ETCIO” section is ETCIO’s own text. Edit or remove it for ETHRWorld in the editor.');
-  check('12. …cx-leaders-forum\'s quotes its own heading', p.ce('aboutPortalNote("cx-leaders-forum")') === 'Its “About ETBrandEquity.com” section is ET BrandEquity’s own text. Edit or remove it for ETHRWorld in the editor.');
+  check('12. on an ETHRWorld event, tech500\'s card warns', p.ce('aboutPortalNote("tech500")') === 'Its “About ETCIO” section is ETCIO’s own text, so it starts switched off for ETHRWorld. Switch it on to rewrite it in the site editor.');
+  check('12. …cx-leaders-forum\'s quotes its own heading', p.ce('aboutPortalNote("cx-leaders-forum")') === 'Its “About ETBrandEquity.com” section is ET BrandEquity’s own text, so it starts switched off for ETHRWorld. Switch it on to rewrite it in the site editor.');
   check('12. making-ai-work has no such section: no warning', p.ce('aboutPortalNote("making-ai-work")') === '');
   p.ce('S.basics.portal = "cio"');
   check('12. on an ETCIO event, tech500 says nothing', p.ce('aboutPortalNote("tech500")') === '' && p.ce('aboutPortalNote("retail-leadership-summit")') !== '');

@@ -158,7 +158,7 @@
   "sections": [
     { "id": "banner",         "name": "Banner",                          "etId": null,     "widget": "et-banner" },
     { "id": "overview",       "name": "Overview",                        "etId": null },
-    { "id": "overview-stats", "name": "Stats strip",                     "etId": null,     "repeat": { "item": ".ovr-stats > .ovr-stat", "label": ".ovr-stat-label" } },
+    { "id": "overview-stats", "name": "Key numbers",                     "etId": null,     "repeat": { "item": ".ovr-stats > .ovr-stat", "label": ".ovr-stat-label" } },
     { "id": "who-enter",      "name": "Questions this raises",           "etId": null,     "repeat": { "item": ".who-enter-box ul.first > li", "label": "h4" } },
     { "id": "key-topic",      "name": "Key Discussion Points",           "etId": null,     "repeat": { "item": ".key-topic-card", "label": "h3" } },
     { "id": "our-speakers",   "name": "Our Speakers",                    "etId": null,     "repeat": { "item": ".gridPadItem", "label": "h5" } },
