@@ -1197,9 +1197,15 @@ window.RevampCore = (function(){
      for anything else). Colours come from the page's own theme variables, so they follow light and dark;
      the fallbacks are for a page that defines none. An error is one red everywhere. */
   var SHARED_CSS = [
-    '.rv-toasts{position:fixed;left:50%;bottom:var(--rv-toast-bottom,24px);transform:translateX(-50%);z-index:2147482000;display:flex;' +
+    /* the higher of two lifts: the page's own (--rv-toast-bottom, over a save bar or footer) and the one that keeps a
+       corner control in view (--rv-toast-clear, below) */
+    '.rv-toasts{position:fixed;left:50%;bottom:max(var(--rv-toast-bottom,24px),var(--rv-toast-clear,0px));transform:translateX(-50%);z-index:2147482000;display:flex;' +
       'flex-direction:column;align-items:center;gap:8px;width:max-content;max-width:calc(100vw - 32px);pointer-events:none;' +
       'transition:bottom .18s ease}',
+    /* ETB2B AI's launcher sits in the bottom-left corner (etb2b-chat.css: 52px round 16px up on a phone, a 44px pill 22px up
+       to 880px). On a screen that narrow a message is wide enough to reach that corner, and a failure stays until it is
+       dismissed, so it covered the launcher the whole time: the messages start above it there. */
+    '@media (max-width:880px){body:has(.rvc-launcher){--rv-toast-clear:calc(80px + env(safe-area-inset-bottom,0px))}}',
     '.rv-toast{display:flex;align-items:flex-start;gap:9px;box-sizing:border-box;max-width:min(460px,100%);padding:10px 14px;border-radius:10px;' +
       'background:var(--text,#191B1F);color:var(--bg,#FFFFFF);font:600 13px/1.45 var(--font-body,Inter,"Segoe UI",system-ui,-apple-system,sans-serif);' +
       'box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:auto;overflow-wrap:anywhere;text-align:left;opacity:0;transform:translateY(6px);' +

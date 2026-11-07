@@ -111,7 +111,7 @@ check('UX-010 Registrations, the review page and the site editor\'s save dialog:
   var close = t.C.toast('Basics saved');
   var host = t.host();
   check('UX-006 one place for messages, made on the page: bottom centre, a live region, in front of everything', !!host && host.className.indexOf('rv-toasts') !== -1 &&
-    host.getAttribute('aria-live') === 'polite' && /\.rv-toasts\{position:fixed;left:50%;bottom:var\(--rv-toast-bottom,24px\);transform:translateX\(-50%\)/.test(CORE));
+    host.getAttribute('aria-live') === 'polite' && /\.rv-toasts\{position:fixed;left:50%;bottom:max\(var\(--rv-toast-bottom,24px\),var\(--rv-toast-clear,0px\)\);transform:translateX\(-50%\)/.test(CORE));
   var el = t.toasts()[0];
   check('UX-006 a confirmation: a tick, role status, the words', !!el && el.getAttribute('role') === 'status' && el.className.indexOf('rv-toast-success') !== -1 &&
     !!el.querySelector('svg') && el.textContent === 'Basics saved' && el.classList.contains('on'));
@@ -177,6 +177,10 @@ check('UX-006 the console: notify and notifyError are RevampCore.toast (a failur
   /function notify\(msg, ms\)\{\s*C\.toast\(msg, typeof ms === 'number' && ms > 0 \? \{ duration: ms \} : null\);/.test(CONSOLE) &&
   /C\.toast\(\(opts\.what \? opts\.what \+ ' ' : ''\) \+ errText\(errOrMsg\), \{ kind: 'error', retry: opts\.retry \}\);/.test(CONSOLE) &&
   CONSOLE.indexOf('id="toast-host"') === -1 && CONSOLE.indexOf('function dismissToast') === -1);
+check('UX-006 on a screen up to 880px wide the messages start above ETB2B AI\'s launcher in the bottom-left corner, which a failure (kept until dismissed) covered',
+  CORE.indexOf("bottom:max(var(--rv-toast-bottom,24px),var(--rv-toast-clear,0px))") !== -1 &&
+  CORE.indexOf("'@media (max-width:880px){body:has(.rvc-launcher){--rv-toast-clear:calc(80px + env(safe-area-inset-bottom,0px))}}'") !== -1 &&
+  /@media \(max-width:600px\)\{\n  \.rvc-launcher\{ left:16px; bottom:calc\(16px \+ env\(safe-area-inset-bottom, 0px\)\); width:52px; height:52px;/.test(read('etb2b-chat.css')));
 check('UX-006 the console lifts the messages clear of its Save bar', /body:has\(\.savebar\.on\)\{ --rv-toast-bottom:124px; \}/.test(CSS));
 check('UX-006 the site editor: showToast is RevampCore.toast and still returns { dismiss }',
   /var close = window\.RevampCore\.toast\(msg, \{ kind: kind, action: opts\.action, sticky: opts\.sticky, duration: opts\.duration \}\);\s*return \{ dismiss: close \};/.test(EDITOR) &&
