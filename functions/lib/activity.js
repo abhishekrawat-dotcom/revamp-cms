@@ -16,7 +16,9 @@ const ACTIONS = ['created', 'updated', 'status-changed', 'settings-changed', 'si
 const AREAS = ['site', 'content', 'forms', 'design', 'publishing', 'registrations', 'promotions', 'settings', 'event'];
 const AREA_OF = {
   'created': 'event', 'deleted': 'event', 'restored': 'event', 'cloned': 'event',
-  'updated': 'settings', 'status-changed': 'settings', 'settings-changed': 'settings',
+  /* 'updated' is a Basics edit (PUT /api/event: name, dates, venue, template, logo…), and Basics sits under Content
+     in the console (UX-015); it was filed under Settings */
+  'updated': 'content', 'status-changed': 'settings', 'settings-changed': 'settings',
   'site-saved': 'site', 'site-generated': 'site', 'repaired': 'site',
   'published': 'publishing', 'unpublished': 'publishing', 'approval-requested': 'publishing', 'approved': 'publishing', 'rejected': 'publishing',
   'content-seeded': 'content', 'content-added': 'content', 'content-changed': 'content', 'content-removed': 'content',
@@ -33,8 +35,15 @@ const AREA_OF = {
   /* a shareable preview link made or stopped (functions/lib/share-preview.js): who was shown the site before it went live */
   'preview-link-shared': 'publishing', 'preview-link-stopped': 'publishing'
 };
+/* A Basics edit written before UX-015 carries area 'settings' (or none, if older still): it is read as Content, as
+   new ones are written. Only a plain Basics edit: Promotions' mailers and the AI's description also say 'updated',
+   with an area of their own, and keep it. */
+function isBasicsEdit(entry) {
+  return !!entry && entry.action === 'updated' && (!entry.area || entry.area === 'settings');
+}
 /* an entry's area: its own when it has a known one, else its action's */
 function areaOf(entry) {
+  if (isBasicsEdit(entry)) return 'content';
   var a = entry && entry.area;
   if (typeof a === 'string' && AREAS.indexOf(a) !== -1) return a;
   return AREA_OF[entry && entry.action] || 'event';
@@ -107,4 +116,4 @@ function listActivity(fb, eventId, limit) {
     .then(function (snap) { return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); }); });
 }
 
-module.exports = { ACTIONS, AREAS, AREA_OF, areaOf, actorOf, logActivity, listActivity, maskEmail, maskPhone, maskFields, sectionNames };
+module.exports = { ACTIONS, AREAS, AREA_OF, areaOf, isBasicsEdit, actorOf, logActivity, listActivity, maskEmail, maskPhone, maskFields, sectionNames };

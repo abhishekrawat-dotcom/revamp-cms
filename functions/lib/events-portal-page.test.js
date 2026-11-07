@@ -41,10 +41,11 @@ check('D.3 the switcher button says "Portal" until it is known (never a guessed 
 var scripts = PAGE.match(/<script\b[^>]*>/g) || [];
 /* with ETB2B AI's (8bebdc9): event-lifecycle.js between the picker and the inline script, the chat after it; and
    edit-event-core.js (B07: the API calls of Clone, Delete and Restore) before auth.js */
-check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, then ETB2B AI\'s two',
-  JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>',
+/* and (B11, UX-032) the vendored QR library, which draws the QR Codes dialog's code, between the picker and event-lifecycle.js */
+check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, qrcode-generator.js, event-lifecycle.js, the inline script, then ETB2B AI\'s two',
+  JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="event-lifecycle.js">', '<script>',
     '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
-check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
+check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="assets\/vendor\/qrcode-generator.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
 check('D.3 the server sends portal-picker.js', require('./access').isServableFile('portal-picker.js') === true && fs.existsSync(path.join(ROOT, 'portal-picker.js')));
 check('D.3 th.col-portal right after "Event name"', count(PAGE, '<th class="col-portal">Portal</th>') === 1 && /<th>Event name<\/th>\n\s*<th class="col-portal">Portal<\/th>/.test(PAGE));
 check('D.3 #portal-notice right after #special-banner', count(PAGE, 'id="portal-notice"') === 1 && /<div id="special-banner"><\/div>\n\s*<!--[^\n]*-->\n\s*<div id="portal-notice"><\/div>/.test(PAGE));
@@ -80,8 +81,9 @@ check('D.3 the switcher menu is at most 340 px wide and 60vh tall, its list scro
       check('D.3 ' + th[0] + ': --' + p[0] + ' on --' + p[1] + ' ≥ 4.5 (' + p[2] + ')', r >= 4.5, { ratio: Math.round(r * 100) / 100, fg: a, bg: c });
     });
   });
-  check('D.3 the callout\'s links are --text (--accent-strong on --accent-soft falls just short in light)', /\.portal-callout \.pn-link\{ color:var\(--text\); \}/.test(CSS) &&
-    ratio(block(/:root\{/)['accent-strong'], block(/:root\{/)['accent-soft']) < 4.5);
+  /* (with the cooler red of before B11, --accent-strong on --accent-soft fell just short in light; --text reads at AA with either) */
+  check('D.3 the callout\'s links are --text, which reads at AA on --accent-soft', /\.portal-callout \.pn-link\{ color:var\(--text\); \}/.test(CSS) &&
+    ratio(block(/:root\{/).text, block(/:root\{/)['accent-soft']) >= 4.5);
   check('D.3 counts are --text-muted (the page\'s --text-faint would fail AA)', /\.pn-opt \.pn-count\{[^}]*color:var\(--text-muted\)/.test(CSS) && ratio(block(/:root\{/)['text-faint'], block(/:root\{/).surface) < 4.5);
 })();
 
@@ -177,7 +179,9 @@ var FNS = ['esc', 'svg', 'typeLabel', 'searchLine', 'searchCells', 'searchHit', 
   'createHref', 'matches', 'quickActionIcon', 'rowActionsHTML', 'portalCellHTML',
   /* B07: the row menu marks Delete and Restore "Approvers only" for anyone else (no approvers known here: everyone may) */
   'mayRemove', 'whoMayRemove', 'listingMe', 'hasDateFilters', 'listFiltered'];
-vm.runInContext([varSource('EVENT_TYPES'), varSource('TYPE_TAG_CLASS'), 'function svg(d, w){ return \'<svg>\' + d + \'</svg>\'; }'].concat(FNS.filter(function (n) { return n !== 'svg'; }).map(fnSource)).join('\n') +
+/* the category names are edit-event-core.js's (RevampCore.TYPES, B11 UX-005), which the page loads first */
+H.window.RevampCore = { TYPES: (new Function(/\n  var TYPES = (\{[\s\S]*?\});/.exec(fs.readFileSync(path.join(ROOT, 'edit-event-core.js'), 'utf8'))[0] + '\nreturn TYPES;'))() };
+vm.runInContext([/\n  var EVENT_TYPES = [^\n]*;/.exec(INLINE)[0], varSource('TYPE_TAG_CLASS'), 'function svg(d, w){ return \'<svg>\' + d + \'</svg>\'; }'].concat(FNS.filter(function (n) { return n !== 'svg'; }).map(fnSource)).join('\n') +
   '\nvar IC = new Proxy({}, { get: function(t, k){ return "[" + String(k) + "]"; } });', H);
 H.PORTAL_ROSTER = ROSTER; H.rosterState = 'ready';
 function row(o) { return H.mapApiEventToRow(Object.assign({ name: 'x', category: 'ip', published: true, start: '2020-01-01T10:00', end: '2099-01-01T10:00', counters: {} }, o)); }

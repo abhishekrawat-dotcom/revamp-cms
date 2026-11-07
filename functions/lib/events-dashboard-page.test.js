@@ -28,8 +28,9 @@ check('D.2 the inline script is found', INLINE.length > 50000);
 var scripts = (PAGE.match(/<script\b[^>]*>/g) || []);
 /* portal-picker.js (the portals change) sits right after auth.js, and event-lifecycle.js stays right before the inline script */
 /* edit-event-core.js (B07): the API calls Clone, Delete and Restore make, before auth.js (it reads RevampAuth only when one runs) */
-check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
-  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+/* B11 (UX-032): the vendored QR library, which draws the QR Codes dialog's code in the page, before event-lifecycle.js */
+check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, qrcode-generator.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
+  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
 check('D.2 the second plain <script> is the inline script itself', PAGE.indexOf('<script src="event-lifecycle.js"></script>\n<script>\n(function(){') !== -1);
 check('D.2 the kit\'s scripts come after the inline script (RvListing exists before they run)', PAGE.indexOf('<script src="etb2b-chat.js">') > PAGE.indexOf('})();\n</script>', START) &&
   PAGE.indexOf('<script src="dash-bot-client.js">') > PAGE.indexOf('<script src="etb2b-chat.js">'));
@@ -38,9 +39,11 @@ check('D.2 etb2b-chat.css is linked once, in the head (before the page\'s styles
 var access = require('./access');
 ['event-lifecycle.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
 check('D.2 one rule for the lifecycle: no function lifecycleOf( here, RevampLifecycle.of( used', INLINE.indexOf('function lifecycleOf(') === -1 && INLINE.indexOf('lifecycleOf(') === -1 && INLINE.indexOf('window.RevampLifecycle.of(ev, Date.now())') !== -1);
-check('D.2 "Need help?" stays in the markup', /<button class="help-fab" id="btn-help" type="button">[\s\S]*?Need help\?\s*<\/button>/.test(PAGE));
+/* B11 (UX-028): Help is a button in the top bar, beside the theme switch; the floating pill is gone, so ETB2B AI's
+   launcher has its corner whether or not it has mounted */
+check('D.2 Help is in the top bar, before the theme switch', /<div class="main-nav-right">[\s\S]*?<button class="nav-help-btn" id="btn-help" type="button" aria-label="Help" aria-haspopup="dialog">[\s\S]*?<span class="nav-help-label">Help<\/span>\s*<\/button>\s*<span data-theme-toggle-target/.test(PAGE));
 check('D.2 …with its click handler', INLINE.indexOf("$('btn-help').addEventListener('click', function(){ openHelpModal($('btn-help')); });") !== -1);
-check('D.2 …hidden only once ETB2B AI has mounted (html.rvc-ready)', PAGE.indexOf('html.rvc-ready .help-fab{ display:none; }') !== -1 && /\.help-fab\{ position:fixed; bottom:22px; left:22px; z-index:80;/.test(PAGE));
+check('D.2 …and no floating "Need help?" pill is left to cover the page', PAGE.indexOf('help-fab') === -1 && PAGE.indexOf('rvc-ready') === -1);
 check('D.2 openHelpModal stays, and RvListing.openHelp calls it', INLINE.indexOf('function openHelpModal(returnTo){') !== -1 && INLINE.indexOf('openHelp: function(returnTo){ openHelpModal(returnTo); }') !== -1);
 var mountAt = PAGE.indexOf('<div id="rv-dash-bot"></div>');
 check('D.2 <div id="rv-dash-bot"> sits right before #toast-region', count(PAGE, 'id="rv-dash-bot"') === 1 && mountAt !== -1 && /<div id="rv-dash-bot"><\/div>\n<div id="toast-region"><\/div>/.test(PAGE));

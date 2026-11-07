@@ -212,6 +212,8 @@ function page(o) {
   vm.createContext(ctx);
   vm.runInContext(CORE, ctx, { filename: 'edit-event-core.js' });
   vm.runInContext(LIFE, ctx, { filename: 'event-lifecycle.js' });
+  /* the vendored QR library the page loads before its own script (B11, UX-032: the QR code is drawn in the page) */
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'assets', 'vendor', 'qrcode-generator.js'), 'utf8'), ctx, { filename: 'qrcode-generator.js' });
   vm.runInContext(INLINE, ctx, { filename: 'Event_Listing.html (inline)' });
   function $(id) { return d.getElementById(id); }
   var S = {
@@ -449,7 +451,7 @@ async function main() {
   check('UX-031 it opens on that event', /QR Codes/.test(S.$('qr-title').textContent) && /QA Search Upcoming Near/.test(S.$('sheet-root').textContent) && !!S.$('qr-sec-website'));
   S.$('qr-sec-website').click();
   check('UX-031 its address is the real one, /e/<id> (owner decision #2), never a made-up domain', S.$('qr-link-text').textContent === 'http://localhost/e/up-near' &&
-    S.$('qr-img').getAttribute('src').indexOf(encodeURIComponent('http://localhost/e/up-near')) !== -1, S.$('qr-link-text').textContent);
+    S.$('qr-img').getAttribute('data-qr-text') === 'http://localhost/e/up-near' && /^data:image\/svg\+xml/.test(S.$('qr-img').src || S.$('qr-img').getAttribute('src')), [S.$('qr-link-text').textContent, S.$('qr-img').getAttribute('data-qr-text'), String(S.$('qr-img').src).slice(0, 40), S.$('qr-fail').hidden]);
   S.$('qr-done').click();
   check('…closing it gives the focus back to the row\'s ⋯ button', S.doc.activeElement === mb);
 
