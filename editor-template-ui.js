@@ -214,6 +214,7 @@
       loadSiteInfo();
       ownerLogoOffer();
       logoUnitNotice();
+      focusAskedSection();
       /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
          them into it), so the picture's own step, and its Undo, hold the picture alone */
       if (pendingAiHero) { var heroDraft = pendingAiHero; pendingAiHero = null; applyAiHero(heroDraft); }
@@ -224,6 +225,18 @@
       showLoadError(siteLoadError(err));
       return false;
     });
+  }
+
+  /* Opened from the event console at one of the site's sections (edit-event.html editorAt: "Open “Previous Edition
+     Speakers” in the site editor", UX-067): that section, selected and scrolled into view once the page has laid out.
+     ?section= names its key (data-rv-key) or its id; one the page does not have opens the editor as usual. */
+  function focusAskedSection() {
+    var asked = new URLSearchParams(location.search).get('section');
+    if (!asked || !canvas) return;
+    var sec = canvas.sections().filter(function (el) {
+      return el.getAttribute('data-rv-key') === asked || el.getAttribute('data-rv-section') === asked;
+    })[0];
+    if (sec) setTimeout(function () { if (isLive(sec)) selectSection(sec); }, 400);
   }
 
   /* ---------- when the site cannot be opened ----------

@@ -92,8 +92,13 @@
     .dfield select, .dfield input, .dfield textarea{ border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); padding:7px 10px; font:inherit; font-size:13px; }
     .dfield textarea{ min-height:70px; resize:vertical; }
     .dwarn{ font-size:12.5px; color:var(--warn); background:var(--warn-soft); border-radius:8px; padding:8px 10px; margin-bottom:10px; }
-    .dmsg{ font-size:12.5px; font-weight:600; color:var(--accent-strong); }
+    .dmsg{ font-size:12.5px; font-weight:600; color:var(--accent-strong); margin:0; }
     .dmsg:empty{ display:none; }
+    .dnote{ font-size:12px; color:var(--text-muted); margin:-2px 0 12px; }
+    /* A message never covers the drawer's buttons (UX-070: "Checked in" sat on its Close button for 3 s): while a
+       response is open the messages sit beside the drawer, or above its foot where the drawer takes the width. */
+    body:has(.drawer) .toast-host{ right:calc(460px + 18px); }
+    @media (max-width: 900px){ body:has(.drawer) .toast-host{ right:18px; bottom:80px; } }
 
     .confirm{ position:fixed; inset:0; z-index:90; background:rgba(20,14,13,.45); display:grid; place-items:center; padding:16px; }
     .confirm > div{ width:min(440px,100%); background:var(--surface); border-radius:14px; padding:20px; box-shadow:var(--shadow-lg); }
@@ -178,10 +183,51 @@
   /* +919876543210 as people read it (the server sends phoneDisplay); a number from before the country code
      picker as it was typed */
   function phoneOf(r){ return r.phoneDisplay || r.phone || ''; }
-  /* the place as chosen from the suggestions, or as typed (said so) */
-  function placeOf(r){
-    if (!r.location) return '';
-    return r.location + (r.locationParts && r.locationParts.verified === false ? ' (typed, not from the list)' : '');
+  /* The place as the visitor gave it. Whether it was picked from the suggestions or typed is not said any more
+     (UX-070): "Mumbai (typed, not from the list)" read as a fault in a perfectly good answer. */
+  function placeOf(r){ return r.location || ''; }
+
+  /* The tags typed in the box: trimmed, each once whatever its case -> { tags } or { error } when they cannot be saved. */
+  function tagsOf(text){
+    var seen = {};
+    var tags = String(text == null ? '' : text).split(',').map(function(t){ return t.trim(); }).filter(function(t){
+      var k = t.toLowerCase();
+      if (!t || seen[k]) return false;
+      seen[k] = 1;
+      return true;
+    });
+    if (tags.length > 20 || tags.some(function(t){ return t.length > 40; })) return { error: 'Up to 20 tags, each up to 40 characters.' };
+    return { tags: tags };
+  }
+  /* What the Notes and Tags boxes hold that is not stored yet: the change to send, null when there is none, or
+     { error } when the tags cannot be saved as they are. */
+  function textChanges(row, notes, tagsText){
+    var body = null, t = tagsOf(tagsText);
+    if (t.error) return { error: t.error };
+    if (String(notes == null ? '' : notes) !== String(row.notes || '')) (body = body || {}).notes = String(notes == null ? '' : notes);
+    if (t.tags.join('\n') !== (row.tags || []).join('\n')) (body = body || {}).tags = t.tags;
+    return body;
+  }
+  function savedText(body){
+    return body.notes != null && body.tags ? 'Notes and tags saved' : body.tags ? 'Tags saved' : 'Notes saved';
+  }
+  /* The notes and tags last sent for the open response ({ id, notes, tags }), so that a box left (which sends it) and
+     then the drawer closed (which sends what is unsaved) never sends the same words twice. Forgotten when the drawer
+     is drawn again from the stored response, or when sending failed (the next time the box is left, it is tried again). */
+  var SENT_TEXT = null;
+  function unsavedText(row, notes, tagsText){
+    var base = SENT_TEXT && SENT_TEXT.id === row.id ? SENT_TEXT : row;
+    return textChanges(base, notes, tagsText);
+  }
+  /* sends what the two boxes hold that is not stored or sent yet -> '', or why the tags cannot be saved as they are */
+  function sendText(row, notes, tagsText){
+    var ch = unsavedText(row, notes, tagsText);
+    if (ch && ch.error) return ch.error;
+    if (!ch) return '';
+    var sent = SENT_TEXT && SENT_TEXT.id === row.id ? SENT_TEXT : { id: row.id, notes: row.notes || '', tags: (row.tags || []).slice() };
+    SENT_TEXT = { id: row.id, notes: ch.notes != null ? ch.notes : sent.notes, tags: ch.tags || sent.tags };
+    patch(row, ch, savedText(ch), true).then(function(ok){ if (ok === false && SENT_TEXT && SENT_TEXT.id === row.id) SENT_TEXT = null; });
+    return '';
   }
   var STATUSES = [
     { v: '', label: 'All statuses' },
@@ -465,6 +511,13 @@
   function rowById(id){ return S.items.filter(function(r){ return r.id === id; })[0] || null; }
   var drawerOpener = null;
   function closeDrawer(){
+    /* Notes and tags save when their box is left; a drawer closed while one still has the cursor (Escape, Close)
+       saves it first, so nothing typed is lost to closing it. A response deleted meanwhile has nothing to save. */
+    var id = S.openId, notes = $('dr-notes'), tags = $('dr-tags'), row = id ? rowById(id) : null;
+    if (row && notes && tags && !notes.disabled){
+      var bad = sendText(row, notes.value, tags.value);
+      if (bad) C.toast('The tags were not saved: ' + bad, { kind: 'error' });
+    }
     S.openId = null;
     layer.innerHTML = '';
     document.removeEventListener('keydown', drawerKeys, true);
@@ -502,6 +555,7 @@
     if (!r) return;
     if (!S.openId) drawerOpener = document.activeElement;
     S.openId = id;
+    SENT_TEXT = null;          // the boxes are drawn from the stored response
     var fid = formIdOf(r), f = formById(fid);
     function row(k, v){ return v === '' || v == null ? '' : '<div class="drow"><span class="k">' + esc(k) + '</span><span class="v">' + esc(v) + '</span></div>'; }
     var answers = answerKeys(r).map(function(k){ return row(answerLabel(fid, k, r), answerValue(r.answers[k])); }).join('');
@@ -532,14 +586,15 @@
             (r.decidedAt ? row('Decided', ist(r.decidedAt) + ' IST' + (r.decidedBy ? ' by ' + r.decidedBy : '')) : '') +
           '</div>' +
           '<div class="dsec"><h4>Manage</h4>' +
+            '<p class="dnote">Every change here is saved as you make it; notes and tags when you leave their box.</p>' +
             '<label class="dfield">Status<select id="dr-status">' + statusOpts.map(function(o){
               var no = o[0] === 'waitlist' && !counts(r);
               return '<option value="' + o[0] + '"' + (o[0] === r.status ? ' selected' : '') + (no ? ' disabled' : '') + '>' + esc(o[1]) + (no ? ' (only for forms that count as registrations)' : '') + '</option>';
             }).join('') + '</select></label>' +
-            (counts(r) ? '<label class="dfield" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="dr-checkin"' + (r.checkedInAt ? ' checked' : '') + (r.status === 'cancelled' ? ' disabled' : '') + '> Checked in' + (r.checkedInAt ? ' (' + esc(ist(r.checkedInAt)) + ')' : '') + '</label>' : '') +
+            (counts(r) ? '<label class="dfield" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="dr-checkin"' + (r.checkedInAt ? ' checked' : '') + (r.status === 'cancelled' ? ' disabled' : '') + '> Checked in<span id="dr-checkin-at">' + (r.checkedInAt ? ' (' + esc(ist(r.checkedInAt)) + ')' : '') + '</span></label>' : '') +
             '<label class="dfield">Notes<textarea id="dr-notes" maxlength="2000">' + esc(r.notes || '') + '</textarea></label>' +
             '<label class="dfield">Tags (separated by commas)<input id="dr-tags" type="text" maxlength="900" value="' + esc((r.tags || []).join(', ')) + '"></label>' +
-            '<div class="dact"><button class="btn btn-secondary btn-sm" type="button" id="dr-save">Save notes and tags</button><span class="dmsg" id="dr-msg" role="alert"></span></div>' +
+            '<p class="dmsg" id="dr-msg" role="alert"></p>' +
           '</div>' +
         '</div>' +
         '<div class="drawer-foot"><button class="btn btn-ghost btn-sm" type="button" id="dr-delete" style="color:var(--accent-strong)">Delete this response</button><span style="flex:1"></span><button class="btn btn-secondary btn-sm" type="button" id="dr-done">Close</button></div>' +
@@ -566,13 +621,16 @@
       }
       patch(r, { status: v }, 'Status changed');
     };
-    if ($('dr-checkin')) $('dr-checkin').onchange = function(){ patch(r, { checkedIn: this.checked }, this.checked ? 'Checked in' : 'Check-in undone'); };
-    $('dr-save').onclick = function(){
-      var tags = $('dr-tags').value.split(',').map(function(t){ return t.trim(); }).filter(Boolean);
-      var seen = {}; tags = tags.filter(function(t){ var k = t.toLowerCase(); if (seen[k]) return false; seen[k] = 1; return true; });
-      if (tags.length > 20 || tags.some(function(t){ return t.length > 40; })){ $('dr-msg').textContent = 'Up to 20 tags, each up to 40 characters.'; return; }
-      patch(r, { notes: $('dr-notes').value, tags: tags }, 'Notes and tags saved');
-    };
+    /* check-in, notes and tags save as they change, as the status does (UX-070: they used to need a Save of their own) */
+    if ($('dr-checkin')) $('dr-checkin').onchange = function(){ patch(r, { checkedIn: this.checked }, this.checked ? 'Checked in' : 'Check-in undone', true); };
+    function saveText(){
+      var now = rowById(r.id);
+      if (!now) return;
+      var bad = sendText(now, $('dr-notes').value, $('dr-tags').value);
+      if (bad) $('dr-msg').textContent = bad;
+    }
+    $('dr-notes').onchange = saveText;
+    $('dr-tags').onchange = saveText;
     $('dr-delete').onclick = function(){
       ask('Delete this response?', 'The response from ' + (r.name || r.email) + ' is removed for good, and the totals go down by one. This cannot be undone.', 'Delete', true).then(function(ok){
         if (!ok) return;
@@ -587,22 +645,40 @@
     $('dr-close').focus();
   }
 
-  function patch(r, body, okText){
-    var msg = $('dr-msg');
+  /* One change of a response. Changes are sent one after another, so a later one never lands before an earlier one
+     and the drawer is never drawn again from an answer already out of date. quiet (check-in, notes, tags): the drawer
+     stays as it is, so nothing being typed or focused in it is lost; a change of status draws it again, since what it
+     offers depends on the status. A failure is said in the drawer, or as a message once it is closed. */
+  var SAVING = Promise.resolve();
+  function patch(r, body, okText, quiet){
+    var id = r.id, msg = $('dr-msg');
     if (msg) msg.textContent = '';
-    Array.prototype.forEach.call(layer.querySelectorAll('.drawer button, .drawer select, .drawer input, .drawer textarea'), function(x){ x.disabled = true; });
-    return C.updateRegistration(eventId, r.id, body).then(function(res){
-      var fresh = Object.assign({}, r, (res && res.registration) || body);
-      if (body.checkedIn !== undefined && !(res && res.registration)) fresh.checkedInAt = body.checkedIn ? new Date().toISOString() : null;
-      S.items = S.items.map(function(x){ return x.id === r.id ? fresh : x; });
-      C.toast(okText);
-      drawTotals(); drawResults();
-      if (S.openId === r.id) openDrawer(r.id);
-    }, function(err){
-      if (S.openId === r.id) openDrawer(r.id);
-      var m = $('dr-msg');
-      if (m) m.textContent = (err && err.message) || 'That change was not saved. Please try again.';
+    if (!quiet) Array.prototype.forEach.call(layer.querySelectorAll('.drawer button, .drawer select, .drawer input, .drawer textarea'), function(x){ x.disabled = true; });
+    SAVING = SAVING.then(function(){
+      return C.updateRegistration(eventId, id, body).then(function(res){
+        var now = rowById(id);
+        if (!now) return true;                              // deleted meanwhile
+        var fresh = Object.assign({}, now, (res && res.registration) || body);
+        if (body.checkedIn !== undefined && !(res && res.registration)) fresh.checkedInAt = body.checkedIn ? new Date().toISOString() : null;
+        S.items = S.items.map(function(x){ return x.id === id ? fresh : x; });
+        C.toast(okText);
+        drawTotals(); drawResults();
+        if (S.openId !== id) return true;
+        if (!quiet){ openDrawer(id); return true; }
+        var at = $('dr-checkin-at');
+        if (at && body.checkedIn !== undefined) at.textContent = fresh.checkedInAt ? ' (' + ist(fresh.checkedInAt) + ')' : '';
+        return true;
+      }, function(err){
+        var text = (err && err.message) || 'That change was not saved. Please try again.';
+        if (S.openId !== id){ C.toast(text, { kind: 'error' }); return false; }
+        if (!quiet) openDrawer(id);
+        else if (body.checkedIn !== undefined && $('dr-checkin')) $('dr-checkin').checked = !body.checkedIn;
+        var m = $('dr-msg');
+        if (m) m.textContent = text;
+        return false;
+      });
     });
+    return SAVING;
   }
 
   /* ---------- export ---------- */

@@ -51,6 +51,8 @@
      The site
      .fetchSite(eventId)          GET    /api/event/site -> {version, templateId, updatedAt, updatedBy,
                                    snapshot}, or null when the site has never been saved
+     .fetchSiteOutline(eventId)   GET    /api/event/site-outline -> {of: 'live'|'saved'|'none', version, places,
+                                   previous, logo}: what the site shows of the Content tabs (the console's notes)
      .saveSite(eventId, {templateId, baseVersion, snapshot, html, force})
                                   PUT    /api/event/site -> {version, updatedAt}; 409 -> err.current
                                    {version, updatedAt, updatedBy} (someone else saved first)
@@ -648,6 +650,11 @@ window.RevampCore = (function(){
         throw err;
       });
   }
+  /* What the site shows of the Content tabs (functions/lib/site-outline.js): the sections that list each kind of
+     record, the previous edition's own sections, the banner's logo — read off the live page, else the saved one. */
+  function fetchSiteOutline(eventId){
+    return need(eventId, 'fetchSiteOutline: eventId') || api('GET', '/api/event/site-outline?eventId=' + q(eventId));
+  }
   function saveSite(eventId, site){
     site = site || {};
     var missing = need(eventId, 'saveSite: eventId');
@@ -1214,7 +1221,7 @@ window.RevampCore = (function(){
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
-    fetchSite: fetchSite, saveSite: saveSite, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
+    fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,

@@ -31,6 +31,10 @@
      ctx.refreshState()    -> promise: the event's publishing state and approval fetched again
      ctx.contentCounts()   -> promise of { speakers, agenda, sponsors }: what the site shows of each
      ctx.isAward()         true for an award event (its speakers are its jury)
+     ctx.siteNotes         edit-event-site-notes.js (window.RevampSiteNotes), and ctx.siteOutline() -> what the site shows
+                           of the Content tabs (GET /api/event/site-outline) or null: with both, the Speakers, Agenda and
+                           Sponsors rows say what the site does with them (a section hidden until one is added, no
+                           section at all, the previous edition's shown instead — UX-066, UX-067)
      ctx.log               { when(iso), who(by), action(a) }: the Activity log's own wording
    =========================================================================== */
 
@@ -225,13 +229,23 @@ window.EditEventDashboard = (function(){
       portal: String(e.portalName || '').trim() ? e.portal : '' });
     var filled = gaps.filter(function(g){ return !g.why; }).length;
     var counts = D && D.counts, forms = D && D.forms, jury = ctx.isAward && ctx.isAward();
+    var SNotes = ctx.siteNotes || null, outline = SNotes && ctx.siteOutline ? ctx.siteOutline() : null;
     function countRow(n, one, many){ return n == null ? null : (n ? comma(n) + ' ' + (n === 1 ? one : many) + ' on the site' : 'None on the site yet'); }
+    /* a Content row: how many the site shows and, once what the site shows is known, what it does with them. 'na': the
+       site has no section for them, so the row is not something to get ready and is left out of the count. */
+    function contentRow(label, tab, n, one, many){
+      if (!counts) return { label: label, ok: null, text: 'Loading…', to: 'content/' + tab };
+      if (SNotes){
+        var r = SNotes.readiness(tab, n, outline, { award: jury });
+        return { label: label, ok: r.ok, text: r.text, to: 'content/' + tab };
+      }
+      return { label: label, ok: n > 0, text: countRow(n, one, many), to: 'content/' + tab };
+    }
     var rows = [
       { label: 'Basics', ok: filled === gaps.length, text: filled + ' of ' + gaps.length + ' filled in', to: 'content/basics' },
-      { label: jury ? 'Jury' : 'Speakers', ok: counts ? counts.speakers > 0 : null,
-        text: counts ? countRow(counts.speakers, jury ? 'jury member' : 'speaker', jury ? 'jury members' : 'speakers') : 'Loading…', to: 'content/speakers' },
-      { label: 'Agenda', ok: counts ? counts.agenda > 0 : null, text: counts ? countRow(counts.agenda, 'session', 'sessions') : 'Loading…', to: 'content/agenda' },
-      { label: 'Sponsors', ok: counts ? counts.sponsors > 0 : null, text: counts ? countRow(counts.sponsors, 'sponsor', 'sponsors') : 'Loading…', to: 'content/sponsors' },
+      contentRow(jury ? 'Jury' : 'Speakers', 'speakers', counts && counts.speakers, jury ? 'jury member' : 'speaker', jury ? 'jury members' : 'speakers'),
+      contentRow('Agenda', 'agenda', counts && counts.agenda, 'session', 'sessions'),
+      contentRow('Sponsors', 'sponsors', counts && counts.sponsors, 'sponsor', 'sponsors'),
       { label: 'Site', ok: st.savedVersion > 0,
         text: st.savedVersion ? 'Saved in the site editor' : 'Not saved yet: open the site editor and save it', to: 'design/editor' },
       { label: 'Registration', ok: forms ? forms.n > 0 && forms.open : null,
@@ -239,8 +253,9 @@ window.EditEventDashboard = (function(){
         to: 'settings/form' }
     ];
     var ready = rows.filter(function(r){ return r.ok === true; }).length;
+    var counted = rows.filter(function(r){ return r.ok !== 'na'; }).length;
     return {
-      sub: ready + ' of ' + rows.length + ' ready',
+      sub: ready + ' of ' + counted + ' ready',
       html: '<div class="check-list">' + rows.map(function(r){
         var tone = r.ok === true ? 'ok' : (r.ok === false ? 'warn' : 'mute');
         return '<button class="check-row dash-ready" type="button" data-goto="' + esc(r.to) + '">' +
@@ -248,7 +263,7 @@ window.EditEventDashboard = (function(){
             '<span class="ct">' + esc(r.label) +
               '<span class="dash-ready-sub">' + esc(r.text) + '</span></span>' +
             '<span class="dash-ready-state badge b-' + (tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : 'mute') + '">' +
-              (r.ok === true ? 'Ready' : r.ok === false ? 'To do' : '…') + '</span>' +
+              (r.ok === true ? 'Ready' : r.ok === false ? 'To do' : r.ok === 'na' ? 'No section' : '…') + '</span>' +
           '</button>';
       }).join('') + '</div>'
     };

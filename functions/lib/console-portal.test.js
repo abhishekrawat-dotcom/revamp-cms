@@ -219,6 +219,8 @@ function loadConsole(o) {
     fmtDT: function (v) { return v ? '12 Nov 2026' : 'Date to be announced'; }, fmtDate: function () { return '12 Nov 2026'; },
     panel: function (t, s, body) { return '<section>' + body + '</section>'; }, vhead: function () { return ''; },
     imgTag: function () { return ''; }, logoUnitCallout: function () { return ''; },
+    /* the Event logo tile (UX-071): the notes module as the page loads it, the site not read yet */
+    SN: require('../../edit-event-site-notes.js'), OUTLINE: null, LOGO: { busy: false, said: false }, safeUrl: function (u) { return String(u || ''); },
     clearFieldError: function (i) { cleared.push(i && i.id); }, showFieldErrors: function (errs) { fieldErrs.push(errs); },
     notify: function (m, ms) { toasts.push([m, ms]); },
     LEAVE: null, EV: null,
