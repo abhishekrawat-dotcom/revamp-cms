@@ -74,8 +74,8 @@ var AI_PAGE = '<!doctype html><html><head><title>BWS</title><style>.x{}</style><
   '<section data-rv-section="agenda" data-rv-key="agenda" data-rv-empty="sessions"><h2>Three days</h2><div data-rv-repeat-template="sessions"><p data-rv-field="title">T</p></div></section>' +
   '<section data-rv-section="faqs" data-rv-key="faqs" data-rv-empty="faq"><h2>Before you land</h2><div data-rv-repeat-template="faq"><h3 data-rv-field="t">Q</h3></div></section>' +
   prevSection('speakers') + prevSection('agenda') + prevSection('glimpses') +
-  /* a contact section with a Register button: only its list leaves the page when there are no contacts */
-  '<section data-rv-section="contact-us" data-rv-key="contact-us"><h2>Speak. Partner.</h2><div data-rv-repeat-template="contact"><p data-rv-field="name">N</p></div>' +
+  /* a contact section with a Register button: the editor marks only its list empty (editor-template-ui.js markEmpty) */
+  '<section data-rv-section="contact-us" data-rv-key="contact-us"><h2>Speak. Partner.</h2><div class="cards" data-rv-empty="contact"><div data-rv-repeat-template="contact"><p data-rv-field="name">N</p></div></div>' +
     '<a class="btn" data-register-cta href="#">Register now</a></section>' +
   /* a section the owner hid in the editor: not a place */
   '<section data-rv-section="speaker-grid" data-rv-key="speaker-grid" class="is-hidden-sec"><div data-rv-repeat-template="speakers"></div></section>' +
@@ -87,6 +87,12 @@ check('AI page: sponsors, agenda, FAQs and contact are places; speakers and phot
   j(o.places.faq) === j([{ key: 'faqs', name: 'FAQs', hides: true }]) && o.places.speakers.length === 0 && o.places.glimpses.length === 0, o.places);
 check('AI page: a contact section that also holds a Register button only loses its list (rv-data.js emptyScopeOf)',
   j(o.places.contact) === j([{ key: 'contact-us', name: 'Contact us', hides: false }]), o.places.contact);
+/* the same section with its model straight inside it: the editor cannot hide the list without the Register button,
+   so it leaves the section unmarked (keepFormSectionsShown) and the model's sample contact is what visitors see */
+var o2 = SO.outline('<section data-rv-section="contact-us" data-rv-key="contact-us"><h2>Speak.</h2><div data-rv-repeat-template="contact"><p data-rv-field="name">N</p></div>' +
+  '<a class="btn" data-register-cta href="#">Register now</a></section>', KIT, null);
+check('AI page: nothing marked, the model stands: the section shows 1 contact desk of its own, it is not hidden',
+  j(o2.places.contact) === j([{ key: 'contact-us', name: 'Contact us', hides: false, stands: 1 }]), o2.places.contact);
 check('AI page: the previous edition\'s four sections, each counted from what prev-sections.js builds',
   j(o.previous.map(function (p) { return [p.kind, p.key, p.name, p.count]; })) === j([
     ['sponsors', 'previous-sponsors', 'Previous Edition Sponsors', 2], ['speakers', 'previous-speakers', 'Previous Edition Speakers', 3],
@@ -104,7 +110,13 @@ var DRAWN = '<section data-rv-section="speakers" data-rv-key="speakers" data-rv-
   '<section data-rv-section="people" data-rv-key="people"><div data-rv-repeat-template="speakers"></div><div data-rv-repeat-template="partners:2"></div></section>' +
   '<section data-rv-section="when" data-rv-key="when"><p data-rv-bind="event.date"></p><ul><li data-rv-repeat-template="sessions"></li></ul><ul data-rv-empty="sessions"></ul></section>';
 o = SO.outline(DRAWN, KIT, null);
-check('drawn records: the section hides whole; a section of two kinds, or with one of the event\'s details, keeps the rest',
+check('drawn records, nothing marked empty: each section shows what stands in its lists (a record drawn, a model), a marked list is hidden',
+  j(o.places.speakers) === j([{ key: 'speakers', name: 'Speakers', hides: false, stands: 1 }, { key: 'people', name: 'People', hides: false, stands: 1 }]) &&
+  j(o.places.partners) === j([{ key: 'people', name: 'People', hides: false, stands: 1 }]) && j(o.places.sessions) === j([{ key: 'when', name: 'When', hides: false }]), o.places);
+check('the models kept in a <template> are not counted as items', o.places.speakers[0].stands === 1);
+/* with a runtime that draws the records on every visit (rv-live.js, not in this release), rv-data.js decides */
+o = SO.outline(DRAWN, KIT, null, { redrawn: true });
+check('redrawn: the section hides whole; a section of two kinds, or with one of the event\'s details, keeps the rest',
   j(o.places.speakers) === j([{ key: 'speakers', name: 'Speakers', hides: true }, { key: 'people', name: 'People', hides: false }]) &&
   j(o.places.partners) === j([{ key: 'people', name: 'People', hides: false }]) && j(o.places.sessions) === j([{ key: 'when', name: 'When', hides: false }]), o.places);
 check('no logo unit: no logo', o.logo === '' && o.previous.length === 0);
@@ -118,10 +130,38 @@ var MAP = [
 ];
 var TPL = '<section data-rv-section="banner"><h1>Tech 500</h1></section><section data-rv-section="faq"><div class="faq-item"></div></section>' +
   '<section data-rv-section="programme"><h2>Agenda</h2><div class="rows"></div></section>';
-o = SO.outline(TPL, KIT, MAP);
-check('real template: the content.map\'s list entries whose section is on the page; "agenda" is sessions; emptyScope keeps the section',
+o = SO.outline(TPL, KIT, MAP, { redrawn: true });
+check('real template, redrawn: the content.map\'s list entries whose section is on the page; "agenda" is sessions; emptyScope keeps the section',
   j(o.places.faq) === j([{ key: 'faq', name: 'FAQ', hides: true }]) && j(o.places.sessions) === j([{ key: 'programme', name: 'Programme', hides: false }]) &&
   o.places.contact.length === 0 && o.places.speakers.length === 0, o.places);
+o = SO.outline(TPL, KIT, MAP);
+check('real template: the same sections are places; nothing marks them empty, so none is hidden',
+  j(o.places.faq) === j([{ key: 'faq', name: 'FAQ', hides: false }]) && j(o.places.sessions) === j([{ key: 'programme', name: 'Programme', hides: false }]), o.places);
+
+/* tech500 as it ships (the verifier's qa- event of 7 Nov 2026): an empty FAQ or Contact tab leaves the template's sample
+   card on the saved page and /preview ("01 Question Answer", "Team Name / name@company.com / Phone number"), because the
+   editor leaves a content.map list alone when there are no records. The outline must say it stands, never "hidden". */
+function shipped(id) {
+  var html = require('fs').readFileSync(path.join(__dirname, '..', '..', 'templates', 'tech500', 'sections', id, 'index.html'), 'utf8');
+  return html.replace('<section ', '<section data-rv-section="' + id + '" data-rv-key="' + id + '" ');
+}
+var TECH_MAP = JSON.parse(require('fs').readFileSync(path.join(__dirname, '..', '..', 'templates', 'tech500', 'template.json'), 'utf8')).content.map;
+o = SO.outline(shipped('faq') + shipped('contact-us'), KIT, TECH_MAP);
+check('tech500 as shipped: FAQ and Contact show their one sample card each, neither is hidden',
+  j(o.places.faq) === j([{ key: 'faq', name: 'FAQ', hides: false, stands: 1 }]) && j(o.places.contact) === j([{ key: 'contact-us', name: 'Contact us', hides: false, stands: 1 }]), o.places);
+/* as the editor saves it after filling the list once: the model put away in a <template>, the sample cards marked
+   data-rv-item="" (editor-fill.js buildCards), a contact block's own people inside it */
+var SAVED_FAQ = '<section data-rv-section="faq" data-rv-key="faq" data-rv-bound="faq"><div class="faq-list" data-rv-list=".faq-item">' +
+  '<div class="faq-item" data-rv-item="">Q1</div><div class="faq-item" data-rv-item="">Q2</div></div>' +
+  '<template data-rv-pristine=".faq-item"><div class="faq-item" data-rv-item="faq">Question</div></template></section>' +
+  '<section data-rv-section="contact-us" data-rv-key="contact-us"><div class="flex-width-auto">' +
+  '<div class="col-md-6" data-rv-item="contact"><p data-rv-item="contact">A</p><p data-rv-item="contact">B</p></div>' +
+  '<div class="col-md-6" data-rv-item="contact"><p>C</p></div></div></section>';
+o = SO.outline(SAVED_FAQ, KIT, TECH_MAP);
+check('a saved real template: the sample cards (data-rv-item="") count for the content.map\'s kind, the kept model does not, a block\'s people are one block',
+  j(o.places.faq) === j([{ key: 'faq', name: 'FAQ', hides: false, stands: 2 }]) && j(o.places.contact) === j([{ key: 'contact-us', name: 'Contact us', hides: false, stands: 2 }]), o.places);
+o = SO.outline(SAVED_FAQ.replace('data-rv-bound="faq"', 'data-rv-bound="faq" data-rv-empty="faq"'), KIT, TECH_MAP);
+check('a real template\'s section the page marks empty is hidden whole, whatever stands in it', j(o.places.faq) === j([{ key: 'faq', name: 'FAQ', hides: true }]), o.places.faq);
 check('nothing to read: every kind empty, no previous edition, no logo', j(SO.outline('', KIT, null)) === j({ places: { speakers: [], sessions: [], partners: [], faq: [], glimpses: [], contact: [] }, previous: [], logo: '' }));
 check('a section name: FAQ kept in capitals, words from the id', SO.nameOf('faqs') === 'FAQs' && SO.nameOf('contact-us') === 'Contact us' && SO.nameOf('key-discussion-points') === 'Key discussion points');
 
@@ -165,6 +205,8 @@ DOCS['events/gone'] = { name: 'Gone', createdAt: T0, deletedAt: T0 };
   r = await call('/api/event/site-outline?eventId=draft');
   check('route: a draft is read as last saved, through its template\'s content.map (tech500: FAQ and Contact)', r.status === 200 && r.json.of === 'saved' && r.json.version === 2 &&
     r.json.places.faq.length === 1 && r.json.places.contact.length === 1 && r.json.places.speakers.length === 0 && r.json.logo === '' && r.json.logoIsUnit === false, r.json);
+  check('route: this release draws no records on a visit, so an unmarked section is not said to be hidden',
+    api._testHooks && r.json.places.faq[0].hides === false && r.json.places.contact[0].hides === false, r.json.places);
   READS = [];
   r = await call('/api/event/site-outline?eventId=fresh');
   check('route: a site never saved has nothing to read: of "none", every list empty, no storage read', r.status === 200 && r.json.of === 'none' && r.json.version === 0 &&

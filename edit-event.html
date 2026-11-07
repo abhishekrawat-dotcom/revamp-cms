@@ -835,12 +835,18 @@
   function siteNotes(tab, n){ return SN.forTab(tab, OUTLINE, n, { award: isAwardEvent() }); }
   /* the site editor, opened at one of the site's sections (custom_editor.html selects it: editor-template-ui.js) */
   function editorAt(key){ return editorUrl() + (key ? '&section=' + encodeURIComponent(key) : ''); }
-  /* An empty tab's line about the site: its section is hidden until a record is added, or the site has none. */
+  /* A section that nothing hides and that shows items not in the tab (a real template's sample card: SN.forTab
+     stands), with the site editor opened at it, where they are changed or replaced. */
+  function standsLine(s){
+    return esc(s.text) + ' <a href="' + esc(editorAt(s.key)) + '">Open “' + esc(s.name) + '” in the site editor</a>';
+  }
+  /* An empty tab's line about the site: its section is hidden until a record is added, shows items of its own, or
+     the site has none. */
   function emptySiteLine(notes){
-    var text = notes.hidden || notes.none;
-    if (!text) return '';
-    return '<p class="empty-site">' + svg(IC.info, 14) + '<span>' + esc(text) +
-      (notes.none ? ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>' : '') + '</span></p>';
+    if (!notes.hidden && !notes.stands && !notes.none) return '';
+    return '<p class="empty-site">' + svg(IC.info, 14) + '<span>' +
+      (notes.hidden ? esc(notes.hidden) + (notes.stands ? ' ' : '') : '') + (notes.stands ? standsLine(notes.stands) : '') +
+      (!notes.hidden && !notes.stands ? esc(notes.none) + ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>' : '') + '</span></p>';
   }
   /* Above a tab: what the site shows from the previous edition, and — when the tab has records — that they are not on
      the site because its section is hidden or missing. Information, so the info style (UX-069). */
@@ -848,6 +854,7 @@
     var lines = [];
     if (hasRecords && notes.none) lines.push(esc(notes.none) + ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>');
     else if (hasRecords && notes.hidden) lines.push(esc(notes.hidden));
+    if (hasRecords && notes.stands) lines.push(standsLine(notes.stands));
     if (notes.previous) lines.push(esc(notes.previous.text) + ' <a href="' + esc(editorAt(notes.previous.key)) + '">Open “' +
       esc(notes.previous.name) + '” in the site editor</a>');
     if (!lines.length) return '';

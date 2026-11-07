@@ -10,7 +10,7 @@
    site's hero", while the hero shows the logo cut from it (UX-071); and a "weight" was shown on every row of
    Speakers, Agenda and Sponsors in two different scales, though it changes nothing on the site (UX-068).
 
-     forTab(tab, outline, n, o) -> { where, hidden, none, previous }
+     forTab(tab, outline, n, o) -> { where, hidden, stands, none, previous }
         tab       'speakers' | 'agenda' | 'sponsors' | 'gallery' | 'faq' | 'contact'
         outline   GET /api/event/site-outline's answer, or null while it is not known (nothing is then said)
         n         { total: the tab's records, shown: how many of them the site shows (only confirmed speakers and
@@ -18,6 +18,9 @@
         o         { award: true } for an award, whose speakers are its jury
         hidden    '' or a sentence: the site has a section for these and it is hidden until one is shown (or, where the
                   section holds more than the list, its list is empty until then)
+        stands    null or { text, key, name, count }: the site has a section for these that nothing hides, and it shows
+                  items that are not in the tab (a real template's sample card, what Create Event wrote, records
+                  deleted since): how many, and what puts the tab's own in their place (site-outline.js stands)
         none      '' or a sentence: the site has no section that shows these at all
         previous  null or { text, key, name, count }: the previous edition's own section of the same kind, which the
                   tab does not hold (it is part of the site's design; the site editor changes it)
@@ -62,11 +65,15 @@
   }
   function sectionsWord(list) { return list.length === 1 ? ' section is' : ' sections are'; }
   function sectionsShow(list) { return list.length === 1 ? ' section shows' : ' sections show'; }
-  /* the sections that leave the page whole while there is nothing to list, and those that only lose their list
-     (site-outline.js hides) */
+  /* the sections that leave the page whole while there is nothing to list, those that only lose their list, and those
+     that nothing hides, which show what stands in them (site-outline.js hides, stands) */
+  function standsOf(p) { return Math.max(0, +(p && p.stands) || 0); }
   function split(places) {
-    return { whole: places.filter(function (p) { return p.hides !== false; }), list: places.filter(function (p) { return p.hides === false; }) };
+    return { whole: places.filter(function (p) { return p.hides !== false; }),
+      list: places.filter(function (p) { return p.hides === false && !standsOf(p); }),
+      stands: places.filter(function (p) { return p.hides === false && standsOf(p) > 0; }) };
   }
+  function standing(list) { return list.reduce(function (sum, p) { return sum + standsOf(p); }, 0); }
   function placesOf(outline, T) { return (outline.places[T.kind] || []).filter(function (p) { return p && p.name; }); }
   function previousOf(outline, T) {
     if (!T.prev) return null;
@@ -74,7 +81,7 @@
   }
 
   function forTab(tab, outline, n, o) {
-    var T = TABS[tab], out = { where: whereOf(outline), hidden: '', none: '', previous: null };
+    var T = TABS[tab], out = { where: whereOf(outline), hidden: '', stands: null, none: '', previous: null };
     if (!T || !known(outline)) return out;
     var W = wordsOf(T, o);
     var total = Math.max(0, +(n && n.total) || 0);
@@ -87,6 +94,18 @@
         if (sp.whole.length) said.push(out.where + '’s ' + namesOf(sp.whole) + sectionsWord(sp.whole) + ' hidden ' + until);
         if (sp.list.length) said.push(out.where + '’s ' + namesOf(sp.list) + sectionsShow(sp.list) + ' no ' + W.many + ' ' + until);
         out.hidden = said.join(' ');
+        /* Nothing hides these sections, so what stands in them is on the site (tech500's FAQ keeps its sample
+           "Question" / "Answer" while the tab is empty): never said to be hidden. The site editor puts the tab's
+           records in their place when it opens; saving (and publishing) takes that to the site. */
+        if (sp.stands.length) {
+          var c = standing(sp.stands), first = sp.stands[0];
+          var how = 'To show yours in ' + (c === 1 ? 'its' : 'their') + ' place, ' +
+            (total && T.confirms ? 'confirm one of these ' + W.many : 'add ' + W.need + ' here') +
+            ', then open the site editor and save the site' + (outline.of === 'live' ? ' and publish it' : '') + '.';
+          out.stands = { key: String(first.key || ''), name: String(first.name || ''), count: c,
+            text: out.where + '’s ' + namesOf(sp.stands) + sectionsShow(sp.stands) + ' ' + count(c, W.one, W.many) + ' not in this list: ' +
+              (c === 1 ? 'it is' : 'they are') + ' written into the site itself. ' + how };
+        }
       }
     } else {
       out.none = out.where + ' has no section that shows ' + W.many + ', so ' +
@@ -113,6 +132,10 @@
     if (places.length) {
       if (shown) return { ok: true, text: have + ' on the site' };
       var sp = split(places);
+      if (!sp.whole.length && sp.stands.length) {
+        var c = standing(sp.stands);
+        return { ok: false, text: 'None yet: the site’s ' + namesOf(sp.stands) + sectionsShow(sp.stands) + ' ' + count(c, W.one, W.many) + ' not in your list' };
+      }
       return { ok: false, text: 'None yet: the site’s ' + (sp.whole.length ? namesOf(sp.whole) + sectionsWord(sp.whole) + ' hidden'
         : namesOf(sp.list) + sectionsShow(sp.list) + ' none') + ' until one is added' };
     }

@@ -10483,6 +10483,7 @@ function handleSiteCheck(req, res) {
    see (UX-071). Read off the live page while the site is live, else the site as last saved; a site never saved has
    nothing to read (of: 'none'), and the console then says nothing it cannot know.
    -> { eventId, of: 'live' | 'saved' | 'none', version, places, previous, logo, logoIsUnit }
+      places: by kind, [{ key, name, hides, stands? }] — what the page does with each section's list (site-outline.js)
       logoIsUnit: the banner's picture is the design's own logo unit (designPlan.design.logoUnitUrl) — the same address,
       or the same stored file under another name: a unit made again from the same upload leaves the page with its
       older copy until the site is saved again (brand-world-summit-2026's live banner and its design, on 5 Nov 2026) */
@@ -10509,7 +10510,9 @@ function handleSiteOutline(req, res) {
         return readObject(fb, reads[i][1]).then(function (html) {
           if (html == null) return next(i + 1);
           var templateId = (data.site && data.site.templateId) || data.templateId || '';
-          var o = siteOutline.outline(html, TOKEN_KIT, contentMapFor(templateId));
+          /* redrawn: whether the page's records are drawn again on every visit, which decides what an unmarked
+             section does with no records (site-outline.js placeState) */
+          var o = siteOutline.outline(html, TOKEN_KIT, contentMapFor(templateId), { redrawn: LIVE_RUNTIME_PRESENT });
           var design = aiDesignOf(data.designPlan);
           return sameStoredPicture(fb, o.logo, design ? String(design.logoUnitUrl || '') : '').then(function (same) {
             sendJson(res, 200, { eventId: eventId, of: reads[i][0], version: reads[i][2], places: o.places, previous: o.previous, logo: o.logo, logoIsUnit: same });

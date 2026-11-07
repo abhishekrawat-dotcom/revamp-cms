@@ -81,6 +81,29 @@ check('a site not live yet is "your site"; two sections are named together; a pr
 check('a section that holds more than its list only shows none',
   SN.forTab('contact', SAVED, { total: 0 }).hidden === 'Your site’s “Contact us” section shows no contact desks until you add a contact desk.', SN.forTab('contact', SAVED, { total: 0 }).hidden);
 
+/* a real template (tech500) whose FAQ and Contact lists still hold the template's sample card: nothing hides them, so
+   the tabs never say "hidden" (the B16 verifier's finding of 7 Nov 2026), they say what stands there and how to replace it */
+var TECH = { of: 'saved', places: { speakers: [], sessions: [], partners: [], glimpses: [],
+  faq: [{ key: 'faq', name: 'FAQ', hides: false, stands: 1 }], contact: [{ key: 'contact-us', name: 'Contact us', hides: false, stands: 1 }] }, previous: [] };
+n = SN.forTab('faq', TECH, { total: 0 });
+check('real template, empty FAQ: not hidden; the sample question is said, with what shows yours',
+  n.hidden === '' && !n.none && n.stands && n.stands.key === 'faq' && n.stands.name === 'FAQ' && n.stands.count === 1 &&
+  n.stands.text === 'Your site’s “FAQ” section shows 1 question not in this list: it is written into the site itself. To show yours in its place, add a question here, then open the site editor and save the site.', n);
+n = SN.forTab('contact', Object.assign({}, TECH, { of: 'live' }), { total: 0 });
+check('real template, live, empty Contact: the sample contact desk is said; a live site is published again',
+  !n.hidden && n.stands.text === 'Your live site’s “Contact us” section shows 1 contact desk not in this list: it is written into the site itself. To show yours in its place, add a contact desk here, then open the site editor and save the site and publish it.', n.stands);
+check('real template: a tab with records says nothing of what stood there', !SN.forTab('faq', TECH, { total: 2 }).stands);
+var CX = { of: 'live', places: { speakers: [{ key: 'speakers', name: 'Speakers', hides: false, stands: 3 }, { key: 'jury', name: 'Jury', hides: true }],
+  sessions: [], partners: [], faq: [], glimpses: [], contact: [] }, previous: [] };
+n = SN.forTab('speakers', CX, { total: 2, shown: 0 });
+check('a hidden section and one that shows its own are both said; only invited speakers: confirm one',
+  n.hidden === 'Your live site’s “Jury” section is hidden until one of these speakers is confirmed.' &&
+  n.stands.text === 'Your live site’s “Speakers” section shows 3 speakers not in this list: they are written into the site itself. To show yours in their place, confirm one of these speakers, then open the site editor and save the site and publish it.', n);
+check('readiness: a section showing its own is a thing to do, never "hidden"',
+  j(SN.readiness('speakers', 0, { of: 'saved', places: { speakers: [{ key: 'speakers', name: 'Speakers', hides: false, stands: 3 }] } })) ===
+  j({ ok: false, text: 'None yet: the site’s “Speakers” section shows 3 speakers not in your list' }));
+check('readiness: a hidden section is still said first', /“Jury” section is hidden until one is added/.test(SN.readiness('speakers', 0, CX).text), SN.readiness('speakers', 0, CX));
+
 /* ---------- the Dashboard's rows ---------- */
 check('readiness, site not known: as before', j(SN.readiness('speakers', 3, null)) === j({ ok: true, text: '3 speakers on the site' }) &&
   j(SN.readiness('agenda', 0, null)) === j({ ok: false, text: 'None on the site yet' }));
@@ -149,6 +172,26 @@ check('UX-071: the logo tile is drawn from SN.logoTile, with "See your upload"',
 });
 check('UX-066: the empty states carry the site line; every tab has the callout', (userText.match(/emptySiteLine\(notes\) \+/g) || []).length === 6 && (userText.match(/siteCallout\(notes, (true|false|items\.length > 0|team\.length > 0)\)/g) || []).length === 9);
 check('UX-067: the previous edition\'s note opens the editor at that section', /editorAt\(notes\.previous\.key\)/.test(page) && /'&section=' \+ encodeURIComponent\(key\)/.test(page));
+/* the console's own lines, run in a vm over the page's helpers */
+(function () {
+  var a = page.indexOf('  function editorAt(key)'), b = page.indexOf('  /* ============================================================\n     NAVIGATION MODEL');
+  var box = { esc: function (v) { return String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); },
+    svg: function () { return '<svg/>'; }, IC: { info: 1 }, editorUrl: function () { return '/custom_editor.html?event=e1'; } };
+  vm.createContext(box);
+  vm.runInContext(page.slice(a, b), box);
+  var tech = SN.forTab('faq', TECH, { total: 0 });
+  var line = box.emptySiteLine(tech);
+  check('the empty FAQ tab of a real template: the line says what stands, and opens the editor at that section',
+    line.indexOf('shows 1 question not in this list') !== -1 && line.indexOf('hidden') === -1 &&
+    line.indexOf('<a href="/custom_editor.html?event=e1&amp;section=faq">Open “FAQ” in the site editor</a>') !== -1, line);
+  var hid = box.emptySiteLine(SN.forTab('faq', BWS, { total: 0 }));
+  check('an AI site\'s hidden FAQ: the line as before, no editor link', /section is hidden until you add a question\.<\/span><\/p>$/.test(hid) && hid.indexOf('<a ') === -1, hid);
+  var none = box.emptySiteLine(SN.forTab('speakers', BWS, { total: 0, shown: 0 }));
+  check('no section for speakers: the line and "Open the site editor"', /do not appear on it\. Sections are added in the site editor\. <a href="\/custom_editor\.html\?event=e1">Open the site editor<\/a>/.test(none), none);
+  var call = box.siteCallout(SN.forTab('speakers', CX, { total: 2, shown: 0 }), true);
+  check('a tab with only invited speakers: the callout says the hidden section and the one that shows its own',
+    call.indexOf('“Jury” section is hidden') !== -1 && call.indexOf('section=speakers">Open “Speakers” in the site editor</a>') !== -1, call);
+})();
 check('the site is read once the console is up, and handed to the Dashboard', /setTimeout\(loadOutline, 0\);/.test(page) && /C\.fetchSiteOutline\(id\)/.test(page) &&
   /CTX\.siteNotes = SN;/.test(page) && /CTX\.siteOutline = function\(\)\{ return OUTLINE; \};/.test(page));
 check('the glance lists no longer claim a section is hidden without knowing', !/The Speakers section is hidden on the site|The Sponsors section is hidden on the site|The Agenda section is hidden on the site/.test(page));
