@@ -108,6 +108,8 @@
       .event-picker select{ flex:1; min-width:0; max-width:none; }
     }
   </style>
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 </head>
 <body>
 <header class="topbar">
@@ -676,5 +678,10 @@
   start();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page and its event. -->
+<div id="rv-assistant" data-rv-assistant="registrations"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>

@@ -1,6 +1,7 @@
 // node functions/lib/events-dashboard-page.test.js — the events dashboard (Event_Listing.html) with ETB2B AI on it
 // (plan §2, §7a, K7, K9, §12 D.2). Three kinds of check:
-//   1. the page as a file: script order, the kit's stylesheet, the mount point, "Need help?" kept as the fallback;
+//   1. the page as a file: script order, the kit's stylesheet, the mount point (the one assistant's, bottom-right as on
+//      every page: ai-everywhere plan §3b, §10), "Need help?" kept as the fallback;
 //   2. the list's pure helpers pulled out by name and run in a vm (the address, the India-time day filters, rows);
 //   3. the page's whole inline script run in a vm over a forgiving stand-in DOM, with GET /api/events answered from
 //      fixtures, so window.RvListing (the bot's one door into the list) is driven for real: apply, restore, the
@@ -27,28 +28,36 @@ var INLINE = START === -1 ? '' : PAGE.slice(START + '<script>'.length, PAGE.inde
 check('D.2 the inline script is found', INLINE.length > 50000);
 var scripts = (PAGE.match(/<script\b[^>]*>/g) || []);
 /* portal-picker.js (the portals change) sits right after auth.js, and event-lifecycle.js stays right before the inline script */
-check('D.2 script order: theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
-  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+check('D.2 script order: theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js',
+  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">', '<script src="etb2b-assistant.js">']), scripts);
 check('D.2 the second plain <script> is the inline script itself', PAGE.indexOf('<script src="event-lifecycle.js"></script>\n<script>\n(function(){') !== -1);
 check('D.2 the kit\'s scripts come after the inline script (RvListing exists before they run)', PAGE.indexOf('<script src="etb2b-chat.js">') > PAGE.indexOf('})();\n</script>', START) &&
   PAGE.indexOf('<script src="dash-bot-client.js">') > PAGE.indexOf('<script src="etb2b-chat.js">'));
+/* the one assistant (etb2b-assistant.js) mounts the kit here as on every other page, so it comes last, right after the
+   events side of the bot it registers, and nothing but the end of the document follows it */
+check('D.2 etb2b-assistant.js loads once, right after dash-bot-client.js, and is the last script on the page',
+  count(PAGE, '<script src="etb2b-assistant.js"></script>') === 1 && /<script src="etb2b-chat\.js"><\/script>\n<script src="dash-bot-client\.js"><\/script>\n<script src="etb2b-assistant\.js"><\/script>\n<\/body>\n<\/html>\n?$/.test(PAGE));
 var link = PAGE.indexOf('<link rel="stylesheet" href="etb2b-chat.css">');
 check('D.2 etb2b-chat.css is linked once, in the head (before the page\'s styles and its header)', count(PAGE, 'href="etb2b-chat.css"') === 1 && link !== -1 && link < PAGE.indexOf('<style>') && link < PAGE.indexOf('<header'));
 var access = require('./access');
-['event-lifecycle.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
+['event-lifecycle.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js', 'etb2b-assistant.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
 check('D.2 one rule for the lifecycle: no function lifecycleOf( here, RevampLifecycle.of( used', INLINE.indexOf('function lifecycleOf(') === -1 && INLINE.indexOf('lifecycleOf(') === -1 && INLINE.indexOf('window.RevampLifecycle.of(ev, Date.now())') !== -1);
 check('D.2 "Need help?" stays in the markup', /<button class="help-fab" id="btn-help" type="button">[\s\S]*?Need help\?\s*<\/button>/.test(PAGE));
 check('D.2 …with its click handler', INLINE.indexOf("$('btn-help').addEventListener('click', function(){ openHelpModal($('btn-help')); });") !== -1);
 check('D.2 …hidden only once ETB2B AI has mounted (html.rvc-ready)', PAGE.indexOf('html.rvc-ready .help-fab{ display:none; }') !== -1 && /\.help-fab\{ position:fixed; bottom:22px; left:22px; z-index:80;/.test(PAGE));
 check('D.2 openHelpModal stays, and RvListing.openHelp calls it', INLINE.indexOf('function openHelpModal(returnTo){') !== -1 && INLINE.indexOf('openHelp: function(returnTo){ openHelpModal(returnTo); }') !== -1);
-var mountAt = PAGE.indexOf('<div id="rv-dash-bot"></div>');
-check('D.2 <div id="rv-dash-bot"> sits right before #toast-region', count(PAGE, 'id="rv-dash-bot"') === 1 && mountAt !== -1 && /<div id="rv-dash-bot"><\/div>\n<div id="toast-region"><\/div>/.test(PAGE));
+var mountAt = PAGE.indexOf('<div id="rv-dash-bot" data-rv-assistant="dashboard"></div>');
+check('D.2 <div id="rv-dash-bot"> keeps its place, right before #toast-region, and is the one assistant\'s mount for the dashboard',
+  count(PAGE, 'id="rv-dash-bot"') === 1 && mountAt !== -1 && /<div id="rv-dash-bot" data-rv-assistant="dashboard"><\/div>\n<div id="toast-region"><\/div>/.test(PAGE));
+check('D.2 …the only assistant mount on the page, with nothing to keep clear (the toasts may lie over the launcher for their few seconds)',
+  count(PAGE, 'data-rv-assistant=') === 1 && PAGE.indexOf('data-keep-clear') === -1);
 check('D.2 Create Event is still alone on the toolbar (nothing of the bot\'s added there)', (function () {
   var toolbar = PAGE.slice(PAGE.indexOf('<div class="toolbar-right-group">'), PAGE.indexOf('<div class="chip-row" id="chip-row">'));
   return toolbar.indexOf('id="btn-create-event"') !== -1 && !/ETB2B|rv-dash-bot|rvc-/.test(toolbar);
 })());
 check('D.2 one window.* name added by the inline script: RvListing', (INLINE.match(/window\.[A-Za-z]+\s*=(?!=)/g) || []).join(',') === 'window.RvListing =', INLINE.match(/window\.[A-Za-z]+\s*=(?!=)/g));
-check('D.2 the inline script never reads the bot\'s storage or calls its routes', INLINE.indexOf('dashBot') === -1 && INLINE.indexOf('/api/dash-bot') === -1);
+check('D.2 the inline script never reads the bot\'s storage or calls its routes', INLINE.indexOf('dashBot') === -1 && INLINE.indexOf('/api/dash-bot') === -1 &&
+  INLINE.indexOf('RevampAssistant') === -1 && INLINE.indexOf('rv.assistant') === -1);
 check('D.2 the inline script is ES5 (no let, const, arrows, template strings)', !/\blet\s|\bconst\s/.test(INLINE) && INLINE.indexOf('=>') === -1 && INLINE.indexOf('`') === -1);
 var esbuild = null;
 try { esbuild = require('esbuild'); } catch (e) { /* the regex check above still ran */ }

@@ -1894,6 +1894,8 @@
   .psd-preview-header{ padding: 8px 14px; }
 </style>
 <link rel="stylesheet" href="motion.css">
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 
 <div class="wiz">
   <!-- ============ TOP: brand + progress rail ============ -->
@@ -10839,3 +10841,9 @@
   else init();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page.
+     It sits above the Back / Continue footer (data-keep-clear). -->
+<div id="rv-assistant" data-rv-assistant="create-event" data-keep-clear="#wiz-foot"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>

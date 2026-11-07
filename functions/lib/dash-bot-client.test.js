@@ -11,6 +11,8 @@ var vm = require('vm');
 
 var ROOT = path.join(__dirname, '..', '..');
 var SRC = fs.readFileSync(path.join(ROOT, 'dash-bot-client.js'), 'utf8');
+/* the one assistant's shell mounts the kit and hands this brain its messages (plan §4b, §4c) */
+var SHELL_SRC = fs.readFileSync(path.join(ROOT, 'etb2b-assistant.js'), 'utf8');
 var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
@@ -74,7 +76,8 @@ function makeKit(opt) {
       close: function () { chat.closed++; chat.open_ = false; },
       isOpen: function () { return chat.open_; },
       focusInput: function () {},
-      setBusy: function (on, text) { chat.busy.push([on, text]); },
+      setBusy: function (on, text, o) { chat.busy.push([on, text]); chat.busyOpts = o || null; },
+      scopes: [], setScope: function (t) { chat.scopes.push(t); },
       divider: function (label) { chat.dividers.push(label); chat.order.push('divider:' + label); },
       fold: function (label, onUndo) { chat.folds.push({ label: label, onUndo: onUndo, click: function () { runUndo(onUndo); } }); },
       unfold: function () {},
@@ -137,7 +140,8 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, status: status, text: function () { return Promise.resolve(text); } };
 }
 
-/* one page: the client file run in a fresh vm with its own stand-ins */
+/* one page: the client file, then the shell (as every page loads them), run in a fresh vm with its own stand-ins.
+   opt.page is the mount's data-rv-assistant ('dashboard' unless said); opt.search / opt.hash its address. */
 function page(opt) {
   opt = opt || {};
   var clock = makeClock();
@@ -146,18 +150,27 @@ function page(opt) {
   var listing = opt.noListing ? null : (opt.listing || makeListing());
   var calls = [];
   var answers = opt.answers || [];
-  var assigned = [], redirected = [], confirms = [], winListeners = {};
-  var host = fakeEl({ id: 'rv-dash-bot' });
-  var launcher = fakeEl({ id: 'dash-chat-launcher' });
+  var assigned = [], redirected = [], confirms = [], winListeners = {}, scripts = [];
+  var pageName = opt.page || 'dashboard';
+  var host = fakeEl({ id: pageName === 'dashboard' ? 'rv-dash-bot' : 'rv-assistant' });
+  host.attrs = { 'data-rv-assistant': pageName, 'data-keep-clear': opt.keepClear || '' };
+  host.getAttribute = function (k) { return Object.prototype.hasOwnProperty.call(host.attrs, k) ? host.attrs[k] : null; };
+  var launcher = fakeEl({ id: pageName === 'dashboard' ? 'dash-chat-launcher' : 'ai-chat-launcher' });
   var doc = {
-    activeElement: null,
-    getElementById: function (id) { return id === 'rv-dash-bot' ? (opt.noHost ? null : host) : id === 'dash-chat-launcher' ? launcher : null; }
+    activeElement: null, readyState: 'complete',
+    body: { classList: { contains: function () { return false; } } },
+    head: { appendChild: function (el) { scripts.push(el.src); } },
+    createElement: function (tag) { var el = fakeEl({ tagName: String(tag).toUpperCase() }); return el; },
+    querySelector: function (sel) { return sel === '[data-rv-assistant]' && !opt.noHost ? host : null; },
+    getElementById: function (id) { return id === host.id ? (opt.noHost ? null : host) : id === launcher.id ? launcher : null; }
   };
-  var quiet = { log: function () {}, warn: function () {}, error: function () {} };
+  var quiet = { log: function () {}, warn: function () {}, error: function () {}, info: function () {} };
   var ctx = {
-    document: doc, console: opt.quiet ? quiet : console, JSON: JSON, Promise: Promise, Date: Date, Object: Object, Array: Array, Number: Number, String: String, RegExp: RegExp, Error: Error,
+    document: doc, console: opt.quiet ? quiet : console, JSON: JSON, Promise: Promise, Date: Date, Object: Object, Array: Array, Number: Number, String: String, RegExp: RegExp, Error: Error, Math: Math,
+    encodeURIComponent: encodeURIComponent, decodeURIComponent: decodeURIComponent,
     navigator: { onLine: opt.offline ? false : true },
-    location: { href: 'http://localhost/Event_Listing.html', assign: function (u) { assigned.push(u); } },
+    location: { href: 'http://localhost/' + (pageName === 'dashboard' ? 'Event_Listing.html' : 'edit-event.html'), pathname: opt.path || (pageName === 'dashboard' ? '/Event_Listing.html' : '/edit-event.html'),
+      search: opt.search || '', hash: opt.hash || '', assign: function (u) { assigned.push(u); } },
     sessionStorage: session, localStorage: local,
     setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
     confirm: function (t) { confirms.push(t); return opt.confirm === undefined ? true : (typeof opt.confirm === 'function' ? opt.confirm(t) : opt.confirm); },
@@ -165,8 +178,10 @@ function page(opt) {
     addEventListener: function (t, fn) { (winListeners[t] = winListeners[t] || []).push(fn); },
     RevampChat: kit,
     RvListing: listing,
+    RevampPortals: opt.portals || undefined,
     RevampAuth: opt.noAuth ? undefined : {
       whenResolved: function () { return Promise.resolve(); },
+      currentUser: function () { return opt.signedOut ? null : { displayName: 'Asha Rao', email: 'asha.rao@timesinternet.in' }; },
       redirectToSignIn: function () { redirected.push(1); },
       authedFetch: function (url, o) {
         var body = o && o.body ? JSON.parse(o.body) : undefined;
@@ -176,20 +191,24 @@ function page(opt) {
         var a = typeof opt.answer === 'function' ? opt.answer(call) : (url === '/api/dash-bot' ? answers.shift() : null);
         if (url === '/api/dash-bot/turn') return Promise.resolve(response(200, { turnId: body.turnId, status: body.status }));
         if (url === '/api/dash-bot/history' && !a) return Promise.resolve(response(200, opt.history || { turns: [] }));
+        if (/^\/api\/chat\/history\?eventId=/.test(url) && !a) return Promise.resolve(response(200, opt.eventHistory || { event: { id: 'qa-main', name: 'QA Main' }, turns: [] }));
         if (!a) return Promise.resolve(response(500, { error: 'no scripted answer' }));
         if (a.reject) return Promise.reject(a.reject);
+        if (a.hold) return a.hold.then(function (b) { return response(b.status || 200, b.body); });
         return Promise.resolve(response(a.status || 200, a.body));
       }
     }
   };
   ctx.window = ctx;
+  ctx.top = ctx;
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: 'dash-bot-client.js' });
+  if (!opt.noShell) vm.runInContext(SHELL_SRC, ctx, { filename: 'etb2b-assistant.js' });
   var P = {
     ctx: ctx, kit: kit, listing: listing, clock: clock, session: session, local: local, calls: calls, assigned: assigned, redirected: redirected,
-    confirms: confirms, host: host, launcher: launcher, winListeners: winListeners,
+    confirms: confirms, host: host, launcher: launcher, winListeners: winListeners, scripts: scripts,
     chat: function () { return kit && kit.chat; },
-    say: function (text) { return kit.chat.opts.send(text); },
+    say: function (text, o) { return kit.chat.opts.send(text, o); },
     last: function () { var b = kit.chat.bubbles; return b[b.length - 1]; },
     turnCalls: function () { return calls.filter(function (c) { return c.url === '/api/dash-bot/turn'; }).map(function (c) { return c.body; }); },
     botCalls: function () { return calls.filter(function (c) { return c.url === '/api/dash-bot'; }); }
@@ -292,20 +311,28 @@ var LIST = {
   var Pnone = await page({ noKit: true });
   check('D.1 no kit: nothing mounts and nothing throws (the page keeps "Need help?")', !Pnone.ctx.RevampChat && typeof Pnone.ctx.RevampDashBot === 'object');
   var Pnol = await page({ noListing: true });
-  check('D.1 no RvListing: the kit is not mounted', Pnol.kit.mounts.length === 0);
+  check('D.1 no RvListing: the panel still mounts (the list is optional: the shell mounts it on every page)', Pnol.kit.mounts.length === 1);
+  var Pnosh = await page({ noShell: true });
+  check('D.1 without the shell nothing mounts (the brain waits for it), and the brain is there for it', Pnosh.kit.mounts.length === 0 &&
+    typeof Pnosh.ctx.RevampDashBot.brain.send === 'function' && typeof Pnosh.ctx.RevampDashBot.brain.replay === 'function');
+  var Pout = await page({ signedOut: true });
+  check('D.1 signed out: nothing mounts', Pout.kit.mounts.length === 0);
   var Pthrow = await page({ kitOpt: { throws: true }, quiet: true });
   check('D.1 a kit that throws on mount is survived', Pthrow.kit.mounts.length === 0 && typeof Pthrow.ctx.RevampDashBot === 'object');
   var Pnoname = await page({ listing: (function () { var L = makeListing(); L.me = function () { return { email: 'x@timesinternet.in', name: '' }; }; return L; })() });
   check('D.1 no name: "Hi, I’m ETB2B AI."', Pnoname.kit.mounts[0].opts.welcome.heading === 'Hi, I’m ETB2B AI.');
 
   /* ======== Return: Back to the dashboard reopens the panel ======== */
-  var sess = makeStorage(); sess.setItem('rv.dashBot.open', '1');
+  var sess = makeStorage(); sess.setItem('rv.assistant.open.dashboard', '1');
   var Pret = await page({ session: sess });
-  check('D.1 rv.dashBot.open = "1" → it mounts open, and the key is cleared', Pret.kit.mounts[0].opts.startOpen === true && sess.getItem('rv.dashBot.open') === null);
+  check('D.1 rv.assistant.open.dashboard = "1" → it mounts open, and the key is cleared', Pret.kit.mounts[0].opts.startOpen === true && sess.getItem('rv.assistant.open.dashboard') === null);
   Pret.kit.chat.open_ = false;
-  sess.setItem('rv.dashBot.open', '1');
+  sess.setItem('rv.assistant.open.dashboard', '1');
   (Pret.winListeners.pageshow || []).forEach(function (fn) { fn({ persisted: true }); });
-  check('D.1 …and from the browser\'s memory (pageshow) too', Pret.kit.chat.opened === 1 && sess.getItem('rv.dashBot.open') === null);
+  check('D.1 …and from the browser\'s memory (pageshow) too', Pret.kit.chat.opened === 1 && sess.getItem('rv.assistant.open.dashboard') === null);
+  var sessOther = makeStorage(); sessOther.setItem('rv.assistant.open.console', '1');
+  var Pret2 = await page({ session: sessOther });
+  check('D.1 …the key is per page: another page\'s does not open the dashboard\'s panel', Pret2.kit.mounts[0].opts.startOpen === false && sessOther.getItem('rv.assistant.open.console') === '1');
 
   /* ======== Send ======== */
   var P = await page({ answers: [filterAnswer(T1)] });
@@ -313,7 +340,8 @@ var LIST = {
   check('D.1 busy at once', same(P.kit.chat.busy[0], [true, undefined]));
   await sent;
   var c0 = P.botCalls()[0];
-  check('D.1 POST /api/dash-bot with {message, view}', c0 && c0.method === 'POST' && c0.headers['Content-Type'] === 'application/json' && same(Object.keys(c0.body).sort(), ['message', 'view']) && c0.body.message === 'Show drafts from last week');
+  check('D.1 POST /api/dash-bot with {message, view, place}', c0 && c0.method === 'POST' && c0.headers['Content-Type'] === 'application/json' && same(Object.keys(c0.body).sort(), ['message', 'place', 'view']) && c0.body.message === 'Show drafts from last week', c0 && c0.body);
+  check('D.1 place: the dashboard, no event', c0 && same(c0.body.place, { page: 'dashboard', eventId: '', tab: '' }), c0 && c0.body.place);
   check('D.1 no top-level eventId or slug (the QA guard reads those)', !('eventId' in c0.body) && !('slug' in c0.body));
   /* working: the portal worked in; a snapshot without it (an older page) sends the list's portal, then the same */
   check('D.1 view comes from RvListing.snapshot()', same(c0.body.view, { tab: 'active', specialView: null, search: 'mumbai', portal: '', working: '', types: ['ip'], mine: false, created: null, starts: null, sort: { field: 'start', dir: 'asc' }, shown: 7 }), c0.body.view);
@@ -386,7 +414,7 @@ var LIST = {
   check('D.1 navigate: nothing before 1.2 s', Pv.assigned.length === 0);
   Pv.clock.tick(1);
   check('D.1 navigate: after 1.2 s, location.assign(url)', same(Pv.assigned, [URL1]));
-  check('D.1 navigate: Back will reopen the panel', Pv.session.getItem('rv.dashBot.open') === '1');
+  check('D.1 navigate: Back will reopen the panel', Pv.session.getItem('rv.assistant.open.dashboard') === '1');
   check('D.1 navigate: no /turn report for going (it is stored done)', Pv.turnCalls().length === 0);
 
   var Ps = await page({ answers: [navAnswer(T4, URL1)] });
@@ -395,7 +423,7 @@ var LIST = {
   Ps.last().countdowns[0].cancel();                 // Stay here (or Esc)
   Ps.clock.tick(5000);
   await flush();
-  check('D.1 Stay here: no navigation', Ps.assigned.length === 0 && Ps.session.getItem('rv.dashBot.open') === null);
+  check('D.1 Stay here: no navigation', Ps.assigned.length === 0 && Ps.session.getItem('rv.assistant.open.dashboard') === null);
   check('D.1 Stay here: /turn undone with "stayed"', same(Ps.turnCalls(), [{ turnId: T4, status: 'undone', note: 'stayed' }]), Ps.turnCalls());
 
   var Pc = await page({ answers: [navAnswer(T4, URL1)] });
@@ -414,7 +442,7 @@ var LIST = {
   await Pplain.say('x');
   Pplain.last().links[0].fire('click', { button: 0 });
   Pplain.clock.tick(5000);
-  check('D.1 a plain click on the link: the browser goes, the timer does not go again', Pplain.assigned.length === 0 && Pplain.session.getItem('rv.dashBot.open') === '1' && Pplain.turnCalls().length === 0);
+  check('D.1 a plain click on the link: the browser goes, the timer does not go again', Pplain.assigned.length === 0 && Pplain.session.getItem('rv.assistant.open.dashboard') === '1' && Pplain.turnCalls().length === 0);
 
   var badUrls = ['https://evil/', '/edit-event.html?event=a#x', '//evil.example/', 'javascript:alert(1)'];
   for (var bu = 0; bu < badUrls.length; bu++) {
@@ -465,7 +493,7 @@ var LIST = {
   check('D.1 …the click waits for its report (no assign yet)', prevented === 1 && Pcs.assigned.length === 0);
   await flush();
   check('D.1 …the turn is reported done, once, and then the page opens', same(Pcs.turnCalls().slice(1), [{ turnId: T3, status: 'done', note: 'opened after staying' }]) &&
-    same(Pcs.assigned, ['/create-event.html?new=1&prefill=' + T3]) && Pcs.session.getItem('rv.dashBot.open') === '1', [Pcs.turnCalls(), Pcs.assigned]);
+    same(Pcs.assigned, ['/create-event.html?new=1&prefill=' + T3]) && Pcs.session.getItem('rv.assistant.open.dashboard') === '1', [Pcs.turnCalls(), Pcs.assigned]);
   check('D.1 …that report is sent so it survives the page being left', Pcs.calls.filter(function (c) { return c.url === '/api/dash-bot/turn'; }).length === 2);
   Pcs.clock.tick(5000); await flush();
   check('D.1 …and goes only once, whatever the timer', Pcs.assigned.length === 1);
@@ -666,7 +694,7 @@ var LIST = {
   var e3 = await rejection(Pe.say('c'));
   check('D.1 any other error: the server\'s own words', e3 && e3.message === 'Something on our side failed.');
   var e4 = await rejection(Pe.say('d'));
-  check('D.1 no JSON at all: a plain sentence with the status', e4 && e4.message === 'ETB2B AI could not answer (error 502). Try again.');
+  check('D.1 no JSON at all (a 5xx page from in front of the API): one plain sentence, Try again kept', e4 && e4.message === 'ETB2B AI didn’t answer. Nothing was changed. Try again.' && e4.retryable !== false, e4 && e4.message);
   var e5 = await rejection(Pe.say('e'));
   check('D.1 a cap with no words of its own still gets the sentence', e5 && e5.message === 'You have used today’s ETB2B AI allowance. It resets at midnight (India time).');
   check('D.1 the day\'s allowance has no Try again (retryable false); a busy minute keeps it', e1.retryable === false && e5.retryable === false && e2.retryable !== false && e3.retryable !== false);
@@ -695,7 +723,10 @@ var LIST = {
   check('D.1 the server\'s too-long answer: its sentence, no Try again', e12 && /^Keep the message under 4,000/.test(e12.message) && e12.retryable === false);
   var Prt = await page({ answers: [{ status: 503, body: { error: 'The AI service is not answering.', code: 'ai-unavailable', retryable: false } }] });
   var e13 = await rejection(Prt.say('x'));
-  check('D.1 a server error that says it is not worth retrying is shown without Try again', e13 && e13.message === 'The AI service is not answering.' && e13.retryable === false);
+  check('D.1 the AI service down (ai-unavailable): the shell\'s sentence by its code, not the server\'s old words (UX-097)', e13 && e13.message === 'ETB2B AI is busy right now. Nothing was changed. Try again in a minute.', e13 && e13.message);
+  var Pnr = await page({ answers: [{ status: 500, body: { error: 'This can not be done for that event.', retryable: false } }] });
+  var e14 = await rejection(Pnr.say('x'));
+  check('D.1 a server error with words of its own that says it is not worth retrying is shown without Try again', e14 && e14.message === 'This can not be done for that event.' && e14.retryable === false);
   var Pslow = await page({ answer: function (call) { return call.url === '/api/dash-bot' ? { reject: null, hang: true } : null; } });
   /* an answer that never comes */
   Pslow.ctx.RevampAuth.authedFetch = function () { return new Promise(function () {}); };
@@ -848,6 +879,218 @@ var LIST = {
   await PHn.say('Create an IP event called X, no picture');
   check('D.1h no request, no mention of a picture', !/hero picture/.test(PHn.last().countdowns[0].label), PHn.last().countdowns[0].label);
 
+
+  /* ======== the dash brain off the dashboard (plan §4c): an event's console, no RvListing ======== */
+  function portalsStub(start, failSave) {
+    var P0 = { working_: start || 'cio', sets: [] };
+    P0.cachedWorking = function () { return P0.working_; };
+    P0.setWorking = function (v) { P0.sets.push(v); P0.working_ = v; return failSave ? Promise.reject(new Error('Your portal choice is kept in this browser only: it could not be saved to your account.')) : Promise.resolve(v); };
+    return P0;
+  }
+  var CON = { page: 'console', noListing: true, search: '?event=qa-main', hash: '#content/speakers' };
+  function conPage(extra) { var o = {}; Object.keys(CON).forEach(function (k) { o[k] = CON[k]; }); Object.keys(extra || {}).forEach(function (k) { o[k] = extra[k]; }); if (!o.portals) o.portals = portalsStub(); return page(o); }
+  var Pe0 = await conPage({ answers: [hello('TurnConsole001')] });
+  var oc = Pe0.kit.mounts[0] && Pe0.kit.mounts[0].opts;
+  check('D.2 the console: the panel mounts with the kit id "ai" (the dashboard keeps "dash")', !!oc && oc.id === 'ai' && Pe0.kit.mounts[0].host === Pe0.host);
+  check('D.2 …its header says whose conversation it is: "This event" (named once the history has come)', oc.scope === 'This event');
+  check('D.2 …the welcome speaks of this event', oc.welcome.heading === 'Hi Asha, I’m ETB2B AI.' && oc.welcome.text === 'I can answer questions about this event from its real numbers, open its pages, set up its promotions, and start a new event.', oc.welcome);
+  check('D.2 …suggestions for an event, each one only fills the box', same(oc.suggestions.map(function (x) { return x.text; }), ['How many registrations does this event have?', 'Open this event’s speakers', 'Make a save-the-date post for this event', 'Create an IP event called … on … in …']));
+  check('D.2 …quick ideas stay after the first turn (they fill, never send)', oc.quickIdeas.length === 2 && oc.quickIdeas.every(function (q) { return q.label && q.text; }));
+  check('D.2 …the foot note does not speak of a list that is not here', oc.footNote === 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.');
+  check('D.2 …"Email Customer Care" mails Customer Care, naming the page', oc.help && oc.help.label === 'Email Customer Care' && oc.help.href === 'mailto:customercare@economictimesb2b.com?subject=' + encodeURIComponent('Oneworld 2.0 help: Event console'), oc.help);
+  check('D.2 …the attach button takes pictures here, for the event\'s site editor', oc.attach && oc.attach.max === 4 && /image\/png/.test(oc.attach.accept) && !/pdf/.test(oc.attach.accept) && oc.attach.label === 'Attach a picture' && typeof oc.attach.add === 'function', oc.attach);
+  check('D.2 …it is placed bottom-right, under the page\'s own windows', same(oc.placement, { right: 22, bottom: 22, compact: false }) && same(oc.zIndex, { launcher: 65, panel: 69 }));
+  await Pe0.say('How many registrations here?');
+  var cc = Pe0.botCalls()[0];
+  check('D.2 the request: place { console, qa-main, content/speakers } and, with no list, only the portal worked in', cc && same(cc.body.place, { page: 'console', eventId: 'qa-main', tab: 'content/speakers' }) && same(cc.body.view, { working: 'cio' }), cc && cc.body);
+  check('D.2 …the event is only inside place (the QA guard reads a top-level eventId)', !('eventId' in cc.body) && !('slug' in cc.body));
+  var Pe1 = await conPage({ answers: [filterAnswer('TurnConsole002')] });
+  await Pe1.say('Show drafts from last week');
+  check('D.2 a filter off the dashboard (an older server): said plainly, nothing folds, reported failed in the event\'s conversation',
+    /^That could not be done here\. The events list is on the events dashboard: ask me there to change it\.$/.test(Pe1.last().notes[0] || '') && Pe1.kit.chat.folds.length === 0 &&
+    same(Pe1.turnCalls(), [{ turnId: 'TurnConsole002', status: 'failed', note: 'The events list is on the events dashboard: ask me there to change it.', eventId: 'qa-main' }]), [Pe1.last().notes, Pe1.turnCalls()]);
+  var Pe2 = await conPage({ answers: [ok({ turnId: 'TurnConsole003', kind: 'reply', parts: [{ t: 'text', v: 'Here.' }], list: LIST, action: null, asOf: 'x', notes: [] }), navAnswer('TurnConsole004', '/marketing.html?event=qa-main&tab=posts', 'Promotions of QA Main')] });
+  await Pe2.say('Which events go live this month?');
+  check('D.2 a list off the dashboard: drawn, with no "Show these in the list"', Pe2.last().lists.length === 1 && !Pe2.last().buttons.some(function (x) { return x.label === 'Show these in the list'; }));
+  await Pe2.say('Open its promotions');
+  Pe2.clock.tick(1200);
+  check('D.2 navigate off the dashboard: "Opening …", then the page (through the shell\'s leave)', same(Pe2.assigned, ['/marketing.html?event=qa-main&tab=posts']) && Pe2.session.getItem('rv.assistant.open.console') === '1', [Pe2.assigned, Pe2.session._m]);
+  var Pe3 = await conPage({ answers: [createAnswer('TurnConsole005')] });
+  await Pe3.say('Create an IP event called Retail Leadership Summit on 12 Feb 2027 at Jio World Centre, Mumbai');
+  Pe3.clock.tick(1200);
+  check('D.2 create off the dashboard: the prefill is kept and Create Event opens', !!Pe3.local.getItem('revamp.createEvent.prefill.v1.TurnConsole005') && same(Pe3.assigned, ['/create-event.html?new=1&prefill=TurnConsole005']));
+
+  /* the working portal off the dashboard, with Undo */
+  var ports = portalsStub('cio');
+  var Pp = await conPage({ portals: ports, answers: [switchAnswer('TurnPortalE001', 'auto', 'ETAuto'), ok({ turnId: 'TurnPortalE002', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
+  await Pp.say('switch to ETAuto');
+  var bp = Pp.last();
+  check('D.2 portal off the dashboard: RevampPortals.setWorking("auto")', same(ports.sets, ['auto']), ports.sets);
+  check('D.2 …the card says what it means here', bp.notes.indexOf('Now working in ETAuto: the dashboard and Create Event will open on it.') !== -1, bp.notes);
+  check('D.2 …the panel folds to "Now working in ETAuto", with Undo on the card', Pp.kit.chat.folds.length === 1 && Pp.kit.chat.folds[0].label === 'Now working in ETAuto' && bp.buttons.some(function (x) { return x.undo; }));
+  bp.buttons.filter(function (x) { return x.undo; })[0].click();
+  await flush();
+  check('D.2 portal Undo: back to the portal worked in before ("cio"), reported undone in the event\'s conversation', same(ports.sets, ['auto', 'cio']) &&
+    same(Pp.turnCalls(), [{ turnId: 'TurnPortalE001', status: 'undone', eventId: 'qa-main' }]) && bp.buttons.filter(function (x) { return x.undo; })[0].textContent === 'Undone', [ports.sets, Pp.turnCalls()]);
+  var ports2 = portalsStub('all');
+  var Pp2 = await conPage({ portals: ports2, answers: [switchAnswer('TurnPortalE003', 'hr', 'ETHRWorld'), ok({ turnId: 'TurnPortalE004', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
+  await Pp2.say('work in ETHRWorld'); await Pp2.say('undo that'); await flush();
+  check('D.2 "undo that" off the dashboard puts the working portal back, and says so', same(ports2.sets, ['hr', 'all']) && Pp2.last().content === 'Done, you are back in the portal you worked in before.', [ports2.sets, Pp2.last().content]);
+  var ports3 = portalsStub('cio', true);
+  var Pp3 = await conPage({ portals: ports3, answers: [switchAnswer('TurnPortalE005', 'auto', 'ETAuto')] });
+  await Pp3.say('switch to ETAuto'); await flush();
+  check('D.2 the account could not be told: the card says the choice is kept in this browser', Pp3.last().notes.some(function (n) { return /kept in this browser only/.test(n); }), Pp3.last().notes);
+  var Pp4 = await page({ page: 'console', noListing: true, search: '?event=qa-main', answers: [switchAnswer('TurnPortalE006', 'auto', 'ETAuto')], quiet: true });
+  await Pp4.say('switch to ETAuto');
+  check('D.2 no portal picker on the page (and none loaded yet): said, reported failed, no Undo', /The portal could not be switched from this page/.test(Pp4.last().notes[0] || '') &&
+    Pp4.turnCalls()[0].status === 'failed' && !Pp4.last().buttons.some(function (x) { return x.undo; }), Pp4.last().notes);
+  check('D.2 …and the shell has asked for /portal-picker.js on a page without it', Pp4.scripts.indexOf('/portal-picker.js') !== -1, Pp4.scripts);
+
+  /* ======== Stop (UX-097): the late answer is neither drawn nor done, and its turn says stopped ======== */
+  var release = null;
+  var Pst2 = await page({ answer: function (call) {
+    if (call.url !== '/api/dash-bot') return null;
+    return { hold: new Promise(function (r) { release = r; }) };
+  } });
+  var stopping = Pst2.say('Take me to the Autotech editor');
+  var bo = Pst2.kit.chat.busyOpts;
+  check('D.3 the busy strip is given a Stop', !!bo && typeof bo.onStop === 'function');
+  bo.onStop();
+  var stopR = await stopping;
+  check('D.3 Stop: the message is settled at once ({kind: "stopped"}) and the box is free', stopR && stopR.kind === 'stopped' && same(Pst2.kit.chat.busy[Pst2.kit.chat.busy.length - 1], [false, undefined]));
+  release(navAnswer(T4, URL1));
+  await flush(); await flush();
+  Pst2.clock.tick(5000); await flush();
+  check('D.3 …the answer that comes later draws nothing and opens nothing', Pst2.kit.chat.bubbles.length === 0 && Pst2.assigned.length === 0);
+  check('D.3 …and its turn is reported stopped', same(Pst2.turnCalls(), [{ turnId: T4, status: 'stopped' }]), Pst2.turnCalls());
+  var rel2 = null;
+  var Pst3 = await page({ answer: function (call) { return call.url === '/api/dash-bot' ? { hold: new Promise(function (r) { rel2 = r; }) } : null; } });
+  var s3 = Pst3.say('Show drafts');
+  Pst3.ctx.RevampAssistant.stop();
+  await s3;
+  rel2(filterAnswer(T1)); await flush(); await flush();
+  check('D.3 the shell\'s stop() reaches the brain answering: no filter runs', Pst3.listing.applied.length === 0 && same(Pst3.turnCalls(), [{ turnId: T1, status: 'stopped' }]), Pst3.turnCalls());
+  var Pst4 = await page({ answers: [filterAnswer(T1)] });
+  await Pst4.say('drafts');
+  Pst4.kit.chat.busyOpts && Pst4.kit.chat.busyOpts.onStop();
+  check('D.3 Stop after the answer has come does nothing', Pst4.listing.applied.length === 1 && Pst4.turnCalls().length === 0);
+
+  /* ======== handoff (plan §5b): one hop, never back ======== */
+  var Ph1 = await page({ answers: [ok({ kind: 'handoff', parts: [], list: null, action: null, choices: null, asOf: 'x', notes: [] }),
+    ok({ kind: 'handoff', parts: [], list: null, action: null, choices: null, asOf: 'x', notes: [] })] });
+  var hr1 = await Ph1.ctx.RevampDashBot.brain.send('make the hero darker', {});
+  check('D.4 a "handoff" answer: nothing drawn, the shell is told to pass it on', hr1 && hr1.handoff === true && Ph1.kit.chat.bubbles.length === 0, hr1);
+  var hr2 = await Ph1.ctx.RevampDashBot.brain.send('tell me about QA Draft', { handedFrom: 'edit' });
+  var hb = Ph1.botCalls()[1];
+  check('D.4 handed from the editor: the request says so, and the busy line says what is happening', hb && hb.body.handedFrom === 'edit' && Ph1.kit.chat.busy.some(function (b) { return b[0] === true && b[1] === 'Checking your events…'; }), hb && hb.body);
+  check('D.4 …a second "handoff" is never passed back: one plain sentence, once', hr2 && hr2.kind === 'reply' && Ph1.kit.chat.bubbles.length === 1 &&
+    Ph1.last().content === 'I couldn’t tell whether that is about this page. Name the part of the page, for example “the hero”.', [hr2, Ph1.kit.chat.bubbles.length]);
+  var hr3 = await (await page({ answers: [hello('TurnHello00099')] })).ctx.RevampDashBot.brain.send('hello', { handedFrom: 'nonsense' });
+  check('D.4 a handedFrom that is not "edit" is not sent', hr3 && hr3.kind === 'reply');
+
+  /* ======== attachments (plan §6b): what the server is sent for the chips ======== */
+  var THUMB = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD';
+  var RECS = [{ id: 'att1', name: 'small.png', kind: 'image', thumb: THUMB, size: 2000, type: 'image/png', wire: 'image', w: 571, h: 340 },
+    { id: 'att2', name: 'brief.pdf', kind: 'doc', size: 40000, type: 'application/pdf', wire: 'pdf' },
+    { id: 'att3', name: 'notes.txt', kind: 'doc', size: 600, type: 'text/plain', wire: 'text', text: 'A one-day forum.' }];
+  var Pa = await page({ answers: [hello('TurnAttach0001')] });
+  await Pa.say('what are these?', { attachments: RECS });
+  var ab = Pa.botCalls()[0].body;
+  check('D.5 attachments: numbered, a picture as its thumbnail and size, a PDF by name and size, a text file\'s words', same(ab.attachments, [
+    { n: 1, kind: 'image', name: 'small.png', type: 'image/png', size: 2000, w: 571, h: 340, thumb: THUMB },
+    { n: 2, kind: 'pdf', name: 'brief.pdf', type: 'application/pdf', size: 40000 },
+    { n: 3, kind: 'text', name: 'notes.txt', type: 'text/plain', size: 600, text: 'A one-day forum.' }]), ab.attachments);
+  var Pa0 = await page({ answers: [hello('TurnAttach0002')] });
+  await Pa0.say('hello');
+  check('D.5 no chips: no attachments key', !('attachments' in Pa0.botCalls()[0].body));
+
+  /* the logo and the brief go to Create Event's own boxes (kept by the shell), named on the card */
+  function createWithFiles(id, files, prefill) { return createAnswer(id, [], { files: files, prefill: prefill || PREFILL }); }
+  var handed = [], handRelease = null;
+  var Pf = await page({ answers: [createWithFiles('TurnFiles00001', [{ n: 1, role: 'logo' }, { n: 2, role: 'brief' }, { n: 3, role: 'none' }])] });
+  Pf.ctx.RevampAssistant.handoffFiles = function (pid, items) { handed.push([pid, items.map(function (i) { return i.n + ':' + i.role + ':' + i.rec.name; })]); return new Promise(function (r) { handRelease = r; }); };
+  await Pf.say('Start a new IP event called Retail Leadership Summit with this logo and brief', { attachments: [RECS[0], RECS[1], { id: 'att9', name: 'photo.jpg', kind: 'image', size: 10, type: 'image/jpeg', wire: 'image' }] });
+  var fr = JSON.parse(Pf.local.getItem('revamp.createEvent.prefill.v1.TurnFiles00001') || 'null');
+  check('D.5 create with files: the prefill names the logo and the brief file (name, type, size)', fr && same(fr.files, [{ n: 1, role: 'logo', name: 'small.png', type: 'image/png', size: 2000 }, { n: 2, role: 'brief', name: 'brief.pdf', type: 'application/pdf', size: 40000 }]), fr && fr.files);
+  check('D.5 …the files themselves go to the shell, for Create Event', same(handed, [['TurnFiles00001', ['1:logo:small.png', '2:brief:brief.pdf']]]), handed);
+  var bf = Pf.last();
+  check('D.5 …the card says where each goes, and that nothing is made yet', bf.notes.indexOf('Your logo “small.png” and your brief “brief.pdf” go into Create Event’s own logo box and Overview document. Nothing is generated or created until you say so there.') !== -1, bf.notes);
+  check('D.5 …and the countdown says what goes in', /· your logo · your brief document…$/.test(bf.countdowns[0].label), bf.countdowns[0].label);
+  Pf.clock.tick(1200);
+  check('D.5 …the page waits for the files to be kept', Pf.assigned.length === 0);
+  handRelease(true); await flush();
+  check('D.5 …then opens', same(Pf.assigned, ['/create-event.html?new=1&prefill=TurnFiles00001']));
+  var Pf2 = await page({ answers: [createWithFiles('TurnFiles00002', [{ n: 1, role: 'logo' }])] });
+  var handed2 = [];
+  Pf2.ctx.RevampAssistant.handoffFiles = function (pid, items) { handed2.push(items.length); return Promise.resolve(true); };
+  await Pf2.say('start a new event called X with this logo', { attachments: [{ id: 'att8', name: 'photo.jpg', kind: 'image', size: 10, type: 'image/jpeg', wire: 'image' }] });
+  check('D.5 a JPEG "logo": not carried (Create Event takes PNG, WEBP or SVG), and the card says why', handed2.length === 0 && !JSON.parse(Pf2.local.getItem('revamp.createEvent.prefill.v1.TurnFiles00002')).files &&
+    Pf2.last().notes.indexOf('Create Event takes a PNG, WEBP or SVG logo of up to 5 MB, so “photo.jpg” wasn’t carried: upload the logo there.') !== -1, Pf2.last().notes);
+  Pf2.clock.tick(1200);
+  check('D.5 …and the page opens at once (nothing to wait for)', Pf2.assigned.length === 1);
+  var Pf3 = await page({ answers: [createWithFiles('TurnFiles00003', [{ n: 1, role: 'brief' }], (function () { var x = JSON.parse(JSON.stringify(PREFILL)); x.method = 'brief'; x.brief.text = 'A one-day forum.'; return x; })())] });
+  await Pf3.say('start a new event from this brief', { attachments: [RECS[2]] });
+  check('D.5 a text brief: its words are the prefill\'s brief (the server put them there), nothing to carry', !JSON.parse(Pf3.local.getItem('revamp.createEvent.prefill.v1.TurnFiles00003')).files &&
+    Pf3.last().notes.indexOf('The words of “notes.txt” are your brief there.') !== -1, Pf3.last().notes);
+  var Pf4 = await page({ answers: [createWithFiles('TurnFiles00004', [{ n: 7, role: 'logo' }, { n: 'x', role: 'brief' }])] });
+  await Pf4.say('start', { attachments: [RECS[0]] });
+  check('D.5 a role for a file that was not sent is ignored', !JSON.parse(Pf4.local.getItem('revamp.createEvent.prefill.v1.TurnFiles00004')).files);
+
+  /* pictures inside an event go on to its site editor (plan §6c) */
+  var carried = [], carryRelease = null;
+  var editorNav = { status: 200, body: { turnId: 'TurnCarry00001', kind: 'open', parts: [{ t: 'text', v: 'Opening the site editor.' }], list: null,
+    action: { type: 'navigate', url: '/edit-event.html?event=qa-main#design/editor', label: 'the QA Main site editor', target: 'editor', eventId: 'qa-main', carry: true }, choices: null, asOf: 'x', notes: ['carry'] } };
+  var Pc1 = await conPage({ answers: [editorNav] });
+  Pc1.ctx.RevampAssistant.carry = function (ev, recs, text) { carried.push([ev, recs.map(function (r) { return r.name; }), text]); return new Promise(function (r) { carryRelease = r; }); };
+  await Pc1.say('use this as the hero background on the site', { attachments: [RECS[0]] });
+  check('D.5 carry: the pictures and the words go to the shell for that event\'s editor', same(carried, [['qa-main', ['small.png'], 'use this as the hero background on the site']]), carried);
+  check('D.5 …the card says they wait, unsent', Pc1.last().notes.indexOf('Your picture goes with you to the site editor, waiting in ETB2B AI’s tray with your words, unsent.') !== -1, Pc1.last().notes);
+  Pc1.clock.tick(1200);
+  check('D.5 …the editor opens once they are kept', Pc1.assigned.length === 0);
+  carryRelease(true); await flush();
+  check('D.5 …then', same(Pc1.assigned, ['/edit-event.html?event=qa-main#design/editor']));
+  var Pc2 = await conPage({ answers: [editorNav] });
+  var carried2 = [];
+  Pc2.ctx.RevampAssistant.carry = function () { carried2.push(1); return Promise.resolve(true); };
+  await Pc2.say('open the editor');
+  Pc2.clock.tick(1200);
+  check('D.5 carry with no pictures attached: nothing carried, the editor opens', carried2.length === 0 && Pc2.assigned.length === 1);
+
+  /* ======== an event's own conversation (plan §4d): both brains' turns, through the shell ======== */
+  var EH = { event: { id: 'qa-main', name: 'QA AIE Main' }, turns: [
+    { id: 'TurnEdit000001', question: 'Make the hero darker', answer: 'Done.', kind: 'edit', status: 'applied', done: ['Hero: background made darker'], notDone: [], at: '2026-11-05T05:00:00Z' },
+    { id: 'TurnDashE00001', brain: 'dash', question: 'How many registrations here?', answer: '42 registrations.', parts: [{ t: 'value', v: '42', metric: 'registrations' }, { t: 'text', v: ' registrations.' }], kind: 'reply', status: 'answered', action: null, asOf: '2026-11-05T05:01:00Z', at: '2026-11-05T05:01:00Z' },
+    { id: 'TurnDashE00002', brain: 'dash', question: 'Open its promotions', answer: 'Opening.', parts: [], kind: 'reply', status: 'stopped', action: { type: 'navigate', label: 'Promotions', url: '/marketing.html?event=qa-main&tab=posts' }, at: '2026-11-05T05:02:00Z' },
+    { id: 'TurnEdit000002', question: 'Use a navy background', answer: 'Not done.', kind: 'edit', status: 'failed', done: [], notDone: ['“navy” isn’t a colour this page can use'], at: '2026-11-05T05:03:00Z' }
+  ] };
+  var Peh = await conPage({ eventHistory: EH });
+  var n2 = await Peh.kit.chat.opts.loadHistory();
+  var ech = Peh.kit.chat;
+  check('D.6 in an event: GET /api/chat/history?eventId=qa-main (not the dashboard\'s)', Peh.calls.some(function (c) { return c.url === '/api/chat/history?eventId=qa-main' && c.method === 'GET'; }) &&
+    !Peh.calls.some(function (c) { return c.url === '/api/dash-bot/history'; }), Peh.calls.map(function (c) { return c.url; }));
+  check('D.6 …the header names the event', same(ech.scopes, ['This event: QA AIE Main']), ech.scopes);
+  check('D.6 …"Earlier in this conversation", the four turns in order, then "Now"', n2 === 4 && same(ech.dividers, ['Earlier in this conversation', 'Now']) && ech.users.length === 4 &&
+    same(ech.users.map(function (u) { return u.text; }), EH.turns.map(function (t) { return t.question; })), [n2, ech.dividers]);
+  check('D.6 …an editor change shown plainly here, with its done lines and no Undo', ech.bubbles[0].content === 'Done.' && ech.bubbles[0].notes.indexOf('Done: Hero: background made darker') !== -1 &&
+    ech.bubbles[0].notes.indexOf('Done in the site editor.') !== -1 && ech.bubbles[0].buttons.length === 0, ech.bubbles[0].notes);
+  check('D.6 …a dash turn with its figures and "as of"', same(ech.bubbles[1].content, EH.turns[1].parts) && ech.bubbles[1].o.asOf === '2026-11-05T05:01:00Z');
+  check('D.6 …a stopped turn says so, with no link', ech.bubbles[2].notes[0] === 'Stopped — nothing was done.' && ech.bubbles[2].links.length === 0, ech.bubbles[2].notes);
+  check('D.6 …an editor change that failed says what was not done', ech.bubbles[3].notes.indexOf('Not done: “navy” isn’t a colour this page can use') !== -1 && ech.bubbles[3].notes.indexOf('This change could not be applied.') !== -1, ech.bubbles[3].notes);
+  var Pgh = await page({ history: { turns: [] } });
+  await Pgh.kit.chat.opts.loadHistory();
+  check('D.6 on the dashboard the person\'s own conversation, as before', Pgh.calls.some(function (c) { return c.url === '/api/dash-bot/history'; }) && !Pgh.calls.some(function (c) { return /chat\/history/.test(c.url); }) &&
+    Pgh.kit.mounts[0].opts.scope === 'Your events');
+  var Pcrh = await page({ page: 'create-event', noListing: true, path: '/create-event.html', search: '?event=qa-main', history: { turns: [] } });
+  await Pcrh.kit.chat.opts.loadHistory();
+  check('D.6 Create Event is never about one event, whatever its address says: the dashboard conversation', Pcrh.calls.some(function (c) { return c.url === '/api/dash-bot/history'; }) &&
+    Pcrh.kit.mounts[0].opts.scope === 'Your events' && Pcrh.kit.mounts[0].opts.attach.max === 4 && /application\/pdf/.test(Pcrh.kit.mounts[0].opts.attach.accept));
+  var Pehx = await conPage({ answer: function (call) { return /chat\/history/.test(call.url) ? { status: 404, body: { error: 'x' } } : null; } });
+  var ehx = await rejection(Pehx.kit.chat.opts.loadHistory());
+  check('D.6 an event\'s history that cannot be read rejects (the kit says so)', ehx && /could not be loaded/.test(ehx.message));
+  var Ppromo = await page({ page: 'promotions', noListing: true, path: '/marketing.html', search: '?event=qa-main&tab=mailers', answers: [hello('TurnPromo00001')], portals: portalsStub() });
+  await Ppromo.say('hi');
+  check('D.6 Promotions: its tab is the place\'s', same(Ppromo.botCalls()[0].body.place, { page: 'promotions', eventId: 'qa-main', tab: 'mailers' }), Ppromo.botCalls()[0].body.place);
+
   /* ======== the real kit, when Unit C's etb2b-chat.js is there ======== */
   var KIT = path.join(ROOT, 'etb2b-chat.js');
   if (fs.existsSync(KIT)) {
@@ -878,12 +1121,13 @@ async function realKitPass(KIT_SRC) {
     ok({ turnId: 'TurnSwitch0009', kind: 'portal', parts: [{ t: 'text', v: 'Switching the dashboard to the portal you asked for.' }], list: null,
       action: { type: 'portal', portal: 'hr', label: 'ETHRWorld' }, choices: null, asOf: '2026-11-03T06:35:00.000Z', notes: [] })];
   listing.setPortal = function () { var before = listing.snapshot(); before.mark = ++listing.n; return before; };
-  var host = dom.document.createElement('div'); host.id = 'rv-dash-bot'; dom.document.body.appendChild(host);
+  var host = dom.document.createElement('div'); host.id = 'rv-dash-bot'; host.setAttribute('data-rv-assistant', 'dashboard'); dom.document.body.appendChild(host);
   var ctx = {
     document: dom.document, console: console, JSON: JSON, Promise: Promise, Date: Date, navigator: { onLine: true },
-    location: { href: 'http://localhost/Event_Listing.html', assign: function (u) { assigned.push(u); } },
+    location: { href: 'http://localhost/Event_Listing.html', pathname: '/Event_Listing.html', search: '', hash: '', assign: function (u) { assigned.push(u); } },
     sessionStorage: makeStorage(), localStorage: makeStorage(),
     setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
+    encodeURIComponent: encodeURIComponent, decodeURIComponent: decodeURIComponent, Math: Math,
     requestAnimationFrame: function (fn) { return clock.setTimeout(fn, 16); }, cancelAnimationFrame: clock.clearTimeout,
     matchMedia: function () { return { matches: false, addListener: function () {}, removeListener: function () {}, addEventListener: function () {}, removeEventListener: function () {} }; },
     getComputedStyle: function () { return { getPropertyValue: function () { return ''; } }; },
@@ -891,6 +1135,7 @@ async function realKitPass(KIT_SRC) {
     RvListing: listing,
     RevampAuth: {
       whenResolved: function () { return Promise.resolve(); },
+      currentUser: function () { return { displayName: 'Asha Rao', email: 'asha.rao@timesinternet.in' }; },
       authedFetch: function (url, o) {
         var body = o && o.body ? JSON.parse(o.body) : undefined;
         calls.push({ url: url, body: body });
@@ -900,11 +1145,12 @@ async function realKitPass(KIT_SRC) {
       }
     }
   };
-  ctx.window = ctx; ctx.self = ctx;
+  ctx.window = ctx; ctx.self = ctx; ctx.top = ctx;
   dom.document.defaultView = ctx;
   vm.createContext(ctx);
   try { vm.runInContext(KIT_SRC, ctx, { filename: 'etb2b-chat.js' }); } catch (e) { res('loads on the small DOM', false, String(e && e.message)); return out; }
   try { vm.runInContext(SRC, ctx, { filename: 'dash-bot-client.js' }); } catch (e) { res('the client runs beside it', false, String(e && e.message)); return out; }
+  try { vm.runInContext(SHELL_SRC, ctx, { filename: 'etb2b-assistant.js' }); } catch (e) { res('the shell runs beside them', false, String(e && e.message)); return out; }
   await flush();
   var launcher = dom.document.getElementById('dash-chat-launcher');
   res('mounted: the launcher and html.rvc-ready', !!launcher && dom.document.documentElement.classList.contains('rvc-ready'));

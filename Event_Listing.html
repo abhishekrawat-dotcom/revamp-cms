@@ -9,7 +9,7 @@
 <title>Events &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
-<!-- ETB2B AI's launcher and panel (etb2b-chat.js), drawn in this page's own colour tokens -->
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
@@ -526,8 +526,8 @@
   /* ---------- help / support ---------- */
   .help-fab{ position:fixed; bottom:22px; left:22px; z-index:80; display:flex; align-items:center; gap:8px; padding:11px 16px; border-radius:100px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--shadow-md); font-size:13px; font-weight:700; color:var(--text); }
   .help-fab:hover{ border-color:var(--accent); color:var(--accent-strong); }
-  /* ETB2B AI takes this corner once it has mounted (etb2b-chat.js sets html.rvc-ready only then), and its panel's
-     header carries "Email Customer Care". Until then, or if its scripts fail to load, "Need help?" stays as it was. */
+  /* ETB2B AI (bottom-right) replaces this button once it has mounted (etb2b-chat.js sets html.rvc-ready only then):
+     its panel's header carries "Email Customer Care". Until then, or if its scripts fail to load, "Need help?" stays. */
   html.rvc-ready .help-fab{ display:none; }
   .modal-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:90; display:flex; align-items:center; justify-content:center; padding:20px; }
   .modal-card{ background:var(--surface); border-radius:var(--r-lg); max-width:440px; width:100%; box-shadow:var(--shadow-lg); overflow:hidden; }
@@ -847,8 +847,8 @@
 <div class="gt-tooltip" id="gt-tooltip" hidden></div>
 
 <div id="sheet-root"></div>
-<!-- ETB2B AI mounts here (dash-bot-client.js): its launcher takes "Need help?"'s corner, bottom-left -->
-<div id="rv-dash-bot"></div>
+<!-- ETB2B AI mounts here (etb2b-assistant.js), bottom-right as on every page; the toasts may lie over it for their few seconds -->
+<div id="rv-dash-bot" data-rv-assistant="dashboard"></div>
 <div id="toast-region"></div>
 
 <script src="theme-toggle.js"></script>
@@ -3328,8 +3328,10 @@
 
 })();
 </script>
-<!-- ETB2B AI: the chat kit, then this page's side of the bot (it reaches the list only through window.RvListing) -->
+<!-- ETB2B AI: the chat kit, the events side of the bot (it reaches the list only through window.RvListing), then the
+     one assistant that mounts it here as on every other page -->
 <script src="etb2b-chat.js"></script>
 <script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>

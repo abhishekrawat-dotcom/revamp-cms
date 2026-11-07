@@ -43,7 +43,33 @@
    leave(url) is how the page is left for another one: what is pending is recorded first.
    handoffFor(eventId) is the Create Event hand-off waiting in this browser, when it belongs to that event.
    Also: hasAiProvenance(), aiProvenanceSections(), setAiMarkers(show) — custom_editor.html's AI-provenance
-   badge toggle and publish-review gate read/drive these; see "AI-provenance badges" below. */
+   badge toggle and publish-review gate read/drive these; see "AI-provenance badges" below.
+   ETB2B AI, RevampTemplateUI.chat: the editor's half of the one ETB2B AI panel every console page has. The panel
+   itself (etb2b-chat.js, mounted by etb2b-assistant.js) is drawn by editor-chat-client.js, which hands this file a
+   "view" to draw into. What a change is — the request, applying it on the canvas, its checkpoint and its Undo —
+   stays here, so the canvas, with its undo stack, Save and Publish, is still the one copy of the page.
+     attachView(view)    until a view is attached, what the chat would draw is dropped (said once in the console)
+     ready() -> Promise  settles once the site is on the canvas for the first time
+     send(text, o) -> Promise<{ kind, turnId, status }>   o: { attachments: [url], focus (null: none; left out:
+                         what is selected), handedFrom, sentAt }; kind: edit | reply | undo | handoff | stopped.
+                         Rejects with an Error { status, code, retryable } when no usable answer came; the view's
+                         owner words it.
+     stop()              Stop: while waiting, the answer is not used; while applying, no further step is started
+     busy()              a message is being answered or a change applied
+     undoLast() -> Promise<{ ok, why }>   the newest change of ETB2B AI that is still on the page
+     focus() -> { sectionId, name, element?, slot? } | null   what is selected and goes with the next message;
+     onFocusChange(fn); clearFocus() — the "Selected" chip's ×: sent without it until something else is selected
+     attach(files) -> Promise<number>   pictures uploaded the editor's own way (RevampCore.uploadImage, 'media')
+     offerPicture(url, quiet) -> bool   a picture already stored with the event, put in the tray
+     replayTurn(turn) -> bool, loadHistory(writer) -> Promise   the event's conversation, read back
+     onAiChange(fn)      fn({ key, name, peekFn }) once a change is on the canvas; a promise it returns is waited
+                         for (at most 10 s) before the card says Done, so Done is said once the change shows
+     eventName()
+   view: { ai(text, { error, at }) -> an element inside the answer, for pictures and the change's card;
+           user(text, { at, context, pictures }) (a turn read back: a new message is drawn by the panel itself);
+           divider(label); thread() -> the conversation's scroller; status('ready' | 'thinking' | 'working', text);
+           addAttachment(url, name) -> bool; focusInput(); reveal(node); markUndone(fn); show(key);
+           goTo(host, target, text) } */
 (function () {
   'use strict';
 
@@ -71,7 +97,7 @@
   function showToast(msg, opts) { return host && host.showToast ? host.showToast(msg, opts) : null; }
   function showNotice(id, opts) { if (host && host.showNotice) host.showNotice(id, opts); }
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
-  function sectionsChanged() { if (chatFocusRedraw) chatFocusRedraw(); if (host && host.onSectionsChanged) host.onSectionsChanged(); }
+  function sectionsChanged() { notifyFocus(); if (host && host.onSectionsChanged) host.onSectionsChanged(); }
   function designChanged() { if (host && host.onDesignChange) host.onDesignChange(); }
   /* the page itself changed (a new undo step, an undo / redo, a canvas put back): editor-ai-mode.js redraws
      its live view from it — see onChange() */
@@ -180,7 +206,7 @@
         buildToolbars();
         wireGlobalKeys();
         wireLeaving();
-        wireChatPanel();
+        chatSeamReady();
         pageWired = true;
       }
       wireCanvasEvents();
@@ -1607,10 +1633,9 @@
     if (!el.getAttribute('class')) el.removeAttribute('class');
   }
 
-  /* the chat's "Selected" chip follows the selection (wireChatPanel sets it) */
-  var chatFocusRedraw = null;
+  /* ETB2B AI's "Selected" chip follows the selection (notifyFocus, in the chat part below) */
   function selectionChanged() {
-    if (chatFocusRedraw) chatFocusRedraw();
+    notifyFocus();
     if (!host || !host.onSelectionChange) return;
     var kind = selectedEl ? selectedEl.getAttribute('data-editable') : '';
     host.onSelectionChange(selectedEl ? { kind: kind, canStyle: !!styleTarget() } : null);
@@ -3332,6 +3357,10 @@
   }
 
   function onGlobalKey(e) {
+    /* a key typed in ETB2B AI's panel is the panel's: Esc there must not let go of the section the message is
+       about, and Ctrl+Z there must not undo the page (the panel stops its keys too; this holds either way) */
+    var at = e.target && e.target.nodeType === 1 ? e.target : null;
+    if (at && at.closest && at.closest('.rvc')) return;
     if (e.key === 'Escape') { deselect(); return; }
     var mod = e.ctrlKey || e.metaKey;
     if (!mod || editingEl) return;
@@ -3720,9 +3749,21 @@
     if (choices && choices[v]) return escHtml(choices[v]);
     return escHtml(designLabel(key) + ': ' + v + (CHAT_DESIGN_UNITS[key] || ''));
   }
-  // the server names a value it refused as: themeColor ("navy")
+  /* one setting as the change's card shows it (UX-099): in the Design panel's words, with a colour's swatch.
+     -> { text, chip, after } drawn as text (taskCard), never as markup */
+  function designLine(key, value) {
+    var v = String(value);
+    if (/Color$/.test(key)) return /^#[0-9a-f]{3,8}$/i.test(v) ? { text: designLabel(key), chip: v, after: v } : { text: designLabel(key) + ' ' + v };
+    var choices = CHAT_DESIGN_CHOICES[key];
+    if (choices && choices[v]) return { text: choices[v] };
+    return { text: designLabel(key) + ': ' + v + (CHAT_DESIGN_UNITS[key] || '') };
+  }
+  /* the server names a value it refused as: themeColor ("navy"). Said as what it is and why nothing changed
+     (UX-099); "color" as the labels beside it spell it, the product-wide spelling being a decision of its own */
   function skippedLabel(text) {
-    return String(text).replace(/^([A-Za-z]+)(?= \(")/, function (key) { return CHAT_DESIGN_KEYS.indexOf(key) !== -1 ? designLabel(key) : key; });
+    var m = /^([A-Za-z]+) \("([^]*)"\)$/.exec(String(text));
+    if (!m || CHAT_DESIGN_KEYS.indexOf(m[1]) === -1) return String(text);
+    return designLabel(m[1]) + ' — “' + m[2] + '” isn’t ' + (/Color$/.test(m[1]) ? 'a color' : 'a setting') + ' this page can use, so it wasn’t changed.';
   }
   function sectionLabel(key) {
     var sec = canvas.sectionByKey(key);
@@ -3831,44 +3872,66 @@
     });
   }
 
-  function chatThread() { return document.getElementById('chat-thread'); }
-  function appendChatNode(node) {
-    var thread = chatThread();
-    if (!thread) return null;
-    thread.appendChild(node);
-    thread.scrollTop = thread.scrollHeight;
-    return node;
+  /* ---------- ETB2B AI's panel: the view this file draws into ----------
+     The shared panel (editor-chat-client.js on etb2b-chat.js) draws the turns; this file only says what goes in
+     them, through the view (see the top of the file). Every sentence the chat part of this file adds is here. */
+  var CHAT_TEXT = {
+    looking: 'ETB2B AI is looking at your page (a few seconds)…',
+    reading: 'ETB2B AI is reading your request…',
+    applying: 'ETB2B AI is applying your change…',
+    showing: 'Showing it on the page…',
+    stillApplying: 'One moment — ETB2B AI is still applying your last change.',
+    stillAnswering: 'One moment — ETB2B AI is still answering your last message.',
+    notReady: 'The page is still loading. Send your message again in a moment.',
+    stoppedWaiting: 'Stopped. Nothing was changed.',
+    stopping: 'Stopping after the step in progress…',
+    stoppedStep: 'not done — you pressed Stop',
+    stoppedReplay: 'Stopped — nothing on the page changed.',
+    notKept: 'This message could not be saved to your conversation history; the answer below still stands.',
+    nothingToUndo: 'There is no change of mine on the page to undo. Undo in the top bar steps back through your own edits.',
+    leftAsIs: 'I left it as it is.',
+    undoBusy: 'One moment — ETB2B AI is still applying a change.',
+    unclear: 'I couldn’t tell whether that is about this page. Name the part of the page, for example “the hero”.',
+    noEventPictures: 'Pictures can be attached once the site belongs to an event.',
+    trayFull: 'The tray above the message box is full: remove a picture from it, then try again.',
+    uploadFailed: 'That picture could not be uploaded. Please try again.',
+    sameReason: 'not done, for the same reason as above',
+    show: 'Show',
+    showTitle: 'Show this on the page',
+    picturesAttached: function (n) { return n + ' picture' + (n === 1 ? '' : 's') + ' attached'; },
+    stoppedAfter: function (n, of) { return 'Stopped after ' + n + ' of ' + of + ' step' + (of === 1 ? '' : 's') + '. Undo takes back what was done.'; },
+    /* why a section's rework was not done, by the server's code (its own sentence is written for a whole request) */
+    rework: {
+      'ai-timeout': 'it took too long, so it was stopped', 'ai-quota': 'ETB2B AI was busy', 'ai-unavailable': 'ETB2B AI was busy',
+      'ai-blocked': 'ETB2B AI couldn’t work with that request', 'ai-bad-output': 'ETB2B AI’s answer wasn’t a usable section',
+      'ai-config': 'ETB2B AI is switched off right now'
+    }
+  };
+  var chatView = null, chatViewWarned = false;
+  function viewCan(name) {
+    if (chatView && typeof chatView[name] === 'function') return true;
+    if (!chatView && !chatViewWarned && window.console) { chatViewWarned = true; console.warn('[ETB2B AI] the panel is not there yet: what the chat would show is dropped'); }
+    return false;
   }
-  /* a real messaging layout, not a flat list of divs: each turn gets an avatar + sender label + bubble, user
-     turns right-aligned, AI turns left-aligned — the same visual grammar as any chat app. `bubble` is the
-     element shown as the message: a plain balloon, or a proposal card. */
-  function appendChatBubble(role, bubble) {
-    var isUser = role === 'user';
-    var turn = document.createElement('div');
-    turn.className = 'chat-turn ' + (isUser ? 'user' : 'ai');
-    var avatar = document.createElement('div');
-    avatar.className = 'chat-avatar';
-    if (isUser) avatar.textContent = 'Y';
-    else avatar.innerHTML = '<svg viewBox="0 0 64 64" width="20" height="20" aria-hidden="true"><defs><linearGradient id="rvbc" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#dfe6f5"/></linearGradient></defs><line x1="32" y1="9" x2="32" y2="16" stroke="#8fa0c2" stroke-width="2.5" stroke-linecap="round"/><circle cx="32" cy="7" r="3.6" fill="#ED1C24"/><rect x="7" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="51" y="27" width="6" height="12" rx="3" fill="#b9c5de"/><rect x="12" y="16" width="40" height="32" rx="13" fill="url(#rvbc)" stroke="#c3cee3" stroke-width="1.5"/><rect x="18" y="23" width="28" height="18" rx="9" fill="#1c2540"/><circle cx="26" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="38" cy="32" r="3.6" fill="#5fe3ff"/><circle cx="27" cy="31" r="1.1" fill="#fff"/><circle cx="39" cy="31" r="1.1" fill="#fff"/><path d="M22 50h20a6 6 0 0 1 6 6v3H16v-3a6 6 0 0 1 6-6z" fill="url(#rvbc)" stroke="#c3cee3" stroke-width="1.5"/><circle cx="32" cy="55" r="2.2" fill="#ED1C24"/></svg>';
-    var body = document.createElement('div');
-    body.className = 'chat-turn-body';
-    var sender = document.createElement('span');
-    sender.className = 'chat-sender';
-    sender.textContent = isUser ? 'You' : 'ETB2B AI';
-    body.appendChild(sender);
-    body.appendChild(bubble);
-    turn.appendChild(avatar);
-    turn.appendChild(body);
-    appendChatNode(turn);
-    return bubble;
-  }
-  // returns the bubble, not the turn around it: the "Thinking…" status rewrites its text
-  function appendChatMsg(role, text) {
-    var parts = role.split(' ');   // 'ai' | 'user' | 'ai error'
-    var bubble = document.createElement('div');
-    bubble.className = 'chat-msg' + (parts[1] ? ' ' + parts[1] : '');
-    bubble.textContent = text;
-    return appendChatBubble(parts[0], bubble);
+  function chatThread() { return viewCan('thread') ? chatView.thread() : null; }
+  /* a reason as the end of a sentence: the server's own may already end with a full stop (or two) */
+  function stopDot(s) { return String(s == null ? '' : s).replace(/\s*\.+\s*$/, ''); }
+  /* role: 'ai' | 'ai error' | 'user' (only a turn read back: the panel draws a new message itself). Returns the
+     element inside the message where pictures and the change's card go; with no panel a detached one, so a change
+     still goes ahead in full. o: { at } for a turn read back, { context, pictures } for its message */
+  function appendChatMsg(role, text, o) {
+    var parts = String(role).split(' ');
+    var words = String(text == null ? '' : text);
+    o = o || {};
+    var got = null;
+    try {
+      if (parts[0] === 'user') { if (viewCan('user')) got = chatView.user(words, o); }
+      else if (viewCan('ai')) got = chatView.ai(words, { error: parts[1] === 'error', at: o.at });
+    } catch (err) { if (window.console) console.error(err); }
+    if (got && got.nodeType === 1 && got.parentNode) return got;
+    var holder = document.createElement('div'), inner = document.createElement('div');
+    holder.appendChild(inner);
+    return inner;
   }
 
   /* One proposed text edit: the first visible text node of the section (in its texts and button labels) that
@@ -3930,6 +3993,8 @@
     t.status = 'undone';
     if (t.button) { t.button.disabled = true; t.button.textContent = 'Undone'; }
     if (t.card) { t.card.status('undone'); t.card.note(note || 'The page is back to how it was before this change.'); }
+    // the folded bar's Undo for this change (UX-094) says "Undone" with the card's
+    if (t.peekFn && viewCan('markUndone')) { try { chatView.markUndone(t.peekFn); } catch (err) { if (window.console) console.error(err); } }
   }
   /* -> Promise<boolean undone> */
   function undoAiTurn(t, quiet) {
@@ -4202,7 +4267,6 @@
      fails its check (functions/lib/chat-picture.js, all within its 180 s deadline), then store it */
   var AI_PICTURE_WAIT_MS = 240000;
   var AI_PICTURE_POLL_MS = 5000;
-  var offerPicture = null;             // puts a picture in the tray above the message box (wireChatPanel sets it)
   function aiPictures() {
     var P = window.RevampAiPicture;
     return P && typeof P.describe === 'function' && typeof P.slotOf === 'function' && typeof P.target === 'function' &&
@@ -4332,7 +4396,8 @@
      server is told how it went, so the conversation remembers it (and the event's History has it).
      -> Promise that settles when the change is on the page (or could not be made). */
   function plainText(html) { var d = document.createElement('div'); d.innerHTML = html; return String(d.textContent || '').replace(/\s+/g, ' ').trim(); }
-  /* sent: { pictureEl } — the picture the owner had selected when the message was sent (a new picture replaces it) */
+  /* sent: { pictureEl, sentAt } — the picture the owner had selected when the message was sent (a new picture
+     replaces it), and when it was sent: "Took" counts the wait for the answer too (UX-097) */
   function runAiTurn(result, turnId, attached, sent) {
     // a copy: the new picture takes its number in it once made, for the rework that uses it (picturesFor)
     attached = (attached || []).slice();
@@ -4438,27 +4503,36 @@
 
     var bubble = appendChatMsg('ai', result.summary);
     var card = taskCard(bubble.parentNode);
-    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, card: card, result: result, startedAt: Date.now() };
-    /* the change as steps, planned before anything is done — each lit as it runs and as it ends */
+    var t = { turnId: turnId || '', order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: false, status: 'applying', button: null, card: card, result: result, startedAt: sent.sentAt || Date.now() };
+    // the Undo of the folded bar (UX-094) is this change's Undo, through one function the panel can match
+    t.peekFn = function () { return undoAiTurn(t); };
+    /* the change as steps, planned before anything is done — each lit as it runs and as it ends. A step about one
+       section offers "Show" once it is done (UX-094); the design and wording steps say what they become (UX-099) */
     var S = {};
     // the new picture is made first (before forms, before the page changes): every later step may need it
     if (np) {
       S.picMake = card.step('Make a new picture: ' + (np.subject || np.alt || 'as you asked'));
-      if (np.apply === 'swap') S.picPlace = card.step('Put it in “' + np.label + '” as its ' + AI_PICTURE_WHERE[np.placement]);
+      if (np.apply === 'swap') S.picPlace = card.step('Put it in “' + np.label + '” as its ' + AI_PICTURE_WHERE[np.placement], null, { key: np.sectionId });
     }
     if (newForms.length) S.forms = card.step(newForms.length === 1 ? 'Create the form “' + refNames[newForms[0].ref] + '”' : 'Create ' + newForms.length + ' forms');
-    if (Object.keys(design).length) S.design = card.step('Update the design: ' + Object.keys(design).map(function (k) { return designLabel(k); }).join(', '));
+    if (Object.keys(design).length) S.design = card.step('Update the design', null, { lines: Object.keys(design).map(function (k) { return designLine(k, design[k]); }) });
     var textBy = {};
     textEdits.forEach(function (te) { (textBy[te.sectionId] = textBy[te.sectionId] || []).push(te); });
-    Object.keys(textBy).forEach(function (sid) { S['text:' + sid] = card.step('Change the wording in “' + sectionLabel(sid) + '”' + (textBy[sid].length > 1 ? ' (' + textBy[sid].length + ' places)' : '')); });
+    Object.keys(textBy).forEach(function (sid) {
+      var all = textBy[sid], pairs = all.slice(0, 2).map(function (te) { return te.replace ? '“' + te.find + '” → “' + te.replace + '”' : '“' + te.find + '” removed'; });
+      if (all.length > 2) pairs.push('and ' + (all.length - 2) + ' more');
+      S['text:' + sid] = card.step('Change the wording in “' + sectionLabel(sid) + '”', null, { key: sid, lines: pairs });
+    });
     var OP_STEP = { hide: 'Hide', show: 'Show', remove: 'Remove', move: 'Move' };
-    ops.forEach(function (o, i) { S['op' + i] = card.step(OP_STEP[o.op] + ' “' + sectionLabel(o.sectionId) + '”'); });
-    var jobSteps = edits.map(function (e) { return card.step('Rework “' + sectionLabel(e.sectionId) + '”' + (usesNew(e) ? ' with the new picture' : '')); })
+    ops.forEach(function (o, i) { S['op' + i] = card.step(OP_STEP[o.op] + ' “' + sectionLabel(o.sectionId) + '”', null, { key: o.op === 'remove' ? '' : o.sectionId }); });
+    var jobSteps = edits.map(function (e) { return card.step('Rework “' + sectionLabel(e.sectionId) + '”' + (usesNew(e) ? ' with the new picture' : ''), null, { key: e.sectionId }); })
       .concat(additions.map(function (n) { return card.step('Add the section “' + n.name + '”'); }));
     if (ctaLinks.length || formEmbeds.length) S.formOps = card.step(ctaLinks.length && formEmbeds.length ? 'Link buttons to forms and place forms on the page'
       : ctaLinks.length ? 'Link ' + (ctaLinks.length === 1 ? 'a button' : ctaLinks.length + ' buttons') + ' to ' + (ctaLinks.length === 1 ? 'its form' : 'their forms')
       : 'Place ' + (formEmbeds.length === 1 ? 'the form' : formEmbeds.length + ' forms') + ' on the page');
     notDone.forEach(function (n) { card.step(n, 'fail'); });
+    // what is entered under Content (speakers, agenda…): a way there, under the card (UX-098)
+    drawGoTo(bubble.parentNode, result);
     if (!usable) {
       t.status = 'failed';
       card.status('failed');
@@ -4478,7 +4552,16 @@
     flush();                          // what was pending stays its own undo step
     t.before = canvas.snapshot();     // the page as it was just before this change: its checkpoint
     setAiWorking(true);
-    card.onProgress = function (n, of) { setChatStatus('working', 'Applying your change — ' + n + ' of ' + of + ' steps done'); };
+    currentTurn = t;                  // until setAiWorking(false)
+    /* Stop (UX-097): no step starts after it, what is still being waited for is let go of, and what was already
+       done stays on the page, which Undo takes back. Once stopped, the panel is the person's again: nothing here
+       says "working" in it any more. */
+    var STOPPED = { stopped: true };
+    t.stopped = new Promise(function (resolve) { t.stopNow = function () { resolve(STOPPED); }; });
+    t.stoppedSteps = 0;
+    function untilStopped(p) { return Promise.race([p, t.stopped]); }
+    function stopStep(st) { t.stoppedSteps++; st.set('fail', CHAT_TEXT.stoppedStep); }
+    card.onProgress = function (n, of) { if (!t.stopAsked) setChatStatus('working', 'Applying your change — ' + n + ' of ' + of + ' steps done'); };
     card.onProgress(0, card.count());
 
     /* the new picture first (it takes about half a minute; nothing on the page has changed while it is made), then
@@ -4487,6 +4570,7 @@
     var madePic = null;               // { url, placed } once the new picture is made
     var pictureMade = np ? makeNewPicture() : Promise.resolve();
     var formsMade = pictureMade.then(function () {
+      if (t.stopAsked) throw STOPPED;
       if (!newForms.length) return { ids: {}, forms: [] };
       S.forms.set('run');
       return fApi.createForms(newForms).then(function (made) { S.forms.set('done'); return made; });
@@ -4496,17 +4580,24 @@
         if ((made.forms || []).length) formsChanged();
         throw new Error('the page was being reloaded' + ((made.forms || []).length ? ' (the forms were created: find them in the Forms panel)' : ''));
       }
+      if (t.stopAsked) {
+        // forms already made stay: they are the event's now, in the Forms panel
+        if ((made.forms || []).length) { formsChanged(); t.formsLeft = made.forms.length; }
+        throw STOPPED;
+      }
       return applyPage(made);
     }).then(null, function (err) {
-      var why = (err && err.message) || 'a form could not be created';
-      if (S.forms && S.forms.state !== 'done') S.forms.set('fail', why);
-      card.steps().forEach(function (st) { if (st.state === 'wait' || st.state === 'run') st.set('fail', 'not done'); });
-      t.status = 'failed';
-      card.status('failed');
+      var stopped = err === STOPPED;
+      var why = stopped ? CHAT_TEXT.stoppedStep : (err && err.message) || 'a form could not be created';
+      if (S.forms && S.forms.state !== 'done' && !stopped) S.forms.set('fail', why);
+      card.steps().forEach(function (st) { if (st.state === 'wait' || st.state === 'run') st.set('fail', stopped ? CHAT_TEXT.stoppedStep : 'not done'); });
+      t.status = stopped ? 'stopped' : 'failed';
+      card.status(t.status);
       // a picture already made is not lost with the rest: it waits in the tray to be placed
       var keptPic = keepMadePicture('The new picture');
-      card.note('Nothing on the page changed.' + (keptPic ? ' ' + keptPic : ''));
-      reportTurn(t.turnId, 'failed', [], [why]);
+      var formsLeft = t.formsLeft ? ' ' + (t.formsLeft === 1 ? 'The form was' : 'The ' + t.formsLeft + ' forms were') + ' made before you pressed Stop: find ' + (t.formsLeft === 1 ? 'it' : 'them') + ' in the Forms panel.' : '';
+      card.note((stopped ? 'Stopped. ' : '') + 'Nothing on the page changed.' + (keptPic ? ' ' + keptPic : '') + formsLeft);
+      reportTurn(t.turnId, t.status, [], [stopped ? 'stopped before anything on the page was changed' : why]);
       setAiWorking(false);
       return t;
     });
@@ -4517,8 +4608,10 @@
       S.picMake.set('run');
       setChatStatus('working', 'Making a new picture — about half a minute…');
       card.note('Making a new picture takes about half a minute.');
-      return requestPicture(t.turnId).then(function (r) {
+      return untilStopped(requestPicture(t.turnId)).then(function (r) {
         card.note('');
+        // stopped while it was being made: the server still finishes it, and the conversation offers it after a reload
+        if (r === STOPPED) { stopStep(S.picMake); return; }
         var got = aiPictureRules.outcome(r, madeHere);
         /* made, but kept off the page by its check: it waits in the tray, nothing is put in with it, and why is said */
         if (got.url && got.held) {
@@ -4560,7 +4653,7 @@
       for (var i = edits.length - 1; i >= 0; i--) {
         if (!usesNew(edits[i])) continue;
         jobSteps[i].set('fail', 'not done — ' + because);
-        notDone.push('“' + sectionLabel(edits[i].sectionId) + '” was not reworked: ' + because + '.');
+        notDone.push('“' + sectionLabel(edits[i].sectionId) + '” was not reworked: ' + stopDot(because) + '.');
         edits.splice(i, 1);
         jobSteps.splice(i, 1);
       }
@@ -4670,7 +4763,9 @@
         job.step.set('run');
         // the rework that puts the new picture in (a background or a picture for a section that has no place for one)
         var withPic = !!job.edit && !!madePic && usesNew(job.edit);
-        return requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add)).then(function (code) {
+        // Stop lets go of a rework still on its way: its answer, when it comes, is not put on the page
+        return untilStopped(requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add))).then(function (code) {
+          if (code === STOPPED) { t.stoppedSteps++; throw new Error(CHAT_TEXT.stoppedStep); }
           if (!isLive(job.sec)) throw new Error('the section was removed meanwhile');
           /* the logo unit is never the new picture's to change: a rewrite that leaves it reading differently is
              taken back, section and CSS */
@@ -4708,11 +4803,15 @@
               said.push('“' + job.label + '” was reworked, but the new picture was not used in it. ' + unused);
               job.step.set('done', 'the new picture was not used in it. ' + unused);
               madePic.told = true;
-            } else job.step.set('done');
+            } else {
+              // a section written new has its key only now: its "Show" can find it
+              if (job.add && job.step.setKey) job.step.setKey(fresh.getAttribute('data-rv-key') || '');
+              job.step.set('done');
+            }
           });
         }).then(null, function (err) {
           if (job.add && isLive(job.sec)) canvas.removeSection(job.sec);       // an empty shell is not left behind
-          var why = (err && err.message) || 'the AI could not do it';
+          var why = stopDot((err && err.code && CHAT_TEXT.rework[err.code]) || (err && err.message) || 'the AI could not do it');
           // the picture was made and paid for: it waits in the tray to be placed
           var kept = withPic ? keepMadePicture('The new picture') : '';
           said.push('“' + job.label + '” was not ' + (job.edit ? 'changed' : 'added') + ': ' + why + '.' + (kept ? ' ' + kept : ''));
@@ -4721,7 +4820,8 @@
       })).then(function () {
         card.note('');
         // buttons that open a form, and forms put in the page: after the sections are written, in the same step
-        if (ctaLinks.length || formEmbeds.length) {
+        if (S.formOps && t.stopAsked) stopStep(S.formOps);
+        else if (ctaLinks.length || formEmbeds.length) {
           var doneBefore = done.length, saidBefore = said.length;
           applyFormOps(made.ids || {}, ctaLinks, formEmbeds, changedEls, done, said);
           if (done.length > doneBefore) S.formOps.set('done', said.length > saidBefore ? said.slice(saidBefore).join(' ') : '');
@@ -4751,16 +4851,13 @@
         t.after = changed ? canvas.snapshot() : null;        // the page as this change left it
         var notAll = said.concat(notDone);
         t.status = !changed && !formIds.length ? 'failed' : notAll.length ? 'partly' : 'applied';
-        /* A made picture that is not on the page waits in the tray, and the card's last line says so — also when it
-           was put back to protect Content's records or the logo unit and nothing else changed (QA follow-up 2, F3:
-           the card ended with only "Nothing on the page changed.") — unless a step already says where it is. */
-        finishAiCard(t, madePic && !madePic.told ? keepMadePicture('The new picture') : '');
-        if (madePic && madePic.placed && t.status !== 'failed') {
-          card.note(np.apply === 'swap' ? 'Undo brings the old picture back.' : 'Undo puts “' + np.label + '” back as it was, without the new picture.');
+        // stopped part of the way: what was done stays (Undo takes it back); stopped before anything changed: said so
+        if (t.stopAsked && t.stoppedSteps) {
+          notAll.push('stopped before every step was done');
+          t.status = t.status === 'failed' ? 'stopped' : 'partly';
         }
         reportTurn(t.turnId, t.status, done, notAll);
-        if (t.status !== 'failed') keepCheckpoint(t); else t.before = null;
-        setAiWorking(false);
+        if (t.status !== 'failed' && t.status !== 'stopped') keepCheckpoint(t); else t.before = null;
         var first = changedEls.filter(function (el) { return el && el.isConnected; })[0];
         if (first) {
           // the first change is brought into view; inside an accordion item, the whole item, opened
@@ -4773,16 +4870,66 @@
            the records are in — else it shows a one-session agenda until the next change (QA, 3 Nov 2026: "give
            the Agenda a background picture"). */
         if (redraw) drawRecords(false).then(function () { pageChanged(); });
-        return t;
+        // "Done" is said once the change shows (UX-094): the live view of "Edit with AI" has it on screen
+        return aiChangeShown(t, first).then(function () {
+          /* A made picture that is not on the page waits in the tray, and the card's last line says so — also when it
+             was put back to protect Content's records or the logo unit and nothing else changed (QA follow-up 2, F3:
+             the card ended with only "Nothing on the page changed.") — unless a step already says where it is. */
+          finishAiCard(t, madePic && !madePic.told ? keepMadePicture('The new picture') : '');
+          if (madePic && madePic.placed && t.status !== 'failed') {
+            card.note(np.apply === 'swap' ? 'Undo brings the old picture back.' : 'Undo puts “' + np.label + '” back as it was, without the new picture.');
+          }
+          if (t.stopAsked && t.status === 'partly') card.note(CHAT_TEXT.stoppedAfter(card.steps().filter(function (st) { return st.state === 'done'; }).length, card.count()));
+          setAiWorking(false);
+          // the card's foot, with its Undo, in sight once a long change ends (UX-096)
+          if (card.foot && !card.foot.hidden && viewCan('reveal')) chatView.reveal(card.foot);
+          return t;
+        });
       });
     }
   }
 
+  /* After a change is on the canvas: whoever listens (editor-chat-client.js) is told its first changed section, and
+     what it gives back — the "Edit with AI" live view showing it — is waited for before the card says Done, at most
+     AI_SHOWN_WAIT_MS (a live view that never comes back must not keep the change "in progress"). Stop lets go of
+     the wait too. */
+  var aiChangeListeners = [], AI_SHOWN_WAIT_MS = 10000;
+  function topSectionOf(el) {
+    var sec = el && el.closest ? el.closest('[data-rv-section]') : null;
+    while (sec && sec.parentElement && sec.parentElement.closest('[data-rv-section]')) sec = sec.parentElement.closest('[data-rv-section]');
+    return sec;
+  }
+  function aiChangeShown(t, first) {
+    var sec = first ? topSectionOf(first) : null, key = sec ? sec.getAttribute('data-rv-key') || '' : '';
+    if (!key || t.status === 'failed' || t.status === 'stopped' || !aiChangeListeners.length) return Promise.resolve();
+    var change = { key: key, name: sec.getAttribute('data-sec-name') || key, peekFn: t.peekFn, turnId: t.turnId };
+    var waits = [];
+    aiChangeListeners.forEach(function (fn) {
+      try { var r = fn(change); if (r && typeof r.then === 'function') waits.push(r.then(null, function () {})); }
+      catch (err) { if (window.console) console.error(err); }
+    });
+    if (!waits.length) return Promise.resolve();
+    t.card.note(CHAT_TEXT.showing);
+    if (!t.stopAsked) setChatStatus('working', CHAT_TEXT.showing);
+    return Promise.race([Promise.all(waits), pause(AI_SHOWN_WAIT_MS), t.stopped || new Promise(function () {})]).then(function () { t.card.note(''); });
+  }
+
+  /* "Show" on a step: the section brought into view where the person is looking — the live view of "Edit with AI"
+     (the view's show(), which answers true), else the canvas */
+  function showChange(key) {
+    if (!key) return;
+    try { if (viewCan('show') && chatView.show(key) === true) return; } catch (err) { if (window.console) console.error(err); }
+    var sec = canvas && !remounting ? canvas.sectionByKey(key) : null;
+    if (isLive(sec)) canvas.scrollToSection(sec);
+  }
+
   /* ---------- a change as a task: its steps, each waiting, in progress, done or not done ----------
-     taskCard(host) -> { step(text, state) -> { state, set(state, why) }, steps(), count(), status(kind), note(text),
-     foot, onProgress(n, of) } — kind: run | applied | partly | failed | undone. */
-  var TASK_BADGE = { run: 'In progress', applied: 'Done', partly: 'Partly done', failed: 'Not done', undone: 'Undone' };
-  var TASK_TITLE = { run: 'Changing your site', applied: 'Change made', partly: 'Change partly made', failed: 'Couldn’t make this change', undone: 'Change undone' };
+     taskCard(host) -> { step(text, state, o) -> { state, set(state, why), setKey(key) }, steps(), count(),
+     status(kind), note(text), foot, onProgress(n, of) } — kind: run | applied | partly | failed | stopped | undone.
+     o: { key: the section the step is about ("Show" once it is done), lines: [text | { text, chip, after }] — what
+     it becomes, under the step }. A reason a step failed for that an earlier step already gives is said once. */
+  var TASK_BADGE = { run: 'In progress', applied: 'Done', partly: 'Partly done', failed: 'Not done', stopped: 'Stopped', undone: 'Undone' };
+  var TASK_TITLE = { run: 'Changing your site', applied: 'Change made', partly: 'Change partly made', failed: 'Couldn’t make this change', stopped: 'Change stopped', undone: 'Change undone' };
   function taskCard(host) {
     var el = document.createElement('div');
     el.className = 'ai-task is-run';
@@ -4798,27 +4945,60 @@
       bar.style.width = steps.length ? Math.round(100 * n / steps.length) + '%' : '0';
       if (api.onProgress) api.onProgress(n, steps.length);
     }
-    api.step = function (text, state) {
-      var li = document.createElement('li'), span = document.createElement('span'), why = null;
+    api.step = function (text, state, o) {
+      o = o || {};
+      var li = document.createElement('li'), span = document.createElement('span'), why = null, show = null;
       span.className = 'ai-step-text';
       span.textContent = text;
       li.appendChild(span);
+      (o.lines || []).forEach(function (line) {
+        var row = document.createElement('span');
+        row.className = 'ai-step-line';
+        var l = typeof line === 'string' ? { text: line } : line || {};
+        row.appendChild(document.createTextNode(String(l.text || '')));
+        if (l.chip && /^#[0-9a-f]{3,8}$/i.test(l.chip)) {
+          var chip = document.createElement('span');
+          chip.className = 'cp-chip';
+          chip.setAttribute('aria-hidden', 'true');
+          chip.style.background = l.chip;
+          row.appendChild(document.createTextNode(' '));
+          row.appendChild(chip);
+        }
+        if (l.after) row.appendChild(document.createTextNode(' ' + l.after));
+        li.appendChild(row);
+      });
+      // the panel follows a growing card only for someone already at the end of the conversation
+      var thread = chatThread();
+      var atEnd = !thread || thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
       list.appendChild(li);
-      var st = { state: state || 'wait', text: text };
+      var st = { state: state || 'wait', text: text, key: o.key || '', why: '' };
+      st.setKey = function (key) { st.key = key || ''; };
       st.set = function (s, reason) {
         st.state = s;
         li.className = 'ai-step is-' + s;
         if (reason) {
+          var same = s === 'fail' && reason.length > 24 && steps.some(function (x) { return x !== st && x.state === 'fail' && x.why === reason; });
+          st.why = reason;
           if (!why) { why = document.createElement('span'); why.className = 'ai-step-why'; li.appendChild(why); }
-          why.textContent = reason;
+          why.textContent = same ? CHAT_TEXT.sameReason : reason;
+        }
+        if (s === 'done' && st.key && !show) {
+          show = document.createElement('button');
+          show.type = 'button';
+          show.className = 'ai-step-show';
+          show.textContent = CHAT_TEXT.show;
+          show.title = CHAT_TEXT.showTitle;
+          show.setAttribute('aria-label', CHAT_TEXT.show + ': ' + text);
+          show.addEventListener('click', function () { showChange(st.key); });
+          span.appendChild(document.createTextNode(' '));
+          span.appendChild(show);
         }
         progress();
       };
       li.className = 'ai-step is-' + st.state;
       steps.push(st);
       progress();
-      var thread = chatThread();
-      if (thread) thread.scrollTop = thread.scrollHeight;
+      if (thread && atEnd) thread.scrollTop = thread.scrollHeight;
       return st;
     };
     api.steps = function () { return steps.slice(); };
@@ -4838,7 +5018,7 @@
   function finishAiCard(t, kept) {
     var card = t.card;
     card.status(t.status === 'applying' ? 'run' : t.status);
-    if (t.status === 'failed') { card.note('Nothing on the page changed.' + (kept ? ' ' + kept : '')); return; }
+    if (t.status === 'failed' || t.status === 'stopped') { card.note((t.status === 'stopped' ? 'Stopped. ' : '') + 'Nothing on the page changed.' + (kept ? ' ' + kept : '')); return; }
     if (kept) card.note(kept);
     var foot = card.foot;
     foot.textContent = '';
@@ -4862,35 +5042,18 @@
     notDone.forEach(function (n) { card.step(n, 'fail'); });
     finishAiCard(t);
   }
-  /* ETB2B AI's state, in its header and over its message box: ready, thinking (waiting for its answer) or working
-     (applying a change). While it is not ready the box takes no message, and the strip above it says what it is
-     doing — it never looks ready while it is busy (the owner, 28 Oct 2026). */
+  /* ETB2B AI's state, in its panel: ready, thinking (waiting for its answer) or working (applying a change). While
+     it is not ready the box takes no message, and the panel says what it is doing, with Stop — it never looks ready
+     while it is busy (the owner, 28 Oct 2026). */
   function setChatStatus(state, text) {
-    var panel = document.getElementById('panel-chat'), pill = document.getElementById('chat-status'), strip = document.getElementById('chat-busy');
-    var input = document.getElementById('chat-input'), send = document.getElementById('chat-send'), attach = document.getElementById('chat-attach');
-    var busy = state !== 'ready';
-    if (panel) { panel.classList.toggle('is-busy', busy); panel.setAttribute('data-chat-state', state); }
-    if (pill) {
-      pill.className = 'chat-status is-' + state;
-      var word = pill.querySelector('span');
-      if (word) word.textContent = state === 'thinking' ? 'Thinking…' : state === 'working' ? 'Applying changes…' : 'Ready';
-    }
-    if (strip) {
-      strip.hidden = !busy;
-      var line = document.getElementById('chat-busy-text');
-      if (line) line.textContent = text || (state === 'thinking' ? 'ETB2B AI is reading your request…' : 'ETB2B AI is applying your change…');
-    }
-    if (input) {
-      if (!input.hasAttribute('data-placeholder')) input.setAttribute('data-placeholder', input.placeholder || '');
-      input.disabled = busy;
-      input.placeholder = busy ? 'Busy with your last request…' : input.getAttribute('data-placeholder');
-    }
-    if (send) send.disabled = busy;
-    if (attach) attach.disabled = busy;
+    if (!viewCan('status')) return;
+    try { chatView.status(state, state === 'ready' ? '' : text || (state === 'thinking' ? CHAT_TEXT.reading : CHAT_TEXT.applying)); }
+    catch (err) { if (window.console) console.error(err); }
   }
   /* while a change is being applied the next message waits: two changes at once would overwrite each other */
   function setAiWorking(on) {
     aiWorking = !!on;
+    if (!on) currentTurn = null;
     setChatStatus(on ? 'working' : 'ready');
   }
 
@@ -4914,7 +5077,11 @@
       return res.text().then(function (text) {
         var body = null;
         try { body = JSON.parse(text); } catch (e) { /* an error page from in front of the API */ }
-        if (!res.ok || !body || body.error || !body.html) throw new Error((body && body.error) || 'the AI could not answer (error ' + res.status + ')');
+        if (!res.ok || !body || body.error || !body.html) {
+          var err = new Error((body && body.error) || 'the AI could not answer (error ' + res.status + ')');
+          err.code = (body && body.code) || '';           // the step's reason is worded by it (CHAT_TEXT.rework)
+          throw err;
+        }
         body.js = src.js;
         body.cssIsOwn = src.cssIsOwn;
         return body;
@@ -4981,25 +5148,11 @@
     localHistory.push({ role: role, text: text });
     if (localHistory.length > 16) localHistory.splice(0, localHistory.length - 16);
   }
-  /* a sent message's bubble, with what it was about (the section selected) and the pictures sent with it */
-  function drawUserTurn(text, focusName, pictureUrls, pictureCount) {
-    var mine = appendChatMsg('user', text);
-    if (focusName && mine) {
-      var tag = document.createElement('div');
-      tag.className = 'chat-msg-focus';
-      tag.textContent = '↳ ' + focusName;
-      mine.insertBefore(tag, mine.firstChild);
-    }
-    if (mine && pictureUrls && pictureUrls.length) {
-      var strip = document.createElement('div');
-      strip.className = 'chat-sent-pics';
-      pictureUrls.forEach(function (u) { var im = document.createElement('img'); im.src = u; im.alt = 'Attached picture'; strip.appendChild(im); });
-      mine.appendChild(strip);
-    } else if (mine && pictureCount) {
-      var note = document.createElement('div'); note.className = 'chat-msg-focus'; note.textContent = pictureCount + ' picture' + (pictureCount === 1 ? '' : 's') + ' attached';
-      mine.appendChild(note);
-    }
-    return mine;
+  /* a message read back: what it was about (the section selected) and how many pictures went with it (a new message
+     is drawn by the panel itself, with its own pictures) */
+  function drawUserTurn(text, focusName, pictureCount, at) {
+    var n = Math.max(0, parseInt(pictureCount, 10) || 0);
+    return appendChatMsg('user', text, { at: at, context: focusName || '', pictures: n, picturesText: n ? CHAT_TEXT.picturesAttached(n) : '' });
   }
   /* A turn read back with a picture ETB2B AI made: the picture under its message. One that may not be on the page
      (the editor was closed while it was being made, the change could not be applied, or it was left out of the
@@ -5025,47 +5178,73 @@
     use.textContent = 'Use this picture';
     use.title = 'Put this picture in the tray above the message box, then say where it goes';
     use.addEventListener('click', function () {
-      if (!offerPicture || !offerPicture(url)) return;
+      if (!offerPicture(url)) return;
       showToast('The picture is in the tray above the message box — say where it goes and send.');
-      var box = document.getElementById('chat-input');
-      if (box && !box.disabled) box.focus();
+      if (viewCan('focusInput')) chatView.focusInput();
     });
     bubble.appendChild(use);
   }
-  /* The conversation so far, read back when the editor opens: each turn as it was, with what happened; Undo where
-     this browser still keeps the change's checkpoint. -> Promise<number of turns> */
-  function loadChatHistory() {
-    if (!eventId || !window.RevampAuth) return Promise.resolve(0);
+  /* One turn of the conversation read back (GET /api/chat/history): as it was, with what happened; Undo where this
+     browser still keeps the change's checkpoint. Drawn at once — its time (at) puts it with the earlier turns in the
+     panel, even when a new message has gone ahead of a late replay — and the checkpoint is looked up after.
+     A turn read back is older than any change made since the editor opened, so it goes before them in aiTurns and
+     never counts as "the newest change" (lastAiTurn). -> true when it was drawn */
+  var replayOrder = -1000000;
+  function replayTurn(h) {
+    if (!h || typeof h !== 'object') return false;
+    drawUserTurn(h.question, h.focus, h.pictures, h.at);
+    var bubble = appendChatMsg('ai', h.answer, { at: h.at });
+    drawHistoryPicture(bubble, h);
+    if (h.status === 'stopped') {
+      var said = document.createElement('p');
+      said.className = 'ai-task-note';
+      said.textContent = CHAT_TEXT.stoppedReplay;
+      bubble.appendChild(said);
+      return true;
+    }
+    if (h.kind !== 'edit') return true;
+    var t = { turnId: h.id, order: ++replayOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, card: taskCard(bubble.parentNode), replayed: true };
+    t.peekFn = function () { return undoAiTurn(t); };
+    var firstLive = 0;
+    while (firstLive < aiTurns.length && aiTurns[firstLive].replayed) firstLive++;
+    aiTurns.splice(firstLive, 0, t);
+    if (h.status === 'applying') { t.card.status('failed'); t.card.note('This change was still being applied when the editor was closed; its result is not known.'); return true; }
+    drawAiOutcome(t, h.done || [], h.notDone || []);
+    if (t.status === 'undone' || t.status === 'failed') return true;
+    /* Undo needs the checkpoint kept in this browser */
+    localGet(checkpointKey(h.id)).then(function (kept) {
+      if (kept && kept.before) { t.before = kept.before; t.after = kept.after || null; t.formIds = kept.formIds || []; t.pageChanged = kept.pageChanged !== false; return; }
+      if (t.button) { t.button.disabled = true; t.button.title = 'This change was made in another browser or too long ago. Use Undo in the top bar.'; }
+    });
+    return true;
+  }
+  /* The whole conversation of this event read back, oldest first, between "Earlier in this conversation" and "Now".
+     A turn the events side answered (brain 'dash', asked from this editor or another page of the event) is the
+     writer's to draw (writer.other), else its words only. -> Promise<{ turns, event }>; rejects when it could not
+     be read, so the panel says so */
+  function loadChatHistory(writer) {
+    if (!eventId || !window.RevampAuth) return Promise.resolve({ turns: 0, event: null });
     return RevampAuth.authedFetch('/api/chat/history?eventId=' + encodeURIComponent(eventId)).then(function (res) {
-      return res.ok ? res.json() : { turns: [] };
+      if (!res.ok) throw new Error('the conversation could not be read (' + res.status + ')');
+      return res.json();
     }).then(function (body) {
-      var turns = (body && body.turns) || [];
-      if (!turns.length) return 0;
-      var head = document.createElement('div'); head.className = 'chat-day'; head.textContent = 'Earlier in this conversation';
-      appendChatNode(head);
-      return turns.reduce(function (chain, h) {
-        return chain.then(function () {
-          drawUserTurn(h.question, h.focus, null, h.pictures);
-          var bubble = appendChatMsg('ai', h.answer);
-          drawHistoryPicture(bubble, h);
-          if (h.kind !== 'edit') return;
-          var t = { turnId: h.id, order: ++aiTurnOrder, before: null, ptr: -1, formIds: [], pageChanged: h.status !== 'failed', status: h.status, button: null, card: taskCard(bubble.parentNode) };
-          aiTurns.push(t);
-          if (h.status === 'applying') { t.card.status('failed'); t.card.note('This change was still being applied when the editor was closed; its result is not known.'); return; }
-          drawAiOutcome(t, h.done || [], h.notDone || []);
-          if (t.status === 'undone' || t.status === 'failed') return;
-          /* Undo needs the checkpoint kept in this browser */
-          return localGet(checkpointKey(h.id)).then(function (kept) {
-            if (kept && kept.before) { t.before = kept.before; t.after = kept.after || null; t.formIds = kept.formIds || []; t.pageChanged = kept.pageChanged !== false; return; }
-            if (t.button) { t.button.disabled = true; t.button.title = 'This change was made in another browser or too long ago. Use Undo in the top bar.'; }
-          });
-        });
-      }, Promise.resolve()).then(function () {
-        var line = document.createElement('div'); line.className = 'chat-day'; line.textContent = 'Now';
-        appendChatNode(line);
-        return turns.length;
+      var turns = (body && Array.isArray(body.turns)) ? body.turns : [];
+      var ev = body && body.event && typeof body.event === 'object' ? body.event : null;
+      if (!turns.length) return { turns: 0, event: ev };
+      if (viewCan('divider')) chatView.divider('Earlier in this conversation');
+      // one odd old turn never hides the rest
+      turns.forEach(function (h) {
+        if (!h || typeof h !== 'object') return;
+        try {
+          if (h.brain !== 'dash') { replayTurn(h); return; }
+          if (writer && typeof writer.other === 'function' && writer.other(h) !== false) return;
+          drawUserTurn(h.question, '', 0, h.at);
+          appendChatMsg('ai', h.answer, { at: h.at });
+        } catch (err) { if (window.console) console.error(err); }
       });
-    }).then(null, function () { return 0; });
+      if (viewCan('divider')) chatView.divider('Now');
+      return { turns: turns.length, event: ev };
+    });
   }
 
   /* ---------- what ETB2B AI sees of the page ----------
@@ -5239,238 +5418,250 @@
     });
   }
 
-  function wireChatPanel() {
-    var input = document.getElementById('chat-input'), send = document.getElementById('chat-send');
-    if (!input || !send) return;
-    /* A single edit instruction looks identical whether or not real conversation memory exists behind it —
-       that only becomes visible on a follow-up ("now make it darker instead"). Say so up front, so this
-       reads as an actual chat from the first message, not a repaint of the old one-shot prompt box. */
-    /* the first open: who it is, how it works, and a few things to ask — a tap sends one */
-    var welcome = null;
-    function drawWelcome() {
-      welcome = document.createElement('div');
-      welcome.className = 'chat-welcome';
-      welcome.innerHTML = '<h4>Hi, I’m ETB2B AI.</h4><p>Tell me what to change on this site, or ask me anything about it. I make each change straight away, show you every step as I do it, and every change has an Undo. Nothing goes live until you publish.</p><div class="chat-suggest"></div>';
-      ['What can you change on this page?', 'Make the buttons rounder', 'Rewrite the hero tagline to sound more premium', 'Add a short FAQ section before the footer'].forEach(function (q) {
-        var b = document.createElement('button'); b.type = 'button'; b.textContent = q;
-        b.addEventListener('click', function () { if (input.disabled) return; input.value = q; go(); });
-        welcome.querySelector('.chat-suggest').appendChild(b);
-      });
-      appendChatNode(welcome);
-    }
-    loadChatHistory().then(function (n) { if (!n) drawWelcome(); });
-    /* What the owner has selected on the page goes with the message, so "make this shorter" needs no
-       section named: a chip above the box says what it is ("Selected: Why attend · “Six reasons…”"), and
-       its × sends without it until something else is selected. */
-    var focusBar = document.createElement('div'), focusOff = '';
-    focusBar.className = 'chat-focus'; focusBar.hidden = true;
-    var composeEl = input.closest('.chat-compose');
-    var trayEl = document.getElementById('chat-attached');
-    if (composeEl && composeEl.parentNode) composeEl.parentNode.insertBefore(focusBar, trayEl && trayEl.parentNode === composeEl.parentNode ? trayEl : composeEl);
-    function liveSection() { return activeSectionEl && activeSectionEl.isConnected && activeSectionEl.getAttribute('data-rv-key') ? activeSectionEl : null; }
-    function focusNow() {
-      var sec = liveSection();
-      if (!sec) return null;
-      var f = { sectionId: sec.getAttribute('data-rv-key'), name: sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-key') };
-      if (selectedEl && selectedEl.isConnected && sec.contains(selectedEl)) {
-        var text = String(selectedEl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140);
-        var kind = selectedEl.getAttribute('data-editable') || selectedEl.tagName.toLowerCase();
-        if (text || kind === 'image') f.element = { kind: kind, text: text };
-      }
-      return f;
-    }
-    function focusKey(f) { return f ? f.sectionId + '|' + (f.element ? f.element.kind + ':' + f.element.text : '') : ''; }
-    function chatFocus() { var f = focusNow(); return f && focusKey(f) !== focusOff ? f : null; }
-    function drawFocus() {
-      var f = focusNow();
-      if (f && focusOff && focusKey(f) !== focusOff) focusOff = '';          // something else was selected
-      var on = f && focusKey(f) !== focusOff;
-      focusBar.hidden = !on;
-      focusBar.textContent = '';
-      if (!on) return;
-      var ico = document.createElement('span'); ico.className = 'chat-focus-ico'; ico.setAttribute('aria-hidden', 'true');
-      ico.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>';
-      var label = document.createElement('span'); label.className = 'chat-focus-text';
-      label.appendChild(document.createTextNode('Selected: '));
-      var b = document.createElement('b'); b.textContent = f.name; label.appendChild(b);
-      if (f.element) label.appendChild(document.createTextNode(f.element.text ? ' · “' + (f.element.text.length > 48 ? f.element.text.slice(0, 47) + '…' : f.element.text) + '”' : ' · picture'));
-      label.title = 'ETB2B AI will take your message to be about this, unless you name another part of the page';
-      var rm = document.createElement('button'); rm.type = 'button'; rm.className = 'chat-focus-rm'; rm.textContent = '×';
-      rm.title = 'Send without it'; rm.setAttribute('aria-label', 'Send without the selected section');
-      rm.addEventListener('click', function () { focusOff = focusKey(focusNow()); drawFocus(); input.focus(); });
-      focusBar.appendChild(ico); focusBar.appendChild(label); focusBar.appendChild(rm);
-    }
-    chatFocusRedraw = drawFocus;
-    drawFocus();
+  /* ---------- ETB2B AI: what a message goes with, and how its answer is used (RevampTemplateUI.chat) ----------
+     The panel (editor-chat-client.js) asks; this part reads the page, asks the server, and applies the answer on
+     the canvas. A conversation is kept on the server under the person who had it. */
 
-    /* Pictures for the AI to place: chosen with the paper-clip (or dropped on the message box), stored with
-       the event at once (RevampCore.uploadImage), shown as numbered thumbnails above the box and sent with
-       the next message. The AI is told how many there are and refers to them by number. */
-    var attachBtn = document.getElementById('chat-attach'), fileBox = document.getElementById('chat-file'), tray = document.getElementById('chat-attached');
-    var attachments = [], uploading = 0, MAX_ATTACHED = 6;
-    function drawTray() {
-      if (!tray) return;
-      tray.textContent = '';
-      attachments.forEach(function (a, i) {
-        var chip = document.createElement('span');
-        chip.className = 'chat-chip';
-        var img = document.createElement('img'); img.src = a.url; img.alt = a.name || '';
-        var num = document.createElement('b'); num.textContent = String(i + 1);
-        var rm = document.createElement('button'); rm.type = 'button'; rm.title = 'Remove'; rm.setAttribute('aria-label', 'Remove picture ' + (i + 1)); rm.textContent = '×';
-        rm.addEventListener('click', function () { attachments.splice(i, 1); drawTray(); });
-        chip.appendChild(img); chip.appendChild(num); chip.appendChild(rm);
-        tray.appendChild(chip);
-      });
-      for (var k = 0; k < uploading; k++) { var wait = document.createElement('span'); wait.className = 'chat-chip is-loading'; wait.textContent = 'Uploading…'; tray.appendChild(wait); }
-      tray.hidden = !attachments.length && !uploading;
+  /* What the owner has selected on the page goes with the message, so "make this shorter" needs no section named:
+     the panel's chip says what it is ("Selected: Why attend · “Six reasons…”"), and its × sends without it until
+     something else is selected. */
+  var focusOff = '', focusListeners = [];
+  function liveSection() { return activeSectionEl && activeSectionEl.isConnected && activeSectionEl.getAttribute('data-rv-key') ? activeSectionEl : null; }
+  function focusNow() {
+    var sec = liveSection();
+    if (!sec) return null;
+    var f = { sectionId: sec.getAttribute('data-rv-key'), name: sec.getAttribute('data-sec-name') || sec.getAttribute('data-rv-key') };
+    if (selectedEl && selectedEl.isConnected && sec.contains(selectedEl)) {
+      var text = String(selectedEl.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+      var kind = selectedEl.getAttribute('data-editable') || selectedEl.tagName.toLowerCase();
+      if (text || kind === 'image') f.element = { kind: kind, text: text };
     }
-    function attach(files) {
-      if (!eventId || !window.RevampCore || !RevampCore.uploadImage) { appendChatMsg('ai error', 'Pictures can be attached once the site belongs to an event.'); return; }
-      Array.prototype.slice.call(files || []).forEach(function (file) {
-        if (attachments.length + uploading >= MAX_ATTACHED) { showToast('Up to ' + MAX_ATTACHED + ' pictures per message.', { kind: 'error' }); return; }
-        uploading++; drawTray();
-        RevampCore.uploadImage(eventId, 'media', file).then(function (up) {
-          uploading--; attachments.push({ url: up.url, name: file.name }); drawTray();
-        }, function (err) {
-          uploading--; drawTray();
-          appendChatMsg('ai error', (err && err.message) || 'That picture could not be uploaded. Please try again.');
+    return f;
+  }
+  function focusKey(f) { return f ? f.sectionId + '|' + (f.element ? f.element.kind + ':' + f.element.text : '') : ''; }
+  function chatFocus() { var f = focusNow(); return f && focusKey(f) !== focusOff ? f : null; }
+  /* the selection or the sections changed: the chip follows, and one sent without comes back for something else */
+  function notifyFocus() {
+    var f = focusNow();
+    if (f && focusOff && focusKey(f) !== focusOff) focusOff = '';
+    focusListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
+  }
+  function clearFocus() {
+    var f = focusNow();
+    if (!f) return;
+    focusOff = focusKey(f);
+    notifyFocus();
+  }
+
+  /* Pictures for the AI to place: the tray above the message box (the panel's chips), numbered as the AI is told
+     them. Each is stored with the event as it is added, the editor's own way (RevampCore.uploadImage, 'media': the
+     server checks what it really is, refuses an SVG that carries scripts, and keeps it with the event), so a message
+     sends only their addresses. */
+  var MAX_ATTACHED = 6;
+  function uploadPicture(file) {
+    if (!eventId || !window.RevampCore || !RevampCore.uploadImage) return Promise.reject(new Error(CHAT_TEXT.noEventPictures));
+    return RevampCore.uploadImage(eventId, 'media', file).then(function (up) {
+      if (!up || typeof up.url !== 'string' || !up.url) throw new Error(CHAT_TEXT.uploadFailed);
+      return { url: up.url, name: String((file && file.name) || '') };
+    });
+  }
+  /* -> Promise<number of pictures put in the tray>; one that could not be uploaded is said in the conversation */
+  function attachFiles(files) {
+    var added = 0;
+    return Array.prototype.slice.call(files || []).reduce(function (chain, file) {
+      return chain.then(function () {
+        return uploadPicture(file).then(function (p) { if (offerPicture(p.url, false, p.name)) added++; }, function (err) {
+          appendChatMsg('ai error', (err && err.message) || CHAT_TEXT.uploadFailed);
         });
       });
-    }
-    /* a picture ETB2B AI made that could not be put where it was meant to go: in the tray, ready to be sent with the
-       next message ("put it in the agenda") — it is already stored with the event, so it is placed like any attached
-       picture. quiet: a full tray is not said in a toast (the caller says where the picture is instead).
-       -> true when it is in the tray */
-    offerPicture = function (url, quiet) {
-      if (!url) return false;
-      if (attachments.some(function (a) { return a.url === url; })) return true;
-      if (attachments.length + uploading >= MAX_ATTACHED) {
-        if (!quiet) showToast('The tray above the message box is full: remove a picture from it, then try again.', { kind: 'error' });
-        return false;
-      }
-      attachments.push({ url: url, name: 'New picture made by ETB2B AI' });
-      drawTray();
-      return true;
-    };
-    if (attachBtn && fileBox) {
-      attachBtn.addEventListener('click', function () { fileBox.click(); });
-      fileBox.addEventListener('change', function () { attach(fileBox.files); fileBox.value = ''; });
-      input.addEventListener('paste', function (e) {
-        var files = Array.prototype.filter.call((e.clipboardData && e.clipboardData.files) || [], function (f) { return /^image\//.test(f.type); });
-        if (files.length) { e.preventDefault(); attach(files); }
-      });
-      input.addEventListener('dragover', function (e) { e.preventDefault(); });
-      input.addEventListener('drop', function (e) {
-        var files = Array.prototype.filter.call((e.dataTransfer && e.dataTransfer.files) || [], function (f) { return /^image\//.test(f.type); });
-        if (files.length) { e.preventDefault(); attach(files); }
-      });
-    }
+    }, Promise.resolve()).then(function () { return added; });
+  }
+  /* A picture already stored with the event — one ETB2B AI made that could not go where it was meant to, or one
+     carried here from another page of the event — in the tray, ready to go with the next message ("put it in the
+     agenda"). quiet: a full tray is not said in a toast (the caller says where the picture is instead).
+     -> true when it is in the tray */
+  function offerPicture(url, quiet, name) {
+    if (!url || !viewCan('addAttachment')) return false;
+    var ok = false;
+    try { ok = chatView.addAttachment(String(url), name || 'New picture made by ETB2B AI') === true; } catch (err) { if (window.console) console.error(err); }
+    if (!ok && !quiet) showToast(CHAT_TEXT.trayFull, { kind: 'error' });
+    return ok;
+  }
 
-    // one request at a time: each is a paid call, and Enter must not start a second while one is running
-    var busy = false;
-    function go() {
-      if (aiWorking) { showToast('One moment — ETB2B AI is still applying your last change.'); return; }
-      if (busy || !canvas || remounting) return;
-      var instruction = input.value.trim();
-      if (uploading) { showToast('A picture is still uploading — one moment.'); return; }
-      if (!instruction && attachments.length) { showToast('Say what the picture is for — e.g. “use this as the hero background”.'); input.focus(); return; }
-      if (!instruction) return;
-      busy = true;
-      send.disabled = true;
-      input.value = '';
-      var sent = attachments.map(function (a) { return a.url; });
-      attachments = []; drawTray();
-      var focus = chatFocus();
-      /* a picture selected on the page is the one a new picture replaces: it is remembered for when the change is
-         made (the selection is let go of then), and the AI is told its place among the section's pictures */
-      var pictureEl = null;
-      if (focus && focus.element && focus.element.kind === 'image' && selectedEl && selectedEl.isConnected) {
-        pictureEl = selectedEl;
-        var slot = pictureSlotOf(canvas.sectionByKey(focus.sectionId), pictureEl);
-        if (slot) focus.slot = slot;
-      }
-      drawUserTurn(instruction, focus ? focus.name + (focus.element && focus.element.text ? ' · “' + (focus.element.text.length > 40 ? focus.element.text.slice(0, 39) + '…' : focus.element.text) + '”' : '') : '', sent);
-      if (welcome && welcome.parentNode) welcome.parentNode.removeChild(welcome);
-      var dots = document.createElement('div');
-      dots.className = 'chat-typing';
-      dots.setAttribute('aria-label', 'ETB2B AI is thinking');
-      dots.innerHTML = '<i></i><i></i><i></i>';
-      var thinking = appendChatBubble('ai', dots);
-      setChatStatus('thinking');
-      function settle() {
-        var turn = thinking.closest('.chat-turn');
-        if (turn) turn.remove();
-        busy = false;
-        setChatStatus('ready');
-      }
-      // the request was not answered: the instruction goes back into the box, in front of anything typed since
-      function failed(message) {
-        settle();
-        appendChatMsg('ai error', message);
-        var typed = input.value.trim();
-        input.value = instruction + (typed ? '\n' + typed : '');
-        // the pictures go back with the words they were sent with
-        if (sent.length) { attachments = sent.map(function (u) { return { url: u, name: '' }; }).concat(attachments).slice(0, MAX_ATTACHED); drawTray(); }
-      }
+  /* An answer about what is entered under Content (a speaker, the agenda…) ends with the way there (UX-098): the
+     server names it (goTo); the panel also reads it from the answer's own words */
+  function drawGoTo(host, answer) {
+    if (!host || !answer || !viewCan('goTo')) return;
+    var words = [String(answer.summary || '')].concat(Array.isArray(answer.unsupported) ? answer.unsupported.map(String) : []).join(' ');
+    try { chatView.goTo(host, typeof answer.goTo === 'string' ? answer.goTo : '', words); } catch (err) { if (window.console) console.error(err); }
+  }
+
+  /* No usable answer: the panel words it from what came back (RevampAssistant.errorFor, by the server's code) and
+     offers Try again; the message and its pictures go back in the box. status 0: no answer at all (network: why). */
+  function chatFailure(status, body, network) {
+    var err = new Error(body && typeof body.error === 'string' ? body.error : '');
+    err.status = status || 0;
+    err.body = body && typeof body === 'object' ? body : null;
+    err.network = status ? null : network || {};
+    err.code = body && typeof body.code === 'string' ? body.code : status ? (body ? '' : 'no-json') : 'network';
+    err.retryable = !(body && body.retryable === false);
+    return err;
+  }
+  /* a message this editor cannot take just now, said as it is */
+  function chatRefusal(message) {
+    var err = new Error(message);
+    err.code = 'editor-busy';
+    err.local = true;
+    err.retryable = true;
+    return err;
+  }
+
+  /* One message at a time: each is a paid call, and two changes at once would overwrite each other.
+     -> Promise<{ kind, turnId, status }>, settled once the answer is used: for a change, once it is on the page. */
+  var sending = null;                 // the message being answered: { stopped, applying, over, resolve, reject }
+  var currentTurn = null;             // the change being applied (Stop asks it to stop)
+  function chatSend(text, o) {
+    o = o || {};
+    var instruction = String(text == null ? '' : text).trim();
+    if (aiWorking) return Promise.reject(chatRefusal(CHAT_TEXT.stillApplying));
+    if (sending) return Promise.reject(chatRefusal(CHAT_TEXT.stillAnswering));
+    if (!canvas || remounting) return Promise.reject(chatRefusal(CHAT_TEXT.notReady));
+    if (!instruction) return Promise.reject(chatRefusal('Say what the picture is for — e.g. “use this as the hero background”.'));
+    var sent = (Array.isArray(o.attachments) ? o.attachments : []).filter(function (u) { return typeof u === 'string' && !!u; }).slice(0, MAX_ATTACHED);
+    var sentAt = typeof o.sentAt === 'number' ? o.sentAt : Date.now();
+    var handedFrom = o.handedFrom === 'dash' ? 'dash' : '';
+    var focus = o.focus !== undefined ? o.focus : chatFocus();
+    /* a picture selected on the page is the one a new picture replaces: it is remembered for when the change is
+       made (the selection is let go of then), and the AI is told its place among the section's pictures */
+    var pictureEl = null;
+    if (focus && focus.element && focus.element.kind === 'image' && selectedEl && selectedEl.isConnected) {
+      pictureEl = selectedEl;
+      var slot = pictureSlotOf(canvas.sectionByKey(focus.sectionId), pictureEl);
+      if (slot) focus.slot = slot;
+    }
+    var me = { stopped: false, applying: false, over: false };
+    sending = me;
+    return new Promise(function (resolve, reject) {
+      function end() { me.over = true; if (sending === me) sending = null; }
+      me.resolve = function (v) { if (me.over) return; end(); resolve(v); };
+      me.reject = function (err) { if (me.over) return; end(); setChatStatus('ready'); reject(err); };
       /* signed in, as every other request of the editor (the server keeps the turn under the person who sent it) */
       var send$ = window.RevampAuth && RevampAuth.authedFetch ? RevampAuth.authedFetch : fetch;
       /* the page as it looks goes with the message, so the AI sees it (seePage) */
       var focusSec = focus && focus.sectionId ? canvas.sectionByKey(focus.sectionId) : null;
-      setChatStatus('thinking', 'ETB2B AI is looking at your page…');
+      setChatStatus('thinking', CHAT_TEXT.looking);
       seePage(instruction, focusSec).then(function (view) {
-        setChatStatus('thinking', 'ETB2B AI is reading your request…');
+        // stopped while the page was being looked at: nothing is asked, nothing is paid for
+        if (me.stopped) return 'stopped';
+        setChatStatus('thinking', CHAT_TEXT.reading);
         return send$('/api/chat-edit', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
-          view: view.shots, viewWhat: view.what, viewLeftOut: view.leftOut || 0, viewUndrawn: view.undrawn || [],
-          // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
-          forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [],
-          // ETB2B AI may make a new picture only for an editor that can put one in (an older one is never offered it)
-          canMakePictures: !!aiPictures() })
-        });
-      })
-        .then(function (res) {
-          return res.text().then(function (text) {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
+            view: view.shots, viewWhat: view.what, viewLeftOut: view.leftOut || 0, viewUndrawn: view.undrawn || [],
+            // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
+            forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [],
+            // ETB2B AI may make a new picture only for an editor that can put one in (an older one is never offered it)
+            canMakePictures: !!aiPictures(),
+            // handed over by the events side: this answer is the last word, never handed back
+            handedFrom: handedFrom || undefined })
+        }).then(function (res) {
+          return res.text().then(function (txt) {
             var body = null;
-            try { body = JSON.parse(text); } catch (e) { /* not JSON: an error page from in front of the API */ }
+            try { body = JSON.parse(txt); } catch (e) { /* not JSON: an error page from in front of the API */ }
             return { ok: res.ok, status: res.status, body: body };
           });
-        })
-        .then(null, function () { return null; })       // no answer at all
-        .then(function (r) {
-          if (!r) {
-            failed('Could not reach ETB2B AI. Nothing on the site changed — check your connection and try again.');
-            return;
-          }
-          if (!r.ok || !r.body || r.body.error) {
-            failed((r.body && r.body.error) || 'ETB2B AI could not answer (error ' + r.status + '). Nothing on the site changed — try again.');
-            return;
-          }
-          settle();
-          var body = r.body;
-          if (!eventId) pushLocal('user', instruction + (sent.length ? ' [' + sent.length + ' picture' + (sent.length === 1 ? '' : 's') + ' attached]' : ''));
-          if (body.notKept) appendChatMsg('ai error', 'This message could not be saved to your conversation history; the answer below still stands.');
-          if (body.kind === 'undo') {
-            /* "undo that": the page goes back exactly, at no cost — never a guess at the old look */
-            var last = lastAiTurn();
-            var reply = appendChatMsg('ai', body.summary);
-            if (!last) { reply.textContent = 'There is no change of mine on the page to undo. Undo in the top bar steps back through your own edits.'; return; }
-            undoAiTurn(last).then(function (ok) { if (!ok) reply.textContent = 'I left it as it is.'; });
-            if (!eventId) pushLocal('assistant', body.summary + ' (undone)');
-            return;
-          }
-          if (body.kind === 'reply') {
-            appendChatMsg('ai', body.summary);
-            if (!eventId) pushLocal('assistant', body.summary);
-            return;
-          }
-          runAiTurn(body, body.turnId, sent, { pictureEl: pictureEl }).then(function (t) {
-            if (!eventId) pushLocal('assistant', body.summary + ' (' + (t && t.status) + ')');
+        }, function (err) { return { network: err || {} }; });       // no answer at all
+      }).then(function (r) {
+        if (r === 'stopped') return;
+        // Stop was pressed while the answer was on its way: it is not used, and the conversation keeps it as stopped
+        if (me.stopped) { if (r && r.body && typeof r.body.turnId === 'string' && r.body.turnId) reportTurn(r.body.turnId, 'stopped'); return; }
+        if (!r || r.network) { me.reject(chatFailure(0, null, r && r.network)); return; }
+        if (!r.ok || !r.body || r.body.error) { me.reject(chatFailure(r.status, r.body)); return; }
+        useAnswer(r.body);
+      }).then(null, function (err) {
+        if (window.console) console.error(err);
+        if (me.applying && aiWorking) setAiWorking(false);
+        me.reject(chatFailure(0, null));
+      });
+
+      function useAnswer(body) {
+        if (body.kind === 'handoff') {
+          // about something other than this page: the events side answers it (editor-chat-client.js); nothing was kept
+          if (!handedFrom) { me.resolve({ kind: 'handoff', turnId: '', status: '' }); return; }
+          setChatStatus('ready');
+          appendChatMsg('ai', CHAT_TEXT.unclear);
+          me.resolve({ kind: 'reply', turnId: '', status: 'answered' });
+          return;
+        }
+        setChatStatus('ready');
+        if (!eventId) pushLocal('user', instruction + (sent.length ? ' [' + sent.length + ' picture' + (sent.length === 1 ? '' : 's') + ' attached]' : ''));
+        if (body.notKept) appendChatMsg('ai error', CHAT_TEXT.notKept);
+        if (body.kind === 'undo') {
+          /* "undo that": the page goes back exactly, at no cost — never a guess at the old look */
+          var last = lastAiTurn();
+          if (!last) { appendChatMsg('ai', CHAT_TEXT.nothingToUndo); me.resolve({ kind: 'undo', turnId: body.turnId || '', status: 'answered' }); return; }
+          var reply = appendChatMsg('ai', body.summary);
+          undoAiTurn(last).then(function (ok) {
+            if (!ok) { var no = document.createElement('p'); no.className = 'ai-task-note'; no.textContent = CHAT_TEXT.leftAsIs; reply.appendChild(no); }
+            if (!eventId) pushLocal('assistant', body.summary + (ok ? ' (undone)' : ''));
+            me.resolve({ kind: 'undo', turnId: body.turnId || '', status: ok ? 'undone' : 'answered' });
           });
+          return;
+        }
+        if (body.kind === 'reply') {
+          var said = appendChatMsg('ai', body.summary);
+          drawGoTo(said, body);
+          if (!eventId) pushLocal('assistant', body.summary);
+          me.resolve({ kind: 'reply', turnId: body.turnId || '', status: 'answered' });
+          return;
+        }
+        me.applying = true;
+        runAiTurn(body, body.turnId, sent, { pictureEl: pictureEl, sentAt: sentAt }).then(function (t) {
+          if (!eventId) pushLocal('assistant', body.summary + ' (' + (t && t.status) + ')');
+          me.resolve({ kind: 'edit', turnId: body.turnId || '', status: (t && t.status) || '' });
+        }, function (err) {
+          if (window.console) console.error(err);
+          if (aiWorking) setAiWorking(false);
+          me.resolve({ kind: 'edit', turnId: body.turnId || '', status: 'failed' });
         });
+      }
+    });
+  }
+  /* Stop (UX-097). While waiting for the answer: it is not used when it comes (the server is told, so the
+     conversation reads "stopped"), and the panel is free at once. While a change is applied: no further step starts,
+     and what was done stays, with its Undo. -> true when there was something to stop */
+  function chatStop() {
+    var me = sending;
+    if (me && !me.over && !me.applying) {
+      me.stopped = true;
+      appendChatMsg('ai', CHAT_TEXT.stoppedWaiting);
+      setChatStatus('ready');
+      me.resolve({ kind: 'stopped', turnId: '', status: 'stopped' });
+      return true;
     }
-    send.addEventListener('click', go);
-    input.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); go(); } });
+    var t = currentTurn;
+    if (t && !t.stopAsked) {
+      t.stopAsked = true;
+      if (t.stopNow) t.stopNow();
+      return true;
+    }
+    return false;
+  }
+  /* "undo that", without asking the AI: the newest change of ETB2B AI still on the page. -> Promise<{ ok, why }> */
+  function chatUndoLast() {
+    if (aiWorking) return Promise.resolve({ ok: false, why: CHAT_TEXT.undoBusy });
+    var last = lastAiTurn();
+    if (!last) return Promise.resolve({ ok: false, why: CHAT_TEXT.nothingToUndo });
+    return undoAiTurn(last).then(function (ok) { return ok ? { ok: true, why: '' } : { ok: false, why: CHAT_TEXT.leftAsIs }; },
+      function (err) { if (window.console) console.error(err); return { ok: false, why: CHAT_TEXT.leftAsIs }; });
+  }
+  /* the panel registers once the site is on the canvas the first time (boot) */
+  var chatReadyResolve = null;
+  var chatReadyPromise = new Promise(function (resolve) { chatReadyResolve = resolve; });
+  function chatSeamReady() {
+    if (!chatReadyResolve) return;
+    chatReadyResolve(true);
+    chatReadyResolve = null;
   }
 
   /* What the generator had to say about the logo unit (a year it could not change, a sponsor's mark drawn into
@@ -6018,6 +6209,25 @@
       if (editingEl) exitEdit(editingEl);
       clearElementSelection();
       flush();
+    },
+    /* ETB2B AI's half of the shared panel (see the top of this file; editor-chat-client.js is the other half) */
+    chat: {
+      attachView: function (v) { chatView = v && typeof v === 'object' ? v : null; },
+      ready: function () { return chatReadyPromise; },
+      send: chatSend,
+      stop: chatStop,
+      busy: function () { return !!(aiWorking || sending); },
+      undoLast: chatUndoLast,
+      focus: function () { return canvas && !remounting ? chatFocus() : null; },
+      onFocusChange: function (fn) { if (typeof fn === 'function') focusListeners.push(fn); },
+      clearFocus: clearFocus,
+      upload: uploadPicture,
+      attach: attachFiles,
+      offerPicture: function (url, quiet) { return offerPicture(url, quiet); },
+      replayTurn: replayTurn,
+      loadHistory: loadChatHistory,
+      onAiChange: function (fn) { if (typeof fn === 'function') aiChangeListeners.push(fn); },
+      eventName: function () { return (currentEvent && currentEvent.name) || ''; }
     }
   };
 })();

@@ -159,7 +159,8 @@ function takeOne(p, id, now) {
   check('E.1 take: … and its key is removed (read once)', t.storage.getItem(PFX + ID) === null);
   check('E.1 take: … and a second take finds nothing', Prefill.take(t.storage, ID, NOW) === null);
   /* hero: ETB2B AI's hero picture request (plan §18), null when none came */
-  check('E.1 take: the cleaned shape', t.got && JSON.stringify(Object.keys(t.got).sort()) === JSON.stringify(['at', 'basics', 'brief', 'category', 'dropped', 'from', 'hero', 'method', 'portal', 'prefillId', 'turnId', 'v']) &&
+  check('E.1 take: the cleaned shape', t.got && JSON.stringify(Object.keys(t.got).sort()) === JSON.stringify(['at', 'basics', 'brief', 'category', 'dropped', 'files', 'from', 'hero', 'method', 'portal', 'prefillId', 'turnId', 'v']) &&
+    JSON.stringify(t.got.files) === '{"kept":[],"refused":[]}' &&
     JSON.stringify(Object.keys(t.got.basics).sort()) === JSON.stringify(['city', 'client', 'dateMode', 'end', 'month', 'name', 'quarter', 'start', 'venue', 'year']) &&
     JSON.stringify(Object.keys(t.got.brief).sort()) === JSON.stringify(['current', 'previous', 'text']), t.got);
   check('E.1 take: a good prefill drops nothing', t.got && JSON.stringify(t.got.dropped) === '[]', t.got && t.got.dropped);
@@ -874,6 +875,8 @@ function withPicker(P) {
   check('E.2 pickCategory reads the brief\'s way on from S.aiPrefill.thenDetails, never from catReturnPhase alone', pickSrc.indexOf('S.aiPrefill.thenDetails') !== -1 &&
     /S\.aiPrefill\.thenDetails = false/.test(pickSrc));
 
+  /* =============================================================================== E.1f the files that come with the details */
+  await e1f();
   /* =============================================================================== E.3 marketing.html */
   await e3();
   await e4();
@@ -884,8 +887,150 @@ function withPicker(P) {
   process.exit(failed ? 1 : 0);
 })().catch(function (e) { console.error(e); process.exit(1); });
 
+/* ---- E.1f: a logo and a brief file attached to "start a new event" (plan §6b): named in the prefill, kept in
+   IndexedDB (aihandoff:<id>), checked again here with Create Event's own rules, read once, announced to the page ---- */
+function fakeStore(init, opts) {
+  opts = opts || {};
+  var m = {};
+  Object.keys(init || {}).forEach(function (k) { m[k] = init[k]; });
+  var log = [];
+  return {
+    _m: m, log: log,
+    get: function (k) { log.push(['get', k]); if (opts.throws) return Promise.reject(new Error('blocked')); return Promise.resolve(Object.prototype.hasOwnProperty.call(m, k) ? m[k] : undefined); },
+    put: function (k, v) { log.push(['put', k]); if (opts.throws) return Promise.reject(new Error('blocked')); m[k] = v; return Promise.resolve(); },
+    remove: function (k) { log.push(['remove', k]); if (opts.throws) return Promise.reject(new Error('blocked')); delete m[k]; return Promise.resolve(); }
+  };
+}
+function blob(size, type) { return { size: size, type: type || '', slice: function () { return this; } }; }
+async function e1f() {
+  var LOGO = { n: 1, role: 'logo', name: 'small.png', type: 'image/png', size: 2000 };
+  var DOC = { n: 2, role: 'brief', name: 'brief.pdf', type: 'application/pdf', size: 40000 };
+  var t = takeOne(stored({ files: [LOGO, DOC] }));
+  check('E.1f take keeps a logo and a brief file named with the details', !!t.got && JSON.stringify(t.got.files.kept) === JSON.stringify([LOGO, DOC]) && !t.got.files.refused.length, t.got && t.got.files);
+  check('E.1f …a brief file means the "Generate from a brief" path, which makes no separate hero picture', t.got.method === 'brief' && t.got.hero === null, t.got);
+  var r = takeOne(stored({ files: [{ n: 1, role: 'logo', name: 'photo.jpg', type: 'image/jpeg', size: 2000 }, { n: 2, role: 'brief', name: 'notes.txt', type: 'text/plain', size: 600 }] })).got;
+  check('E.1f a JPEG logo and a text "brief file" are not what the page\'s boxes take: refused, named', r.files.kept.length === 0 &&
+    JSON.stringify(r.files.refused) === JSON.stringify([{ role: 'logo', name: 'photo.jpg', why: 'type' }, { role: 'brief', name: 'notes.txt', why: 'type' }]) && r.method === '', r.files);
+  r = takeOne(stored({ files: [{ n: 1, role: 'logo', name: 'big.png', type: 'image/png', size: 5 * 1024 * 1024 + 1 }, { n: 2, role: 'brief', name: 'big.pdf', type: 'application/pdf', size: 15 * 1024 * 1024 + 1 }] })).got;
+  check('E.1f over 5 MB (logo) and 15 MB (PDF): refused for their size', JSON.stringify(r.files.refused.map(function (f) { return f.why; })) === '["size","size"]' && !r.files.kept.length, r.files);
+  r = takeOne(stored({ files: [{ n: 1, role: 'logo', name: 'a.svg', type: '', size: 900 }, { n: 2, role: 'logo', name: 'b.png', type: 'image/png', size: 900 }, { n: 3, role: 'none', name: 'c.png', type: 'image/png', size: 9 },
+    { n: 4, role: 'banner', name: 'd.png', type: 'image/png', size: 9 }, 'junk'] })).got;
+  check('E.1f one logo at most (the first), an SVG known by its name, other roles ignored', JSON.stringify(r.files.kept) === JSON.stringify([{ n: 1, role: 'logo', name: 'a.svg', type: 'image/svg+xml', size: 900 }]) && !r.files.refused.length, r.files);
+  r = takeOne(stored({ files: [{ n: 9, role: 'logo', name: 'C:\\Users\\x\\lo\u0007go\n.png', type: 'IMAGE/PNG', size: 10 }] })).got;
+  check('E.1f a name loses its path and control characters; a number out of range is 0', r.files.kept[0] && r.files.kept[0].name === 'lo go .png' && r.files.kept[0].n === 0 && r.files.kept[0].type === 'image/png', r.files);
+  r = takeOne(stored({ method: 'template', files: [LOGO, DOC] })).got;
+  check('E.1f the template path: the logo is kept, the brief file is named as not used', r.method === 'template' && JSON.stringify(r.files.kept) === JSON.stringify([LOGO]) &&
+    JSON.stringify(r.files.refused) === JSON.stringify([{ role: 'brief', name: 'brief.pdf', why: 'path' }]), r);
+  r = takeOne(stored({ files: 'nope' })).got;
+  check('E.1f files that are not a list: none', JSON.stringify(r.files) === '{"kept":[],"refused":[]}');
+
+  /* apply: where each kept file goes, said over step 1; the page is told (revamp:prefill-applied) */
+  var a = Prefill.apply(freshS(), freshCats(), takeOne(stored({ files: [LOGO, DOC] })).got, { slugify: SLUGIFY });
+  check('E.1f apply: the files are not put in the draft (the page\'s own boxes take them)', a.phase === 'details' && JSON.stringify(a.files) === JSON.stringify({ kept: [{ role: 'logo', name: 'small.png' }, { role: 'brief', name: 'brief.pdf' }], refused: [] }), a.files);
+  check('E.1f summary: "Your logo … and your brief document … go into their boxes on the form below."', Prefill.summary(a).indexOf(' Your logo “small.png” and your brief document “brief.pdf” go into their boxes on the form below.') !== -1, Prefill.summary(a));
+  a = Prefill.apply(freshS(), freshCats(), takeOne(stored({ files: [LOGO] })).got, { slugify: SLUGIFY });
+  check('E.1f summary: a logo alone, on the method screen: "…goes into its box on the details form."', a.phase === 'method' && Prefill.summary(a).indexOf(' Your logo “small.png” goes into its box on the details form.') !== -1, Prefill.summary(a));
+  a = Prefill.apply(freshS(), freshCats(), takeOne(stored({ files: [{ n: 1, role: 'logo', name: 'photo.jpg', type: 'image/jpeg', size: 2000 }] })).got, { slugify: SLUGIFY });
+  check('E.1f summary: a refused logo is named, with what Create Event takes', /The logo “photo\.jpg” wasn’t used: Create Event takes a PNG, WEBP or SVG logo of up to 5 MB\.$/.test(Prefill.summary(a)), Prefill.summary(a));
+  a = Prefill.apply(freshS(), freshCats(), takeOne(stored({ category: '', basics: { name: '', dateMode: '', start: '', venue: '', city: '' }, files: [LOGO] })).got, { slugify: SLUGIFY });
+  check('E.1f summary: nothing filled but a logo: both said', /could be filled in\. Choose its type to begin\. Your logo “small\.png” goes into its box on the details form\.$/.test(Prefill.summary(a)), Prefill.summary(a));
+  var noFiles = Prefill.summary(Prefill.apply(freshS(), freshCats(), takeOne(stored()).got, { slugify: SLUGIFY }));
+  check('E.1f summary: no files, not a word about them', !/logo|document/i.test(noFiles), noFiles);
+  check('E.1f apply in node tells nobody (no window) and does not throw', !!Prefill.apply(freshS(), freshCats(), takeOne(stored({ files: [LOGO] })).got, { slugify: SLUGIFY }));
+  var heard = [];
+  var win = { CustomEvent: function (type, init) { this.type = type; this.detail = init && init.detail; }, dispatchEvent: function (ev) { heard.push(ev); return true; } };
+  win.window = win;
+  vm.runInNewContext(PREFILL_SRC, win);
+  win.RevampPrefill.apply(freshS(), freshCats(), win.RevampPrefill.take(fakeStorage((function () { var o = {}; o[PFX + ID] = JSON.stringify(stored({ files: [LOGO, DOC] })); return o; })()), ID, NOW), { slugify: SLUGIFY });
+  check('E.1f in a browser apply() dispatches revamp:prefill-applied { id, files: [{ role, name }] }', heard.length === 1 && heard[0].type === 'revamp:prefill-applied' &&
+    JSON.stringify(heard[0].detail) === JSON.stringify({ id: ID, files: [{ role: 'logo', name: 'small.png' }, { role: 'brief', name: 'brief.pdf' }] }), heard);
+  heard.length = 0;
+  win.RevampPrefill.apply(freshS(), freshCats(), win.RevampPrefill.take(fakeStorage((function () { var o = {}; o[PFX + ID] = JSON.stringify(stored()); return o; })()), ID, NOW), { slugify: SLUGIFY });
+  check('E.1f …and with no files too (files: [])', heard.length === 1 && JSON.stringify(heard[0].detail.files) === '[]', heard);
+  var noisy = { CustomEvent: win.CustomEvent, dispatchEvent: function () { throw new Error('a listener broke'); } };
+  noisy.window = noisy;
+  vm.runInNewContext(PREFILL_SRC, noisy);
+  check('E.1f a listener that throws never stops apply()', (function () { try { return !!noisy.RevampPrefill.apply(freshS(), freshCats(), Prefill.take(fakeStorage((function () { var o = {}; o[PFX + ID] = JSON.stringify(stored({ files: [LOGO] })); return o; })()), ID, NOW)); } catch (e) { return false; } })());
+
+  /* takeFiles: once, fresh only, Create Event's rules again, the index swept */
+  check('E.1f the store keys', Prefill.FILES_PREFIX === 'aihandoff:' && Prefill.FILES_INDEX === 'aihandoff:index');
+  var LB = blob(2000, 'image/png'), DB = blob(40000, 'application/pdf');
+  function rec(over) { return Object.assign({ v: 1, at: NOW - 60000, files: [{ n: 1, role: 'logo', name: 'small.png', type: 'image/png', size: 2000, blob: LB }, { n: 2, role: 'brief', name: 'brief.pdf', type: 'application/pdf', size: 40000, blob: DB }] }, over || {}); }
+  var init = {}; init['aihandoff:' + ID] = rec(); init['aihandoff:OldOldOldOld01'] = rec({ at: NOW - 11 * 60000 }); init['aihandoff:FreshFresh0001'] = rec();
+  init['aihandoff:index'] = { v: 1, keys: {} }; init['aihandoff:index'].keys[ID] = NOW - 60000; init['aihandoff:index'].keys.OldOldOldOld01 = NOW - 11 * 60000; init['aihandoff:index'].keys.FreshFresh0001 = NOW - 60000;
+  init['site:retail:tech500'] = { snapshot: 1 }; init['rv.aiTurn.x.1'] = { y: 1 };
+  var S = fakeStore(init);
+  var got = await Prefill.takeFiles(S, ID, NOW);
+  check('E.1f takeFiles: the logo and the brief, with their blobs', got && got.files.length === 2 && got.files[0].role === 'logo' && got.files[0].blob === LB && got.files[1].role === 'brief' && got.files[1].blob === DB &&
+    got.files[0].type === 'image/png' && got.files[1].size === 40000 && !got.refused.length, got);
+  check('E.1f …read once: the record is removed', !('aihandoff:' + ID in S._m) && (await Prefill.takeFiles(S, ID, NOW)) === null);
+  check('E.1f …the index is swept: an old record goes, a fresh one of another id stays, and nothing else is touched',
+    !('aihandoff:OldOldOldOld01' in S._m) && ('aihandoff:FreshFresh0001' in S._m) && S._m['site:retail:tech500'] && S._m['rv.aiTurn.x.1'] &&
+    JSON.stringify(Object.keys(S._m['aihandoff:index'].keys)) === '["FreshFresh0001"]', Object.keys(S._m));
+  var S2 = fakeStore((function () { var o = {}; o['aihandoff:' + ID] = rec({ at: NOW - 10 * 60000 - 1 }); return o; })());
+  check('E.1f takeFiles: older than ten minutes → null, and removed', (await Prefill.takeFiles(S2, ID, NOW)) === null && !('aihandoff:' + ID in S2._m));
+  var S3 = fakeStore((function () { var o = {}; o['aihandoff:' + ID] = rec({ files: [
+    { role: 'logo', name: 'photo.jpg', type: 'image/jpeg', blob: blob(2000, 'image/jpeg') },
+    { role: 'brief', name: 'deck.docx', type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', blob: blob(900) },
+    { role: 'logo', name: 'second.png', type: 'image/png', blob: blob(10, 'image/png') },
+    { role: 'none', name: 'banner.png', type: 'image/png', blob: blob(10, 'image/png') }] }); return o; })());
+  var g3 = await Prefill.takeFiles(S3, ID, NOW);
+  check('E.1f takeFiles: a wrong type for its role is refused (never put into a box), one of each role only', g3 && g3.files.length === 0 &&
+    JSON.stringify(g3.refused) === JSON.stringify([{ role: 'logo', name: 'photo.jpg', why: 'type' }, { role: 'brief', name: 'deck.docx', why: 'type' }]), g3);
+  var S4 = fakeStore((function () { var o = {}; o['aihandoff:' + ID] = rec({ files: [{ role: 'logo', name: 'x.png', type: 'image/png', blob: 'not a blob' }, { role: 'brief', name: 'big.pdf', type: 'application/pdf', blob: blob(15 * 1024 * 1024 + 1, 'application/pdf') }] }); return o; })());
+  var g4 = await Prefill.takeFiles(S4, ID, NOW);
+  check('E.1f takeFiles: what is not a file is dropped; a size over the box\'s limit is refused by the blob\'s own size', g4 && !g4.files.length && JSON.stringify(g4.refused) === JSON.stringify([{ role: 'brief', name: 'big.pdf', why: 'size' }]), g4);
+  check('E.1f takeFiles: no store, a bad id, a v:2 record, a store that throws → null, never a throw',
+    (await Prefill.takeFiles(null, ID, NOW)) === null && (await Prefill.takeFiles(fakeStore(), 'bad!', NOW)) === null &&
+    (await Prefill.takeFiles(fakeStore((function () { var o = {}; o['aihandoff:' + ID] = rec({ v: 2 }); return o; })()), ID, NOW)) === null &&
+    (await Prefill.takeFiles(fakeStore({}, { throws: true }), ID, NOW)) === null);
+
+  /* the two copies of Create Event's rules agree: the assistant's (where the files come from) and this page's */
+  var actx = { console: { log: function () {}, warn: function () {}, error: function () {} }, Promise: Promise, JSON: JSON, Date: Date, Math: Math };
+  actx.window = actx;
+  vm.createContext(actx);
+  vm.runInContext(read('etb2b-assistant.js'), actx, { filename: 'etb2b-assistant.js' });
+  var A = actx.RevampAssistant;
+  var cases = [['logo', 'image/png', 10], ['logo', 'image/webp', 5 * 1024 * 1024], ['logo', 'image/svg+xml', 1], ['logo', 'image/jpeg', 10], ['logo', 'image/gif', 10],
+    ['logo', 'image/png', 5 * 1024 * 1024 + 1], ['logo', 'image/png', 0], ['brief', 'application/pdf', 15 * 1024 * 1024], ['brief', 'application/pdf', 15 * 1024 * 1024 + 1], ['brief', 'text/plain', 10]];
+  var disagree = cases.filter(function (c) {
+    var rec2 = { name: 'f', type: c[1], size: c[2], kind: /^image\//.test(c[1]) ? 'image' : 'doc', wire: c[1] === 'application/pdf' ? 'pdf' : /^image\//.test(c[1]) ? 'image' : 'text' };
+    var here = !A.carryCheck(c[0], rec2);
+    var page = !!takeOne(stored({ files: [{ n: 1, role: c[0], name: 'f', type: c[1], size: c[2] }] })).got.files.kept.length;
+    return here !== page;
+  });
+  check('E.1f the assistant\'s carryCheck and Create Event\'s own rules agree on every case', !disagree.length, disagree);
+  check('E.1f …and Create Event\'s rules are the page\'s own: #f-logo takes PNG/WEBP/SVG ≤ 5 MB, #gb-doc a PDF ≤ 15 MB',
+    /<input id="f-logo" type="file" accept="image\/png,image\/webp,image\/svg\+xml,\.webp,\.svg" hidden>/.test(CE) && /file\.size > 5 \* 1024 \* 1024/.test(CE) &&
+    /<input id="gb-doc" type="file" accept="application\/pdf,\.pdf" hidden>/.test(CE) && /var BRIEF_DOC_MAX_BYTES = 15 \* 1024 \* 1024;/.test(CE));
+  check('E.1f …and the assistant\'s boxes are the page\'s own ids', A._test.CE_INPUTS.logo.input === 'f-logo' && A._test.CE_INPUTS.brief.input === 'gb-doc' &&
+    CE.indexOf('id="logo-cell"') !== -1 && CE.indexOf('id="gb-doc-row"') !== -1);
+
+  /* E.1 extended: what the server gives each file (cleanCreate's files), as the dashboard writes it (runCreate), arrives */
+  var serverT = require('./dash-bot')._test;
+  var made = serverT.cleanCreate({ category: 'IP', name: 'QA AIE Expo', city: 'Mumbai', files: [{ n: 1, role: 'brief' }, { n: 2, role: 'logo' }] },
+    { message: 'Start a new IP event called QA AIE Expo in Mumbai with this brief and logo', today: '2026-11-03', view: null,
+      attachments: [{ n: 1, kind: 'pdf', name: 'brief.pdf', type: 'application/pdf', size: 40000 }, { n: 2, kind: 'image', name: 'small.png', type: 'image/png', size: 2000, w: 571, h: 340 }] });
+  if (!Array.isArray(made.files)) {
+    check('E.1f the server\'s cleanCreate gives each attached file a role (files: [{ n, role }])', false, made);
+  } else {
+    var SENT = [{ name: 'brief.pdf', type: 'application/pdf', size: 40000 }, { name: 'small.png', type: 'image/png', size: 2000 }];
+    var record = clone(made.prefill);
+    record.files = made.files.filter(function (f) { return f.role === 'logo' || f.role === 'brief'; }).map(function (f) {
+      return { n: f.n, role: f.role, name: SENT[f.n - 1].name, type: SENT[f.n - 1].type, size: SENT[f.n - 1].size };
+    });
+    record.v = 1; record.from = 'etb2b-ai'; record.at = NOW - 1000; record.turnId = ID; record.prefillId = ID;
+    var arrived = takeOne(record).got;
+    check('E.1f server → take(): the brief and the logo the server named arrive, on the brief path', JSON.stringify(made.files) === '[{"n":1,"role":"brief"},{"n":2,"role":"logo"}]' &&
+      arrived && arrived.method === 'brief' && JSON.stringify(arrived.files.kept.map(function (f) { return f.role + ':' + f.name; })) === '["brief:brief.pdf","logo:small.png"]' && !arrived.dropped.length,
+      [made.files, arrived && arrived.files, arrived && arrived.method]);
+    var shown = Prefill.summary(Prefill.apply(freshS(), freshCats(), arrived, { slugify: SLUGIFY }));
+    check('E.1f server → take() → apply(): the note names both files', shown.indexOf('Your logo “small.png” and your brief document “brief.pdf” go into their boxes on the form below.') !== -1, shown);
+  }
+}
+
 /* ---- marketing.html's own script in a vm, over a small fake DOM (the shape promotions-page.test.js uses) ---- */
-var SHELL = (MK.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); })
+var SHELL =(MK.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); })
   .filter(function (s) { return s.indexOf('var TABS = [') !== -1; })[0] || '';
 function classList(initial) {
   var set = {};

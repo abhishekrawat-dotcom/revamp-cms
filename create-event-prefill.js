@@ -17,6 +17,19 @@
                                                 yet. The portal is named because the event may be on another one than
                                                 the person works in (they asked for ETCIO while working in ETHRWorld).
      RevampPrefill.heroLine(o)               -> what the line about ETB2B AI's hero picture says: { text, can }
+     RevampPrefill.takeFiles(store, id[, nowMs]) -> Promise<{ files, refused } | null>   the logo and brief file that
+                                                came with the details (IndexedDB, RevampStore), read once and checked
+                                                again with this page's own rules
+
+   FILES (the owner, 5 Nov 2026: "don't forget to add attachment option in the AI Bot"). A logo picture and a brief
+   PDF attached to "start a new event …" on another page come too. The prefill names them (p.files: [{ n, role:
+   'logo'|'brief', name, type, size }]); the files themselves wait in this browser's IndexedDB under
+   aihandoff:<id> (etb2b-assistant.js handoffFiles). apply() keeps the ones this page's own boxes take (a PNG, WEBP
+   or SVG logo of up to 5 MB; a PDF of up to 15 MB), names them in the sentence over step 1, names any it cannot
+   use, and then tells the page (window event 'revamp:prefill-applied' { id, files }). The assistant then puts each
+   file into the page's own input (#f-logo, #gb-doc) once the form showing it is on screen, so the page's own checks
+   and messages run. A brief file means the "Generate from a brief" path; nothing is generated until the person
+   presses Generate, and that path makes no separate hero picture.
 
    A HERO PICTURE (the owner, 3 Nov 2026). An event ETB2B AI starts also asks for a first hero picture
    (p.hero = { subject }: the person's own words for it, or '' for the event's field, which its portal sets, and
@@ -39,13 +52,20 @@
 
    ES5 on purpose (var, function, no arrows): the page serves it as it is, with no build step. */
 (function (root, factory) {
-  var api = factory();
+  var api = factory(root);
   if (typeof module === 'object' && module && module.exports) module.exports = api;
   if (root) root.RevampPrefill = api;
-})(typeof window !== 'undefined' ? window : null, function () {
+})(typeof window !== 'undefined' ? window : null, function (root) {
   'use strict';
 
   var PREFIX = 'revamp.createEvent.prefill.v1.';
+  /* the files that came with the details (etb2b-assistant.js handoffFiles writes them, takeFiles reads them) */
+  var FILES_PREFIX = 'aihandoff:', FILES_INDEX = 'aihandoff:index';
+  /* what this page's own boxes take (create-event.html #f-logo and #gb-doc, BRIEF_DOC_MAX_BYTES); the assistant
+     keeps the same rules on the page the files come from, and dash-bot-handoff.test.js holds the two together */
+  var LOGO_TYPES = ['image/png', 'image/webp', 'image/svg+xml'], LOGO_MAX = 5 * 1024 * 1024;
+  var BRIEF_TYPES = ['application/pdf'], BRIEF_DOC_MAX = 15 * 1024 * 1024;
+  var FILE_NAME_MAX = 120;
   /* long enough to read the bot's card and click through; short enough that an old one never surprises anyone */
   var MAX_AGE_MS = 10 * 60 * 1000;
   /* one browser writes and reads, so its clock agrees with itself; a time well ahead of now is a broken value */
@@ -168,13 +188,25 @@
       venue: line(b.venue, TEXT_MAX), city: line(b.city, TEXT_MAX)
     };
 
-    /* "Generate from a brief" needs something to generate from; the person's brief or link means that path */
+    /* the files named with the details: one logo and one brief file, each one this page's own box takes */
+    var files = cleanFileList(p.files);
+    var briefFile = false;
+    files.kept.forEach(function (f) { if (f.role === 'brief') briefFile = true; });
+    /* "Generate from a brief" needs something to generate from; the person's brief, link or brief file means that path */
     var brief = { text: briefText(br.text), current: httpsUrl(br.current), previous: httpsUrl(br.previous) };
-    var hasBrief = !!(brief.text || brief.current || brief.previous);
+    var hasBrief = !!(brief.text || brief.current || brief.previous || briefFile);
     var method = p.method === 'brief' || p.method === 'template' ? p.method : '';
     if (method === 'brief' && !hasBrief) method = '';
     if (!method && hasBrief) method = 'brief';
     if (method !== 'brief') brief = { text: '', current: '', previous: '' };
+    /* a brief file belongs to the brief path; on the template path it is named as not used */
+    if (method !== 'brief') {
+      files.kept = files.kept.filter(function (f) {
+        if (f.role !== 'brief') return true;
+        files.refused.push({ role: 'brief', name: f.name, why: 'path' });
+        return false;
+      });
+    }
     var portal = typeof p.portal === 'string' && /^[a-z0-9][a-z0-9-]{0,39}$/.test(p.portal) ? p.portal : '';
     /* the hero picture asked for: its subject one line of the person's words, or '' (the event's field and place);
        none on the brief path, which makes the site's pictures itself */
@@ -200,8 +232,93 @@
       v: 1, from: 'etb2b-ai', at: at, prefillId: id,
       turnId: typeof p.turnId === 'string' && ID_RE.test(p.turnId) ? p.turnId : '',
       category: category, method: method, portal: portal,
-      basics: basics, brief: brief, hero: hero, dropped: dropped
+      basics: basics, brief: brief, hero: hero, dropped: dropped,
+      files: { kept: files.kept, refused: files.refused }
     };
+  }
+
+  /* ---------- the files that came with the details ---------- */
+  function fileName(v) { var s = line(String(v == null ? '' : v).split(/[\\/]/).pop(), FILE_NAME_MAX); return s || 'file'; }
+  function extOf(name) { var m = /\.([a-z0-9]{1,5})$/i.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; }
+  /* the type this page's box would see: the one given, else the name's ending (an SVG often has none) */
+  function fileType(t, name) {
+    t = typeof t === 'string' ? t.toLowerCase() : '';
+    if (t) return t;
+    return { png: 'image/png', webp: 'image/webp', svg: 'image/svg+xml', pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg' }[extOf(name)] || '';
+  }
+  /* '' when this page's own box takes a file of this role, type and size, else why not ('type' | 'size') */
+  function fileFits(role, type, size) {
+    var types = role === 'logo' ? LOGO_TYPES : BRIEF_TYPES, max = role === 'logo' ? LOGO_MAX : BRIEF_DOC_MAX;
+    if (types.indexOf(type) === -1) return 'type';
+    if (!(size > 0) || size > max) return 'size';
+    return '';
+  }
+  /* [{ n, role, name, type, size }] as the assistant names them -> { kept, refused }: at most one of each role */
+  function cleanFileList(list) {
+    var kept = [], refused = [], seen = {};
+    (Array.isArray(list) ? list : []).slice(0, 4).forEach(function (f) {
+      if (!plain(f) || (f.role !== 'logo' && f.role !== 'brief') || seen[f.role]) return;
+      seen[f.role] = true;
+      var name = fileName(f.name), type = fileType(f.type, f.name), size = typeof f.size === 'number' && isFinite(f.size) ? f.size : 0;
+      var why = fileFits(f.role, type, size);
+      if (why) { refused.push({ role: f.role, name: name, why: why }); return; }
+      kept.push({ n: typeof f.n === 'number' && f.n >= 1 && f.n <= 4 ? Math.floor(f.n) : 0, role: f.role, name: name, type: type, size: size });
+    });
+    return { kept: kept, refused: refused };
+  }
+  function isBlob(b) {
+    if (!b || typeof b !== 'object') return false;
+    if (typeof Blob !== 'undefined' && b instanceof Blob) return true;
+    return typeof b.size === 'number' && typeof b.slice === 'function';
+  }
+  /* The index of what is kept ({ v:1, keys: { id: at } }), so a file nobody came for is removed after ten minutes */
+  function sweepFiles(store, now, take) {
+    return Promise.resolve(store.get(FILES_INDEX)).then(null, function () { return null; }).then(function (ix) {
+      var keys = plain(ix) && plain(ix.keys) ? ix.keys : {}, keep = {}, gone = [];
+      Object.keys(keys).forEach(function (k) {
+        var at = +keys[k];
+        if (k !== take && isFinite(at) && now - at <= MAX_AGE_MS && at - now <= SKEW_MS) keep[k] = at; else if (k !== take) gone.push(k);
+      });
+      return Promise.all(gone.map(function (k) { return Promise.resolve(store.remove(FILES_PREFIX + k)).then(null, function () { return null; }); }))
+        .then(function () { return store.put(FILES_INDEX, { v: 1, keys: keep }); });
+    }).then(null, function () { return null; });
+  }
+  /* The logo and brief file kept for this id, read once (the record is removed whatever it holds), checked again
+     with this page's own rules: { files: [{ role, name, type, size, blob }], refused: [{ role, name, why }] }, or
+     null when there is none, it is older than ten minutes, or the store cannot be read. store: RevampStore. */
+  function takeFiles(store, id, now) {
+    if (!store || typeof store.get !== 'function' || typeof store.remove !== 'function' || typeof store.put !== 'function') return Promise.resolve(null);
+    if (typeof id !== 'string' || !ID_RE.test(id)) return Promise.resolve(null);
+    now = typeof now === 'number' && isFinite(now) ? now : Date.now();
+    var key = FILES_PREFIX + id;
+    return Promise.resolve(store.get(key)).then(function (rec) {
+      return Promise.resolve(store.remove(key)).then(null, function () { return null; }).then(function () {
+        return sweepFiles(store, now, id);
+      }).then(function () {
+        if (!plain(rec) || rec.v !== 1 || typeof rec.at !== 'number' || now - rec.at > MAX_AGE_MS || rec.at - now > SKEW_MS || !Array.isArray(rec.files)) return null;
+        var files = [], refused = [], seen = {};
+        rec.files.slice(0, 4).forEach(function (f) {
+          if (!plain(f) || (f.role !== 'logo' && f.role !== 'brief') || seen[f.role] || !isBlob(f.blob)) return;
+          seen[f.role] = true;
+          var name = fileName(f.name), type = fileType(f.type || f.blob.type, f.name), size = f.blob.size;
+          var why = fileFits(f.role, type, size);
+          if (why) { refused.push({ role: f.role, name: name, why: why }); return; }
+          files.push({ role: f.role, name: name, type: type, size: size, blob: f.blob });
+        });
+        return { files: files, refused: refused };
+      });
+    }, function () { return null; });
+  }
+  /* tells the page's assistant which files to put into its boxes (a browser only; nothing in node) */
+  function announce(id, files) {
+    if (!root || typeof root.dispatchEvent !== 'function') return;
+    var detail = { id: id, files: files.map(function (f) { return { role: f.role, name: f.name }; }) };
+    var ev = null;
+    try { ev = new root.CustomEvent('revamp:prefill-applied', { detail: detail }); } catch (e) {
+      try { ev = root.document.createEvent('CustomEvent'); ev.initCustomEvent('revamp:prefill-applied', false, false, detail); } catch (e2) { ev = null; }
+    }
+    if (!ev) return;
+    try { root.dispatchEvent(ev); } catch (e) { /* a listener's own trouble never stops the page */ }
   }
 
   /* every other key of this kind that can no longer be used: older than ten minutes, or unreadable */
@@ -358,7 +475,23 @@
     /* the type is still to be chosen, as a first choice; picking it goes straight on to the brief form */
     else if (brief) { S.creationMethod = 'brief'; S.step1Phase = 'category'; thenDetails = true; }
     else S.step1Phase = 'category';
-    return { fields: fields, values: values, unused: unused, phase: S.step1Phase, thenDetails: thenDetails, notes: notes };
+
+    /* The files that came with the details: a logo on any path, a brief file on the brief path. They are not put in
+       the draft here: the page's own boxes take them (with their own checks) once its form is on screen. */
+    var pf = plain(p.files) ? p.files : {};
+    var keptFiles = [], refusedFiles = [];
+    (Array.isArray(pf.kept) ? pf.kept : []).forEach(function (f) {
+      if (!plain(f) || (f.role !== 'logo' && f.role !== 'brief')) return;
+      if (f.role === 'brief' && !brief) { refusedFiles.push({ role: 'brief', name: fileName(f.name), why: 'path' }); return; }
+      keptFiles.push({ role: f.role, name: fileName(f.name) });
+    });
+    (Array.isArray(pf.refused) ? pf.refused : []).forEach(function (f) {
+      if (plain(f) && (f.role === 'logo' || f.role === 'brief')) refusedFiles.push({ role: f.role, name: fileName(f.name), why: f.why === 'path' || f.why === 'size' ? f.why : 'type' });
+    });
+    var out = { fields: fields, values: values, unused: unused, phase: S.step1Phase, thenDetails: thenDetails, notes: notes,
+      files: { kept: keptFiles, refused: refusedFiles } };
+    if (typeof p.prefillId === 'string' && ID_RE.test(p.prefillId)) announce(p.prefillId, keptFiles);
+    return out;
   }
 
   /* "IP event on ETCIO · QA Dashbot Expo · 12 Feb 2027 · Jio World Centre, Mumbai", or '' with no values to show.
@@ -383,11 +516,29 @@
     return words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1];
   }
 
+  /* what the sentence over step 1 says about the files: where the kept ones go, and why any other was not used */
+  function filesText(res) {
+    var f = plain(res.files) ? res.files : {}, kept = Array.isArray(f.kept) ? f.kept : [], refused = Array.isArray(f.refused) ? f.refused : [];
+    var logo = null, doc = null, out = '';
+    kept.forEach(function (x) { if (plain(x) && x.role === 'logo') logo = x; else if (plain(x) && x.role === 'brief') doc = x; });
+    var where = res.phase === 'details' ? 'on the form below' : 'on the details form';
+    if (logo && doc) out += ' Your logo “' + logo.name + '” and your brief document “' + doc.name + '” go into their boxes ' + where + '.';
+    else if (logo) out += ' Your logo “' + logo.name + '” goes into its box ' + where + '.';
+    else if (doc) out += ' Your brief document “' + doc.name + '” goes into the Overview document box ' + where + '.';
+    refused.forEach(function (x) {
+      if (!plain(x)) return;
+      if (x.role === 'logo') out += ' The logo “' + x.name + '” wasn’t used: Create Event takes a PNG, WEBP or SVG logo of up to 5 MB.';
+      else if (x.why === 'path') out += ' The brief document “' + x.name + '” wasn’t used: it is read only when the site is generated from a brief.';
+      else out += ' The brief document “' + x.name + '” wasn’t used: the Overview document takes a PDF of up to 15 MB.';
+    });
+    return out;
+  }
+
   function summary(res) {
     res = res || {};
     var fields = res.fields || [], notes = res.notes || [], left = describe(res.unused || []);
     /* said plainly, not as a task: some cannot be typed in at all (a client on an event type that has none) */
-    var notUsed = left ? ' Not used from your message: ' + left + '.' : '';
+    var notUsed = (left ? ' Not used from your message: ' + left + '.' : '') + filesText(res);
     if (!fields.length) return 'ETB2B AI started a new event for you, but nothing in your message could be filled in. Choose its type to begin.' + notUsed;
     /* the values themselves (the type picker and the method screen do not show them), or, from a caller without
        them, the fields' names */
@@ -440,6 +591,7 @@
 
   return {
     PREFIX: PREFIX, MAX_AGE_MS: MAX_AGE_MS, ID_RE: ID_RE, DATE_MODES: DATE_MODES, DEFAULT_DATE_MODE: DEFAULT_DATE_MODE, SUBJECT_MAX: SUBJECT_MAX,
-    take: take, decide: decide, apply: apply, describe: describe, summary: summary, heroLine: heroLine
+    FILES_PREFIX: FILES_PREFIX, FILES_INDEX: FILES_INDEX, LOGO_TYPES: LOGO_TYPES, LOGO_MAX: LOGO_MAX, BRIEF_TYPES: BRIEF_TYPES, BRIEF_DOC_MAX: BRIEF_DOC_MAX,
+    take: take, decide: decide, apply: apply, describe: describe, summary: summary, heroLine: heroLine, takeFiles: takeFiles
   };
 });
