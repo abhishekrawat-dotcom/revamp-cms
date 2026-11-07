@@ -1,7 +1,8 @@
 /* Oneworld's side of the platform's "Background & logo" uploads on Promotions → Social posts
-   (promo-social-studio.html). The platform's own code is copied into promo-studio/social-studio.js: the upload strip
-   in renderEventDetail and uploadPsd, uploadBg and uploadLogo (index.html:1929-1942, 1997-2020). Their requests
-   reach this file through oneworld-social.js's api():
+   (promo-social-studio.html). The platform's strip and its uploadPsd, uploadBg and uploadLogo (index.html:1929-1942,
+   1997-2020) are copied into promo-studio/social-studio.js; since UX-128, UX-129 and UX-131 the strip is drawn here
+   (owStripHtml, patch S37) and its uploads are this file's owUploadPsd, owUploadBg and owUploadLogo, which keep the
+   platform's requests and answers:
 
      /api/psd…                  → OWSArt.psd(o)
      /api/background…&slot=n    → OWSArt.background(n, o)
@@ -24,6 +25,13 @@
        what is stored (decorate), so a PSD that cleared a PSD-made logo turns the Logo pill off.
      - OWSArt.picture(file): the layout editor's "Upload a picture" beside an Image or Frame element's Source box
        (owner decision O2 = c). The picture is kept in this event's own folder, so the image proxy draws it.
+
+   The strip (UX-128, UX-129, UX-131): "Pictures for your posts", in plain words. Its pills are buttons the keyboard
+   reaches, each opening its own file chooser. The logo line says which logo the posts use: the one uploaded here,
+   the design file's, or else the site's own logo unit (the server's siteLogoOf), never an empty square. A design file
+   that brings a logo asks before it replaces the logo the posts use. "Every post starts on" is the background every
+   card and newly opened post uses ("Use for all posts", POST …/art/default). An upload's status ends with what
+   happened once the cards are drawn again ("Logo updated on all posts"), never a lingering "refreshing…".
 
    oneworld-social.js calls decorate(OWS.art) each time the event page is drawn; this file rereads the art and
    calls it again after every upload and Remove. Texts from the server are written with textContent. ES5, like
@@ -49,20 +57,21 @@
   var PSD_TOO_LARGE = 'This PSD is too large to read in the browser. Save a flattened copy of at most 64 megapixels and 16,384 px a side (8,000 × 8,000 px fits), or upload the background and logo as pictures.';
   var PSD_UNREADABLE = 'This PSD could not be read. Save it again from Photoshop with Maximize Compatibility on, or upload the background and logo as pictures.';
   var PSD_READER_MISSING = 'The PSD reader did not load. Reload the page, then upload the PSD again.';
-  var NOT_SENT = 'The upload did not reach Oneworld. Check the connection, then try again.';
+  var NOT_SENT = 'The upload did not reach EventSphere. Check the connection, then try again.';
   var PICTURE_FAILED = 'The picture could not be uploaded. Try again.';
   var PICTURE_EMPTY = 'That file is empty. Choose the picture again.';
 
-  /* The five pills of the platform's strip (index.html:1934-1940), in its order. The PSD pill has no id: it is the
-     label around the .psd file input. */
-  var BG_WHY = 'Posts go back to the template\'s own background.';
+  /* The strip's four background pills (the platform's PSD and BG 1-3, index.html:1934-1939, in its order), and the
+     logo, which has a line of its own (logoLine). Each pill is a button with its own file input (pick). */
+  var BG_WHY = 'Posts go back to the design\'s own background.';
   var SLOTS = [
-    { slot: 'background', id: '', name: 'the PSD background', ask: 'Remove the PSD background?', why: BG_WHY, done: 'PSD background removed.' },
-    { slot: 'bg1', id: 'slot-bg1', name: 'background 1', ask: 'Remove background 1?', why: BG_WHY, done: 'Background 1 removed.' },
-    { slot: 'bg2', id: 'slot-bg2', name: 'background 2', ask: 'Remove background 2?', why: BG_WHY, done: 'Background 2 removed.' },
-    { slot: 'bg3', id: 'slot-bg3', name: 'background 3', ask: 'Remove background 3?', why: BG_WHY, done: 'Background 3 removed.' },
-    { slot: 'logoUnit', id: 'slot-logo', name: 'the logo', ask: 'Remove the logo?', why: 'Posts show the event\'s name in type instead.', done: 'Logo removed.' }
+    { slot: 'background', id: 'slot-psd', input: 'owInPsd', text: 'Design file (.psd)', name: 'the design file\'s background', ask: 'Remove the design file\'s background?', why: BG_WHY, done: 'The design file\'s background was removed.' },
+    { slot: 'bg1', id: 'slot-bg1', input: 'owInBg1', text: 'Background 1', name: 'background 1', ask: 'Remove background 1?', why: BG_WHY, done: 'Background 1 removed.' },
+    { slot: 'bg2', id: 'slot-bg2', input: 'owInBg2', text: 'Background 2', name: 'background 2', ask: 'Remove background 2?', why: BG_WHY, done: 'Background 2 removed.' },
+    { slot: 'bg3', id: 'slot-bg3', input: 'owInBg3', text: 'Background 3', name: 'background 3', ask: 'Remove background 3?', why: BG_WHY, done: 'Background 3 removed.' }
   ];
+  var LOGO = { slot: 'logoUnit', name: 'the logo you uploaded', ask: 'Remove the logo you uploaded?', done: 'Logo removed.',
+    why: function () { return siteHasLogo() ? 'Your posts go back to your site’s logo.' : 'Your posts show the event’s name in type instead.'; } };
 
   /* ---------- requests ---------- */
 
@@ -241,7 +250,10 @@
     return bytesOf(file).then(function (buf) {
       return lib.psdUnits(buf, { maxEdge: LIMITS.edge });
     }).then(function (units) {
-      return sendUnits(file, units);
+      return mayTakePsdLogo(units).then(function (yes) {
+        if (!yes && units) units = Object.assign({}, units, { logo: null });
+        return sendUnits(file, units);
+      });
     }, function (e) {
       return answer(400, { error: e && e.name === 'PsdTooLarge' ? PSD_TOO_LARGE : PSD_UNREADABLE });
     }).then(null, function () { return answer(500, { error: UPLOAD_FAILED }); });
@@ -320,26 +332,34 @@
     while (s && s.nodeType !== 1) s = s.nextSibling;
     return s;
   }
-  function labelOf(def) {
-    if (def.id) return document.getElementById(def.id);
-    var inputs = document.getElementsByTagName('input');
-    for (var i = 0; i < inputs.length; i++) {
-      if (inputs[i].getAttribute('accept') !== '.psd') continue;
-      var n = inputs[i].parentNode;
-      while (n && n.nodeType === 1 && !hasClass(n, 'slot')) n = n.parentNode;
-      return hasClass(n, 'slot') ? n : null;
-    }
-    return null;
-  }
-  function setStatus(text) {
+  function labelOf(def) { return def.id ? document.getElementById(def.id) : null; }
+  /* the status line: each new sentence replaces the last; a sentence written when a redraw ends (after) is dropped
+     when another was written meanwhile */
+  var statusSeq = 0;
+  function setStatus(text, act) {
     var el = document.getElementById('psdStatus');
-    if (el) el.textContent = text;
+    statusSeq++;
+    if (!el) return statusSeq;
+    el.textContent = text;
+    if (act) {
+      var b = document.createElement('button');
+      b.setAttribute('type', 'button');
+      b.className = 'btn alt sm ow-status-act';
+      b.textContent = act.text;
+      b.onclick = act.run;
+      el.appendChild(document.createTextNode(' '));
+      el.appendChild(b);
+    }
+    return statusSeq;
   }
 
   /* Every pill's "on" from what is stored (fidelity 7), and a ✕ right after each filled one. The ✕ sits outside
      its label, so a click on it never opens the file picker. */
   function decorate(art) {
     if (!art || typeof art !== 'object') return;
+    wirePills();
+    logoLine(art);
+    useBgMenu(art);
     SLOTS.forEach(function (def) {
       var label = labelOf(def);
       if (!label || !label.parentNode) return;
@@ -367,10 +387,10 @@
     var opts = { ok: 'Remove', danger: true };
     if (typeof uiConfirm === 'function') {
       var p;
-      try { p = uiConfirm(def.ask, def.why, opts); } catch (e) { return Promise.resolve(false); }
+      try { p = uiConfirm(def.ask, typeof def.why === 'function' ? def.why() : def.why, opts); } catch (e) { return Promise.resolve(false); }
       return Promise.resolve(p).then(function (v) { return v === true; }, function () { return false; });
     }
-    return Promise.resolve(!!(window.confirm && window.confirm(def.ask + '\n\n' + def.why)));
+    return Promise.resolve(!!(window.confirm && window.confirm(def.ask + '\n\n' + (typeof def.why === 'function' ? def.why() : def.why))));
   }
 
   /* Remove: asked first; the slot is cleared on the server (the picture itself stays in Storage while the event
@@ -400,7 +420,7 @@
         }
         keep(next);
         decorate(next);
-        setStatus(def.done);
+        setStatus(def.done + (def.slot === 'logoUnit' ? (siteHasLogo() ? ' Your posts use your site’s logo again.' : ' Your posts show the event’s name.') : ''));
         /* then what is stored, which also catches a change someone else made meanwhile */
         return reread().then(function () {
           redraw();
@@ -413,5 +433,247 @@
     });
   }
 
-  window.OWSArt = { psd: psd, background: background, logo: logo, decorate: decorate, picture: picture };
+  /* ---------- the strip (UX-128, UX-129, UX-131) ---------- */
+
+  function esc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+  function artNow() { return window.OWS && window.OWS.art && typeof window.OWS.art === 'object' ? window.OWS.art : {}; }
+  /* the site's own logo unit for each theme of post, as the catalog says (promo-social.js siteLogoOf) */
+  function siteLogo() {
+    var ev = typeof CAT !== 'undefined' && CAT && CAT.event ? CAT.event : null, s = ev && ev.siteLogo;
+    return { dark: !!(s && s.dark), light: !!(s && s.light) };
+  }
+  function siteHasLogo() { var s = siteLogo(); return s.dark || s.light; }
+  /* which logo the posts use, in words */
+  function logoWords(art) {
+    var u = art.units && art.units.logoUnit;
+    if (art.logoUnit) return u && u.from === 'psd' ? 'Using the logo from your design file' : 'Using the logo you uploaded';
+    if (!siteHasLogo()) return 'No logo yet: your posts show the event’s name';
+    var s = siteLogo();
+    return 'Using your site’s logo' + (s.dark && s.light ? '' : s.dark ? ' (on dark posts; light ones show the event’s name)' : ' (on light posts; dark ones show the event’s name)');
+  }
+  /* the background choices: the design's own, the design file's when one is uploaded, and Background 1-3 when uploaded.
+     With no design file the design's own is '' (the platform's own default), so a layout keeps the key it had. */
+  function bgChoices(art) {
+    var out = [{ v: art.background ? 'design' : '', t: 'The design’s own background' }];
+    if (art.background) out.push({ v: '', t: 'Design file (.psd)' });
+    ['1', '2', '3'].forEach(function (n) { if (art['bg' + n]) out.push({ v: n, t: 'Background ' + n }); });
+    return out;
+  }
+  /* a stored choice as one of today's: 'design' with no design file is the same as '' */
+  function bgValue(art, v) {
+    v = typeof v === 'string' ? v : '';
+    if (v === 'design' && !art.background) return '';
+    return bgChoices(art).some(function (c) { return c.v === v; }) ? v : '';
+  }
+  function bgLabel(art, v) {
+    var c = bgChoices(art).filter(function (x) { return x.v === bgValue(art, v); })[0];
+    return c ? c.t : 'The design’s own background';
+  }
+  /* what the posts use now, in one sentence */
+  function bgPhrase(art, v) {
+    v = bgValue(art, v);
+    return /^[123]$/.test(v) ? 'Background ' + v : v === '' && art.background ? 'the design file’s background' : 'the design’s own background';
+  }
+  function summary(art) {
+    return 'Your posts use ' + bgPhrase(art, art.useBg) + ' and ' +
+      (art.logoUnit ? ((art.units && art.units.logoUnit && art.units.logoUnit.from === 'psd') ? 'the logo from your design file' : 'the logo you uploaded') :
+        siteHasLogo() ? 'your site’s logo' : 'the event’s name in place of a logo') + '.';
+  }
+  /* The strip, drawn into the event page by renderEventDetail (patch S37) as markup of fixed words only (the summary
+     is made of this file's own words); decorate, called right after, wires its buttons, inputs and menu and fills the
+     logo line and the menu from the art. */
+  function stripHtml(assets) {
+    var art = assets && typeof assets === 'object' ? assets : {};
+    var pills = SLOTS.map(function (def) {
+      return '<button type="button" class="slot' + (art[def.slot] ? ' on' : '') + '" id="' + def.id + '">' + esc(def.text) + '</button>' +
+        '<input type="file" id="' + def.input + '" accept="' + (def.slot === 'background' ? '.psd' : 'image/*') + '" hidden>';
+    }).join('');
+    return '<div class="psd ow-strip">' +
+      '<div class="ic" aria-hidden="true">◧</div>' +
+      '<div class="ow-strip-b">' +
+        '<div class="t">Pictures for your posts <span class="faint" style="font-weight:400">· your event details fill in automatically</span></div>' +
+        '<div class="h" id="psdStatus" role="status" aria-live="polite">' + esc(summary(art)) + '</div>' +
+        '<div class="assets-slots" role="group" aria-label="Backgrounds">' + pills + '</div>' +
+        '<div class="ow-strip-row" id="owLogoLine"></div>' +
+        '<div class="ow-strip-row"><label for="owUseBgSel">Every post starts on</label><select id="owUseBgSel"></select></div>' +
+      '</div></div>';
+  }
+  /* each pill opens its own file chooser; each input uploads what was chosen */
+  function wirePills() {
+    SLOTS.forEach(function (def) {
+      var b = document.getElementById(def.id), inp = document.getElementById(def.input);
+      if (b) b.onclick = function () { pick(def.input); };
+      if (inp) inp.onchange = def.slot === 'background' ? function () { uploadPsdFrom(inp); } : function () { uploadBgFrom(inp, def.slot.slice(2)); };
+    });
+  }
+  /* "Logo · Using your site's logo · Replace" (UX-129), with Remove for a logo uploaded here */
+  function logoLine(art) {
+    var el = document.getElementById('owLogoLine');
+    if (!el) return;
+    el.textContent = '';
+    var t = document.createElement('span');
+    t.className = 'ow-logo-t';
+    t.textContent = 'Logo · ' + logoWords(art);
+    el.appendChild(t);
+    var rep = document.createElement('button');
+    rep.setAttribute('type', 'button');
+    rep.className = 'btn alt sm';
+    rep.id = 'slot-logo';
+    rep.textContent = art.logoUnit || siteHasLogo() ? 'Replace' : 'Upload a logo';
+    rep.setAttribute('aria-label', (art.logoUnit || siteHasLogo() ? 'Replace the logo' : 'Upload a logo') + ' for your posts');
+    rep.onclick = function () { pick('owInLogo'); };
+    el.appendChild(rep);
+    if (art.logoUnit) {
+      var rm = document.createElement('button');
+      rm.setAttribute('type', 'button');
+      rm.className = 'btn ghost sm';
+      rm.textContent = siteHasLogo() ? 'Use the site’s logo' : 'Remove';
+      rm.setAttribute('aria-label', siteHasLogo() ? 'Remove the uploaded logo and use the site’s logo' : 'Remove the logo');
+      rm.onclick = function () { remove(LOGO, rm); };
+      el.appendChild(rm);
+    }
+    var inp = document.getElementById('owInLogo');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.setAttribute('type', 'file');
+      inp.setAttribute('accept', 'image/*');
+      inp.setAttribute('hidden', '');
+      inp.id = 'owInLogo';
+      inp.onchange = function () { uploadLogoFrom(inp); };
+    }
+    el.appendChild(inp);
+  }
+  function useBgMenu(art) {
+    var sel = document.getElementById('owUseBgSel');
+    if (!sel) return;
+    var v = bgValue(art, art.useBg);
+    sel.textContent = '';
+    bgChoices(art).forEach(function (c) {
+      var o = document.createElement('option');
+      o.value = c.v;
+      o.textContent = c.t;
+      if (c.v === v) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.value = v;
+    sel.onchange = function () { setUseBg(sel.value); };
+  }
+  function pick(id) { var i = document.getElementById(id); if (i && typeof i.click === 'function') i.click(); }
+
+  /* ---------- the uploads, with a result to end on ---------- */
+
+  function bodyOf(r) {
+    return Promise.resolve(r && typeof r.text === 'function' ? r.text() : '').then(function (t) {
+      var j = null;
+      try { j = JSON.parse(t); } catch (e) { j = null; }
+      return { status: r ? r.status : 0, json: j && typeof j === 'object' ? j : null };
+    }, function () { return { status: r ? r.status : 0, json: null }; });
+  }
+  /* the cards drawn again; then, unless something else was said meanwhile, what happened */
+  function afterRedraw(drawing, done) {
+    var mine = setStatus(drawing);
+    redraw();
+    var p = window.OWS && window.OWS.thumbsP ? window.OWS.thumbsP : Promise.resolve();
+    return Promise.resolve(p).then(null, function () { /* a card that fails says so on its own */ }).then(function () {
+      if (mine === statusSeq) setStatus(done);
+    });
+  }
+  function failed(got, fallback) {
+    var why = got.json && typeof got.json.error === 'string' && got.json.error ? got.json.error : fallback;
+    setStatus('Upload failed: ' + why);
+  }
+  function fileFrom(inp) {
+    var f = inp && inp.files && inp.files[0];
+    if (inp) inp.value = '';                 // the same file can be chosen again
+    return f || null;
+  }
+  function uploadPsdFrom(inp) {
+    var f = fileFrom(inp);
+    if (!f) return Promise.resolve();
+    setStatus('Reading the design file… A large one can take a minute.');
+    return psd({ body: f }).then(bodyOf).then(function (got) {
+      if (!got.json) { failed(got, got.status === 413 ? 'the design file is over 120 MB. Save a flattened copy and upload that.' : UPLOAD_FAILED); return; }
+      if (!got.json.ok) { failed(got, UPLOAD_FAILED); return; }
+      var j = got.json, parts = [];
+      if (j.background) parts.push('background');
+      if (j.logoUnit) parts.push('logo');
+      if (!parts.length) {
+        setStatus('The design file was read, but it has no background or logo your posts can use. Upload them as pictures instead.');
+        redraw();
+        return;
+      }
+      /* its background is on the posts only while they start on the design file's: with another chosen for all
+         posts (Use for all posts) it waits in the menu, and the status says so rather than claiming it is used */
+      var art = artNow(), waiting = j.background && bgValue(art, art.useBg) !== '' ? 'Its background is ready: choose “Design file (.psd)” under “Every post starts on” to use it on all posts.' : '';
+      if (waiting) parts = parts.filter(function (x) { return x !== 'background'; });
+      if (!parts.length) { setStatus('Design file read. ' + waiting); return; }
+      var what = parts.join(' and ');
+      return afterRedraw('Design file read. Drawing your posts again with its ' + what + '…',
+        'The design file’s ' + what + (parts.length > 1 ? ' are' : ' is') + ' now on all posts.' + (waiting ? ' ' + waiting : ''));
+    });
+  }
+  function uploadBgFrom(inp, n) {
+    var f = fileFrom(inp);
+    if (!f) return Promise.resolve();
+    setStatus('Uploading background ' + n + '…');
+    return background(n, { body: f }).then(bodyOf).then(function (got) {
+      if (!got.json || !got.json.ok) { failed(got, UPLOAD_FAILED); return; }
+      var art = artNow();
+      if (art.useBg === String(n)) {
+        return afterRedraw('Background ' + n + ' uploaded. Drawing your posts again…', 'Background ' + n + ' is now on all posts.');
+      }
+      /* the cards are not drawn again: they use the background every post starts on, which this is not (yet) */
+      setStatus('Background ' + n + ' uploaded (' + got.json.width + '×' + got.json.height + ').',
+        { text: 'Use it for all posts', run: function () { setUseBg(String(n)); } });
+    });
+  }
+  function uploadLogoFrom(inp) {
+    var f = fileFrom(inp);
+    if (!f) return Promise.resolve();
+    setStatus('Uploading the logo…');
+    return logo({ body: f }).then(bodyOf).then(function (got) {
+      if (!got.json || !got.json.ok) { failed(got, UPLOAD_FAILED); return; }
+      return afterRedraw('Logo uploaded. Drawing your posts again with it…', 'Logo updated on all posts.');
+    });
+  }
+  /* "Use for all posts": the background every post starts on. Resolves the art, or null when it was refused. */
+  function setUseBg(v) {
+    var art = artNow(), want = bgValue(art, v);
+    setStatus('Saving the background for all posts…');
+    return send('/api/promo/social/art/default', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ eventId: eventId(), bg: want }) }).then(function (got) {
+      if (!accepted(got)) {
+        setStatus('The background could not be set for all posts: ' + reasonOf(got, 'please try again.'));
+        useBgMenu(artNow());
+        return null;
+      }
+      keep(got.json);
+      decorate(got.json);
+      var ph = bgPhrase(got.json, want), label = ph.charAt(0).toUpperCase() + ph.slice(1);
+      return afterRedraw(label + ' is used for all posts. Drawing them again…', label + ' is now on all posts.').then(function () { return got.json; });
+    });
+  }
+
+  /* A design file with a logo of its own asks before that logo replaces the one the posts use now: the logo uploaded
+     here, or the site's own (UX-129). A design file's logo replaces an earlier design file's without asking. Resolves
+     true when the design file's logo may go up. */
+  function mayTakePsdLogo(units) {
+    if (!units || !units.logo || !units.logo.blob) return Promise.resolve(true);
+    var art = artNow(), cur = art.units && art.units.logoUnit, ask = null;
+    if (art.logoUnit && cur && cur.from === 'upload') {
+      ask = ['Replace the logo you uploaded?', 'This design file has a logo of its own. Use it on your posts in place of the logo you uploaded?', 'Keep my logo'];
+    } else if (!art.logoUnit && siteHasLogo()) {
+      ask = ['Use the design file’s logo?', 'Your posts use your site’s logo now. This design file has a logo of its own: use it on your posts instead?', 'Keep the site’s logo'];
+    }
+    if (!ask || typeof uiConfirm !== 'function') return Promise.resolve(true);
+    var p;
+    try { p = uiConfirm(ask[0], ask[1], { ok: 'Use the design file’s logo', cancel: ask[2] }); } catch (e) { return Promise.resolve(false); }
+    return Promise.resolve(p).then(function (v) { return v === true; }, function () { return false; });
+  }
+
+  window.OWSArt = { psd: psd, background: background, logo: logo, decorate: decorate, picture: picture,
+    stripHtml: stripHtml, uploadPsd: uploadPsdFrom, uploadBg: uploadBgFrom, uploadLogo: uploadLogoFrom, setUseBg: setUseBg,
+    bgChoices: bgChoices, bgValue: bgValue, bgLabel: bgLabel, bgPhrase: bgPhrase, summary: summary, logoWords: logoWords, siteHasLogo: siteHasLogo };
+  /* the copied renderEventDetail calls it by name (patch S37) */
+  window.owStripHtml = stripHtml;
 })();

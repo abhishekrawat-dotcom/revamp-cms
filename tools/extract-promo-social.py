@@ -20,6 +20,8 @@ declarations replace the platform's of the same name:
   promo-studio/oneworld-social.js          the request helper on Oneworld's routes and sign-in, the event this
                                            page is for, the browser drawing, the cards and previews, the guards
   promo-studio/oneworld-social-art.js      the PSD, background and logo uploads, drawn and sized in the browser
+  promo-studio/oneworld-social-easy.js     the editor's easy panel (Words, Pictures, People, Caption), typing on the
+                                           post itself, and Advanced layout around the platform's own tools
   promo-studio/oneworld-social-caption.js  the Caption tab, Write with AI and Suggest headlines (loads last)
 
 Left out on purpose: generateAll (its "Generate all" button is never shown once a product is chosen), the
@@ -62,11 +64,14 @@ JS = '\n\n'.join('/* ===== from the platform\'s index.html: %s ===== */\n%s' % (
 TEXT = {'code': JS, 'markup': EDITOR}
 
 # ONEWORLD PORT: the only changes made to the platform's code and markup, as (id, where, old, new, times old must be
-# found, why). `where` is the assembled code or the editor's markup. They are applied in order, S1 first. A count
+# found, why). `where` is the assembled code or the editor's markup. They are applied in order, S1 first. An id with
+# a prime (S5′) is a patch revised after it first shipped; S18 is gone (the Caption tab it drew is the easy panel's
+# Caption section now, see S17′). A count
 # that differs stops the copy before anything is written, so a platform change under an anchor is read and
 # re-decided, never shipped half-patched. Raw strings: the code holds backticks, ${} and regular expressions. The
-# functions they call (owLeaveEditor, owNudgeSnap, owConfirmReset, owMayDiscard) and the OWS state S14 reads are
-# promo-studio/oneworld-social.js's, and owRenderCaption is promo-studio/oneworld-social-caption.js's.
+# functions they call (owLeaveEditor, owNudgeSnap, owConfirmReset, owMayDiscard, owSizeName) and the OWS state S14
+# reads are promo-studio/oneworld-social.js's, owStripHtml is promo-studio/oneworld-social-art.js's and owSideHost
+# promo-studio/oneworld-social-easy.js's.
 SOCIAL_PATCHES = [
     ('S1', 'code',
      r'''const escapeHtml=(s)=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");''',
@@ -94,9 +99,9 @@ SOCIAL_PATCHES = [
   const host=$("edOpts"); const p=host?collectParams(host):{};
   if(!(await owMayDiscard()))return;
   edParams={ theme:edParams.theme, bg:edParams.bg, ...p };
-  edMode="props"; loadEditor(true); toast("✓ Options applied — re-rendered from the template"); // fresh; Save to keep
+  edMode="props"; loadEditor(true); toast("✓ Post updated from the design"); // fresh; Save to keep
 }''',
-     1, 'applying options keeps the chosen background, and asks first when the layout has unsaved edits; on Cancel the Options tab stays with what was typed, and no "applied" toast is shown'),
+     1, 'applying options keeps the chosen background, and asks first when the layout has unsaved edits; on Cancel the Options tab stays with what was typed, and no "applied" toast is shown. UX-128: the toast in the same plain words as the button ("Update post", S35)'),
     ('S6', 'code',
      r'''const params={ theme:edParams.theme, ...(host?collectParams(host):{}) };''',
      r'''const params={ theme:edParams.theme, bg:edParams.bg, ...(host?collectParams(host):{}) };''',
@@ -105,10 +110,10 @@ SOCIAL_PATCHES = [
      r'''if(e.key==="Escape"){ closeEditor(); return; }''',
      r'''if(e.key==="Escape"){ const ae=document.activeElement||{}, picked=ae.tagName==="SELECT"||(ae.tagName==="INPUT"&&/^(checkbox|radio|range|color|file|button|submit|reset|image)$/.test(ae.type||"")); if((!inField||picked)&&!e.defaultPrevented) owLeaveEditor(); return; }''',
      1, 'Escape no longer closes the editor while typing in a field, asks before dropping unsaved edits, and does nothing when the dialog\'s own Escape has just closed the dialog. Only text entry holds Escape back: focus stays on a select after a pick (template, size, background, font) and on a checkbox or the colour picker after a click, and Escape still leaves from those, as it did on the platform (typingTarget counts them as fields so that arrows and Backspace keep working there)'),
-    ('S8', 'markup',
+    ('S8′', 'markup',
      r'''<button class="back" onclick="closeEditor()" title="Back">←</button>''',
-     r'''<button class="back" onclick="owLeaveEditor()" title="Back">←</button>''',
-     1, 'the Back arrow asks before dropping unsaved edits'),
+     r'''<button class="back" type="button" onclick="owLeaveEditor()">← Back to posts</button>''',
+     1, 'Back asks before dropping unsaved edits, and says where it goes in visible words (UX-131: a bare arrow with only a title is not a label a sighted keyboard user can read)'),
     ('S9', 'code',
      r'''if(e.key.startsWith("Arrow")){ e.preventDefault(); const d=e.shiftKey?10:1;''',
      r'''if(e.key.startsWith("Arrow")){ e.preventDefault(); owNudgeSnap(); const d=e.shiftKey?10:1;''',
@@ -147,15 +152,10 @@ SOCIAL_PATCHES = [
      r'''tx.oninput=()=>{el.text=tx.value;applyNode(node,el);updLayerLabel();};''',
      r'''tx.oninput=()=>{el.text=tx.value;if(/\n/.test(el.text)&&el.whiteSpace==="nowrap")el.whiteSpace="pre-wrap";applyNode(node,el);updLayerLabel();};''',
      1, 'a line break typed into one-line text breaks the line on the canvas and in the download'),
-    ('S17', 'code',
-     r'''<button class="${edMode==="options"?"on":""}" onclick="edTab('options')">Options</button></div><div id="edSideBody"></div>`;''',
-     r'''<button class="${edMode==="options"?"on":""}" onclick="edTab('options')">Options</button>
-    <button class="${edMode==="caption"?"on":""}" onclick="edTab('caption')">Caption</button></div><div id="edSideBody"></div>`;''',
-     1, 'the side panel gains a fourth tab, Caption (Oneworld\'s captions, merged into the editor)'),
-    ('S18', 'code',
-     r'''if(edMode==="insert") renderInsert(); else if(edMode==="options") renderOptions(); else renderProps();''',
-     r'''if(edMode==="insert") renderInsert(); else if(edMode==="options") renderOptions(); else if(edMode==="caption") owRenderCaption(); else renderProps();''',
-     1, 'the Caption tab shows the caption panel'),
+    ('S17′', 'code',
+     r'''$("edSide").innerHTML=`<div class="ed-tabs">''',
+     r'''owSideHost().innerHTML=`<div class="ed-tabs">''',
+     1, 'UX-122: the platform\'s tabs (Style, Insert, Options) are drawn under "Advanced layout", below the easy panel (Words, Pictures, People, Caption: promo-studio/oneworld-social-easy.js), collapsed until asked for. owSideHost gives the box they are drawn in. The Caption tab Oneworld added here before is now a section of the easy panel'),
     ('S19', 'code',
      r'''wrap.innerHTML=`<label class="h">${par.label}</label>`;''',
      r'''wrap.innerHTML=`<label class="h">${escapeHtml(par.label)}</label>`;''',
@@ -196,6 +196,62 @@ SOCIAL_PATCHES = [
      r'''toast(r.ok?"✓ Saved — your edits will reload next time":"Save failed");''',
      r'''const sj=r.ok?null:await r.json().catch(()=>null); toast(r.ok?"✓ Saved — your edits will reload next time":"Save failed"+(sj&&sj.error?": "+sj.error:""), r.ok?undefined:6000);''',
      1, 'a failed save says why when the server says why (someone else changed the layout meanwhile, it is too large…), for long enough to read'),
+    ('S29', 'markup',
+     r'''<div class="ttl">Layout editor</div>''',
+     r'''<div class="ttl">Edit post</div>''',
+     1, 'UX-132: one word for opening a design across Promotions ("Edit"), and no designer\'s term for the editor'),
+    ('S30', 'markup',
+     r'''<select id="edBg" onchange="edSetBg()" title="Background source"></select>''',
+     r'''<select id="edBg" onchange="edSetBg()" title="Background" hidden aria-hidden="true" tabindex="-1"></select>''',
+     1, 'UX-122: the background is chosen in the easy panel\'s Pictures section, in plain words and with the design\'s own as a choice; this select stays as the state the platform\'s code reads (wireBg, edSetBg), out of sight'),
+    ('S31', 'markup',
+     r'''<button class="btn ghost sm" onclick="edReset()">Reset</button>
+        <button class="btn ghost sm" onclick="edSave()">💾 Save</button>
+        <button class="btn sm" onclick="edDownload()">⬇ Download PNG</button>''',
+     r'''<button class="btn alt sm" id="edSaveBtn" onclick="edSave()">Save</button>
+        <button class="btn sm" id="edDownloadBtn" onclick="edDownload()">Download</button>
+        <button class="btn alt sm" id="owZipTop" onclick="edDownloadZip()">Download all sizes</button>''',
+     1, 'UX-122, UX-132: the top bar holds Save and Download, in the same words as the other two tabs ("Download all sizes", which was at the bottom of the Options tab); Reset moves under Advanced layout, beside the tools whose edits it undoes'),
+    ('S32', 'markup',
+     r'''<span class="z" id="edZoomPct">Fit</span>''',
+     r'''<span class="z" id="edZoomPct">100%</span>''',
+     1, 'UX-122: the zoom reads "− 100% + Fit", not "− Fit + Fit"'),
+    ('S33', 'code',
+     r'''if(pct)pct.textContent = edZoom==="fit" ? "Fit" : Math.round(s*100)+"%";''',
+     r'''if(pct)pct.textContent = Math.round(s*100)+"%";''',
+     1, 'the zoom always shows the size the post is shown at; Fit is the button beside it (S32)'),
+    ('S34', 'code',
+     r'''fmt.innerHTML=t.formats.map(f=>`<option value="${f.id}">${f.ratio}</option>`).join("");''',
+     r'''fmt.innerHTML=t.formats.map(f=>`<option value="${escapeHtml(f.id)}">${escapeHtml(owSizeName(f))}</option>`).join("");''',
+     1, 'UX-122: sizes in plain words with their pixels ("Instagram square 1080×1080"), not ratios (oneworld-social.js owSizeName)'),
+    ('S35', 'code',
+     r'''`<button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="applyOptions()">Apply &amp; re-render</button>
+     <button class="btn alt sm" style="width:100%;justify-content:center;margin-top:8px" onclick="edDownloadZip()">⬇ Download all sizes (ZIP)</button>
+     <div class="hint" style="margin-top:8px">Data comes from the API. Applying re-renders from the template and resets manual layout edits.</div>`;''',
+     r'''`<button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="applyOptions()">Update post</button>
+     <div class="hint" style="margin-top:8px">Your event details fill in automatically. Update post draws the post again from the design with these options, so anything you moved or restyled goes back to the design's own.</div>`;''',
+     1, 'UX-128: plain words ("Update post", no "the API" or "re-render"); Download all sizes is in the top bar now (S31)'),
+    ('S36', 'code',
+     r'''`<div class="ed-layer ${edSelSet.includes(i)?"on":""}" data-i="${i}"><span class="lk">${ic(e.type)}</span><span class="lt">${escapeHtml(elLabel(e))}</span></div>`''',
+     r'''`<button type="button" class="ed-layer ${edSelSet.includes(i)?"on":""}" data-i="${i}" aria-pressed="${edSelSet.includes(i)?"true":"false"}"><span class="lk" aria-hidden="true">${ic(e.type)}</span><span class="lt">${escapeHtml(elLabel(e))}</span></button>`''',
+     1, 'UX-131: a Layers row is a button, so the keyboard reaches it: Enter or Space selects (its click), and the arrow keys then nudge the selection as on the canvas'),
+    ('S37', 'code',
+     r'''      <div class="psd">
+        <div class="ic">◧</div>
+        <div style="flex:1">
+          <div class="t">Background &amp; logo <span class="faint" style="font-weight:400">· event details always come from the API</span></div>
+          <div class="h" id="psdStatus">PSD background ${assets.background?'✓':'—'} · logo ${assets.logoUnit?'✓':'—'}</div>
+          <div class="assets-slots">
+            <label class="slot ${assets.background?'on':''}"><input type="file" accept=".psd" style="display:none" onchange="uploadPsd(this)">PSD</label>
+            <label class="slot ${assets.bg1?'on':''}" id="slot-bg1"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,'1')">BG 1</label>
+            <label class="slot ${assets.bg2?'on':''}" id="slot-bg2"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,'2')">BG 2</label>
+            <label class="slot ${assets.bg3?'on':''}" id="slot-bg3"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,'3')">BG 3</label>
+            <label class="slot ${assets.logoUnit?'on':''}" id="slot-logo"><input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">Logo</label>
+          </div>
+        </div>
+      </div>''',
+     r'''      ${owStripHtml(assets)}''',
+     1, 'UX-128, UX-129, UX-131: the uploads strip is Oneworld\'s (oneworld-social-art.js owStripHtml): plain words ("Pictures for your posts", "Design file (.psd)", "Background 1"), pills that are buttons the keyboard reaches, the site\'s own logo named as what the posts use, and the background every post starts on'),
 ]
 for pid, where, old, new, want, why in SOCIAL_PATCHES:
     got = TEXT[where].count(old)
@@ -218,8 +274,8 @@ HTML = '''<!doctype html>
 <title>Social posts — Oneworld 2.0</title>
 <!-- GENERATED by tools/extract-promo-social.py: the promotional platform's social posts studio (its event page's
      social half and its layout editor), on Oneworld. Shown inside Promotions → Social posts (marketing.html).
-     Edit promo-studio/oneworld-social.js, oneworld-social-art.js, oneworld-social-caption.js or
-     oneworld-social.css, not this file. -->
+     Edit promo-studio/oneworld-social.js, oneworld-social-art.js, oneworld-social-easy.js,
+     oneworld-social-caption.js or oneworld-social.css, not this file. -->
 <script src="promo-studio/oneworld-theme.js"></script>
 ''' + FONTS + '''
 <link rel="stylesheet" href="promo-studio/mailer-studio.css">
@@ -242,6 +298,7 @@ HTML = '''<!doctype html>
 <script src="promo-studio/social-studio.js"></script>
 <script src="promo-studio/oneworld-social.js"></script>
 <script src="promo-studio/oneworld-social-art.js"></script>
+<script src="promo-studio/oneworld-social-easy.js"></script>
 <script src="promo-studio/oneworld-social-caption.js"></script>
 </body>
 </html>

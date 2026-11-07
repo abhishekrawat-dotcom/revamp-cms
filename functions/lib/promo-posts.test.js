@@ -964,6 +964,25 @@ function lum(hex) {
     });
   })();
 
+  /* UX-128, UX-131, UX-132: Site-look posts in the same words as the other two tabs */
+  (function () {
+    var src = read('promo-posts.js');
+    check('UX-128 no "Kicker": the field is "Small line above the title" on every post type', src.indexOf("label: 'Kicker'") === -1 && (src.match(/label: 'Small line above the title'/g) || []).length === 9);
+    var head = src.slice(src.indexOf("'<div class=\"ps-ed-head\">'"), src.indexOf("'<div class=\"ps-ed\">'"));
+    check('UX-131 Back says where it goes: "Back to posts"', head.indexOf('<span>Back to posts</span>') !== -1 && src.indexOf('<span>All posts</span>') === -1);
+    check('UX-132 Save, Download and Download all sizes in the editor\'s top bar', ['id="ps-save"', 'id="ps-png"', 'id="ps-zip"'].every(function (id) { return head.indexOf(id) !== -1; }) &&
+      head.indexOf('<span>Download</span>') !== -1 && head.indexOf('>Download all sizes</button>') !== -1);
+    check('UX-132 … and no longer at the bottom of the panel', (src.match(/id="ps-save"/g) || []).length === 1 && (src.match(/id="ps-png"/g) || []).length === 1 &&
+      (src.match(/id="ps-zip"/g) || []).length === 1 && src.indexOf('Download all formats') === -1 && src.indexOf('<h3>Download and save</h3>') === -1);
+    check('UX-132 the top bar\'s buttons are wired once, when the editor opens', src.indexOf("root.querySelector('#ps-png').onclick") !== -1 && src.indexOf("root.querySelector('#ps-save').onclick") !== -1 &&
+      src.indexOf("panel.querySelector('#ps-save')") === -1 && src.indexOf("panel.querySelector('#ps-png')") === -1);
+    check('UX-132 a saved post opens with Edit, the one word for opening across Promotions', src.indexOf("data-s-open' + (t ? '' : ' disabled') + '>Edit</button>'") !== -1 && src.indexOf('>Open</button>') === -1);
+    check('UX-132 the ZIP is named for what it holds: all sizes', src.indexOf("'-all-sizes.zip'") !== -1 && src.indexOf('-all-formats.zip') === -1);
+    check('UX-132 a card that opens says Edit, as on the other tabs', src.indexOf('<span class="ps-card-edit" aria-hidden="true">Edit</span>') !== -1 && src.indexOf("esc('Edit ' + t.label + '. ' + sub)") !== -1);
+    var css = read('promo.css');
+    check('UX-132 the top bar stays in view below the console\'s own bar', /\.ps-ed-head\{ position:sticky; top: var\(--topbar-h, 60px\);/.test(css));
+  })();
+
   console.log('promo-posts: ' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(function (err) { console.error('FAIL the test itself — ' + (err && err.stack || err)); process.exit(1); });

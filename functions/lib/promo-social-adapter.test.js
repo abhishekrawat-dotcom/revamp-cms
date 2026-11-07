@@ -453,6 +453,10 @@ function boot(o) {
   if (o.idb) ctx.indexedDB = o.idb;
   ctx.OWSCap = cap;
   ctx.owRenderCaption = function () {};
+  /* oneworld-social-art.js draws the uploads strip (patch S37) and oneworld-social-easy.js gives the tools' box
+     (S17′); each has its own test. Here the strip is a stand-in, and the tools draw over the whole side, as before. */
+  ctx.owStripHtml = function () { return '<div class="psd"><div class="h" id="psdStatus"></div></div>'; };
+  ctx.owSideHost = function () { return doc.getElementById('edSide'); };
   vm.createContext(ctx);
   ctx.__inline = function (code, el, ev) { return vm.runInContext('(function (event) {' + code + '\n})', ctx).call(el, ev); };
   var loadErr = null;
@@ -593,12 +597,12 @@ function respJson(r) { return r.json(); }
   check('F.3b: the note sits in the card body, above the needs line', note && note.parentNode === spk.querySelector('.b') && note.nextSibling === spk.querySelector('.cta'));
   var wNote = wsa.querySelector('.ow-ex-note');
   check('F.3b: where the console has no place to add them (the brief\'s audience), the note says so and has no link', !!wNote && !wNote.querySelector('a') && /no “who should attend” list/.test(wNote.textContent));
-  check('F.3b: an unavailable card has no button and no Generate action', spk.querySelectorAll('button').length === 0 && !/Generate/.test(spk.innerHTML) && /needs speakers/.test(spk.innerHTML) &&
+  check('F.3b: an unavailable card has no button and no Generate action', spk.querySelectorAll('button').length === 0 && !/Generate|Edit/.test(spk.innerHTML) && /Needs: speakers/.test(spk.innerHTML) &&
     spk.classList.contains('dis'));
   check('F.3b: its picture still opens the full-size view (a focusable picture, not a button)', B.$('th-speaker_individual').getAttribute('data-ow-zoom') === 'speaker.individual' &&
     B.$('th-speaker_individual').getAttribute('tabindex') === '0');
-  check('F.3b: an available card: the picture is a button, the source\'s Generate & edit stays', ann.querySelector('button.thumb') === B.$('th-generic_announcement') &&
-    ann.querySelector('.cta button').getAttribute('onclick') === 'openEditor("generic.announcement")' && ann.querySelector('.cta button').textContent === 'Generate & edit →');
+  check('F.3b: an available card: the picture is a button, and its button reads Edit (UX-132)', ann.querySelector('button.thumb') === B.$('th-generic_announcement') &&
+    ann.querySelector('.cta button').getAttribute('onclick') === 'openEditor("generic.announcement")' && ann.querySelector('.cta button').textContent === 'Edit');
   check('F.3b: the Testimonial card is openable and badged as an example', !!B.$('th-generic_testimonial').querySelector('.ow-ex') && tst.querySelector('.cta button').getAttribute('onclick') === 'openEditor("generic.testimonial")' &&
     /Example quote and its speaker/.test(tst.querySelector('.ow-ex-note').textContent));
   check('F.3b: an available card that is not an example has no badge', !B.$('th-generic_announcement').querySelector('.ow-ex') && !ann.querySelector('.ow-ex-note'));
@@ -643,8 +647,8 @@ function respJson(r) { return r.json(); }
   fire(B.$('th-generic_announcement'), 'click');
   var lb = B.doc.querySelector('.ow-lb');
   check('the full-size view opens on a click, filling the window (rvSocialStudio open)', !!lb && B.posted.some(function (p) { return p.m.rvSocialStudio === 'open' && p.origin === 'https://ow.test'; }));
-  check('… the picture at its full width, the name, Generate & edit, and never a download', !!lb && lb.querySelector('.ow-lb-img').getAttribute('src') === B.run('thumbCache["generic.announcement"]') &&
-    lb.querySelector('.ow-lb-t').textContent === 'Announcement' && /Generate & edit →/.test(lb.textContent) && !/download/i.test(lb.textContent) && lb.getAttribute('role') === 'dialog');
+  check('… the picture at its full width, the name, Edit, and never a download', !!lb && lb.querySelector('.ow-lb-img').getAttribute('src') === B.run('thumbCache["generic.announcement"]') &&
+    lb.querySelector('.ow-lb-t').textContent === 'Announcement' && lb.querySelector('.ow-lb-bar .btn').textContent === 'Edit' && !/download/i.test(lb.textContent) && lb.getAttribute('role') === 'dialog');
   B.key('Escape');
   check('Escape closes it (rvSocialStudio close)', !B.doc.querySelector('.ow-lb') && B.posted.some(function (p) { return p.m.rvSocialStudio === 'close'; }));
   B.$('th-speaker_individual').focus();
@@ -879,7 +883,7 @@ function respJson(r) { return r.json(); }
   G.run('applyOptions()'); await flush(10);
   G.answerModal(true); await flush(80);
   check('F.7 (S5′): Discard → re-rendered fresh (no saved-layout read), asked once', G.htmlCalls().length === 1 && !G.calls.some(function (c) { return c.method === 'GET' && c.path === '/api/promo/social/layout'; }) &&
-    G.toasts.some(function (t) { return /Options applied/.test(t[0]); }) && G.run('OWS.skipGuard') === false && G.modal() === null);
+    G.toasts.some(function (t) { return /Post updated from the design/.test(t[0]); }) && G.run('OWS.skipGuard') === false && G.modal() === null);
   /* Reset */
   G.run('EDIT.els[0].x = 5');
   G.calls.length = 0;
@@ -954,7 +958,7 @@ function respJson(r) { return r.json(); }
   var rendersBefore = T.renders.length;
   T.run('edDownload()'); await flush(30);
   check('F.8: Download PNG of a Testimonial with no quote is refused, 6 s, with the reason', T.renders.length === rendersBefore &&
-    T.lastToast()[0] === 'Type the quote in Options, then Apply & re-render: a testimonial shows a real quote, never a made-up one.' && T.lastToast()[1] === 6000);
+    T.lastToast()[0] === 'Type the quote under Words, then Update post: a testimonial shows a real quote, never a made-up one.' && T.lastToast()[1] === 6000);
   T.run('edMode="options"; paintSide();');
   T.calls.length = 0;
   T.run('edDownloadZip()'); await flush(30);
@@ -1081,7 +1085,7 @@ function respJson(r) { return r.json(); }
   var ct = zip && zip.files.filter(function (f) { return f.name === 'caption.txt'; })[0];
   check('F.13: caption.txt holds the Caption tab\'s words', !!ct && ct.data === 'My caption for LinkedIn');
   /* UX-118: the size on the canvas is drawn from the canvas; the others (none saved here) from the template */
-  check('F.13: the toast says what each size was drawn from', Z.lastToast()[0] === '✓ Downloaded ZIP — 1:1 as on the canvas; 4:5, 16:9 and 9:16 from the template.' && Z.lastToast()[1] === 6000, Z.lastToast());
+  check('F.13: the toast says what each size was drawn from', Z.lastToast()[0] === '✓ Downloaded ZIP — Square as on the canvas; Portrait, Landscape and Story from the template.' && Z.lastToast()[1] === 6000, Z.lastToast());
   Z.cap.text = '   ';
   Z.run('edDownloadZip()'); await flush(150);
   var zip2 = Z.zips[Z.zips.length - 1];
@@ -1098,7 +1102,7 @@ function respJson(r) { return r.json(); }
   async function paste(v) { src = P.$('epSrc'); src.value = v; src.onchange(); await flush(20); return P.run('EDIT.els[1].src'); }
   P.toasts.length = 0;
   var s1 = await paste('http://img.etb2bimg.com/plain.png');
-  check('F.14: an http: address is refused, with the V16 words (6 s)', s1 === oldSrc && P.lastToast()[0] === 'Oneworld can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.' &&
+  check('F.14: an http: address is refused, with the V16 words (6 s)', s1 === oldSrc && P.lastToast()[0] === 'EventSphere can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.' &&
     P.lastToast()[1] === 6000 && P.$('epSrc').value === oldSrc);
   var nImg = P.calls.length;
   var s2 = await paste('https://forbidden.example/a.png');
@@ -1130,7 +1134,7 @@ function respJson(r) { return r.json(); }
   for (var rd = 0; rd < refusedData.length; rd++) sR.push(await paste(refusedData[rd]));
   check('F.14: an SVG written "data:image/svg+xml,%3Csvg…" (and with only a charset) is refused at once, as Save would', sR[0] === small && sR[1] === small);
   check('F.14: an upper-case "data:image/PNG" or "DATA:" is refused too', sR[2] === small && sR[3] === small);
-  check('F.14: … each with the V16 toast (6 s)', P.toasts.length === 4 && P.toasts.every(function (t) { return t[0] === 'Oneworld can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.' && t[1] === 6000; }), P.toasts);
+  check('F.14: … each with the V16 toast (6 s)', P.toasts.length === 4 && P.toasts.every(function (t) { return t[0] === 'EventSphere can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.' && t[1] === 6000; }), P.toasts);
   var sT0 = await paste(takenData[0]);
   check('F.14: an SVG written ";utf8," is taken', sT0 === takenData[0]);
   var sT1 = await paste(takenData[1]);
@@ -1314,7 +1318,7 @@ function respJson(r) { return r.json(); }
   check('UX-124: carried words are not unsaved edits (switching size does not ask)', C1.run('owDirty()') === false);
   var note = C1.$('owSizeNote');
   check('UX-124: the note under the bar names the saved size and the others', !!note && note.getAttribute('hidden') === null &&
-    note.textContent === 'Saved for 4:5 only. 1:1, 16:9 and 9:16 use the template, with your text and picture changes carried in.' &&
+    note.textContent === 'Saved for Portrait only. Square, Landscape and Story use the template, with your text and picture changes carried in.' &&
     C1.doc.querySelector('.ed-top').nextSibling === note, note && note.textContent);
   check('UX-124: the template\'s own words are kept for Save', C1.run('OWS.orig.e90.text') === 'Hello');
 
@@ -1326,7 +1330,7 @@ function respJson(r) { return r.json(); }
   check('UX-124: Save sends the change from the template\'s words, not from the carried ones', !!sv1 &&
     JSON.stringify(sv1.body.changes) === JSON.stringify([placed({ kind: 'text', from: 'Hello', to: 'Hello on the square' })]), sv1 && sv1.body.changes);
   check('UX-124: the list follows the save, and the note with it', C1.run('owSavedOf("generic.announcement","ig_square","dark","") !== null') === true &&
-    C1.$('owSizeNote').textContent === 'Saved for 1:1 and 4:5 only. 16:9 and 9:16 use the template, with your text and picture changes carried in.', C1.$('owSizeNote').textContent);
+    C1.$('owSizeNote').textContent === 'Saved for Square and Portrait only. Landscape and Story use the template, with your text and picture changes carried in.', C1.$('owSizeNote').textContent);
   /* the most recent save wins where two sizes changed the same words */
   check('UX-124: the most recently saved change wins', C1.run('JSON.stringify(owChangesFor("generic.announcement"))') === JSON.stringify([placed({ kind: 'text', from: 'Hello', to: 'Hello on the square' })]));
   /* Apply & re-render asks for the template itself: nothing carried */
@@ -1424,7 +1428,7 @@ function respJson(r) { return r.json(); }
   C2.run('openEditor("generic.announcement")'); await flush(100);
   check('UX-124: a change that fits no one element is not carried into the size that opens', txOf(C2) === 'Hello', txOf(C2));
   check('UX-124: … and the toast says so, and why', C2.toasts.some(function (t) {
-    return t[0] === 'A change from another size of this post was not carried in: Oneworld could not tell which element it belongs to here, and does not guess. Make it here if this size needs it.' && t[1] === 6000;
+    return t[0] === 'A change from another size of this post was not carried in: EventSphere could not tell which element it belongs to here, and does not guess. Make it here if this size needs it.' && t[1] === 6000;
   }), C2.toasts);
   C2.run('closeEditor()');
 
@@ -1435,8 +1439,10 @@ function respJson(r) { return r.json(); }
   Zx.run('openEditor("generic.announcement")'); await flush(100);
   Zx.run('EDIT.els.filter(function(e){return e.id==="e90"})[0].text="Edited on the canvas, not saved"');
   Zx.run('edMode="options"; paintSide();');
-  check('UX-118: the ZIP button says what each size is', /^Every size as you made it: this one as it is on the canvas, a saved size as saved/.test((Zx.$('owZipHint') || {}).textContent || ''));
-  check('UX-118: … and that the edits on the canvas, saved or not, go into the sizes drawn from the template', /from the template with the text and picture changes made here \(saved or not\) and in your saved sizes\.$/.test((Zx.$('owZipHint') || {}).textContent || ''));
+  var zipTitle = (Zx.$('owZipTop') && Zx.$('owZipTop').getAttribute('title')) || '';
+  check('UX-118: the ZIP button (in the top bar since UX-132) says what each size is', /^Every size as you made it: this one as it is on the canvas, a saved size as saved/.test(zipTitle), zipTitle);
+  check('UX-118: … and that the edits on the canvas, saved or not, go into the sizes drawn from the template', /from the template with the text and picture changes made here \(saved or not\) and in your saved sizes\.$/.test(zipTitle) &&
+    Zx.$('owZipTop').getAttribute('aria-description') === zipTitle);
   Zx.renders.length = 0; Zx.extracts.length = 0; Zx.calls.length = 0; Zx.toasts.length = 0;
   var zipsBefore = Zx.zips.length;
   Zx.run('edDownloadZip()'); await flush(0);
@@ -1460,7 +1466,7 @@ function respJson(r) { return r.json(); }
     rTexts.indexOf('1080x1920:Edited on the canvas, not saved') !== -1 && Zx.extracts.filter(function (x) { return x.W === 1200 || x.H === 1920; }).length === 2, rTexts);
   var zipx = Zx.zips[Zx.zips.length - 1];
   check('UX-118: four pictures under the platform\'s names', !!zipx && zipx.files.filter(function (f) { return /\.png$/.test(f.name); }).length === 4);
-  check('UX-118: the toast says what each size was drawn from', Zx.lastToast()[0] === '✓ Downloaded ZIP — 1:1 as on the canvas; 4:5 as saved; 16:9 and 9:16 from the template, with your text and picture changes.', Zx.lastToast());
+  check('UX-118: the toast says what each size was drawn from', Zx.lastToast()[0] === '✓ Downloaded ZIP — Square as on the canvas; Portrait as saved; Landscape and Story from the template, with your text and picture changes.', Zx.lastToast());
 
   /* UX-118: a size that cannot be drawn as it was made is drawn from the template, and the toast says so */
   var Zf = boot({ layouts: function () { return [{ key: PORTRAIT_KEY, templateId: 'generic.announcement', format: 'ig_portrait', theme: 'dark', bg: '', savedAt: 9, changes: CARRY }]; },
@@ -1476,7 +1482,7 @@ function respJson(r) { return r.json(); }
   Zf.run('edDownloadZip()'); await flush(300);
   var zipf = Zf.zips[Zf.zips.length - 1];
   check('UX-118: a saved size whose picture will not load does not sink the ZIP', !!zipf && zipf.files.filter(function (f) { return /\.png$/.test(f.name); }).length === 4);
-  check('UX-118: … it is drawn from the template, and the toast says so', Zf.lastToast()[0] === '✓ Downloaded ZIP — 1:1 as on the canvas; 16:9 and 9:16 from the template, with your text and picture changes; 4:5 from the template, as the layout you made could not be drawn.', Zf.lastToast());
+  check('UX-118: … it is drawn from the template, and the toast says so', Zf.lastToast()[0] === '✓ Downloaded ZIP — Square as on the canvas; Landscape and Story from the template, with your text and picture changes; Portrait from the template, as the layout you made could not be drawn.', Zf.lastToast());
 
   /* with nothing edited on the canvas, the sizes drawn from the template take the saved change */
   Zx.run('EDIT.els.filter(function(e){return e.id==="e90"})[0].text="Hello"; OWS.orig.e90.text="Hello"');
@@ -1485,7 +1491,7 @@ function respJson(r) { return r.json(); }
   rTexts = Zx.renders.map(function (r) { return r.w + 'x' + r.h + ':' + r.els.filter(function (e) { return e.type === 'text'; }).map(function (e) { return e.text; }).join('|'); });
   check('UX-118: nothing edited on the canvas: 16:9 and 9:16 take the change saved on 4:5', rTexts.indexOf('1200x675:Hello from 4:5') !== -1 && rTexts.indexOf('1080x1920:Hello from 4:5') !== -1, rTexts);
   check('owZipWords: the sizes a change was left out of are named', Zx.run('owZipWords(' + JSON.stringify([{ how: 'canvas', ratio: '1:1' }, { how: 'carried', ratio: '16:9', unsure: 1 }, { how: 'template', ratio: '9:16', unsure: 2 }]) + ')') ===
-    '✓ Downloaded ZIP — 1:1 as on the canvas; 16:9 from the template, with your text and picture changes; 9:16 from the template. A change Oneworld could not match to one element was left out of 16:9 and 9:16, rather than guessed.');
+    '✓ Downloaded ZIP — 1:1 as on the canvas; 16:9 from the template, with your text and picture changes; 9:16 from the template. A change EventSphere could not match to one element was left out of 16:9 and 9:16, rather than guessed.');
 
   /* UX-127: the stage waits for its picture, under a spinner */
   var W1 = boot({ saved: savedPortrait }); await flush(60);
@@ -1653,7 +1659,7 @@ function respJson(r) { return r.json(); }
   var poRenders = Pv.renders.length;
   Pv.run('edDownload()'); await flush(30);
   check('UX-135: Download PNG is refused while they are on the canvas (spaces and case aside), 6 s, with what to do', Pv.renders.length === poRenders &&
-    Pv.lastToast()[0] === 'Write this event’s own prediction and outcome first, in Options (then Apply & re-render) or on the canvas: the words there now are the template’s example, not this event’s.' &&
+    Pv.lastToast()[0] === 'Write this event’s own prediction and outcome first, under Words or on the post itself: the words there now are the template’s example, not this event’s.' &&
     Pv.lastToast()[1] === 6000, Pv.lastToast());
   Pv.calls.length = 0;
   var poZips = Pv.zips.length;
@@ -1690,13 +1696,52 @@ function respJson(r) { return r.json(); }
   var psZips = Ps.zips.length;
   Ps.run('edDownloadZip()'); await flush(120);
   check('UX-135: the ZIP is not made while a saved size still shows them, and the toast names that size', Ps.zips.length === psZips && Ps.htmlCalls().length === 0 &&
-    Ps.lastToast()[0] === 'Not downloaded: your saved 4:5 layout still shows the template’s example prediction and outcome. Open that size and write this event’s own there.', Ps.lastToast());
+    Ps.lastToast()[0] === 'Not downloaded: your saved Portrait layout still shows the template’s example prediction and outcome. Open that size and write this event’s own there.', Ps.lastToast());
   var psBtn = Ps.run('owZipBtn()');
   check('UX-135: … and the ZIP button is back', !!psBtn && psBtn.disabled === false && Ps.run('OWS.zipBusy') === false);
-  check('owFillerSavedWords: two sizes', Ps.run('owFillerSavedWords(["4:5","9:16"])') ===
-    'Not downloaded: your saved 4:5 and 9:16 layouts still show the template’s example prediction and outcome. Open those sizes and write this event’s own there.');
+  check('owFillerSavedWords: two sizes', Ps.run('owFillerSavedWords(["Portrait","Story"])') ===
+    'Not downloaded: your saved Portrait and Story layouts still show the template’s example prediction and outcome. Open those sizes and write this event’s own there.');
   check('UX-135: any other post is not held by it', Ps.run('owFillerIn("generic.announcement", ' + JSON.stringify(poEls([PO_PRED])) + ')') === false);
   Ps.run('closeEditor()');
+
+  /* ---- UX-122, UX-128: sizes and the catalog in plain words; UX-129: the cards on the background for all posts ---- */
+  var Pw = boot();
+  await flush(60);
+  check('UX-122 owSizeName: name, pixels (from the catalog\'s own sizes) and where it is used', Pw.run('owSizeName({ id: "ig_square", ratio: "1:1" })') === 'Instagram square 1080×1080' &&
+    Pw.run('owSizeName({ id: "ig_portrait" })') === 'Instagram / LinkedIn portrait 1080×1350' && Pw.run('owSizeName({ id: "landscape", width: 1200, height: 675 })') === 'LinkedIn / X landscape 1200×675' &&
+    Pw.run('owSizeName({ id: "story" })') === 'Story 1080×1920', [Pw.run('owSizeName({ id: "ig_square", ratio: "1:1" })'), Pw.run('owSizeName({ id: "story" })')]);
+  check('UX-122 owSizeName: a size it does not know keeps the engine\'s label', Pw.run('owSizeName({ id: "x", label: "Banner 3:1", ratio: "3:1" })') === 'Banner 3:1');
+  check('UX-122 owSizeShort: Square, Portrait, Landscape, Story', ['ig_square', 'ig_portrait', 'landscape', 'story'].map(function (id) { return Pw.run('owSizeShort({ id: "' + id + '" })'); }).join() === 'Square,Portrait,Landscape,Story');
+  check('UX-128 owNeedsWords: what is missing in plain words', Pw.run('owNeedsWords(["who_should_attend"])') === 'Needs: who should attend' &&
+    Pw.run('owNeedsWords(["speakers (>=2)"])') === 'Needs: at least 2 speakers' && Pw.run('owNeedsWords(["stats", "sponsors"])') === 'Needs: headline numbers and partners' &&
+    Pw.run('owNeedsWords(["something new"])') === 'Needs: something new' && Pw.run('owNeedsWords([])') === 'Not ready yet');
+  /* the engine's own catalog, put into plain words: every template and option named here is the engine's */
+  var engine = require('./vendor/promo-engine');
+  var sizeTable = Pw.run('OW_SIZE_NAMES');
+  check('UX-122 the size names\' pixels are the engine\'s own (formats.ts)', Object.keys(sizeTable).every(function (id) { var f = engine.FORMATS[id]; return f && sizeTable[id].px === f.width + '×' + f.height; }) &&
+    engine.DEFAULT_FORMATS.every(function (id) { return !!sizeTable[id]; }));
+  var realCat = await engine.buildCatalog(undefined);
+  Pw.ctx.__cat = JSON.parse(JSON.stringify({ catalog: realCat }));
+  Pw.run('owPlainCatalog(__cat)');
+  var plainTpls = [].concat.apply([], Pw.ctx.__cat.catalog.categories.map(function (c) { return c.templates; }));
+  var descIds = Object.keys(Pw.run('OW_PLAIN_DESCRIPTIONS')), engineIds = engine.ALL_TEMPLATES.map(function (t) { return t.id; });
+  check('UX-128 every template has a plain description, and every one named is the engine\'s', descIds.slice().sort().join() === engineIds.slice().sort().join(), [descIds, engineIds]);
+  var allKeys = {}; realCat.categories.forEach(function (c) { c.templates.forEach(function (t) { t.params.forEach(function (pp) { allKeys[pp.key] = 1; }); }); });
+  var labelKeys = Object.keys(Pw.run('OW_PLAIN_LABELS')), hintKeys = Object.keys(Pw.run('OW_PLAIN_HINTS'));
+  check('UX-128 every option given a plain label or hint is one the engine has', labelKeys.concat(hintKeys).every(function (k) { return allKeys[k]; }), labelKeys.concat(hintKeys).filter(function (k) { return !allKeys[k]; }));
+  var plainText = JSON.stringify(plainTpls.map(function (t) { return [t.description, t.params.map(function (pp) { return [pp.label, pp.hint || '', (pp.options || []).map(function (o) { return o.label; })]; })]; }));
+  check('UX-128 the catalog shown has no developer words: who_should_attend, Kicker, auto-scales, "bg ·"', !/who_should_attend|Kicker|auto-scales|Auto-pick|\bbg\b|re-render/.test(plainText), plainText.slice(0, 300));
+  check('UX-128 … and each template keeps its own id, label and options', plainTpls.every(function (t, i) { return t.id === engineIds.filter(function (x) { return x === t.id; })[0]; }) &&
+    plainTpls.filter(function (t) { return t.id === 'generic.announcement'; })[0].params.filter(function (pp) { return pp.key === 'kicker'; })[0].label === 'Small line above the title');
+  /* the cards ask on the background chosen for all posts */
+  Pw.run('OWS.art = { useBg: "2", bg2: true }');
+  check('UX-129 owCardItem: the card asks on the background for all posts', Pw.run('JSON.stringify(owCardItem({ id: "generic.announcement", available: true, formats: [{ id: "ig_square" }] }).params)') === '{"bg":"2"}');
+  Pw.run('OWS.art = { useBg: "evil" }');
+  check('UX-129 owCardItem: anything else is the platform\'s own default', Pw.run('JSON.stringify(owCardItem({ id: "generic.announcement", available: true, formats: [] }).params)') === '{}');
+  Pw.run('OWS.art = {}');
+  /* DESIGN §5: no platform words in what this file says to people */
+  var said = JSON.stringify(Pw.run('OW_MSG'));
+  check('DESIGN §5: the messages never say Oneworld, the API, this platform or re-render', !/Oneworld|the API|this platform|re-render|Apply &/.test(said), said);
 
   /* ---- the page around it ---- */
   check('the page loads this stylesheet after the shared token sheet', PAGE.indexOf('promo-studio/oneworld.css') < PAGE.indexOf('promo-studio/oneworld-social.css') && PAGE.indexOf('promo-studio/oneworld-social.css') !== -1);

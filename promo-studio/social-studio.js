@@ -107,20 +107,7 @@ function renderEventDetail(assets){
     </div>
 
     <div id="secSocial">
-      <div class="psd">
-        <div class="ic">◧</div>
-        <div style="flex:1">
-          <div class="t">Background &amp; logo <span class="faint" style="font-weight:400">· event details always come from the API</span></div>
-          <div class="h" id="psdStatus">PSD background ${assets.background?'✓':'—'} · logo ${assets.logoUnit?'✓':'—'}</div>
-          <div class="assets-slots">
-            <label class="slot ${assets.background?'on':''}"><input type="file" accept=".psd" style="display:none" onchange="uploadPsd(this)">PSD</label>
-            <label class="slot ${assets.bg1?'on':''}" id="slot-bg1"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,'1')">BG 1</label>
-            <label class="slot ${assets.bg2?'on':''}" id="slot-bg2"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,'2')">BG 2</label>
-            <label class="slot ${assets.bg3?'on':''}" id="slot-bg3"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,'3')">BG 3</label>
-            <label class="slot ${assets.logoUnit?'on':''}" id="slot-logo"><input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">Logo</label>
-          </div>
-        </div>
-      </div>
+      ${owStripHtml(assets)}
       <div class="tgrid" id="tgrid">${tpls.map(cardHtml).join("")}</div>
     </div>
 
@@ -343,7 +330,7 @@ function edSetBg(){ edParams.bg=$("edBg").value||undefined; loadEditor(); }
 function switchEditorTpl(){
   const t=findTpl($("edTpl").value); if(!t)return;
   const fmt=$("edFmt");
-  fmt.innerHTML=t.formats.map(f=>`<option value="${f.id}">${f.ratio}</option>`).join("");
+  fmt.innerHTML=t.formats.map(f=>`<option value="${escapeHtml(f.id)}">${escapeHtml(owSizeName(f))}</option>`).join("");
   fmt.style.display=t.kind==="psd"?"none":"";
   edParams={ theme:edParams.theme, bg:edParams.bg }; // per-template options reset; keep theme + background
   loadEditor();
@@ -373,7 +360,7 @@ function layoutStage(){
   st.style.width=EDIT.width+"px"; st.style.height=EDIT.height+"px";
   st.style.transform=`scale(${s})`; st.style.setProperty("--s",s);
   $("edStageWrap").style.width=(EDIT.width*s)+"px"; $("edStageWrap").style.height=(EDIT.height*s)+"px";
-  const pct=$("edZoomPct"); if(pct)pct.textContent = edZoom==="fit" ? "Fit" : Math.round(s*100)+"%";
+  const pct=$("edZoomPct"); if(pct)pct.textContent = Math.round(s*100)+"%";
   layoutGroupFrame();
 }
 function edZoomFit(){ edZoom="fit"; layoutStage(); }
@@ -586,12 +573,11 @@ function elLabel(e){ if(e.type==="frame")return "Photo frame";
 function updLayerLabel(){ const l=$("edSideBody")&&$("edSideBody").querySelector(`.ed-layer[data-i="${edSel}"] .lt`); if(l)l.textContent=elLabel(EDIT.els[edSel]); }
 function segWire(id,cur,cb){ const box=$(id); if(!box)return; box.querySelectorAll("button").forEach(b=>{ b.classList.toggle("on",b.dataset.v===cur); b.onclick=()=>{ box.querySelectorAll("button").forEach(x=>x.classList.remove("on")); b.classList.add("on"); cb(b.dataset.v); }; }); }
 function paintSide(){
-  $("edSide").innerHTML=`<div class="ed-tabs">
+  owSideHost().innerHTML=`<div class="ed-tabs">
     <button class="${edMode==="props"?"on":""}" onclick="edTab('props')">Style</button>
     <button class="${edMode==="insert"?"on":""}" onclick="edTab('insert')">Insert</button>
-    <button class="${edMode==="options"?"on":""}" onclick="edTab('options')">Options</button>
-    <button class="${edMode==="caption"?"on":""}" onclick="edTab('caption')">Caption</button></div><div id="edSideBody"></div>`;
-  if(edMode==="insert") renderInsert(); else if(edMode==="options") renderOptions(); else if(edMode==="caption") owRenderCaption(); else renderProps();
+    <button class="${edMode==="options"?"on":""}" onclick="edTab('options')">Options</button></div><div id="edSideBody"></div>`;
+  if(edMode==="insert") renderInsert(); else if(edMode==="options") renderOptions(); else renderProps();
 }
 function edTab(m){ edMode=m; paintSide(); }
 function renderOptions(){
@@ -601,9 +587,8 @@ function renderOptions(){
   const params=(t.params||[]).filter(p=>p.key!=="theme").map(p=> edParams[p.key]!=null ? {...p, default:edParams[p.key]} : p);
   body.innerHTML=`<div class="ph">Template options</div>`+
     (params.length?`<div id="edOpts"></div>`:`<div class="ed-empty" style="padding:10px">This template has no extra options.</div>`)+
-    `<button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="applyOptions()">Apply &amp; re-render</button>
-     <button class="btn alt sm" style="width:100%;justify-content:center;margin-top:8px" onclick="edDownloadZip()">⬇ Download all sizes (ZIP)</button>
-     <div class="hint" style="margin-top:8px">Data comes from the API. Applying re-renders from the template and resets manual layout edits.</div>`;
+    `<button class="btn" style="width:100%;justify-content:center;margin-top:8px" onclick="applyOptions()">Update post</button>
+     <div class="hint" style="margin-top:8px">Your event details fill in automatically. Update post draws the post again from the design with these options, so anything you moved or restyled goes back to the design's own.</div>`;
   if(params.length){
     const host=$("edOpts"); buildParams({...t,params},host);
     host.querySelectorAll("[data-key]").forEach(el=>{ const v=edParams[el.dataset.key];
@@ -614,7 +599,7 @@ async function applyOptions(){
   const host=$("edOpts"); const p=host?collectParams(host):{};
   if(!(await owMayDiscard()))return;
   edParams={ theme:edParams.theme, bg:edParams.bg, ...p };
-  edMode="props"; loadEditor(true); toast("✓ Options applied — re-rendered from the template"); // fresh; Save to keep
+  edMode="props"; loadEditor(true); toast("✓ Post updated from the design"); // fresh; Save to keep
 }
 async function edDownloadZip(){
   const t=findTpl(EDIT.tid); if(!t)return; toast("Rendering all sizes…");
@@ -680,7 +665,7 @@ function renderProps(){
   }
   const multi = edSelSet.length>1 ? `<div class="ed-multi">${edSelSet.length} elements selected · drag moves all, edits apply to the last</div>` : "";
   const ic=(t)=>t==="image"?"🖼":t==="frame"?"🎞":t==="shape"?"▭":"T";
-  const layers=`<div class="ed-layers"><div class="ph">Layers · ${EDIT.els.length}</div>${EDIT.els.map((e,i)=>`<div class="ed-layer ${edSelSet.includes(i)?"on":""}" data-i="${i}"><span class="lk">${ic(e.type)}</span><span class="lt">${escapeHtml(elLabel(e))}</span></div>`).join("")}</div>`;
+  const layers=`<div class="ed-layers"><div class="ph">Layers · ${EDIT.els.length}</div>${EDIT.els.map((e,i)=>`<button type="button" class="ed-layer ${edSelSet.includes(i)?"on":""}" data-i="${i}" aria-pressed="${edSelSet.includes(i)?"true":"false"}"><span class="lk" aria-hidden="true">${ic(e.type)}</span><span class="lt">${escapeHtml(elLabel(e))}</span></button>`).join("")}</div>`;
   body.innerHTML=multi+top+layers;
   wirePanel(el);
 }

@@ -369,7 +369,9 @@ var EX_PHOTO = BASE + examples.EXAMPLE_PATH + 'people/p01.jpg';
   var sev = await social._test.socialEventFor(FB, 'rich', { headers: { host: HOST } });
   var direct = off.map(function (x) {
     var tpl = engine.getTemplate(x.templateId), fmt = engine.FORMATS[x.format];
-    var ctx = { event: sev.ev, brand: engine.getBrand(sev.ev.portal), format: fmt, params: engine.resolveParams(tpl, x.params), assets: {} };
+    var rp = engine.resolveParams(tpl, x.params);
+    /* UX-129: with no logo uploaded the posts carry the site's own logo unit for their theme, as the route gives it */
+    var ctx = { event: sev.ev, brand: engine.getBrand(sev.ev.portal), format: fmt, params: rp, assets: social._test.artFor({}, x.params.bg, social._test.siteLogoOf(sev.kit), rp.theme) };
     return { html: tpl.render(ctx), caption: tpl.caption(ctx) };
   });
   check('2: qr:off — no QR, and each post and caption is byte for byte the engine\'s own render of the event', offItems.length === 36 && offItems.every(function (it, k) {

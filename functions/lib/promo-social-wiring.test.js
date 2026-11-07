@@ -1,6 +1,6 @@
 /* node functions/lib/promo-social-wiring.test.js — how Promotions phase 3's routes reach their modules, and the
    two rules lib/api.js and lib/api-events.js keep for them:
-     1. the 15 routes of lib/promo-social.js (Social posts), lib/promo-previews.js (the live previews on the
+     1. the 16 routes of lib/promo-social.js (Social posts), lib/promo-previews.js (the live previews on the
         Mailers cards) and lib/promo-banner.js (the mailers' top banner) each reach their handler through
         api.handleApi, with the query intact, after the module (and lib/promo.js and lib/promo-mailer.js, which
         they read the event through) has been handed the helpers;
@@ -168,7 +168,7 @@ function routeStub(name, handlers) {
   return s;
 }
 
-/* The 15 routes: method, path, a query like the browser's, the module, the handler. The social handler names
+/* The 16 routes: method, path, a query like the browser's, the module, the handler. The social handler names
    are the ones lib/promo-social.js exports (§8a C9 leaves them to Unit C); X's and K's are fixed by the contract. */
 var ROUTES14 = [
   ['GET', '/api/promo/social/catalog', '?eventId=demo-ev', 'promo-social', 'handleCatalog'],
@@ -176,6 +176,8 @@ var ROUTES14 = [
   ['POST', '/api/promo/social/art', '?eventId=demo-ev&slot=bg2&from=upload', 'promo-social', 'handleArtUpload'],
   ['POST', '/api/promo/social/art/psd', '', 'promo-social', 'handleArtPsd'],
   ['DELETE', '/api/promo/social/art', '?eventId=demo-ev&slot=logoUnit', 'promo-social', 'handleArtDelete'],
+  /* UX-129: "Use for all posts", the background every post of the event starts on */
+  ['POST', '/api/promo/social/art/default', '', 'promo-social', 'handleArtDefault'],
   ['POST', '/api/promo/social/html', '', 'promo-social', 'handleHtml'],
   ['GET', '/api/promo/social/layout', '?eventId=demo-ev&templateId=speaker.individual&format=ig_portrait&theme=light&bg=2', 'promo-social', 'handleLayout'],
   /* UX-124: the event's saved layouts (key parts, times and changes), for the editor, the ZIP and the cards */
@@ -251,13 +253,13 @@ var events_src = fs.readFileSync(path.join(__dirname, 'api-events.js'), 'utf8');
     check('loading lib/api.js does not load lib/' + m + '.js (it is loaded on use, never at the top)', resolved[m] === 0, resolved[m]);
   });
 
-  /* ---------- 1. each of the 15 routes reaches its handler, the modules wired first ---------- */
+  /* ---------- 1. each of the 16 routes reaches its handler, the modules wired first ---------- */
   var routed = [], re = /^\s*'((?:GET|POST|PUT|PATCH|DELETE) [^']+)':\s*(promoSocial|promoPreviews|promoBanner)\('([A-Za-z]+)'\),?\s*$/gm, mm;
   while ((mm = re.exec(api_src))) routed.push(mm[1] + ' -> ' + { promoSocial: 'promo-social', promoPreviews: 'promo-previews', promoBanner: 'promo-banner' }[mm[2]] + '.' + mm[3]);
   var want = ROUTES14.map(function (r) { return r[0] + ' ' + r[1] + ' -> ' + r[3] + '.' + r[4]; });
-  check('lib/api.js routes exactly 15 Promotions phase 3 routes, each to the module and handler of the plan', routed.length === 15 &&
+  check('lib/api.js routes exactly 16 Promotions phase 3 routes, each to the module and handler of the plan', routed.length === 16 &&
     routed.slice().sort().join('\n') === want.slice().sort().join('\n'), routed);
-  check('the 15 phase 3 routes sit with the other Promotions routes, after DELETE /api/promo/icons and before the analytics',
+  check('the 16 phase 3 routes sit with the other Promotions routes, after DELETE /api/promo/icons and before the analytics',
     api_src.indexOf("'DELETE /api/promo/icons'") < api_src.indexOf("'GET /api/promo/social/catalog'") &&
     api_src.indexOf("'POST /api/promo/mailer/banner'") < api_src.indexOf("'GET /api/promo/analytics'"));
 

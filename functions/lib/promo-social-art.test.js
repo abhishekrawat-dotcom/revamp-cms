@@ -2,8 +2,9 @@
 // (promo-studio/oneworld-social-art.js, window.OWSArt): the PSD read in the tab and sent as two pictures and a summary,
 // the 120 MB and 40 MB caps, pictures brought within what the server keeps (3840 px, 8 MiB) before they are sent, the
 // pills that follow what is stored, Remove, the layout editor's "Upload a picture" (owner O2 = c), and that the file
-// is ES5. When the generated promo-studio/social-studio.js is in the worktree, the platform's own uploadPsd, uploadBg
-// and uploadLogo run against OWSArt's answers too, so their status lines are checked word for word.
+// is ES5. Since UX-128, UX-129 and UX-131 the strip itself is this file's (owStripHtml, patch S37): plain words, pills
+// that are buttons, the logo line ("Using your site's logo · Replace"), "Every post starts on" (Use for all posts), a
+// design file that asks before its logo replaces the one the posts use, and statuses that end on what happened.
 // No network: the file runs in a vm over a small stand-in page, stand-ins of RevampAuth (a fake server holding the
 // event's art), OWSocial.psdUnits, createImageBitmap and the canvas.
 'use strict';
@@ -117,37 +118,14 @@ function makeDocument(log) {
   return doc;
 }
 
-/* ---------- the platform's upload strip (index.html:1930-1943), as social-studio.js holds it ---------- */
-var STRIP_COPY = [
-  '<div class="psd">',
-  '        <div class="ic">◧</div>',
-  '        <div style="flex:1">',
-  '          <div class="t">Background &amp; logo <span class="faint" style="font-weight:400">· event details always come from the API</span></div>',
-  '          <div class="h" id="psdStatus">PSD background ${assets.background?\'✓\':\'—\'} · logo ${assets.logoUnit?\'✓\':\'—\'}</div>',
-  '          <div class="assets-slots">',
-  '            <label class="slot ${assets.background?\'on\':\'\'}"><input type="file" accept=".psd" style="display:none" onchange="uploadPsd(this)">PSD</label>',
-  '            <label class="slot ${assets.bg1?\'on\':\'\'}" id="slot-bg1"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,\'1\')">BG 1</label>',
-  '            <label class="slot ${assets.bg2?\'on\':\'\'}" id="slot-bg2"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,\'2\')">BG 2</label>',
-  '            <label class="slot ${assets.bg3?\'on\':\'\'}" id="slot-bg3"><input type="file" accept="image/*" style="display:none" onchange="uploadBg(this,\'3\')">BG 3</label>',
-  '            <label class="slot ${assets.logoUnit?\'on\':\'\'}" id="slot-logo"><input type="file" accept="image/*" style="display:none" onchange="uploadLogo(this)">Logo</label>',
-  '          </div>',
-  '        </div>',
-  '      </div>'].join('\n');
+/* ---------- the strip: Oneworld's own since patch S37 ---------- */
 var STUDIO = exists('promo-studio/social-studio.js') ? read('promo-studio/social-studio.js') : null;
-var STRIP = STRIP_COPY, UPLOADS = null;
 if (STUDIO) {
-  var a = STUDIO.indexOf('<div class="psd">'), b = STUDIO.indexOf('<div class="tgrid" id="tgrid">');
-  if (a !== -1 && b > a) STRIP = STUDIO.slice(a, b).replace(/\s+$/, '');
-  check('the generated studio holds the platform\'s upload strip as this test knows it', STRIP === STRIP_COPY);
-  var u0 = STUDIO.indexOf('async function uploadPsd(inp){'), u1 = STUDIO.indexOf('async function uploadLogo(inp){');
-  var u2 = u1 === -1 ? -1 : STUDIO.indexOf('\n}\n', u1);
-  if (u0 !== -1 && u1 > u0 && u2 > u1) UPLOADS = STUDIO.slice(u0, u2 + 2);
-  check('the generated studio holds uploadPsd, uploadBg and uploadLogo', !!UPLOADS);
+  check('the generated studio draws Oneworld\'s strip (patch S37), not the platform\'s labels', STUDIO.indexOf('${owStripHtml(assets)}') !== -1 &&
+    STUDIO.indexOf('>BG 1</label>') === -1 && STUDIO.indexOf('event details always come from the API') === -1);
 } else {
-  notes.push('promo-studio/social-studio.js is not there yet: the platform\'s own upload functions were not run against OWSArt');
+  notes.push('promo-studio/social-studio.js is not there yet: the strip patch was not checked');
 }
-/* the strip for a given art state, as renderEventDetail writes it */
-var stripFor = new Function('assets', 'return `' + STRIP + '`;');
 
 /* ---------- pictures, the canvas and the PSD reader ---------- */
 function blob(size, type, w, h, opts) {
@@ -164,6 +142,7 @@ function makeServer(o, log) {
   function artAnswer() {
     var out = { units: {}, psd: null };
     SLOT_LIST.forEach(function (s) { out[s] = !!art[s]; if (art[s]) out.units[s] = { url: 'https://storage.googleapis.com/b/events/' + EV + '/promo-art/' + s + '.png', width: art[s].width, height: art[s].height, from: art[s].from, at: 1 }; });
+    out.useBg = art.useBg || '';
     return out;
   }
   return function (url, opts) {
@@ -194,6 +173,11 @@ function makeServer(o, log) {
       ['background', 'logoUnit'].forEach(function (s) { if (!body.found[s] && art[s] && art[s].from === 'psd') art[s] = null; });
       var sizeOf = function (s) { return body.found[s] && art[s] && art[s].from === 'psd' ? { width: art[s].width, height: art[s].height } : null; };
       return Promise.resolve(json(200, { ok: true, background: sizeOf('background'), logoUnit: sizeOf('logoUnit') }));
+    }
+    if (method === 'POST' && p === '/api/promo/social/art/default') {
+      var want = JSON.parse(opts.body).bg;
+      art.useBg = want || null;
+      return Promise.resolve(json(200, Object.assign({ ok: true }, artAnswer())));
     }
     if (method === 'DELETE' && p === '/api/promo/social/art') {
       var had = !!art[q.get('slot')]; art[q.get('slot')] = null;
@@ -249,45 +233,32 @@ function load(o) {
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(SRC, ctx, { filename: 'oneworld-social-art.js' });
-  /* the event page's strip, as the platform's renderEventDetail writes it for what the server holds now */
-  var initial = {}; ['background', 'logoUnit', 'bg1', 'bg2', 'bg3'].forEach(function (s) { initial[s] = !!(o.art && o.art[s]); });
+  if (o.siteLogo) ctx.CAT = { event: { siteLogo: o.siteLogo } };
+  /* the event page's strip for what the server holds now, as renderEventDetail draws it and then decorates it */
+  var initial = { units: {} }; ['background', 'logoUnit', 'bg1', 'bg2', 'bg3'].forEach(function (s) {
+    initial[s] = !!(o.art && o.art[s]);
+    if (initial[s]) initial.units[s] = { from: o.art[s].from };
+  });
   var content = document.createElement('div'); content.id = 'content';
   document.body.appendChild(content);
-  content.innerHTML = stripFor(initial);
+  content.innerHTML = ctx.owStripHtml(initial);
+  ctx.OWS.art = o.art ? initial : null;                         // what the page read, as oneworld-social.js keeps it
+  ctx.OWSArt.decorate(initial);
   log.inserted.length = 0;
   return { A: ctx.OWSArt, ctx: ctx, doc: document, log: log };
 }
-/* the platform's own upload functions, in the same page, with oneworld-social.js's api() routing as §6c says */
-function withUploads(x) {
-  if (!UPLOADS) return false;
-  var c = x.ctx;
-  c.S = { portal: '', event: EV };
-  c.$ = function (id) { return x.doc.getElementById(id); };
-  c.escapeHtml = function (s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); };
-  c.api = function (u, o) {
-    var p = u.split('?')[0], q = new URLSearchParams(u.split('?')[1] || '');
-    if (p === '/api/psd') return c.OWSArt.psd(o);
-    if (p === '/api/background') return c.OWSArt.background(q.get('slot'), o);
-    if (p === '/api/logo') return c.OWSArt.logo(o);
-    throw new Error('this test routes only the uploads: ' + u);
-  };
-  vm.runInContext(UPLOADS, c, { filename: 'social-studio.js (uploads)' });
-  return true;
-}
-function inputOf(x, slot) {
-  var inputs = x.doc.getElementsByTagName('input');
-  for (var i = 0; i < inputs.length; i++) {
-    var on = inputs[i].getAttribute('onchange') || '';
-    if (slot === 'psd' ? /uploadPsd/.test(on) : slot === 'logo' ? /uploadLogo/.test(on) : on.indexOf('\'' + slot + '\'') !== -1) return inputs[i];
-  }
-  return null;
-}
-function psdLabel(x) { return inputOf(x, 'psd').parentNode; }
+var INPUTS = { psd: 'owInPsd', 1: 'owInBg1', 2: 'owInBg2', 3: 'owInBg3', logo: 'owInLogo' };
+function inputOf(x, slot) { return x.doc.getElementById(INPUTS[slot]); }
+function psdLabel(x) { return x.doc.getElementById('slot-psd'); }
+/* the logo line offers to remove a logo only when one was uploaded or came from a design file */
+function logoLine(x) { return x.doc.getElementById('owLogoLine'); }
+function logoRemove(x) { var b = logoLine(x) ? logoLine(x).getElementsByTagName('button') : []; return b.length > 1 ? b[1] : null; }
 function pills(x) {
   return { background: psdLabel(x).classList.contains('on'), bg1: x.doc.getElementById('slot-bg1').classList.contains('on'),
     bg2: x.doc.getElementById('slot-bg2').classList.contains('on'), bg3: x.doc.getElementById('slot-bg3').classList.contains('on'),
-    logoUnit: x.doc.getElementById('slot-logo').classList.contains('on') };
+    logoUnit: !!logoRemove(x) };
 }
+function pick(x, slot, file) { var inp = inputOf(x, slot); inp.files = [file]; inp.value = 'C:\\fakepath\\' + (file.name || 'f'); return inp; }
 function crosses(x) { return x.doc.body.querySelectorAll('.ow-slot-x'); }
 function status(x) { return x.doc.getElementById('psdStatus').textContent; }
 function readAnswer(r) { return r.text().then(function (t) { var j; try { j = JSON.parse(t); } catch (e) { j = undefined; } return { status: r.status, text: t, json: j }; }); }
@@ -305,8 +276,10 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   check('it never calls fetch itself: every request goes through RevampAuth.authedFetch', !/[^.\w]fetch\(/.test(code) && code.indexOf('RevampAuth.authedFetch') !== -1);
   var bare = { window: null }; bare.window = bare; vm.createContext(bare);
   vm.runInContext(SRC, bare);
-  check('loaded on a bare page it gives the page OWSArt and nothing else', JSON.stringify(Object.keys(bare).sort()) === JSON.stringify(['OWSArt', 'window']), Object.keys(bare));
-  check('C5 + §13: OWSArt is psd, background, logo, decorate, picture', JSON.stringify(Object.keys(bare.OWSArt).sort()) === JSON.stringify(['background', 'decorate', 'logo', 'picture', 'psd']));
+  check('loaded on a bare page it gives the page OWSArt and the strip the copied code draws (owStripHtml), nothing else',
+    JSON.stringify(Object.keys(bare).sort()) === JSON.stringify(['OWSArt', 'owStripHtml', 'window']), Object.keys(bare));
+  check('C5 + §13 + UX-129: OWSArt is the uploads, decorate, picture, the strip and its words', JSON.stringify(Object.keys(bare.OWSArt).sort()) === JSON.stringify(['background',
+    'bgChoices', 'bgLabel', 'bgPhrase', 'bgValue', 'decorate', 'logo', 'logoWords', 'picture', 'psd', 'setUseBg', 'siteHasLogo', 'stripHtml', 'summary', 'uploadBg', 'uploadLogo', 'uploadPsd']), Object.keys(bare.OWSArt).sort());
 
   /* ================= I.1: the PSD's caps and the reader's two sentences ================= */
   /* the studio answers with its own copy of the reader's sentences (it keys on the error's name), so the two copies
@@ -348,16 +321,10 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   got = await readAnswer(await load().A.psd({ body: blob(0, '', 0, 0) }));
   check('an empty PSD → the platform\'s "empty upload"', got.status === 400 && got.json.error === 'empty upload', got);
 
-  if (withUploads(x = load())) {
-    var inp = inputOf(x, 'psd');
-    inp.files = [blob(121 * MiB, '', 0, 0, { name: 'huge.psd' })]; inp.value = 'C:\\fakepath\\huge.psd';
-    await x.ctx.uploadPsd(inp);
-    check('I.1 the platform\'s own line for a PSD over 120 MB', status(x) === 'Upload failed: file too large (max 120 MB) — flatten the PSD', status(x));
-    x = load({ psdUnits: throwing('PsdTooLarge') }); withUploads(x); inp = inputOf(x, 'psd');
-    inp.files = [blob(60 * MiB, '', 0, 0)];
-    await x.ctx.uploadPsd(inp);
-    check('I.1 the platform\'s line for a PSD too large to read', status(x) === 'Upload failed: ' + PSD_TOO_LARGE, status(x));
-  }
+  x = load({ psdUnits: throwing('PsdTooLarge') });
+  var inp = pick(x, 'psd', blob(60 * MiB, '', 0, 0));
+  await x.A.uploadPsd(inp);
+  check('I.1 the strip\'s line for a design file too large to read: the reader\'s own sentence', status(x) === 'Upload failed: ' + PSD_TOO_LARGE, status(x));
 
   /* ================= I.2: pictures within what the server keeps ================= */
   x = load();
@@ -442,35 +409,38 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   check('an answer that is not JSON → the platform\'s own "upload failed"', got.status === 502 && got.json.error === 'upload failed', got);
   x = load({ fail: { 'POST /api/promo/social/art logoUnit': 'network' } });
   got = await readAnswer(await x.A.logo({ body: blob(1000, 'image/png', 10, 10) }));
-  check('a request that did not go through resolves (never rejects) with a reason to show', got.status === 503 && /did not reach Oneworld/.test(got.json.error), got);
+  check('a request that did not go through resolves (never rejects) with a reason to show', got.status === 503 && /did not reach EventSphere/.test(got.json.error), got);
   x = load(); x.ctx.RevampAuth = undefined;
   got = await readAnswer(await x.A.logo({ body: blob(1000, 'image/png', 10, 10) }));
-  check('… also with no sign-in on the page', got.status === 503 && /did not reach Oneworld/.test(got.json.error), got);
+  check('… also with no sign-in on the page', got.status === 503 && /did not reach EventSphere/.test(got.json.error), got);
   x = load({ noEventId: true });
   await x.A.logo({ body: blob(1000, 'image/png', 10, 10) });
   check('the event comes from the page\'s ?event= when EVENT_ID is not set', uploads(x)[0].eventId === EV);
 
-  if (withUploads(x = load())) {
-    inp = inputOf(x, '2');
-    inp.files = [blob(35 * MiB, 'image/png', 3000, 3000)]; inp.value = 'C:\\fakepath\\big.png';
-    x.ctx.OWSArt = x.A;
-    await x.ctx.uploadBg(inp, '2');
-    check('I.2 the platform\'s line for a background', status(x) === 'Background 2 uploaded (3000×3000) — pick it in the editor\'s Background selector.', status(x));
-    check('I.2 … its pill on, its ✕ beside it, thumbnails redrawn, the input cleared (S24)', pills(x).bg2 && crosses(x).length === 1 && x.log.refresh === 1 && inp.value === '', [pills(x), x.log.refresh, inp.value]);
-    x = load(); withUploads(x); inp = inputOf(x, '1');
-    inp.files = [blob(41 * MiB, 'image/jpeg', 6000, 4000)];
-    await x.ctx.uploadBg(inp, '1');
-    check('I.2 the platform\'s line for a background over 40 MB', status(x) === 'Upload failed: That upload is too large.' && !pills(x).bg1 && x.log.refresh === 0, status(x));
-    x = load({ fail: { 'POST /api/promo/social/art logoUnit': { status: 400, body: { error: '<img src=x onerror=alert(1)>' } } } }); withUploads(x); inp = inputOf(x, 'logo');
-    inp.files = [blob(1000, 'image/png', 50, 50)];
-    await x.ctx.uploadLogo(inp);
-    check('a server reason with markup shows as text (S27)', status(x) === 'Upload failed: <img src=x onerror=alert(1)>' &&
-      x.doc.getElementById('psdStatus').getElementsByTagName('img').length === 0, status(x));
-    x = load(); withUploads(x); inp = inputOf(x, 'logo');
-    inp.files = [blob(1000, 'image/png', 908, 308)];
-    await x.ctx.uploadLogo(inp);
-    check('the platform\'s line for a logo, with the size the server kept (trimmed)', status(x) === 'Logo uploaded (900×300) — refreshing…' && pills(x).logoUnit, status(x));
-  }
+  /* I.2 the strip's own uploads (UX-129): each ends on what happened */
+  x = load(); inp = pick(x, '2', blob(35 * MiB, 'image/png', 3000, 3000, { name: 'big.png' }));
+  await x.A.uploadBg(inp, '2'); await tick();
+  check('I.2 a background: its size, and an offer to use it for all posts', status(x) === 'Background 2 uploaded (3000×3000). Use it for all posts' &&
+    x.doc.getElementById('psdStatus').getElementsByTagName('button').length === 1, status(x));
+  check('I.2 … its pill on, its ✕ beside it, the cards not drawn again (they use another background), the input cleared', pills(x).bg2 && crosses(x).length === 1 && x.log.refresh === 0 && inp.value === '',
+    [pills(x), x.log.refresh, inp.value]);
+  x.doc.getElementById('psdStatus').getElementsByTagName('button')[0].click(); await tick();
+  var dflt = x.log.req.filter(function (q) { return q.path === '/api/promo/social/art/default'; });
+  check('I.2 Use it for all posts: kept for the event, the menu follows, the cards are drawn again, and the status ends on it',
+    dflt.length === 1 && JSON.parse(dflt[0].body).bg === '2' && JSON.parse(dflt[0].body).eventId === EV && x.ctx.OWS.art.useBg === '2' &&
+    x.doc.getElementById('owUseBgSel').value === '2' && x.log.refresh === 1 && status(x) === 'Background 2 is now on all posts.', [status(x), x.ctx.OWS.art && x.ctx.OWS.art.useBg]);
+  x = load(); inp = pick(x, '1', blob(41 * MiB, 'image/jpeg', 6000, 4000));
+  await x.A.uploadBg(inp, '1');
+  check('I.2 a background over 40 MB', status(x) === 'Upload failed: That upload is too large.' && !pills(x).bg1 && x.log.refresh === 0, status(x));
+  x = load({ fail: { 'POST /api/promo/social/art logoUnit': { status: 400, body: { error: '<img src=x onerror=alert(1)>' } } } });
+  inp = pick(x, 'logo', blob(1000, 'image/png', 50, 50));
+  await x.A.uploadLogo(inp);
+  check('a server reason with markup shows as text', status(x) === 'Upload failed: <img src=x onerror=alert(1)>' &&
+    x.doc.getElementById('psdStatus').getElementsByTagName('img').length === 0, status(x));
+  x = load(); inp = pick(x, 'logo', blob(1000, 'image/png', 908, 308));
+  await x.A.uploadLogo(inp); await tick();
+  check('UX-129 a logo: the cards are drawn again, then "Logo updated on all posts.", never a lingering "refreshing…"', status(x) === 'Logo updated on all posts.' &&
+    pills(x).logoUnit && x.log.refresh === 1 && /Using the logo you uploaded/.test(logoLine(x).textContent), [status(x), logoLine(x).textContent]);
 
   /* ================= I.3: a PSD with both units, then one with no logo ================= */
   var UNITS = { canvasWidth: 1350, canvasHeight: 600, roles: { background: 1, logo: 2, text: 3, ignore: 0 },
@@ -493,23 +463,42 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   check('I.3 the platform\'s answer shape, with the sizes the server kept', got.status === 200 && JSON.stringify(got.json) === JSON.stringify({ ok: true, canvasWidth: 1350, canvasHeight: 600,
     background: { width: 1350, height: 600 }, logoUnit: { width: 460, height: 222 } }), got.json);
   check('I.3 OWS.art is what the server holds now, and the pills follow it', x.ctx.OWS.art && x.ctx.OWS.art.background === true && x.ctx.OWS.art.logoUnit === true &&
-    pills(x).background && pills(x).logoUnit && !pills(x).bg1 && crosses(x).length === 2, [x.ctx.OWS.art, pills(x)]);
+    pills(x).background && pills(x).logoUnit && !pills(x).bg1 && crosses(x).length === 1, [x.ctx.OWS.art, pills(x)]);
   check('I.3 a PSD does not draw the thumbnails itself on success (the platform\'s line does)', x.log.refresh === 0);
 
   /* the next PSD has no logo: the PSD-made logo is cleared, its pill turns off (fidelity 7) */
   var NOLOGO = Object.assign({}, UNITS, { logo: null });
   x = load({ art: { background: { from: 'psd', width: 1350, height: 600 }, logoUnit: { from: 'psd', width: 460, height: 222 } }, psdUnits: function () { return Promise.resolve(NOLOGO); } });
-  x.A.decorate({ background: true, logoUnit: true });
-  check('I.3 (before) the PSD logo\'s pill is on, with its ✕', pills(x).logoUnit && crosses(x).length === 2);
+  x.A.decorate({ background: true, logoUnit: true, units: { logoUnit: { from: 'psd' } } });
+  check('I.3 (before) the logo line says the design file\'s logo, with Remove; the background pill has its ✕', pills(x).logoUnit && crosses(x).length === 1 &&
+    /Using the logo from your design file/.test(logoLine(x).textContent));
   got = await readAnswer(await x.A.psd({ body: blob(20 * MiB, '', 0, 0, { name: 'no-logo.psd' }) }));
   check('I.3 no logo → no logo request', uploads(x).length === 1 && uploads(x)[0].slot === 'background');
   check('I.3 … and found.logoUnit false', x.log.meta[0].found.background === true && x.log.meta[0].found.logoUnit === false, x.log.meta[0]);
   check('I.3 … the answer says no logo', got.json.ok === true && got.json.logoUnit === null && got.json.background && got.json.background.width === 1350, got.json);
-  check('I.3 … the cleared PSD logo turns the Logo pill off and takes its ✕ away', !pills(x).logoUnit && pills(x).background && crosses(x).length === 1, pills(x));
+  check('I.3 … the cleared PSD logo leaves the logo line with nothing to remove', !pills(x).logoUnit && pills(x).background && crosses(x).length === 1 &&
+    /No logo yet/.test(logoLine(x).textContent), [pills(x), logoLine(x).textContent]);
   /* an uploaded logo is never cleared by a PSD (the server's rule), and its pill stays on */
   x = load({ art: { logoUnit: { from: 'upload', width: 300, height: 100 } }, psdUnits: function () { return Promise.resolve(NOLOGO); } });
   await x.A.psd({ body: blob(20 * MiB, '', 0, 0) });
-  check('I.3 an uploaded logo stays, and so does its pill', pills(x).logoUnit && pills(x).background, pills(x));
+  check('I.3 an uploaded logo stays, and so does its line', pills(x).logoUnit && pills(x).background && /Using the logo you uploaded/.test(logoLine(x).textContent), pills(x));
+  /* UX-129: a design file with a logo of its own asks before that logo replaces the one the posts use */
+  x = load({ art: { logoUnit: { from: 'upload', width: 300, height: 100 } }, psdUnits: function () { return Promise.resolve(UNITS); }, confirm: false });
+  await x.A.psd({ body: blob(20 * MiB, '', 0, 0) });
+  check('UX-129 a design file\'s logo over an uploaded one: asked first, in plain words', x.log.confirm.length === 1 && x.log.confirm[0].title === 'Replace the logo you uploaded?' &&
+    x.log.confirm[0].opts.ok === 'Use the design file’s logo' && x.log.confirm[0].opts.cancel === 'Keep my logo', x.log.confirm[0]);
+  check('UX-129 … No: the logo is not sent, the summary says the design file brought none, the uploaded logo stays', uploads(x).length === 1 && uploads(x)[0].slot === 'background' &&
+    x.log.meta[0].found.logoUnit === false && pills(x).logoUnit && /Using the logo you uploaded/.test(logoLine(x).textContent), [uploads(x).map(function (q) { return q.slot; }), x.log.meta[0]]);
+  x = load({ art: { logoUnit: { from: 'upload', width: 300, height: 100 } }, psdUnits: function () { return Promise.resolve(UNITS); }, confirm: true });
+  await x.A.psd({ body: blob(20 * MiB, '', 0, 0) });
+  check('UX-129 … Yes: the design file\'s logo goes up', uploads(x).map(function (q) { return q.slot + '/' + q.from; }).join() === 'background/psd,logoUnit/psd' && x.log.meta[0].found.logoUnit === true);
+  x = load({ psdUnits: function () { return Promise.resolve(UNITS); }, confirm: false, siteLogo: { dark: 'https://img.etb2bimg.com/u.png', light: '' } });
+  await x.A.psd({ body: blob(20 * MiB, '', 0, 0) });
+  check('UX-129 over the site\'s own logo it asks too, and No keeps the site\'s', x.log.confirm.length === 1 && x.log.confirm[0].title === 'Use the design file’s logo?' &&
+    x.log.confirm[0].opts.cancel === 'Keep the site’s logo' && uploads(x).length === 1 && /Using your site’s logo/.test(logoLine(x).textContent), [x.log.confirm[0], logoLine(x).textContent]);
+  x = load({ art: { logoUnit: { from: 'psd', width: 300, height: 100 } }, psdUnits: function () { return Promise.resolve(UNITS); }, confirm: false });
+  await x.A.psd({ body: blob(20 * MiB, '', 0, 0) });
+  check('UX-129 a design file\'s logo replaces an earlier design file\'s without asking', x.log.confirm.length === 0 && uploads(x).length === 2);
   /* a PSD with neither unit still sends its summary (it clears the old PSD's units) */
   x = load({ art: { background: { from: 'psd', width: 10, height: 10 } }, psdUnits: function () { return Promise.resolve({ canvasWidth: 800, canvasHeight: 800, background: null, logo: null }); } });
   got = await readAnswer(await x.A.psd({ body: blob(1 * MiB, '', 0, 0) }));
@@ -537,45 +526,89 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   check('a refused summary → its reason; both units were kept, so the pills and thumbnails follow', got.status === 400 && /summary/.test(got.json.error) &&
     pills(x).background && pills(x).logoUnit && x.log.refresh === 1, [got, pills(x)]);
 
-  if (withUploads(x = load({ psdUnits: function () { return Promise.resolve(UNITS); } }))) {
-    inp = inputOf(x, 'psd');
-    inp.files = [blob(48 * MiB, '', 0, 0, { name: 'banner.psd' })];
-    await x.ctx.uploadPsd(inp);
-    check('I.3 the platform\'s line for a PSD', status(x) === 'PSD background ✅ · logo ✅ (1350×600) — refreshing…', status(x));
-    check('I.3 … PSD and Logo pills on, each with its ✕, thumbnails drawn again', pills(x).background && pills(x).logoUnit && crosses(x).length === 2 && x.log.refresh === 1, [pills(x), x.log.refresh]);
-    x = load({ art: { background: { from: 'psd', width: 1, height: 1 }, logoUnit: { from: 'psd', width: 1, height: 1 } }, psdUnits: function () { return Promise.resolve(NOLOGO); } });
-    withUploads(x); x.A.decorate({ background: true, logoUnit: true }); inp = inputOf(x, 'psd');
-    inp.files = [blob(48 * MiB, '', 0, 0)];
-    await x.ctx.uploadPsd(inp);
-    check('I.3 a PSD with no logo after a PSD logo: "logo —" and the Logo pill off (fidelity 7)', status(x) === 'PSD background ✅ · logo — (1350×600) — refreshing…' &&
-      !pills(x).logoUnit && pills(x).background, [status(x), pills(x)]);
-    x = load({ psdUnits: function () { return Promise.resolve({ canvasWidth: 500, canvasHeight: 500, background: null, logo: UNITS.logo }); } });
-    withUploads(x); inp = inputOf(x, 'psd'); inp.files = [blob(2 * MiB, '', 0, 0)];
-    await x.ctx.uploadPsd(inp);
-    check('a PSD with no background leaves the PSD pill off (S25)', status(x) === 'PSD background — · logo ✅ (500×500) — refreshing…' && !pills(x).background && pills(x).logoUnit, [status(x), pills(x)]);
-  }
+  x = load({ psdUnits: function () { return Promise.resolve(UNITS); } });
+  inp = pick(x, 'psd', blob(48 * MiB, '', 0, 0, { name: 'banner.psd' }));
+  await x.A.uploadPsd(inp); await tick();
+  check('I.3 a design file: the cards are drawn again, then what it put on them', status(x) === 'The design file’s background and logo are now on all posts.' &&
+    pills(x).background && pills(x).logoUnit && crosses(x).length === 1 && x.log.refresh === 1 && inp.value === '', [status(x), pills(x), x.log.refresh]);
+  x = load({ art: { background: { from: 'psd', width: 1, height: 1 }, logoUnit: { from: 'psd', width: 1, height: 1 } }, psdUnits: function () { return Promise.resolve(NOLOGO); } });
+  inp = pick(x, 'psd', blob(48 * MiB, '', 0, 0));
+  await x.A.uploadPsd(inp); await tick();
+  check('I.3 a design file with no logo after one with a logo: says the background, and the logo line follows (fidelity 7)',
+    status(x) === 'The design file’s background is now on all posts.' && !pills(x).logoUnit && pills(x).background, [status(x), pills(x)]);
+  x = load({ psdUnits: function () { return Promise.resolve({ canvasWidth: 500, canvasHeight: 500, background: null, logo: UNITS.logo }); } });
+  inp = pick(x, 'psd', blob(2 * MiB, '', 0, 0));
+  await x.A.uploadPsd(inp); await tick();
+  check('a design file with no background leaves its pill off', status(x) === 'The design file’s logo is now on all posts.' && !pills(x).background && pills(x).logoUnit, [status(x), pills(x)]);
+  x = load({ art: { bg1: { from: 'upload', width: 1, height: 1 }, useBg: '1' }, psdUnits: function () { return Promise.resolve(UNITS); } });
+  await x.A.uploadPsd(pick(x, 'psd', blob(2 * MiB, '', 0, 0))); await tick();
+  check('a design file while the posts start on Background 1: only its logo is said to be on them, its background waits in the menu',
+    status(x) === 'The design file’s logo is now on all posts. Its background is ready: choose “Design file (.psd)” under “Every post starts on” to use it on all posts.', status(x));
+  x = load({ psdUnits: function () { return Promise.resolve({ canvasWidth: 500, canvasHeight: 500, background: null, logo: null }); } });
+  await x.A.uploadPsd(pick(x, 'psd', blob(2 * MiB, '', 0, 0)));
+  check('a design file with neither says what to do instead', /has no background or logo your posts can use\. Upload them as pictures instead\.$/.test(status(x)), status(x));
+  x = load();
+  await x.A.uploadPsd(pick(x, 'psd', blob(121 * MiB, '', 0, 0)));
+  check('a design file over 120 MB: what to do, in MB', status(x) === 'Upload failed: the design file is over 120 MB. Save a flattened copy and upload that.', status(x));
+
+  /* ================= UX-128, UX-129, UX-131: the strip ================= */
+  x = load();
+  var strip = x.doc.body.querySelectorAll('.ow-strip')[0];
+  check('UX-128 the strip in plain words', /^◧Pictures for your posts · your event details fill in automatically/.test(strip.textContent) &&
+    !/the API|PSD background|BG 1|refreshing/.test(strip.textContent), strip.textContent);
+  var pillBtns = x.doc.body.querySelectorAll('.slot');
+  check('UX-131 the pills are buttons with plain names, each with its own hidden file input', pillBtns.length === 4 && pillBtns.every(function (b) { return b.tagName === 'BUTTON' && b.getAttribute('type') === 'button'; }) &&
+    pillBtns.map(function (b) { return b.textContent; }).join('|') === 'Design file (.psd)|Background 1|Background 2|Background 3' &&
+    ['psd', 1, 2, 3].every(function (k) { var i = inputOf(x, k); return i && i.getAttribute('hidden') === '' && i.getAttribute('type') === 'file'; }) &&
+    inputOf(x, 'psd').getAttribute('accept') === '.psd' && inputOf(x, 3).getAttribute('accept') === 'image/*');
+  var opened = []; ['psd', 1, 2, 3, 'logo'].forEach(function (k) { var i = inputOf(x, k); i.click = function () { opened.push(k); }; });
+  pillBtns.forEach(function (b) { b.click(); });
+  x.doc.getElementById('slot-logo').click();
+  check('UX-131 each button opens its own file chooser (the logo\'s Replace too)', opened.join() === 'psd,1,2,3,logo', opened);
+  check('UX-129 no logo anywhere: the posts show the event\'s name, and the line offers an upload', /^Logo · No logo yet: your posts show the event’s name/.test(logoLine(x).textContent) &&
+    x.doc.getElementById('slot-logo').textContent === 'Upload a logo' && !logoRemove(x), logoLine(x).textContent);
+  check('UX-129 the summary says what the posts use', status(x) === 'Your posts use the design’s own background and the event’s name in place of a logo.', status(x));
+  x = load({ siteLogo: { dark: 'https://img.etb2bimg.com/u.png', light: 'https://img.etb2bimg.com/u.png' } });
+  check('UX-129 the site\'s own logo is what the posts use: "Using your site\'s logo · Replace"', logoLine(x).textContent === 'Logo · Using your site’s logoReplace' &&
+    x.doc.getElementById('slot-logo').getAttribute('aria-label') === 'Replace the logo for your posts' && status(x) === 'Your posts use the design’s own background and your site’s logo.', logoLine(x).textContent);
+  x = load({ siteLogo: { dark: 'https://img.etb2bimg.com/u.png', light: '' } });
+  check('UX-129 a site logo for dark posts only says so', /Using your site’s logo \(on dark posts; light ones show the event’s name\)/.test(logoLine(x).textContent), logoLine(x).textContent);
+  x = load({ art: { logoUnit: { from: 'upload', width: 3, height: 1 } }, siteLogo: { dark: 'u', light: 'u' } });
+  check('UX-129 an uploaded logo can be taken back to the site\'s', logoRemove(x) && logoRemove(x).textContent === 'Use the site’s logo');
+  logoRemove(x).click(); await tick();
+  check('UX-129 … asked first, then the site\'s logo is back', x.log.confirm[0].title === 'Remove the logo you uploaded?' && x.log.confirm[0].message === 'Your posts go back to your site’s logo.' &&
+    status(x) === 'Logo removed. Your posts use your site’s logo again.' && /Using your site’s logo/.test(logoLine(x).textContent), [x.log.confirm[0], status(x)]);
+  /* Every post starts on: the design's own, the design file's, Background 1-3 */
+  x = load({ art: { background: { from: 'psd', width: 1, height: 1 }, bg3: { from: 'upload', width: 1, height: 1 } } });
+  var sel = x.doc.getElementById('owUseBgSel'), opts = sel.getElementsByTagName('option');
+  check('UX-129 "Every post starts on": the design\'s own, the design file\'s and each uploaded background, the default chosen', opts.map(function (o) { return o.value + '=' + o.textContent; }).join('|') ===
+    'design=The design’s own background|=Design file (.psd)|3=Background 3' && sel.value === '', opts.map(function (o) { return o.value; }));
+  sel.value = '3'; sel.onchange(); await tick();
+  check('UX-129 picking one keeps it for the event and draws the cards again', x.ctx.OWS.art.useBg === '3' && x.log.refresh === 1 && status(x) === 'Background 3 is now on all posts.', status(x));
+  check('UX-129 OWSArt.bgValue: "design" with no design file is the platform\'s own default', x.A.bgValue({}, 'design') === '' && x.A.bgValue({ background: true }, 'design') === 'design' &&
+    x.A.bgValue({ bg1: true }, '2') === '' && x.A.bgValue({ bg2: true }, '2') === '2');
 
   /* ================= I.4: decorate and Remove ================= */
   x = load();
   x.A.decorate({ background: false, logoUnit: false, bg1: false, bg2: false, bg3: false, units: {}, psd: null });
   check('I.4 nothing stored: every pill off, no ✕', JSON.stringify(pills(x)) === JSON.stringify({ background: false, bg1: false, bg2: false, bg3: false, logoUnit: false }) && crosses(x).length === 0);
-  var ART = { background: true, logoUnit: true, bg1: false, bg2: true, bg3: false };
+  var ART = { background: true, logoUnit: true, bg1: false, bg2: true, bg3: false, units: { logoUnit: { from: 'upload' } } };
   x.A.decorate(ART);
-  check('I.4 each pill\'s "on" follows the art', JSON.stringify(pills(x)) === JSON.stringify({ background: true, bg1: false, bg2: true, bg3: false, logoUnit: true }), pills(x));
+  check('I.4 each pill\'s "on" follows the art, and the logo line the logo', JSON.stringify(pills(x)) === JSON.stringify({ background: true, bg1: false, bg2: true, bg3: false, logoUnit: true }), pills(x));
   var xs = crosses(x);
-  check('I.4 one ✕ per filled pill', xs.length === 3);
-  var labels = [psdLabel(x), x.doc.getElementById('slot-bg2'), x.doc.getElementById('slot-logo')];
-  check('I.4 each ✕ sits right after its own label, outside it, in the strip', xs.every(function (b, i) {
+  check('I.4 one ✕ per filled background pill (the logo has its own line)', xs.length === 2);
+  var labels = [psdLabel(x), x.doc.getElementById('slot-bg2')];
+  check('I.4 each ✕ sits right after its own pill, in the strip', xs.every(function (b, i) {
     var l = labels[i], n = l.nextSibling; while (n && n.nodeType !== 1) n = n.nextSibling;
     return n === b && b.parentNode === l.parentNode && b.parentNode.classList.contains('assets-slots') && b.closest('.slot') === null;
   }));
   check('I.4 each ✕ is a button that says what it removes', xs.every(function (b) { return b.tagName === 'BUTTON' && b.getAttribute('type') === 'button' && b.textContent === '✕'; }) &&
     JSON.stringify(xs.map(function (b) { return [b.getAttribute('title'), b.getAttribute('aria-label')]; })) === JSON.stringify([
-      ['Remove the PSD background', 'Remove the PSD background'], ['Remove background 2', 'Remove background 2'], ['Remove the logo', 'Remove the logo']]), xs.map(function (b) { return b.getAttribute('title'); }));
+      ['Remove the design file\'s background', 'Remove the design file\'s background'], ['Remove background 2', 'Remove background 2']]), xs.map(function (b) { return b.getAttribute('title'); }));
   x.A.decorate(ART);
-  check('I.4 drawn again: still one ✕ each', crosses(x).length === 3);
+  check('I.4 drawn again: still one ✕ each, one logo line', crosses(x).length === 2 && x.doc.getElementById('owLogoLine').getElementsByTagName('button').length === 2);
   x.A.decorate(Object.assign({}, ART, { logoUnit: false }));
-  check('I.4 a cleared logo turns its pill off and its ✕ goes', !pills(x).logoUnit && crosses(x).length === 2 && x.doc.getElementById('slot-logo').nextSibling !== xs[2]);
+  check('I.4 a cleared logo: the line has nothing to remove', !pills(x).logoUnit && crosses(x).length === 2);
   x.A.decorate(null); x.A.decorate(undefined); x.A.decorate('nope');
   check('I.4 with no art read, the pills are left as they are', pills(x).background && pills(x).bg2 && crosses(x).length === 2);
   var y = load(); y.doc.getElementById('content').innerHTML = '<div class="tgrid"></div>';
@@ -585,40 +618,36 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   /* Remove: ask → DELETE → status → art read again → pills → thumbnails */
   var held = { background: { from: 'psd', width: 1350, height: 600 }, bg2: { from: 'upload', width: 1200, height: 800 }, logoUnit: { from: 'upload', width: 300, height: 100 } };
   x = load({ art: held });
-  x.A.decorate({ background: true, bg2: true, logoUnit: true });
   var bg2x = crosses(x)[1];
   bg2x.click(); await tick();
-  check('I.4 Remove asks first, in the platform\'s dialog', x.log.confirm.length === 1 && JSON.stringify(x.log.confirm[0]) === JSON.stringify({ title: 'Remove background 2?',
-    message: 'Posts go back to the template\'s own background.', opts: { ok: 'Remove', danger: true } }), x.log.confirm[0]);
+  check('I.4 Remove asks first, in the page\'s dialog', x.log.confirm.length === 1 && JSON.stringify(x.log.confirm[0]) === JSON.stringify({ title: 'Remove background 2?',
+    message: 'Posts go back to the design\'s own background.', opts: { ok: 'Remove', danger: true } }), x.log.confirm[0]);
   var del = x.log.req.filter(function (q) { return q.method === 'DELETE'; });
   check('I.4 … then DELETE for that slot of this event', del.length === 1 && del[0].url === '/api/promo/social/art?eventId=' + EV + '&slot=bg2', del);
   check('I.4 … the status line says so', status(x) === 'Background 2 removed.', status(x));
-  check('I.4 … the art is read again: its pill off, its ✕ gone, the others untouched', !pills(x).bg2 && pills(x).background && pills(x).logoUnit && crosses(x).length === 2 &&
+  check('I.4 … the art is read again: its pill off, its ✕ gone, the others untouched', !pills(x).bg2 && pills(x).background && pills(x).logoUnit && crosses(x).length === 1 &&
     x.ctx.OWS.art && x.ctx.OWS.art.bg2 === false, pills(x));
   check('I.4 … and the thumbnails are drawn again', x.log.refresh === 1);
-  crosses(x)[1].click(); await tick();
-  check('I.4 Remove the logo: its own question and status', x.log.confirm[1].title === 'Remove the logo?' && x.log.confirm[1].message === 'Posts show the event\'s name in type instead.' &&
-    status(x) === 'Logo removed.' && !pills(x).logoUnit && x.log.refresh === 2, [x.log.confirm[1], status(x)]);
+  logoRemove(x).click(); await tick();
+  check('I.4 Remove the logo (no site logo): its own question and status', x.log.confirm[1].title === 'Remove the logo you uploaded?' && x.log.confirm[1].message === 'Your posts show the event’s name in type instead.' &&
+    status(x) === 'Logo removed. Your posts show the event’s name.' && !pills(x).logoUnit && x.log.refresh === 2, [x.log.confirm[1], status(x)]);
   crosses(x)[0].click(); await tick();
-  check('I.4 Remove the PSD background: its own question and status', x.log.confirm[2].title === 'Remove the PSD background?' && x.log.confirm[2].message === 'Posts go back to the template\'s own background.' &&
-    status(x) === 'PSD background removed.' && !pills(x).background && crosses(x).length === 0, [x.log.confirm[2], status(x)]);
+  check('I.4 Remove the design file\'s background: its own question and status', x.log.confirm[2].title === 'Remove the design file\'s background?' && x.log.confirm[2].message === 'Posts go back to the design\'s own background.' &&
+    status(x) === 'The design file\'s background was removed.' && !pills(x).background && crosses(x).length === 0, [x.log.confirm[2], status(x)]);
 
   x = load({ art: held, confirm: false });
-  x.A.decorate({ background: true, bg2: true, logoUnit: true });
   var before = status(x);
   crosses(x)[0].click(); await tick();
   check('I.4 Cancel: nothing sent, nothing changes', x.log.req.length === 0 && pills(x).background && status(x) === before && x.log.refresh === 0);
 
   x = load({ art: held, fail: { 'DELETE /api/promo/social/art bg2': { status: 500, body: { error: 'Something went wrong with the posts. Please try again.' } } } });
-  x.A.decorate({ background: true, bg2: true, logoUnit: true });
   bg2x = crosses(x)[1];
   bg2x.click(); await tick();
   check('a failed Remove says why, keeps the pill and its ✕ (usable again), and redraws nothing',
-    status(x) === 'Remove failed: Something went wrong with the posts. Please try again.' && pills(x).bg2 && crosses(x).length === 3 && bg2x.disabled === false && x.log.refresh === 0, status(x));
+    status(x) === 'Remove failed: Something went wrong with the posts. Please try again.' && pills(x).bg2 && crosses(x).length === 2 && bg2x.disabled === false && x.log.refresh === 0, status(x));
   x = load({ art: held, fail: { 'DELETE /api/promo/social/art bg2': 'network' } });
-  x.A.decorate({ background: true, bg2: true, logoUnit: true });
   crosses(x)[1].click(); await tick();
-  check('… and when the request did not go through', /^Remove failed: The upload did not reach Oneworld|^Remove failed: .*connection/.test(status(x)), status(x));
+  check('… and when the request did not go through', /^Remove failed: The upload did not reach EventSphere|^Remove failed: .*connection/.test(status(x)), status(x));
   x = load({ art: held, fail: { 'GET /api/promo/social/art': { status: 500, body: { error: 'x' } } } });
   x.ctx.OWS.art = { background: true, bg2: true, logoUnit: true, units: { bg2: { url: 'u' }, background: { url: 'v' } } };
   x.A.decorate(x.ctx.OWS.art);
@@ -626,7 +655,6 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   check('when the art cannot be read again after Remove, the removed slot is still shown empty',
     !pills(x).bg2 && pills(x).background && x.ctx.OWS.art.bg2 === false && !x.ctx.OWS.art.units.bg2 && x.ctx.OWS.art.units.background && x.log.refresh === 1, [pills(x), x.ctx.OWS.art]);
   x = load({ art: held });
-  x.A.decorate({ background: true, bg2: true, logoUnit: true });
   bg2x = crosses(x)[1];
   var realFetch = x.ctx.RevampAuth.authedFetch, release = null;
   x.ctx.RevampAuth.authedFetch = function (url, opts) {
@@ -636,7 +664,7 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   bg2x.click(); await tick();
   var during = bg2x.disabled;
   release(); await tick();
-  check('the ✕ is disabled while its Remove runs', during === true && !pills(x).bg2 && crosses(x).length === 2, [during, pills(x)]);
+  check('the ✕ is disabled while its Remove runs', during === true && !pills(x).bg2 && crosses(x).length === 1, [during, pills(x)]);
 
   /* ================= §13: the layout editor's "Upload a picture" ================= */
   x = load();
@@ -664,7 +692,7 @@ function uploads(x) { return x.log.req.filter(function (r) { return r.method ===
   check('§13 one that does not open and is over 8 MiB is refused with no request', picErr && picErr.message === TOO_LARGE && x.log.req.length === 0);
   x = load({ fail: { 'POST /api/promo/social/picture': 'network' } }); picErr = null;
   await x.A.picture(blob(1000, 'image/png', 10, 10)).then(null, function (e) { picErr = e; });
-  check('§13 a request that did not go through rejects with a reason to show', picErr && /did not reach Oneworld/.test(picErr.message));
+  check('§13 a request that did not go through rejects with a reason to show', picErr && /did not reach EventSphere/.test(picErr.message));
   x = load(); picErr = null;
   await x.A.picture(null).then(null, function (e) { picErr = e; });
   check('§13 no file → a reason, no request', picErr && picErr.message && x.log.req.length === 0);

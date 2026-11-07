@@ -11,6 +11,7 @@
      POST   /api/promo/social/art?eventId=&slot=&from=   (raw, ≤ 8 MiB) a background, the logo, or a PSD's unit
      POST   /api/promo/social/art/psd  { eventId, name, bytes, canvasWidth, canvasHeight, found }   a PSD's summary
      DELETE /api/promo/social/art?eventId=&slot=         Remove one picture (the object itself is kept)
+     POST   /api/promo/social/art/default  { eventId, bg }    "Use for all posts": the background every post starts on
      POST   /api/promo/social/html     { eventId, items: [{ templateId, format, params, preview? }], captionOnly? }
      GET    /api/promo/social/layout?eventId=&templateId=&format=&theme=&bg=     a saved layout, if any
      GET    /api/promo/social/layouts?eventId=          every saved layout's key, time and changes (no elements)
@@ -30,7 +31,7 @@
    rule, model/normalize.ts), the QR code's address, and the site's address only while the site is live.
 
    STORED (Admin SDK only; none of it is copied to a new edition, lib/api-events.js):
-     events/<id>/promoSocial/art             { background, logoUnit, bg1, bg2, bg3, psd, updatedAt }
+     events/<id>/promoSocial/art             { background, logoUnit, bg1, bg2, bg3, psd, useBg, updatedAt }
      events/<id>/promoSocialLayouts/<key>    a saved layout: base picture, elements (JSON), options, caption, and
                                              the text and picture changes it made to its template
      Storage events/<id>/promo-art/…         uploaded pictures — kept while the event lives, even once replaced or
@@ -203,17 +204,52 @@ function unitOf(u) { return u && typeof u === 'object' && typeof u.url === 'stri
 function writePatch(t, ref, snap, patch) { if (snap.exists) t.update(ref, patch); else t.set(ref, patch); }
 
 /* which pictures a render uses (the platform's getAssets, store.ts:91-101, without its portal-wide default, which
-   no screen ever wrote): the chosen numbered background when it is there, else the PSD's; the logo when there is one */
-function artFor(doc, bg) {
+   no screen ever wrote): the chosen numbered background when it is there, else the PSD's, and none at all for
+   'design' (UX-122: the design's own background, even with a PSD uploaded); the logo uploaded for the posts when
+   there is one, else the site's own logo unit for the post's theme (UX-129, siteLogoOf), else none (the post sets
+   the event's name in type, as the platform did) */
+function artFor(doc, bg, site, theme) {
   doc = doc || {};
   var b = String(bg == null ? '' : bg);
   var slot = (b === '1' || b === '2' || b === '3') ? unitOf(doc['bg' + b]) : null;
-  var background = slot || unitOf(doc.background);
+  var background = b === 'design' ? null : (slot || unitOf(doc.background));
   var logo = unitOf(doc.logoUnit);
   var out = {};
   if (background) out.backgroundUrl = background.url;
   if (logo) out.logoUnitUrl = logo.url;
+  else {
+    var siteUnit = site && site[theme === 'light' ? 'light' : 'dark'];
+    if (typeof siteUnit === 'string' && siteUnit) out.logoUnitUrl = siteUnit;
+  }
   return out;
+}
+
+/* UX-129: the site's own logo unit (the lock-up that opens its hero, lib/promo.js brandFromSources), as the posts may
+   use it: { dark, light }, the picture for a post of each theme ('' for none). A unit is drawn for one tone of ground
+   and is never boxed, redrawn or recoloured here: on a dark post a unit made for a light ground takes the copy for a
+   dark ground the site already has (only its dark lettering recoloured, the ET red square untouched), else none, and
+   on a light post a unit made for a dark ground is not used. The same rule as Site-look posts (promo-posts.js
+   lookFor), so the two tabs agree on when the site's logo can be read. */
+function siteLogoOf(kit) {
+  var u = kit && kit.brand && kit.brand.logoUnit, out = { dark: '', light: '' };
+  if (!u || typeof u.url !== 'string' || !u.url) return out;
+  ['dark', 'light'].forEach(function (mode) {
+    if (!u.tone || u.tone === mode) out[mode] = u.url;
+    else if (mode === 'dark' && typeof u.darkUrl === 'string' && u.darkUrl) out[mode] = u.darkUrl;
+  });
+  return out;
+}
+
+/* "Use for all posts" (UX-129): the background every post of the event starts on, in its card and when it is
+   opened. '' is the platform's own default (the design file's background when one is uploaded, else the design's),
+   'design' the design's own, 1-3 an uploaded background. One post can still pick another in its editor. */
+var USE_BG = ['', 'design', '1', '2', '3'];
+var USE_BG_LABELS = { '': 'The design file\'s background', design: 'The design\'s own background', 1: 'Background 1', 2: 'Background 2', 3: 'Background 3' };
+/* the default as stored, '' when it is not one that can be used now (its background was removed) */
+function useBgOf(doc) {
+  var b = doc && typeof doc.useBg === 'string' ? doc.useBg : '';
+  if (USE_BG.indexOf(b) === -1) return '';
+  return /^[123]$/.test(b) && !unitOf(doc['bg' + b]) ? '' : b;
 }
 
 /* GET art's answer: the platform's booleans (store.ts assetStatus), plus each picture and the last PSD's size */
@@ -226,6 +262,7 @@ function artAnswer(doc) {
     if (u) out.units[s] = { url: u.url, width: u.width, height: u.height, from: u.from, at: u.at };
   });
   if (doc.psd && typeof doc.psd === 'object') out.psd = { canvasWidth: doc.psd.canvasWidth, canvasHeight: doc.psd.canvasHeight, at: doc.psd.at };
+  out.useBg = useBgOf(doc);
   return out;
 }
 
@@ -367,9 +404,10 @@ function refuseRaw(req, res, status, body) { drainThen(req, function () { sendJs
    (no quote of its own) and Prediction vs Outcome (the template's own words, UX-135). The same rule as the cards'
    own (promo-studio/oneworld-social.js owCardItem); a card asked for otherwise is simply asked for again there. */
 var CARD_PREVIEW_IDS = ['generic.testimonial', 'generic.prediction-outcome'];
-/* a template's card post: its first size with its default options, a preview when the event cannot make it yet */
-function cardItem(t) {
-  return { templateId: t.id, format: (t.formats && t.formats[0] && t.formats[0].id) || 'ig_square', params: {},
+/* a template's card post: its first size with its default options (on the background chosen for all posts, when
+   one is: the page's own owCardItem asks the same), a preview when the event cannot make it yet */
+function cardItem(t, useBg) {
+  return { templateId: t.id, format: (t.formats && t.formats[0] && t.formats[0].id) || 'ig_square', params: useBg ? { bg: useBg } : {},
     preview: !t.available || CARD_PREVIEW_IDS.indexOf(t.id) !== -1 };
 }
 
@@ -386,12 +424,13 @@ function handleCatalog(req, res) {
         var cards;
         if (withCards) {
           var art = r[2] && r[2].exists ? r[2].data() : {};
-          var ctx = { ev: ev, art: art, brand: engine.getBrand(ev.portal), captionOnly: false, base: H.publicBaseFor(req) };
+          var ctx = { ev: ev, art: art, brand: engine.getBrand(ev.portal), captionOnly: false, base: H.publicBaseFor(req), siteLogo: siteLogoOf(got.kit) };
+          var useBg = useBgOf(art);
           cards = [];
           catalog.categories.forEach(function (c) {
             c.templates.forEach(function (t) {
               if (cards.length >= NUMBERS.htmlItems) return;
-              var item = cardItem(t);
+              var item = cardItem(t, useBg);
               try { cards.push({ item: item, answer: renderItem(item, ctx) }); }
               catch (err) { console.error('promo-social: a card could not be made (' + String(t.id).slice(0, 80) + ') — ' + (err && err.stack || err)); }
             });
@@ -407,7 +446,9 @@ function handleCatalog(req, res) {
           event: {
             name: ev.name, hashtag: ev.hashtag, edition: ev.edition, dateLabel: ev.dateLabel, venue: ev.venue || ev.city,
             counts: { speakers: ev.speakers.length, sponsorTiers: ev.sponsorTiers.length, sessions: ev.sessions.length },
-            micrositeUrl: ev.micrositeUrl, link: ev.qrUrl, published: got.published
+            micrositeUrl: ev.micrositeUrl, link: ev.qrUrl, published: got.published,
+            /* the site's logo unit for a post of each theme (UX-129): the uploads strip says the posts use it */
+            siteLogo: siteLogoOf(got.kit)
           },
           /* FORMATS[f] already carries its id (the platform's own note) */
           formats: engine.DEFAULT_FORMATS.map(function (f) { return Object.assign({}, engine.FORMATS[f]); }),
@@ -421,7 +462,7 @@ function handleCatalog(req, res) {
 }
 
 /* one item of the html route: { templateId, format, width, height, caption, html?, example?, filled?, state? } or
-   { templateId, format, error, missing? }. ctx: { ev, art, brand, captionOnly, base } */
+   { templateId, format, error, missing? }. ctx: { ev, art, brand, captionOnly, base, siteLogo } */
 function renderItem(item, ctx) {
   var id = String((item && item.templateId) || '').slice(0, 80);
   var fmtId = String((item && item.format) || '');
@@ -451,7 +492,7 @@ function renderItem(item, ctx) {
     if (!avail.ok) return { templateId: tpl.id, format: fmt.id, error: 'needs ' + avail.missing.join(', '), missing: avail.missing };
   }
   var p = engine.resolveParams(tpl, params);
-  var assets = artFor(ctx.art, params.bg);
+  var assets = artFor(ctx.art, params.bg, ctx.siteLogo, p.theme);
   if (ev.qrUrl && p.qr !== 'off') {
     var code = qrDataUri(ev.qrUrl);
     if (code) {
@@ -488,7 +529,8 @@ function handleHtml(req, res) {
     if (items.some(function (it) { return it && examples.isExample(it.params); })) return sendJson(res, 422, exampleErr().body);
     Promise.all([H.loadLiveEvent(fb, eventId), socialEventFor(fb, eventId, req), artRef(fb, eventId).get()]).then(function (r) {
       var ev = r[1].ev, art = r[2].exists ? r[2].data() : {};
-      var ctx = { ev: ev, art: art, brand: engine.getBrand(ev.portal), captionOnly: body.captionOnly === true, base: H.publicBaseFor(req) };
+      var ctx = { ev: ev, art: art, brand: engine.getBrand(ev.portal), captionOnly: body.captionOnly === true, base: H.publicBaseFor(req),
+        siteLogo: siteLogoOf(r[1].kit) };
       var out = items.map(function (item) {
         try { return renderItem(item, ctx); }
         catch (err) {
@@ -604,6 +646,8 @@ function handleArtDelete(req, res) {
           if (!unitOf(doc[slot])) return false;
           var patch = { updatedAt: Date.now() };
           patch[slot] = null;
+          /* a removed background is no longer the one every post starts on */
+          if (/^bg[123]$/.test(slot) && doc.useBg === slot.slice(2)) patch.useBg = null;
           writePatch(t, ref, snap, patch);
           return true;
         });
@@ -612,6 +656,31 @@ function handleArtDelete(req, res) {
       sendJson(res, 200, { ok: true, removed: removed });
       if (removed) logActivity(fb, eventId, decoded, 'deleted', 'Post art: ' + SLOT_LABELS[slot] + ' removed', { area: 'promotions' });
     }).catch(function (err) { fail(res, 'art delete', err); });
+  });
+}
+
+/* POST /api/promo/social/art/default { eventId, bg } — "Use for all posts" (UX-129): the background every post of
+   the event starts on (USE_BG; '' puts back the platform's own default). Background 1-3 must be uploaded first. The
+   answer is the art as GET art gives it. */
+function handleArtDefault(req, res) {
+  withEvent(req, res, H.BODY_LIMITS.tiny, function (fb, decoded, body, eventId) {
+    var bg = body.bg == null ? '' : String(body.bg);
+    if (USE_BG.indexOf(bg) === -1) return sendJson(res, 400, { error: 'unknown background' });
+    var ref = artRef(fb, eventId);
+    H.loadLiveEvent(fb, eventId).then(function () {
+      return fb.db.runTransaction(function (t) {
+        return t.get(ref).then(function (snap) {
+          var doc = snap.exists ? (snap.data() || {}) : {};
+          if (/^[123]$/.test(bg) && !unitOf(doc['bg' + bg])) throw httpErr(409, 'Upload background ' + bg + ' first, then use it for all posts.');
+          var patch = { useBg: bg || null, updatedAt: Date.now() };
+          writePatch(t, ref, snap, patch);
+          return Object.assign({}, doc, patch);
+        });
+      });
+    }).then(function (after) {
+      sendJson(res, 200, Object.assign({ ok: true }, artAnswer(after)));
+      logActivity(fb, eventId, decoded, 'updated', 'Post background for all posts: ' + USE_BG_LABELS[bg], { area: 'promotions' });
+    }).catch(function (err) { fail(res, 'art default', err); });
   });
 }
 
@@ -650,11 +719,11 @@ function keyParts(templateId, format, theme, bg) {
   var th = theme == null || theme === '' ? 'dark' : String(theme);
   if (th !== 'dark' && th !== 'light') return 'unknown theme';
   var b = bg == null ? '' : String(bg);
-  if (['', '1', '2', '3'].indexOf(b) === -1) return 'unknown background';
+  if (USE_BG.indexOf(b) === -1) return 'unknown background';
   return { tpl: tpl, fmt: engine.FORMATS[f], theme: th, bg: b, key: layoutKey(tpl.id, f, th, b) };
 }
 function parseKey(key) {
-  var m = /^([a-z]+\.[a-z0-9-]+)__([a-z_]+)__(dark|light)_bg(psd|1|2|3)$/.exec(String(key || ''));
+  var m = /^([a-z]+\.[a-z0-9-]+)__([a-z_]+)__(dark|light)_bg(psd|1|2|3|design)$/.exec(String(key || ''));
   if (!m) return 'unknown layout';
   var k = keyParts(m[1], m[2], m[3], m[4] === 'psd' ? '' : m[4]);
   return typeof k === 'string' || k.key !== key ? 'unknown layout' : k;
@@ -772,6 +841,9 @@ function cleanElements(raw, where) {
     }
     /* the QR code's picture: dropped by the editor once the site is no longer published */
     if (el.owQr === true) out.owQr = true;
+    /* what the element is in its template (the flattener's owRole: its class names), for the editor's plain names in
+       Words; letters, digits, spaces and dashes only */
+    if (typeof el.owRole === 'string' && /^[a-z0-9 _-]{1,80}$/i.test(el.owRole)) out.owRole = el.owRole;
     return out;
   });
   return { list: list, dataBytes: dataBytes };
@@ -1056,6 +1128,7 @@ var ROUTES = {
   'POST /api/promo/social/art': 'handleArtUpload',
   'POST /api/promo/social/art/psd': 'handleArtPsd',
   'DELETE /api/promo/social/art': 'handleArtDelete',
+  'POST /api/promo/social/art/default': 'handleArtDefault',
   'POST /api/promo/social/html': 'handleHtml',
   'GET /api/promo/social/layout': 'handleLayout',
   'GET /api/promo/social/layouts': 'handleLayouts',
@@ -1066,12 +1139,12 @@ var ROUTES = {
 };
 
 module.exports = {
-  wire, handleCatalog, handleArt, handleArtUpload, handleArtPsd, handleArtDelete, handleHtml,
+  wire, handleCatalog, handleArt, handleArtUpload, handleArtPsd, handleArtDelete, handleArtDefault, handleHtml,
   handleLayout, handleLayouts, handleLayoutBase, handleLayoutSave, handleLayoutReset, handlePicture, ROUTES
 };
 /* the pure parts and the knobs, for promo-social.test.js */
 module.exports._test = {
-  NUMBERS, SLOTS, socialEventFor, qrOptions, qrDataUri, artFor, artAnswer, normalise, readRaw, layoutKey, keyParts, parseKey,
+  NUMBERS, SLOTS, USE_BG, socialEventFor, qrOptions, qrDataUri, artFor, artAnswer, siteLogoOf, useBgOf, cardItem, normalise, readRaw, layoutKey, keyParts, parseKey,
   basePathOf, importIdOf, cleanSrc, cleanElements, cleanParams, cleanCaption, cleanChanges, sweepFolder, PICTURE_REFUSED, EXAMPLE_REFUSED,
   setSharp: function (s) { sharpOverride = s || null; }
 };
