@@ -8,7 +8,7 @@
 //     Section edges and Banner video say they are saved by themselves
 //   4 UX-083 Mobile is a centred phone, not a strip at the left of a wide white card
 //   5 UX-085 every control shows where the focus is, and the site page is one Tab stop with Enter / arrows / Escape
-//   6 UX-087 the ETB2B AI greeting folds to its face once per person, and the canvas keeps a gutter clear of it
+//   6 UX-087 the old launcher's greeting is gone with ETB2B AI everywhere, and the canvas keeps a gutter clear of its face
 //   7 ES5
 // No network, no AI, no browser.
 'use strict';
@@ -324,47 +324,14 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
 })();
 
 /* ======================= 6 UX-087 the greeting, once per person ======================= */
+/* ETB2B AI everywhere replaced the editor's own launcher (#chat-launcher), and the greeting it showed on every open,
+   with the one assistant at the bottom right of every page (etb2b-assistant.js, with the dashboard's face): the old
+   launcher's greeting script went with it. The canvas still keeps a gutter clear of the assistant's face. */
 (function () {
-  var iife = blockFrom(INLINE, "(function(){\n    var launcher = document.getElementById('chat-launcher');\n    if (!launcher) return;", ')();');
-  check('6 the greeting\'s script is there, apart from the launcher\'s', !!iife && iife.indexOf('setOpen') === -1);
-  function run(store, uid) {
-    var classes = {}, timers = [], listeners = {}, winListeners = {};
-    function el() { return { hidden: false, classList: { add: function (c) { classes[c] = 1; }, contains: function (c) { return !!classes[c]; } }, setAttribute: function () {}, addEventListener: function (t, fn) { (this.on = this.on || {})[t] = fn; }, focus: function () {} }; }
-    var els = { 'panel-chat': el(), 'chat-launcher': el(), 'chat-close': el(), 'chat-input': el() };
-    var c = vm.createContext({
-      document: { getElementById: function (id) { return els[id]; }, addEventListener: function (t, fn, o) { listeners[t] = { fn: fn, o: o }; }, activeElement: null },
-      window: { RevampAuth: { currentUser: function () { return uid ? { uid: uid } : null; }, whenResolved: function () { return { then: function () {} }; } }, addEventListener: function (t, fn) { winListeners[t] = fn; }, dispatchEvent: function () {} },
-      RevampAuth: { currentUser: function () { return uid ? { uid: uid } : null; }, whenResolved: function () { return { then: function () {} }; } },
-      localStorage: { getItem: function (k) { return k in store ? store[k] : null; }, setItem: function (k, v) { store[k] = String(v); } },
-      setTimeout: function (fn, ms) { timers.push({ fn: fn, ms: ms }); }, Event: function () {}
-    });
-    vm.runInContext(iife, c);
-    return { classes: classes, timers: timers, listeners: listeners, winListeners: winListeners, doc: c.document, launcher: els['chat-launcher'] };
-  }
-  var store = {};
-  var first = run(store, 'u1');
-  check('6 the first time, the greeting shows', !first.classes['is-quiet']);
-  var t = first.timers.filter(function (x) { return x.ms === 8000; })[0];
-  check('6 … and folds to the face after 8 seconds', !!t);
-  if (t) t.fn();
-  check('6 … remembered for that person', first.classes['is-quiet'] === 1 && store['revamp.aiGreeted.u1'] === '1', store);
-  check('6 the next visit opens with the face only', run(store, 'u1').classes['is-quiet'] === 1);
-  check('6 another person on this browser is greeted once too', !run(store, 'u2').classes['is-quiet']);
-  var third = run({}, 'u3');
-  check('6 the first click on the editor folds it', third.listeners.mousedown && third.listeners.mousedown.o.once === true && (third.listeners.mousedown.fn(), third.classes['is-quiet'] === 1));
-  var fourth = run({}, 'u4');
-  fourth.doc.activeElement = { tagName: 'IFRAME' };
-  fourth.winListeners.blur();
-  check('6 … so does the first click on the page itself (the focus goes into the canvas)', fourth.classes['is-quiet'] === 1);
-  var fifth = run({}, 'u5');
-  fifth.launcher.on.click();
-  check('6 … and opening the chat from the keyboard', fifth.classes['is-quiet'] === 1);
-  var none = vm.createContext({ document: { getElementById: function () { return null; }, addEventListener: function () { throw new Error('wired with no launcher'); } }, setTimeout: function () { throw new Error('timed with no launcher'); } });
-  check('6 a page without this launcher has no greeting to fold, and nothing is wired', (function () { try { vm.runInContext(iife, none); return true; } catch (e) { return String(e.message); } })() === true);
-  var launch = blockFrom(INLINE, "(function(){\n    var chat = document.getElementById('panel-chat'), launcher = document.getElementById('chat-launcher');", ')();');
-  check('6 the launcher\'s own script is as it was (opening it still quiets the greeting)', !!launch && /if \(open\)\{\n\s*launcher\.classList\.add\('is-quiet'\);/.test(launch) && launch.indexOf('aiGreeted') === -1);
+  check('6 the old launcher and its greeting script are gone (ETB2B AI everywhere replaced them)',
+    INLINE.indexOf("getElementById('chat-launcher')") === -1 && INLINE.indexOf('revamp.aiGreeted.') === -1);
   var pad = /\.stage\{[^}]*padding: var\(--stage-pad-top\) 24px (\d+)px;/.exec(STYLE);
-  check('6 the canvas keeps a gutter clear of the launcher\'s face (22px + 62px from the bottom)', pad && +pad[1] >= 84 + 16, pad && pad[1]);
+  check('6 the canvas keeps a gutter clear of the assistant\'s face (22px + 62px from the bottom)', pad && +pad[1] >= 84 + 16, pad && pad[1]);
 })();
 
 /* ======================= 7 ES5 ======================= */

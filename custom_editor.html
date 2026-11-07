@@ -1927,32 +1927,6 @@
       railBtns.forEach(function(b){ b.classList.remove('active'); });
     });
   });
-  /* ETB2B AI's greeting is said once per person, not on every open (UX-087): it folds to the launcher's face 8 seconds
-     after the page opens, or at the first click on the editor or the page, and stays folded on later visits
-     (remembered in this browser for the person signed in). The canvas also keeps a gutter clear of the face (.stage).
-     It is kept apart from the launcher's own script above, so that a page whose launcher is drawn some other way
-     simply has no greeting to fold: then it finds no #chat-launcher and does nothing. */
-  (function(){
-    var launcher = document.getElementById('chat-launcher');
-    if (!launcher) return;
-    function greetedKey(){
-      var u = window.RevampAuth && RevampAuth.currentUser ? RevampAuth.currentUser() : null;
-      return 'revamp.aiGreeted.' + ((u && u.uid) || 'anyone');
-    }
-    function greeted(){ try { return localStorage.getItem(greetedKey()) === '1'; } catch(e){ return false; } }
-    function quiet(){
-      launcher.classList.add('is-quiet');
-      try { localStorage.setItem(greetedKey(), '1'); } catch(e){ /* storage blocked: it folds for this visit only */ }
-    }
-    if (greeted()) launcher.classList.add('is-quiet');
-    if (window.RevampAuth && RevampAuth.whenResolved) RevampAuth.whenResolved().then(function(){ if (greeted()) launcher.classList.add('is-quiet'); }, function(){});
-    setTimeout(quiet, 8000);
-    // a mouse click anywhere, the launcher's included, folds it; opening the chat from the keyboard is a click too
-    document.addEventListener('mousedown', quiet, { capture: true, once: true });
-    launcher.addEventListener('click', quiet);
-    // a click in the canvas moves the focus into its frame, which this window hears as losing it
-    window.addEventListener('blur', function(){ if (document.activeElement && document.activeElement.tagName === 'IFRAME') quiet(); });
-  })();
   /* ---------- section picker ----------
      One way to add a section, from the section pill's "+ Section", the tools row's "Sections" and the Layers
      menu's "Add section below": the site's own sections first (RevampTemplateUI.librarySections()), then the
