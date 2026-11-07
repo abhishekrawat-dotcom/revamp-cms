@@ -994,6 +994,20 @@
     render();
     paintSaveState();
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    showPlace(String(route || '').split('/')[2] || '');
+  }
+  /* A link may name a place on the view after its tab, "content/basics/audience" (Promotions' example notes,
+     UX-130): that field is scrolled to, focused and outlined for a moment. The address keeps the tab alone, so
+     Back, a reload or a copied link opens the tab as usual. */
+  function showPlace(place){
+    if (!place || !/^[a-z-]{1,30}$/.test(place)) return;
+    var el = document.querySelector('#view [data-place="' + place + '"]');
+    if (!el) return;
+    el.scrollIntoView({ block: 'center' });
+    var field = el.querySelector('textarea, input:not([type="hidden"]), button');
+    if (field && field.focus) { try { field.focus({ preventScroll: true }); } catch (err) { field.focus(); } }
+    el.classList.add('is-pointed');
+    setTimeout(function(){ el.classList.remove('is-pointed'); }, 2400);
   }
 
   /* ============================================================
@@ -1211,6 +1225,9 @@
       fgroup(1, 'Identity', 'What this event is called', identity) +
       fgroup(2, 'Date & place', 'When it runs and where', when) +
       fgroup(3, 'How it reads', 'The copy a visitor meets first', reads));
+    /* who should attend, the key topics and the event's own numbers: Promotions' posts and mailers use them, and
+       their example notes link here (UX-130); saved with the rest of this form */
+    form += panel('For posts and mailers', 'Who it is for, what it covers and its own numbers', promoDetailsFields(e));
 
     /* the banner video (hero-video-ui.js, mounted by mountHeroVideo): saved on its own, as it is changed —
        it is not part of this form's Save */
@@ -1258,6 +1275,67 @@
   /* The banner video's settings. An upload keeps going when the owner moves to another tab (the component it
      started in saves it and says so); the settings shown when they come back are then brought up to date. */
   var HERO_VIDEO_UI = null;
+  /* ---------- who should attend, key topics, headline numbers (Basics, UX-130) ----------
+     Saved on the event as whoShouldAttend, keyTopics and headlineNumbers (functions/lib/promo-details.js has the
+     rules). Promotions reads them before the brief; a field never saved shows what the brief says (wireBasics
+     fills it in), so what is on screen is what the posts use. Each [data-place] is where a link from an example
+     note in Promotions lands ("#content/basics/audience", showPlace). */
+  var PD = { listMax: 12, audienceChars: 160, topicChars: 220, numbersMax: 6, valueChars: 16, labelChars: 40 };
+  function pdListText(v){
+    return Array.isArray(v) ? v.join('\n') : '';
+  }
+  function promoDetailsFields(e){
+    function list(key, id, label, place, hint, eg){
+      return '<div class="field c6" data-place="' + place + '"><label for="' + id + '">' + esc(label) + '</label>' +
+        '<textarea class="inp pd-list" id="' + id + '" rows="5" spellcheck="true" aria-describedby="' + id + '-hint ' + id + '-from" placeholder="' + esc(eg) + '">' +
+          esc(pdListText(e[key])) + '</textarea>' +
+        '<p class="hint" id="' + id + '-hint">' + esc(hint) + '</p>' +
+        '<p class="hint pd-from" id="' + id + '-from" hidden></p></div>';
+    }
+    return '<p class="hint pd-intro">Social posts, Site-look posts and mailers use these. They are not shown on the site itself, and each post can still change them.</p>' +
+      '<div class="frow">' +
+        list('whoShouldAttend', 'b-audience', 'Who should attend', 'audience', 'One group of people per line, up to ' + PD.listMax + '.',
+          'e.g. CIOs and CTOs\nHeads of digital transformation') +
+        list('keyTopics', 'b-topics', 'Key topics', 'topics', 'One topic per line, up to ' + PD.listMax + '.',
+          'e.g. AI in the enterprise\nCloud and data security') +
+        '<div class="field c12" data-place="numbers"><span class="flabel" id="b-numbers-l">Headline numbers</span>' +
+          '<div class="pd-nums" id="b-numbers-rows" role="group" aria-labelledby="b-numbers-l" aria-describedby="b-numbers-hint b-numbers-from"></div>' +
+          '<input type="hidden" id="b-numbers" value="' + esc(pdNumbersText(e.headlineNumbers)) + '">' +
+          '<div><button type="button" class="btn btn-secondary btn-sm" id="b-numbers-add">' + svg(IC.plus, 13) + '<span>Add a number</span></button></div>' +
+          '<p class="hint" id="b-numbers-hint">The event’s own numbers, such as attendees, years or countries: up to ' + PD.numbersMax + '. Speakers, sessions, partners and days are counted from Content and added to posts by themselves.</p>' +
+          '<p class="hint pd-from" id="b-numbers-from" hidden></p></div>' +
+      '</div>';
+  }
+  /* the numbers as the hidden field holds them while they are edited: JSON of [{ value, label }], rows half
+     typed included; '' when the event has none saved */
+  function pdNumbersText(v){
+    if (!Array.isArray(v)) return '';
+    return JSON.stringify(v.map(function(n){ return { value: String((n && n.value) || ''), label: String((n && n.label) || '') }; }));
+  }
+  function pdNumbersRows(text){
+    try { var rows = JSON.parse(text || '[]'); return Array.isArray(rows) ? rows : []; } catch (err) { return []; }
+  }
+  /* what a field's text is saved as: the lines (trimmed, no empty one) or the pairs with something typed in them */
+  function pdValue(k, text){
+    if (k === 'numbers') return pdNumbersRows(text).map(function(n){
+      return { value: String((n && n.value) || '').trim(), label: String((n && n.label) || '').trim() };
+    }).filter(function(n){ return n.value || n.label; });
+    return String(text || '').split(/\r?\n/).map(function(l){ return l.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  }
+  /* what a number's label counts when the event's records count it already (functions/lib/promo-details.js
+     countedKind, the same rule): the real count is the one posts show. -> the sentence that says so, or '' */
+  function pdCounted(label){
+    var counted = [
+      [/\bspeakers?$/i, 'Speakers are counted from Content → Speakers and added by themselves.'],
+      [/\bsessions?$/i, 'Sessions are counted from Content → Agenda and added by themselves.'],
+      [/\b(partners?|sponsors?)$/i, 'Partners are counted from Content → Sponsors and added by themselves.'],
+      [/\bdays?$/i, 'Days are counted from the event’s dates and added by themselves.']
+    ];
+    var s = String(label || '').replace(/\s+/g, ' ').trim();
+    for (var i = 0; i < counted.length; i++) if (counted[i][0].test(s)) return counted[i][1];
+    return '';
+  }
+
   /* ---------- the share picture (Basics) ---------- */
   var SHARE_AUTO = 'Automatic: the banner’s picture, else the first picture of the site.';
   var SHARE_OWN = 'Shared links of the site show this picture.';
@@ -1345,12 +1423,16 @@
   function wireBasics(){
     var f = {
       name:  $('b-name'),  cat:   $('b-cat'),   portal: $('b-portal'), start: $('b-start'),
-      end:   $('b-end'),   venue: $('b-venue'), city:  $('b-city'), desc: $('b-desc')
+      end:   $('b-end'),   venue: $('b-venue'), city:  $('b-city'), desc: $('b-desc'),
+      audience: $('b-audience'), topics: $('b-topics'), numbers: $('b-numbers')
     };
     if (!f.name) return;
 
     /* form field -> the event field it is stored in */
-    var STORED = { name:'name', cat:'category', portal:'portal', start:'start', end:'end', venue:'venue', city:'city', desc:'description' };
+    var STORED = { name:'name', cat:'category', portal:'portal', start:'start', end:'end', venue:'venue', city:'city', desc:'description',
+      audience:'whoShouldAttend', topics:'keyTopics', numbers:'headlineNumbers' };
+    /* the fields saved as lists (UX-130): compared and sent as what they hold, not as the text typed */
+    var LISTS = { audience: 1, topics: 1, numbers: 1 };
     var KEYS = Object.keys(STORED);
     var initial = {};
     KEYS.forEach(function(k){ initial[k] = f[k].value; });
@@ -1362,7 +1444,15 @@
 
     function v(k){ return f[k].value; }
     function trimmed(k){ return v(k).trim(); }
-    function changedKeys(){ return KEYS.filter(function(k){ return f[k].value !== initial[k]; }); }
+    /* a list's text as what it is saved as, so a trailing line break or a row added and left empty is no change */
+    function norm(k, text){ return LISTS[k] ? JSON.stringify(pdValue(k, text)) : text; }
+    function changedKeys(){ return KEYS.filter(function(k){ return norm(k, f[k].value) !== norm(k, initial[k]); }); }
+    /* the text a field shows for what is stored */
+    function fieldText(k, stored){
+      if (k === 'numbers') return pdNumbersText(stored);
+      if (LISTS[k]) return pdListText(stored);
+      return stored == null ? '' : stored;
+    }
     function place(){ return [trimmed('venue'), trimmed('city')].filter(Boolean).join(', '); }
 
     /* ---- date maths, kept honest about half-filled forms ---- */
@@ -1537,7 +1627,7 @@
     }
 
     function paint(){
-      paintWhen(); paintCount(); paintPreview(); paintReady(); paintDirty();
+      paintWhen(); paintCount(); paintPreview(); paintReady(); paintDirty(); paintFrom();
     }
 
     function onEdit(e){
@@ -1548,6 +1638,94 @@
     KEYS.forEach(function(k){
       f[k].addEventListener('input', onEdit);
       f[k].addEventListener('change', onEdit);
+    });
+
+    /* ---- the headline numbers: rows of a number and what it counts, kept in the hidden b-numbers field as
+            JSON, so they are saved, discarded and counted as edited like every other field of this form ---- */
+    var numRows = $('b-numbers-rows'), numAdd = $('b-numbers-add');
+    function paintNumbers(){
+      if (!numRows) return;
+      var rows = pdNumbersRows(f.numbers.value);
+      numRows.innerHTML = (rows.length ? '<div class="pd-num pd-num-head" aria-hidden="true"><span>Number</span><span>What it counts</span></div>' : '') +
+        rows.map(function(n, i){
+          return '<div class="pd-num" data-i="' + i + '">' +
+            '<input class="inp pd-v" id="b-num-v-' + i + '" value="' + esc((n && n.value) || '') + '" placeholder="e.g. 500+" aria-label="Number ' + (i + 1) + '">' +
+            '<input class="inp pd-l" id="b-num-l-' + i + '" value="' + esc((n && n.label) || '') + '" placeholder="e.g. Attendees" aria-label="What number ' + (i + 1) + ' counts">' +
+            '<button type="button" class="btn btn-ghost btn-sm pd-x" data-num-x="' + i + '" aria-label="Remove number ' + (i + 1) + '">Remove</button>' +
+          '</div>';
+        }).join('');
+      if (numAdd) numAdd.disabled = rows.length >= PD.numbersMax;
+    }
+    function readNumbers(){
+      var rows = [];
+      Array.prototype.forEach.call(numRows.querySelectorAll('.pd-num[data-i]'), function(r){
+        rows.push({ value: r.querySelector('.pd-v').value, label: r.querySelector('.pd-l').value });
+      });
+      return rows;
+    }
+    function numbersEdited(rows){
+      f.numbers.value = JSON.stringify(rows);
+      failed = '';
+      paint();
+    }
+    if (numRows){
+      paintNumbers();
+      numRows.addEventListener('input', function(e){
+        if (e.target && e.target.classList && e.target.classList.contains('inp')) clearFieldError(e.target);
+        numbersEdited(readNumbers());
+      });
+      numRows.addEventListener('click', function(e){
+        var x = e.target && e.target.closest ? e.target.closest('[data-num-x]') : null;
+        if (!x) return;
+        var at = +x.getAttribute('data-num-x'), rows = readNumbers();
+        rows.splice(at, 1);
+        numbersEdited(rows);
+        paintNumbers();
+        /* focus stays in the list: on the row that took its place, else on Add */
+        var next = $('b-num-v-' + Math.min(at, rows.length - 1));
+        if (next) next.focus(); else if (numAdd) numAdd.focus();
+      });
+    }
+    if (numAdd) numAdd.addEventListener('click', function(){
+      var rows = readNumbers();
+      if (rows.length >= PD.numbersMax) return;
+      rows.push({ value: '', label: '' });
+      numbersEdited(rows);
+      paintNumbers();
+      var first = $('b-num-v-' + (rows.length - 1));
+      if (first) first.focus();
+    });
+
+    /* ---- a field never saved on the event shows what the brief says, which is what the posts use until it is
+            saved here (functions/lib/promo.js detailsOf). It is filled in only while it is still untouched and
+            empty, and counts as unchanged: nothing is saved until the person saves. ---- */
+    /* the brief's text of each field it filled in; the note under it says so while the field still holds it and
+       the event has none of its own saved */
+    var fromBrief = {};
+    function paintFrom(){
+      ['audience', 'topics', 'numbers'].forEach(function(k){
+        var el = $('b-' + k + '-from');
+        if (!el) return;
+        var on = fromBrief[k] != null && !Array.isArray(EV[STORED[k]]) && norm(k, f[k].value) === norm(k, fromBrief[k]);
+        el.textContent = on ? 'From the event brief: posts and mailers use this as it is. Change it here and save to make it the event’s own.' : '';
+        el.hidden = !on;
+      });
+    }
+    var BRIEF_FIELDS = ['audience', 'topics', 'numbers'].filter(function(k){ return f[k] && !Array.isArray(EV[STORED[k]]); });
+    if (BRIEF_FIELDS.length && C.fetchBriefDetails) C.fetchBriefDetails(EV.id).then(function(d){
+      if ($('b-audience') !== f.audience) return;          // Basics was left meanwhile
+      var from = (d && d.fromBrief) || {};
+      BRIEF_FIELDS.forEach(function(k){
+        var list = from[STORED[k]];
+        if (!Array.isArray(list) || !list.length || Array.isArray(EV[STORED[k]])) return;
+        if (norm(k, f[k].value) !== norm(k, initial[k]) || pdValue(k, initial[k]).length) return;
+        f[k].value = initial[k] = fromBrief[k] = fieldText(k, list);
+      });
+      paintNumbers();
+      paint();
+    }, function(err){
+      /* the fields stay as they are, empty: the posts still use the brief on the server */
+      console.error('Brief details could not be read:', err);
     });
 
     $('b-rdy').addEventListener('click', function(e){
@@ -1732,6 +1910,26 @@
       if (changed.indexOf('portal') >= 0 && !v('portal') && shownPortal()){
         errs.push(['b-portal', 'An event’s portal can be changed, not removed. Choose another portal.']);
       }
+      /* the three details for posts and mailers: the limits functions/lib/promo-details.js keeps */
+      [['audience', 'b-audience', 'Who should attend', PD.audienceChars], ['topics', 'b-topics', 'Key topics', PD.topicChars]].forEach(function(l){
+        if (changed.indexOf(l[0]) < 0) return;
+        var lines = pdValue(l[0], v(l[0]));
+        var long = lines.filter(function(t){ return t.length > l[3]; })[0];
+        if (lines.length > PD.listMax) errs.push([l[1], l[2] + ' can have up to ' + PD.listMax + ' lines (now ' + lines.length + ').']);
+        else if (long) errs.push([l[1], 'Shorten “' + long.slice(0, 40) + '…” to ' + l[3] + ' characters.']);
+      });
+      if (changed.indexOf('numbers') >= 0){
+        pdNumbersRows(v('numbers')).forEach(function(n, i){
+          var value = String((n && n.value) || '').trim(), label = String((n && n.label) || '').trim();
+          if (!value && !label) return;
+          if (!value) errs.push(['b-num-v-' + i, 'Give the number.']);
+          else if (!/\d/.test(value)) errs.push(['b-num-v-' + i, 'Type a number, such as 500+.']);
+          else if (value.length > PD.valueChars) errs.push(['b-num-v-' + i, 'Up to ' + PD.valueChars + ' characters.']);
+          if (!label) errs.push(['b-num-l-' + i, 'Say what it counts, such as Attendees.']);
+          else if (label.length > PD.labelChars) errs.push(['b-num-l-' + i, 'Up to ' + PD.labelChars + ' characters.']);
+          else if (pdCounted(label)) errs.push(['b-num-l-' + i, pdCounted(label)]);
+        });
+      }
       return errs;
     }
 
@@ -1748,6 +1946,8 @@
       var sent = {}, patch = {};
       changed.forEach(function(k){
         sent[k] = f[k].value;
+        /* a list is sent as what it holds; emptied, it is saved empty: the owner's "none", which the brief does not fill */
+        if (LISTS[k]) { patch[STORED[k]] = pdValue(k, sent[k]); return; }
         var val = (k === 'cat' || k === 'desc') ? sent[k] : sent[k].trim();
         /* a cleared date is no date, never an empty string */
         patch[STORED[k]] = ((k === 'start' || k === 'end') && !val) ? null : val;
@@ -1765,12 +1965,13 @@
       return C.updateEvent(EV.id, patch).then(function(){
         saving = false;
         changed.forEach(function(k){
-          var stored = patch[STORED[k]] == null ? '' : patch[STORED[k]];
+          var stored = fieldText(k, patch[STORED[k]]);
           EV[STORED[k]] = patch[STORED[k]];
           /* what was typed while the request was out stays typed, and still counts as unsaved */
           if (f[k].value === sent[k]) f[k].value = stored;
           initial[k] = stored;
         });
+        if (changed.indexOf('numbers') >= 0) paintNumbers();
         var said = 'Basics saved';
         if (portalTo){
           EV.portalName = portalToName;
@@ -1797,6 +1998,7 @@
         f[k].value = initial[k];
         clearFieldError(f[k]);
       });
+      paintNumbers();
       failed = '';
       paint();
     }

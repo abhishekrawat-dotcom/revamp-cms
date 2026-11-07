@@ -178,6 +178,8 @@ const ownerBrief = require('./owner-brief');
 const eventDescription = require('./event-description');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
+/* the rules of Content › Basics' three details for posts and mailers (pure: no Firebase, no model) */
+const promoDetails = require('./promo-details');
 const googleFonts = require('./google-fonts');
 const sectionPictures = require('./section-pictures');
 const etAwards = require('./et-awards');
@@ -8214,7 +8216,14 @@ var EVENT_FIELD_CHECKS = {
   portal: function (v) {
     if (etEvents.isPortal(v)) return '';
     return v == null || v === '' ? PORTAL_REMOVE_TEXT : 'Unknown portal "' + String(v).slice(0, 40) + '".';
-  }
+  },
+  /* Content › Basics' three details for posts and mailers (UX-130): who should attend, the key topics and the
+     event's own headline numbers. lib/promo-details.js has the rules (a number never names what the records
+     count, such as speakers); posts and mailers read them before the brief (lib/promo.js detailsOf). They are
+     not on the site, so saving them changes nothing a visitor of a live site sees. */
+  whoShouldAttend: function (v) { return promoDetails.check.whoShouldAttend(v); },
+  keyTopics: function (v) { return promoDetails.check.keyTopics(v); },
+  headlineNumbers: function (v) { return promoDetails.check.headlineNumbers(v); }
 };
 var EVENT_FIELDS = Object.keys(EVENT_FIELD_CHECKS);
 
@@ -12144,6 +12153,7 @@ var ROUTES = {
   'GET /api/insights': audience('handleInsights'),
 
   'GET /api/promo/kit': promo('handleKit'),
+  'GET /api/promo/details': promo('handleDetails'),
   'GET /api/promo/image': promo('handleImage'),
   'POST /api/promo/write': promo('handleWrite'),
   'GET /api/promo/mailers': promoMailer('handleCatalog'),
@@ -12272,3 +12282,6 @@ module.exports._testHooks = {
   /* published pages' UX (published-page-ux.test.js) */
   noSuchPageHtml: noSuchPageHtml, messagePage: messagePage, routeApi: routeApi, repeatedHeadingIds: repeatedHeadingIds, takenHeadings: takenHeadings, headingWords: headingWords, calendarHeaders: calendarHeaders
 };
+/* the event's fields as PATCH /api/event reads them: Content › Basics' three details for posts and mailers among them
+   (promo-details.test.js) */
+module.exports._testHooks.cleanEventBody = cleanEventBody;

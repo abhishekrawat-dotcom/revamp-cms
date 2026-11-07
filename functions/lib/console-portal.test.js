@@ -195,10 +195,12 @@ var NAMES = ['shownPortal', 'rosterName', 'paintPortalChip', 'openSetPortal', 'p
   /* the header's state chips and Basics' share picture, which the header and Basics now run through */
   'paintState', 'shareUrlOf', 'sharePictureField', 'wireSharePicture',
   /* the header's Publish, painted with the state chips (B06, UX-105); without publish-flow.js loaded it is left alone */
-  'paintPublishButton'];
+  'paintPublishButton',
+  /* Basics' who should attend, key topics and headline numbers for posts and mailers (UX-130) */
+  'promoDetailsFields', 'pdListText', 'pdNumbersText', 'pdNumbersRows', 'pdValue', 'pdCounted'];
 var CONSOLE_FNS = {};
 NAMES.forEach(function (n) { CONSOLE_FNS[n] = fnSrc(MAIN, n); check('2 found function ' + n, !!CONSOLE_FNS[n]); });
-var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF', 'APPROVAL', 'SHARE_AUTO', 'SHARE_OWN'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');
+var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF', 'APPROVAL', 'SHARE_AUTO', 'SHARE_OWN', 'PD'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');
 
 /* a node the page builds itself (the Registration panel): what its markup holds, found by #id */
 function builtNode() {
@@ -237,7 +239,9 @@ function loadConsole(o) {
       DESC: RC.DESC, basicsGaps: RC.basicsGaps, siteState: RC.siteState,
       /* the console's failure wording is RevampCore's (UX-008 / UX-013) */
       errText: RC.errText,
-      publicUrl: function (ev) { return 'https://oneworld.example/e/' + ev.id; }
+      publicUrl: function (ev) { return 'https://oneworld.example/e/' + ev.id; },
+      /* what the brief says for Basics' three details (o.brief: the answer; absent, the console never asks) */
+      fetchBriefDetails: o.brief ? function (id) { fetches.push('brief:' + id); return Promise.resolve(o.brief); } : undefined
     }
   };
   sb.window = sb;
@@ -313,8 +317,8 @@ check('4 the Activity log\'s word for portal-set is "Portal set"', HIST['portal-
   CONSOLE.indexOf('<script src="activity-words.js"></script>') !== -1, HIST['portal-set']);
 var storedSrc = (/\n    var STORED = (\{[^}]*\});/.exec(CONSOLE_FNS.wireBasics) || [])[1];
 var STORED = storedSrc ? vm.runInNewContext('(' + storedSrc + ')') : {};
-check('4 STORED.portal is \'portal\' (the other fields as they were)', STORED.portal === 'portal' && STORED.cat === 'category' && STORED.desc === 'description' &&
-  Object.keys(STORED).length === 8, STORED);
+check('4 STORED.portal is \'portal\' (the other fields as they were, and UX-130\'s three details for posts and mailers)', STORED.portal === 'portal' && STORED.cat === 'category' && STORED.desc === 'description' &&
+  STORED.audience === 'whoShouldAttend' && STORED.topics === 'keyTopics' && STORED.numbers === 'headlineNumbers' && Object.keys(STORED).length === 11, STORED);
 
 /* ---- Basics, in the vm ---- */
 function ready(c) { var m = c.$('b-rdy').innerHTML; return m; }
@@ -365,6 +369,77 @@ pending.push((function () {
   }).then(function () {
     check('B1 a change of the name alone sends no portal and no ifPortal', JSON.stringify(c.updates[1].patch) === JSON.stringify({ name: 'Agentic AI Summit 2027' }), c.updates[1]);
     check('B1 … and says only "Basics saved"', c.toasts[c.toasts.length - 1][0] === 'Basics saved' && c.toasts[c.toasts.length - 1][1] === 0);
+  });
+})());
+
+/* UX-130: Basics' three details for posts and mailers. Saved lists are shown as they are; a field never saved shows
+   what the brief says, unchanged until the person changes it; a save sends only what changed, as lists; a number that
+   names what the records count is stopped at the field */
+pending.push((function () {
+  var brief = { fromBrief: { whoShouldAttend: ['From the brief'], keyTopics: ['Brief topic'], headlineNumbers: [{ value: '500+', label: 'CXOs' }] } };
+  var c = loadConsole({ ev: { id: 'ev-d1', name: 'CX Leaders Forum', portal: 'hr', portalName: 'ETHRWorld', start: '2026-11-12T10:00', category: 'ip',
+    venue: 'Taj', city: 'Mumbai', description: 'Two days of agentic AI in practice, from the people who run it in India’s largest firms.',
+    whoShouldAttend: ['CX heads', 'CMOs'], keyTopics: [] }, brief: brief });
+  c.basics();
+  var html = c.sb.viewBasics();
+  check('D1 the panel: two lists and the numbers, each where a Promotions link can land', /data-place="audience"><label for="b-audience">Who should attend<\/label><textarea class="inp pd-list" id="b-audience"/.test(html) &&
+    /data-place="topics"><label for="b-topics">Key topics<\/label>/.test(html) && /data-place="numbers"><span class="flabel" id="b-numbers-l">Headline numbers<\/span>/.test(html) &&
+    html.indexOf('They are not shown on the site itself, and each post can still change them.') !== -1 &&
+    html.indexOf('Speakers, sessions, partners and days are counted from Content and added to posts by themselves.') !== -1, html.slice(html.indexOf('pd-intro') - 20, html.indexOf('pd-intro') + 400));
+  check('D1 a saved list is shown as it is (one per line)', c.$('b-audience').value === 'CX heads\nCMOs' && c.$('b-topics').value === '');
+  return tick().then(function () {
+    check('D1 the brief is asked once, for the fields never saved', c.fetches.filter(function (x) { return x === 'brief:ev-d1'; }).length === 1);
+    check('D1 a field never saved (the numbers) shows the brief\'s, and says so', JSON.stringify(JSON.parse(c.$('b-numbers').value)) === JSON.stringify([{ value: '500+', label: 'CXOs' }]) &&
+      c.$('b-numbers-from').hidden === false && /^From the event brief/.test(c.$('b-numbers-from').textContent), c.$('b-numbers').value);
+    check('D1 … a list saved empty stays empty (the owner\'s "none"), a saved one keeps its own; no brief note on them',
+      c.$('b-topics').value === '' && c.$('b-audience').value === 'CX heads\nCMOs' && c.$('b-topics-from').hidden !== false && c.$('b-audience-from').hidden !== false);
+    check('D1 … and filling it in is no change: the form is not dirty', !dirty(c));
+    c.$('b-audience').value = 'CX heads\n\n  CMOs  \nCDOs\n'; c.$('b-audience').fire('input');
+    check('D1 a line added: one field edited', dirty(c) && c.$('b-sbwhat').textContent === '1 field edited');
+    c.$('b-save').fire('click');
+    return tick();
+  }).then(function () {
+    check('D1 the save sends the list as lines (trimmed, no empty one) and nothing else', c.updates.length === 1 &&
+      JSON.stringify(c.updates[0].patch) === JSON.stringify({ whoShouldAttend: ['CX heads', 'CMOs', 'CDOs'] }), c.updates[0]);
+    check('D1 once saved: EV holds it and the form is clean', JSON.stringify(c.sb.EV.whoShouldAttend) === '["CX heads","CMOs","CDOs"]' && !dirty(c) &&
+      c.$('b-audience').value === 'CX heads\nCMOs\nCDOs');
+    /* a trailing line break is not a change */
+    c.$('b-audience').value = 'CX heads\nCMOs\nCDOs\n'; c.$('b-audience').fire('input');
+    check('D1 a trailing line break is no change', !dirty(c));
+    /* a number that names what the records count is stopped at its field, nothing sent */
+    c.$('b-numbers').value = JSON.stringify([{ value: '500+', label: 'CXOs' }, { value: '40', label: 'Expert speakers' }, { value: 'many', label: 'Countries' }, { value: '', label: '' }]);
+    c.$('b-numbers').fire('input');
+    check('D1 the numbers changed: one field edited (an empty row is nothing)', dirty(c) && c.$('b-sbwhat').textContent === '1 field edited');
+    c.$('b-save').fire('click');
+    return tick();
+  }).then(function () {
+    var errs = c.fieldErrs[c.fieldErrs.length - 1] || [];
+    check('D1 a counted kind and a word for a number are stopped at their fields, nothing sent', c.updates.length === 1 &&
+      JSON.stringify(errs) === JSON.stringify([['b-num-l-1', 'Speakers are counted from Content → Speakers and added by themselves.'], ['b-num-v-2', 'Type a number, such as 500+.']]), errs);
+    c.$('b-numbers').value = JSON.stringify([{ value: ' 500+ ', label: ' CXOs ' }, { value: '12', label: 'Years' }, { value: '', label: '' }]);
+    c.$('b-numbers').fire('input');
+    c.$('b-save').fire('click');
+    return tick();
+  }).then(function () {
+    check('D1 the numbers are sent as label + number pairs, trimmed, the empty row left out', c.updates.length === 2 &&
+      JSON.stringify(c.updates[1].patch) === JSON.stringify({ headlineNumbers: [{ value: '500+', label: 'CXOs' }, { value: '12', label: 'Years' }] }), c.updates[1]);
+    check('D1 … saved, the brief note goes (they are the event\'s own now)', c.$('b-numbers-from').hidden === true && !dirty(c));
+    c.$('b-topics').value = 'Agentic AI'; c.$('b-topics').fire('input');
+    c.$('b-discard').fire('click');
+    check('D1 Discard puts the field back', c.$('b-topics').value === '' && !dirty(c));
+  });
+})());
+/* no brief details to ask for when all three are saved; a brief that has none fills nothing */
+pending.push((function () {
+  var c = loadConsole({ ev: { id: 'ev-d2', name: 'X', portal: 'hr', portalName: 'ETHRWorld', whoShouldAttend: ['A'], keyTopics: ['B'], headlineNumbers: [] },
+    brief: { fromBrief: { whoShouldAttend: ['Z'], keyTopics: ['Z'], headlineNumbers: [{ value: '1', label: 'Z' }] } } });
+  c.basics();
+  var d = loadConsole({ ev: { id: 'ev-d3', name: 'Y', portal: 'hr', portalName: 'ETHRWorld' }, brief: { fromBrief: { whoShouldAttend: [], keyTopics: [], headlineNumbers: [] } } });
+  d.basics();
+  return tick().then(function () {
+    check('D2 all three saved: the brief is not asked', c.fetches.length === 0 && c.$('b-audience').value === 'A' && c.$('b-numbers').value === '[]', c.fetches);
+    check('D2 a brief with nothing: the fields stay empty, no note, not dirty', d.$('b-audience').value === '' && d.$('b-numbers').value === '' &&
+      d.$('b-audience-from').hidden !== false && !dirty(d));
   });
 })());
 

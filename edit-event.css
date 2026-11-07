@@ -1561,3 +1561,17 @@ a.ev-chip:hover{ border-color: currentColor; }
 .media-card.failed{ border-color: var(--accent); }
 .gal-acts{ gap:6px; }
 .gal-hint{ margin:10px 0 0; font-size:11.5px; color: var(--text-muted); }
+
+/* ============ BASICS: who should attend, key topics, headline numbers (UX-130) ============ */
+.pd-intro{ margin:0 0 14px; font-size:12.5px; color: var(--text-muted); }
+.pd-from{ font-weight:600; }
+.pd-nums{ display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
+.pd-nums:empty{ display:none; }
+/* a number, what it counts, Remove; a field's message goes on its own line under the row */
+.pd-num{ display:grid; grid-template-columns: minmax(90px, 150px) minmax(0, 1fr) auto; gap:8px; align-items:center; }
+.pd-num .field-err{ grid-column: 1 / -1; order:1; margin:0; }
+.pd-num-head{ font-size:11.5px; font-weight:700; color: var(--text-muted); }
+.pd-num-head span:last-child{ grid-column: 2 / 4; }
+@media (max-width:480px){ .pd-num{ grid-template-columns: minmax(70px, 96px) minmax(0, 1fr) auto; } }
+/* the field a link from Promotions pointed at, outlined for a moment (showPlace) */
+.field.is-pointed{ border-radius:8px; box-shadow: 0 0 0 3px var(--surface-3), 0 0 0 4px var(--text-muted); transition: box-shadow .3s; }

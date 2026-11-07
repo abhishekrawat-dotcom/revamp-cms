@@ -64,6 +64,8 @@
                                    {version, updatedAt, updatedBy} (someone else saved first)
      .stageSiteContent(eventId)   POST   /api/event/site/records -> Content drawn into the saved site as a
                                    version of its own (see the function)
+     .fetchBriefDetails(eventId)  GET    /api/promo/details -> {fromBrief}: what the brief says for Basics'
+                                   who should attend, key topics and headline numbers
      .publishEvent(eventId)       POST   /api/event/publish -> {publishedPath, publishedUrl, publishedAt,
                                    publishedVersion}; 409 when no site was ever saved. Publishes the SAVED
                                    site. (publishEvent(eventId, html) — the older form — still works.)
@@ -735,6 +737,14 @@ window.RevampCore = (function(){
   function stageSiteContent(eventId){
     return need(eventId, 'stageSiteContent: eventId') ||
       api('POST', '/api/event/site/records', { eventId: String(eventId).trim() });
+  }
+
+  /* What the event's brief says for Content › Basics' three details for posts and mailers (UX-130), read from
+     what the brief reader stored (no model is asked): GET /api/promo/details ->
+     { fromBrief: { whoShouldAttend: [text], keyTopics: [text], headlineNumbers: [{ value, label }] } } */
+  function fetchBriefDetails(eventId){
+    return need(eventId, 'fetchBriefDetails: eventId') ||
+      api('GET', '/api/promo/details?eventId=' + q(eventId));
   }
 
   /* What the site shows: the event's details and Content-tab records, in the shape of the public
@@ -1462,7 +1472,7 @@ window.RevampCore = (function(){
     fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent, restoreVersion: restoreVersion,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
-    stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,
+    stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
     uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
