@@ -596,6 +596,22 @@
   .pn-link{ background:none; border:none; padding:0; font-size:13px; font-weight:700; color:var(--accent-strong); text-decoration:underline; cursor:pointer; white-space:nowrap; }
   #portal-notice{ display:flex; flex-direction:column; gap:8px; }
   #portal-notice:empty{ display:none; }
+  /* Create Event's unfinished drafts, in the Drafts view (renderCreateDrafts, UX-048) */
+  #create-drafts:empty{ display:none; }
+  .cdrafts{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:14px 16px; box-shadow:var(--shadow-xs); }
+  .cdrafts-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .cdrafts-head h2{ font-size:14px; }
+  .cdrafts-head .tc{ font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-faint); background:var(--surface-2); border-radius:100px; padding:1px 7px; }
+  .cdrafts-note{ font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
+  .cdrafts-list{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; }
+  .cdraft{ display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--border); }
+  .cdraft-main{ flex:1 1 260px; min-width:0; }
+  .cdraft-name{ font-weight:650; color:var(--text); text-decoration:none; overflow-wrap:anywhere; }
+  .cdraft-name:hover{ text-decoration:underline; }
+  .cdraft-meta{ font-size:12.5px; color:var(--text-muted); margin-top:2px; overflow-wrap:anywhere; }
+  .cdraft-actions{ display:flex; gap:6px; flex-shrink:0; }
+  @media (max-width: 640px){ .cdraft-actions .btn{ min-height:44px; } }
+  .cdrafts-error{ display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; font-size:13px; color:var(--text); margin-top:6px; }
   .portal-notice{ display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; padding:10px 14px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:13px; }
   .portal-notice > svg{ color:var(--text-muted); flex-shrink:0; }
   .portal-notice .pn-text{ flex:1 1 220px; min-width:0; }
@@ -733,6 +749,8 @@
   <div id="special-banner"></div>
   <!-- the first-visit "Choose the portal you work on" callout, and "N events have no portal yet" (renderPortalNotice) -->
   <div id="portal-notice"></div>
+  <!-- Create Event's unfinished drafts, from the person's account: shown in the Drafts view (renderCreateDrafts) -->
+  <section id="create-drafts" aria-label="Unfinished in Create Event"></section>
 
   <div id="results-view" class="view-list">
     <div class="table-wrap" id="table-wrap">
@@ -822,6 +840,8 @@
 <script src="auth.js"></script>
 <!-- ET's portal roster, the person's working portal and the Set portal window (window.RevampPortals) -->
 <script src="portal-picker.js"></script>
+<!-- Create Event's drafts in the person's account: listed in the Drafts view, with Resume and Discard -->
+<script src="create-drafts.js"></script>
 <!-- the one rule for Draft / Upcoming / Active / Completed, shared with ETB2B AI's server so the two never disagree -->
 <script src="event-lifecycle.js"></script>
 <script>
@@ -1807,13 +1827,15 @@
   /* what a tab or ⋯ view counts: all its events, or, while a search or a filter is on, how many of them match, so the
      counts say where the matches are (UX-019: they ignored the search, which looked only inside the open tab) */
   function bucketCount(b){ return listFiltered() ? matchCount(b) : countIn(b); }
+  /* the Drafts tab counts the unfinished Create Event drafts it shows as well (createDraftsShown, UX-048) */
+  function tabCount(b){ return bucketCount(b) + (b === 'draft' ? createDraftsShown().length : 0); }
   function renderTabs(){
     var filtered = listFiltered(), known = !state.loading && !state.loadFailed;
     $('status-tabs').innerHTML = TABS.map(function(t){
       var selected = currentBucket() === t[0];
       /* a dash, not a 0, until the events have loaded, and when they could not be (UX-027): no count is better
          than one that says the events are gone */
-      var n = known ? bucketCount(t[0]) : '–';
+      var n = known ? tabCount(t[0]) : '–';
       return '<button type="button" role="tab" aria-selected="'+selected+'" data-tab="'+t[0]+'">'+t[1]+' <span class="tc">'+n+'</span>' +
         (known && filtered ? '<span class="sr-only">' + (n === 1 ? ' match' : ' matches') + '</span>' : '') + '</button>';
     }).join('') + '<span class="tabs-underline" id="tabs-underline"></span>';
@@ -2347,7 +2369,15 @@
   var MATCH_ORDER = ['draft','upcoming','active','completed','cancelled','deleted'];
   function noMatchHTML(bucket){
     var elsewhere = MATCH_ORDER.filter(function(b){ return b !== bucket && (b !== 'deleted' || deletedState === 'ok'); })
-      .map(function(b){ return { b: b, n: matchCount(b) }; }).filter(function(x){ return x.n > 0; });
+      .map(function(b){ return { b: b, n: matchCount(b) + (b === 'draft' ? createDraftsShown().length : 0) }; }).filter(function(x){ return x.n > 0; });
+    /* on Drafts, unfinished Create Event drafts that match are in their box above: said, not "No matches" alone */
+    var above = bucket === 'draft' ? createDraftsShown().length : 0;
+    if (above){
+      return emptyBlock(IC.searchLg, 'No draft events match', (above === 1 ? '1 unfinished Create Event draft matches: it is above.' : above + ' unfinished Create Event drafts match: they are above.') +
+        (elsewhere.length ? ' Also ' + elsewhere.map(function(x){ return x.n + ' in ' + viewName(x.b); }).join(', ') + '.' : ''),
+        elsewhere.map(function(x){ return '<button type="button" class="btn btn-secondary" data-empty-tab="' + x.b + '">Show ' + esc(viewName(x.b)) + ' (' + x.n + ')</button>'; }).join(' ') +
+        (clearButtonsHTML() ? ' ' + clearButtonsHTML() : ''));
+    }
     var clear = clearButtonsHTML();
     if (elsewhere.length){
       return emptyBlock(IC.searchLg, 'No matches in ' + viewName(bucket), elsewhere.map(function(x){ return x.n + ' in ' + viewName(x.b); }).join(', ') + '.',
@@ -2367,6 +2397,10 @@
     var bucket = state.specialView || state.tab;
     var create = '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a>';
     if (listFiltered()) return noMatchHTML(bucket);
+    /* on Drafts, with unfinished Create Event drafts above and no draft event yet (UX-048) */
+    if (bucket === 'draft' && createDraftsShown().length){
+      return emptyBlock(IC.calendarLg, 'No draft events', 'Your unfinished Create Event drafts are above. An event is listed here, as a draft, from the moment Create Event creates it until its site is published.');
+    }
     if (bucket === 'deleted'){
       if (deletedState === 'error') return emptyBlock(IC.alertLg, 'Deleted Events could not be loaded', 'Your other events are here as usual. Nothing has been lost.',
         '<button type="button" class="btn btn-secondary" data-empty-retry>Try again</button>');
@@ -2436,6 +2470,8 @@
     renderTabs();
     renderMoreMenu();
     renderPortalNotice();
+    /* the Drafts tab's unfinished Create Event drafts (UX-048): the search and filters narrow them too */
+    renderCreateDrafts();
     /* the Insights cards count what the list shows, so they are drawn with it (UX-039) */
     renderInsights();
     /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
@@ -3180,6 +3216,7 @@
   $('btn-sync').addEventListener('click', function(){
     if (state.loading || state.refreshing) return;
     if (state.loadFailed){ loadAndRender(); return; }
+    loadCreateDrafts();          // the unfinished Create Event drafts are read again too
     refreshEvents().then(function(ok){ if (ok) toast('The list is up to date (read at ' + fmtTime(new Date(state.loadedAt).toISOString()) + ').'); });
   });
 
@@ -3457,6 +3494,132 @@
   }
 
   /* =========================================================
+     UNFINISHED IN CREATE EVENT (UX-048)
+     Create Event saves each draft to the person's own account (create-drafts.js, functions/lib/create-drafts.js), so
+     the Drafts tab lists them here, above the draft events, with Resume (it opens on any computer) and Discard. They
+     are not events yet, so they sit in a box of their own with its own heading and words, and the tab's count adds
+     them to the draft events. A draft that has already made its event says so: that event is in the list below as
+     well, and stays when the draft is discarded. The working portal narrows them as it narrows the events (one with
+     no portal yet, still on Create Event's first screen, is shown on every portal), and so do the search and the
+     Type and Portal filters; a date filter hides them, since they have no dates yet, and says so.
+  ========================================================= */
+  var CDRAFTS = { state: 'idle', list: [], error: '' };     // state: idle | loading | ready | error
+  var CDRAFT_TYPE = { IP: 'ip', Client: 'client', Awards: 'awards' };
+  function loadCreateDrafts(){
+    if (!window.RevampCreateDrafts){ CDRAFTS.state = 'error'; CDRAFTS.error = 'This page did not load completely. Reload it to see them.'; renderCreateDrafts(); return; }
+    /* nothing is drawn while the first answer is awaited: most people have no unfinished draft, and an empty box that
+       appears and goes would only move the list */
+    if (CDRAFTS.state !== 'ready') CDRAFTS.state = 'loading';
+    /* a discard that could not reach the server earlier is made first, so it is never listed again */
+    RevampCreateDrafts.flushRemovals().then(function(){ return RevampCreateDrafts.list(); }).then(function(list){
+      CDRAFTS.list = list; CDRAFTS.state = 'ready'; CDRAFTS.error = '';
+      renderCreateDraftsAndCounts();
+    }, function(err){
+      CDRAFTS.state = 'error'; CDRAFTS.error = (err && err.message) || 'The server could not be reached.';
+      renderCreateDraftsAndCounts();
+    });
+  }
+  /* the box, and the Drafts tab's count and an empty list's words, which both count the box too */
+  function renderCreateDraftsAndCounts(){ if (state.loading) renderCreateDrafts(); else renderResults(); }
+  /* back from Create Event by the browser's Back button: the page comes from its cache, so the list is read again */
+  window.addEventListener('pageshow', function(e){ if (e.persisted) loadCreateDrafts(); });
+  function createDraftsOnPortal(){
+    return CDRAFTS.list.filter(function(d){ var p = d.summary && d.summary.portal; return !p || state.portal === 'all' || p === state.portal; });
+  }
+  /* d (a list() row) against the search and the Type and Portal filters, as an event is (matches) */
+  function createDraftMatches(d){
+    var s = d.summary || {};
+    if (state.filters.types.length && state.filters.types.indexOf(CDRAFT_TYPE[s.category] || '') === -1) return false;
+    if (state.portal === 'all' && state.filters.portals.length && state.filters.portals.indexOf(s.portal || 'none') === -1) return false;
+    if (state.search){
+      var q = searchLine(state.search, 80).toLowerCase();
+      var cells = [s.name || 'Untitled event', s.client || '', s.portal ? portalNameOf(s.portal) : 'No portal yet'];
+      if (!cells.some(function(v){ return searchLine(v, 200).toLowerCase().indexOf(q) !== -1; })) return false;
+    }
+    return true;
+  }
+  /* the unfinished drafts the Drafts tab shows now; none while a date filter is on (they have no dates yet) */
+  function createDraftsShown(){
+    if (CDRAFTS.state !== 'ready' || state.created || state.starts) return [];
+    return createDraftsOnPortal().filter(createDraftMatches);
+  }
+  function createDraftRow(d){
+    var w = RevampCreateDrafts.describe(d, { portalName: function(slug){ return portalNameOf(slug); } });
+    var href = 'create-event.html?draft=' + encodeURIComponent(d.id);
+    var meta = [w.type, w.portal, w.where, w.when ? 'Last edited ' + w.when : ''].filter(Boolean).join(' · ');
+    return '<li class="cdraft" data-cdraft="' + esc(d.id) + '">' +
+      '<div class="cdraft-main"><a class="cdraft-name" href="' + esc(href) + '">' + esc(w.name) + '</a>' +
+        '<div class="cdraft-meta">' + esc(meta) + '</div>' +
+        '<div class="cdraft-meta">' + (w.eventId ? 'Its event, <span class="mono">' + esc(w.eventId) + '</span>, is already created: it is in the draft events below too.'
+          : 'Not an event yet: it becomes one when you finish it in Create Event.') + '</div>' +
+      '</div>' +
+      '<div class="cdraft-actions"><a class="btn btn-secondary btn-sm" href="' + esc(href) + '" aria-label="Resume ' + esc(w.name) + '">Resume</a>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-cdraft-discard="' + esc(d.id) + '" aria-label="Discard ' + esc(w.name) + '">Discard</button></div>' +
+    '</li>';
+  }
+  function renderCreateDrafts(){
+    var el = $('create-drafts');
+    if (!el) return;
+    if (state.specialView !== 'draft' || CDRAFTS.state === 'idle' || CDRAFTS.state === 'loading'){ el.innerHTML = ''; return; }
+    var head = '<div class="cdrafts-head"><h2 id="cdrafts-title" tabindex="-1">Unfinished in Create Event</h2>';
+    if (CDRAFTS.state === 'error'){
+      el.innerHTML = '<div class="cdrafts">' + head + '</div><div class="cdrafts-error" role="alert"><span>Your unfinished Create Event drafts could not be loaded: ' + esc(CDRAFTS.error.replace(/\.$/, '')) + '. Your events below are not affected.</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="cdrafts-retry">Try again</button></div></div>';
+      $('cdrafts-retry').addEventListener('click', loadCreateDrafts);
+      return;
+    }
+    var onPortal = createDraftsOnPortal(), shown = createDraftsShown();
+    var elsewhere = CDRAFTS.list.length - onPortal.length, hidden = onPortal.length - shown.length;
+    if (!CDRAFTS.list.length || (!shown.length && !elsewhere && !hidden)){ el.innerHTML = ''; return; }
+    var notes = [];
+    if (hidden) notes.push((state.created || state.starts)
+      ? (hidden === 1 ? '1 is' : hidden + ' are') + ' not shown while a date filter is on: they have no dates yet.'
+      : (hidden === 1 ? '1 does' : hidden + ' do') + ' not match the search or filters.');
+    if (elsewhere) notes.push((elsewhere === 1 ? '1 more is' : elsewhere + ' more are') + ' on other portals: choose All portals to see ' + (elsewhere === 1 ? 'it' : 'them') + '.');
+    el.innerHTML = '<div class="cdrafts">' + head + '<span class="tc">' + shown.length + '</span></div>' +
+      '<p class="cdrafts-note">Events you started in Create Event and have not finished, saved to your account as you typed them. Resume one on any computer.' +
+        (notes.length ? ' ' + notes.join(' ') : '') + '</p>' +
+      (shown.length ? '<ul class="cdrafts-list">' + shown.map(createDraftRow).join('') + '</ul>' : '') +
+    '</div>';
+    Array.prototype.forEach.call(el.querySelectorAll('[data-cdraft-discard]'), function(b){
+      b.addEventListener('click', function(){ confirmDiscardCreateDraft(b.getAttribute('data-cdraft-discard'), b); });
+    });
+  }
+  /* Discard asks first and names what goes (the draft, its pictures) and what stays (an event it already made). After
+     it, the focus goes to the next unfinished draft, else to the box's heading, else to the search box. */
+  function confirmDiscardCreateDraft(id, opener){
+    var d = CDRAFTS.list.filter(function(x){ return x.id === id; })[0];
+    if (!d) return;
+    var w = RevampCreateDrafts.describe(d, { portalName: portalNameOf });
+    openDialog({
+      title: 'Discard “' + w.name + '”?',
+      sub: 'Everything entered in this draft is deleted, from your account and from every computer, with its logo and pictures. This cannot be undone.',
+      body: w.eventId ? '<p style="margin:0;font-size:13px;">Its event, <span class="mono">' + esc(w.eventId) + '</span>, is not deleted: it stays in your draft events.</p>' : '',
+      action: 'Discard draft', danger: true, opener: opener,
+      onAction: function(dlg){
+        dlg.setBusy(true, 'Discarding…');
+        dlg.error('');
+        var ids = shownIds(), at = ids.indexOf(id);
+        RevampCreateDrafts.remove(id).then(function(){
+          try { RevampCreateDrafts.forgetLocal(window.localStorage, id); } catch(e){}
+          CDRAFTS.list = CDRAFTS.list.filter(function(x){ return x.id !== id; });
+          dlg.opener = null;
+          $('sheet-root').innerHTML = '';
+          renderResults();
+          toast('Draft discarded: ' + w.name);
+          var left = shownIds(), next = left[Math.min(at, left.length - 1)];
+          var to = next ? document.querySelector('#create-drafts [data-cdraft="' + next + '"] .cdraft-name') : $('cdrafts-title');
+          try { (to || $('search-input')).focus(); } catch(e){}
+        }, function(err){
+          dlg.setBusy(false);
+          dlg.error('The draft could not be discarded: ' + String((err && err.message) || 'please try again.').replace(/\.$/, '') + '. It is still in your account.');
+        });
+      }
+    });
+    function shownIds(){ return createDraftsShown().map(function(x){ return x.id; }); }
+  }
+
+  /* =========================================================
      NEED HELP — opens the visitor's mail client addressed to Customer Care.
      No backend here, so this is a mailto: link, not an actual send.
   ========================================================= */
@@ -3689,6 +3852,7 @@
       $('toast-region').setAttribute('aria-live', 'polite');
       loadAndRender();
       loadApprovers();
+      loadCreateDrafts();
     } catch(err){
       renderErrorBanner(init);
       markListingReady();

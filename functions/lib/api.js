@@ -99,6 +99,8 @@
 //                          read only), POST /api/events/portal-backfill (an approver fills in the portals they
 //                          ticked, only where that evidence is still certain)
 //     lib/working-portal.js GET / PUT /api/me/working-portal (the portal a person works on, kept for that person)
+//     lib/create-drafts.js GET /api/me/create-drafts, GET/PUT/DELETE /api/me/create-draft, GET/POST
+//                          /api/me/create-draft/file (Create Event's unfinished drafts and their pictures, each person's own)
 //     lib/promo.js         GET /api/promo/kit, GET /api/promo/image, POST /api/promo/write (the Promotions
 //                          pages: an event's brand and content, its pictures from our own address, AI copy)
 //     lib/promo-track.js   GET /t/o/<id>.gif, GET /t/c/<id> (PUBLIC — a mailer's open pixel and click redirect),
@@ -11434,6 +11436,8 @@ function portalModuleRoute(moduleName, handler) {
 }
 var eventPortal = function (handler) { return portalModuleRoute('event-portal', handler); };
 var workingPortal = function (handler) { return portalModuleRoute('working-portal', handler); };
+/* lib/create-drafts.js (Create Event's unfinished drafts, kept with the person's account: UX-048) takes the same few helpers */
+var createDrafts = function (handler) { return portalModuleRoute('create-drafts', handler); };
 
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
@@ -11594,6 +11598,13 @@ var ROUTES = {
   'POST /api/events/portal-backfill': eventPortal('handleBackfill'),
   'GET /api/me/working-portal': workingPortal('handleGet'),
   'PUT /api/me/working-portal': workingPortal('handlePut'),
+  /* Create Event's drafts, each person's own (lib/create-drafts.js): listed on the dashboard, resumed on any computer */
+  'GET /api/me/create-drafts': createDrafts('handleList'),
+  'GET /api/me/create-draft': createDrafts('handleGet'),
+  'PUT /api/me/create-draft': createDrafts('handlePut'),
+  'DELETE /api/me/create-draft': createDrafts('handleDelete'),
+  'POST /api/me/create-draft/file': createDrafts('handleFilePut'),
+  'GET /api/me/create-draft/file': createDrafts('handleFileGet'),
   'GET /api/event/slug-available': events('handleSlugAvailable'),
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),

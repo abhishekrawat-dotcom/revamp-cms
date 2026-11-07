@@ -137,6 +137,7 @@
   .wiz-title .sub{ display:block; font-size: 11.5px; font-weight: 600; color: var(--text-faint); }
   .spacer{ flex: 1; }
   .save-state{ display:flex; align-items:center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text-faint); }
+  .save-state[hidden]{ display: none; }
   .save-state .d{ width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
   .icon-btn{
     width: 32px; height: 32px; border-radius: 7px; border: 1px solid transparent; background: transparent;
@@ -456,7 +457,7 @@
     #identity-row > .field, #sched-body .field{ grid-column: span 12 !important; }
     /* the address prefix goes on a line of its own, leaving the whole width for what is typed */
     .slug-row{ flex-direction: column; }
-    .slug-prefix{ border-right: 1px solid var(--border); border-bottom: none; border-radius: 7px 7px 0 0; padding: 6px 11px; }
+    .slug-prefix{ border-right: 1px solid var(--border); border-bottom: none; border-radius: 7px 7px 0 0; padding: 6px 11px; max-width: none; }
     .slug-row .inp{ border-radius: 0 0 7px 7px; }
     .grp-tag{ white-space: normal; }
     .sheet{ padding: 2px 14px 16px; }
@@ -566,13 +567,28 @@
 
 
   .slug-row{ display:flex; align-items:stretch; }
+  /* Starts / Ends: the date and its time side by side, each wide enough for its whole value and the picker icon */
+  .dt-pair{ display: flex; gap: 6px; }
+  .dt-pair .inp{ min-width: 0; padding-left: 9px; padding-right: 6px; }
+  .dt-pair input[type="date"]{ flex: 1.3 1 0; }
+  .dt-pair input[type="time"]{ flex: 1 1 0; }
   .slug-prefix{
     display:flex; align-items:center; padding: 0 11px; border: 1px solid var(--border); border-right: none;
     border-radius: 7px 0 0 7px; background: var(--surface-2); color: var(--text-faint);
     font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap;
   }
-  .slug-row .inp{ border-radius: 0 7px 7px 0; font-family: var(--font-mono); font-size: 12.5px; }
-  .slug-status{ display:flex; align-items:center; gap: 6px; font-size: 12px; font-weight: 600; margin-top: 7px; }
+  .slug-row .inp{ border-radius: 0 7px 7px 0; font-family: var(--font-mono); font-size: 12.5px; min-width: 0; }
+  /* the host in front of the box is long: it may take half the row and gives way from its start ("…hosted.app/e/"),
+     so the part that is typed keeps its room; the whole address is in the title and in the line under the box */
+  .slug-prefix{ flex: 0 0 auto; min-width: 0; max-width: 50%; }
+  .slug-prefix-text{ display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; }
+  .slug-status{ display:flex; align-items:center; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; font-weight: 600; margin-top: 7px; }
+  .slug-status .mono{ font-family: var(--font-mono); font-weight: 500; overflow-wrap: anywhere; }
+  /* the sentence beside its icon, and the way out ("Use …", "Check again") on a line of its own under it */
+  .slug-status > svg{ flex-shrink: 0; }
+  .slug-status > span{ flex: 1 1 0; min-width: 0; }
+  .slug-status > .slug-use{ flex-basis: 100%; text-align: left; }
+  .slug-use{ background: none; border: none; padding: 0; color: var(--accent); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
   .slug-status.ok{ color: var(--ok); }
   .slug-status.bad{ color: var(--crit); }
   .slug-status.checking{ color: var(--text-faint); }
@@ -628,6 +644,7 @@
     position: sticky; bottom: 0; z-index: 25; background: var(--surface); border-top: 1px solid var(--border);
     padding: 12px 24px; display:flex; align-items:center; gap: 12px; flex-wrap: wrap;
   }
+  .wiz-foot[hidden]{ display: none; }
   .wiz-foot .note{ font-size: 12px; color: var(--text-faint); flex: 1 1 160px; min-width: 0; }
   .foot-issues{
     background: none; border: 0; padding: 4px 0; font: inherit; font-size: 12.5px; font-weight: 700;
@@ -792,6 +809,8 @@
   .et-chip-btn:hover{ background: var(--accent-soft); }
   .et-chip-btn:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
   .sheet .et-pick-status{ margin-top: 7px; }
+  .et-link{ display: flex; flex-direction: column; }
+  .et-link[hidden]{ display: none; }
   .sheet .et-pick-status.is-error{ color: var(--crit); }
   .et-pick-status button{ margin-left: 4px; padding: 0; border: 0; background: none; cursor: pointer; font: inherit; font-weight: 600;
     color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
@@ -989,6 +1008,8 @@
   .sec-row.sec-static .switch{ flex-shrink: 0; font-size: 11px; padding: 2px; gap: 6px; }
   .sec-note{ margin: 8px 9px 6px; font-size: 11px; line-height: 1.45; color: var(--text-faint); }
   .tpl-loading{ display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .draft-opening{ justify-content: center; margin: 48px 16px; }
+  .draft-opening[hidden]{ display: none; }
   .rail-panel-foot{ padding: 9px; border-top: 1px solid var(--border); }
 
   /* one slim row: title (its description behind the ⓘ), then the tools */
@@ -1909,7 +1930,9 @@
         <span class="sub">Self&#8209;serve microsite builder</span>
       </span>
       <div class="spacer"></div>
-      <span class="save-state" id="save-state"><span class="d"></span>Draft autosaved</span>
+      <!-- where the draft is: in the person's account, or on this computer only while the account cannot be reached
+           (renderSaveState); not shown until something has been entered -->
+      <span class="save-state" id="save-state" title="Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer." hidden><span class="d"></span>Saved to your account</span>
       <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <button class="btn btn-secondary btn-sm" id="btn-save-exit">Save &amp; exit</button>
       <!-- the signed-in user's avatar and Sign out: auth.js renders it into any [data-rv-account] -->
@@ -1934,6 +1957,8 @@
   <!-- shown while what is on screen is not saved in this browser (renderSaveState) -->
   <div class="draft-warning" id="draft-warning" role="alert" hidden></div>
   <main class="wiz-body">
+    <!-- while a draft is fetched from the person's account (Resume on another computer: openDraft) -->
+    <p class="hint tpl-loading draft-opening" id="draft-opening" role="status" hidden><span class="gb-spin"></span> <span id="draft-opening-text">Opening your draft…</span></p>
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
     <section class="step-wrap full" id="step-1" hidden>
@@ -2098,7 +2123,8 @@
               <div class="field c4" id="slug-cell">
                 <div class="flabel-row"><span class="flabel">URL slug <span class="pill-req">*</span></span></div>
                 <div class="slug-row">
-                  <span class="slug-prefix">etoneworld.com/</span>
+                  <!-- the real address in front of what is typed (siteAddress); a long host gives way from its start -->
+                  <span class="slug-prefix" id="slug-prefix"><span class="slug-prefix-text"><bdi id="slug-prefix-text"></bdi></span></span>
                   <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
                 </div>
                 <div class="slug-meta"><div id="slug-status"></div><div id="slug-ai"></div></div>
@@ -2204,8 +2230,14 @@
                   </div>
                 </div>
                 <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-cancel" hidden>Keep the event picked before</button>
+                <!-- ET's list is not the only way in: a client's or custom event's last site, or any page when ET's list
+                     cannot be read, is given by its link (etPick.linkMode) -->
+                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-paste">Paste the link instead</button>
+                <div class="et-link" id="gb-prev-link" hidden>
+                  <input class="inp" id="gb-previous" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… (the previous edition’s site)" aria-labelledby="gb-et-label">
+                  <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-list">Choose from ET’s list instead</button>
+                </div>
                 <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
-                <input type="hidden" id="gb-previous">
               </div>
               <div class="field"><label class="flabel" for="gb-comp1">Competitor event URL</label>
                 <input class="inp" id="gb-comp1" type="url" placeholder="https://…">
@@ -2317,6 +2349,7 @@
 <script src="editor-canvas.js"></script>
 <script src="editor-fill.js"></script>
 <script src="portal-fields.js"></script>
+<script src="create-drafts.js"></script>
 <script src="create-event-prefill.js"></script>
 <script>
 (function(){
@@ -2423,9 +2456,8 @@
   }
   function isImportedTemplate(id){ return /^imported-/.test(id || ''); }
 
-  /* Real previous-edition data now comes from create-event-editions.js (RevampEditions), not a hardcoded fixture — see openPullContentModal(). openCloneDesignModal() reads the real events list (cloneCandidates). */
-
-  var TAKEN_SLUGS = ['martech-summit','et-awards-2026','bfsi-connect','cio-conclave','hrworld-summit'];
+  /* Previous editions are the team's real events: openPullContentModal() reads them and their Content through
+     create-event-editions.js (RevampEditions), openCloneDesignModal() reads the same events list (cloneCandidates). */
 
   /* =========================================================
      EVENT CATEGORY MATRIX
@@ -2514,7 +2546,18 @@
      see setStep1Phase()) all render under dot 1; step 4 (the hand-off) is dot 2. */
   var STEPS = ['Event details','Assemble'];
   function railPos(step){ return step >= 4 ? 2 : 1; }
-  var STORE_KEY = 'revamp.createEvent.draft.v1';
+  /* WHERE A DRAFT IS KEPT (UX-048)
+     In the person's account (create-drafts.js, functions/lib/create-drafts.js): every draft is saved there a moment
+     after it changes, the events dashboard lists it under Drafts with Resume and Discard, Resume opens it on any
+     computer (create-event.html?draft=<id>), and several drafts can be under way at once. This browser keeps its own
+     copy of each draft too, one localStorage key per draft, so typing never waits for the network and a lost
+     connection loses nothing: what is kept here goes to the account as soon as it can. CURRENT_KEY names the draft
+     this browser worked on last, which the bare page resumes. Before drafts were saved to the account, a browser
+     kept a single draft under LEGACY_STORE_KEY; it is moved to its own key on the first visit (migrateLegacyDraft). */
+  var DRAFT_PREFIX = 'revamp.createEvent.draft.v2.';
+  var CURRENT_KEY = 'revamp.createEvent.current.v2';
+  var LEGACY_STORE_KEY = 'revamp.createEvent.draft.v1';
+  function storeKeyOf(id){ return DRAFT_PREFIX + id; }
   /* DRAFT FILES
      A draft's pictures are never part of S: the draft is one localStorage string with a hard limit of a
      few megabytes, and a single banner would fill it. Each file is kept in IndexedDB (editor-store.js) in
@@ -2592,6 +2635,7 @@
   function bannerUrl(slot){ return (bannerFiles[slot] && bannerFiles[slot].url) || ''; }
   function keepFile(slot, rec){
     var put = window.RevampStore ? RevampStore.put(slotKey(slot), rec) : Promise.reject(new Error('IndexedDB is not available'));
+    sendDraftFile(slot, rec);      // to the account as well, whatever this browser's storage says (UX-048)
     return put.then(function(){
       if (fileFailures[slot] === rec) delete fileFailures[slot];
       noteDraftFiles(draftId());
@@ -2603,14 +2647,17 @@
   }
   function setBannerFile(slot, blob, name){
     if (bannerFiles[slot]){ try { URL.revokeObjectURL(bannerFiles[slot].url); } catch(e){} }
-    bannerFiles[slot] = { blob: blob, name: name || '', url: URL.createObjectURL(blob) };
+    /* savedAt names this very picture: the hand-off uploads a banner once per picture (S.uploads) */
+    var at = Date.now();
+    bannerFiles[slot] = { blob: blob, name: name || '', url: URL.createObjectURL(blob), savedAt: at };
     bannerLost = false;
-    return keepFile(slot, { name: name || '', blob: blob, savedAt: Date.now() });
+    return keepFile(slot, { name: name || '', blob: blob, savedAt: at });
   }
   function dropBannerFile(slot){
     if (bannerFiles[slot]){ try { URL.revokeObjectURL(bannerFiles[slot].url); } catch(e){} }
     delete bannerFiles[slot];
     delete fileFailures[slot];
+    forgetDraftFile(slot);
     if (window.RevampStore) RevampStore.remove(slotKey(slot)).catch(function(){});
     renderSaveState();
   }
@@ -2622,6 +2669,11 @@
   var imgLost = false;        // the restored draft named section pictures this browser no longer has
   var imgProblem = null;      // { at, message }: why the last file chosen at that place was not taken
   function imgUrl(n){ return (n != null && imgFiles[n] && imgFiles[n].url) || ''; }
+  /* A picture given by its address — a previous edition's speaker photo or sponsor logo (create-event-editions.js) —
+     rather than as a file of this draft's own: only an https address is one */
+  function pictureAddress(v){ v = String(v == null ? '' : v).trim(); return /^https:\/\/[^\s"'<>]+$/i.test(v) ? v : ''; }
+  /* what an item's picture box shows: this draft's own file, else the address it came with (key: 'photoUrl' | 'logoUrl') */
+  function itemPicture(it, key){ return it.slot != null ? imgUrl(it.slot) : pictureAddress(it[key]); }
   function isImageFile(file){
     return /^image\/(png|jpeg|webp|svg\+xml)$/.test(file.type) || (!file.type && /\.(png|jpe?g|webp|svg)$/i.test(file.name));
   }
@@ -2644,6 +2696,7 @@
     if (imgFiles[n]){ try { URL.revokeObjectURL(imgFiles[n].url); } catch(e){} }
     delete imgFiles[n];
     delete fileFailures[imgSlot(n)];
+    forgetDraftFile(imgSlot(n));
     if (window.RevampStore) RevampStore.remove(slotKey(imgSlot(n))).catch(function(){});
     noteDraftImage(draftId(), n, true);
     renderSaveState();
@@ -2711,10 +2764,10 @@
     ['banner', 'banner-text'].forEach(function(slot){
       if (!heroPicture(d, slot)) return;
       var read = window.RevampStore ? RevampStore.get(slotKey(slot)) : Promise.reject(new Error('IndexedDB is not available'));
-      read.then(function(rec){ return (rec && rec.blob) || null; }, function(){ return null; }).then(function(blob){
-        var now = heroData();
+      read.then(function(rec){ return (rec && rec.blob) ? rec : null; }, function(){ return null; }).then(function(rec){
+        var now = heroData(), blob = rec && rec.blob;
         if (!now || bannerFiles[slot] || !heroPicture(now, slot)) return;
-        if (blob) bannerFiles[slot] = { blob: blob, name: '', url: URL.createObjectURL(blob) };
+        if (blob) bannerFiles[slot] = { blob: blob, name: rec.name || '', url: URL.createObjectURL(blob), savedAt: rec.savedAt || 0 };
         else {
           forgetHeroPicture(now, slot);
           bannerLost = true;
@@ -2755,7 +2808,9 @@
   }
   function storeLogo(file){
     logoSaving = logoDataUrl(file).then(function(dataUrl){
-      return RevampStore.put(logoKey(), { name: file.name, dataUrl: dataUrl, savedAt: Date.now() });
+      var rec = { name: file.name, dataUrl: dataUrl, savedAt: Date.now() };
+      sendDraftFile('logo', rec);    // to the account as well (UX-048)
+      return RevampStore.put(logoKey(), rec);
     }).then(function(){
       noteDraftFiles(draftId());
       /* the Gen-2 preview caches the stored logo (storedLogoDataUrl()) so repeated fills don't hit IndexedDB
@@ -2773,6 +2828,7 @@
     if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(e){} logoPreviewUrl = ''; }
     S.basics.logo = false;
     S.basics.logoName = '';
+    forgetDraftFile('logo');
     logoFailed = true;
     gen2Logo = null;
     var input = $('f-logo');
@@ -2844,11 +2900,16 @@
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
     sectionOrder: null,           // a chosen section sequence for the real template (array of section ids) — reorders only what the template's own layout.pinStart/pinEnd leaves free; null means the template's own default order
     priorDesigns: [],            // every design name+colours/fonts shown by "Redesign with AI" so far this session (see requestAiDesign()) — sent back on the next request so a repeat click proposes genuinely different directions, not near-repeats (Wix's own "Regenerate" is explicitly non-repetitive)
-    aiHero: null,               // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
+    uploads: null,              // the files the hand-off has put in this draft's event's storage: { eventId, files: { <file key>: url }, logo, logoOn } (uploadsFor)
+    records: null,              // the event's Content the hand-off has written from this draft: { eventId, done: { <resource>: what was written }, made: { <resource>: [record ids] } } (writeRecords)
+    rev: 0,                     // the revision of this draft in the person's account that this copy builds on (0: never saved there; pushDraft)
+    syncedAt: null,             // the savedAt of the copy the account last confirmed: the draft is in the account when it equals savedAt
+    files: {},                  // { <account slot ('logo', 'banner', 'banner-text', 'img-<n>')>: { name, savedAt } } the pictures the account holds (sendDraftFile)
+    aiHero: null,             // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
     assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
   function draftId(){
-    if (!S.draftId) S.draftId = 'draft-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    if (!S.draftId) S.draftId = newDraftId();
     return S.draftId;
   }
 
@@ -2866,119 +2927,481 @@
   var aiPrefill = null;       // those details, held until start() fills the new draft with them, once
   var aiNote = null;          // the note over step 1: { kind: 'filled' | 'unused' | 'missing', text, snap, res, portal } (renderAiPrefillNote; res and portal: nameAiNotePortal)
   var resumedExisting = false;   // this page load restored a draft whose event already exists on the server
-  var lastSaveOk = true;      // the last save() reached localStorage
-  var otherTab = '';          // '' | 'changed' | 'replaced' | 'closed' — what another tab did to the stored draft; this tab stops saving until the owner decides (renderSaveState)
+  var lastSaveOk = true;      // the last save() reached this browser's storage
+  var otherTab = '';          // '' | 'changed' | 'closed' — what another tab did to this draft's copy in this browser; this tab stops saving until the owner decides (renderSaveState)
   var leavingUnsaved = false; // the owner chose to leave without a saved draft: no second warning from the browser
   var DRAFT_MAX_CHARS = 500 * 1024;
-  /* Writes the draft. true only when it is really in localStorage. */
+  /* Writes this draft's copy in this browser, and has it saved to the person's account a moment later (schedulePush).
+     true only when it is really in this browser's storage. */
   function save(){
     if (draftClosed || otherTab) return false;
     draftId();
+    /* whose draft it is: a browser two people sign in to never sends one person's draft to the other's account */
+    if (!S.owner){ var me = currentUid(); if (me) S.owner = me; }
     S.savedAt = new Date().toISOString();
-    var ok = true;
+    var ok = writeLocalCopy();
+    lastSaveOk = ok;
+    keepDraftInAddress();
+    schedulePreview();
+    schedulePush();
+    renderSaveState(true);
+    return ok;
+  }
+  /* S as it is, under its own key, and named as the draft this browser worked on last. savedAt is not touched: noting
+     the account's revision (pushDraft) is not an edit. */
+  function writeLocalCopy(){
     try {
       var json = JSON.stringify(S);
       /* the draft is text; anything that makes it this large is a file that belongs in a slot */
       if (json.length > DRAFT_MAX_CHARS && window.console) console.warn('[create-event] the draft is ' + json.length + ' characters — a file is being kept in it');
-      localStorage.setItem(STORE_KEY, json);
-    } catch(e){ ok = false; }
-    lastSaveOk = ok;
-    schedulePreview();
-    renderSaveState(true);
-    return ok;
+      localStorage.setItem(storeKeyOf(S.draftId), json);
+      localStorage.setItem(CURRENT_KEY, S.draftId);
+      return true;
+    } catch(e){ return false; }
   }
-  function draftUnsaved(){ return !draftClosed && (!!otherTab || !lastSaveOk || Object.keys(fileFailures).length > 0); }
-  /* why what is on screen is not in this browser's storage, as a sentence; '' when it is */
+  /* The tab's address names its draft (create-event.html?draft=<id>): a reload, Back or Forward in this tab opens this
+     draft and no other, even after another tab has started a different one. */
+  function keepDraftInAddress(){
+    try {
+      if (!S.draftId || new URLSearchParams(location.search).get('draft') === S.draftId) return;
+      history.replaceState(null, '', location.pathname + '?draft=' + encodeURIComponent(S.draftId));
+    } catch(e){ /* an address that cannot be changed only means a reload resumes the last draft instead */ }
+  }
+
+  /* ---------- the draft in the person's account (UX-048) ----------
+     A moment after each save (PUSH_DELAY_MS) the draft goes to the account (create-drafts.js). When that cannot be done
+     (no connection, the server down) it stays in this browser, the header and the warning say so, and it is tried again
+     by itself (PUSH_RETRY_MS, and as soon as the browser is back online). A draft is sent only once something of the
+     person's is in it (draftHasInput): opening Create Event and leaving puts nothing in their Drafts. Each copy carries
+     the account's revision it was built on (S.rev), so a save from another computer in between is never overwritten
+     unseen: the person is asked (sync.conflict). */
+  var PUSH_DELAY_MS = 1200, PUSH_RETRY_MS = 20000;
+  var WRITER = window.RevampCreateDrafts ? RevampCreateDrafts.writerId() : '';
+  var sync = { state: 'idle', error: '', conflict: null };   // idle | pending | saving | saved | failed | conflict
+  var pushTimer = null, pushing = null, pushAgain = false, ownConflicts = 0;
+  function accountReady(){ return !!(window.RevampCreateDrafts && window.RevampAuth && typeof RevampAuth.authedFetch === 'function'); }
+  function inAccount(){ return !!S.rev && !!S.syncedAt && S.syncedAt === S.savedAt; }
+  /* the signed-in person's uid, '' while auth.js has not said */
+  function currentUid(){
+    try { var u = window.RevampAuth && typeof RevampAuth.currentUser === 'function' ? RevampAuth.currentUser() : null; return (u && u.uid) || ''; } catch(e){ return ''; }
+  }
+  /* d is somebody else's: a copy saved in this browser by another person who signed in here */
+  function othersDraft(d, me){ return !!(d && d.owner && me && d.owner !== me); }
+  function pushable(){ return !draftClosed && !otherTab && S.assembled !== true && !!S.draftId && accountReady() && !othersDraft(S, currentUid()) && draftHasInput(S, true); }
+  function schedulePush(){
+    clearTimeout(pushTimer);
+    if (!pushable() || sync.state === 'conflict') return;
+    if (inAccount()){ sync.state = 'saved'; return; }
+    /* while the account cannot be reached, typing does not send a request a second: the retry keeps its pace */
+    var failing = sync.state === 'failed';
+    if (!failing) sync.state = pushing ? 'saving' : 'pending';
+    pushTimer = setTimeout(function(){ pushDraft(); }, failing ? PUSH_RETRY_MS : PUSH_DELAY_MS);
+  }
+  /* Sends the draft as it is now; resolves true once the account holds it. force: over whatever the account holds
+     (the person chose "Keep this one", or "Save it again" for a draft discarded elsewhere). */
+  function pushDraft(force){
+    clearTimeout(pushTimer);
+    if (!pushable()) return Promise.resolve(false);
+    if (sync.state === 'conflict' && force !== true) return Promise.resolve(false);
+    if (inAccount() && force !== true){ sync.state = 'saved'; renderSaveState(); return Promise.resolve(true); }
+    if (pushing){ pushAgain = true; return pushing; }
+    var sentAt = S.savedAt;
+    sync.state = 'saving';
+    renderSaveState();
+    pushing = RevampCreateDrafts.put(S.draftId, +S.rev || 0, JSON.parse(JSON.stringify(S)), { writer: WRITER, force: force === true }).then(function(out){
+      S.rev = +out.rev || S.rev;
+      S.syncedAt = sentAt;
+      sync.error = '';
+      sync.conflict = null;
+      sync.state = 'saved';
+      ownConflicts = 0;
+      if (!draftClosed && !otherTab) writeLocalCopy();     // this browser's copy knows the revision too
+      resendFiles();
+      return true;
+    }, function(err){
+      if (err && err.code === 'draft-conflict'){
+        var cur = err.current;
+        /* the account's copy is this browser's own earlier save, whose answer never came back: this copy is newer */
+        if (cur && cur.writer && cur.writer === WRITER && ownConflicts < 2){ ownConflicts++; S.rev = +cur.rev || 0; pushAgain = true; sync.state = 'pending'; return false; }
+        sync.state = 'conflict';
+        sync.conflict = cur || { gone: true };
+        return false;
+      }
+      sync.state = 'failed';
+      sync.error = plainError(err);
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(function(){ pushDraft(); }, PUSH_RETRY_MS);
+      return false;
+    }).then(function(ok){
+      pushing = null;
+      if (pushAgain){ pushAgain = false; if (sync.state !== 'conflict') return pushDraft(); }
+      if (ok && !inAccount() && pushable()) return pushDraft();      // typed while it was on its way
+      renderSaveState();
+      return ok;
+    });
+    return pushing;
+  }
+  window.addEventListener('online', function(){ if (sync.state === 'failed') pushDraft(); });
+  /* leaving the tab (another app, another tab, the phone locked) sends what was typed now rather than in a moment */
+  document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && sync.state === 'pending') pushDraft(); });
+
+  /* The draft's pictures go to the account as well (POST /api/me/create-draft/file), one per slot, so Resume on another
+     computer has them; S.files lists the ones the account holds, each by the version it is (savedAt). A PSD is not sent:
+     its flattened banner is, and only its layers cannot be switched on another computer. */
+  var fileSends = {};         // account slot -> { rec, failed } a picture on its way to the account, or one that could not be sent yet
+  function sendDraftFile(slot, rec){
+    if (!accountReady() || slot === 'psd' || !rec || draftClosed) return;
+    var key = RevampCreateDrafts.serverSlot(slot), id = draftId(), entry = { rec: rec, failed: '' };
+    fileSends[key] = entry;
+    var blob = rec.blob ? Promise.resolve(rec.blob)
+      : rec.dataUrl ? fetch(rec.dataUrl).then(function(r){ return r.blob(); }) : Promise.reject(new Error('The picture could not be read.'));
+    blob.then(function(b){ return RevampCreateDrafts.putFile(id, key, b, rec.name); }).then(function(){
+      if (fileSends[key] !== entry || draftClosed) return;        // a newer picture took the slot meanwhile: it is sent on its own
+      delete fileSends[key];
+      if (!S.files || typeof S.files !== 'object') S.files = {};
+      S.files[key] = { name: String(rec.name || '').slice(0, 200), savedAt: +rec.savedAt || 0 };
+      save();
+    }, function(err){
+      if (fileSends[key] !== entry) return;
+      entry.failed = plainError(err);
+      renderSaveState();
+    });
+  }
+  /* the pictures that could not be sent, once the account answers again */
+  function resendFiles(){
+    Object.keys(fileSends).forEach(function(key){
+      var e = fileSends[key];
+      if (e.failed) sendDraftFile(RevampCreateDrafts.localSlot(key), e.rec);
+    });
+  }
+  /* a picture taken off the draft is no longer one of the account's (its object goes with the draft) */
+  function forgetDraftFile(slot){
+    if (!window.RevampCreateDrafts) return;
+    var key = RevampCreateDrafts.serverSlot(slot);
+    delete fileSends[key];
+    if (S.files && S.files[key]) delete S.files[key];
+  }
+  /* Every picture this draft has in this browser that the account does not hold in that version: a picture chosen
+     while the account could not be reached, before a reload, or in a draft from before drafts were saved there. */
+  function resendMissingFiles(){
+    if (!accountReady() || !window.RevampStore || !S.draftId) return;
+    var slots = [], d = heroData();
+    if (S.basics.logo) slots.push('logo');
+    if (d) ['banner', 'banner-text'].forEach(function(slot){ if (heroPicture(d, slot)) slots.push(slot); });
+    imageHolders().forEach(function(it){ if (typeof it.slot === 'number') slots.push(imgSlot(it.slot)); });
+    slots.forEach(function(slot){
+      RevampStore.get(slotKey(slot)).then(function(rec){
+        if (!rec || (!rec.blob && !rec.dataUrl)) return;
+        var have = (S.files || {})[RevampCreateDrafts.serverSlot(slot)];
+        if (have && have.savedAt === (+rec.savedAt || 0)) return;
+        if (fileSends[RevampCreateDrafts.serverSlot(slot)]) return;
+        sendDraftFile(slot, rec);
+      }, function(){});
+    });
+  }
+  /* is the picture in `slot` (the record IndexedDB would not take) safe in the account anyway */
+  function fileInAccount(slot, rec){
+    var have = window.RevampCreateDrafts && (S.files || {})[RevampCreateDrafts.serverSlot(slot)];
+    return !!have && !!rec && have.savedAt === (+rec.savedAt || 0);
+  }
+  function filesUnsaved(){
+    return Object.keys(fileFailures).filter(function(slot){ return !fileInAccount(slot, fileFailures[slot]); });
+  }
+
+  function draftUnsaved(){ return !draftClosed && (!!otherTab || (!lastSaveOk && !inAccount()) || filesUnsaved().length > 0); }
+  /* why what is on screen is not saved, as a sentence; '' when it is (in this browser, the account, or both) */
   function unsavedReason(){
     if (draftClosed) return '';
-    if (otherTab === 'replaced') return 'Another tab started a different event. This tab’s draft is no longer being saved.';
     if (otherTab === 'changed') return 'This draft was changed in another tab. Changes made in this tab are not being saved.';
     if (otherTab === 'closed') return 'This draft was discarded or opened in the editor from another tab. This tab is no longer being saved.';
-    if (!lastSaveOk) return 'Your draft could not be saved in this browser — storage is full or blocked.';
-    if (Object.keys(fileFailures).length) return 'A picture you added could not be kept in this browser — storage is full or blocked. It will be missing if you reload or leave.';
+    if (sync.state === 'conflict'){
+      var c = sync.conflict || {};
+      if (c.gone) return 'This draft was discarded from your Drafts, on the events dashboard or on another computer. What you change here is not saved to your account.';
+      var at = window.RevampCreateDrafts ? RevampCreateDrafts.whenLabel(c.savedAt || c.updatedAt) : '';
+      return 'This draft was changed on another computer' + (at ? ' (' + at + ')' : '') + '. What you change here is not saved to your account until you choose which to keep.';
+    }
+    if (!lastSaveOk && !inAccount() && sync.state !== 'saving' && sync.state !== 'pending'){
+      return 'Your draft could not be saved in this browser — storage is full or blocked' +
+        (sync.state === 'failed' ? ' — and your account could not be reached either: ' + sync.error.replace(/\.$/, '') : '') + '.';
+    }
+    if (filesUnsaved().length) return 'A picture you added could not be kept in this browser — storage is full or blocked — and is not in your account yet. It will be missing if you reload or leave.';
     return '';
   }
-  /* The header's save state and the warning above the form. The warning stays until the draft is really
-     saved again; justSaved shows the brief "Saving…" of a write that worked. */
-  function renderSaveState(justSaved){
+  /* what the warning's buttons are for this reason: [[label, run]], the first the main one */
+  function warningActions(){
+    if (otherTab === 'changed') return [['Reload to continue', function(){ leavingUnsaved = true; window.location.reload(); }]];
+    if (otherTab === 'closed') return [['Keep working here', function(){
+      /* saved again from here: as a new copy in the account when the other tab removed it there too */
+      otherTab = ''; S.rev = 0; S.syncedAt = null; sync.state = 'idle'; save(); reclaimDraftFiles();
+    }]];
+    if (sync.state === 'conflict'){
+      if (sync.conflict && sync.conflict.gone) return [
+        ['Save it again', function(){ sync.state = 'idle'; sync.conflict = null; S.rev = 0; pushDraft(true); }],
+        ['Discard it here too', confirmDiscard]
+      ];
+      return [
+        ['Open the newer one', function(){ leavingUnsaved = true; window.location.replace(location.pathname + '?draft=' + encodeURIComponent(S.draftId) + '&from=account'); }],
+        ['Keep this one', function(){ sync.state = 'idle'; sync.conflict = null; pushDraft(true); }]
+      ];
+    }
+    /* storage refused: try the draft again, and every file that is still waiting */
+    return [['Try again', function(){
+      Object.keys(fileFailures).forEach(function(slot){ keepFile(slot, fileFailures[slot]); });
+      if (save() && !filesUnsaved().length) toast('Draft saved');
+    }]];
+  }
+  /* The header's save state and the warning above the form. The warning stays until the draft is really saved
+     again. Nothing is said about saving before there is anything of the person's to keep. */
+  function renderSaveState(){
     var el = $('save-state'), warn = $('draft-warning');
     if (!el || !warn) return;
     var reason = unsavedReason();
-    clearTimeout(saveTimer);     // a pending "Draft autosaved" from an earlier save must not overwrite what is said now
+    clearTimeout(saveTimer);
+    el.hidden = !reason && !draftHasInput(S, true);
     if (reason){
-      el.innerHTML = '<span class="d" style="background:var(--accent)"></span>Not saved';
-      var act = otherTab === 'replaced' ? 'Take over here' : otherTab === 'changed' ? 'Reload to continue'
-        : otherTab === 'closed' ? 'Keep working here' : 'Try again';
-      warn.innerHTML = IC.warn + '<span>' + esc(reason) + '</span>' +
-        '<button class="btn btn-secondary btn-sm" type="button" id="draft-warning-act">' + act + '</button>';
+      el.innerHTML = '<span class="d" style="background:var(--accent)"></span>' + (sync.state === 'conflict' && !otherTab ? 'Not saved to your account' : 'Not saved');
+      el.title = reason;
+      var acts = warningActions();
+      warn.innerHTML = IC.warn + '<span>' + esc(reason) + '</span>' + acts.map(function(a, i){
+        return '<button class="btn ' + (i ? 'btn-ghost' : 'btn-secondary') + ' btn-sm" type="button" id="draft-warning-act' + (i ? '-' + i : '') + '">' + esc(a[0]) + '</button>';
+      }).join('');
       warn.hidden = false;
-      $('draft-warning-act').onclick = resolveUnsaved;
+      acts.forEach(function(a, i){ $('draft-warning-act' + (i ? '-' + i : '')).onclick = a[1]; });
       return;
     }
-    warn.hidden = true;
-    warn.innerHTML = '';
-    if (!justSaved){ el.innerHTML = '<span class="d"></span>Draft autosaved'; return; }
-    el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
-    saveTimer = setTimeout(function(){
-      el.innerHTML = '<span class="d"></span>Draft autosaved';
-    }, 520);
-  }
-  /* the warning's button */
-  function resolveUnsaved(){
-    if (otherTab === 'changed'){ leavingUnsaved = true; window.location.reload(); return; }
-    if (otherTab === 'replaced'){
-      openModal({
-        title: 'Keep this tab’s event instead?',
-        sub: 'Only one unfinished event is kept in this browser. Taking over here replaces the event started in the other tab with this one.',
-        confirm: 'Take over here',
-        onConfirm: function(){ otherTab = ''; save(); reclaimDraftFiles(); }
-      });
-      return;
+    /* in this browser, but not (yet) in the account: said, with a way to try at once */
+    if (sync.state === 'failed' && pushable()){
+      warn.innerHTML = IC.warn + '<span>' + esc('Your draft is saved on this computer only: it could not be saved to your account. ' + sync.error.replace(/\.$/, '') + '. It is tried again by itself.') + '</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="draft-warning-act">Try now</button>';
+      warn.hidden = false;
+      $('draft-warning-act').onclick = function(){ pushDraft(); };
+    } else {
+      warn.hidden = true;
+      warn.innerHTML = '';
     }
-    if (otherTab === 'closed'){ otherTab = ''; save(); reclaimDraftFiles(); return; }
-    /* storage refused: try the draft again, and every file that is still waiting */
-    Object.keys(fileFailures).forEach(function(slot){ keepFile(slot, fileFailures[slot]); });
-    if (save() && !Object.keys(fileFailures).length) toast('Draft saved on this computer');
+    var st = accountReady() ? (inAccount() ? 'saved' : (sync.state === 'saving' || sync.state === 'pending') ? 'saving' : 'local') : 'local';
+    if (st === 'saved'){
+      el.innerHTML = '<span class="d"></span>Saved to your account';
+      el.title = 'Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer.';
+    } else if (st === 'saving'){
+      el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saving…';
+      el.title = 'Saving your draft to your account.';
+    } else {
+      el.innerHTML = '<span class="d" style="background:var(--warn)"></span>Saved on this computer only';
+      el.title = !accountReady() ? 'Your account could not be reached from this page. Reload it to save your draft there.'
+        : 'Not saved to your account yet' + (sync.error ? ': ' + sync.error.replace(/\.$/, '') : '') + '. It is tried again by itself.';
+    }
   }
-  /* Another tab wrote, replaced or removed the stored draft. Whichever tab typed last would otherwise
-     overwrite the other without either knowing. */
+  /* Another tab wrote or removed this draft's copy in this browser. Whichever tab typed last would otherwise overwrite
+     the other without either knowing. Another draft's key is another draft: tabs on different drafts never meet. */
   window.addEventListener('storage', function(e){
-    if (e.key !== STORE_KEY || draftClosed) return;
+    if (draftClosed || !S.draftId || e.key !== storeKeyOf(S.draftId)) return;
     var other = null;
     try { other = e.newValue ? JSON.parse(e.newValue) : null; } catch(err){}
-    otherTab = !other ? 'closed' : (other.draftId && other.draftId === S.draftId ? 'changed' : 'replaced');
+    /* the other tab only noted the account's revision of the very same save: nothing was typed */
+    if (other && other.savedAt && other.savedAt === S.savedAt) return;
+    otherTab = !other ? 'closed' : 'changed';
+    clearTimeout(pushTimer);
     renderSaveState();
   });
-  /* the stored draft as it is, without touching S: null when there is none or it cannot be read */
-  function readStoredDraft(){
+  function newDraftId(){ return 'draft-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8); }
+  /* this browser's copy of draft `id` (with no id: the draft it worked on last), without touching S: null when there is
+     none or it cannot be read */
+  function readStoredDraft(id){
     try {
-      var d = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-      return d && typeof d === 'object' ? d : null;
+      if (id === undefined) id = localStorage.getItem(CURRENT_KEY) || '';
+      if (!id) return null;
+      var d = JSON.parse(localStorage.getItem(storeKeyOf(id)) || 'null');
+      return d && typeof d === 'object' && d.draftId === id ? d : null;
     } catch(e){ return null; }
   }
-  /* is there anything in a stored draft that its owner entered — something a new event must not silently replace */
-  function draftHasInput(d){
+  /* The one draft a browser kept before drafts were saved to the account, moved to its own key (and named the current
+     one, unless another is), so that it is resumed, saved to the account and listed like any other. */
+  function migrateLegacyDraft(){
+    try {
+      var raw = localStorage.getItem(LEGACY_STORE_KEY);
+      if (!raw) return;
+      var d = null;
+      try { d = JSON.parse(raw); } catch(e){ d = null; }
+      if (d && typeof d === 'object' && d.assembled !== true){
+        if (typeof d.draftId !== 'string' || !/^draft-[a-z0-9]+-[a-z0-9]+$/.test(d.draftId)) d.draftId = newDraftId();
+        if (!localStorage.getItem(storeKeyOf(d.draftId))) localStorage.setItem(storeKeyOf(d.draftId), JSON.stringify(d));
+        if (!localStorage.getItem(CURRENT_KEY)) localStorage.setItem(CURRENT_KEY, d.draftId);
+      }
+      localStorage.removeItem(LEGACY_STORE_KEY);
+    } catch(e){ /* storage blocked: there is nothing to move */ }
+  }
+  /* is there anything in a stored draft that its owner entered — something worth keeping, which a new event must
+     never silently replace. asIs: d is the live draft, already tidied by restore(), which is read and never changed */
+  function draftHasInput(d, asIs){
     if (!d || d.assembled === true) return false;
     var b = d.basics || {}, br = d.brief || {};
     if (d.createdEventId || String(b.name || '').trim() || String(b.slug || '').trim() || b.logo) return true;
-    if (['text', 'current', 'previous', 'comp1', 'comp2', 'docName'].some(function(k){ return String(br[k] || '').trim(); })) return true;
+    if (['text', 'current', 'previous', 'comp1', 'comp2', 'docName'].some(function(k){ return String(br[k] || '').trim() && !(k === 'text' && br[k] === BRIEF_TEMPLATE); })) return true;
     return (d.sections || []).some(function(sec){
       if (!sec || !sec.data) return false;
-      if (sec.libId === 'hero') cleanHeroData(sec.data);
+      if (sec.libId === 'hero' && !asIs) cleanHeroData(sec.data);
       return sectionHasContent(sec);
     });
   }
-  /* Removes draft `d` from storage — but never another draft: when a different event has been started
-     in another tab since, the stored draft is that tab's and stays. */
+  /* Removes this browser's copy of draft `d`, and nothing else: every draft has its own key. */
   function removeStoredDraft(d){
-    var stored = readStoredDraft();
-    if (stored && d && stored.draftId && d.draftId && stored.draftId !== d.draftId) return;
-    try { localStorage.removeItem(STORE_KEY); } catch(e){}
+    var id = d && d.draftId;
+    if (!id) return;
+    try {
+      localStorage.removeItem(storeKeyOf(id));
+      if (localStorage.getItem(CURRENT_KEY) === id) localStorage.removeItem(CURRENT_KEY);
+    } catch(e){}
   }
-  /* removes draft `d` and its files; S is not touched */
+  /* removes draft `d` everywhere: this browser's copy and files, and the account's copy (a removal the server cannot be
+     reached for is made on a later visit, and the draft is listed nowhere meanwhile: create-drafts.js); S is not touched */
   function discardStoredDraft(d){
     removeStoredDraft(d);
+    if (d && d.draftId && accountReady()) RevampCreateDrafts.remove(d.draftId).then(null, function(){});
     return clearDraftFiles(d && d.draftId);
+  }
+  /* The draft is safe in the person's account: already there, or sent now. Resolves false when it is not and cannot be
+     (no connection, the account holds a newer copy from another computer). */
+  var ENSURE_TIMEOUT_MS = 8000;
+  function ensureInAccount(d){
+    if (!d || !d.draftId || !accountReady()) return Promise.resolve(false);
+    var who = window.RevampAuth && typeof RevampAuth.whenResolved === 'function' ? Promise.resolve(RevampAuth.whenResolved()).then(currentUid, currentUid) : Promise.resolve(currentUid());
+    return who.then(function(me){
+      /* another person's copy in this browser is theirs: never sent to this person's account, never asked about here */
+      if (othersDraft(d, me)) return 'theirs';
+      return sendLocalDraft(d);
+    });
+  }
+  function sendLocalDraft(d){
+    if (d.rev && d.syncedAt && d.syncedAt === d.savedAt) return Promise.resolve(true);
+    var sent = RevampCreateDrafts.put(d.draftId, +d.rev || 0, d, { writer: WRITER }).then(null, function(err){
+      /* this browser's own earlier save, whose answer never came back */
+      if (err && err.code === 'draft-conflict' && err.current && err.current.writer === WRITER) return RevampCreateDrafts.put(d.draftId, +d.rev || 0, d, { writer: WRITER, force: true });
+      throw err;
+    }).then(function(out){
+      d.rev = +out.rev || 0;
+      d.syncedAt = d.savedAt;
+      try { localStorage.setItem(storeKeyOf(d.draftId), JSON.stringify(d)); } catch(e){}
+      return true;
+    }, function(){ return false; });
+    var late = new Promise(function(resolve){ setTimeout(function(){ resolve(false); }, ENSURE_TIMEOUT_MS); });
+    return Promise.race([sent, late]);
+  }
+  /* This browser's copies of other drafts: one the account holds is let go after a week (Resume opens it from the
+     account), one it does not hold yet is sent there now, and one with nothing in it, or already in the editor, goes. */
+  var LOCAL_KEEP_MS = 7 * 24 * 60 * 60 * 1000, EMPTY_KEEP_MS = 60 * 60 * 1000;
+  function tidyLocalDrafts(){
+    if (!accountReady()) return;
+    RevampCreateDrafts.flushRemovals();
+    var ids = [];
+    try {
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (k && k.indexOf(DRAFT_PREFIX) === 0) ids.push(k.slice(DRAFT_PREFIX.length));
+      }
+    } catch(e){ return; }
+    ids.forEach(function(id){
+      if (id === S.draftId) return;
+      var d = readStoredDraft(id), age = d ? Date.now() - (Date.parse(d.savedAt) || 0) : Infinity;
+      if (!d || ((d.assembled === true || !draftHasInput(d)) && age > EMPTY_KEEP_MS)){ removeStoredDraft(d || { draftId: id }); return; }
+      if (d.assembled === true || !draftHasInput(d)) return;
+      if (d.rev && d.syncedAt === d.savedAt){ if (age > LOCAL_KEEP_MS) removeStoredDraft(d); return; }
+      ensureInAccount(d);
+    });
+  }
+  /* The draft `id`, from this browser's copy or the account's, whichever was saved last (fromAccount: the account's,
+     which the person chose); its pictures are fetched from the account when this browser does not have them. */
+  var OPEN_WAIT_MS = 10000;
+  function openDraft(id, local, fromAccount){
+    if (local === undefined) local = readStoredDraft(id);
+    /* the page has nothing to show until the draft is in: said, instead of a blank page on a slow connection */
+    showOpening(true);
+    /* acc: the account's copy, null when the account answered it has none, undefined when it could not be asked. An
+       account that does not answer in OPEN_WAIT_MS counts as one that could not be reached: this browser's own copy
+       opens, or the person is told and can try again */
+    var late = new Error('Your account did not answer in time. Check your connection and try again.');
+    var asked = accountReady() ? withinMs(RevampCreateDrafts.get(id), OPEN_WAIT_MS, late).then(function(acc){ return { acc: acc }; }, function(err){ return { error: err }; })
+      : Promise.resolve({ acc: undefined });
+    asked.then(function(got){
+      showOpening(false);
+      var theirs = othersDraft(local, currentUid());
+      if (theirs) local = null;
+      var acc = got.acc, pick = local;
+      if (acc && acc.state && acc.state.draftId === id){
+        var their = acc.state;
+        their.rev = +acc.rev || 0;
+        their.syncedAt = their.savedAt;
+        if (fromAccount || !local || (Date.parse(their.savedAt) || 0) > (Date.parse(local.savedAt) || 0)) pick = their;
+      }
+      /* the account answered that it does not have it (discarded, or already in the editor) and this browser has nothing
+         newer that was never sent there: it is not opened, and that is said */
+      if (pick && acc === null && !got.error && pick.rev && pick.syncedAt === pick.savedAt) pick = null;
+      if (!pick || pick.assembled === true){
+        if (theirs && !acc){ start(null); return; }
+        if (got.error && !pick){
+          openModal({
+            title: 'Your draft could not be opened',
+            sub: plainError(got.error),
+            confirm: 'Try again',
+            cancelLabel: 'Start a new event',
+            onConfirm: function(){ openDraft(id, local, fromAccount); },
+            onCancel: function(){ start(null); },
+            onDismiss: function(){ start(null); }
+          });
+          return;
+        }
+        if (local) removeStoredDraft(local);
+        /* a draft somebody else left in this browser is simply not opened; one of this person's that has gone is said */
+        if (!theirs) toast('That draft is no longer in your Drafts: it was discarded, or already opened in the editor. This is a new event.', { type: 'info' });
+        start(null);
+        return;
+      }
+      showOpening(true);
+      withinMs(hydrateFiles(pick), OPEN_WAIT_MS).then(function(){ showOpening(false); start(pick); });
+    });
+  }
+  /* The footer's Back and Continue act on a step, and there is none until the draft is in (their clicks, and the header's
+     Save & exit and close, are wired by start()): put away from the moment the draft is asked for until start() shows
+     the step it opens on, so the page shows only "Opening your draft…" meanwhile, and only the dialog's own buttons when
+     it could not be opened. Save & exit goes with them (nothing has been typed here to save); the close button still
+     leaves, straight back to Drafts, as nothing can be lost yet.
+     text and toDrafts: the same wait for another reason. Create Event beside an unfinished draft first puts that draft in
+     the account (keepOrAsk), which can take seconds on a slow connection: the line says so, and close goes back to the
+     events list it came from, not Drafts (a draft that has not reached the account yet is not listed there). */
+  var draftOpening = false;
+  function showOpening(on, text, toDrafts){
+    var el = $('draft-opening'), line = $('draft-opening-text'), foot = $('wiz-foot'), saveExit = $('btn-save-exit'), close = $('btn-close');
+    draftOpening = !!on;
+    if (el) el.hidden = !on;
+    if (!on) return;
+    if (line) line.textContent = text || 'Opening your draft…';
+    if (foot) foot.hidden = true;
+    if (saveExit) saveExit.hidden = true;
+    if (close) close.onclick = function(){ if (draftOpening) exitToDashboard(toDrafts !== false); };
+  }
+  /* the pictures the account holds for draft `d` that this browser does not have in that version (or has older),
+     fetched into the draft's own slots before the form reads them; one that cannot be fetched is said missing by
+     loadBannerFiles / loadImageFiles, as a picture this browser lost is */
+  function hydrateFiles(d){
+    var files = d && d.files && typeof d.files === 'object' ? d.files : {}, id = d && d.draftId;
+    if (!id || !window.RevampStore || !accountReady()) return Promise.resolve();
+    return Promise.all(Object.keys(files).map(function(key){
+      var slot = RevampCreateDrafts.localSlot(key), want = files[key] || {};
+      return RevampStore.get(slotKey(slot, id)).then(null, function(){ return null; }).then(function(rec){
+        if (rec && (+rec.savedAt || 0) >= (+want.savedAt || 0)) return;
+        return RevampCreateDrafts.getFile(id, key).then(function(blob){
+          if (!blob) return;
+          var name = String(want.name || ''), at = +want.savedAt || Date.now();
+          var put = slot === 'logo'
+            ? blobDataUrl(blob).then(function(url){ return RevampStore.put(slotKey(slot, id), { name: name, dataUrl: url, savedAt: at }); })
+            : RevampStore.put(slotKey(slot, id), { name: name, blob: blob, savedAt: at });
+          return put.then(function(){
+            if (/^img:\d+$/.test(slot)) noteDraftImage(id, +slot.slice(4));
+            noteDraftFiles(id);
+          });
+        });
+      }).then(null, function(){ /* said missing when the form reads it */ });
+    }));
   }
   /* what older drafts kept in the hero and no draft holds any more: picture data, the sample banner, and
      the secondary button's old starting text (a "Download brochure" button with no brochure behind it) */
@@ -2992,16 +3415,16 @@
       (b.layers || []).forEach(function(l){ delete l.imageData; delete l.autoHidden; });
     }
   }
-  function restore(){
+  /* d: the draft to resume (this browser's copy or the account's, openDraft); with none given, the one this browser
+     worked on last; null: none, a new event */
+  function restore(d){
     try {
-      var raw = localStorage.getItem(STORE_KEY);
-      if (!raw) return false;
-      var d = JSON.parse(raw);
+      if (d === undefined) d = readStoredDraft();
       if (!d || typeof d !== 'object') return false;
       /* a draft that was already handed to the editor is finished: resuming it would run the hand-off a
          second time against an event that has since moved on */
       if (d.assembled === true){
-        localStorage.removeItem(STORE_KEY);
+        removeStoredDraft(d);
         return false;
       }
 
@@ -3025,6 +3448,10 @@
       S.sections = (S.sections || []).filter(function(sec){ return sec && (isTextSection(sec) || libBy(sec.libId)); });
       S.sections.filter(isTextSection).forEach(cleanTextSection);
       S.imgSeq = +S.imgSeq || 0;
+      /* where the account stands with this copy (pushDraft): a draft from before drafts were saved there has never been */
+      S.rev = +S.rev || 0;
+      if (typeof S.syncedAt !== 'string') S.syncedAt = null;
+      if (!S.files || typeof S.files !== 'object' || Array.isArray(S.files)) S.files = {};
       if (d.path === 'B'){
         /* saved inside the old "analyse my design" steps, which only ever produced sample sections */
         S.sections = S.sections.filter(function(sec){ return sec.source !== 'detected'; });
@@ -3411,52 +3838,126 @@
     while (/.-(and|of|the|for)$/.test(trimmed)) trimmed = trimmed.replace(/-(and|of|the|for)$/, '');
     return trimmed;
   }
-  function slugFree(slug){
-    return !!slug && TAKEN_SLUGS.indexOf(slug) === -1;
+  /* The event's public address, from the one helper every page uses (RevampCore.publicUrl: the site's base and
+     /e/<id>), so the address shown here is the one the site will really have. */
+  function siteAddress(slug){
+    if (window.RevampCore && typeof RevampCore.publicUrl === 'function') return RevampCore.publicUrl(slug);
+    return location.origin + '/e/' + encodeURIComponent(slug);
+  }
+  /* what stands in front of the box: that address without the event's own part ("host/e/") */
+  function addressPrefix(){ return siteAddress('x').replace(/x$/, '').replace(/^https?:\/\//, ''); }
+
+  /* ---------- is the address free? ----------
+     Asked of the server a moment after the typing stops (GET /api/event/slug-available, RevampCore.slugAvailable).
+     When the address is taken or reserved, the answer brings the nearest free one, offered beside it with "Use it".
+     A check, not a reservation: creating the event checks again (the hand-off then offers the same choice).
+     state: '' (nothing to check) | 'checking' | 'free' | 'taken' | 'reserved' | 'invalid' | 'unknown' (not reachable) */
+  var SLUG_CHECK_MS = 450;
+  var slugCheck = { slug: '', state: '', suggestion: '', message: '' };
+  var slugCheckSeq = 0;
+  var slugCheckTimer = null, slugTidyTimer = null;
+  function slugCheckable(slug){ return !!slug && slug.length >= SLUG_MIN && !S.createdEventId; }
+  /* the address changed: "Checking…" at once, the question a moment later */
+  function slugChanged(){
+    var slug = S.basics.slug;
+    slugCheckSeq++;                     // an answer still on its way is for the address before this one
+    slugCheck = { slug: slug, state: slugCheckable(slug) ? 'checking' : '', suggestion: '', message: '' };
+    renderSlugStatus();
+    clearTimeout(slugCheckTimer);
+    if (slugCheck.state) slugCheckTimer = setTimeout(checkSlugNow, SLUG_CHECK_MS);
+  }
+  /* asks now, unless this very address has its answer already */
+  function checkSlugNow(){
+    var slug = S.basics.slug;
+    if (!slugCheckable(slug)){ slugCheck = { slug: slug, state: '', suggestion: '', message: '' }; renderSlugStatus(); return Promise.resolve(); }
+    if (slugCheck.slug === slug && ['free', 'taken', 'reserved', 'invalid'].indexOf(slugCheck.state) !== -1){ renderSlugStatus(); return Promise.resolve(); }
+    var seq = ++slugCheckSeq;
+    slugCheck = { slug: slug, state: 'checking', suggestion: '', message: '' };
+    renderSlugStatus();
+    var asking = window.RevampCore && typeof RevampCore.slugAvailable === 'function'
+      ? RevampCore.slugAvailable(slug) : Promise.reject(new Error('This page did not load completely.'));
+    return Promise.resolve(asking).then(function(r){
+      if (seq !== slugCheckSeq || S.basics.slug !== slug) return;
+      var reason = r && r.available ? 'free' : (['taken', 'reserved', 'invalid'].indexOf(r && r.reason) !== -1 ? r.reason : 'taken');
+      var free = r && typeof r.suggestion === 'string' && r.suggestion && r.suggestion !== slug ? r.suggestion : '';
+      slugCheck = { slug: slug, state: reason, suggestion: free, message: (r && typeof r.message === 'string') ? r.message : '' };
+    }, function(){
+      if (seq !== slugCheckSeq || S.basics.slug !== slug) return;
+      slugCheck = { slug: slug, state: 'unknown', suggestion: '', message: '' };
+    }).then(function(){
+      if (seq !== slugCheckSeq) return;
+      renderSlugStatus();
+      renderFoot();              // which also marks the field once Continue was pressed (showFieldProblems)
+    });
+  }
+  /* takes the free address the server offered (the status line's "Use it", and the hand-off's) */
+  function useSuggestedSlug(slug){
+    if (!slug || S.createdEventId) return;
+    S.basics.slug = slug;
+    S.basics.slugTouched = true;
+    var el = $('f-slug');
+    if (el) el.value = slug;
+    /* the server offered it as free a moment ago: it is shown so, and asked again before anything relies on it */
+    slugCheckSeq++;
+    slugCheck = { slug: slug, state: 'free', suggestion: '', message: '' };
+    renderSlugStatus();
+    renderSlugAI();
+    renderFoot();
+    save();
   }
 
-  var slugCheckTimer = null;
-  function renderSlugStatus(checking){
+  function renderSlugStatus(){
     var host = $('slug-status');
+    if (!host) return;
     var slug = S.basics.slug;
-    if (!slug){ host.innerHTML = ''; return; }
+    if (!slug){ host.className = 'slug-status'; host.innerHTML = ''; return; }
     if (S.createdEventId){
       host.className = 'slug-status checking';
       host.innerHTML = IC.lock + ' The event already exists, so its address can no longer change.';
       return;
     }
-    if (checking){
-      host.className = 'slug-status checking';
-      host.innerHTML = 'Checking availability…';
-      return;
-    }
+    var st = slugCheck.slug === slug ? slugCheck.state : '';
     var issue = slugIssue(slug);
-    if (!issue){
-      host.className = 'slug-status ok';
-      host.innerHTML = IC.check + ' etoneworld.com/' + esc(slug) + ' is available';
-    } else if (detailsChecked){
-      host.innerHTML = '';                       // said on the field itself (showFieldProblems)
-    } else {
+    var use = st && slugCheck.suggestion && issue
+      ? ' <button type="button" class="slug-use" id="slug-use">Use ' + esc(slugCheck.suggestion) + '</button>' : '';
+    if (issue){
       host.className = 'slug-status bad';
-      host.innerHTML = IC.warn + ' ' + esc(issue);
+      /* the sentence itself is on the field once Continue was pressed (showFieldProblems); the way out stays here */
+      host.innerHTML = (detailsChecked ? '' : IC.warn + ' <span>' + esc(issue) + '</span>') + use;
+    } else if (st === 'checking'){
+      host.className = 'slug-status checking';
+      host.innerHTML = 'Checking whether this address is free…';
+    } else if (st === 'free'){
+      host.className = 'slug-status ok';
+      host.innerHTML = IC.check + ' <span><span class="mono">' + esc(siteAddress(slug)) + '</span> is free</span>';
+    } else if (st === 'unknown'){
+      host.className = 'slug-status checking';
+      host.innerHTML = '<span>The address could not be checked just now. It is checked again when the event is created.</span>' +
+        ' <button type="button" class="slug-use" id="slug-recheck">Check again</button>';
+    } else {
+      host.className = 'slug-status';
+      host.innerHTML = '';
     }
+    var u = $('slug-use'), again = $('slug-recheck');
+    if (u) u.onclick = function(){ useSuggestedSlug(slugCheck.suggestion); };
+    if (again) again.onclick = function(){ checkSlugNow(); };
   }
+  /* an address made from the name, offered while the box holds another: plain slugify(), so it is "Suggested", not AI */
   function renderSlugAI(){
     var host = $('slug-ai');
     var suggestion = slugify(S.basics.name);
     if (!suggestion || suggestion === S.basics.slug || S.createdEventId){ host.innerHTML = ''; return; }
-    host.innerHTML = '<span class="ai-chip">' + IC.spark +
-      'AI suggests <span class="mono">' + esc(suggestion) + '</span>' +
+    host.innerHTML = '<span class="ai-chip">' +
+      'Suggested <span class="mono">' + esc(suggestion) + '</span>' +
       '<button type="button" id="slug-apply">Use it</button></span>';
     $('slug-apply').addEventListener('click', function(){
       S.basics.slug = suggestion;
       S.basics.slugTouched = true;
       $('f-slug').value = suggestion;
-      renderSlugStatus(false);
+      slugChanged();
       renderSlugAI();
       renderFoot();
       save();
-      toast('Slug set to /' + suggestion);
     });
   }
 
@@ -3518,7 +4019,7 @@
   ========================================================= */
   var SLUG_MIN = 3;
   var YEAR_MIN = 2024, YEAR_MAX = 2035;           // the bounds of the Year box
-  var PROBLEM_FIELDS = ['f-name', 'f-slug', 'logo-drop', 'f-client', 'f-start', 'f-end', 'f-month', 'f-year', 'f-nomClose',
+  var PROBLEM_FIELDS = ['f-name', 'f-slug', 'logo-drop', 'f-client', 'f-start', 'f-end', 'f-month', 'f-year', 'f-nomOpen', 'f-nomClose', 'f-shortlist',
     'gb-brief-text', 'gb-doc-pick', 'gb-current', 'gb-previous', 'gb-comp1', 'gb-comp2'];
   var DATE_FIELDS = ['f-start', 'f-end', 'f-nomOpen', 'f-nomClose', 'f-shortlist'];
   var detailsChecked = false; // Continue was pressed with something still wrong: problems are now shown on their fields
@@ -3530,11 +4031,24 @@
     var d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
     return isNaN(d.getTime()) ? null : d;
   }
+  /* a date or time box holding something half typed ("10/02/2027, --:--", "12/--/2027"): the browser gives the page
+     no value for it at all, so it is said for what it is instead of as an empty box */
+  function halfTyped(id){
+    var el = $(id);
+    return !!(el && el.validity && el.validity.badInput);
+  }
   function slugIssue(slug){
     if (!slug) return 'Enter a URL slug — the last part of the event’s web address.';
     /* an event that already exists keeps the address it was created with, whatever its length */
     if (slug.length < SLUG_MIN && !S.createdEventId) return 'Use at least ' + SLUG_MIN + ' characters.';
-    if (!slugFree(slug)) return 'That slug is taken — try adding the year or city.';
+    /* what the server said of exactly this address (checkSlugNow); while it is being asked, nothing stops Continue:
+       creating the event checks it again */
+    if (!S.createdEventId && slugCheck.slug === slug){
+      var free = slugCheck.suggestion ? ' Use “' + slugCheck.suggestion + '”, or change it.' : ' Change it.';
+      if (slugCheck.state === 'taken') return 'That address is already used by another event.' + free;
+      if (slugCheck.state === 'reserved') return 'That address is reserved.' + free;
+      if (slugCheck.state === 'invalid') return slugCheck.message || 'An address can use lowercase letters, numbers and hyphens only.';
+    }
     return '';
   }
   /* method: 'template' | 'imported' | 'brief'. The brief form asks only for name, address, date and venue;
@@ -3552,11 +4066,15 @@
     if (method !== 'brief' && C.client === 'required' && !b.client.trim()) bad('f-client', 'Enter the client or sponsor name.');
 
     var later = ', or choose “To be announced”.';
+    /* Starts is needed; Ends may be left empty, as in the event's console (Basics), and the site then shows the start */
     if (b.dateMode === 'exact'){
       var start = localDate(b.start), end = localDate(b.end);
-      if (!start) bad('f-start', 'Pick a start date' + later);
-      if (!end) bad('f-end', 'Pick an end date.');
-      else if (start && end < start) bad('f-end', 'The end is before the start.');
+      if (halfTyped('f-start')) bad('f-start', 'Finish the start date — day, month and year — or pick it from the calendar.');
+      else if (halfTyped('f-start-time')) bad('f-start', 'Finish the start time, e.g. 09:00 AM.');
+      else if (!start) bad('f-start', 'Pick a start date' + later);
+      if (halfTyped('f-end')) bad('f-end', 'Finish the end date — day, month and year — or clear it.');
+      else if (halfTyped('f-end-time')) bad('f-end', 'Finish the end time, e.g. 06:00 PM.');
+      else if (start && end && end < start) bad('f-end', 'The end is before the start.');
     }
     else if (b.dateMode === 'month'){
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(b.month)) bad('f-month', 'Pick the month' + later);
@@ -3567,10 +4085,17 @@
         bad('f-year', 'Enter a year from ' + YEAR_MIN + ' to ' + YEAR_MAX + later);
     }
 
-    if (method !== 'brief' && C.nomination && !b.nomCloseTbd){
-      var opens = b.nomOpenTbd ? null : localDate(b.nomOpen), closes = localDate(b.nomClose);
-      if (!closes) bad('f-nomClose', 'Set when nominations close, or choose “Decide later”.');
-      else if (opens && closes < opens) bad('f-nomClose', 'Nominations close before they open.');
+    if (method !== 'brief' && C.nomination){
+      /* these boxes take a date and a time together: a date with no time yet is said as that */
+      var timeToo = 'Add the time as well as the date, e.g. 06:00 PM.';
+      if (!b.nomOpenTbd && halfTyped('f-nomOpen')) bad('f-nomOpen', timeToo);
+      if (!b.shortlistTbd && halfTyped('f-shortlist')) bad('f-shortlist', timeToo);
+      if (!b.nomCloseTbd){
+        var opens = b.nomOpenTbd ? null : localDate(b.nomOpen), closes = localDate(b.nomClose);
+        if (halfTyped('f-nomClose')) bad('f-nomClose', timeToo);
+        else if (!closes) bad('f-nomClose', 'Set when nominations close, or choose “Decide later”.');
+        else if (opens && closes < opens) bad('f-nomClose', 'Nominations close before they open.');
+      }
     }
     return out;
   }
@@ -3666,18 +4191,22 @@
   /* under each date box: the date as it reads, so a mistyped year or an am/pm slip is seen at once */
   function refreshDateNotes(){
     DATE_FIELDS.forEach(function(id){
-      var el = $(id), d = el && localDate(el.value);
+      /* Starts and Ends are a date box and a time box: the moment is the one the draft holds */
+      var el = $(id), v = id === 'f-start' ? S.basics.start : id === 'f-end' ? S.basics.end : el && el.value;
+      var d = el && localDate(v);
       if (el) setFieldNote(id, 'echo', d ? fmtDTLong(d) : '');
     });
     var startEl = $('f-start'), endEl = $('f-end');
     if (!startEl) return;
-    var start = localDate(startEl.value);
-    if (endEl) endEl.min = start ? startEl.value : '';
+    var start = localDate(S.basics.start);
+    if (endEl) endEl.min = start ? datePart(S.basics.start) : '';
     setFieldNote('f-start', 'warn', start && start.getTime() < Date.now() ? 'This date is in the past.' : '');
   }
   function focusProblem(issue){
     /* the portal is chosen on the first screen; from any later screen it is asked in a dialog over it */
     if (issue && issue.field === 'cat-portal' && !(S.step === 1 && S.step1Phase === 'category')){ askDraftPortal(); return; }
+    /* a previous edition's link that is not an address is corrected in its own box */
+    if (issue && issue.field === 'gb-previous' && S.creationMethod === 'brief') openPrevLink('', true);
     var el = issue && $(issue.field);
     if (!el) return;
     /* the previous edition's address is kept out of sight: its picker is what is shown and focused */
@@ -3719,10 +4248,16 @@
     /* The first row contains identity and logo only. Brief mode drops client (above), so name, address and
        logo share the row three ways. */
     var withClient = C.client && !briefMode;
-    $('name-cell').className     = 'field ' + (withClient ? 'c3' : 'c4');
-    $('client-wrap').className   = 'field c3';
-    $('slug-cell').className     = 'field ' + (withClient ? 'c3' : 'c4');
-    $('logo-cell').className     = 'field ' + (withClient ? 'c3' : 'c4') + ' logo-field';
+    $('name-cell').className     = 'field c4';
+    $('client-wrap').className   = 'field c4';
+    /* With a client the four do not fit one row at a width the address can be read in (it showed
+       "martech-plus-summ"): name, client and logo share the first row and the address has a wide one of its own.
+       The cells are moved, not just drawn elsewhere, so the keyboard meets them in the order they are seen. */
+    $('slug-cell').className     = 'field ' + (withClient ? 'c8' : 'c4');
+    $('logo-cell').className     = 'field c4 logo-field';
+    var row = $('identity-row');
+    if (withClient && $('logo-cell').nextElementSibling !== $('slug-cell')) row.insertBefore($('logo-cell'), $('slug-cell'));
+    if (!withClient && $('slug-cell').nextElementSibling !== $('logo-cell')) row.insertBefore($('slug-cell'), $('logo-cell'));
 
     $('cat-bar-ico').innerHTML     = svg(CAT_ICON[b.category], 19);
     $('cat-bar-portal').textContent = b.portal ? portalName(b.portal) : '';
@@ -3732,14 +4267,46 @@
     $('sched-eyebrow').textContent = DATE_MODE_LABEL[b.dateMode] || '';
   }
 
+  /* ---------- Starts / Ends: a date, and a time ----------
+     A date alone is a whole answer: its time box takes DEFAULT_TIME (shown, and changed like any other), so the
+     form never holds a date it cannot read, and nothing asks for "a date" when the time is what is missing. */
+  var DEFAULT_TIME = { start: '09:00', end: '18:00' };
+  function datePart(v){ var m = /^(\d{4}-\d{2}-\d{2})/.exec(String(v || '')); return m ? m[1] : ''; }
+  function timePart(v){ var m = /T(\d{2}:\d{2})/.exec(String(v || '')); return m ? m[1] : ''; }
+  function dateTimeCell(key, label, required){
+    var v = S.basics[key];
+    return '<div class="field c3 dt-cell"><div class="flabel-row"><label for="f-' + key + '">' + label + (required ? ' <span class="pill-req">*</span>' : '') + '</label>' +
+        (required ? '' : '<span class="pill-opt">Optional</span>') + '</div>' +
+      '<div class="dt-pair"><input class="inp" id="f-' + key + '" type="date" value="' + esc(datePart(v)) + '">' +
+        '<input class="inp" id="f-' + key + '-time" type="time" value="' + esc(datePart(v) ? timePart(v) : '') + '" aria-label="' + label + ' at (time)"></div></div>';
+  }
+  function wireDateTime(key){
+    var d = $('f-' + key), t = $('f-' + key + '-time'), b = S.basics;
+    if (!d || !t) return;
+    function take(){
+      b[key] = d.value ? d.value + 'T' + (t.value || DEFAULT_TIME[key]) : '';
+      refreshHeroCallout(); renderFoot(); save();
+    }
+    /* a date picked with its time box empty gets the usual time, in the box, where it can be changed */
+    d.oninput = d.onchange = function(){
+      if (d.value && !t.value && !t.validity.badInput) t.value = DEFAULT_TIME[key];
+      take();
+    };
+    /* a time being typed is never overwritten: it counts once it is whole */
+    t.oninput = t.onchange = take;
+    t.onblur = function(){ if (d.value && !t.value && !t.validity.badInput){ t.value = DEFAULT_TIME[key]; take(); } };
+  }
+
   /* ---------- schedule block: reshapes per date mode ---------- */
   function renderSchedule(){
     var b = S.basics, C = CATS[b.category], host = $('sched-body'), h = '';
     /* two-field date modes (exact, quarter) leave less room for venue than the one-field modes */
     var twoUp = (b.dateMode === 'exact' || b.dateMode === 'quarter');
-    /* venue and the registration note share what the date fields leave of the row (c6 or c7) */
-    var venueSpan = twoUp ? 'c3' : 'c4';
-    var paymentSpan = C.venue ? 'c3' : (twoUp ? 'c6' : 'c7');
+    var exact = b.dateMode === 'exact';
+    /* venue and the registration note share what the date fields leave of the row (c6 or c7); exact dates take
+       a date and a time each (c3), so the venue has the rest of the row and the note goes under it */
+    var venueSpan = exact ? 'c4' : twoUp ? 'c3' : 'c4';
+    var paymentSpan = exact ? (C.venue ? 'c12' : 'c4') : C.venue ? 'c3' : (twoUp ? 'c6' : 'c7');
 
     h += '<div class="field c2">' +
            '<label for="f-datemode">Date Format</label>' +
@@ -3747,10 +4314,7 @@
          '</div>';
 
     if (b.dateMode === 'exact'){
-      h += '<div class="field c2"><div class="flabel-row"><label for="f-start">Starts <span class="pill-req">*</span></label></div>' +
-             '<input class="inp" id="f-start" type="datetime-local" value="' + esc(b.start) + '"></div>' +
-           '<div class="field c2"><div class="flabel-row"><label for="f-end">Ends <span class="pill-req">*</span></label></div>' +
-             '<input class="inp" id="f-end" type="datetime-local" value="' + esc(b.end) + '"></div>';
+      h += dateTimeCell('start', 'Starts', true) + dateTimeCell('end', 'Ends', false);
     }
     else if (b.dateMode === 'month'){
       h += '<div class="field c3"><div class="flabel-row"><label for="f-month">Month <span class="pill-req">*</span></label></div>' +
@@ -3799,7 +4363,9 @@
       });
     }
 
-    [['f-start','start'],['f-end','end'],['f-month','month'],['f-year','year'],['f-datenote','dateNote']].forEach(function(pair){
+    wireDateTime('start');
+    wireDateTime('end');
+    [['f-month','month'],['f-year','year'],['f-datenote','dateNote']].forEach(function(pair){
       var el = $(pair[0]);
       if (!el) return;
       el.oninput = function(){
@@ -3924,7 +4490,7 @@
   var queryPortal = '';           // ?portal= from the dashboard's Create Event link, read before init() tidies the address
   var newDraft = false;           // this page load started a new draft: only a new draft takes ?portal= or the working portal (startPortal)
   var workingPortal = null;       // the portal the person works on in the dashboard: a slug, 'all' or null, as last heard
-  /* the type an event in the events list was created as, as this page names it (create-event-editions.js CAT_BY_TYPE) */
+  /* the type an event in the events list was created as, as this page names it (create-event-editions.js has the same table) */
   var CAT_OF_EVENT = { ip: 'IP', editorial: 'IP', client: 'Client', leadgen: 'Client', roundtable: 'Client', virtual: 'Client', awards: 'Awards' };
   /* The gallery designs whose fixed "About …" section is one portal's own boilerplate, kept on purpose by
      their template.json, and the heading it carries. On another portal's event it names the wrong portal,
@@ -4376,9 +4942,8 @@
     nameEl.oninput = function(){
       b.name = nameEl.value;
       if (!b.slugTouched && !S.createdEventId){
-        b.slug = slugify(b.name);
-        $('f-slug').value = b.slug;
-        renderSlugStatus(false);
+        var made = slugify(b.name);
+        if (made !== b.slug){ b.slug = made; $('f-slug').value = made; slugChanged(); }
       }
       renderSlugAI(); renderFoot(); save();
     };
@@ -4389,21 +4954,26 @@
 
     var slugEl = $('f-slug');
     slugEl.value = b.slug;
+    /* the address as it will be, in front of the box: the full one is in its title and in the line under it */
+    var prefixEl = $('slug-prefix-text');
+    if (prefixEl){ prefixEl.textContent = addressPrefix(); $('slug-prefix').title = siteAddress(b.slug || 'your-event'); }
     slugEl.oninput = function(){
       if (S.createdEventId){ slugEl.value = b.slug; return; }
       b.slugTouched = true;
+      var was = b.slug;
       b.slug = slugify(slugEl.value);
-      renderSlugStatus(true);
+      if (b.slug !== was) slugChanged();
       renderFoot();              // Continue must reflect an emptied address at once, not after the tidy-up below
-      clearTimeout(slugCheckTimer);
-      slugCheckTimer = setTimeout(function(){
+      clearTimeout(slugTidyTimer);
+      slugTidyTimer = setTimeout(function(){
         slugEl.value = b.slug;
-        renderSlugStatus(false);
         renderSlugAI();
         renderFoot();
       }, 480);
       save();
     };
+    /* a draft opened with an address that has not been asked about yet (a resumed draft, ETB2B AI's details) */
+    if (slugCheckable(b.slug) && slugCheck.slug !== b.slug) checkSlugNow();
 
     var logoTile = $('logo-tile'), previewImg = $('logo-preview-img'), removeBtn = $('logo-remove'),
         logoCta = $('logo-drop'), logoHint = $('logo-hint'), logoInput = $('f-logo');
@@ -4436,6 +5006,7 @@
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
       gen2Logo = null;
+      forgetDraftFile('logo');
       RevampStore.remove(logoKey()).catch(function(){}).then(renderLivePreview);
       logoInput.value = '';
       save(); initStep1(); renderFoot();
@@ -4805,7 +5376,7 @@
      there is no portal box here. Picking one fills "Previous edition URL" with its page and keeps the event
      in S.brief.etEvent, so the run can tell the server which event it is (ingest-source); an address typed
      by hand drops it. */
-  var etPick = { event: null, events: {}, eventsLoading: {}, partial: {}, slug: '', showPickers: false };
+  var etPick = { event: null, events: {}, eventsLoading: {}, partial: {}, slug: '', showPickers: false, linkMode: false, linkNote: '' };
   /* two addresses for the same page: scheme, www, query and a trailing slash aside */
   function sameLink(a, b){
     function key(v){ return normalUrl(v).replace(/^https?:\/\/(www\.)?/i, '').replace(/[?#].*$/, '').replace(/\/+$/, '').toLowerCase(); }
@@ -4855,7 +5426,7 @@
       box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s ' + noun : 'No ' + noun + ' on this portal');
       var cur = S.brief.etEvent;
       box.setValue(cur && cur.portal === slug && (cur.kind || 'event') === kind ? String(cur.id) : '');
-      etStatus(!events.length ? etPortalName(slug) + ' has no ET ' + noun + ' to pick from.'
+      etStatus(!events.length ? etPortalName(slug) + ' has no ET ' + noun + ' to pick from. Paste the link to the previous edition instead.'
         : etPick.partial[key] ? 'ET sent only part of ' + etPortalName(slug) + '’s older ' + noun + '. If yours is not listed, try again in a few minutes.' : '');
     }
     if (etPick.events[key]){ show(etPick.events[key]); return Promise.resolve(etPick.events[key]); }
@@ -4872,6 +5443,11 @@
     return etPick.eventsLoading[key].then(show, function(err){
       if (stale()) return;
       box.setDisabled(true, 'Previous edition');
+      /* the list failing never blocks the most important source: the link box opens by itself, with the reason */
+      if (S.creationMethod === 'brief' && !S.brief.etEvent && !normalUrl(S.brief.previous) && !etPick.linkMode){
+        openPrevLink('ET’s list of ' + etPortalName(slug) + '’s ' + noun + ' is not available just now. Paste the link to last year’s site instead.', true);
+        return;
+      }
       etStatus(etPortalName(slug) + '’s ' + noun + ' could not be loaded. ' + plainError(err), function(){ loadEtEvents(); });
     });
   }
@@ -4879,14 +5455,28 @@
   function showEtPick(){
     var chip = $('gb-et-chip'), pickers = $('gb-et-pickers');
     if (!chip || !etPick.event) return;
-    /* an address with no pick (an older draft, or one corrected after a failed read) is shown the same way,
-       so what the AI will read is never hidden and can always be changed or removed */
+    var linkBox = $('gb-prev-link'), paste = $('gb-et-paste');
+    /* the link typed by hand: the box itself is shown, with the way back to ET's list */
+    if (etPick.linkMode){
+      chip.hidden = true;
+      pickers.hidden = true;
+      $('gb-et-cancel').hidden = true;
+      paste.hidden = true;
+      linkBox.hidden = false;
+      etStatus(etPick.linkNote || '');
+      return;
+    }
+    linkBox.hidden = true;
+    /* an address with no pick (a pasted link, an older draft, or one corrected after a failed read) is shown the
+       same way, so what the AI will read is never hidden and can always be changed or removed */
     var cur = S.brief.etEvent, link = !cur && normalUrl(S.brief.previous), chipOn = !!(cur || link) && !etPick.showPickers;
     if (!cur) etPick.event.setValue('');
     chip.hidden = !chipOn;
     pickers.hidden = chipOn;
+    paste.hidden = chipOn;
     /* "Change" can be taken back while the edition chosen before is still the one */
     $('gb-et-cancel').hidden = chipOn || !(cur || link);
+    $('gb-et-cancel').textContent = cur ? 'Keep the event picked before' : 'Keep the link';
     if (chipOn){
       $('gb-et-chip-title').textContent = cur ? cur.title : link;
       $('gb-et-chip-sub').textContent = cur ? [etPortalName(cur.portal), cur.dateLabel].filter(Boolean).join(' · ') : 'Previous edition link';
@@ -4937,12 +5527,44 @@
         loadEtEvents().then(function(){ eventInp.focus(); }, function(){ eventInp.focus(); });
       };
       $('gb-et-change').onclick = function(){
+        /* a link given by hand is changed where it was typed */
+        if (!S.brief.etEvent && normalUrl(S.brief.previous)){ openPrevLink(''); return; }
         etPick.showPickers = true;
         showEtPick();
         loadEtEvents().then(function(){ if (!eventInp.disabled) eventInp.focus(); });
       };
+      $('gb-et-paste').onclick = function(){ openPrevLink(''); };
+      $('gb-et-list').onclick = function(){
+        etPick.linkMode = false;
+        etPick.linkNote = '';
+        /* half an address is nothing to keep; a whole one stays until an event is picked over it ("Keep the link") */
+        if (!normalUrl(S.brief.previous)){ S.brief.previous = ''; $('gb-previous').value = ''; save(); renderFoot(); }
+        etPick.showPickers = true;
+        showEtPick();
+        loadEtEvents().then(function(){ if (!eventInp.disabled) eventInp.focus(); }, function(){});
+      };
+      /* leaving a whole link shows it as the chosen edition, as a pick from the list is shown */
+      $('gb-previous').addEventListener('change', function(){
+        if (!normalUrl(S.brief.previous)) return;
+        etPick.linkMode = false;
+        etPick.linkNote = '';
+        etPick.showPickers = false;
+        showEtPick();
+      });
     }
+    /* a draft whose previous edition is a link that is not (yet) a whole address opens on its box */
+    if (!S.brief.etEvent && String(S.brief.previous || '').trim() && !normalUrl(S.brief.previous)) etPick.linkMode = true;
     showEtPick();
+  }
+  /* The previous edition by its link: the box opens with the keyboard in it. note: why it opened by itself (ET's list
+     could not be read); quiet: leave the keyboard where it is (it opened by itself) */
+  function openPrevLink(note, quiet){
+    etPick.linkMode = true;
+    etPick.linkNote = note || '';
+    etPick.showPickers = false;
+    showEtPick();
+    var box = $('gb-previous');
+    if (box && !quiet){ box.focus(); try { box.select(); } catch(e){} }
   }
 
   /* which of step 1's three phase containers is on screen — also how showStep2View() puts the form back
@@ -4965,7 +5587,7 @@
     var host = $('existing-event'), slugEl = $('f-slug');
     if (!host || !slugEl) return;
     slugEl.readOnly = !!S.createdEventId;
-    renderSlugStatus(false);
+    renderSlugStatus();
     renderSlugAI();
     host.hidden = !S.createdEventId;
     if (!S.createdEventId) return;
@@ -5865,20 +6487,7 @@
     /* The event's logo goes to the server with the event: a generated site shows it from its address, and
        the browser's own copy is not something the server can read. A logo that cannot be stored stops the
        run here, before any paid step, with the reason. */
-    function sendLogo(){
-      if (!S.basics.logo || !window.RevampStore) return Promise.resolve();
-      return Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
-        if (!rec || !rec.dataUrl) return;
-        return fetch(rec.dataUrl).then(function(r){ return r.blob(); }).then(function(blob){
-          var file = new File([blob], rec.name || 'logo.png', { type: blob.type });
-          return RevampCore.uploadImage(eventId, 'logo', file);
-        }).then(function(up){
-          return RevampCore.updateEvent(eventId, { logoUrl: up.url });
-        }).then(null, function(err){
-          throw new Error('The logo could not be uploaded: ' + plainError(err));
-        });
-      });
-    }
+    function sendLogo(){ return uploadDraftLogo(eventId); }
     var runners = { create: function(){ return Promise.resolve(createEventRecord()).then(function(out){ return sendLogo().then(function(){ return out; }); }); } };
     /* The description always travels as text, also beside a document. Without a document it is also the
        document itself, which is what the route reads. */
@@ -5977,7 +6586,7 @@
     function runStep(i){
       if (!isCurrent(run) || i >= steps.length) return;
       var s = steps[i];
-      s.status = 'running'; s.startedAt = Date.now(); s.endedAt = null; s.cause = ''; s.fixError = ''; s.editing = false; s.choice = null;
+      s.status = 'running'; s.startedAt = Date.now(); s.endedAt = null; s.cause = ''; s.fixError = ''; s.editing = false; s.choice = null; s.slug = null;
       render();
       runners[s.key]().then(function(){
         if (!isCurrent(run)) return;
@@ -5990,6 +6599,8 @@
         s.status = 'error'; s.endedAt = Date.now(); s.cause = failureCause(s, err);
         /* the event's portal set meanwhile: the row asks Keep or Move instead of offering a retry */
         s.choice = (s.key === 'create' && err && err.portalChoice) || null;
+        /* the address was taken since it was checked: back to the address box, not a retry that fails again */
+        s.slug = (s.key === 'create' && err && err.slugTaken) || null;
         render();
         // paused — resumes only via the Retry / Skip handled by the delegated listeners below
       });
@@ -6048,6 +6659,8 @@
         if (e.target.closest('[data-brief-cancel]')){ requestCancelBusy(); return; }
         var b = e.target.closest('[data-step-retry]');
         if (b){ retryStep(b.getAttribute('data-step-retry')); return; }
+        b = e.target.closest('[data-step-slugback]');
+        if (b){ cancelBusy(); focusSlugBox(); return; }
         b = e.target.closest('[data-step-portal]');
         if (b){ answerPortal(b.getAttribute('data-step-portal')); return; }
         b = e.target.closest('[data-step-skip]');
@@ -6159,6 +6772,9 @@
                 (s.editing ? '' : '<button type="button" class="gb-skip-link" data-step-edit="brief">' + (inputs.text ? 'Edit description' : 'Add a description') + '</button>') +
                 (inputs.file && inputs.text ? '<button type="button" class="gb-skip-link" data-step-nofile="brief">Use only my description</button>' : '') +
                 '<input type="file" accept="application/pdf,.pdf" data-step-file="brief" hidden>';
+            } else if (s.key === 'create' && s.slug){
+              /* nothing has been generated yet (creating the event is the first row): going back costs nothing */
+              fix = '<button type="button" class="btn btn-primary btn-xs" data-step-slugback="create">Back to my details</button>';
             } else if (s.key === 'create' && s.choice){
               /* a portal question is answered, not retried: a plain retry would only be refused again */
               fix = portalChoiceButtons(s.choice, function(how){ return 'data-step-portal="' + how + '"'; }, 'btn-xs');
@@ -6510,51 +7126,113 @@
     toast(l.name + (turningOn ? ' turned on' : ' turned off'));
   }
 
-  /* ---------- pull content from a previous edition ---------- */
+  /* ---------- pull content from a previous edition ----------
+     One of the team's real earlier events of this portal and type (create-event-editions.js reads the events list
+     and that event's own Content): its speakers, agenda, sponsors and glimpses fill the blocks of this design that
+     are switched on. Nothing else of it is taken — its design and words are not (the owner's rule). The content
+     read is kept for this page (editionContent), so a block switched on later fills from it too. */
+  var editionContent = {};      // event id -> the content read from it (RevampEditions.contentFor)
+  var EDITION_BLOCKS = ['speakers', 'agenda', 'partners', 'glimpses'];
+  /* the blocks this design can show (the popup's switches): what a previous edition can fill here */
+  function editionBlocksHere(){
+    var caps = draftCaps();
+    return caps ? EDITION_BLOCKS.filter(function(libId){ return !!caps.byLib[libId]; }) : [];
+  }
+  function orWords(list){ return list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' or ' + list[list.length - 1]; }
+  function readEditionContent(id){
+    if (editionContent[id]) return Promise.resolve(editionContent[id]);
+    if (!window.RevampEditions) return Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
+    return RevampEditions.contentFor(id).then(function(content){ editionContent[id] = content; return content; });
+  }
+  function editionOptionLabel(it){
+    return it.name + (it.when ? ' — ' + (it.past ? '' : 'upcoming, ') + fmtD(new Date(it.when).toISOString()) : '');
+  }
   function openPullContentModal(){
-    /* any real event in this category with actual stored Speakers/Agenda/Sponsors data (edit-event.html's
-       own per-event storage) — see create-event-editions.js. Overview/Glimpses have no real per-event
-       source anywhere in the app today, so an edition here can only ever fill those three blocks. */
-    var list = window.RevampEditions ? RevampEditions.editionsForCategory(S.basics.category).filter(function(p){ return !!RevampEditions.contentFor(p.id); }) : [];
+    var portal = S.basics.portal;
+    if (!isRosterPortal(portal)){ askDraftPortal(openPullContentModal); return; }
+    var name = portalName(portal), cat = S.basics.category, list = [];
     openModal({
       title: 'Bring in content from a previous edition',
-      sub: 'Speakers, Agenda and Sponsors fill in from a real event’s own data — whichever of those it actually has. Turn a block on below first if you want that edition’s content for it.',
-      body: list.length
-        ? '<div class="field"><label for="pull-event-select">Event</label>' +
-            '<select class="inp" id="pull-event-select">' +
-              list.map(function(p){ return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('') +
-            '</select></div>'
-        : '<p class="hint">No events with Speakers, Agenda or Sponsors entered yet in this category — add some in an event’s console (Speakers/Agenda/Payment tabs), then they can be pulled in here.</p>',
+      sub: 'Speakers, agenda, sponsors and glimpses come from a real ' + name + ' event — whichever of them it has, for the blocks this design shows.',
+      body: '<div id="pull-body"></div>',
       confirm: 'Continue',
       onConfirm: function(){
-        if (!list.length) return;
-        var sel = $('pull-event-select');
-        var pe = null;
-        list.forEach(function(x){ if (sel && String(x.id) === sel.value) pe = x; });
+        var sel = $('pull-event-select'), pe = null;
+        list.forEach(function(x){ if (sel && x.id === sel.value) pe = x; });
         if (!pe) return;
-        setTimeout(function(){ confirmPullContent(pe); }, 0);
+        setTimeout(function(){ loadAndConfirmPull(pe); }, 0);
       }
     });
-    if (!list.length){ var ok = $('modal-ok'); if (ok) ok.disabled = true; }
+    var ok = $('modal-ok');
+    function load(){
+      var host = $('pull-body');
+      if (!host) return;
+      ok.disabled = true;
+      host.innerHTML = '<p class="hint" role="status">Loading ' + esc(name) + '’s events…</p>';
+      var asking = window.RevampCore && typeof RevampCore.fetchEvents === 'function'
+        ? RevampCore.fetchEvents() : Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
+      Promise.resolve(asking).then(function(items){
+        if ($('pull-body') !== host) return;        // the dialog was closed meanwhile
+        list = window.RevampEditions ? RevampEditions.editions(items, portal, cat, S.createdEventId) : [];
+        if (!list.length){
+          host.innerHTML = '<p class="hint">No other ' + esc(name) + ' ' + esc(CATS[cat].label) + ' event is in your events yet, so there is no previous edition to take content from.</p>';
+          return;
+        }
+        host.innerHTML = '<div class="field"><label for="pull-event-select">Event</label>' +
+          '<select class="inp" id="pull-event-select">' +
+            list.map(function(it){ return '<option value="' + esc(it.id) + '">' + esc(editionOptionLabel(it)) + '</option>'; }).join('') +
+          '</select></div>';
+        ok.disabled = false;
+        $('pull-event-select').focus();
+      }, function(err){
+        if ($('pull-body') !== host) return;
+        host.innerHTML = '<p class="field-note field-error" role="alert">' + esc(plainError(err)) + '</p>' +
+          '<div><button class="btn btn-secondary btn-sm" type="button" id="pull-retry">Retry</button></div>';
+        $('pull-retry').onclick = load;
+        $('pull-retry').focus();
+      });
+    }
+    load();
+  }
+  /* reads the chosen event's content, then asks before anything is replaced */
+  function loadAndConfirmPull(pe){
+    var closeReading = toast('Reading ' + pe.name + '’s content…', { sticky: true });
+    readEditionContent(pe.id).then(function(content){
+      closeReading();
+      confirmPullContent(pe, content);
+    }, function(err){
+      closeReading();
+      toast('Could not read ' + pe.name + '’s content: ' + plainError(err), { type: 'error', action: { label: 'Retry', onClick: function(){ loadAndConfirmPull(pe); } } });
+    });
   }
 
-  function confirmPullContent(pe){
-    var peContent = RevampEditions.contentFor(pe.id) || {};
-    var targets = CORE_LIB_IDS.slice();
-    TOGGLE_BLOCKS.forEach(function(tb){
-      var sec = sectionByLib(tb.libId);
-      if (sec && secIncluded(sec)) targets.push(tb.libId);
-    });
-    targets = targets.filter(function(libId){ return peContent[libId]; });
-    var names = targets.map(function(libId){ return libBy(libId).name; });
+  function confirmPullContent(pe, peContent){
+    var here = editionBlocksHere();
+    var has = here.filter(function(libId){ return peContent[libId]; });
+    /* the blocks switched on now take it; the others it has can be switched on in the popup afterwards */
+    var targets = has.filter(function(libId){ var sec = sectionByLib(libId); return sec && secIncluded(sec); });
+    var later = has.filter(function(libId){ return targets.indexOf(libId) === -1; });
+    var nameOf = function(libId){ return libBy(libId).name; };
+    if (!has.length){
+      openModal({
+        title: pe.name + ' has nothing to bring in here',
+        sub: 'It has no ' + orWords(here.map(nameOf)).toLowerCase() + ' in its Content yet.',
+        confirm: 'Choose another event',
+        cancelLabel: 'Close',
+        onConfirm: function(){ setTimeout(openPullContentModal, 0); }
+      });
+      return;
+    }
     openModal({
-      title: 'Overwrite with ' + pe.name + '’s content?',
-      sub: (names.length ? names.length + ' block' + (names.length === 1 ? '' : 's') + ' will be filled in from this edition — existing content in them is replaced.' : 'This event has no Speakers, Agenda or Sponsors data to bring in yet — turn one of those blocks on below first.'),
+      title: targets.length ? 'Overwrite with ' + pe.name + '’s content?' : 'Use ' + pe.name + ' as the previous edition?',
+      sub: targets.length
+        ? targets.length + ' block' + (targets.length === 1 ? '' : 's') + ' will be filled in from this edition — what is in them now is replaced.'
+        : 'None of the blocks it has is switched on yet. Switch them on in this menu and they fill from it.',
       body: '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' +
-          names.map(function(n){ return '<span class="pill-opt">' + esc(n) + '</span>'; }).join('') +
+          targets.map(function(libId){ return '<span class="pill-opt">' + esc(nameOf(libId)) + '</span>'; }).join('') +
         '</div>' +
-        '<p class="hint" style="margin-top:12px">Turn on Speakers, Agenda or Sponsors first if you want this edition’s content for those too.</p>',
-      confirm: 'Yes, overwrite',
+        (later.length ? '<p class="hint" style="margin-top:12px">It also has ' + esc(later.map(nameOf).join(', ').toLowerCase()) + ': switch ' + (later.length === 1 ? 'that block' : 'those blocks') + ' on and ' + (later.length === 1 ? 'it fills' : 'they fill') + ' from this edition.</p>' : ''),
+      confirm: targets.length ? 'Yes, overwrite' : 'Use this edition',
       cancelLabel: 'No',
       onConfirm: function(){ applyPastEditionContent(pe, targets, peContent); },
       onCancel: function(){ setTimeout(openPullContentModal, 0); }
@@ -6562,12 +7240,12 @@
   }
 
   function applyPastEditionContent(pe, targets, peContent){
-    peContent = peContent || RevampEditions.contentFor(pe.id) || {};
     targets.forEach(function(libId){
       var content = peContent[libId];
       if (!content) return;
       var sec = sectionByLib(libId);
       if (!sec) sec = addSectionToRail(libId, 'edition');
+      dropSectionImages(sec);
       sec.data = JSON.parse(JSON.stringify(content));
       setSecIncluded(sec, true);
       sec.done = true;
@@ -6577,20 +7255,36 @@
     S.pulledEdition = { id: pe.id, name: pe.name };
     save();
     var host = $('step1-build-host'); if (host) renderBuildWorkspace(host);
-    toast('Content pulled from ' + pe.name);
+    toast(targets.length ? 'Content brought in from ' + pe.name : pe.name + ' is the previous edition: switch a block on to fill it');
+  }
+  /* the pictures this draft kept for a section whose content is being replaced */
+  function dropSectionImages(sec){
+    imageSlotsIn(sec.data).forEach(function(n){ dropImageFile(n); });
   }
 
-  /* fills one optional block from the already-selected past edition, used when a block is
-     switched on after the edition pull (see toggleBlock) */
+  /* fills one optional block from the already-selected past edition, used when a block is switched on after the
+     edition pull (see toggleBlock). Read again from the server after a reload; a block that has been typed into
+     meanwhile is left as it is. */
   function applyEditionContentToBlock(sec, libId){
-    if (!S.pulledEdition) return;
-    var content = RevampEditions.contentFor(S.pulledEdition.id);
-    content = content && content[libId];
-    if (!content) return;
-    sec.data = JSON.parse(JSON.stringify(content));
-    sec.done = true;
-    sec.source = 'edition';
-    sec.editionName = S.pulledEdition.name;
+    var pe = S.pulledEdition;
+    if (!pe) return;
+    function fill(content){
+      var c = content && content[libId];
+      if (!c || sectionHasContent(sec) || !secIncluded(sec)) return false;
+      sec.data = JSON.parse(JSON.stringify(c));
+      sec.done = true;
+      sec.source = 'edition';
+      sec.editionName = pe.name;
+      return true;
+    }
+    if (editionContent[pe.id]){ fill(editionContent[pe.id]); return; }
+    readEditionContent(pe.id).then(function(content){
+      if (S.pulledEdition !== pe || !fill(content)) return;
+      save();
+      renderSecList(); renderEditor(); refreshProgress(); renderFoot();
+    }, function(err){
+      toast('Could not read ' + pe.name + '’s content: ' + plainError(err), { type: 'error' });
+    });
   }
 
   /* Previous edition + the optional blocks (Speakers, Agenda, Sponsors, Glimpses): a button in the header,
@@ -6609,27 +7303,30 @@
     /* only where there are sections to act on: the details form of a site built on a template, once its
        section list is on the page — not the brief form, an imported design or the template gallery */
     var grp = $('content-grp');
+    /* and only for a design that shows at least one of the blocks a previous edition can fill: on one with none
+       (TECH500) every switch would be locked and the button would lead nowhere */
     var show = !busy && S.step === 1 && S.step1Phase === 'details' && S.creationMethod === 'template' &&
-      !!grp && !grp.hidden && !!document.querySelector('#step-1 #sec-list');
+      !!grp && !grp.hidden && !!document.querySelector('#step-1 #sec-list') && editionBlocksHere().length > 0;
     host.hidden = !show;
     if (!show){ host.innerHTML = ''; editionPopOpen = false; return; }
     var locked = !S.pulledEdition;
     var caps = draftCaps();
     var onCount = TOGGLE_BLOCKS.filter(function(tb){ var sec = sectionByLib(tb.libId); return sec && secIncluded(sec); }).length;
+    /* an option, never the page's main action: secondary, whatever has been chosen */
     host.innerHTML =
-      '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
+      '<button class="btn btn-secondary btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
         (locked ? IC.spark + '<span class="nm">Use a previous edition’s content</span>'
                 : IC.check + '<span class="nm">' + esc(S.pulledEdition.name) + '</span>') +
         svg('<path d="M6 9l6 6 6-6"/>', 14) +
       '</button>' +
       '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Reuse a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +
         '<div class="ep-head"><h4>Reuse a previous edition</h4>' +
-          '<p>Bring in speakers, the agenda, sponsors and photos from an event you’ve already run.</p></div>' +
+          '<p>Bring in speakers, the agenda, sponsors and photos from an event of this portal you’ve already run.</p></div>' +
         '<div class="ep-edition' + (locked ? '' : ' chosen') + '">' +
           '<span class="tile">' + (locked ? svg('<path d="M3 7h6l2 2h10v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>', 18) : svg('<path d="M20 6L9 17l-5-5"/>', 18)) + '</span>' +
           '<span class="txt"><span class="t">' + (locked ? 'No edition selected' : esc(S.pulledEdition.name)) + '</span>' +
             '<span class="s">' + (locked ? 'Optional — fills these blocks with its content' : 'Content pulled into your sections') + '</span></span>' +
-          '<button class="btn ' + (locked ? 'btn-primary' : 'btn-secondary') + ' btn-sm" id="btn-pull-edition">' + (locked ? 'Choose' : 'Change') + '</button>' +
+          '<button class="btn btn-secondary btn-sm" id="btn-pull-edition">' + (locked ? 'Choose' : 'Change') + '</button>' +
         '</div>' +
         '<div class="ep-blocks">' +
           '<div class="ep-blocks-head"><span class="ep-label">Optional blocks</span><span class="ep-count">' + onCount + ' of ' + TOGGLE_BLOCKS.length + ' on</span></div>' +
@@ -8373,8 +9070,8 @@
                 var at = 'logo.' + ti + '.' + li;
                 return '<div class="tile">' +
                   '<button class="del" type="button" data-logodel="' + ti + '.' + li + '" title="Remove partner" aria-label="Remove partner">&times;</button>' +
-                  imgPickHTML(at, imgUrl(lg.slot), 'logo', 'logo') +
-                  (lg.slot != null ? '<button class="img-clear" type="button" data-imgclear="' + at + '">Remove logo</button>' : '') +
+                  imgPickHTML(at, itemPicture(lg, 'logoUrl'), 'logo', 'logo') +
+                  (itemPicture(lg, 'logoUrl') ? '<button class="img-clear" type="button" data-imgclear="' + at + '">Remove logo</button>' : '') +
                   imgProblemHTML(at) +
                   '<input class="inp" data-logo="' + ti + '.' + li + '" value="' + esc(lg.n) + '" placeholder="Partner name" aria-label="Partner name">' +
                   '<input class="inp" data-logourl="' + ti + '.' + li + '" data-link="web" value="' + esc(lg.url || '') + '" inputmode="url" placeholder="Website (optional)" aria-label="Partner website">' +
@@ -8406,8 +9103,8 @@
             var at = 'p.' + i;
             return '<div class="tile">' +
               '<button class="del" type="button" data-pdel="' + i + '" title="Remove speaker" aria-label="Remove speaker ' + (i + 1) + '">&times;</button>' +
-              imgPickHTML(at, imgUrl(p.slot), 'photo', 'round') +
-              (p.slot != null ? '<button class="img-clear" type="button" data-imgclear="' + at + '">Remove photo</button>' : '') +
+              imgPickHTML(at, itemPicture(p, 'photoUrl'), 'photo', 'round') +
+              (itemPicture(p, 'photoUrl') ? '<button class="img-clear" type="button" data-imgclear="' + at + '">Remove photo</button>' : '') +
               imgProblemHTML(at) +
               '<input class="inp" data-p="n" data-i="' + i + '" value="' + esc(p.n) + '" placeholder="Full name" aria-label="Speaker ' + (i + 1) + ' name">' +
               '<input class="inp" data-p="r" data-i="' + i + '" value="' + esc(p.r) + '" placeholder="Role" aria-label="Speaker ' + (i + 1) + ' role">' +
@@ -8822,7 +9519,7 @@
       var sectionDone = function(){
         if (s.shape === 'people') return d.items.some(function(p){ return !blank(p.n); });
         if (s.shape === 'gallery') return d.items.some(function(it){ return it.slot != null || !!normalUrl(it.url); });
-        return d.tiers.some(function(t){ return (t.logos || []).some(function(lg){ return !blank(lg.n) || lg.slot != null; }); });
+        return d.tiers.some(function(t){ return (t.logos || []).some(function(lg){ return !blank(lg.n) || !!itemPicture(lg, 'logoUrl'); }); });
       };
       var settle = function(){ markDone(s, sectionDone()); rerender(); };
       var refuse = function(at, message){ imgProblem = { at: at, message: message }; renderEditor(); };
@@ -8835,6 +9532,7 @@
           if (err){ refuse(at, '“' + file.name + '” could not be read as a picture. Export it again as a PNG or JPG.'); return; }
           var old = it.slot;
           it.slot = addImageFile(file);
+          delete it.photoUrl; delete it.logoUrl;       // a picture of a previous edition's is replaced by this file
           if (s.shape === 'gallery') it.url = '';
           dropImageFile(old);
           imgProblem = null;
@@ -8873,6 +9571,7 @@
           if (!it) return;
           dropImageFile(it.slot);
           delete it.slot;
+          delete it.photoUrl; delete it.logoUrl;
           settle();
         });
       });
@@ -9370,7 +10069,9 @@
         (d.tiers || []).forEach(function(tier, ti){
           (tier.logos || []).forEach(function(lg, li){
             if (!isBlank(lg.url) && !normalUrl(lg.url)) add('block', '[data-logourl="' + ti + '.' + li + '"]', LINK_HINT);
-            else if (isBlank(lg.n) && lg.slot == null && !isBlank(lg.url)) add('omit', '[data-logo="' + ti + '.' + li + '"]', 'Add the partner’s name or logo — without one it is not shown.');
+            else if (isBlank(lg.n) && !itemPicture(lg, 'logoUrl') && !isBlank(lg.url)) add('omit', '[data-logo="' + ti + '.' + li + '"]', 'Add the partner’s name or logo — without one it is not shown.');
+            /* the event's Content keeps every sponsor by name (and it is the logo's text for screen readers) */
+            else if (isBlank(lg.n) && itemPicture(lg, 'logoUrl')) add('block', '[data-logo="' + ti + '.' + li + '"]', 'Add the partner’s name — the event keeps each sponsor by its name.');
           });
         });
         break;
@@ -9379,6 +10080,8 @@
           (b.people || []).forEach(function(p, j){
             if (!isBlank(p.e) && !emailOk(p.e)) add('block', '[data-ct="' + i + '.' + j + '.e"]', 'This is not an email address. Check it, or clear the box.', '.ct-row');
             if (!isBlank(p.p) && !phoneOk(p.p)) add('omit', '[data-ct="' + i + '.' + j + '.p"]', 'This is not a phone number (digits, spaces and + only, at least 7 digits). It is left off the site until it is fixed.', '.ct-row');
+            /* the event's Content keeps a contact by its name or its heading: one with neither cannot be kept */
+            if (isBlank(p.n) && isBlank(b.t) && (!isBlank(p.e) || !isBlank(p.p))) add('block', '[data-ct="' + i + '.' + j + '.n"]', 'Add the name, or a heading for this group of contacts.', '.ct-row');
           });
         });
         break;
@@ -9500,7 +10203,7 @@
         break;
       case 'people':
         d.items = (d.items || []).filter(function(p){ return text(p.n); }).map(function(p){
-          return { n: p.n, r: p.r || '', c: p.c || '', photo: addressOf(p.slot) };
+          return { n: p.n, r: p.r || '', c: p.c || '', photo: p.slot != null ? addressOf(p.slot) : pictureAddress(p.photoUrl) };
         });
         break;
       case 'quotes':
@@ -9517,7 +10220,7 @@
       case 'logos':
         d.tiers = (d.tiers || []).map(function(tier){
           return { t: text(tier.t), logos: (tier.logos || []).map(function(lg){
-            return { n: text(lg.n), url: normalUrl(lg.url), logo: addressOf(lg.slot) };
+            return { n: text(lg.n), url: normalUrl(lg.url), logo: lg.slot != null ? addressOf(lg.slot) : pictureAddress(lg.logoUrl) };
           }).filter(function(lg){ return lg.n || lg.logo; }) };
         }).filter(function(tier){ return tier.logos.length; });
         break;
@@ -9652,7 +10355,10 @@
       date: { mode: b.dateMode, start: b.start, end: b.end, month: b.month, quarter: b.quarter, year: b.year, note: b.dateNote },
       hasVenue: !!(CATS[b.category] || {}).venue,
       logo: b.logo ? (b.logoName || 'logo') : '',     // the file itself is in IndexedDB under logoKey()
-      logoKey: b.logo ? logoKey() : null,              // lets the editor read the SAME per-draft slot back
+      /* the logo as uploaded to the event (uploadDraftLogo): every browser loads it from there, and the editor takes
+         it before this browser's own copy, which it reads by logoKey only when there is no address */
+      logoUrl: (b.logo && S.uploads && S.uploads.eventId === (S.createdEventId || b.slug) && S.uploads.logo) || '',
+      logoKey: b.logo && !(S.uploads && S.uploads.eventId === (S.createdEventId || b.slug) && S.uploads.logo) ? logoKey() : null,
       bannerKey: activeBannerUrl() ? slotKey(heroSlot(heroData())) : null   // the hero picture's slot: { name, blob, savedAt }
     };
     if (S.createdAt) ev.createdAt = S.createdAt;
@@ -9682,34 +10388,6 @@
       reader.readAsDataURL(blob);
     });
   }
-  /* The hero picture for the editor. The hand-off is one localStorage string, so a picture too large for
-     it travels re-encoded (JPEG, at most 2400 px wide) — the original stays in the draft's banner slot,
-     named by event.bannerKey. '' when the banner has no picture. */
-  var HANDOFF_BANNER_MAX_CHARS = 1400 * 1024;
-  function bannerForHandoff(){
-    var d = heroData(), f = d && activeBannerUrl() && bannerFiles[heroSlot(d)];
-    if (!f) return Promise.resolve('');
-    return blobDataUrl(f.blob).then(function(url){
-      if (url.length <= HANDOFF_BANNER_MAX_CHARS) return url;
-      return new Promise(function(resolve, reject){
-        var img = new Image();
-        img.onerror = function(){ reject(new Error('the banner picture could not be read')); };
-        img.onload = function(){
-          var width = Math.min(img.naturalWidth, 2400), quality = 0.86, out = '';
-          for (var i = 0; i < 6; i++){
-            var c = newCanvas(width, Math.max(1, Math.round(img.naturalHeight * width / img.naturalWidth)));
-            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-            out = c.toDataURL('image/jpeg', quality);
-            if (out.length <= HANDOFF_BANNER_MAX_CHARS) break;
-            if (quality > 0.7) quality -= 0.12; else width = Math.round(width * 0.8);
-          }
-          resolve(out);
-        };
-        img.src = f.url;
-      });
-    });
-  }
-
   /* Everything the editor needs to open on this draft. `view` describes the draft for another design than
      its own — the wizard's preview of a template that is only being looked at. addressOf(slot) gives the
      address of a section picture: this page's own preview shows them from memory (the default). */
@@ -10107,9 +10785,27 @@
         save();
         renderEventExists();
       }, function(err){
-        throw new Error('Could not create the event: ' + plainError(err));
+        var out = new Error('Could not create the event: ' + plainError(err));
+        /* the address was taken (or found reserved) since it was checked: the step offers the free one the
+           server named, or the way back to the address box, instead of a retry that can only fail again */
+        if (err && (err.code === 'slug-taken' || err.code === 'slug-reserved')){
+          out.slugTaken = { slug: id, suggestion: typeof err.suggestion === 'string' ? err.suggestion : '' };
+          slugCheckSeq++;
+          slugCheck = { slug: id, state: err.code === 'slug-taken' ? 'taken' : 'reserved', suggestion: out.slugTaken.suggestion !== id ? out.slugTaken.suggestion : '', message: '' };
+        }
+        throw out;
       });
     });
+  }
+  /* back on the details form with the keyboard in the address box (a taken address at the hand-off) */
+  function focusSlugBox(){
+    setTimeout(function(){
+      var el = $('f-slug');
+      if (!el || el.offsetParent === null) return;
+      el.scrollIntoView({ block: 'center' });
+      el.focus({ preventScroll: true });
+      try { el.select(); } catch(e){}
+    }, 0);
   }
 
   /* The wizard's one exit into the editor. The draft is finished at this point, so it is removed: coming
@@ -10119,24 +10815,32 @@
     if (!isCurrent(run)) return;
     S.assembled = true;
     draftClosed = true;
+    clearTimeout(pushTimer);
     removeStoredDraft(S);
     /* what the editor still reads stays (the logo by event.logoKey, the hero picture by event.bannerKey)
        until sweepDraftFiles() removes it; the rest of the draft's files go now */
     var d = heroData();
     clearDraftFiles(S.draftId, ['psd', d && heroSlot(d) === 'banner' ? 'banner-text' : 'banner']);
-    busy = null;
-    window.location.replace(url);
+    /* the draft is finished, so it leaves the person's Drafts, and the editor opens once that is done (a page that
+       navigates away can cut the request off). Not reached in a few seconds: create-drafts.js removes it on the next
+       visit, and no list shows it meanwhile. */
+    var gone = S.draftId && accountReady() ? withinMs(RevampCreateDrafts.remove(S.draftId).then(null, function(){}), LEAVE_WAIT_MS) : Promise.resolve();
+    gone.then(function(){
+      busy = null;
+      window.location.replace(url);
+    });
   }
 
   /* writes the draft's hand-off for custom_editor.html and opens it — the last step of the hand-off */
   function openInEditor(run){
     if (!handoffTemplate().site) return Promise.reject(new Error(templateIssue() || 'Pick a template to continue.'));
-    return bannerForHandoff().then(null, function(){
-      throw new Error('Your banner picture could not be read. Go back to your details, upload it again, then continue.');
-    }).then(function(picture){
+    return Promise.resolve().then(function(){
       if (!isCurrent(run)) return;
-      /* section pictures are files in this browser: they have no address another page could load */
-      var payload = buildEditorPayload(null, picture, function(){ return ''; });
+      /* every picture goes by the address it was uploaded to (sendPictures), so the page the editor saves loads them
+         from the event's storage on any computer, and never carries a picture inside itself */
+      var ups = uploadsFor(S.createdEventId), banner = S.creationMethod === 'template' ? bannerUpload() : null;
+      if (banner && !ups.files[banner.key]) throw new Error('Your banner picture has not been uploaded. Try again.');
+      var payload = buildEditorPayload(null, banner ? ups.files[banner.key] : '', function(slot){ return (slot != null && ups.files['img:' + slot]) || ''; });
       try {
         localStorage.setItem(HANDOFF_KEY, JSON.stringify(payload));
       } catch(e){
@@ -10158,8 +10862,351 @@
       hero.run = function(run){ return makeAiHero(run, hero); };
       steps.push(hero);
     }
+    /* what was entered goes to the event on the server, not only into this browser: the logo onto the event, the
+       banner and the section pictures into its storage, and its speakers, sponsors, FAQs, contacts and glimpses into
+       its Content, where the console lists them */
+    var count = pictureCount();
+    if (count.all){
+      var pics = { key: 'pictures', label: picturesLabel(count) };
+      pics.run = function(run, refresh){ return sendPictures(run, pics, refresh); };
+      steps.push(pics);
+    }
+    /* the row also runs when the draft now has none of a kind it wrote on an earlier run (a hand-off that stopped
+       part-way, then Back to my details and the FAQs taken out): those records come out of the Content again */
+    var kinds = recordKinds(), gone = staleRecordSources(S.createdEventId, recordPlan(pendingAddress)).map(function(src){ return src.words; });
+    if (kinds.length || gone.length){
+      var recs = { key: 'records', label: kinds.length ? 'Saving ' + listWords(kinds) + ' to the event’s Content'
+        : 'Taking the ' + listWords(gone) + ' you removed out of the event’s Content' };
+      recs.run = function(run){ return writeRecords(run, recs); };
+      steps.push(recs);
+    }
     steps.push({ key: 'open', label: 'Opening the editor', run: openInEditor });
     return steps;
+  }
+
+  /* =========================================================
+     WHAT THE HAND-OFF SAVES ON THE SERVER
+     The details form keeps its files in this browser (IndexedDB) while it is being filled in; the hand-off puts each
+     one where every computer can load it — the logo on the event (logoUrl), the banner and the section pictures in
+     the event's storage (POST /api/event/upload) — and writes the records sections into the event's Content, the
+     same records the console's Content tabs list and the editor draws on every opening. Nothing is sent twice:
+     what was uploaded and written is kept in the draft (S.uploads, S.records), so a retried or resumed hand-off
+     carries on from where it stopped.
+  ========================================================= */
+  var UPLOAD_KIND_OF_SHAPE = { people: 'speakers', logos: 'partners', gallery: 'gallery' };
+  var UPLOAD_LANES = 3;          // uploads under way at once: quicker than one by one, gentle on the server
+  var uploadsUnderWay = {};      // '<eventId> <file key>' -> the upload of that picture still on its way (sendPictures)
+  function uploadsFor(eventId){
+    var u = S.uploads;
+    if (!u || typeof u !== 'object' || u.eventId !== eventId || !u.files || typeof u.files !== 'object') S.uploads = u = { eventId: eventId, files: {}, logo: '', logoOn: '' };
+    return u;
+  }
+  function listWords(list){
+    return list.length < 2 ? list.join('') : list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+  }
+  /* the banner the site gets, as a file to upload: { key, blob, name } or null */
+  function bannerUpload(){
+    var d = heroData(), slot = d && activeBannerUrl() ? heroSlot(d) : '', f = slot && bannerFiles[slot];
+    if (!f) return null;
+    return { key: 'banner:' + slot + ':' + (f.savedAt || (f.blob.size + ':' + f.name)), blob: f.blob, name: f.name || 'banner.jpg' };
+  }
+  /* the section pictures that go on the site: exactly those the editor's page is given (buildEditorPayload) */
+  function sitePictureSlots(){
+    var wanted = [];
+    if (S.creationMethod !== 'template' || !handoffTemplate().site) return wanted;
+    buildEditorPayload(null, '', function(slot){
+      if (slot != null && imgFiles[slot] && wanted.indexOf(slot) === -1) wanted.push(slot);
+      return '';
+    });
+    return wanted;
+  }
+  function pictureCount(){
+    var c = { logo: S.basics.logo ? 1 : 0, banner: S.creationMethod === 'template' && bannerUpload() ? 1 : 0, sections: sitePictureSlots().length };
+    c.all = c.logo + c.banner + c.sections;
+    return c;
+  }
+  function picturesLabel(c, done){
+    var parts = [];
+    if (c.logo) parts.push('logo');
+    if (c.banner) parts.push('banner');
+    if (c.sections) parts.push(c.sections === 1 ? '1 section picture' : c.sections + ' section pictures');
+    return 'Uploading your ' + listWords(parts) + (done != null && c.all > 1 ? ' (' + done + ' of ' + c.all + ')' : '');
+  }
+  /* a picture as the server takes it: at most IMAGE_MAX_BYTES (a large banner is made a JPEG, as wide as 2400 px) */
+  function fitForUpload(blob){
+    if (blob.size <= IMAGE_MAX_BYTES && /^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(blob.type || '')) return Promise.resolve(blob);
+    return new Promise(function(resolve, reject){
+      var url = URL.createObjectURL(blob), img = new Image();
+      img.onerror = function(){ URL.revokeObjectURL(url); reject(new Error('the picture could not be read')); };
+      img.onload = function(){
+        URL.revokeObjectURL(url);
+        var width = Math.min(img.naturalWidth, 2400), quality = 0.86;
+        (function attempt(n){
+          var c = newCanvas(width, Math.max(1, Math.round(img.naturalHeight * width / img.naturalWidth)));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          c.toBlob(function(out){
+            if (!out) return reject(new Error('the picture could not be prepared'));
+            if (out.size <= IMAGE_MAX_BYTES || n >= 6) return resolve(out);
+            if (quality > 0.7) quality -= 0.12; else width = Math.round(width * 0.8);
+            attempt(n + 1);
+          }, 'image/jpeg', quality);
+        })(1);
+      };
+      img.src = url;
+    });
+  }
+  function asFile(blob, name){
+    var type = blob.type || 'image/png';
+    var ext = { 'image/jpeg': 'jpg', 'image/svg+xml': 'svg' }[type] || type.slice(6) || 'png';
+    var base = String(name || 'picture').replace(/\.[a-z0-9]+$/i, '') || 'picture';
+    try { return new File([blob], base + '.' + ext, { type: type }); } catch(e){ return blob; }
+  }
+  /* The event's logo, uploaded once (kind 'logo') and set on the event (logoUrl), so the console, Promotions and every
+     browser have it. Both paths use it: the template path's pictures row and a brief's first row. */
+  function uploadDraftLogo(eventId){
+    if (!S.basics.logo) return Promise.resolve('');
+    if (!window.RevampStore || !window.RevampCore || !RevampCore.uploadImage) return Promise.reject(new Error('The logo could not be uploaded: this page did not load completely. Reload it and try again.'));
+    var ups = uploadsFor(eventId);
+    return Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
+      if (!rec || !rec.dataUrl){
+        logoNotKept();            // the form says so too, on the logo's own tile
+        throw new Error('it is no longer kept in this browser. Go back to your details and upload it again.');
+      }
+      var key = 'logo:' + (rec.savedAt || rec.name || '');
+      var sent = ups.files[key] ? Promise.resolve(ups.files[key]) : fetch(rec.dataUrl).then(function(r){ return r.blob(); }).then(function(blob){
+        return RevampCore.uploadImage(eventId, 'logo', asFile(blob, rec.name || 'logo'));
+      }).then(function(up){ ups.files[key] = up.url; save(); return up.url; });
+      return sent.then(function(url){
+        ups.logo = url;
+        if (ups.logoOn === url) return url;
+        return RevampCore.updateEvent(eventId, { logoUrl: url }).then(function(){ ups.logoOn = url; save(); return url; });
+      });
+    }).then(null, function(err){ throw new Error('The logo could not be uploaded: ' + plainError(err)); });
+  }
+  /* The pictures row: the logo, then the banner, then the section pictures a few at a time. A failure stops the row
+     with the picture it was about; Try again sends only what is still missing. */
+  function sendPictures(run, row, refresh){
+    var eventId = S.createdEventId;
+    if (!eventId) return Promise.reject(new Error('The event has not been created yet.'));
+    var ups = uploadsFor(eventId), count = pictureCount(), done = 0;
+    function tick(){
+      done++;
+      row.label = picturesLabel(count, done);
+      if (isCurrent(run) && refresh) refresh();
+    }
+    function one(key, kind, blob, name, what){
+      if (ups.files[key]){ tick(); return Promise.resolve(); }
+      /* Try again can be pressed while the failed try's other pictures are still on their way (one lane failed, the
+         others were mid-upload): such a picture is waited for, never sent a second time, and sent here only if that
+         upload fails or was never started */
+      var flight = uploadsUnderWay[eventId + ' ' + key];
+      return (flight ? flight.then(function(url){ return url || send(); }, send) : send()).then(function(url){
+        if (url) tick();
+      }).then(null, function(err){ throw new Error(what + ' could not be uploaded: ' + plainError(err)); });
+      /* -> the uploaded address, or '' when the run was stopped before the picture was sent */
+      function send(){
+        var id = eventId + ' ' + key;
+        var p = fitForUpload(blob).then(function(fit){
+          if (!isCurrent(run)) return '';
+          return RevampCore.uploadImage(eventId, kind, asFile(fit, name)).then(function(up){
+            ups.files[key] = up.url;
+            save();
+            return up.url;
+          });
+        });
+        uploadsUnderWay[id] = p;
+        function settled(){ if (uploadsUnderWay[id] === p) delete uploadsUnderWay[id]; }
+        p.then(settled, settled);
+        return p;
+      }
+    }
+    var jobs = sitePictureSlots().map(function(n){
+      var shape = '';
+      S.sections.forEach(function(sec){ if (imageSlotsIn(sec.data).indexOf(n) !== -1) shape = sec.shape; });
+      var f = imgFiles[n];
+      return { key: 'img:' + n, kind: UPLOAD_KIND_OF_SHAPE[shape] || 'media', blob: f.blob, name: f.name || 'picture',
+        what: f.name ? '“' + f.name + '”' : 'A picture in ' + sectionNameOfSlot(n) };
+    });
+    return (count.logo ? uploadDraftLogo(eventId).then(function(){ tick(); }) : Promise.resolve()).then(function(){
+      if (!isCurrent(run)) return;
+      var banner = count.banner ? bannerUpload() : null;
+      return banner ? one(banner.key, 'banner', banner.blob, banner.name, 'The banner') : null;
+    }).then(function(){
+      if (!isCurrent(run)) return;
+      var at = 0, stop = null;
+      function lane(){
+        if (stop || at >= jobs.length || !isCurrent(run)) return Promise.resolve();
+        var j = jobs[at++];
+        return one(j.key, j.kind, j.blob, j.name, j.what).then(lane, function(err){ stop = stop || err; throw err; });
+      }
+      var lanes = [];
+      for (var k = 0; k < Math.min(UPLOAD_LANES, jobs.length); k++) lanes.push(lane());
+      return Promise.all(lanes);
+    }).then(function(){ row.label = picturesLabel(count).replace(/^Uploading/, 'Uploaded'); });
+  }
+  function sectionNameOfSlot(n){
+    var name = 'a section';
+    S.sections.forEach(function(sec){ if (imageSlotsIn(sec.data).indexOf(n) !== -1) name = sec.name; });
+    return name;
+  }
+
+  /* ---------- the records sections, into the event's Content ----------
+     The sections the editor also draws from the event's Content on every opening (editor-template-ui.js
+     SUBCOLLECTION_SOURCES: speakers, FAQs, sponsors, contacts, glimpses), so the console, the editor and the page all
+     hold the same records. Only what goes on the site is written (the sections this design shows and has switched on),
+     with the pictures' uploaded addresses. An event whose Content already has records of a kind that this draft did
+     not write keeps them: they are not doubled, and the editor shows them on the page. */
+  var RECORD_SOURCES = [
+    { libId: 'speakers', words: 'speakers', resources: ['speakers'] },
+    { libId: 'partners', words: 'sponsors', resources: ['partner-tiers', 'partners'] },
+    { libId: 'faq', words: 'FAQs', resources: ['faqs'] },
+    { libId: 'contact', words: 'contacts', resources: ['contacts'] },
+    { libId: 'glimpses', words: 'glimpses', resources: ['gallery'] }
+  ];
+  function clip(v, n){ return String(v == null ? '' : v).trim().slice(0, n); }
+  /* section data as the site gets it -> { <resource>: [record] } (partners carry the index of their tier, tier) */
+  function recordsOfSection(libId, d){
+    var out = {};
+    if (libId === 'speakers') out.speakers = (d.items || []).map(function(p){
+      var r = { name: clip(p.n, 300), desig: clip(p.r, 300), comp: clip(p.c, 300) };
+      if (p.photo) r.photoUrl = p.photo;
+      return r;
+    }).filter(function(r){ return r.name; });
+    /* the question and its answer, as the page shows them */
+    if (libId === 'faq') out.faqs = (d.items || []).map(function(it){
+      return { question: clip(it.t, 300), answer: clip(it.d, 5000) };
+    }).filter(function(r){ return r.question; });
+    if (libId === 'contact'){
+      out.contacts = [];
+      (d.blocks || []).forEach(function(b){
+        (b.people || []).forEach(function(p){
+          var r = { label: clip(b.t, 300), name: clip(p.n, 300) };
+          if (p.e) r.email = clip(p.e, 300);
+          if (p.p && String(p.p).length <= 40) r.phone = String(p.p).trim();
+          if (r.label || r.name) out.contacts.push(r);
+        });
+      });
+    }
+    if (libId === 'glimpses') out.gallery = (d.items || []).filter(function(it){ return /^https?:\/\//.test(it.url || ''); }).map(function(it){
+      return { imageUrl: it.url, caption: clip(it.caption, 300) };
+    });
+    /* a tier is kept only with a sponsor in it; a tier with no name of its own is kept as the sponsors with no tier */
+    if (libId === 'partners'){
+      out['partner-tiers'] = [];
+      out.partners = [];
+      (d.tiers || []).forEach(function(t){
+        var named = (t.logos || []).filter(function(lg){ return !!clip(lg.n, 300); });
+        if (!named.length) return;
+        var tier = clip(t.t, 300) ? out['partner-tiers'].push({ name: clip(t.t, 300) }) - 1 : -1;
+        named.forEach(function(lg){
+          var r = { name: clip(lg.n, 300), tier: tier };
+          if (lg.url) r.url = lg.url;
+          if (lg.logo) r.logoUrl = lg.logo;
+          out.partners.push(r);
+        });
+      });
+      if (!out.partners.length){ delete out.partners; delete out['partner-tiers']; }
+    }
+    Object.keys(out).forEach(function(k){ if (!out[k] || !out[k].length) delete out[k]; });
+    return out;
+  }
+  /* -> [{ source, rows: { <resource>: [record] } }] from what the editor is given (addressOf: the uploaded pictures) */
+  function recordPlan(addressOf){
+    if (S.creationMethod !== 'template' || !handoffTemplate().site || isImportedTemplate(S.template)) return [];
+    var payload = buildEditorPayload(null, '', addressOf || function(){ return ''; }), plan = [];
+    RECORD_SOURCES.forEach(function(src){
+      var sec = payload.sections.filter(function(x){ return x.libId === src.libId; })[0];
+      var rows = sec ? recordsOfSection(src.libId, sec.data || {}) : {};
+      if (Object.keys(rows).length) plan.push({ source: src, rows: rows });
+    });
+    return plan;
+  }
+  /* the kinds the records row names, from the content as it stands (pictures are not needed to know them) */
+  function recordKinds(){
+    return recordPlan(pendingAddress).map(function(x){ return x.source.words; });
+  }
+  /* a section picture that will be uploaded, as an address for recordPlan() before it is */
+  function pendingAddress(slot){ return slot != null && imgFiles[slot] ? 'https://pending.invalid/' + slot : ''; }
+  function recordsFor(eventId){
+    var r = S.records;
+    if (!r || typeof r !== 'object' || r.eventId !== eventId || !r.done || !r.made) S.records = r = { eventId: eventId, done: {}, made: {} };
+    return r;
+  }
+  /* The kinds this draft wrote into the event's Content on an earlier run and no longer has at all (plan: recordPlan()'s
+     answer now). writeRecords() takes their records out again: without that, a FAQ deleted after a hand-off that stopped
+     part-way stayed in the Content, and the editor's Content overlay put it back on the page. */
+  function staleRecordSources(eventId, plan){
+    var r = S.records;
+    if (!eventId || !r || typeof r !== 'object' || r.eventId !== eventId || !r.made || typeof r.made !== 'object') return [];
+    var planned = plan.map(function(x){ return x.source.libId; });
+    return RECORD_SOURCES.filter(function(src){
+      return planned.indexOf(src.libId) === -1 && src.resources.some(function(res){ return (r.made[res] || []).length > 0; });
+    });
+  }
+  function writeRecords(run, row){
+    var eventId = S.createdEventId;
+    if (!eventId) return Promise.reject(new Error('The event has not been created yet.'));
+    if (!window.RevampCore || !RevampCore.createSub || !RevampCore.fetchSub || !RevampCore.deleteSub)
+      return Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
+    var ups = uploadsFor(eventId), state = recordsFor(eventId), kept = [];
+    var plan = recordPlan(function(slot){ return (slot != null && ups.files['img:' + slot]) || ''; });
+    var stale = staleRecordSources(eventId, plan);
+    /* this draft's own records of one kind, deleted (one already gone counts as deleted); records of that kind
+       anybody else put in the Content are never touched */
+    function removeMine(src){
+      var mine = [];
+      src.resources.forEach(function(res){ (state.made[res] || []).forEach(function(id){ mine.push([res, id]); }); });
+      return mine.reduce(function(p, pair){
+        return p.then(function(){
+          return RevampCore.deleteSub(pair[0], eventId, pair[1]).then(null, function(err){ if (!err || err.status !== 404) throw err; });
+        }).then(function(){
+          state.made[pair[0]] = (state.made[pair[0]] || []).filter(function(x){ return x !== pair[1]; });
+          save();
+        });
+      }, Promise.resolve()).then(function(){
+        delete state.done[src.libId];
+        save();
+      });
+    }
+    function writeSource(item){
+      var src = item.source, rows = item.rows, what = JSON.stringify(rows);
+      if (state.done[src.libId] === what) return Promise.resolve();
+      /* this draft's own earlier records of this kind (a run that stopped part-way, or content changed since) go first */
+      return removeMine(src).then(function(){
+        /* records of this kind somebody else put in the event's Content are kept, not doubled */
+        return Promise.all(src.resources.map(function(res){ return RevampCore.fetchSub(res, eventId); }));
+      }).then(function(lists){
+        if (lists.some(function(l){ return l && l.length; })){ kept.push(src.words); state.done[src.libId] = what; save(); return; }
+        var tierIds = [];
+        return src.resources.reduce(function(p, res){
+          return p.then(function(){
+            return (rows[res] || []).reduce(function(q, rec, i){
+              return q.then(function(){
+                if (!isCurrent(run)) throw new Error('stopped');
+                var body = Object.assign({ order: i }, rec);
+                if (res === 'partners'){ if (rec.tier >= 0 && tierIds[rec.tier]) body.tierId = tierIds[rec.tier]; delete body.tier; }
+                return RevampCore.createSub(res, eventId, body).then(function(made){
+                  var id = made && made.id;
+                  if (res === 'partner-tiers') tierIds[i] = id;
+                  if (id){ (state.made[res] = state.made[res] || []).push(id); save(); }
+                });
+              });
+            }, Promise.resolve());
+          });
+        }, Promise.resolve()).then(function(){ state.done[src.libId] = what; save(); });
+      });
+    }
+    var work = stale.reduce(function(p, src){ return p.then(function(){ if (isCurrent(run)) return removeMine(src); }); }, Promise.resolve());
+    return plan.reduce(function(p, item){ return p.then(function(){ if (isCurrent(run)) return writeSource(item); }); }, work).then(function(){
+      var gone = stale.map(function(src){ return src.words; });
+      row.label = plan.length
+        ? 'Saved ' + listWords(plan.map(function(x){ return x.source.words; })) + ' to the event’s Content' +
+          (kept.length ? ' (its ' + listWords(kept) + ' already there were kept)' : '') + (gone.length ? '; the ' + listWords(gone) + ' you removed were taken out' : '')
+        : 'Took the ' + listWords(gone) + ' you removed out of the event’s Content';
+    }, function(err){
+      if (err && err.message === 'stopped') return;
+      throw new Error('The event’s Content could not be saved: ' + plainError(err));
+    });
   }
   /* What made the picture fail, in a sentence for the editor's note: the server's own when it says one. A picture
      that did not pass its check (hero-held: it had words, a logo or people in it, twice) is said as the server says
@@ -10215,14 +11262,14 @@
 
     var host = $('step-4');
     var status = steps.map(function(){ return 'pending'; });
-    var failure = null;         // { index, message, choice } while the run is stopped on a failed step (choice: a portal question, portalChangedError)
+    var failure = null;         // { index, message, choice, slug } while the run is stopped on a failed step (choice: a portal question, portalChangedError; slug: the address was taken, createEventRecord)
 
     function render(){
       host.innerHTML =
         '<div class="step-head">' +
           '<span class="eyebrow">Step 2 of 2</span>' +
           '<h1>Saving your event</h1>' +
-          '<p class="desc">Saving your event and opening it in the editor.</p>' +
+          '<p class="desc">Your details, logo, pictures and content are saved with the event, then the editor opens and keeps your page as its first saved version, so it opens the same on any computer.</p>' +
         '</div>' +
         '<div class="panel"><div class="proc-wrap">' +
           (failure ? '' : ET_LOADER) +
@@ -10238,8 +11285,11 @@
                   '<span class="callout-actions">' +
                     /* a portal question is answered, not retried: a plain retry would only be refused again */
                     (failure.choice ? portalChoiceButtons(failure.choice, function(how){ return 'id="asm-' + how + '"'; }, 'btn-sm')
+                      /* a taken address: trying the same one again cannot work, so the way back to the address leads */
+                      : failure.slug ? '<button class="btn btn-primary btn-sm" type="button" id="asm-back">Back to my details</button>' +
+                          (failure.slug.suggestion ? '<button class="btn btn-secondary btn-sm" type="button" id="asm-use-slug">Use ' + esc(failure.slug.suggestion) + '</button>' : '')
                       : '<button class="btn btn-primary btn-sm" type="button" id="asm-retry">Try again</button>') +
-                    '<button class="btn btn-secondary btn-sm" type="button" id="asm-back">Back to my details</button>' +
+                    (failure.slug ? '' : '<button class="btn btn-secondary btn-sm" type="button" id="asm-back">Back to my details</button>') +
                   '</span></span></div>'
             : '<div class="busy-actions"><button class="btn btn-secondary" type="button" id="asm-cancel">Cancel</button></div>') +
         '</div></div>';
@@ -10249,7 +11299,17 @@
         var btn = $('asm-' + how);
         if (btn) btn.onclick = function(){ if (isCurrent(run) && failure && applyPortalChoice(failure.choice, how)) exec(failure.index); };
       });
-      if (back) back.onclick = requestCancelBusy;
+      var useSlug = $('asm-use-slug');
+      if (useSlug) useSlug.onclick = function(){
+        if (!isCurrent(run) || !failure || !failure.slug) return;
+        useSuggestedSlug(failure.slug.suggestion);
+        exec(failure.index);
+      };
+      if (back) back.onclick = function(){
+        var toSlug = !!(failure && failure.slug);
+        requestCancelBusy();
+        if (toSlug) focusSlugBox();
+      };
       if (cancel) cancel.onclick = requestCancelBusy;
     }
     function exec(i){
@@ -10258,7 +11318,7 @@
       if (steps[i].skip && steps[i].skip()){ status[i] = 'skipped'; exec(i + 1); return; }
       status[i] = 'running';
       render();
-      Promise.resolve().then(function(){ return steps[i].run(run); }).then(function(){
+      Promise.resolve().then(function(){ return steps[i].run(run, render); }).then(function(){
         if (!isCurrent(run)) return;
         status[i] = 'done';
         render();
@@ -10266,7 +11326,7 @@
       }, function(err){
         if (!isCurrent(run)) return;
         status[i] = 'error';
-        failure = { index: i, message: plainError(err), choice: (err && err.portalChoice) || null };
+        failure = { index: i, message: plainError(err), choice: (err && err.portalChoice) || null, slug: (err && err.slugTaken) || null };
         render();
       });
     }
@@ -10379,7 +11439,7 @@
         var issues = detailsIssues();
         if (issues.length){
           detailsChecked = true;
-          renderSlugStatus(false);
+          renderSlugStatus();
           renderFoot();
           focusProblem(issues[0]);
           return;
@@ -10403,13 +11463,9 @@
           return;
         }
         if (contentChecked){ contentChecked = false; renderFoot(); }
-        var pictures = S.creationMethod !== 'template' ? 0 : listedSections().filter(secIncluded).reduce(function(n, sec){
-          return n + imageSlotsIn(sec.data).filter(function(slot){ return !!imgFiles[slot]; }).length;
-        }, 0);
-        if ((found.length || pictures) && !contentAccepted){
+        /* the pictures added to sections go with the event (the hand-off uploads them): nothing to warn about */
+        if (found.length && !contentAccepted){
           var lines = found.map(function(p){ return '<li><strong>' + esc(p.section.name) + '</strong> — ' + esc(p.message) + '</li>'; });
-          if (pictures) lines.push('<li><strong>Pictures</strong> — the ' + (pictures === 1 ? 'picture' : pictures + ' pictures') +
-            ' you added to your sections ' + (pictures === 1 ? 'stays' : 'stay') + ' in this draft and ' + (pictures === 1 ? 'is' : 'are') + ' not carried into the site editor yet. Add ' + (pictures === 1 ? 'it' : 'them') + ' there once it opens.</li>');
           openModal({
             title: lines.length === 1 ? '1 thing to check' : lines.length + ' things to check',
             sub: 'You can continue as it is, or go back and put these right first.',
@@ -10463,16 +11519,19 @@
   /* =========================================================
      INIT
   ========================================================= */
-  /* "Create Event" everywhere in the product links here with ?new=1, and the bare page resumes the draft.
-     A new event never silently replaces an unfinished one: when the stored draft holds anything its owner
-     entered, they choose between continuing it and discarding it first. ?new=1&discard=1 is for a caller
-     that has already asked.
+  /* "Create Event" everywhere in the product links here with ?new=1, the dashboard's Drafts open a draft with
+     ?draft=<id> (on any computer: openDraft), and the bare page resumes the draft this browser worked on last.
+     A new event never throws away an unfinished one: one that is safe in the person's account stays there, listed
+     under Drafts, and the new event starts at once (keepOrAsk). Only a draft this browser holds that cannot be
+     saved to the account just now is asked about, as before: continue it, or discard it and start a new event.
+     ?new=1&discard=1 is for a caller that has already asked.
      ETB2B AI on the events dashboard links here with ?new=1&prefill=<id>: a new event's details, taken from the
      person's own message, wait in localStorage under that id (create-event-prefill.js). They fill a new draft
-     only; an unfinished one is asked about first, as above, and the discard parameter never skips that for them. */
+     only; an unfinished one is kept or asked about first, as above, and the discard parameter never skips that. */
   function init(){
+    migrateLegacyDraft();
     var params = new URLSearchParams(location.search);
-    var startNew = params.get('new') === '1', stored = readStoredDraft();
+    var startNew = params.get('new') === '1', wantDraft = params.get('draft') || '', stored = readStoredDraft();
     /* the dashboard's portal, read before the address is tidied below. It pre-sets a new draft only, once
        it is found on ET's roster (portalArrived): a draft that is resumed keeps its own portal. ETB2B AI's
        prefill brings its own portal instead (create-event-prefill.js), which startPortal() takes first */
@@ -10484,14 +11543,31 @@
     if (prefill){
       var next = RevampPrefill.decide({ startNew: startNew, prefill: prefill, stored: !!stored, hasInput: !!stored && draftHasInput(stored),
         discard: params.get('discard') === '1' });
-      if (next === 'ask'){ askResumeOrDiscard(stored, prefill); return; }
+      if (next === 'ask'){ keepOrAsk(stored, function(){ startWithPrefill(prefill); }, function(){ askResumeOrDiscard(stored, prefill); }); return; }
       if (stored){ discardStoredDraft(stored).then(function(){ startWithPrefill(prefill); }); return; }
       startWithPrefill(prefill);
       return;
     }
-    if (!startNew || !stored){ start(); return; }
-    if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(start); return; }
-    askResumeOrDiscard(stored);
+    /* a draft named in the address (Resume on the dashboard, or this tab's own draft after a reload) */
+    if (wantDraft && !startNew){ openDraft(wantDraft, undefined, params.get('from') === 'account'); return; }
+    if (!startNew){ if (stored) openDraft(stored.draftId, stored); else start(null); return; }
+    if (!stored){ start(null); return; }
+    if (params.get('discard') === '1' || !draftHasInput(stored)){ discardStoredDraft(stored).then(function(){ start(null); }); return; }
+    keepOrAsk(stored, function(){ start(null); }, function(){ askResumeOrDiscard(stored); });
+  }
+  /* An unfinished draft and a new event: when the draft is safe in the person's account it stays there (Drafts on the
+     events dashboard) and the new event starts at once (fresh); when it is not, and cannot be put there now, the
+     person is asked (ask), because discarding it would then lose it. */
+  function keepOrAsk(stored, fresh, ask){
+    /* ensureInAccount can wait up to ENSURE_TIMEOUT_MS on a slow account, and the page has no step to show until it
+       answers: said meanwhile, with the footer put away, instead of a blank page with a Continue that does nothing.
+       A draft already in the account answers at once, so the line never shows for it. The footer stays away behind
+       the "unfinished event" question too: its own buttons are the ways on, and start() brings the footer back. */
+    showOpening(true, 'Saving your unfinished draft to your account…', false);
+    ensureInAccount(stored).then(function(ok){
+      showOpening(false);
+      if (ok) fresh(); else ask();     // true, or 'theirs': not this person's to ask about
+    });
   }
   /* ETB2B AI's details for id, or null: none, too old, already used, or unreadable (storage blocked or the script missing) */
   function takePrefill(id){
@@ -10514,11 +11590,11 @@
         ' were not used: finish or discard this one, then ask again.' };
       start();
     };
-    var fresh = !prefill ? start : function(){ startWithPrefill(prefill); };
+    var fresh = !prefill ? function(){ start(null); } : function(){ startWithPrefill(prefill); };
     openModal({
       title: 'You have an unfinished event',
       sub: draftLabel(stored) + edited,
-      body: '<div class="callout plain">' + IC.info + '<span>This draft is kept in this browser. Continue it, or discard it and start a new event.' +
+      body: '<div class="callout plain">' + IC.info + '<span>This draft is only in this browser: it could not be saved to your account just now, so it is not in your Drafts. Continue it, or discard it and start a new event.' +
         (stored.createdEventId ? ' Its event (' + esc(stored.createdEventId) + ') already exists and stays in your events list either way.' : '') +
         (prefill ? ' ETB2B AI has the details of ' + (name ? '“' + esc(name) + '”' : 'your new event') + ' ready: they are used only if you start a new event.' : '') +
         '</span></div>',
@@ -10529,7 +11605,7 @@
       onCancel: function(){
         openModal({
           title: 'Discard “' + draftLabel(stored) + '”?',
-          sub: 'Everything entered for this draft in this browser is deleted, including its logo and banner. This cannot be undone.' +
+          sub: 'Everything entered for this draft is deleted, including its logo and banner. This cannot be undone.' +
             (stored.createdEventId ? ' The event itself is not deleted.' : ''),
           confirm: 'Discard draft',
           cancelLabel: 'Keep it',
@@ -10540,7 +11616,8 @@
       }
     });
   }
-  function startWithPrefill(p){ aiPrefill = p; start(); }
+  /* ETB2B AI's details always fill a new draft, never the one this browser worked on last */
+  function startWithPrefill(p){ aiPrefill = p; start(null); }
   /* Fills the new draft with ETB2B AI's details (start(), after restore(), before the form is drawn) and saves it.
      resumed: restore() found a draft after all (another tab started one a moment ago): that draft is never written
      over, and the person is told the details were not used. */
@@ -10721,12 +11798,68 @@
     function again(){ window.location.replace(location.pathname + '?new=1'); }
     discardStoredDraft(S).then(again, again);
   }
-  function start(){
-    var resumed = restore();
+  /* removes this draft for good, from the account and this browser — its text, logo and banner. The event, if one was
+     already created, stays. */
+  function confirmDiscard(){
+    openModal({
+      title: 'Discard this draft?',
+      sub: 'Everything entered here is deleted, from your account and from this browser, including the logo and banner. This cannot be undone.' +
+        (S.createdEventId ? ' The event “' + (S.basics.name.trim() || S.createdEventId) + '” already exists and stays in your events list — only this draft is removed.' : ''),
+      confirm: 'Discard draft',
+      cancelLabel: 'Keep it',
+      onConfirm: function(){
+        draftClosed = true;
+        clearTimeout(pushTimer);
+        discardStoredDraft(S).then(function(){ exitToDashboard(); });
+      }
+    });
+  }
+  /* where the draft is, said to someone about to leave */
+  function whereDraftIs(){
+    if (inAccount() || sync.state === 'saving' || sync.state === 'pending') return 'Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer.';
+    return 'Your draft is kept in this browser only for now. ' + accountProblem() + ' It is saved to your account the next time you open Create Event here.';
+  }
+  /* why the account does not have the draft, in a sentence */
+  function accountProblem(){
+    if (!accountReady()) return 'This page could not reach your account: reload it to save your draft there.';
+    if (sync.state === 'conflict') return unsavedReason();
+    return 'It could not be saved to your account: ' + String(sync.error || 'the server could not be reached').replace(/\.$/, '') + '.';
+  }
+  var LEAVE_WAIT_MS = 5000;
+  /* p, or false once ms have passed (with lateError: that error instead) */
+  function withinMs(p, ms, lateError){
+    return Promise.race([p, new Promise(function(resolve, reject){ setTimeout(function(){ if (lateError) reject(lateError); else resolve(false); }, ms); })]);
+  }
+  /* leaves once what was typed last is in the account (or a few seconds have passed: the copy here goes on the next visit) */
+  function leaveAfterPush(toDrafts){
+    var go = function(){ exitToDashboard(toDrafts); };
+    if (!draftHasInput(S, true) || inAccount()) return go();
+    withinMs(pushDraft(), LEAVE_WAIT_MS).then(go, go);
+  }
+  /* refreshes the session cookie first (same reasoning as auth.js's own a.back-btn click interceptor —
+     this button isn't one, so it needs its own copy) so a long wizard session's cookie going stale never
+     bounces an actually-signed-in admin to the sign-in page on exit. toDrafts: to the dashboard's Drafts, where
+     the draft just saved is listed. */
+  function exitToDashboard(toDrafts){
+    if (window.RevampAuth) RevampAuth.ensureSession().then(go, go); else go();
+    function go(){ window.location.href = 'Event_Listing.html' + (toDrafts === true ? '#view=draft' : ''); }
+  }
+
+  /* d: the draft to open (openDraft), null for a new event, or nothing for the one this browser worked on last */
+  function start(d){
+    // put away while a draft was being opened (showOpening)
+    $('wiz-foot').hidden = false; $('btn-save-exit').hidden = false; draftOpening = false;
+    var resumed = restore(d);
     sweepDraftFiles();
-    if (resumed) save();         // an older draft has just been given its id and file slots: keep them
+    /* an older draft has just been given its id and file slots, or a draft came from the account: kept in this browser
+       as it is (opening a draft is not an edit, so its "Last edited" stays) */
+    if (resumed){ draftId(); lastSaveOk = writeLocalCopy(); keepDraftInAddress(); }
     if (aiPrefill) applyAiPrefill(resumed);
     initStep1();
+    schedulePush();              // a copy this browser had not sent to the account yet goes now
+    renderSaveState();           // where the draft is kept, once there is a draft to keep
+    tidyLocalDrafts();
+    resendMissingFiles();
     if (S.basics.logo && !logoPreviewUrl){
       Promise.resolve(logoSaving).then(function(){ return RevampStore.get(logoKey()); }).then(function(rec){
         if (!rec || rec.name !== S.basics.logoName || logoPreviewUrl) return;
@@ -10760,20 +11893,6 @@
       if (e.persisted && S.assembled) window.location.replace(location.pathname);
     });
 
-    /* removes this draft for good — its text, logo and banner. The event, if one was already created, stays. */
-    function confirmDiscard(){
-      openModal({
-        title: 'Discard this draft?',
-        sub: 'Everything entered here is deleted from this browser, including the logo and banner. This cannot be undone.' +
-          (S.createdEventId ? ' The event “' + (S.basics.name.trim() || S.createdEventId) + '” already exists and stays in your events list — only this draft is removed.' : ''),
-        confirm: 'Discard draft',
-        cancelLabel: 'Keep it',
-        onConfirm: function(){
-          draftClosed = true;
-          discardStoredDraft(S).then(exitToDashboard);
-        }
-      });
-    }
     /* Sign out (the account menu auth.js renders) leaves the page too. Caught on its way to the menu's
        own handler, so that it cannot silently stop a generation or drop a draft this browser never saved. */
     document.addEventListener('click', function(e){
@@ -10799,40 +11918,51 @@
     }, true);
     $('btn-close').addEventListener('click', function(){
       if (leavingStopsGeneration()) return;
-      var saved = save() && !draftUnsaved();
+      var saved = save() && !draftUnsaved(), has = draftHasInput(S, true);
+      if (has) pushDraft();          // what was just typed is on its way while the question is read
       openModal({
         title: 'Leave the builder?',
-        sub: saved ? 'Your draft is kept in this browser. Open Create Event on this computer to continue.'
-          : unsavedReason() + ' If you leave now, what you entered is lost.',
-        body: '<button class="btn btn-ghost btn-sm" type="button" id="leave-discard">' + IC.trash + ' Discard this draft instead</button>',
+        sub: !saved ? unsavedReason() + ' If you leave now, what you entered is lost.'
+          : !has ? 'Nothing has been entered yet, so there is no draft to keep.'
+          : whereDraftIs(),
+        body: has ? '<button class="btn btn-ghost btn-sm" type="button" id="leave-discard">' + IC.trash + ' Discard this draft instead</button>' : '',
         confirm: saved ? 'Leave builder' : 'Leave anyway',
         cancelLabel: 'Stay',
-        onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+        onConfirm: function(){ leavingUnsaved = true; leaveAfterPush(false); }
       });
-      $('leave-discard').onclick = confirmDiscard;
+      if ($('leave-discard')) $('leave-discard').onclick = confirmDiscard;
     });
     $('btn-save-exit').addEventListener('click', function(){
       if (leavingStopsGeneration()) return;
-      if (save() && !draftUnsaved()){
-        toast('Draft saved on this computer');
-        setTimeout(exitToDashboard, 700);
+      var btn = $('btn-save-exit');
+      if (!save() || draftUnsaved()){
+        openModal({
+          title: 'Your draft is not saved',
+          sub: unsavedReason() + ' Leave anyway?',
+          confirm: 'Leave anyway',
+          cancelLabel: 'Stay',
+          onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+        });
         return;
       }
-      openModal({
-        title: 'Your draft is not saved',
-        sub: unsavedReason() + ' Leave anyway?',
-        confirm: 'Leave anyway',
-        cancelLabel: 'Stay',
-        onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+      if (!draftHasInput(S, true)){ exitToDashboard(); return; }
+      btn.disabled = true;
+      withinMs(pushDraft(), LEAVE_WAIT_MS).then(function(ok){
+        btn.disabled = false;
+        if (ok || inAccount()){
+          toast('Draft saved to your account. It is under Drafts on the events dashboard.');
+          setTimeout(function(){ exitToDashboard(true); }, 700);
+          return;
+        }
+        openModal({
+          title: 'Saved on this computer only',
+          sub: accountProblem() + ' Your draft is kept in this browser and is saved to your account the next time you open Create Event here. Until then it is not in your Drafts.',
+          confirm: 'Leave anyway',
+          cancelLabel: 'Stay',
+          onConfirm: function(){ leavingUnsaved = true; exitToDashboard(); }
+        });
       });
     });
-    /* refreshes the session cookie first (same reasoning as auth.js's own a.back-btn click interceptor —
-       this button isn't one, so it needs its own copy) so a long wizard session's cookie going stale never
-       bounces an actually-signed-in admin to the sign-in page on exit. */
-    function exitToDashboard(){
-      if (window.RevampAuth) RevampAuth.ensureSession().then(go, go); else go();
-      function go(){ window.location.href = 'Event_Listing.html'; }
-    }
 
     /* "Preview" <-> "Back to editing" — full-page, same page, via togglePreviewMode() — independent of
        setPreviewVisible()'s per-step on/off (that controls whether this toggle is available at all). */

@@ -26,17 +26,18 @@ var INLINE = START === -1 ? '' : PAGE.slice(START + '<script>'.length, PAGE.inde
 /* ======== 1. the page as a file ======== */
 check('D.2 the inline script is found', INLINE.length > 50000);
 var scripts = (PAGE.match(/<script\b[^>]*>/g) || []);
-/* portal-picker.js (the portals change) sits right after auth.js, and event-lifecycle.js stays right before the inline script */
+/* portal-picker.js (the portals change) sits right after auth.js, create-drafts.js (Create Event's drafts in the account, UX-048)
+   after it, and event-lifecycle.js stays right before the inline script */
 /* edit-event-core.js (B07): the API calls Clone, Delete and Restore make, before auth.js (it reads RevampAuth only when one runs) */
-check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
-  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js',
+  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
 check('D.2 the second plain <script> is the inline script itself', PAGE.indexOf('<script src="event-lifecycle.js"></script>\n<script>\n(function(){') !== -1);
 check('D.2 the kit\'s scripts come after the inline script (RvListing exists before they run)', PAGE.indexOf('<script src="etb2b-chat.js">') > PAGE.indexOf('})();\n</script>', START) &&
   PAGE.indexOf('<script src="dash-bot-client.js">') > PAGE.indexOf('<script src="etb2b-chat.js">'));
 var link = PAGE.indexOf('<link rel="stylesheet" href="etb2b-chat.css">');
 check('D.2 etb2b-chat.css is linked once, in the head (before the page\'s styles and its header)', count(PAGE, 'href="etb2b-chat.css"') === 1 && link !== -1 && link < PAGE.indexOf('<style>') && link < PAGE.indexOf('<header'));
 var access = require('./access');
-['event-lifecycle.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
+['event-lifecycle.js', 'create-drafts.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
 check('D.2 one rule for the lifecycle: no function lifecycleOf( here, RevampLifecycle.of( used', INLINE.indexOf('function lifecycleOf(') === -1 && INLINE.indexOf('lifecycleOf(') === -1 && INLINE.indexOf('window.RevampLifecycle.of(ev, Date.now())') !== -1);
 check('D.2 "Need help?" stays in the markup', /<button class="help-fab" id="btn-help" type="button">[\s\S]*?Need help\?\s*<\/button>/.test(PAGE));
 check('D.2 …with its click handler', INLINE.indexOf("$('btn-help').addEventListener('click', function(){ openHelpModal($('btn-help')); });") !== -1);

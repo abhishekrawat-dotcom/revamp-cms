@@ -469,7 +469,7 @@ function takeOne(p, id, now) {
 })();
 
 /* =============================================================================== E.2 create-event.html */
-var CE_FNS = ['esc', 'slugify', 'init', 'takePrefill', 'prefillName', 'draftLabel', 'askResumeOrDiscard', 'startWithPrefill', 'applyAiPrefill',
+var CE_FNS = ['esc', 'slugify', 'init', 'keepOrAsk', 'takePrefill', 'prefillName', 'draftLabel', 'askResumeOrDiscard', 'startWithPrefill', 'applyAiPrefill',
   'aiDraftKey', 'renderAiPrefillNote', 'undoAiPrefill', 'clearAiPrefill', 'knownPortalName', 'nameAiNotePortal', 'isRosterPortal'];
 function noteEl() {
   var els = {};
@@ -488,7 +488,8 @@ function noteEl() {
   return els;
 }
 /* o: { search, stored, store (localStorage contents), noModule, resumed, noNote, roster ({ slug: name } as ET's roster
-   came, {} while it has not), cachedName (what RevampPortals.nameOf knows before it: the remembered working portal) } */
+   came, {} while it has not), cachedName (what RevampPortals.nameOf knows before it: the remembered working portal),
+   inAccount (the stored draft is safe in the person's account, or can be put there now: ensureInAccount, UX-048) } */
 function page(o) {
   o = o || {};
   var log = { calls: [], modals: [] };
@@ -498,7 +499,7 @@ function page(o) {
     URLSearchParams: URLSearchParams, URL: URL, Promise: Promise, JSON: JSON, Date: Date, Object: Object, String: String, Math: Math, isNaN: isNaN,
     location: { search: o.search || '', pathname: '/create-event.html', replace: function (u) { log.calls.push(['location.replace', u]); } },
     history: { replaceState: function (a, b, u) { log.calls.push(['replaceState', u]); } },
-    localStorage: storage, CALLS: log.calls, MODALS: log.modals, STORED: o.stored || null, RESUMED: !!o.resumed,
+    localStorage: storage, CALLS: log.calls, MODALS: log.modals, STORED: o.stored || null, RESUMED: !!o.resumed, IN_ACCOUNT: !!o.inAccount,
     ELS: o.noNote ? {} : noteEl(), ROSTER: o.roster || {},
     RevampPortals: { nameOf: function (slug) { return o.cachedName && o.cachedName[slug] || ''; } }
   };
@@ -514,6 +515,12 @@ function page(o) {
     'function readStoredDraft(){ return STORED; }',
     'function draftHasInput(d){ return !!(d && d.hasInput); }',
     'function discardStoredDraft(d){ CALLS.push(["discard", d && d.draftId]); return Promise.resolve([]); }',
+    /* UX-048: the draft in the person's account. The real ones ask the server (create-event-saves.test.js covers them) */
+    'function migrateLegacyDraft(){ CALLS.push(["migrate"]); }',
+    'function ensureInAccount(d){ CALLS.push(["ensure", d && d.draftId]); return Promise.resolve(IN_ACCOUNT); }',
+    /* the "Saving your unfinished draft…" line keepOrAsk shows while it waits (create-event-saves.test.js covers it) */
+    'function showOpening(){}',
+    'function openDraft(id, local, fromAccount){ CALLS.push(["open", id, !!fromAccount]); start(local); }',
     /* the real start() restores the draft, then fills it (applyAiPrefill), then draws the form: here, the middle */
     'function start(){ CALLS.push(["start", aiPrefill ? aiPrefill.prefillId : null, aiNote ? aiNote.kind : null]); if (aiPrefill) applyAiPrefill(RESUMED); if (aiNote && aiNote.kind === "filled") aiNote.snap = aiDraftKey(); renderAiPrefillNote(); }',
     'function openModal(o){ MODALS.push(o); }',
@@ -573,7 +580,7 @@ function withPicker(P) {
   check('E.2 the string discard=1 is not added anywhere (only the old comment has it)', count(CE, 'discard=1') === 1, count(CE, 'discard=1'));
   check('E.2 the discard parameter is still read in one place only for a page with no prefill', count(init, "params.get('discard') === '1' || !draftHasInput(stored)") === 1);
   var startFn = fnSrc(CE_INLINE, 'start') || '';
-  check('E.2 start(): the details fill the draft after restore() and before the form is drawn', /var resumed = restore\(\);[\s\S]*if \(aiPrefill\) applyAiPrefill\(resumed\);[\s\S]*initStep1\(\);/.test(startFn) &&
+  check('E.2 start(): the details fill the draft after restore() and before the form is drawn', /var resumed = restore\(d\);[\s\S]*if \(aiPrefill\) applyAiPrefill\(resumed\);[\s\S]*initStep1\(\);/.test(startFn) &&
     startFn.indexOf('applyAiPrefill(resumed)') < startFn.indexOf('initStep1();'));
   check('E.2 start(): Undo\'s comparison is taken once the form is drawn', /goStep\(1\);\s*\/\*[^*]*\*\/\s*if \(aiNote && aiNote\.kind === 'filled'\) aiNote\.snap = aiDraftKey\(\);\s*\}$/.test(startFn));
   var renderFoot = fnSrc(CE_INLINE, 'renderFoot') || '';
@@ -634,6 +641,22 @@ function withPicker(P) {
   check('E.2 … closing the discard question asks the first one again', P.modal().title === 'You have an unfinished event');
   P.modal().onCancel(); P.modal().onConfirm(); await wait();
   check('E.2 … Discard draft discards, then starts a new event', P.discards().length === 1 && P.starts().length === 1 && P.starts()[0][1] === null, P.log.calls);
+  check('E.2 … the question says why it is asked: the draft is not in the account', m.body.indexOf('This draft is only in this browser: it could not be saved to your account just now, so it is not in your Drafts.') !== -1, m.body);
+
+  /* ---- UX-048: drafts in the person's account ---- */
+  P = page({ search: '?new=1', stored: { draftId: 'd1', hasInput: true, basics: { name: 'Old Forum' } }, inAccount: true });
+  P.ctx.init(); await wait();
+  check('UX-048 ?new=1, a draft with input that is safe in the account → a new event starts at once: nothing asked, nothing discarded',
+    P.starts().length === 1 && !P.log.modals.length && !P.discards().length && P.log.calls.some(function (c) { return c[0] === 'ensure' && c[1] === 'd1'; }), P.log.calls);
+  P = page({ search: '?draft=draft-abc-123' });
+  P.ctx.init(); await wait();
+  check('UX-048 ?draft=<id> (Resume on the dashboard) opens that draft', P.log.calls.some(function (c) { return c[0] === 'open' && c[1] === 'draft-abc-123' && c[2] === false; }) && P.starts().length === 1, P.log.calls);
+  P = page({ search: '?draft=draft-abc-123&from=account' });
+  P.ctx.init(); await wait();
+  check('UX-048 ?draft=<id>&from=account ("Open the newer one") opens the account\'s copy', P.log.calls.some(function (c) { return c[0] === 'open' && c[2] === true; }));
+  P = page({ search: '', stored: { draftId: 'd1', hasInput: true } });
+  P.ctx.init(); await wait();
+  check('UX-048 the bare page opens the draft this browser worked on last, checked against the account', P.log.calls.some(function (c) { return c[0] === 'open' && c[1] === 'd1'; }) && P.log.calls[0][0] === 'migrate');
 
   /* ---- init() with ETB2B AI's details ---- */
   var good = stored({ at: Date.now() - 1000 });
@@ -772,6 +795,10 @@ function withPicker(P) {
   P = page({ search: '?new=1&discard=1&prefill=' + ID, store: storeWith(good), stored: { draftId: 'd1', hasInput: true } });
   P.ctx.init(); await wait();
   check('E.2 the discard parameter never skips the question for a prefill', P.log.modals.length === 1 && !P.discards().length && !P.starts().length);
+  P = page({ search: '?new=1&prefill=' + ID, store: storeWith(good), stored: { draftId: 'd1', hasInput: true, basics: { name: 'Old Forum' } }, inAccount: true });
+  P.ctx.init(); await wait();
+  check('UX-048 a prefill and an unfinished draft that is safe in the account → the new draft is filled at once, the old one kept (nothing asked, nothing discarded)',
+    !P.log.modals.length && !P.discards().length && P.starts().length === 1 && P.starts()[0][1] === ID && P.ctx.S.basics.name === 'Retail Leadership Summit' && P.ctx.aiNote.kind === 'filled', P.log.calls);
 
   P = page({ search: '?new=1&prefill=' + ID, store: storeWith(good), resumed: true });
   P.ctx.init(); await wait();
@@ -1255,6 +1282,9 @@ async function e6() {
       'function openModal(m){ LOG.modals.push(m); }',
       'function isCurrent(run){ return run === "RUN"; }',
       'function createEventRecord(){ return Promise.resolve(); }', 'function openInEditor(){ return Promise.resolve(); }',
+      /* the pictures and records rows have their own test (create-event-saves.test.js): this draft has neither */
+      'function pictureCount(){ return { all: 0 }; }', 'function recordKinds(){ return []; }',
+      'function staleRecordSources(){ return []; }', 'function recordPlan(){ return []; }', 'function pendingAddress(){ return ""; }',
       fnSrc(CE_INLINE, 'httpError'), fnSrc(CE_INLINE, 'readJson')
     ].concat(FNS.map(function (n) { return fnSrc(CE_INLINE, n); })).join('\n'), ctx, { filename: 'create-event.html (hero, extracted)' });
     ctx.S.basics.name = 'Retail Leadership Summit'; ctx.S.basics.venue = 'Jio World Centre, Mumbai'; ctx.S.basics.portal = 'retail';

@@ -92,23 +92,31 @@ var RESERVED_MESSAGE = 'That address is reserved.';
 function reservedMessage(suggestion) { return RESERVED_MESSAGE + (suggestion ? ' Try "' + suggestion + '".' : ' Choose another.'); }
 
 /* A free address close to the one asked for: "<base>-2", "-3", … (an existing numeric suffix is counted
-   on from, so "summit-2" suggests "summit-3", not "summit-2-2"). One batched read for twenty candidates;
-   if every one of them is in use, a short random suffix — which is checked too. Resolves '' only when
-   nothing usable can be derived (the text had no letter or digit at all). */
+   on from, so "summit-2" suggests "summit-3", not "summit-2-2"). A trailing year is part of the name, not a
+   counter: ET events end in their year, and a taken "brand-world-summit-2026" must be offered as
+   "brand-world-summit-2026-2", never as "…-2027", which names another edition and would take next year's
+   own address. One batched read for twenty candidates; if every one of them is in use, a short random
+   suffix — which is checked too. Resolves '' only when nothing usable can be derived (the text had no
+   letter or digit at all). */
+var YEAR_SUFFIX = /-(19|20)\d\d$/;
+/* stem + suffix within the 80 characters an address may have; a long name is cut before its year, so the
+   year is never the part that is lost */
+function withSuffix(stem, suffix) {
+  if (stem.length + suffix.length <= 80) return stem + suffix;
+  var year = (YEAR_SUFFIX.exec(stem) || [''])[0];
+  var head = stem.slice(0, stem.length - year.length);
+  return head.slice(0, 80 - suffix.length - year.length).replace(/-+$/, '') + year + suffix;
+}
 function suggestFreeSlug(fb, wanted) {
   var base = slugify(wanted);
   if (!base) return Promise.resolve('');
   if (isReservedEventId(base)) base = unreserved(base);
-  var m = /^(.*?)-(\d{1,4})$/.exec(base);
+  var m = YEAR_SUFFIX.test(base) ? null : /^(.*?)-(\d{1,4})$/.exec(base);
   var stem = m ? m[1] : base, from = m ? (+m[2] + 1) : 2;
   var candidates = [];
   if (base !== String(wanted)) candidates.push(base);      // the tidied form of what was typed comes first
-  for (var n = from; n < from + 20; n++) {
-    var suffix = '-' + n;
-    candidates.push(stem.slice(0, 80 - suffix.length).replace(/-+$/, '') + suffix);
-  }
-  var rnd = '-' + crypto.randomBytes(3).toString('hex');
-  candidates.push(stem.slice(0, 80 - rnd.length).replace(/-+$/, '') + rnd);
+  for (var n = from; n < from + 20; n++) candidates.push(withSuffix(stem, '-' + n));
+  candidates.push(withSuffix(stem, '-' + crypto.randomBytes(3).toString('hex')));
   candidates = candidates.filter(function (c, i, arr) { return isEventId(c) && !isReservedEventId(c) && arr.indexOf(c) === i; });
   if (!candidates.length) return Promise.resolve('');
   return fb.db.getAll.apply(fb.db, candidates.map(function (c) { return eventRef(fb, c); })).then(function (snaps) {
@@ -829,5 +837,6 @@ function handleEventClone(req, res) {
 module.exports = { handleUpload, handleSlugAvailable, handleEventDelete, handleEventRestore, handleEventClone };
 
 // Exported for tests and for the other backend modules to share ONE definition of each (the address rule,
-// "this event exists", what an image is) instead of growing a second copy. Routing uses only the five above.
-module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };
+// "this event exists", what an image is, which SVG is unsafe; lib/create-drafts.js keeps a draft's pictures by them)
+// instead of growing a second copy. Routing uses only the five above.
+module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, svgIsActive, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };
