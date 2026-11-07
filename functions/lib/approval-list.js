@@ -8,7 +8,8 @@
        push to main does not create (App Hosting deploys the app only; firestore.indexes.json goes out only with
        `firebase deploy --only firestore:indexes`), and until somebody ran that the list would fail.
        events/<id>.approval is set while a request waits and removed when it is decided (handleApprovalRequest /
-       handleApprovalDecide), so it is the same truth. A deleted event waits for nobody.
+       handleApprovalDecide), so it is the same truth. A deleted event waits for nobody, nor does a request whose
+       version is already live.
 
      aiUncheckedOf(snapshot) -> how many sections of a saved editor state are still marked as written by the AI and
        not checked by anybody (data-ai-generated on the section itself, the mark the site editor's "Check what the
@@ -29,6 +30,11 @@ function listApproval(eventId, d) {
   if (d.deletedAt) return null;
   var a = d.approval;
   if (!a || typeof a !== 'object' || Array.isArray(a) || !text(a.id)) return null;
+  /* a request whose version (or a newer one) is live already waits for nothing: approving it would be refused as
+     overtaken (api.js staleRequestWhy, the same reading). The server now closes such a request when it is overtaken,
+     but one left from before that, or one a failed close left behind, must not be offered as waiting (UX-108). */
+  var live = d.published === true ? +d.publishedVersion || 0 : 0;
+  if (live && live >= (+a.toVersion || 0)) return null;
   return {
     id: a.id,
     toVersion: +a.toVersion || 0,

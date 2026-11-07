@@ -10259,11 +10259,17 @@ function closeSuperseded(fb, eventId, id, actor, why) {
 /* opts.logoGate: refuse a version whose logo unit still carries its notice (logoNoteError, worded for an approver),
    or that the site check holds back (siteCheckGate: template text, a picture that cannot be shown, last year's
    logo), unless it is the version already live — an approval, never tools/republish-current.js, which re-publishes
-   what is live as it is */
+   what is live as it is.
+   opts.closeOvertaken: the request waiting for this version or an older one is closed as overtaken once this version
+   is live (a restore, UX-108: putting version 8 back left the request for version 8 waiting, so the dashboard still
+   offered Review for a version that was already live). It is read under the site lock, as the direct publish does,
+   so a request sent for a newer version meanwhile is left waiting. An approval does not ask for it: the request it
+   decides is the one waiting, and it is marked approved instead. */
 function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
   var HTML = 'text/html; charset=utf-8', token = crypto.randomBytes(12).toString('hex'), now = new Date().toISOString();
-  var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null, livePages = null;
+  var base = publicBaseFor(req, origin), livePath = publishedObjectPath(eventId), undo = null, livePages = null, overtaken = '';
   return acquireSiteLock(fb, eventId, token, null).then(function (data) {
+    if (opts && opts.closeOvertaken && data.approval && data.approval.id && (+data.approval.toVersion || 0) <= version) overtaken = String(data.approval.id);
     var text = readObject(fb, versionPath(eventId, version)).then(function (text) {
       if (text != null) return text;
       return siteVersionOf(data) === version ? readObject(fb, sitePath(eventId, 'page.html')) : null;
@@ -10290,10 +10296,13 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
       return commitSiteLock(fb, eventId, token, Object.assign({
         published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
         publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages
-      }, extra || {}));
+      }, overtaken ? { approval: fieldDelete() } : {}, extra || {}));
     }).then(function () {
       forgetCachedPage(eventId);
-      return { publishedPath: publicPathOf(eventId), publishedUrl: base + publicPathOf(eventId), publishedAt: now, publishedVersion: version };
+      var out = { publishedPath: publicPathOf(eventId), publishedUrl: base + publicPathOf(eventId), publishedAt: now, publishedVersion: version };
+      /* closed before the answer goes back, so the review page opened next already says "Closed"; closeSuperseded
+         never fails the call (the version is live either way) */
+      return overtaken ? closeSuperseded(fb, eventId, overtaken, actor, 'Version ' + version + ' was put back live, so this request was closed.').then(function () { return out; }) : out;
     }, function (err) {
       return Promise.resolve(undo ? undo() : null).then(null, function () {}).then(function () { return releaseSiteLock(fb, eventId, token); }).then(function () { throw err; });
     });
@@ -11283,7 +11292,8 @@ function handleRestoreVersion(req, res) {
         if (!list.some(function (x) { return x.version === version; })) {
           throw httpError(409, 'Version ' + version + ' has never been live, so it cannot be put back. Send it for approval instead.', { code: 'never-live' });
         }
-        return publishVersion(fb, req, eventId, version, actor, body.origin, null, null);
+        /* a request waiting for this version (or an older one) is overtaken once it is live, and closed (UX-108) */
+        return publishVersion(fb, req, eventId, version, actor, body.origin, null, { closeOvertaken: true });
       });
     }).then(function (out) {
       recordPublish(fb, eventId, version, actor, 'restored', replaced);

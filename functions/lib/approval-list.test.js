@@ -22,6 +22,10 @@ check('1 a deleted event waits for nobody', L.listApproval('ev-1', { deletedAt: 
 check('1 a value of the wrong shape is none', L.listApproval('ev-1', { approval: 'abc' }) === null && L.listApproval('ev-1', { approval: ['abc'] }) === null);
 check('1 the event id is escaped in the link', L.listApproval('a b&c', { approval: { id: 'z9z9z9' } }).reviewPath === '/review.html?event=a%20b%26c&request=z9z9z9');
 check('1 a version that is not a number is 0, a missing name is ""', (function () { var x = L.listApproval('e', { approval: { id: 'q1w2e3', toVersion: 'x' } }); return x.toVersion === 0 && x.requestedBy === '' && x.requestedAt === null; })());
+check('1 a request whose version is live already waits for nothing (UX-108)', L.listApproval('e', { published: true, publishedVersion: 8, approval: { id: 'r8r8r8', toVersion: 8 } }) === null);
+check('1 …nor one older than the live version', L.listApproval('e', { published: true, publishedVersion: 9, approval: { id: 'r8r8r8', toVersion: 8 } }) === null);
+check('1 a request newer than the live version is listed', L.listApproval('e', { published: true, publishedVersion: 7, approval: { id: 'r8r8r8', toVersion: 8 } }).id === 'r8r8r8');
+check('1 a site taken offline: its request is listed whatever the version last live', L.listApproval('e', { published: false, publishedVersion: 9, approval: { id: 'r8r8r8', toVersion: 8 } }).id === 'r8r8r8');
 
 /* ---- aiUncheckedOf ---- */
 function snap(nodes) { return { v: 1, nodes: nodes }; }

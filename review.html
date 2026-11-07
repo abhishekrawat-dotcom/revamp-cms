@@ -325,14 +325,17 @@
         after: (isLive ? 'Live now' : 'Published') + ' · version ' + r.toVersion + (isLive ? '' : lv ? ' · version ' + lv + ' is live now' : ' · not live now') };
     }
     if (r.status === 'rejected') return { beforeTab: 'Live then', before: 'Live then · version ' + r.fromVersion, afterTab: 'Rejected', after: 'Rejected · version ' + r.toVersion };
-    return { beforeTab: 'Before', before: 'Before · version ' + r.fromVersion, afterTab: 'Version ' + r.toVersion, after: 'Closed · version ' + r.toVersion };
+    /* a request closed because its own version went live another way (put back by an approver, or published while
+       approval was off) says that version is the live one now, as an approved one does */
+    return { beforeTab: 'Before', before: 'Before · version ' + r.fromVersion, afterTab: 'Version ' + r.toVersion,
+      after: 'Closed · version ' + r.toVersion + (lv && lv === r.toVersion ? ' · live now' : '') };
   }
   function versionsWords(r){
     var lv = liveVersion();
     if (r.status === 'pending') return r.firstPublish ? 'not live yet → version ' + r.toVersion : 'live version ' + (lv || r.fromVersion) + ' → version ' + r.toVersion;
     var from = r.firstPublish ? 'not live before' : 'version ' + r.fromVersion;
     if (r.status === 'approved') return from + ' → version ' + r.toVersion + (lv === r.toVersion ? ' (live)' : '');
-    return from + ' → version ' + r.toVersion + (r.status === 'rejected' ? ' (rejected)' : ' (closed)');
+    return from + ' → version ' + r.toVersion + (r.status === 'rejected' ? ' (rejected)' : lv && lv === r.toVersion ? ' (closed, live now)' : ' (closed)');
   }
 
   /* The rule every event shares, read-only here: its one place is Settings › Publishing approvals (UX-108) */

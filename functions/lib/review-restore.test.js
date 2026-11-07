@@ -226,6 +226,37 @@ function settle() { return new Promise(function (r) { setTimeout(r, 15); }); }
   ok(dp.length === 1 && dp[0].how === 'direct' && dp[0].version === 5 && dp[0].replaced === 4, 'the direct publish is noted too', JSON.stringify(dp));
   FB.docs['config/approvals'] = { approvers: ['boss@timesinternet.in'], required: true };
 
+  /* a restore that puts a version live closes the request waiting for that version (UX-108: putting version 8 back
+     left the request for version 8 waiting, and the dashboard still offered Review for it) */
+  FB.docs['events/rs-close'] = { name: 'Restore closes', createdAt: NOW, site: { version: 8 }, published: true, publishedVersion: 7, publishedAt: T2,
+    approval: { id: 'reqB8x01', toVersion: 8, requestedBy: 'member@timesinternet.in', requestedAt: T2 } };
+  FB.docs['events/rs-close/approvals/reqA8x01'] = { status: 'approved', fromVersion: 7, toVersion: 8, requestedAt: T1, decidedAt: T1, requestedBy: 'member@timesinternet.in', decidedBy: 'boss@timesinternet.in' };
+  FB.docs['events/rs-close/approvals/reqB8x01'] = { status: 'pending', fromVersion: 7, toVersion: 8, requestedAt: T2, requestedBy: 'member@timesinternet.in', items: [], saves: [] };
+  await save('events/rs-close/site/versions/7/page.html', page('V7-CLOSE'));
+  await save('events/rs-close/site/versions/8/page.html', page('V8-CLOSE'));
+  await save('events/rs-close/published/index.html', page('V7-CLOSE'));
+  r = await call('POST', '/api/event/restore-version', { token: 'boss', body: { eventId: 'rs-close', version: 8 } });
+  ok(r.status === 200 && FB.docs['events/rs-close'].publishedVersion === 8 && /V8-CLOSE/.test(liveText('rs-close')), 'UX-108 putting version 8 back puts it live', r.status + ' ' + r.text.slice(0, 300));
+  var closedReq = FB.docs['events/rs-close/approvals/reqB8x01'];
+  ok(closedReq.status === 'superseded' && closedReq.decidedBy === 'boss@timesinternet.in' && closedReq.decisionNote === 'Version 8 was put back live, so this request was closed.',
+    'UX-108 …and the request waiting for version 8 is closed with why, before the answer comes back', JSON.stringify(closedReq));
+  ok(!FB.docs['events/rs-close'].approval, 'UX-108 …and the event no longer says it is waiting', JSON.stringify(FB.docs['events/rs-close']));
+  ok(require('./approval-list').listApproval('rs-close', FB.docs['events/rs-close']) === null, 'UX-108 …so the dashboard does not list it as waiting');
+  ok(FB.docs['events/rs-close/approvals/reqA8x01'].status === 'approved', 'UX-108 an earlier decided request is left as it was', JSON.stringify(FB.docs['events/rs-close/approvals/reqA8x01']));
+  /* putting back a version OLDER than the one waiting leaves the request waiting: it is still something to decide */
+  FB.docs['events/rs-keep'] = { name: 'Restore keeps', createdAt: NOW, site: { version: 9 }, published: true, publishedVersion: 8, publishedAt: T2,
+    approval: { id: 'reqK9x01', toVersion: 9, requestedBy: 'member@timesinternet.in', requestedAt: T2 } };
+  FB.docs['events/rs-keep/approvals/reqK8x01'] = { status: 'approved', fromVersion: 7, toVersion: 8, requestedAt: T1, decidedAt: T1, requestedBy: 'member@timesinternet.in', decidedBy: 'boss@timesinternet.in' };
+  FB.docs['events/rs-keep/approvals/reqK9x01'] = { status: 'pending', fromVersion: 8, toVersion: 9, requestedAt: T2, requestedBy: 'member@timesinternet.in', items: [], saves: [] };
+  await save('events/rs-keep/site/versions/7/page.html', page('V7-KEEP'));
+  await save('events/rs-keep/site/versions/8/page.html', page('V8-KEEP'));
+  await save('events/rs-keep/published/index.html', page('V8-KEEP'));
+  r = await call('POST', '/api/event/restore-version', { token: 'boss', body: { eventId: 'rs-keep', version: 7 } });
+  ok(r.status === 200 && FB.docs['events/rs-keep'].publishedVersion === 7, 'UX-108 putting version 7 back (a request waits for version 9)', r.status + ' ' + r.text.slice(0, 300));
+  ok(FB.docs['events/rs-keep/approvals/reqK9x01'].status === 'pending' && FB.docs['events/rs-keep'].approval && FB.docs['events/rs-keep'].approval.id === 'reqK9x01',
+    'UX-108 …leaves the request for the newer version 9 waiting', JSON.stringify(FB.docs['events/rs-keep']));
+  ok(require('./approval-list').listApproval('rs-keep', FB.docs['events/rs-keep']).id === 'reqK9x01', 'UX-108 …and the dashboard still lists it');
+
   /* an approval notes its publish, so the version before it can be put back later */
   FB.docs['events/ap-ok'] = { name: 'Approve', createdAt: NOW, site: { version: 2 }, published: true, publishedVersion: 1, publishedAt: T1,
     approval: { id: 'reqOk001', toVersion: 2, requestedBy: 'member@timesinternet.in', requestedAt: T1 } };
@@ -319,6 +350,13 @@ function pages() {
   W.set({ published: false });
   ok(W.versions({ status: 'approved', firstPublish: true, fromVersion: 0, toVersion: 3 }) === 'not live before → version 3', 'UX-110 a first publication, taken offline since', W.versions({ status: 'approved', firstPublish: true, toVersion: 3 }));
   ok(W.pane({ status: 'rejected', fromVersion: 2, toVersion: 3 }).after === 'Rejected · version 3', 'UX-110 rejected: "Rejected · version 3", never "Proposed"');
+  W.set({ published: true, publishedVersion: 8 });
+  a = W.pane({ status: 'superseded', fromVersion: 7, toVersion: 8 });
+  ok(a.after === 'Closed · version 8 · live now' && W.versions({ status: 'superseded', fromVersion: 7, toVersion: 8 }) === 'version 7 → version 8 (closed, live now)',
+    'UX-108/110 a request closed because its version was put back live says that version is live now', JSON.stringify(a));
+  W.set({ published: true, publishedVersion: 9 });
+  ok(W.pane({ status: 'superseded', fromVersion: 7, toVersion: 8 }).after === 'Closed · version 8' && W.versions({ status: 'superseded', fromVersion: 7, toVersion: 8 }) === 'version 7 → version 8 (closed)',
+    'UX-108/110 a request overtaken by a newer version is only "Closed"');
   /* UX-116 */
   ok(/This request was not found — it may have been replaced by a newer one\./.test(script) && /var missing = !!askedFor;/.test(script), 'UX-116 (a) a request not found is said so');
   ok(/'<div class="note"><b>Note from ' \+ esc\(whoText\(r\.requestedBy\)\) \+ ':<\/b> '/.test(script), 'UX-116 (b) the requester\'s note is labelled');
