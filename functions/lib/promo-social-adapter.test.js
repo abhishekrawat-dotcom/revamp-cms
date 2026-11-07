@@ -589,10 +589,15 @@ function respJson(r) { return r.json(); }
     !!B.$('th-speaker_individual').querySelector('img'));
   var note = spk.querySelector('.ow-ex-note'), link = note && note.querySelector('a');
   check('F.3b: … and a note with the console link to add the real ones', !!link && link.getAttribute('href') === '/edit-event.html?event=qa-1#content/speakers' &&
-    link.getAttribute('target') === '_top' && /^Example speakers — add yours to use this$/.test(note.textContent), note && note.textContent);
+    link.getAttribute('target') === '_top' && /^Example speakers — add yours in Content → Speakers$/.test(note.textContent) && link.textContent === 'add yours in Content → Speakers', note && note.textContent);
   check('F.3b: the note sits in the card body, above the needs line', note && note.parentNode === spk.querySelector('.b') && note.nextSibling === spk.querySelector('.cta'));
-  var wNote = wsa.querySelector('.ow-ex-note');
-  check('F.3b: where the console has no place to add them (the brief\'s audience), the note says so and has no link', !!wNote && !wNote.querySelector('a') && /no “who should attend” list/.test(wNote.textContent));
+  var wNote = wsa.querySelector('.ow-ex-note'), wLink = wNote && wNote.querySelector('a');
+  /* UX-130: who should attend is typed in Content → Basics now; the link lands on that field */
+  check('F.3b: the audience example links to its field in Content → Basics', !!wLink && wLink.getAttribute('href') === '/edit-event.html?event=qa-1#content/basics/audience' &&
+    wLink.getAttribute('target') === '_top' && wNote.textContent === 'Example “who should attend” list — add yours in Content → Basics', wNote && wNote.textContent);
+  check('F.3b: the numbers example links to Headline numbers in Content → Basics, not to Speakers',
+    B.run('OW_FILL.stats.go') === 'content/basics/numbers' && B.run('OW_FILL.stats.at') === 'Content → Basics' && !/add yours to use this/.test(B.run('owNoteEl(["stats"]).textContent + owNoteEl(["speakers"]).textContent')),
+    B.run('owNoteEl(["stats"]).textContent'));
   check('F.3b: an unavailable card has no button and no Generate action', spk.querySelectorAll('button').length === 0 && !/Generate/.test(spk.innerHTML) && /needs speakers/.test(spk.innerHTML) &&
     spk.classList.contains('dis'));
   check('F.3b: its picture still opens the full-size view (a focusable picture, not a button)', B.$('th-speaker_individual').getAttribute('data-ow-zoom') === 'speaker.individual' &&
