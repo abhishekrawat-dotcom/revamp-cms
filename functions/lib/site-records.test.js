@@ -257,7 +257,7 @@ function rows(extra) {
       'var autoNames = [], autoPoints = [], openedSaved = false, openPtr = 0, autoReady = false, page = {};\n' +
       'var canvas = { snapshot: function () { return JSON.parse(JSON.stringify(page)); }, sameSnapshot: function (a, b) { return JSON.stringify(a) === JSON.stringify(b); }, serialize: function () { return JSON.stringify(page); } };\n' +
       'function noop() {} var keepFormSectionsShown = noop, dismissUndoToast = noop, updateHistoryButtons = noop, saveLocal = noop, scheduleServerSave = noop, repositionToolbars = noop,' +
-      ' sectionsChanged = noop, designChanged = noop, pageChanged = noop, logoUnitNotice = noop, persist = noop; function readMark() { return null; }\n' +
+      ' sectionsChanged = noop, designChanged = noop, pageChanged = noop, logoUnitNotice = noop, persist = noop, settlePlaceholders = noop; function readMark() { return null; }\n' +
       names.map(body).join('\n') + '\n' +
       'out.open = function (p, saved) { page = p; undoStack = [canvas.snapshot()]; undoPtr = 0; localEdited = false; savedMark = saved ? { version: 1, hash: snapHash(undoStack[0]) } : null; noteOpening(); settleAuto(); };\n' +
       'out.change = function (f) { f(page); };\n' +
