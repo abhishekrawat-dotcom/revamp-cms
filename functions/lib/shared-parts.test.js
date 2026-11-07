@@ -96,7 +96,10 @@ check('UX-010 the events list: its dates and times, the activity times and a ran
   LISTING.indexOf("return a.d + '–' + full(b);") !== -1 && LISTING.indexOf("toLocaleDateString('en-IN'") === -1);
 check('UX-010 the activity log loads edit-event-core.js and writes its times with it',
   ALOG.indexOf('<script src="edit-event-core.js"></script>') !== -1 && ALOG.indexOf('<script src="edit-event-core.js"></script>') < ALOG.indexOf('<script src="auth.js"></script>') &&
-  ALOG.indexOf("function when(iso){ return window.RevampCore.fmtDate(iso, { time: true, ist: true }); }") !== -1 && ALOG.indexOf('Intl.DateTimeFormat') === -1);
+  ALOG.indexOf("function when(iso){ return window.RevampCore.fmtDate(iso, { time: true, ist: true }); }") !== -1 && ALOG.indexOf('Intl.DateTimeFormat') === -1 &&
+  ALOG.indexOf('<td class="when mono">') === -1 && ALOG.indexOf("'<td class=\"when\">' + esc(when(it.at))") !== -1);
+check('UX-010 the console Dashboard\'s "Updated" time and the Basics preview\'s date: the one style, the page\'s font',
+  read('edit-event-dashboard.js').indexOf("ctx.fmtTime ? ctx.fmtTime(new Date(mine.at))") !== -1 && !/\.mock-meta\{[^}]*font-mono/.test(CSS));
 check('UX-010 Registrations, the review page and the site editor\'s save dialog: the same',
   REG.indexOf("function ist(iso){ return C.fmtDate(iso, { time: true, ist: true }); }") !== -1 && REG.indexOf('IST_FMT') === -1 &&
   REVIEW.indexOf("function when(iso){ return C.fmtDate(iso, { time: true }); }") !== -1 && REVIEW.indexOf('toLocaleString') === -1 &&
@@ -282,7 +285,9 @@ check('UX-007 the review page: the console\'s font, "Back to events" (then "Back
   REVIEW.indexOf('&larr;') === -1 && REVIEW.indexOf('<span>Back to the event</span>') !== -1 &&
   /<span data-theme-toggle-target[^>]*><\/span>\s*<span data-rv-account><\/span>\s*<\/header>/.test(REVIEW));
 var SIGNIN = read('index.html');
-check('UX-007 sign-in: the theme switch sits in the page\'s corner, not under the sign-in button', /\.login-foot\{ position: fixed; top: 16px; right: 16px;/.test(SIGNIN));
+/* done by B11 (UX-038) on main: the switch's own box in the top-right corner */
+check('UX-007 sign-in: the theme switch sits in the page\'s corner, not under the sign-in button', /\.login-theme\{ position: absolute; top: 16px; right: 16px;/.test(SIGNIN) &&
+  /<div class="login-theme"><span data-theme-toggle-target/.test(SIGNIN) && SIGNIN.indexOf('login-foot') === -1);
 
 /* ======================= UX-012 the rail and the theme switch ======================= */
 check('UX-012 the rail runs the window\'s height below the top bar (it stopped under Settings), and still stays put',
@@ -311,14 +316,15 @@ check('UX-012 the rail runs the window\'s height below the top bar (it stopped u
 /* ======================= UX-009 phones ======================= */
 var phone = (/@media \(max-width: 640px\)\{([\s\S]*?)\n  \}/.exec(CSS) || [])[1] || '';
 check('UX-009 at phone width the rail folds into a row under the top bar that scrolls sideways (console, Promotions, Registrations)',
-  /\.shell, \.reg-page\{ flex-direction:column; \}/.test(phone) && /\.shell > \.rail, \.reg-page > \.rail\{[^}]*height:auto; max-height:none; flex-direction:row;[^}]*overflow-x:auto;/.test(phone));
+  /\.shell > \.rail, \.reg-page > \.rail\{[^}]*height:auto; max-height:none; flex-direction:row;[^}]*overflow-x:auto;/.test(phone));
 check('UX-009 … the console tabs stay one row and scroll; the name may take two lines and the date line gives way',
-  /\.subtabs\{ flex-wrap:nowrap; overflow-x:auto;/.test(phone) && /\.ev-title h1\{ white-space:normal;[^}]*-webkit-line-clamp:2;/.test(phone) && /\.ev-title \.meta\{ display:none; \}/.test(phone));
+  /\.subtabs\{ flex-wrap:nowrap; overflow-x:auto;/.test(phone) && /\.ev-title:not\(\.with-state\) h1\{ white-space:normal;[^}]*-webkit-line-clamp:2;/.test(phone) && /\.ev-title:not\(\.with-state\) \.meta\{ display:none; \}/.test(phone) &&
+  /\.shell, \.reg-page\{ flex-direction:column; align-items:stretch; \}/.test(phone));
 check('UX-009 the Dashboard tiles: no inline four-column rule (already fixed: they stack by the stylesheet)', read('edit-event-dashboard.js').indexOf('repeat(4,1fr)') === -1 &&
   /@media \(max-width:520px\)\{ \.stat-grid\.dash-tiles\{ grid-template-columns: 1fr; \} \}/.test(CSS));
 var OWCSS = read('promo-studio/oneworld.css'), OWSCSS = read('promo-studio/oneworld-social.css');
 check('UX-009 the mail editor and the layout editor say they need a larger screen below 700 px, keeping Back',
-  /@media \(max-width:699px\)\{\s*#mailer\.on \.ed-top \.ed-pick, #mailer\.on \.ed-top \.acts, #mailer\.on \.ed-top \.sp, #mailer\.on \.ed-body\{display:none\}\s*#mailer\.on::after\{content:"The mail editor needs a larger screen\./.test(OWCSS) &&
+  /@media \(max-width:699px\)\{\s*#mailer\.on \.ed-top \.ed-pick, #mailer\.on \.ed-top \.acts, #mailer\.on \.ed-top \.sp, #mailer\.on \.ml-body, #mailer\.on \.ml-pop\{display:none\}\s*#mailer\.on::after\{content:"The mail editor needs a larger screen\./.test(OWCSS) &&
   /@media \(max-width:699px\)\{\s*#editor\.on \.ed-top \.ed-pick, #editor\.on \.ed-top \.acts, #editor\.on \.ed-top \.sp, #editor\.on \.ed-body\{display:none\}\s*#editor\.on::after\{content:"The layout editor needs a larger screen\./.test(OWSCSS));
 check('UX-009 the hashtag chip wraps inside its card', OWCSS.indexOf('.hchip{max-width:100%;overflow-wrap:anywhere}') !== -1);
 

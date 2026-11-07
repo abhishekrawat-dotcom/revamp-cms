@@ -278,7 +278,8 @@ window.EditEventDashboard = (function(){
     var ready = readiness(ctx, st);
     var busy = !mine || mine.loading;
 
-    var stamp = mine && mine.at ? 'Updated ' + new Date(mine.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+    /* "Updated 6:01 pm": RevampCore's one way of writing a time (UX-010) */
+    var stamp = mine && mine.at ? 'Updated ' + (ctx.fmtTime ? ctx.fmtTime(new Date(mine.at)) : new Date(mine.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })) : '';
     var right = '<span class="dash-stamp" aria-live="polite">' + ctx.esc(busy && mine && mine.at ? 'Refreshing…' : stamp) + '</span>' +
       '<button class="btn btn-secondary btn-sm" type="button" id="dash-refresh"' + (busy ? ' disabled' : '') + '>' +
       ctx.svg(ctx.IC.clock, 13) + ' Refresh</button>';

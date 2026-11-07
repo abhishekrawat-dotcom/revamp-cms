@@ -281,12 +281,11 @@ function stand(opt) {
       openSetPortal: function () {}
     };
   }
-  /* edit-event-core.js, which the page loads before its own script, gives it the category names (UX-005) */
-  ctx.RevampCore = { TYPES: CORE_TYPES };
   ctx.window = ctx;
   vm.createContext(ctx);
-  /* the page writes its dates and messages with edit-event-core.js (RevampCore.fmtDate, .toast), as it loads it */
-  if (!ctx.RevampCore) vm.runInContext(fs.readFileSync(path.join(ROOT, 'edit-event-core.js'), 'utf8'), ctx, { filename: 'edit-event-core.js' });
+  /* edit-event-core.js, which the page loads before its own script, as it is: it gives the page the category names
+     (RevampCore.TYPES, UX-005) and the way it writes dates and messages (RevampCore.fmtDate, .toast; UX-010, UX-006) */
+  vm.runInContext(CORE_SRC, ctx, { filename: 'edit-event-core.js' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
   vm.runInContext(INLINE, ctx, { filename: 'Event_Listing.html (inline)' });
   return { ctx: ctx, doc: doc, $: function (id) { return doc.getElementById(id); }, replaced: replaced, scrolled: scrolled, winLs: winLs, docLs: docLs, fetched: fetched, observers: observers,

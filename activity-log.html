@@ -368,7 +368,8 @@
     }
     var detail = AW.detailText(it);
     return '<tr>' +
-      '<td class="when mono">' + esc(when(it.at)) + '</td>' +
+      /* the time in the page's own font, as every page writes a date (UX-010) */
+      '<td class="when">' + esc(when(it.at)) + '</td>' +
       '<td class="who">' + who + '</td>' +
       '<td class="ev"><a href="' + esc(eventHref(it.eventId)) + '">' + esc(it.eventName || it.eventId) + '</a>' + (it.eventDeleted ? ' <span class="deleted">(deleted)</span>' : '') +
         '<span class="ev-addr">/e/' + esc(it.eventId) + '</span></td>' +
