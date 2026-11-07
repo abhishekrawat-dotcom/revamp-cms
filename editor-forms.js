@@ -334,7 +334,8 @@ window.RevampEditorForms = (function () {
       },
       beforeDelete: function (form) {
         var ui = UI();
-        if (ui && ui.unlinkForm) ui.unlinkForm(form.id);
+        // a promise: while ETB2B AI is changing the page the unlinking (and so the delete) waits for it
+        if (ui && ui.unlinkForm) return ui.unlinkForm(form.id);
       },
       toast: function (msg) { toast(msg); }
     });

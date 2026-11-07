@@ -1464,6 +1464,9 @@ async function e7() {
      Undo takes back to the design's own picture */
   check('E.7 the editor has aiHeroFromEvent', !!fnSrc(ED, 'aiHeroFromEvent'));
   es5('E.7 the editor\'s opening code', [fnSrc(ED, 'aiHeroFromEvent'), fnSrc(ED, 'resolveInitialContent')].join('\n'));
+  var WS_AT = ED.indexOf('/* workSafety:begin'), WS_TO = ED.indexOf('/* workSafety:end */');
+  var WORK_SAFETY = WS_AT !== -1 && WS_TO > WS_AT ? ED.slice(WS_AT, WS_TO) : '';
+  check('E.7 the editor\'s rules for which copy opens (workSafety) are found', /var workSafety = /.test(WORK_SAFETY));
   var MADE_URL = 'https://storage.googleapis.com/test-bucket/events/retail-2027/generated/abc-ai-hero.png';
   /* o: { local (a copy of the site in this browser), handoff (this browser's hand-off), arriving (?from=create),
           event (the record GET /api/event gave), template } -> what resolveInitialContent() did, and the picture it
@@ -1486,7 +1489,16 @@ async function e7() {
       'function seedSnapshot(){ LOG.push("seed"); return Promise.resolve(true); }',
       'function fetchServerDraft(){ LOG.push("server"); return Promise.resolve(null); }',
       'function newerOnServer(){ return false; }', 'function takeServerVersion(){ return Promise.resolve(); }', 'function adoptGeneration(){}',
-      fnSrc(ED, 'aiHeroFromEvent'), fnSrc(ED, 'resolveInitialContent')
+      /* B04 (UX-072): the editor asks for the version saved on the server beside this browser's copy, and decides by
+         workSafety.openPlan. The site saved on the server is OPT.site; the event record says whether there is one. */
+      'var draftFetch = null, savedMark = null, baseVersion = 0, localEdited = false, window = { console: console };',
+      'var RevampCore = { fetchSite: function(){ LOG.push("site"); return Promise.resolve(OPT.site || null); } };',
+      'function readMark(){ return null; }', 'function snapHash(s){ return JSON.stringify(s); }',
+      'function showNotice(){ LOG.push("notice"); }', 'function showToast(){}', 'function when(){ return ""; }',
+      'function onSavedVersion(v){ LOG.push("saved-version " + v); }', 'function askAboutOlderCopy(){ LOG.push("ask"); return Promise.resolve(); }',
+      WORK_SAFETY,
+      fnSrc(ED, 'aiHeroFromEvent'), fnSrc(ED, 'fetchSavedSite'), fnSrc(ED, 'isNewRun'), fnSrc(ED, 'takeSavedSite'),
+      fnSrc(ED, 'resolveFromBrowser'), fnSrc(ED, 'resolveInitialContent')
     ].join('\n'), ctx, { filename: 'editor-template-ui.js (opening, extracted)' });
     await ctx.resolveInitialContent();
     return { log: log, pending: ctx.pendingAiHero };
@@ -1503,8 +1515,10 @@ async function e7() {
   check('E.7 ?from=create in a browser with no hand-off (the link opened elsewhere): the event\'s picture too', JSON.stringify(o2.pending) === JSON.stringify(o1.pending), o2);
   var o3 = await opening({ event: REC, local: true });
   check('E.7 this browser has a copy of the site: it is restored as it was, nothing put in again', JSON.stringify(o3.log) === '["restore"]' && o3.pending === null, o3);
-  var o4 = await opening({ event: Object.assign({}, REC, { site: { version: 2, templateId: 'tech500' } }) });
-  check('E.7 a site that was saved: what the person saved stands, no picture put in', o4.pending === null, o4);
+  var o4 = await opening({ event: Object.assign({}, REC, { site: { version: 2, templateId: 'tech500' } }),
+    site: { version: 2, templateId: 'tech500', snapshot: { page: 3 } } });
+  check('E.7 a site that was saved: what the person saved stands, no picture put in', o4.pending === null &&
+    JSON.stringify(o4.log) === '["site","restore","saved-version 2"]', o4);
   /* only a record marked made counts, even one that carries an address (a picture made but not stored is "failed") */
   var o5 = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'failed', error: 'not-stored', url: MADE_URL } }) });
   var o6 = await opening({ event: Object.assign({}, REC, { aiHero: { status: 'making', at: '2026-11-03T06:35:00.000Z', url: MADE_URL } }) });
