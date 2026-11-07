@@ -32,8 +32,8 @@
 (function (root) {
   'use strict';
 
-  /* Every sentence a person reads from this file. The product name stays "Oneworld 2.0" / "ETB2B AI" until the
-     rename batch, which changes this one table. */
+  /* Every sentence a person reads from this file. The product is ETB2B EventSphere (owner decision 6) and the
+     assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
     welcome: function (eventName) {
       return 'I change this page when you ask, make new pictures for it, answer questions about ' + (eventName || 'this event') +
@@ -188,7 +188,7 @@
     } catch (e) { /* the canvas fits itself on the next resize */ }
   }
 
-  var chatRef = null, started = false, historyLoad = null;
+  var chatRef = null, started = false, historyLoad = null, wasAi = null;
 
   function wrapOf(chat) {
     var th = chat && isFn(chat.thread) ? chat.thread() : null;
@@ -335,8 +335,16 @@
     // Edit myself: a column beside the canvas (above a phone's width, the kit's rule); Edit with AI: floating
     if (isFn(chat.setDock)) chat.setDock(!ai);
     if (isFn(chat.setPhoneSheet)) chat.setPhoneSheet(ai ? 'half' : 'full');
+    /* On a phone "Edit myself" has no room for the column: the open panel would become a sheet over the whole
+       editor, hiding the page the person just chose to edit by hand (and the Forms panel "Open Forms" goes to).
+       Switched there from "Edit with AI", the panel closes to its launcher; opened again, it is the full sheet. */
+    if (wasAi === true && !ai && onPhone() && isFn(chat.isOpen) && chat.isOpen() && isFn(chat.close)) chat.close();
+    wasAi = ai;
     syncDockTop();
     refit();
+  }
+  function onPhone() {
+    try { return !!(isFn(root.matchMedia) && root.matchMedia(PHONE_QUERY).matches); } catch (e) { return false; }
   }
   /* where the docked column starts (--rvc-dock-top) and the floating panel's top may reach (--rvc-ed-top) */
   function syncDockTop() {

@@ -989,7 +989,24 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   d3.modes.now = 'manual';
   d3.modes.fns.forEach(function (f) { f('manual'); });
   await settle(4);
-  check('E.9 a narrow Edit myself: the full sheet (720 px counts as a phone in the editor)', panelEl(d3).getAttribute('aria-modal') === 'true');
+  /* B15 verifier: on a phone the full sheet lay over the whole editor right after "Edit myself" was chosen, hiding the
+     page to be edited by hand: switched there, the open panel closes to its launcher; opened again, the full sheet */
+  check('E.9 a narrow Edit with AI → Edit myself: the open panel closes, so the page to edit is in view', !d3.chat().isOpen() && !d3.A.isOpen());
+  d3.A.open();
+  await settle(4);
+  check('E.9 a narrow Edit myself: opened again, the full sheet (720 px counts as a phone in the editor)', d3.chat().isOpen() && panelEl(d3).getAttribute('aria-modal') === 'true');
+  d3.modes.now = 'ai';
+  d3.modes.fns.forEach(function (f) { f('ai'); });
+  await settle(4);
+  check('E.9 …back to Edit with AI it stays open, as the half sheet', d3.chat().isOpen() && panelEl(d3).getAttribute('aria-modal') === 'false');
+  var d4 = editorPage({ vw: 1440, mode: 'ai' });
+  await opened(d4);
+  d4.A.open();
+  await settle(4);
+  d4.modes.now = 'manual';
+  d4.modes.fns.forEach(function (f) { f('manual'); });
+  await settle(4);
+  check('E.9 on a wide screen Edit with AI → Edit myself keeps the panel open, docked beside the canvas', d4.chat().isOpen() && d4.chat().isDocked());
 
   /* ======== E.8 pictures given on another page of the event ======== */
   var key = 'K7mPq2Rs9TuVwXyZ';
