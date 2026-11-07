@@ -1007,6 +1007,8 @@
   .sec-row.sec-static .switch{ flex-shrink: 0; font-size: 11px; padding: 2px; gap: 6px; }
   .sec-note{ margin: 8px 9px 6px; font-size: 11px; line-height: 1.45; color: var(--text-faint); }
   .tpl-loading{ display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .draft-opening{ justify-content: center; margin: 48px 16px; }
+  .draft-opening[hidden]{ display: none; }
   .rail-panel-foot{ padding: 9px; border-top: 1px solid var(--border); }
 
   /* one slim row: title (its description behind the ⓘ), then the tools */
@@ -1954,6 +1956,8 @@
   <!-- shown while what is on screen is not saved in this browser (renderSaveState) -->
   <div class="draft-warning" id="draft-warning" role="alert" hidden></div>
   <main class="wiz-body">
+    <!-- while a draft is fetched from the person's account (Resume on another computer: openDraft) -->
+    <p class="hint tpl-loading draft-opening" id="draft-opening" role="status" hidden><span class="gb-spin"></span> Opening your draft…</p>
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
     <section class="step-wrap full" id="step-1" hidden>
@@ -3306,12 +3310,19 @@
   }
   /* The draft `id`, from this browser's copy or the account's, whichever was saved last (fromAccount: the account's,
      which the person chose); its pictures are fetched from the account when this browser does not have them. */
+  var OPEN_WAIT_MS = 10000;
   function openDraft(id, local, fromAccount){
     if (local === undefined) local = readStoredDraft(id);
-    /* acc: the account's copy, null when the account answered it has none, undefined when it could not be asked */
-    var asked = accountReady() ? RevampCreateDrafts.get(id).then(function(acc){ return { acc: acc }; }, function(err){ return { error: err }; })
+    /* the page has nothing to show until the draft is in: said, instead of a blank page on a slow connection */
+    showOpening(true);
+    /* acc: the account's copy, null when the account answered it has none, undefined when it could not be asked. An
+       account that does not answer in OPEN_WAIT_MS counts as one that could not be reached: this browser's own copy
+       opens, or the person is told and can try again */
+    var late = new Error('Your account did not answer in time. Check your connection and try again.');
+    var asked = accountReady() ? withinMs(RevampCreateDrafts.get(id), OPEN_WAIT_MS, late).then(function(acc){ return { acc: acc }; }, function(err){ return { error: err }; })
       : Promise.resolve({ acc: undefined });
     asked.then(function(got){
+      showOpening(false);
       var theirs = othersDraft(local, currentUid());
       if (theirs) local = null;
       var acc = got.acc, pick = local;
@@ -3344,9 +3355,11 @@
         start(null);
         return;
       }
-      hydrateFiles(pick).then(function(){ start(pick); });
+      showOpening(true);
+      withinMs(hydrateFiles(pick), OPEN_WAIT_MS).then(function(){ showOpening(false); start(pick); });
     });
   }
+  function showOpening(on){ var el = $('draft-opening'); if (el) el.hidden = !on; }
   /* the pictures the account holds for draft `d` that this browser does not have in that version (or has older),
      fetched into the draft's own slots before the form reads them; one that cannot be fetched is said missing by
      loadBannerFiles / loadImageFiles, as a picture this browser lost is */
@@ -11786,7 +11799,10 @@
     return 'It could not be saved to your account: ' + String(sync.error || 'the server could not be reached').replace(/\.$/, '') + '.';
   }
   var LEAVE_WAIT_MS = 5000;
-  function withinMs(p, ms){ return Promise.race([p, new Promise(function(resolve){ setTimeout(function(){ resolve(false); }, ms); })]); }
+  /* p, or false once ms have passed (with lateError: that error instead) */
+  function withinMs(p, ms, lateError){
+    return Promise.race([p, new Promise(function(resolve, reject){ setTimeout(function(){ if (lateError) reject(lateError); else resolve(false); }, ms); })]);
+  }
   /* leaves once what was typed last is in the account (or a few seconds have passed: the copy here goes on the next visit) */
   function leaveAfterPush(toDrafts){
     var go = function(){ exitToDashboard(toDrafts); };

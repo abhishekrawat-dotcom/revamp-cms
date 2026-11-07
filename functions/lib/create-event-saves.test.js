@@ -277,6 +277,7 @@ async function main() {
       },
       get: function (id) {
         A.calls.push('get ' + id);
+        if (A.hang) return new Promise(function () {});         // an account that never answers
         if (A.fail) return Promise.reject(A.fail);
         var cur = A.store[id];
         return Promise.resolve(cur ? { id: id, rev: cur.rev, savedAt: cur.state.savedAt, files: cur.state.files || {}, state: clone(cur.state) } : null);
@@ -300,7 +301,7 @@ async function main() {
     o = o || {};
     var pg = F.load(Object.assign({ keepSave: true, globals: { RevampCreateDrafts: A.api, RevampAuth: o.auth || AUTH, FileReader: FakeReader } }, o));
     pg.ctx.Blob = Blob;
-    pg.ce('PUSH_DELAY_MS = 0; PUSH_RETRY_MS = 60000; ENSURE_TIMEOUT_MS = 2000; LEAVE_WAIT_MS = 2000;');
+    pg.ce('PUSH_DELAY_MS = 0; PUSH_RETRY_MS = 60000; ENSURE_TIMEOUT_MS = 2000; LEAVE_WAIT_MS = 2000; OPEN_WAIT_MS = ' + (o.openWait || 2000) + ';');
     return pg;
   }
   var A = account();
@@ -442,6 +443,23 @@ async function main() {
   p.ce('init()');
   await sleep(20); await tick();
   check('UX-048 …this browser\'s newer copy wins over an older one in the account', p.ctx.__started && p.ctx.__started.basics.name === 'Typed here later');
+  /* the account does not answer: "Opening your draft…" meanwhile, then this browser's copy opens */
+  A = account(); A.hang = true;
+  p = acctPage(A, { search: '?draft=' + their.draftId, openWait: 40, draft: Object.assign({}, their, { basics: { category: 'IP', name: 'Kept here' } }) });
+  p.ce('start = function(d){ window.__started = d; }');
+  p.ce('init()');
+  await tick();
+  check('UX-048 while the draft is fetched the page says "Opening your draft…", not a blank page', p.$('draft-opening').hidden === false && p.ctx.__started === undefined);
+  await sleep(80); await tick();
+  check('UX-048 …an account that does not answer in time: this browser\'s copy opens, and the line goes', p.ctx.__started && p.ctx.__started.basics.name === 'Kept here' && p.$('draft-opening').hidden === true);
+  A = account(); A.hang = true;
+  p = acctPage(A, { search: '?draft=' + their.draftId, openWait: 40 });
+  p.ce('start = function(d){ window.__started = d === null ? "new" : d; }');
+  p.ce('init()');
+  await sleep(80); await tick();
+  check('UX-048 …with no copy here either: the person is told, with Try again (nothing is opened blank)', p.ctx.__started === undefined && p.log.modals.length === 1 &&
+    p.log.modals[0].title === 'Your draft could not be opened' && p.log.modals[0].sub.indexOf('did not answer in time') !== -1 && p.$('draft-opening').hidden === true, p.log.modals.map(function (m) { return m.title + ' / ' + m.sub; }));
+
   /* gone from the account: not opened, and said */
   A = account();
   p = acctPage(A, { search: '?draft=' + their.draftId, draft: Object.assign({}, their, { rev: 3, syncedAt: their.savedAt }) });
