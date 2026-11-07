@@ -149,7 +149,7 @@ check('D.2 inDays: an offset is honoured', H.inDays('2026-11-01T23:59:00+05:30',
 check('D.2 inDays: no date, or a broken one, never matches a range', H.inDays(null, R) === false && H.inDays('', R) === false && H.inDays('soon', R) === false && H.inDays('2026-02-30', R) === false);
 check('D.2 inDays: open ends', H.inDays('2030-01-01T00:00', { from: '2026-10-26', to: '' }) === true && H.inDays('2020-01-01T00:00', { from: '', to: '2026-11-01' }) === true && H.inDays('2026-11-02T00:00', { from: '', to: '2026-11-01' }) === false);
 check('D.2 inDays: no range is no filter', H.inDays(null, null) === true);
-check('D.2 the chip wording for a range', H.fmtDayRange(R) === '26 Oct – 1 Nov 2026' && H.fmtDayRange({ from: '2026-11-01', to: '2026-11-30' }) === '1 – 30 Nov 2026' &&
+check('D.2 the chip wording for a range', H.fmtDayRange(R) === '26 Oct – 1 Nov 2026' && H.fmtDayRange({ from: '2026-11-01', to: '2026-11-30' }) === '1–30 Nov 2026' &&
   H.fmtDayRange({ from: '2026-12-20', to: '2027-01-05' }) === '20 Dec 2026 – 5 Jan 2027' && H.fmtDayRange({ from: '2026-11-03', to: '2026-11-03' }) === '3 Nov 2026' &&
   H.fmtDayRange({ from: '2026-10-26', to: '' }) === 'from 26 Oct 2026' && H.fmtDayRange({ from: '', to: '2026-11-01' }) === 'until 1 Nov 2026');
 
@@ -296,10 +296,11 @@ function stand(opt) {
       openSetPortal: function () {}
     };
   }
-  /* edit-event-core.js, which the page loads before its own script, gives it the category names (UX-005) */
-  ctx.RevampCore = { TYPES: CORE_TYPES };
   ctx.window = ctx;
   vm.createContext(ctx);
+  /* edit-event-core.js, which the page loads before its own script, as it is: it gives the page the category names
+     (RevampCore.TYPES, UX-005) and the way it writes dates and messages (RevampCore.fmtDate, .toast; UX-010, UX-006) */
+  vm.runInContext(CORE_SRC, ctx, { filename: 'edit-event-core.js' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
   vm.runInContext(INLINE, ctx, { filename: 'Event_Listing.html (inline)' });
   return { ctx: ctx, doc: doc, $: function (id) { return doc.getElementById(id); }, replaced: replaced, scrolled: scrolled, winLs: winLs, docLs: docLs, fetched: fetched, observers: observers,
@@ -369,7 +370,7 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.2 apply(): a type, "mine", a start window and a sort', a2.tab === 'upcoming' && a2.specialView === null && same(a2.filters.types, ['ip']) && a2.mine === true && same(a2.sort, { field: 'registrations', dir: 'desc' }));
   check('D.2 …only the person\'s own upcoming IP events starting in the window (email compared without case)', same(shownIds(S), ['live-upcoming']), shownIds(S));
   var chips2 = S.$('chip-row').innerHTML;
-  check('D.2 the starts and "mine" chips each have a ✕', /Starts 1 – 30 Nov 2099<button type="button" data-chip="\d" aria-label="Remove filter: Starts 1 – 30 Nov 2099">/.test(chips2) &&
+  check('D.2 the starts and "mine" chips each have a ✕', /Starts 1–30 Nov 2099<button type="button" data-chip="\d" aria-label="Remove filter: Starts 1–30 Nov 2099">/.test(chips2) &&
     /Created by you<button type="button" data-chip="\d" aria-label="Remove filter: Created by you">/.test(chips2), chips2);
   check('D.2 the address holds it all', S.ctx.location.hash === '#tab=upcoming&type=ip&starts=2099-11-01..2099-11-30&mine=1', S.ctx.location.hash);
   S.$('chip-clear-all').fire('click');

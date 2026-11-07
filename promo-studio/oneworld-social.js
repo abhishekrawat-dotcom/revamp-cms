@@ -524,7 +524,7 @@ function owLeftovers(d, tell) {
     el.setAttribute('style', st);
   });
   hosts = hosts.filter(function (h, i) { return h && hosts.indexOf(h) === i; });
-  if (tell && hosts.length) toast(OW_MSG.leftOut + hosts.join(', '), OW_LONG);
+  if (tell && hosts.length) toast(OW_MSG.leftOut + hosts.join(', '), OW_LONG, 'error');
   return hosts;
 }
 /* The post in a hidden frame of exactly W × H, made safe and self-contained before it is loaded.
@@ -1053,11 +1053,15 @@ window.addEventListener('message', function (e) {
   if (e.origin !== location.origin || e.source !== window.parent || !e.data) return;
   if (e.data.rvSocialTall) document.documentElement.classList.add('ow-tall');
 });
-/* The platform's toast (SRC index.html:2124). In a frame taller than the window its bottom edge can be far below
-   what is shown, so while the frame is tall and not filling the window the console shows it instead. */
+/* The platform's toast (SRC index.html:2124). In Promotions (which has said the frame is tall) the page around the
+   frame shows every message: RevampCore's one message of every page (UX-006), at the window's bottom centre and above
+   the frame even while the editor has the window; its own would sit at the frame's bottom edge, which in a tall frame
+   can be far below what is shown. kind ('success' | 'error' | 'info') goes with the message: Oneworld's own messages
+   all say what they are, so the page never has to guess from the words ("The picture was uploaded, but …" is not a
+   success); the platform's say none, and the page reads their words. */
 var owToastTimer = null;
-function toast(m, ms) {
-  if (owTall() && !owFull() && owFramed()) { owTell({ rvToast: { m: String(m == null ? '' : m), ms: ms } }); return; }
+function toast(m, ms, kind) {
+  if (owTall() && owFramed()) { owTell({ rvToast: { m: String(m == null ? '' : m), ms: ms, k: kind } }); return; }
   var t = $('toast');
   if (!t) return;
   t.textContent = m; t.classList.add('on');
@@ -1129,7 +1133,8 @@ function owLoadNow(fresh) {
     /* a change that could not be pinned to one element here is said too: the user then makes it in this size */
     var said = L.qr ? OW_MSG.qr : L.carried ? OW_MSG.carried : '';
     if (L.unsure) said = (said ? said + ' ' : '') + OW_MSG.unsure;
-    if (said) toast(said, OW_LONG);
+    /* a change left behind is something to act on (it stays until dismissed); the QR note and the carried changes are not */
+    if (said) toast(said, OW_LONG, L.unsure ? 'error' : 'info');
     owSizeNote();
     owFillerNote();
     owBaseIn().then(function () { if (seq === OWS.loadSeq) owStageWait(false); });
@@ -1562,7 +1567,7 @@ function owRender(body) {
   var W = Number(body.width), H = Number(body.height);
   if (!(W > 0 && H > 0)) return Promise.resolve(owFail(400, 'There is nothing to draw yet.'));
   var q = owQrCheck(body.elements);
-  if (q.dropped) toast(OW_MSG.qr, OW_LONG);
+  if (q.dropped) toast(OW_MSG.qr, OW_LONG, 'info');
   var html = window.OWSocial.renderEditableHtml(W, H, String(body.base || ''), q.list);
   return owDraw(html, W, H, { lane: 'editor', ratio: 2, passes: 2, tell: true }).then(function (res) { return owResp(res.blob, 200, 'image/png'); });
 }
@@ -1587,7 +1592,7 @@ function owZip(body) {
   var open = owEditorOpen() && !!EDIT.width, onCanvas = open ? owChangesNow(EDIT.els) : [];
   function carry(tid) { return (open && tid === EDIT.tid ? onCanvas : []).concat(owChangesFor(tid)); }
   var ready = 0;
-  function count() { toast('Drawing all sizes… ' + ready + ' of ' + items.length + ' ready.', 60000); }
+  function count() { toast('Drawing all sizes… ' + ready + ' of ' + items.length + ' ready.', 60000, 'info'); }
   count();
   return Promise.all([owHtml(items), owLayouts()]).then(function (r0) {
     var got = r0[0], zip = new JSZip(), captions = {}, drawn = 0, said = [], qr = 0;
@@ -1734,17 +1739,17 @@ updUndo = function () { var r = owUpdUndo.apply(this, arguments); owFillerNote()
 updLayerLabel = function () { var r = owUpdLayerLabel.apply(this, arguments); owFillerNote(); return r; };
 paintSide = function () { var r = owPaintSide.apply(this, arguments); owFillerNote(); return r; };
 edDownload = function () {
-  if (owNoQuote(edParams.quote)) { toast(OW_MSG.testimonial, OW_LONG); return Promise.resolve(); }
-  if (owFillerIn(EDIT.tid, EDIT.els)) { owFillerNote(); toast(OW_MSG.prediction, OW_LONG); return Promise.resolve(); }
+  if (owNoQuote(edParams.quote)) { toast(OW_MSG.testimonial, OW_LONG, 'error'); return Promise.resolve(); }
+  if (owFillerIn(EDIT.tid, EDIT.els)) { owFillerNote(); toast(OW_MSG.prediction, OW_LONG, 'error'); return Promise.resolve(); }
   return owOrig.edDownload.apply(this, arguments);
 };
 /* the ZIP is drawn from the Options form as it stands (edDownloadZip reads it), so its quote is the form's */
 edDownloadZip = function () {
   var f = document.querySelector('#edOpts [data-key="quote"]');
-  if (owNoQuote(f ? f.value : edParams.quote)) { toast(OW_MSG.testimonial, OW_LONG); return Promise.resolve(); }
-  if (owFillerIn(EDIT.tid, EDIT.els)) { owFillerNote(); toast(OW_MSG.prediction, OW_LONG); return Promise.resolve(); }
+  if (owNoQuote(f ? f.value : edParams.quote)) { toast(OW_MSG.testimonial, OW_LONG, 'error'); return Promise.resolve(); }
+  if (owFillerIn(EDIT.tid, EDIT.els)) { owFillerNote(); toast(OW_MSG.prediction, OW_LONG, 'error'); return Promise.resolve(); }
   /* one ZIP at a time: it can take ten seconds, and a second click would draw every size again and download twice */
-  if (OWS.zipBusy) { toast('The ZIP is still being drawn. It downloads when every size is ready.', OW_LONG); return Promise.resolve(); }
+  if (OWS.zipBusy) { toast('The ZIP is still being drawn. It downloads when every size is ready.', OW_LONG, 'info'); return Promise.resolve(); }
   var self = this, args = arguments, held = false;
   OWS.zipBusy = true;
   owZipButton(true);
@@ -1755,13 +1760,13 @@ edDownloadZip = function () {
   var first = EDIT.tid !== OW_PREDICTION ? new Promise(function (ok) { ok(go()); }) : owFillerSaved().then(function (sizes) {
     if (!sizes.length) return go();
     held = true;
-    toast(owFillerSavedWords(sizes), OW_LONG);
+    toast(owFillerSavedWords(sizes), OW_LONG, 'error');
     return undefined;
   });
   /* the platform's "✓ Downloaded ZIP", with what each size was drawn from (owZip) */
   return first.then(function (v) {
     done();
-    if (OWS.zipSaid && !held) toast(OWS.zipSaid, OW_LONG);
+    if (OWS.zipSaid && !held) toast(OWS.zipSaid, OW_LONG, 'success');
     OWS.zipSaid = '';
     return v;
   }, function (e) { done(); throw e; });
@@ -1812,7 +1817,7 @@ wirePanel = function (el) {
       if (String(src.value || '').trim() !== v) return;      // typed over meanwhile: its own change is checked
       if (ok) { if (take) take.call(src); return; }
       src.value = before.indexOf('data:') === 0 ? '' : before;
-      toast(OW_MSG.picture, OW_LONG);
+      toast(OW_MSG.picture, OW_LONG, 'error');
     });
   };
   owAddUpload(el, src);
@@ -1846,20 +1851,20 @@ function owUplShown(el) {
 }
 function owUploadPicture(el, file) {
   var A = window.OWSArt;
-  if (!A || typeof A.picture !== 'function') { toast('Uploading pictures did not load. Reload the page and try again.', OW_LONG); return Promise.resolve(); }
+  if (!A || typeof A.picture !== 'function') { toast('Uploading pictures did not load. Reload the page and try again.', OW_LONG, 'error'); return Promise.resolve(); }
   if (OWS.uploading.indexOf(el) !== -1) return Promise.resolve();   // one at a time for an element: the first is kept
   OWS.uploading.push(el);
   owUplShown(el);
   return Promise.resolve().then(function () { return A.picture(file); }).then(function (got) {
     var i = EDIT.els.indexOf(el);
     if (!got || !got.url) throw new Error('The picture could not be uploaded.');
-    if (i === -1) { toast('The picture was uploaded, but the element it was for is no longer on the canvas.', OW_LONG); return; }
+    if (i === -1) { toast('The picture was uploaded, but the element it was for is no longer on the canvas.', OW_LONG, 'error'); return; }
     pushHistory();                                              // Undo brings the old picture back
     el.src = got.url;
     if (edNodes[i]) applyNode(edNodes[i], el);
     if (edSel === i) { var s = $('epSrc'); if (s) s.value = got.url; updLayerLabel(); }
   }).then(null, function (e) {
-    toast(owMessage(e) || 'The picture could not be uploaded.', OW_LONG);
+    toast(owMessage(e) || 'The picture could not be uploaded.', OW_LONG, 'error');
   }).then(function () {
     var k = OWS.uploading.indexOf(el);
     if (k !== -1) OWS.uploading.splice(k, 1);
@@ -1947,7 +1952,7 @@ function owWhenTall(ms) {
     })();
   });
 }
-function owDeepToast(m) { return owWhenTall(OW_DEEP_WAIT).then(function () { toast(m, OW_LONG); }); }
+function owDeepToast(m) { return owWhenTall(OW_DEEP_WAIT).then(function () { toast(m, OW_LONG, 'error'); }); }
 function owOpenDeep() {
   var id = OW_DEEP, found = null;
   OW_DEEP = '';

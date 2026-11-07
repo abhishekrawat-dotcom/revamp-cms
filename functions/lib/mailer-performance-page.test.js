@@ -3,6 +3,7 @@
 // (promo-mailer-studio.html?scope=all), and the events listing links to it beside "Activity log". Reads the two
 // pages as files; no network, no Firebase, no browser.
 const fs = require('fs');
+const vm = require('vm');
 const path = require('path');
 const access = require('./access');
 
@@ -41,9 +42,18 @@ check('the bar is 60px tall with a 1px border, as the frame\'s 61px assumes',
 /* scripts: the theme bootstrap (before anything paints), then theme-toggle.js, then auth.js — the page has no code
    of its own, the dashboard is the frame's — then ETB2B AI's three, as on every page (assistant-pages.test.js) */
 var scripts = page.match(/<script\b[^>]*>/g) || [];
-check('six scripts: the theme bootstrap, theme-toggle.js, auth.js, then ETB2B AI\'s etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js — in that order',
-  scripts.length === 6 && scripts[0] === '<script>' && scripts[1] === '<script src="theme-toggle.js">' && scripts[2] === '<script src="auth.js">' &&
-  scripts[3] === '<script src="etb2b-chat.js">' && scripts[4] === '<script src="dash-bot-client.js">' && scripts[5] === '<script src="etb2b-assistant.js">', scripts);
+check('seven scripts: the theme bootstrap, the ?event= hand-on, theme-toggle.js, auth.js, then ETB2B AI\'s etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js — in that order',
+  scripts.length === 7 && scripts[0] === '<script>' && scripts[1] === '<script>' && scripts[2] === '<script src="theme-toggle.js">' && scripts[3] === '<script src="auth.js">' &&
+  scripts[4] === '<script src="etb2b-chat.js">' && scripts[5] === '<script src="dash-bot-client.js">' && scripts[6] === '<script src="etb2b-assistant.js">', scripts);
+/* UX-008: an address naming one event is that event's Mailers in Promotions (which says "Event not found" for a bad one) */
+var handOn = (/<script>(\(function\(\)\{try\{var id=new URLSearchParams[\s\S]*?)<\/script>/.exec(page) || [])[1] || '';
+(function () {
+  var went = [];
+  function run(search) { went.length = 0; vm.runInNewContext(handOn, { URLSearchParams: URLSearchParams, encodeURIComponent: encodeURIComponent, location: { search: search, replace: function (u) { went.push(u); } } }); return went.slice(); }
+  check('?event=<id> goes to that event\'s Mailers in Promotions', !!handOn && JSON.stringify(run('?event=qa-x')) === JSON.stringify(['marketing.html?event=qa-x&tab=mailers']));
+  check('… an id is passed on encoded', JSON.stringify(run('?event=a%26b')) === JSON.stringify(['marketing.html?event=a%26b&tab=mailers']));
+  check('… and with no event the page stays (every event\'s mailers)', run('').length === 0 && run('?scope=all').length === 0);
+})();
 check('the theme bootstrap runs in the head, before the styles', page.indexOf('<script>try{var t=localStorage.getItem("revamp-theme")') < page.indexOf('<style>') &&
   page.indexOf('<style>') < page.indexOf('</head>'));
 check('theme-toggle.js and auth.js load at the end of the body', page.indexOf('<script src="theme-toggle.js">') > page.indexOf('</main>') &&

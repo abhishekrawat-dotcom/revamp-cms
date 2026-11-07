@@ -226,7 +226,9 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
 /* ======================= 5 the top bar (UX-078) ======================= */
 (function () {
   var top = (MARKUP.match(/<header class="topbar">([\s\S]*?)<\/header>/) || [])[1] || '';
-  check('5 the top bar holds what acts on this site only: no theme switch, no markers icon', top.indexOf('data-theme-toggle-target') === -1 && top.indexOf('btn-ai-markers') === -1);
+  /* the light/dark switch ends the bar beside the account, as on every page (UX-007): a 32px icon, the name keeps its room */
+  check('5 the top bar holds what acts on this site, then the light/dark switch and the account as on every page; no markers icon',
+    /<span data-theme-toggle-target[^>]*><\/span>\s*<span data-rv-account><\/span>\s*<\/span>\s*$/.test(top) && top.indexOf('btn-ai-markers') === -1);
   check('5 the event\'s name keeps its room', /\.topbar \.ev-title\{[^}]*min-width:180px;[^}]*flex:1 1 220px;/.test(PAGE) && /\.topbar \[data-rv-account\]\{ flex-shrink:0; \}/.test(PAGE));
   check('5 its meta line is in its tooltip when cut', /metaEl\.title = meta/.test(SRC));
   check('5 the page switcher is in the tools row', /document\.querySelector\('\.ed-rail \.rail-fixed'\)/.test(body('renderPageSwitch')));
@@ -314,8 +316,8 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
     /\.rail-scroll\{ display:none;/.test(PAGE) && /\.ed-rail\.has-more \.rail-scroll\{ display:block; \}/.test(PAGE) && /body\.ed-mode-ai \.rail-scroll\{ display:none !important; \}/.test(PAGE));
   check('5 a page name cut by the narrower switch is in full on hover', /select\.title = shown \? shown\.title : '';/.test(body('renderPageSwitch')));
 
-  // the account menu's Dark mode, run: auth.js's menu item reads and flips the theme through theme-toggle.js
-  check('5 the account slot asks for the light/dark switch', /<span data-rv-account data-rv-account-theme><\/span>/.test(top));
+  // the account menu's Dark mode (auth.js, for a page that asks for it): the editor's switch is in its top bar now (UX-007)
+  check('5 the account slot is every page\'s: Sign out, the switch beside it', /<span data-rv-account><\/span>/.test(top) && top.indexOf('data-rv-account-theme') === -1);
   check('5 theme-toggle.js offers the switch under a name rv-theme.js does not take', /global\.RevampColorMode = \{/.test(TOGGLE) && /current: function/.test(TOGGLE));
   var open = AUTH.slice(AUTH.indexOf('function mountAccountMenu('), AUTH.indexOf('function mountAccountMenus('));
   check('5 auth.js puts "Dark mode" in the menu only where it is asked for', /el\.hasAttribute\('data-rv-account-theme'\) \? window\.RevampColorMode : null/.test(open) &&

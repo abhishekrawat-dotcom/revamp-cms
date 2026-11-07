@@ -96,3 +96,12 @@ button.thumb{width:100%;margin:0;padding:0;border:0;border-bottom:1px solid var(
 .ow-filler-note{display:flex;align-items:center;gap:10px;flex:none;padding:7px 16px;font-size:12.5px;font-weight:600;line-height:1.4;background:var(--ow-accent-soft);color:var(--ow-accent-text);border-bottom:1px solid var(--line)}
 .ow-filler-note[hidden]{display:none}
 .ow-filler-note .ow-ex{position:static;flex:none}
+
+/* A phone (UX-009). The layout editor needs the post and its panel side by side: at 390px the post was a 64px
+   thumbnail beside a panel two thirds of the width. Below 700px it says so in their place and keeps only Back (the
+   posts, their Download and their captions stay usable there). The hashtag chip's wrap is in oneworld.css. */
+@media (max-width:699px){
+  #editor.on .ed-top .ed-pick, #editor.on .ed-top .acts, #editor.on .ed-top .sp, #editor.on .ed-body{display:none}
+  #editor.on::after{content:"The layout editor needs a larger screen. Open this post on a computer, or on a tablet held sideways, to change its layout.";
+    flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px;text-align:center;font-size:15px;line-height:1.5;font-weight:600}
+}

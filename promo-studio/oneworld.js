@@ -168,7 +168,7 @@ function owSendWithBanner(send) {
       return owBannerReady({ fresh: true }).then(send).then(function (again) {
         return owBannerStale(again).then(function (still) {
           /* after the studio's own "… failed", which its code shows as soon as it reads this answer */
-          if (still) setTimeout(function () { toast(OW_BANNER_FAILED, 6000); }, 0);
+          if (still) setTimeout(function () { toast(OW_BANNER_FAILED, 6000, 'error'); }, 0);
           return again;
         });
       });
@@ -801,7 +801,7 @@ function owLightboxIfWanted() {
   if (it.html) { owLightbox(w.key, it, null); return; }
   if (it.error) return;                          // its card says it could not be drawn
   var m = findMailer(w.key.slice(4));
-  toast('That mailer is not available for this event yet' + (m && m.missing && m.missing.length ? ': it needs ' + m.missing.join(', ') : ''), 6000);
+  toast('That mailer is not available for this event yet' + (m && m.missing && m.missing.length ? ': it needs ' + m.missing.join(', ') : ''), 6000, 'error');
 }
 
 /* ---------- the studio and the whole-mail view take the whole window while open ---------- */
@@ -890,11 +890,16 @@ function owOnMessage(e) {
     done({ ok: !!b.ok, error: b.error ? String(b.error) : '' });
   }
 }
-/* A toast is fixed to this frame's bottom edge, which in a tall frame may be far below the window: while the page
-   scrolls (and neither the studio nor the whole-mail view has the window) the console shows it instead */
+/* In Promotions (which has said the frame is tall) every message is shown by the page around the frame: RevampCore's
+   one message of every page (UX-006), at the window's bottom centre and above the frame even while the studio or the
+   whole-mail view has the window. A toast of this frame's own would sit at the frame's bottom edge, which in a tall
+   frame may be far below what is shown, and look like no other page's. Elsewhere (Mailer performance, the studio on
+   its own) the studio keeps its own. kind ('success' | 'error' | 'info') goes with the message where the words alone
+   could be misread (a server's own sentence, a download with a caveat): the page draws it as that kind, and guesses
+   from the words only when no kind is given. */
 var owToast = toast;
-toast = function (m, ms) {
-  if (owFramed() && owTall() && !owStudioOpen() && !OW_LB) { owPost({ rvToast: { m: String(m), ms: ms } }); return; }
+toast = function (m, ms, kind) {
+  if (owFramed() && owTall()) { owPost({ rvToast: { m: String(m), ms: ms, k: kind } }); return; }
   return owToast.apply(this, arguments);
 };
 
@@ -964,7 +969,7 @@ function anOpen(portal, event, mailerId, name, saveId) {
     owRenderPage();
     var m = findMailer(mailerId);
     if (m && (m.available || saveId)) openMailer(mailerId, saveId || null);
-    else toast('That mailer is not available for this event any more');
+    else toast('That mailer is not available for this event any more', undefined, 'error');
     return;
   }
   window.top.location.href = '/marketing.html?event=' + encodeURIComponent(event) + '&tab=mailers&mailer=' + encodeURIComponent(mailerId) +
@@ -1025,16 +1030,16 @@ function owDashRetry() {
 function owTrackToast(kind, tracked, fname) {
   var off = !!(MAILERS && MAILERS.tracking === false), f = String(fname || '');
   if (kind === 'download') {
-    if (off) return toast('Downloaded ' + f, 5000);
-    if (tracked) return toast('Downloaded ' + f + ' — opens and clicks will show on your dashboard once it\'s sent.', 5000);
-    return toast('Downloaded ' + f + ' — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000);
+    if (off) return toast('Downloaded ' + f, 5000, 'success');
+    if (tracked) return toast('Downloaded ' + f + ' — opens and clicks will show on your dashboard once it\'s sent.', 5000, 'success');
+    return toast('Downloaded ' + f + ' — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000, 'success');
   }
   if (kind === 'copy') {
-    if (off || tracked) return toast('HTML copied — paste into your ESP');
-    return toast('HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000);
+    if (off || tracked) return toast('HTML copied — paste into your ESP', undefined, 'success');
+    return toast('HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000, 'success');
   }
-  if (off || tracked) return toast('Downloaded — saved edits included');
-  return toast('Downloaded — saved edits included. Not tracked this time: download again to see their opens and clicks on your dashboard.', 5000);
+  if (off || tracked) return toast('Downloaded — saved edits included', undefined, 'success');
+  return toast('Downloaded — saved edits included. Not tracked this time: download again to see their opens and clicks on your dashboard.', 5000, 'success');
 }
 
 /* ---------- file names and sizes (UX-136) ---------- */
@@ -1143,14 +1148,14 @@ async function mlExport(format, width) {
   closeMenus();
   if (!MD.doc) return;
   if (format === 'pdf') {
-    try { await owExport({ doc: MD.doc, format: 'pdf', width: width }); toast('In the print window, choose “Save as PDF”', 4000); }
-    catch (e) { toast(String(e && e.message || 'Could not open the PDF'), 4000); }
+    try { await owExport({ doc: MD.doc, format: 'pdf', width: width }); toast('In the print window, choose “Save as PDF”', 4000, 'info'); }
+    catch (e) { toast(String(e && e.message || 'Could not open the PDF'), 4000, 'error'); }
     return;
   }
   mlBusy(true, 'Making the picture…');
   var r = await api('/api/mailer/export', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ doc: MD.doc, format: format, width: width }) });
   mlBusyDone();
-  if (!r.ok) { toast('Could not render the ' + format.toUpperCase()); return; }
+  if (!r.ok) { toast('Could not render the ' + format.toUpperCase(), undefined, 'error'); return; }
   var blob = await r.blob();
   var stem = (MD.doc.subject || 'mailer').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60) || 'mailer';
   var a = document.createElement('a');
@@ -1158,7 +1163,7 @@ async function mlExport(format, width) {
   a.href = URL.createObjectURL(blob); a.download = stem + suffix + '.' + format;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
-  toast(format.toUpperCase() + ' downloaded (' + owSize(blob.size) + ')');
+  toast(format.toUpperCase() + ' downloaded (' + owSize(blob.size) + ')', undefined, 'success');
 }
 
 /* ---------- the mail fits the studio (UX-136) ----------

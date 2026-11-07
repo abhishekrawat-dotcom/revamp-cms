@@ -6,27 +6,34 @@
 <meta name="robots" content="noindex">
 <title>Review changes &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
   /* The page an approver opens from the link in an approval request: what changed and who changed it on the
      left, the live site beside the proposed one on the right, Approve / Reject at the bottom of the list.
      Data: GET /api/event/approval; decision: POST /api/event/approval/decide (functions/lib/api.js). */
+  /* the console's neutrals (edit-event.css), in both themes, so the page reads as the same product (UX-007) */
   :root{
-    --bg:#F6F4F1; --surface:#fff; --surface-2:#F3EEED; --border:#E4DDDA; --text:#1E1A1A; --muted:#6B6361;
+    --bg:#FAF7F6; --surface:#fff; --surface-2:#F3EEED; --border:#E0D7D5; --text:#241B1A; --muted:#756865;
     --accent:#ED1C24; --ok:#2F8F5B; --ok-soft:#DFEEE1; --warn:#9C6B14; --warn-soft:#F3E7C8; --bad:#B3261E; --bad-soft:#F7DEDC;
   }
   :root[data-theme="dark"]{
-    --bg:#151312; --surface:#1E1B1A; --surface-2:#262221; --border:#38322F; --text:#F2ECEA; --muted:#A79F9C;
+    --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --border:#3F3532; --text:#EDE6E4; --muted:#A89C99;
     --ok:#4FAE7A; --ok-soft:#1F3524; --warn:#D6A544; --warn-soft:#3A2E14; --bad:#F0857D; --bad-soft:#3B1E1C;
   }
   *{ box-sizing:border-box; }
   html,body{ height:100%; margin:0; }
-  body{ background:var(--bg); color:var(--text); font:14px/1.5 Manrope,-apple-system,"Segoe UI",Arial,sans-serif; display:flex; flex-direction:column; }
+  /* the console's font (UX-007): a requester who presses Publish lands on a page of the same product */
+  body{ background:var(--bg); color:var(--text); font:14px/1.5 Inter,"Segoe UI",system-ui,-apple-system,Arial,sans-serif; display:flex; flex-direction:column; }
   a{ color:inherit; }
   header{ display:flex; align-items:center; gap:14px; padding:12px 18px; background:var(--surface); border-bottom:1px solid var(--border); flex-wrap:wrap; }
   header h1{ font-size:16px; margin:0; font-weight:700; }
   header .sub{ color:var(--muted); font-size:12.5px; }
   header .grow{ flex:1; min-width:0; }
+  /* the console's Back button: the same look and words on every page (UX-007) */
+  .back-btn{ display:inline-flex; align-items:center; gap:7px; padding:7px 13px 7px 10px; border-radius:9px; border:1px solid var(--border);
+    background:var(--surface-2); color:var(--text); font-size:13px; font-weight:700; text-decoration:none; white-space:nowrap; }
+  .back-btn:hover{ border-color:var(--accent); }
+  .back-btn svg{ flex-shrink:0; }
   .badge{ font-size:11.5px; font-weight:700; padding:4px 10px; border-radius:999px; text-transform:uppercase; letter-spacing:.04em; }
   .badge.pending{ background:var(--warn-soft); color:var(--warn); }
   .badge.approved{ background:var(--ok-soft); color:var(--ok); }
@@ -106,12 +113,13 @@
 </head>
 <body>
 <header>
-  <a class="btn small" id="back" href="/Event_Listing.html">&larr; Events</a>
+  <a class="back-btn" id="back" href="/Event_Listing.html"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back to events</span></a>
   <div class="grow">
     <h1 id="title">Review changes</h1>
     <div class="sub" id="sub">&nbsp;</div>
   </div>
   <span class="badge" id="status" hidden></span>
+  <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
   <span data-rv-account></span>
 </header>
 <main id="main"><div class="loading" id="loading">Loading the request…</div></main>
@@ -127,7 +135,8 @@
   var main = document.getElementById('main'), data = null;
 
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
-  function when(iso){ var d = new Date(iso || ''); return isNaN(d) ? '—' : d.toLocaleString(undefined, { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
+  /* "3 Nov 2026, 12:40 pm": RevampCore's one way of writing a moment (UX-010) */
+  function when(iso){ return C.fmtDate(iso, { time: true }); }
   var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design',
     'record-added':'Added', 'record-removed':'Removed', 'record-changed':'Changed', 'record-order':'New order' };
   /* the class that colours a change's badge */
@@ -153,13 +162,13 @@
     }).join('');
   }
 
-  function fail(message){
-    main.innerHTML = '<div class="loading">' + esc(message) + '</div>';
-  }
-  if (!eventId) return fail('This link is missing the event it is about.');
+  if (!eventId){ C.renderLoadError(main, null, { kind: 'none', none: 'the event whose changes you want to review' }); return; }
 
+  /* a request that cannot be opened: RevampCore's one state for it (UX-008), never the server's words or the raw id */
   function load(){
-    return C.fetchApproval(eventId, requestId).then(function(d){ data = d; render(); loadChecks(); }, function(err){ fail((err && err.message) || 'The request could not be loaded.'); });
+    return C.fetchApproval(eventId, requestId).then(function(d){ data = d; render(); loadChecks(); }, function(err){
+      C.renderLoadError(main, err, { onRetry: load });
+    });
   }
   /* The site check of the proposed version (?checks=1), asked for once the request is on screen: it reads the
      pictures in storage and takes a moment. What it finds fills its box; when it holds the version back, Approve
@@ -242,7 +251,7 @@
     var r = data.request;
     document.getElementById('title').textContent = 'Review changes — ' + (data.name || eventId);
     document.getElementById('back').href = '/edit-event.html?event=' + encodeURIComponent(eventId) + '#settings/history';
-    document.getElementById('back').innerHTML = '&larr; Event history';
+    document.getElementById('back').innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back to the event</span>';
     var badge = document.getElementById('status');
     if (!r){
       badge.hidden = true;

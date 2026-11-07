@@ -1647,28 +1647,6 @@
   .tpl-preview-row .nm{ font-size: 12.5px; font-weight: 700; }
   .tpl-preview-row .switch{ padding: 3px 6px; }
 
-  /* above the footer bar (toast() sets the distance from the bar's real height) and transparent to the
-     mouse everywhere but on a message itself, so a message never takes a click meant for Continue */
-  #toast-region{
-    position: fixed; bottom: 80px; right: 22px; left: 22px; z-index: 100; pointer-events: none;
-    display:flex; flex-direction:column; align-items:flex-end; gap:8px;
-  }
-  .toast{
-    display:flex; align-items:flex-start; gap: 10px; pointer-events: auto;
-    background: var(--text); color: var(--bg); font-size: 13px; font-weight:600; padding: 10px 10px 10px 16px; border-radius: 8px;
-    box-shadow: var(--shadow-md); opacity: 0; transform: translateY(6px); transition: opacity .18s ease, transform .18s ease;
-    max-width: min(380px, 100%); overflow-wrap: anywhere;
-  }
-  .toast.show{ opacity: 1; transform: translateY(0); }
-  .toast-msg{ flex: 1; min-width: 0; padding: 1px 0; }
-  .toast-error{ background: var(--crit); color: #fff; }
-  :root[data-theme="dark"] .toast-error{ background: var(--crit-soft); color: var(--text); border: 1px solid var(--crit); }
-  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .toast-error{ background: var(--crit-soft); color: var(--text); border: 1px solid var(--crit); } }
-  .toast-action, .toast-close{ flex-shrink: 0; background: none; border: 0; color: inherit; font: inherit; cursor: pointer; border-radius: 5px; }
-  .toast-action{ font-weight: 800; text-decoration: underline; padding: 1px 4px; }
-  .toast-close{ display:flex; align-items:center; justify-content:center; width: 22px; height: 22px; padding: 0; opacity: .75; }
-  .toast-close:hover{ opacity: 1; background: rgba(127,127,127,.25); }
-
   .fade-in{ animation: fadeIn .26s ease both; }
   @keyframes fadeIn{ from{ opacity:0; transform: translateY(7px); } to{ opacity:1; transform:none; } }
 
@@ -2013,9 +1991,10 @@
       <!-- where the draft is: in the person's account, or on this computer only while the account cannot be reached
            (renderSaveState); not shown until something has been entered -->
       <span class="save-state" id="save-state" title="Your draft is saved to your account: resume it from Drafts on the events dashboard, on any computer." hidden><span class="d"></span>Saved to your account</span>
-      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <button class="btn btn-secondary btn-sm" id="btn-save-exit">Save &amp; exit</button>
-      <!-- the signed-in user's avatar and Sign out: auth.js renders it into any [data-rv-account] -->
+      <!-- the light/dark switch, then the signed-in user's avatar and Sign out, side by side as on every page (UX-007);
+           only the builder's close button comes after them -->
+      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <span data-rv-account></span>
       <button class="icon-btn" id="btn-close" title="Close builder" aria-label="Close builder">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -2438,7 +2417,6 @@
 </div>
 
 <div id="modal-root"></div>
-<div id="toast-region" role="status" aria-live="polite"></div>
 <script src="editor-store.js"></script>
 <script src="ag-psd.bundle.js"></script>
 <script src="edit-event-core.js"></script>
@@ -3628,58 +3606,19 @@
 
   /* A passing message. opts: { type: 'info' | 'success' | 'error', action: { label, onClick }, sticky, duration }.
      It stays long enough to be read — the longer the text, the longer — and waits while the mouse is on
-     it; a failure stays until it is closed. Returns the function that closes it. */
-  var TOAST_MAX = 4;
+     it; a failure stays until it is closed. Returns the function that closes it. It is RevampCore.toast, the one
+     message of every page (UX-006): the same place and look as in the console, the site editor and the events list. */
   /* keeps the messages clear of the footer bar, whose height changes with the screen and with its text */
   function placeToasts(){
-    var region = $('toast-region'), foot = $('wiz-foot');
-    if (region && foot) region.style.bottom = (foot.offsetHeight + 12) + 'px';
+    var foot = $('wiz-foot');
+    var st = document.body && document.body.style;
+    if (foot && st && typeof st.setProperty === 'function') st.setProperty('--rv-toast-bottom', (foot.offsetHeight ? foot.offsetHeight + 12 : 24) + 'px');
   }
   window.addEventListener('resize', placeToasts);
   function toast(msg, opts){
     opts = opts || {};
-    var type = opts.type || 'info', sticky = !!opts.sticky || type === 'error';
-    var region = $('toast-region');
     placeToasts();
-    var t = document.createElement('div'), timer = null;
-    t.className = 'toast toast-' + type;
-    if (type === 'error') t.setAttribute('role', 'alert');
-    var text = document.createElement('span');
-    text.className = 'toast-msg';
-    text.textContent = msg;
-    t.appendChild(text);
-    function close(){
-      clearTimeout(timer);
-      t.classList.remove('show');
-      setTimeout(function(){ t.remove(); }, 220);
-    }
-    if (opts.action && opts.action.label){
-      var act = document.createElement('button');
-      act.type = 'button';
-      act.className = 'toast-action';
-      act.textContent = opts.action.label;
-      act.onclick = function(){ close(); if (opts.action.onClick) opts.action.onClick(); };
-      t.appendChild(act);
-    }
-    var x = document.createElement('button');
-    x.type = 'button';
-    x.className = 'toast-close';
-    x.setAttribute('aria-label', 'Dismiss');
-    x.innerHTML = IC.x;
-    x.onclick = close;
-    t.appendChild(x);
-    /* a run of quick actions must not build a wall of messages: the oldest passing ones make room */
-    var passing = region.querySelectorAll('.toast:not(.toast-sticky)');
-    for (var i = 0; i <= passing.length - TOAST_MAX; i++) passing[i].remove();
-    region.appendChild(t);
-    requestAnimationFrame(function(){ t.classList.add('show'); });
-    if (sticky){ t.classList.add('toast-sticky'); return close; }
-    var ms = opts.duration || Math.max(4000, 60 * String(msg).length);
-    function arm(){ clearTimeout(timer); timer = setTimeout(close, ms); }
-    t.addEventListener('mouseenter', function(){ clearTimeout(timer); });
-    t.addEventListener('mouseleave', arm);
-    arm();
-    return close;
+    return RevampCore.toast(msg, { kind: opts.type || 'info', action: opts.action, sticky: opts.sticky, duration: opts.duration });
   }
 
   /* =========================================================

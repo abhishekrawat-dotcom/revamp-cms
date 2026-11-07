@@ -20,11 +20,9 @@
     localStorage.setItem(STORE_KEY, theme);
     /* Update every mounted toggle on the page */
     document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
-      var isDark = theme === 'dark';
-      btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
-      btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-      var indicator = btn.querySelector('.tgl-indicator');
-      if (indicator) indicator.setAttribute('data-mode', theme);
+      var label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
     });
   }
 
@@ -41,47 +39,25 @@
   if (!document.getElementById(STYLE_ID)) {
     var s = document.createElement('style');
     s.id = STYLE_ID;
+    /* A plain icon button (UX-012): a moon to go dark, a sun to go light. It used to be a red on/off switch,
+       which next to Publish read as a setting of the event rather than of this screen. */
     s.textContent =
       '.theme-toggle-btn{' +
-        'display:inline-flex;align-items:center;justify-content:center;' +
-        'background:var(--surface-2,#F3EEED);' +
-        'border:1px solid var(--border,#E0D7D5);' +
-        'border-radius:999px;padding:2px;cursor:pointer;' +
-        'transition:background .2s,border-color .2s,box-shadow .2s;' +
-        'outline:none;flex-shrink:0;' +
+        'display:inline-grid;place-items:center;box-sizing:border-box;width:32px;height:32px;padding:0;margin:0;' +
+        'background:transparent;border:1px solid transparent;border-radius:8px;' +
+        'color:var(--text-muted,#6C6A60);cursor:pointer;flex-shrink:0;' +
+        'transition:background .15s,border-color .15s,color .15s;' +
       '}' +
       '.theme-toggle-btn:hover{' +
-        'background:var(--surface-3,#E9E2E0);' +
-        'border-color:var(--accent,#ED1C24);' +
-        'box-shadow:0 0 0 3px var(--accent-soft,#FBDBDC);' +
+        'background:var(--surface-2,#F3EEED);border-color:var(--border,#E0D7D5);color:var(--text,#1D1B17);' +
       '}' +
       '.theme-toggle-btn:focus-visible{' +
         'outline:2px solid var(--accent,#ED1C24);outline-offset:2px;' +
       '}' +
-      '.tgl-track{' +
-        'width:46px;height:26px;border-radius:999px;' +
-        'background:var(--surface-3,#E9E2E0);' +
-        'position:relative;display:block;' +
-        'transition:background .22s;' +
-      '}' +
-      '[data-theme="dark"] .tgl-track{background:var(--accent,#FF6B70);}' +
-      '.tgl-indicator{' +
-        'position:absolute;top:3px;left:3px;' +
-        'width:20px;height:20px;border-radius:50%;' +
-        'background:#fff;' +
-        'box-shadow:0 1px 4px rgba(0,0,0,.2);' +
-        'display:flex;align-items:center;justify-content:center;' +
-        'transition:transform .22s cubic-bezier(.34,1.56,.64,1),background .2s,color .2s;' +
-        'color:#9C6B14;' +
-      '}' +
-      '.tgl-indicator[data-mode="dark"]{' +
-        'transform:translateX(20px);' +
-        'background:#201C1B;color:#FF6B70;' +
-      '}' +
-      '.tgl-sun{display:block;}' +
-      '.tgl-moon{display:none;}' +
-      '.tgl-indicator[data-mode="dark"] .tgl-sun{display:none;}' +
-      '.tgl-indicator[data-mode="dark"] .tgl-moon{display:block;}';
+      '.theme-toggle-btn svg{display:block;}' +
+      '.theme-toggle-btn .tgl-sun{display:none;}' +
+      '[data-theme="dark"] .theme-toggle-btn .tgl-sun{display:block;}' +
+      '[data-theme="dark"] .theme-toggle-btn .tgl-moon{display:none;}';
     document.head.appendChild(s);
   }
 
@@ -93,21 +69,17 @@
     btn.type = 'button';
     btn.setAttribute('data-theme-toggle', '');
     btn.className = 'theme-toggle-btn';
+    /* its name says what pressing it does; it is not a pressed / not-pressed control as well */
     btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-    btn.setAttribute('aria-pressed', isDark ? 'true' : 'false');
-    btn.title = 'Toggle dark / light mode';
+    btn.title = btn.getAttribute('aria-label');
     btn.innerHTML =
-      '<span class="tgl-track" aria-hidden="true">' +
-        '<span class="tgl-indicator" data-mode="' + theme + '">' +
-          '<svg class="tgl-sun" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">' +
-            '<circle cx="12" cy="12" r="4"/>' +
-            '<path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>' +
-          '</svg>' +
-          '<svg class="tgl-moon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">' +
-            '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' +
-          '</svg>' +
-        '</span>' +
-      '</span>';
+      '<svg class="tgl-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>' +
+      '</svg>' +
+      '<svg class="tgl-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">' +
+        '<circle cx="12" cy="12" r="4"/>' +
+        '<path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>' +
+      '</svg>';
     btn.addEventListener('click', toggle);
     return btn;
   }

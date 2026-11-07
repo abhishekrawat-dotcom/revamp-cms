@@ -11,8 +11,12 @@
      .IC                  icon path table
      .esc .svg            escaping and icon rendering
      .comma .compact .money
-     .fmtDate(v)          "14 Mar 2027" — a date-only value is that calendar day, never shifted or timed
-     .fmtDT(v)            "Mar 14, 2027 (07:00 PM)" — the time only when the value has one
+     The one way every page writes a date (UX-010):
+     .fmtDate(v, opts)    "14 Mar 2027" — a date-only value is that calendar day, never shifted or timed;
+                          opts.time "14 Mar 2027, 7:00 pm" (when the value has a time), opts.day "Sun 14 Mar 2027",
+                          opts.ist a server stamp written as India time
+     .fmtDT(v, opts)      "14 Mar 2027, 7:00 pm" — the time only when the value has one; "Date to be announced"
+     .fmtTime(v, opts)    "7:00 pm"; '' when the value has no time
      .fmtRange(start,end) "14–15 Mar 2027", "30 Mar – 2 Apr 2027"; '' with no start
      .AV                  the avatar colours
                           An event's portal is ev.portal (a slug of ET's roster) and its name ev.portalName, both
@@ -133,9 +137,12 @@
      .reorderForms(eventId, ids)  POST   /api/event/forms/order -> {ok, forms}; ids: every form id, in the new order
 
      .statTile .panel .panelFlush .emptyState
-     .toast(msg)          a success message;  .toast(msg, { kind: 'error' }) a failure (no tick, stays
-                          longer);  { kind: 'info' };  { action: { label, onClick } } adds a button.
-                          Draws itself on a page without the console's stylesheet.
+     .toast(msg, opts)    the one message of every page (UX-006): a success (a tick); opts.kind 'error' a failure
+                          (red, announced, stays until dismissed) or 'info'; { action: { label, onClick } },
+                          retry, sticky, duration. Draws itself on any page; returns the function that closes it.
+     .errText(err)        what to tell the user about a failed request (never a server fault's own words)
+     .loadErrorText(err, opts) / .renderLoadError(host, err, opts)
+                          the one "Event not found" / "Couldn't load this event" state (UX-008)
      .loadState(key) .saveState(key, obj)
      .makeCtx(opts)       builds the object every section view receives
 
@@ -241,33 +248,52 @@ window.RevampCore = (function(){
   }
   /* A date as it was typed. "2027-03-14" is a calendar day, not a moment: new Date() would read it as
      midnight UTC, which is the evening before in the Americas and 05:30 in India — a wrong day, or a
-     time nobody entered. -> { d: Date in local time, timed: whether the value carries a time } or null. */
+     time nobody entered. -> { d: Date in local time, timed: whether the value carries a time,
+     zoned: whether it names its own time zone (a stamp the server made, "…Z") } or null. */
   function readDate(v){
     if (v == null || v === '') return null;
-    if (v instanceof Date) return isNaN(v) ? null : { d: v, timed: true };
-    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v).trim());
+    if (v instanceof Date) return isNaN(v) ? null : { d: v, timed: true, zoned: true };
+    if (typeof v === 'number'){ var n = new Date(v); return isNaN(n) ? null : { d: n, timed: true, zoned: true }; }
+    var str = String(v).trim();
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str);
     if (m){
       var day = new Date(+m[1], +m[2] - 1, +m[3]);
-      return (day.getMonth() === +m[2] - 1 && day.getDate() === +m[3]) ? { d: day, timed: false } : null;
+      return (day.getMonth() === +m[2] - 1 && day.getDate() === +m[3]) ? { d: day, timed: false, zoned: false } : null;
     }
-    var d = new Date(v);
-    return isNaN(d) ? null : { d: d, timed: true };
+    var d = new Date(str);
+    return isNaN(d) ? null : { d: d, timed: true, zoned: /(Z|[+-]\d{2}:?\d{2})$/i.test(str) };
   }
-  /* "Mar 14, 2027 (07:00 PM)"; the time only when the value has one. */
-  function fmtDT(iso){
-    var r = readDate(iso);
-    if (!r) return 'Date to be announced';
-    var d = r.d, out = MON[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
-    if (!r.timed) return out;
+  /* ONE way to write a date on every page (UX-010): "5 Dec 2026"; with opts.time "5 Dec 2026, 10:41 am";
+     with opts.day "Sat 5 Dec 2026"; a range is fmtRange's "5–7 Dec 2026". A time is written only when the
+     value has one, never made up. opts.ist: a stamp the server made, written as India time — for a page
+     whose heading says IST, so it is right on a laptop set to another zone. A date typed into a form
+     carries no zone: it is already the wall-clock time and is never shifted. */
+  var WDAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  function inZone(r, opts){
+    if (!(opts && opts.ist) || !r.zoned) return r.d;
+    return new Date(r.d.getTime() + (330 + r.d.getTimezoneOffset()) * 60000);
+  }
+  function clock(d){
     var hh = d.getHours(), mm = d.getMinutes();
-    var ap = hh >= 12 ? 'PM' : 'AM', h12 = hh % 12 || 12;
-    return out + ' (' + (h12 < 10 ? '0' : '') + h12 + ':' + (mm < 10 ? '0' : '') + mm + ' ' + ap + ')';
+    return (hh % 12 || 12) + ':' + (mm < 10 ? '0' : '') + mm + ' ' + (hh < 12 ? 'am' : 'pm');
   }
-  /* "14 Mar 2027" — never a time. */
-  function fmtDate(iso){
+  /* "14 Mar 2027"; opts { time, day, ist } as above; '—' when there is no date */
+  function fmtDate(iso, opts){
     var r = readDate(iso);
     if (!r) return '—';
-    return r.d.getDate() + ' ' + MON[r.d.getMonth()] + ' ' + r.d.getFullYear();
+    var d = inZone(r, opts);
+    var out = (opts && opts.day ? WDAY[d.getDay()] + ' ' : '') + d.getDate() + ' ' + MON[d.getMonth()] + ' ' + d.getFullYear();
+    return (opts && opts.time && r.timed) ? out + ', ' + clock(d) : out;
+  }
+  /* "10:41 am"; '' for a value with no time */
+  function fmtTime(iso, opts){
+    var r = readDate(iso);
+    return r && r.timed ? clock(inZone(r, opts)) : '';
+  }
+  /* "14 Mar 2027, 7:00 pm" — the date, and its time when the value has one; "Date to be announced" without one */
+  function fmtDT(iso, opts){
+    if (!readDate(iso)) return 'Date to be announced';
+    return fmtDate(iso, { time: true, day: opts && opts.day, ist: opts && opts.ist });
   }
   /* An event's dates on one line: "14 Mar 2027", "14–15 Mar 2027", "30 Mar – 2 Apr 2027",
      "30 Dec 2026 – 2 Jan 2027". '' when there is no start date (callers show the event's dateLabel). */
@@ -1165,55 +1191,232 @@ window.RevampCore = (function(){
     try { localStorage.setItem(key, JSON.stringify(S)); } catch(e){}
   }
 
-  /* ---------------------------------------------------------------- toast */
-  /* toast(msg) says something worked (a tick). toast(msg, { kind: 'error' }) — or just 'error' — says
-     something did not: no tick, a warning mark, and it stays long enough to be read. { kind: 'info' } is
-     neither. { action: { label, onClick } } adds one button (Undo, Retry); the toast then stays for eight
-     seconds and goes when the button is pressed.
-     Works on any page: where the console's stylesheet is not loaded it draws itself, under class names
-     of its own — other pages have a `.toast` rule that means something else. */
-  var TOAST_HOST_STYLE = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483000;display:flex;' +
-    'flex-direction:column;gap:8px;align-items:center;pointer-events:none;max-width:calc(100vw - 32px)';
-  var TOAST_STYLE = 'display:flex;align-items:center;gap:9px;padding:10px 14px;border-radius:10px;background:#191b1f;color:#fff;' +
-    'font:500 13px/1.4 Inter,Arial,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:auto';
-  function toast(msg, kind){
-    var action = null;
-    if (kind && typeof kind === 'object'){ action = kind.action || null; kind = kind.kind || kind.type; }
-    var failed = kind === 'error', plain = kind === 'info';
-    var host = $('toast-host');
+  /* ---------------------------------------------------------------- shared look (UX-006, UX-008)
+     The message and the "could not load" state draw themselves the same way on every page, whatever
+     stylesheet the page has, so their rules are written here once (rv- class names, which no page uses
+     for anything else). Colours come from the page's own theme variables, so they follow light and dark;
+     the fallbacks are for a page that defines none. An error is one red everywhere. */
+  var SHARED_CSS = [
+    /* the higher of two lifts: the page's own (--rv-toast-bottom, over a save bar or footer) and the one that keeps a
+       corner control in view (--rv-toast-clear, below) */
+    '.rv-toasts{position:fixed;left:50%;bottom:max(var(--rv-toast-bottom,24px),var(--rv-toast-clear,0px));transform:translateX(-50%);z-index:2147482000;display:flex;' +
+      'flex-direction:column;align-items:center;gap:8px;width:max-content;max-width:calc(100vw - 32px);pointer-events:none;' +
+      'transition:bottom .18s ease}',
+    /* ETB2B AI's launcher sits in a bottom corner of every page (etb2b-chat.css: a 52px round 16px up on a phone, a
+       pill or round 22px up wider). Up to 880px a message is wide enough to reach that corner, and a failure stays until
+       it is dismissed, so it covered the launcher the whole time: the messages start above it there. */
+    '@media (max-width:880px){body:has(.rvc-launcher){--rv-toast-clear:calc(80px + env(safe-area-inset-bottom,0px))}}',
+    '.rv-toast{display:flex;align-items:flex-start;gap:9px;box-sizing:border-box;max-width:min(460px,100%);padding:10px 14px;border-radius:10px;' +
+      'background:var(--text,#191B1F);color:var(--bg,#FFFFFF);font:600 13px/1.45 var(--font-body,Inter,"Segoe UI",system-ui,-apple-system,sans-serif);' +
+      'box-shadow:0 8px 24px rgba(0,0,0,.22);pointer-events:auto;overflow-wrap:anywhere;text-align:left;opacity:0;transform:translateY(6px);' +
+      'transition:opacity .18s ease,transform .18s ease}',
+    '.rv-toast.on{opacity:1;transform:none}',
+    '.rv-toast.with-btn{padding-right:8px}',
+    '.rv-toast-error{background:#B3151B;color:#FFFFFF}',
+    '.rv-toast-ico{display:inline-flex;flex-shrink:0;margin-top:1px}',
+    '.rv-toast-msg{flex:1;min-width:0}',
+    '.rv-toast-act,.rv-toast-x{flex-shrink:0;-webkit-appearance:none;appearance:none;margin:-2px 0;border:0;background:transparent;color:inherit;' +
+      'font:inherit;font-weight:800;cursor:pointer;border-radius:7px}',
+    '.rv-toast-act{padding:2px 9px;box-shadow:inset 0 0 0 1px currentColor}',
+    '.rv-toast-x{display:grid;place-items:center;width:24px;height:24px;padding:0;opacity:.85}',
+    '.rv-toast-act:hover,.rv-toast-x:hover{background:rgba(127,127,127,.28);opacity:1}',
+    '.rv-toast-act:focus-visible,.rv-toast-x:focus-visible{outline:2px solid currentColor;outline-offset:1px}',
+    '.rv-load-error{grid-column:1/-1;align-self:start;display:flex;flex-direction:column;align-items:center;gap:10px;box-sizing:border-box;width:100%;max-width:560px;margin:0 auto;' +
+      'padding:64px 20px;text-align:center;color:var(--text,#1D1B17);font-family:var(--font-body,Inter,"Segoe UI",system-ui,-apple-system,sans-serif)}',
+    '.rv-load-error .rv-le-ico{display:grid;place-items:center;width:46px;height:46px;border-radius:50%;background:var(--surface-2,#F1F0EC);' +
+      'color:var(--text-muted,#6C6A60)}',
+    '.rv-load-error h2{margin:4px 0 0;font-size:19px;line-height:1.3;font-weight:700;color:inherit}',
+    '.rv-load-error p{margin:0;max-width:46ch;font-size:14px;line-height:1.5;color:var(--text-muted,#6C6A60)}',
+    '.rv-le-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:10px}',
+    '.rv-le-btn{display:inline-flex;align-items:center;gap:7px;box-sizing:border-box;padding:8px 15px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;line-height:1.3;' +
+      'cursor:pointer;text-decoration:none;border:1.5px solid var(--border,#E6E4DE);background:var(--surface,#FFFFFF);color:var(--text,#1D1B17)}',
+    '.rv-le-btn:hover{border-color:var(--accent,#ED1C24)}',
+    '.rv-le-btn.primary{background:var(--accent,#ED1C24);border-color:var(--accent,#ED1C24);color:var(--accent-contrast,#FFFFFF)}',
+    '.rv-le-btn:focus-visible{outline:2px solid var(--accent,#ED1C24);outline-offset:2px}',
+    '@media (prefers-reduced-motion:reduce){.rv-toast,.rv-toasts{transition:none}}'
+  ].join('\n');
+  function sharedCss(){
+    if (typeof document === 'undefined' || document.getElementById('rv-core-css')) return;
+    var st = document.createElement('style');
+    st.id = 'rv-core-css';
+    st.textContent = SHARED_CSS;
+    var where = document.head || document.documentElement || document.body;
+    if (where) where.appendChild(st);
+  }
+
+  /* ---------------------------------------------------------------- what to tell the user about a failure
+     RevampCore rejects with an Error whose status is the HTTP status (0 when no answer came back) and
+     whose message is the server's own sentence. A server fault's wording ("Internal error: Firestore
+     DEADLINE_EXCEEDED") is of no use to the person at the screen, so that case gets ours; the detail goes
+     to the browser console for whoever is fixing it. A refusal the server explains (a 4xx) is said as it
+     is. 'revamp/signed-out' is auth.js saying the session was refused: the page and what was typed stay
+     (the sign-in box is over it), so the person is told to sign in and press the button again (UX-013). */
+  function errText(err){
+    if (typeof err === 'string') return err;
+    var status = err && typeof err.status === 'number' ? err.status : 0;
+    var said = (err && err.message) || '';
+    if (err && err.code === 'revamp/signed-out') return 'You were signed out. Sign in again, then try once more: what you typed is still here.';
+    if (status === 401 || (!status && /not signed in/i.test(said))) return 'Your sign-in has expired. Sign in again, then try once more.';
+    if (!status) return 'We couldn’t reach the server. Check your connection and try again.';
+    if (status >= 500) return 'Something went wrong on our side. Please try again.';
+    return said || 'That could not be done. Please try again.';
+  }
+
+  /* ---------------------------------------------------------------- when a page cannot open its event (UX-008)
+     One pattern on every page: a plain headline, a one-line reason, one way back (Back to events), and no
+     Preview, Publish or rail while there is no event — the page hides those (opts.hide). Never the server's
+     words and never the raw id.
+     loadErrorText(err, { kind, none }) -> { title, text, missing, retry }
+       kind 'none': there is no event in the address ('missing': known to be gone); otherwise read from err.
+       none: what to open instead, finishing "Use Back to events and open …" (default "the event you want"). */
+  function loadErrorText(err, opts){
+    opts = opts || {};
+    var status = err && typeof err.status === 'number' ? err.status : 0;
+    if (opts.kind === 'none') return { title: 'No event selected', text: 'Use Back to events and open ' + (opts.none || 'the event you want') + '.', missing: true, retry: false };
+    if (opts.kind === 'missing' || status === 404) return { title: 'Event not found', text: 'This event doesn’t exist or was deleted. Use Back to events to open another one.', missing: true, retry: false };
+    if (status === 403) return { title: 'You can’t open this event', text: 'Your account does not have access to it. Use Back to events to open another one.', missing: true, retry: false };
+    if (status === 401 || (err && err.code === 'revamp/signed-out')) return { title: 'Couldn’t load this event', text: 'Your sign-in has expired. Sign in again, then try once more.', missing: false, retry: true };
+    return { title: 'Couldn’t load this event', missing: false, retry: true,
+      text: status >= 500 ? 'Something went wrong on our side. Please try again in a moment.' : 'The event could not be loaded. Check your connection and try again.' };
+  }
+  /* Paints that state into host and returns what it said. opts: kind, none (as above); onRetry: a function for
+     "Try again" (shown only when trying again can help); hide: elements or ids put away (Preview, Publish, the
+     rail); title: the element or id of the page's heading, which then reads the headline instead of "Loading…";
+     back: where Back to events goes (the events list). */
+  function renderLoadError(host, err, opts){
+    opts = opts || {};
+    var t = loadErrorText(err, opts);
+    if (err && opts.kind !== 'none' && typeof console !== 'undefined') console.error('Event load failed:', err);
+    sharedCss();
+    (opts.hide || []).forEach(function(x){ var el = typeof x === 'string' ? $(x) : x; if (el) el.hidden = true; });
+    var head = typeof opts.title === 'string' ? $(opts.title) : opts.title;
+    if (head) head.textContent = t.title;
+    if (typeof host === 'string') host = $(host);
+    if (!host) return t;
+    var retry = t.retry && typeof opts.onRetry === 'function';
+    host.innerHTML = '<div class="rv-load-error" role="alert"><span class="rv-le-ico">' + svg(IC.info, 22) + '</span>' +
+      '<h2>' + esc(t.title) + '</h2><p>' + esc(t.text) + '</p><div class="rv-le-acts">' +
+      (retry ? '<button class="rv-le-btn primary" type="button" data-rv-retry>Try again</button>' : '') +
+      '<a class="rv-le-btn' + (retry ? '' : ' primary') + '" href="' + esc(opts.back || '/Event_Listing.html') + '">Back to events</a></div></div>';
+    var again = host.querySelector('[data-rv-retry]');
+    if (again) again.addEventListener('click', function(){ opts.onRetry(); });
+    return t;
+  }
+
+  /* ---------------------------------------------------------------- toast (UX-006)
+     The one message component of every page: bottom-centre, lifted clear of a page's save bar or footer
+     (the page sets --rv-toast-bottom), read out by screen readers.
+       toast(msg)                         something worked: a tick, gone after a few seconds
+       toast(msg, { kind: 'error' })      something did not: one red, a warning mark, announced at once, and it
+                                          stays until it is dismissed (the same message is never stacked twice)
+       toast(msg, { kind: 'info' })       neither; no mark
+       toast(msg, 'error')                the same, shorter
+     More options: action { label, onClick } adds one button (Undo, Open copy) and keeps the message eight
+     seconds at least; retry: a function adds "Try again"; sticky keeps any message until it is dismissed;
+     duration: how long it stays (ms); kind 'auto' reads the wording (for a message that comes with no kind: the
+     platform code inside the Promotions studios has none, while Oneworld's own messages there send theirs).
+     Pausing the mouse on a message holds it. Returns the function that closes it (also as .dismiss). */
+  var TOAST_MAX = 4;
+  var FAIL_WORDS = /\b(fail(ed|s|ure)?|could ?n[o'’]t|did ?n[o'’]t|cannot|can[’']t|unable|(is|was)n[’']t (saved|added|sent|loaded|uploaded|allowed|available)|not (been )?(saved|added|sent|loaded|uploaded|allowed|available)|blocked|refused|error)\b/i;
+  var DONE_WORDS = /\b(saved|uploaded|downloaded|copied|added|removed|deleted|renamed|reverted|applied|imported|switched|rewritten|enhanced|rebuilt|undone|redone|moved|created|sent|published|updated|restored|discarded|pasted|cut|reset)\b/i;
+  function toastKind(msg){
+    var s = String(msg == null ? '' : msg);
+    if (FAIL_WORDS.test(s)) return 'error';
+    return DONE_WORDS.test(s) ? 'success' : 'info';
+  }
+  /* The messages' place on the page. The events list keeps its #toast-region (its tests and its assistant's
+     layers name it), which becomes this place; elsewhere it is made here. */
+  function toastHost(){
+    if (typeof document === 'undefined' || !document.body) return null;
+    var host = $('rv-toasts') || $('toast-region');
     if (!host){
       host = document.createElement('div');
-      host.className = 'toast-host'; host.id = 'toast-host';
+      host.id = 'rv-toasts';
       document.body.appendChild(host);
     }
-    /* styled by the page (the console's stylesheet), or drawn here — decided once per host */
-    var styled = false;
-    if (host.getAttribute('data-rv-toasts') !== 'own'){
-      try { styled = window.getComputedStyle(host).position === 'fixed'; } catch (e) {}
-      if (!styled){ host.setAttribute('data-rv-toasts', 'own'); host.style.cssText = TOAST_HOST_STYLE; }
+    if (!host.classList.contains('rv-toasts')){
+      host.classList.add('rv-toasts');
+      host.removeAttribute('role');
+      host.setAttribute('aria-live', 'polite');
     }
-    var el = document.createElement('div');
-    if (styled) el.className = 'toast' + (failed ? ' toast-error' : '');
-    else { el.className = 'rv-toast'; el.style.cssText = TOAST_STYLE; }
-    el.setAttribute('role', failed ? 'alert' : 'status');
-    el.innerHTML = (failed ? '<span style="display:inline-flex' + (styled ? '' : ';color:#ff8589') + '">' + svg(IC.info, 15) + '</span>' : (plain ? '' : svg(IC.check, 15))) +
-      '<span>' + esc(msg) + '</span>';
-    function close(){
-      el.style.transition = 'opacity .25s, transform .25s';
-      el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
-      setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 260);
-    }
-    if (action && action.label){
-      var btn = document.createElement('button');
-      btn.type = 'button'; btn.className = styled ? 'toast-act' : 'rv-toast-act';
-      if (!styled) btn.style.cssText = 'margin-left:6px;padding:3px 9px;border:1px solid rgba(255,255,255,.45);border-radius:7px;background:transparent;color:inherit;font:inherit;font-weight:600;cursor:pointer';
-      btn.textContent = action.label;
-      btn.onclick = function(){ close(); if (typeof action.onClick === 'function') action.onClick(); };
-      el.appendChild(btn);
-    }
-    host.appendChild(el);
-    setTimeout(close, action ? 8000 : (failed ? 6000 : 2600));
+    return host;
   }
+  function toast(msg, opts){
+    if (typeof opts === 'string') opts = { kind: opts };
+    opts = opts || {};
+    var kind = opts.kind || opts.type || 'success';
+    if (kind === 'auto') kind = toastKind(msg);
+    if (kind !== 'error' && kind !== 'info') kind = 'success';
+    var failed = kind === 'error', text = String(msg == null ? '' : msg);
+    var action = opts.action && opts.action.label ? opts.action : null;
+    var sticky = failed || !!opts.sticky;
+    sharedCss();
+    var host = toastHost();
+    var noop = function(){};
+    noop.dismiss = noop;
+    if (!host) return noop;
+
+    /* the same message already on screen is not stacked again (several requests failing for one reason) */
+    var open = host.querySelectorAll('.rv-toast');
+    for (var i = 0; i < open.length; i++){
+      if (open[i].getAttribute('data-msg') === kind + ':' + text && !open[i].hasAttribute('data-gone') && open[i]._rvClose) return open[i]._rvClose;
+    }
+
+    var el = document.createElement('div'), timer = null, gone = false;
+    el.className = 'rv-toast rv-toast-' + kind;
+    el.setAttribute('role', failed ? 'alert' : 'status');
+    el.setAttribute('data-msg', kind + ':' + text);
+    var mark = failed ? '<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.6h.01"/>' : (kind === 'success' ? IC.check : '');
+    el.innerHTML = (mark ? '<span class="rv-toast-ico" aria-hidden="true">' + svg(mark, 16) + '</span>' : '') +
+      '<span class="rv-toast-msg">' + esc(text) + '</span>';
+    function close(){
+      if (gone) return;
+      gone = true;
+      clearTimeout(timer);
+      el.setAttribute('data-gone', '');
+      el.classList.remove('on');
+      setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 220);
+    }
+    close.dismiss = close;
+    el._rvClose = close;
+    function button(cls, label, run, aria){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = cls;
+      if (aria){ b.setAttribute('aria-label', aria); b.innerHTML = svg('<path d="M18 6L6 18M6 6l12 12"/>', 14); }
+      else b.textContent = label;
+      b.addEventListener('click', function(){ close(); if (typeof run === 'function') run(); });
+      el.appendChild(b);
+      el.classList.add('with-btn');
+    }
+    if (action) button('rv-toast-act', action.label, action.onClick);
+    if (typeof opts.retry === 'function') button('rv-toast-act', 'Try again', opts.retry);
+    if (sticky || action) button('rv-toast-x', '', null, 'Dismiss this message');
+
+    /* a run of quick actions must not build a wall of messages: the oldest passing ones make room */
+    var passing = [];
+    for (var j = 0; j < open.length; j++) if (!open[j].hasAttribute('data-sticky') && !open[j].hasAttribute('data-gone') && open[j]._rvClose) passing.push(open[j]);
+    for (var k = 0; k <= passing.length - TOAST_MAX; k++) passing[k]._rvClose();
+    if (sticky) el.setAttribute('data-sticky', '');
+    host.appendChild(el);
+    var show = function(){ el.classList.add('on'); };
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(show); else show();
+    if (sticky) return close;
+    /* long enough to read, the longer the text the longer, and long enough to reach its button */
+    var ms = typeof opts.duration === 'number' && opts.duration > 0 ? opts.duration : Math.min(10000, Math.max(3000, 60 * text.length));
+    if (action) ms = Math.max(ms, 8000);
+    function arm(){ clearTimeout(timer); timer = setTimeout(close, ms); }
+    el.addEventListener('mouseenter', function(){ clearTimeout(timer); });
+    el.addEventListener('mouseleave', arm);
+    arm();
+    return close;
+  }
+  /* the live region is on the page before the first message, so screen readers hear that one too */
+  try {
+    if (typeof document !== 'undefined' && document){
+      if (document.body) toastHost();
+      else if (typeof document.addEventListener === 'function') document.addEventListener('DOMContentLoaded', function(){ toastHost(); });
+    }
+  } catch (e) { /* no page to put it on (a test, a worker): the first message makes it */ }
 
   /* ----------------------------------------------------------------
      The bundle every section view receives. A section never reaches
@@ -1227,7 +1430,7 @@ window.RevampCore = (function(){
       S: opts.S,
       IC: IC, AV: AV, TYPES: TYPES,
       $: $, esc: esc, svg: svg,
-      comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange,
+      comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange, fmtTime: fmtTime,
       statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
       toast: toast,
       vhead:  opts.vhead  || function(t, sub, right){
@@ -1244,7 +1447,7 @@ window.RevampCore = (function(){
 
   return {
     $: $, esc: esc, svg: svg, IC: IC, AV: AV,
-    comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange, rnd: rnd,
+    comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange, fmtTime: fmtTime, rnd: rnd,
     TYPES: TYPES, CATEGORY_KEYS: CATEGORY_KEYS, typeLabel: typeLabel,
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
@@ -1265,6 +1468,7 @@ window.RevampCore = (function(){
     fetchLeads: fetchLeads, bulkCreateLeads: bulkCreateLeads, bulkUpdateLeads: bulkUpdateLeads, bulkDeleteLeads: bulkDeleteLeads,
     appendLeadNote: appendLeadNote, removeLeadNote: removeLeadNote,
     statTile: statTile, panel: panel, panelFlush: panelFlush, emptyState: emptyState,
-    toast: toast, loadState: loadState, saveState: saveState, makeCtx: makeCtx
+    toast: toast, toastKind: toastKind, errText: errText, loadErrorText: loadErrorText, renderLoadError: renderLoadError,
+    loadState: loadState, saveState: saveState, makeCtx: makeCtx
   };
 })();

@@ -50,8 +50,8 @@
     </span>
   </span>
   <span class="topbar-acts">
-    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
-    <span data-rv-account></span>
+    <!-- what is saved, on every view: "All changes saved" / "Unsaved changes" / "Saving…" (paintSaveState) -->
+    <span class="save-state" id="ev-save" role="status" hidden></span>
     <button class="btn btn-secondary" type="button" id="btn-preview">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
       <span>Preview</span>
@@ -62,6 +62,9 @@
       <span>Share preview</span>
     </button>
     <button class="btn btn-primary" type="button" id="btn-publish">Publish</button>
+    <!-- the light/dark switch and the account end the top bar on every page (UX-007) -->
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span data-rv-account></span>
   </span>
 </header>
 
@@ -71,7 +74,6 @@
   <main class="main"><div id="ev-decision" hidden></div><div id="view"></div></main>
 </div>
 
-<div class="toast-host" id="toast-host"></div>
 <div id="modal-host"></div>
 
 <script src="theme-toggle.js"></script>
@@ -117,63 +119,28 @@
      happened and goes away by itself. notifyError() says something did not happen: it
      stays until it is dismissed and is announced to a screen reader at once.
      ============================================================ */
-  var IC_ALERT = '<path d="M12 3.5l9.5 16.5h-19z"/><path d="M12 10v4.5M12 17.6h.01"/>';
+  /* Both are RevampCore.toast, the one message of every page (UX-006): the same place and look as in the
+     site editor, Promotions, Create Event and the events list. */
   var IC_CLOSE = '<path d="M18 6L6 18M6 6l12 12"/>';
 
-  function dismissToast(el){
-    if (!el.parentNode) return;
-    el.style.transition = 'opacity .25s, transform .25s';
-    el.style.opacity = '0'; el.style.transform = 'translateY(8px)';
-    setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, 260);
-  }
-
-  /* ms: how long it stays, for a message longer than a few words (2.6 s otherwise). Only a number counts:
+  /* ms: how long it stays, for a message longer than a few words. Only a number counts:
      the section files are handed notify as their toast, and one may pass the core toast's options. */
   function notify(msg, ms){
-    var el = document.createElement('div');
-    el.className = 'toast';
-    el.setAttribute('role', 'status');
-    el.innerHTML = svg(IC.check, 15) + '<span>' + esc(msg) + '</span>';
-    $('toast-host').appendChild(el);
-    setTimeout(function(){ dismissToast(el); }, typeof ms === 'number' && ms > 0 ? ms : 2600);
+    C.toast(msg, typeof ms === 'number' && ms > 0 ? { duration: ms } : null);
+    /* a confirmation follows a save or a discard: the top bar's "what is saved" catches up */
+    setTimeout(paintSaveState, 0);
   }
 
-  /* What to tell the user about a failed request. RevampCore rejects with an Error whose status is
-     the HTTP status (0 when no answer came back) and whose message is the server's own sentence;
-     a server fault's wording is of no use to the user, so that case gets ours. */
-  function errText(err){
-    if (typeof err === 'string') return err;
-    var status = err && typeof err.status === 'number' ? err.status : 0;
-    if (status === 401 || (!status && /not signed in/i.test((err && err.message) || ''))){
-      return 'Your sign-in has expired. Sign in again, then try once more.';
-    }
-    if (!status) return 'We couldn’t reach the server. Check your connection and try again.';
-    if (status >= 500) return 'Something went wrong on our side. Please try again.';
-    return (err && err.message) || 'That could not be done. Please try again.';
-  }
+  /* What to tell the user about a failed request: RevampCore.errText, shared with the site editor, so a
+     server fault's wording never reaches the screen and a refused session says to sign in and try again. */
+  function errText(err){ return C.errText(err); }
 
   /* opts.what — a sentence saying what did not happen, put in front of the reason.
      opts.retry — a function; adds a "Try again" button that runs it. */
   function notifyError(errOrMsg, opts){
     opts = opts || {};
     if (errOrMsg && typeof errOrMsg !== 'string') console.error(opts.what || 'Request failed:', errOrMsg);
-    var msg = (opts.what ? opts.what + ' ' : '') + errText(errOrMsg);
-    var host = $('toast-host');
-
-    /* several requests failing for one reason are one message, not a stack of them */
-    var open = host.querySelectorAll('.toast-error');
-    for (var i = 0; i < open.length; i++) if (open[i].getAttribute('data-msg') === msg) return;
-
-    var el = document.createElement('div');
-    el.className = 'toast toast-error';
-    el.setAttribute('role', 'alert');
-    el.setAttribute('data-msg', msg);
-    el.innerHTML = svg(IC_ALERT, 16) + '<span class="tt">' + esc(msg) + '</span>' +
-      (opts.retry ? '<button class="toast-act" type="button">Try again</button>' : '') +
-      '<button class="toast-x" type="button" aria-label="Dismiss this message">' + svg(IC_CLOSE, 14) + '</button>';
-    el.querySelector('.toast-x').onclick = function(){ dismissToast(el); };
-    if (opts.retry) el.querySelector('.toast-act').onclick = function(){ dismissToast(el); opts.retry(); };
-    host.appendChild(el);
+    C.toast((opts.what ? opts.what + ' ' : '') + errText(errOrMsg), { kind: 'error', retry: opts.retry });
   }
 
   /* ============================================================
@@ -432,7 +399,7 @@
       if (e.key !== 'Tab') return;
       if (busy){ e.preventDefault(); return; }
       /* a message that stays on screen can be dismissed from the keyboard while a dialog is open */
-      var f = modalFocusables(box).concat(modalFocusables($('toast-host')));
+      var f = modalFocusables(box).concat($('rv-toasts') ? modalFocusables($('rv-toasts')) : []);
       if (!f.length){ e.preventDefault(); box.focus(); return; }
       var at = f.indexOf(document.activeElement);
       if (e.shiftKey && at <= 0){ e.preventDefault(); f[f.length - 1].focus(); }
@@ -719,6 +686,23 @@
       if (held) el.setAttribute('inert', ''); else el.removeAttribute('inert');
     });
     if (!held) focusBack();
+    paintSaveState();
+  }
+
+  /* What is saved, said in the top bar on every view (UX-011), the way the site editor's chip says it for the site:
+     "Saving…" while a change is on its way to the server, "Unsaved changes" while something typed here is not saved
+     yet (Basics, Settings), "All changes saved" otherwise. Every other change in the console (a speaker, an FAQ, a
+     sponsor) is saved by its own dialog as it closes. */
+  function paintSaveState(){
+    var el = $('ev-save');
+    if (!el || !EV || $('btn-publish').hidden) return;
+    var state = writesOut() ? 'saving' : (LEAVE.dirty() || (MODAL && MODAL.isDirty && MODAL.isDirty())) ? 'dirty' : 'saved';
+    if (el.getAttribute('data-state') === state && !el.hidden) return;
+    el.setAttribute('data-state', state);
+    el.className = 'save-state' + (state === 'dirty' ? ' warn' : state === 'saved' ? ' ok' : ' wait');
+    el.textContent = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Unsaved changes' : 'All changes saved';
+    el.title = state === 'dirty' ? 'Save, or Discard, in the bar at the bottom of this view.' : state === 'saved' ? 'Everything you changed here is saved to the event.' : '';
+    el.hidden = false;
   }
 
   function reloadSub(tabKey){
@@ -1008,6 +992,7 @@
     }
     renderRail();
     render();
+    paintSaveState();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -1183,11 +1168,13 @@
     var when =
       '<div class="field c6">' +
         '<div class="flabel-row"><label for="b-start">Starts</label></div>' +
-        '<input class="inp" id="b-start" type="datetime-local" value="' + esc(String(e.start || '').slice(0,16)) + '"></div>' +
+        '<input class="inp" id="b-start" type="datetime-local" value="' + esc(String(e.start || '').slice(0,16)) + '" aria-describedby="b-start-words">' +
+        '<p class="hint" id="b-start-words" aria-live="polite"></p></div>' +
 
       '<div class="field c6"><div class="flabel-row"><label for="b-end">Ends</label>' +
           '<span class="pill-opt">Optional</span></div>' +
-        '<input class="inp" id="b-end" type="datetime-local" value="' + esc(String(e.end || '').slice(0,16)) + '"></div>' +
+        '<input class="inp" id="b-end" type="datetime-local" value="' + esc(String(e.end || '').slice(0,16)) + '" aria-describedby="b-end-words">' +
+        '<p class="hint" id="b-end-words" aria-live="polite"></p></div>' +
 
       '<div class="field c6"><label for="b-venue">Venue</label>' +
         '<div class="inp-ico">' + svg(IC.globe, 15) +
@@ -1404,6 +1391,10 @@
       var host = $('b-when');
       if (!host) return;
       var s = span(), out = [];
+      /* each date field says the date it holds in words ("Sat 5 Dec 2026, 10:41 am"): the field itself is written
+         the browser's way, 05/12/2026, which reads as 12 May to anyone used to the American order (UX-010) */
+      if ($('b-start-words')) $('b-start-words').textContent = s.a ? fmtDate(localIso(s.a), { time: true, day: true }) : '';
+      if ($('b-end-words')) $('b-end-words').textContent = s.b ? fmtDate(localIso(s.b), { time: true, day: true }) : '';
 
       if (!s.a){
         out.push({ cls:'bad', ico:IC.clock, txt:'No start date yet' });
@@ -1412,7 +1403,7 @@
           var d = dayCount(s.a, s.b);
           var hrs = Math.round((s.b - s.a) / 3600000);
           out.push({ cls:'', ico:IC.clock,
-            txt: d > 1 ? '<b>' + d + ' days</b> · ' + fmtDate(localIso(s.a)) + ' to ' + fmtDate(localIso(s.b))
+            txt: d > 1 ? '<b>' + d + ' days</b> · ' + C.fmtRange(localIso(s.a), localIso(s.b))
                        : 'Single day · <b>' + hrs + ' hours</b>' });
         } else if (s.b && s.b <= s.a){
           out.push({ cls:'bad', ico:IC.info, txt:'The end is <b>before the start</b>' });
@@ -1533,8 +1524,11 @@
       bar.classList.toggle('on', n > 0);
       bar.classList.toggle('failed', n > 0 && !!failed);
       $('b-sbtxt').setAttribute('role', failed ? 'alert' : 'status');
-      $('b-sbhead').textContent = failed ? 'Not saved' : 'Unsaved changes';
-      $('b-sbwhat').textContent = failed ? failed : (n === 1 ? '1 field edited' : n + ' fields edited');
+      /* after a save the bar slides away with the words it had: it never reads "Unsaved changes, 0 fields edited" (UX-011) */
+      if (n > 0){
+        $('b-sbhead').textContent = failed ? 'Not saved' : 'Unsaved changes';
+        $('b-sbwhat').textContent = failed ? failed : (n === 1 ? '1 field edited' : n + ' fields edited');
+      }
       var save = $('b-save');
       save.disabled = saving;
       if (saving) save.innerHTML = '<span class="spin"></span> Saving';
@@ -4943,13 +4937,8 @@
   function whoLabel(by){ return AW.personName(by); }
   /* "21 Oct 2026, 11:05 am" in India time, whatever the browser's own zone */
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  function histWhen(iso){
-    var t = Date.parse(iso || '');
-    if (isNaN(t)) return '—';
-    var d = new Date(t + 330 * 60000), h = d.getUTCHours(), m = d.getUTCMinutes();
-    return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear() + ', ' +
-      ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
-  }
+  /* "3 Nov 2026, 12:15 pm", India time: RevampCore's one way of writing a moment (UX-010) */
+  function histWhen(iso){ return fmtDate(iso, { time: true, ist: true }); }
   /* [{ what, before, after }] — the before/after lines of one entry */
   function histLines(h){
     var out = [];
@@ -6001,12 +5990,14 @@
             '<span class="hint" id="rg-target-hint">The number of registrations you are aiming for. Optional.</span></div>' +
         '</div>' +
         '<p class="rg-err" id="rg-err" role="alert" hidden></p>' +
-        '<div style="display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:12px">' +
-          '<button class="btn btn-primary btn-sm" type="button" id="rg-save" disabled>Save</button>' +
-          '<button class="btn btn-secondary btn-sm" type="button" id="rg-discard" disabled>Discard changes</button>' +
-          '<span id="rg-state" style="font-size:12px;color:var(--text-muted)" role="status"></span>' +
-        '</div>' +
       '</div></div>' +
+      /* the console's one way of saving (UX-011): the bar Basics has, with the same words, shown while something
+         here is changed and not saved */
+      '<div class="savebar" id="rg-savebar">' +
+        '<span class="sb-txt"><b id="rg-state" role="status"></b><span id="rg-what"></span></span>' +
+        '<button class="sb-ghost" type="button" id="rg-discard" disabled>Discard</button>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="rg-save" disabled>Save changes</button>' +
+      '</div>' +
       /* not in a .panel: its overflow would stop the builder's bar and preview staying in view */
       '<div class="rg-builder" id="rg-builder"></div>' +
       '<p class="rg-honest">Confirmation emails, WhatsApp messages and paid registration are not available yet.</p>';
@@ -6016,13 +6007,18 @@
     var saving = false;
     function q(id){ return node.querySelector('#' + id); }
     function current(){ return { open: q('rg-open').checked, capacity: q('rg-capacity').value.trim(), target: q('rg-target').value.trim() }; }
-    function regDirty(){ var c = current(); return c.open !== stored.open || c.capacity !== stored.capacity || c.target !== stored.target; }
+    function regChanged(){ var c = current(); return ['open', 'capacity', 'target'].filter(function(k){ return c[k] !== stored[k]; }).length; }
+    function regDirty(){ return regChanged() > 0; }
     function paint(){
-      var d = regDirty();
+      var n = regChanged(), d = n > 0;
+      q('rg-savebar').classList.toggle('on', d || saving);
       q('rg-save').disabled = !d || saving;
       q('rg-discard').disabled = !d || saving;
-      q('rg-save').textContent = saving ? 'Saving…' : 'Save';
+      if (saving) q('rg-save').innerHTML = '<span class="spin"></span> Saving';
+      else q('rg-save').textContent = 'Save changes';
       q('rg-state').textContent = d ? 'Unsaved changes' : '';
+      /* nothing is counted while the bar slides away after a save: it never reads "0 fields edited" */
+      if (d) q('rg-what').textContent = n === 1 ? '1 field edited' : n + ' fields edited';
     }
     function fill(){
       q('rg-open').checked = stored.open; q('rg-capacity').value = stored.capacity; q('rg-target').value = stored.target;
@@ -6591,6 +6587,8 @@
     $('btn-preview').hidden = !ready;
     $('btn-publish').hidden = !ready;
     $('rail').hidden = !ready;
+    if (!ready) $('ev-save').hidden = true;
+    else paintSaveState();
   }
 
   function renderLoading(){
@@ -6607,28 +6605,15 @@
       '</div>';
   }
 
-  /* kind: 'none' (no event in the address), otherwise decided from the failure itself */
+  /* kind: 'none' (no event in the address), otherwise decided from the failure itself. The words and the look
+     are RevampCore's, the same on every page (UX-008); the chrome that needs an event is put away. */
   function renderLoadError(err, kind){
-    var missing = kind === 'none' || (err && err.status === 404);
-    var title = kind === 'none' ? 'No event selected'
-      : missing ? 'Event not found' : 'Couldn’t load this event';
-    var msg = kind === 'none' ? 'Use Back to events and open the event you want to edit.'
-      : missing ? 'This event doesn’t exist or was deleted. Use Back to events to open another one.'
-      : 'The event could not be loaded. Check your connection and try again.';
-    if (err && kind !== 'none') console.error('Event load failed:', err);
     setChrome(false);
-    $('ev-name').textContent = title;
     $('ev-meta').textContent = '';
     $('ev-state').hidden = true;
     $('rail').innerHTML = '';
     document.title = 'Edit Event — Oneworld 2.0';
-    /* the way out is the top bar's "Back to events", which stays on screen in every state */
-    $('view').innerHTML = '<div style="padding:60px 20px">' + emptyState(
-      IC.info, title, msg,
-      missing ? '' : '<button class="btn btn-primary btn-sm" type="button" id="ev-retry">Try again</button>'
-    ) + '</div>';
-    var again = $('ev-retry');
-    if (again) again.onclick = init;
+    C.renderLoadError($('view'), err, { kind: kind, none: 'the event you want to edit', title: 'ev-name', onRetry: init });
   }
 
   var booted = false;
@@ -6640,6 +6625,9 @@
     /* a retry after a failed load comes through here again; the listeners must not be added twice */
     if (!booted){
       booted = true;
+
+      /* the top bar's "what is saved" follows typing in every view (UX-011) */
+      ['input', 'change'].forEach(function(t){ document.addEventListener(t, function(){ setTimeout(paintSaveState, 0); }, true); });
 
       $('btn-preview').onclick = openPreview;
       $('btn-publish').onclick = doPublish;

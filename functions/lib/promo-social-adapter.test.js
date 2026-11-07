@@ -1050,7 +1050,9 @@ function respJson(r) { return r.json(); }
   F.run('openEditor("generic.announcement")'); await flush(80);
   F.posted.length = 0;
   F.realToast('In the editor', 3000);
-  check('F.12: while the editor is open, the toast plays here', F.posted.filter(function (p) { return p.m.rvToast; }).length === 0 && F.$('toast').textContent === 'In the editor' && F.$('toast').classList.contains('on'));
+  /* UX-006: the console's message sits above the frame even while the editor has the window, and looks like every page's */
+  check('F.12: while the editor is open, the console still shows it', F.posted.filter(function (p) { return p.m.rvToast; }).length === 1 &&
+    F.posted.filter(function (p) { return p.m.rvToast; })[0].m.rvToast.m === 'In the editor' && F.$('toast').textContent !== 'In the editor', F.posted);
   F.run('closeEditor()');
   var nt = boot(); await flush(40);
   nt.posted.length = 0; nt.realToast('Plain');
