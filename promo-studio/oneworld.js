@@ -8,7 +8,7 @@
        for icons, go through it; the URLs and bodies it builds are the platform's, re-addressed here.
      - S: the open event (this page's ?event=), and its portal (from the catalog).
      - the event page's mailer half (the platform's renderEventDetail, mailers only): the event's header,
-       "Recently updated", the template cards, Open studio and Download all (.zip).
+       "Saved", the template cards, Edit a mailer and Download all mailers (ZIP).
      - mlExport: a picture of the mail is drawn here, in the browser (the platform renders it with Chrome on its
        server, which Oneworld's server does not have); "Save as PDF" opens the mail for the browser's own
        Print → Save as PDF.
@@ -258,10 +258,11 @@ function owRenderPage() {
     '<div id="evNav" class="secnav">' +
       '<button id="nav-mail" class="on" type="button">Promotional mailers <span class="n">' + mailCount + '</span></button>' +
       '<span class="sp" id="secActions">' +
-        '<button class="btn alt sm" onclick="openMailer()">Open studio</button> ' +
-        /* the console's secondary button, as Open studio beside it (owner D): the platform's own .btn lost to its
+        /* "Edit" opens a design on every Promotions tab, and Download all says what it downloads (UX-132) */
+        '<button class="btn alt sm" onclick="openMailer()">Edit a mailer</button> ' +
+        /* the console's secondary button, as Edit a mailer beside it (owner D): the platform's own .btn lost to its
            .secnav button rule there and showed as plain grey words */
-        '<button class="btn alt sm" onclick="downloadAllMailers()">Download all (.zip)</button>' +
+        '<button class="btn alt sm" onclick="downloadAllMailers()">Download all mailers (ZIP)</button>' +
       '</span>' +
     '</div>' +
     '<div id="secMail">' +
@@ -905,8 +906,9 @@ toast = function (m, ms, kind) {
 
 /* ---------- the mailer dashboard (the platform's AN … paintAnalytics, in promo-studio/mailer-studio.js) ---------- */
 function owDashSubline() {
-  return OW_SCOPE === 'all' ? 'Opens and clicks for every event\'s mailers downloaded or copied from Oneworld.'
-    : 'Opens and clicks for every mailer of this event downloaded or copied from Oneworld.';
+  /* UX-128: no product name and no "this platform": what the numbers are of is enough */
+  return OW_SCOPE === 'all' ? 'Opens and clicks for every event\'s mailers that were downloaded or copied.'
+    : 'Opens and clicks for this event\'s mailers that were downloaded or copied.';
 }
 function owDashPickLabel() { return OW_SCOPE === 'all' ? 'Pick an event →' : 'Make a mailer →'; }
 /* UX-133 (PATCHES P26): while opens and clicks are not recorded, the empty dashboard says that, where the platform

@@ -165,7 +165,7 @@ function paintAnalytics(){
   // Plain language: a marketer can't act on "Vercel KV / Upstash Redis". Say what
   // it means for THEM — are their opens and clicks being saved, or not.
   const note=a.backend==="none"
-    ? `<div class="an-note warn"><b>Opens and clicks aren't being saved right now.</b> Mailers you send will still work, but their performance won't show up here. Ask your Oneworld admin to turn on performance tracking.</div>`
+    ? `<div class="an-note warn"><b>Opens and clicks aren't being saved right now.</b> Mailers you send will still work, but their performance won't show up here. Ask your ETB2B EventSphere admin to turn on performance tracking.</div>`
     : a.backend==="file" ? `<div class="an-note">Your mailer performance is being saved.</div>` : "";
 
   const empty=t.sends===0;
@@ -261,7 +261,7 @@ function savedCardHtml(s){
 function renderEvSaved(){
   const list=evSavedList();
   if(!list.length) return "";
-  return `<div class="sec-h">Recently updated</div>
+  return `<div class="sec-h">Saved</div>
     <div class="mgrid" style="margin-bottom:24px">${list.map(savedCardHtml).join("")}</div>
     <div class="sec-h">Templates</div>`;
 }
@@ -433,10 +433,10 @@ function mailerCards(){
         // the list above. Starting fresh is still there, just demoted to a quiet
         // secondary link so it can never be mistaken for "continue."
         ? (saves.length
-            ? `<button class="btn sm" style="width:100%;justify-content:center" onclick='openMailer(${q},${JSON.stringify(saves[0].saveId)})'>Continue “${escapeHtml(saves[0].name)}” →</button>
+            ? `<button class="btn sm" style="width:100%;justify-content:center" onclick='openMailer(${q},${JSON.stringify(saves[0].saveId)})'>Edit “${escapeHtml(saves[0].name)}” →</button>
                <button class="btn ghost sm" style="width:100%;justify-content:center;margin-top:6px" onclick='openMailer(${q},null,true)'>Start a new version instead</button>`
-            : `<button class="btn sm" style="width:100%;justify-content:center" onclick='openMailer(${q},null,false)'>Open in studio →</button>`)
-        : `<div class="warn">needs ${m.missing.map(escapeHtml).join(", ")}</div>`}</div>
+            : `<button class="btn sm" style="width:100%;justify-content:center" onclick='openMailer(${q},null,false)'>Edit →</button>`)
+        : `<div class="warn">Needs ${m.missing.map(escapeHtml).join(", ")}</div>`}</div>
     </div>`;
   }).join("");
 }
@@ -453,7 +453,7 @@ async function downloadAllMailers(){
     body:JSON.stringify({portal:S.portal,event:S.event,mailerIds:[]})});
   if(r.ok){ const a=document.createElement("a"); a.href=URL.createObjectURL(await r.blob()); a.download=owZipName(); a.click(); owTrackToast("zip",r.headers.get("X-Mailer-Tracked")!=="no",""); }
   else toast("Download failed");
-  if(btn){btn.disabled=false;btn.innerHTML='Download all (.zip)';}
+  if(btn){btn.disabled=false;btn.innerHTML='Download all mailers (ZIP)';}
 }
 
 /* ---------- open / close ---------- */
@@ -691,14 +691,14 @@ function mlOverlay(){
       startBlockDrag(e,id);
     };
     hot.ondblclick=(e)=>{ e.stopPropagation(); e.preventDefault(); };
-    hot.title="Click the text to edit it · drag to move this section";
+    hot.title="Click words to type over them, click a picture to swap it, drag to move this section";
     hot.innerHTML=`<span class="tag">${b?escapeHtml(BS[b.type]?.label||b.type):""}</span>
       <span class="tb">
         <span class="grip" title="Drag to move this section">⠿</span>
         <button title="Duplicate" onclick="event.stopPropagation();mlDup('${id}')">⧉</button>
         <button title="Delete" onclick="event.stopPropagation();mlDel('${id}')">✕</button>
       </span>
-      <button class="ins" title="Insert a block here" onclick="event.stopPropagation();mlPalette(${i+1},event)">+</button>`;
+      <button class="ins" title="Add a section here" aria-label="Add a section here" onclick="event.stopPropagation();mlPalette(${i+1},event)">+</button>`;
     ov.appendChild(hot);
   });
 }
@@ -1217,7 +1217,7 @@ function mlEditEnd(commit){
   el.querySelectorAll('[contenteditable="false"]').forEach(x=>x.removeAttribute("contenteditable"));
   IE.el=null; IE.ed=null; IE.dirty=false; IE.rich=false; mlTbHide();
   f.style.pointerEvents="none"; ov.style.display="";
-  if(commit&&txt!==null&&txt!==String(before??"")){ mlSetProp(ed,txt); MD.dirty=true; mlProps(); mlRender(0); }
+  if(commit&&txt!==null&&txt!==String(before??"")){ owMailEdit({kind:"words",path:ed,value:txt}); }
   // Escape, or an edit that changed nothing: re-render so the element goes back
   // to exactly what the stored value renders as, marks and all.
   else mlRender(0);
@@ -1308,7 +1308,7 @@ async function mlAdd(type,dropAt){
   if(dropAt!=null) MD.insertAt=dropAt;              // dropped at a chosen position
   const r=await api("/api/mailer/block",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,type})});
-  if(!r.ok){ toast("Could not add that block"); return; }
+  if(!r.ok){ toast("That section could not be added. Please try again.",undefined,"error"); return; }
   const { block }=await r.json();
   const at=MD.insertAt!=null?MD.insertAt:(MD.sel?blockIndex(MD.sel)+1:MD.doc.blocks.length);
   MD.doc.blocks.splice(at,0,block);
@@ -1942,10 +1942,10 @@ function fldMultipick(f,block,onchange){
         ${MLA.loaded&&shown.length?`<span class="ai mpall"${!allOn&&!room?' style="opacity:.45"':""} title="${escapeHtml(tip)}">${act}</span>`:""}
         <span class="hint" style="margin:0">${chosen.size}${max?" / "+max:""} selected</span>
       </span></label>
-    ${list.length>8?`<input class="mpq" placeholder="Filter ${shown.length} of ${list.length}…" value="${escapeHtml(block.__q||"")}">`:""}
+    ${list.length>8?`<input class="mpq" data-b="${escapeHtml(block.id)}" aria-label="Filter the list" placeholder="Filter ${shown.length} of ${list.length}…" value="${escapeHtml(block.__q||"")}">`:""}
     <div class="mplist">${
       !MLA.loaded ? `<div class="hint" style="padding:8px">Loading this event's ${spk?"speakers":ses?"sessions":"partners"}…</div>`
-      : !list.length ? `<div class="hint" style="padding:8px">This event has no ${spk?"speakers":ses?"sessions":"partners"} in the API.</div>`
+      : !list.length ? `<div class="hint" style="padding:8px">${owRosterNone(spk?"speakers":ses?"sessions":"partners")}</div>`
       : shown.map((x,i)=>{
           const on=chosen.has(keyOf(nameOf(x)));
           const sub=spk?[x.designation,x.company].filter(Boolean).join(", "):ses?[x.time,x.who].filter(Boolean).join(" · "):(x.tier||"");
@@ -1954,9 +1954,9 @@ function fldMultipick(f,block,onchange){
             <span class="mptx"><b>${escapeHtml(nameOf(x))}</b>${sub?`<i>${escapeHtml(sub)}</i>`:""}</span></label>`;
         }).join("")
     }</div>
-    ${full?`<div class="hint">Limit of ${max} reached — untick one to swap, or raise Max above.</div>`:(f.hint?`<div class="hint">${escapeHtml(f.hint)}</div>`:"")}`;
+    ${full?`<div class="hint">${escapeHtml(owLimitNote(max))}</div>`:(f.hint?`<div class="hint">${escapeHtml(f.hint)}</div>`:"")}`;
   const qi=wrap.querySelector(".mpq");
-  if(qi) qi.addEventListener("input",(e)=>{ block.__q=e.target.value; const box=wrap.parentNode; mlProps(); setTimeout(()=>{const n=document.querySelector(".mpq"); if(n){n.focus(); n.setSelectionRange(n.value.length,n.value.length);}},0); });
+  if(qi) qi.addEventListener("input",(e)=>{ block.__q=e.target.value; const box=wrap.parentNode; mlProps(); setTimeout(()=>{const n=[...document.querySelectorAll(".mpq")].find(x=>x.dataset.b===block.id)||document.querySelector(".mpq"); if(n){n.focus(); n.setSelectionRange(n.value.length,n.value.length);}},0); });
   const mplist=wrap.querySelector(".mplist");
   // Every tick rebuilds the whole panel, so this is a NEW element each time and
   // starts at the top — which threw the sender back to the head of a 157-name
@@ -1972,7 +1972,7 @@ function fldMultipick(f,block,onchange){
     if(allOn){ onchange(items.filter(i=>!inShown.has(keyOf(String((spk?i.name:i.title)||""))))); return; }
     // The cap is the document's, not this control's: it may fill the list up to
     // Max and must stop dead there rather than writing rows the mail would drop.
-    if(!room){ toast(`Limit of ${max} reached — raise Max above to add more`); return; }
+    if(!room){ toast(owLimitNote(max),undefined,"info"); return; }
     const take=spare.slice(0,room);
     onchange(items.concat(take.map(rowOf)));
     toast(take.length<spare.length
@@ -2581,7 +2581,7 @@ function mlStatus(){
   mlHistPush();                      // every mutation path reaches here or mlProps
   const pill=$("mlState"); pill.style.display="";
   pill.className="pill"+(MD.dirty?"":" cache");
-  pill.textContent=MD.dirty?"unsaved":(MD.saved?"saved":"generated");
+  pill.textContent=MD.dirty?"Unsaved changes":(MD.saved?"Saved":"Not saved yet");
   // Which version is open, so Save is never ambiguous about what it overwrites.
   const v=$("mlVer"); if(!v)return;
   v.classList.toggle("none",!MD.saveId);

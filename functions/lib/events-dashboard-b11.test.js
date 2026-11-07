@@ -177,6 +177,7 @@ var PROMO_SAID = [
   ['updated', 'Mailer “Launch invite” renamed to “Final invite”', 'Mailer changed'],
   ['deleted', 'Mailer “Launch invite” (Invite) deleted', 'Mailer deleted'],
   ['deleted', '2 versions of the Invite mailer deleted', 'Mailer deleted'],
+  ['updated', 'Mailer picture uploaded', 'Mailer picture added'],
   ['updated', 'Post art: Logo uploaded', 'Social post art added'],
   ['updated', 'Post art: Logo from the PSD uploaded', 'Social post art added'],
   ['deleted', 'Post art: Background 2 removed', 'Social post art removed'],
@@ -203,7 +204,7 @@ var postCalls = promoCalls('functions/lib/promo-social.js'), mailerCalls = promo
 check('UX-015 lib/promo-social.js\'s six Promotions entries are each said as a social post\'s', postCalls.length === 6 && postCalls.every(function (c) {
   return /^Post (art: |picture|layout)/.test(c.detail) && /^Social post (art|picture|layout) /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
 }), postCalls.map(function (c) { return [c.verb, c.detail.slice(0, 40), AWORDS.actionLabel(c.verb, 'promotions', c.detail)]; }));
-check('UX-015 lib/promo-mailer.js\'s four Promotions entries are each said as a mailer\'s', mailerCalls.length === 4 && mailerCalls.every(function (c) {
+check('UX-015 lib/promo-mailer.js\'s five Promotions entries (B18 added the picture uploaded into a mail) are each said as a mailer\'s', mailerCalls.length === 5 && mailerCalls.every(function (c) {
   return /^Mailer /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
 }), mailerCalls.map(function (c) { return [c.verb, c.detail.slice(0, 40), AWORDS.actionLabel(c.verb, 'promotions', c.detail)]; }));
 check('UX-015 a person by name from their address; the platform as the platform; a non-address as it is', AWORDS.personName('sachitanand.rai@timesinternet.in') === 'Sachitanand Rai' &&

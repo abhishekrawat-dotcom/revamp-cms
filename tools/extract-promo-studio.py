@@ -10,8 +10,9 @@ into Oneworld, by line range, unchanged except PATCHES (listed below):
   promo-studio/richtext.js         the rich-text bridge (marker text <-> formatting), as the platform has it
   assets/vendor/quill/             the vendored Quill the platform edits long copy with
   promo-mailer-studio.html         the page: the product nav, the studio's markup, then those files, then
-                                   promo-studio/oneworld.js (and, first in its head, promo-studio/oneworld-theme.js:
-                                   Oneworld's light or dark, before anything paints)
+                                   promo-studio/oneworld.js and promo-studio/oneworld-mail-easy.js (the "Edit myself"
+                                   layout, batch B18), and, first in its head, promo-studio/oneworld-theme.js:
+                                   Oneworld's light or dark, before anything paints
 
 promo-studio/oneworld.js is Oneworld's own (hand-written): the request helper on Oneworld's routes and
 sign-in, the event this page is for (or the whole team's view, ?scope=all), and the few functions it replaces
@@ -194,7 +195,7 @@ async function fmtApply(el,btn,onchange){
      1, 'while opens and clicks are not recorded, the empty dashboard says so (owDashNotRecorded): "No mailers generated '
         'yet … Download or copy a mailer" was untrue after mailers had been downloaded, and they would never show (UX-133)'),
     (r'''Ask whoever set up this platform to turn on performance tracking.''',
-     r'''Ask your Oneworld admin to turn on performance tracking.''',
+     r'''Ask your ETB2B EventSphere admin to turn on performance tracking.''',
      1, 'the "not being saved" note names who to ask (UX-133)'),
     # P28 to P33 (2026-11-07, ce0e58d): each message says what it is, so Promotions shows a failure in red until it is
     # dismissed and a note without the success tick. They were first written straight into the copied code; they are
@@ -217,7 +218,106 @@ async function fmtApply(el,btn,onchange){
     (r'''toast(j.error||"Could not read that file"); return; }''',
      r'''toast(j.error||"Could not read that file",undefined,"error"); return; }''',
      1, 'an HTML file that could not be read is said as a failure'),
+    # P34 to P46 (batch B18, 2026-11-08: the mailer editor made easy, ~/.revamp-cms-qa/promo-easy-edit/DESIGN.md
+    # sections 2 and 5). The layout itself is promo-studio/oneworld-mail-easy.js; these are the platform's own words and
+    # the one path its in-place word edits take.
+    (r'''onclick='openMailer(${q},null,false)'>Open in studio →</button>`)''',
+     r'''onclick='openMailer(${q},null,false)'>Edit →</button>`)''',
+     1, 'one word opens a design across Promotions: "Edit" (UX-132), not "Open in studio"'),
+    (r'''>Continue “${escapeHtml(saves[0].name)}” →</button>''',
+     r'''>Edit “${escapeHtml(saves[0].name)}” →</button>''',
+     1, 'a card with a saved version opens it with "Edit" too (UX-132)'),
+    (r'''`<div class="warn">needs ${m.missing.map(escapeHtml).join(", ")}</div>`''',
+     r'''`<div class="warn">Needs ${m.missing.map(escapeHtml).join(", ")}</div>`''',
+     1, 'what a mailer lacks reads as a sentence: "Needs at least 2 speakers" (UX-128)'),
+    (r'''<div class="sec-h">Recently updated</div>''',
+     r'''<div class="sec-h">Saved</div>''',
+     1, 'every Promotions tab lists its saved work under "Saved" (UX-132)'),
+    (r'''btn.innerHTML='Download all (.zip)';''',
+     r'''btn.innerHTML='Download all mailers (ZIP)';''',
+     1, 'Download all says what it downloads, in the words the other tabs use (UX-132)'),
+    (r'''  if(commit&&txt!==null&&txt!==String(before??"")){ mlSetProp(ed,txt); MD.dirty=true; mlProps(); mlRender(0); }''',
+     r'''  if(commit&&txt!==null&&txt!==String(before??"")){ owMailEdit({kind:"words",path:ed,value:txt}); }''',
+     1, 'words typed in the mail are written through the one door for changes (owMailEdit), which ETB2B AI uses too: one '
+        'Undo step each, in the studio\'s own history'),
+    (r'''`<div class="hint" style="padding:8px">This event has no ${spk?"speakers":ses?"sessions":"partners"} in the API.</div>`''',
+     r'''`<div class="hint" style="padding:8px">${owRosterNone(spk?"speakers":ses?"sessions":"partners")}</div>`''',
+     1, 'an empty list says where its people are added, with a link there, never "in the API" (UX-128)'),
+    (r'''<input class="mpq" placeholder="Filter ${shown.length} of ${list.length}…"''',
+     r'''<input class="mpq" data-b="${escapeHtml(block.id)}" aria-label="Filter the list" placeholder="Filter ${shown.length} of ${list.length}…"''',
+     1, 'a list\'s filter knows its section, so typing in it keeps the keyboard in that one when the panel shows two'),
+    (r'''const n=document.querySelector(".mpq");''',
+     r'''const n=[...document.querySelectorAll(".mpq")].find(x=>x.dataset.b===block.id)||document.querySelector(".mpq");''',
+     1, '… and the panel drawn again puts the keyboard back in that same filter'),
+    (r'''hot.title="Click the text to edit it · drag to move this section";''',
+     r'''hot.title="Click words to type over them, click a picture to swap it, drag to move this section";''',
+     1, 'the mail says what a click does: words are typed over, a picture is swapped'),
+    (r'''<button class="ins" title="Insert a block here" onclick=''',
+     r'''<button class="ins" title="Add a section here" aria-label="Add a section here" onclick=''',
+     1, 'the "+" between sections adds a section, in the words of "+ Add a section"'),
+    (r'''if(!r.ok){ toast("Could not add that block"); return; }''',
+     r'''if(!r.ok){ toast("That section could not be added. Please try again.",undefined,"error"); return; }''',
+     1, 'a section that could not be added is said as a failure, in the editor\'s words'),
+    (r'''${full?`<div class="hint">Limit of ${max} reached — untick one to swap, or raise Max above.</div>`''',
+     r'''${full?`<div class="hint">${escapeHtml(owLimitNote(max))}</div>`''',
+     1, 'a full list says how to swap someone in, without "raise Max above" (a field the overview does not show)'),
+    (r'''toast(`Limit of ${max} reached — raise Max above to add more`);''',
+     r'''toast(owLimitNote(max),undefined,"info");''',
+     1, '… and so does Select all on a full list'),
+    (r'''pill.textContent=MD.dirty?"unsaved":(MD.saved?"saved":"generated");''',
+     r'''pill.textContent=MD.dirty?"Unsaved changes":(MD.saved?"Saved":"Not saved yet");''',
+     1, 'the bar says where the mail stands in words: "Unsaved changes", "Saved", "Not saved yet" (not "generated")'),
 ]
+
+# The page's markup, copied from the platform with these changes, applied in order and counted as PATCHES are
+# (batch B18, DESIGN.md sections 2 and 5): the bar's back button reads "← Back to mailers" (UX-131), the editor's
+# title is for screen readers only, the button that downloads reads "Download", and the always-open rail of 30 blocks
+# is gone: "+ Add a section" in the panel and the "+" between sections open the grouped list (oneworld-mail-easy.js).
+MARKUP_PATCHES = [
+    ('''<button class="back" onclick="closeMailer()" title="Back">←</button>''',
+     '''<button class="back" type="button" onclick="closeMailer()">← Back to mailers</button>''',
+     1, 'the back button has words, as every Promotions editor\'s does (UX-131)'),
+    ('''<div class="ttl">Mailer studio</div>''',
+     '''<h1 class="ttl ow-sr">Mailer editor</h1>''',
+     1, 'the bar names the mailer itself (its menu); the editor\'s name is kept for screen readers'),
+    ('''<select id="mlPick" onchange="switchMailer()"></select>''',
+     '''<select id="mlPick" onchange="switchMailer()" aria-label="Mailer"></select>''',
+     1, 'the mailer menu has a name for screen readers'),
+    ('''<button class="btn sm" onclick="mlDownload()" title="Download the sendable .html — the file you send from your email tool">Download to send</button>''',
+     '''<button class="btn sm" onclick="mlDownload()" title="Download the mail as an .html file: the file you send from your email tool">Download</button>''',
+     1, 'Save, Save as new, Download: the bar\'s words (DESIGN.md section 2)'),
+    ('''<button class="btn ghost sm" onclick="toggleMenu('mlMore',event)" title="More">···</button>''',
+     '''<button class="btn ghost sm" onclick="toggleMenu('mlMore',event)" title="More" aria-label="More actions">···</button>''',
+     1, 'the ··· menu has a name for screen readers'),
+    ('''<b>Save as image (desktop)</b><i>A picture to show your team — not for sending</i>''',
+     '''<b>Save as picture · desktop, 800 px wide</b><i>To show your team, not for sending</i>''',
+     1, 'sizes are named with their pixels and where they are used, as Site-look posts names them (UX-132)'),
+    ('''<b>Save as image (mobile)</b><i>How it looks on a phone</i>''',
+     '''<b>Save as picture · phone, 390 px wide</b><i>How it looks on a phone</i>''',
+     1, '… the phone size too'),
+    ('''      <div class="ml-rail">
+        <div class="ml-railtop">
+          <input id="mlPalQ" class="palq" type="search" placeholder="Search blocks…" oninput="mlRailPalette()" autocomplete="off">
+        </div>
+        <div class="ml-scroll">
+          <div class="ph">Add block <span class="faint" style="font-weight:400;text-transform:none;letter-spacing:0">drag onto the canvas</span></div>
+          <div class="ml-pal rail" id="mlRailPal"></div>
+        </div>
+      </div>''',
+     '''      <!-- ONEWORLD PORT (B18): the rail is gone; "+ Add a section" opens the sections in plain groups -->''',
+     1, 'the always-open rail of 30 blocks gives way to "+ Add a section" (DESIGN.md section 2)'),
+    ('''<div class="ml-pop" id="mlPop">
+      <div class="hd">Add a block<button onclick="mlPopClose()">✕</button></div>''',
+     '''<div class="ml-pop" id="mlPop" role="dialog" aria-label="Add a section">
+      <div class="hd">Add a section<button type="button" onclick="mlPopClose()" aria-label="Close">✕</button></div>''',
+     1, 'the list of sections to add is named "Add a section", and its close button too'),
+]
+for n, (old, new, want, why) in enumerate(MARKUP_PATCHES, 1):
+    got = MARKUP.count(old)
+    if got != want:
+        sys.exit('markup patch M%d (%s): its text is found %d time(s) in the copied markup, not %d — the platform changed; read it again and fix MARKUP_PATCHES'
+                 % (n, why, got, want))
+    MARKUP = MARKUP.replace(old, new)
 for n, (old, new, want, why) in enumerate(PATCHES, 1):
     got = JS.count(old)
     if got != want:
@@ -248,6 +348,7 @@ HTML = '''<!doctype html>
 <link rel="stylesheet" href="assets/vendor/quill/quill.snow.css">
 <link rel="stylesheet" href="promo-studio/mailer-studio.css">
 <link rel="stylesheet" href="promo-studio/oneworld.css">
+<link rel="stylesheet" href="promo-studio/oneworld-mail-easy.css">
 <script src="assets/vendor/quill/quill.js"></script>
 <script type="module" src="promo-studio/richtext.js"></script>
 </head>
@@ -265,6 +366,7 @@ HTML = '''<!doctype html>
 <script src="assets/vendor/html-to-image.js"></script>
 <script src="promo-studio/mailer-studio.js"></script>
 <script src="promo-studio/oneworld.js"></script>
+<script src="promo-studio/oneworld-mail-easy.js"></script>
 </body>
 </html>
 '''
