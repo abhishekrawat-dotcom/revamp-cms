@@ -57,6 +57,8 @@
   .chg .ba b{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; display:block; margin-bottom:2px; }
   .chg .extra{ color:var(--muted); font-size:12px; margin-top:6px; }
   .chg .rec{ margin-top:6px; font-size:12.5px; word-break:break-word; }
+  .more-note{ border:1px dashed var(--border); border-radius:10px; padding:10px 12px; margin:8px 0; font-size:13px; color:var(--muted); word-break:break-word; }
+  .more-note a{ color:inherit; font-weight:600; }
   .side h3{ font-size:12.5px; font-weight:700; margin:14px 0 6px; }
   .side h3 small{ font-weight:500; color:var(--muted); }
   .tag{ display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:5px; background:var(--surface-2); color:var(--muted); margin-left:6px; vertical-align:1px; }
@@ -129,6 +131,10 @@
   /* the class that colours a change's badge */
   var TONE = { added:'added', removed:'removed', 'record-added':'added', 'record-removed':'removed' };
   function isRecord(it){ return /^record-/.test(it.type || ''); }
+  /* past what one request keeps, the server lists no more changes but counts them in a last "more" item (page-diff.js
+     listed): it is told after the groups, and counted in "What changed (N)", so the approver knows every change */
+  function isMore(it){ return it.type === 'more'; }
+  function changeCount(items){ return items.reduce(function(n, it){ return n + (isMore(it) ? (+it.count || 0) : 1); }, 0); }
   var LEVEL = { block:'Holds it back', warn:'Check', info:'Good to know' };
 
   /* What the site check found on the proposed version: listed before the changes, so the approver sees what would
@@ -203,7 +209,13 @@
      Agenda, Sponsors, Gallery, FAQ and Contact) added, changed or removed, record by record; and what the editor
      updated by itself when it opened (an ET logo brought up to date, heading sizes) — so the approver sees which
      is which. A group with nothing in it is left out, and so is its heading when it is the only one. */
-  function changesHtml(items){
+  function changesHtml(items, proposedHref){
+    var more = items.filter(isMore);
+    items = items.filter(function(it){ return !isMore(it); });
+    var moreHtml = more.map(function(it){
+      return '<p class="more-note">' + esc(it.note || ((+it.count || 0) + ' more changes are not listed here.')) +
+        (proposedHref ? ' <a href="' + esc(proposedHref) + '" target="_blank" rel="noopener">Open the proposed version</a> to see them all.' : '') + '</p>';
+    }).join('');
     var own = items.filter(function(it){ return !isRecord(it) && !it.auto; });
     var content = items.filter(isRecord);
     var auto = items.filter(function(it){ return !isRecord(it) && it.auto; });
@@ -212,10 +224,10 @@
       { title: 'Content', note: 'from the event console', list: content },
       { title: 'Automatic updates', note: 'made by the site editor when it opened', list: auto }
     ].filter(function(g){ return g.list.length; });
-    if (groups.length === 1 && groups[0].list === own) return own.map(changeHtml).join('');
+    if (groups.length === 1 && groups[0].list === own) return own.map(changeHtml).join('') + moreHtml;
     return groups.map(function(g){
       return '<h3>' + esc(g.title) + ' (' + g.list.length + ')' + (g.note ? ' <small>' + esc(g.note) + '</small>' : '') + '</h3>' + g.list.map(changeHtml).join('');
-    }).join('');
+    }).join('') + moreHtml;
   }
   /* a save that only brought Content in, or that the editor made by itself */
   function saveTag(s){
@@ -264,8 +276,8 @@
           (s.note ? '<div class="meta">“' + esc(s.note) + '”</div>' : '') + '</li>';
       }).join('') + '</ul>' : '<p class="empty">The individual saves were not recorded for these versions.</p>') +
 
-      '<h2>What changed (' + (r.items || []).length + ')</h2>' +
-      ((r.items || []).length ? changesHtml(r.items) :
+      '<h2>What changed (' + changeCount(r.items || []) + ')</h2>' +
+      ((r.items || []).length ? changesHtml(r.items, '/preview/' + encodeURIComponent(eventId) + '?version=' + encodeURIComponent(r.toVersion)) :
         '<p class="empty">' + (r.firstPublish ? 'This is the first time the site goes live: the whole site is new. See it on the right.' : 'No difference a reader would see was found between the two versions.') + '</p>') +
       settingsHtml() + decideHtml();
 

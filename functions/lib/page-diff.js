@@ -14,8 +14,15 @@
               "record-changed"         a record shown both times, with different words or pictures
                                        (before / after: the lines that differ)
               "record-order"           the same records in another order (name: "Speakers", note says so)
+              "more"                   last, only past the caps below: how many changes are not listed (count),
+                                       what they are in words (note) and counted (left), so nothing is lost
        A record's item also has kind (speakers, sessions, partners, glimpses, faq, contact) and name, the word
        for one of them ("FAQ", "Speaker"). An unchanged site gives [].
+
+     listed(items) -> the same list as it is kept: the caps applied, one "more" item at the end for the rest
+     (a list already listed, or several put together, comes out with one "more" holding all of theirs).
+     summarise(items) -> "2 sections edited, content: 54 speakers added, 4 FAQs added", counting the "more" too.
+     changeCount(items) -> how many changes the list stands for, listed or not.
 
    A page is read as the editor saves it: sections are the elements carrying data-rv-section (their identity
    is data-rv-key, else data-rv-section; their name data-sec-name), the site-wide design is the inline style of
@@ -35,7 +42,14 @@ const RR = require('../../templates/_shared/rv-records.js');
 
 var MAX_LINES = 12;          // differing lines listed per section, each side
 var MAX_CHARS = 280;         // of one line
-var MAX_ITEMS = 60;
+/* What is kept of one comparison. A version's change and an approval request each keep their list in one Firestore
+   document (at most 1 MiB), so the list is capped — but never silently: what is past the caps is counted in a last
+   "more" item (listed). The site's own changes are few (a site has some twenty sections); Content's records are one
+   item each, and a real award site has 50, 100 or more jury members, nominees or photos, all of which the approver
+   is to see (UX-114: 54 jury members and 4 FAQs were cut at 60, and the fourth FAQ was left out unsaid). */
+var MAX_ITEMS = 60;          // the site's own changes listed: sections and the site design
+var MAX_RECORDS = 600;       // Content's records listed, one each
+var MAX_LISTED = 300000;     // bytes the listed changes hold in all (a record added is ~150), well inside a document
 
 var BLOCK = /^(p|div|section|article|header|footer|main|aside|nav|h[1-6]|li|ul|ol|dl|dt|dd|tr|td|th|table|figure|figcaption|blockquote|details|summary|form|button|a|br|hr)$/;
 
@@ -249,7 +263,7 @@ function diffPages(beforeHtml, afterHtml) {
       items.push({ section: key, name: b[key].name, type: 'moved', before: ordinal(a[key].at + 1) + ' of ' + A.sections.length, after: ordinal(b[key].at + 1) + ' of ' + B.sections.length, note: '' });
     });
   }
-  return items.concat(diffRecords(A.records, B.records)).slice(0, MAX_ITEMS);
+  return listed(items.concat(diffRecords(A.records, B.records)));
 }
 
 function noun(kind, n) { var t = RR.TABS[kind]; return t ? (n === 1 ? t.one : t.many) : 'record' + (n === 1 ? '' : 's'); }
@@ -322,17 +336,68 @@ function diffRecords(before, after) {
   return items;
 }
 
-/* one line for a list: "3 sections edited, 1 added, design changed", then what Content changed:
-   "Content: 1 FAQ added, 2 speakers changed" (alone) or "…, content: 1 FAQ added" (after the rest) */
-function summarise(items) {
-  var n = { text: 0, look: 0, pictures: 0, added: 0, removed: 0, moved: 0, hidden: 0, shown: 0, design: 0 };
-  var edited = {}, records = {};
+/* What a list of changes counts, also for those it does not list: { n: { type: count }, edited: [section keys of
+   the sections whose words, look or pictures changed], records: { kind: { type: count } } } — plain values only, as
+   it is kept in Firestore inside the "more" item. */
+function tally(items) {
+  var t = { n: {}, edited: [], records: {} };
   (items || []).forEach(function (i) {
-    if (n[i.type] != null) n[i.type]++;
-    if (i.type === 'text' || i.type === 'look' || i.type === 'pictures') edited[i.section] = 1;
-    if (/^record-/.test(i.type)) { var k = (records[i.kind] = records[i.kind] || {}); k[i.type] = (k[i.type] || 0) + 1; }
+    if (!i) return;
+    if (i.type === 'more') { addTally(t, i.left); return; }
+    t.n[i.type] = (t.n[i.type] || 0) + 1;
+    if ((i.type === 'text' || i.type === 'look' || i.type === 'pictures') && t.edited.indexOf(String(i.section || '')) === -1) t.edited.push(String(i.section || ''));
+    if (/^record-/.test(i.type)) { var k = (t.records[i.kind] = t.records[i.kind] || {}); k[i.type] = (k[i.type] || 0) + 1; }
   });
-  var parts = [], e = Object.keys(edited).length;
+  return t;
+}
+function addTally(t, more) {
+  if (!more || typeof more !== 'object') return t;
+  Object.keys(more.n || {}).forEach(function (type) { t.n[type] = (t.n[type] || 0) + (+more.n[type] || 0); });
+  (Array.isArray(more.edited) ? more.edited : []).forEach(function (key) { key = String(key || ''); if (t.edited.indexOf(key) === -1) t.edited.push(key); });
+  Object.keys(more.records || {}).forEach(function (kind) {
+    var k = (t.records[kind] = t.records[kind] || {}), m = more.records[kind] || {};
+    Object.keys(m).forEach(function (type) { k[type] = (k[type] || 0) + (+m[type] || 0); });
+  });
+  return t;
+}
+
+/* The list as it is kept and shown: each change in order while the caps allow, and past them one "more" item that
+   says how many are left out and what they are, so the summary still counts every one and the review page says
+   that more exist. A list that already has "more" items (one listed before, or the saves of a request put one
+   after another) keeps one, holding all of theirs. */
+function listed(items) {
+  var keep = [], site = 0, recs = 0, chars = 0, count = 0, left = null;
+  (items || []).forEach(function (i) {
+    if (!i) return;
+    if (i.type === 'more') { count += +i.count || 0; left = addTally(left || tally([]), i.left); return; }
+    var record = /^record-/.test(i.type);
+    var size = Buffer.byteLength(JSON.stringify(i), 'utf8');      // as it is stored: Devanagari takes 3 bytes a letter
+    if ((record ? recs < MAX_RECORDS : site < MAX_ITEMS) && chars + size <= MAX_LISTED) {
+      keep.push(i); chars += size;
+      if (record) recs++; else site++;
+      return;
+    }
+    count++; left = addTally(left || tally([]), tally([i]));
+  });
+  if (count) {
+    keep.push({ section: '', name: '', type: 'more', before: '', after: '', count: count, left: left,
+      note: count + (count === 1 ? ' more change is' : ' more changes are') + ' not listed here: ' + words(left) + '.' });
+  }
+  return keep;
+}
+
+/* how many changes a list stands for: those it lists and those its "more" counts */
+function changeCount(items) {
+  return (items || []).reduce(function (n, i) { return n + (!i ? 0 : i.type === 'more' ? (+i.count || 0) : 1); }, 0);
+}
+
+/* one line for a list: "3 sections edited, 1 added, design changed", then what Content changed:
+   "Content: 1 FAQ added, 2 speakers changed" (alone) or "…, content: 1 FAQ added" (after the rest) — every change
+   counted, the ones past the caps too (their "more" item) */
+function summarise(items) { return words(tally(items)); }
+function words(t) {
+  var n = t.n, records = t.records;
+  var parts = [], e = t.edited.length;
   if (e) parts.push(e + (e === 1 ? ' section edited' : ' sections edited'));
   if (n.added) parts.push(n.added + ' added');
   if (n.removed) parts.push(n.removed + ' removed');
@@ -354,4 +419,4 @@ function summarise(items) {
 }
 
 /* readPage is also how lib/promo.js reads a saved site's design (the body's variables and the editor's state) */
-module.exports = { diffPages, summarise, readPage };
+module.exports = { diffPages, summarise, listed, changeCount, readPage };

@@ -275,7 +275,7 @@ function spreadOf(px, at) {
 const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
-const { diffPages, summarise } = require('./page-diff');
+const { diffPages, summarise, listed, changeCount } = require('./page-diff');
 /* the event's records drawn into a saved site on the server (Content reaches the staged copy at once) */
 const siteRecords = require('./site-records');
 const { safeFetch } = require('./safe-fetch');
@@ -8834,7 +8834,7 @@ function handleSitePut(req, res) {
         /* a save is somebody pressing Save: every one is a kept version, on staging, with its own line in
            the history saying what changed */
         return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note, { kind: automatic ? 'automatic' : '' }).then(function (rec) {
-          sendJson(res, 200, { version: version, updatedAt: now, changeId: rec.changeId, summary: rec.summary, changes: rec.items.length,
+          sendJson(res, 200, { version: version, updatedAt: now, changeId: rec.changeId, summary: rec.summary, changes: changeCount(rec.items),
             stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
         });
       }, function (err) {
@@ -9945,6 +9945,9 @@ function handleApprovalRequest(req, res) {
         /* a first publication has no "before": the whole site is new, and listing every section as added says nothing */
         if (before != null) { try { items = diffPages(before, after); } catch (e) { items = []; } }
         if (liveVersion && before == null) saves.forEach(function (c) { items = items.concat(c.items); });
+        /* kept within one document, and never cut unsaid: what is past the caps is counted in the last item, which the
+           summary counts too (page-diff listed; UX-114: a silent cut at 60 left a fourth FAQ out and said "3 FAQs added") */
+        items = listed(items);
         /* a change only the editor's automatic updates made (no person's save touched that section the same way)
            is listed apart on the review page */
         var autoKeys = {}, ownKeys = {};
@@ -9953,7 +9956,7 @@ function handleApprovalRequest(req, res) {
           c.items.forEach(function (i) { (c.kind === 'automatic' ? autoKeys : ownKeys)[i.section + '|' + i.type] = 1; });
         });
         items = items.map(function (i) {
-          return autoKeys[i.section + '|' + i.type] && !ownKeys[i.section + '|' + i.type] && !/^record-/.test(i.type) ? Object.assign({}, i, { auto: true }) : i;
+          return autoKeys[i.section + '|' + i.type] && !ownKeys[i.section + '|' + i.type] && !/^record-|^more$/.test(i.type) ? Object.assign({}, i, { auto: true }) : i;
         });
         /* who changed it: the people who saved, not the site editor's own updates */
         var people = [];
@@ -9961,7 +9964,7 @@ function handleApprovalRequest(req, res) {
         var pendingId = data.approval && data.approval.id;
         var doc = {
           status: 'pending', eventId: eventId, updatedAt: now, fromVersion: liveVersion, toVersion: version,
-          firstPublish: !liveVersion, note: note, items: items.slice(0, 80), summary: !liveVersion ? 'first publication of the site' : summarise(items),
+          firstPublish: !liveVersion, note: note, items: items, summary: !liveVersion ? 'first publication of the site' : summarise(items),
           contributors: people,
           saves: saves.map(function (c) { var o = { id: c.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note }; if (c.kind) o.kind = c.kind; return o; })
         };
