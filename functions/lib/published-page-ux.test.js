@@ -299,7 +299,7 @@ ok(hooks.repeatedHeadingIds([{ parsed: { sections: [{ id: 'overview', html: '<h2
 (function () {
   var src = fs.readFileSync(path.join(__dirname, '../../templates/_shared/et-runtime.js'), 'utf8');
   ok(/document\.addEventListener\('toggle', function \(e\) \{[\s\S]{0,200}moreLess\(sum, d\.open\)/.test(src) && /detailsMoreLess\(\); arrive\(\);/.test(src), '"Read more" in a <details> summary says "Read less" while open');
-  ok(/if \(repeatsPage\(li\)\) \{ li\.classList\.add\('is-over'\); return false; \}/.test(src), 'a section link that repeats a page tab is left out of the bar, More and the menu');
+  ok(/if \(repeatsPage\(li\)\) \{ plan\.left\.push\(li\); return; \}/.test(src) && /plan\.left\.forEach\(function \(li\) \{ li\.classList\.add\('is-over'\); \}\);/.test(src), 'a section link that repeats a page tab is left out of the bar, More and the menu');
   ok(/groupHead\('Pages'\)/.test(src) && /groupHead\('On this page'\)/.test(src), 'the phone\'s menu lists the pages apart from the sections');
   ok(/var pageLinks = tabLinks\.filter\(function \(a\) \{ return a\.hasAttribute\('data-rv-page-link'\); \}\);/.test(src) && /var grouped = pageLinks\.length > 0 && sectionLinks\.length > 0;/.test(src) &&
     /otherTabs\.concat\(pageLinks, sectionLinks\)/.test(src), 'only the site\'s own pages are listed under "Pages" (a tab to another site is not one)');

@@ -30,7 +30,7 @@ ok(/^<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta na
   'the page starts with the doctype, <html lang="en">, <head>, the charset and the viewport', PAGE.slice(0, 200));
 ok((PAGE.match(/<!doctype/gi) || []).length === 1 && (PAGE.match(/<meta name="viewport"/g) || []).length === 1 && (PAGE.match(/<meta charset/g) || []).length === 1, 'each of them once');
 ok(PAGE.indexOf('</style>\n</head>\n<body>\n') !== -1 && PAGE.indexOf('</head>') < PAGE.indexOf('<header class="main-nav">'), 'the head closes after the styles, and the body holds the page');
-ok(/<script src="dash-bot-client\.js"><\/script>\n<\/body>\n<\/html>\n$/.test(PAGE), 'the body and the document are closed after the last script');
+ok(/<script src="etb2b-assistant\.js"><\/script>\n<\/body>\n<\/html>\n$/.test(PAGE), 'the body and the document are closed after the last script');
 ok(/\n  table\{ line-height:normal; \}\n/.test(PAGE), 'tables keep the line height they were drawn with (quirks mode did not pass the page\'s on)');
 ok(/\.kpi-card \.kpi-icon\{[^}]*display:flex;/.test(PAGE) && /\.live-tag\{ display:flex; width:fit-content;/.test(PAGE) &&
   /\.ev-name-main \.ev-link\{[^}]*display:block; width:fit-content; max-width:100%;/.test(PAGE) && /textarea\.finput\{ display:block;/.test(PAGE),

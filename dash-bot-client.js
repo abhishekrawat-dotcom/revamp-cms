@@ -1,32 +1,46 @@
-/* dash-bot-client.js — ETB2B AI on the events dashboard (Event_Listing.html): the page's side of the bot.
+/* dash-bot-client.js — ETB2B AI's "dash brain": the events side of the one assistant, on every page.
 
-   It mounts the shared chat kit (etb2b-chat.js, window.RevampChat) in #rv-dash-bot, sends each message to
-   POST /api/dash-bot together with what the list is showing, and does what the answer says at once. That is
-   ETB2B AI's "do it, then undo": there is no Apply or Discard step, and everything it changes can be put back.
-     filter     the list changes (window.RvListing.apply); the panel folds to a one-line peek so the list is in
-                view; Undo puts the list back exactly as it was. Another portal's events are looked at "for now":
-                the portal the person works in is not moved
-     portal     ("switch to ETAuto") the dashboard's own portal switcher moves (RvListing.setPortal, saved for the
-                person as the switcher saves it); Undo switches back
-     navigate   "Opening … · Stay here" for 1.2 s, then the page opens; Stay here cancels, and Back undoes
-     create     the details go to Create Event (localStorage, under an id the server made), then as navigate
+   The assistant's shell (etb2b-assistant.js, window.RevampAssistant) mounts the shared chat kit (etb2b-chat.js)
+   bottom-right on every page a team member uses and hands this brain the messages it answers: on the events
+   dashboard all of them, inside an event every one about that event's numbers, its other pages, promotions,
+   portals or a new event, and in the site editor those the editor's own ETB2B AI does not take. Each message goes
+   to POST /api/dash-bot with where the person is (place: { page, eventId, tab }), what the dashboard's list is
+   showing (on the dashboard only), the attachments' thumbnails and words, and does what the answer says at once.
+   That is ETB2B AI's "do it, then undo": there is no Apply or Discard step, and everything it changes can be put back.
+     filter     (the dashboard only) the list changes (window.RvListing.apply); the panel folds to a one-line peek
+                so the list is in view; Undo puts the list back exactly as it was. Another portal's events are
+                looked at "for now": the portal the person works in is not moved
+     portal     ("switch to ETAuto") on the dashboard its own portal switcher moves (RvListing.setPortal); on any
+                other page the person's working portal (RevampPortals.setWorking), so the dashboard and Create
+                Event open on it; Undo switches back
+     navigate   "Opening … · Stay here" for 1.2 s, then the page opens (through the page's own guard for unsaved
+                work, RevampAssistant.leave); Stay here cancels, and Back undoes. Pictures attached inside an
+                event go on to its site editor with the words (open.carry), unsent
+     create     the details go to Create Event (localStorage, under an id the server made), with the logo and
+                brief file attached for its own boxes (IndexedDB), then as navigate
      choose     one button per event; a click runs that event's own action, with no second AI call
      refuse     the fixed sentence, and a link to the manual control where one exists
-     undo       ("undo that") the newest list change ETB2B AI made in this tab is put back
+     undo       ("undo that") the newest list or portal change ETB2B AI made in this tab is put back. In the site
+                editor the shell sends a bare "undo that" here, with no AI call, when this brain's change is the
+                newest one in the panel (changedAt, undoLocal): "switch to ETAuto", then "undo that", switches back
+     handoff    (the site editor only) the message is about the page itself: the shell passes it to the editor's
+                own ETB2B AI, once
    There is no action here that deletes, cancels, publishes, approves, sends or pays: those stay manual, and
    nothing in this file could do them.
 
    Every page it opens is checked again against NAV_OK, one whitelist, right before it is opened. Every name and
-   number it shows came from the server; from the page it reads only what the list is showing (RvListing).
-   Each person's chat history is their own (GET /api/dash-bot/history) and is replayed on the first open.
+   number it shows came from the server; from the page it reads only what the dashboard's list is showing
+   (RvListing) and the portal the person works in. The history is the shell's to load: the person's own dashboard
+   conversation on pages with no event (GET /api/dash-bot/history, replayed here), the event's own inside an event
+   (one conversation with the editor's turns, which the shell reads and hands this brain its own turns of).
 
    Browser storage (all optional: with storage blocked the bot still answers, Undo lasts until the tab closes)
-     sessionStorage  rv.dashBot.open                 '1' while ETB2B AI has just opened a page: Back reopens the panel
      sessionStorage  rv.dashBot.undo.<turnId>        the list before a filter (….list for "Show these in the list"),
                                                      the newest 15, so Undo still works after a reload
      localStorage    revamp.createEvent.prefill.v1.<prefillId>   the Create Event hand-off, read once over there
+     (the shell keeps "Back reopens the panel", the files for Create Event and the pictures for the editor)
 
-   ES5 on purpose (var, function, promises): the dashboard serves it as it is, with no build step. */
+   ES5 on purpose (var, function, promises): every page serves it as it is, with no build step. */
 (function (root) {
   'use strict';
 
@@ -40,19 +54,25 @@
   var NAV_DELAY_MS = 1200;
   /* after Stay here, a click on the card's link waits at most this long for its "opened after all" report */
   var LATER_WAIT_MS = 1500;
+  /* a page opened with files for it waits at most this long for them to be kept (IndexedDB is usually instant) */
+  var FILES_WAIT_MS = 3000;
   var STILL_WORKING_MS = 8000;
   /* the server gives up on the model after 55 s; past this the answer is not coming */
   var GIVE_UP_MS = 90000;
   var MAX_MESSAGE = 4000;
   var KEEP_UNDO = 15;
   var TURN_ID = /^[A-Za-z0-9]{10,40}$/;
-  var OPEN_KEY = 'rv.dashBot.open';
+  var EVENT_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
   var UNDO_PREFIX = 'rv.dashBot.undo.';
   var PREFILL_PREFIX = 'revamp.createEvent.prefill.v1.';
 
+  /* Every sentence this brain says on its own. The product is ETB2B EventSphere (owner decision 6) and the
+     assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
     welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions.',
+    welcomeEvent: 'I can answer questions about this event from its real numbers, open its pages, set up its promotions, and start a new event.',
     footNote: 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.',
+    footNoteElsewhere: 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.',
     tooLong: 'Keep the message under 4,000 characters. For a longer brief, ask me to start a new event from a brief, then paste it on Create Event.',
     session: 'Your session has ended. Sign in again.',
     offline: 'You’re offline. Check your connection and try again.',
@@ -61,18 +81,31 @@
     rate: 'That is a lot of messages in a short time. Please wait a few minutes and try again.',
     daily: 'You have used today’s ETB2B AI allowance. It resets at midnight (India time).',
     stillWorking: 'Still working. This can take up to a minute.',
+    checking: 'Checking your events…',
     notKept: 'This message wasn’t saved to your history.',
     notShown: 'ETB2B AI answered, but this page could not show the answer. Reload the page to see it in your history.',
     olderUndo: 'This puts the list back as it was before that message, including later changes. Undo?',
     undone: 'Done, the list is back as it was.',
+    portalUndone: 'Done, you are back in the portal you worked in before.',
     nothingToUndo: 'There’s nothing here I can undo. Pages I opened can be left with your browser’s Back button, and a new event I started can be cleared with Undo on the Create Event page.',
     couldNot: 'That could not be done here. ',
     notUndone: 'That could not be undone here. Reload the page to see the whole list.',
     listMissing: 'The events list isn’t ready on this page. Reload it and ask again.',
+    listElsewhere: 'The events list is on the events dashboard: ask me there to change it.',
+    portalMissing: 'The portal could not be switched from this page. Use the portal switcher on the events dashboard.',
+    portalOpens: ': the dashboard and Create Event will open on it.',
     newTab: 'Opened in a new tab.',
+    cantTell: 'I couldn’t tell whether that is about this page. Name the part of the page, for example “the hero”.',
+    stoppedReplay: 'Stopped — nothing was done.',
     /* a create answer whose own sentence the server could not keep (older turns; the server now sends this itself) */
     creating: 'Starting Create Event with your details.',
-    failedBefore: 'That could not be done at the time.'
+    failedBefore: 'That could not be done at the time.',
+    filesGo: '{list} {verb} into Create Event’s own {boxes}. Nothing is generated or created until you say so there.',
+    logoGoes: 'Your logo “{name}”',
+    briefGoes: 'your brief “{name}”',
+    briefTextGoes: 'The words of “{name}” are your brief there.',
+    picsGo: 'Your {count} goes with you to the site editor, waiting in ETB2B AI’s tray with your words, unsent.',
+    picsGoMany: 'Your {count} go with you to the site editor, waiting in ETB2B AI’s tray with your words, unsent.'
   };
 
   /* the four things ETB2B AI does here; a chip fills the box (the kit selects the first "…") and never sends */
@@ -81,6 +114,21 @@
     { label: 'Show drafts from last week', text: 'Show drafts from last week' },
     { label: 'Which events go live this month?', text: 'Which events go live this month?' },
     { label: 'Make a save-the-date post and an announcement mailer for …', text: 'Make a save-the-date post and an announcement mailer for …' }
+  ];
+  var SUGGESTIONS_EVENT = [
+    { label: 'How many registrations does this event have?', text: 'How many registrations does this event have?' },
+    { label: 'Open this event’s speakers', text: 'Open this event’s speakers' },
+    { label: 'Make a save-the-date post for this event', text: 'Make a save-the-date post for this event' },
+    { label: 'Create an IP event called … on … in …', text: 'Create an IP event called … on … in …' }
+  ];
+  /* small chips under the box once the conversation has a turn: they fill it, never send (UX-095) */
+  var QUICK = [
+    { label: 'Which events go live this month?', text: 'Which events go live this month?' },
+    { label: 'Create an IP event called …', text: 'Create an IP event called … on … in …' }
+  ];
+  var QUICK_EVENT = [
+    { label: 'Registrations so far', text: 'How many registrations does this event have?' },
+    { label: 'A save-the-date post', text: 'Make a save-the-date post for this event' }
   ];
 
   var STATUS_WORDS = { draft: 'Draft', upcoming: 'Upcoming', active: 'Active', completed: 'Completed', cancelled: 'Cancelled' };
@@ -96,19 +144,32 @@
   };
 
   var chat = null;
-  var mounted = false;
   var inFlight = null;
+  var stopNow = null;        // ends the message being answered, while there is one (the busy strip's Stop)
   var pending = null;        // the page about to open, while its Stay here is offered
-  var changes = [];          // ETB2B AI's list changes in this tab, oldest first (by when they were made)
+  var changes = [];          // ETB2B AI's list and portal changes in this tab, oldest first (by when they were made)
+  var turnEvents = {};       // turnId -> the event whose conversation holds it (a report then says so)
   var signingIn = false;
 
   function now() { return new Date().getTime(); }
   function str(v) { return v == null ? '' : String(v); }
+  function isFn(f) { return typeof f === 'function'; }
+  function isArr(v) { return Object.prototype.toString.call(v) === '[object Array]'; }
   function labelOf(v, fallback) { var s = str(v).replace(/\s+/g, ' ').trim(); return s ? s.slice(0, 160) : fallback; }
+  function fill(s, o) { return str(s).replace(/\{([a-z]+)\}/g, function (m, k) { return Object.prototype.hasOwnProperty.call(o, k) ? str(o[k]) : m; }); }
   function joinWords(list) {
     if (list.length < 2) return list.join('');
     return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
   }
+  /* the one assistant around this brain, and where the person is */
+  function shell() { var A = root.RevampAssistant; return A && typeof A === 'object' ? A : null; }
+  function placeNow() {
+    var A = shell(), p = null;
+    try { p = A && isFn(A.place) ? A.place() : null; } catch (e) { p = null; }
+    p = p && typeof p === 'object' ? p : {};
+    return { page: str(p.page) || 'dashboard', eventId: EVENT_ID.test(str(p.eventId)) ? str(p.eventId) : '', tab: str(p.tab) };
+  }
+  function listing() { var L = root.RvListing; return L && isFn(L.snapshot) ? L : null; }
 
   /* ---------- browser storage: every access may throw (private windows, blocked site data) ---------- */
   function store(kind) { try { return root[kind] || null; } catch (e) { return null; } }
@@ -141,14 +202,26 @@
     });
   }
 
-  /* how a turn ended, for the person's history and ETB2B AI's memory: undone, failed, or done with a choice.
-     Resolves once the server has answered (or could not be reached), never rejects. */
+  /* How a turn ended, for the person's history and ETB2B AI's memory: undone, failed, stopped, or done with a
+     choice. A turn kept in an event's conversation is reported there (eventId). Resolves once the server has
+     answered (or could not be reached), never rejects. */
   function report(turnId, status, note, keepalive) {
     if (!turnId || !TURN_ID.test(turnId)) return Promise.resolve(false);
     var body = { turnId: turnId, status: status };
     if (note) body.note = str(note).slice(0, 300);
+    if (turnEvents[turnId]) body.eventId = turnEvents[turnId];
     return api('/api/dash-bot/turn', 'POST', body, keepalive).then(function () { return true; },
       function () { return false; /* the history line is a nicety; the page already did it */ });
+  }
+  /* Which conversation kept a turn, as the server's answer says (scope 'event' with its eventId, or 'global'): on
+     an event's page whose event the server could not use (deleted, say), the turn is in the person's own
+     conversation and is reported there. An answer from a server from before it said so is taken to be in the
+     page's event's conversation. */
+  function keepScope(turnId, body, here) {
+    var id = here.eventId;
+    if (body && body.scope === 'global') id = '';
+    else if (body && body.scope === 'event' && EVENT_ID.test(str(body.eventId))) id = str(body.eventId);
+    if (id) turnEvents[turnId] = id; else delete turnEvents[turnId];
   }
 
   function signInSoon() {
@@ -166,29 +239,45 @@
     if (retryable === false) e.retryable = false;
     return e;
   }
+  /* one table of error sentences for both brains: the shell's (etb2b-assistant.js errorFor) */
+  function shellError(r) {
+    var A = shell();
+    if (!A || !isFn(A.errorFor)) return null;
+    try { return A.errorFor(r, placeNow()); } catch (e) { return null; }
+  }
   function answerError(r) {
-    var b = r.body && typeof r.body === 'object' ? r.body : {};
-    if (r.status === 401) { signInSoon(); return problem(TEXT.session, false); }
-    if (b.code === 'chat-rate') return problem(str(b.error) || TEXT.rate);
-    if (b.code === 'dash-bot-daily') return problem(str(b.error) || TEXT.daily, false);
-    if (b.code === 'too-long') return problem(str(b.error) || TEXT.tooLong, false);
-    if (typeof b.error === 'string' && b.error) return problem(b.error, b.retryable === false ? false : undefined);
-    return problem('ETB2B AI could not answer (error ' + r.status + '). Try again.');
+    var e = shellError(r) || problem(r.status === 401 ? TEXT.session : 'ETB2B AI could not answer (error ' + r.status + '). Try again.', r.status === 401 ? false : undefined);
+    if (r.status === 401) signInSoon();
+    return e;
   }
   function networkError(err) {
-    if (err && (err.status === 401 || err.code === 'revamp/signed-out')) { signInSoon(); return problem(TEXT.session, false); }
     if (err && err.dashBotSlow) return problem(TEXT.slow);
-    if (root.navigator && root.navigator.onLine === false) return problem(TEXT.offline);
-    return problem(TEXT.unreachable);
+    var e = shellError({ network: err });
+    if (!e) e = err && (err.status === 401 || err.code === 'revamp/signed-out') ? problem(TEXT.session, false)
+      : problem(root.navigator && root.navigator.onLine === false ? TEXT.offline : TEXT.unreachable);
+    if (err && (err.status === 401 || err.code === 'revamp/signed-out')) signInSoon();
+    return e;
   }
 
-  function busy(on, text) { if (chat && typeof chat.setBusy === 'function') { try { chat.setBusy(on, text); } catch (e) { /* the strip is cosmetic */ } } }
+  /* the busy strip, with its Stop while a message is being answered (the kit unlocks the box itself) */
+  function busy(on, text, o) {
+    if (!chat || typeof chat.setBusy !== 'function') return;
+    try { if (o) chat.setBusy(on, text, o); else chat.setBusy(on, text); } catch (e) { /* the strip is cosmetic */ }
+  }
 
+  /* the portal the person works in ('' for All portals), for "events in my portal" off the dashboard */
+  function workingPortal() {
+    var P = root.RevampPortals, w = null;
+    try { w = P && isFn(P.cachedWorking) ? P.cachedWorking() : null; } catch (e) { w = null; }
+    return typeof w === 'string' && w !== 'all' && /^[a-z0-9]{1,40}$/.test(w) ? w : '';
+  }
   /* what the person is looking at, so "these" and "here" mean something. It is only context: the server takes
-     no fact from it. */
+     no fact from it. Off the dashboard there is no list, only the portal the person works in. */
   function viewNow() {
+    var L = listing();
+    if (!L) return { working: workingPortal() };
     var s = null;
-    try { s = root.RvListing.snapshot(); } catch (e) { s = null; }
+    try { s = L.snapshot(); } catch (e) { s = null; }
     s = s && typeof s === 'object' ? s : {};
     var sort = s.sort && SERVER_SORTS[s.sort.field] ? { field: s.sort.field, dir: s.sort.dir === 'desc' ? 'desc' : 'asc' } : null;
     return {
@@ -209,33 +298,73 @@
   }
 
   /* ---------- one message ---------- */
-  function send(text) {
+  /* o: { attachments: the chips' records, handedFrom: 'edit' when the editor's ETB2B AI passed it on }.
+     Resolves with { kind, turnId } once drawn, { handoff: true } when the editor should answer, or { kind:
+     'stopped' } at once when the person pressed Stop: the answer that still arrives is then neither drawn nor
+     acted on, and its turn is reported stopped. */
+  function send(text, o) {
+    o = o || {};
     var message = str(text).trim();
     if (!message) return Promise.resolve();
     if (inFlight) return inFlight;                       // one request at a time (the kit locks its box too)
     if (message.length > MAX_MESSAGE) return Promise.reject(problem(TEXT.tooLong, false));
     stopPending();                                       // typing again means staying here
-    busy(true);
-    var slowTimer = setTimeout(function () { busy(true, TEXT.stillWorking); }, STILL_WORKING_MS);
+    var here = placeNow();
+    var recs = isArr(o.attachments) ? o.attachments.filter(function (r) { return r && typeof r === 'object'; }) : [];
+    var handedFrom = o.handedFrom === 'edit' ? 'edit' : '';
+    var body = { message: message, view: viewNow(), place: here };
+    var A = shell();
+    var wired = recs.length && A && isFn(A.wireAttachments) ? A.wireAttachments(recs) : [];
+    if (wired.length) body.attachments = wired;
+    if (handedFrom) body.handedFrom = handedFrom;
+
+    var finished = false, stopped = false, resolveOuter = null, rejectOuter = null;
+    var stopOpt = { onStop: function () { if (stopNow) stopNow(); } };
+    var words = handedFrom ? TEXT.checking : undefined;
+    busy(true, words, stopOpt);
+    var slowTimer = setTimeout(function () { busy(true, TEXT.stillWorking, stopOpt); }, STILL_WORKING_MS);
     var giveUp = null;
-    function settle() { clearTimeout(slowTimer); clearTimeout(giveUp); inFlight = null; busy(false); }
+    function settle() { finished = true; clearTimeout(slowTimer); clearTimeout(giveUp); inFlight = null; stopNow = null; busy(false); }
+    var outer = new Promise(function (resolve, reject) { resolveOuter = resolve; rejectOuter = reject; });
+    stopNow = function () {
+      if (finished) return;
+      stopped = true;
+      settle();
+      resolveOuter({ kind: 'stopped' });
+    };
     var request = new Promise(function (resolve, reject) {
       giveUp = setTimeout(function () { reject({ dashBotSlow: true }); }, GIVE_UP_MS);
-      api('/api/dash-bot', 'POST', { message: message, view: viewNow() }).then(resolve, reject);
+      api('/api/dash-bot', 'POST', body).then(resolve, reject);
     });
-    inFlight = request.then(function (r) {
+    request.then(function (r) {
+      if (stopped) {
+        /* the person stopped waiting: nothing is drawn or done, and the history says so */
+        var late = r && r.body && typeof r.body === 'object' ? r.body : {};
+        if (r && r.ok && !late.notKept && TURN_ID.test(str(late.turnId))) {
+          keepScope(str(late.turnId), late, here);
+          report(str(late.turnId), 'stopped');
+        }
+        return;
+      }
+      if (finished) return;
       settle();
-      if (!r.ok || !r.body || typeof r.body !== 'object' || r.body.error) throw answerError(r);
-      try { draw(r.body); } catch (e) {
+      if (!r.ok || !r.body || typeof r.body !== 'object' || r.body.error) { rejectOuter(answerError(r)); return; }
+      if (r.body.kind === 'handoff' && !handedFrom) { resolveOuter({ handoff: true, kind: 'handoff' }); return; }
+      /* a message handed here is answered here, whatever the model said: draw() says it plainly, once */
+      var result = { kind: r.body.kind === 'handoff' ? 'reply' : str(r.body.kind), turnId: str(r.body.turnId) };
+      try { draw(r.body, { recs: recs, place: here, message: message, handedFrom: handedFrom }); } catch (e) {
         /* the server answered (and kept the turn): say so rather than put the question back as if it had not */
         if (root.console && root.console.warn) root.console.warn('[ETB2B AI] could not show an answer: ' + (e && e.message));
         try { chat.ai(TEXT.notShown, { error: true }); } catch (e2) { /* nothing more to try */ }
       }
+      resolveOuter(result);
     }, function (err) {
+      if (stopped || finished) return;
       settle();
-      throw networkError(err);
+      rejectOuter(networkError(err));
     });
-    return inFlight;
+    inFlight = outer;
+    return outer;
   }
 
   function hasFigures(parts, list) {
@@ -257,16 +386,29 @@
     return parts.map(function (p) { return p && typeof p.v === 'string' ? p.v : (p && p.name ? str(p.name) : ''); }).join(' ');
   }
 
-  function draw(body) {
+  function draw(body, extra) {
+    extra = extra || {};
+    var here = extra.place || placeNow();
     var ctx = {
       turnId: !body.notKept && TURN_ID.test(str(body.turnId)) ? str(body.turnId) : '',
       notes: Array.isArray(body.notes) ? body.notes : [],
-      shown: ''
+      shown: '',
+      recs: isArr(extra.recs) ? extra.recs : [],
+      place: here,
+      message: str(extra.message)
     };
+    /* a turn is reported to the conversation that kept it: inside an event, usually that event's */
+    if (ctx.turnId) keepScope(ctx.turnId, body, here);
+    if (body.kind === 'handoff') {
+      /* handed here by the editor and handed back: never a second hop */
+      var bh = chat.ai(TEXT.cantTell, {});
+      if (body.notKept) bh.note(TEXT.notKept);
+      return;
+    }
     var action = body.action && typeof body.action === 'object' ? body.action : null;
     if (body.kind === 'undo' || (action && action.type === 'undo')) {
-      var ok = undoNewest();
-      var b0 = chat.ai(ok ? TEXT.undone : TEXT.nothingToUndo, {});
+      var undid = undoNewest();
+      var b0 = chat.ai(undid ? (undid === 'portal' ? TEXT.portalUndone : TEXT.undone) : TEXT.nothingToUndo, {});
       if (body.notKept) b0.note(TEXT.notKept);
       return;
     }
@@ -281,7 +423,7 @@
     if (action) runAction(action, bubble, ctx, ctx.shown);
   }
 
-  /* the whole action vocabulary of the dashboard bot */
+  /* the whole action vocabulary of the dash brain */
   function runAction(action, bubble, ctx, shownText) {
     if (!action || typeof action !== 'object') return false;
     if (action.type === 'filter') return runFilter(action, bubble, ctx);
@@ -298,8 +440,10 @@
     return false;
   }
 
-  /* ---------- list changes and their Undo ---------- */
+  /* ---------- list and portal changes, and their Undo ---------- */
   function keep(c) {
+    /* made in this tab now, or read back from the history with its own time */
+    c.fresh = !c.at;
     c.at = c.at || now();
     c.buttons = [];
     c.undone = false;
@@ -357,6 +501,19 @@
     if (!c || c.undone) return false;
     var later = changes.slice(changes.indexOf(c) + 1).filter(function (x) { return !x.undone; });
     if (later.length && !ask(TEXT.olderUndo)) return false;
+    /* Off the dashboard the only change is the working portal: going back past it sets it to what it was before
+       this change. The browser keeps the choice even when the account could not be told; the card says so. */
+    if (c.working != null) {
+      var P = root.RevampPortals;
+      if (!P || !isFn(P.setWorking)) { if (c.bubble) c.bubble.note(TEXT.portalMissing); return false; }
+      var back;
+      try { back = Promise.resolve(P.setWorking(c.working)); } catch (e) { back = Promise.reject(e); }
+      return back.then(function () { later.concat([c]).forEach(spent); return true; }, function (err) {
+        if (c.bubble && err && err.message) c.bubble.note(str(err.message));
+        later.concat([c]).forEach(spent);
+        return true;
+      });
+    }
     /* Going back past a portal ETB2B AI switched to switches back too. Only then: a portal the person chose
        themselves on the switcher is theirs, and an Undo of a list change never moves it. */
     var portalToo = later.concat([c]).some(function (x) { return x.kind === 'portal'; });
@@ -367,8 +524,37 @@
     later.concat([c]).forEach(spent);
     return true;
   }
+  /* the newest change still standing, if any */
+  function newestOpen() {
+    for (var i = changes.length - 1; i >= 0; i--) if (!changes[i].undone) return changes[i];
+    return null;
+  }
+  /* When the newest change still standing was made in this tab (0: none, or one read back from the history). The
+     shell compares it with the editor's, so a bare "undo that" goes to the brain whose change is the newest. */
+  function changedAt() {
+    var c = newestOpen();
+    return c && c.fresh ? c.at : 0;
+  }
+  /* "undo that", sent here by the shell with no AI call: the newest change is put back, and the panel says so */
+  function undoLocal() {
+    var c = newestOpen();
+    if (!c) { if (chat) chat.ai(TEXT.nothingToUndo, {}); return Promise.resolve({ ok: false }); }
+    var portal = c.working != null, r;
+    try { r = undoChange(c); } catch (e) { r = false; }
+    return Promise.resolve(r).then(null, function () { return false; }).then(function (ok) {
+      ok = ok !== false;
+      if (chat) chat.ai(ok ? (portal ? TEXT.portalUndone : TEXT.undone) : (portal ? TEXT.portalMissing : TEXT.notUndone), {});
+      return { ok: ok, kind: c.kind };
+    });
+  }
+  /* -> false, or what was put back ('list' | 'portal') */
   function undoNewest() {
-    for (var i = changes.length - 1; i >= 0; i--) if (!changes[i].undone) return undoChange(changes[i]);
+    for (var i = changes.length - 1; i >= 0; i--) {
+      if (changes[i].undone) continue;
+      var c = changes[i], r = undoChange(c);
+      if (r === false) return false;
+      return c.working != null ? 'portal' : 'list';
+    }
     return false;
   }
   /* the open panel would cover the very column a filter changed, so it folds to a one-line peek with Undo. The
@@ -381,7 +567,8 @@
 
   function runFilter(action, bubble, ctx) {
     var L = root.RvListing;
-    if (!L || typeof L.apply !== 'function' || !action.patch || typeof action.patch !== 'object') return failed(bubble, ctx, TEXT.listMissing);
+    if (!L || typeof L.apply !== 'function') return failed(bubble, ctx, ctx.place.page === 'dashboard' ? TEXT.listMissing : TEXT.listElsewhere);
+    if (!action.patch || typeof action.patch !== 'object') return failed(bubble, ctx, TEXT.listMissing);
     var snap;
     try { snap = L.apply(action.patch); } catch (e) { return failed(bubble, ctx, 'The events list could not be changed. Reload the page and ask again.'); }
     started(ctx);
@@ -394,19 +581,37 @@
     return true;
   }
 
-  /* The dashboard's own portal switcher, moved to the portal asked for (saved for the person, as the switcher
-     saves it). The card and the peek say where the list now is, with Undo, which switches back. */
+  /* On the dashboard its own portal switcher, moved to the portal asked for (saved for the person, as the switcher
+     saves it). Anywhere else the person's working portal, which the dashboard and Create Event open on. The card
+     and the peek say where the person now works, with Undo, which switches back. */
   function runPortal(action, bubble, ctx) {
     var L = root.RvListing;
     var to = str(action.portal);
-    if (!L || typeof L.setPortal !== 'function' || !/^(?:all|[a-z0-9]{1,40})$/.test(to)) return failed(bubble, ctx, TEXT.listMissing);
-    var snap = null;
-    try { snap = L.setPortal(to); } catch (e) { snap = null; }
-    if (!snap || typeof snap !== 'object') return failed(bubble, ctx, 'The dashboard could not be switched to that portal. Reload the page and ask again.');
-    started(ctx);
-    var label = 'working in ' + labelOf(action.label, to === 'all' ? 'All portals' : 'that portal');
-    bubble.note('Now ' + label + '.');
-    var c = keep({ key: ctx.turnId, turnId: ctx.turnId, kind: 'portal', snap: snap, label: label, bubble: bubble });
+    if (!/^(?:all|[a-z0-9]{1,40})$/.test(to)) return failed(bubble, ctx, L && isFn(L.setPortal) ? TEXT.listMissing : TEXT.portalMissing);
+    var name = labelOf(action.label, to === 'all' ? 'All portals' : 'that portal');
+    var label = 'working in ' + name;
+    var c;
+    if (L && isFn(L.setPortal)) {
+      var snap = null;
+      try { snap = L.setPortal(to); } catch (e) { snap = null; }
+      if (!snap || typeof snap !== 'object') return failed(bubble, ctx, 'The dashboard could not be switched to that portal. Reload the page and ask again.');
+      started(ctx);
+      bubble.note('Now ' + label + '.');
+      c = keep({ key: ctx.turnId, turnId: ctx.turnId, kind: 'portal', snap: snap, label: label, bubble: bubble });
+    } else {
+      var P = root.RevampPortals;
+      if (!P || !isFn(P.setWorking)) return failed(bubble, ctx, TEXT.portalMissing);
+      var before = null;
+      try { before = isFn(P.cachedWorking) ? P.cachedWorking() : null; } catch (e) { before = null; }
+      before = typeof before === 'string' && /^(?:all|[a-z0-9]{1,40})$/.test(before) ? before : 'all';
+      var set;
+      try { set = Promise.resolve(P.setWorking(to)); } catch (e) { set = Promise.reject(e); }
+      /* the browser keeps the choice even when the account could not be told: the card says so */
+      set.then(null, function (err) { if (err && err.message) bubble.note(str(err.message)); });
+      started(ctx);
+      bubble.note('Now ' + label + TEXT.portalOpens);
+      c = keep({ key: '', turnId: ctx.turnId, kind: 'portal', snap: null, working: before, label: label, bubble: bubble });
+    }
     c.buttons.push(bubble.undo(c.handler));
     fold(c);
     return true;
@@ -425,12 +630,31 @@
     stopBar(p);
     if (!p.done) p.stay();
   }
+  /* Back (or a reload) to this page reopens the panel: the shell keeps that, one key per page */
+  function markReopen() {
+    var A = shell();
+    if (A && isFn(A.markReopen)) { try { A.markReopen(); } catch (e) { /* a nicety */ } }
+  }
+  /* the page goes through the shell, which asks the page's own guard (the editor's dialog for unsaved work) */
+  function go(url) {
+    var A = shell();
+    if (A && isFn(A.leave)) { A.leave(url); return; }
+    root.location.assign(url);
+  }
+  /* files kept for the next page (Create Event's boxes, the editor's tray) are written first, a moment at most */
+  function goWhenReady(p, url) {
+    if (!p.ready) { go(url); return; }
+    var gone = false;
+    function once() { if (gone) return; gone = true; go(url); }
+    setTimeout(once, FILES_WAIT_MS);
+    p.ready.then(once, once);
+  }
   function leave(p, url) {
     if (p.done) return;
     settleNav(p);
     if (!NAV_OK.test(url)) return;                       // checked again at the last moment
-    setItem('sessionStorage', OPEN_KEY, '1');            // Back (or a reload) reopens the panel
-    root.location.assign(url);
+    markReopen();
+    goWhenReady(p, url);
   }
   /* After Stay here the card's link is still there, and following it is opening the page after all. The turn is
      then reported done again (once), so the history and ETB2B AI's memory no longer say "You stayed on this page".
@@ -443,17 +667,17 @@
     p.later = true;
     var sent = first ? report(ctx.turnId, 'done', 'opened after staying', !newTab) : Promise.resolve(true);
     if (newTab) { if (first) bubble.note(TEXT.newTab); return; }
-    setItem('sessionStorage', OPEN_KEY, '1');            // Back (or a reload) reopens the panel
+    markReopen();
     if (!first || !e || typeof e.preventDefault !== 'function' || !NAV_OK.test(url)) return;   // the browser follows the link
     e.preventDefault();
     var gone = false;
-    function go() { if (gone) return; gone = true; root.location.assign(url); }
-    setTimeout(go, LATER_WAIT_MS);
-    sent.then(go, go);
+    function goOnce() { if (gone) return; gone = true; goWhenReady(p, url); }
+    setTimeout(goOnce, LATER_WAIT_MS);
+    sent.then(goOnce, goOnce);
   }
-  function countdown(url, linkLabel, barLabel, bubble, ctx, onStay, onLater) {
+  function countdown(url, linkLabel, barLabel, bubble, ctx, onStay, onLater, ready) {
     stopPending();
-    var p = { done: false, stayed: false, later: false, cd: null, timer: null };
+    var p = { done: false, stayed: false, later: false, cd: null, timer: null, ready: ready || null };
     p.stay = function () {
       if (p.done) return;
       settleNav(p);
@@ -474,7 +698,7 @@
         if (p.stayed) { openedLater(p, e, newTab, url, bubble, ctx, onLater); return; }
         if (p.done) return;
         settleNav(p);
-        if (!newTab) { setItem('sessionStorage', OPEN_KEY, '1'); return; }   // a plain click: the browser follows the link
+        if (!newTab) { markReopen(); return; }            // a plain click: the browser follows the link
         /* the page opened elsewhere: this one stays, and the card says why (it is not a Stay here) */
         if (!stopBar(p, { silent: true, text: TEXT.newTab })) bubble.note(TEXT.newTab);
       };
@@ -483,12 +707,23 @@
     }
     return p;
   }
+  function pictures(recs) { return (isArr(recs) ? recs : []).filter(function (r) { return r && r.kind === 'image'; }); }
   function runNavigate(action, bubble, ctx) {
     var url = str(action.url);
     if (!NAV_OK.test(url)) return failed(bubble, ctx, 'That isn’t a page ETB2B AI may open.');
     started(ctx);
     var label = labelOf(action.label, 'the page');
-    countdown(url, label, 'Opening ' + label + '…', bubble, ctx, null);
+    /* pictures attached inside an event, for its site editor: they go with the words, unsent (the server says
+       carry only for the editor of the event the person is in) */
+    var ready = null, A = shell();
+    var pics = pictures(ctx.recs);
+    var target = EVENT_ID.test(str(action.eventId)) ? str(action.eventId) : ctx.place.eventId;
+    if (action.carry === true && action.target === 'editor' && pics.length && target && A && isFn(A.carry)) {
+      ready = A.carry(target, pics, ctx.message);
+      var count = pics.length === 1 ? 'picture' : pics.length + ' pictures';
+      bubble.note(fill(pics.length === 1 ? TEXT.picsGo : TEXT.picsGoMany, { count: count }));
+    }
+    countdown(url, label, 'Opening ' + label + '…', bubble, ctx, null, null, ready);
     return true;
   }
 
@@ -523,6 +758,7 @@
     if (b.client) bits.push('for ' + str(b.client));
     if (br.text) bits.push('your brief');
     if (br.current || br.previous) bits.push(br.current && br.previous ? 'your two links' : 'your link');
+    (isArr(p.files) ? p.files : []).forEach(function (f) { if (f && f.role === 'logo') bits.push('your logo'); else if (f && f.role === 'brief') bits.push('your brief document'); });
     /* made only once the event is created; Create Event shows it with Change and Remove */
     if (p.hero && typeof p.hero === 'object') bits.push('a hero picture once it is created');
     return bits.join(' · ');
@@ -541,6 +777,36 @@
     if (generic) return 'I left out details you didn’t type yourself: please check them there.';
     return '';
   }
+  /* The files the answer gave a role ({ n, role } against the chips sent, numbered from 1), split into what goes to
+     Create Event's own boxes (a logo picture, a PDF brief) and why anything else does not. A text brief's words are
+     already the prefill's brief (the server put them there). */
+  function filesFor(action, recs) {
+    var out = { carry: [], notes: [], textBrief: '' };
+    var roles = isArr(action.files) ? action.files : (action.prefill && isArr(action.prefill.files) ? action.prefill.files : []);
+    var A = shell(), seenRole = {};
+    roles.forEach(function (f) {
+      if (!f || typeof f !== 'object') return;
+      var n = +f.n, role = f.role === 'logo' || f.role === 'brief' ? f.role : '';
+      var rec = n >= 1 && n <= recs.length ? recs[n - 1] : null;
+      if (!rec || !role || seenRole[role]) return;
+      seenRole[role] = true;
+      if (role === 'brief' && rec.wire === 'text') { out.textBrief = str(rec.name); return; }
+      var why = A && isFn(A.carryCheck) ? A.carryCheck(role, rec) : 'none';
+      if (why) { if (why !== 'none') out.notes.push(why); return; }
+      out.carry.push({ n: n, role: role, rec: rec });
+    });
+    return out;
+  }
+  function filesNote(carryList) {
+    var logo = null, brief = null;
+    carryList.forEach(function (f) { if (f.role === 'logo') logo = f; else if (f.role === 'brief') brief = f; });
+    var bits = [];
+    if (logo) bits.push(fill(TEXT.logoGoes, { name: str(logo.rec.name) }));
+    if (brief) bits.push(fill(logo ? TEXT.briefGoes : TEXT.briefGoes.charAt(0).toUpperCase() + TEXT.briefGoes.slice(1), { name: str(brief.rec.name) }));
+    if (!bits.length) return '';
+    var boxes = logo && brief ? 'logo box and Overview document' : logo ? 'logo box' : 'Overview document';
+    return fill(TEXT.filesGo, { list: bits.join(' and '), verb: bits.length > 1 ? 'go' : 'goes', boxes: boxes });
+  }
   function runCreate(action, bubble, ctx) {
     var id = str(action.prefillId), url = str(action.url);
     if (!TURN_ID.test(id) || url !== '/create-event.html?new=1&prefill=' + id || !NAV_OK.test(url)) {
@@ -549,12 +815,17 @@
     var prefill = action.prefill && typeof action.prefill === 'object' ? action.prefill : {};
     /* exactly the server's cleaned details, and who they are from; Create Event checks every field again */
     var record = {};
-    Object.keys(prefill).forEach(function (k) { record[k] = prefill[k]; });
+    Object.keys(prefill).forEach(function (k) { if (k !== 'files') record[k] = prefill[k]; });
     record.v = 1;
     record.from = 'etb2b-ai';
     record.at = now();
     record.turnId = ctx.turnId || null;
     record.prefillId = id;
+    /* the logo and brief file go to Create Event's own boxes: named here, kept by the shell (IndexedDB) */
+    var files = filesFor(action, ctx.recs);
+    if (files.carry.length) {
+      record.files = files.carry.map(function (f) { return { n: f.n, role: f.role, name: str(f.rec.name), type: str(f.rec.type), size: +f.rec.size || 0 }; });
+    }
     var key = PREFILL_PREFIX + id;
     /* written again, with a fresh time, when the card's link is followed after Stay here took it away */
     function put() { record.at = now(); return setItem('localStorage', key, JSON.stringify(record)); }
@@ -562,12 +833,18 @@
       return failed(bubble, ctx, 'This browser would not keep the details for Create Event (site storage is blocked).');
     }
     started(ctx);
+    var A = shell(), ready = null;
+    if (files.carry.length && A && isFn(A.handoffFiles)) ready = A.handoffFiles(id, files.carry);
     /* what was left out, unless the answer already says so (the server writes that sentence itself) */
     var left = dropped(ctx.notes, action);
     if (left && str(ctx.shown).indexOf('I left out') === -1) bubble.note(left);
-    var what = summary(prefill);
+    var goes = filesNote(files.carry);
+    if (goes) bubble.note(goes);
+    if (files.textBrief) bubble.note(fill(TEXT.briefTextGoes, { name: files.textBrief }));
+    files.notes.forEach(function (n) { bubble.note(n); });
+    var what = summary(record);
     countdown(url, labelOf(action.label, 'Create Event, filled in'), what ? 'Opening Create Event with: ' + what + '…' : 'Opening Create Event…',
-      bubble, ctx, function () { removeItem('localStorage', key); }, put);
+      bubble, ctx, function () { removeItem('localStorage', key); }, put, ready);
     return true;
   }
 
@@ -589,7 +866,8 @@
           chosen = true;
           var id = str(c.eventId).slice(0, 300);
           /* each choice already holds its own resolved action: no second AI call */
-          var ok = runAction(c.action, bubble, { turnId: ctx.turnId, notes: ctx.notes, onStart: function () { report(ctx.turnId, 'done', id); } }, '');
+          var ok = runAction(c.action, bubble, { turnId: ctx.turnId, notes: ctx.notes, recs: ctx.recs, place: ctx.place, message: ctx.message,
+            onStart: function () { report(ctx.turnId, 'done', id); } }, '');
           if (!ok) { chosen = false; return false; }               // the kit keeps the other choices open
           return true;
         }
@@ -633,7 +911,9 @@
   }
   function drawList(bubble, list, ctx) {
     bubble.list(kitList(list));
-    if (!list.view || typeof list.view !== 'object') return;
+    /* "Show these in the list" only where the list is: the dashboard */
+    var L0 = root.RvListing;
+    if (!list.view || typeof list.view !== 'object' || !L0 || typeof L0.apply !== 'function') return;
     var used = false, btn = null;
     btn = bubble.button('Show these in the list', function () {
       if (used) return;
@@ -650,18 +930,25 @@
   }
 
   /* ---------- the person's own history, on the first open ---------- */
-  function replay(t) {
+  /* One turn of this brain, from the person's dashboard conversation or an event's (where the shell hands it the
+     turns this brain answered: brain 'dash'). w is the kit's writer for the replay (it keeps a late replay above a
+     new question), or the chat itself. */
+  function replay(t, w) {
     t = t && typeof t === 'object' ? t : {};
+    w = w || chat;
     var at = t.at || null;
     var id = TURN_ID.test(str(t.id)) ? str(t.id) : '';
-    if (t.question) chat.user(str(t.question), { at: at });
+    var here = placeNow();
+    if (id && here.eventId) turnEvents[id] = here.eventId;
+    if (t.question) w.user(str(t.question), { at: at });
     var parts = Array.isArray(t.parts) ? t.parts : [];
     var list = t.list && typeof t.list === 'object' && Array.isArray(t.list.items) ? t.list : null;
     var a = t.action && typeof t.action === 'object' ? t.action : null;
     /* a create kept before the server sent its fixed sentence has no words: it gets them, never an empty line */
     var said = parts.length ? parts : (str(t.answer) || (a && a.type === 'create' ? TEXT.creating : ''));
-    var b = chat.ai(said, bubbleOpts(parts, list, t.asOf, at));
+    var b = w.ai(said, bubbleOpts(parts, list, t.asOf, at));
     if (list) b.list(kitList(list));
+    if (t.status === 'stopped') { b.note(TEXT.stoppedReplay); return true; }
     if (a && (a.type === 'filter' || a.type === 'portal')) {
       var isPortal = a.type === 'portal';
       var label = isPortal ? 'working in ' + labelOf(a.label, 'another portal') : labelOf(a.label, 'a filtered list');
@@ -688,30 +975,30 @@
       var cl = keep({ key: id + '.list', turnId: id, kind: 'list', snap: heldList.snap, label: labelOf(heldList.label, 'these events'), at: +heldList.at || 1, bubble: b });
       cl.buttons.push(b.undo(cl.handler));
     }
+    return true;
   }
-  /* resolves with how many turns were replayed; a failed read rejects, and the kit then says the earlier
-     messages could not be loaded rather than showing an empty past */
-  function loadHistory() {
+  /* The person's own dashboard conversation (pages with no event). Resolves with how many turns were replayed; a
+     failed read rejects, and the kit then says the earlier messages could not be loaded rather than showing an
+     empty past. */
+  function loadHistory(writer) {
+    var w = writer || chat;
     return api('/api/dash-bot/history', 'GET').then(function (r) {
       if (!r.ok || !r.body || !Array.isArray(r.body.turns)) throw new Error('Your earlier messages could not be loaded (' + r.status + ').');
       var turns = r.body.turns;
       if (!turns.length) return 0;
-      chat.divider('Earlier');
+      w.divider('Earlier');
       turns.forEach(function (t) {
-        try { replay(t); } catch (e) { /* one odd old turn never hides the rest */ }
+        try { replay(t, w); } catch (e) { /* one odd old turn never hides the rest */ }
       });
-      chat.divider('Now');
+      w.divider('Now');
       return turns.length;
     });
   }
 
-  /* ---------- mounting ---------- */
-  function firstName(name) {
-    var n = str(name).trim().split(/\s+/)[0] || '';
-    return n.length > 40 ? '' : n;
-  }
-  /* "Email Customer Care" in the panel's header opens the page's own help window. On a phone the panel is a
-     full-screen sheet, so it steps aside first and the focus comes back to its launcher. */
+  /* ---------- what the shell asks of this brain when it mounts the panel ---------- */
+  /* "Email Customer Care" in the panel's header opens the dashboard's own help window. On a phone the panel is a
+     full-screen sheet, so it steps aside first and the focus comes back to its launcher. Elsewhere the shell
+     opens a mail to Customer Care instead. */
   function openHelp(arg) {
     var L = root.RvListing;
     if (!L || typeof L.openHelp !== 'function') return;
@@ -726,60 +1013,34 @@
     }
     L.openHelp(from);
   }
-  function options(startOpen) {
-    var me = {};
-    try { me = root.RvListing.me() || {}; } catch (e) { me = {}; }
-    var first = firstName(me.name);
+  function help(p) {
+    var L = root.RvListing;
+    if (p && p.page === 'dashboard' && L && typeof L.openHelp === 'function') return { label: 'Email Customer Care', onClick: openHelp };
+    return null;
+  }
+  function welcome(p) {
+    var inEvent = !!(p && p.eventId), dash = !!(p && p.page === 'dashboard');
     return {
-      id: 'dash',
-      title: 'ETB2B AI',
-      launcherLabel: 'Ask ETB2B AI',
-      placeholder: 'Ask ETB2B AI…',
-      welcome: { heading: first ? 'Hi ' + first + ', I’m ETB2B AI.' : 'Hi, I’m ETB2B AI.', text: TEXT.welcome },
-      suggestions: SUGGESTIONS,
-      footNote: TEXT.footNote,
-      help: { label: 'Email Customer Care', onClick: openHelp },
-      send: send,
-      loadHistory: loadHistory,
-      onOpenChange: function () { /* the kit keeps its own open state */ },
-      startOpen: startOpen
+      text: inEvent ? TEXT.welcomeEvent : TEXT.welcome,
+      suggestions: inEvent ? SUGGESTIONS_EVENT : SUGGESTIONS,
+      quickIdeas: inEvent ? QUICK_EVENT : QUICK,
+      footNote: dash ? TEXT.footNote : TEXT.footNoteElsewhere
     };
   }
-  function mount() {
-    if (mounted) return chat;
-    var host = doc && doc.getElementById('rv-dash-bot');
-    var kit = root.RevampChat, L = root.RvListing;
-    /* without the kit or the list's door the page keeps "Need help?" exactly as before */
-    if (!host || !kit || typeof kit.mount !== 'function' || !L || typeof L.snapshot !== 'function') return null;
-    mounted = true;
-    var startOpen = getItem('sessionStorage', OPEN_KEY) === '1';
-    removeItem('sessionStorage', OPEN_KEY);
-    try { chat = kit.mount(host, options(startOpen)) || null; } catch (e) {
-      chat = null;
-      if (root.console && root.console.warn) root.console.warn('[ETB2B AI] could not start: ' + (e && e.message));
-    }
-    return chat;
-  }
-  /* after the sign-in check has answered, so the welcome can use the person's first name */
-  function boot() {
-    var auth = root.RevampAuth, begun = false;
-    function go() { if (begun) return; begun = true; mount(); }
-    if (auth && typeof auth.whenResolved === 'function') {
-      try { auth.whenResolved().then(go, go); } catch (e) { go(); return; }
-      setTimeout(go, 4000);                              // the check never answered: start anyway, unnamed
-    } else go();
-  }
 
-  /* Back to this page out of the browser's memory (no reload): reopen the panel if ETB2B AI opened the page */
-  if (typeof root.addEventListener === 'function') {
-    root.addEventListener('pageshow', function (e) {
-      if (!e || !e.persisted || !chat) return;
-      if (getItem('sessionStorage', OPEN_KEY) !== '1') return;
-      removeItem('sessionStorage', OPEN_KEY);
-      try { if (!chat.isOpen()) chat.open(); } catch (x) { /* the panel is gone */ }
-    });
-  }
+  var brain = {
+    send: send,
+    replay: replay,
+    loadHistory: loadHistory,
+    stop: function () { if (stopNow) stopNow(); },
+    welcome: welcome,
+    help: help,
+    changedAt: changedAt,
+    undoLocal: undoLocal,
+    onMount: function (c) { chat = c || null; }
+  };
 
-  root.RevampDashBot = { NAV_OK: NAV_OK, NAV_DELAY_MS: NAV_DELAY_MS };
-  boot();
+  root.RevampDashBot = { NAV_OK: NAV_OK, NAV_DELAY_MS: NAV_DELAY_MS, TEXT: TEXT, brain: brain };
+  /* the shell usually loads after this file and picks the brain up itself; loaded later, it is told here */
+  if (root.RevampAssistant && typeof root.RevampAssistant.registerBrain === 'function') root.RevampAssistant.registerBrain('dash', brain);
 })(typeof window !== 'undefined' ? window : this);

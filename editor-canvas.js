@@ -636,15 +636,35 @@
     };
   }
 
+  /* ---------- Mobile ----------
+     The page as a phone shows it (UX-083): 390px wide, at full size wherever the canvas has the room (scaled down
+     only where it has not), centred, and as tall as the canvas allows up to a phone's 844px, with room round it for
+     the phone's edge the editor page draws. The page scrolls inside, as on a phone. Desktop is unchanged.
+     -> { scale, left, top, width, height }: left/top on the canvas in its pixels, width/height the page's own */
+  var PHONE = { width: 390, height: 844, edge: 10, gap: 16 };
+  function phoneBox(vw, vh) {
+    var room = PHONE.edge + PHONE.gap;
+    var scale = Math.max(0.25, Math.min(1, (vw - 2 * room) / PHONE.width));
+    var shown = Math.max(160, Math.min(vh - 2 * room, PHONE.height * scale));
+    return { scale: scale, left: Math.max(0, Math.round((vw - PHONE.width * scale) / 2)), top: room, width: PHONE.width, height: Math.round(shown / scale) };
+  }
+
   /* ---------- mounting ---------- */
   var LOAD_TIMEOUT_MS = 20000;
 
   function mount(frame, templateId, opts) {
     var viewport = document.createElement('div');
     viewport.className = 'tpl-viewport';
+    /* One stop for the keyboard (UX-085): the site's own links are kept out of the editor's Tab order (the iframe is
+       out of it), and the page as a whole is one stop, with Enter to pick a section and use its tools and Escape to
+       come back (editor-template-ui.js wireCanvasKeys). */
+    viewport.tabIndex = 0;
+    viewport.setAttribute('role', 'group');
+    viewport.setAttribute('aria-label', 'Site page. Press Enter to choose a section and use its tools, the up and down arrows to move between sections, and Escape to come back here.');
     var iframe = document.createElement('iframe');
     iframe.className = 'tpl-iframe';
-    iframe.title = 'Template canvas';
+    iframe.title = 'Site page';
+    iframe.tabIndex = -1;
     viewport.appendChild(iframe);
     frame.appendChild(viewport);
 
@@ -1187,9 +1207,31 @@
 
     function fit() {
       var w = DEVICES[device];
-      scale = Math.min(1, viewport.clientWidth / w);
-      iframe.style.width = w + 'px';
-      iframe.style.height = (viewport.clientHeight / scale) + 'px';
+      // the editor page draws the phone's edge round a Mobile page (custom_editor.html .tpl-viewport[data-device]),
+      // and the white card it sits on makes way for the phone (.is-phone)
+      viewport.setAttribute('data-device', device);
+      frame.classList.toggle('is-phone', device === 'mobile');
+      if (device === 'mobile') {
+        var box = phoneBox(viewport.clientWidth, viewport.clientHeight);
+        scale = box.scale;
+        iframe.style.width = box.width + 'px';
+        iframe.style.height = box.height + 'px';
+        iframe.style.marginLeft = box.left + 'px';
+        iframe.style.marginTop = box.top + 'px';
+        /* where the phone's edge goes, drawn OVER the page so that its round corners hide the page's square ones
+           (a frame's own border-radius does not clip what is inside it in every browser) */
+        viewport.style.setProperty('--phone-left', box.left + 'px');
+        viewport.style.setProperty('--phone-top', box.top + 'px');
+        viewport.style.setProperty('--phone-width', Math.round(box.width * scale) + 'px');
+        viewport.style.setProperty('--phone-height', Math.round(box.height * scale) + 'px');
+      } else {
+        scale = Math.min(1, viewport.clientWidth / w);
+        iframe.style.width = w + 'px';
+        iframe.style.height = (viewport.clientHeight / scale) + 'px';
+        iframe.style.marginLeft = '';
+        iframe.style.marginTop = '';
+        ['--phone-left', '--phone-top', '--phone-width', '--phone-height'].forEach(function (k) { viewport.style.removeProperty(k); });
+      }
       iframe.style.transform = scale === 1 ? '' : 'scale(' + scale + ')';
     }
 
@@ -1482,7 +1524,9 @@
       },
       onResize: null,         // set by the editor: called after every re-fit
       onNavigate: null,       // set by the editor: the canvas has loaded another document and can no longer be used
-      destroy: function () { resizing.disconnect(); viewport.remove(); }
+      // the card is the editor page's and outlives this canvas: without one it is white again, as the message of a
+      // reopen that fails expects
+      destroy: function () { resizing.disconnect(); viewport.remove(); frame.classList.remove('is-phone'); }
     };
 
     /* the frame changes size with the window and whenever a side panel opens or closes */

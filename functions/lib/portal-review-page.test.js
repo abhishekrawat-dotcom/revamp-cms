@@ -30,9 +30,10 @@ check('the viewport is set for phones', page.indexOf('<meta name="viewport" cont
 
 /* K13: theme-toggle.js, auth.js, portal-picker.js and edit-event.css */
 var tags = page.match(/<script\b[^>]*>/g) || [];
-check('scripts: the theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, then the page\'s own — in that order',
-  tags.length === 5 && tags[0] === '<script>' && tags[1] === '<script src="theme-toggle.js">' && tags[2] === '<script src="auth.js">' &&
-  tags[3] === '<script src="portal-picker.js">' && tags[4] === '<script>', tags);
+check('scripts: the theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, the page\'s own, then ETB2B AI\'s three (assistant-pages.test.js) — in that order',
+  tags.length === 8 && tags[0] === '<script>' && tags[1] === '<script src="theme-toggle.js">' && tags[2] === '<script src="auth.js">' &&
+  tags[3] === '<script src="portal-picker.js">' && tags[4] === '<script>' && tags[5] === '<script src="etb2b-chat.js">' &&
+  tags[6] === '<script src="dash-bot-client.js">' && tags[7] === '<script src="etb2b-assistant.js">', tags);
 check('the console\'s stylesheet, once, in the head', count(page, '<link rel="stylesheet" href="edit-event.css">') === 1 &&
   page.indexOf('href="edit-event.css"') < page.indexOf('</head>'));
 check('the theme bootstrap runs in the head', page.indexOf('<script>try{var t=localStorage.getItem("revamp-theme")') < page.indexOf('</head>'));

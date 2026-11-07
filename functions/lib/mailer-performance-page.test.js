@@ -40,10 +40,11 @@ check('the bar is 60px tall with a 1px border, as the frame\'s 61px assumes',
   /\.nav-inner\{[^}]*\bheight:60px;/.test(page) && /\.nav\{[^}]*border-bottom:1px solid/.test(page) && count(page, '- 61px)') === 2, page.match(/- \d+px\)/g));
 
 /* scripts: the theme bootstrap (before anything paints), then theme-toggle.js, then auth.js — the page has no code
-   of its own, the dashboard is the frame's */
+   of its own, the dashboard is the frame's — then ETB2B AI's three, as on every page (assistant-pages.test.js) */
 var scripts = page.match(/<script\b[^>]*>/g) || [];
-check('four scripts: the theme bootstrap, the ?event= hand-on, theme-toggle.js, auth.js — in that order',
-  scripts.length === 4 && scripts[0] === '<script>' && scripts[1] === '<script>' && scripts[2] === '<script src="theme-toggle.js">' && scripts[3] === '<script src="auth.js">', scripts);
+check('seven scripts: the theme bootstrap, the ?event= hand-on, theme-toggle.js, auth.js, then ETB2B AI\'s etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js — in that order',
+  scripts.length === 7 && scripts[0] === '<script>' && scripts[1] === '<script>' && scripts[2] === '<script src="theme-toggle.js">' && scripts[3] === '<script src="auth.js">' &&
+  scripts[4] === '<script src="etb2b-chat.js">' && scripts[5] === '<script src="dash-bot-client.js">' && scripts[6] === '<script src="etb2b-assistant.js">', scripts);
 /* UX-008: an address naming one event is that event's Mailers in Promotions (which says "Event not found" for a bad one) */
 var handOn = (/<script>(\(function\(\)\{try\{var id=new URLSearchParams[\s\S]*?)<\/script>/.exec(page) || [])[1] || '';
 (function () {
