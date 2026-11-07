@@ -2110,11 +2110,14 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
 
   var LIGHT = tokensOf(block(PAGE, ':root{'));
   var DARK = Object.assign({}, LIGHT, tokensOf(block(PAGE, ':root[data-theme="dark"]{')));
-  check('C.9 the dashboard\'s tokens were read from Event_Listing.html', LIGHT.surface === '#FFFFFF' && DARK.surface === '#1B1A16' && Object.keys(LIGHT).length > 40, Object.keys(LIGHT).length);
+  /* the dashboard took the console's palette in B11 (ET red #ED1C24, #FF6B70 on the warm dark ground): the kit's own
+     palette is the same values, so ETB2B AI looks the same on the dashboard, the console and every other page */
+  check('C.9 the console\'s tokens were read from Event_Listing.html', LIGHT.surface === '#FFFFFF' && DARK.surface === '#201C1B' && Object.keys(LIGHT).length > 40, Object.keys(LIGHT).length);
   var PALETTE = ['surface', 'surface-2', 'surface-3', 'border', 'border-strong', 'text', 'text-muted', 'text-faint', 'accent', 'accent-strong', 'accent-soft', 'accent-contrast',
     'draft', 'draft-soft', 'ok', 'ok-soft', 'warn', 'warn-soft', 'crit', 'crit-soft', 'shadow-sm', 'shadow-md', 'shadow-lg', 'r-sm', 'r-md', 'r-lg'];
   var badLight = PALETTE.filter(function (t) { return !KIT_LIGHT['rvc-' + t] || norm(KIT_LIGHT['rvc-' + t]) !== norm(LIGHT[t]); });
-  check('C.9 the light palette is the dashboard\'s :root, value for value (one look: ET red #FF0035 on every page)', badLight.length === 0 && KIT_LIGHT['rvc-accent'] === '#FF0035', badLight);
+  check('C.9 the light palette is the dashboard\'s :root, value for value (one look: ET red #ED1C24 on every page)', badLight.length === 0 && KIT_LIGHT['rvc-accent'] === '#ED1C24', badLight);
+  check('C.9 … and #FF6B70 in its dark palette', KIT_DARK_THEME['rvc-accent'] === '#FF6B70', KIT_DARK_THEME['rvc-accent']);
   check('C.9 the kit\'s font is the dashboard\'s Inter stack', norm(KIT_LIGHT['rvc-font']) === norm(LIGHT['font-body']));
   var DARK_KEYS = PALETTE.filter(function (t) { return !/^r-/.test(t); });
   var badDark = DARK_KEYS.filter(function (t) { return !KIT_DARK_THEME['rvc-' + t] || norm(KIT_DARK_THEME['rvc-' + t]) !== norm(DARK[t]); });
@@ -2232,8 +2235,10 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
   check('C.10 chip words are --text (the status colours as words would fail AA)', /\.rvc-chip\{[^}]*color:var\(--rvc-text\)/.test(css) && ratio(KIT_LIGHT['rvc-draft'], KIT_LIGHT['rvc-draft-soft']) < 4.5);
   check('C.10 a primary button is on --accent-strong (white on --accent fails AA at this size)', /\.rvc-btn-primary\{ background:var\(--rvc-accent-strong\)/.test(css) && ratio(KIT_LIGHT['rvc-accent-contrast'], KIT_LIGHT['rvc-accent']) < 4.5);
   check('C.10 the ↳ line on the person\'s bubble is --text', /\.rvc-msg-ctx\{[^}]*color:var\(--rvc-text\)/.test(css));
-  check('C.10 the contrast numbers of the plan (§8 UX-100)', Math.round(ratio(KIT_LIGHT['rvc-text-muted'], KIT_LIGHT['rvc-surface']) * 100) / 100 === 5.43 &&
-    Math.round(ratio(KIT_DARK['rvc-text-muted'], KIT_DARK['rvc-surface']) * 100) / 100 === 6.75);
+  /* UX-100's small text (the sender, dividers, the status) on the console's palette (B11): 5.35:1 on the light panel,
+     6.34:1 on the dark one (the plan's 5.43 / 6.75 were the dashboard's old greys) */
+  check('C.10 the contrast numbers of the plan (§8 UX-100), on the console\'s palette', Math.round(ratio(KIT_LIGHT['rvc-text-muted'], KIT_LIGHT['rvc-surface']) * 100) / 100 === 5.35 &&
+    Math.round(ratio(KIT_DARK['rvc-text-muted'], KIT_DARK['rvc-surface']) * 100) / 100 === 6.34);
 
   if (failed) { console.error('etb2b-chat: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('etb2b-chat: all ' + passed + ' checks passed');

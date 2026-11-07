@@ -1,12 +1,12 @@
 /* ETB2B AI chat kit (etb2b-chat.css, with etb2b-chat.js): the launcher, the panel, the folded bar and the
    bubbles and cards inside the conversation. One look on every page.
 
-   Colours: the kit has its own palette, the events dashboard's light and dark values (Event_Listing.html :root
-   and its dark block), written once in the three palette blocks below. Pages disagree on their reds (#FF0035 on
-   the dashboard, #ED1C24 on the console and the editor), so reading the page's tokens would give two looks. The
-   palette follows the console's light / dark switch (html[data-theme], which theme-toggle.js sets on every
-   page), and the system's dark setting where a page has not set one. No colour is written anywhere else
-   (etb2b-chat.test.js C.9 checks it).
+   Colours: the kit has its own palette, the console's light and dark values (edit-event.css, which the events
+   dashboard also uses since B11: ET red #ED1C24, #FF6B70 on the dark ground, warm neutrals), written once in the
+   three palette blocks below. It does not read a page's tokens: a page that still has another red or other greys
+   (the editor's canvas chrome, a studio) would then give two looks. The palette follows the console's light /
+   dark switch (html[data-theme], which theme-toggle.js sets on every page), and the system's dark setting where a
+   page has not set one. No colour is written anywhere else (etb2b-chat.test.js C.9 checks it).
 
    Place: the bottom-right corner, 22px in from the right and the bottom (16px from 601 to 880px on the right,
    and on a phone). The launcher stands at --rvc-bottom + --rvc-lift; the folded bar and the panel stand 62px
@@ -23,16 +23,16 @@
 /* ---------- the palette: light ---------- */
 .rvc{
   --rvc-surface: #FFFFFF;
-  --rvc-surface-2: #F1F0EC;
-  --rvc-surface-3: #E7E5DF;
-  --rvc-border: #E6E4DE;
-  --rvc-border-strong: #D7D4CB;
-  --rvc-text: #1D1B17;
-  --rvc-text-muted: #6C6A60;
-  --rvc-text-faint: #9B988D;
-  --rvc-accent: #FF0035;
-  --rvc-accent-strong: #D6002C;
-  --rvc-accent-soft: #FFE3E8;
+  --rvc-surface-2: #F3EEED;
+  --rvc-surface-3: #E9E2E0;
+  --rvc-border: #E0D7D5;
+  --rvc-border-strong: #CFC3C0;
+  --rvc-text: #241B1A;
+  --rvc-text-muted: #756865;
+  --rvc-text-faint: #A0908C;
+  --rvc-accent: #ED1C24;
+  --rvc-accent-strong: #B3151B;
+  --rvc-accent-soft: #FBDBDC;
   --rvc-accent-contrast: #FFFFFF;
   --rvc-draft: #8A7A99;
   --rvc-draft-soft: #EEE8F2;
@@ -66,18 +66,18 @@
 /* ---------- the palette: dark, when the system asks for it and the page has not said light ---------- */
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]) .rvc{
-    --rvc-surface: #1B1A16;
-    --rvc-surface-2: #232219;
-    --rvc-surface-3: #2C2A20;
-    --rvc-border: #332F24;
-    --rvc-border-strong: #3E3A2C;
-    --rvc-text: #EFEBDF;
-    --rvc-text-muted: #A6A192;
-    --rvc-text-faint: #726E60;
-    --rvc-accent: #FF4D6D;
-    --rvc-accent-strong: #FF7A90;
-    --rvc-accent-soft: #3A0C14;
-    --rvc-accent-contrast: #1B0508;
+    --rvc-surface: #201C1B;
+    --rvc-surface-2: #2A2422;
+    --rvc-surface-3: #352D2B;
+    --rvc-border: #3F3532;
+    --rvc-border-strong: #4D413D;
+    --rvc-text: #EDE6E4;
+    --rvc-text-muted: #A89C99;
+    --rvc-text-faint: #7C716E;
+    --rvc-accent: #FF6B70;
+    --rvc-accent-strong: #FF8A8E;
+    --rvc-accent-soft: #3A1518;
+    --rvc-accent-contrast: #2B0A0B;
     --rvc-draft: #B9A9C9;
     --rvc-draft-soft: #2A2331;
     --rvc-ok: #4CB484;
@@ -93,18 +93,18 @@
 }
 /* ---------- the palette: dark, when the page's switch says so ---------- */
 :root[data-theme="dark"] .rvc{
-  --rvc-surface: #1B1A16;
-  --rvc-surface-2: #232219;
-  --rvc-surface-3: #2C2A20;
-  --rvc-border: #332F24;
-  --rvc-border-strong: #3E3A2C;
-  --rvc-text: #EFEBDF;
-  --rvc-text-muted: #A6A192;
-  --rvc-text-faint: #726E60;
-  --rvc-accent: #FF4D6D;
-  --rvc-accent-strong: #FF7A90;
-  --rvc-accent-soft: #3A0C14;
-  --rvc-accent-contrast: #1B0508;
+  --rvc-surface: #201C1B;
+  --rvc-surface-2: #2A2422;
+  --rvc-surface-3: #352D2B;
+  --rvc-border: #3F3532;
+  --rvc-border-strong: #4D413D;
+  --rvc-text: #EDE6E4;
+  --rvc-text-muted: #A89C99;
+  --rvc-text-faint: #7C716E;
+  --rvc-accent: #FF6B70;
+  --rvc-accent-strong: #FF8A8E;
+  --rvc-accent-soft: #3A1518;
+  --rvc-accent-contrast: #2B0A0B;
   --rvc-draft: #B9A9C9;
   --rvc-draft-soft: #2A2331;
   --rvc-ok: #4CB484;

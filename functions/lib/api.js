@@ -71,6 +71,9 @@
 //                                           promo-audiences. See subcollectionRoutes() / RESOURCES.
 //   GET / PUT /api/event/site               the site as the editor saved it (snapshot + page), versioned;
 //                                           a stale save answers 409.
+//   GET   /api/event/site-outline           what the site shows of the Content tabs (lib/site-outline.js): the
+//                                           sections that list speakers, sessions, sponsors…, the previous
+//                                           edition's own sections, the banner's logo — for the console's notes.
 //   POST  /api/event/publish | unpublish    put the saved site live at /e/<id> / take it down.
 //   POST  /api/event/stage                  only for browsers still running the previous editor script.
 //   POST  /api/event/live-view              the editor's "Edit with AI" live view: the page through the
@@ -96,6 +99,8 @@
 //                          read only), POST /api/events/portal-backfill (an approver fills in the portals they
 //                          ticked, only where that evidence is still certain)
 //     lib/working-portal.js GET / PUT /api/me/working-portal (the portal a person works on, kept for that person)
+//     lib/create-drafts.js GET /api/me/create-drafts, GET/PUT/DELETE /api/me/create-draft, GET/POST
+//                          /api/me/create-draft/file (Create Event's unfinished drafts and their pictures, each person's own)
 //     lib/promo.js         GET /api/promo/kit, GET /api/promo/image, POST /api/promo/write (the Promotions
 //                          pages: an event's brand and content, its pictures from our own address, AI copy)
 //     lib/promo-track.js   GET /t/o/<id>.gif, GET /t/c/<id> (PUBLIC — a mailer's open pixel and click redirect),
@@ -283,6 +288,8 @@ const siteSeo = require('./site-seo');
 const sitePages = require('./site-pages');
 /* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
 const siteChecks = require('./site-checks');
+/* what the site shows of the console's Content tabs, read off its page (site-outline.js) */
+const siteOutline = require('./site-outline');
 
 /* How much each route will read before answering 413. Nothing here used to bound a request body at all:
    one unauthenticated 100 MB POST was buffered whole before any check ran. Each limit is the largest
@@ -10550,6 +10557,54 @@ function handleSiteCheck(req, res) {
   });
 }
 
+/* ---------- GET /api/event/site-outline?eventId= ----------
+   What the site shows of the event console's Content tabs (lib/site-outline.js), so a tab can say what it costs the
+   site (UX-066: "Your live site's Sponsors section is hidden until you add a confirmed sponsor"), what the site shows
+   from the previous edition that the tab does not hold (UX-067), and the Event logo tile can show the logo visitors
+   see (UX-071). Read off the live page while the site is live, else the site as last saved; a site never saved has
+   nothing to read (of: 'none'), and the console then says nothing it cannot know.
+   -> { eventId, of: 'live' | 'saved' | 'none', version, places, previous, logo, logoIsUnit }
+      places: by kind, [{ key, name, hides, stands? }] — what the page does with each section's list (site-outline.js)
+      logoIsUnit: the banner's picture is the design's own logo unit (designPlan.design.logoUnitUrl) — the same address,
+      or the same stored file under another name: a unit made again from the same upload leaves the page with its
+      older copy until the site is saved again (brand-world-summit-2026's live banner and its design, on 5 Nov 2026) */
+function sameStoredPicture(fb, a, b) {
+  if (!a || !b) return Promise.resolve(false);
+  if (a === b) return Promise.resolve(true);
+  var pa = storagePathOf(fb, a), pb = storagePathOf(fb, b);
+  if (!pa || !pb) return Promise.resolve(false);
+  function md5(p) { return fb.bucket.file(p).getMetadata().then(function (r) { return (r && r[0] && r[0].md5Hash) || ''; }, function () { return ''; }); }
+  return Promise.all([md5(pa), md5(pb)]).then(function (h) { return !!h[0] && h[0] === h[1]; });
+}
+function handleSiteOutline(req, res) {
+  withAdmin(req, res, function (fb) {
+    var eventId = eventIdOr400(res, queryOf(req).get('eventId'));
+    if (!eventId) return;
+    loadLiveEvent(fb, eventId).then(function (data) {
+      var live = data.published === true, saved = siteVersionOf(data);
+      var none = { eventId: eventId, of: 'none', version: 0, places: siteOutline.outline('', TOKEN_KIT).places, previous: [], logo: '', logoIsUnit: false };
+      /* a live site whose published copy cannot be found is read as last saved, which is what goes live next */
+      var reads = live ? [['live', publishedObjectPath(eventId), +data.publishedVersion || 0]] : [];
+      if (saved) reads.push(['saved', sitePath(eventId, 'page.html'), saved]);
+      function next(i) {
+        if (i >= reads.length) return sendJson(res, 200, none);
+        return readObject(fb, reads[i][1]).then(function (html) {
+          if (html == null) return next(i + 1);
+          var templateId = (data.site && data.site.templateId) || data.templateId || '';
+          /* redrawn: whether the page's records are drawn again on every visit, which decides what an unmarked
+             section does with no records (site-outline.js placeState) */
+          var o = siteOutline.outline(html, TOKEN_KIT, contentMapFor(templateId), { redrawn: LIVE_RUNTIME_PRESENT });
+          var design = aiDesignOf(data.designPlan);
+          return sameStoredPicture(fb, o.logo, design ? String(design.logoUnitUrl || '') : '').then(function (same) {
+            sendJson(res, 200, { eventId: eventId, of: reads[i][0], version: reads[i][2], places: o.places, previous: o.previous, logo: o.logo, logoIsUnit: same });
+          });
+        });
+      }
+      return next(0);
+    }).catch(function (err) { sendFailure(res, 'site outline', err, 'What the site shows could not be read. Please try again.'); });
+  });
+}
+
 /* ---------- POST /api/event/site/repair ----------
    Body { eventId, repairs: ['et-chrome' | 'pictures' | 'headings'] } -> 200 { version, repaired: [text], summary }.
    Puts right, in the site as last saved, what the site check offers to: 'et-chrome' — an AI-designed site built
@@ -11460,6 +11515,8 @@ function portalModuleRoute(moduleName, handler) {
 }
 var eventPortal = function (handler) { return portalModuleRoute('event-portal', handler); };
 var workingPortal = function (handler) { return portalModuleRoute('working-portal', handler); };
+/* lib/create-drafts.js (Create Event's unfinished drafts, kept with the person's account: UX-048) takes the same few helpers */
+var createDrafts = function (handler) { return portalModuleRoute('create-drafts', handler); };
 
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
@@ -11623,6 +11680,13 @@ var ROUTES = {
   'POST /api/events/portal-backfill': eventPortal('handleBackfill'),
   'GET /api/me/working-portal': workingPortal('handleGet'),
   'PUT /api/me/working-portal': workingPortal('handlePut'),
+  /* Create Event's drafts, each person's own (lib/create-drafts.js): listed on the dashboard, resumed on any computer */
+  'GET /api/me/create-drafts': createDrafts('handleList'),
+  'GET /api/me/create-draft': createDrafts('handleGet'),
+  'PUT /api/me/create-draft': createDrafts('handlePut'),
+  'DELETE /api/me/create-draft': createDrafts('handleDelete'),
+  'POST /api/me/create-draft/file': createDrafts('handleFilePut'),
+  'GET /api/me/create-draft/file': createDrafts('handleFileGet'),
   'GET /api/event/slug-available': events('handleSlugAvailable'),
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),
@@ -11636,6 +11700,7 @@ var ROUTES = {
 
   'GET /api/event/site': handleSiteGet,
   'GET /api/event/site-check': handleSiteCheck,
+  'GET /api/event/site-outline': handleSiteOutline,
   'POST /api/event/site/repair': handleSiteRepair,
   'PUT /api/event/site': handleSitePut,
   'POST /api/event/publish': handleEventPublish,

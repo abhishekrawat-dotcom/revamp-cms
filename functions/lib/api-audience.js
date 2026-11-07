@@ -715,12 +715,14 @@ var SEED_KINDS = [
   { key: 'sessions', noun: 'Session', title: 'title', need: 'a title', content: ['title', 'start', 'end', 'desc', 'room'],
     fields: { title: T(300), start: T(40), end: T(40), kind: DEFAULTED(40, 'session'), desc: M(4000), room: T(160), weight: T(40) },
     parent: { kind: 'agendaGroups', idField: 'groupId', nameField: 'group', fallback: { name: 'Day 1' } } },
+  /* a partner's and a tier's priority starts at Normal ('featured'), as a speaker's does: the console shows a priority
+     pill only when it is not Normal (UX-068), so seeded sponsors used to come in as "Low", each with a pill */
   { key: 'partnerTiers', noun: 'Partner tier', title: 'name', need: 'a name', content: ['name'],
-    fields: { name: T(120), weight: DEFAULTED(40, 'standard') } },
+    fields: { name: T(120), weight: DEFAULTED(40, 'featured') } },
   { key: 'partners', noun: 'Partner', title: 'name', need: 'a name', content: ['name', 'url', 'logoUrl', 'email', 'phone', 'contact', 'note'],
-    fields: { name: T(160), url: LINK('website'), logoUrl: IMG('logo'), weight: DEFAULTED(40, 'standard'), status: STATUS,
+    fields: { name: T(160), url: LINK('website'), logoUrl: IMG('logo'), weight: DEFAULTED(40, 'featured'), status: STATUS,
       email: EMAIL, phone: T(40), contact: T(160), note: M(2000) },
-    parent: { kind: 'partnerTiers', idField: 'tierId', nameField: 'tier', fallback: { name: 'Partners', weight: 'standard' } } },
+    parent: { kind: 'partnerTiers', idField: 'tierId', nameField: 'tier', fallback: { name: 'Partners', weight: 'featured' } } },
   { key: 'gallery', noun: 'Gallery image', title: 'imageUrl', need: 'an image', content: ['imageUrl', 'caption'],
     fields: { imageUrl: IMG('image'), caption: T(300) } },
   { key: 'faqs', noun: 'FAQ', title: 'question', need: 'a question', content: ['question', 'answer'],
@@ -2006,7 +2008,9 @@ module.exports = {
      and conversion the console's Insights shows, older events (scanned, kept for a minute) included */
   insightTotals, conversionOf,
   /* the window of GET /api/insights, for its tests */
-  insightsWindow, eventWindow
+  insightsWindow, eventWindow,
+  /* what Create Event's content becomes before it is stored (site-notes.test.js: a sponsor starts at Normal priority) */
+  readSeedPayload
 };
 /* the small helpers lib/api-forms.js shares with this module, so the two answer alike */
 module.exports._shared = {

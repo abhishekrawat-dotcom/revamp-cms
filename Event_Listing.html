@@ -9,27 +9,29 @@
 <title>Events &mdash; Revamp CMS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
+<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<link rel="stylesheet" href="app-logo.css">
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 <style>
   :root{
-    --bg: #F7F7F4;
+    --bg: #FAF7F6;
     --surface: #FFFFFF;
-    --surface-2: #F1F0EC;
-    --surface-3: #E7E5DF;
-    --border: #E6E4DE;
-    --border-strong: #D7D4CB;
-    --text: #1D1B17;
-    --text-muted: #6C6A60;
-    --text-faint: #9B988D;
+    --surface-2: #F3EEED;
+    --surface-3: #E9E2E0;
+    --border: #E0D7D5;
+    --border-strong: #CFC3C0;
+    --text: #241B1A;
+    --text-muted: #756865;
+    --text-faint: #A0908C;
 
-    --accent: #FF0035;
-    --accent-strong: #D6002C;
-    --accent-soft: #FFE3E8;
+    --accent: #ED1C24;
+    --accent-strong: #B3151B;
+    --accent-soft: #FBDBDC;
     --accent-contrast: #FFFFFF;
 
-    --brand-red: #FF0035;
+    --brand-red: #ED1C24;
     --draft: #8A7A99;
     --draft-soft: #EEE8F2;
 
@@ -63,10 +65,10 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
-      --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
-      --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
-      --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
+      --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
+      --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+      --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
+      --brand-red:#FF6B70; --draft:#B9A9C9; --draft-soft:#2A2331;
       --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
       --info:#7EB6E8; --info-soft:#132A3D;
       --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
@@ -79,10 +81,10 @@
     }
   }
   :root[data-theme="dark"]{
-    --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
-    --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
-    --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
-    --brand-red:#FF4D6D; --draft:#B9A9C9; --draft-soft:#2A2331;
+    --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
+    --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+    --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
+    --brand-red:#FF6B70; --draft:#B9A9C9; --draft-soft:#2A2331;
     --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
     --info:#7EB6E8; --info-soft:#132A3D;
     --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D;
@@ -217,6 +219,7 @@
   .popover.right{ left:auto; right:0; }
   .popover.wide{ min-width:300px; }
   .popover-label{ padding:6px 8px 4px; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); }
+  .popover-empty{ padding:6px 8px 8px; font-size:12.5px; color:var(--text-muted); }
   .popover-item{ display:flex; align-items:center; gap:9px; width:100%; padding:8px 9px; border-radius:7px; font-size:13px; color:var(--text); text-align:left; background:none; border:none; }
   .popover-item:hover{ background:var(--surface-2); }
   .popover-item svg{ color:var(--text-faint); flex-shrink:0; }
@@ -312,12 +315,20 @@
      column out of view, or running under a card's icons: "anywhere" also lets the name column shrink to fit */
   .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:block; width:fit-content; max-width:100%; cursor:pointer; overflow-wrap:anywhere; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
-  .ev-meta-line{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); margin-top:7px; flex-wrap:wrap; }
-  .ev-meta-line .dotsep{ color:var(--text-faint); }
+  /* The type, then the address (or a deleted event's note), with a dot between. The dot belongs to the second part, so
+     when that part does not fit and moves to its own line (a long address on a phone card) the dot goes with it; there
+     it would start the line, so the row reaches 17px left of the line and the dot of any part that starts a line falls
+     in that strip, which .ev-meta-line clips. It used to be a part of its own and stayed alone at the end of the line. */
+  .ev-meta-line{ font-size:12px; color:var(--text-muted); margin-top:7px; overflow:hidden; }
+  .ev-meta-row{ display:flex; align-items:center; flex-wrap:wrap; row-gap:4px; margin-left:-17px; }
+  .ev-meta-row > *{ margin-left:17px; min-width:0; }
+  .ev-meta-next::before{ content:'\00B7'; content:'\00B7' / ''; display:inline-block; width:17px; margin-left:-17px; text-align:center; color:var(--text-faint); font-family:var(--font-body); }
   /* a deleted event: its name is not a link (the console cannot open a deleted event), and when and by whom it went */
   .ev-name-main .ev-link.is-static{ cursor:default; }
   .ev-name-main .ev-link.is-static:hover{ color:var(--text); text-decoration:none; }
   .ev-deleted-note{ font-size:12px; color:var(--text-muted); }
+  /* the event's address under its name: two events of the same name (a copy keeps the name and the date) are told apart by it (UX-040) */
+  .ev-addr{ font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); overflow-wrap:anywhere; }
   .ev-tag{ font-size:10.5px; font-weight:800; letter-spacing:.02em; border-radius:100px; padding:3px 10px; }
   .ev-tag-blue{ color:var(--tag-blue); background:var(--tag-blue-soft); }
   .ev-tag-teal{ color:var(--tag-teal); background:var(--tag-teal-soft); }
@@ -364,6 +375,9 @@
   .qr-pick-chev{ color:var(--text-faint); transform:rotate(-90deg); flex-shrink:0; }
   .qr-img-wrap{ display:flex; justify-content:center; padding:6px 0 2px; }
   .qr-img{ border-radius:12px; border:1px solid var(--border); padding:10px; background:#fff; }
+  /* the code's two downloads, side by side under it (they wrap on a narrow phone) */
+  .qr-downloads{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  .qr-fail{ font-size:12.5px; color:var(--crit); text-align:center; margin:0; }
 
   /* ---------- venue quick-view tooltip ---------- */
   .venue-pop{ position:fixed; top:0; left:0; width:auto; max-width:260px; min-width:0; padding:9px 12px; display:flex; flex-direction:column; gap:6px; z-index:60; background:var(--text); border:none; border-radius:8px; box-shadow:var(--shadow-md); }
@@ -479,11 +493,19 @@
   #results-view.view-grid .card-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); gap:14px; }
 
   /* ---------- help / support ---------- */
-  .help-fab{ position:fixed; bottom:22px; left:22px; z-index:80; display:flex; align-items:center; gap:8px; padding:11px 16px; border-radius:100px; background:var(--surface); border:1px solid var(--border-strong); box-shadow:var(--shadow-md); font-size:13px; font-weight:700; color:var(--text); }
-  .help-fab:hover{ border-color:var(--accent); color:var(--accent-strong); }
-  /* ETB2B AI (bottom-right) replaces this button once it has mounted (etb2b-chat.js sets html.rvc-ready only then):
-     its panel's header carries "Email Customer Care". Until then, or if its scripts fail to load, "Need help?" stays. */
-  html.rvc-ready .help-fab{ display:none; }
+  /* Help sits in the top bar, beside the theme switch (UX-028). It was a pill fixed to the bottom-left corner that
+     covered the Latest Activity card at 1440 px and the Total Registrations card on a phone; that corner is
+     ETB2B AI's now, whose panel also carries "Email Customer Care". */
+  .nav-help-btn{ display:inline-flex; align-items:center; gap:6px; height:32px; padding:0 11px; border-radius:var(--r-sm); border:1px solid var(--border); background:var(--surface); color:var(--text-muted); font-size:13px; font-weight:600; font-family:var(--font-body); flex-shrink:0; }
+  .nav-help-btn:hover{ background:var(--surface-2); color:var(--text); border-color:var(--border-strong); }
+  .nav-help-btn svg{ flex-shrink:0; }
+  @media (max-width: 640px){
+    .nav-help-btn{ width:40px; height:40px; padding:0; justify-content:center; }
+    .nav-help-label{ display:none; }
+  }
+  /* what the help window says once the email app was asked to open: nothing was sent from here */
+  .help-note{ font-size:12.5px; line-height:1.5; color:var(--text); background:var(--info-soft); border-radius:8px; padding:10px 12px; }
+  .help-note b{ font-weight:700; }
   /* A row's ⋯ menu, once open, is pinned to the screen from <body> (placeRowMenu) and can reach the bottom-right
      corner: it opens above ETB2B AI's launcher (65) and panel (69), and under the page's dialogs (90). */
   body > .popover.row-menu{ z-index:70; }
@@ -599,6 +621,22 @@
   .pn-link{ background:none; border:none; padding:0; font-size:13px; font-weight:700; color:var(--accent-strong); text-decoration:underline; cursor:pointer; white-space:nowrap; }
   #portal-notice{ display:flex; flex-direction:column; gap:8px; }
   #portal-notice:empty{ display:none; }
+  /* Create Event's unfinished drafts, in the Drafts view (renderCreateDrafts, UX-048) */
+  #create-drafts:empty{ display:none; }
+  .cdrafts{ background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); padding:14px 16px; box-shadow:var(--shadow-xs); }
+  .cdrafts-head{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+  .cdrafts-head h2{ font-size:14px; }
+  .cdrafts-head .tc{ font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-faint); background:var(--surface-2); border-radius:100px; padding:1px 7px; }
+  .cdrafts-note{ font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
+  .cdrafts-list{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; }
+  .cdraft{ display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--border); }
+  .cdraft-main{ flex:1 1 260px; min-width:0; }
+  .cdraft-name{ font-weight:650; color:var(--text); text-decoration:none; overflow-wrap:anywhere; }
+  .cdraft-name:hover{ text-decoration:underline; }
+  .cdraft-meta{ font-size:12.5px; color:var(--text-muted); margin-top:2px; overflow-wrap:anywhere; }
+  .cdraft-actions{ display:flex; gap:6px; flex-shrink:0; }
+  @media (max-width: 640px){ .cdraft-actions .btn{ min-height:44px; } }
+  .cdrafts-error{ display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; font-size:13px; color:var(--text); margin-top:6px; }
   .portal-notice{ display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; padding:10px 14px; border-radius:var(--r-md); background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:13px; }
   .portal-notice > svg{ color:var(--text-muted); flex-shrink:0; }
   .portal-notice .pn-text{ flex:1 1 220px; min-width:0; }
@@ -621,7 +659,8 @@
 <header class="main-nav">
   <div class="main-nav-inner">
     <a class="main-nav-brand" href="index.html">
-      <img class="brand-logo-img" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">
+      <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ET Oneworld">
+      <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ET Oneworld">
     </a>
 
     <div class="main-nav-scroll">
@@ -641,6 +680,11 @@
     </div>
 
     <div class="main-nav-right">
+      <!-- Help, beside the theme switch: the window to write to ET's Customer Care (openHelpModal) -->
+      <button class="nav-help-btn" id="btn-help" type="button" aria-label="Help" aria-haspopup="dialog">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9-.7c.2.9-.2 1.5-1 2.1-.7.5-1.4.9-1.4 2.1"/><path d="M12 17h.01"/></svg>
+        <span class="nav-help-label">Help</span>
+      </button>
       <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
       <!-- the signed-in user's avatar and the real Sign out: auth.js renders it into any [data-rv-account] -->
       <span data-rv-account></span>
@@ -736,6 +780,8 @@
   <div id="special-banner"></div>
   <!-- the first-visit "Choose the portal you work on" callout, and "N events have no portal yet" (renderPortalNotice) -->
   <div id="portal-notice"></div>
+  <!-- Create Event's unfinished drafts, from the person's account: shown in the Drafts view (renderCreateDrafts) -->
+  <section id="create-drafts" aria-label="Unfinished in Create Event"></section>
 
   <div id="results-view" class="view-list">
     <div class="table-wrap" id="table-wrap">
@@ -805,16 +851,11 @@
   </section>
 </div>
 
-<button class="help-fab" id="btn-help" type="button">
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 4.9-.7c.2.9-.2 1.5-1 2.1-.7.5-1.4.9-1.4 2.1"/><path d="M12 17h.01"/></svg>
-  Need help?
-</button>
-
 <div class="popover venue-pop" id="venue-quickview" hidden></div>
 <div class="gt-tooltip" id="gt-tooltip" hidden></div>
 
 <div id="sheet-root"></div>
-<!-- ETB2B AI mounts here (etb2b-assistant.js), bottom-right as on every page; the toasts may lie over it for their few seconds -->
+<!-- ETB2B AI mounts here (etb2b-assistant.js), bottom-right as on every page (Help is in the top bar); the toasts may lie over it for their few seconds -->
 <div id="rv-dash-bot" data-rv-assistant="dashboard"></div>
 <div id="toast-region"></div>
 
@@ -825,6 +866,10 @@
 <script src="auth.js"></script>
 <!-- ET's portal roster, the person's working portal and the Set portal window (window.RevampPortals) -->
 <script src="portal-picker.js"></script>
+<!-- Create Event's drafts in the person's account: listed in the Drafts view, with Resume and Discard -->
+<script src="create-drafts.js"></script>
+<!-- QR codes drawn in the page (the QR Codes dialog), as Promotions draws its own: no outside service is sent the link -->
+<script src="assets/vendor/qrcode-generator.js"></script>
 <!-- the one rule for Draft / Upcoming / Active / Completed, shared with ETB2B AI's server so the two never disagree -->
 <script src="event-lifecycle.js"></script>
 <script>
@@ -859,6 +904,7 @@
     arrowDown:svg('<path d="M12 5v14M19 12l-7 7-7-7"/>', 11),
     ban:      svg('<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>', 14),
     mail:     svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>', 14),
+    download: svg('<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/>', 14),
     calendarSm: svg('<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 3v3M16 3v3"/>', 14),
     pin:      svg('<path d="M12 21s-7-6.5-7-11.5A7 7 0 0 1 19 9.5C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/>', 13),
     newspaper: svg('<path d="M4 4h13a2 2 0 0 1 2 2v13a1 1 0 0 1-1 1H6a2 2 0 0 1-2-2z"/><path d="M4 4v14a2 2 0 0 0 2 2"/><path d="M8 8h7M8 12h7M8 16h4"/>', 14),
@@ -901,9 +947,20 @@
      it was missing here, and metaLine() below then threw on that one row, which left the whole list page on
      skeleton rows for everyone. typeLabel() is the tolerant lookup every reader must use: a category this
      table has never heard of shows as its own name instead of taking the page down. */
-  var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table', awards:'Awards' };
+  /* The category names are edit-event-core.js's (RevampCore.TYPES), the same on every page (UX-005): this page had
+     its own set ("Intellectual Property (IP)", "Client", "Virtual Events"…) for what Create Event calls by other
+     names. The Event type filter offers only the categories some loaded event has (offeredTypes). */
+  var EVENT_TYPES = (window.RevampCore && window.RevampCore.TYPES) || {};
   var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber', awards:'ev-tag-amber' };
   function typeLabel(type){ return EVENT_TYPES[type] || (type ? String(type) : 'Event'); }
+  /* The Event type filter's choices: a category is offered only when some loaded event has it (an event in
+     Deleted Events too), so it never offers one that would show nothing, nor the old categories nobody can make
+     any more; one already ticked stays, so its tick can be taken off. In the table's order. */
+  function offeredTypes(){
+    return Object.keys(EVENT_TYPES).filter(function(k){
+      return state.filters.types.indexOf(k) !== -1 || EVENTS.some(function(e){ return e.type === k; });
+    });
+  }
   /* ET's portal roster, [{slug, name}] by name, as GET /api/et/portals answers it through portal-picker.js
      (window.RevampPortals) — the very list the server checks every event's portal against. This page used to
      keep an invented table of eleven (two of them with slugs ET does not use) and a fixed "current" portal. */
@@ -943,7 +1000,8 @@
       id: ev.id, slug: ev.slug || ev.id, name: ev.name || 'Untitled event',
       /* no city is no city: it used to be '—', which the venue tooltip printed as "Venue to be confirmed, —" (UX-020) */
       venue: ev.venue || 'Venue to be confirmed', city: ev.city || '',
-      type: ev.category || 'ip',
+      /* the category's key as RevampCore.TYPES spells it (lower case): an event stored as "IP" is still an IP Event */
+      type: String(ev.category || 'ip').toLowerCase(),
       /* the event's stored portal (a roster slug, '' for none yet) and its name, both from the server; the two
          facts Set portal's window needs are kept beside them (published is kept further down) */
       portal: typeof ev.portal === 'string' ? ev.portal : '', portalName: typeof ev.portalName === 'string' ? ev.portalName : '',
@@ -1810,13 +1868,15 @@
   /* what a tab or ⋯ view counts: all its events, or, while a search or a filter is on, how many of them match, so the
      counts say where the matches are (UX-019: they ignored the search, which looked only inside the open tab) */
   function bucketCount(b){ return listFiltered() ? matchCount(b) : countIn(b); }
+  /* the Drafts tab counts the unfinished Create Event drafts it shows as well (createDraftsShown, UX-048) */
+  function tabCount(b){ return bucketCount(b) + (b === 'draft' ? createDraftsShown().length : 0); }
   function renderTabs(){
     var filtered = listFiltered(), known = !state.loading && !state.loadFailed;
     $('status-tabs').innerHTML = TABS.map(function(t){
       var selected = currentBucket() === t[0];
       /* a dash, not a 0, until the events have loaded, and when they could not be (UX-027): no count is better
          than one that says the events are gone */
-      var n = known ? bucketCount(t[0]) : '–';
+      var n = known ? tabCount(t[0]) : '–';
       return '<button type="button" role="tab" aria-selected="'+selected+'" data-tab="'+t[0]+'">'+t[1]+' <span class="tc">'+n+'</span>' +
         (known && filtered ? '<span class="sr-only">' + (n === 1 ? ' match' : ' matches') + '</span>' : '') + '</button>';
     }).join('') + '<span class="tabs-underline" id="tabs-underline"></span>';
@@ -2044,10 +2104,11 @@
     if (i===-1) arr.push(val); else arr.splice(i,1);
   }
   function renderTypePopover(){
-    $('type-popover').innerHTML = '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
+    var offered = offeredTypes();
+    $('type-popover').innerHTML = '<div class="popover-label">Event type</div>' + (offered.length ? offered.map(function(k){
       var on = state.filters.types.indexOf(k) !== -1;
-      return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
-    }).join('');
+      return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(EVENT_TYPES[k]) + '</button>';
+    }).join('') : '<p class="popover-empty">No events to filter yet.</p>');
     $('type-popover').querySelectorAll('[data-type]').forEach(function(b){
       b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
     });
@@ -2239,11 +2300,14 @@
   function regCellHTML(e){
     return '<span class="reg-num">' + fmtNum(e.registrations) + '</span>';
   }
-  /* the event's type; a deleted event also says when it went and who deleted it */
+  /* the event's type and its address (/e/<id>, where its site is or will be served), so two events of one name can be
+     told apart (UX-040); a deleted event also says when it went and who deleted it */
   function metaLine(e){
-    var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type).replace(' (IP)','')) + '</span>';
-    if (e.status === 'deleted' && e.deletedAt) out += '<span class="dotsep">&middot;</span><span class="ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
-    return out;
+    var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type)) + '</span>';
+    /* ev-meta-next: the dot before it is drawn by the stylesheet, and is left out where the part starts a line */
+    if (e.status === 'deleted' && e.deletedAt) out += '<span class="ev-meta-next ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
+    else out += '<span class="ev-meta-next ev-addr" title="' + (e.published ? 'The site\'s address' : 'The site\'s address once it is published') + '">/e/' + esc(e.id) + '</span>';
+    return '<span class="ev-meta-row">' + out + '</span>';
   }
 
   /* shown on mouse hover and keyboard focus only: a click on the name opens the event (UX-020). A missing city is left
@@ -2350,7 +2414,15 @@
   var MATCH_ORDER = ['draft','upcoming','active','completed','cancelled','deleted'];
   function noMatchHTML(bucket){
     var elsewhere = MATCH_ORDER.filter(function(b){ return b !== bucket && (b !== 'deleted' || deletedState === 'ok'); })
-      .map(function(b){ return { b: b, n: matchCount(b) }; }).filter(function(x){ return x.n > 0; });
+      .map(function(b){ return { b: b, n: matchCount(b) + (b === 'draft' ? createDraftsShown().length : 0) }; }).filter(function(x){ return x.n > 0; });
+    /* on Drafts, unfinished Create Event drafts that match are in their box above: said, not "No matches" alone */
+    var above = bucket === 'draft' ? createDraftsShown().length : 0;
+    if (above){
+      return emptyBlock(IC.searchLg, 'No draft events match', (above === 1 ? '1 unfinished Create Event draft matches: it is above.' : above + ' unfinished Create Event drafts match: they are above.') +
+        (elsewhere.length ? ' Also ' + elsewhere.map(function(x){ return x.n + ' in ' + viewName(x.b); }).join(', ') + '.' : ''),
+        elsewhere.map(function(x){ return '<button type="button" class="btn btn-secondary" data-empty-tab="' + x.b + '">Show ' + esc(viewName(x.b)) + ' (' + x.n + ')</button>'; }).join(' ') +
+        (clearButtonsHTML() ? ' ' + clearButtonsHTML() : ''));
+    }
     var clear = clearButtonsHTML();
     if (elsewhere.length){
       return emptyBlock(IC.searchLg, 'No matches in ' + viewName(bucket), elsewhere.map(function(x){ return x.n + ' in ' + viewName(x.b); }).join(', ') + '.',
@@ -2370,6 +2442,10 @@
     var bucket = state.specialView || state.tab;
     var create = '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a>';
     if (listFiltered()) return noMatchHTML(bucket);
+    /* on Drafts, with unfinished Create Event drafts above and no draft event yet (UX-048) */
+    if (bucket === 'draft' && createDraftsShown().length){
+      return emptyBlock(IC.calendarLg, 'No draft events', 'Your unfinished Create Event drafts are above. An event is listed here, as a draft, from the moment Create Event creates it until its site is published.');
+    }
     if (bucket === 'deleted'){
       if (deletedState === 'error') return emptyBlock(IC.alertLg, 'Deleted Events could not be loaded', 'Your other events are here as usual. Nothing has been lost.',
         '<button type="button" class="btn btn-secondary" data-empty-retry>Try again</button>');
@@ -2439,6 +2515,8 @@
     renderTabs();
     renderMoreMenu();
     renderPortalNotice();
+    /* the Drafts tab's unfinished Create Event drafts (UX-048): the search and filters narrow them too */
+    renderCreateDrafts();
     /* the Insights cards count what the list shows, so they are drawn with it (UX-039) */
     renderInsights();
     /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
@@ -2998,6 +3076,73 @@
     { key:'speakers', label:'QR Code — Speakers', icon:'mic',    hint:'Jumps straight to the speaker list' }
   ];
 
+  /* The QR picker's choices (UX-032, UX-040): the published events in list, grouped Active, Upcoming, Completed
+     (then any other state a published event can be in), each group in date order. An option reads
+     "<name> · <date as the list shows it>", and "· /e/<id>" is added to every option that would otherwise read the
+     same as another (copies of one event keep its name and date). -> [{ status, label, options: [{ id, label }] }] */
+  var QR_STATUS_ORDER = ['active', 'upcoming', 'completed'];
+  /* the date alone, as the list writes it ("5 – 7 Dec 2026", "June 2027"): an option has no room for the time */
+  function pickerDate(e){ var w = whenOf(e); return w.dated ? w.date : (w.label || 'Date not set'); }
+  function qrPickerGroups(list){
+    var live = list.filter(function(e){ return e.published && e.status !== 'deleted' && e.status !== 'draft'; });
+    var seen = {};
+    live.forEach(function(e){ var t = e.name + ' · ' + pickerDate(e); seen[t] = (seen[t] || 0) + 1; });
+    var order = QR_STATUS_ORDER.slice();
+    live.forEach(function(e){ if (order.indexOf(e.status) === -1) order.push(e.status); });
+    return order.map(function(st){
+      var rows = live.filter(function(e){ return e.status === st; });
+      rows.sort(function(a, b){ return compareRows(a, b, 'start', st === 'completed' ? -1 : 1); });
+      return { status: st, label: statusLabel(st), options: rows.map(function(e){
+        var t = e.name + ' · ' + pickerDate(e);
+        return { id: e.id, label: seen[t] > 1 ? t + ' · /e/' + e.id : t };
+      }) };
+    }).filter(function(g){ return g.options.length; });
+  }
+  /* text -> { n, dark(row, col) } from the vendored qrcode-generator (window.qrcode), or null when it is missing or
+     refuses the text. Error correction M: a code printed on a badge or a banner still scans with a little damage. */
+  function qrModules(text){
+    if (typeof window.qrcode !== 'function' || !text) return null;
+    try {
+      var q = window.qrcode(0, 'M');
+      q.addData(String(text));
+      q.make();
+      return { n: q.getModuleCount(), dark: function(r, c){ return q.isDark(r, c); } };
+    } catch (err) { return null; }
+  }
+  /* the code as an SVG: black squares on white with the standard quiet zone of four modules round it, so it scans
+     on any background it is placed on; size is the width and height it says it is (defaults to 220) */
+  function qrSvg(m, size){
+    var quiet = 4, dim = m.n + quiet * 2, d = '';
+    for (var r = 0; r < m.n; r++) for (var c = 0; c < m.n; c++) if (m.dark(r, c)) d += 'M' + (c + quiet) + ' ' + (r + quiet) + 'h1v1h-1z';
+    size = size || 220;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim + '" width="' + size + '" height="' + size + '" shape-rendering="crispEdges">' +
+      '<rect width="' + dim + '" height="' + dim + '" fill="#ffffff"/><path d="' + d + '" fill="#000000"/></svg>';
+  }
+  /* the code as a PNG (a data: address), scale pixels a module, quiet zone included; '' when the browser cannot */
+  function qrPng(m, scale){
+    try {
+      var quiet = 4, dim = (m.n + quiet * 2) * scale, cv = document.createElement('canvas');
+      cv.width = dim; cv.height = dim;
+      var g = cv.getContext('2d');
+      g.fillStyle = '#ffffff'; g.fillRect(0, 0, dim, dim);
+      g.fillStyle = '#000000';
+      for (var r = 0; r < m.n; r++) for (var c = 0; c < m.n; c++) if (m.dark(r, c)) g.fillRect((c + quiet) * scale, (r + quiet) * scale, scale, scale);
+      return cv.toDataURL('image/png');
+    } catch (err) { return ''; }
+  }
+  /* "brand-world-summit-2026-agenda-mailer-qr.png": the event, which code, the AG code when there is one */
+  function qrFileName(e, key, ag, ext){
+    var tag = String(ag || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return String(e.id) + '-' + key + (tag ? '-' + tag : '') + '-qr.' + ext;
+  }
+  /* saves href as a file called name; an object URL is released once the browser has it */
+  function downloadHref(href, name, revoke){
+    var a = document.createElement('a');
+    a.href = href; a.download = name; a.rel = 'noopener';
+    document.body.appendChild(a); a.click(); a.remove();
+    if (revoke) setTimeout(function(){ try { URL.revokeObjectURL(href); } catch(err){} }, 5000);
+  }
+
   /* opener: what opened it (the toolbar's QR Codes, or a row's ⋯ button), which gets the focus back when it closes.
      Each of its three steps is drawn afresh, so each is made a dialog again and given the focus (mount). */
   function openQRModal(id, opener){
@@ -3012,20 +3157,29 @@
       try { (f || dialogControls(card)[0]).focus(); } catch(e){}
     }
 
+    /* Every published event of the portal shown (UX-032), whatever tab, search or filter the list has: it used to
+       offer only the rows on screen, so on Upcoming the live event was missing and a search left nothing to pick.
+       A draft has no site on the web for a code to open, so it is not offered. Grouped by where each stands, and
+       each option says its date beside its name, and its address too when that alone tells two apart (UX-040). */
     function renderEventPicker(){
-      var list = getFilteredSorted();
+      var groups = qrPickerGroups(EVENTS.filter(function(ev){ return inWorkingPortal(ev); }));
+      var any = groups.length > 0;
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
-        '<div class="modal-card-head"><div><h3 id="qr-title">QR Codes</h3><p>Pick an event to generate a QR code for</p></div>' +
+        '<div class="modal-card-head"><div><h3 id="qr-title">QR Codes</h3><p>Pick a published event to make a QR code for</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
-          (list.length
+          (any
             ? '<div><label class="flabel" for="qr-event-select">Event</label><select class="finput" id="qr-event-select">' +
-                list.map(function(ev){ return '<option value="' + ev.id + '">' + esc(ev.name) + '</option>'; }).join('') +
+                groups.map(function(g){
+                  return '<optgroup label="' + esc(g.label) + '">' + g.options.map(function(o){
+                    return '<option value="' + esc(o.id) + '">' + esc(o.label) + '</option>';
+                  }).join('') + '</optgroup>';
+                }).join('') +
               '</select></div>'
-            : '<p style="font-size:12.5px;color:var(--text-muted);">No events match the current filters.</p>') +
+            : '<p style="font-size:12.5px;color:var(--text-muted);">No published events' + (state.portal === 'all' ? '' : ' on this portal') + ' yet. A QR code opens an event\'s live site, so it can be made once the site is published.</p>') +
         '</div>' +
-        '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-cancel">Cancel</button>' +
-          (list.length ? '<button class="btn btn-primary" id="qr-continue" style="margin-left:auto;">Continue</button>' : '') +
+        '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-cancel">' + (any ? 'Cancel' : 'Close') + '</button>' +
+          (any ? '<button class="btn btn-primary" id="qr-continue" style="margin-left:auto;">Continue</button>' : '') +
         '</div>' +
       '</div></div>';
       $('qr-close').addEventListener('click', close);
@@ -3033,7 +3187,7 @@
       $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
       var cont = $('qr-continue');
       if (cont) cont.addEventListener('click', function(){ renderPicker(findEvent($('qr-event-select').value)); });
-      mount(list.length ? 'qr-event-select' : 'qr-cancel');
+      mount(any ? 'qr-event-select' : 'qr-cancel');
     }
 
     function renderPicker(e){
@@ -3066,33 +3220,63 @@
       return base + (base.indexOf('?') === -1 ? '?' : '&') + 'ag=' + encodeURIComponent(ag);
     }
 
+    /* The code is drawn here, from the vendored qrcode-generator (assets/vendor/qrcode-generator.js), as Promotions
+       draws its mailers' codes. It was a picture from api.qrserver.com, which sent every event link to an outside
+       service and left no code at all whenever that service was down; and there was no way to save it but a
+       right-click. Download PNG and Download SVG save the code as shown, AG code included (UX-032). */
     function renderDetail(e, key){
       var sec = QR_SECTIONS.filter(function(s){ return s.key===key; })[0];
       var baseUrl = eventPublicUrl(e, key === 'website' ? null : key);
-      var url = baseUrl;
+      var url = baseUrl, ag = '';
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
         '<div class="modal-card-head"><div><h3 id="qr-title">' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
           '<div><label class="flabel" for="qr-ag-code">AG Code <span style="font-weight:400;color:var(--text-muted);">(optional — tag the link to track where a scan came from)</span></label>' +
             '<input class="finput" id="qr-ag-code" type="text" placeholder="e.g. mailer" spellcheck="false" autocomplete="off"></div>' +
-          '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" id="qr-img" alt="' + esc(sec.label) + '" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url) + '"></div>' +
+          '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" id="qr-img" alt="' + esc(sec.label + ' for ' + e.name) + '"></div>' +
+          '<p class="qr-fail" id="qr-fail" role="alert" hidden>The QR code could not be drawn in this browser. Copy the link below and make the code from it, or reload the page and try again.</p>' +
+          '<div class="qr-downloads"><button type="button" class="btn btn-secondary" id="qr-dl-png">' + IC.download + ' Download PNG</button>' +
+            '<button type="button" class="btn btn-secondary" id="qr-dl-svg">' + IC.download + ' Download SVG</button></div>' +
           '<div class="email-row"><span id="qr-link-text" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(url) + '</span><button id="qr-copy-link" data-tooltip="Copy link" aria-label="Copy link" type="button">' + IC.copy + '</button></div>' +
         '</div>' +
         '<div class="modal-card-foot"><button class="btn btn-secondary" id="qr-back">&larr; Back</button><button class="btn btn-primary" id="qr-done" style="margin-left:auto;">Done</button></div>' +
       '</div></div>';
+      var code = null;
+      function draw(){
+        code = qrModules(url);
+        var img = $('qr-img');
+        img.setAttribute('data-qr-text', url);
+        img.hidden = !code;
+        $('qr-fail').hidden = !!code;
+        $('qr-dl-png').disabled = !code;
+        $('qr-dl-svg').disabled = !code;
+        if (code) img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(qrSvg(code));
+        else img.removeAttribute('src');
+      }
+      draw();
       $('qr-close').addEventListener('click', close);
       $('qr-scrim').addEventListener('click', function(ev){ if (ev.target === $('qr-scrim')) close(); });
       $('qr-back').addEventListener('click', function(){ renderPicker(e); });
       $('qr-done').addEventListener('click', close);
       $('qr-ag-code').addEventListener('input', function(){
-        url = urlWithAg(baseUrl, this.value);
+        ag = this.value;
+        url = urlWithAg(baseUrl, ag);
         $('qr-link-text').textContent = url;
-        $('qr-img').src = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(url);
+        draw();
       });
       $('qr-copy-link').addEventListener('click', function(){
         if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(url).then(function(){ toast('Link copied'); }).catch(function(){ toast(url); }); }
         else toast(url);
+      });
+      $('qr-dl-svg').addEventListener('click', function(){
+        if (!code) return;
+        downloadHref(URL.createObjectURL(new Blob([qrSvg(code, 1024)], { type: 'image/svg+xml' })), qrFileName(e, key, ag, 'svg'), true);
+      });
+      $('qr-dl-png').addEventListener('click', function(){
+        var href = code ? qrPng(code, 16) : '';
+        if (!href){ toast('This browser could not make the PNG. Try Download SVG instead.'); return; }
+        downloadHref(href, qrFileName(e, key, ag, 'png'), false);
       });
       mount('qr-ag-code');
     }
@@ -3141,9 +3325,9 @@
       '<h3 id="sheet-title" style="font-size:16px;margin-bottom:12px;">Filters</h3>' +
       '<label class="popover-label" for="m-portal" style="display:block;">Portal</label>' +
       '<select class="finput" id="m-portal" style="margin-bottom:8px;">' + portalOpts + '</select>' +
-      '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
+      '<div class="popover-label">Event type</div>' + offeredTypes().map(function(k){
         var on = state.filters.types.indexOf(k)!==-1;
-        return '<button class="check-row ' + (on?'on':'') + '" data-mtype="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
+        return '<button class="check-row ' + (on?'on':'') + '" data-mtype="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(EVENT_TYPES[k]) + '</button>';
       }).join('') +
       (state.portal === 'all' ? '<div class="popover-label" style="margin-top:8px;">Portal</div>' + portalFilterRows().map(function(p){
         var on = state.filters.portals.indexOf(p.slug)!==-1;
@@ -3183,6 +3367,7 @@
   $('btn-sync').addEventListener('click', function(){
     if (state.loading || state.refreshing) return;
     if (state.loadFailed){ loadAndRender(); return; }
+    loadCreateDrafts();          // the unfinished Create Event drafts are read again too
     refreshEvents().then(function(ok){ if (ok) toast('The list is up to date (read at ' + fmtTime(new Date(state.loadedAt).toISOString()) + ').'); });
   });
 
@@ -3460,44 +3645,209 @@
   }
 
   /* =========================================================
-     NEED HELP — opens the visitor's mail client addressed to Customer Care.
-     No backend here, so this is a mailto: link, not an actual send.
+     UNFINISHED IN CREATE EVENT (UX-048)
+     Create Event saves each draft to the person's own account (create-drafts.js, functions/lib/create-drafts.js), so
+     the Drafts tab lists them here, above the draft events, with Resume (it opens on any computer) and Discard. They
+     are not events yet, so they sit in a box of their own with its own heading and words, and the tab's count adds
+     them to the draft events. A draft that has already made its event says so: that event is in the list below as
+     well, and stays when the draft is discarded. The working portal narrows them as it narrows the events (one with
+     no portal yet, still on Create Event's first screen, is shown on every portal), and so do the search and the
+     Type and Portal filters; a date filter hides them, since they have no dates yet, and says so.
+  ========================================================= */
+  var CDRAFTS = { state: 'idle', list: [], error: '' };     // state: idle | loading | ready | error
+  var CDRAFT_TYPE = { IP: 'ip', Client: 'client', Awards: 'awards' };
+  function loadCreateDrafts(){
+    if (!window.RevampCreateDrafts){ CDRAFTS.state = 'error'; CDRAFTS.error = 'This page did not load completely. Reload it to see them.'; renderCreateDrafts(); return; }
+    /* nothing is drawn while the first answer is awaited: most people have no unfinished draft, and an empty box that
+       appears and goes would only move the list */
+    if (CDRAFTS.state !== 'ready') CDRAFTS.state = 'loading';
+    /* a discard that could not reach the server earlier is made first, so it is never listed again */
+    RevampCreateDrafts.flushRemovals().then(function(){ return RevampCreateDrafts.list(); }).then(function(list){
+      CDRAFTS.list = list; CDRAFTS.state = 'ready'; CDRAFTS.error = '';
+      renderCreateDraftsAndCounts();
+    }, function(err){
+      CDRAFTS.state = 'error'; CDRAFTS.error = (err && err.message) || 'The server could not be reached.';
+      renderCreateDraftsAndCounts();
+    });
+  }
+  /* the box, and the Drafts tab's count and an empty list's words, which both count the box too */
+  function renderCreateDraftsAndCounts(){ if (state.loading) renderCreateDrafts(); else renderResults(); }
+  /* back from Create Event by the browser's Back button: the page comes from its cache, so the list is read again */
+  window.addEventListener('pageshow', function(e){ if (e.persisted) loadCreateDrafts(); });
+  function createDraftsOnPortal(){
+    return CDRAFTS.list.filter(function(d){ var p = d.summary && d.summary.portal; return !p || state.portal === 'all' || p === state.portal; });
+  }
+  /* d (a list() row) against the search and the Type and Portal filters, as an event is (matches) */
+  function createDraftMatches(d){
+    var s = d.summary || {};
+    if (state.filters.types.length && state.filters.types.indexOf(CDRAFT_TYPE[s.category] || '') === -1) return false;
+    if (state.portal === 'all' && state.filters.portals.length && state.filters.portals.indexOf(s.portal || 'none') === -1) return false;
+    if (state.search){
+      var q = searchLine(state.search, 80).toLowerCase();
+      var cells = [s.name || 'Untitled event', s.client || '', s.portal ? portalNameOf(s.portal) : 'No portal yet'];
+      if (!cells.some(function(v){ return searchLine(v, 200).toLowerCase().indexOf(q) !== -1; })) return false;
+    }
+    return true;
+  }
+  /* the unfinished drafts the Drafts tab shows now; none while a date filter is on (they have no dates yet) */
+  function createDraftsShown(){
+    if (CDRAFTS.state !== 'ready' || state.created || state.starts) return [];
+    return createDraftsOnPortal().filter(createDraftMatches);
+  }
+  function createDraftRow(d){
+    var w = RevampCreateDrafts.describe(d, { portalName: function(slug){ return portalNameOf(slug); } });
+    var href = 'create-event.html?draft=' + encodeURIComponent(d.id);
+    var meta = [w.type, w.portal, w.where, w.when ? 'Last edited ' + w.when : ''].filter(Boolean).join(' · ');
+    return '<li class="cdraft" data-cdraft="' + esc(d.id) + '">' +
+      '<div class="cdraft-main"><a class="cdraft-name" href="' + esc(href) + '">' + esc(w.name) + '</a>' +
+        '<div class="cdraft-meta">' + esc(meta) + '</div>' +
+        '<div class="cdraft-meta">' + (w.eventId ? 'Its event, <span class="mono">' + esc(w.eventId) + '</span>, is already created: it is in the draft events below too.'
+          : 'Not an event yet: it becomes one when you finish it in Create Event.') + '</div>' +
+      '</div>' +
+      '<div class="cdraft-actions"><a class="btn btn-secondary btn-sm" href="' + esc(href) + '" aria-label="Resume ' + esc(w.name) + '">Resume</a>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-cdraft-discard="' + esc(d.id) + '" aria-label="Discard ' + esc(w.name) + '">Discard</button></div>' +
+    '</li>';
+  }
+  function renderCreateDrafts(){
+    var el = $('create-drafts');
+    if (!el) return;
+    if (state.specialView !== 'draft' || CDRAFTS.state === 'idle' || CDRAFTS.state === 'loading'){ el.innerHTML = ''; return; }
+    var head = '<div class="cdrafts-head"><h2 id="cdrafts-title" tabindex="-1">Unfinished in Create Event</h2>';
+    if (CDRAFTS.state === 'error'){
+      el.innerHTML = '<div class="cdrafts">' + head + '</div><div class="cdrafts-error" role="alert"><span>Your unfinished Create Event drafts could not be loaded: ' + esc(CDRAFTS.error.replace(/\.$/, '')) + '. Your events below are not affected.</span>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="cdrafts-retry">Try again</button></div></div>';
+      $('cdrafts-retry').addEventListener('click', loadCreateDrafts);
+      return;
+    }
+    var onPortal = createDraftsOnPortal(), shown = createDraftsShown();
+    var elsewhere = CDRAFTS.list.length - onPortal.length, hidden = onPortal.length - shown.length;
+    if (!CDRAFTS.list.length || (!shown.length && !elsewhere && !hidden)){ el.innerHTML = ''; return; }
+    var notes = [];
+    if (hidden) notes.push((state.created || state.starts)
+      ? (hidden === 1 ? '1 is' : hidden + ' are') + ' not shown while a date filter is on: they have no dates yet.'
+      : (hidden === 1 ? '1 does' : hidden + ' do') + ' not match the search or filters.');
+    if (elsewhere) notes.push((elsewhere === 1 ? '1 more is' : elsewhere + ' more are') + ' on other portals: choose All portals to see ' + (elsewhere === 1 ? 'it' : 'them') + '.');
+    el.innerHTML = '<div class="cdrafts">' + head + '<span class="tc">' + shown.length + '</span></div>' +
+      '<p class="cdrafts-note">Events you started in Create Event and have not finished, saved to your account as you typed them. Resume one on any computer.' +
+        (notes.length ? ' ' + notes.join(' ') : '') + '</p>' +
+      (shown.length ? '<ul class="cdrafts-list">' + shown.map(createDraftRow).join('') + '</ul>' : '') +
+    '</div>';
+    Array.prototype.forEach.call(el.querySelectorAll('[data-cdraft-discard]'), function(b){
+      b.addEventListener('click', function(){ confirmDiscardCreateDraft(b.getAttribute('data-cdraft-discard'), b); });
+    });
+  }
+  /* Discard asks first and names what goes (the draft, its pictures) and what stays (an event it already made). After
+     it, the focus goes to the next unfinished draft, else to the box's heading, else to the search box. */
+  function confirmDiscardCreateDraft(id, opener){
+    var d = CDRAFTS.list.filter(function(x){ return x.id === id; })[0];
+    if (!d) return;
+    var w = RevampCreateDrafts.describe(d, { portalName: portalNameOf });
+    openDialog({
+      title: 'Discard “' + w.name + '”?',
+      sub: 'Everything entered in this draft is deleted, from your account and from every computer, with its logo and pictures. This cannot be undone.',
+      body: w.eventId ? '<p style="margin:0;font-size:13px;">Its event, <span class="mono">' + esc(w.eventId) + '</span>, is not deleted: it stays in your draft events.</p>' : '',
+      action: 'Discard draft', danger: true, opener: opener,
+      onAction: function(dlg){
+        dlg.setBusy(true, 'Discarding…');
+        dlg.error('');
+        var ids = shownIds(), at = ids.indexOf(id);
+        RevampCreateDrafts.remove(id).then(function(){
+          try { RevampCreateDrafts.forgetLocal(window.localStorage, id); } catch(e){}
+          CDRAFTS.list = CDRAFTS.list.filter(function(x){ return x.id !== id; });
+          dlg.opener = null;
+          $('sheet-root').innerHTML = '';
+          renderResults();
+          toast('Draft discarded: ' + w.name);
+          var left = shownIds(), next = left[Math.min(at, left.length - 1)];
+          var to = next ? document.querySelector('#create-drafts [data-cdraft="' + next + '"] .cdraft-name') : $('cdrafts-title');
+          try { (to || $('search-input')).focus(); } catch(e){}
+        }, function(err){
+          dlg.setBusy(false);
+          dlg.error('The draft could not be discarded: ' + String((err && err.message) || 'please try again.').replace(/\.$/, '') + '. It is still in your account.');
+        });
+      }
+    });
+    function shownIds(){ return createDraftsShown().map(function(x){ return x.id; }); }
+  }
+
+  /* =========================================================
+     NEED HELP — a message to ET's Customer Care, written here and sent from the person's own email.
+     There is no support service behind this page, so nothing is sent from it: "Open in email app" hands the
+     message to the computer's email app (a mailto: link), and "Copy message" puts it on the clipboard for Gmail in
+     the browser, where most of the team works and where a mailto: link often opens nothing at all. The window
+     stays open after either and says plainly that nothing has been sent yet, and what was typed is kept for the
+     rest of the visit, so closing the window or a mailto: that did nothing never loses it (UX-028). It used to
+     close itself saying "Opening your email app…", which read as sent, and the typed message was gone.
   ========================================================= */
   var HELP_EMAIL = 'customercare@economictimesb2b.com';
-  /* returnTo: the control that opened it ("Need help?", or "Email Customer Care" in ETB2B AI's panel), which gets
-     the focus back when the window closes, so a keyboard user is left where they were */
+  var HELP_SUBJECT = 'Support request — Events dashboard';
+  var helpDraft = { subject: HELP_SUBJECT, message: '' };
+  /* the message as it is pasted into an email: who it is for, the subject, then the text */
+  function helpMessageText(d){
+    return 'To: ' + HELP_EMAIL + '\nSubject: ' + (String(d.subject || '').trim() || HELP_SUBJECT) + '\n\n' + String(d.message || '').trim();
+  }
+  function helpMailto(d){
+    return 'mailto:' + HELP_EMAIL + '?subject=' + encodeURIComponent(String(d.subject || '').trim() || HELP_SUBJECT) + '&body=' + encodeURIComponent(String(d.message || '').trim());
+  }
+  function copyText(text, done, failed){
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, failed);
+    else failed();
+  }
+  /* returnTo: the control that opened it (Help in the top bar, or "Email Customer Care" in ETB2B AI's panel), which
+     gets the focus back when the window closes, so a keyboard user is left where they were */
   function openHelpModal(returnTo){
     var root = $('sheet-root');
     root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
-      '<div class="modal-card-head"><div><h3 id="help-title">Need help?</h3><p>Send your query about this dashboard or an event, straight to our team.</p></div>' +
+      '<div class="modal-card-head"><div><h3 id="help-title">Need help?</h3><p>Write your question for ET\'s Customer Care team, then send it from your own email.</p></div>' +
         '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
       '<div class="modal-card-body">' +
         '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" aria-label="Copy address" type="button">' + IC.copy + '</button></div>' +
-        '<div><label class="flabel" for="help-subject">Subject</label><input class="finput" id="help-subject" value="Support request — Events dashboard"></div>' +
-        '<div><label class="flabel" for="help-message">Your query</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with: an event, its site, registrations, promotions…"></textarea></div>' +
+        '<div><label class="flabel" for="help-subject">Subject</label><input class="finput" id="help-subject"></div>' +
+        '<div><label class="flabel" for="help-message">Your question</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with: an event, its site, registrations, promotions…"></textarea></div>' +
+        '<p class="help-note" id="help-note" role="status" hidden></p>' +
       '</div>' +
-      '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Cancel</button><button class="btn btn-primary" id="help-send" style="margin-left:auto;">' + IC.mail + ' Send via email</button></div>' +
+      '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Close</button>' +
+        '<button class="btn btn-secondary" id="help-copy" style="margin-left:auto;">' + IC.copy + ' Copy message</button>' +
+        '<button class="btn btn-primary" id="help-send">' + IC.mail + ' Open in email app</button></div>' +
     '</div></div>';
+    /* set as values, not markup, so what was typed comes back exactly as it was */
+    $('help-subject').value = helpDraft.subject;
+    $('help-message').value = helpDraft.message;
     function close(){
       root.innerHTML='';
       giveFocusBack(returnTo);
     }
+    function keep(){ helpDraft.subject = $('help-subject').value; helpDraft.message = $('help-message').value; }
+    function note(html){ var n = $('help-note'); n.innerHTML = html; n.hidden = false; }
+    /* true (and says so) when there is no question to send yet */
+    function noQuestion(){
+      keep();
+      if (String(helpDraft.message).trim()) return false;
+      note('Write your question first, so the team knows what you need.');
+      try { $('help-message').focus(); } catch(e){}
+      return true;
+    }
     asDialog(root.querySelector('.modal-card'), 'help-title', close);
+    $('help-subject').addEventListener('input', keep);
+    $('help-message').addEventListener('input', keep);
     $('help-close').addEventListener('click', close);
     $('help-cancel').addEventListener('click', close);
     $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
     $('help-copy-email').addEventListener('click', function(){
-      if (navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(HELP_EMAIL).then(function(){ toast('Email address copied'); }).catch(function(){ toast(HELP_EMAIL); }); }
-      else toast(HELP_EMAIL);
+      copyText(HELP_EMAIL, function(){ toast('Email address copied'); }, function(){ toast(HELP_EMAIL); });
+    });
+    $('help-copy').addEventListener('click', function(){
+      if (noQuestion()) return;
+      copyText(helpMessageText(helpDraft), function(){
+        note('<b>Message copied.</b> Paste it into a new email to ' + HELP_EMAIL + ' in Gmail. Nothing is sent until you send it there.');
+      }, function(){
+        note('This browser would not copy it. Select your question above, copy it and paste it into an email to ' + HELP_EMAIL + '.');
+      });
     });
     $('help-send').addEventListener('click', function(){
-      var subject = $('help-subject').value.trim() || 'Support request — Events dashboard';
-      var message = $('help-message').value.trim();
-      if (!message){ toast('Add a quick note so our team knows what you need.'); return; }
-      var mailto = 'mailto:' + HELP_EMAIL + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(message);
-      window.location.href = mailto;
-      toast('Opening your email app…');
-      close();
+      if (noQuestion()) return;
+      window.location.href = helpMailto(helpDraft);
+      note('<b>Your email app was asked to open this message.</b> It is sent only when you press Send there. Nothing opened? Press <b>Copy message</b> and paste it into Gmail, to ' + HELP_EMAIL + '.');
     });
     /* the window is where the keyboard is now (its controls were behind the page before) */
     try { $('help-message').focus(); } catch(e){}
@@ -3692,6 +4042,7 @@
       $('toast-region').setAttribute('aria-live', 'polite');
       loadAndRender();
       loadApprovers();
+      loadCreateDrafts();
     } catch(err){
       renderErrorBanner(init);
       markListingReady();

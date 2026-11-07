@@ -8,11 +8,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
+<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<link rel="stylesheet" href="app-logo.css">
 <style>
   :root{
-    --bg:#F7F7F4; --surface:#FFFFFF; --surface-2:#F1F0EC; --surface-3:#E7E5DF;
-    --border:#E6E4DE; --border-strong:#D7D4CB; --text:#1D1B17; --text-muted:#6C6A60; --text-faint:#9B988D;
-    --accent:#FF0035; --accent-strong:#D6002C; --accent-soft:#FFE3E8; --accent-contrast:#FFFFFF;
+    --bg:#FAF7F6; --surface:#FFFFFF; --surface-2:#F3EEED; --surface-3:#E9E2E0;
+    --border:#E0D7D5; --border-strong:#CFC3C0; --text:#241B1A; --text-muted:#756865; --text-faint:#A0908C;
+    --accent:#ED1C24; --accent-strong:#B3151B; --accent-soft:#FBDBDC; --accent-contrast:#FFFFFF;
     --ok:#16794F; --ok-soft:#E4F5EC; --warn:#A9700F; --warn-soft:#FBF0DA; --crit:#C13333; --crit-soft:#FBE8E7;
     --tag-blue:#1D5FA3; --tag-blue-soft:#E3EEFB; --tag-teal:#0E7C6B; --tag-teal-soft:#E0F5F0;
     --tag-violet:#7A3FA0; --tag-violet-soft:#F1E7F8; --tag-cyan:#0E7490; --tag-cyan-soft:#DFF4F8;
@@ -23,9 +25,9 @@
   }
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
-      --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
-      --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
-      --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+      --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
+      --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+      --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
       --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
       --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
       --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38; --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
@@ -33,9 +35,9 @@
     }
   }
   :root[data-theme="dark"]{
-    --bg:#141310; --surface:#1B1A16; --surface-2:#232219; --surface-3:#2C2A20;
-    --border:#332F24; --border-strong:#3E3A2C; --text:#EFEBDF; --text-muted:#A6A192; --text-faint:#726E60;
-    --accent:#FF4D6D; --accent-strong:#FF7A90; --accent-soft:#3A0C14; --accent-contrast:#1B0508;
+    --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
+    --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+    --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
     --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
     --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
     --tag-violet:#C79FE8; --tag-violet-soft:#2B1E38; --tag-cyan:#6FD3E8; --tag-cyan-soft:#0F2A30;
@@ -54,9 +56,6 @@
   .nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:20; }
   .nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:14px; padding:0 24px; }
   .nav-brand img{ height:28px; width:auto; display:block; }
-  /* the brand mark is dark lettering: on the dark theme it sits on a light chip so it stays readable */
-  :root[data-theme="dark"] .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; }
-  @media (prefers-color-scheme: dark){ :root:not([data-theme]) .nav-brand img{ background:#FFFFFF; padding:3px 6px; border-radius:6px; box-sizing:content-box; height:24px; } }
   .nav-back{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); text-decoration:none; }
   .nav-back:hover{ background:var(--surface-2); color:var(--text); }
   .nav-right{ margin-left:auto; display:flex; align-items:center; gap:10px; }
@@ -107,7 +106,10 @@
   .tag.settings{ background:var(--surface-3); color:var(--text-muted); }
   .tag.event{ background:var(--accent-soft); color:var(--accent-strong); }
   .deleted{ font-size:11px; color:var(--text-faint); font-weight:600; }
-  .what-action{ color:var(--text-faint); font-size:11.5px; }
+  /* what happened, in words (activity-words.js), over the detail; the action's code is only in the CSV (UX-015) */
+  .what-act{ font-weight:600; }
+  /* the event's address under its name, which tells apart two events of one name (UX-040) */
+  .ev-addr{ display:block; font-family:var(--font-mono); font-size:11.5px; color:var(--text-muted); overflow-wrap:anywhere; }
   details.changes{ margin-top:6px; }
   details.changes summary{ cursor:pointer; font-size:12px; color:var(--text-muted); font-weight:600; }
   .chg{ display:grid; grid-template-columns:minmax(90px,auto) 1fr 1fr; gap:4px 10px; margin-top:6px; font-size:12px; }
@@ -139,7 +141,7 @@
 <body>
 <header class="nav">
   <div class="nav-inner">
-    <a class="nav-brand" href="Event_Listing.html"><img src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld"></a>
+    <a class="nav-brand" href="Event_Listing.html"><img class="app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ET Oneworld"><img class="app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ET Oneworld"></a>
     <a class="nav-back" href="Event_Listing.html">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
       Events
@@ -165,7 +167,7 @@
     <div class="f"><label for="f-area">Area</label><select id="f-area"><option value="">All areas</option></select></div>
     <div class="f"><label for="f-from">From</label><input type="date" id="f-from"></div>
     <div class="f"><label for="f-to">To</label><input type="date" id="f-to"></div>
-    <div class="f wide"><label for="f-q">Search the rows shown</label><input type="search" id="f-q" placeholder="Name, event, change…"></div>
+    <div class="f wide"><label for="f-q">Search</label><input type="search" id="f-q" placeholder="Words, an event, a person… (in the rows shown)"></div>
     <div class="f-actions">
       <span class="count" id="count" aria-live="polite"></span>
       <span style="display:flex;gap:8px;flex-wrap:wrap;">
@@ -179,7 +181,7 @@
 
   <div class="tbl-wrap">
     <table>
-      <thead><tr><th>When (IST)</th><th>Who</th><th>Event</th><th>Area</th><th>What changed</th></tr></thead>
+      <thead><tr><th>When (IST)</th><th>Person</th><th>Event</th><th>Area</th><th>What changed</th></tr></thead>
       <tbody id="rows"><tr><td colspan="5" class="empty">Loading the activity log…</td></tr></tbody>
     </table>
   </div>
@@ -188,11 +190,14 @@
 
 <script src="theme-toggle.js"></script>
 <script src="auth.js"></script>
+<!-- the words both activity logs use (window.RevampActivityWords, UX-015): this page and the console's log say every
+     entry the same way -->
+<script src="activity-words.js"></script>
 <script>
 (function(){
   'use strict';
-  var AREAS = [['site','Site'],['content','Content'],['forms','Forms'],['design','Design'],['publishing','Publishing'],
-    ['registrations','Registrations'],['promotions','Promotions'],['settings','Settings'],['event','Event']];
+  var AW = window.RevampActivityWords;
+  var AREAS = AW.AREAS;
   var AREA_LABEL = {};
   AREAS.forEach(function(a){ AREA_LABEL[a[0]] = a[1]; });
 
@@ -254,16 +259,35 @@
     $('f-event').value = f.event; $('f-user').value = f.user; $('f-area').value = f.area; $('f-from').value = f.from; $('f-to').value = f.to;
   }
 
+  /* An event's date for the Event list, as entered: "5 Dec 2026" for a day (India time), else the words Create Event
+     wrote for a month, a quarter or "to be announced" */
+  var MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function eventDate(e){
+    var v = String((e && e.start) || ''), m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})[^Z+-]*)?(Z|[+-]\d{2}:?\d{2})?$/.exec(v);
+    if (m && m[6]){
+      var t = Date.parse(v);
+      if (!isNaN(t)){ var d = new Date(t + 330 * 60000); return d.getUTCDate() + ' ' + MON[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }
+    } else if (m) return (+m[3]) + ' ' + MON[+m[2] - 1] + ' ' + m[1];
+    return String((e && e.dateLabel) || '').trim() || 'Date not set';
+  }
+  /* The Event list's choices (UX-040): "<name> · <date> · <Published | Draft | Deleted>", so two events of one name
+     can be told apart (the list showed "AutoTech Summit 2027" three times); "· /e/<id>" is added where even that
+     reads the same. Live events first, by name, then the deleted ones. -> [{ id, label }] */
+  function eventChoices(live, deleted){
+    var list = [];
+    (live || []).forEach(function(e){ list.push({ id: e.id, name: e.name || e.id, deleted: false, date: eventDate(e), state: e.published === true ? 'Published' : 'Draft' }); });
+    (deleted || []).forEach(function(e){ list.push({ id: e.id, name: e.name || e.id, deleted: true, date: eventDate(e), state: 'Deleted' }); });
+    list.sort(function(a, b){ return a.deleted !== b.deleted ? (a.deleted ? 1 : -1) : a.name.localeCompare(b.name) || (a.id < b.id ? -1 : 1); });
+    var seen = {};
+    list.forEach(function(e){ e.label = e.name + ' · ' + e.date + ' · ' + e.state; seen[e.label] = (seen[e.label] || 0) + 1; });
+    return list.map(function(e){ return { id: e.id, label: seen[e.label] > 1 ? e.label + ' · /e/' + e.id : e.label }; });
+  }
   function loadEventChoices(){
     var keep = $('f-event').value;
     return Promise.all([api('/api/events').catch(function(){ return { items: [] }; }), api('/api/events?deleted=1').catch(function(){ return { items: [] }; })]).then(function(r){
-      var list = [];
-      (r[0].items || []).forEach(function(e){ list.push({ id: e.id, name: e.name || e.id, deleted: false }); });
-      (r[1].items || []).forEach(function(e){ list.push({ id: e.id, name: e.name || e.id, deleted: true }); });
-      list.sort(function(a, b){ return a.deleted !== b.deleted ? (a.deleted ? 1 : -1) : a.name.localeCompare(b.name); });
       var sel = $('f-event');
       sel.innerHTML = '<option value="">All events</option>';
-      list.forEach(function(e){ var o = document.createElement('option'); o.value = e.id; o.textContent = e.name + (e.deleted ? ' (deleted)' : ''); sel.appendChild(o); });
+      eventChoices(r[0].items, r[1].items).forEach(function(e){ var o = document.createElement('option'); o.value = e.id; o.textContent = e.label; sel.appendChild(o); });
       ensureOption(sel, keep, keep);
       sel.value = keep;
     });
@@ -279,7 +303,8 @@
     var keep = sel.value;
     var names = Object.keys(S.users).sort();
     sel.innerHTML = '<option value="">Everyone</option><option value="platform">Platform (automated)</option>';
-    names.forEach(function(n){ var o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o); });
+    /* each person by name, their address kept as the value the server filters by */
+    names.forEach(function(n){ var o = document.createElement('option'); o.value = n; o.textContent = AW.personName(n); o.title = n; sel.appendChild(o); });
     ensureOption(sel, keep, keep);
     sel.value = keep;
   }
@@ -332,25 +357,29 @@
     var q = $('f-q').value.trim().toLowerCase();
     if (!q) return S.items;
     return S.items.filter(function(it){
-      var hay = [it.byLabel, it.by, it.eventName, it.eventId, AREA_LABEL[it.area], it.action, it.detail].concat((it.fields || []).map(function(c){ return c.field + ' ' + c.before + ' ' + c.after; })).join(' ').toLowerCase();
+      var hay = [AW.personName(it.by), it.by, it.eventName, it.eventId, AREA_LABEL[it.area], AW.actionLabel(it.action, it.area, it.detail), it.action, AW.detailText(it)].concat((it.fields || []).map(function(c){ return AW.fieldLabel(c.field) + ' ' + c.field + ' ' + c.before + ' ' + c.after; })).join(' ').toLowerCase();
       return hay.indexOf(q) !== -1;
     });
   }
   function eventHref(id){ return 'edit-event.html?event=' + encodeURIComponent(id) + '#activity'; }
+  /* one entry, in the words the console's log uses (activity-words.js): the person by name (their address on
+     hover), what happened over its detail, and each changed field by its label */
   function rowHtml(it){
-    var who = it.by === 'platform' || it.by === 'system' || !it.by ? '<span class="who-auto">Platform (automated)</span>' : esc(it.byLabel || it.by);
+    var who = AW.isPlatform(it.by) ? '<span class="who-auto">Platform (automated)</span>' : '<span title="' + esc(it.by) + '">' + esc(AW.personName(it.by)) + '</span>';
     var changes = '';
     if (it.fields && it.fields.length){
       changes = '<details class="changes"><summary>Before and after (' + it.fields.length + ')</summary><div class="chg"><span class="h">Field</span><span class="h">Before</span><span class="h">After</span>' +
-        it.fields.map(function(c){ return '<span>' + esc(c.field) + '</span><span class="b">' + (esc(c.before) || '—') + '</span><span class="a">' + (esc(c.after) || '—') + '</span>'; }).join('') + '</div></details>';
+        it.fields.map(function(c){ return '<span>' + esc(AW.fieldLabel(c.field)) + '</span><span class="b">' + (esc(c.before) || '—') + '</span><span class="a">' + (esc(c.after) || '—') + '</span>'; }).join('') + '</div></details>';
     }
+    var detail = AW.detailText(it);
     return '<tr>' +
       '<td class="when mono">' + esc(when(it.at)) + '</td>' +
       '<td class="who">' + who + '</td>' +
-      '<td class="ev"><a href="' + esc(eventHref(it.eventId)) + '">' + esc(it.eventName || it.eventId) + '</a>' + (it.eventDeleted ? ' <span class="deleted">(deleted)</span>' : '') + '</td>' +
-      '<td class="area"><span class="tag ' + esc(it.area) + '">' + esc(AREA_LABEL[it.area] || it.area) + '</span></td>' +
-      '<td class="what">' + (esc(it.detail) || '<span class="muted">—</span>') + (it.version != null ? ' <span class="muted mono">v' + esc(it.version) + '</span>' : '') +
-        '<div class="what-action mono">' + esc(it.action) + '</div>' + changes + '</td>' +
+      '<td class="ev"><a href="' + esc(eventHref(it.eventId)) + '">' + esc(it.eventName || it.eventId) + '</a>' + (it.eventDeleted ? ' <span class="deleted">(deleted)</span>' : '') +
+        '<span class="ev-addr">/e/' + esc(it.eventId) + '</span></td>' +
+      '<td class="area"><span class="tag ' + esc(it.area) + '">' + esc(AREA_LABEL[it.area] || AW.areaLabel(it.area)) + '</span></td>' +
+      '<td class="what"><div class="what-act">' + esc(AW.actionLabel(it.action, it.area, it.detail)) + (it.version != null ? ' · version ' + esc(it.version) : '') + '</div>' +
+        '<div>' + (esc(detail) || '<span class="muted">—</span>') + '</div>' + changes + '</td>' +
       '</tr>';
   }
   function render(){
@@ -370,11 +399,13 @@
   /* ---------- CSV of the rows shown ---------- */
   function exportCsv(){
     function cell(v){ v = String(v == null ? '' : v); if (/^[=+\-@\t\r]/.test(v)) v = "'" + v; return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-    var rows = [['When (IST)', 'Who', 'Event', 'Event id', 'Area', 'What', 'Action', 'Version', 'Field', 'Before', 'After']];
+    /* the console's columns, in its words, plus what the list leaves out: the person's address and the action's code */
+    var rows = [['When (IST)', 'Person', 'Person email', 'Event', 'Event id', 'Area', 'Action', 'Action code', 'What changed', 'Version', 'Field', 'Before', 'After']];
     visible().forEach(function(it){
-      var head = [when(it.at), it.byLabel || it.by, it.eventName, it.eventId, AREA_LABEL[it.area] || it.area, it.detail, it.action, it.version != null ? it.version : ''];
+      var head = [when(it.at), AW.personName(it.by), AW.isPlatform(it.by) ? '' : it.by, it.eventName, it.eventId, AREA_LABEL[it.area] || it.area,
+        AW.actionLabel(it.action, it.area, it.detail), it.action, AW.detailText(it), it.version != null ? it.version : ''];
       if (!it.fields || !it.fields.length) rows.push(head.concat(['', '', '']));
-      else it.fields.forEach(function(c){ rows.push(head.concat([c.field, c.before, c.after])); });
+      else it.fields.forEach(function(c){ rows.push(head.concat([AW.fieldLabel(c.field), c.before, c.after])); });
     });
     var blob = new Blob(['﻿' + rows.map(function(r){ return r.map(cell).join(','); }).join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a');

@@ -23,7 +23,7 @@ Revamp CMS is a static, framework-free HTML/CSS/vanilla-JS prototype. There is n
 | Page / module | Storage key | Access path |
 | --- | --- | --- |
 | `edit-event.html` and section workbenches | `'revamp-edit-event-' + EV.id` | `RevampCore.loadState()` / `saveState()` |
-| `create-event.html` | `'revamp.createEvent.draft.v1'` | direct `localStorage` calls, bypasses RevampCore |
+| `create-event.html` | `'revamp.createEvent.draft.v2.<draftId>'`, `'revamp.createEvent.current.v2'` | direct `localStorage` calls, bypasses RevampCore; each draft is also saved to the person's account (`create-drafts.js`, `/api/me/create-draft`) |
 | `payment/html_version/data.js` | own key | direct `localStorage` calls, separate sub-app |
 
 `RevampCore.loadState(key)` merges saved JSON onto a default shape: `{sections:null, nav:null, checklist:null, published:false, theme:'ET Red'}`.
@@ -115,7 +115,7 @@ State object `S` holds:
 
 `renderFoot()` gates the Next button per step (e.g. step 1 requires `!basicsIssue(S.basics)`; step 2 requires `S.path==='B' || S.templatePick`; step 3 path B requires `detectPhase==='review'`). Step 3 has its own router dispatching to either the template-section workspace (`renderBuildWorkspace`) or the URL-detection flow, depending on `S.path`.
 
-State autosaves to `localStorage['revamp.createEvent.draft.v1']` via a debounced (~520ms) `save()`/`restore()` pair, independent of `RevampCore`'s state helpers.
+State autosaves to `localStorage['revamp.createEvent.draft.v2.<draftId>']` via `save()`/`restore()`, independent of `RevampCore`'s state helpers, and a moment after each save to the person's account (`pushDraft()`, `create-drafts.js` -> `functions/lib/create-drafts.js`), where the events dashboard's Drafts tab lists it with Resume and Discard.
 
 ## Editor hand-off (`create-event` → `custom_editor`)
 

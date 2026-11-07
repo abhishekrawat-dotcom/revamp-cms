@@ -237,9 +237,10 @@
       document.getElementById('btn-publish').hidden = !eventId;
       document.getElementById('btn-publish').disabled = !eventId;
       document.getElementById('btn-preview').disabled = false;
-      loadSiteInfo();
+      loadSiteInfo().then(saveFirstVersion);
       ownerLogoOffer();
       logoUnitNotice();
+      focusAskedSection();
       /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
          them into it), so the picture's own step, and its Undo, hold the picture alone */
       if (pendingAiHero) { var heroDraft = pendingAiHero; pendingAiHero = null; applyAiHero(heroDraft); }
@@ -250,6 +251,18 @@
       showLoadError(siteLoadError(err));
       return false;
     });
+  }
+
+  /* Opened from the event console at one of the site's sections (edit-event.html editorAt: "Open “Previous Edition
+     Speakers” in the site editor", UX-067): that section, selected and scrolled into view once the page has laid out.
+     ?section= names its key (data-rv-key) or its id; one the page does not have opens the editor as usual. */
+  function focusAskedSection() {
+    var asked = new URLSearchParams(location.search).get('section');
+    if (!asked || !canvas) return;
+    var sec = canvas.sections().filter(function (el) {
+      return el.getAttribute('data-rv-key') === asked || el.getAttribute('data-rv-section') === asked;
+    })[0];
+    if (sec) setTimeout(function () { if (isLive(sec)) selectSection(sec); }, 400);
   }
 
   /* ---------- when the site cannot be opened ----------
@@ -419,9 +432,36 @@
     }).then(function (kept) {
       if (kept) forgetHandoff();
       pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
+      /* what Create Event handed over for a gallery design is saved as the site's first version once the page is
+         ready (saveFirstVersion): the person's content is then on the server, for every computer and colleague, as
+         Create Event's "Saving your event" screen says (an imported design, handed over with no sections, is marked in
+         resolveFromBrowser). A generated site ("gen-") is not: its page is made on the server, and Create Event's
+         brief path never shows that screen. */
+      if (fromCreate() && !/^gen-/.test(templateId || '')) firstSaveDue = true;
     });
   }
   var pendingAiHero = null;
+  var firstSaveDue = false;
+  /* The first save of a site Create Event has just filled. Create Event says it saves the event; until this, the
+     page it filled lived in this browser only, and any other browser opened the design's empty sample. Only for a
+     site never saved before (another saved version is never replaced from here), and quietly: the chip beside Save
+     then says "v1 · saved to staging". When it cannot be saved, the person is told it is in this browser only. */
+  var FIRST_SAVE_DELAY_MS = 1700;   // after the page's own touch-ups as it opens (the ET logo in its right version, at 400 and 1500 ms)
+  function saveFirstVersion() {
+    if (!firstSaveDue || !canvas || !eventId) return;
+    firstSaveDue = false;
+    setTimeout(function () {
+      if (!canvas || !eventId) return;
+      // never over a version saved already: the server's answer, and the event's own record of its site
+      var everSaved = (siteInfo && siteInfo.savedVersion) || (currentEvent && currentEvent.site && +currentEvent.site.version);
+      if (!siteInfo || everSaved) return;
+      saveToStaging({ quiet: true }).then(null, function (err) {
+        if (err && err.cancelled) return;
+        showNotice('first-save', { kind: 'warn', dismissible: true,
+          text: 'Your page could not be saved to the server yet, so it is only in this browser. Press Save to keep it for every computer.' });
+      });
+    }, FIRST_SAVE_DELAY_MS);
+  }
 
   /* ETB2B AI's hero picture from the event's own record (events/<id>.aiHero, functions/lib/ai-hero.js), for an editor
      that opens with no copy of the site in this browser and no hand-off: the person changed browser (or cleared it)
@@ -664,6 +704,17 @@
         var draft = readHandoffDraft();
         if (draft && draft.sections && draft.sections.length) return applyHandoffDraft(draft, draftId);
         if (saved && saved.snapshot) { restoreLocal(); return; }
+        /* An imported design is one finished page, so Create Event hands it over with no sections: the page as it
+           mounts is the person's page. It is still saved as the site's first version (saveFirstVersion), as the
+           "Saving your event" screen promises, so it opens the same on any computer. Only when this browser has this
+           event's own hand-off, which shows the event was just made here; without one (another browser) nothing is saved. */
+        if (draft && /^imported-/.test(templateId || '')) {
+          return seedSnapshot(null).then(function (kept) {
+            if (kept) forgetHandoff();
+            pendingAiHero = draft;
+            firstSaveDue = true;
+          });
+        }
         /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above.
            With no hand-off in this browser at all, the event's own record brings it (aiHeroFromEvent) */
         return seedSnapshot(null).then(function () { pendingAiHero = draft || aiHeroFromEvent(); });
@@ -743,9 +794,10 @@
     if (!items || !items.length) return null;
     return { items: items.map(function (f) { return { t: f.question || '', d: f.answer || '' }; }) };
   }
+  /* the caption too: the glimpses' fill rules print it ({caption}), and a glimpse that came with one keeps it */
   function translateGallery(items) {
     if (!items || !items.length) return null;
-    return { items: items.map(function (g) { return { url: g.imageUrl || '' }; }) };
+    return { items: items.map(function (g) { return { url: g.imageUrl || '', caption: g.caption || '' }; }) };
   }
   function translateContacts(items) {
     if (!items || !items.length) return null;
@@ -771,8 +823,10 @@
     // a partner with no tier (or no tiers set up at all) still needs to show somewhere — real data from
     // the Content tab is never silently dropped just because Tiers haven't been configured.
     var fallback = { t: '', logos: [] };
+    // each sponsor's logo and link as well as its name: the partners' fill rules show the logo ({logo}) and link it
+    // ({url}), and drawing the Content's sponsors without them put names where their logos had been
     partners.slice().sort(byOrder).forEach(function (p) {
-      (slots[p.tierId] || fallback).logos.push({ n: p.name || '' });
+      (slots[p.tierId] || fallback).logos.push({ n: p.name || '', logo: p.logoUrl || '', url: p.url || '' });
     });
     if (fallback.logos.length) ordered.push(fallback);
     var tiersOut = ordered.filter(function (t) { return t.logos.length; });

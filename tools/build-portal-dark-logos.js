@@ -71,7 +71,10 @@ async function redCount(file) {
   return b ? b.n : 0;
 }
 
-(async function () {
+/* tools/build-app-logo.js makes the app's own logo for a dark ground with the very same rule */
+module.exports = { onDark: onDark, redBox: redBox, redCount: redCount, isEtRed: isEtRed };
+
+if (require.main === module) (async function () {
   const slugs = fs.readdirSync(DIR).filter(function (f) { return /^[a-z0-9]+\.png$/.test(f); }).map(function (f) { return f.replace(/\.png$/, ''); });
   const wrong = [];
   for (const slug of slugs) {

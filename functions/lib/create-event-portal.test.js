@@ -17,7 +17,7 @@ function tick(n) { var p = Promise.resolve(); for (var i = 0; i < (n || 8); i++)
 
 var page = read('create-event.html');
 var inline = (page.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); });
-var SRC = inline.filter(function (s) { return s.indexOf("var STORE_KEY = 'revamp.createEvent.draft.v1'") !== -1; })[0] || '';
+var SRC = inline.filter(function (s) { return s.indexOf("var DRAFT_PREFIX = 'revamp.createEvent.draft.v2.'") !== -1; })[0] || '';
 var ROSTER = etEvents.portalList();
 var HR_LINK = 'https://hr.economictimes.indiatimes.com/nexttech2026';
 var CIO_LINK = 'https://cio.economictimes.indiatimes.com/annual-conclave';
@@ -172,7 +172,8 @@ function load(o) {
   };
   ctx.window = ctx;
   ctx.self = ctx;
-  if (o.draft) store['revamp.createEvent.draft.v1'] = JSON.stringify(o.draft);
+  /* a draft this browser kept: under its own key, and named the one it worked on last (create-event.html, UX-048) */
+  if (o.draft) { store['revamp.createEvent.draft.v2.' + o.draft.draftId] = JSON.stringify(o.draft); store['revamp.createEvent.current.v2'] = o.draft.draftId; }
   Object.keys(o.storage || {}).forEach(function (k) { store[k] = o.storage[k]; });
   /* portal-picker.js itself, over a signed-in RevampAuth whose answers are set here (o.api: url -> [status, body]) */
   if (o.realPicker) {
@@ -418,7 +419,7 @@ async function main() {
   p.ce('S.step = 1; S.step1Phase = "category"; S.basics.portal = ""; S.brief.previous = "' + CIO_LINK + '"; S.brief.etEvent = { portal: "cio", kind: "event", id: "9", title: "ETCIO Annual Conclave", link: "' + CIO_LINK + '", dateLabel: "" }');
   p.ce('stepPortal = "cio"; pickCategory("IP")');
   check('3. a first pick of the portal keeps a previous edition of that portal', p.ce('S.basics.portal') === 'cio' && p.ce('S.brief.etEvent.id') === '9' && p.ce('S.brief.previous') === CIO_LINK);
-  check('3. …and its toast names the portal with the type', p.log.toasts.length === 1 && p.log.toasts[0].msg === 'ETCIO · IP & Residential Event selected', p.log.toasts);
+  check('3. …and its toast names the portal with the type', p.log.toasts.length === 1 && p.log.toasts[0].msg === 'ETCIO · IP Event selected', p.log.toasts);
   /* a type changed later, from the details: the portal stays, and Cancel puts the box back */
   p.ce('S.step1Phase = "details"; S.creationMethod = "template"; changeCategory()');
   check('3. Change opens the first screen on the draft\'s portal', p.ce('S.step1Phase') === 'category' && p.ce('stepPortal') === 'cio' && p.ce('S.catReturnPhase') === 'details');
@@ -847,7 +848,7 @@ async function main() {
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "cio"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');
   await tick();
-  check('a portal with no ET events says so by name', p.$('gb-et-status').textContent === 'ETCIO has no ET events to pick from.');
+  check('a portal with no ET events says so by name', p.$('gb-et-status').textContent === 'ETCIO has no ET events to pick from. Paste the link to the previous edition instead.');
   p = load({ etEvents: { '/api/et/events?portal=hr': [{ id: '4865', kind: 'event', title: 'NextTech 2026', link: HR_LINK, dateLabel: 'May 2026' }] } });
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "hr"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');
@@ -863,11 +864,11 @@ async function main() {
   p = load();
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "hr"; S.basics.category = "IP"; applySmartDefaults()');
-  check('the details chip reads "ETHRWorld · IP & Residential Event"', p.$('cat-bar-portal').textContent === 'ETHRWorld' && p.$('cat-bar-name').textContent === 'IP & Residential Event');
+  check('the details chip reads "ETHRWorld · IP Event"', p.$('cat-bar-portal').textContent === 'ETHRWorld' && p.$('cat-bar-name').textContent === 'IP Event');
   p.ce('renderAiEntry = function(){}; S.step = 1; S.step1Phase = "category"; S.catReturnPhase = null; renderFoot()');
   check('the first screen\'s footer asks for both', p.$('foot-note').textContent === 'Choose the portal and a microsite type to continue.');
   p.ce('S.catReturnPhase = "details"; renderFoot()');
-  check('…and while changing them, names what Cancel keeps', p.$('foot-note').textContent === 'Pick a type, or cancel to keep ETHRWorld · IP & Residential Event.');
+  check('…and while changing them, names what Cancel keeps', p.$('foot-note').textContent === 'Pick a type, or cancel to keep ETHRWorld · IP Event.');
   p = load({ search: '?new=1&portal=hr' });
   p.ce('start = function(){ window.__log.started = true; }');
   p.ce('init()');

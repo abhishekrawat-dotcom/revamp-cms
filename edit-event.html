@@ -78,6 +78,8 @@
 <script src="auth.js"></script>
 <!-- ET's portals and the Set portal dialog (window.RevampPortals) -->
 <script src="portal-picker.js"></script>
+<!-- what each Content tab means on the site, and the one priority scale (window.RevampSiteNotes) -->
+<script src="edit-event-site-notes.js"></script>
 <script src="edit-event-dashboard.js"></script>
 <script src="sidebar.js"></script>
 <script src="edit-event-site-check.js"></script>
@@ -89,6 +91,8 @@
 <script src="templates/_shared/rv-hero-video-core.js"></script>
 <script src="hero-video-ui.js"></script>
 <script src="share-preview.js"></script>
+<!-- the words both activity logs use (window.RevampActivityWords, UX-015) -->
+<script src="activity-words.js"></script>
 
 <script>
 (function(){
@@ -199,7 +203,8 @@
     var design = e && e.designPlan && e.designPlan.design;
     var note = design ? String(design.logoUnitNote || '').replace(/\s+/g, ' ').trim() : '';
     if (!note) return '';
-    return '<div class="callout" style="margin-top:10px" role="note" id="b-logo-note">' + svg(IC.info, 17) +
+    /* information, not a failure: the info style (red is only for what did not work, UX-069) */
+    return '<div class="callout info" style="margin-top:10px" role="note" id="b-logo-note">' + svg(IC.info, 17) +
       '<div><strong>The logo at the top of the site</strong><span>' + esc(note) + '</span></div></div>';
   }
 
@@ -510,6 +515,15 @@
      APPROVAL_FAILED: it could not be read (not merely not arrived yet). */
   var APPROVAL = null, APPROVAL_FAILED = false;
 
+  /* What each Content tab means on the site (edit-event-site-notes.js) and the one priority scale of Speakers, Agenda
+     and Sponsors. OUTLINE: what the site shows of the Content tabs (GET /api/event/site-outline), null until it has
+     been read — the tabs then say nothing about the site that they cannot know. */
+  var SN = window.RevampSiteNotes;
+  var OUTLINE = null;
+  /* the Event logo tile while a logo is being uploaded (busy), and once this page has said what became of an upload
+     (said): what the site shows, read later, never overwrites that */
+  var LOGO = { busy: false, said: false };
+
   /* ============================================================
      SUBCOLLECTION LOADING  (Speakers, Agenda, Sponsors, Gallery, FAQ, Contact)
 
@@ -781,6 +795,79 @@
   }
 
   /* ============================================================
+     WHAT THE SITE SHOWS  (UX-066, UX-067, UX-071)
+     ============================================================ */
+  /* The Event logo tile's picture and its "See your upload" link ('' for none). */
+  function logoShows(url, original){
+    var prev = $('b-logo-prev'), orig = $('b-logo-orig'), u = safeUrl(original);
+    if (prev) prev.innerHTML = imgTag(url) || svg(IC.image, 18);
+    if (orig){ orig.hidden = !u; if (u) orig.href = u; else orig.removeAttribute('href'); }
+  }
+  /* The tile as SN.logoTile has it: the logo visitors see. Painted in place, so nothing typed in Basics is touched. */
+  function paintLogoTile(){
+    var state = $('b-logo-state');
+    if (!state || LOGO.busy || LOGO.said) return;
+    var t = SN.logoTile(EV, OUTLINE);
+    logoShows(t.url, t.original);
+    state.textContent = t.text;
+  }
+
+  /* A view can be drawn again without losing anything: no dialog open, no write out, nothing being typed in it. */
+  function quietNow(){
+    if (MODAL || writesOut()) return false;
+    var a = document.activeElement;
+    return !(a && $('view').contains(a) && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName));
+  }
+
+  /* What the site shows of the Content tabs, read once the console is up (boot). The tab on screen then says it:
+     drawn again if that loses nothing, otherwise at its next drawing. A failure only means the notes are not said. */
+  function loadOutline(){
+    var id = EV.id;
+    return C.fetchSiteOutline(id).then(function(o){
+      if (!EV || EV.id !== id) return;
+      OUTLINE = o || null;
+      var r = routeId();
+      if (r === 'content/basics'){ paintLogoTile(); return; }
+      if (r === 'dashboard' || (SUB_ROUTE_KEY[r] && SUB[SUB_ROUTE_KEY[r]] && quietNow())) render();
+    }, function(err){
+      console.error('Could not read what the site shows:', err);
+    });
+  }
+
+  /* The words of one Content tab about the site (SN.forTab). n: { total, shown } — shown only where the site shows
+     confirmed records alone (Speakers, Sponsors). */
+  function siteNotes(tab, n){ return SN.forTab(tab, OUTLINE, n, { award: isAwardEvent() }); }
+  /* the site editor, opened at one of the site's sections (custom_editor.html selects it: editor-template-ui.js) */
+  function editorAt(key){ return editorUrl() + (key ? '&section=' + encodeURIComponent(key) : ''); }
+  /* A section that nothing hides and that shows items not in the tab (a real template's sample card: SN.forTab
+     stands), with the site editor opened at it, where they are changed or replaced. */
+  function standsLine(s){
+    return esc(s.text) + ' <a href="' + esc(editorAt(s.key)) + '">Open “' + esc(s.name) + '” in the site editor</a>';
+  }
+  /* An empty tab's line about the site: its section is hidden until a record is added, shows items of its own, or
+     the site has none. */
+  function emptySiteLine(notes){
+    if (!notes.hidden && !notes.stands && !notes.none) return '';
+    return '<p class="empty-site">' + svg(IC.info, 14) + '<span>' +
+      (notes.hidden ? esc(notes.hidden) + (notes.stands ? ' ' : '') : '') + (notes.stands ? standsLine(notes.stands) : '') +
+      (!notes.hidden && !notes.stands ? esc(notes.none) + ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>' : '') + '</span></p>';
+  }
+  /* Above a tab: what the site shows from the previous edition, and — when the tab has records — that they are not on
+     the site because its section is hidden or missing. Information, so the info style (UX-069). */
+  function siteCallout(notes, hasRecords){
+    var lines = [];
+    if (hasRecords && notes.none) lines.push(esc(notes.none) + ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>');
+    else if (hasRecords && notes.hidden) lines.push(esc(notes.hidden));
+    if (hasRecords && notes.stands) lines.push(standsLine(notes.stands));
+    if (notes.previous) lines.push(esc(notes.previous.text) + ' <a href="' + esc(editorAt(notes.previous.key)) + '">Open “' +
+      esc(notes.previous.name) + '” in the site editor</a>');
+    if (!lines.length) return '';
+    return '<div class="callout info site-notes" role="note">' + svg(IC.info, 17) +
+      '<span><strong>On ' + esc(notes.where.replace(/^Your /, 'your ')) + '</strong>' +
+      lines.map(function(l){ return '<span class="sn-line">' + l + '</span>'; }).join('') + '</span></div>';
+  }
+
+  /* ============================================================
      NAVIGATION MODEL
      ============================================================ */
   var SECTIONS = [
@@ -1045,15 +1132,18 @@
        an option of its own — otherwise the list would show its first entry and a save of any other
        field would look as if that had been chosen. */
     var cat = e.category == null ? '' : String(e.category);
-    var catOptions = Object.keys(TYPES).map(function(k){
+    /* only the three categories Create Event makes are offered (UX-005); an event made before them keeps its own
+       in the list, by its name, until someone picks one of the three */
+    var catOptions = C.CATEGORY_KEYS.map(function(k){
       return '<option value="' + esc(k) + '"' + (k === cat ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
     }).join('');
     if (!cat) catOptions = '<option value="" selected>Choose a category</option>' + catOptions;
-    else if (!TYPES.hasOwnProperty(cat)) catOptions = '<option value="' + esc(cat) + '" selected>' + esc(cat) + '</option>' + catOptions;
+    else if (C.CATEGORY_KEYS.indexOf(cat) === -1) catOptions = '<option value="' + esc(cat) + '" selected>' + esc(C.typeLabel(cat)) + '</option>' + catOptions;
 
     /* The portal, as the server named it. Until portal-picker.js has ET's roster (wireBasics then fills the
        list in), the list holds the current portal alone; with none yet, a first choice says so. */
     var portalNow = shownPortal();
+    var tile = SN.logoTile(e, OUTLINE);
     var portalOptions = portalNow ? '<option value="' + esc(portalNow) + '" selected>' + esc(EV.portalName) + '</option>'
       : '<option value="" selected>' + esc(NO_PORTAL_CHOICE) + '</option>';
 
@@ -1072,11 +1162,15 @@
         '<p class="hint">Its previous editions, its site’s ET bar and footer, and its mailers’ branding come from this portal.</p>' +
         '<p class="hint" id="b-portal-note" hidden></p></div>' +
 
-      /* the event's own logo: an AI-designed site's hero opens with it (functions/lib/api.js, buildLogoUnit) */
+      /* the event's own logo: an AI-designed site's hero opens with it (functions/lib/api.js, buildLogoUnit). The tile
+         shows the logo visitors see on the banner, with the upload one click away when that is another picture
+         (UX-071: it showed the upload, sponsor marks and all, above a note saying those were cropped out). */
       '<div class="field c12"><div class="flabel-row"><span class="flabel" id="b-logo-l">Event logo</span></div>' +
         '<div class="logo-box ev-logo" role="group" aria-labelledby="b-logo-l">' +
-          '<span class="lprev" id="b-logo-prev">' + (imgTag(e.logoUrl) || svg(IC.image, 18)) + '</span>' +
-          '<span class="lt" id="b-logo-state">' + (e.logoUrl ? 'Opens the site’s hero.' : 'No logo yet — the site shows the event’s name in its place.') + '</span>' +
+          '<span class="lprev" id="b-logo-prev">' + (imgTag(tile.url) || svg(IC.image, 18)) + '</span>' +
+          '<span class="lt"><span id="b-logo-state">' + esc(tile.text) + '</span>' +
+            ' <a class="lorig" id="b-logo-orig" target="_blank" rel="noopener" href="' + esc(safeUrl(tile.original)) + '"' +
+              (safeUrl(tile.original) ? '' : ' hidden') + '>See your upload ↗</a></span>' +
           '<button class="btn btn-secondary btn-sm" type="button" id="b-logo-btn">' + (e.logoUrl ? 'Replace' : 'Upload') + '</button>' +
         '</div>' +
         '<p class="hint">A PNG, WEBP or SVG, ideally on a transparent background. It is read when you upload it: a year from another edition is changed to this edition’s, written the same way, and a sponsor’s mark from another edition is cropped out. Nothing else in it is changed, boxed or redrawn.</p>' +
@@ -1482,28 +1576,41 @@
        saved is the owner's page: the editor offers the new logo there, and puts it in itself where the hero
        still shows the unit that was made automatically. */
     wireSharePicture();
-    var logoBtn = $('b-logo-btn'), logoBusy = false;
+    var logoBtn = $('b-logo-btn');
     function logoState(text){ var el = $('b-logo-state'); if (el) el.textContent = text; }
     if (logoBtn) logoBtn.addEventListener('click', function(){
-      if (logoBusy) return;
+      if (LOGO.busy) return;
       var inp = document.createElement('input');
       inp.type = 'file'; inp.accept = 'image/png,image/webp,image/svg+xml,image/jpeg';
       inp.onchange = function(){
         var file = inp.files && inp.files[0];
         if (!file) return;
-        logoBusy = true; logoBtn.disabled = true;
+        /* from here the tile says what became of this upload; what the site shows, read later, does not overwrite it */
+        LOGO.busy = true; LOGO.said = true; logoBtn.disabled = true;
         logoState('Uploading…');
         C.uploadImage(EV.id, 'logo', file).then(function(up){
           return C.updateEvent(EV.id, { logoUrl: up.url }).then(function(){ return up.url; });
         }).then(function(url){
           EV.logoUrl = url;
-          var prev = $('b-logo-prev');
-          if (prev) prev.innerHTML = imgTag(url) || svg(IC.image, 18);
+          logoShows(url, '');
           logoBtn.textContent = 'Replace';
           logoState('Reading the logo and putting it into the site…');
           return C.refreshLogoUnit(EV.id).then(function(r){
             var said = r && r.unit && r.unit.note ? ' ' + r.unit.note : '';
             if (!r || !r.aiDesigned) { logoState('Saved.'); notify('Logo saved'); return; }
+            /* the design's logo unit is now the one made from this upload (the server wrote it, saveOwnerUnit); where
+               the banner opens with it already (no saved site), the tile shows it, the upload a click away */
+            if (r.unit && r.unit.url){
+              var design = EV.designPlan && EV.designPlan.design;
+              if (design){
+                design.logoUnitUrl = r.unit.url; design.logoUnitSource = r.unit.source || ''; design.logoUnitFrom = url;
+                design.logoUnitNote = r.unit.note || '';
+              }
+              if (r.heroUpdated && !r.savedSite) logoShows(r.unit.url, r.unit.url !== url ? url : '');
+              var note = $('b-logo-note'), fresh = logoUnitCallout(EV);
+              if (note) note.outerHTML = fresh;
+              else if (fresh && $('b-logo-btn')) $('b-logo-btn').closest('.field').insertAdjacentHTML('beforeend', fresh);
+            }
             /* drawn for the other ground than the site's hero: it would vanish there, so it was not put in */
             var clash = r.toneClash ? ' It is drawn for a ' + r.toneClash + ' background and the site’s hero is ' + (r.toneClash === 'dark' ? 'light' : 'dark') + ', where it would not show, so the hero was not changed. Upload a version of the logo made for a ' + (r.toneClash === 'dark' ? 'light' : 'dark') + ' background.' : '';
             if (clash) { logoState('Saved.' + said + clash); notify('Logo saved'); return; }
@@ -1517,9 +1624,11 @@
             logoState('The logo was saved, but it could not be put into the site: ' + ((err && err.message) || 'please try again') + '. Use Replace image on the hero logo in the editor.');
           });
         }, function(err){
-          logoState(EV.logoUrl ? 'Opens the site’s hero.' : 'No logo yet — the site shows the event’s name in its place.');
+          var was = SN.logoTile(EV, OUTLINE);
+          logoShows(was.url, was.original);
+          logoState(was.text);
           notify('The logo could not be uploaded: ' + ((err && err.message) || 'please try again'));
-        }).then(function(){ logoBusy = false; logoBtn.disabled = false; });
+        }).then(function(){ LOGO.busy = false; logoBtn.disabled = false; });
       };
       inp.click();
     });
@@ -1721,51 +1830,35 @@
      VIEW : SPEAKERS
 
      The line-up is groups of people, in an order, each carrying a
-     status and a weight. The site shows the confirmed ones, group by
+     status and a priority. The site shows the confirmed ones, group by
      group, in that order.
 
      Photos are always square: the crop happens in the dialog, so a
      badly shaped upload can never reach the site.
      ============================================================ */
-  /* Weight is a rank the organiser gives a record. It is not part of what the site reads, so
-     nothing here may say it changes how large anything is drawn: on Speakers it is what "Sort by
-     weight" orders a group by, elsewhere it is the organiser's own mark. The four ids are stored;
-     sessions and sponsors show them under plainer names, because "Keynote" is also a kind of session. */
-  var WEIGHTS = [
-    { id:'keynote',  label:'Keynote',  note:'First when a group is sorted by weight' },
-    { id:'headline', label:'Headline', note:'After the keynotes' },
-    { id:'featured', label:'Featured', note:'After the headline speakers' },
-    { id:'standard', label:'Standard', note:'Last' }
-  ];
-  var RANKS = [
-    { id:'keynote',  label:'Top' },
-    { id:'headline', label:'High' },
-    { id:'featured', label:'Normal' },
-    { id:'standard', label:'Low' }
-  ];
-  var WEIGHT_FOOT = {
-    speakers: 'Sort by weight puts a group in this order. Weight does not change how a speaker looks on the site.',
-    agenda:   'Your own mark of how important a session is. It does not change how the session looks on the site.',
-    sponsors: 'Your own mark of how prominent a sponsor is. It does not change the size of the logo on the site.'
-  };
+  /* Priority (stored as `weight`, as it always was) is a rank the organiser gives a record. It is not part of what the
+     site reads, so nothing here may say it changes how large anything is drawn: on Speakers and Sponsors it is what
+     "Sort by priority" orders a group or a tier by, on the Agenda the organiser's own mark. It used to be called
+     "weight", in two scales (Keynote… on Speakers, Top… elsewhere) with a pill on every row (UX-068): now one word,
+     one scale (SN.PRIORITIES: Top / High / Normal / Low), and a pill only on a row that is not Normal. */
   var STATUSES = [
     { id:'confirmed', label:'Confirmed', cls:'b-ok',   note:'Shown on the site' },
     { id:'invited',   label:'Invited',   cls:'b-warn', note:'Not on the site' },
     { id:'tentative', label:'Tentative', cls:'b-mute', note:'Not on the site' }
   ];
 
-  function wLabel(id){
-    for (var i = 0; i < WEIGHTS.length; i++) if (WEIGHTS[i].id === id) return WEIGHTS[i].label;
-    return 'Featured';
+  function prLabel(w){ return SN.priorityLabel(w); }
+  /* A row's priority pill, which opens the menu to change it; none on a Normal row, whose priority is changed in its
+     Edit dialog. attr: the data attribute the tab wires the pill by. */
+  function prPill(attr, r){
+    if (SN.isNormal(r.weight)) return '';
+    return pillBtn('wpill w-' + SN.priorityId(r.weight), attr, r.id, 'Priority: ' + prLabel(r.weight), 'Priority — click to change');
   }
-  function rankLabel(id){
-    for (var i = 0; i < RANKS.length; i++) if (RANKS[i].id === id) return RANKS[i].label;
-    return 'Normal';
-  }
-  /* the weight a record counts as having: an unknown or missing one reads as the middle rank */
-  function weightId(w){
-    for (var i = 0; i < WEIGHTS.length; i++) if (WEIGHTS[i].id === w) return w;
-    return 'featured';
+  /* the priority choices of a dialog */
+  function prOptions(current){
+    return SN.PRIORITIES.map(function(w){
+      return '<option value="' + esc(w.id) + '"' + (w.id === SN.priorityId(current) ? ' selected' : '') + '>' + esc(w.label) + '</option>';
+    }).join('');
   }
   function stMeta(id){
     for (var i = 0; i < STATUSES.length; i++) if (STATUSES[i].id === id) return STATUSES[i];
@@ -1776,7 +1869,7 @@
   function isConfirmed(r){ return !r.status || r.status === 'confirmed'; }
   var OFF_SITE = '<span class="offsite" title="Only confirmed ones are shown on the site">Not on the site</span>';
 
-  /* ---- a pill that opens a short menu (weight, status) ----
+  /* ---- a pill that opens a short menu (priority, status) ----
      Nothing changes until an option is chosen. The menu is drawn on <body>, outside the row, so
      the row's drag-and-drop never sees its clicks; it takes the arrow keys, Home / End, Escape. */
   var IC_CHEV = '<path d="M6 9l6 6 6-6"/>';
@@ -1884,8 +1977,10 @@
         '<div class="pvc-foot">' + esc(foot) + '</div>' +
       '</div>';
   }
-  function weightDot(w, label){
-    return '<i class="wdot w-' + weightId(w) + '" title="Weight: ' + esc(label) + '"></i>';
+  /* the glance list's mark of a priority that is not Normal (none for Normal, as on the rows) */
+  function weightDot(w){
+    if (SN.isNormal(w)) return '';
+    return '<i class="wdot w-' + SN.priorityId(w) + '" title="Priority: ' + esc(prLabel(w)) + '"></i>';
   }
   var HONORIFICS = /^(dr|mr|mrs|ms|miss|prof|professor|sir|shri|smt|adv|capt|col|gen|rev)\.?$/i;
   function initials(name){
@@ -1982,7 +2077,8 @@
   /* what a new group holds besides its name */
   function groupExtra(G, date){
     if (G.tab === 'agenda') return { date: date || '' };
-    if (G.tab === 'sponsors') return { weight: 'standard' };
+    /* a tier's own priority: Normal, as every new record starts (UX-068); nothing reads it but the record itself */
+    if (G.tab === 'sponsors') return { weight: 'featured' };
     return null;
   }
 
@@ -2364,7 +2460,7 @@
     return writes;
   }
 
-  /* called after any reorder (move, drag-drop, sort-by-weight) — only the rows whose position
+  /* called after any reorder (move, drag-drop, sort by priority) — only the rows whose position
      actually moved are sent. `also` is any other write that belongs to the same action (a row
      dragged into another group changes its group as well): one action, one outcome. */
   function persistSpeakerOrder(also, okText){
@@ -2445,7 +2541,7 @@
             imgTag(p.logo, 'class="spk-logo"') +
             '<span class="spk-meta">' +
               (isConfirmed(p) ? '' : OFF_SITE) +
-              pillBtn('wpill w-' + weightId(p.weight), 'data-weight', p.id, wLabel(p.weight), 'Weight — click to change') +
+              prPill('data-weight', p) +
               statusBtn('data-spkst', p) +
               '<button class="btn btn-ghost btn-icon" type="button" data-up="' + esc(p.id) + '" title="Move up"' +
                 (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
@@ -2472,7 +2568,7 @@
             '<span class="gcount">' + nSpk(people.length) + '</span>' +
             '<span class="grp-acts">' +
               '<button class="btn btn-ghost btn-sm" type="button" data-gsort="' + esc(g.id) + '" ' +
-                'title="Order this group by weight">' + svg(IC.sliders, 13) + ' Sort by weight</button>' +
+                'title="Order this group by priority: Top first, Low last">' + svg(IC.sliders, 13) + ' Sort by priority</button>' +
               '<button class="btn btn-ghost btn-icon" type="button" data-gup="' + esc(g.id) + '" title="Move group up"' +
                 (gi === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
               '<button class="btn btn-ghost btn-icon" type="button" data-gdown="' + esc(g.id) + '" title="Move group down"' +
@@ -2492,9 +2588,12 @@
     var body = groups.map(function(g, gi){ return card(g, gi, false); }).join('') +
       (spkIn('').length ? card({ id: '' }, 0, true) : '');
 
+    /* what this tab means on the site (UX-066, UX-067): its section hidden or missing, the previous edition's people */
+    var notes = siteNotes('speakers', { total: all.length, shown: all.filter(isConfirmed).length });
     if (!all.length && !groups.length){
-      return vhead(W.title, W.lead) +
+      return vhead(W.title, W.lead) + siteCallout(notes, false) +
         emptyState(IC.users, W.none, W.who,
+          emptySiteLine(notes) +
           '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' + svg(IC.plus, 13) + ' Add ' + W.many + '</button>');
     }
 
@@ -2512,6 +2611,7 @@
           svg(IC.plus, 13) + ' Add group</button>' +
         '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' +
           svg(IC.plus, 13) + ' Add ' + W.many + '</button>') +
+      siteCallout(notes, true) +
 
       '<div class="spk' + (all.length ? '' : ' one') + '">' +
         '<div class="spk-main">' + body +
@@ -2522,7 +2622,8 @@
                 'in the <b>order</b> set here — drag a row, or use the arrows. '
               : 'Only <b>confirmed</b> speakers appear on the site. The <b>group</b> a speaker sits in is a heading there, ' +
                 'and the <b>order</b> inside a group is the order they appear in — drag a row, or use the arrows. ') +
-            '<b>Weight</b> is for ordering a group with Sort by weight. Everything saves as you go.</span></div>' : '') +
+            '<b>Priority</b> (Top, High, Normal or Low) is only for ordering a group with Sort by priority; a row shows it ' +
+            'when it is not Normal. Everything saves as you go.</span></div>' : '') +
         '</div>' +
         (all.length ? '<aside class="spk-side">' +
           '<div class="pvc">' +
@@ -2542,7 +2643,8 @@
 
   function spkPreview(){
     if (!spkAll().filter(isConfirmed).length){
-      return '<div class="oag-empty">No confirmed speakers yet. The Speakers section is hidden on the site.</div>';
+      /* what that does to the site is said above the list (siteCallout), where the site is known */
+      return '<div class="oag-empty">No confirmed ' + esc(spkWords().many) + ' yet, so none is on the site.</div>';
     }
     return spkGroups().concat(spkIn('').length ? [{ id: '', name: '' }] : []).map(function(g){
       var people = spkIn(g.id).filter(isConfirmed);
@@ -2551,7 +2653,7 @@
         people.map(function(p){
           return '<div class="oag-r">' + spkPhotoHTML(p, 'a') +
             '<span class="n" title="' + esc(p.name) + '">' + esc(p.name) + '</span>' +
-            weightDot(p.weight, wLabel(p.weight)) + '</div>';
+            weightDot(p.weight) + '</div>';
         }).join('') + '</div>';
     }).join('');
   }
@@ -2579,12 +2681,12 @@
         var p = spkById(b.getAttribute('data-weight'));
         if (!p) return;
         pillMenu(b, {
-          label: 'Weight', options: WEIGHTS, current: weightId(p.weight), foot: WEIGHT_FOOT.speakers,
+          label: 'Priority', options: SN.priorityOptions(true), current: SN.priorityId(p.weight), foot: SN.PRIORITY_FOOT.speakers,
           pick: function(w){
             p.weight = w;
             spkCommit();
             subWrite('speakers', updateSub('speakers', p.id, { weight: w }),
-              p.name + ' is now ' + wLabel(w).toLowerCase(), 'The new weight was not saved.');
+              p.name + ' is now ' + prLabel(w).toLowerCase() + ' priority', 'The new priority was not saved.');
           }
         });
       };
@@ -2621,17 +2723,12 @@
     document.querySelectorAll('[data-gsort]').forEach(function(b){
       b.onclick = function(){
         var gid = b.getAttribute('data-gsort');
-        var rank = {}; WEIGHTS.forEach(function(w, i){ rank[w.id] = i; });
-        /* keynote is rank 0, so "no rank" has to be told apart from it */
-        function rk(w){ return Object.prototype.hasOwnProperty.call(rank, w) ? rank[w] : 9; }
         var rest = spkAll().filter(function(p){ return p.gid !== gid; });
-        var was = spkIn(gid);
-        var mine = was.slice().sort(function(a, c){
-          return (rk(a.weight) - rk(c.weight)) || (was.indexOf(a) - was.indexOf(c));
-        });
+        /* Top first, Low last; a speaker with no priority counts as Normal, and equals keep their order */
+        var mine = SN.byPriority(spkIn(gid));
         S.speakers = spkSplice(rest, mine, gid);
         spkCommit();
-        persistSpeakerOrder(null, 'Ordered by weight');
+        persistSpeakerOrder(null, 'Ordered by priority');
       };
     });
     document.querySelectorAll('[data-gdel]').forEach(function(b){
@@ -2930,11 +3027,8 @@
             groupPickHTML(G, e, 'sp-gid', true) +
             (e.newGroup == null ? '<p class="hint">' + esc(G.groupHint) + '</p>' : '') + '</div>' +
 
-          '<div class="field c6"><label for="sp-weight">Weight</label>' +
-            '<select class="inp" id="sp-weight">' + WEIGHTS.map(function(w){
-              return '<option value="' + esc(w.id) + '"' + (w.id === e.weight ? ' selected' : '') + '>' +
-                esc(w.label) + '</option>';
-            }).join('') + '</select>' +
+          '<div class="field c6"><label for="sp-weight">Priority</label>' +
+            '<select class="inp" id="sp-weight">' + prOptions(e.weight) + '</select>' +
             '<p class="hint" id="sp-wnote"></p></div>' +
 
           '<div class="field c6"><label for="sp-status">Status</label>' +
@@ -2965,8 +3059,8 @@
 
     function wnote(){
       var v = $('sp-weight').value, n = '';
-      WEIGHTS.forEach(function(w){ if (w.id === v) n = w.note; });
-      $('sp-wnote').textContent = n + '. Weight does not change how a speaker looks on the site.';
+      SN.priorityOptions(true).forEach(function(w){ if (w.id === v) n = w.note; });
+      $('sp-wnote').textContent = n + '. Priority does not change how a speaker looks on the site.';
     }
 
     function wireForm(){
@@ -3212,7 +3306,7 @@
   /* ============================================================
      VIEW : AGENDA
 
-     Same three levers as the line-up — group, order, weight — so
+     Same three levers as the line-up — group, order, priority — so
      whoever learned one page already knows this one. A group is a
      day or a stream; a row is a session; the clock runs down the
      left because that is how anyone reads a day.
@@ -3371,7 +3465,7 @@
             faces +
             '<span class="ses-meta">' +
               '<span class="kind-pill">' + esc(k.label) + '</span>' +
-              pillBtn('wpill w-' + weightId(s.weight), 'data-agw', s.id, 'Weight: ' + rankLabel(s.weight), 'Weight — click to change') +
+              prPill('data-agw', s) +
               '<button class="btn btn-ghost btn-icon" type="button" data-agup="' + esc(s.id) + '" title="Move up"' +
                 (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
               '<button class="btn btn-ghost btn-icon" type="button" data-agdown="' + esc(s.id) + '" title="Move down"' +
@@ -3431,9 +3525,12 @@
     var body = groups.map(function(g, gi){ return card(g, gi, false); }).join('') +
       (agIn('').length ? card({ id: '' }, 0, true) : '');
 
+    /* what this tab means on the site (UX-066, UX-067): every session is shown, so only "none at all" hides it */
+    var notes = siteNotes('agenda', { total: all.length });
     if (!all.length && !groups.length){
-      return vhead('Agenda', 'The programme of this event, day by day.') +
+      return vhead('Agenda', 'The programme of this event, day by day.') + siteCallout(notes, false) +
         emptyState(IC.clock, 'No sessions yet', 'Add the sessions of the day.',
+          emptySiteLine(notes) +
           '<button class="btn btn-primary btn-sm" type="button" id="ag-add">' + svg(IC.plus, 13) + ' Add sessions</button>');
     }
 
@@ -3446,6 +3543,7 @@
           svg(IC.plus, 13) + ' Add day</button>' +
         '<button class="btn btn-primary btn-sm" type="button" id="ag-add">' +
           svg(IC.plus, 13) + ' Add sessions</button>') +
+      siteCallout(notes, true) +
 
       '<div class="ag' + (all.length ? '' : ' one') + '">' +
         '<div class="ag-main">' + body +
@@ -3466,7 +3564,7 @@
   }
 
   function agPreview(){
-    if (!agAll().length) return '<div class="oag-empty">No sessions yet. The Agenda section is hidden on the site.</div>';
+    if (!agAll().length) return '<div class="oag-empty">No sessions yet, so none is on the site.</div>';
     return agGroups().concat(agIn('').length ? [{ id: '', name: '' }] : []).map(function(g){
       var list = agIn(g.id);
       if (!list.length) return '';
@@ -3476,7 +3574,7 @@
           return '<div class="oag-r' + (kMeta(s.kind).quiet ? ' quiet' : '') + '">' +
             '<span class="t">' + esc(s.start || '—') + '</span>' +
             '<span class="n" title="' + esc(s.title) + '">' + esc(s.title) + '</span>' +
-            weightDot(s.weight, rankLabel(s.weight)) + '</div>';
+            weightDot(s.weight) + '</div>';
         }).join('') + '</div>';
     }).join('');
   }
@@ -3548,12 +3646,12 @@
         var s = agById(b.getAttribute('data-agw'));
         if (!s) return;
         pillMenu(b, {
-          label: 'Weight', options: RANKS, current: weightId(s.weight), foot: WEIGHT_FOOT.agenda,
+          label: 'Priority', options: SN.priorityOptions(false), current: SN.priorityId(s.weight), foot: SN.PRIORITY_FOOT.agenda,
           pick: function(w){
             s.weight = w;
             agCommit();
             subWrite('agenda', updateSub('sessions', s.id, { weight: w }),
-              '“' + s.title + '” is now ' + rankLabel(w).toLowerCase() + ' weight', 'The new weight was not saved.');
+              '“' + s.title + '” is now ' + prLabel(w).toLowerCase() + ' priority', 'The new priority was not saved.');
           }
         });
       };
@@ -3819,11 +3917,8 @@
           '<div class="field c4"><label for="' + groupPickId(e, 'ag-gid') + '">Day</label>' +
             groupPickHTML(G, e, 'ag-gid', false) + '</div>' +
 
-          '<div class="field c4"><label for="ag-weight">Weight</label>' +
-            '<select class="inp" id="ag-weight">' + RANKS.map(function(w){
-              return '<option value="' + esc(w.id) + '"' + (w.id === e.weight ? ' selected' : '') + '>' +
-                esc(w.label) + '</option>';
-            }).join('') + '</select>' +
+          '<div class="field c4"><label for="ag-weight">Priority</label>' +
+            '<select class="inp" id="ag-weight">' + prOptions(e.weight) + '</select>' +
             '<p class="hint" id="ag-wnote"></p></div>' +
 
           '<div class="field c12"><div class="flabel-row"><label class="flabel">On stage</label>' +
@@ -3913,7 +4008,7 @@
       }
     }
 
-    function wnote(){ $('ag-wnote').textContent = WEIGHT_FOOT.agenda; }
+    function wnote(){ $('ag-wnote').textContent = SN.PRIORITY_FOOT.agenda; }
 
     function wireForm(){
       paintDur(); wnote();
@@ -3921,12 +4016,8 @@
       $('ag-end').oninput = paintDur;
       $('ag-title').addEventListener('input', function(){ readForm(); paintQueue(); });
 
-      /* choosing a quiet kind drops it down the order of importance */
-      $('ag-kind').onchange = function(){
-        if (kMeta(this.value).quiet && $('ag-weight').value !== 'standard'){
-          $('ag-weight').value = 'standard';
-        }
-      };
+      /* A break or a meal no longer drops to Low by itself: priority is the organiser's own mark on the agenda and
+         changes nothing on the site, and a Low pill on every break only added to the noise (UX-068). */
 
       $('ag-acch').onclick = function(){
         var a = $('ag-acc');
@@ -4016,7 +4107,7 @@
      VIEW : SPONSORS
 
      Third page built on the same three levers — group, order,
-     weight — so there is nothing new to learn. A tier is the group
+     priority — so there is nothing new to learn. A tier is the group
      and a sponsor is the row (the records are called partners in
      the API). The site shows the confirmed ones, tier by tier.
      ============================================================ */
@@ -4096,11 +4187,13 @@
             ptLogoHTML(p, 'pt-logo') +
             '<span class="pt-id"><b>' + esc(p.name) + '</b>' +
               (webLink(p.url) || '<span class="u">' + esc(p.url || 'No website yet') + '</span>') + '</span>' +
-            (!p.logo ? '<span class="pt-warn" title="No logo yet">' +
-              svg(IC.info, 15) + '</span>' : '') +
+            /* a sponsor without a logo is normal while sponsors are being confirmed: said on its row, never as an
+               error banner (UX-069) */
+            (!p.logo ? '<span class="pt-warn" role="img" title="No logo yet: the site shows the name as text" ' +
+              'aria-label="No logo yet: the site shows the name as text">' + svg(IC.info, 15) + '</span>' : '') +
             '<span class="pt-meta">' +
               (isConfirmed(p) ? '' : OFF_SITE) +
-              pillBtn('wpill w-' + weightId(p.weight), 'data-ptw', p.id, 'Weight: ' + rankLabel(p.weight), 'Weight — click to change') +
+              prPill('data-ptw', p) +
               statusBtn('data-ptst', p) +
               '<button class="btn btn-ghost btn-icon" type="button" data-ptup="' + esc(p.id) + '" title="Move up"' +
                 (i === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
@@ -4126,9 +4219,9 @@
               'aria-label="Tier name — click to rename" spellcheck="false">' +
             '<span class="gcount">' + list.length + (list.length === 1 ? ' sponsor' : ' sponsors') + '</span>' +
             '<span class="grp-acts">' +
-              '<button class="btn btn-ghost btn-sm" type="button" data-ptsize="' + esc(t.id) + '" ' +
-                'title="Give every sponsor in this tier the same weight">' + svg(IC.sliders, 13) +
-                ' Match weights</button>' +
+              '<button class="btn btn-ghost btn-sm" type="button" data-ptsort="' + esc(t.id) + '" ' +
+                'title="Order this tier by priority: Top first, Low last">' + svg(IC.sliders, 13) +
+                ' Sort by priority</button>' +
               '<button class="btn btn-ghost btn-icon" type="button" data-pttup="' + esc(t.id) + '" title="Move tier up"' +
                 (ti === 0 ? ' disabled' : '') + '>' + svg(IC.up, 14) + '</button>' +
               '<button class="btn btn-ghost btn-icon" type="button" data-pttdown="' + esc(t.id) + '" title="Move tier down"' +
@@ -4148,23 +4241,22 @@
     var body = tiers.map(function(t, ti){ return card(t, ti, false); }).join('') +
       (ptIn('').length ? card({ id: '' }, 0, true) : '');
 
+    var shown = all.filter(isConfirmed).length;
+    /* what this tab means on the site (UX-066, UX-067): its section hidden or missing, the previous edition's logos */
+    var notes = siteNotes('sponsors', { total: all.length, shown: shown });
     if (!all.length && !tiers.length){
-      return vhead('Sponsors', 'The companies backing this event.') +
+      return vhead('Sponsors', 'The companies backing this event.') + siteCallout(notes, false) +
         emptyState(IC.image, 'No sponsors yet', 'Add the companies backing this event.',
+          emptySiteLine(notes) +
           '<button class="btn btn-primary btn-sm" type="button" id="pt-add">' + svg(IC.plus, 13) + ' Add sponsors</button>');
     }
 
-    var shown = all.filter(isConfirmed).length;
     var sub = all.length + (all.length === 1 ? ' sponsor' : ' sponsors') +
       ' across ' + tiers.length + (tiers.length === 1 ? ' tier' : ' tiers') + '. ' +
       'The site shows the confirmed ones under their tier headings, in the order set here.';
 
-    var warn = noLogo
-      ? '<div class="callout" style="margin-bottom:18px">' + svg(IC.info, 17) +
-          '<span><strong>' + noLogo + (noLogo === 1 ? ' sponsor has' : ' sponsors have') + ' no logo yet</strong>' +
-          'Without a logo the site can only show the company name. ' +
-          'Open the row and add a logo to fix it.</span></div>'
-      : '';
+    /* The red "N sponsors have no logo yet" banner is gone (UX-069): a logo still to come is normal, not a failure, and
+       the count is already in Sponsor details, which now says what it means for the site. */
 
     /* a row is ticked only when there are sponsors and every one of them has it */
     var ready = [
@@ -4178,15 +4270,16 @@
           svg(IC.plus, 13) + ' Add tier</button>' +
         '<button class="btn btn-primary btn-sm" type="button" id="pt-add">' +
           svg(IC.plus, 13) + ' Add sponsors</button>') +
+      siteCallout(notes, true) +
 
       '<div class="sp2' + (all.length ? '' : ' one') + '">' +
-        '<div class="sp2-main">' + warn + body +
+        '<div class="sp2-main">' + body +
           (all.length ? '<div class="callout info">' + svg(IC.info, 17) +
             '<span><strong>What the site shows</strong>' +
             'Only <b>confirmed</b> sponsors appear on the site. A <b>tier</b> is a heading there, and the <b>order</b> ' +
-            'inside a tier is the order the logos appear in — drag a row, or use the arrows. <b>Weight</b> is your own ' +
-            'mark of how prominent a sponsor is; <b>Match weights</b> gives a whole tier the same one. ' +
-            'Everything saves as you go.</span></div>' : '') +
+            'inside a tier is the order the logos appear in — drag a row, or use the arrows. <b>Priority</b> (Top, High, ' +
+            'Normal or Low) is your own mark of how prominent a sponsor is, shown on a row when it is not Normal; ' +
+            '<b>Sort by priority</b> puts a tier in that order. Everything saves as you go.</span></div>' : '') +
         '</div>' +
         (all.length ? '<aside class="spk-side">' +
           '<div class="pvc">' +
@@ -4200,6 +4293,7 @@
                   '<span class="lb">' + esc(r[0]) + '</span>' +
                   '<span class="num">' + (all.length ? r[1] + ' / ' + all.length : '—') + '</span></div>';
             }).join('') +
+            (noLogo ? '<div class="pvc-foot">Without a logo the site shows the sponsor’s name as text. Open the row to add one.</div>' : '') +
           '</div>' +
           glanceCard('ptv', ptPreview(), shown + ' on site', 'Confirmed sponsors, in the order the site lists them.') +
         '</aside>' : '') +
@@ -4208,7 +4302,8 @@
 
   function ptPreview(){
     if (!ptAll().filter(isConfirmed).length){
-      return '<div class="oag-empty">No confirmed sponsors yet. The Sponsors section is hidden on the site.</div>';
+      /* what that does to the site is said above the list (siteCallout), where the site is known */
+      return '<div class="oag-empty">No confirmed sponsors yet, so none is on the site.</div>';
     }
     return ptTiers().concat(ptIn('').length ? [{ id: '', name: '' }] : []).map(function(t){
       var list = ptIn(t.id).filter(isConfirmed);
@@ -4221,7 +4316,7 @@
             '<span class="n" title="' + esc(p.name) + '">' + (link
               ? '<a href="https://' + esc(link) + '" target="_blank" rel="noopener">' + esc(p.name) + '</a>'
               : esc(p.name)) + '</span>' +
-            weightDot(p.weight, rankLabel(p.weight)) + '</div>';
+            weightDot(p.weight) + '</div>';
         }).join('') + '</div>';
     }).join('');
   }
@@ -4249,12 +4344,12 @@
         var p = ptById(b.getAttribute('data-ptw'));
         if (!p) return;
         pillMenu(b, {
-          label: 'Weight', options: RANKS, current: weightId(p.weight), foot: WEIGHT_FOOT.sponsors,
+          label: 'Priority', options: SN.priorityOptions(true), current: SN.priorityId(p.weight), foot: SN.PRIORITY_FOOT.sponsors,
           pick: function(w){
             p.weight = w;
             ptCommit();
             subWrite('sponsors', updateSub('partners', p.id, { weight: w }),
-              p.name + ' is now ' + rankLabel(w).toLowerCase() + ' weight', 'The new weight was not saved.');
+              p.name + ' is now ' + prLabel(w).toLowerCase() + ' priority', 'The new priority was not saved.');
           }
         });
       };
@@ -4288,33 +4383,19 @@
       b.onclick = function(){ ptTierMove(b.getAttribute('data-pttdown'), 1); };
     });
 
-    /* one click to make a tier look like a tier */
-    document.querySelectorAll('[data-ptsize]').forEach(function(b){
+    /* Sort by priority: the tier in the order of its sponsors' priority, Top first, as Speakers sorts a group. It
+       replaces "Match weights", which gave a tier one weight that changed nothing on the site (UX-068). The order is
+       what the site shows, so it is stored like any other reorder. */
+    document.querySelectorAll('[data-ptsort]').forEach(function(b){
       b.onclick = function(){
-        var tid = b.getAttribute('data-ptsize');
-        var t = ptTiers().filter(function(x){ return x.id === tid; })[0];
+        var tid = b.getAttribute('data-ptsort');
         var list = ptIn(tid);
         if (!list.length){ notify('Nothing in this tier yet'); return; }
-        /* the commonest weight in the tier wins, so one stray row is the one that moves */
-        var tally = {};
-        list.forEach(function(p){ tally[p.weight] = (tally[p.weight] || 0) + 1; });
-        var best = list[0].weight, n = 0;
-        Object.keys(tally).forEach(function(k){ if (tally[k] > n){ n = tally[k]; best = k; } });
-        /* only what actually changes is sent */
-        var writes = [];
-        list.forEach(function(p){
-          if (p.weight === best) return;
-          p.weight = best;
-          writes.push(updateSub('partners', p.id, { weight: best }));
-        });
-        if (t && t.weight !== best){
-          t.weight = best;
-          writes.push(updateSub('partner-tiers', t.id, { weight: best }));
-        }
-        var said = 'Every sponsor in ' + (t ? t.name : 'this tier') + ' is now ' + rankLabel(best).toLowerCase() + ' weight';
-        if (!writes.length){ notify(said); return; }
+        S.partners = ptSplice(SN.byPriority(list), tid);
+        var writes = orderWrites('partners', ptAll());
+        if (!writes.length){ notify('This tier is already in order of priority'); return; }
         ptCommit();
-        subWrite('sponsors', writes, said, 'The weights were not saved.');
+        subWrite('sponsors', writes, 'Ordered by priority', 'The new order was not saved.');
       };
     });
 
@@ -4407,20 +4488,14 @@
   /* ============================================================
      THE PARTNER DIALOG
 
-     Same queue as the other two. A new row inherits the tier's
-     weight, so a whole tier can go in without touching the setting.
+     Same queue as the other two. A new sponsor starts at Normal priority,
+     as a new speaker or session does, whatever tier it goes into (it used
+     to take the tier's "weight", which made a new tier's rows Low).
      ============================================================ */
   function ptDialog(editId, defaultTid){
     var G = GROUPED.sponsors;
     var editing = !!editId;
     var tid = defaultTid || (ptTiers()[0] || {}).id || '';
-    /* the weight a tier made by this dialog gives its sponsors (see groupExtra) */
-    var NEW_TIER_WEIGHT = 'standard';
-
-    function tierWeight(id){
-      var t = ptTiers().filter(function(x){ return x.id === id; })[0];
-      return (t && t.weight) || 'featured';
-    }
     /* prev: the entry "Add another" was pressed on — the next partner starts in the same tier,
        including a tier that is still only a name in this dialog */
     function blank(prev){
@@ -4428,7 +4503,7 @@
       var neu = prev ? prev.newGroup : (ptTiers().length ? null : 'Sponsors');
       return {
         key: draftKey(), tid: t, newGroup: neu, name:'', url:'', logo:null,
-        weight: neu != null ? NEW_TIER_WEIGHT : tierWeight(t),
+        weight: 'featured',
         status:'confirmed', email:'', phone:'', contact:'', note:''
       };
     }
@@ -4552,11 +4627,8 @@
             groupPickHTML(G, e, 'pt-tid', true) +
             (e.newGroup == null ? '<p class="hint">' + esc(G.groupHint) + '</p>' : '') + '</div>' +
 
-          '<div class="field c4"><label for="pt-weight">Weight</label>' +
-            '<select class="inp" id="pt-weight">' + RANKS.map(function(w){
-              return '<option value="' + esc(w.id) + '"' + (w.id === e.weight ? ' selected' : '') + '>' +
-                esc(w.label) + '</option>';
-            }).join('') + '</select>' +
+          '<div class="field c4"><label for="pt-weight">Priority</label>' +
+            '<select class="inp" id="pt-weight">' + prOptions(e.weight) + '</select>' +
             '<p class="hint" id="pt-wnote"></p></div>' +
 
           '<div class="field c4"><label for="pt-status">Status</label>' +
@@ -4594,7 +4666,7 @@
     }
 
     function wireForm(){
-      $('pt-wnote').textContent = WEIGHT_FOOT.sponsors;
+      $('pt-wnote').textContent = SN.PRIORITY_FOOT.sponsors;
 
       $('pt-acch').onclick = function(){
         var a = $('pt-acc');
@@ -4604,20 +4676,14 @@
         accOpen[Q[qi].key] = now;
       };
 
-      /* the tier sets the weight for a row whose weight has not been chosen by hand */
       wireGroupPick('pt-tid', function(toNew){
         readForm();
         var e = Q[qi];
         e.newGroup = toNew ? '' : null;
         if (!toNew && !e.tid && !editing) e.tid = ptTiers()[0].id;
-        if (!e.weightTouched) e.weight = toNew ? NEW_TIER_WEIGHT : tierWeight(e.tid);
         paintForm();
         modal.focus('#' + groupPickId(e, 'pt-tid'));
       });
-      if ($('pt-tid')) $('pt-tid').onchange = function(){
-        if (!Q[qi].weightTouched) $('pt-weight').value = tierWeight(this.value);
-      };
-      $('pt-weight').addEventListener('change', function(){ Q[qi].weightTouched = true; });
 
       /* a pasted link arrives in every shape; show the one that will be stored */
       $('pt-url').onchange = function(){
@@ -4857,36 +4923,20 @@
      ============================================================ */
   var LOG = { items: null, next: null, people: [], usage: null, at: 0, loading: false, more: false, error: null,
     seq: 0, exporting: false, f: { from: '', to: '', by: '', area: '', q: '' } };
-  var LOG_AREAS = [['site', 'Site'], ['content', 'Content'], ['forms', 'Forms'], ['design', 'Design'], ['publishing', 'Publishing'],
-    ['registrations', 'Registrations'], ['promotions', 'Promotions'], ['settings', 'Settings'], ['event', 'Event']];
+  /* The words both activity logs use (activity-words.js, window.RevampActivityWords, UX-015): the areas in the
+     order the filters list them, each action in words, a person by name, a field and a section by its label. This
+     log had its own table of actions, and the all-events log showed the codes. */
+  var AW = window.RevampActivityWords || null;
+  var LOG_AREAS = AW ? AW.AREAS : [];
   var LOG_AREA_BADGE = { site:'b-info', content:'b-ok', forms:'b-review', design:'b-accent', publishing:'b-warn',
     registrations:'b-info', promotions:'b-accent', settings:'b-mute', event:'b-mute' };
-  /* what each recorded action was, in words */
-  var HIST_AREA = {
-    'created':'Event created', 'updated':'Basic details changed', 'status-changed':'Status changed', 'settings-changed':'Settings changed', 'site-saved':'Site saved to staging',
-    'approval-requested':'Sent for approval', 'approved':'Approved', 'rejected':'Rejected', 'published':'Published (live)',
-    'unpublished':'Taken down', 'deleted':'Event deleted', 'restored':'Event restored', 'cloned':'Event copied', 'content-seeded':'Content filled in',
-    'content-added':'Content added', 'content-changed':'Content changed', 'content-removed':'Content removed',
-    'registration-updated':'Registration changed', 'registration-deleted':'Registration deleted', 'leads-imported':'Leads imported', 'leads-deleted':'Leads deleted',
-    'registration-approved':'Registration approved', 'registration-declined':'Registration declined',
-    'form-created':'Form created', 'form-updated':'Form edited', 'form-deleted':'Form deleted', 'form-default':'Default form changed',
-    'forms-reordered':'Forms reordered', 'leads-updated':'Leads changed', 'banner-video-changed':'Banner video changed', 'file-uploaded':'File uploaded',
-    'brief-updated':'Brief updated', 'source-added':'Source added', 'site-designed':'Site designed by AI', 'site-generated':'Site written by AI', 'repaired':'Platform repair', 'ai-chat':'ETB2B AI',
-    'portal-set':'Portal set'
-  };
   var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
-  function actionLabel(a){
-    a = String(a || '');
-    if (HIST_AREA[a]) return HIST_AREA[a];
-    a = a.replace(/[-_]+/g, ' ').trim();
-    return a ? a.charAt(0).toUpperCase() + a.slice(1) : 'Change';
-  }
-  function areaLabel(id){
-    for (var i = 0; i < LOG_AREAS.length; i++) if (LOG_AREAS[i][0] === id) return LOG_AREAS[i][1];
-    return 'Event';
-  }
-  function isPlatform(by){ return !by || by === 'platform' || by === 'system'; }
-  function whoLabel(by){ return isPlatform(by) ? 'Platform (automated)' : String(by); }
+  /* detail: Promotions' mailers and social posts share their verbs, and only the entry's detail tells them apart */
+  function actionLabel(a, area, detail){ return AW.actionLabel(a, area, detail); }
+  function areaLabel(id){ return AW.areaLabel(id); }
+  function isPlatform(by){ return AW.isPlatform(by); }
+  /* a person by name ("Sachitanand Rai"); their address is on hover in the list and in the CSV */
+  function whoLabel(by){ return AW.personName(by); }
   /* "21 Oct 2026, 11:05 am" in India time, whatever the browser's own zone */
   var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   function histWhen(iso){
@@ -4900,9 +4950,9 @@
   function histLines(h){
     var out = [];
     (h.changes || []).forEach(function(c){
-      out.push({ what: (c.name || c.section || 'Page') + ' — ' + (HIST_KIND[c.type] || c.type), before: c.before || '', after: c.after || (c.note || '') });
+      out.push({ what: (c.name || AW.sectionLabel(c.section) || 'Page') + ' — ' + (HIST_KIND[c.type] || c.type), before: c.before || '', after: c.after || (c.note || '') });
     });
-    (h.fields || []).forEach(function(f){ out.push({ what: f.field, before: f.before, after: f.after }); });
+    (h.fields || []).forEach(function(f){ out.push({ what: AW.fieldLabel(f.field), before: f.before, after: f.after }); });
     return out;
   }
   function histApprovedBy(h){
@@ -4980,10 +5030,11 @@
       });
     }
     page(null).then(function(){
-      var rows = [['Date & time (IST)', 'Time (ISO)', 'User', 'Area', 'Action', 'What changed', 'Item', 'Before', 'After', 'Version', 'Approval']];
+      /* the CSV keeps what the list leaves out: the person's address and the action's code */
+      var rows = [['When (IST)', 'Time (ISO)', 'Person', 'Person email', 'Area', 'Action', 'Action code', 'What changed', 'Item', 'Before', 'After', 'Version', 'Approval']];
       all.forEach(function(h){
         var lines = histLines(h);
-        var head = [histWhen(h.at), h.at || '', whoLabel(h.by), areaLabel(h.area), actionLabel(h.action), h.detail || ''];
+        var head = [histWhen(h.at), h.at || '', whoLabel(h.by), isPlatform(h.by) ? '' : String(h.by), areaLabel(h.area), actionLabel(h.action, h.area, h.detail), h.action || '', AW.detailText(h)];
         var tail = [h.version || '', histApprovedBy(h)];
         if (!lines.length) rows.push(head.concat(['', '', ''], tail));
         lines.forEach(function(l){ rows.push(head.concat([l.what, l.before, l.after], tail)); });
@@ -5010,10 +5061,10 @@
     var who = whoLabel(h.by);
     return '<li class="alog-row">' +
       '<div class="alog-when" title="' + esc(h.at || '') + '">' + esc(histWhen(h.at)) + '</div>' +
-      '<div class="alog-who' + (isPlatform(h.by) ? ' platform' : '') + '" title="' + esc(who) + '">' + esc(who) + '</div>' +
+      '<div class="alog-who' + (isPlatform(h.by) ? ' platform' : '') + '" title="' + esc(isPlatform(h.by) ? who : String(h.by)) + '">' + esc(who) + '</div>' +
       '<div class="alog-area"><span class="badge ' + (LOG_AREA_BADGE[area] || 'b-mute') + '">' + esc(areaLabel(area)) + '</span></div>' +
-      '<div class="alog-what"><div class="alog-act">' + esc(actionLabel(h.action)) + (h.version ? ' · version ' + esc(String(h.version)) : '') + '</div>' +
-        '<div class="alog-detail">' + esc(h.detail || '—') + '</div>' +
+      '<div class="alog-what"><div class="alog-act">' + esc(actionLabel(h.action, area, h.detail)) + (h.version ? ' · version ' + esc(String(h.version)) : '') + '</div>' +
+        '<div class="alog-detail">' + esc(AW.detailText(h) || '—') + '</div>' +
         (a ? '<div class="alog-appr">' + esc(histApprovedBy(h)) + review + '</div>' : '') + more + '</div>' +
     '</li>';
   }
@@ -5028,7 +5079,7 @@
       return err + '<div class="alog-state"><b>' + (logFiltered() ? 'Nothing matches this filter.' : 'Nothing has been recorded for this event yet.') + '</b>' +
         (logFiltered() ? '<button class="btn btn-secondary btn-sm" type="button" data-alog="clear">Clear the filter</button>' : '<span>Every edit to the event will be listed here, with when it was made and by whom.</span>') + '</div>';
     }
-    return err + '<div class="alog-head" aria-hidden="true"><div>Date &amp; time (IST)</div><div>User</div><div>Area</div><div>What changed</div></div>' +
+    return err + '<div class="alog-head" aria-hidden="true"><div>When (IST)</div><div>Person</div><div>Area</div><div>What changed</div></div>' +
       '<ol class="alog-list">' + LOG.items.map(logRow).join('') + '</ol>' +
       (LOG.next ? '<div class="alog-more"><button class="btn btn-secondary btn-sm" type="button" data-alog="more"' + (LOG.more ? ' disabled' : '') + '>' +
         (LOG.more ? 'Loading…' : 'Load older entries') + '</button></div>' : '<div class="alog-end">' + (LOG.items.length > 8 ? 'That is the whole log' + (logFiltered() ? ' for this filter.' : '.') : '') + '</div>');
@@ -5067,12 +5118,14 @@
   function logToolbar(){
     var f = LOG.f;
     return '<div class="toolbar alog-filters" role="search" aria-label="Filter the activity log">' +
-      '<label class="alog-f"><span>From</span><input class="inp" type="date" id="alog-from" data-alog-f="from" value="' + esc(f.from) + '"></label>' +
-      '<label class="alog-f"><span>To</span><input class="inp" type="date" id="alog-to" data-alog-f="to" value="' + esc(f.to) + '"></label>' +
-      '<label class="alog-f"><span>User</span><select class="inp" id="alog-by" data-alog-f="by">' + peopleOptions() + '</select></label>' +
+      /* the all-events log's filters in its order and words, Event left out (this is one event's log): Person · Area ·
+         From · To · Search (UX-015) */
+      '<label class="alog-f"><span>Person</span><select class="inp" id="alog-by" data-alog-f="by">' + peopleOptions() + '</select></label>' +
       '<label class="alog-f"><span>Area</span><select class="inp" data-alog-f="area"><option value="">All areas</option>' + LOG_AREAS.map(function(a){
         return '<option value="' + a[0] + '"' + (a[0] === f.area ? ' selected' : '') + '>' + esc(a[1]) + '</option>';
       }).join('') + '</select></label>' +
+      '<label class="alog-f"><span>From</span><input class="inp" type="date" id="alog-from" data-alog-f="from" value="' + esc(f.from) + '"></label>' +
+      '<label class="alog-f"><span>To</span><input class="inp" type="date" id="alog-to" data-alog-f="to" value="' + esc(f.to) + '"></label>' +
       '<label class="alog-f alog-q"><span>Search</span><span class="search">' + svg(IC.search, 14) +
         '<input type="search" data-alog-f="q" placeholder="Words, a section, a person…" value="' + esc(f.q) + '" aria-label="Search the activity log"></span></label>' +
       '<button class="btn btn-secondary btn-sm alog-clear" type="button" data-alog="clear"' + (logFiltered() ? '' : ' hidden') + '>Clear</button>' +
@@ -5324,15 +5377,20 @@
     var sending = GAL_PENDING.filter(function(p){ return p.state === 'sending'; }).length;
     var addBtn = '<button class="btn btn-primary btn-sm" type="button" id="gal-add">' + svg(IC.plus, 13) + ' Upload photos</button>';
     var hint = '<p class="hint gal-hint" id="gal-hint">' + esc(GAL_HINT) + '</p>';
+    /* what this tab means on the site (UX-066, UX-067): its section hidden or missing, the previous edition's photos */
+    var notes = siteNotes('gallery', { total: items.length });
     /* one way to add at a time: the button in the empty state, or the one in the header */
     var body = (items.length || GAL_PENDING.length) ? ('<div class="media-grid">' + cards + '</div>' + hint)
-      : emptyState(IC.image, 'No photos yet', 'Upload a few photos from past editions. ' + GAL_HINT, addBtn);
+      : emptyState(IC.image, 'No photos yet', 'Upload a few photos from past editions. ' + GAL_HINT, emptySiteLine(notes) + addBtn);
 
     var sub = items.length ? items.length + (items.length === 1 ? ' image' : ' images') : '';
     if (sending) sub += (sub ? ' · ' : '') + sending + ' uploading';
 
-    return vhead('Gallery', 'Photos from past editions, shown in the Gallery section of the site in the order set here.',
+    /* a site with no section for photos does not show them: the line under the title does not say it does */
+    return vhead('Gallery', notes.none ? 'Photos from past editions, in the order set here.'
+          : 'Photos from past editions, shown in the Gallery section of the site in the order set here.',
         (items.length || GAL_PENDING.length) ? addBtn : '') +
+      siteCallout(notes, items.length > 0) +
       panel('Photos', sub, body) +
       '<input type="file" accept="' + GAL_TYPES + '" id="gal-file" style="display:none" multiple aria-describedby="gal-hint">';
   }
@@ -5486,13 +5544,18 @@
         '</div>';
     }).join('');
 
+    /* what this tab means on the site (UX-066): its section hidden until a question is added, or missing */
+    var notes = siteNotes('faq', { total: items.length });
     var body = items.length ? ('<div>' + rows + '</div>')
       : emptyState(IC.help, 'No questions yet',
           'Answer the things visitors always ask.',
+          emptySiteLine(notes) +
           '<button class="btn btn-primary btn-sm" type="button" id="faq-add">' + svg(IC.plus, 13) + ' Add question</button>');
 
-    return vhead('FAQ', 'Questions and answers shown in the FAQ section of the site, in the order set here.',
+    return vhead('FAQ', notes.none ? 'Questions and answers, in the order set here.'
+          : 'Questions and answers shown in the FAQ section of the site, in the order set here.',
         items.length ? '<button class="btn btn-primary btn-sm" type="button" id="faq-add">' + svg(IC.plus, 13) + ' Add question</button>' : '') +
+      siteCallout(notes, items.length > 0) +
       panelFlush('Questions', items.length ? items.length + (items.length === 1 ? ' question' : ' questions') : '', body);
   }
 
@@ -5613,6 +5676,8 @@
 
   function viewContact(){
     var team = ctAll();
+    /* what this tab means on the site (UX-066): its section hidden until a contact is added, or missing */
+    var notes = siteNotes('contact', { total: team.length });
     var rows = team.map(function(t){
       return '<tr><td class="td-strong">' + esc(t.label || 'Untitled') + '</td>' +
         '<td>' + esc(t.name || '—') + '</td>' +
@@ -5631,6 +5696,7 @@
           '</tr></thead><tbody>' + rows + '</tbody></table></div>')
       : panel('Contact desks', '', emptyState(IC.headset, 'No contact desks added yet',
           'Add who a visitor should reach for delegate, sponsor, speaker or press enquiries.',
+          emptySiteLine(notes) +
           '<button class="btn btn-primary btn-sm" type="button" id="ct-add">' + svg(IC.plus, 13) + ' Add contact</button>'));
 
     /* NOTE: the "Enquiry form" block that used to render here (send-to address, auto-reply,
@@ -5640,8 +5706,9 @@
        than left as fake, unwired content; a future task should add a real field for it before any
        UI for it comes back. */
 
-    return vhead('Contact', 'Who visitors can reach, shown in the Contact section of the site.',
+    return vhead('Contact', notes.none ? 'Who visitors can reach.' : 'Who visitors can reach, shown in the Contact section of the site.',
         team.length ? '<button class="btn btn-primary btn-sm" type="button" id="ct-add">' + svg(IC.plus, 13) + ' Add contact</button>' : '') +
+      siteCallout(notes, team.length > 0) +
       deskPanel;
   }
 
@@ -6083,6 +6150,9 @@
   CTX.approval = function(){ return APPROVAL; };
   CTX.refreshState = function(){ return refreshState(); };
   CTX.isAward = isAwardEvent;
+  /* what the site does with the Content lists (UX-066, UX-067): the same words as the tabs */
+  CTX.siteNotes = SN;
+  CTX.siteOutline = function(){ return OUTLINE; };
   CTX.contentCounts = function(){
     return Promise.all([fetchTab('speakers'), fetchTab('agenda'), fetchTab('sponsors')]).then(function(){
       keepSaved();
@@ -6489,6 +6559,7 @@
     go(location.hash.slice(1));
     setTimeout(loadTabCounts, 0);
     setTimeout(loadApproval, 0);
+    setTimeout(loadOutline, 0);
   }
 
   function isAuthError(err){
