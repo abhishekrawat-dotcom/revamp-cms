@@ -601,6 +601,13 @@ function setTurns(ctx, turns) {
   ctx.said = [ctx.spoken].concat(attached).join('\n');
   return ctx;
 }
+/* Whether the newest turn remembered (turns are oldest first) was about an event other than the one the person is
+   in: then "it" or "its" in this message can mean that one, so an answer that names no event is not given the
+   page's event. A site editor turn names no event. */
+function lastTurnElsewhere(turns, eventId) {
+  var list = arr(turns), last = list.length ? list[list.length - 1] : null;
+  return isObj(last) && arr(last.events).some(function (id) { return typeof id === 'string' && id !== eventId; });
+}
 
 /* ---------- where the person is ----------
    { page, eventId, tab } from the page. Only a hint: the page is one of PAGES ('' for anything else; no place at
@@ -870,7 +877,8 @@ function attachedBlock(ctx) {
     use = ctx.handedFrom ? 'The site editor\'s ETB2B AI passed this message on as not about the page, so these pictures stay in the editor\'s tray: answer what the person asked, and never say a picture was used.'
       : 'Pictures attached in the site editor are for this page: when the person wants them on the page, answer kind "handoff".';
   } else if (p.eventId) {
-    use = 'Pictures attached here can go to this event\'s site: when the person wants one on the site (a banner, a section\'s picture), answer kind "open" with target "editor" and the event\'s id in `events`: the product takes the pictures there for them to place. Speaker photos, sponsor logos and gallery photos are added by hand on the event\'s Content tabs: never say you added one.';
+    use = 'Pictures attached here can go to this event\'s site: when the person wants one on the site (a banner, a section\'s picture), answer kind "open" with target "editor" and the event\'s id in `events`: the product takes the pictures there for them to place. Speaker photos, sponsor logos and gallery photos are added by hand on the event\'s Content tabs: never say you added one.' +
+      ' When the person starts a NEW event with kind "create", give every picture a role in `create.files` (its number `n`): "logo" for the one picture the person says is the new event\'s logo, else "none". Never say a picture was used: the product says what it does with each.';
   } else {
     use = 'Attachments here are used only to start a new event. With kind "create", give every file a role in `create.files` (its number `n`): "logo" for the one picture the person says is the event\'s logo, "brief" for the one PDF or text file that describes the event, else "none". Create Event takes only those two. Never say a file was read, uploaded or used: the product says what it does with each.';
   }
@@ -957,14 +965,15 @@ function buildPrompt(ctx) {
     '- currentUrl and previousUrl only when the person pasted that link.',
     '- portal: the slug of the portal the person named for the new event (from ET PORTALS below), else "": the product then uses the one they work in.',
     '- The product also makes the new event a first hero picture, but only once the event is created. heroSubject: what the person said the picture should show, in their own words, else "". noHeroPicture: true only when they say they want no picture.',
-    !p.eventId && arr(ctx.attachments).length ? '- files: one entry per attached file (ATTACHED below), its number `n` and its `role`: "logo" (a picture the person calls the logo), "brief" (the PDF or text file that describes the event) or "none". With a brief file, method is "brief".' : null,
+    /* a new event can be started from any page but the editor, with an attached logo, inside an event too */
+    !inEditor && arr(ctx.attachments).length ? '- files: one entry per attached file (ATTACHED below), its number `n` and its `role`: "logo" (a picture the person calls the logo), "brief" (the PDF or text file that describes the event) or "none". With a brief file, method is "brief".' : null,
     '',
     /* 8. out of scope */
     'OUT OF SCOPE: anything that is not about these events or Oneworld 2.0 gets kind "reply" with one polite line on what ETB2B AI can help with here (starting an event, opening its pages, answering from its real numbers, setting up promotions).',
     '',
     /* 9. what the person is looking at */
     dash ? 'WHAT ' + name.toUpperCase() + ' IS LOOKING AT: ' + viewLine(ctx) + '.'
-      : 'WHERE ' + name.toUpperCase() + ' IS: ' + placeLine(ctx) + '.' + (here ? ' "This event", "here", "it" and questions that name no event mean ' + here + ': put its id in `events`. Its row in the EVENTS table ends with THIS EVENT.' : ''),
+      : 'WHERE ' + name.toUpperCase() + ' IS: ' + placeLine(ctx) + '.' + (here ? ' "This event", "here" and "this page" mean ' + here + ': put its id in `events`. "It", "its" and a follow-up ("and when does it start?") mean the event the conversation was just about, which can be another one: put that event\'s id in `events`. A question that names no event means ' + here + ' only when the conversation was not just about another event. Its row in the EVENTS table ends with THIS EVENT.' : ''),
     portal ? portal + (dash ? ' Questions, lists and filters are about the portal the list shows unless the person names another one ("ETHRWorld\'s drafts") or says all portals: then set `list.portal` or `filter.portal` to its slug, "all" or "none".'
       : ' Lists are about the portal ' + name + ' works in unless the person names another one ("ETHRWorld\'s drafts") or says all portals: then set `list.portal` to its slug, "all" or "none".') +
       ' Say which portal in the answer. An event on another portal, or on none, can still be opened and asked about: name its portal with {{<id>.portal}}.' : '',
@@ -2026,13 +2035,15 @@ function cleanAnswer(parsed, ctx) {
   });
   if (unknown.length) notes.push('unknown-event');
 
-  /* Inside an event, "this event", "here" and "it" mean the event the person is in: an action that needs an event
-     and names none takes that one. Never when the model said an event could not be found, or named one this
-     request cannot see (that would open the wrong event). */
+  /* Inside an event, "this event" and "here" mean the event the person is in: an action that needs an event and
+     names none takes that one. Never when the model said an event could not be found, or named one this request
+     cannot see (that would open the wrong event); and never right after an answer about another event, where
+     "open its promotions" means that one (the person is then asked which). A handoff is always about this page. */
   var nfRaw = displayLine(parsed.notFound, CAPS.searchChars);
   if (place.eventId && !kept.length && !unknown.length && !nfRaw && (kind === 'open' || kind === 'promo' || kind === 'refuse' || kind === 'handoff' || (KINDS.indexOf(asked) === -1 && !!harmOf(asked)))) {
     var o0 = isObj(parsed.open) ? parsed.open : {};
-    if (kind !== 'open' || EVENT_TARGETS[o0.target] || o0.target === 'activity-log') { kept.push(place.eventId); notes.push('this-event'); }
+    if (kind !== 'handoff' && lastTurnElsewhere(ctx.turns, place.eventId)) notes.push('follow-up-elsewhere');
+    else if (kind !== 'open' || EVENT_TARGETS[o0.target] || o0.target === 'activity-log') { kept.push(place.eventId); notes.push('this-event'); }
   }
 
   /* a kind outside the vocabulary: never the model's words. A destructive one gets that refusal's fixed
@@ -2229,7 +2240,9 @@ function cleanAnswer(parsed, ctx) {
   if (ctx.attachments && ctx.attachments.length && !inEditor) {
     if (!place.eventId) {
       if (!(out.action && out.action.type === 'create')) { tail.push({ t: 'text', v: MSG.attachGlobal }); notes.push('attachments-unused'); }
-    } else if (pictures.length && !carried) {
+    } else if (pictures.length && !carried && !(out.action && out.action.type === 'create')) {
+      /* a new event started from here says itself what Create Event takes (the logo) and what it does not
+         (MSG.attachBanner), so it never also says the pictures are for this event's site */
       tail.push({ t: 'text', v: MSG.attachInEvent });
       /* the Content tab that takes such a picture, as a link (an address urlFor builds) */
       var ce = ctx.byId[place.eventId], low = ctx.spoken || ctx.message;
@@ -2489,8 +2502,12 @@ function handleChat(req, res) {
                 turn.scope = 'event';
                 turn.pictures = kept.filter(function (k) { return k.kind === 'image'; }).length;
               }
+              /* scope (and eventId): the conversation that kept the turn, which the page reports Undo and Stop to. It
+                 is not always the page's own event: one deleted, being discarded, with no name or not in the list
+                 read is dropped (cleanPlace), and the turn is then in the person's own conversation */
               var reply = { turnId: turnRef.id, kind: answer.kind, parts: answer.parts, list: answer.list, action: answer.action,
-                choices: answer.choices, asOf: answer.asOf, notes: answer.notes };
+                choices: answer.choices, asOf: answer.asOf, notes: answer.notes, scope: eventId ? 'event' : 'global' };
+              if (eventId) reply.eventId = eventId;
               return Promise.all([
                 convRef.set({ uid: uid, email: String(decoded.email || ''), name: H.chatName(decoded), lastAt: now }, { merge: true }),
                 turnRef.set(turn)
@@ -2540,9 +2557,20 @@ function handleTurn(req, res) {
     var ref = conversationRef(fb, decoded, eventId).collection('turns').doc(turnId);
     ref.get().then(function (snap) {
       if (!snap.exists || (eventId && (snap.data() || {}).brain !== 'dash')) return H.sendJson(res, 404, { error: MSG.notYours });
+      var was = snap.data() || {};
       var patch = { status: status, updatedAt: new Date(clock.now()).toISOString() };
       if (note) patch.note = note;
-      return ref.update(patch).then(function () { H.sendJson(res, 200, { turnId: turnId, status: status }); });
+      return ref.update(patch).then(function () {
+        H.sendJson(res, 200, { turnId: turnId, status: status });
+        /* Stop inside an event: the turn's "Asked ETB2B AI … — answered" line went in the event's History when it
+           was kept, before the person stopped waiting, so the History says so once, as lib/api.js handleChatTurn
+           does for a question in the site editor; nothing was done */
+        if (!eventId || status !== 'stopped' || was.status === 'stopped') return;
+        var line = maskEmail(displayLine(was.question, CAPS.historyLine));
+        Promise.resolve().then(function () {
+          return H.logActivity(fb, eventId, decoded, 'ai-chat', 'Stopped waiting for ETB2B AI\'s answer: “' + line + '”', { area: placeArea(isObj(was.place) ? was.place : {}) });
+        }).catch(function (err) { console.error('dash-bot: the History line of ' + eventId + ' was not written — ' + (err && err.message)); });
+      });
     }).catch(function (err) { H.sendFailure(res, 'dash-bot turn', err, 'That could not be recorded. Please try again.'); });
   });
 }
@@ -2606,5 +2634,5 @@ module.exports._test = {
   KINDS: KINDS, OPEN_TARGETS: OPEN_TARGETS, MSG: MSG, STRICT_OPTIONAL_MAX: STRICT_OPTIONAL_MAX,
   portalSaid: portalSaid, namedPortals: namedPortals, portalSlug: portalSlug, subjectSaid: subjectSaid, portalLine: portalLine,
   PAGES: PAGES, cleanPlace: cleanPlace, placeLine: placeLine, placeArea: placeArea, cleanAttachments: cleanAttachments, cleanThumb: cleanThumb,
-  createFiles: createFiles, attachedBlock: attachedBlock, setTurns: setTurns, TURN_STATUSES: TURN_STATUSES
+  createFiles: createFiles, attachedBlock: attachedBlock, setTurns: setTurns, TURN_STATUSES: TURN_STATUSES, lastTurnElsewhere: lastTurnElsewhere
 };

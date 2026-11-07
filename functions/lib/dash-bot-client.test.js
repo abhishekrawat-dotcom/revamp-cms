@@ -775,6 +775,7 @@ var LIST = {
   check('D.1 history: a "Show these in the list" this tab holds keeps its Undo; no new "Show these" on old lists', ch.bubbles[3].buttons.length === 1 && ch.bubbles[3].buttons[0].label === 'Undo');
   check('D.1 history: a page opened keeps its link; one off the whitelist does not; a stay says so',
     ch.bubbles[4].links.length === 1 && ch.bubbles[4].links[0].href === '/edit-event.html?event=autotech-2026' && ch.bubbles[5].links.length === 0 && ch.bubbles[6].notes[0] === 'You stayed on this page.');
+  check('D.1 history: an Undo read back from the history is not a change made in this tab (changedAt stays 0)', Ph.ctx.RevampDashBot.brain.changedAt() === 0);
   await Ph.say('drafts');
   ch.bubbles[0].buttons[0].click();
   check('D.1 history: an old Undo with a newer change asks first', Ph.confirms.length === 1);
@@ -909,6 +910,25 @@ var LIST = {
   check('D.2 a filter off the dashboard (an older server): said plainly, nothing folds, reported failed in the event\'s conversation',
     /^That could not be done here\. The events list is on the events dashboard: ask me there to change it\.$/.test(Pe1.last().notes[0] || '') && Pe1.kit.chat.folds.length === 0 &&
     same(Pe1.turnCalls(), [{ turnId: 'TurnConsole002', status: 'failed', note: 'The events list is on the events dashboard: ask me there to change it.', eventId: 'qa-main' }]), [Pe1.last().notes, Pe1.turnCalls()]);
+  /* reported to the conversation the server says kept the turn, not the page's address: on the page of an event the
+     server could not use (deleted, say), the turn is in the person's own conversation (scope "global") */
+  var glAnswer = filterAnswer('TurnConsoleG01'); glAnswer.body.scope = 'global';
+  var PeG = await conPage({ answers: [glAnswer] });
+  await PeG.say('Show drafts from last week');
+  check('D.2 an answer kept in the person\'s own conversation (scope "global") is reported there, without the page\'s event',
+    same(PeG.turnCalls(), [{ turnId: 'TurnConsoleG01', status: 'failed', note: 'The events list is on the events dashboard: ask me there to change it.' }]), PeG.turnCalls());
+  var evAnswer = filterAnswer('TurnConsoleE01'); evAnswer.body.scope = 'event'; evAnswer.body.eventId = 'qa-main';
+  var PeE = await conPage({ answers: [evAnswer] });
+  await PeE.say('Show drafts from last week');
+  check('D.2 …and one kept in the event\'s (scope "event") is reported with that event', PeE.turnCalls().length === 1 && PeE.turnCalls()[0].eventId === 'qa-main', PeE.turnCalls());
+  var relG = null;
+  var PeS = await conPage({ answer: function (call) { return call.url === '/api/dash-bot' ? { hold: new Promise(function (r) { relG = r; }) } : null; } });
+  var stopG = PeS.say('hello');
+  PeS.kit.chat.busyOpts.onStop();
+  await stopG;
+  var lateG = navAnswer('TurnConsoleS01', '/edit-event.html?event=autotech-2026#design/editor'); lateG.body.scope = 'global';
+  relG(lateG); await flush(); await flush();
+  check('D.2 Stop on such an answer: reported stopped to the person\'s own conversation', same(PeS.turnCalls(), [{ turnId: 'TurnConsoleS01', status: 'stopped' }]), PeS.turnCalls());
   var Pe2 = await conPage({ answers: [ok({ turnId: 'TurnConsole003', kind: 'reply', parts: [{ t: 'text', v: 'Here.' }], list: LIST, action: null, asOf: 'x', notes: [] }), navAnswer('TurnConsole004', '/marketing.html?event=qa-main&tab=posts', 'Promotions of QA Main')] });
   await Pe2.say('Which events go live this month?');
   check('D.2 a list off the dashboard: drawn, with no "Show these in the list"', Pe2.last().lists.length === 1 && !Pe2.last().buttons.some(function (x) { return x.label === 'Show these in the list'; }));
@@ -936,6 +956,29 @@ var LIST = {
   var Pp2 = await conPage({ portals: ports2, answers: [switchAnswer('TurnPortalE003', 'hr', 'ETHRWorld'), ok({ turnId: 'TurnPortalE004', kind: 'undo', parts: [], list: null, action: { type: 'undo' }, asOf: 'x', notes: [] })] });
   await Pp2.say('work in ETHRWorld'); await Pp2.say('undo that'); await flush();
   check('D.2 "undo that" off the dashboard puts the working portal back, and says so', same(ports2.sets, ['hr', 'all']) && Pp2.last().content === 'Done, you are back in the portal you worked in before.', [ports2.sets, Pp2.last().content]);
+  /* changedAt and undoLocal: what the shell uses for a bare "undo that" in the site editor (no AI call) */
+  var ports5 = portalsStub('cio');
+  var Pq5 = await conPage({ portals: ports5, answers: [switchAnswer('TurnPortalE007', 'auto', 'ETAuto')] });
+  var br5 = Pq5.ctx.RevampDashBot.brain;
+  check('D.2u changedAt: 0 before any change', br5.changedAt() === 0);
+  var t5 = Date.now();
+  await Pq5.say('switch to ETAuto');
+  var at5 = br5.changedAt();
+  check('D.2u …then the time of the switch made in this tab', at5 >= t5 && at5 <= Date.now(), at5);
+  var u5 = await br5.undoLocal();
+  await flush();
+  check('D.2u undoLocal: switched back with no AI call, said in the panel, reported undone in the event\'s conversation', u5 && u5.ok === true && same(ports5.sets, ['auto', 'cio']) &&
+    Pq5.botCalls().length === 1 && Pq5.last().content === 'Done, you are back in the portal you worked in before.' &&
+    Pq5.turnCalls().some(function (t) { return t.turnId === 'TurnPortalE007' && t.status === 'undone' && t.eventId === 'qa-main'; }), [u5, ports5.sets, Pq5.last().content, Pq5.turnCalls()]);
+  check('D.2u …the card\'s Undo is spent too, and changedAt is 0 again', br5.changedAt() === 0 && Pq5.kit.chat.bubbles[0].buttons.filter(function (x) { return x.undo; })[0].textContent === 'Undone');
+  var u6 = await br5.undoLocal();
+  check('D.2u undoLocal with nothing standing: says so, and nothing changes', u6 && u6.ok === false && same(ports5.sets, ['auto', 'cio']) && Pq5.last().content === Pq5.ctx.RevampDashBot.TEXT.nothingToUndo);
+  var Pq6 = await page({ page: 'console', noListing: true, search: '?event=qa-main', answers: [switchAnswer('TurnPortalE008', 'auto', 'ETAuto')], portals: portalsStub('cio'), quiet: true });
+  await Pq6.say('switch to ETAuto');
+  Pq6.ctx.RevampPortals = undefined;
+  var u7 = await Pq6.ctx.RevampDashBot.brain.undoLocal();
+  check('D.2u a portal that cannot be switched back from this page: said plainly, the change stays undoable', u7 && u7.ok === false &&
+    Pq6.last().content === 'The portal could not be switched from this page. Use the portal switcher on the events dashboard.' && Pq6.ctx.RevampDashBot.brain.changedAt() > 0, [u7, Pq6.last().content]);
   var ports3 = portalsStub('cio', true);
   var Pp3 = await conPage({ portals: ports3, answers: [switchAnswer('TurnPortalE005', 'auto', 'ETAuto')] });
   await Pp3.say('switch to ETAuto'); await flush();

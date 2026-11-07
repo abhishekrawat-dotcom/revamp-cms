@@ -1,15 +1,19 @@
 // node functions/lib/etb2b-assistant.test.js — the one ETB2B AI's shell (etb2b-assistant.js, plan §4, §5a, §6, §11a U2):
 //   S.1  served as it is: ES5, no markup from text, only its own routes
 //   S.2  where the person is: every page, the event (and the editor's ?slug=), the console's section, Promotions' tab;
-//        never in a frame, on a published site, a preview or a shared link, with no mount, or signed out
-//   S.3  the brains: registry, the editor's rule (a corpus of 60 labelled messages), one handoff hop, local undo
+//        never in a frame, on a published site, a preview or a shared link, with no mount, or signed out; the event
+//        stays the one the page opened with (the activity log rewrites ?event= when its filter changes)
+//   S.3  the brains: registry, the editor's rule (a corpus of 60 labelled messages), one handoff hop, local undo (by the
+//        brain whose change is the newest: a portal switch is switched back, not an older page change undone), and a
+//        bare "go back" asked about
 //   S.4  mounting: the kit's options for each place (id, scope, welcome, help, placement, attach), the editor's wait
 //        (its own place adapter, or a dash-only panel that says why), the context chip, leave()
 //   S.5  the conversation per place: the dashboard's on global pages, the event's inside one (both brains)
 //   S.6  errors by code, one table for both brains
 //   S.7  attachments per place: types, sizes, Word refused plainly, a text file read, a picture re-encoded
 //   S.8  files kept for another page: Create Event's logo and brief (IndexedDB, swept), the editor's carried pictures
-//        (a pointer with an expiry), and Create Event's own inputs filled through their own change handlers
+//        (a pointer with an expiry), and Create Event's own inputs filled through their own change handlers, also in
+//        the page's real order (its draft is filled before the shell has started)
 // No network, no browser, no AI: the file runs in a vm with stand-ins for the kit, sign-in, the store and the DOM.
 'use strict';
 var fs = require('fs');
@@ -102,17 +106,22 @@ function response(status, body) {
 }
 /* one page: the shell (and, when asked, the real dash brain before it) in a fresh vm.
    o: { page, path, search, hash, keepClear, framed, crossFrame, noMount, signedOut, noAuth, dash (load the real brain),
-        brains: { name: brain } registered before boot, store, prefill (load create-event-prefill.js), els, edLoadFailed } */
+        brains: { name: brain } registered before boot, store, prefill (load create-event-prefill.js), els, edLoadFailed,
+        loading (the page is still loading: nothing starts until fireReady()), authLater (the sign-in check answers
+        at resolveAuth()) } */
 function shellPage(o) {
   o = o || {};
   var clock = makeClock(), kit = o.noKit ? null : makeKit(), calls = [], assigned = [], scripts = [], anchors = [], winListeners = {};
+  var docListeners = {}, dispatched = [], resolveAuth = null;
+  var authReady = o.authLater ? new Promise(function (r) { resolveAuth = r; }) : null;
   var mount = el({ id: 'rv-assistant' });
   mount.attrs['data-rv-assistant'] = o.page || 'dashboard';
   if (o.keepClear) mount.attrs['data-keep-clear'] = o.keepClear;
   var bodyClasses = o.edLoadFailed ? ['ed-load-failed'] : [];
   var els = o.els || {};
   var doc = {
-    readyState: 'complete', activeElement: null,
+    readyState: o.loading ? 'loading' : 'complete', activeElement: null,
+    addEventListener: function (t, fn) { (docListeners[t] = docListeners[t] || []).push(fn); },
     body: el({ classList: { contains: function (c) { return bodyClasses.indexOf(c) !== -1; } } }),
     head: el(),
     querySelector: function (s) { return s === '[data-rv-assistant]' && !o.noMount ? mount : null; },
@@ -137,13 +146,13 @@ function shellPage(o) {
     sessionStorage: o.session || makeStorage(), localStorage: o.local || makeStorage(),
     setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout,
     addEventListener: function (t, fn) { (winListeners[t] = winListeners[t] || []).push(fn); },
-    dispatchEvent: function (ev) { (winListeners[ev.type] || []).forEach(function (fn) { fn(ev); }); return true; },
+    dispatchEvent: function (ev) { var l = winListeners[ev.type] || []; dispatched.push({ type: ev.type, listeners: l.length }); l.forEach(function (fn) { fn(ev); }); return true; },
     CustomEvent: function (type, init) { this.type = type; this.detail = init && init.detail; },
     Event: function (type, init) { this.type = type; this.bubbles = !!(init && init.bubbles); },
     RevampChat: kit,
     RevampStore: o.store || undefined,
     RevampAuth: o.noAuth ? undefined : {
-      whenResolved: function () { return Promise.resolve(); },
+      whenResolved: function () { return authReady || Promise.resolve(); },
       currentUser: function () { return o.signedOut ? null : { displayName: 'Asha Rao', email: 'asha.rao@timesinternet.in' }; },
       authedFetch: function (url, opts) {
         calls.push({ url: url, method: opts && opts.method, body: opts && opts.body ? JSON.parse(opts.body) : undefined });
@@ -168,6 +177,10 @@ function shellPage(o) {
   Object.keys(o.brains || {}).forEach(function (n) { A.registerBrain(n, o.brains[n]); });
   return settle().then(function () {
     return { ctx: ctx, A: A, kit: kit, clock: clock, calls: calls, assigned: assigned, scripts: scripts, anchors: anchors, mount: mount, winListeners: winListeners,
+      dispatched: dispatched,
+      /* the page has been read: DOMContentLoaded, its listeners in the order they were added */
+      fireReady: function () { doc.readyState = 'interactive'; (docListeners.DOMContentLoaded || []).slice().forEach(function (fn) { fn({ type: 'DOMContentLoaded' }); }); },
+      resolveAuth: function () { if (resolveAuth) resolveAuth(); },
       opts: function () { return kit && kit.mounts[0] ? kit.mounts[0].opts : null; } };
   });
 }
@@ -230,6 +243,34 @@ function fakeBrain(name, script) {
     var a = P0.A.place();
     return same(a, { page: 'dashboard', eventId: '', tab: '' });
   })());
+  /* the event is the one the page opened with; only the console's section and Promotions' tab are read afresh */
+  var Ppin = await shellPage({ page: 'console', path: '/edit-event.html', search: '?event=qa-main', hash: '#content/speakers', brains: { dash: fakeBrain('dash') } });
+  Ppin.ctx.location.hash = '#settings/seo';
+  check('S.2 place(): the console\'s section is read afresh', same(Ppin.A.place(), { page: 'console', eventId: 'qa-main', tab: 'settings/seo' }), Ppin.A.place());
+  Ppin.ctx.location.search = '?event=qa-other';
+  check('S.2 …but the event stays the one the page opened with', Ppin.A.place().eventId === 'qa-main');
+  var Ppt = await shellPage({ page: 'promotions', path: '/marketing.html', search: '?event=qa-main&tab=posts', brains: { dash: fakeBrain('dash') } });
+  Ppt.ctx.location.search = '?event=qa-main&tab=mailers';
+  check('S.2 …Promotions\' tab too', same(Ppt.A.place(), { page: 'promotions', eventId: 'qa-main', tab: 'mailers' }));
+  var alB = fakeBrain('dash'), alDrew = 0;
+  alB.loadHistory = function () { alDrew++; return Promise.resolve(0); };
+  var Pal = await shellPage({ page: 'activity-log', path: '/activity-log.html', search: '', brains: { dash: alB } });
+  await Pal.opts().loadHistory(Pal.kit.chat);
+  Pal.ctx.location.search = '?event=qa-main';      // the Event filter, written into the address in place
+  await Pal.opts().send('How many registrations are there?', {});
+  check('S.2 the activity log opened with no event, then filtered to one: the message goes as the conversation shown (no event), so it is stored there',
+    alB.sent.length === 1 && alB.sent[0].opts.place.eventId === '' && Pal.opts().scope === 'Your events' && alDrew === 1 &&
+    !Pal.calls.some(function (c) { return /chat\/history/.test(c.url); }) && Pal.opts().attach.label === 'Attach a brief (PDF or text) or a logo', alB.sent[0] && alB.sent[0].opts.place);
+  var alB2 = fakeBrain('dash');
+  var Pal2 = await shellPage({ page: 'activity-log', path: '/activity-log.html', search: '?event=qa-main', brains: { dash: alB2 } });
+  Pal2.ctx.location.search = '?event=qa-two';
+  await Pal2.opts().send('How many registrations here?', {});
+  Pal2.ctx.location.search = '';
+  await Pal2.opts().send('And yesterday?', {});
+  check('S.2 …opened with an event, then switched to another or to All events: every message stays that event\'s, as the panel shows',
+    alB2.sent.length === 2 && alB2.sent.every(function (x) { return x.opts.place.eventId === 'qa-main'; }) && Pal2.opts().scope === 'This event' &&
+    Pal2.opts().attach.label === 'Attach a picture', alB2.sent.map(function (x) { return x.opts.place; }));
+
   var never = [
     ['in a frame (a framed studio)', { page: 'promotions', framed: true, search: '?event=qa-main' }],
     ['in a frame of another site (top cannot even be read)', { page: 'console', crossFrame: true, search: '?event=qa-main' }],
@@ -260,7 +301,7 @@ function fakeBrain(name, script) {
   var PIC = [{ id: 'a1', name: 'p.jpg', kind: 'image' }];
   var CORPUS = [
     ['undo', 'undo'], ['undo', 'Undo that'], ['undo', 'undo it'], ['undo', 'undo this.'], ['undo', 'Put it back'], ['undo', 'revert'], ['undo', 'Revert that!'],
-    ['undo', 'revert it'], ['undo', 'go back'], ['undo', '  Take it back.  '],
+    ['undo', 'revert it'], ['undo', 'Take that back'], ['undo', '  Take it back.  '],
     ['edit', 'Make the hero darker'], ['edit', 'Change the hero tagline to “Where retail meets tech”'], ['edit', 'Shorten the overview to two sentences'],
     ['edit', 'Rewrite the hero tagline to sound more premium'], ['edit', 'What can you change on this page?'], ['edit', 'Use a navy background for the agenda section'],
     ['edit', 'Make the buttons rounder'], ['edit', 'Add a short FAQ section about parking'], ['edit', 'Swap the font to something more modern'],
@@ -286,6 +327,9 @@ function fakeBrain(name, script) {
   check('S.3 …and every undo phrase right (it runs with no AI call)', !wrong.some(function (w) { return w[1] === 'undo' || w[2] === 'undo'; }), wrong);
   console.log('etb2b-assistant: the router got ' + (60 - wrong.length) + ' of 60 right' + (wrong.length ? '; missed: ' + wrong.map(function (w) { return '“' + w[0] + '” (' + w[1] + ' → ' + w[2] + ')'; }).join(', ') : ''));
   check('S.3 an undo phrase inside a longer message is a message, not an undo', Pb.A.route('undo the hero change and make it blue', [], {}) === 'edit' && Pb.A.route('can you go back to the dashboard', [], {}) === 'dash');
+  check('S.3 a bare "go back" could be either: it is asked about, never taken as an undo; "go back to …" names its place',
+    ['go back', 'Go back.', 'GO BACK!', '  go back  '].every(function (t) { return Pb.A.route(t, [], {}) === 'ask'; }) &&
+    Pb.A.route('Go back to the console', [], {}) === 'dash' && Pb.A.route('go back to the hero section', [], {}) === 'edit');
 
   /* in the editor: the rule, one hop, local undo */
   var editB = fakeBrain('edit', function (t) { return /handoff/.test(t) ? { kind: 'handoff' } : { kind: 'edit', turnId: 'TurnEdit01' }; });
@@ -310,6 +354,12 @@ function fakeBrain(name, script) {
   check('S.3 a question goes to the dash brain (no Sonnet call, no screenshot)', dashE.sent.length === 1 && editB.sent.length === 1);
   await eo.send('undo that', {});
   check('S.3 "undo that": the editor\'s own undo, no brain asked', editB.undos === 1 && editB.sent.length === 1 && dashE.sent.length === 1);
+  var nAsk = Pe.kit.chat.bubbles.length;
+  var asked = await eo.send('go back', {});
+  check('S.3 "go back" in the editor: one line asks which was meant; nothing undone, no brain asked', asked && asked.kind === 'ask' && editB.undos === 1 &&
+    editB.sent.length === 1 && dashE.sent.length === 1 && Pe.kit.chat.bubbles.length === nAsk + 1 &&
+    Pe.kit.chat.bubbles[nAsk].content === 'Do you want me to undo my last change, or open another page? Say “undo that”, or name the page, for example “go back to the console”.',
+    Pe.kit.chat.bubbles.slice(nAsk).map(function (b) { return b.content; }));
   await eo.send('handoff me, please', {});
   check('S.3 the editor hands off once: the dash brain gets it with handedFrom "edit"', editB.sent.length === 2 && dashE.sent.length === 2 && dashE.sent[1].opts.handedFrom === 'edit');
   await eo.send('how many handoff here?', {});
@@ -324,6 +374,77 @@ function fakeBrain(name, script) {
   check('S.3 Stop reaches the brain that is answering', editB.stops === 1);
   Pe.A.leave('/edit-event.html?event=qa-main#content/speakers');
   check('S.3 leave(): through the editor\'s own leave (its dialog for unsaved work), never location.assign', same(adapter.left, ['/edit-event.html?event=qa-main#content/speakers']) && Pe.assigned.length === 0);
+  /* "undo that" goes to the brain whose change in this panel is the newest (time as each brain reports it) */
+  var clockNow = 1000000;
+  function FakeDate() { this.v = clockNow; }
+  FakeDate.prototype.getTime = function () { return this.v; };
+  FakeDate.now = function () { return clockNow; };
+  var dashAt = 0;
+  var dashU = fakeBrain('dash', function () { dashAt = clockNow; return { kind: 'portal', turnId: 'TurnSwitch01' }; });
+  dashU.changedAt = function () { return dashAt; };
+  dashU.undoLocal = function () { dashU.undos++; dashAt = 0; return Promise.resolve({ ok: true, kind: 'portal' }); };
+  var editU = fakeBrain('edit', function () { return { kind: 'edit', turnId: 'TurnEditU001', status: 'applied' }; });
+  editU.undoLocal = function () { editU.undos++; return Promise.resolve({ ok: true }); };
+  var Pu = await shellPage({ page: 'editor', path: '/custom_editor.html', search: '?slug=qa-main', globals: { Date: FakeDate }, brains: { dash: dashU, edit: editU } });
+  Pu.A.registerPlace({});
+  var uo = Pu.opts();
+  clockNow += 1000; await uo.send('Make the hero darker', {});
+  clockNow += 1000; await uo.send('Switch to ETAuto', {});
+  check('S.3 undo: the page change went to the editor, the portal switch to the dash brain', editU.sent.length === 1 && dashU.sent.length === 1);
+  await uo.send('undo that', {});
+  check('S.3 …"undo that" after the portal switch: the dash brain switches back, no AI call, and the page change stays', dashU.undos === 1 && editU.undos === 0 && dashU.sent.length === 1 && editU.sent.length === 1);
+  await uo.send('undo that', {});
+  check('S.3 …"undo that" again: now the page change, by the editor', editU.undos === 1 && dashU.undos === 1);
+  await uo.send('undo', {});
+  check('S.3 …with nothing of the dash brain standing, the editor\'s own undo as before (its newest change still on the page)', editU.undos === 2 && dashU.undos === 1);
+  clockNow += 1000; await uo.send('Switch to ETAuto', {});
+  clockNow += 1000; await uo.send('Make the hero darker', {});
+  await uo.send('undo that', {});
+  check('S.3 …a page change after a portal switch is the newest: the editor undoes it', editU.undos === 3 && dashU.undos === 1);
+  await uo.send('undo that', {});
+  check('S.3 …then the portal switch, by the dash brain', dashU.undos === 2 && editU.undos === 3);
+  clockNow += 1000; await uo.send('Make the hero darker', {}); await uo.send('Switch to ETAuto', {});
+  await uo.send('undo that', {});
+  check('S.3 …two changes in the same millisecond: the brain that answered last', dashU.undos === 3 && editU.undos === 3);
+  /* the editor's own AI may undo too ("please take away what you just did" is not a fixed phrase): it counts */
+  var editV = fakeBrain('edit', function (t) { return /take away/.test(t) ? { kind: 'undo', turnId: 'TurnEditV002', status: 'undone' } : { kind: 'edit', turnId: 'TurnEditV001', status: 'applied' }; });
+  editV.undoLocal = function () { editV.undos++; return Promise.resolve({ ok: true }); };
+  var dashAtV = 0;
+  var dashV = fakeBrain('dash', function () { dashAtV = clockNow; return { kind: 'portal', turnId: 'TurnSwitch02' }; });
+  dashV.changedAt = function () { return dashAtV; };
+  dashV.undoLocal = function () { dashV.undos++; dashAtV = 0; return Promise.resolve({ ok: true }); };
+  var Pv = await shellPage({ page: 'editor', path: '/custom_editor.html', search: '?slug=qa-main', globals: { Date: FakeDate }, brains: { dash: dashV, edit: editV } });
+  Pv.A.registerPlace({});
+  clockNow += 1000; await Pv.opts().send('Switch to ETAuto', {});
+  clockNow += 1000; await Pv.opts().send('Make the hero darker', {});
+  clockNow += 1000; await Pv.opts().send('please take away what you just did on the hero', {});
+  await Pv.opts().send('undo that', {});
+  check('S.3 …a page change the editor\'s AI already undid no longer counts: "undo that" then switches the portal back', dashV.undos === 1 && editV.undos === 0, [dashV.undos, editV.undos]);
+  check('S.3 …no undo ever reached a brain\'s send (no AI call)', editU.sent.every(function (x) { return x.text !== 'undo that' && x.text !== 'undo'; }) && dashU.sent.every(function (x) { return x.text !== 'undo that'; }));
+
+  /* the same with the real dash brain: "switch to ETAuto" in the editor, then "undo that" */
+  var working = [], cachedPortal = 'hr';
+  var portalsR = { setWorking: function (to) { working.push(to); cachedPortal = to; return Promise.resolve(); }, cachedWorking: function () { return cachedPortal; } };
+  var editR = fakeBrain('edit');
+  editR.undoLocal = function () { editR.undos++; return Promise.resolve({ ok: true }); };
+  var SWITCH = { turnId: 'TurnSwitch0009', kind: 'portal', parts: [{ t: 'text', v: 'Switching to ETAuto.' }], list: null, action: { type: 'portal', portal: 'auto', label: 'ETAuto' }, choices: null, notes: [] };
+  var Prd = await shellPage({ page: 'editor', path: '/custom_editor.html', search: '?slug=qa-main', dash: true, brains: { edit: editR }, globals: { RevampPortals: portalsR },
+    answer: function (u) { return u === '/api/dash-bot' ? { status: 200, body: SWITCH } : null; } });
+  Prd.A.registerPlace({});
+  function aiCalls(Pp) { return Pp.calls.filter(function (c) { return c.url === '/api/dash-bot'; }).length; }
+  await Prd.opts().send('Switch to ETAuto', {});
+  await settle();
+  check('S.3 the real dash brain in the editor: "Switch to ETAuto" moves the working portal (one AI call)', aiCalls(Prd) === 1 && same(working, ['auto']), [aiCalls(Prd), working]);
+  await Prd.opts().send('undo that', {});
+  await settle();
+  var lastRd = Prd.kit.chat.bubbles[Prd.kit.chat.bubbles.length - 1];
+  check('S.3 …"undo that" switches back at once: no AI call, the editor\'s undo not used, the panel says so',
+    aiCalls(Prd) === 1 && same(working, ['auto', 'hr']) && editR.undos === 0 && lastRd && lastRd.content === Prd.ctx.RevampDashBot.TEXT.portalUndone, [aiCalls(Prd), working, editR.undos, lastRd && lastRd.content]);
+  check('S.3 …and the turn is reported undone, in the event\'s conversation', Prd.calls.some(function (c) {
+    return c.url === '/api/dash-bot/turn' && c.body && c.body.turnId === 'TurnSwitch0009' && c.body.status === 'undone' && c.body.eventId === 'qa-main'; }), Prd.calls.map(function (c) { return c.url; }));
+  await Prd.opts().send('undo that', {});
+  check('S.3 …"undo that" once more: nothing of the dash brain left, so the editor\'s own undo', editR.undos === 1 && aiCalls(Prd) === 1 && same(working, ['auto', 'hr']));
+
   var routed = [];
   var Pr = await shellPage({ page: 'editor', search: '?slug=qa-main', brains: { dash: fakeBrain('dash'), edit: fakeBrain('edit') } });
   Pr.A.registerPlace({ route: function (t, recs, p) { routed.push([t, p.page]); return 'dash'; } });
@@ -455,6 +576,13 @@ function fakeBrain(name, script) {
     [{ status: 503, body: { code: 'ai-unavailable', retryable: false } }, 'ETB2B AI is busy right now. Nothing was changed. Try again in a minute.', 'retry'],
     [{ status: 504, body: { code: 'ai-timeout', timeoutMs: 45000 } }, 'ETB2B AI is busy right now. Nothing was changed. Try again in a minute.', 'retry'],
     [{ status: 502, body: { code: 'ai-bad-output' } }, 'ETB2B AI gave an answer it couldn’t use. Nothing was changed. Try again.', 'retry'],
+    [{ status: 502, body: { code: 'ai-rejected', retryable: false, error: 'The AI service could not take this request. Tell the Revamp team.' } },
+      'ETB2B AI couldn’t take that request. Nothing was changed. Try saying it another way, or remove an attachment.', 'no-retry'],
+    [{ status: 502, body: { code: 'ai-rejected' } }, 'ETB2B AI couldn’t take that request. Nothing was changed. Try saying it another way, or remove an attachment.', 'no-retry'],
+    [{ status: 502, body: { code: 'ai-overloaded', error: 'Something new went wrong. Tell the Revamp team.' } }, 'ETB2B AI couldn’t answer that. Nothing was changed. Try again, or say it another way.', 'retry'],
+    [{ status: 422, body: { code: 'ai-new-refusal', retryable: false } }, 'ETB2B AI couldn’t answer that. Nothing was changed. Try again, or say it another way.', 'no-retry'],
+    [{ status: 500, body: { code: 'module-unavailable', error: 'Something failed. Tell the Revamp team.' } }, 'ETB2B AI didn’t answer. Nothing was changed. Try again.', 'retry'],
+    [{ status: 429, body: { code: 'chat-rate', error: 'Slow down, says Revamp CMS.' } }, 'That is a lot of messages in a short time. Please wait a few minutes and try again.', 'retry'],
     [{ status: 502, body: null }, 'ETB2B AI didn’t answer. Nothing was changed. Try again.', 'retry'],
     [{ status: 0, body: null }, 'ETB2B AI didn’t answer. Nothing was changed. Try again.', 'retry'],
     [{ status: 413, body: null }, 'That message and its attachments are too large to send. Remove an attachment and try again.', 'no-retry'],
@@ -466,6 +594,11 @@ function fakeBrain(name, script) {
   TABLE.forEach(function (row) { var got = msg(row[0]); check('S.6 ' + JSON.stringify(row[0]).slice(0, 70) + ' → ' + row[1].slice(0, 40), got[0] === row[1] && got[1] === row[2], got); });
   check('S.6 in the editor the same sentence says "Your page is unchanged."', E({ status: 502, body: { code: 'ai-bad-output' } }, EDIT).message === 'ETB2B AI gave an answer it couldn’t use. Your page is unchanged. Try again.' &&
     E({ status: 503, body: { code: 'ai-config' } }, EDIT).message === 'ETB2B AI is switched off right now. Your page is unchanged. Please tell the Oneworld 2.0 support team.');
+  check('S.6 ai-rejected in the editor: "Your page is unchanged."', E({ status: 502, body: { code: 'ai-rejected', retryable: false } }, EDIT).message === 'ETB2B AI couldn’t take that request. Your page is unchanged. Try saying it another way, or remove an attachment.' &&
+    E({ status: 502, body: { code: 'ai-something' } }, EDIT).message === 'ETB2B AI couldn’t answer that. Your page is unchanged. Try again, or say it another way.');
+  var saidAll = [];
+  TABLE.forEach(function (row) { saidAll.push(E(row[0], DASH).message, E(row[0], EDIT).message); });
+  check('S.6 no sentence errorFor gives names the old product, whatever the server said', saidAll.every(function (t) { return !/Revamp/.test(t); }), saidAll.filter(function (t) { return /Revamp/.test(t); }));
   var Poff = await shellPage({ offline: true });
   check('S.6 offline: its sentence', Poff.A.errorFor({ network: new Error('x') }, DASH).message === 'You’re offline. Check your connection and try again.');
   check('S.6 a 401 asks for sign-in', E({ status: 401 }, DASH).signIn === true && E({ network: { status: 401 } }, DASH).signIn === true);
@@ -673,6 +806,45 @@ function fakeBrain(name, script) {
   check('S.8 an event with a bad id, or no files, does nothing', Pce3.kit.chat.bubbles.length === 0);
   var Pdash = await shellPage({ brains: { dash: fakeBrain('dash') } });
   check('S.8 only Create Event listens for it', !(Pdash.winListeners['revamp:prefill-applied'] || []).length);
+
+  /* The real order (create-event.html): the page's own init is added on DOMContentLoaded before this shell's boot, and
+     fills the draft at once (apply() says which files came); the shell starts only once the sign-in check answers. */
+  var roStore = fakeStore();
+  roStore._m['aihandoff:' + ID] = { v: 1, at: Date.now() - 1000, files: [{ n: 1, role: 'logo', name: 'small.png', type: 'image/png', size: 2000, blob: lblob }, { n: 2, role: 'brief', name: 'brief.pdf', type: 'application/pdf', size: 40000, blob: dblob }] };
+  var roShown = { 'logo-cell': false, 'gb-doc-row': false }, roChanges = [];
+  var RO_ELS = { 'f-logo': input('f-logo'), 'gb-doc': input('gb-doc'),
+    'logo-cell': el({ getClientRects: function () { return roShown['logo-cell'] ? [1] : []; } }), 'gb-doc-row': el({ getClientRects: function () { return roShown['gb-doc-row'] ? [1] : []; } }) };
+  var roLs = makeStorage(); roLs.setItem('revamp.createEvent.prefill.v1.' + ID, JSON.stringify(stored));
+  var Pro = await shellPage({ page: 'create-event', path: '/create-event.html', prefill: true, loading: true, authLater: true, store: roStore, els: RO_ELS, globals: G3, brains: { dash: fakeBrain('dash') },
+    beforeShell: function (c) {
+      c.document.addEventListener('DOMContentLoaded', function () {
+        var d = { basics: { category: 'IP', name: '', client: '', portal: '', dateMode: 'exact', start: '', end: '', venue: '', city: '', slug: '', slugTouched: false }, brief: {}, aiHero: null };
+        c.RevampPrefill.apply(d, CATS, c.RevampPrefill.take(roLs, ID), {});
+      });
+    } });
+  Pro.fireReady();
+  await settle();
+  var roSaid = Pro.dispatched.filter(function (d) { return d.type === 'revamp:prefill-applied'; });
+  check('S.8 the real order: Create Event says which files came while nothing listens yet (the shell waits for the sign-in check)',
+    roSaid.length === 1 && roSaid[0].listeners === 0 && Pro.kit.mounts.length === 0 && ('aihandoff:' + ID in roStore._m), roSaid);
+  Pro.resolveAuth();
+  await settle();
+  Pro.clock.tick(0);
+  await settle();
+  check('S.8 …once it answers, the shell reads what was said (lastApplied) and takes the files', Pro.kit.mounts.length === 1 && !('aihandoff:' + ID in roStore._m) &&
+    (Pro.winListeners['revamp:prefill-applied'] || []).length === 1);
+  RO_ELS['f-logo'].onchange = function (ev) { roChanges.push(['logo', ev.type, RO_ELS['f-logo']._files[0].name]); };
+  RO_ELS['gb-doc'].onchange = function (ev) { roChanges.push(['brief', ev.type, RO_ELS['gb-doc']._files[0].name]); };
+  roShown['logo-cell'] = true; roShown['gb-doc-row'] = true;
+  Pro.clock.tick(500);
+  check('S.8 …and both files still arrive in Create Event\'s own boxes, through their own change handlers', same(roChanges, [['logo', 'change', 'small.png'], ['brief', 'change', 'brief.pdf']]), roChanges);
+  Pro.ctx.dispatchEvent(new Pro.ctx.CustomEvent('revamp:prefill-applied', { detail: { id: ID, files: [{ role: 'logo', name: 'small.png' }] } }));
+  Pro.clock.tick(0);
+  await settle();
+  Pro.clock.tick(5000);
+  check('S.8 …each id is taken once, however it is told (the same event again does nothing and says nothing)', roChanges.length === 2 && Pro.kit.chat.bubbles.length === 0,
+    [roChanges, Pro.kit.chat.bubbles.map(function (b) { return b.content; })]);
+  check('S.8 …and lastApplied() is read once', Pro.ctx.RevampPrefill.lastApplied() === null);
 
   if (failed) { console.error('etb2b-assistant: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('etb2b-assistant: all ' + passed + ' checks passed');

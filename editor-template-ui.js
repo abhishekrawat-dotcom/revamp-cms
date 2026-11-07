@@ -3885,6 +3885,12 @@
     notReady: 'The page is still loading. Send your message again in a moment.',
     stoppedWaiting: 'Stopped. Nothing was changed.',
     stopping: 'Stopping after the step in progress…',
+    /* the change's own Stop, on its card while it is being applied (the panel's Stop is for a message still waiting
+       for its answer: that one gives the words back for Try again, which here would make the same change twice) */
+    stop: 'Stop',
+    stopLabel: 'Stop this change',
+    stopTitle: 'Stop after the step in progress. What is already done stays on the page, and Undo takes it back.',
+    stopPressed: 'Stopping…',
     stoppedStep: 'not done — you pressed Stop',
     stoppedReplay: 'Stopped — nothing on the page changed.',
     notKept: 'This message could not be saved to your conversation history; the answer below still stands.',
@@ -4563,6 +4569,10 @@
     function stopStep(st) { t.stoppedSteps++; st.set('fail', CHAT_TEXT.stoppedStep); }
     card.onProgress = function (n, of) { if (!t.stopAsked) setChatStatus('working', 'Applying your change — ' + n + ' of ' + of + ' steps done'); };
     card.onProgress(0, card.count());
+    /* Stop is on this card from now on: the panel offers its own Stop only while a message waits for its answer
+       (editor-chat-client.js), as that one puts the message back for Try again. The box stays locked, saying so,
+       until the step in progress has ended. */
+    card.offerStop(function () { if (chatStop()) setChatStatus('working', CHAT_TEXT.stopping); });
 
     /* the new picture first (it takes about half a minute; nothing on the page has changed while it is made), then
        forms: a button or an embed can only point at a form that exists. If one cannot be made, those already made
@@ -4597,6 +4607,8 @@
       var keptPic = keepMadePicture('The new picture');
       var formsLeft = t.formsLeft ? ' ' + (t.formsLeft === 1 ? 'The form was' : 'The ' + t.formsLeft + ' forms were') + ' made before you pressed Stop: find ' + (t.formsLeft === 1 ? 'it' : 'them') + ' in the Forms panel.' : '';
       card.note((stopped ? 'Stopped. ' : '') + 'Nothing on the page changed.' + (keptPic ? ' ' + keptPic : '') + formsLeft);
+      // nothing to undo: a keyboard user who pressed the card's Stop is put back in the message box
+      if (card.stopHadFocus && viewCan('focusInput')) chatView.focusInput();
       reportTurn(t.turnId, t.status, [], [stopped ? 'stopped before anything on the page was changed' : why]);
       setAiWorking(false);
       return t;
@@ -4939,7 +4951,8 @@
     host.appendChild(el);
     var list = el.querySelector('.ai-task-steps'), bar = el.querySelector('.ai-task-bar i'), note = el.querySelector('.ai-task-note');
     var steps = [];
-    var api = { el: el, foot: el.querySelector('.ai-task-foot'), onProgress: null };
+    var api = { el: el, foot: el.querySelector('.ai-task-foot'), onProgress: null, stopHadFocus: false };
+    var stopBtn = null;
     function progress() {
       var n = steps.filter(function (s) { return s.state === 'done' || s.state === 'fail'; }).length;
       bar.style.width = steps.length ? Math.round(100 * n / steps.length) + '%' : '0';
@@ -5007,6 +5020,33 @@
       el.className = 'ai-task is-' + kind;
       el.querySelector('.ai-task-title').textContent = TASK_TITLE[kind] || '';
       el.querySelector('.ai-task-badge').textContent = TASK_BADGE[kind] || '';
+      // the change has ended: its Stop goes (finishAiCard puts Undo where it was, and the focus on it)
+      if (kind !== 'run' && stopBtn) {
+        api.stopHadFocus = document.activeElement === stopBtn;
+        if (stopBtn.parentNode) stopBtn.parentNode.removeChild(stopBtn);
+        stopBtn = null;
+        if (!api.foot.firstChild) api.foot.hidden = true;
+      }
+    };
+    /* Stop while the change is being applied (runAiTurn): in the card's foot, where its Undo comes once it ends.
+       Pressed once; fn asks the change to stop before its next step. */
+    api.offerStop = function (fn) {
+      api.foot.textContent = '';
+      stopBtn = document.createElement('button');
+      stopBtn.type = 'button';
+      stopBtn.className = 'btn btn-secondary btn-sm chat-stop';
+      stopBtn.textContent = CHAT_TEXT.stop;
+      stopBtn.setAttribute('aria-label', CHAT_TEXT.stopLabel);
+      stopBtn.title = CHAT_TEXT.stopTitle;
+      var b = stopBtn;
+      b.addEventListener('click', function () {
+        if (b.disabled) return;
+        b.disabled = true;
+        b.textContent = CHAT_TEXT.stopPressed;
+        fn();
+      });
+      api.foot.appendChild(b);
+      api.foot.hidden = false;
     };
     api.note = function (text) { note.textContent = text || ''; note.hidden = !text; };
     api.status('run');
@@ -5018,7 +5058,11 @@
   function finishAiCard(t, kept) {
     var card = t.card;
     card.status(t.status === 'applying' ? 'run' : t.status);
-    if (t.status === 'failed' || t.status === 'stopped') { card.note((t.status === 'stopped' ? 'Stopped. ' : '') + 'Nothing on the page changed.' + (kept ? ' ' + kept : '')); return; }
+    if (t.status === 'failed' || t.status === 'stopped') {
+      card.note((t.status === 'stopped' ? 'Stopped. ' : '') + 'Nothing on the page changed.' + (kept ? ' ' + kept : ''));
+      if (card.stopHadFocus && viewCan('focusInput')) chatView.focusInput();
+      return;
+    }
     if (kept) card.note(kept);
     var foot = card.foot;
     foot.textContent = '';
@@ -5027,6 +5071,7 @@
     b.title = 'Put the page back to how it was before this change';
     b.addEventListener('click', function () { undoAiTurn(t); });
     foot.appendChild(b);
+    if (card.stopHadFocus) { card.stopHadFocus = false; b.focus(); }
     if (t.startedAt) {
       var took = document.createElement('span'); took.className = 'ai-task-time';
       took.textContent = 'Took ' + Math.max(1, Math.round((Date.now() - t.startedAt) / 1000)) + 's';

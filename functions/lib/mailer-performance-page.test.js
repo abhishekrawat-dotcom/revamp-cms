@@ -39,10 +39,11 @@ check('the bar is 60px tall with a 1px border, as the frame\'s 61px assumes',
   /\.nav-inner\{[^}]*\bheight:60px;/.test(page) && /\.nav\{[^}]*border-bottom:1px solid/.test(page) && count(page, '- 61px)') === 2, page.match(/- \d+px\)/g));
 
 /* scripts: the theme bootstrap (before anything paints), then theme-toggle.js, then auth.js — the page has no code
-   of its own, the dashboard is the frame's */
+   of its own, the dashboard is the frame's — then ETB2B AI's three, as on every page (assistant-pages.test.js) */
 var scripts = page.match(/<script\b[^>]*>/g) || [];
-check('three scripts: the theme bootstrap, theme-toggle.js, auth.js — in that order',
-  scripts.length === 3 && scripts[0] === '<script>' && scripts[1] === '<script src="theme-toggle.js">' && scripts[2] === '<script src="auth.js">', scripts);
+check('six scripts: the theme bootstrap, theme-toggle.js, auth.js, then ETB2B AI\'s etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js — in that order',
+  scripts.length === 6 && scripts[0] === '<script>' && scripts[1] === '<script src="theme-toggle.js">' && scripts[2] === '<script src="auth.js">' &&
+  scripts[3] === '<script src="etb2b-chat.js">' && scripts[4] === '<script src="dash-bot-client.js">' && scripts[5] === '<script src="etb2b-assistant.js">', scripts);
 check('the theme bootstrap runs in the head, before the styles', page.indexOf('<script>try{var t=localStorage.getItem("revamp-theme")') < page.indexOf('<style>') &&
   page.indexOf('<style>') < page.indexOf('</head>'));
 check('theme-toggle.js and auth.js load at the end of the body', page.indexOf('<script src="theme-toggle.js">') > page.indexOf('</main>') &&

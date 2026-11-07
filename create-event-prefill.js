@@ -20,16 +20,20 @@
      RevampPrefill.takeFiles(store, id[, nowMs]) -> Promise<{ files, refused } | null>   the logo and brief file that
                                                 came with the details (IndexedDB, RevampStore), read once and checked
                                                 again with this page's own rules
+     RevampPrefill.lastApplied()             -> { id, files } | null   what apply() last told the page, read once: the
+                                                assistant starts after the page has filled its draft, so it reads this
+                                                as well as listening for the event
 
    FILES (the owner, 5 Nov 2026: "don't forget to add attachment option in the AI Bot"). A logo picture and a brief
    PDF attached to "start a new event …" on another page come too. The prefill names them (p.files: [{ n, role:
    'logo'|'brief', name, type, size }]); the files themselves wait in this browser's IndexedDB under
    aihandoff:<id> (etb2b-assistant.js handoffFiles). apply() keeps the ones this page's own boxes take (a PNG, WEBP
    or SVG logo of up to 5 MB; a PDF of up to 15 MB), names them in the sentence over step 1, names any it cannot
-   use, and then tells the page (window event 'revamp:prefill-applied' { id, files }). The assistant then puts each
-   file into the page's own input (#f-logo, #gb-doc) once the form showing it is on screen, so the page's own checks
-   and messages run. A brief file means the "Generate from a brief" path; nothing is generated until the person
-   presses Generate, and that path makes no separate hero picture.
+   use, and then tells the page (window event 'revamp:prefill-applied' { id, files }, also kept for lastApplied(),
+   since the assistant usually starts after this has happened). The assistant then puts each file into the page's
+   own input (#f-logo, #gb-doc) once the form showing it is on screen, so the page's own checks and messages run.
+   A brief file means the "Generate from a brief" path; nothing is generated until the person presses Generate, and
+   that path makes no separate hero picture.
 
    A HERO PICTURE (the owner, 3 Nov 2026). An event ETB2B AI starts also asks for a first hero picture
    (p.hero = { subject }: the person's own words for it, or '' for the event's field, which its portal sets, and
@@ -309,10 +313,20 @@
       });
     }, function () { return null; });
   }
+  /* What apply() last told the page, kept until the assistant reads it (lastApplied). Create Event fills its draft
+     as soon as the page has loaded, before the assistant has started (it waits for the sign-in check), so the
+     event below has nobody listening yet on a normal load: the assistant reads this instead. */
+  var lastAnnounced = null;
+  function lastApplied() {
+    var d = lastAnnounced;
+    lastAnnounced = null;
+    return d ? { id: d.id, files: d.files.map(function (f) { return { role: f.role, name: f.name }; }) } : null;
+  }
   /* tells the page's assistant which files to put into its boxes (a browser only; nothing in node) */
   function announce(id, files) {
-    if (!root || typeof root.dispatchEvent !== 'function') return;
     var detail = { id: id, files: files.map(function (f) { return { role: f.role, name: f.name }; }) };
+    lastAnnounced = detail;
+    if (!root || typeof root.dispatchEvent !== 'function') return;
     var ev = null;
     try { ev = new root.CustomEvent('revamp:prefill-applied', { detail: detail }); } catch (e) {
       try { ev = root.document.createEvent('CustomEvent'); ev.initCustomEvent('revamp:prefill-applied', false, false, detail); } catch (e2) { ev = null; }
@@ -592,6 +606,7 @@
   return {
     PREFIX: PREFIX, MAX_AGE_MS: MAX_AGE_MS, ID_RE: ID_RE, DATE_MODES: DATE_MODES, DEFAULT_DATE_MODE: DEFAULT_DATE_MODE, SUBJECT_MAX: SUBJECT_MAX,
     FILES_PREFIX: FILES_PREFIX, FILES_INDEX: FILES_INDEX, LOGO_TYPES: LOGO_TYPES, LOGO_MAX: LOGO_MAX, BRIEF_TYPES: BRIEF_TYPES, BRIEF_DOC_MAX: BRIEF_DOC_MAX,
-    take: take, decide: decide, apply: apply, describe: describe, summary: summary, heroLine: heroLine, takeFiles: takeFiles
+    take: take, decide: decide, apply: apply, describe: describe, summary: summary, heroLine: heroLine, takeFiles: takeFiles,
+    lastApplied: lastApplied
   };
 });

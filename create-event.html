@@ -1896,6 +1896,9 @@
 <link rel="stylesheet" href="motion.css">
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
+<!-- …out of sight while one of this page's dialogs is open: their scrim (z 60) is under the launcher (65) and the
+     panel (69), so they would draw over the dialog and its buttons. #modal-root is empty whenever no dialog is open. -->
+<style>#modal-root:not(:empty) ~ #rv-assistant .rvc{ visibility:hidden; }</style>
 
 <div class="wiz">
   <!-- ============ TOP: brand + progress rail ============ -->

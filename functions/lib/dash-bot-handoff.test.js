@@ -947,6 +947,15 @@ async function e1f() {
   heard.length = 0;
   win.RevampPrefill.apply(freshS(), freshCats(), win.RevampPrefill.take(fakeStorage((function () { var o = {}; o[PFX + ID] = JSON.stringify(stored()); return o; })()), ID, NOW), { slugify: SLUGIFY });
   check('E.1f …and with no files too (files: [])', heard.length === 1 && JSON.stringify(heard[0].detail.files) === '[]', heard);
+  /* the assistant starts after Create Event has filled its draft (it waits for the sign-in check): it reads this */
+  win.RevampPrefill.lastApplied();
+  check('E.1f lastApplied(): nothing before apply()', win.RevampPrefill.lastApplied() === null);
+  win.RevampPrefill.apply(freshS(), freshCats(), win.RevampPrefill.take(fakeStorage((function () { var o = {}; o[PFX + ID] = JSON.stringify(stored({ files: [LOGO, DOC] })); return o; })()), ID, NOW), { slugify: SLUGIFY });
+  var la = win.RevampPrefill.lastApplied();
+  check('E.1f lastApplied(): what apply() told the page, { id, files: [{ role, name }] }', JSON.stringify(la) === JSON.stringify({ id: ID, files: [{ role: 'logo', name: 'small.png' }, { role: 'brief', name: 'brief.pdf' }] }), la);
+  check('E.1f …read once', win.RevampPrefill.lastApplied() === null);
+  var laNode = (function () { Prefill.lastApplied(); Prefill.apply(freshS(), freshCats(), takeOne(stored({ files: [LOGO] })).got, { slugify: SLUGIFY }); return Prefill.lastApplied(); })();
+  check('E.1f …kept in node too, where there is no window to tell', !!laNode && laNode.id === ID && laNode.files.length === 1 && laNode.files[0].role === 'logo', laNode);
   var noisy = { CustomEvent: win.CustomEvent, dispatchEvent: function () { throw new Error('a listener broke'); } };
   noisy.window = noisy;
   vm.runInNewContext(PREFILL_SRC, noisy);

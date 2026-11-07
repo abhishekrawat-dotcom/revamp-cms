@@ -51,6 +51,11 @@ check('D.2 <div id="rv-dash-bot"> keeps its place, right before #toast-region, a
   count(PAGE, 'id="rv-dash-bot"') === 1 && mountAt !== -1 && /<div id="rv-dash-bot" data-rv-assistant="dashboard"><\/div>\n<div id="toast-region"><\/div>/.test(PAGE));
 check('D.2 …the only assistant mount on the page, with nothing to keep clear (the toasts may lie over the launcher for their few seconds)',
   count(PAGE, 'data-rv-assistant=') === 1 && PAGE.indexOf('data-keep-clear') === -1);
+/* the launcher sits bottom-right, where a row's ⋯ menu near the foot of the window opens (placeRowMenu pins it to
+   <body>): the menu opens above the launcher (65) and the panel (69), under the dialogs (.modal-scrim, 90) */
+check('D.2 …and one placement line: body > .popover.row-menu{ z-index:70; }, above the assistant, under the dialogs',
+  count(PAGE, 'body > .popover.row-menu{ z-index:70; }') === 1 && PAGE.indexOf('body > .popover.row-menu{ z-index:70; }') < PAGE.indexOf('</style>') &&
+  /\.modal-scrim\{ position:fixed; inset:0; background:rgba\(20,18,12,\.45\); z-index:90;/.test(PAGE) && INLINE.indexOf('document.body.appendChild(panel);') !== -1);
 check('D.2 Create Event is still alone on the toolbar (nothing of the bot\'s added there)', (function () {
   var toolbar = PAGE.slice(PAGE.indexOf('<div class="toolbar-right-group">'), PAGE.indexOf('<div class="chip-row" id="chip-row">'));
   return toolbar.indexOf('id="btn-create-event"') !== -1 && !/ETB2B|rv-dash-bot|rvc-/.test(toolbar);

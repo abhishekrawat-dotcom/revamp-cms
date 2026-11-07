@@ -1243,6 +1243,13 @@ function handleChatTurn(req, res) {
         sendJson(res, 200, { turnId: turnId, status: status });
         if (was.status === status) return;
         var q = '“' + chatLine(was.question) + '”';
+        /* Stop on a question or an "undo that" (kind reply or undo): nothing on the page changed, and its "Asked
+           ETB2B AI … — answered" line is already in the History (handleChatEdit), so the History says only that the
+           person stopped waiting, never that a change was stopped */
+        if (status === 'stopped' && was.kind !== 'edit') {
+          logActivity(fb, eventId, decoded, 'ai-chat', 'Stopped waiting for ETB2B AI\'s answer: ' + q, { area: 'site' });
+          return;
+        }
         /* Stop is the owner's own choice, never "could not apply" (plan §14.16) */
         var detail = status === 'undone' ? 'Undid an ETB2B AI change: ' + q
           : status === 'failed' ? 'ETB2B AI could not apply: ' + q

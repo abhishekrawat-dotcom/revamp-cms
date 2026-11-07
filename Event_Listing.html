@@ -529,6 +529,9 @@
   /* ETB2B AI (bottom-right) replaces this button once it has mounted (etb2b-chat.js sets html.rvc-ready only then):
      its panel's header carries "Email Customer Care". Until then, or if its scripts fail to load, "Need help?" stays. */
   html.rvc-ready .help-fab{ display:none; }
+  /* A row's ⋯ menu, once open, is pinned to the screen from <body> (placeRowMenu) and can reach the bottom-right
+     corner: it opens above ETB2B AI's launcher (65) and panel (69), and under the page's dialogs (90). */
+  body > .popover.row-menu{ z-index:70; }
   .modal-scrim{ position:fixed; inset:0; background:rgba(20,18,12,.45); z-index:90; display:flex; align-items:center; justify-content:center; padding:20px; }
   .modal-card{ background:var(--surface); border-radius:var(--r-lg); max-width:440px; width:100%; box-shadow:var(--shadow-lg); overflow:hidden; }
   .modal-card-head{ padding:16px 18px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }

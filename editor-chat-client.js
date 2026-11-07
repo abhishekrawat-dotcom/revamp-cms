@@ -8,10 +8,12 @@
      - the edit brain: a message sent, Stop, "undo that" with no AI call, the event's conversation read back;
      - the place: the welcome, suggestions and quick ideas for a site page; the "Selected" chip (what is selected
        on the page goes with the message); pictures attached the editor's own way, numbered as the AI is told
-       them; the panel docked as a column beside the canvas in "Edit myself", a half sheet on a narrow "Edit with
-       AI"; leaving the editor only through its own guard for unsaved work (RevampTemplateUI.leave);
-     - the view editor-template-ui.js draws into: an answer with the change's card in it, the busy strip with
-       Stop, the tray, "Show", "Open Content › Speakers";
+       them; the panel docked as a column beside the canvas in "Edit myself" (every width above a phone's), a
+       half sheet on a narrow "Edit with AI", and floating there below the tools rail; leaving the editor only
+       through its own guard for unsaved work (RevampTemplateUI.leave);
+     - the view editor-template-ui.js draws into: an answer with the change's card in it, the busy strip (with
+       Stop while a message waits for its answer; a change being applied has its Stop on its card), the tray,
+       "Show", "Open Content › Speakers";
      - after a change in "Edit with AI" (UX-094): the live view brought to the changed section and outlined
        (RevampEditorMode.show), and, when the open panel would hide it, the panel folded into its bar ("Changed
        “Hero” · Undo · Back to chat"), unless the person is typing in it;
@@ -23,6 +25,7 @@
      TEXT                       every sentence this file says
      goToFor(target, words)     the Content tab (or Forms) an answer points to: the server's goTo, else its words
      contentUrl(eventId, target), focusLabel(focus), isPicture(file), wouldCover(a, b), recFor(url, name, size)
+     DOCK_MIN_WIDTH, PHONE_QUERY  where "Edit myself" docks the panel, and where the editor is a phone's
 
    ES5 on purpose (var, function, promises), as every Oneworld-authored browser file: the editor serves it as it
    is, with no build step. */
@@ -78,8 +81,13 @@
   var PICTURE_EXT = /\.(?:png|jpe?g|webp|gif|svg)$/i;
   var ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg';
   var MAX_PICTURES = 6;               // as the editor's tray always took, and /api/chat-edit numbers them
-  var DOCK_MIN_WIDTH = 1100;          // narrower, a 400 px column would squeeze the canvas: the panel floats there
-  var PHONE_QUERY = '(max-width: 720px)';   // the editor's narrow "Edit with AI" (the page has no viewport meta)
+  /* "Edit myself" docks the open panel as a column at every width above a phone's (PHONE_QUERY): floating, it would
+     lie over the canvas's toolbars and the tools rail's Undo / Redo. Below 1100 px the column is 340 px wide, as
+     the editor's own chat column was (custom_editor.html). */
+  var DOCK_MIN_WIDTH = 721;
+  /* a phone, or a window as narrow: the page has no viewport meta, so a phone lays it out 980 px wide and only its
+     screen's width (the device width) tells; the window's width is the narrow "Edit with AI" on a desktop */
+  var PHONE_QUERY = '(max-device-width: 720px), (max-width: 720px)';
   var HISTORY_WAIT_MS = 6000;         // the carried pictures' note waits this long, at most, for the replay
   var GOTO = { 'content:speakers': 1, 'content:agenda': 1, 'content:sponsors': 1, 'content:faq': 1, 'content:contact': 1, forms: 1 };
   /* where an answer's own words point (UX-098), read only when it says something is entered under Content */
@@ -159,6 +167,14 @@
     try { r = ws && isFn(ws.getBoundingClientRect) ? ws.getBoundingClientRect() : null; } catch (e) { r = null; }
     return r ? Math.max(0, Math.round(r.top)) : 56;
   }
+  /* the floating panel (Edit with AI) keeps its top below the tools rail, whose device switch and Undo / Redo stay
+     in sight: the rail's foot, or the workspace's top while the rail is not shown */
+  function railBottom() {
+    var d = doc(), rail = d && isFn(d.querySelector) ? d.querySelector('.ed-rail') : null;
+    var r = null;
+    try { r = rail && isFn(rail.getBoundingClientRect) ? rail.getBoundingClientRect() : null; } catch (e) { r = null; }
+    return r && r.height > 0 ? Math.max(0, Math.round(r.bottom)) : workspaceTop();
+  }
   /* the canvas measures the room it has on a resize: it is told when the docked column comes or goes */
   function refit() {
     try {
@@ -215,6 +231,7 @@
   }
   function makeView(chat) {
     var U = ui();
+    var shown = 'ready';              // what the editor last said it is doing: ready, thinking or working (applying)
     return {
       ai: function (text, o) {
         o = o || {};
@@ -239,10 +256,15 @@
       },
       divider: function (label) { chat.divider(label); },
       thread: function () { return isFn(chat.thread) ? chat.thread() : null; },
-      /* while ETB2B AI works the box is locked and Stop is offered; ready frees it */
+      /* While ETB2B AI works the box is locked; ready frees it. The panel's Stop is offered only while the message
+         waits for its answer ("thinking"): nothing was used then, so the kit gives the words and pictures back for
+         Try again. Once a change is being applied ("working", "Showing it on the page…") part or all of it is on
+         the page already, and sending the same words again would make it twice: that Stop is on the change's own
+         card (editor-template-ui.js), which keeps what was done, with its Undo. */
       status: function (state, text) {
+        shown = str(state);
         if (state === 'ready') { chat.setBusy(false); return; }
-        chat.setBusy(true, str(text), { onStop: function () { if (U) U.chat.stop(); } });
+        chat.setBusy(true, str(text), { onStop: state === 'thinking' ? function () { if (U) U.chat.stop(); } : null });
       },
       addAttachment: function (url, name) { return isFn(chat.addAttachment) ? chat.addAttachment(recFor(url, name, 0)) === true : false; },
       focusInput: function () { chat.focusInput(); },
@@ -307,15 +329,18 @@
     var chat = chatRef;
     if (!chat) return;
     var ai = isAiMode();
-    // Edit myself: a column beside the canvas (at 1100 px and wider, the kit's rule); Edit with AI: floating
+    // Edit myself: a column beside the canvas (above a phone's width, the kit's rule); Edit with AI: floating
     if (isFn(chat.setDock)) chat.setDock(!ai);
     if (isFn(chat.setPhoneSheet)) chat.setPhoneSheet(ai ? 'half' : 'full');
     syncDockTop();
     refit();
   }
+  /* where the docked column starts (--rvc-dock-top) and the floating panel's top may reach (--rvc-ed-top) */
   function syncDockTop() {
     var w = wrapOf(chatRef);
-    if (w && w.style && isFn(w.style.setProperty)) w.style.setProperty('--rvc-dock-top', workspaceTop() + 'px');
+    if (!w || !w.style || !isFn(w.style.setProperty)) return;
+    w.style.setProperty('--rvc-dock-top', workspaceTop() + 'px');
+    w.style.setProperty('--rvc-ed-top', railBottom() + 'px');
   }
   function onOpenChange(open) {
     var M = modes();
@@ -441,7 +466,9 @@
         onChange: function (fn) { U.chat.onFocusChange(fn); },
         clear: function () { U.chat.clearFocus(); }
       },
-      dock: { minWidth: DOCK_MIN_WIDTH, top: workspaceTop() },
+      // floating (narrower than the dock), the panel never sits on the editor's toolbars (custom_editor.html's
+      // data-keep-clear list): one that comes under it folds it into its bar
+      dock: { minWidth: DOCK_MIN_WIDTH, top: workspaceTop(), foldOver: true },
       phoneSheet: isAiMode() ? 'half' : 'full',
       phoneQuery: PHONE_QUERY,
       // a click in the panel keeps the selected section, the message's reference (as the old column did)
@@ -482,7 +509,7 @@
 
   var api = {
     start: start, TEXT: TEXT, goToFor: goToFor, contentUrl: contentUrl, focusLabel: focusLabel, isPicture: isPicture,
-    wouldCover: wouldCover, recFor: recFor, brain: brain
+    wouldCover: wouldCover, recFor: recFor, brain: brain, DOCK_MIN_WIDTH: DOCK_MIN_WIDTH, PHONE_QUERY: PHONE_QUERY
   };
   root.RevampEditorChat = api;
   if (typeof module === 'object' && module && module.exports) module.exports = api;

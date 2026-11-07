@@ -39,10 +39,11 @@ var portalCode = INLINE.slice(INLINE.indexOf('PORTALS — the dashboard works on
 check('D.3 the portal code is one block, with no link to index.html in it', portalCode.length > 5000 && portalCode.indexOf('index.html') === -1);
 check('D.3 the switcher button says "Portal" until it is known (never a guessed name)', /<button class="mp-btn" id="btn-portals-nav" type="button" aria-haspopup="listbox">\s*Portal\s*<svg/.test(PAGE) && PAGE.indexOf('Brandequity') === -1);
 var scripts = PAGE.match(/<script\b[^>]*>/g) || [];
-/* with ETB2B AI's (8bebdc9): event-lifecycle.js between the picker and the inline script, the chat after it */
-check('D.3 scripts: the theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, then ETB2B AI\'s two',
+/* with ETB2B AI's (8bebdc9): event-lifecycle.js between the picker and the inline script, the chat after it; the one
+   assistant (ai-everywhere) adds etb2b-assistant.js last, as on every page (assistant-pages.test.js) */
+check('D.3 scripts: the theme bootstrap, theme-toggle.js, auth.js, portal-picker.js, event-lifecycle.js, the inline script, then ETB2B AI\'s three',
   JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="event-lifecycle.js">', '<script>',
-    '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">']), scripts);
+    '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">', '<script src="etb2b-assistant.js">']), scripts);
 check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
 check('D.3 the server sends portal-picker.js', require('./access').isServableFile('portal-picker.js') === true && fs.existsSync(path.join(ROOT, 'portal-picker.js')));
 check('D.3 th.col-portal right after "Event name"', count(PAGE, '<th class="col-portal">Portal</th>') === 1 && /<th>Event name<\/th>\n\s*<th class="col-portal">Portal<\/th>/.test(PAGE));

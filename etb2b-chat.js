@@ -13,7 +13,7 @@
              help:{label, onClick}|null, scope:'Your events',
              send(text, {attachments, context}) -> Promise, loadHistory(writer) -> Promise|null,
              onOpenChange(open), onDockChange(docked), startOpen,
-             placement:{right, bottom, compact}, keepClear:'<selectors>', dock:{minWidth, top},
+             placement:{right, bottom, compact}, keepClear:'<selectors>', dock:{minWidth, top, foldOver},
              phoneSheet:'full'|'half', phoneQuery:'(max-width: 600px)', zIndex:{launcher, panel},
              wrapAttrs:{'data-…': '…'},
              attach:{accept, max, numbered, label, hint, needWords, add(file) -> Promise<rec>, remove(rec)} }
@@ -33,12 +33,19 @@
                   compact:true for the round face at every width.
        keepClear  a page's own bars the launcher must never cover (Create Event's footer, the console's save
                   bar): while one is on screen under the launcher, or within 40 px above it, everything the kit
-                  draws moves up to 8 px above that bar (at most 45 % of the window's height).
+                  draws moves up to 8 px above that bar (at most 45 % of the window's height). A bar that slides
+                  in (the console's save bar rises over 280 ms) is measured again when its slide ends.
        dock       the editor's column: at minWidth px and wider, the open panel stands as a full-height column at
                   the right edge, from dock.top down, and html gets rvc-docked so the page can make room.
                   chat.setDock(false) turns it off (the panel then floats like on every other page).
+                  dock.foldOver:true: while the panel floats open (narrower than minWidth), a keepClear bar that
+                  comes under it (the editor's floating toolbars) folds it into its bar at the corner, unless the
+                  person is typing in it; Back to chat brings it back.
        phoneSheet 'full' (a full-screen sheet that holds the focus) or 'half' (a bottom sheet over the lower part
-                  of the screen, with the page still usable above it). phoneQuery says what counts as a phone.
+                  of the screen, with the page still usable above it). phoneQuery says what counts as a phone:
+                  up to three of (max|min)-width, (max|min)-device-width in px, (pointer: coarse|fine) and
+                  (hover: none|hover), joined by commas. The device width is what tells a phone on a page with
+                  no viewport meta (the editor's), which a phone lays out 980 px wide.
        attach     the attach button (with drag and drop onto the open panel, and paste into the box). The kit
                   calls add(file) once per file; it resolves with {id, name, kind:'image'|'doc', thumb?, size}
                   or rejects with an Error whose message says why, in a sentence (shown on the chip). The page
@@ -54,7 +61,10 @@
          out of sight; a countdown that starts while the panel is shut shows in the folded bar, with Stay here.
          setBusy(true, text, {onStop}) shows Stop in the busy strip: Stop calls onStop, unlocks the box and marks
          the person's message "Stopped", with Try again. The answer that comes after that is the adapter's to
-         drop: the kit ignores how that send settles.
+         drop: the kit ignores how that send settles. onStop returns 'partly' when Stop came while the
+         request was being carried out and part of it is done (the editor's card says which steps, with their
+         Undo): the message then says only "Stopped", and its words and attachments are not put back, so
+         Enter never runs the whole request again on top of what was done.
    Bubble: node, list({title, count, more, items:[{href, name, meta, chip:{label, tone}, value}]}) -> card,
            note(text) -> el, link(href, label) -> <a> (or a <span> when the address is not one of ours),
            button(label, onClick, {primary?}) -> el, undo(onUndo) -> el,
@@ -121,6 +131,9 @@
   var KEEP_BAND = 40;                         /* a bar this close above the launcher still lifts it */
   var KEEP_SPACE = 8;                         /* the room left between a lifted launcher and the bar under it */
   var KEEP_CAP = 0.45;                        /* never lifted more than this share of the window's height */
+  var MOTION_ENDS = ['transitionend', 'transitioncancel', 'animationend'];
+  var KEEP_SETTLE_MS = 320;                   /* measured once more this long after the page's last change: a bar
+                                                 that slides in (the console's save bar, 280 ms) is in place by then */
   var MAX_ATTACH = 10;                        /* the most files one message can carry, whatever a page asks */
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var TONES = { draft: 1, upcoming: 1, active: 1, completed: 1, cancelled: 1, deleted: 1, ok: 1, warn: 1, crit: 1, muted: 1 };
@@ -169,6 +182,7 @@
     stopName: function (t) { return 'Stop waiting for ' + t; },
     stopped: 'Stopped',
     stoppedSaid: 'Stopped.',
+    aside: 'Moved aside for the toolbar',
     loadingHistory: 'Loading your earlier messages…',
     historyFailed: 'Your earlier messages could not be loaded.',
     inAll: function (n) { return ' (' + n + ' in all)'; },
@@ -286,10 +300,14 @@
     var n = Number(v);
     return isFinite(n) && n >= 1 && n <= 2147483647 && Math.floor(n) === n ? n : null;
   }
-  /* only a simple width query is taken from a page, so nothing else can be slipped into matchMedia */
+  /* only a plain phone query is taken from a page, so nothing else can be slipped into matchMedia: up to three
+     of (max|min)-width or (max|min)-device-width in px, (pointer: coarse|fine), (hover: none|hover), joined by
+     commas (any one matching is a phone) */
+  var MQ_PART = '\\((?:(?:max|min)-(?:device-)?width:\\s*\\d{2,4}px|pointer:\\s*(?:coarse|fine)|hover:\\s*(?:none|hover))\\)';
+  var MQ_RE = new RegExp('^' + MQ_PART + '(?:\\s*,\\s*' + MQ_PART + '){0,2}$');
   function widthQuery(v) {
     var s = trim(v);
-    return /^\((?:max|min)-width:\s*\d{2,4}px\)$/.test(s) ? s : '';
+    return MQ_RE.test(s) ? s : '';
   }
   /* the file input's accept list: types and extensions only */
   function cleanAccept(v) {
@@ -392,7 +410,9 @@
     var items = [];                           /* attachments in the tray: {state, name, rec, chip, …} */
     var ctxSpec = null;                       /* the context chip: {label, title, prefix, onClear} */
     var dockOn = !!dockOpt, docked = false;
-    var liftNow = 0, liftQueued = false;
+    var liftNow = 0, liftQueued = false, settleTimer = null;
+    var foldOver = !!(dockOpt && dockOpt.foldOver === true);
+    var underSig = '';                        /* the keepClear bars under the floating open panel at the last look */
     var dragDepth = 0;
     var CLOSED_STAY = TEXT.stayedClosed(title);
 
@@ -455,18 +475,17 @@
     status.appendChild(statusDot);
     status.appendChild(statusText);
     status.appendChild(statusMore);
-    /* where this conversation belongs: "Your events", or "This event: …" */
-    var scopeSep = el('span', 'rvc-scope-sep', '·');
-    scopeSep.setAttribute('aria-hidden', 'true');
-    var scope = el('span', 'rvc-scope');
+    /* where this conversation belongs: "Your events", or "This event: …". It is a line of its own across the
+       header, under the title row (the stylesheet puts it last), so a long event name is not squeezed beside
+       the help button; it is read right after the title and the status. */
+    var scope = el('p', 'rvc-scope');
     scope.id = idOf('scope');
     sub.appendChild(status);
-    sub.appendChild(scopeSep);
-    sub.appendChild(scope);
     hId.appendChild(hTitle);
     hId.appendChild(sub);
     head.appendChild(hFace);
     head.appendChild(hId);
+    head.appendChild(scope);
     var helpBtn = null;
     if (opts.help && isFn(opts.help.onClick)) {
       helpBtn = button('rvc-head-help');
@@ -773,7 +792,10 @@
     /* ---------- keeping clear of the page's own bars ----------
        A bar listed in keepClear that is on screen under the launcher's column, and reaches into the band from
        40 px above the unlifted launcher down to the window's bottom, lifts the launcher, the folded bar and
-       the panel to 8 px above it. Measured once per frame, after a scroll, a resize or a change to the page. */
+       the panel to 8 px above it. Measured once per frame, after a scroll, a resize or a change to the page,
+       and again when a slide or fade on the page ends and KEEP_SETTLE_MS after the last change: a bar that
+       slides in (the console's save bar) is still almost below the window in the frame after its change, and
+       the end of a transition is no change a MutationObserver sees. */
     function rectOf(e) {
       try { return e && isFn(e.getBoundingClientRect) ? e.getBoundingClientRect() : null; } catch (x) { return null; }
     }
@@ -781,11 +803,25 @@
       if (!isFn(root.getComputedStyle)) return false;
       try { var cs = root.getComputedStyle(e); return !!cs && (cs.visibility === 'hidden' || cs.display === 'none'); } catch (x) { return false; }
     }
-    function measureLift() {
-      var vh = Number(root.innerHeight) || 0, vw = Number(root.innerWidth) || 0;
-      if (!keepSel || !vh || !vw || !isFn(doc.querySelectorAll)) return 0;
+    /* the keepClear bars on screen now (not the kit's own), with their boxes: one look per frame */
+    function keepBars() {
+      var out = [];
+      if (!keepSel || !isFn(doc.querySelectorAll)) return out;
       var list;
-      try { list = doc.querySelectorAll(keepSel); } catch (e) { report(e); keepSel = ''; return 0; }
+      try { list = doc.querySelectorAll(keepSel); } catch (e) { report(e); keepSel = ''; return out; }
+      for (var i = 0; i < list.length; i++) {
+        var b = list[i];
+        if (!b || wrap.contains(b)) continue;
+        var r = rectOf(b);
+        if (!r || !(r.width > 0) || !(r.height > 0) || unseen(b)) continue;
+        out.push(r);
+      }
+      return out;
+    }
+    function measureLift(bars) {
+      var vh = Number(root.innerHeight) || 0, vw = Number(root.innerWidth) || 0;
+      if (!keepSel || !vh || !vw) return 0;
+      if (!bars) bars = keepBars();
       var phone = isPhone();
       var bottom = phone ? PHONE_EDGE : (placeBottom != null ? placeBottom : DESK_BOTTOM);
       var round = phone || compact;
@@ -796,11 +832,8 @@
       var left = seen ? lr.left : right - (round ? 52 : 170);
       var bandTop = vh - bottom - lh - KEEP_BAND;
       var need = 0;
-      for (var i = 0; i < list.length; i++) {
-        var b = list[i];
-        if (!b || wrap.contains(b)) continue;
-        var r = rectOf(b);
-        if (!r || !(r.width > 0) || !(r.height > 0) || unseen(b)) continue;
+      for (var i = 0; i < bars.length; i++) {
+        var r = bars[i];
         if (r.right <= left || r.left >= right) continue;          /* beside the launcher's column */
         if (r.bottom <= bandTop || r.top >= vh) continue;          /* well above it, or below the window */
         var v = vh - r.top + KEEP_SPACE - bottom;
@@ -810,13 +843,41 @@
     }
     function relayout() {
       if (!keepSel) return liftNow;
-      var v = measureLift();
+      var bars = keepBars();
+      var v = measureLift(bars);
       if (v !== liftNow) {
         liftNow = v;
         wrap.style.setProperty('--rvc-lift', v + 'px');
       }
+      checkUnder(bars);
       return liftNow;
     }
+    /* ---------- the floating panel never sits on a page's toolbar (dock.foldOver) ----------
+       While the panel floats open (the editor's "Edit myself" narrower than its dock width), a keepClear bar that
+       comes under it (a floating toolbar or pop-up appears or moves there) folds it into its bar at the corner,
+       without moving the focus: the person is working on the page. Not while they type in the panel, nor while
+       a page is about to open (its Stay here is in the panel). A bar already under the panel when it was
+       opened is the person's choice: only a new or moved one folds it. */
+    function floatingOpen() { return isOpenNow && !folded && !docked && !isPhone(); }
+    function underPanel(bars) {
+      var pr = rectOf(panel), sig = '';
+      if (!pr || !(pr.width > 0) || !(pr.height > 0)) return '';
+      for (var i = 0; i < bars.length; i++) {
+        var r = bars[i];
+        if (r.right <= pr.left || r.left >= pr.right || r.bottom <= pr.top || r.top >= pr.bottom) continue;
+        sig += Math.round(r.left) + ',' + Math.round(r.top) + ',' + Math.round(r.width) + ',' + Math.round(r.height) + ';';
+      }
+      return sig;
+    }
+    function checkUnder(bars) {
+      if (!foldOver) return;
+      if (!floatingOpen()) { underSig = ''; return; }
+      var sig = underPanel(bars), was = underSig;
+      underSig = sig;
+      if (!sig || sig === was || focusInside() || running.length) return;
+      foldAside();
+    }
+    function noteUnder() { underSig = foldOver && keepSel && floatingOpen() ? underPanel(keepBars()) : ''; }
     function nextFrame(fn) {
       if (isFn(root.requestAnimationFrame)) return root.requestAnimationFrame(fn);
       return root.setTimeout(fn, 16);
@@ -825,6 +886,18 @@
       if (!keepSel || liftQueued) return;
       liftQueued = true;
       nextFrame(function () { liftQueued = false; relayout(); });
+    }
+    /* a change to the page: measured in the next frame, and once more when anything it set sliding is still */
+    function afterPageChange() {
+      scheduleLift();
+      if (settleTimer) root.clearTimeout(settleTimer);
+      settleTimer = root.setTimeout(function () { settleTimer = null; scheduleLift(); }, KEEP_SETTLE_MS);
+    }
+    /* a slide or a fade on the page ended (the kit's own are not the page's) */
+    function onMotionEnd(ev) {
+      var t = ev && ev.target;
+      if (t && t.nodeType === 1 && wrap.contains(t)) return;
+      scheduleLift();
     }
 
     function tellOpen(v) {
@@ -854,6 +927,7 @@
         clearNew();
         syncMode();
         restoreScroll();
+        noteUnder();
       }
       focusInput();
       if (!everOpened) {
@@ -884,13 +958,14 @@
 
     /* After a change the open panel would hide exactly what changed, so it folds into a one-line bar above
        the launcher: the change, Undo, and Back to chat. */
-    function fold(label, onUndo) {
-      /* where the focus is now decides whether the bar may take it: someone typing in the page keeps their place */
-      var take = mayTakeFocus();
+    function fold(label, onUndo, aside) {
+      /* where the focus is now decides whether the bar may take it: someone typing in the page keeps their place;
+         a fold-aside never takes it (the person is using the page's toolbar) */
+      var take = aside !== true && mayTakeFocus();
       var l = trim(label);
       /* a label that already says what happened ("Showing …", "Now working in ETHRWorld", "Changed “Hero”") is
          shown as it is: "Showing " goes only in front of a bare list ("Draft events · …") */
-      var shown = l ? (/^(?:showing|now|changed)\b/i.test(l) ? l : TEXT.showing + l) : TEXT.showingAll;
+      var shown = aside === true ? l : l ? (/^(?:showing|now|changed)\b/i.test(l) ? l : TEXT.showing + l) : TEXT.showingAll;
       /* the change is the newest thing asked for: a page that was about to open stays here */
       stopCountdowns();
       dropPeekStay();
@@ -913,6 +988,7 @@
       tellOpen(false);
     }
     function unfold() { if (folded) open(); }
+    function foldAside() { fold(TEXT.aside, null, true); }
 
     /* ---------- a page about to open while the panel is shut ---------- */
     function stopCountdowns(words) {
@@ -1061,15 +1137,20 @@
       }
     }
     /* Stop: the adapter stops waiting (onStop), the box is free again, and the message says "Stopped" with
-       Try again. However the send then settles, the kit leaves it alone. */
+       Try again. However the send then settles, the kit leaves it alone. onStop returning 'partly' means part
+       of the request is already done (the editor stopped between the steps of a change, which stay, with
+       Undo): the message says only "Stopped", and its words and attachments stay out of the box, so neither
+       Try again nor Enter runs the whole request again on top of what was done. */
     function doStop() {
       if (!busy || !stopFn) return;
       var fn = stopFn, run = current;
       current = null;
       if (run) run.stopped = true;
-      safe(fn);
+      var left = safe(fn);
       setBusy(false);
-      if (run) {
+      if (run && left === 'partly') {
+        markNode(run.node, 'partly', run.text);
+      } else if (run) {
         if (!trim(input.value)) { input.value = run.text; autosize(); }
         restoreRecs(run.recs);
         markNode(run.node, 'stopped', run.text);
@@ -1121,14 +1202,15 @@
       return m || TEXT.noAnswer(title);
     }
 
-    /* "Not sent" (a failure) or "Stopped · Try again" (Stop) under the person's message */
+    /* "Not sent" (a failure), "Stopped · Try again" (Stop) or "Stopped" (Stop after part of it was done) under
+       the person's message */
     function markNode(node, kind, t) {
       if (!node) return;
       unmarkNode(node);
-      var stopped = kind === 'stopped';
+      var stopped = kind === 'stopped' || kind === 'partly';
       node.classList.add(stopped ? 'is-stopped' : 'is-failed');
       var note = el('p', 'rvc-failed-note' + (stopped ? ' is-stopped' : ''), stopped ? TEXT.stopped : TEXT.notSent);
-      if (stopped) {
+      if (kind === 'stopped') {
         var again = button('rvc-linkbtn', TEXT.tryAgain);
         on(again, 'click', function () {
           if (busy) return;
@@ -1455,7 +1537,6 @@
       scope.textContent = v;
       if (v) scope.setAttribute('title', v); else scope.removeAttribute('title');
       scope.hidden = !v;
-      scopeSep.hidden = !v;
     }
     setScope(opts.scope);
 
@@ -2025,7 +2106,7 @@
       setBusy: setBusy,
       /* a divider, or a turn with its own time, is part of a replay (see loadHistory at the top) */
       divider: function (label) { return divider(label, true); },
-      fold: fold,
+      fold: function (label, onUndo) { fold(label, onUndo); },
       unfold: unfold,
       user: function (text, o) { return user(text, o, false, pastTurn(o)); },
       ai: function (content, o) { return ai(content, o, pastTurn(o)); },
@@ -2077,17 +2158,25 @@
           var mo = new root.MutationObserver(function (list) {
             for (var i = 0; i < list.length; i++) {
               var t = list[i] && list[i].target;
-              if (!t || !wrap.contains(t)) { scheduleLift(); return; }
+              if (!t || !wrap.contains(t)) { afterPageChange(); return; }
             }
           });
           mo.observe(doc.body, { attributes: true, attributeFilter: ['class', 'hidden', 'style'], childList: true, subtree: true });
+        }
+        /* the end of a slide or a fade anywhere on the page (in the capture phase, so a page that stops it on
+           the way up cannot hide it) */
+        if (isFn(doc.addEventListener)) {
+          for (var me = 0; me < MOTION_ENDS.length; me++) doc.addEventListener(MOTION_ENDS[me], onMotionEnd, true);
         }
       }
       syncMode();
       if (doc.documentElement && doc.documentElement.classList) doc.documentElement.classList.add('rvc-ready');
     } catch (e) {
       removeNode(wrap);
-      try { doc.removeEventListener('keydown', onDocKey); } catch (x) { /* nothing to undo */ }
+      try {
+        doc.removeEventListener('keydown', onDocKey);
+        for (var mx = 0; mx < MOTION_ENDS.length; mx++) doc.removeEventListener(MOTION_ENDS[mx], onMotionEnd, true);
+      } catch (x) { /* nothing to undo */ }
       throw e;
     }
     scheduleLift();

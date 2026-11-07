@@ -1046,7 +1046,7 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   /* -- the prompt -- */
   ctx = await placeCtx('How many registrations here?', CONSOLE);
   var pp = T.buildPrompt(ctx);
-  check('A.20 off the dashboard the prompt says where the person is, the event only by its token', pp.indexOf('WHERE ASHA IS: the console of {{autotech-2026}} (content/speakers). "This event", "here", "it" and questions that name no event mean {{autotech-2026}}') !== -1 &&
+  check('A.20 off the dashboard the prompt says where the person is, the event only by its token', pp.indexOf('WHERE ASHA IS: the console of {{autotech-2026}} (content/speakers). "This event", "here" and "this page" mean {{autotech-2026}}: put its id in `events`.') !== -1 &&
     pp.indexOf('WHAT ASHA IS LOOKING AT') === -1 && pp.indexOf('events shown') === -1, pp.slice(pp.indexOf('WHERE'), pp.indexOf('WHERE') + 300));
   check('A.20 …and opens on the place, not the dashboard', /^You are ETB2B AI in Oneworld 2\.0, ET B2B's event-site CMS, on the console of \{\{autotech-2026\}\} \(content\/speakers\)\./.test(pp) && pp.indexOf('on the events dashboard of') === -1);
   check('A.20 the event the person is in is marked THIS EVENT in the fenced table, and only it', /\nautotech-2026 \| [^\n]* \| THIS EVENT\n/.test(pp) && (pp.match(/THIS EVENT\n/g) || []).length === 1);
@@ -1077,6 +1077,35 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.20 "open its mailers" with no event named: the event the person is in', !!a.action && a.action.url === '/marketing.html?event=autotech-2026&tab=mailers' && a.notes.indexOf('this-event') !== -1 && NAV_OK.test(a.action.url), a.action);
   a = await T.cleanAnswer({ kind: 'open', open: { target: 'editor', tab: '', carry: false }, notFound: 'Retail Next', text: 'Opening it.' }, await placeCtx('Open the Retail Next editor', CONSOLE));
   check('A.20 …never when the person named an event that is not there', !a.action && a.notes.indexOf('this-event') === -1, a);
+  /* a follow-up right after an answer about another event is about that one: "it" never means the page's event by
+     default (the context leak: Other Expo's question, then "and when does it start?" answered about this event) */
+  var OTHER_TURN = { question: 'How many registrations does Autotech 2025 have?', answer: 'Autotech Summit 2025 has 9 registrations so far.',
+    answerRaw: '{{autotech-2025}} has {{autotech-2025.registrations}} registrations so far.', kind: 'reply', status: 'answered', events: ['autotech-2025'], brain: 'dash', at: '2026-11-03T05:00:00.000Z' };
+  var THIS_TURN = { question: 'How many registrations here?', answer: 'Autotech Summit 2026 has 42 registrations so far.',
+    answerRaw: '{{autotech-2026}} has {{autotech-2026.registrations}} registrations so far.', kind: 'reply', status: 'answered', events: ['autotech-2026'], brain: 'dash', at: '2026-11-03T05:00:00.000Z' };
+  var EDIT_TURN = { question: 'make the hero darker', answer: 'Done.', kind: 'edit', status: 'applied', at: '2026-11-03T05:00:00.000Z' };
+  ctx = await placeCtx('and its visitors?', CONSOLE, null, { turns: [OTHER_TURN] });
+  pp = T.buildPrompt(ctx);
+  check('A.20 follow-up: the prompt binds only "this event", "here" and "this page" to the page; "it" and "its" follow the conversation',
+    pp.indexOf('"It", "its" and a follow-up ("and when does it start?") mean the event the conversation was just about, which can be another one: put that event\'s id in `events`.') !== -1 &&
+    pp.indexOf('A question that names no event means {{autotech-2026}} only when the conversation was not just about another event.') !== -1 && pp.indexOf('"here", "it"') === -1, pp.slice(pp.indexOf('WHERE'), pp.indexOf('WHERE') + 600));
+  check('A.20 follow-up: …and the memory names the other event by its token', pp.indexOf('You: {{autotech-2025}} has {{autotech-2025.registrations}} registrations so far.') !== -1, pp.slice(pp.indexOf('THE CONVERSATION'), pp.indexOf('THE CONVERSATION') + 400));
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2025'], text: '{{autotech-2025}} has {{autotech-2025.visitors}} visitors so far.' }, ctx);
+  check('A.20 follow-up: "and its visitors?" after a question about another event is answered about that event', /^Autotech Summit 2025 has /.test(partsText(a.parts)) && same(a.events, ['autotech-2025']) && a.notes.indexOf('this-event') === -1, [partsText(a.parts), a.events]);
+  a = await T.cleanAnswer({ kind: 'promo', promo: { post: '', sitePost: '', mailer: 'mailer.reminder' }, text: 'Opening its reminder mailer.' }, await placeCtx('open its reminder mailer', CONSOLE, null, { turns: [OTHER_TURN] }));
+  check('A.20 follow-up: "open its …" naming no event right after another event never opens this event\'s Promotions: the person is asked which',
+    !a.action && a.kind === 'reply' && partsText(a.parts) === T.MSG.whichEvent && a.notes.indexOf('follow-up-elsewhere') !== -1 && a.notes.indexOf('this-event') === -1, a);
+  a = await T.cleanAnswer({ kind: 'promo', events: ['autotech-2025'], promo: { post: '', sitePost: '', mailer: 'mailer.reminder' }, text: 'Opening its reminder mailer.' }, await placeCtx('open its reminder mailer', CONSOLE, null, { turns: [OTHER_TURN] }));
+  check('A.20 follow-up: …and when the model names the event the conversation was about, that one opens', !!a.action && a.action.url === '/marketing.html?event=autotech-2025&tab=mailers&mailer=mailer.reminder', a.action);
+  a = await T.cleanAnswer({ kind: 'open', open: { target: 'promotions', tab: 'mailers', carry: false }, text: 'Opening its mailers.' }, await placeCtx('Open its mailers', CONSOLE, null, { turns: [OTHER_TURN, THIS_TURN] }));
+  check('A.20 follow-up: after an answer about this event, "its" is this event again', !!a.action && a.action.url === '/marketing.html?event=autotech-2026&tab=mailers' && a.notes.indexOf('this-event') !== -1, a.action);
+  a = await T.cleanAnswer({ kind: 'open', open: { target: 'promotions', tab: 'mailers', carry: false }, text: 'Opening its mailers.' }, await placeCtx('Open its mailers', CONSOLE, null, { turns: [OTHER_TURN, EDIT_TURN] }));
+  check('A.20 follow-up: …and after a site editor turn (which names no event), too', !!a.action && a.action.url === '/marketing.html?event=autotech-2026&tab=mailers', a.action);
+  a = await T.cleanAnswer({ kind: 'handoff', text: '' }, await placeCtx('make the hero darker', EDITOR, null, { turns: [OTHER_TURN] }));
+  check('A.20 follow-up: a handoff is always about this page, whatever the conversation was about', a.kind === 'handoff' && a.notes.indexOf('follow-up-elsewhere') === -1, a);
+  check('A.20 lastTurnElsewhere: only the newest turn counts, and an editor turn or none names no other event',
+    T.lastTurnElsewhere([OTHER_TURN], 'autotech-2026') === true && T.lastTurnElsewhere([OTHER_TURN, THIS_TURN], 'autotech-2026') === false &&
+    T.lastTurnElsewhere([THIS_TURN, OTHER_TURN], 'autotech-2026') === true && T.lastTurnElsewhere([EDIT_TURN], 'autotech-2026') === false && T.lastTurnElsewhere([], 'autotech-2026') === false && T.lastTurnElsewhere(null, 'autotech-2026') === false);
   a = await T.cleanAnswer({ kind: 'filter', filter: { view: 'draft', search: '', types: [], mine: false, createdFrom: '2026-10-26', createdTo: '2026-11-01', startFrom: '', startTo: '', sort: '', dir: '', portal: '' }, text: 'Here are last week\'s drafts.' },
     await placeCtx('Show drafts from last week', CONSOLE));
   check('A.20 a filter off the dashboard is answered as the same list in the chat', a.kind === 'reply' && !a.action && !!a.list && JSON.stringify(idsOf(a.list)) === '["qa-draft"]' && a.notes.indexOf('filter-as-list') !== -1, a);
@@ -1196,6 +1225,26 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.20 …the matching tab: a sponsor\'s logo opens Sponsors', linkPart && linkPart.href === '/edit-event.html?event=autotech-2026#content/sponsors', linkPart);
   a = await T.cleanAnswer({ kind: 'reply', text: 'OK.' }, await placeCtx('what is this?', EDITOR, [pic(1, 'acme.png')], { handedFrom: 'edit' }));
   check('A.20 in the editor nothing is added about attachments (the editor\'s ETB2B AI says what it does with a picture)', partsText(a.parts) === 'OK.', partsText(a.parts));
+  /* a new event started from inside another, with its logo: as on the dashboard, Create Event takes the logo, and
+     the answer never also says the picture is for this event's site (one message, never two opposite ones) */
+  ctx = await placeCtx('Start a new IP event called Retail Next in Mumbai with this logo', CONSOLE, [pic(1, 'logo.png')]);
+  pp = T.buildPrompt(ctx);
+  check('A.20 in-event create: the prompt offers the files roles here too, and says a picture can be a new event\'s logo',
+    /- files: one entry per attached file \(ATTACHED below\)/.test(pp) && pp.indexOf('When the person starts a NEW event with kind "create", give every picture a role in `create.files` (its number `n`): "logo" for the one picture the person says is the new event\'s logo, else "none".') !== -1,
+    pp.slice(pp.indexOf('ATTACHED TO'), pp.indexOf('ATTACHED TO') + 900));
+  var cIn = clone(CRE); cIn.create.files = [{ n: 1, role: 'logo' }];
+  a = await T.cleanAnswer(cIn, ctx);
+  check('A.20 in-event create with a logo: the logo goes to Create Event, and nothing says the picture was not used',
+    a.kind === 'create' && same(a.action.files, [{ n: 1, role: 'logo' }]) && partsText(a.parts) === 'Starting Create Event.' &&
+    !a.parts.some(function (p) { return p.t === 'event' && /^Open Content/.test(p.name); }) && a.notes.indexOf('attachments-unused') === -1, [partsText(a.parts), a.action.files, a.notes]);
+  var cIn2 = clone(CRE); cIn2.create.files = [];
+  a = await T.cleanAnswer(cIn2, await placeCtx('Start a new IP event called Retail Next in Mumbai with this logo', CONSOLE, [pic(1, 'logo.png')]));
+  check('A.20 in-event create: a logo the model gave no role is still taken, from the person\'s words', same(a.action.files, [{ n: 1, role: 'logo' }]) && partsText(a.parts).indexOf(T.MSG.attachInEvent) === -1, [partsText(a.parts), a.action.files]);
+  var cIn3 = clone(CRE); cIn3.create.files = [{ n: 1, role: 'none' }];
+  a = await T.cleanAnswer(cIn3, await placeCtx('Start a new IP event called Retail Next in Mumbai with this photo', CONSOLE, [pic(1, 'stage.jpg')]));
+  check('A.20 in-event create with a picture nobody called the logo: Create Event\'s own sentence, once, and never the site sentence',
+    same(a.action.files, [{ n: 1, role: 'none' }]) && partsText(a.parts).split(T.MSG.attachBanner).length === 2 && partsText(a.parts).indexOf(T.MSG.attachInEvent) === -1, partsText(a.parts));
+  check('A.20 …the editor is not offered the files roles (its pictures are the page\'s)', !/- files: one entry per attached file/.test(T.buildPrompt(await placeCtx('Start a new event with this logo', EDITOR, [pic(1, 'logo.png')]))));
 
   /* -- the route: the conversation per place, the History, the day, Stop -- */
   var EV_KEY = 'events/autotech-2026/aiChats/u-pia/turns/';
@@ -1208,6 +1257,7 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.20 route: a question inside an event is kept in that event\'s conversation, not the dashboard\'s', out.status === 200 && et.length === 1 && turnsOf('u-pia').length === 0 && et[0].id === out.body.turnId, [out.body, et]);
   check('A.20 route: …as brain "dash", kind "reply" (the editor\'s history reader), with its own kind, place and status', et[0].brain === 'dash' && et[0].kind === 'reply' && et[0].dashKind === 'reply' && et[0].scope === 'event' &&
     same(et[0].place, CONSOLE) && et[0].status === 'answered' && et[0].answer === 'Autotech Summit 2026 has 42 registrations so far.', et[0]);
+  check('A.20 route: the answer says the event\'s conversation kept it (scope "event", its id), so Undo and Stop are reported there', out.body.scope === 'event' && out.body.eventId === 'autotech-2026', [out.body.scope, out.body.eventId]);
   check('A.20 route: the person is kept by name on the event\'s conversation document', FB.docs['events/autotech-2026/aiChats/u-pia'] && FB.docs['events/autotech-2026/aiChats/u-pia'].email === 'pia@timesinternet.in');
   check('A.20 route: a line in that event\'s History, under Content, the address masked', activityLines.length === 1 && activityLines[0].eventId === 'autotech-2026' && activityLines[0].action === 'ai-chat' && activityLines[0].area === 'content' &&
     /^Asked ETB2B AI: “How many registrations here\? \(r\*\*\*@gmail\.com asked\)” — answered$/.test(activityLines[0].detail), activityLines);
@@ -1226,8 +1276,15 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.20 route: a site editor turn is remembered as one neutral line, never its answer', memP.indexOf('[In the site editor they asked: “make the hero darker” — the page was changed]') !== -1 && memP.indexOf('PLANTED ANSWER') === -1,
     memP.slice(memP.indexOf('THE CONVERSATION'), memP.indexOf('THE CONVERSATION') + 600));
   answers.push({ kind: 'reply', text: 'Hello.' });
-  await ask('hello', 'pia', { place: { page: 'console', eventId: 'gone' } });
+  out = await ask('hello', 'pia', { place: { page: 'console', eventId: 'gone' } });
   check('A.20 route: a deleted event in the address: the dashboard\'s conversation, no History line', turnsOf('u-pia').length === 1 && !Object.keys(FB.docs).some(function (k) { return k.indexOf('events/gone/aiChats') === 0; }) && activityLines.length === 3, activityLines.length);
+  check('A.20 route: …and the answer says so (scope "global", no eventId), so the page does not report it to the event', out.body.scope === 'global' && !('eventId' in out.body) && out.body.turnId === turnsOf('u-pia')[0].id, out.body);
+  var goneId = out.body.turnId;
+  var goneOut = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: goneId, status: 'stopped', eventId: 'gone' }, 'pia');
+  check('A.20 route: a report sent to the dropped event\'s conversation is not found there', goneOut.status === 404);
+  goneOut = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: goneId, status: 'stopped' }, 'pia');
+  await tick();
+  check('A.20 route: …and without it, the person\'s own conversation records it', goneOut.status === 200 && FB.docs['dashChats/u-pia/turns/' + goneId].status === 'stopped' && activityLines.length === 3, [goneOut, activityLines.length]);
   answers.push({ kind: 'handoff', text: '' });
   var beforeHand = eventTurns('autotech-2026', 'u-pia').length, linesHand = activityLines.length;
   out = await ask('make the hero darker', 'pia', { place: EDITOR });
@@ -1251,6 +1308,7 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   answers.push({ kind: 'create', text: 'Starting Create Event.', create: Object.assign(clone(CRE.create), { files: [{ n: 1, role: 'logo' }] }) });
   out = await ask('Start a new event called Retail Next in Mumbai with this logo', 'pia', { place: { page: 'dashboard' }, attachments: [pic(1, 'logo.png')] });
   var dashT = turnsOf('u-pia').filter(function (t) { return t.id === out.body.turnId; })[0];
+  check('A.20 route: a dashboard answer says scope "global" and no eventId', out.body.scope === 'global' && !('eventId' in out.body), out.body.scope);
   check('A.20 route: a create on the dashboard sends back which file is the logo, and keeps its role', out.body.action && same(out.body.action.files, [{ n: 1, role: 'logo' }]) && dashT && same(dashT.attachments, [{ name: 'logo.png', kind: 'image', role: 'logo' }]) && !dashT.brain, dashT);
   answers.push({ kind: 'open', events: ['autotech-2026'], open: { target: 'editor', tab: '', carry: true }, text: 'Opening the editor.' });
   out = await ask('use this on the site', 'pia', { place: CONSOLE, attachments: [pic(1, 'stage.jpg', THUMB_JPG)] });
@@ -1259,6 +1317,12 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   /* the turn route: inside an event, Stop */
   out = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: carryT.id, status: 'stopped', eventId: 'autotech-2026' }, 'pia');
   check('A.20 turn route: stopped, in the event\'s conversation', out.status === 200 && FB.docs[EV_KEY + carryT.id].status === 'stopped', out.body);
+  await tick();
+  var stopLines = activityLines.filter(function (l) { return l.detail === 'Stopped waiting for ETB2B AI\'s answer: “use this on the site”'; });
+  check('A.20 turn route: Stop inside an event is a History line ("Stopped waiting …"), under the page it was asked on', stopLines.length === 1 && stopLines[0].eventId === 'autotech-2026' && stopLines[0].action === 'ai-chat' && stopLines[0].area === 'content', activityLines.slice(-2));
+  out = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: carryT.id, status: 'stopped', eventId: 'autotech-2026' }, 'pia');
+  await tick();
+  check('A.20 turn route: …once: the same Stop reported again writes no second line', out.status === 200 && activityLines.filter(function (l) { return /^Stopped waiting for ETB2B AI/.test(l.detail); }).length === 1);
   out = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: 'editTurn0000000000001', status: 'undone', eventId: 'autotech-2026' }, 'pia');
   check('A.20 turn route: a site editor turn is not this route\'s to report', out.status === 404 && FB.docs[EV_KEY + 'editTurn0000000000001'].status === 'applied');
   out = await call('handleTurn', 'POST', '/api/dash-bot/turn', { turnId: carryT.id, status: 'done', eventId: 'autotech-2026' }, 'bob');

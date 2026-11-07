@@ -20,7 +20,9 @@
                 brief file attached for its own boxes (IndexedDB), then as navigate
      choose     one button per event; a click runs that event's own action, with no second AI call
      refuse     the fixed sentence, and a link to the manual control where one exists
-     undo       ("undo that") the newest list or portal change ETB2B AI made in this tab is put back
+     undo       ("undo that") the newest list or portal change ETB2B AI made in this tab is put back. In the site
+                editor the shell sends a bare "undo that" here, with no AI call, when this brain's change is the
+                newest one in the panel (changedAt, undoLocal): "switch to ETAuto", then "undo that", switches back
      handoff    (the site editor only) the message is about the page itself: the shell passes it to the editor's
                 own ETB2B AI, once
    There is no action here that deletes, cancels, publishes, approves, sends or pays: those stay manual, and
@@ -211,6 +213,16 @@
     return api('/api/dash-bot/turn', 'POST', body, keepalive).then(function () { return true; },
       function () { return false; /* the history line is a nicety; the page already did it */ });
   }
+  /* Which conversation kept a turn, as the server's answer says (scope 'event' with its eventId, or 'global'): on
+     an event's page whose event the server could not use (deleted, say), the turn is in the person's own
+     conversation and is reported there. An answer from a server from before it said so is taken to be in the
+     page's event's conversation. */
+  function keepScope(turnId, body, here) {
+    var id = here.eventId;
+    if (body && body.scope === 'global') id = '';
+    else if (body && body.scope === 'event' && EVENT_ID.test(str(body.eventId))) id = str(body.eventId);
+    if (id) turnEvents[turnId] = id; else delete turnEvents[turnId];
+  }
 
   function signInSoon() {
     if (signingIn) return;
@@ -329,7 +341,7 @@
         /* the person stopped waiting: nothing is drawn or done, and the history says so */
         var late = r && r.body && typeof r.body === 'object' ? r.body : {};
         if (r && r.ok && !late.notKept && TURN_ID.test(str(late.turnId))) {
-          if (here.eventId) turnEvents[str(late.turnId)] = here.eventId;
+          keepScope(str(late.turnId), late, here);
           report(str(late.turnId), 'stopped');
         }
         return;
@@ -385,8 +397,8 @@
       place: here,
       message: str(extra.message)
     };
-    /* a turn asked inside an event is kept in that event's conversation, and reported there */
-    if (ctx.turnId && here.eventId) turnEvents[ctx.turnId] = here.eventId;
+    /* a turn is reported to the conversation that kept it: inside an event, usually that event's */
+    if (ctx.turnId) keepScope(ctx.turnId, body, here);
     if (body.kind === 'handoff') {
       /* handed here by the editor and handed back: never a second hop */
       var bh = chat.ai(TEXT.cantTell, {});
@@ -430,6 +442,8 @@
 
   /* ---------- list and portal changes, and their Undo ---------- */
   function keep(c) {
+    /* made in this tab now, or read back from the history with its own time */
+    c.fresh = !c.at;
     c.at = c.at || now();
     c.buttons = [];
     c.undone = false;
@@ -509,6 +523,29 @@
     /* going back past a later change takes that change away too */
     later.concat([c]).forEach(spent);
     return true;
+  }
+  /* the newest change still standing, if any */
+  function newestOpen() {
+    for (var i = changes.length - 1; i >= 0; i--) if (!changes[i].undone) return changes[i];
+    return null;
+  }
+  /* When the newest change still standing was made in this tab (0: none, or one read back from the history). The
+     shell compares it with the editor's, so a bare "undo that" goes to the brain whose change is the newest. */
+  function changedAt() {
+    var c = newestOpen();
+    return c && c.fresh ? c.at : 0;
+  }
+  /* "undo that", sent here by the shell with no AI call: the newest change is put back, and the panel says so */
+  function undoLocal() {
+    var c = newestOpen();
+    if (!c) { if (chat) chat.ai(TEXT.nothingToUndo, {}); return Promise.resolve({ ok: false }); }
+    var portal = c.working != null, r;
+    try { r = undoChange(c); } catch (e) { r = false; }
+    return Promise.resolve(r).then(null, function () { return false; }).then(function (ok) {
+      ok = ok !== false;
+      if (chat) chat.ai(ok ? (portal ? TEXT.portalUndone : TEXT.undone) : (portal ? TEXT.portalMissing : TEXT.notUndone), {});
+      return { ok: ok, kind: c.kind };
+    });
   }
   /* -> false, or what was put back ('list' | 'portal') */
   function undoNewest() {
@@ -998,6 +1035,8 @@
     stop: function () { if (stopNow) stopNow(); },
     welcome: welcome,
     help: help,
+    changedAt: changedAt,
+    undoLocal: undoLocal,
     onMount: function (c) { chat = c || null; }
   };
 

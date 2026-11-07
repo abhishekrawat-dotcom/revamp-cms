@@ -317,7 +317,8 @@
       if (hadFocus) { try { ifr.contentWindow.focus(); } catch (e) { /* the browser decides */ } }
       setStatus('');
       hoverKey = '';
-      shown(ifr);
+      // mount()'s own "shown" above is this frame's flag; the waiters are settled by resolveShown, below
+      resolveShown(ifr);
       drawOverlay();
     }
     ifr.addEventListener('load', function () {
@@ -344,8 +345,9 @@
   /* ---------- a change of ETB2B AI, shown (UX-094) ----------
      show(key): the live view is drawn again at that section (just below the site's own bar, goToPlace), and when
      the new live view is on screen the section is outlined for two seconds, "Changed by ETB2B AI". whenShown()
-     settles at that moment: the change's card says Done only then. */
-  function shown(ifr) {
+     settles at that moment: the change's card says Done only then. resolveShown(ifr) is that moment, called by
+     mount() once the new live view is on screen. */
+  function resolveShown(ifr) {
     var doc = ifr && ifr.contentDocument, waiting = shownWaiters;
     shownWaiters = [];
     waiting.forEach(function (w) {

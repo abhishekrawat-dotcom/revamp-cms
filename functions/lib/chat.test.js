@@ -674,6 +674,30 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   await call('POST', '/api/chat/turn', { eventId: EVH, turnId: partId, status: 'stopped', done: ['Agenda: “Day one” → “Day 1”'], notDone: ['Overview: stopped before it'] });
   await wait();
   ok(activityOf(EVH).some(function (l) { return /^Stopped an ETB2B AI change part way: “rework the agenda and the overview” — Agenda:/.test(l.detail); }), 'stopped part way: what was done is said');
+  /* Stop while the editor waited on a question or an "undo that": nothing on the page changed, so the History has
+     the question's own line and then that the owner stopped waiting, never a line about a stopped change */
+  answers.push(reply('The overview has one paragraph.'));
+  out = await call('POST', '/api/chat-edit', { eventId: EVH, instruction: 'how long is the overview?', sections: SECTIONS });
+  var askId = out.body.turnId;
+  await wait();
+  out = await call('POST', '/api/chat/turn', { eventId: EVH, turnId: askId, status: 'stopped' });
+  await wait();
+  var askLines = activityOf(EVH).filter(function (l) { return l.detail.indexOf('“how long is the overview?”') !== -1; }).map(function (l) { return l.detail; });
+  ok(out.status === 200 && turnsOf(EVH, 'u-asha').filter(function (t) { return t.id === askId; })[0].status === 'stopped', 'a question stopped while waiting is kept as stopped');
+  ok(JSON.stringify(askLines) === JSON.stringify(['Asked ETB2B AI: “how long is the overview?” — answered', 'Stopped waiting for ETB2B AI\'s answer: “how long is the overview?”']),
+    'a question stopped: its answered line, then that the owner stopped waiting; never "Stopped an ETB2B AI change"', JSON.stringify(askLines));
+  answers.push({ kind: 'undo', summary: 'Done — I\'ve put it back.', design: {}, textEdits: [], sectionEdits: [], sectionOps: [], newSections: [], newForms: [], ctaLinks: [], formEmbeds: [] });
+  out = await call('POST', '/api/chat-edit', { eventId: EVH, instruction: 'undo that please', sections: SECTIONS });
+  var undoAskId = out.body.turnId;
+  await wait();
+  out = await call('POST', '/api/chat/turn', { eventId: EVH, turnId: undoAskId, status: 'stopped' });
+  await wait();
+  var undoLines = activityOf(EVH).filter(function (l) { return l.detail.indexOf('“undo that please”') !== -1; }).map(function (l) { return l.detail; });
+  ok(out.status === 200 && JSON.stringify(undoLines) === JSON.stringify(['Asked ETB2B AI: “undo that please” — undo', 'Stopped waiting for ETB2B AI\'s answer: “undo that please”']),
+    'an "undo that" stopped while waiting: no line about a stopped change either', JSON.stringify(undoLines));
+  await call('POST', '/api/chat/turn', { eventId: EVH, turnId: askId, status: 'stopped' });
+  await wait();
+  ok(activityOf(EVH).filter(function (l) { return l.detail.indexOf('Stopped waiting for ETB2B AI\'s answer: “how long is the overview?”') === 0; }).length === 1, 'a second Stop report of the same question writes no second line');
   answers.push(reply('OK.'));
   await call('POST', '/api/chat-edit', { eventId: EVH, instruction: 'and now?', sections: SECTIONS });
   mp = prompts[prompts.length - 1];

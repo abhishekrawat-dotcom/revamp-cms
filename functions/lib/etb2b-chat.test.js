@@ -352,7 +352,7 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
   check('C.2 the welcome greets by name', byClass(T, 'rvc-welcome-h')[0].textContent === 'Hi Asha, I’m ETB2B AI.');
   check('C.2 four suggestions', byClass(T, 'rvc-suggestion').length === 4);
   check('C.2 without attach: no attach button, no file input, no drop overlay', !m.$('attach') && !m.$('file') && byClass(P, 'rvc-drop').length === 0 && !byClass(P, 'rvc-compose')[0].classList.contains('has-attach'));
-  check('C.2 without scope: the scope line and its dot are hidden', m.$('scope').hidden === true && byClass(P, 'rvc-scope-sep')[0].hidden === true);
+  check('C.2 without scope: the scope line is hidden (and there is no dot beside the status any more)', m.$('scope').hidden === true && byClass(P, 'rvc-scope-sep').length === 0);
   check('C.2 order in the panel: head, thread, busy, context, tray, note, compose, quick ideas, foot note',
     P.children.map(function (c) { return c.className.split(' ')[0]; }).join() === 'rvc-head,rvc-thread,rvc-busy,rvc-context,rvc-tray,rvc-attach-note,rvc-compose,rvc-quick,rvc-footnote',
     P.children.map(function (c) { return c.className; }));
@@ -1221,6 +1221,53 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     e2.mos[0].cb([{ target: bar2 }]);
     e2.clock.advance(16);
     check('K.2 console: .savebar.on shows → lift 37 → launcher bottom 59px, clear of Save and Discard', m2.chat.lift() === 37);
+    /* the console's real save bar slides up over 280 ms (translateY(150%) → 0): in the frame after .on it is
+       still almost below the window, and the end of the slide changes nothing a MutationObserver sees */
+    var e8 = setup({ vw: 1440, vh: 900 });
+    var docAdds = [], docAdd = e8.doc.addEventListener;
+    e8.doc.addEventListener = function (t, fn, o) { docAdds.push({ type: t, o: o }); return docAdd.call(this, t, fn, o); };
+    var bar8 = e8.doc.createElement('div');
+    bar8.className = 'savebar';
+    bar8._rect = R(300, 891, 1140, 35);                  // the first frame: r.top = vh − 9
+    e8.doc.body.appendChild(bar8);
+    var m8 = mountChat(e8, { keepClear: '.savebar.on' });
+    m8.$('launcher')._rect = R(1248, 834, 170, 44);
+    e8.clock.advance(16);
+    check('K.2 slide: the end of a slide or a fade is listened to on the document, in the capture phase',
+      ['transitionend', 'transitioncancel', 'animationend'].every(function (t) { return docAdds.some(function (a) { return a.type === t && a.o === true; }); }), docAdds);
+    bar8.classList.add('on');
+    e8.mos[0].cb([{ target: bar8 }]);
+    e8.clock.advance(16);
+    check('K.2 slide: in the frame after .on the bar is still sliding: no lift yet', m8.chat.lift() === 0);
+    bar8._rect = R(300, 849, 1140, 35);                  // the slide is over
+    var qs8 = e8.doc.qsaCalls;
+    dispatch(m8.$('launcher'), new Ev('transitionend'));
+    e8.clock.advance(16);
+    check('K.2 slide: the kit\'s own transitions are not the page\'s: not measured for them', e8.doc.qsaCalls === qs8 && m8.chat.lift() === 0);
+    dispatch(bar8, new Ev('transitionend'));
+    e8.clock.advance(16);
+    check('K.2 slide: the bar\'s transitionend measures again → lift 37, Save and Discard clear', m8.chat.lift() === 37 && m8.wrap.style['--rvc-lift'] === '37px', m8.chat.lift());
+    /* no event at all (a slide the page drives itself): measured once more 320 ms after the last change */
+    bar8.classList.remove('on');
+    e8.mos[0].cb([{ target: bar8 }]);
+    e8.clock.advance(400);
+    check('K.2 slide: the bar goes → lift 0', m8.chat.lift() === 0);
+    bar8._rect = R(300, 891, 1140, 35);
+    bar8.classList.add('on');
+    e8.mos[0].cb([{ target: bar8 }]);
+    e8.clock.advance(16);
+    e8.clock.advance(250);
+    e8.mos[0].cb([{ target: bar8 }]);                   // a later change while it still slides: the 320 ms run from it
+    e8.clock.advance(16);
+    check('K.2 slide: (still sliding in the frame after that change: no lift)', m8.chat.lift() === 0);
+    e8.clock.advance(300);                               // 316 ms after the last change
+    check('K.2 slide: … not measured again before 320 ms after the last change', m8.chat.lift() === 0);
+    bar8._rect = R(300, 849, 1140, 35);                  // the slide is over; no transitionend comes
+    e8.clock.advance(20);                                // 320 ms, then the next frame
+    check('K.2 slide: … and then, with no transitionend, lift 37', m8.chat.lift() === 37, m8.chat.lift());
+    var qs8b = e8.doc.qsaCalls;
+    e8.clock.advance(2000);
+    check('K.2 slide: that once-more is one look, not a running timer', e8.doc.qsaCalls === qs8b);
     /* a phone: 390×844, footer [0,787,390×57] → the round launcher 65px up */
     var e3 = setup({ phone: true, vw: 390, vh: 844 });
     var f3 = e3.doc.createElement('div');
@@ -1303,6 +1350,91 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     check('K.3 startOpen with a dock opens docked', m5.chat.isDocked() && e5.doc.documentElement.classList.contains('rvc-docked'));
   })();
 
+  /* ======== K.3b the editor's floating panel (narrower than its dock) never sits on a toolbar (dock.foldOver) ======== */
+  await (async function () {
+    var SEL = '.tpl-sel-toolbar:not([hidden]), .tpl-sec-toolbar:not([hidden]), .tpl-pop:not([hidden])';
+    var e = setup({ vw: 1024, vh: 768 });              // narrower than 1100: the panel floats in "Edit myself"
+    var tb = e.doc.createElement('div');
+    tb.className = 'tpl-sel-toolbar';
+    tb.setAttribute('hidden', '');
+    tb._rect = R(700, 400, 300, 34);
+    e.doc.body.appendChild(tb);
+    var mm = mountChat(e, { keepClear: SEL, dock: { minWidth: 1100, top: 56, foldOver: true } });
+    var panel = mm.$('panel'), peek = e.doc.getElementById('dash-chat-peek');
+    mm.$('launcher')._rect = R(832, 702, 170, 44);
+    panel._rect = R(602, 106, 400, 640);
+    mm.chat.open();
+    check('K.3b 1024 px: open and floating (not docked)', mm.chat.isOpen() && !mm.chat.isDocked());
+    e.doc.activeElement = e.doc.body;                  // the person clicks an element on the canvas
+    tb.removeAttribute('hidden');                      // … and its toolbar shows, under the panel
+    e.mos[0].cb([{ target: tb }]);
+    e.clock.advance(16);
+    check('K.3b a toolbar that comes under the floating panel folds it into its bar', mm.chat.isFolded() && panel.hidden === true && peek.hidden === false &&
+      byClass(peek, 'rvc-peek-label')[0].textContent === 'Moved aside for the toolbar');
+    check('K.3b … without taking the focus (the person is using the toolbar)', e.doc.activeElement === e.doc.body);
+    /* Back to chat over the same toolbar: the person's choice, it stays open */
+    btnIn(peek, 'Back to chat').click();
+    e.doc.activeElement = e.doc.body;
+    e.mos[0].cb([{ target: tb }]);
+    e.clock.advance(16);
+    check('K.3b Back to chat with the toolbar still under it: it stays open', mm.chat.isOpen() && !mm.chat.isFolded());
+    /* another element picked: the toolbar moves, still under the panel */
+    tb._rect = R(650, 300, 300, 34);
+    e.mos[0].cb([{ target: tb }]);
+    e.clock.advance(16);
+    check('K.3b the toolbar moves (another element picked) under it: folded again', mm.chat.isFolded());
+    btnIn(peek, 'Back to chat').click();
+    /* typing in the panel: never folded under the person's hands */
+    check('K.3b (the focus is in the box after Back to chat)', e.doc.activeElement === mm.$('input'));
+    tb._rect = R(650, 200, 300, 34);
+    e.mos[0].cb([{ target: tb }]);
+    e.clock.advance(16);
+    check('K.3b while the person types in the panel it is not folded', mm.chat.isOpen() && !mm.chat.isFolded());
+    /* a toolbar beside the panel, or none */
+    e.doc.activeElement = e.doc.body;
+    tb._rect = R(100, 200, 300, 34);
+    e.mos[0].cb([{ target: tb }]);
+    e.clock.advance(16);
+    check('K.3b a toolbar beside the panel: it stays open', mm.chat.isOpen());
+    tb.setAttribute('hidden', '');
+    e.mos[0].cb([{ target: tb }]);
+    e.clock.advance(16);
+    check('K.3b a hidden toolbar: it stays open', mm.chat.isOpen());
+    /* the docked column covers nothing: never folded there */
+    var e2 = setup({ vw: 1440, vh: 900, wide: true });
+    var tb2 = e2.doc.createElement('div');
+    tb2.className = 'tpl-sel-toolbar';
+    tb2._rect = R(1100, 400, 300, 34);
+    e2.doc.body.appendChild(tb2);
+    var m2 = mountChat(e2, { keepClear: SEL, dock: { minWidth: 1100, top: 56, foldOver: true } });
+    m2.$('panel')._rect = R(1040, 56, 400, 844);
+    m2.chat.open();
+    e2.doc.activeElement = e2.doc.body;
+    tb2._rect = R(1100, 300, 300, 34);
+    e2.mos[0].cb([{ target: tb2 }]);
+    e2.clock.advance(16);
+    check('K.3b docked: never folded for a toolbar', m2.chat.isDocked() && m2.chat.isOpen() && !m2.chat.isFolded());
+    /* without foldOver (every other page) nothing folds by itself */
+    var e3 = setup({ vw: 1024, vh: 768 });
+    var tb3 = e3.doc.createElement('div');
+    tb3.className = 'tpl-sel-toolbar';
+    tb3._rect = R(700, 400, 300, 34);
+    tb3.setAttribute('hidden', '');
+    e3.doc.body.appendChild(tb3);
+    var m3 = mountChat(e3, { keepClear: SEL, dock: { minWidth: 1100, top: 56 } });
+    m3.$('panel')._rect = R(602, 106, 400, 640);
+    m3.chat.open();
+    e3.doc.activeElement = e3.doc.body;
+    tb3.removeAttribute('hidden');
+    e3.mos[0].cb([{ target: tb3 }]);
+    e3.clock.advance(16);
+    check('K.3b without dock.foldOver: it stays open', m3.chat.isOpen() && !m3.chat.isFolded());
+    check('K.3b chat.fold() keeps its two arguments (a page cannot pass the internal third)', (function () {
+      m3.chat.fold('Draft events', null, true);
+      return byClass(e3.doc.getElementById('dash-chat-peek'), 'rvc-peek-label')[0].textContent === 'Showing Draft events';
+    })());
+  })();
+
   /* ======== K.4 the half sheet, and a page's own phone width ======== */
   await (async function () {
     var vv = { height: 500, offsetTop: 0, _ls: {}, addEventListener: function (t, fn) { (this._ls[t] = this._ls[t] || []).push(fn); } };
@@ -1323,20 +1455,44 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     var e2 = setup({ phone: true });
     mountChat(e2, { phoneQuery: 'screen and (orientation: portrait)' });
     check('K.4 a query that is not a plain width is not taken (the default 600px is used)', !!e2.mqs[PHONE_Q] && Object.keys(e2.mqs).length === 1);
+    /* the editor has no viewport meta: a phone lays it out 980 px wide, so only the device width tells */
+    var ED_Q = '(max-device-width: 720px), (max-width: 720px)';
+    var e3 = setup({ phone: true, vh: 844, vv: { height: 500, offsetTop: 0, _ls: {}, addEventListener: function () {} } });
+    var m3 = mountChat(e3, { phoneSheet: 'half', phoneQuery: ED_Q });
+    m3.chat.open();
+    check('K.4 the editor\'s query, the device width or the window, is taken as it is', !!e3.mqs[ED_Q] && !e3.mqs[PHONE_Q] && Object.keys(e3.mqs).length === 1, Object.keys(e3.mqs));
+    check('K.4 … and a phone gets the half sheet with it', m3.wrap.classList.contains('rvc-phone') && m3.wrap.classList.contains('rvc-half'));
+    ['(pointer: coarse)', '(hover: none)', '(min-device-width: 320px)', '(max-width:600px),(pointer: coarse),(hover: none)'].forEach(function (q) {
+      var ex = setup();
+      mountChat(ex, { phoneQuery: q });
+      check('K.4 taken: ' + q, !!ex.mqs[q] && !ex.mqs[PHONE_Q]);
+    });
+    ['(max-width: 720px), (orientation: portrait)', '(max-width: 720px) and (pointer: coarse)', '(max-width: 7px)',
+      '(max-width:600px),(max-width:600px),(max-width:600px),(max-width:600px)', '(max-width: 720px), ', 'all'].forEach(function (q) {
+      var ex = setup();
+      mountChat(ex, { phoneQuery: q });
+      check('K.4 not taken (the default is used): ' + q, !!ex.mqs[PHONE_Q] && Object.keys(ex.mqs).length === 1);
+    });
   })();
 
   /* ======== K.5 the scope line: whose conversation this is ======== */
   (function () {
     var e = setup();
     var mm = mountChat(e, { scope: 'Your events' });
-    var sc = mm.$('scope'), sep = byClass(mm.$('panel'), 'rvc-scope-sep')[0];
-    check('K.5 opts.scope: shown beside the status, as text', sc.textContent === 'Your events' && sc.hidden === false && sep.hidden === false && sc.getAttribute('title') === 'Your events' &&
-      sc.parentNode === mm.$('status').parentNode);
+    var sc = mm.$('scope'), head = byClass(mm.$('panel'), 'rvc-head')[0];
+    check('K.5 opts.scope: shown as text, a line of its own in the header (not squeezed beside the status and the help button)', sc.textContent === 'Your events' && sc.hidden === false &&
+      sc.getAttribute('title') === 'Your events' && sc.parentNode === head && sc.parentNode !== mm.$('status').parentNode);
+    var hk = head.children.map(function (c) { return c.className.split(' ')[0]; }).join();
+    check('K.5 it is read right after the title and the status (face, title and status, scope, help, close)', hk === 'rvc-head-face,rvc-head-id,rvc-scope,rvc-head-help,rvc-close', hk);
+    var scRule = (/\.rvc-scope\{([^}]*)\}/.exec(CSS.replace(/\/\*[\s\S]*?\*\//g, '')) || [])[1] || '';
+    var headRule = (/\.rvc-head\{([^}]*)\}/.exec(CSS.replace(/\/\*[\s\S]*?\*\//g, '')) || [])[1] || '';
+    check('K.5 the stylesheet: the header wraps, and the scope takes the whole next line, last, lined up with the title (36 + 10 px)',
+      /flex-wrap:wrap/.test(headRule) && /order:9/.test(scRule) && /flex:1 0 100%/.test(scRule) && /padding:0 6px 0 46px/.test(scRule) && /text-overflow:ellipsis/.test(scRule), [headRule, scRule]);
     mm.chat.setScope('This event: <b>Agentic AI Summit 2027</b>');
     check('K.5 setScope: replaced, as text', sc.textContent === 'This event: <b>Agentic AI Summit 2027</b>' && byTag(sc, 'b').length === 0);
     check('K.5 the status keeps role=status and its own words', mm.$('status').getAttribute('role') === 'status' && mm.$('status').textContent === 'Ready');
     mm.chat.setScope('');
-    check('K.5 setScope(\'\'): hidden', sc.hidden === true && sep.hidden === true);
+    check('K.5 setScope(\'\'): hidden', sc.hidden === true && !sc.hasAttribute('title'));
   })();
 
   /* ======== K.6 attachments: the attach button, paste, drop, chips, and what send gets ======== */
@@ -1793,6 +1949,40 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     mm.chat.setBusy(true, 'outside a message', { onStop: function () { stops++; } });
     mm.$('stop').click();
     check('K.11 Stop with no message being answered: onStop, unlocked, nothing marked', stops === hadStops + 1 && mm.$('send').disabled === false);
+  })();
+  /* ======== K.11b Stop after part of the request was done (the editor between the steps of a change) ======== */
+  await (async function () {
+    var e = setup();
+    var mm = mountChat(e, { attach: { add: function (f) { return Promise.resolve({ id: f.name, name: f.name, kind: 'image' }); } } });
+    mm.chat.open();
+    mm.chat.addAttachment({ id: 'p1', name: 'photo.jpg', kind: 'image' });
+    type(mm, 'Make the whole page look more premium');
+    key(mm.$('input'), 'Enter');
+    await settle();
+    mm.chat.setBusy(true, 'Applying your change — 2 of 4 steps done', { onStop: function () { return 'partly'; } });
+    mm.$('stop').click();
+    var ub = turns(mm).filter(function (t) { return t.classList.contains('rvc-user'); }).pop();
+    var nt = byClass(ub, 'rvc-failed-note')[0];
+    check('K.11b onStop → \'partly\': the message says "Stopped", without Try again', ub.classList.contains('is-stopped') && nt && nt.textContent === 'Stopped' && !btnIn(ub, 'Try again'));
+    check('K.11b … the words and the attachment are not put back (the box and the tray are empty)', mm.$('input').value === '' && mm.chat.attachments().length === 0);
+    check('K.11b … the box is free and "Stopped." is said', mm.$('send').disabled === false && mm.$('input').readOnly === false && (e.clock.advance(60), e.doc.getElementById('dash-chat-live').textContent === 'Stopped.'));
+    key(mm.$('input'), 'Enter');
+    await settle();
+    check('K.11b Enter in the empty box sends nothing again', mm.log.sent.length === 1);
+    type(mm, 'Make the whole page look more premium');
+    key(mm.$('input'), 'Enter');
+    await settle();
+    var users = turns(mm).filter(function (t) { return t.classList.contains('rvc-user'); });
+    check('K.11b the same words typed again are a new message (its own bubble), not a Try again of the stopped one',
+      mm.log.sent.length === 2 && users.length === 2 && users[0] === ub && ub.classList.contains('is-stopped'));
+    mm.pending[1].ok(); await settle();
+    /* any other return value is a plain Stop, with Try again */
+    type(mm, 'Rewrite the hero');
+    key(mm.$('input'), 'Enter'); await settle();
+    mm.chat.setBusy(true, 'Thinking…', { onStop: function () { return true; } });
+    mm.$('stop').click();
+    var ub2 = turns(mm).filter(function (t) { return t.classList.contains('rvc-user'); }).pop();
+    check('K.11b onStop → true (nothing done yet): "Stopped · Try again", the words back', !!btnIn(ub2, 'Try again') && mm.$('input').value === 'Rewrite the hero');
   })();
 
   /* ======== K.12 quick ideas under the box (UX-095) ======== */

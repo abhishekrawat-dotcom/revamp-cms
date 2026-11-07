@@ -332,12 +332,20 @@
   .dev-error{ margin-right:auto; font-size:12.5px; color: var(--crit, #c0392b); }
   /* ---------- ETB2B AI in the editor ----------
      The one ETB2B AI panel of every console page (etb2b-chat.css, mounted by etb2b-assistant.js), with the editor's
-     part (editor-chat-client.js): docked as a column beside the canvas in "Edit myself" at 1100px and wider,
-     floating at the bottom right over the live view in "Edit with AI". What the editor draws inside an answer — a
-     change's card and its steps, a picture it made — is styled here in the panel's own palette (the kit's --rvc-*
-     tokens), so the panel reads as one in the console's light and dark themes. */
+     part (editor-chat-client.js): docked as a column beside the canvas in "Edit myself" above a phone's width
+     (400px wide from 1100px, 340px below), floating at the bottom right over the live view in "Edit with AI".
+     What the editor draws inside an answer — a change's card and its steps, a picture it made — is styled here in
+     the panel's own palette (the kit's --rvc-* tokens), so the panel reads as one in the console's light and dark
+     themes. */
   /* the docked column: the canvas keeps the room beside it (the kit sets html.rvc-docked while it is docked open) */
   @media (min-width: 1100px){ html.rvc-docked body:not(.ed-mode-ai) .ed-main{ margin-right:400px; } }
+  @media (max-width: 1099.98px){
+    .rvc.rvc-is-docked{ --rvc-panel-w:340px; }
+    html.rvc-docked body:not(.ed-mode-ai) .ed-main{ margin-right:340px; }
+  }
+  /* floating (Edit with AI): the open panel's top stays below the tools rail, so the device switch and Undo / Redo
+     at its right end are never under it on a short window (editor-chat-client.js sets --rvc-ed-top to the rail's foot) */
+  .rvc:not(.rvc-is-docked):not(.rvc-phone) .rvc-panel{ max-height:calc(100vh - var(--rvc-bottom) - var(--rvc-gap) - var(--rvc-lift) - var(--rvc-ed-top, 98px) - 8px); }
   .rvc-ed-answer{ display:flex; flex-direction:column; gap:8px; min-width:0; }
   .rvc-ed-body{ min-width:0; }
   .rvc-ed-body:empty{ display:none; }

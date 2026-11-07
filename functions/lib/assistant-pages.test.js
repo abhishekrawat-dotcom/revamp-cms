@@ -6,10 +6,13 @@
 //
 // The pages are read as files. Their markup is walked the way a browser's parser would see it (comments dropped, the
 // insides of <script> and <style> skipped), so a string in a page's code or a comment naming a file never counts as a
-// mount or a script tag. No network, no browser, no AI.
+// mount or a script tag. Every script a page loads is parsed, and the shell (etb2b-assistant.js) is run in a vm with
+// stand-ins for the window, the kit and sign-in, so a shell that cannot run fails here, not on ten pages at once.
+// No network, no browser, no AI.
 'use strict';
 var fs = require('fs');
 var path = require('path');
+var vm = require('vm');
 var access = require('./access');
 
 var ROOT = path.join(__dirname, '..', '..');
@@ -18,6 +21,7 @@ function exists(f) { return fs.existsSync(path.join(ROOT, f)); }
 var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function count(s, needle) { return s.split(needle).length - 1; }
 
 /* ---------- the contract (plan §3b) ---------- */
 /* Each page, its place name (the mount's data-rv-assistant, which the shell reads), the mount's id and what the
@@ -181,14 +185,59 @@ PAGES.concat([EDITOR]).forEach(function (P) {
 
 /* ---------- 2. the place names ---------- */
 check('every place name is used once, and they are exactly the plan\'s set', same(VALUES.slice().sort(), PLACES.slice().sort()), VALUES);
-/* the shell (U2) owns the allowed set: every name a page uses must be one it accepts, so a typo on either side shows
-   here rather than as a page with no assistant */
-if (exists('etb2b-assistant.js')) {
-  var SHELL = read('etb2b-assistant.js');
-  PLACES.forEach(function (v) { check('the shell accepts the place "' + v + '"', SHELL.indexOf("'" + v + "'") !== -1 || SHELL.indexOf('"' + v + '"') !== -1); });
-} else {
-  check('etb2b-assistant.js exists (the shell every page loads)', false);
-}
+/* The shell (U2) owns the allowed set. It is run here, not searched as text: the names it really accepts
+   (RevampAssistant.PAGES) must be the plan's set, both ways, so a typo on either side shows here rather than as a
+   page with no assistant. */
+function noop() {}
+var SHELL_LOADED = (function () {
+  if (!exists('etb2b-assistant.js')) return null;
+  var ctx = { console: { log: noop, warn: noop, error: noop, info: noop }, setTimeout: function () { return 0; }, clearTimeout: noop,
+    location: { pathname: '/Event_Listing.html', search: '', hash: '' }, addEventListener: noop,
+    document: { readyState: 'complete', querySelector: function () { return null; }, addEventListener: noop } };
+  ctx.window = ctx; ctx.top = ctx;
+  try { vm.createContext(ctx); vm.runInContext(read('etb2b-assistant.js'), ctx, { filename: 'etb2b-assistant.js' }); } catch (e) { return { error: String(e && e.message) }; }
+  return { A: ctx.RevampAssistant };
+})();
+check('etb2b-assistant.js exists and runs (the shell every page loads)', !!SHELL_LOADED && !SHELL_LOADED.error && !!SHELL_LOADED.A, SHELL_LOADED && SHELL_LOADED.error);
+var SHELL_PAGES = SHELL_LOADED && SHELL_LOADED.A && Object.prototype.toString.call(SHELL_LOADED.A.PAGES) === '[object Array]' ? SHELL_LOADED.A.PAGES : [];
+PLACES.forEach(function (v) { check('the shell accepts the place "' + v + '"', SHELL_PAGES.indexOf(v) !== -1, SHELL_PAGES); });
+SHELL_PAGES.forEach(function (v) { check('the place "' + v + '" the shell accepts is one a page uses', PLACES.indexOf(v) !== -1, v); });
+check('…and the shell names each place once', SHELL_PAGES.length === PLACES.length, SHELL_PAGES);
+
+/* ---------- 2b. every script these pages load can run ---------- */
+/* Parsed as the browser would (a literal U+2028 inside a regex, a stray brace): a file that cannot be parsed stops
+   everything after it on the page. The files the pages load, and the pages' own inline scripts. */
+var PARSED = {}, INLINE_SEEN = [];
+PAGES.concat([EDITOR]).forEach(function (P) {
+  if (!exists(P.file)) return;
+  var src = read(P.file);
+  scriptsOf(tagsOf(markupOf(src))).forEach(function (t) {
+    var s = srcOf(t);
+    if (!s) return;
+    if (/^(?:[a-z]+:)?\/\//i.test(s)) return;                    // a script from another site is not this repository's
+    var f = s.replace(/^\//, '').split(/[?#]/)[0];
+    if (PARSED[f] !== undefined) return;
+    if (!exists(f)) { PARSED[f] = 'missing'; check(P.file + ' loads ' + f + ', which exists', false); return; }
+    try { new vm.Script(read(f), { filename: f }); PARSED[f] = true; } catch (e) { PARSED[f] = String(e && e.message); }
+    check(f + ' (loaded by ' + P.file + ') parses', PARSED[f] === true, PARSED[f]);
+  });
+  /* the inline ones, read from the file itself (the markup walk blanks them) */
+  var re = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi, m, n = 0;
+  var bare = markupOf(src);
+  while ((m = re.exec(src))) {
+    var a = attrsOf(m[1]);
+    if (a.src !== undefined) continue;
+    if (a.type !== undefined && !/^(?:text|application)\/javascript$/i.test(a.type)) continue;
+    if (bare.slice(m.index, m.index + 7).toLowerCase() !== '<script') continue;   // inside a comment: never run
+    n++;
+    var err = null;
+    try { new vm.Script(m[2], { filename: P.file + ' (inline script ' + n + ')' }); } catch (e) { err = String(e && e.message); }
+    check(P.file + ': its inline script ' + n + ' parses', err === null, err);
+  }
+  if (n) INLINE_SEEN.push(P.file);
+});
+KIT.concat(['editor-chat-client.js', 'auth.js']).forEach(function (f) { check('the scan parsed ' + f, PARSED[f] === true, PARSED[f]); });
+check('the scan parsed the pages\' inline scripts too (at least one on each page)', INLINE_SEEN.length === PAGES.length + 1, INLINE_SEEN);
 
 /* ---------- 3. the files the pages load exist, and the server sends them ---------- */
 EDITOR_KIT.concat([CSS]).forEach(function (f) {
@@ -273,5 +322,131 @@ BUILDERS.forEach(function (f) {
   check(f + ' writes no tag that loads the assistant', !LOADER.test(read(f)));
 });
 
-console.log('assistant-pages: ' + (failed ? failed + ' of ' + (passed + failed) + ' checks FAILED' : 'all ' + passed + ' checks passed'));
-process.exit(failed ? 1 : 0);
+/* ---------- 7. a page's own windows stay above the assistant ---------- */
+var ZCHECKS = [];   // checks that need the kit's layers as the shell mounts it (run in 8)
+/* Create Event: its dialogs (openModal, in #modal-root) have a scrim at z 60, under the launcher (65) and the panel
+   (69), and the mount is outside .wiz, the part openModal makes inert. So while a dialog is open the assistant is out
+   of sight (and out of Tab's reach): one CSS line, keyed on #modal-root holding a dialog. */
+(function () {
+  var CE = read('create-event.html'), tags = tagsOf(markupOf(CE)), hEnd = headEnd(tags);
+  var RULE = '#modal-root:not(:empty) ~ #rv-assistant .rvc{ visibility:hidden; }';
+  var at = CE.indexOf('<style>' + RULE + '</style>');
+  check('Create Event: ' + RULE + ' is in a <style> of its own in <head>', count(CE, RULE) === 1 && at !== -1 && at < hEnd, [count(CE, RULE), at, hEnd]);
+  check('Create Event: …and it is the page\'s only rule about the assistant', (CE.match(/\.rvc\b/g) || []).length === 1);
+  var root = tags.filter(function (t) { return !t.close && t.attrs.id === 'modal-root'; });
+  var mount = tags.filter(function (t) { return !t.close && t.attrs['data-rv-assistant'] !== undefined; })[0];
+  check('Create Event: #modal-root is one empty <div>, a direct child of <body>, before the mount (the rule\'s "~" needs that)',
+    root.length === 1 && root[0].name === 'div' && /^<\/div\s*>/.test(markupOf(CE).slice(root[0].end)) && same(openAt(tags, root[0].index), []) &&
+    !!mount && mount.attrs.id === 'rv-assistant' && root[0].index < mount.index);
+  var om = CE.indexOf('function openModal(opts){');
+  var omBody = om === -1 ? '' : CE.slice(om, CE.indexOf('\n  }\n', CE.indexOf('function close(){', om)));
+  check('Create Event: openModal draws into #modal-root and empties it again on close (so :empty is true with no dialog)',
+    omBody.indexOf("var root = $('modal-root')") !== -1 && omBody.indexOf("root.innerHTML = '';") !== -1);
+})();
+/* the events dashboard: a row's ⋯ menu is pinned to the screen from <body> (placeRowMenu) and can reach the
+   bottom-right corner, so it opens above the launcher and the panel, under the dialogs */
+(function () {
+  var EL = read('Event_Listing.html');
+  var RULE = 'body > .popover.row-menu{ z-index:70; }';
+  var styleEnd = EL.indexOf('</style>');
+  check('the dashboard: ' + RULE + ' is in its <style>', count(EL, RULE) === 1 && EL.indexOf(RULE) < styleEnd);
+  var prm = EL.indexOf('function placeRowMenu(panel, btn){');
+  var prmBody = prm === -1 ? '' : EL.slice(prm, EL.indexOf('\n  }\n', prm));
+  check('the dashboard: placeRowMenu still moves the open menu to <body> and pins it there (the rule\'s "body >")',
+    prmBody.indexOf('document.body.appendChild(panel);') !== -1 && prmBody.indexOf("panel.style.position = 'fixed';") !== -1);
+  check('the dashboard: its menus are class="popover row-menu"', EL.indexOf('\'<div class="popover row-menu" id="\' + menuId + \'" hidden>\'') !== -1);
+  var modalZ = /\.modal-scrim\{[^}]*z-index:(\d+);/.exec(EL);
+  check('the dashboard: 70 is under its dialogs (.modal-scrim)', !!modalZ && +modalZ[1] > 70, modalZ && modalZ[1]);
+  ZCHECKS.push(function (z) { check('the dashboard: 70 is above the assistant\'s launcher and panel', z && +z.launcher < 70 && +z.panel < 70, z); });
+})();
+
+/* ---------- 8. the event of a page is the one the panel came up for ---------- */
+/* The Activity log's Event filter (and its Reset) rewrite ?event= in place (history.replaceState, no reload). The
+   panel's scope line, its conversation and its attachment rules were set when it mounted, so a message sent after
+   that must still be about the same event, or about none: never another event's conversation or History. The
+   shell and the real dash brain run in a vm; what the brain posts to /api/dash-bot is read back. */
+function shellOn(o) {
+  var posts = [], kit = { opts: null };
+  kit.mount = function (host, opts) {
+    var chat = { scopes: [], open: noop, close: noop, isOpen: function () { return false; }, focusInput: noop, setBusy: noop, fold: noop, markUndone: noop,
+      setScope: function (t) { chat.scopes.push(t); }, setContext: noop, divider: noop, user: function () { return {}; },
+      ai: function () { return { note: noop, link: function () { return null; }, list: noop, undo: function () { return {}; } }; } };
+    kit.opts = opts; kit.chat = chat;
+    return chat;
+  };
+  function storage() { var m = {}; return { getItem: function (k) { return m.hasOwnProperty(k) ? m[k] : null; }, setItem: function (k, v) { m[k] = String(v); }, removeItem: function (k) { delete m[k]; }, key: function () { return null; }, length: 0 }; }
+  function node(tag) { return { tagName: tag, style: {}, attrs: {}, setAttribute: noop, appendChild: function (c) { return c; }, removeChild: function (c) { return c; }, addEventListener: noop }; }
+  var mount = node('DIV');
+  mount.getAttribute = function (k) { return k === 'data-rv-assistant' ? o.page : null; };
+  var doc = { readyState: 'complete', activeElement: null, body: node('BODY'), head: node('HEAD'), documentElement: node('HTML'),
+    querySelector: function (sel) { return sel === '[data-rv-assistant]' ? mount : null; }, getElementById: function () { return null; },
+    createElement: function (t) { return node(String(t).toUpperCase()); }, addEventListener: noop };
+  doc.body.classList = { contains: function () { return false; } };
+  var ctx = { document: doc, console: { log: noop, warn: noop, error: noop, info: noop },
+    location: { pathname: o.path, search: o.search || '', hash: o.hash || '', assign: noop },
+    navigator: { onLine: true }, sessionStorage: storage(), localStorage: storage(),
+    setTimeout: function () { return 0; }, clearTimeout: noop, addEventListener: noop, removeEventListener: noop, dispatchEvent: function () { return true; },
+    matchMedia: function () { return { matches: false, addListener: noop, addEventListener: noop }; },
+    RevampChat: kit,
+    RevampAuth: {
+      whenResolved: function () { return Promise.resolve(); },
+      currentUser: function () { return { displayName: 'QA Tester', email: 'qa@example.com' }; },
+      authedFetch: function (url, opts) {
+        if (opts && opts.method === 'POST') posts.push({ url: url, body: opts.body ? JSON.parse(opts.body) : null });
+        return Promise.resolve({ ok: false, status: 503, text: function () { return Promise.resolve('{"error":"not here","code":"test"}'); } });
+      }
+    } };
+  ctx.window = ctx; ctx.top = ctx;
+  vm.createContext(ctx);
+  vm.runInContext(read('dash-bot-client.js'), ctx, { filename: 'dash-bot-client.js' });
+  vm.runInContext(read('etb2b-assistant.js'), ctx, { filename: 'etb2b-assistant.js' });
+  return ctx.RevampAssistant.ready().then(function (chat) {
+    return { ctx: ctx, A: ctx.RevampAssistant, kit: kit, chat: chat, posts: posts,
+      ask: function (text) { var n = posts.length; return Promise.resolve(kit.opts.send(text, { attachments: [] })).then(noop, noop).then(function () { return posts[n] || null; }); } };
+  });
+}
+function placeOf(post) { return post && post.body && post.body.place ? post.body.place : null; }
+var SHELL_RUNS = !SHELL_LOADED || SHELL_LOADED.error || !exists('dash-bot-client.js') ? Promise.resolve() : Promise.resolve()
+  .then(function () { return shellOn({ page: 'activity-log', path: '/activity-log.html', search: '' }); })
+  .then(function (S) {
+    var L = 'the Activity log opened with no event: ';
+    check(L + 'the panel mounts, reading "Your events", with the dashboard\'s conversation and attachment rules', !!S.chat && S.kit.opts.scope === 'Your events' &&
+      S.kit.opts.attach && S.kit.opts.attach.label === S.A.policyFor({ page: 'activity-log', eventId: '' }).label, S.kit.opts && S.kit.opts.scope);
+    ZCHECKS.forEach(function (fn) { fn(S.kit.opts.zIndex); });
+    S.ctx.location.search = '?event=qa-b';                            // the Event filter, as writeUrl() does it
+    check(L + 'after the filter picks an event, place() still has none', same(S.A.place(), { page: 'activity-log', eventId: '', tab: '' }), S.A.place());
+    return S.ask('how many registrations here?').then(function (post) {
+      check(L + '…and the message is sent with no event (the conversation on screen, no other event\'s History)', !!post && post.url === '/api/dash-bot' &&
+        same(placeOf(post), { page: 'activity-log', eventId: '', tab: '' }), placeOf(post));
+    });
+  })
+  .then(function () { return shellOn({ page: 'activity-log', path: '/activity-log.html', search: '?event=qa-a' }); })
+  .then(function (S) {
+    var L = 'the Activity log opened with ?event=qa-a: ';
+    check(L + 'the panel reads "This event", with that event\'s conversation and attachment rules', !!S.chat && S.kit.opts.scope === 'This event' &&
+      S.kit.opts.attach && S.kit.opts.attach.label === S.A.policyFor({ page: 'activity-log', eventId: 'qa-a' }).label, S.kit.opts && S.kit.opts.scope);
+    S.ctx.location.search = '?event=qa-b&area=content';               // another event picked in the filter
+    return S.ask('how many registrations here?').then(function (post) {
+      check(L + 'a message after the filter picks qa-b is still about qa-a', same(placeOf(post), { page: 'activity-log', eventId: 'qa-a', tab: '' }), placeOf(post));
+      S.ctx.location.search = '';                                     // Reset
+      return S.ask('how many registrations here?');
+    }).then(function (post) {
+      check(L + '…and after Reset too', same(placeOf(post), { page: 'activity-log', eventId: 'qa-a', tab: '' }), placeOf(post));
+    });
+  })
+  .then(function () { return shellOn({ page: 'console', path: '/edit-event.html', search: '?event=qa-a', hash: '#content/speakers' }); })
+  .then(function (S) {
+    S.ctx.location.hash = '#settings/seo';
+    check('the console: its section still follows the address after the mount (only the event is fixed)', same(S.A.place(), { page: 'console', eventId: 'qa-a', tab: 'settings/seo' }), S.A.place());
+  })
+  .then(function () { return shellOn({ page: 'promotions', path: '/marketing.html', search: '?event=qa-a&tab=posts' }); })
+  .then(function (S) {
+    S.ctx.location.search = '?event=qa-a&tab=mailers';
+    check('Promotions: its tab still follows the address after the mount', same(S.A.place(), { page: 'promotions', eventId: 'qa-a', tab: 'mailers' }), S.A.place());
+  })
+  .then(null, function (e) { check('the shell runs on the Activity log, the console and Promotions in a vm', false, String(e && e.stack || e)); });
+
+SHELL_RUNS.then(function () {
+  console.log('assistant-pages: ' + (failed ? failed + ' of ' + (passed + failed) + ' checks FAILED' : 'all ' + passed + ' checks passed'));
+  process.exit(failed ? 1 : 0);
+});

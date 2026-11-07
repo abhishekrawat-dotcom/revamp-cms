@@ -16,7 +16,9 @@
        every page: questions from real data, opening pages, promotions, a new event, portals. The "edit brain"
        (editor-chat-client.js, POST /api/chat-edit) exists only in the site editor, where it changes the page and
        makes pictures. In the editor a fixed rule (route(), below) picks the brain; either brain may hand the
-       message to the other once ("handoff"), never back; "undo that" there is local and costs no AI call;
+       message to the other once ("handoff"), never back; "undo that" there is local and costs no AI call, and goes
+       to the brain whose change in this panel is the newest (a portal switch is put back by the dash brain, a page
+       change by the editor's); a bare "go back" is asked about (undo, or another page?), never guessed;
      - it takes ATTACHMENTS everywhere (the attach button, drag and drop, paste: the kit draws them as chips), with
        a policy per place that says plainly what a file is for: without an event a brief (PDF or text) and a logo
        start a new event through Create Event's own inputs; inside an event pictures can go on to that event's site
@@ -28,10 +30,14 @@
      - it says errors the same way for both brains (errorFor: one table, by the server's code).
 
    window.RevampAssistant
-     place()                         -> { page, eventId, tab }   read afresh each time (the console's section moves)
+     place()                         -> { page, eventId, tab }   the event is the one the page opened with, kept for as
+                                     long as the panel is up (so the conversation shown, the one stored and "this
+                                     event" always match, even when the page rewrites its address); the console's
+                                     section and Promotions' tab are read afresh
      registerBrain(name, brain)      'dash' | 'edit'. brain: { send(text, o) -> Promise, replay?(turn, writer) -> bool,
                                      loadHistory?(writer), stop?(), undoLocal?(text, o) -> Promise, onMount?(chat),
-                                     welcome?(place, me), help?(place) }
+                                     welcome?(place, me), help?(place), changedAt?() -> ms of its newest change in
+                                     this tab that Undo can still take back, 0 for none }
      registerPlace(adapter)          the page's adapter (only the site editor has one): { welcome, suggestions, quickIdeas,
                                      footNote, attach, route(text, recs), context: { current(), onChange(fn), clear() },
                                      dock, phoneSheet, phoneQuery, wrapAttrs, onMount(chat), leave(url) }
@@ -39,7 +45,7 @@
      open(), close(), isOpen(), focusInput(), onOpenChange(fn), ready() -> Promise<chat|null>
      leave(url)                      opens a page ETB2B AI was asked for, through the page's own guard for unsaved work
      markReopen()                    Back (or a reload) to this page reopens the panel (sessionStorage, per page)
-     route(text, recs, place)        the editor's rule: 'undo' | 'edit' | 'dash' (pure, tested on a corpus)
+     route(text, recs, place)        the editor's rule: 'undo' | 'ask' | 'edit' | 'dash' (pure, tested on a corpus)
      errorFor(r, place)              -> Error with .retryable, the sentence for a failed answer ({status, body} or a
                                      network failure { network: err })
      wireAttachments(recs)           what the dash brain's server is sent for the chips of a message
@@ -117,6 +123,7 @@
     historyFailed: 'Your earlier messages could not be loaded',
     editorMissing: 'Editing this page with ETB2B AI isn’t available right now; reload the editor. ',
     cantTell: 'I couldn’t tell whether that is about this page. Name the part of the page, for example “the hero”.',
+    goBackWhich: 'Do you want me to undo my last change, or open another page? Say “undo that”, or name the page, for example “go back to the console”.',
     helpLabel: 'Email Customer Care',
     helpSubject: 'Oneworld 2.0 help: ',
 
@@ -134,6 +141,8 @@
     aiBlocked: 'ETB2B AI couldn’t work with that request. {unchanged} Try saying it another way.',
     aiBusy: 'ETB2B AI is busy right now. {unchanged} Try again in a minute.',
     aiBadOutput: 'ETB2B AI gave an answer it couldn’t use. {unchanged} Try again.',
+    aiRejected: 'ETB2B AI couldn’t take that request. {unchanged} Try saying it another way, or remove an attachment.',
+    aiOther: 'ETB2B AI couldn’t answer that. {unchanged} Try again, or say it another way.',
     noAnswer: 'ETB2B AI didn’t answer. {unchanged} Try again.',
 
     /* attachments */
@@ -216,8 +225,10 @@
   function forbiddenPath(loc) { return NEVER_PATH.test(str(loc && loc.pathname)); }
 
   /* ================================================================ the editor's rule: which brain answers */
-  /* "undo that" and its kin, alone: the editor undoes its newest change without asking the model */
-  var UNDO_RE = /^(?:undo|undo (?:that|it|this)|put it back|revert(?: that| it)?|go back|take (?:that|it) back)[.!]?$/i;
+  /* "undo that" and its kin, alone: the newest change is undone without asking the model */
+  var UNDO_RE = /^(?:undo|undo (?:that|it|this)|put it back|revert(?: that| it)?|take (?:that|it) back)[.!]?$/i;
+  /* "go back" alone could be either (undo, or another page, as in "go back to the console"): it is asked about */
+  var GO_BACK_RE = /^go back[.!]?$/i;
   /* words about the page itself: they keep a message with the editor even when it also sounds like a question */
   var PAGE_CUE = /\b(?:sections?|hero|banners?|headings?|titles?|taglines?|buttons?|text|wording|fonts?|colou?rs?|backgrounds?|pictures?|images?|photos?|logos?|layout|spacing|footer|menu|nav|forms?)\b|\bthis page\b|\bon the page\b/i;
   /* what the dash brain is for: another page, numbers, a new event, promotions, portals, other events */
@@ -243,6 +254,7 @@
   function route(text, recs) {
     var t = str(text).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
     if (UNDO_RE.test(t)) return 'undo';
+    if (GO_BACK_RE.test(t)) return 'ask';
     if (hasPicture(recs)) return 'edit';
     if (PAGE_CUE.test(t)) return 'edit';
     for (var i = 0; i < DASH_CUES.length; i++) if (DASH_CUES[i].test(t)) return 'dash';
@@ -250,6 +262,8 @@
   }
 
   /* ================================================================ errors, said once for both brains */
+  /* the old product name, as some server sentences still have it until the rename batch */
+  var OLD_NAME = /\bRevamp\b/i;
   function problem(text, retryable) {
     var e = new Error(text);
     if (retryable === false) e.retryable = false;
@@ -270,6 +284,8 @@
     var b = r.body && typeof r.body === 'object' && !isArr(r.body) ? r.body : null;
     var code = b && typeof b.code === 'string' ? b.code : '';
     var said = b && typeof b.error === 'string' ? oneLine(b.error, 400) : '';
+    /* a server sentence that still has the old product name in it is not shown: this table's own words are */
+    if (OLD_NAME.test(said)) said = '';
     if (status === 401) { var e401 = problem(TEXT.session, false); e401.signIn = true; return e401; }
     if (code === 'chat-rate') return problem(said || TEXT.rate);
     if (code === 'dash-bot-daily') return problem(said || TEXT.daily, false);
@@ -278,6 +294,11 @@
     if (code === 'ai-blocked') return problem(fill(TEXT.aiBlocked, u), false);
     if (code === 'ai-quota' || code === 'ai-unavailable' || code === 'ai-timeout') return problem(fill(TEXT.aiBusy, u));
     if (code === 'ai-bad-output') return problem(fill(TEXT.aiBadOutput, u));
+    /* the AI service turned the request down (a picture it would not take, a request too large): the same again
+       would be turned down too, so no Try again */
+    if (code === 'ai-rejected') return problem(fill(TEXT.aiRejected, u), false);
+    /* an AI failure this table does not know yet: plain words and what was left as it was, never the server's */
+    if (/^ai-/.test(code)) return problem(fill(TEXT.aiOther, u), b.retryable === false ? false : undefined);
     if (status === 413) return problem(TEXT.tooLarge, false);
     /* an error page from in front of the API (no JSON), or a failure that says nothing */
     if (!b || !said) return problem(status >= 500 || !status ? fill(TEXT.noAnswer, u) : 'ETB2B AI could not answer (error ' + status + '). Try again.');
@@ -646,13 +667,26 @@
       });
     });
   }
-  function onPrefillApplied(e) {
-    var d = e && e.detail && typeof e.detail === 'object' ? e.detail : null;
-    if (!d || !ID_RE.test(str(d.id))) return;
+  var prefillSeen = {};
+  /* d: { id, files: [{ role, name }] }, as create-event-prefill.js said it (its event, or lastApplied()). Each id is
+     taken once, however it arrives. */
+  function takePrefillFiles(d) {
+    d = d && typeof d === 'object' ? d : null;
+    if (!d || !ID_RE.test(str(d.id)) || own(prefillSeen, d.id)) return;
     var meta = (isArr(d.files) ? d.files : []).filter(function (m) { return m && (m.role === 'logo' || m.role === 'brief'); });
     if (!meta.length) return;
+    prefillSeen[d.id] = 1;
     /* the page fills its form after apply() returns: the boxes are looked for from the next turn on */
     root.setTimeout(function () { deliverFiles(d.id, meta); }, 0);
+  }
+  function onPrefillApplied(e) { takePrefillFiles(e && e.detail); }
+  /* On a normal load Create Event fills its draft (and says which files came) as soon as the page has loaded, which
+     is before this shell has heard back from the sign-in check: what it said is read first, then anything later
+     (a draft question answered after this point) is listened for. */
+  function listenForPrefill() {
+    var P = root.RevampPrefill;
+    if (P && isFn(P.lastApplied)) { try { takePrefillFiles(P.lastApplied()); } catch (e) { warn('the files for Create Event could not be read: ' + (e && e.message)); } }
+    if (isFn(root.addEventListener)) root.addEventListener('revamp:prefill-applied', onPrefillApplied);
   }
 
   /* ================================================================ the shell */
@@ -674,7 +708,8 @@
   }
   function place() {
     if (!pagePlace) return { page: '', eventId: '', tab: '' };
-    return readPlace(pagePlace.page, root.location) || { page: pagePlace.page, eventId: '', tab: '' };
+    var p = readPlace(pagePlace.page, root.location);
+    return { page: pagePlace.page, eventId: pagePlace.eventId, tab: p ? p.tab : '' };
   }
   function registerBrain(name, brain) {
     if ((name !== 'dash' && name !== 'edit') || !brain || !isFn(brain.send)) return false;
@@ -730,6 +765,41 @@
     openListeners.forEach(function (fn) { try { fn(!!v); } catch (e) { /* a listener's own trouble */ } });
   }
   function isHandoff(r) { return !!r && typeof r === 'object' && (r.handoff === true || r.kind === 'handoff'); }
+  /* When each brain last made a change in this panel that Undo can still take back (0: none). A brain may say so
+     itself (changedAt); for the editor's brain, until it does, the shell counts the page changes it answered with
+     and takes one off for each undo (its own "undo" answer, or one passed on from here). */
+  var editChanges = [], lastAnswered = '';
+  function noteAnswer(name, r) {
+    if (!r || typeof r !== 'object' || isHandoff(r)) return;
+    lastAnswered = name;
+    if (name !== 'edit') return;
+    if (r.kind === 'edit' && (r.status === 'applied' || r.status === 'partly')) editChanges.push(now());
+    else if (r.kind === 'undo' && r.status === 'undone') editChanges.pop();
+  }
+  function changedAt(name) {
+    var b = brains[name];
+    if (b && isFn(b.changedAt)) { try { return +b.changedAt() || 0; } catch (e) { return 0; } }
+    return name === 'edit' && editChanges.length ? editChanges[editChanges.length - 1] : 0;
+  }
+  /* "undo that" goes to the brain whose change in this panel is the newest: after "switch to ETAuto" it switches
+     back, rather than taking away an older page change. With no change of the dash brain here, it is the editor's
+     (its newest change still on the page, as before). */
+  function undoBy() {
+    var d = brains.dash, e = brains.edit, dAt = changedAt('dash'), eAt = changedAt('edit');
+    /* two changes stamped with the same millisecond (only a test is that quick): the one that answered last is newer */
+    if (d && isFn(d.undoLocal) && dAt && (dAt > eAt || (dAt === eAt && lastAnswered === 'dash'))) return 'dash';
+    return e && isFn(e.undoLocal) ? 'edit' : '';
+  }
+  function undoWith(name, text, o) {
+    var b = brains[name];
+    activeBrain = b;
+    var p;
+    try { p = Promise.resolve(b.undoLocal(text, o)); } catch (e) { return Promise.reject(e); }
+    return p.then(function (r) {
+      if (name === 'edit' && r && r.ok) editChanges.pop();
+      return r;
+    });
+  }
   function callBrain(name, text, o, handedFrom) {
     var b = brains[name];
     activeBrain = b;
@@ -737,7 +807,7 @@
     if (handedFrom) opts.handedFrom = handedFrom;
     var p;
     try { p = b.send(text, opts); } catch (e) { p = Promise.reject(e); }
-    return Promise.resolve(p);
+    return Promise.resolve(p).then(function (r) { noteAnswer(name, r); return r; });
   }
   /* One message from the panel: in the editor the rule picks the brain, elsewhere the dash brain answers. A brain
      that answers "handoff" passes the message to the other once; the other may not hand it back. */
@@ -753,13 +823,15 @@
     var which = brains.dash ? 'dash' : 'edit';
     if (canEdit()) {
       try { which = adapter && isFn(adapter.route) ? adapter.route(text, o.attachments || [], p) : route(text, o.attachments || [], p); } catch (e) { which = 'edit'; }
-      if (which !== 'undo' && which !== 'dash') which = 'edit';
+      if (which !== 'undo' && which !== 'ask' && which !== 'dash') which = 'edit';
       if (which === 'dash' && !brains.dash) which = 'edit';
-      if (which === 'undo' && brains.edit && isFn(brains.edit.undoLocal)) {
-        activeBrain = brains.edit;
-        try { return Promise.resolve(brains.edit.undoLocal(text, o)); } catch (e) { return Promise.reject(e); }
+      /* a bare "go back": undo, or another page? Asked in one line, with no AI call and nothing undone */
+      if (which === 'ask') { if (chatRef) chatRef.ai(TEXT.goBackWhich, {}); return Promise.resolve({ kind: 'ask' }); }
+      if (which === 'undo') {
+        var by = undoBy();
+        if (by) return undoWith(by, text, o);
+        which = 'edit';
       }
-      if (which === 'undo') which = 'edit';
     }
     if (!usable(which)) return Promise.reject(problem(fill(TEXT.noAnswer, { unchanged: p.page === 'editor' ? TEXT.pageUnchanged : TEXT.unchanged })));
     return callBrain(which, text, o, '').then(function (r) {
@@ -959,7 +1031,7 @@
     if (!signedIn) { refused = true; settleReady(null); return; }
     authOk = true;
     var p = place();
-    if (p.page === 'create-event' && isFn(root.addEventListener)) root.addEventListener('revamp:prefill-applied', onPrefillApplied);
+    if (p.page === 'create-event') listenForPrefill();
     /* the portal switch off the dashboard goes through the person's working portal (portal-picker.js) */
     if (p.page !== 'dashboard') ensurePortals();
     if (p.page === 'editor') whenEditorReady();
@@ -972,7 +1044,11 @@
     var page = str(mountEl.getAttribute('data-rv-assistant'));
     if (!own(PAGE_LABELS, page)) { warn('unknown place "' + page + '": not mounted'); refused = true; settleReady(null); return; }
     if (framed() || forbiddenPath(root.location)) { refused = true; settleReady(null); return; }
-    pagePlace = { page: page };
+    /* The event is read once, here. The conversation shown, the one each message is stored in and what "this event"
+       means are then that event's for as long as the panel is up, even when the page rewrites its address (the
+       activity log's Event filter does): a message is never stored in another conversation than the one on screen. */
+    var first = readPlace(page, root.location);
+    pagePlace = { page: page, eventId: first ? first.eventId : '' };
     var auth = root.RevampAuth;
     if (!auth || !isFn(auth.authedFetch)) { refused = true; settleReady(null); return; }
     var done = false;
