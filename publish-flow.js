@@ -78,22 +78,23 @@
   }
 
   /* The Publish button, before anybody presses it (UX-105: "shows its state before the click"). opts.dirty: the site
-     editor holds changes not saved yet (Publish saves them first). -> { label, title, quiet }; quiet: nothing to do
-     (the button is shown as such, aria-disabled, and a press says why) or only something to look at. */
+     editor holds changes not saved yet (Publish saves them first). -> { label, short, title, quiet }; quiet: nothing to
+     do (the button is shown as such, aria-disabled, and a press says why) or only something to look at. short: the
+     word a phone's top bar shows instead of a label too long for it ("Send…", "Sent"); '' when the label is short. */
   function buttonState(a, opts) {
     opts = opts || {};
     var s = standing(a || {});
-    var send = s.required ? 'Send for approval…' : 'Publish…';
+    var send = s.required ? 'Send for approval…' : 'Publish…', sendShort = s.required ? 'Send…' : '';
     var sendTitle = s.required ? 'Send the saved site for approval: it goes live once an approver approves it.' : 'Approval is switched off: this makes the saved site live.';
-    if (!a) return { label: send, title: sendTitle, quiet: false };
-    if (opts.dirty) return { label: send, title: 'Saves your changes first. ' + sendTitle, quiet: false };
+    if (!a) return { label: send, short: sendShort, title: sendTitle, quiet: false };
+    if (opts.dirty) return { label: send, short: sendShort, title: 'Saves your changes first. ' + sendTitle, quiet: false };
     var plan = planOf(a, opts);
-    if (plan.kind === 'not-saved') return { label: send, title: 'Save the site in the site editor first: Publish sends the site as it was last saved.', quiet: false };
-    if (plan.kind === 'nothing-new') return { label: 'Live', title: 'The live site already shows the last save: there is nothing new to publish.', quiet: true };
-    if (plan.kind === 'waiting') return { label: 'Sent for approval', title: 'Version ' + plan.version + ' is waiting for approval. Open this for its link and who approves.', quiet: true };
-    if (plan.kind === 'ai-unchecked') return { label: send, title: plan.count + (plan.count === 1 ? ' section the AI wrote has' : ' sections the AI wrote have') + ' not been checked yet: the site editor asks about ' + (plan.count === 1 ? 'it' : 'them') + ' first.', quiet: false };
-    if (plan.updates) return { label: send, title: 'Adds the newer saves to the request waiting for approval (version ' + plan.updates + ').', quiet: false };
-    return { label: send, title: sendTitle, quiet: false };
+    if (plan.kind === 'not-saved') return { label: send, short: sendShort, title: 'Save the site in the site editor first: Publish sends the site as it was last saved.', quiet: false };
+    if (plan.kind === 'nothing-new') return { label: 'Live', short: '', title: 'The live site already shows the last save: there is nothing new to publish.', quiet: true };
+    if (plan.kind === 'waiting') return { label: 'Sent for approval', short: 'Sent', title: 'Version ' + plan.version + ' is waiting for approval. Open this for its link and who approves.', quiet: true };
+    if (plan.kind === 'ai-unchecked') return { label: send, short: sendShort, title: plan.count + (plan.count === 1 ? ' section the AI wrote has' : ' sections the AI wrote have') + ' not been checked yet: the site editor asks about ' + (plan.count === 1 ? 'it' : 'them') + ' first.', quiet: false };
+    if (plan.updates) return { label: send, short: sendShort, title: 'Adds the newer saves to the request waiting for approval (version ' + plan.updates + ').', quiet: false };
+    return { label: send, short: sendShort, title: sendTitle, quiet: false };
   }
 
   /* Who to send the request to, from config/approvals: { to, line, alone }. Nobody approves their own changes unless
@@ -241,7 +242,13 @@
     '.main > .rvpf-strip{border:1px solid var(--border);border-radius:10px;margin:0 0 16px}',
     /* a Publish button with nothing to do (or only something to look at): it looks it, never like the red call to act,
        and a press says why */
-    '.btn[data-rvpf-quiet],.btn[data-rvpf-quiet]:hover{background:var(--surface-2);color:var(--text);border-color:var(--border);box-shadow:none}'
+    '.btn[data-rvpf-quiet],.btn[data-rvpf-quiet]:hover{background:var(--surface-2);color:var(--text);border-color:var(--border);box-shadow:none}',
+    /* a phone or a narrow window (up to 600 px): "Send for approval…" beside Preview, Share preview, the light/dark switch
+       and the account pushed the console 30-100 px sideways and cut the account off, so the button shows its short word
+       ("Send…") instead; its name for a screen reader stays the full label (paintButton sets aria-label). While it is
+       busy it shows its own "Checking…". 13px is the top bar buttons' own size in the console and the editor. */
+    '@media (max-width:600px){.btn[data-rvpf-short]:not([aria-busy]){font-size:0;gap:0;padding-left:12px;padding-right:12px}' +
+      '.btn[data-rvpf-short]:not([aria-busy])::after{content:attr(data-rvpf-short);font-size:13px}}'
   ].join('\n');
   function injectCss() {
     if (document.getElementById('rvpf-css')) return;
@@ -368,10 +375,13 @@
     if (on) {
       b.setAttribute('data-rvpf-label', b.textContent);
       b.textContent = 'Checking…';
+      /* a button named by its full label (paintButton, for the phone's short word) is named by what it says now */
+      if (b.hasAttribute('aria-label')) b.setAttribute('aria-label', 'Checking…');
       b.setAttribute('aria-busy', 'true');
       b.disabled = true;
     } else if (b.hasAttribute('data-rvpf-label')) {
       b.textContent = b.getAttribute('data-rvpf-label');
+      if (b.hasAttribute('aria-label')) b.setAttribute('aria-label', b.textContent);
       b.removeAttribute('data-rvpf-label');
       b.removeAttribute('aria-busy');
       b.disabled = false;
@@ -603,11 +613,15 @@
   }
 
   /* the Publish button's look from buttonState: a button with nothing to do is aria-disabled, never disabled, so
-     its title still shows and a press still says why */
+     its title still shows and a press still says why. A label with a short word keeps the full label as its text and
+     its name, and a narrow top bar shows the short word (the CSS above), so no width has to be measured here. */
   function paintButton(btn, st) {
     if (!btn || !st) return;
     if (btn.hasAttribute('data-rvpf-label')) return;     // busy: painted once it is done
+    injectCss();
     if (btn.textContent !== st.label) btn.textContent = st.label;
+    if (st.short && st.short !== st.label) { btn.setAttribute('data-rvpf-short', st.short); btn.setAttribute('aria-label', st.label); }
+    else { btn.removeAttribute('data-rvpf-short'); btn.removeAttribute('aria-label'); }
     btn.title = st.title;
     if (st.quiet) { btn.setAttribute('aria-disabled', 'true'); btn.setAttribute('data-rvpf-quiet', ''); }
     else { btn.removeAttribute('aria-disabled'); btn.removeAttribute('data-rvpf-quiet'); }
@@ -617,7 +631,7 @@
     open: open, planOf: planOf, buttonState: buttonState, paintButton: paintButton, decisionNotice: decisionNotice, paintDecision: paintDecision,
     aiUncheckedOf: aiUncheckedOf, approverWords: approverWords,
     _test: { planOf: planOf, buttonState: buttonState, approverWords: approverWords, copyMessage: copyMessage, decisionNotice: decisionNotice,
-      aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, CSS: CSS }
+      aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, setBusy: setBusy, CSS: CSS }
   };
   if (window.RevampCore) window.RevampCore.openPublishFlow = open;
 })();

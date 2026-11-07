@@ -7415,7 +7415,7 @@
     save.textContent = saving ? 'Saving…' : 'Save';
     /* Publish says what it would do before it is pressed, in the console's words (publish-flow.js, UX-105) */
     if (pub && window.RevampPublishFlow) {
-      if (publishBusy) { pub.textContent = 'Checking…'; pub.setAttribute('aria-busy', 'true'); }
+      if (publishBusy) { pub.textContent = 'Checking…'; pub.setAttribute('aria-busy', 'true'); pub.removeAttribute('aria-label'); }
       else { pub.removeAttribute('aria-busy'); RevampPublishFlow.paintButton(pub, RevampPublishFlow.buttonState(approvalShape(), { dirty: dirty })); }
     }
     syncCardSaves(dirty);

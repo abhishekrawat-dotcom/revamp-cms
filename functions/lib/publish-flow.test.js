@@ -57,6 +57,37 @@ check('2 not saved: the title says to save in the site editor', /Save the site i
 check('2 not known yet: the plain label', T.buttonState(null).label === 'Send for approval…');
 check('2 AI sections unchecked: said in its title', /2 sections the AI wrote have not been checked/.test(T.buttonState(A({ savedVersion: 2 }), { aiUnchecked: 2 }).title));
 
+/* a phone's top bar (B06 fix): "Send for approval…" pushed the console 30-100 px sideways at 360-600 px, so the button
+   has a short word the CSS shows up to 600 px, and its name stays the full label */
+check('2 a short word for the long labels only', T.buttonState(A({ savedVersion: 2 })).short === 'Send…' && T.buttonState(null).short === 'Send…' &&
+  T.buttonState(A({ savedVersion: 6, published: true, publishedVersion: 6 }), { dirty: true }).short === 'Send…' &&
+  T.buttonState(A({ savedVersion: 7, request: pending(7) })).short === 'Sent' &&
+  T.buttonState(A({ savedVersion: 6, published: true, publishedVersion: 6 })).short === '' && T.buttonState(A({ savedVersion: 2, required: false })).short === '');
+check('2 every short word is shorter than "Publish" (main\'s label, which fitted at 390 px)', ['Send…', 'Sent'].every(function (w) { return w.length < 'Publish'.length; }));
+function fakeButton(text) {
+  var attrs = {};
+  return { textContent: text, title: '', disabled: false,
+    setAttribute: function (k, v) { attrs[k] = String(v); }, getAttribute: function (k) { return attrs.hasOwnProperty(k) ? attrs[k] : null; },
+    hasAttribute: function (k) { return attrs.hasOwnProperty(k); }, removeAttribute: function (k) { delete attrs[k]; }, attrs: attrs };
+}
+var styles = [];
+var dctx = vm.createContext({ window: { RevampCore: {} }, console: console, document: {
+  getElementById: function (id) { return styles.filter(function (st) { return st.id === id; })[0] || null; },
+  createElement: function () { return {}; }, head: { appendChild: function (st) { styles.push(st); } } } });
+vm.runInContext(FLOW, dctx, { filename: 'publish-flow.js' });
+var DF = dctx.window.RevampPublishFlow;
+var pb = fakeButton('Publish');
+DF.paintButton(pb, DF.buttonState(A({ savedVersion: 2 })));
+check('2 painted: the full label is its text and its name, the short word waits for a narrow bar', pb.textContent === 'Send for approval…' && pb.attrs['data-rvpf-short'] === 'Send…' && pb.attrs['aria-label'] === 'Send for approval…', pb.attrs);
+check('2 ...and the rule that shows it comes with the first paint, before any press', styles.length === 1 && /@media \(max-width:600px\)\{\.btn\[data-rvpf-short\]:not\(\[aria-busy\]\)\{font-size:0/.test(styles[0].textContent) && /content:attr\(data-rvpf-short\)/.test(styles[0].textContent));
+DF._test.setBusy({ opener: pb }, true);
+check('2 busy: "Checking…" is what it says and what it is called, and the narrow bar shows it too (aria-busy)', pb.textContent === 'Checking…' && pb.attrs['aria-label'] === 'Checking…' && pb.attrs['aria-busy'] === 'true' && pb.disabled);
+DF._test.setBusy({ opener: pb }, false);
+check('2 done: back to the full label', pb.textContent === 'Send for approval…' && pb.attrs['aria-label'] === 'Send for approval…' && !pb.hasAttribute('aria-busy') && !pb.disabled);
+DF.paintButton(pb, DF.buttonState(A({ savedVersion: 6, published: true, publishedVersion: 6 })));
+check('2 a short label ("Live") has no short word and no extra name', pb.textContent === 'Live' && !pb.hasAttribute('data-rvpf-short') && !pb.hasAttribute('aria-label') && pb.attrs['aria-disabled'] === 'true');
+check('2 the editor\'s own "Checking…" drops the full-label name too', /pub\.textContent = 'Checking…'; pub\.setAttribute\('aria-busy', 'true'\); pub\.removeAttribute\('aria-label'\);/.test(EDITOR));
+
 /* ======================= 3 who to send it to (UX-102) ======================= */
 var w = T.approverWords({ me: 'raj@x.in', approvers: ['Sachitanand.Rai@timesinternet.in'] });
 check('3 the one approver is named', w.to === 'sachitanand.rai@timesinternet.in' && /^Send the link to sachitanand\.rai@timesinternet\.in: they approve changes\.$/.test(w.line), w);
@@ -182,5 +213,8 @@ check('12 a colour kept in a CSS variable: "Site colours", "Theme fill colour", 
 var mixed = D.diffPages(pg('<section data-rv-section="a"><p>x</p></section>', '--theme-color:#111111'), pg('<section data-rv-section="a"><p>x</p></section>', '--theme-color:#222222;--rv-gap-size:12px'));
 check('12 colours and other settings together: "Site design"', mixed[0].name === 'Site design' && /Gap size: 12px/.test(mixed[0].after), mixed);
 
-console.log(failed ? 'publish-flow: ' + failed + ' FAILED, ' + passed + ' passed' : 'publish-flow: all ' + passed + ' checks passed');
-process.exitCode = failed ? 1 : 0;
+var asyncChecks = [];
+Promise.all(asyncChecks).then(function () {
+  console.log(failed ? 'publish-flow: ' + failed + ' FAILED, ' + passed + ' passed' : 'publish-flow: all ' + passed + ' checks passed');
+  process.exitCode = failed ? 1 : 0;
+}, function (err) { console.error('FAIL async checks threw', err); process.exitCode = 1; });
