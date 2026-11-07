@@ -179,7 +179,14 @@
     if (code === 'approval-required') return 'ask';
     return 'show';
   }
-  function errText(err) { return (err && err.message) || 'Please try again.'; }
+  /* A failed request in the console's words (UX-008): a request's failure (it has a status) is said by RevampCore.errText,
+     so a server fault reads "Something went wrong on our side…", never the server's own sentence; a refusal made in
+     the page has no status and is said as it is. */
+  function errText(err) {
+    var C = window.RevampCore;
+    if (err && (typeof err.status === 'number' || err.code === 'revamp/signed-out') && C && typeof C.errText === 'function') return C.errText(err);
+    return (err && err.message) || 'Please try again.';
+  }
 
   /* "The site as saved on 3 Nov, 12:24 pm by priya@… (version 7)" — when and who first, the number last (UX-112) */
   function savedLine(a, version) {
@@ -610,7 +617,7 @@
     open: open, planOf: planOf, buttonState: buttonState, paintButton: paintButton, decisionNotice: decisionNotice, paintDecision: paintDecision,
     aiUncheckedOf: aiUncheckedOf, approverWords: approverWords,
     _test: { planOf: planOf, buttonState: buttonState, approverWords: approverWords, copyMessage: copyMessage, decisionNotice: decisionNotice,
-      aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, savedLine: savedLine, CSS: CSS }
+      aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, CSS: CSS }
   };
   if (window.RevampCore) window.RevampCore.openPublishFlow = open;
 })();

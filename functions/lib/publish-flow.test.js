@@ -99,6 +99,14 @@ check('5 server refusals: nothing-new and not-saved are states, approval-require
   T.errorPlan({ code: 'approval-required' }) === 'ask' && T.errorPlan({ code: 'x' }) === 'show' && T.errorPlan(null) === 'show');
 check('5 when and who before the number (UX-112)', /^The site as saved on \d+ \w+, \d+:\d\d [ap]m by p@x\.in \(version 4\)$/.test(T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4)), T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4));
 
+/* a failed request in the dialogs is said the console's way (UX-008): never a server fault's own sentence */
+core.errText = function (err) { return err.status >= 500 ? 'Something went wrong on our side. Please try again.' : 'core:' + err.message; };
+check('5 a server fault in a dialog: the console\'s words, not the server\'s', T.errText({ status: 500, message: 'Internal error: DEADLINE_EXCEEDED' }) === 'Something went wrong on our side. Please try again.');
+check('5 a refusal with a status (and a refused session) goes through RevampCore.errText', T.errText({ status: 409, message: 'Taken' }) === 'core:Taken' && T.errText({ code: 'revamp/signed-out', status: 0, message: 'x' }) === 'core:x');
+check('5 a refusal made in the page (no status) is said as it is', T.errText(new Error('The publish window could not load.')) === 'The publish window could not load.' && T.errText(null) === 'Please try again.');
+delete core.errText;
+check('5 without RevampCore.errText the message itself', T.errText({ status: 500, message: 'Saved but not sent' }) === 'Saved but not sent');
+
 /* ======================= 6 the dialogs are real dialogs (UX-113) ======================= */
 check('6 role=dialog, aria-modal, a labelled title', /role="dialog" aria-modal="true" aria-labelledby="rvpf-title"/.test(FLOW));
 check('6 Escape closes (not while the server works), Tab stays inside, focus goes back', /e\.key === 'Escape'\) \{ if \(!busy\) close\(\);/.test(FLOW) && /f\[f\.length - 1\]\.focus\(\)/.test(FLOW) && /opener\.focus\(\)/.test(FLOW));
