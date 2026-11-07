@@ -315,8 +315,14 @@
      column out of view, or running under a card's icons: "anywhere" also lets the name column shrink to fit */
   .ev-name-main .ev-link{ font-weight:700; font-size:14.5px; color:var(--text); line-height:1.35; background:none; border:none; padding:0; text-align:left; font-family:var(--font-body); display:block; width:fit-content; max-width:100%; cursor:pointer; overflow-wrap:anywhere; }
   .ev-name-main .ev-link:hover{ color:var(--accent-strong); text-decoration:underline; }
-  .ev-meta-line{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-muted); margin-top:7px; flex-wrap:wrap; }
-  .ev-meta-line .dotsep{ color:var(--text-faint); }
+  /* The type, then the address (or a deleted event's note), with a dot between. The dot belongs to the second part, so
+     when that part does not fit and moves to its own line (a long address on a phone card) the dot goes with it; there
+     it would start the line, so the row reaches 17px left of the line and the dot of any part that starts a line falls
+     in that strip, which .ev-meta-line clips. It used to be a part of its own and stayed alone at the end of the line. */
+  .ev-meta-line{ font-size:12px; color:var(--text-muted); margin-top:7px; overflow:hidden; }
+  .ev-meta-row{ display:flex; align-items:center; flex-wrap:wrap; row-gap:4px; margin-left:-17px; }
+  .ev-meta-row > *{ margin-left:17px; min-width:0; }
+  .ev-meta-next::before{ content:'\00B7'; content:'\00B7' / ''; display:inline-block; width:17px; margin-left:-17px; text-align:center; color:var(--text-faint); font-family:var(--font-body); }
   /* a deleted event: its name is not a link (the console cannot open a deleted event), and when and by whom it went */
   .ev-name-main .ev-link.is-static{ cursor:default; }
   .ev-name-main .ev-link.is-static:hover{ color:var(--text); text-decoration:none; }
@@ -2273,9 +2279,10 @@
      told apart (UX-040); a deleted event also says when it went and who deleted it */
   function metaLine(e){
     var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type)) + '</span>';
-    if (e.status === 'deleted' && e.deletedAt) out += '<span class="dotsep">&middot;</span><span class="ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
-    else out += '<span class="dotsep" aria-hidden="true">&middot;</span><span class="ev-addr" title="' + (e.published ? 'The site\'s address' : 'The site\'s address once it is published') + '">/e/' + esc(e.id) + '</span>';
-    return out;
+    /* ev-meta-next: the dot before it is drawn by the stylesheet, and is left out where the part starts a line */
+    if (e.status === 'deleted' && e.deletedAt) out += '<span class="ev-meta-next ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
+    else out += '<span class="ev-meta-next ev-addr" title="' + (e.published ? 'The site\'s address' : 'The site\'s address once it is published') + '">/e/' + esc(e.id) + '</span>';
+    return '<span class="ev-meta-row">' + out + '</span>';
   }
 
   /* shown on mouse hover and keyboard focus only: a click on the name opens the event (UX-020). A missing city is left

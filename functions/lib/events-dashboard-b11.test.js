@@ -124,6 +124,11 @@ check('UX-023 the server sends the two pictures and the stylesheet, signed out t
   access.isPublic({ method: 'GET' }, '/assets/app-logo-dark.png') && access.isPublic({ method: 'GET' }, '/app-logo.css'));
 check('UX-023 Latest Activity\'s totals use the theme\'s text colour (they were black on the dark card)', /\.activity-row-total\{[^}]*color:var\(--text\);/.test(CSS));
 
+/* ---- UX-040 the meta line's dot (see the run below) ---- */
+check('UX-040 the meta line clips a dot that would start a line: the row reaches 17px left, each part sits 17px in, the dot fills that 17px', /\.ev-meta-line\{[^}]*overflow:hidden;/.test(CSS) &&
+  /\.ev-meta-row\{ display:flex; align-items:center; flex-wrap:wrap; row-gap:4px; margin-left:-17px; \}/.test(CSS) && /\.ev-meta-row > \*\{ margin-left:17px; min-width:0; \}/.test(CSS) &&
+  /\.ev-meta-next::before\{ content:'\\00B7'; content:'\\00B7' \/ ''; display:inline-block; width:17px; margin-left:-17px;/.test(CSS) && CSS.indexOf('.dotsep') === -1);
+
 /* ---- UX-024 ETB2B AI is on the dashboard ---- */
 check('UX-024 the dashboard mounts ETB2B AI (its kit, its client, its mount point)', PAGE.indexOf('<script src="etb2b-chat.js"></script>') !== -1 && PAGE.indexOf('<script src="dash-bot-client.js"></script>') !== -1 &&
   PAGE.indexOf('<div id="rv-dash-bot"></div>') !== -1 && PAGE.indexOf('<link rel="stylesheet" href="etb2b-chat.css">') !== -1);
@@ -365,6 +370,11 @@ async function main() {
   await flush();
   S.tab('upcoming');
   check('UX-040 two rows of one name are told apart by their addresses', /\/e\/up-near(?!-)/.test(S.table()) && S.table().indexOf('/e/up-near-copy') !== -1, S.table());
+  /* the dot between the type and the address belongs to the address (drawn before it by the stylesheet), so a long
+     address that moves to its own line on a phone card does not leave the dot alone at the end of the line above */
+  var rowsHtml = String(S.$('table-body').innerHTML) + String(S.$('card-list').innerHTML);
+  check('UX-040 the type and the address are one row, the dot is the address\'s, no lone separator (rows and cards)', (rowsHtml.match(/<div class="ev-meta-line"><span class="ev-meta-row"><span class="ev-tag [^"]+">[^<]+<\/span><span class="ev-meta-next ev-addr" title="[^"]+">\/e\/up-near<\/span><\/span><\/div>/g) || []).length === 2 &&
+    rowsHtml.indexOf('dotsep') === -1 && rowsHtml.indexOf('&middot;') === -1, rowsHtml.slice(0, 600));
 
   /* ---- UX-032 the QR picker and the code ---- */
   S.tab('draft');
