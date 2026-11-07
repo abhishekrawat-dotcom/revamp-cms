@@ -1,61 +1,138 @@
 /* ETB2B AI chat kit (etb2b-chat.css, with etb2b-chat.js): the launcher, the panel, the folded bar and the
-   bubbles and cards inside the conversation.
+   bubbles and cards inside the conversation. One look on every page.
 
-   Colours: every one is a console token (Event_Listing.html :root). The kit reads them once, in the .rvc block
-   below, each with the console's own light value as the fallback, so a page without the tokens still gets the
-   console's look; and because the tokens are read live, the page's light / dark switch (data-theme) flips the
-   chat with no script. No colour is written anywhere else (etb2b-chat.test.js C.9 checks it).
+   Colours: the kit has its own palette, the console's light and dark values (edit-event.css, which the events
+   dashboard also uses since B11: ET red #ED1C24, #FF6B70 on the dark ground, warm neutrals), written once in the
+   three palette blocks below. It does not read a page's tokens: a page that still has another red or other greys
+   (the editor's canvas chrome, a studio) would then give two looks. The palette follows the console's light /
+   dark switch (html[data-theme], which theme-toggle.js sets on every page), and the system's dark setting where a
+   page has not set one. No colour is written anywhere else (etb2b-chat.test.js C.9 checks it).
 
-   Layers: the launcher and the folded bar sit at 65 (above popovers 50 and the sticky nav 60, below the phones'
-   Filters sheet 70, whose buttons they must not cover); the panel at 85 (above the page, below modals 90 and
-   toasts 100, so the help modal opened from it and every toast still show on top). From 601 to 880px the
-   Filters button shows beside the open panel, so there the panel drops to 69: the Filters sheet and its scrim
-   (70) open over it rather than under it, and it still sits above the nav and the popovers. On a phone the
-   panel is a full-screen sheet that covers that button, so it goes back to 85. etb2b-chat.test.js C.9 reads the
-   page's own layers from Event_Listing.html to check all of this. */
+   Place: the bottom-right corner, 22px in from the right and the bottom (16px from 601 to 880px on the right,
+   and on a phone). The launcher stands at --rvc-bottom + --rvc-lift; the folded bar and the panel stand 62px
+   above that. --rvc-lift is 0 unless one of the page's own bars (keepClear in etb2b-chat.js) is under the
+   launcher: then all three move up together, so the bar's buttons stay clickable.
 
+   Layers: the launcher and the folded bar at 65 (above popovers 50 and the sticky nav 60), the panel at 69 (also
+   when it is a phone sheet or the editor's docked column). Every window a page opens stays above it: drawers
+   70/71, Create Event's brief guide 71, the dashboard's open row menu 70 (a placement line in Event_Listing.html),
+   dialogs 90, the portal window 95, toasts 99/100, the Promotions studio 1000. Create Event's own dialogs are the
+   exception (their scrim is 60): that page hides the assistant while one is open (#modal-root:not(:empty)). A page
+   may change both through opts.zIndex (--rvc-z-launcher, --rvc-z-panel). */
+
+/* ---------- the palette: light ---------- */
 .rvc{
-  --rvc-surface: var(--surface, #FFFFFF);
-  --rvc-surface-2: var(--surface-2, #F3EEED);
-  --rvc-surface-3: var(--surface-3, #E9E2E0);
-  --rvc-border: var(--border, #E0D7D5);
-  --rvc-border-strong: var(--border-strong, #CFC3C0);
-  --rvc-text: var(--text, #241B1A);
-  --rvc-text-muted: var(--text-muted, #756865);
-  --rvc-text-faint: var(--text-faint, #A0908C);
-  --rvc-accent: var(--accent, #ED1C24);
-  --rvc-accent-strong: var(--accent-strong, #B3151B);
-  --rvc-accent-soft: var(--accent-soft, #FBDBDC);
-  --rvc-accent-contrast: var(--accent-contrast, #FFFFFF);
-  --rvc-draft: var(--draft, #8A7A99);
-  --rvc-draft-soft: var(--draft-soft, #EEE8F2);
-  --rvc-ok: var(--ok, #16794F);
-  --rvc-ok-soft: var(--ok-soft, #E4F5EC);
-  --rvc-warn: var(--warn, #A9700F);
-  --rvc-warn-soft: var(--warn-soft, #FBF0DA);
-  --rvc-crit: var(--crit, #C13333);
-  --rvc-crit-soft: var(--crit-soft, #FBE8E7);
-  --rvc-shadow-sm: var(--shadow-sm, 0 3px 8px -2px rgba(20,18,12,0.08));
-  --rvc-shadow-md: var(--shadow-md, 0 14px 32px -14px rgba(20,18,12,0.22));
-  --rvc-shadow-lg: var(--shadow-lg, 0 30px 60px -24px rgba(20,18,12,0.30));
-  --rvc-r-sm: var(--r-sm, 8px);
-  --rvc-r-md: var(--r-md, 12px);
-  --rvc-r-lg: var(--r-lg, 16px);
-  --rvc-font: var(--font-body, 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif);
+  --rvc-surface: #FFFFFF;
+  --rvc-surface-2: #F3EEED;
+  --rvc-surface-3: #E9E2E0;
+  --rvc-border: #E0D7D5;
+  --rvc-border-strong: #CFC3C0;
+  --rvc-text: #241B1A;
+  --rvc-text-muted: #756865;
+  --rvc-text-faint: #A0908C;
+  --rvc-accent: #ED1C24;
+  --rvc-accent-strong: #B3151B;
+  --rvc-accent-soft: #FBDBDC;
+  --rvc-accent-contrast: #FFFFFF;
+  --rvc-draft: #8A7A99;
+  --rvc-draft-soft: #EEE8F2;
+  --rvc-ok: #16794F;
+  --rvc-ok-soft: #E4F5EC;
+  --rvc-warn: #A9700F;
+  --rvc-warn-soft: #FBF0DA;
+  --rvc-crit: #C13333;
+  --rvc-crit-soft: #FBE8E7;
+  --rvc-shadow-sm: 0 3px 8px -2px rgba(20,18,12,0.08);
+  --rvc-shadow-md: 0 14px 32px -14px rgba(20,18,12,0.22);
+  --rvc-shadow-lg: 0 30px 60px -24px rgba(20,18,12,0.30);
+  --rvc-r-sm: 8px;
+  --rvc-r-md: 12px;
+  --rvc-r-lg: 16px;
+  --rvc-font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* the corner, the lift and the layers (see the top) */
+  --rvc-right: 22px;
+  --rvc-bottom: 22px;
+  --rvc-lift: 0px;
+  --rvc-gap: 62px;
+  --rvc-panel-w: 400px;
+  --rvc-dock-top: 0px;
+  --rvc-z-launcher: 65;
+  --rvc-z-panel: 69;
   font-family: var(--rvc-font);
+  font-size: 14px; line-height: 1.5; letter-spacing: normal; text-align: left; text-transform: none;
   color: var(--rvc-text);
+  -webkit-font-smoothing: antialiased;
 }
+/* ---------- the palette: dark, when the system asks for it and the page has not said light ---------- */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .rvc{
+    --rvc-surface: #201C1B;
+    --rvc-surface-2: #2A2422;
+    --rvc-surface-3: #352D2B;
+    --rvc-border: #3F3532;
+    --rvc-border-strong: #4D413D;
+    --rvc-text: #EDE6E4;
+    --rvc-text-muted: #A89C99;
+    --rvc-text-faint: #7C716E;
+    --rvc-accent: #FF6B70;
+    --rvc-accent-strong: #FF8A8E;
+    --rvc-accent-soft: #3A1518;
+    --rvc-accent-contrast: #2B0A0B;
+    --rvc-draft: #B9A9C9;
+    --rvc-draft-soft: #2A2331;
+    --rvc-ok: #4CB484;
+    --rvc-ok-soft: #173225;
+    --rvc-warn: #D8A64A;
+    --rvc-warn-soft: #332711;
+    --rvc-crit: #E27A7A;
+    --rvc-crit-soft: #3A1E1D;
+    --rvc-shadow-sm: 0 3px 8px -2px rgba(0,0,0,.4);
+    --rvc-shadow-md: 0 16px 34px -14px rgba(0,0,0,.55);
+    --rvc-shadow-lg: 0 32px 64px -24px rgba(0,0,0,.7);
+  }
+}
+/* ---------- the palette: dark, when the page's switch says so ---------- */
+:root[data-theme="dark"] .rvc{
+  --rvc-surface: #201C1B;
+  --rvc-surface-2: #2A2422;
+  --rvc-surface-3: #352D2B;
+  --rvc-border: #3F3532;
+  --rvc-border-strong: #4D413D;
+  --rvc-text: #EDE6E4;
+  --rvc-text-muted: #A89C99;
+  --rvc-text-faint: #7C716E;
+  --rvc-accent: #FF6B70;
+  --rvc-accent-strong: #FF8A8E;
+  --rvc-accent-soft: #3A1518;
+  --rvc-accent-contrast: #2B0A0B;
+  --rvc-draft: #B9A9C9;
+  --rvc-draft-soft: #2A2331;
+  --rvc-ok: #4CB484;
+  --rvc-ok-soft: #173225;
+  --rvc-warn: #D8A64A;
+  --rvc-warn-soft: #332711;
+  --rvc-crit: #E27A7A;
+  --rvc-crit-soft: #3A1E1D;
+  --rvc-shadow-sm: 0 3px 8px -2px rgba(0,0,0,.4);
+  --rvc-shadow-md: 0 16px 34px -14px rgba(0,0,0,.55);
+  --rvc-shadow-lg: 0 32px 64px -24px rgba(0,0,0,.7);
+}
+
 .rvc *, .rvc *::before, .rvc *::after{ box-sizing:border-box; }
 /* the kit's own boxes set display, which would beat the browser's [hidden] rule */
 .rvc [hidden]{ display:none !important; }
 .rvc button{ font-family:inherit; }
+/* a page's own heading, paragraph and picture rules (fonts, tracking, balance) do not reach inside the kit */
+.rvc h2, .rvc h3{ font-family:inherit; letter-spacing:normal; text-wrap:wrap; }
+.rvc img{ display:block; max-width:100%; border:0; }
 .rvc-sr{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 .rvc :focus-visible{ outline:2px solid var(--rvc-accent); outline-offset:2px; }
-/* the console's own :focus-visible also squares corners to 4px; the kit's controls keep their shapes when focused */
+/* a page's own :focus-visible also squares corners to 4px; the kit's controls keep their shapes when focused */
 .rvc .rvc-launcher:focus-visible{ border-radius:100px; }
-.rvc .rvc-send:focus-visible{ border-radius:10px; }
+.rvc .rvc-send:focus-visible, .rvc .rvc-attach:focus-visible{ border-radius:10px; }
 .rvc .rvc-btn:focus-visible, .rvc .rvc-close:focus-visible, .rvc .rvc-head-help:focus-visible{ border-radius:var(--rvc-r-sm); }
-.rvc .rvc-suggestion:focus-visible, .rvc .rvc-choice:focus-visible{ border-radius:10px; }
+.rvc .rvc-suggestion:focus-visible, .rvc .rvc-choice:focus-visible, .rvc .rvc-quick-btn:focus-visible{ border-radius:10px; }
+.rvc .rvc-achip-rm:focus-visible, .rvc .rvc-context-rm:focus-visible{ border-radius:50%; }
 /* a phone's full-screen sheet keeps the page behind it still */
 html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 
@@ -68,15 +145,15 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-f-visor{ fill:var(--rvc-text); }
 .rvc-f-glint{ fill:var(--rvc-surface); }
 
-/* ---------- the launcher: where "Need help?" was, with the same pill look ---------- */
+/* ---------- the launcher: the dashboard's pill, in the bottom-right corner ---------- */
 .rvc-launcher{
-  position:fixed; left:22px; bottom:22px; z-index:65;
+  position:fixed; right:var(--rvc-right); bottom:calc(var(--rvc-bottom) + var(--rvc-lift)); z-index:var(--rvc-z-launcher);
   display:inline-flex; align-items:center; gap:8px;
   min-height:44px; margin:0; padding:6px 16px 6px 7px; border-radius:100px;
   background:var(--rvc-surface); color:var(--rvc-text);
   border:1px solid var(--rvc-border-strong); box-shadow:var(--rvc-shadow-md);
   font-size:13px; font-weight:700; line-height:1.2; cursor:pointer;
-  transition:border-color .15s ease, color .15s ease;
+  transition:border-color .15s ease, color .15s ease, bottom .12s ease;
 }
 .rvc-launcher:hover, .rvc-launcher.is-open{ border-color:var(--rvc-accent); color:var(--rvc-accent-strong); }
 .rvc-launcher:focus-visible{ outline:2px solid var(--rvc-accent); outline-offset:3px; }
@@ -88,33 +165,42 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-launcher-new{ position:absolute; top:-2px; right:-2px; width:11px; height:11px; border-radius:50%; background:var(--rvc-accent); border:2px solid var(--rvc-surface); display:none; }
 .rvc-launcher.has-new .rvc-launcher-new{ display:block; }
 
-/* ---------- the panel: above the launcher, on the left, never over Create Event ---------- */
+/* ---------- the panel: above the launcher, right-aligned with it ---------- */
 .rvc-panel{
-  position:fixed; left:22px; bottom:84px; z-index:85;
-  width:400px; max-width:calc(100vw - 44px);
-  /* the top edge stays at least 72px down, below the sticky nav */
-  height:min(640px, calc(100vh - 156px));
+  position:fixed; right:var(--rvc-right); bottom:calc(var(--rvc-bottom) + var(--rvc-lift) + var(--rvc-gap)); z-index:var(--rvc-z-panel);
+  width:var(--rvc-panel-w); max-width:calc(100vw - 2 * var(--rvc-right));
+  /* the top edge stays at least 72px down, below a page's sticky top bar */
+  height:min(640px, calc(100vh - var(--rvc-bottom) - var(--rvc-gap) - 72px - var(--rvc-lift)));
   display:flex; flex-direction:column; overflow:hidden;
   background:var(--rvc-surface); color:var(--rvc-text);
   border:1px solid var(--rvc-border); border-radius:var(--rvc-r-lg); box-shadow:var(--rvc-shadow-lg);
   animation:rvc-in .18s cubic-bezier(.2,.7,.2,1);
+  transition:bottom .12s ease, height .12s ease;
 }
 
-.rvc-head{ flex-shrink:0; display:flex; align-items:center; gap:10px; min-height:56px; padding:9px 8px 9px 14px; border-bottom:1px solid var(--rvc-border); }
+.rvc-head{ flex-shrink:0; display:flex; flex-wrap:wrap; align-items:center; gap:2px 10px; min-height:56px; padding:9px 8px 9px 14px; border-bottom:1px solid var(--rvc-border); }
 .rvc-head-face{ width:36px; height:36px; border-radius:50%; background:var(--rvc-surface-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .rvc-head-face .rvc-face{ width:28px; height:28px; }
 .rvc-head-id{ flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
 .rvc-title{ margin:0; font-size:15px; font-weight:800; letter-spacing:.02em; line-height:1.2; color:var(--rvc-text); }
-.rvc-status{ display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; line-height:1.3; color:var(--rvc-text-muted); }
+/* the status pill under the title */
+.rvc-sub{ display:flex; align-items:center; gap:6px; min-width:0; }
+.rvc-status{ flex-shrink:0; display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; line-height:1.3; color:var(--rvc-text-muted); }
 .rvc-status i{ width:7px; height:7px; border-radius:50%; background:var(--rvc-ok); flex-shrink:0; }
 .rvc-panel.is-busy .rvc-status i{ background:var(--rvc-accent); animation:rvc-pulse 1s ease-in-out infinite; }
-.rvc-head-help{ flex-shrink:0; display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 9px; border-radius:var(--rvc-r-sm); border:1px solid transparent; background:transparent; color:var(--rvc-text-muted); font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; }
+/* whose conversation this is ("Your events" / "This event: …"): a line of its own across the header, under the
+   title row and lined up with the title, so the help button never squeezes it; cut with … only past the panel's
+   width (its title attribute keeps the whole name) */
+.rvc-scope{ order:9; flex:1 0 100%; box-sizing:border-box; min-width:0; margin:0 0 -2px; padding:0 6px 0 46px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11.5px; font-weight:600; line-height:1.3; color:var(--rvc-text-muted); }
+.rvc-head-help{ flex-shrink:0; display:inline-flex; align-items:center; gap:6px; min-height:32px; padding:0 9px; border-radius:var(--rvc-r-sm); border:1px solid transparent; background:transparent; color:var(--rvc-text-muted); font-size:12.5px; font-weight:600; white-space:nowrap; cursor:pointer; text-decoration:none; }
 .rvc-head-help:hover{ background:var(--rvc-surface-2); color:var(--rvc-accent-strong); }
 .rvc-head-help-icon{ display:inline-flex; }
-.rvc-close{ flex-shrink:0; width:32px; height:32px; border-radius:var(--rvc-r-sm); border:1px solid transparent; background:transparent; color:var(--rvc-text-muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+.rvc-close{ flex-shrink:0; width:32px; height:32px; margin:0; padding:0; border-radius:var(--rvc-r-sm); border:1px solid transparent; background:transparent; color:var(--rvc-text-muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
 .rvc-close:hover{ background:var(--rvc-surface-2); color:var(--rvc-text); }
 
-.rvc-thread{ flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:14px 14px 18px; }
+/* position:relative, so a turn's offsetTop is measured from the conversation's own top (showing a long answer
+   from its beginning, and reveal()) */
+.rvc-thread{ position:relative; flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; display:flex; flex-direction:column; gap:14px; padding:14px 14px 18px; }
 .rvc-thread:focus-visible{ outline-offset:-2px; }
 
 /* ---------- the welcome ---------- */
@@ -123,13 +209,14 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-welcome-p{ margin:0; font-size:13px; line-height:1.55; color:var(--rvc-text-muted); }
 .rvc-suggest{ display:flex; flex-direction:column; gap:6px; margin-top:4px; }
 .rvc-suggest-hint{ margin:0 0 2px; font-size:11.5px; line-height:1.4; color:var(--rvc-text-muted); }
-.rvc-suggestion{ text-align:left; min-height:36px; padding:8px 12px; border:1px solid var(--rvc-border); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; line-height:1.4; cursor:pointer; transition:border-color .15s ease, background-color .15s ease; }
+.rvc-suggestion{ text-align:left; min-height:36px; margin:0; padding:8px 12px; border:1px solid var(--rvc-border); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; line-height:1.4; cursor:pointer; transition:border-color .15s ease, background-color .15s ease; }
 .rvc-suggestion:hover{ border-color:var(--rvc-accent); background:var(--rvc-surface-2); }
 
 /* ---------- turns ---------- */
 .rvc-turn{ display:flex; gap:8px; min-width:0; max-width:100%; animation:rvc-rise .18s ease both; }
 .rvc-turn-body{ display:flex; flex-direction:column; gap:3px; min-width:0; }
-.rvc-meta{ display:flex; align-items:baseline; gap:6px; padding:0 4px; font-size:10.5px; font-weight:700; line-height:1.3; color:var(--rvc-text-muted); }
+/* the sender, the time and the dividers: --text-muted, which passes AA on the panel and in an answer */
+.rvc-meta{ display:flex; align-items:baseline; gap:6px; padding:0 4px; font-size:11px; font-weight:700; line-height:1.3; color:var(--rvc-text-muted); }
 .rvc-time{ font-weight:600; font-variant-numeric:tabular-nums; }
 .rvc-msg{ min-width:0; max-width:100%; padding:9px 12px; border-radius:14px; font-size:13px; line-height:1.55; overflow-wrap:anywhere; }
 .rvc-ai{ align-self:flex-start; width:100%; }
@@ -140,11 +227,34 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-user{ align-self:flex-end; max-width:88%; }
 .rvc-user .rvc-turn-body{ align-items:flex-end; }
 .rvc-user .rvc-msg{ background:var(--rvc-accent-soft); color:var(--rvc-text); border-radius:14px 14px 4px 14px; white-space:pre-wrap; }
-.rvc-user.is-failed .rvc-msg{ opacity:.75; }
+.rvc-user.is-failed .rvc-msg, .rvc-user.is-stopped .rvc-msg{ opacity:.75; }
 .rvc-failed-note{ margin:0; padding:0 4px; font-size:11px; font-weight:700; color:var(--rvc-crit); }
+.rvc-failed-note.is-stopped{ color:var(--rvc-text-muted); }
+.rvc-linkbtn{ margin:0; padding:0; border:0; background:transparent; color:var(--rvc-accent-strong); font-size:inherit; font-weight:700; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+/* what the message was about, and what went with it */
+/* on the person's own bubble (--accent-soft), where --text-muted would be too close to the AA line */
+.rvc-msg-ctx{ margin:0 0 4px; font-size:11.5px; font-weight:600; line-height:1.4; color:var(--rvc-text); white-space:normal; }
+.rvc-sent{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; white-space:normal; }
+.rvc-sent-item{ position:relative; display:inline-flex; align-items:center; gap:5px; max-width:100%; }
+.rvc-sent-pic{ width:56px; height:56px; object-fit:cover; border-radius:8px; border:1px solid var(--rvc-border); background:var(--rvc-surface); }
+.rvc-sent-item.is-doc{ padding:3px 8px 3px 6px; border-radius:8px; background:var(--rvc-surface); border:1px solid var(--rvc-border); font-size:12px; }
+.rvc-sent-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
+.rvc-sent-num{ position:absolute; top:-6px; left:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:var(--rvc-text); color:var(--rvc-surface); font-size:10.5px; font-weight:800; line-height:18px; text-align:center; }
+.rvc-sent-item.is-doc .rvc-sent-num{ position:static; }
+.rvc-doc-ico{ display:inline-flex; flex-shrink:0; color:var(--rvc-text-muted); }
 .rvc-error .rvc-msg{ background:var(--rvc-crit-soft); color:var(--rvc-crit); }
+/* an answer's words: paragraphs, lists and bold built by etb2b-chat.js (formatInto), never markup */
 .rvc-text{ white-space:pre-wrap; }
 .rvc-text:empty, .rvc-extra:empty, .rvc-foot:empty{ display:none; }
+.rvc-text .rvc-fp, .rvc-text .rvc-fh{ margin:0 0 6px; }
+.rvc-text .rvc-fl{ margin:0 0 6px; padding-left:20px; white-space:normal; }
+.rvc-text .rvc-fl li{ margin:2px 0; white-space:pre-wrap; }
+.rvc-text > :last-child{ margin-bottom:0; }
+.rvc-text b{ font-weight:700; }
+.rvc-custom .rvc-msg{ padding:0; background:transparent; }
+.rvc-custom .rvc-text:empty + .rvc-extra > .rvc-slot:first-child{ margin-top:0; }
+.rvc-slot{ margin-top:8px; min-width:0; }
+.rvc-slot:empty{ display:none; }
 .rvc-ev, .rvc-link, .rvc-row-name[href]{ color:var(--rvc-accent-strong); font-weight:600; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
 .rvc-ev:hover, .rvc-link:hover, .rvc-row-name[href]:hover{ text-decoration-thickness:2px; }
 .rvc-ev-plain{ font-weight:600; }
@@ -156,7 +266,7 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-error .rvc-note{ color:var(--rvc-crit); }
 .rvc-link-line{ margin:8px 0 0; font-size:12.5px; }
 .rvc-foot{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; }
-.rvc-divider{ display:flex; align-items:center; gap:10px; margin:2px 0; font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--rvc-text-muted); }
+.rvc-divider{ display:flex; align-items:center; gap:10px; margin:2px 0; font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--rvc-text-muted); }
 .rvc-divider::before, .rvc-divider::after{ content:""; flex:1; height:1px; background:var(--rvc-border); }
 .rvc-loading{ align-self:center; margin:0; font-size:12px; color:var(--rvc-text-muted); }
 
@@ -184,7 +294,7 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-row-meta{ display:flex; align-items:center; flex-wrap:wrap; gap:6px; font-size:11.5px; color:var(--rvc-text-muted); }
 .rvc-list-more{ margin:0; padding:7px 12px; border-top:1px solid var(--rvc-border); font-size:11.5px; color:var(--rvc-text-muted); }
 
-/* status chips: the page's own status colours as the dot and the tint, the words in --text so they pass AA */
+/* status chips: the status colours as the dot and the tint, the words in --text so they pass AA */
 .rvc-chip{ display:inline-flex; align-items:center; gap:5px; padding:1px 8px 1px 6px; border-radius:100px; font-size:11px; font-weight:700; line-height:1.6; color:var(--rvc-text); background:var(--rvc-surface-3); white-space:nowrap; }
 .rvc-chip i{ width:6px; height:6px; border-radius:50%; background:var(--rvc-text-faint); flex-shrink:0; }
 .rvc-tone-draft{ background:var(--rvc-draft-soft); }
@@ -209,78 +319,136 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-countdown.is-done .rvc-cd-bar i{ width:100%; animation:none; }
 
 .rvc-choices{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
-.rvc-choice{ text-align:left; min-height:36px; padding:8px 12px; border:1px solid var(--rvc-border-strong); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; cursor:pointer; }
+.rvc-choice{ text-align:left; min-height:36px; margin:0; padding:8px 12px; border:1px solid var(--rvc-border-strong); border-radius:10px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12.5px; font-weight:600; line-height:1.4; overflow-wrap:anywhere; cursor:pointer; }
 .rvc-choice:hover{ border-color:var(--rvc-accent); }
 .rvc-choice.is-chosen{ border-color:var(--rvc-accent); box-shadow:inset 3px 0 0 var(--rvc-accent); opacity:1; }
 
-/* ---------- thinking, and the message box ---------- */
-.rvc-busy{ flex-shrink:0; display:flex; align-items:center; gap:9px; margin:0 12px 8px; padding:7px 11px; border-radius:10px; background:var(--rvc-surface-2); color:var(--rvc-text-muted); font-size:12px; font-weight:600; line-height:1.4; }
-.rvc-spin{ flex-shrink:0; width:14px; height:14px; border-radius:50%; border:2px solid var(--rvc-border-strong); border-top-color:var(--rvc-accent); animation:rvc-spin .8s linear infinite; }
+/* ---------- thinking (with Stop), and the message box ---------- */
+.rvc-busy{ flex-shrink:0; display:flex; align-items:center; gap:9px; margin:0 12px 8px; padding:7px 7px 7px 11px; min-height:34px; border-radius:10px; background:var(--rvc-surface-2); color:var(--rvc-text-muted); font-size:12px; font-weight:600; line-height:1.4; }
+.rvc-busy-text{ flex:1; min-width:0; }
+.rvc-spin{ flex-shrink:0; display:inline-block; width:14px; height:14px; border-radius:50%; border:2px solid var(--rvc-border-strong); border-top-color:var(--rvc-accent); animation:rvc-spin .8s linear infinite; }
+.rvc-stop{ flex-shrink:0; min-height:28px; padding:0 10px; font-size:12px; }
+
+/* the selected section the message is about ("Selected: Why attend · “Six reasons…”") */
+.rvc-context{ flex-shrink:0; display:flex; align-items:center; gap:6px; margin:0 12px 6px; padding:4px 4px 4px 10px; border-radius:10px; border:1px solid var(--rvc-border); background:var(--rvc-surface-2); font-size:12px; font-weight:600; line-height:1.35; color:var(--rvc-text); }
+.rvc-context-text{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.rvc-context-rm, .rvc-achip-rm{ flex-shrink:0; width:26px; height:26px; margin:0; padding:0; border:0; border-radius:50%; background:transparent; color:var(--rvc-text-muted); font-size:16px; font-weight:700; line-height:1; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+.rvc-context-rm:hover, .rvc-achip-rm:hover{ background:var(--rvc-surface-3); color:var(--rvc-text); }
+
+/* the attachments that go with the next message */
+.rvc-tray{ flex-shrink:0; margin:0 12px 6px; }
+.rvc-tray-hint{ margin:0 0 5px; font-size:11.5px; line-height:1.4; color:var(--rvc-text-muted); }
+.rvc-chips{ display:flex; flex-wrap:wrap; gap:6px; max-height:132px; overflow-y:auto; }
+.rvc-achip{ position:relative; display:flex; align-items:center; gap:7px; min-width:0; max-width:100%; flex:0 1 auto; padding:4px 2px 4px 4px; border-radius:10px; border:1px solid var(--rvc-border); background:var(--rvc-surface-2); color:var(--rvc-text); font-size:12px; line-height:1.3; }
+.rvc-achip.is-error{ background:var(--rvc-crit-soft); border-color:var(--rvc-crit-soft); color:var(--rvc-crit); }
+.rvc-achip-pic{ flex-shrink:0; width:32px; height:32px; border-radius:7px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:var(--rvc-surface); }
+.rvc-achip-img{ width:32px; height:32px; object-fit:cover; }
+.rvc-achip.is-error .rvc-doc-ico{ color:var(--rvc-crit); }
+.rvc-achip-num{ position:absolute; top:-6px; left:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:var(--rvc-text); color:var(--rvc-surface); font-size:10.5px; font-weight:800; line-height:18px; text-align:center; }
+.rvc-achip-main{ min-width:0; display:flex; flex-direction:column; }
+.rvc-achip-name{ max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.rvc-achip-state{ font-size:11px; color:var(--rvc-text-muted); overflow-wrap:anywhere; }
+.rvc-achip-state:empty{ display:none; }
+.rvc-achip.is-error .rvc-achip-state{ color:var(--rvc-crit); max-width:260px; }
+/* why Send did nothing */
+.rvc-attach-note{ flex-shrink:0; margin:0 14px 6px; font-size:12px; font-weight:600; line-height:1.4; color:var(--rvc-text); }
+
 /* its own bottom margin, so it never touches the edge when the foot note is hidden (short screens) or absent */
 .rvc-compose{ flex-shrink:0; display:flex; align-items:flex-end; gap:6px; margin:0 12px 12px; padding:5px 5px 5px 11px; border:1px solid var(--rvc-border-strong); border-radius:14px; background:var(--rvc-surface); transition:border-color .15s ease, box-shadow .15s ease; }
+.rvc-compose.has-attach{ padding-left:5px; }
 .rvc-compose:focus-within{ border-color:var(--rvc-accent); box-shadow:0 0 0 3px var(--rvc-accent-soft); }
 /* five lines at most, then it scrolls */
-.rvc-input{ flex:1; min-width:0; min-height:34px; max-height:116px; margin:0; padding:7px 0; border:0; outline:0; resize:none; overflow-y:auto; background:transparent; color:var(--rvc-text); font-family:inherit; font-size:13.5px; line-height:20px; }
+.rvc-input{ flex:1; min-width:0; min-height:34px; max-height:116px; margin:0; padding:7px 0; border:0; outline:0; resize:none; overflow-y:auto; background:transparent; color:var(--rvc-text); font-family:inherit; font-size:13.5px; line-height:20px; box-shadow:none; }
 .rvc-input:focus{ outline:0; }
 .rvc-input::placeholder{ color:var(--rvc-text-muted); opacity:1; }
 .rvc-input[readonly]{ color:var(--rvc-text-muted); cursor:progress; }
+.rvc-attach{ flex-shrink:0; width:36px; height:36px; margin:0; padding:0; border:0; border-radius:10px; background:transparent; color:var(--rvc-text-muted); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
+.rvc-attach:hover{ background:var(--rvc-surface-2); color:var(--rvc-text); }
 .rvc-send{ flex-shrink:0; width:36px; height:36px; margin:0; padding:0; border:0; border-radius:10px; background:var(--rvc-accent); color:var(--rvc-accent-contrast); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
 .rvc-send:hover{ background:var(--rvc-accent-strong); }
 .rvc-send:disabled{ background:var(--rvc-surface-3); color:var(--rvc-text-muted); cursor:progress; }
+/* quick ideas: small, under the box, once the conversation has begun */
+.rvc-quick{ flex-shrink:0; display:flex; flex-wrap:wrap; gap:6px; margin:-4px 12px 10px; }
+.rvc-quick-btn{ min-height:28px; max-width:100%; margin:0; padding:4px 10px; border:1px solid var(--rvc-border); border-radius:100px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12px; font-weight:600; line-height:1.3; text-align:left; overflow-wrap:anywhere; cursor:pointer; }
+.rvc-quick-btn:hover{ border-color:var(--rvc-accent); background:var(--rvc-surface-2); }
 .rvc-footnote{ flex-shrink:0; margin:-5px 14px 11px; font-size:12px; line-height:1.4; color:var(--rvc-text-muted); }
+/* "Drop to attach", over the whole panel while a file is dragged onto it */
+.rvc-drop{ position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:24px; pointer-events:none; border:2px dashed var(--rvc-accent); border-radius:inherit; background:var(--rvc-accent-soft); color:var(--rvc-text); text-align:center; }
+.rvc-drop-h{ margin:0; font-size:15px; font-weight:800; }
+.rvc-drop-p{ margin:0; max-width:300px; font-size:12.5px; line-height:1.45; }
 
 /* ---------- the folded bar ----------
    As wide as the panel it stands for, and the label may take two lines: a long change ("Draft events · created
    26 Oct – 1 Nov 2026") cut to "Showing Draft eve…" would not say what Undo undoes. */
 .rvc-peek{
-  position:fixed; left:22px; bottom:84px; z-index:65;
-  width:400px; max-width:calc(100vw - 32px); min-height:48px;
+  position:fixed; right:var(--rvc-right); bottom:calc(var(--rvc-bottom) + var(--rvc-lift) + var(--rvc-gap)); z-index:var(--rvc-z-launcher);
+  width:var(--rvc-panel-w); max-width:calc(100vw - 2 * var(--rvc-right)); min-height:48px;
   display:flex; align-items:center; gap:8px; padding:5px 6px 5px 8px;
   background:var(--rvc-surface); color:var(--rvc-text);
   border:1px solid var(--rvc-border-strong); border-radius:var(--rvc-r-md); box-shadow:var(--rvc-shadow-md);
   animation:rvc-in .18s cubic-bezier(.2,.7,.2,1);
+  transition:bottom .12s ease;
 }
 .rvc-peek-face{ width:28px; height:28px; border-radius:50%; background:var(--rvc-surface-2); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
 .rvc-peek-face .rvc-face{ width:22px; height:22px; }
 .rvc-peek-label{ flex:1; min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; font-size:12.5px; font-weight:600; line-height:1.3; }
 .rvc-peek .rvc-btn{ flex-shrink:0; }
 
+/* ---------- the round face at every width (placement.compact), and on a phone ---------- */
+.rvc.rvc-compact .rvc-launcher, .rvc.rvc-phone .rvc-launcher{ width:52px; height:52px; padding:0; justify-content:center; border-radius:50%; }
+.rvc.rvc-compact .rvc-launcher-label, .rvc.rvc-phone .rvc-launcher-label{ display:none; }
+.rvc.rvc-compact .rvc-launcher-face, .rvc.rvc-phone .rvc-launcher-face{ width:40px; height:40px; }
+.rvc.rvc-compact .rvc-launcher-face .rvc-face, .rvc.rvc-phone .rvc-launcher-face .rvc-face{ width:32px; height:32px; }
+.rvc.rvc-compact .rvc-launcher:focus-visible, .rvc.rvc-phone .rvc-launcher:focus-visible{ border-radius:50%; }
+.rvc.rvc-compact{ --rvc-gap:70px; }
+
+/* ---------- the editor's docked column (opts.dock): full height at the right edge, under its top bar ---------- */
+.rvc.rvc-is-docked .rvc-panel{
+  top:var(--rvc-dock-top); right:0; bottom:0; left:auto;
+  width:var(--rvc-panel-w); max-width:none; height:auto;
+  border-width:0 0 0 1px; border-radius:0; box-shadow:none; animation:none; transition:none;
+}
+/* while docked open the column's own Close closes it */
+.rvc.rvc-is-docked .rvc-launcher{ display:none; }
+
 /* ---------- narrower screens ---------- */
 @media (max-width:880px){
-  .rvc-launcher{ left:16px; }
-  .rvc-panel{ left:16px; width:380px; max-width:calc(100vw - 32px); z-index:69; }
-  .rvc-peek{ left:16px; }
+  .rvc{ --rvc-right:16px; --rvc-panel-w:380px; }
 }
 @media (max-height:560px){
   .rvc-footnote{ display:none; }
 }
-/* phones: a round launcher and a full-screen sheet with room for thumbs */
-@media (max-width:600px){
-  .rvc-launcher{ left:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); width:52px; height:52px; padding:0; justify-content:center; border-radius:50%; }
-  .rvc .rvc-launcher:focus-visible{ border-radius:50%; }
-  .rvc-launcher-label{ display:none; }
-  .rvc-launcher-face{ width:40px; height:40px; }
-  .rvc-launcher-face .rvc-face{ width:32px; height:32px; }
-  .rvc-panel{
-    left:0; right:0; top:0; bottom:0; width:100%; max-width:none; z-index:85;
-    height:100vh; height:100dvh;
-    border:0; border-radius:0; box-shadow:none;
-    padding:env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
-  }
-  /* with the keyboard up: the visible part of the screen (etb2b-chat.js syncViewport) */
-  .rvc-panel.rvc-has-vv{ top:var(--rvc-vt, 0px); bottom:auto; height:var(--rvc-vh, 100dvh); }
-  .rvc-head{ min-height:56px; }
-  .rvc-close{ width:44px; height:44px; }
-  .rvc-head-help{ min-height:44px; }
-  .rvc-thread{ padding:12px 12px 16px; }
-  .rvc-compose{ margin:0 10px 10px; }
-  .rvc-input{ font-size:16px; line-height:22px; max-height:126px; }
-  .rvc-send{ width:44px; height:44px; }
-  .rvc-btn, .rvc-choice, .rvc-suggestion{ min-height:44px; }
-  .rvc-footnote{ margin:-4px 12px 8px; }
-  .rvc-peek{ left:16px; right:16px; width:auto; max-width:none; min-height:56px; bottom:calc(80px + env(safe-area-inset-bottom, 0px)); }
-  .rvc-peek-face{ display:none; }
+/* ---------- phones (etb2b-chat.js sets .rvc-phone from opts.phoneQuery, 600px unless a page says otherwise) ----------
+   A round launcher at 16px from the corner, above the home bar, and a full-screen sheet with room for thumbs;
+   or, with phoneSheet:'half', a bottom sheet over the lower part of the screen with the page usable above. */
+.rvc.rvc-phone .rvc-launcher{ right:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px) + var(--rvc-lift)); }
+.rvc.rvc-phone .rvc-panel{
+  left:0; right:0; top:0; bottom:0; width:100%; max-width:none;
+  height:100vh; height:100dvh;
+  border:0; border-radius:0; box-shadow:none;
+  padding:env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
 }
+/* with the keyboard up: the visible part of the screen (etb2b-chat.js syncViewport) */
+.rvc.rvc-phone .rvc-panel.rvc-has-vv{ top:var(--rvc-vt, 0px); bottom:auto; height:var(--rvc-vh, 100dvh); }
+.rvc.rvc-phone.rvc-half .rvc-panel{
+  top:auto; bottom:0; height:56vh;
+  border-top:1px solid var(--rvc-border-strong); border-radius:var(--rvc-r-lg) var(--rvc-r-lg) 0 0; box-shadow:var(--rvc-shadow-lg);
+  padding-top:0;
+}
+.rvc.rvc-phone.rvc-half .rvc-panel.rvc-has-vv{ top:auto; bottom:var(--rvc-vb, 0px); height:min(56vh, var(--rvc-vh, 56vh)); }
+.rvc.rvc-phone .rvc-head{ min-height:56px; }
+.rvc.rvc-phone .rvc-close{ width:44px; height:44px; }
+.rvc.rvc-phone .rvc-head-help{ min-height:44px; }
+.rvc.rvc-phone .rvc-thread{ padding:12px 12px 16px; }
+.rvc.rvc-phone .rvc-compose{ margin:0 10px 10px; }
+.rvc.rvc-phone .rvc-input{ font-size:16px; line-height:22px; max-height:126px; }
+.rvc.rvc-phone .rvc-send, .rvc.rvc-phone .rvc-attach{ width:44px; height:44px; }
+.rvc.rvc-phone .rvc-btn, .rvc.rvc-phone .rvc-choice, .rvc.rvc-phone .rvc-suggestion{ min-height:44px; }
+.rvc.rvc-phone .rvc-quick-btn, .rvc.rvc-phone .rvc-stop{ min-height:36px; }
+.rvc.rvc-phone .rvc-achip-rm, .rvc.rvc-phone .rvc-context-rm{ width:36px; height:36px; }
+.rvc.rvc-phone .rvc-footnote{ margin:-4px 12px 8px; }
+.rvc.rvc-phone .rvc-peek{ left:16px; right:16px; width:auto; max-width:none; min-height:56px; bottom:calc(80px + env(safe-area-inset-bottom, 0px) + var(--rvc-lift)); }
+.rvc.rvc-phone .rvc-peek-face{ display:none; }
 @media (max-width:380px){
   .rvc-head-help-text{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
   .rvc-head-help{ width:44px; padding:0; justify-content:center; }
@@ -289,13 +457,13 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 /* ---------- motion ---------- */
 @keyframes rvc-in{ from{ opacity:0; transform:translateY(8px); } to{ opacity:1; transform:none; } }
 @keyframes rvc-rise{ from{ opacity:0; transform:translateY(4px); } to{ opacity:1; transform:none; } }
-@keyframes rvc-label-in{ from{ opacity:0; transform:translateX(-6px); } to{ opacity:1; transform:none; } }
+@keyframes rvc-label-in{ from{ opacity:0; transform:translateX(6px); } to{ opacity:1; transform:none; } }
 @keyframes rvc-pulse{ 0%,100%{ opacity:.35; } 50%{ opacity:1; } }
 @keyframes rvc-spin{ to{ transform:rotate(360deg); } }
 @keyframes rvc-fill{ from{ width:0; } to{ width:100%; } }
 @media (prefers-reduced-motion: reduce){
   .rvc-panel, .rvc-peek, .rvc-turn, .rvc-launcher-label, .rvc-status i, .rvc-spin, .rvc-cd-bar i{ animation:none !important; }
-  .rvc-launcher, .rvc-btn, .rvc-suggestion, .rvc-compose{ transition:none !important; }
+  .rvc-launcher, .rvc-panel, .rvc-peek, .rvc-btn, .rvc-suggestion, .rvc-compose{ transition:none !important; }
   /* the countdown's bar stands still, full, and the words say what will happen */
   .rvc-cd-bar i{ width:100%; }
 }

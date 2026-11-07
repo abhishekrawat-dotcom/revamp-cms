@@ -6,6 +6,8 @@
 <link rel="stylesheet" href="edit-event.css">
 <link rel="stylesheet" href="forms-builder.css">
 <link rel="stylesheet" href="hero-video-ui.css">
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 <style>
   /* The date line and, while the event has no portal, "No portal yet" with Set portal beside it (paintHeader).
      Only the console's tokens, so it follows the light and dark switch. On a phone or a narrow window the top bar
@@ -6761,3 +6763,9 @@
   init();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page and its event.
+     It is lifted above the Save changes bar while that bar shows (data-keep-clear). -->
+<div id="rv-assistant" data-rv-assistant="console" data-keep-clear=".savebar.on"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>

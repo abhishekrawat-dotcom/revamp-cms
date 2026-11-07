@@ -647,12 +647,20 @@
     background: none; border: 0; padding: 4px 0; font: inherit; font-size: 12.5px; font-weight: 700;
     color: var(--crit); text-decoration: underline; cursor: pointer;
   }
-  /* a long step label ("Continue with a template") plus the note text no longer fit one row at phone width —
-     let the primary button wrap to its own line rather than run off the right edge */
-  @media (max-width: 480px){
-    .wiz-foot{ padding: 10px 14px; }
-    .wiz-foot #btn-next{ order: 4; flex: 1 1 100%; justify-content: center; }
+  /* at phone width the footer is one row (UX-051): Back is its arrow alone, the note gets the room between,
+     two lines at most, and the main button keeps its words */
+  @media (max-width: 700px){
+    .wiz-foot{ padding: 8px 14px; gap: 10px; flex-wrap: nowrap; }
+    .wiz-foot .spacer{ display: none; }
     .wiz-foot .btn{ min-height: 44px; }
+    .wiz-foot #btn-back{ flex: none; padding: 0 12px; }
+    .wiz-foot #btn-back svg{ width: 18px; height: 18px; }
+    /* the word stays for screen readers (and "Cancel", which has no arrow, keeps its word on screen) */
+    .wiz-foot #btn-back .lbl{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .wiz-foot .note{ flex: 1 1 auto; font-size: 11.5px; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+    .wiz-foot #btn-next{ flex: none; white-space: nowrap; }
+  }
+  @media (max-width: 480px){
     .wiz-body{ padding: 22px 14px 32px; }
   }
 
@@ -1910,10 +1918,81 @@
   .psd-preview-card .s-hero-psd{ background: var(--surface-2) !important; }
   .psd-preview-card .psd-canvas-wrap{ margin: 0 auto; }
   .psd-preview-header{ padding: 8px 14px; }
+  /* ---------- clearer screens (UX batch B17) ---------- */
+  /* one section list (UX-050): the design's name, what kind of form it is under it, the count beside "Sections" */
+  .sec-row .nm .sub{ display: block; margin-top: 1px; font-size: 10.5px; font-weight: 500; color: var(--text-faint); white-space: normal; line-height: 1.35; }
+  .sec-row[aria-current="true"] .nm .sub{ color: var(--accent-strong); opacity: .8; }
+  .sec-row.sec-static .nm{ white-space: normal; }
+  .sec-fixed, .tpl-preview-fixed{ flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--text-faint); }
+  .rail-panel-head h3 .sec-count{ display: block; margin-top: 2px; font-size: 11.5px; font-weight: 500; color: var(--text-muted); }
+  .tpl-carousel-sec-count{ font-weight: 600; text-transform: none; letter-spacing: 0; }
+  .editor-head .eh-kind{ font-size: 12px; font-weight: 600; color: var(--text-faint); }
+  /* the method screen (UX-052, UX-055, UX-058): the design's name and its button above the picture */
+  .tpl-carousel > .tpl-carousel-info-top{ margin-bottom: 12px; align-items: center; }
+  .tpl-carousel-info{ margin-top: 4px; }
+  .design-choice-card p.dc-fit{ flex: none; font-weight: 600; color: var(--text); }
+  .design-choice-card p.dc-fit[hidden]{ display: none; }
+  .tpl-anyway{ display: block; margin: 0 auto; }
+  .tpl-anyway[hidden]{ display: none; }
+  #tpl-gallery-wrap[hidden]{ display: none; }
+  .tpl-carousel-shield{
+    position: absolute; inset: 0; z-index: 2; margin: 0; padding: 0 0 14px; border: 0; background: transparent; cursor: pointer;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .tpl-carousel-shield[hidden]{ display: none; }
+  .tpl-carousel-shield span{
+    padding: 6px 12px; border-radius: 999px; background: rgba(20,20,20,.8); color: #fff; font-size: 12px; font-weight: 600;
+    opacity: 0; transition: opacity .15s ease; pointer-events: none;
+  }
+  .tpl-carousel-shield:hover span, .tpl-carousel-shield:focus-visible span{ opacity: 1; }
+  .tpl-carousel-shield:focus-visible{ outline: 2px solid var(--accent); outline-offset: -2px; }
+  .tpl-carousel-shield .on-touch{ display: none; }
+  @media (hover: none){
+    .tpl-carousel-shield span{ opacity: 1; }
+    .tpl-carousel-shield .on-mouse{ display: none; }
+    .tpl-carousel-shield .on-touch{ display: inline; }
+  }
+  .tpl-carousel-media.scrolling{ box-shadow: inset 0 0 0 2px var(--accent); }
+  .rail-tools .nm-short{ display: none; }
+  .rail-preview{ display: none; }
+  .ai-site-toggle{ display: none; }
+  /* a phone (UX-051): one compact bar on top — the rail with Previous edition and Preview beside it — and the
+     one-row footer; the gallery's arrows sit on the picture; "Redesign with AI" shows its looks full width,
+     with the site one tap away */
+  @media (max-width: 700px){
+    .rail-row{ flex-direction: row; align-items: center; gap: 8px; padding-right: 12px; }
+    .rail-row .rail{ padding-left: 12px; padding-right: 0; }
+    /* the steps keep their numbers on screen and their names for screen readers: the page's own heading
+       says where the owner is, and the two buttons beside them need the room */
+    .rail-row .rail-step .lbl{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .rail-tools{ padding: 0 0 12px; }
+    .rail-tools > .btn{ width: auto; max-width: 170px; }
+    .rail-tools .nm-long{ display: none; }
+    .rail-tools .nm-short{ display: inline; }
+    .rail-preview:not([hidden]){ display: inline-flex; flex-shrink: 0; margin-bottom: 12px; }
+    .wiz-split.preview-available:not(.showing-preview) .live-preview-expand:not([hidden]){ display: none; }
+    .tpl-carousel-stage{ position: relative; }
+    .tpl-carousel-nav{ position: absolute; top: 50%; z-index: 3; width: 38px; height: 38px; margin-top: -19px; opacity: .92; }
+    #tpl-carousel-prev{ left: 6px; }
+    #tpl-carousel-next{ right: 6px; }
+    .tpl-carousel-media{ height: min(64vh, 560px); }
+    .live-preview-body.reviewing{ flex-direction: column; padding: 0; }
+    .live-preview-body.reviewing .ai-review{ flex: 1 1 auto; width: auto; margin: 0; border: 0; border-radius: 0; }
+    .live-preview-body.reviewing #live-preview-canvas{ display: none; }
+    .live-preview-body.reviewing.show-site .ai-review{ display: none; }
+    .live-preview-body.reviewing.show-site #live-preview-canvas{ display: flex; padding: 10px; }
+    .ai-site-toggle:not([hidden]){ display: flex; }
+  }
+
 </style>
 <link rel="stylesheet" href="motion.css">
 <!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
 <link rel="stylesheet" href="app-logo.css">
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
+<!-- …out of sight while one of this page's dialogs is open: their scrim (z 60) is under the launcher (65) and the
+     panel (69), so they would draw over the dialog and its buttons. #modal-root is empty whenever no dialog is open. -->
+<style>#modal-root:not(:empty) ~ #rv-assistant .rvc{ visibility:hidden; }</style>
 
 <div class="wiz">
   <!-- ============ TOP: brand + progress rail ============ -->
@@ -1946,6 +2025,11 @@
       <nav class="rail" id="rail" aria-label="Progress"></nav>
       <!-- details form: previous edition + optional blocks (renderTogglePanel) -->
       <div class="rail-tools" id="toggle-panel" hidden></div>
+      <!-- a phone's Preview: here in the header row, not a bar of its own above the form (setPreviewVisible, UX-051) -->
+      <button class="btn btn-secondary btn-sm rail-preview" id="btn-rail-preview" type="button" hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+        Preview
+      </button>
     </div>
   </header>
 
@@ -2020,6 +2104,8 @@
               </span>
               <h3>Generate from a brief</h3>
               <p>Give ETB2B AI an overview doc and a few reference links — the previous edition, this edition, competitor events — and it writes real content for you, benchmarked against all of it. You review and publish; nothing goes live unchecked.</p>
+              <!-- for a type the gallery has no design made for (Awards, Client Event): what this path builds for it (renderMethodFit) -->
+              <p class="dc-fit" id="dc-fit" hidden></p>
               <button class="btn btn-primary btn-lg" type="button" id="btn-ai-generate">Generate from brief</button>
             </div>
             <div class="design-choice-card">
@@ -2040,8 +2126,11 @@
             </div>
           </div>
 
-          <div class="design-choice-divider"><span>Or start from a template</span></div>
+          <div class="design-choice-divider" id="tpl-divider"><span>Or start from a template</span></div>
+          <!-- for a type no gallery design was made for, the gallery waits behind this (renderMethodFit) -->
+          <button class="btn btn-secondary tpl-anyway" type="button" id="tpl-anyway" aria-controls="tpl-gallery-wrap" aria-expanded="false" hidden>Use a conference design anyway</button>
 
+          <div id="tpl-gallery-wrap">
           <div class="step-head-row" style="margin-bottom:0;">
             <div class="step-head-text">
               <h2 style="margin:0;font-size:17px;">Pick a template to start from</h2>
@@ -2051,34 +2140,42 @@
 
           <!-- One template shown full-size at a time: the real mounted template (RevampCanvas, the engine
                custom_editor.html uses), not a screenshot. Prev/next cycles templatesForCategory(); the
-               switches below hide and show its sections in this canvas. See renderTemplateCarousel(). -->
+               switches below hide and show its sections in this canvas. See renderTemplateCarousel().
+               The design's name and its one action sit above the picture, so they are in reach without
+               scrolling past it (UX-052, UX-055). -->
           <div class="tpl-carousel" id="tpl-carousel" hidden>
+            <div class="tpl-carousel-info-top">
+              <div class="tpl-carousel-info-head">
+                <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
+                <h3 id="tpl-carousel-name"></h3>
+                <p class="hint" id="tpl-carousel-sub"></p>
+                <!-- a design with another portal's fixed "About …" section says so (aboutPortalNote) -->
+                <p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden></p>
+              </div>
+              <button class="btn btn-primary" type="button" id="tpl-carousel-use">Use this template</button>
+            </div>
             <div class="tpl-carousel-stage">
               <button class="tpl-carousel-nav" id="tpl-carousel-prev" type="button" aria-label="Previous template">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
               </button>
-              <div class="tpl-carousel-media">
+              <div class="tpl-carousel-media" id="tpl-carousel-media">
                 <div class="tpl-carousel-canvas" id="tpl-carousel-canvas"></div>
                 <div class="tpl-carousel-placeholder" id="tpl-carousel-placeholder" role="alert" hidden></div>
+                <!-- over the picture until it is clicked, so the wheel and a swipe scroll this page and not the
+                     preview (wireCarouselShield) -->
+                <button class="tpl-carousel-shield" id="tpl-carousel-shield" type="button" aria-label="Scroll inside the preview">
+                  <span class="on-mouse">Click to scroll the preview</span><span class="on-touch">Tap to scroll the preview</span>
+                </button>
               </div>
               <button class="tpl-carousel-nav" id="tpl-carousel-next" type="button" aria-label="Next template">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
               </button>
             </div>
             <div class="tpl-carousel-info">
-              <div class="tpl-carousel-info-top">
-                <div class="tpl-carousel-info-head">
-                  <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
-                  <h3 id="tpl-carousel-name"></h3>
-                  <p class="hint" id="tpl-carousel-sub"></p>
-                  <!-- a design with another portal's fixed "About …" section says so (aboutPortalNote) -->
-                  <p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden></p>
-                </div>
-                <button class="btn btn-primary btn-lg" type="button" id="tpl-carousel-use">Use this template</button>
-              </div>
-              <div class="tpl-carousel-sections-label">Sections in this template</div>
+              <div class="tpl-carousel-sections-label">Sections in this template <span class="tpl-carousel-sec-count" id="tpl-carousel-sec-count"></span></div>
               <div class="tpl-preview-list" id="tpl-carousel-sections"></div>
             </div>
+          </div>
           </div>
 
         </div>
@@ -2098,7 +2195,7 @@
         <div class="callout plain" id="existing-event" role="status" hidden></div>
 
         <div class="b-head">
-          <span class="ttl">Basic details</span>
+          <span class="ttl">Event details</span>
           <span class="cat-chip">
             <span class="ci" id="cat-bar-ico"></span>
             <b id="cat-bar-portal"></b>
@@ -2122,7 +2219,7 @@
                 <input class="inp" id="f-client" type="text" placeholder="e.g. Tata Capital" autocomplete="off">
               </div>
               <div class="field c4" id="slug-cell">
-                <div class="flabel-row"><span class="flabel">URL slug <span class="pill-req">*</span></span></div>
+                <div class="flabel-row"><span class="flabel">Web address <span class="pill-req">*</span></span></div>
                 <div class="slug-row">
                   <!-- the real address in front of what is typed (siteAddress); a long host gives way from its start -->
                   <span class="slug-prefix" id="slug-prefix"><span class="slug-prefix-text"><bdi id="slug-prefix-text"></bdi></span></span>
@@ -2217,7 +2314,7 @@
               </div>
               <!-- the previous edition, picked from the event's own portal's ET events (wireEtPicker); its address is kept in #gb-previous -->
               <div class="field et-pick" id="gb-et">
-                <span class="flabel" id="gb-et-label">Select Previous edition</span>
+                <span class="flabel" id="gb-et-label">Previous edition</span>
                 <div class="et-chip" id="gb-et-chip" hidden>
                   <span class="et-chip-ico" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
                   <span class="et-chip-txt"><b id="gb-et-chip-title"></b><small id="gb-et-chip-sub"></small></span>
@@ -2314,6 +2411,8 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
         Back to editing
       </button>
+      <!-- a phone shows the looks of "Redesign with AI" full width, and this switches to the site and back (UX-051) -->
+      <button class="live-preview-collapse ai-site-toggle" id="btn-ai-site" type="button" aria-pressed="false" hidden>See it on my site</button>
     </div>
     <div class="live-preview-body">
       <aside class="ai-review" id="ai-review" aria-label="AI design proposals" hidden></aside>
@@ -2327,7 +2426,7 @@
   <footer class="wiz-foot" id="wiz-foot">
     <button class="btn btn-secondary" id="btn-back">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
-      Back
+      <span class="lbl">Back</span>
     </button>
     <span class="note" id="foot-note"></span>
     <div class="spacer"></div>
@@ -2409,8 +2508,8 @@
      nothing to fill in, so they are not sections here.
   ========================================================= */
   var LIBRARY = [
-    { id:'hero',      name:'Hero / Top banner',      shape:'hero',    helper:'The first thing a visitor sees: your banner artwork with the event date, venue and the main buttons.' },
-    { id:'stats',     name:'Stats strip',            shape:'stats',   helper:'The numbers that show the scale of the event — each a figure and what it counts.' },
+    { id:'hero',      name:'Top banner',             shape:'hero',    helper:'The first thing a visitor sees: your banner artwork with the event date, venue and the main buttons.' },
+    { id:'stats',     name:'Key numbers',            shape:'stats',   helper:'The numbers that show the scale of the event — each a figure and what it counts.' },
     { id:'partners',  name:'Partner logos',          shape:'logos',   toggle:true, helper:'Sponsor and partner logos, grouped by tier.' },
     { id:'about',     name:'Overview',               shape:'rich',    limit:900, core:true, helper:'What the event is about, in a paragraph or two.' },
     { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.' },
@@ -2548,7 +2647,7 @@
   ========================================================= */
   /* 2 rail dots over the internal S.step values: step 1's own three phases (category / method / details,
      see setStep1Phase()) all render under dot 1; step 4 (the hand-off) is dot 2. */
-  var STEPS = ['Event details','Assemble'];
+  var STEPS = ['Event details','Open in editor'];
   function railPos(step){ return step >= 4 ? 2 : 1; }
   /* WHERE A DRAFT IS KEPT (UX-048)
      In the person's account (create-drafts.js, functions/lib/create-drafts.js): every draft is saved there a moment
@@ -3646,7 +3745,7 @@
   /* =========================================================
      PROGRESS RAIL
   ========================================================= */
-  /* the real S.step a rail dot jumps to — dot 2 ("Assemble") always means S.step 4 */
+  /* the real S.step a rail dot jumps to — dot 2 ("Open in editor") always means S.step 4 */
   var RAIL_TARGET = [1, 4];
   function renderRail(){
     var rail = $('rail');
@@ -3729,7 +3828,7 @@
   /* =========================================================
      FOOTER BAR - label + gating per step
   ========================================================= */
-  var BACK_LABEL = svg('<path d="M15 18l-6-6 6-6"/>', 15) + ' Back';
+  var BACK_LABEL = svg('<path d="M15 18l-6-6 6-6"/>', 15) + '<span class="lbl"> Back</span>';
   function renderFoot(){
     var back = $('btn-back'), next = $('btn-next'), note = $('foot-note');
     renderAiPrefillNote();
@@ -3737,9 +3836,10 @@
     renderAiEntry();
     setTimeout(placeToasts, 0);     // once the bar has its new content
     if (busy){
-      /* nothing can move forward while a job owns the screen; Back becomes that job's Cancel */
-      back.hidden = false;
-      back.textContent = 'Cancel';
+      /* nothing can move forward while a job owns the screen. Every busy view carries its own way out
+         (Cancel, Cancel generation, or Try again / Back to my details after a failure), so the footer
+         offers no second Cancel beside it (UX-057) — only what the job is doing. */
+      back.hidden = true;
       next.hidden = true;
       note.textContent = busy.note || '';
       return;
@@ -3762,9 +3862,11 @@
           : 'Choose the portal and a microsite type to continue.';
       }
       else if (S.step1Phase === 'method'){
+        /* a choice screen: each way in carries its own button, and a design is chosen only by the
+           "Use this template" beside its name — never by a footer Continue that would take whichever
+           design the gallery happens to show (UX-052) */
         back.hidden = false;
-        next.disabled = !carouselTemplate();
-        next.innerHTML = 'Continue with a template ' + svg('<path d="M9 18l6-6-6-6"/>', 15);
+        next.hidden = true;
       }
       else if (S.step1Phase === 'details'){
         back.hidden = false;
@@ -4042,7 +4144,7 @@
     return !!(el && el.validity && el.validity.badInput);
   }
   function slugIssue(slug){
-    if (!slug) return 'Enter a URL slug — the last part of the event’s web address.';
+    if (!slug) return 'Enter the web address — the last part of the event’s address, after /e/.';
     /* an event that already exists keeps the address it was created with, whatever its length */
     if (slug.length < SLUG_MIN && !S.createdEventId) return 'Use at least ' + SLUG_MIN + ' characters.';
     /* what the server said of exactly this address (checkSlugNow); while it is being asked, nothing stops Continue:
@@ -4151,7 +4253,7 @@
     });
     /* a site generated from nothing but a name would be invented from start to finish */
     if (!briefAnswers(br.text) && !briefDoc && !links)
-      out.push({ field: 'gb-brief-text', message: 'Add a description, a document or a link so the site is built from real information.' });
+      out.push({ field: 'gb-brief-text', message: 'Write something under at least one heading, or add a PDF or a link, so the site is built from real information.' });
     return out;
   }
   function detailsIssues(){
@@ -4393,7 +4495,7 @@
 
     if (C.nomination){
       $('cat-panel-title').textContent   = 'Nomination window';
-      $('cat-panel-eyebrow').textContent = 'Drives the entry CTA';
+      $('cat-panel-eyebrow').textContent = 'Sets the Nominate button';
 
       var stages = [
         { k:'nomOpen',   t:'nomOpenTbd',   label:'Nominations open',    req:false, hint:'Leave deferred to open entries the moment the site goes live.' },
@@ -4686,6 +4788,9 @@
     if (S.step === 1 && S.step1Phase === 'method' && !busy) renderAboutNote(carouselTemplate());
     if (S.step === 1 && S.step1Phase === 'details' && !busy){
       if ($('cat-bar-portal')) $('cat-bar-portal').textContent = S.basics.portal ? portalName(S.basics.portal) : '';
+      /* the section list's "About ETCIO" row names both portals (aboutPortalNote), and a portal dropped above
+         changes which rows start off: the list and its count are drawn again (the form beside it is left alone) */
+      if ($('sec-list')){ renderSecList(); refreshProgress(); }
       wireEtPicker();
       checkCurrentLink();
     }
@@ -4819,13 +4924,20 @@
     });
   }
 
-  /* What a gallery design's card says when its fixed "About …" section is another portal's text; '' otherwise */
-  function aboutPortalNote(tplId){
+  /* What a gallery design's card says when its fixed "About …" section is another portal's text; '' otherwise.
+     That section starts switched off on this event (excludedOn); short: the line under its row in the form. */
+  function aboutPortalNote(tplId, short){
     var own = S.basics.portal;
     if (!own || !Object.prototype.hasOwnProperty.call(ABOUT_PORTALS, tplId)) return '';
     var named = ABOUT_PORTALS[tplId];
     if (named.indexOf(own) !== -1) return '';
-    return 'Its “' + ABOUT_HEADINGS[tplId] + '” section is ' + portalName(named[0]) + '’s own text. Edit or remove it for ' + portalName(own) + ' in the editor.';
+    /* Names only, never a portal's code ("cio", "retail"): before ET's roster has answered — a draft resumed on
+       another computer draws its section list at once — the other portal is named by the section's own heading
+       ("About ETCIO" -> ETCIO) and this event's portal is "this event". portalArrived draws it again with the
+       roster's names. */
+    var theirs = knownPortalName(named[0]) || ABOUT_HEADINGS[tplId].replace(/^About\s+/, ''), mine = knownPortalName(own) || 'this event';
+    return short ? theirs + '’s own text, so it starts off for ' + mine + '. Switch it on to rewrite it in the site editor.'
+      : 'Its “' + ABOUT_HEADINGS[tplId] + '” section is ' + theirs + '’s own text, so it starts switched off for ' + mine + '. Switch it on to rewrite it in the site editor.';
   }
   /* that note on the gallery's card for design t */
   function renderAboutNote(t){
@@ -5715,14 +5827,78 @@
      One record, in the template's own section ids: S.excludedSections[<template id>]. The gallery's
      switches, the Included switch of a section's editor, the list under Page content, the preview and
      the hand-off all read and write this and nothing else. */
+  /* A design's fixed "About …" section that is another portal's own text (ABOUT_PORTALS) starts switched off
+     on this event — "About ETCIO" does not belong on an ETRetail event's page (UX-050). It is a switch like
+     any other: switched on, the owner's choice is kept as an explicit false so this default does not switch
+     it off again. */
   function excludedOn(tplId){
-    return (S.excludedSections && S.excludedSections[tplId]) || {};
+    var own = (S.excludedSections && S.excludedSections[tplId]) || {};
+    var about = foreignAboutId(tplId);
+    if (!about || Object.prototype.hasOwnProperty.call(own, about)) return own;
+    var out = {};
+    Object.keys(own).forEach(function(k){ out[k] = own[k]; });
+    out[about] = true;
+    return out;
   }
   function setSectionExcluded(tplId, sectionId, off){
     var all = S.excludedSections || (S.excludedSections = {});
     var map = all[tplId] || (all[tplId] = {});
-    if (off) map[sectionId] = true; else delete map[sectionId];
+    if (off) map[sectionId] = true;
+    else if (sectionId === foreignAboutId(tplId)) map[sectionId] = false;
+    else delete map[sectionId];
     if (!Object.keys(map).length) delete all[tplId];
+  }
+  /* the template section id of design tplId's "About …" section when it names another portal than this
+     event's; '' otherwise (the event's own portal, no portal yet, or a design with no such section) */
+  function foreignAboutId(tplId){
+    if (!aboutPortalNote(tplId)) return '';
+    var caps = capsOf(tplId), heading = ABOUT_HEADINGS[tplId], id = '';
+    (caps ? caps.sections : []).forEach(function(sec){ if (!id && sec.name === heading) id = sec.id; });
+    return id;
+  }
+
+  /* ---------- the design's sections, as one list ----------
+     The gallery's switches, the toast after "Use this template" and the details form's section list all show
+     this one list, under the design's own section names ("Summit spotlight", not "Key numbers"), and say the
+     same count: how many of the design's sections are on the site (UX-050). A row the wizard has a form for
+     is filled in here; the others are edited in the site editor. A section the layout pins in place with
+     nothing to fill in here (the closing "About …") is always on, except another portal's "About …"
+     (foreignAboutId), which can be switched off; the banner and Contact us have a form and a switch. */
+  function designRows(tplId, caps){
+    var off = excludedOn(tplId), about = foreignAboutId(tplId);
+    return (caps ? caps.sections : []).map(function(sec){
+      var lib = libBy(sec.libId), locked = sec.pinned && !lib && sec.id !== about;
+      return {
+        id: sec.id, title: sec.name, libId: sec.libId, kind: lib ? lib.name : '',
+        fillable: !!lib, locked: locked, foreignAbout: sec.id === about,
+        on: locked || !off[sec.id]
+      };
+    });
+  }
+  /* -> { on, of }: the count every one of those places says ("10 of 11 sections on your site") */
+  function designCount(tplId, caps){
+    var rows = designRows(tplId, caps);
+    return { on: rows.filter(function(r){ return r.on; }).length, of: rows.length };
+  }
+  function designCountText(n){ return n.on + ' of ' + n.of + ' sections on your site'; }
+  /* "Frequently asked questions" and "FAQs", "Banner" and "Top banner": the same name said two ways, so the
+     form does not repeat it as a sub-label */
+  function sameName(a, b){
+    function norm(x){ return String(x || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/s$/, ''); }
+    var x = norm(a), y = norm(b);
+    if (!x || !y) return true;
+    if (x === y || x.indexOf(y) !== -1 || y.indexOf(x) !== -1) return true;
+    function initials(z){ return z.split(' ').map(function(w){ return w.charAt(0); }).join('').replace(/s$/, ''); }
+    return initials(x) === y.replace(/ /g, '') || initials(y) === x.replace(/ /g, '');
+  }
+  /* what kind of section the wizard's form for s is ("Key numbers"), whatever a design calls it */
+  function secKind(s){ var lib = libBy(s && s.libId); return lib ? lib.name : String((s && s.name) || ''); }
+  /* s's name as the draft's design calls it ("Summit spotlight") — the name of its row in the gallery too */
+  function secTitle(s){
+    if (!s || isTextSection(s)) return String((s && s.name) || '');
+    var caps = draftCaps(), c = caps && caps.byLib[s.libId], title = '';
+    if (c) caps.sections.forEach(function(sec){ if (sec.id === c.sectionId) title = sec.name; });
+    return title || secKind(s);
   }
   /* A section of the draft is on the site when the design has a place for it and that place is not
      switched off. A section the owner added that no design knows (a custom one) keeps its own flag. */
@@ -5805,8 +5981,8 @@
     applyTemplate();
     save();
   }
-  /* "Use this template" and the footer's "Continue with a template": commit the design being looked at and
-     open the details form. Asks first when the choice replaces something the owner chose or hides
+  /* "Use this template" (the one way to choose a gallery design: the method screen has no footer Continue,
+     UX-052): commit the design being looked at and open the details form. Asks first when the choice replaces something the owner chose or hides
      something they wrote, and says exactly what. */
   function useTemplate(tplId){
     var tpl = templateById(tplId);
@@ -5816,7 +5992,7 @@
       var changing = S.template !== tplId;
       var notShown = !changing ? [] : S.sections.filter(function(s){
         return libBy(s.libId) && !s.parked && !caps.byLib[s.libId] && sectionHasContent(s);
-      }).map(function(s){ return s.name; });
+      }).map(secKind);
       var title = '', lines = [];
       if (changing && isImportedTemplate(S.template)){
         title = 'Replace your imported design?';
@@ -5832,8 +6008,8 @@
       var go = function(){
         commitTemplate(tplId);
         advanceToDetails('template');
-        var on = caps.sections.filter(function(sec){ return !excludedOn(tplId)[sec.id]; }).length;
-        toast(tpl.name + ' selected — ' + on + ' of ' + caps.sections.length + ' sections included');
+        /* the count the gallery's list said and the details form's list says (designRows) */
+        toast(tpl.name + ' selected — ' + designCountText(designCount(tplId, caps)));
       };
       if (!lines.length){ go(); return; }
       openModal({
@@ -5861,11 +6037,41 @@
     var list = templatesForCategory();
     return list[tplCarouselIdx] || list[0] || null;
   }
+  /* Awards and Client Events: no gallery design was made for them, while Generate from a brief builds their
+     kind of site, so that card says what it builds for them and the conference designs wait behind "Use a
+     conference design anyway" (UX-058). A draft that already has a gallery design, or an owner who opened
+     them, sees the gallery as before. -> true while it is folded away. */
+  var METHOD_FIT = {
+    Awards: 'For awards it builds an award site: the Nominate button, the award categories, the jury and the nomination dates.',
+    Client: 'For a client event it builds the sections this event needs from what you give it, not a conference layout.'
+  };
+  var galleryAnyway = false;      // "Use a conference design anyway" was pressed on this page load
+  /* what the brief card adds for this event's type: '' where the gallery has designs made for it */
+  function methodFitText(){
+    var cat = S.basics.category;
+    return templatesForCategory().some(function(t){ return t.cat === cat; }) ? '' : (METHOD_FIT[cat] || '');
+  }
+  /* the gallery waits behind its link (and has no Preview, since no design is being looked at) */
+  function galleryFolded(){ return !!methodFitText() && !galleryAnyway && !templateById(S.template); }
+  function renderMethodFit(){
+    var text = methodFitText(), folded = galleryFolded();
+    var fit = $('dc-fit'), wrap = $('tpl-gallery-wrap'), anyway = $('tpl-anyway');
+    if (fit){ fit.textContent = text; fit.hidden = !text; }
+    if (wrap) wrap.hidden = folded;
+    if (anyway){
+      anyway.hidden = !folded;
+      anyway.setAttribute('aria-expanded', String(!folded));
+      anyway.onclick = function(){ galleryAnyway = true; renderTemplateCarousel(); setPreviewVisible(true); };
+    }
+    return folded;
+  }
   function renderTemplateCarousel(){
     var host = $('tpl-carousel');
     if (!host) return;
     var list = templatesForCategory();
     if (!list.length){ host.hidden = true; return; }
+    wireCarouselShield();
+    if (renderMethodFit()){ host.hidden = true; return; }
     host.hidden = false;
     var note = $('tpl-carousel-catnote');
     if (note) note.hidden = list.some(function(t){ return t.cat === S.basics.category; });
@@ -5879,7 +6085,8 @@
 
   /* The wizard's canvases are pictures of a site, not a place to work. Nothing in them takes the keyboard,
      so Tab goes from one wizard control to the next instead of through every link of the template; the
-     mouse still scrolls them. */
+     mouse still scrolls them. The editor's own marks (the dashed outline under the pointer, the selection)
+     are not drawn on them (UX-055), and on a phone they show the site as a phone shows it (UX-051). */
   function quietCanvas(container, canvas, label){
     var frame = container && container.querySelector('iframe');
     if (frame){ frame.tabIndex = -1; frame.title = label; }
@@ -5887,6 +6094,53 @@
     Array.prototype.forEach.call(canvas.doc.querySelectorAll('a[href], button, input, select, textarea, summary, iframe, video, audio, [tabindex], [contenteditable]'), function(el){
       el.tabIndex = -1;
     });
+    var doc = canvas.doc;
+    if (doc.head && !doc.querySelector('style[data-wizard-quiet]')){
+      var style = doc.createElement('style');
+      style.setAttribute('data-wizard-quiet', '');
+      style.textContent = 'html[data-rv-editing] [data-editable]:hover, html[data-rv-editing] [data-editable].ed-selected,' +
+        ' html[data-rv-editing] [data-rv-section].sec-active, html[data-rv-editing] [data-rv-cur-item]{ outline: none !important; }' +
+        ' html[data-rv-editing] [data-editable]{ cursor: default !important; }';
+      doc.head.appendChild(style);
+    }
+    fitCanvasToScreen(canvas);
+  }
+  /* A phone shows the site at a phone's width (canvas.setDevice, editor-canvas.js), not a desktop page shrunk
+     until its words cannot be read (UX-051) */
+  var PHONE_QUERY = '(max-width: 700px)';
+  function onPhone(){
+    try { return !!(window.matchMedia && window.matchMedia(PHONE_QUERY).matches); } catch(e){ return false; }
+  }
+  function fitCanvasToScreen(canvas){
+    if (canvas && typeof canvas.setDevice === 'function') canvas.setDevice(onPhone() ? 'mobile' : 'desktop');
+  }
+  (function(){
+    var mq = null;
+    try { mq = window.matchMedia ? window.matchMedia(PHONE_QUERY) : null; } catch(e){ mq = null; }
+    if (!mq) return;
+    var refit = function(){ fitCanvasToScreen(tplCarouselCanvas.canvas); fitCanvasToScreen(gen2Canvas); };
+    if (typeof mq.addEventListener === 'function') mq.addEventListener('change', refit);
+    else if (typeof mq.addListener === 'function') mq.addListener(refit);
+  })();
+
+  /* The gallery's picture of a design takes the wheel and a swipe only once it is clicked: until then a
+     shield over it passes them to this page, which scrolls on past it (UX-055). Leaving the picture, or a
+     press anywhere else, puts the shield back. */
+  function setCarouselShield(on){
+    var media = $('tpl-carousel-media'), shield = $('tpl-carousel-shield');
+    if (!media || !shield) return;
+    shield.hidden = !on;
+    media.classList.toggle('scrolling', !on);
+  }
+  function wireCarouselShield(){
+    var media = $('tpl-carousel-media'), shield = $('tpl-carousel-shield');
+    if (!media || !shield || shield.getAttribute('data-wired')) return;
+    shield.setAttribute('data-wired', '1');
+    shield.addEventListener('click', function(){ setCarouselShield(false); });
+    media.addEventListener('mouseleave', function(){ setCarouselShield(true); });
+    document.addEventListener('pointerdown', function(e){
+      if (shield.hidden && !(e.target && media.contains(e.target))) setCarouselShield(true);
+    }, true);
   }
   /* mounts tpl.site once per template id and caches it — switching back to a template already visited in
      this carousel session reuses the live canvas instead of re-fetching/re-mounting it */
@@ -5921,16 +6175,21 @@
     $('tpl-carousel-sub').textContent = t.sub || '';
     renderAboutNote(t);
 
-    var listHost = $('tpl-carousel-sections');
+    var listHost = $('tpl-carousel-sections'), countHost = $('tpl-carousel-sec-count');
+    if (countHost) countHost.textContent = '';
+    /* every section of the design, the ones its layout pins included, so the count here is the one the toast
+       and the details form say (designRows) */
     function renderToggles(canvas){
-      var off = excludedOn(t.id);
-      listHost.innerHTML = reorderableSectionsFor(canvas).map(function(sec){
-        var on = !off[sec.id];
-        return '<div class="tpl-preview-row' + (on ? '' : ' off') + '">' +
-          '<span class="nm">' + esc(sec.name) + '</span>' +
-          '<button class="switch" type="button" data-pv-toggle="' + esc(sec.id) + '" aria-pressed="' + on + '">' +
-            '<span class="track"><i></i></span>' + (on ? 'Included' : 'Excluded') +
-          '</button>' +
+      var caps = capsOf(t.id) || setTemplateInfo(t, canvas.template);
+      if (countHost) countHost.textContent = '· ' + designCountText(designCount(t.id, caps));
+      listHost.innerHTML = designRows(t.id, caps).map(function(r){
+        return '<div class="tpl-preview-row' + (r.on ? '' : ' off') + '">' +
+          '<span class="nm">' + esc(r.title) + '</span>' +
+          (r.locked ? '<span class="tpl-preview-fixed">Always on</span>' :
+          '<button class="switch" type="button" data-pv-toggle="' + esc(r.id) + '" aria-pressed="' + r.on + '"' +
+            (r.foreignAbout ? ' title="' + esc(aboutPortalNote(t.id)) + '"' : '') + '>' +
+            '<span class="track"><i></i></span>' + (r.on ? 'Included' : 'Excluded') +
+          '</button>') +
         '</div>';
       }).join('');
       listHost.querySelectorAll('[data-pv-toggle]').forEach(function(b){
@@ -5962,6 +6221,7 @@
     });
 
     $('tpl-carousel-use').onclick = function(){ useTemplate(t.id); };
+    setCarouselShield(true);
     var prevBtn = $('tpl-carousel-prev'), nextBtn = $('tpl-carousel-next');
     prevBtn.hidden = nextBtn.hidden = list.length < 2;
     prevBtn.onclick = function(){ tplCarouselIdx = (tplCarouselIdx - 1 + list.length) % list.length; renderCarouselFrame(list); setPreviewVisible(true); };
@@ -6069,7 +6329,7 @@
         if (el) el.textContent = AI_STATUS_LINES[i];
       }, 2200);
       host.innerHTML =
-        '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; Event details</span><h1>Asking for design proposals&hellip;</h1>' +
+        '<div class="step-head"><span class="eyebrow">Redesign with AI</span><h1>Asking for design proposals&hellip;</h1>' +
           '<p class="desc">A few new looks for ' + esc(tplMeta.name) + ', based on your event details and text. This usually takes under a minute.</p></div>' +
         '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
           '<p class="hint" id="ai-status">' + esc(AI_STATUS_LINES[0]) + '</p>' +
@@ -6103,7 +6363,7 @@
         failed = true;
         run.note = '';
         renderBusyFailure(host, {
-          eyebrow: 'Step 1 of 2 &middot; Event details',
+          eyebrow: 'Redesign with AI',
           title: 'No design proposals this time',
           message: userMessage('ai', err),
           retry: function(){ if (isCurrent(run)) send(); },
@@ -6174,6 +6434,15 @@
     var ticked = changes.map(function(c){ return !c.typed; });
     var selectedIdx = 0, useOrder = !!proposedOrder;
     var strip = $('ai-review'), backToEditing = $('btn-toggle-preview'), note = $('live-preview-note');
+    var reviewBody = strip.parentNode, siteToggle = $('btn-ai-site');
+    /* phone width: the looks or the site, one at a time (the CSS for .reviewing shows the toggle there only) */
+    function showSite(on){
+      reviewBody.classList.toggle('show-site', !!on);
+      if (siteToggle){
+        siteToggle.textContent = on ? 'Back to the looks' : 'See it on my site';
+        siteToggle.setAttribute('aria-pressed', String(!!on));
+      }
+    }
 
     function showOnPreview(){
       previewOverride = { aiDesign: designs[selectedIdx].design, sectionOrder: (useOrder && proposedOrder) ? proposedOrder : S.sectionOrder };
@@ -6183,12 +6452,15 @@
       previewOverride = null;
       strip.hidden = true;
       strip.innerHTML = '';
+      reviewBody.classList.remove('reviewing');
+      showSite(false);
+      if (siteToggle){ siteToggle.hidden = true; siteToggle.onclick = null; }
       if (backToEditing) backToEditing.hidden = false;
       togglePreviewMode(false);
       showStep2View('landing');
       repaintGen2Preview(tplMeta);
     }
-    run.note = 'Pick a design in the panel on the left, or cancel to keep things as they are.';
+    run.note = 'Pick one of the looks, or cancel to keep things as they are.';
     run.onCancel = function(viaNav){
       close();
       if (!viaNav) toast('Cancelled — nothing was changed');
@@ -6197,7 +6469,7 @@
     function render(){
       strip.innerHTML =
         '<div><h3>Pick a design</h3>' +
-          '<p style="margin-top:6px">Click a look to see it on your site. Nothing changes until you choose “Use this design”.</p></div>' +
+          '<p style="margin-top:6px">Choose a look to see it on your site. Nothing changes until you choose “Use this design”.</p></div>' +
         '<div class="ai-design-list">' + designs.map(function(d, i){
           var on = i === selectedIdx, dsg = d.design || {};
           return '<button type="button" class="ai-design-card' + (on ? ' on' : '') + '" data-idx="' + i + '" aria-pressed="' + on + '">' +
@@ -6238,6 +6510,7 @@
           selectedIdx = +btn.getAttribute('data-idx');
           render();
           showOnPreview();
+          if (onPhone()) showSite(true);         // a phone shows the chosen look on the site straight away
         });
       });
       strip.querySelectorAll('[data-change]').forEach(function(box){
@@ -6274,6 +6547,12 @@
     $('step2-ai').innerHTML = '';
     if (backToEditing) backToEditing.hidden = true;
     if (note) note.textContent = tplMeta.name + ' · previewing a proposal';
+    reviewBody.classList.add('reviewing');
+    showSite(false);
+    if (siteToggle){
+      siteToggle.hidden = false;
+      siteToggle.onclick = function(){ showSite(!reviewBody.classList.contains('show-site')); };
+    }
     strip.hidden = false;
     render();
     togglePreviewMode(true);
@@ -6751,7 +7030,7 @@
     var now = Date.now(), steps = view.steps, inputs = view.inputs;
     var opening = steps[steps.length - 1].status !== 'pending';
     host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span>' +
+      '<div class="step-head"><span class="eyebrow">' + (opening ? 'Opening' : 'Generating') + '</span>' +
         '<h1>' + (opening ? 'Opening your site&hellip;' : 'Generating your site&hellip;') + '</h1>' +
         '<p class="desc">This usually takes 3 to 5 minutes. Keep this tab open.</p></div>' +
       '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
@@ -6997,7 +7276,7 @@
       run.note = 'Importing your design — this can take up to a minute.';
       var importId = lovableImportId();
       host.innerHTML =
-        '<div class="step-head"><span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span><h1>Importing your design&hellip;</h1>' +
+        '<div class="step-head"><span class="eyebrow">Importing</span><h1>Importing your design&hellip;</h1>' +
           '<p class="desc">Rendering your site and re-hosting its images — this can take up to a minute for a larger design.</p></div>' +
         '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
           '<div class="busy-actions"><button class="btn btn-secondary" type="button" id="btn-import-cancel">Cancel</button></div>' +
@@ -7030,7 +7309,7 @@
         failed = true;
         run.note = '';
         renderBusyFailure(host, {
-          eyebrow: 'Step 1 of 2 &middot; How would you like to build it?',
+          eyebrow: 'Importing',
           title: 'The design was not imported',
           strong: urlHost(url),
           message: userMessage('import', err),
@@ -7319,7 +7598,7 @@
     /* an option, never the page's main action: secondary, whatever has been chosen */
     host.innerHTML =
       '<button class="btn btn-secondary btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
-        (locked ? IC.spark + '<span class="nm">Use a previous edition’s content</span>'
+        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Use a previous edition’s content</span><span class="nm-short">Previous edition</span></span>'
                 : IC.check + '<span class="nm">' + esc(S.pulledEdition.name) + '</span>') +
         svg('<path d="M6 9l6 6 6-6"/>', 14) +
       '</button>' +
@@ -7417,12 +7696,14 @@
       return;
     }
     var p = progressCounts();
+    var on = designCount(tpl.id, info.caps);
 
     host.innerHTML =
       '<div class="build-grid">' +
         '<div class="rail-panel">' +
           '<div class="rail-panel-head">' +
-            '<h3>Sections</h3>' +
+            /* the count the gallery and the toast said; "filled" counts the numbered rows only */
+            '<h3>Sections <span class="sec-count" id="sec-count">' + esc(designCountText(on)) + '</span></h3>' +
             '<div class="prog-line"><i style="width:' + p.pct + '%"></i></div>' +
             '<div class="prog-txt">' + p.done + '/' + p.of + ' filled</div>' +
           '</div>' +
@@ -7441,45 +7722,79 @@
     if (addText) addText.addEventListener('click', openTextSectionModal);
   }
 
+  /* The draft's design's sections, all in one list in the page's order, under the design's own names: the
+     ones with a form here are numbered and open their form; the ones edited in the site editor sit where the
+     page shows them, with their switch (UX-050). The same list and count as the gallery's (designRows). */
+  function secListRows(){
+    var caps = draftCaps(), tpl = templateById(S.template);
+    var listed = listedSections();
+    if (!caps || !tpl) return listed.map(function(s){ return { sec: s }; });
+    var order = S.sectionOrder || caps.sections.map(function(sec){ return sec.id; }), pos = {};
+    order.forEach(function(id, i){ pos[id] = i; });
+    var byId = {};
+    designRows(tpl.id, caps).forEach(function(r){ byId[r.id] = r; });
+    /* the wizard's sections in their place (listedSections already puts them there), and each section of the
+       design with no form here at its own place among them */
+    var rows = listed.map(function(s, i){
+      var c = caps.byLib[s.libId];
+      return { sec: s, rank: c && pos[c.sectionId] != null ? pos[c.sectionId] : null, at: i };
+    });
+    var last = -1;
+    rows.forEach(function(r){ if (r.rank == null) r.rank = last + 0.5; else last = r.rank; });
+    caps.sections.forEach(function(sec, i){
+      if (!sec.libId && byId[sec.id]) rows.push({ design: byId[sec.id], rank: pos[sec.id] != null ? pos[sec.id] : order.length + i, at: -1 });
+    });
+    return rows.sort(function(a, b){ return a.rank - b.rank || a.at - b.at; });
+  }
+  /* a row of the section list pressed: its form opens. Where the form sits under the list (one column, below
+     940px, .build-grid) the page goes to it, so picking a section shows it (UX-051). */
+  function pickSection(id){
+    S.active = id;
+    renderSecList();
+    renderEditor();
+    save();
+    var panel = $('editor-panel'), oneColumn = false;
+    try { oneColumn = !!(window.matchMedia && window.matchMedia('(max-width: 940px)').matches); } catch(e){ oneColumn = false; }
+    if (panel && oneColumn && typeof panel.scrollIntoView === 'function') panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
   function renderSecList(){
     var host = $('sec-list');
     if (!host) return;
-    var caps = draftCaps(), tpl = templateById(S.template);
-    var rows = listedSections();
+    var tpl = templateById(S.template);
     var active = activeSection();
-    /* the design's own sections the wizard has no form for: listed so the page is complete, switched on
-       or off here like the others (the ones the layout pins in place always stay), edited in the editor */
-    var others = caps ? caps.sections.filter(function(sec){ return !sec.libId; }) : [];
-    var off = tpl ? excludedOn(tpl.id) : {};
-    host.innerHTML = rows.map(function(s, i){
+    var n = 0;
+    /* the list is drawn again after a switch is pressed or the roster comes: a row or switch that had the keyboard
+       focus gets it back, so a keyboard user is not sent to the top of the page */
+    var had = document.activeElement, refocus = '';
+    if (had && had !== host && typeof host.contains === 'function' && host.contains(had) && typeof had.getAttribute === 'function'){
+      if (had.getAttribute('data-sec-toggle')) refocus = '[data-sec-toggle="' + had.getAttribute('data-sec-toggle') + '"]';
+      else if (had.getAttribute('data-sec')) refocus = '[data-sec="' + had.getAttribute('data-sec') + '"]';
+    }
+    host.innerHTML = secListRows().map(function(row){
+      if (row.design){
+        var r = row.design;
+        return '<div class="sec-row sec-static' + (r.on ? '' : ' excluded') + '">' +
+          '<span class="nm">' + esc(r.title) + '<small class="sub">' +
+            (r.foreignAbout ? esc(aboutPortalNote(tpl.id, true)) : 'Edited in the site editor') + '</small></span>' +
+          (r.locked ? '<span class="sec-fixed">Always on</span>' :
+            '<button class="switch" type="button" data-sec-toggle="' + esc(r.id) + '" aria-pressed="' + r.on + '" title="Include this section on the site">' +
+              '<span class="track"><i></i></span>' + (r.on ? 'Included' : 'Excluded') + '</button>') +
+        '</div>';
+      }
+      var s = row.sec, title = secTitle(s), kind = secKind(s);
+      n++;
       /* a section with something to check shows that instead of its tick (fieldProblems) */
       var flagged = secIncluded(s) && fieldProblems(s).length > 0;
       var cls = 'sec-row' + (s.done ? ' done' : '') + (flagged ? ' flag' : '') + (secIncluded(s) ? '' : ' excluded');
       return '<button class="' + cls + '" data-sec="' + s.id + '" aria-current="' + (!!active && s.id === active.id) + '"' +
           (flagged ? ' title="Something in this section needs checking"' : '') + '>' +
         '<span class="tick">' + (flagged ? IC.warn : IC.check) + '</span>' +
-        '<span class="nm">' + esc(s.name) + '</span><span class="idx">' + (i+1) + '</span></button>';
+        '<span class="nm">' + esc(title) + (sameName(title, kind) ? '' : '<small class="sub">' + esc(kind) + '</small>') + '</span>' +
+        '<span class="idx">' + n + '</span></button>';
     }).join('') +
-    (others.length
-      ? '<div class="sec-group">Also on this design — edited in the site editor</div>' +
-        others.map(function(sec){
-          var on = !off[sec.id];
-          return '<div class="sec-row sec-static' + (on ? '' : ' excluded') + '">' +
-            '<span class="nm">' + esc(sec.name) + '</span>' +
-            (sec.pinned ? '' :
-              '<button class="switch" type="button" data-sec-toggle="' + esc(sec.id) + '" aria-pressed="' + on + '" title="Include this section on the site">' +
-                '<span class="track"><i></i></span>' + (on ? 'Included' : 'Excluded') + '</button>') +
-          '</div>';
-        }).join('')
-      : '') +
     '<p class="sec-note">The page header and footer come with the design.</p>';
     host.querySelectorAll('[data-sec]').forEach(function(b){
-      b.addEventListener('click', function(){
-        S.active = b.getAttribute('data-sec');
-        renderSecList();
-        renderEditor();
-        save();
-      });
+      b.addEventListener('click', function(){ pickSection(b.getAttribute('data-sec')); });
     });
     host.querySelectorAll('[data-sec-toggle]').forEach(function(b){
       b.addEventListener('click', function(){
@@ -7487,8 +7802,13 @@
         setSectionExcluded(tpl.id, id, !excludedOn(tpl.id)[id]);
         save();
         renderSecList();
+        refreshProgress();
+        schedulePreview();
       });
     });
+    var back = null;
+    try { back = refocus ? host.querySelector(refocus) : null; } catch(e){ back = null; }
+    if (back && typeof back.focus === 'function') back.focus();
   }
 
   /* =========================================================
@@ -7520,7 +7840,9 @@
     host.innerHTML =
       '<div class="editor-head">' +
           '<div class="eh-title">' +
-            '<h2>' + esc(s.name) + '</h2>' +
+            /* the name the section list and the gallery give it (secTitle), and what kind of section it is */
+            '<h2>' + esc(secTitle(s)) + '</h2>' +
+            (sameName(secTitle(s), secKind(s)) ? '' : '<span class="eh-kind">' + esc(secKind(s)) + '</span>') +
             (helpText ? '<span class="eh-info" tabindex="0" aria-label="About this section: ' + esc(helpText) + '">' +
               svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>', 15) +
               '<span class="eh-tip" role="tooltip">' + esc(helpText) + '</span></span>' : '') +
@@ -7538,7 +7860,7 @@
     $('inc-toggle').addEventListener('click', function(){
       setSecIncluded(s, !included);
       save(); renderEditor(); renderSecList(); renderTogglePanel(); refreshProgress(); renderFoot();
-      toast(s.name + (included ? ' excluded from the site' : ' included'));
+      toast(secTitle(s) + (included ? ' excluded from the site' : ' included'));
     });
     var del = $('sec-delete');
     if (del) del.addEventListener('click', function(){
@@ -7585,6 +7907,8 @@
     var txt = document.querySelector('.prog-txt');
     if (bar) bar.style.width = p.pct + '%';
     if (txt) txt.textContent = p.done + '/' + p.of + ' filled';
+    var count = $('sec-count'), caps = draftCaps();
+    if (count && caps) count.textContent = designCountText(designCount(S.template, caps));
   }
 
   /* =========================================================
@@ -7677,7 +8001,7 @@
       var lim = introLimit(s), body = d.body || '';
       html += block('body', 'Paragraph',
         '<textarea class="inp ov-para" id="e-body" rows="3" placeholder="' + (s.libId === 'about' ? 'What the event is about, in a paragraph or two' : 'A few lines that introduce this section') + '">' + esc(body) + '</textarea>' +
-        '<div class="char-count' + (body.length > lim ? ' over' : '') + '" id="cc">' + body.length + ' / ' + lim + ' characters</div>', 'e-body');
+        '<div class="char-count' + (body.length > lim ? ' over' : '') + '" id="cc">' + countText(body.length, lim, 'characters') + '</div>', 'e-body');
     }
     if (introHas(s, d, 'points')){
       var pts = d.points || [''];
@@ -7753,7 +8077,7 @@
         grow(para);
         d.body = para.value;
         var cc = $('cc'), lim = introLimit(s);
-        if (cc){ cc.textContent = d.body.length + ' / ' + lim + ' characters'; cc.classList.toggle('over', d.body.length > lim); }
+        if (cc){ cc.textContent = countText(d.body.length, lim, 'characters'); cc.classList.toggle('over', d.body.length > lim); }
         markDone(s, s.libId === 'about' ? d.body.trim().length > 20 : true);
       });
     }
@@ -7854,6 +8178,12 @@
     exhibitors: { list: 'Exhibitor categories', noun: 'category', add: 'Add an exhibitor category', t: 'Category, e.g. Retail Tech Solutions', d: 'What this kind of exhibitor would showcase…' },
     factoids:   { list: 'Factoids',          noun: 'factoid',   add: 'Add a factoid',          t: 'Stat or headline, e.g. ₹82 Trillion Market Power', d: 'A line of context on this data point…' }
   };
+  /* "industry" -> "industries", "category" -> "categories", "point" -> "points": the counter above a list says it in
+     plain English (UX-053 found "0 industrys") */
+  function nounPlural(noun){
+    noun = String(noun || '');
+    return /[^aeiou]y$/i.test(noun) ? noun.slice(0, -1) + 'ies' : noun + 's';
+  }
   /* Contact us: each category holds people[]; a draft from before held one person per category (t, n, e, p).
      Both of these put an old entry right where it stands: the list itself is never replaced, so whoever
      holds it (a row being dragged, an Undo) still holds the section's list afterwards. */
@@ -7880,7 +8210,7 @@
     var descPlace = !cap || (!!cap.itemOwn.d && !!cap.itemOwn.t), descRead = !cap || !!cap.itemFields.d;
     var withPoints = !cap || !!cap.itemFields.points;
     return '<div class="kp-list-head"><span class="flabel">' + c.list + '</span>' +
-        '<span class="kp-count">' + items.length + ' ' + c.noun + (items.length === 1 ? '' : 's') + '</span></div>' +
+        '<span class="kp-count">' + items.length + ' ' + (items.length === 1 ? c.noun : nounPlural(c.noun)) + '</span></div>' +
       '<div class="kp-list" id="rep-list">' + items.map(function(it, i){
         var pts = it.points || [], len = (it.d || '').length;
         var withDesc = descPlace || (descRead && !!String(it.d || '').trim());
@@ -7893,7 +8223,7 @@
           '</div>' +
           (withDesc || withPoints ? '<div class="kp-card-body">' +
             (withDesc ? '<textarea class="kp-desc" data-rep="d" data-i="' + i + '" rows="1" placeholder="' + c.d + '" aria-label="' + c.noun + ' ' + (i + 1) + ' paragraph">' + esc(it.d) + '</textarea>' +
-            '<span class="kp-len' + (len > 140 ? ' over' : '') + '" data-len="' + i + '">' + len + ' / 140</span>' : '') +
+            '<span class="kp-len' + (len > ITEM_TEXT_LIMIT ? ' over' : '') + '" data-len="' + i + '">' + countText(len, ITEM_TEXT_LIMIT) + '</span>' : '') +
             (withPoints && pts.length ? '<ul class="kp-points" aria-label="Pointers">' + pts.map(function(p, j){
               return '<li class="kp-point"><span class="dot" aria-hidden="true"></span>' +
                 '<input data-pt="' + i + '.' + j + '" value="' + esc(p) + '" placeholder="Pointer" aria-label="' + c.noun + ' ' + (i + 1) + ' pointer ' + (j + 1) + '">' +
@@ -9030,8 +9360,8 @@
           (showTitle || showTagline ? '' : '<div class="callout plain">' + IC.info +
             '<span>On this design the event name appears in your logo and banner artwork.</span></div>') +
           '<div class="field-grid">' +
-            ('cta1' in hf ? '<div class="field"><label for="e-cta1">Primary CTA</label><input class="inp" id="e-cta1" value="' + esc(d.cta1) + '"></div>' : '') +
-            ('cta2' in hf ? '<div class="field"><label for="e-cta2">Secondary CTA</label><input class="inp" id="e-cta2" value="' + esc(d.cta2) + '"></div>' : '') +
+            ('cta1' in hf ? '<div class="field"><label for="e-cta1">Main button</label><input class="inp" id="e-cta1" value="' + esc(d.cta1) + '"></div>' : '') +
+            ('cta2' in hf ? '<div class="field"><label for="e-cta2">Second button</label><input class="inp" id="e-cta2" value="' + esc(d.cta2) + '"></div>' : '') +
           '</div>' +
           '<div class="field"><span class="flabel">Banner image</span>' +
             '<button class="dropzone' + (d.banner ? ' filled' : '') + '" id="e-banner" type="button">' +
@@ -9323,8 +9653,10 @@
           });
           return;
         }
-        toast('Reading ' + file.name + '…');
+        /* the "Reading …" line goes when the reading ends, either way, not on a timer beside its result (UX-057) */
+        var doneReading = toast('Reading ' + file.name + '…', { sticky: true });
         readPsdFile(file, function(err, banner, picture){
+          doneReading();
           if (err) return failed(err);
           d.psdBanner = banner;
           setBannerFile('banner', picture, file.name);
@@ -9671,7 +10003,7 @@
         t.addEventListener('input', function(){
           grow(t);
           var c = body.querySelector('[data-len="' + t.getAttribute('data-i') + '"]');
-          if (c){ c.textContent = t.value.length + ' / 140'; c.classList.toggle('over', t.value.length > 140); }
+          if (c){ c.textContent = countText(t.value.length, ITEM_TEXT_LIMIT); c.classList.toggle('over', t.value.length > ITEM_TEXT_LIMIT); }
         });
       });
       body.querySelectorAll('[data-pt]').forEach(function(el){
@@ -10015,11 +10347,13 @@
   }
   function fieldProblems(s){
     var d = s.data || {}, out = [], cap = sectionCaps(s);
-    function add(kind, sel, message, after){ out.push({ section: s, kind: kind, sel: sel, message: message, after: after || '' }); }
+    function add(kind, sel, message, after, live){ out.push({ section: s, kind: kind, sel: sel, message: message, after: after || '', live: !!live }); }
     if (hasIntro(s)){
+      /* over its length the text is not cut: the site shows all of it, longer than the design is made for.
+         Said under the counter as it is typed (live) and in the "things to check" list (UX-056) */
       if (introSlot(s, 'body') && !isBlank(d.body)){
-        var lim = introLimit(s), over = String(d.body).length - lim;
-        if (over > 0) add('warn', '#e-body', over + ' character' + (over === 1 ? '' : 's') + ' over — this section is designed for up to ' + lim + '.', '#cc');
+        var lim = introLimit(s);
+        if (String(d.body).length > lim) add('warn', '#e-body', overLimitNote(lim, 'section'), '#cc', true);
       }
       if (introSlot(s, 'cta') && d.cta){
         if (!isBlank(d.cta.url) && !linkAddress(d.cta.url, true)) add('block', '#e-in-cta-url', PAGE_LINK_HINT, '.in-cta');
@@ -10037,6 +10371,13 @@
         });
         break;
       case 'columns': case 'cards': case 'benefits': case 'chips':
+        /* a card's paragraph over 140 characters, where the design prints it (itemsHTML asks for it there) */
+        if (!cap || cap.itemFields.d){
+          (d.items || []).forEach(function(it, i){
+            if (it && typeof it === 'object' && String(it.d || '').length > ITEM_TEXT_LIMIT)
+              add('warn', '[data-rep="d"][data-i="' + i + '"]', overLimitNote(ITEM_TEXT_LIMIT, 'card'), '[data-len="' + i + '"]', true);
+          });
+        }
         /* a card with a place for its heading cannot be shown without one */
         if (cap && !cap.itemOwn.t) break;
         (d.items || []).forEach(function(it, i){
@@ -10101,6 +10442,17 @@
   }
   /* Puts the lines under the fields of the open editor. settled: only take away what has been put right —
      used while a field is being typed in, so that a half-typed address is not called wrong. */
+  /* what happens to text over its length, said the same way under the counter and in the "things to check" list */
+  var ITEM_TEXT_LIMIT = 140;
+  function overLimitNote(lim, what){
+    return what === 'card'
+      ? 'Longer than these cards are made for (' + lim + ' characters). The site shows all of it, so this card is taller than the others: shorten it to keep them even.'
+      : 'Longer than this section is made for (' + lim + ' characters). The site shows all of it, so the section runs longer than the design: shorten it to keep the layout.';
+  }
+  /* "1151 / 900 characters · 251 over" */
+  function countText(len, lim, unit){
+    return len + ' / ' + lim + (unit ? ' ' + unit : '') + (len > lim ? ' · ' + (len - lim) + ' over' : '');
+  }
   function showProblems(s, settled){
     var body = $('editor-body');
     if (!body) return;
@@ -10109,8 +10461,10 @@
     body.querySelectorAll('[data-problem]').forEach(function(el){ el.removeAttribute('data-problem'); el.removeAttribute('aria-invalid'); });
     fieldProblems(s).forEach(function(p){
       var el = body.querySelector(p.sel);
-      if (!el || (settled && !shown[p.sel + '|' + p.message])) return;
-      var anchor = !p.after ? el : (p.after.charAt(0) === '#' ? body.querySelector(p.after) : el.closest(p.after));
+      /* while typing only the lines already showing stay — except a live one (text over its length), which
+         says so the moment it is */
+      if (!el || (settled && !p.live && !shown[p.sel + '|' + p.message])) return;
+      var anchor = !p.after ? el : (/^[#\[]/.test(p.after) ? body.querySelector(p.after) : el.closest(p.after));
       var note = document.createElement('p');
       note.className = 'field-note sec-problem ' + (p.kind === 'block' ? 'field-error' : 'field-warn');
       note.setAttribute('data-for', p.sel);
@@ -10160,7 +10514,7 @@
       timer = setTimeout(function(){ update(false); }, 180);
     });
     body.addEventListener('input', function(){
-      if (!body.querySelector('.sec-problem')) return;
+      if (!body.querySelector('.sec-problem') && !body.querySelector('.char-count.over, .kp-len.over')) return;
       clearTimeout(timer);
       timer = setTimeout(function(){ update(true); }, 300);
     });
@@ -10623,7 +10977,7 @@
      being looked at. Nothing before a type is picked, and nothing for a site that is still to be generated. */
   function previewTarget(){
     if (S.step !== 1 || S.step1Phase === 'category') return null;
-    if (S.step1Phase === 'method') return carouselTemplate();
+    if (S.step1Phase === 'method') return galleryFolded() ? null : carouselTemplate();
     if (S.creationMethod === 'brief') return null;
     var tpl = handoffTemplate();
     return tpl.site ? tpl : null;
@@ -10641,7 +10995,7 @@
   /* on: may the current screen have a preview at all. The Preview button exists exactly when it may and
      there is a design to show; a screen with nothing to preview also closes an open preview. */
   function setPreviewVisible(on){
-    var split = $('wiz-split'), panel = $('live-preview-panel'), expandBtn = $('btn-expand-preview');
+    var split = $('wiz-split'), panel = $('live-preview-panel'), expandBtn = $('btn-expand-preview'), railBtn = $('btn-rail-preview');
     if (!split || !panel) return;
     on = !!on && !!previewTarget();
     split.classList.toggle('preview-available', on);
@@ -10649,20 +11003,25 @@
     var showing = split.classList.contains('showing-preview');
     panel.hidden = !showing;
     if (expandBtn) expandBtn.hidden = !on || showing;
+    /* the same button in the header row, which a phone shows instead of a bar of its own (UX-051) */
+    if (railBtn) railBtn.hidden = !on || showing;
   }
   /* "Preview" / "Back to editing": the preview takes the form's place on the same page and gives it back
      untouched. Filled directly, not through schedulePreview()'s debounce, so it opens on the latest edit. */
   function togglePreviewMode(show){
     var split = $('wiz-split'), panel = $('live-preview-panel'), expandBtn = $('btn-expand-preview'), back = $('btn-toggle-preview');
+    var railBtn = $('btn-rail-preview');
     if (!split || !panel) return;
     split.classList.toggle('showing-preview', show);
     panel.hidden = !show;
     if (expandBtn) expandBtn.hidden = show || !split.classList.contains('preview-available');
+    if (railBtn) railBtn.hidden = show || !split.classList.contains('preview-available');
+    var trigger = onPhone() ? railBtn : expandBtn;
     if (show){
       renderLivePreview();
       if (back && !back.hidden) back.focus();
-    } else if (expandBtn && !expandBtn.hidden){
-      expandBtn.focus();
+    } else if (trigger && !trigger.hidden){
+      trigger.focus();
     }
   }
 
@@ -11271,7 +11630,7 @@
     function render(){
       host.innerHTML =
         '<div class="step-head">' +
-          '<span class="eyebrow">Step 2 of 2</span>' +
+          '<span class="eyebrow">Step 2 of 2 &middot; Open in editor</span>' +
           '<h1>Saving your event</h1>' +
           '<p class="desc">Your details, logo, pictures and content are saved with the event, then the editor opens and keeps your page as its first saved version, so it opens the same on any computer.</p>' +
         '</div>' +
@@ -11434,11 +11793,7 @@
   function onNext(){
     if (busy) return;
     if (S.step === 1){
-      if (S.step1Phase === 'method'){
-        var shown = carouselTemplate();
-        if (shown) useTemplate(shown.id);                 /* the same thing "Use this template" does */
-        return;
-      }
+      if (S.step1Phase === 'method') return;              /* no footer Continue here: a design is chosen by its own button (UX-052) */
       if (S.step1Phase === 'details'){
         var issues = detailsIssues();
         if (issues.length){
@@ -11469,7 +11824,7 @@
         if (contentChecked){ contentChecked = false; renderFoot(); }
         /* the pictures added to sections go with the event (the hand-off uploads them): nothing to warn about */
         if (found.length && !contentAccepted){
-          var lines = found.map(function(p){ return '<li><strong>' + esc(p.section.name) + '</strong> — ' + esc(p.message) + '</li>'; });
+          var lines = found.map(function(p){ return '<li><strong>' + esc(secTitle(p.section)) + '</strong> — ' + esc(p.message) + '</li>'; });
           openModal({
             title: lines.length === 1 ? '1 thing to check' : lines.length + ' things to check',
             sub: 'You can continue as it is, or go back and put these right first.',
@@ -11482,6 +11837,13 @@
           return;
         }
         var named = '“' + (S.basics.name.trim() || S.createdEventId) + '”';
+        /* "Generate my site" starts minutes of paid AI work: it first says what the AI will use, the address it
+           makes and how long it takes, and goes ahead only on Generate (UX-054). The questions about an event
+           that already exists or a site generated before are part of that one review. */
+        if (brief){
+          openBriefReview(regenerate, function(){ resumedExisting = false; proceed(); });
+          return;
+        }
         /* a draft picked up again after its event was created: say what Continue will do to that event first */
         if (resumedExisting && S.createdEventId){
           openModal({
@@ -11507,6 +11869,57 @@
       }
       return;   /* category phase: Continue is hidden, nothing to do */
     }
+  }
+
+  /* How much of "Describe the event" is written: the headings with something after them, and whether there is
+     text of the owner's own besides */
+  function briefPointsFilled(text){
+    var out = { filled: 0, of: BRIEF_HEADINGS.length, own: false };
+    String(text || '').split(/\r?\n/).forEach(function(line){
+      var colon = line.indexOf(':'), key = colon === -1 ? '' : headingKey(line.slice(0, colon));
+      if (key && BRIEF_HEADING_KEYS.indexOf(key) !== -1){ if (line.slice(colon + 1).trim()) out.filled++; }
+      else if (line.trim()) out.own = true;
+    });
+    return out;
+  }
+  /* -> { items: [plain sentences], warn: '' }: what a run started now would work from (startGenerateFromBrief
+     reads the same S.brief and briefDoc) */
+  function briefReview(regenerate){
+    var br = S.brief, items = [], warn = '';
+    var pts = briefPointsFilled(br.text);
+    if (pts.filled || pts.own){
+      items.push('Your description: ' + (pts.filled ? pts.filled + ' of ' + pts.of + ' points written' : 'your own words') +
+        (pts.filled && pts.own ? ', and more in your own words' : '') + '.');
+    } else items.push('No description.');
+    items.push(briefDoc ? 'Your document: ' + briefDoc.name + '.' : 'No document.');
+    var et = br.etEvent, prevLink = normalUrl(br.previous);
+    if (et && et.title) items.push('Previous edition: ' + et.title + ' — the site is modelled on it, then improved.');
+    else if (prevLink) items.push('Previous edition: ' + prevLink + ' — the site is modelled on it, then improved.');
+    else warn = 'No previous edition is given, so the site is not modelled on last year’s. Pick it under “Previous edition” if there was one.';
+    var current = normalUrl(br.current);
+    if (current) items.push('This edition’s own page: ' + current + '.');
+    var comps = [br.comp1, br.comp2].filter(function(u){ return !!normalUrl(u); }).length;
+    items.push(comps ? (comps === 1 ? '1 competitor event' : comps + ' competitor events') + ' to compare against.' : 'No competitor events.');
+    if (String(br.instructions || '').trim()) items.push('Your instructions for the AI.');
+    items.push('Site type: ' + (br.siteMode === 'advanced' ? 'Advanced — the AI chooses the sections' : 'Standard — the usual ET sections') +
+      '. Theme: ' + (br.themeMode === 'light' ? 'light' : br.themeMode === 'dark' ? 'dark' : 'as the previous edition (or as the design decides)') + '.');
+    var id = S.createdEventId || S.basics.slug;
+    items.push((S.createdEventId ? 'Updates the event at ' : 'Creates the event at ') + siteAddress(id) + '.');
+    if (regenerate) items.push('Replaces the site generated earlier for this event.');
+    return { items: items, warn: warn };
+  }
+  function openBriefReview(regenerate, go){
+    var r = briefReview(regenerate);
+    openModal({
+      title: regenerate ? 'Generate the site again?' : 'Generate your site?',
+      sub: 'ETB2B AI will use:',
+      body: '<ul class="check-list">' + r.items.map(function(t){ return '<li>' + esc(t) + '</li>'; }).join('') + '</ul>' +
+        (r.warn ? '<p class="field-note field-warn" style="margin:10px 0 0">' + esc(r.warn) + '</p>' : '') +
+        '<p class="hint" style="margin:10px 0 0">It takes 3 to 5 minutes and uses paid AI time. You can stop it while it runs.</p>',
+      confirm: regenerate ? 'Replace and generate' : 'Generate my site',
+      cancelLabel: 'Go back',
+      onConfirm: go
+    });
   }
 
   function onBack(){
@@ -11973,6 +12386,8 @@
     var previewToggleBtn = $('btn-toggle-preview'), previewExpandBtn = $('btn-expand-preview');
     if (previewToggleBtn) previewToggleBtn.addEventListener('click', function(){ togglePreviewMode(false); });
     if (previewExpandBtn) previewExpandBtn.addEventListener('click', function(){ togglePreviewMode(true); });
+    var previewRailBtn = $('btn-rail-preview');
+    if (previewRailBtn) previewRailBtn.addEventListener('click', function(){ togglePreviewMode(true); });
 
     document.addEventListener('keydown', closePreviewOnEscape);
 
@@ -11991,3 +12406,9 @@
   else init();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page.
+     It sits above the Back / Continue footer (data-keep-clear). -->
+<div id="rv-assistant" data-rv-assistant="create-event" data-keep-clear="#wiz-foot"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>

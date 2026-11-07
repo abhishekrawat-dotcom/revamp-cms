@@ -271,11 +271,14 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-090: the design is read back before it is called done', /designSet\[k\] = canvas\.design\.get\(k\)/.test(turn) && /var slipped = Object\.keys\(designSet\)\.filter\(function \(k\) \{ return canvas\.design\.get\(k\) !== designSet\[k\]; \}\);/.test(turn) &&
     turn.indexOf('var slipped') < turn.indexOf('var changed = done.length ? commitNow() : false;'));
   check('7 UX-091: the status comes from what really happened (turnStatus)', /t\.status = workSafety\.turnStatus\(done, notAll, changed, formIds\.length\);/.test(turn) && !/t\.status = !changed && !formIds\.length/.test(turn));
-  check('7 UX-091: a change where nothing took effect puts the page back exactly, with no Undo', /if \(t\.status === 'failed' && !changed && t\.before\) \{ canvas\.restore\(t\.before, restoreOpts\(\)\);/.test(turn) && /if \(t\.status === 'failed'\) \{ card\.note\('Nothing on the page changed\.'/.test(body('finishAiCard')));
+  /* with ETB2B AI everywhere (B15): a change stopped before anything took effect is put back the same way, and its
+     card says "Stopped. Nothing on the page changed." */
+  check('7 UX-091: a change where nothing took effect puts the page back exactly, with no Undo', /if \(\(t\.status === 'failed' \|\| t\.status === 'stopped'\) && !changed && t\.before\) \{ canvas\.restore\(t\.before, restoreOpts\(\)\);/.test(turn) &&
+    /if \(t\.status === 'failed' \|\| t\.status === 'stopped'\) \{\s*card\.note\(\(t\.status === 'stopped' \? 'Stopped\. ' : ''\) \+ 'Nothing on the page changed\.'/.test(body('finishAiCard')));
   check('7 UX-091: the AI\'s sentence over a change that did not happen is marked (markPlan)', /if \(t\.bubble\) markPlan\(t\.bubble, t\.status\);/.test(body('finishAiCard')) && /workSafety\.planLead\(status\)/.test(body('markPlan')) && /bubble: bubble, live: true/.test(turn));
 
   check('7 UX-092: a section being rewritten is locked after its request is made and let go of either way',
-    /var asked = requestSectionCode\(job\.sec,/.test(turn) && /var wordsBefore = sectionWords\(job\.sec\);\s*lockSection\(job\.sec, true\);\s*return asked\.then\(function \(code\) \{\s*lockSection\(job\.sec, false\);/.test(turn) &&
+    /var asked = requestSectionCode\(job\.sec,/.test(turn) && /var wordsBefore = sectionWords\(job\.sec\);\s*lockSection\(job\.sec, true\);\s*return untilStopped\(asked\)\.then\(function \(code\) \{\s*lockSection\(job\.sec, false\);/.test(turn) &&
     /\}\)\.then\(null, function \(err\) \{\s*lockSection\(job\.sec, false\);/.test(turn));
   check('7 UX-092: an answer is not put over words edited meanwhile', /if \(sectionWords\(job\.sec\) !== wordsBefore\) throw new Error\('you edited it meanwhile, so it was left as you had it'\);/.test(turn) &&
     turn.indexOf('sectionWords(job.sec) !== wordsBefore') < turn.indexOf('var fresh = applySectionCode(job.sec, code);'));
@@ -296,11 +299,16 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-093: … shown only while the change is not saved (workSafety.cardAsksSave)', /var show = workSafety\.cardAsksSave\(\{ status: c\.t\.status, pageChanged: c\.t\.pageChanged, ptr: c\.t\.ptr, savedPtr: savedPtr \}, !!dirty\);/.test(body('syncCardSaves')) && /syncCardSaves\(dirty\);/.test(state));
   check('7 UX-093 (B04 verify): a save records the step it kept, before the cards are drawn again', /var keptPtr = undoPtr;/.test(save) && save.indexOf('var keptPtr = undoPtr;') > save.indexOf('var snap = undoStack[undoPtr]') &&
     /savedPtr = keptPtr;\s*renderSiteState\(\);/.test(save) && /var savedPtr = -1;/.test(SRC) && /t\.ptr = undoPtr;/.test(turn));
-  var history = body('loadChatHistory');
+  // the read-back of one turn is replayTurn since ETB2B AI everywhere (B15): loadChatHistory hands each turn to it
+  var history = body('replayTurn');
   check('7 UX-093: a read-back card whose Undo is gone says how to get back', /t\.button\.title = workSafety\.UNDO_GONE;/.test(history) && /t\.card\.note\(workSafety\.UNDO_GONE\);/.test(history) && !/Use Undo in the top bar\.'; \}/.test(history));
-  check('7 UX-093: "undo that" explains in plain words instead of "I left it as it is."', /last\.undoWhy === 'gone' \? workSafety\.UNDO_GONE\.replace\('Ask ETB2B AI to change it back', 'Ask me to change it back'\)/.test(body('wireChatPanel')) &&
+  /* the panel's two ways of "undo that" (the server's undo answer, and the one said without asking the AI) give the
+     same reasons (undoWhyLine, B15) */
+  check('7 UX-093: "undo that" explains in plain words instead of "I left it as it is."', /why === 'gone' \? workSafety\.UNDO_GONE\.replace\('Ask ETB2B AI to change it back', 'Ask me to change it back'\)/.test(body('undoWhyLine')) &&
+    /no\.textContent = undoWhyLine\(last\);/.test(body('chatSend')) && /why: undoWhyLine\(last\)/.test(body('chatUndoLast')) &&
     !/if \(!ok\) reply\.textContent = 'I left it as it is\.';/.test(SRC));
-  check('7 UX-093: the welcome says to press Save', /every change has an Undo\. Press Save to keep your changes; nothing goes live until you publish\./.test(SRC));
+  // the editor's welcome is ETB2B AI's panel's (editor-chat-client.js) since ETB2B AI everywhere (B15)
+  check('7 UX-093: the welcome says to press Save', /Every change has an Undo\. Press Save to keep your changes; nothing goes live until you publish\./.test(fs.readFileSync(path.join(ROOT, 'editor-chat-client.js'), 'utf8')));
 
   var leave = body('leave');
   check('7 UX-073: leaving asks by workSafety.leaveAsk: Save and leave, Leave without saving, Stay', /workSafety\.leaveAsk\(\{ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork\(\) \}\)/.test(leave) &&

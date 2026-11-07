@@ -101,6 +101,8 @@
   .loading{ padding:60px 20px; text-align:center; color:var(--muted); grid-column:1/-1; }
   @media (max-width: 900px){ main{ grid-template-columns:1fr; grid-template-rows:auto 70vh; } .side{ border-right:0; border-bottom:1px solid var(--border); } body{ height:auto; } }
 </style>
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 </head>
 <body>
 <header>
@@ -416,5 +418,11 @@
   load();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page and its event.
+     It is lifted above Approve / Request changes while that bar shows (data-keep-clear). -->
+<div id="rv-assistant" data-rv-assistant="review" data-keep-clear=".decide"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>

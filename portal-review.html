@@ -93,6 +93,8 @@
     .pr-main .vhead h2{ font-size:19px; }
   }
 </style>
+<!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
+<link rel="stylesheet" href="etb2b-chat.css">
 </head>
 <body>
 <header class="topbar" id="pr-top">
@@ -732,5 +734,11 @@
   load();
 })();
 </script>
+<!-- ETB2B AI, bottom-right as on every page: etb2b-assistant.js mounts it here and tells it this page.
+     It is lifted above the approver's button bar while that bar shows (data-keep-clear). -->
+<div id="rv-assistant" data-rv-assistant="portal-review" data-keep-clear=".pr-actions"></div>
+<script src="etb2b-chat.js"></script>
+<script src="dash-bot-client.js"></script>
+<script src="etb2b-assistant.js"></script>
 </body>
 </html>

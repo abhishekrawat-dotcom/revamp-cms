@@ -8,6 +8,10 @@
           two bodies below were captured from lib/api.js at dc1a8e1 on this very fixture), and liveEventDocs()
           gives the same events, in the same order, with the raw counters (audienceV kept) and nothing else;
      B.5  lib/api-audience.js exports insightTotals and conversionOf for the bot.
+   Since ETB2B AI is one assistant on every page (ai-everywhere plan §9a, §9b): the bot is also handed the editor
+   chat's own conversation key (chatUserRef), so a question asked inside an event lands in the very document the
+   editor's ETB2B AI keeps, the event's History writer (logActivity) and eventDocRef; and POST /api/dash-bot takes a
+   body of up to 1 MB (BODY_LIMITS.assist), so four picture thumbnails fit beside the message.
    lib/dash-bot.js is a stub here (Unit A writes the real one in parallel), and so is Firebase. No network, no AI.
    Exits 1 on any failure. */
 'use strict';
@@ -134,7 +138,7 @@ claude.callClaudeJson = function (prompt, schema, opts) { claudeSeen.push(opts);
 
 /* ---------- lib/dash-bot.js: a recorder with the contract's exports (K4), resolved in place of the real file ---------- */
 var K3 = ['withAdmin', 'withAdminBody', 'sendJson', 'sendFailure', 'sendAiFailure', 'httpError', 'BODY_LIMITS', 'chatRateOk', 'chatUid',
-  'chatName', 'approvalsConfig', 'liveEventDocs', 'eventListItem', 'isEventId'];
+  'chatName', 'approvalsConfig', 'liveEventDocs', 'eventListItem', 'isEventId', 'chatUserRef', 'logActivity', 'eventDocRef'];
 var FAIL_LOAD = false, WIRE_THROWS = false, resolves = 0, calls = [], H = null;
 function stubBot() {
   return {
@@ -142,7 +146,7 @@ function stubBot() {
     /* each handler answers through the helpers it was handed, so a wrong or missing helper shows here */
     handleChat: function (req, res) {
       calls.push({ fn: 'handleChat', method: req.method, url: req.url });
-      H.withAdminBody(req, res, H.BODY_LIMITS.small, function (fb, decoded, body) {
+      H.withAdminBody(req, res, H.BODY_LIMITS.assist, function (fb, decoded, body) {
         calls.push({ fn: 'handleChat:in' });
         H.sendJson(res, 200, { fn: 'handleChat', uid: H.chatUid(decoded), name: H.chatName(decoded), body: body, sameFb: fb === FB });
       });
@@ -234,7 +238,14 @@ function fakeRes() {
   var h = calls[0] && calls[0].helpers;
   ok(!!h && Object.keys(h).sort().join() === K3.slice().sort().join(), 'B.2 wire() is handed exactly the K3 helpers', h && Object.keys(h));
   ok(!!h && K3.every(function (k) { return k === 'BODY_LIMITS' ? h[k] && typeof h[k] === 'object' : typeof h[k] === 'function'; }), 'B.2 … each a function (BODY_LIMITS an object)');
-  ok(!!h && h.BODY_LIMITS.small === 256 * 1024 && h.BODY_LIMITS.tiny === 16 * 1024, 'B.2 BODY_LIMITS: small 256 KB (a message and a view), tiny 16 KB (a turn report)', h && h.BODY_LIMITS);
+  ok(!!h && h.BODY_LIMITS.small === 256 * 1024 && h.BODY_LIMITS.tiny === 16 * 1024, 'B.2 BODY_LIMITS: small 256 KB, tiny 16 KB (a turn report)', h && h.BODY_LIMITS);
+  ok(!!h && h.BODY_LIMITS.assist === 1024 * 1024, 'B.2 BODY_LIMITS.assist: 1 MB (a message, the place and four ≤160 KB thumbnails)', h && h.BODY_LIMITS);
+  /* one conversation per person per event for both brains: the bot's key is the editor chat's own, not a copy */
+  var refFb = { db: { collection: function (n) { return { doc: function (id) { return { path: n + '/' + id, collection: function (c) { return { doc: function (d) { return { path: n + '/' + id + '/' + c + '/' + d }; } }; } }; } }; } } };
+  ok(!!h && typeof h.chatUserRef === 'function' && h.chatUserRef(refFb, 'qa-main', 'u-asha').path === 'events/qa-main/aiChats/u-asha' &&
+    h.chatUserRef(refFb, 'qa-main', 'a b/c').path === 'events/qa-main/aiChats/a_b_c', 'B.2 chatUserRef: the editor chat\'s own document for the person in that event', h && h.chatUserRef && h.chatUserRef(refFb, 'qa-main', 'a b/c').path);
+  ok(!!h && typeof h.eventDocRef === 'function' && h.eventDocRef(refFb, 'qa-main').path === 'events/qa-main', 'B.2 eventDocRef: events/<id>');
+  ok(!!h && h.logActivity === require('./activity').logActivity, 'B.2 logActivity is lib/activity.js\'s own: the event\'s History, as the editor\'s ETB2B AI writes it');
   ok(!!h && h.sendJson === http.sendJson && h.isEventId === http.isEventId, 'B.2 sendJson and isEventId are lib/http.js\'s own');
   ok(!!h && h.chatRateOk === api._testHooks.chatRateOk, 'B.2 chatRateOk is the editor chat\'s own: one rate bucket for both chats');
   /* each helper is the real one: a missing or broken one fails its own check here instead of crashing the run */
@@ -285,8 +296,12 @@ function fakeRes() {
   FB.auth.verifyIdToken = realVerify;
   ok(c.status === 403 && names() === 'wire,handleTurn', 'B.2 an account outside the company: 403', c.status + ' ' + names());
   calls = [];
-  c = await call('POST', '/api/dash-bot', undefined, 'asha', Buffer.alloc(256 * 1024 + 1, 32));
-  ok(c.status === 413 && names() === 'wire,handleChat', 'B.2 a body over 256 KB: 413 before anything is read', c.status + ' ' + names());
+  c = await call('POST', '/api/dash-bot', undefined, 'asha', Buffer.alloc(1024 * 1024 + 1, 32));
+  ok(c.status === 413 && names() === 'wire,handleChat', 'B.2 a body over 1 MB: 413 before anything is read', c.status + ' ' + names());
+  calls = [];
+  var four = { message: 'Start a new event with these', attachments: [1, 2, 3, 4].map(function (n) { return { n: n, kind: 'image', name: n + '.png', thumb: 'data:image/jpeg;base64,' + new Array(Math.floor(160 * 1024 * 4 / 3)).join('A') }; }) };
+  c = await call('POST', '/api/dash-bot', four);
+  ok(c.status === 200 && names() === 'wire,handleChat,handleChat:in', 'B.2 four thumbnails of 160 KB each (well over the old 256 KB) are read', c.status + ' ' + names());
 
   /* only the three: other methods and nearby paths are not routes */
   calls = []; resolves = 0;

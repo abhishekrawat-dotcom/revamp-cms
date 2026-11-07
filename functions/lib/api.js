@@ -307,7 +307,8 @@ var BODY_LIMITS = {
   event: 512 * KB,        // POST / PATCH /api/event: an event document is itself capped at 1 MiB by Firestore
   record: 256 * KB,       // one speaker / session / sponsor / FAQ record; images are uploaded, never inline
   site: 12 * MB,          // PUT /api/event/site, and a publish / stage request that still carries the page
-  tiny: 16 * KB           // { eventId } and nothing else
+  tiny: 16 * KB,          // { eventId } and nothing else
+  assist: 1 * MB          // POST /api/dash-bot: a message, the page's place and up to four ≤160 KB picture thumbnails (base64)
 };
 
 /* The most a model call may write, so an answer that runs away is cut off (and reported as unusable)
@@ -653,6 +654,10 @@ var CHAT_MEMORY_TURNS = 12;
 function chatHistoryText(payload) {
   if (Array.isArray(payload.turns) && payload.turns.length) {
     return payload.turns.slice(-CHAT_MEMORY_TURNS).map(function (t) {
+      /* A question the events side of ETB2B AI answered in this conversation (lib/dash-bot.js, brain 'dash'): said
+         in one neutral line, the owner's own words and no more. Its answer is never repeated here: it can hold the
+         names of other events, typed by other people, which must never reach this prompt (plan §5c). */
+      if (t && t.brain === 'dash') return '[The owner asked the events side of ETB2B AI: “' + chatLine(t.question, 300) + '” — answered there; nothing on this page changed]';
       var lines = ['User: ' + String(t.question || '').slice(0, 2000), 'You: ' + String(t.answer || '').slice(0, 1500)];
       /* a picture the AI made (or could not make): the model remembers what and where, so "make it brighter"
          or "try another" can mean that picture */
@@ -672,6 +677,8 @@ function chatOutcomeText(t) {
   if (t.status === 'applied') return 'applied: ' + (done || 'as described');
   if (t.status === 'partly') return 'partly applied: ' + done + (not ? '; not done: ' + not : '');
   if (t.status === 'failed') return 'nothing could be applied' + (not ? ': ' + not : '') + '; the page is unchanged';
+  /* the owner pressed Stop (UX-097): before anything was applied, or part way, keeping what was done */
+  if (t.status === 'stopped') return done ? 'the owner stopped it part way; done: ' + done + (not ? '; not done: ' + not : '') : 'the owner pressed Stop before it was applied; the page is unchanged';
   if (t.status === 'applying') return 'it was being applied when this conversation was left; its result is not known';
   return '';
 }
@@ -713,8 +720,9 @@ function buildChatPrompt(payload) {
     JSON.stringify(chatForms(payload).map(function (f) { return { formId: f.id, name: f.name, purpose: f.purpose, questions: f.fields }; }), null, 2),
     '',
     'Task:',
-    '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site; "undo" if it asks to take back your last change ("undo that", "go back", "revert it", "put it back as it was") — the page then returns exactly to how it was before that change, at no cost, so never re-create the old look yourself; "reply" if it\'s a question, small talk, or anything else that doesn\'t call for a change — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.',
-    '2. If `kind` is "reply" or "undo": leave every change list empty and `design` empty, and put your answer in `summary` — natural, helpful and as long as the question needs (a list of sections is a full list); reference the actual sections/design above, don\'t make things up. A request that is too vague to do well, where reasonable readings would change the site in very different ways ("make it look more premium", "fix the design", "make it pop"), gets ONE short clarifying question as a "reply", offering two or three concrete options to choose from (e.g. "Darker and more spacious, a more classic serif for headings, or gold accents on a deep background?"). A clear request is simply done — don\'t ask for permission.',
+    '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site; "undo" if it asks to take back your last change ("undo that", "go back", "revert it", "put it back as it was") — the page then returns exactly to how it was before that change, at no cost, so never re-create the old look yourself; "reply" if it\'s a question, small talk, or anything else that doesn\'t call for a change — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.' +
+      (payload.handedFrom ? ' ETB2B AI\'s events side passed this message to you because it is about this page: answer it as an edit, an undo or a reply yourself.' : CHAT_HANDOFF_LINE),
+    '2. If `kind` is "reply" or "undo": leave every change list empty and `design` empty, and put your answer in `summary` — natural and helpful (a list of sections is a full list); reference the actual sections/design above, don\'t make things up. A request that is too vague to do well, where reasonable readings would change the site in very different ways ("make it look more premium", "fix the design", "make it pop"), gets ONE short clarifying question as a "reply", offering two or three concrete options to choose from (e.g. "Darker and more spacious, a more classic serif for headings, or gold accents on a deep background?"). A clear request is simply done — don\'t ask for permission.',
     '3. If `kind` is "edit": if it asks for a visual/design change (colour, font, spacing, heading style…), return a partial `design` object — ONLY the fields the instruction actually calls for, using these field names: ' + DESIGN_FIELDS.join(', ') + '. Leave out any field it didn\'t ask to change. A colour field MUST be a hex code ("#1c1c1c") — if it names a colour in words ("orange", "navy blue"), translate it to the closest real hex value yourself; never write the colour word into a colour field, it will be rejected. If it asks to change text, return `textEdits`: an array of {sectionId, find, replace}, where `find` is copied VERBATIM (exact substring, same spelling/punctuation) from that section\'s own text shown above — never invent or paraphrase the original. Never invent facts (dates, numbers, names) that aren\'t already present. A follow-up like "make it bigger instead" that refines a design mentioned earlier in the conversation should produce a fresh, complete replacement for the fields it\'s changing, not an incremental tweak instruction.',
     'A text edit applies to EVERY place that exact `find` text appears in that section. To change a word, a year, a name or a number everywhere (e.g. "change 2026 to 2027"), give `find` as just that word or number and return one edit for each section whose texts contain it — check every section\'s texts, do not stop at the first. `find` must be copied exactly from the texts above.',
     '4. For everything those two cannot do, use the tools that follow — choose the lightest tool that does the job, and combine tools freely:',
@@ -726,9 +734,33 @@ function buildChatPrompt(payload) {
     '   - `ctaLinks`: [{sectionId, buttonText, newButtonLabel, form}] — make a button open a form (an existing formId, or a newForms ref). To link a button that is already there, give its label exactly as listed in that section\'s buttons as `buttonText` (newButtonLabel empty); to add a new button, give `newButtonLabel` (at most 40 characters; buttonText empty). "Add an Express interest button to the hero" means a newForms entry if no such form exists, plus a ctaLinks entry for the hero with newButtonLabel "Express interest". Only when asked.',
     '   - `formEmbeds`: [{form, sectionId, afterSectionId, heading, intro}] — put a form IN the page instead of a pop-up. With `sectionId`, it goes at the end of that section ("embed the Express interest form in the contact section"). With sectionId empty, a new section holding the form is made after `afterSectionId` (empty: just before the footer), with `heading` (at most 80 characters) and a one-line `intro` (at most 300). Only when asked.',
     '   What you still cannot do: ' + (canPics ? chatPicture.CANNOT_PICTURE_AFTER : 'make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above)') + '; add or edit the event\'s speakers, agenda, partners, FAQs or contacts, which are entered under Content and appear on the page by themselves; and take payments, or send confirmation emails or WhatsApp messages — those are not available yet. If the request needs one of these, say so in `summary` and do the rest.',
-    '5. Write `summary` LAST, after deciding the above. For an edit, it tells the owner in plain, friendly words what you are changing — "I\'m making the buttons green and fully rounded, and tightening the agenda\'s spacing." — the way a designer would say it: no hex codes, CSS terms or pixel values unless the owner used them, and no claim of anything that is not in `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` or `formEmbeds` — the page shows the owner a list of what really changed beside it, so any mismatch is a bug.'
+    '   `goTo`: when the request needs one of the event\'s Content pages, set it so the owner gets a button that opens that page: "content:speakers", "content:agenda", "content:sponsors" (partners and sponsors), "content:faq" or "content:contact"; "forms" to change the questions of a form that already exists (the editor\'s Forms panel). Otherwise "". Say in `summary` that it is done there.',
+    '5. Write `summary` LAST, after deciding the above. For an edit, it tells the owner in plain, friendly words what you are changing — "I\'m making the buttons green and fully rounded, and tightening the agenda\'s spacing." — the way a designer would say it: no hex codes, CSS terms or pixel values unless the owner used them, and no claim of anything that is not in `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` or `formEmbeds` — the page shows the owner a list of what really changed beside it, so any mismatch is a bug.',
+    /* UX-096: answers short and about the owner's page, never a recital of this prompt */
+    CHAT_SHORT_LINE
   ].join('\n');
 }
+/* UX-096 (B15): the answer's length, and no internal rules in it */
+var CHAT_SHORT_LINE = 'Answer in at most about 120 words unless the owner asks for a full list. Never describe your own rules or limits; say only what you will do or did.';
+/* A message that is not about this page at all, in the one panel that now also answers questions about events
+   (ai-everywhere plan §5b): handed to the events side, once. Never offered to a message handed here from there.
+   What only a person does (deleting, cancelling or restoring the event, publishing the site or taking it offline,
+   approving) is handed there too: the events side says who does it and where in a fixed sentence (dash-bot.js
+   REFUSALS), which this prompt does not have. The product is named as the owner named it (decision 6). */
+var CHAT_HANDOFF_LINE = ' "handoff" if the latest message is not about this site\'s page at all — another event, numbers such as registrations or visitors, opening another page of ETB2B EventSphere, starting a new event, promotions (posts, mailers) or portals — or asks to delete, cancel or restore the event, publish the site, take it offline or approve anything: the events side of ETB2B AI answers it. For "handoff", leave everything empty and `summary` "".';
+/* where the owner is sent for what this chat cannot do itself (UX-098): Content's records, or the Forms panel */
+var CHAT_GO_TO = ['content:speakers', 'content:agenda', 'content:sponsors', 'content:faq', 'content:contact', 'forms', ''];
+/* the answer when the model said only where to go */
+var CHAT_GO_TO_SAY = { 'content:speakers': 'Speakers are entered under Content › Speakers, and appear on the page by themselves.',
+  'content:agenda': 'The agenda is entered under Content › Agenda, and appears on the page by itself.',
+  'content:sponsors': 'Partners and sponsors are entered under Content › Sponsors, and appear on the page by themselves.',
+  'content:faq': 'FAQs are entered under Content › FAQ, and appear on the page by themselves.',
+  'content:contact': 'Contacts are entered under Content › Contact, and appear on the page by themselves.',
+  forms: 'A form\'s questions are changed in the editor\'s Forms panel.' };
+/* what an older editor (one that cannot hand a message on) shows for a handoff answer: a plain, true sentence */
+var CHAT_HANDOFF_SAY = 'That isn\'t about this page. Ask ETB2B AI on the events dashboard, or open the page it is about.';
+/* a message handed here that the model still wants to hand back: one hop only (plan §5b) */
+var CHAT_NOT_HANDED_BACK = 'I couldn\'t tell whether that is about this page. Name the part of the page, for example “the hero”.';
 
 var CHAT_SECTION_OPS = ['hide', 'show', 'remove', 'move'];
 function chatResponseSchema(payload) {
@@ -740,8 +772,10 @@ function chatResponseSchema(payload) {
   var schema = {
     type: 'OBJECT',
     properties: {
-      kind: { type: 'STRING', enum: ['edit', 'reply', 'undo'] },
+      /* "handoff" (plan §5b) is not offered to a message the events side handed here: never handed back */
+      kind: { type: 'STRING', enum: payload.handedFrom ? ['edit', 'reply', 'undo'] : ['edit', 'reply', 'undo', 'handoff'] },
       summary: { type: 'STRING' },
+      goTo: { type: 'STRING', enum: CHAT_GO_TO.slice(), description: 'the Content page or the Forms panel the owner is sent to for what this chat cannot do; "" for none' },
       design: { type: 'OBJECT', properties: designProps },   // no `required` — a partial patch, any subset
       textEdits: {
         type: 'ARRAY',
@@ -756,7 +790,7 @@ function chatResponseSchema(payload) {
         }
       }
     },
-    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds']
+    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'goTo']
   };
   /* STRICT MODE. Claude's structured output refuses a schema with more than 24 optional parameters — a property its object does not list as required, counted over every object — and this one had 32,
      so every chat message was refused once and asked again in plain mode (QA, 3 Nov 2026). So every field of a
@@ -882,9 +916,11 @@ function chatPictureFocus(focus) {
   var slot = parseInt(focus.slot, 10);
   return Object.assign({}, focus, { sectionId: String(focus.sectionId || '').slice(0, 120), slot: slot >= 1 && slot <= 50 ? slot : 0 });
 }
-/* the newest stored turn's picture: a short follow-up ("try another") may mean the same place */
+/* the newest stored turn's picture: a short follow-up ("try another") may mean the same place. A question the
+   events side answered in between (brain 'dash') is not a turn of this chat's, so it is passed over. */
 function chatLastPicture(turns) {
-  var last = Array.isArray(turns) && turns.length ? turns[turns.length - 1] : null;
+  var own = (Array.isArray(turns) ? turns : []).filter(function (t) { return !(t && t.brain === 'dash'); });
+  var last = own.length ? own[own.length - 1] : null;
   return last && last.newPicture && typeof last.newPicture === 'object' ? last.newPicture : null;
 }
 /* the owner's own messages in the two newest stored turns, oldest first: a scene named there ("make a picture of
@@ -897,7 +933,8 @@ function chatAnswerChanges(answer) {
   return !!(Object.keys(answer.design || {}).length || answer.newPicture ||
     ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].some(function (k) { return (answer[k] || []).length; }));
 }
-var CHAT_STATUSES = ['answered', 'applying', 'applied', 'partly', 'failed', 'undone'];
+/* stopped: the owner pressed Stop (UX-097) before the answer was applied, or between its steps */
+var CHAT_STATUSES = ['answered', 'applying', 'applied', 'partly', 'failed', 'undone', 'stopped'];
 function chatUserRef(fb, eventId, uid) { return eventDocRef(fb, eventId).collection('aiChats').doc(String(uid).replace(/[^A-Za-z0-9_@.-]/g, '_').slice(0, 120)); }
 function chatUid(decoded) { return String((decoded && (decoded.uid || decoded.email)) || 'anon'); }
 function chatName(decoded) { return String((decoded && (decoded.name || decoded.email)) || 'Someone').slice(0, 120); }
@@ -925,6 +962,8 @@ function handleChatEdit(req, res) {
     if (payload.step === 'picture') return handleChatPictureStep(fb, decoded, payload, res);
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
     var eventId = isEventId(String(payload.eventId || '')) ? String(payload.eventId) : '';
+    /* a message the events side of ETB2B AI handed here (plan §5b): answered here, never handed back */
+    payload.handedFrom = payload.handedFrom === 'dash' ? 'dash' : '';
     var uid = chatUid(decoded);
     if (!chatRateOk(uid)) return sendJson(res, 429, { error: 'That is a lot of messages in a short time. Please wait a few minutes and try again.', code: 'chat-rate', retryable: true });
     var userRef = eventId ? chatUserRef(fb, eventId, uid) : null;
@@ -976,6 +1015,15 @@ function handleChatEdit(req, res) {
     }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
       var parsed = r.parsed;
+      /* Not about this page (plan §5b): the browser sends it to the events side, whose turn is the one kept. So
+         nothing is kept here and nothing goes in the History, and nothing on the page changes. A message handed
+         here is never handed back: the model's handoff is then a question back to the owner. */
+      if (parsed && parsed.kind === 'handoff' && !payload.handedFrom) {
+        return sendJson(res, 200, { kind: 'handoff', summary: CHAT_HANDOFF_SAY, design: {}, textEdits: [], sectionEdits: [], sectionOps: [], newSections: [],
+          newForms: [], ctaLinks: [], formEmbeds: [], skipped: [], goTo: '' });
+      }
+      if (parsed && parsed.kind === 'handoff') parsed = Object.assign({}, parsed, { kind: 'reply', summary: String(parsed.summary || '').trim() || CHAT_NOT_HANDED_BACK });
+      var goTo = parsed && CHAT_GO_TO.indexOf(parsed.goTo) !== -1 ? parsed.goTo : '';
 
       /* the prompt tells the model to only describe in `summary` what design/textEdits actually contain, but
          that's not enforceable — this tracks anything the model TRIED to set that got dropped by validation
@@ -1109,14 +1157,15 @@ function handleChatEdit(req, res) {
         });
         skipped.push(chatPicture.sentence('notMadePart', { name: lostNames.join(', ') }));
       }
-      if (!summary && !hasChange) {
+      if (!summary && !hasChange && !goTo) {
         return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
       }
       var kind = pictureReply || lostReply ? 'reply' : parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
       if (!summary && pictureAsk) summary = 'I\'m making a new picture for “' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”; it takes about half a minute.';
+      if (!summary && goTo) summary = CHAT_GO_TO_SAY[goTo];
       var answer = { kind: kind, summary: summary || 'Done.', design: design, textEdits: textEdits,
         sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections,
-        newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped };
+        newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped, goTo: goTo };
       if (kind !== 'edit') ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].forEach(function (k) { answer[k] = []; });
       if (kind !== 'edit') answer.design = {};
       /* the picture is made in a second step from the stored turn, so it needs an event to keep the turn under */
@@ -1128,6 +1177,8 @@ function handleChatEdit(req, res) {
       var turn = { question: String(payload.instruction).trim().slice(0, 4000), answer: answer.summary, kind: kind,
         status: kind === 'edit' ? 'applying' : 'answered', done: [], notDone: [], focus: focus,
         pictures: Math.max(0, Math.min(6, (payload.attachments || []).length || 0)), at: now, updatedAt: now };
+      /* the Content page or Forms panel the answer sends the owner to, so the replay offers it again */
+      if (goTo) turn.goTo = goTo;
       /* what the second step makes the picture from: never anything the browser sends then */
       if (answer.newPicture) turn.newPicture = chatPicture.turnRecord(pictureAsk, payload.design);
       return Promise.all([
@@ -1196,11 +1247,12 @@ function handleChatTurn(req, res) {
     var eventId = String(body.eventId || '').trim(), turnId = String(body.turnId || '').trim();
     if (!isEventId(eventId) || !/^[A-Za-z0-9]{10,40}$/.test(turnId)) return sendJson(res, 400, { error: 'eventId and turnId are required.' });
     var status = CHAT_STATUSES.indexOf(body.status) !== -1 && body.status !== 'answered' && body.status !== 'applying' ? body.status : '';
-    if (!status) return sendJson(res, 400, { error: 'status must be applied, partly, failed or undone.' });
+    if (!status) return sendJson(res, 400, { error: 'status must be applied, partly, failed, undone or stopped.' });
     function lines(v) { return (Array.isArray(v) ? v : []).map(function (x) { return chatLine(x, 300); }).filter(Boolean).slice(0, 30); }
     var ref = chatUserRef(fb, eventId, chatUid(decoded)).collection('turns').doc(turnId);
     ref.get().then(function (snap) {
-      if (!snap.exists) return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
+      /* a turn the events side answered in this conversation is reported through /api/dash-bot/turn, never as a change */
+      if (!snap.exists || (snap.data() || {}).brain === 'dash') return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
       var was = snap.data(), patch = { status: status, updatedAt: new Date().toISOString() };
       if (status !== 'undone') { patch.done = lines(body.done); patch.notDone = lines(body.notDone); }
       /* A change where nothing took effect is not "applied" or "partly", whatever an editor (an older one, cached in
@@ -1210,8 +1262,17 @@ function handleChatTurn(req, res) {
         sendJson(res, 200, { turnId: turnId, status: status });
         if (was.status === status) return;
         var q = '“' + chatLine(was.question) + '”';
+        /* Stop on a question or an "undo that" (kind reply or undo): nothing on the page changed, and its "Asked
+           ETB2B AI … — answered" line is already in the History (handleChatEdit), so the History says only that the
+           person stopped waiting, never that a change was stopped */
+        if (status === 'stopped' && was.kind !== 'edit') {
+          logActivity(fb, eventId, decoded, 'ai-chat', 'Stopped waiting for ETB2B AI\'s answer: ' + q, { area: 'site' });
+          return;
+        }
+        /* Stop is the owner's own choice, never "could not apply" (plan §14.16) */
         var detail = status === 'undone' ? 'Undid an ETB2B AI change: ' + q
           : status === 'failed' ? 'ETB2B AI could not apply: ' + q
+          : status === 'stopped' ? (patch.done.length ? 'Stopped an ETB2B AI change part way: ' + q + ' — ' + chatLine(patch.done.join('; '), 140) : 'Stopped an ETB2B AI change before it was applied: ' + q)
           : 'ETB2B AI changed the site: ' + q + (patch.done.length ? ' — ' + chatLine(patch.done.join('; '), 140) : '');
         logActivity(fb, eventId, decoded, 'ai-chat', detail, { area: 'site' });
       });
@@ -1227,16 +1288,37 @@ function handleChatHistory(req, res) {
   withAdmin(req, res, function (fb, decoded) {
     var q = queryOf(req), eventId = String(q.get('eventId') || '').trim();
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'eventId is required.' });
+    /* One conversation per person per event, both brains (ai-everywhere plan §4d): brain 'edit' (the editor's own
+       turns, and every turn from before) or 'dash' (a question the events side answered here, lib/dash-bot.js),
+       which the panel replays with its own parts, list and action. */
     function shape(t) {
-      var out = { id: t.id, question: t.question, answer: t.answer, kind: t.kind, status: t.status, done: t.done || [], notDone: t.notDone || [], focus: t.focus || '', pictures: t.pictures || 0, at: t.at };
+      var out = { id: t.id, question: t.question, answer: t.answer, kind: t.kind, status: t.status, done: t.done || [], notDone: t.notDone || [], focus: t.focus || '', pictures: t.pictures || 0, at: t.at,
+        brain: t.brain === 'dash' ? 'dash' : 'edit' };
+      if (out.brain === 'dash') {
+        var a = t.action && typeof t.action === 'object' ? t.action : null;
+        out.parts = Array.isArray(t.parts) ? t.parts : [];
+        out.list = t.list || null;
+        out.asOf = t.asOf || '';
+        out.dashKind = t.dashKind || 'reply';
+        out.action = a ? Object.assign({ type: String(a.type || ''), label: String(a.label || '') }, a.url ? { url: String(a.url) } : {}) : null;
+        out.attachments = (Array.isArray(t.attachments) ? t.attachments : []).map(function (x) { return { name: String((x && x.name) || ''), kind: String((x && x.kind) || ''), role: String((x && x.role) || 'none') }; });
+      }
+      if (t.goTo) out.goTo = t.goTo;
       /* a new picture the AI was asked for: the editor draws a made one again, and offers one that was made
          but never placed (the tab was closed) to be put in the tray */
       var np = chatPicture.historyFields(t.newPicture);
       if (np) out.newPicture = np;
       return out;
     }
+    /* the event's name for the panel's scope line ("This event: …"): one read, the name only */
+    function eventOf() {
+      return eventDocRef(fb, eventId).get().then(function (snap) {
+        var d = snap.exists ? (snap.data() || {}) : {};
+        return { id: eventId, name: String(d.name || '').replace(/\s+/g, ' ').trim().slice(0, 200) };
+      }, function () { return { id: eventId, name: '' }; });
+    }
     if (q.get('all') !== '1') {
-      return chatTurnsFor(fb, eventId, chatUid(decoded), 60).then(function (turns) { sendJson(res, 200, { turns: turns.map(shape) }); })
+      return Promise.all([chatTurnsFor(fb, eventId, chatUid(decoded), 60), eventOf()]).then(function (got) { sendJson(res, 200, { event: got[1], turns: got[0].map(shape) }); })
         .catch(function (err) { sendFailure(res, 'chat history', err, 'The conversation could not be loaded.'); });
     }
     approvalsConfig(fb).then(function (cfg) {
@@ -11689,9 +11771,12 @@ var promoBanner = function (handler) { return promoRoute('promo-banner', handler
    require cycle, and a module that fails to load costs only its own three routes inModule()'s 503. It reads its
    events through liveEventDocs(), so the bot sees exactly the list the person sees, and it shares the editor
    chat's rate bucket (chatRateOk), so the two chats together cannot outrun one person's limit. */
+/* Since the assistant is on every page (5 Nov 2026), a question asked inside an event is kept in that event's own
+   conversation, the very document the editor's chat keeps for the person (chatUserRef), and is a line in the
+   event's History (logActivity), so it is handed both, and the event's document (eventDocRef). */
 function dashBotHelpers() {
   return { withAdmin, withAdminBody, sendJson, sendFailure, sendAiFailure, httpError, BODY_LIMITS, chatRateOk, chatUid, chatName,
-    approvalsConfig, liveEventDocs, eventListItem, isEventId };
+    approvalsConfig, liveEventDocs, eventListItem, isEventId, chatUserRef, logActivity, eventDocRef };
 }
 function dashBot(handler) {
   var run = inModule('dash-bot', handler);
@@ -11971,7 +12056,7 @@ module.exports._testHooks = {
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
   processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
-  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, chatView: chatView, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
+  buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, chatView: chatView, chatLastPicture: chatLastPicture, chatHistoryText: chatHistoryText, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
   siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
