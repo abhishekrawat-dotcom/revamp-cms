@@ -243,6 +243,46 @@ function rows(extra) {
   check('1b.6 they are no reason to ask before leaving, nor the person\'s own after an Undo, and the owner\'s logo put in by itself is the editor\'s step',
     /dirty: isDirty\(\) && !autoOnly\(\)/.test(code('hasUnsavedWork')) && /&& !autoOnly\(\)\);/.test(code('step')) &&
     /if \(byItself\) commitAutomatic\(\); else commitNow\(\);/.test(ED) && /putIn\(true\);\s*tagAutoStep\(/.test(ED));
+
+  /* B05 verify (round 4): every site saved before records carried their ids opened as "Updated automatically:
+     speakers from Content, FAQs from Content" with Save on, though drawing the records added only those ids, and an
+     untouched Save then answered "Nothing new to save". What a visitor sees decides: pageSeen, run here on stand-in
+     elements (it needs only getAttribute, hasAttribute, textContent, querySelectorAll and a template's content). */
+  var parts = /var SEEN_PARTS = '[^']*';/.exec(ED);
+  var pageSeen = parts && require('vm').runInNewContext(parts[0] + body('pageSeen') + '; pageSeen', {});
+  function el(tag, attrs, text, kids, content) {
+    return { tagName: tag, attrs: attrs || {}, textContent: text || '', kids: kids || [], content: content || null,
+      getAttribute: function (n) { return Object.prototype.hasOwnProperty.call(this.attrs, n) ? this.attrs[n] : null; },
+      hasAttribute: function (n) { return Object.prototype.hasOwnProperty.call(this.attrs, n); },
+      querySelectorAll: function () { var out = []; (function walk(k) { k.forEach(function (c) { out.push(c); walk(c.kids); }); })(this.kids); return out; } };
+  }
+  function profile(bio, li) { return el('TEMPLATE', { 'data-rv-profile': '' }, '', [], el('#fragment', {}, bio, li ? [el('A', { href: li })] : [])); }
+  /* one speaker card on a page: o says what differs */
+  function pageWith(o) {
+    o = o || {};
+    var card = el('DIV', Object.assign({ 'data-rv-repeat-template': 'speakers', 'data-rv-filled': '' }, o.id ? { 'data-rv-id': o.id } : {}), 'Asha Rao CTO, Acme', [
+      el('IMG', Object.assign({ 'data-rv-field': 'photo', alt: '' }, o.src ? { src: o.src } : {})),
+      el('A', Object.assign({ 'data-rv-field': 'li' }, o.li ? { href: o.li } : { hidden: '' })),
+      el('P', { 'data-rv-field': 'r', style: o.bg ? 'background-image: url("' + o.bg + '");' : 'outline: ' + (o.outline || 1) + 'px solid' }),
+      profile(o.bio || 'Builds cars.', '')
+    ]);
+    var sec = el('SECTION', Object.assign({ 'data-rv-section': 'speakers', id: 'speakers' }, o.empty ? { 'data-rv-empty': 'speakers' } : {}), o.text || 'Speakers Asha Rao CTO, Acme', [card]);
+    return el('BODY', {}, o.text || 'Speakers Asha Rao CTO, Acme', [sec]);
+  }
+  var base = pageSeen ? pageSeen(pageWith({ src: 'https://x/a.jpg' })) : null;
+  check('1b.7 what a visitor sees: a record\'s id (added to every page saved before B05) and a style without a picture change nothing of it',
+    !!pageSeen && base === pageSeen(pageWith({ src: 'https://x/a.jpg', id: 'sp1' })) && base === pageSeen(pageWith({ src: 'https://x/a.jpg', outline: 2 })), base);
+  check('1b.8 …but words, a picture, a link shown or hidden, a background picture, a section marked empty and a speaker\'s profile do',
+    !!pageSeen && [{ text: 'Speakers Asha Rao CEO, Acme' }, { src: 'https://x/b.jpg' }, { src: 'https://x/a.jpg', li: 'https://linkedin.com/in/asha' },
+      { src: 'https://x/a.jpg', bg: 'https://x/g.jpg' }, { src: 'https://x/a.jpg', empty: true }, { src: 'https://x/a.jpg', bio: 'Builds trucks.' }, {}]
+      .every(function (o) { return pageSeen(pageWith(o)) !== base; }));
+  var draw = code('drawRecords'), opened = code('boot');
+  check('1b.9 records drawn on the saved version that a visitor would not see leave it the saved version (the mark follows), and only what a visitor would see is named as updated',
+    /var asSaved = !!\(canvas && savedMark && savedMark\.hash && savedMark\.hash === snapHash\(undoStack\[undoPtr\]\)\);/.test(draw) &&
+    /var seen = asSaved \? pageSeen\(canvas\.doc && canvas\.doc\.body\) : '';/.test(draw) &&
+    /undoStack\[undoPtr\] = snap;\s*if \(asSaved && pageSeen\(canvas\.doc && canvas\.doc\.body\) === seen\) writeMark\(\{ version: savedMark\.version, hash: snapHash\(snap\) \}\);\s*return persist\(snap\);/.test(draw) &&
+    /!\(savedMark && savedMark\.hash === snapHash\(undoStack\[undoPtr\]\)\)\) noteAuto\(recordsNamed\(seen\)\);/.test(opened) &&
+    /out\[kind\] = \(out\[kind\] \|\| ''\) \+ '\\u0002' \+ pageSeen\(el\);/.test(code('recordsSeen')) && !/data-rv-id/.test(code('recordsSeen')));
 })();
 
 /* ===================== 2. the routes ===================== */

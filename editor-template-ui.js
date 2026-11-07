@@ -177,7 +177,8 @@
       // content resolveInitialContent() just settled on — see applySubcollectionOverlay()'s own comment.
       var seen = recordsSeen(), was = undoStack[undoPtr];
       return applySubcollectionOverlay().then(function () {
-        if (canvas && was && !canvas.sameSnapshot(undoStack[undoPtr], was)) noteAuto(recordsNamed(seen));
+        // named only when a visitor would see it: a page the records left as its saved version has nothing to name (drawRecords)
+        if (canvas && was && !canvas.sameSnapshot(undoStack[undoPtr], was) && !(savedMark && savedMark.hash === snapHash(undoStack[undoPtr]))) noteAuto(recordsNamed(seen));
       });
     }).then(function () {
       if (!pageWired) {
@@ -1312,12 +1313,19 @@
     });
   }
   function drawRecords(sectionsAdded) {
+    /* whether the page stands as the version it was saved as (Save has nothing to do), and what a visitor sees on it */
+    var asSaved = !!(canvas && savedMark && savedMark.hash && savedMark.hash === snapHash(undoStack[undoPtr]));
+    var seen = asSaved ? pageSeen(canvas.doc && canvas.doc.body) : '';
     return fillRecords(sectionsAdded).then(function (changed) {
       if (!changed) return;
       // bakes the overlay into THIS session's baseline, same as any other edit — so Ctrl+Z doesn't revert
       // past it, and it rides along in the snapshot persist() already saves for every other reason.
       var snap = canvas.snapshot(undoStack[undoPtr]);
       undoStack[undoPtr] = snap;
+      /* Records drawn again that show what the page showed (on a page saved before records carried their ids, only
+         those ids are new) leave it the saved version: no "Updated automatically" for what nobody would see, Save
+         has nothing to do, and leaving asks nothing (UX-076). What a visitor would see is an update, told as one. */
+      if (asSaved && pageSeen(canvas.doc && canvas.doc.body) === seen) writeMark({ version: savedMark.version, hash: snapHash(snap) });
       return persist(snap);
     }).catch(function (err) {
       // Never blocks the editor loading over this — same fail-soft posture as every other RevampCore
@@ -6179,14 +6187,38 @@
   function noteAuto(names) {
     (names || []).forEach(function (n) { if (n && autoNames.indexOf(n) === -1) autoNames.push(n); });
   }
-  /* the records each list shows, kind -> what they say: to name the kinds that drawing them changed */
+  /* What a visitor reads and sees in root (a page's body, or one record's card): its words, its pictures and links,
+     what is hidden or marked empty, the agenda's days and the speakers' pop-up profiles; not what only the editor and
+     the records' own bookkeeping carry (the id each record carries since B05, data-rv-filled). Two answers that are
+     the same look the same to a visitor: on every site saved before records carried their ids, drawing the records
+     at opening adds only those ids, which is no update anybody would see (UX-076, B05 verify). */
+  var SEEN_PARTS = 'img, a, [hidden], [style], [data-rv-empty], [data-rv-nav-empty], [data-rv-day], template';
+  function pageSeen(root) {
+    if (!root || !root.querySelectorAll) return '';
+    var parts = [String(root.textContent || '').replace(/\s+/g, ' ').trim()];
+    [root].concat(Array.prototype.slice.call(root.querySelectorAll(SEEN_PARTS))).forEach(function (el) {
+      function a(name) { return el.getAttribute(name) || ''; }
+      var style = a('style');
+      var line = el.tagName + (el.hasAttribute('hidden') ? '!' : '') + '|' + a('src') + '|' + a('href') + '|' + a('data-rv-empty') +
+        (el.hasAttribute('data-rv-nav-empty') ? '|nav-empty' : '') + '|' + a('data-rv-day') + '|' + a('data-rv-day-name') + '|' + a('data-rv-day-date') +
+        '|' + (/url\(/i.test(style) ? style : '');
+      // a <template>'s words are not in the page's text, and a speaker's profile, which the visitor's pop-up shows, is one
+      if (el.content && el.content.querySelectorAll) {
+        line += '|' + String(el.content.textContent || '').replace(/\s+/g, ' ').trim() + '|' +
+          Array.prototype.map.call(el.content.querySelectorAll('a[href]'), function (l) { return l.getAttribute('href'); }).join(' ');
+      }
+      parts.push(line);
+    });
+    return parts.join('\u0001');
+  }
+  /* the records each list shows, kind -> what a visitor sees of them: to name the kinds that drawing them changed */
   function recordsSeen() {
     var out = {};
     if (!canvas || !canvas.doc || !window.RevampRecords) return out;
     Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-repeat-template], [data-rv-item]'), function (el) {
       var kind = el.getAttribute('data-rv-repeat-template') || el.getAttribute('data-rv-item');
       if (!RevampRecords.TABS[kind]) return;
-      out[kind] = (out[kind] || '') + '\u0001' + (el.getAttribute('data-rv-id') || '') + '|' + String(el.textContent || '').replace(/\s+/g, ' ').trim();
+      out[kind] = (out[kind] || '') + '\u0002' + pageSeen(el);
     });
     // the previous edition's speakers' profiles, which the same step adds to a page saved before them (refreshPreviousProfiles)
     out.previous = String(canvas.doc.querySelectorAll('[data-rv-profiles]').length);
