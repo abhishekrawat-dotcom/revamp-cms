@@ -644,6 +644,7 @@
     position: sticky; bottom: 0; z-index: 25; background: var(--surface); border-top: 1px solid var(--border);
     padding: 12px 24px; display:flex; align-items:center; gap: 12px; flex-wrap: wrap;
   }
+  .wiz-foot[hidden]{ display: none; }
   .wiz-foot .note{ font-size: 12px; color: var(--text-faint); flex: 1 1 160px; min-width: 0; }
   .foot-issues{
     background: none; border: 0; padding: 4px 0; font: inherit; font-size: 12.5px; font-weight: 700;
@@ -3359,7 +3360,21 @@
       withinMs(hydrateFiles(pick), OPEN_WAIT_MS).then(function(){ showOpening(false); start(pick); });
     });
   }
-  function showOpening(on){ var el = $('draft-opening'); if (el) el.hidden = !on; }
+  /* The footer's Back and Continue act on a step, and there is none until the draft is in (their clicks, and the header's
+     Save & exit and close, are wired by start()): put away from the moment the draft is asked for until start() shows
+     the step it opens on, so the page shows only "Opening your draft…" meanwhile, and only the dialog's own buttons when
+     it could not be opened. Save & exit goes with them (nothing has been typed here to save); the close button still
+     leaves, straight back to Drafts, as nothing can be lost yet. */
+  var draftOpening = false;
+  function showOpening(on){
+    var el = $('draft-opening'), foot = $('wiz-foot'), saveExit = $('btn-save-exit'), close = $('btn-close');
+    draftOpening = !!on;
+    if (el) el.hidden = !on;
+    if (!on) return;
+    if (foot) foot.hidden = true;
+    if (saveExit) saveExit.hidden = true;
+    if (close) close.onclick = function(){ if (draftOpening) exitToDashboard(true); };
+  }
   /* the pictures the account holds for draft `d` that this browser does not have in that version (or has older),
      fetched into the draft's own slots before the form reads them; one that cannot be fetched is said missing by
      loadBannerFiles / loadImageFiles, as a picture this browser lost is */
@@ -11820,6 +11835,8 @@
 
   /* d: the draft to open (openDraft), null for a new event, or nothing for the one this browser worked on last */
   function start(d){
+    // put away while a draft was being opened (showOpening)
+    $('wiz-foot').hidden = false; $('btn-save-exit').hidden = false; draftOpening = false;
     var resumed = restore(d);
     sweepDraftFiles();
     /* an older draft has just been given its id and file slots, or a draft came from the account: kept in this browser

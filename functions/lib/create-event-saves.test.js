@@ -454,12 +454,23 @@ async function main() {
   /* the account does not answer: "Opening your draft…" meanwhile, then this browser's copy opens */
   A = account(); A.hang = true;
   p = acctPage(A, { search: '?draft=' + their.draftId, openWait: 40, draft: Object.assign({}, their, { basics: { category: 'IP', name: 'Kept here' } }) });
-  p.ce('start = function(d){ window.__started = d; }');
+  /* the page's own start() runs here (recorded on the way), as it shows the step the draft opens on and its footer */
+  p.ce('window.__realStart = start; start = function(d){ window.__started = d; return window.__realStart(d); }');
   p.ce('init()');
   await tick();
   check('UX-048 while the draft is fetched the page says "Opening your draft…", not a blank page', p.$('draft-opening').hidden === false && p.ctx.__started === undefined);
+  check('regression: …and the footer\'s Back and Continue, which have no step to act on yet, are put away meanwhile', p.$('wiz-foot').hidden === true);
+  check('regression: …so is the header\'s Save & exit (nothing typed here to save yet)', p.$('btn-save-exit').hidden === true);
+  p.ce('window.__realExit = exitToDashboard; exitToDashboard = function(t){ window.__left = t; }');
+  p.$('btn-close').onclick();
+  check('regression: …while the close button still leaves, straight back to Drafts', p.ctx.__left === true, p.ctx.__left);
+  p.ce('exitToDashboard = window.__realExit');
   await sleep(80); await tick();
   check('UX-048 …an account that does not answer in time: this browser\'s copy opens, and the line goes', p.ctx.__started && p.ctx.__started.basics.name === 'Kept here' && p.$('draft-opening').hidden === true);
+  check('regression: …and the footer comes back with the step the draft opens on, its Back and Continue working', p.$('wiz-foot').hidden === false &&
+    p.ce('S.basics.name') === 'Kept here' && p.$('btn-next').hidden === false && p.$('btn-next').textContent.indexOf('Continue') !== -1);
+  check('regression: …with Save & exit back in the header, and the close button\'s quick way out gone (start() wires its own)', p.$('btn-save-exit').hidden === false &&
+    p.ce('draftOpening') === false && (function () { p.ctx.__left = 'no'; p.ce('window.__realExit = exitToDashboard; exitToDashboard = function(t){ window.__left = t; }'); p.$('btn-close').onclick(); p.ce('exitToDashboard = window.__realExit'); return p.ctx.__left === 'no'; })());
   A = account(); A.hang = true;
   p = acctPage(A, { search: '?draft=' + their.draftId, openWait: 40 });
   p.ce('start = function(d){ window.__started = d === null ? "new" : d; }');
@@ -467,6 +478,7 @@ async function main() {
   await sleep(80); await tick();
   check('UX-048 …with no copy here either: the person is told, with Try again (nothing is opened blank)', p.ctx.__started === undefined && p.log.modals.length === 1 &&
     p.log.modals[0].title === 'Your draft could not be opened' && p.log.modals[0].sub.indexOf('did not answer in time') !== -1 && p.$('draft-opening').hidden === true, p.log.modals.map(function (m) { return m.title + ' / ' + m.sub; }));
+  check('regression: …and behind that dialog the footer stays put away: its Try again and Start a new event are the only ways on', p.$('wiz-foot').hidden === true);
 
   /* gone from the account: not opened, and said */
   A = account();
