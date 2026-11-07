@@ -3061,6 +3061,9 @@
       });
     }
     select.value = currentPage;
+    // a tight tools row narrows the switch (custom_editor.html .is-snugger) and can cut a long page name: in full on hover
+    var shown = want.filter(function (p) { return p.slug === currentPage; })[0];
+    select.title = shown ? shown.title : '';
   }
 
   /* ---------- section toolbar (move / add / duplicate / hide / delete) ---------- */

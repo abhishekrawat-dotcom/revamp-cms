@@ -6,9 +6,11 @@
 //   3 the page can open: every element the editor's own script looks up is in the page or made by the editor (the
 //     half-built style bar removal once stopped the editor opening at all)
 //   4 the whole site's look is in the Theme panel and says so; one text's look is on its own toolbar (UX-075, UX-080)
-//   5 the top bar keeps the event's name readable, and the light/dark switch works from the account menu (UX-078)
+//   5 the top bar keeps the event's name readable, and the light/dark switch works from the account menu; the tools
+//     row tightens, then scrolls with arrows, so no tool is cut with a side panel open on a multi-page site (UX-078)
 //   6 no browser pop-ups in the editor: Add → Image, Alt text, the developer zone's questions (UX-079)
-//   7 placeholders are marked, settled, gated before publishing and never published (UX-081)
+//   7 placeholders are marked, settled, gated before publishing and never published; the picker's cards never
+//     cover one another in a short window (UX-081)
 //   8 ES5
 // No network, no AI, no browser.
 'use strict';
@@ -234,6 +236,84 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
     !/\.mode-toggle button span\{ position:absolute; width:1px/.test(PAGE));
   check('5 the AI markers switch is in Layers', /id="lyr-ai-markers"/.test(MARKUP) && /getElementById\('ai-markers-toggle'\)/.test(body('initAiProvenanceToggle', INLINE)));
 
+  /* the tools row with a side panel open on a multi-page site: moving the page switch into the row cut "⋯ More"
+     at 1100 px and "Forms" at 1024 (re-check of UX-078). toolsRowFitter, run as it is from the page, on a
+     stand-in row whose sizes follow its classes the way the CSS makes them: the tools' own words, the space
+     around each (12, 8 or 6 px a side) and the page switch's width */
+  var FB = '/* toolsRowFitter:begin */', FE = '/* toolsRowFitter:end */';
+  var fa = INLINE.indexOf(FB), fz = INLINE.indexOf(FE);
+  check('5 the tools row\'s fitting is marked once in the page', fa !== -1 && fz > fa && INLINE.indexOf(FB, fa + 1) === -1);
+  var fctx = vm.createContext({});
+  vm.runInContext(INLINE.slice(fa, fz), fctx, { filename: 'custom_editor.html#toolsRowFitter' });
+  var fitter = fctx.toolsRowFitter;
+  check('5 the fitting names nothing of the page but what it is given', typeof fitter === 'function' && !/(^|[^.\w$])(window|document)\b/.test(noComments(INLINE.slice(fa, fz))));
+  (function () {
+    function classes() {
+      var s = {};
+      return { s: s, add: function (k) { s[k] = 1; }, remove: function (k) { delete s[k]; }, contains: function (k) { return !!s[k]; },
+        toggle: function (k, on) { if (on) s[k] = 1; else delete s[k]; } };
+    }
+    var room = { w: 1400 }, active = { i: -1 };
+    var rail = { classList: classes() }, R = rail.classList.s;
+    var WORDS = [25, 53, 41, 42, 38, 40];   // Add, Sections, Layers, Theme, Forms, "⋯ More" ("⋯" alone is 14)
+    function pad() { return R['is-snugger'] ? 6 : R['is-snug'] ? 8 : 12; }
+    function gap() { return R['is-snug'] ? 2 : 4; }
+    function btnW(i) { return (i === 5 && R['is-snugger'] ? 14 : WORDS[i]) + 2 * pad(); }
+    function offset(i) { var x = 0; for (var k = 0; k < i; k++) x += btnW(k) + gap(); return x; }
+    function content() { return offset(WORDS.length - 1) + btnW(WORDS.length - 1); }
+    function pageSwitch() { return R['is-snugger'] ? 106 : R['is-snug'] ? 134 : 154; }
+    function clientW() { return Math.max(0, room.hidden ? 0 : room.w - (R['is-snug'] ? 16 : 28) - (134 + pageSwitch()) - gap() - (R['has-more'] ? 2 * (22 + gap()) : 0)); }
+    var left = 0;
+    var tools = {
+      classList: classes(),
+      get clientWidth() { return clientW(); },
+      get scrollWidth() { return room.hidden ? 0 : Math.max(content(), clientW()); },
+      get scrollLeft() { return Math.min(left, Math.max(0, this.scrollWidth - clientW())); },
+      set scrollLeft(v) { left = Math.max(0, Math.min(v, Math.max(0, this.scrollWidth - clientW()))); },
+      getBoundingClientRect: function () { return { left: 0, right: clientW() }; },
+      querySelector: function () {
+        if (active.i < 0) return null;
+        return { getBoundingClientRect: function () { var l = offset(active.i) - tools.scrollLeft; return { left: l, right: l + btnW(active.i) }; } };
+      }
+    };
+    var back = { disabled: false }, fwd = { disabled: false };
+    var row = fitter(rail, tools, back, fwd);
+    function state() { return Object.keys(R).sort().join(' '); }
+    function allIn() { return content() <= clientW() + 1; }
+
+    row.fit();
+    check('5 a wide row is left as it is, no arrows', state() === '' && allIn() && back.disabled && fwd.disabled && !tools.classList.s['more-end'], state());
+    room.w = 680; row.fit();
+    check('5 a little short: it tightens once and every tool is in view', state() === 'is-snug' && allIn(), [state(), content(), clientW()]);
+    room.w = 580; active.i = 4; row.fit();
+    check('5 shorter (1024 px with a panel open): it tightens again, every tool still in view', state() === 'is-snug is-snugger' && allIn(), [state(), content(), clientW()]);
+    room.w = 400; active.i = -1; tools.scrollLeft = 0; row.fit();
+    check('5 too short even then: the row scrolls, with an arrow at each end', state() === 'has-more is-snug is-snugger' && !allIn(), state());
+    check('5 … at its start: the back arrow is off, the forward arrow on, the far edge fades', back.disabled === true && fwd.disabled === false && !!tools.classList.s['more-end'] && !tools.classList.s['more-start']);
+    active.i = 4; row.fit();
+    var r = tools.querySelector().getBoundingClientRect();
+    check('5 … the tool whose panel is open (Forms) is scrolled into view', r.left >= 0 && r.right <= clientW() && tools.scrollLeft > 0, [r, clientW(), tools.scrollLeft]);
+    check('5 … and the arrows follow where the row is', back.disabled === false && !!tools.classList.s['more-start']);
+    tools.scrollLeft = 0; active.i = 0; row.fit();
+    r = tools.querySelector().getBoundingClientRect();
+    check('5 … a tool at the start is brought back the other way', r.left >= 0 && r.right <= clientW(), [r, tools.scrollLeft]);
+    room.w = 1400; row.fit();
+    check('5 room again (the panel or the chat closed): back as it was, no arrows, nothing scrolled', state() === '' && tools.scrollLeft === 0 && back.disabled && fwd.disabled && !tools.classList.s['more-start'] && !tools.classList.s['more-end'], state());
+    room.w = 400; room.hidden = true; row.fit();
+    check('5 tools put away ("Edit with AI"): nothing is tightened or scrolled', state() === '', state());
+  })();
+  check('5 the row is fitted again whenever its room changes: the window, a panel or the chat, the page switch, the tools coming back',
+    /watch\.observe\(rail\); watch\.observe\(tools\); watch\.observe\(rail\.querySelector\('\.rail-fixed'\)\);/.test(INLINE) && /window\.addEventListener\('resize', refit\)/.test(INLINE));
+  check('5 … and when a panel opens, so its tool is in view', /refitToolsRow\(\);/.test(body('openPanel', INLINE)));
+  check('5 the CSS of each step: less space around the tools, "Page" and More\'s word put away, the switch narrower',
+    /\.ed-rail\.is-snug \.rail-btn\{ padding: 0 8px; \}/.test(PAGE) && /\.ed-rail\.is-snug \.ed-page-switch-label\{ position:absolute;/.test(PAGE) &&
+    /\.ed-rail\.is-snugger \.rail-btn\{ padding: 0 6px; \}/.test(PAGE) && /\.ed-rail\.is-snugger \.rail-more-word\{ display:none; \}/.test(PAGE) && /\.ed-rail\.is-snugger \.ed-page-switch select\{ max-width: 92px; \}/.test(PAGE));
+  check('5 More keeps its name for screen readers when only "⋯" shows', /id="rail-btn-more"[^>]*aria-label="More tools"[^>]*>&#8943; <span class="rail-more-word">More<\/span><\/button>/.test(MARKUP));
+  check('5 the arrows are out of the tab order (Tab reaches every tool) and only shown while the row scrolls',
+    /id="rail-scroll-back" data-dir="-1" tabindex="-1" aria-hidden="true"/.test(MARKUP) && /id="rail-scroll-fwd" data-dir="1" tabindex="-1" aria-hidden="true"/.test(MARKUP) &&
+    /\.rail-scroll\{ display:none;/.test(PAGE) && /\.ed-rail\.has-more \.rail-scroll\{ display:block; \}/.test(PAGE) && /body\.ed-mode-ai \.rail-scroll\{ display:none !important; \}/.test(PAGE));
+  check('5 a page name cut by the narrower switch is in full on hover', /select\.title = shown \? shown\.title : '';/.test(body('renderPageSwitch')));
+
   // the account menu's Dark mode, run: auth.js's menu item reads and flips the theme through theme-toggle.js
   check('5 the account slot asks for the light/dark switch', /<span data-rv-account data-rv-account-theme><\/span>/.test(top));
   check('5 theme-toggle.js offers the switch under a name rv-theme.js does not take', /global\.RevampColorMode = \{/.test(TOGGLE) && /current: function/.test(TOGGLE));
@@ -302,6 +382,11 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('7 a design\'s preview is drawn wide and cut to its top, not shrunk whole', /mountVariantPreview\(card\.querySelector\('\.variant-thumb'\), variant\.html\);/.test(INLINE) && /aspect-ratio: 960 \/ 440/.test(PAGE) &&
     /\.variant-thumb-scale\{ position:absolute; top:0; left:0; width:960px;/.test(PAGE) && /scale\(' \+ \(thumbW \/ naturalW\) \+ '\)'/.test(INLINE));
   check('7 … in the demo look\'s colours and fonts (a .frame of its own), so its headings are not the panel\'s small text', /look\.className = 'frame';/.test(body('mountVariantPreview', INLINE)));
+  /* in a 768 px tall window the grid's auto rows shrank below the cards (a card clipping its content counts as
+     able to shrink to nothing), so the second row covered the first row's names and a click picked the wrong
+     design (re-check of UX-081): each row is as tall as its cards, and the preview keeps its height */
+  check('7 the picker\'s rows are as tall as their cards, so no card covers another in a short window',
+    /\.variant-grid\{[^}]*grid-auto-rows:max-content;[^}]*max-height:56vh;/.test(PAGE) && /\.variant-thumb\{[^}]*flex-shrink:0;[^}]*aspect-ratio: 960 \/ 440;/.test(PAGE));
 })();
 
 /* ======================= 7b the logo notice (UX-082) ======================= */

@@ -213,6 +213,29 @@
   }
   .rail-btn:hover{ color: var(--text); border-bottom-color: var(--border); }
   .rail-btn.active{ color: var(--accent-strong); border-bottom-color: var(--accent); }
+  /* When the row runs short of room (a side panel open on a laptop screen, a site with pages, whose page switch
+     sits in this row), it first tightens, so every tool stays in view as it did before the page switch moved
+     here (UX-078): .is-snug, then .is-snugger (fitToolsRow in the script below measures which one is needed).
+     Only if that is still not enough does the row scroll, and then the side with more tools behind it fades
+     and has an arrow, so no tool is taken for missing. */
+  .ed-rail.is-snug{ padding: 0 8px; gap: 2px; }
+  .ed-rail.is-snug .rail-tools{ gap: 2px; }
+  .ed-rail.is-snug .rail-btn{ padding: 0 8px; }
+  .ed-rail.is-snug .ed-page-switch{ padding-left: 3px; }
+  .ed-rail.is-snug .ed-page-switch-label{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .ed-rail.is-snug .ed-page-switch select{ max-width: 120px; }
+  .ed-rail.is-snugger .rail-btn{ padding: 0 6px; }
+  .ed-rail.is-snugger .rail-more-word{ display:none; }
+  .ed-rail.is-snugger .ed-page-switch select{ max-width: 92px; }
+  .rail-scroll{ display:none; flex-shrink:0; align-self:center; width:22px; height:26px; padding:0; border:1px solid var(--border); border-radius:6px;
+    background: var(--surface); color: var(--text-muted); font-size:15px; font-weight:800; line-height:1; cursor:pointer; }
+  .rail-scroll:hover{ color: var(--text); background: var(--surface-2); }
+  .rail-scroll[disabled]{ opacity:.3; cursor:default; }
+  .ed-rail.has-more .rail-scroll{ display:block; }
+  body.ed-mode-ai .rail-scroll{ display:none !important; }
+  .rail-tools.more-end{ -webkit-mask-image:linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+  .rail-tools.more-start:not(.more-end){ -webkit-mask-image:linear-gradient(90deg, transparent, #000 28px); mask-image:linear-gradient(90deg, transparent, #000 28px); }
+  .rail-tools.more-start.more-end{ -webkit-mask-image:linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 
   /* ---------- slide-out side panels ---------- */
   .side-panel{
@@ -862,7 +885,11 @@
   .variant-tab:hover{ background:var(--surface-2); color:var(--text); }
   .variant-tab.active{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent); }
   /* two to a row, each drawn at the page's own width and cut to its top, so its words can be read (UX-081) */
-  .variant-grid{ display:grid; grid-template-columns:repeat(2, 1fr); gap:16px; max-height:56vh; overflow-y:auto; padding:3px; align-items:start; }
+  /* each row as tall as its cards (grid-auto-rows:max-content): an auto row counts a card that clips its content
+     (overflow:hidden, for its round corners) as able to shrink to nothing, so once the cards were taller than the
+     grid's 56vh (a 768 px tall window) the rows shrank and the next row's cards covered this row's names and
+     "Use this design", and a click there picked the card below (UX-081) */
+  .variant-grid{ display:grid; grid-template-columns:repeat(2, 1fr); grid-auto-rows:max-content; gap:16px; max-height:56vh; overflow-y:auto; padding:3px; align-items:start; }
   .variant-card{
     border:1.5px solid var(--border); border-radius:12px; overflow:hidden; background:var(--surface);
     cursor:pointer; text-align:left; display:flex; flex-direction:column; padding:0;
@@ -870,7 +897,8 @@
   }
   .variant-card:hover{ border-color:var(--accent); box-shadow:var(--shadow-md); transform:translateY(-2px); }
   /* drawn 960px wide (a laptop's narrow window, so the words come out larger in the card) and cut to the top */
-  .variant-thumb{ position:relative; display:block; aspect-ratio: 960 / 440; overflow:hidden; background:var(--bg); border-bottom:1px solid var(--border); }
+  /* flex-shrink:0: the preview keeps its height in the card's column, so the name below it is never squeezed over */
+  .variant-thumb{ position:relative; display:block; flex-shrink:0; aspect-ratio: 960 / 440; overflow:hidden; background:var(--bg); border-bottom:1px solid var(--border); }
   .variant-thumb-scale{ position:absolute; top:0; left:0; width:960px; transform-origin: top left; pointer-events:none; }
   .variant-lightbox-body .variant-thumb-scale{ width:1180px; }
   /* the preview sits in a .frame of its own, for the demo look's --site-* colours and fonts (declared on .frame
@@ -1456,6 +1484,9 @@
     <main class="ed-main" aria-busy="true">
       <!-- ============ EDITOR TOOLS RAIL ============ -->
       <nav class="ed-rail" aria-label="Editor tools" data-keep-selection>
+       <!-- shown only while the row still scrolls after tightening (fitToolsRow); kept out of the tab order, as Tab
+            reaches every tool and the row scrolls to the one focused by itself -->
+       <button type="button" class="rail-scroll" id="rail-scroll-back" data-dir="-1" tabindex="-1" aria-hidden="true" title="More tools this way">&#8249;</button>
        <div class="rail-tools">
         <button class="rail-btn" data-panel="add" title="Add elements">Add</button>
         <button class="rail-btn" data-panel="predefined" title="Add a section">Sections</button>
@@ -1463,8 +1494,9 @@
         <button class="rail-btn" data-panel="design" title="Colors, fonts and corners of the whole site">Theme</button>
         <button class="rail-btn" data-panel="forms" title="Registration forms: make them, and put them on the page">Forms</button>
         <!-- tools for developers, kept out of the main path (UX-080) -->
-        <button class="rail-btn" id="rail-btn-more" title="More tools" aria-haspopup="menu" aria-expanded="false" aria-controls="rail-more-menu">&#8943; More</button>
+        <button class="rail-btn" id="rail-btn-more" title="More tools" aria-label="More tools" aria-haspopup="menu" aria-expanded="false" aria-controls="rail-more-menu">&#8943; <span class="rail-more-word">More</span></button>
        </div>
+       <button type="button" class="rail-scroll" id="rail-scroll-fwd" data-dir="1" tabindex="-1" aria-hidden="true" title="More tools this way">&#8250;</button>
        <div class="rail-fixed">
         <div class="device-toggle" role="group" aria-label="Device preview">
          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
@@ -1860,6 +1892,78 @@
     nativeInput.addEventListener('change', function(){ applyFn(this.value, true); });
   }
 
+  /* ---------- the tools row fits its room (UX-078) ----------
+     A side panel open on a laptop screen, ETB2B AI's chat beside the canvas and a site with pages (its page
+     switch sits in this row) can leave the tools less room than they need. The row then tightens, first
+     .is-snug, then .is-snugger (less space around each tool, the page switch's "Page" and "More"'s word put
+     away), so every tool stays in view; only when even that is not enough does it scroll, with an arrow at each
+     end and a fade on the side where more tools are, and the tool whose panel is open is kept in view. It is
+     measured, not guessed from the window's width, because what is open beside the canvas decides the room.
+     Uses only the elements it is given (functions/lib/editor-tools.test.js runs it on a stand-in row). */
+  /* toolsRowFitter:begin */
+  function toolsRowFitter(rail, tools, back, fwd){
+    var STEPS = ['is-snug', 'is-snugger'];
+    var EDGE = 28;   // the fade's width: a tool scrolled to sits clear of it
+    function overflows(){ return tools.scrollWidth > tools.clientWidth + 1; }
+    function syncEdges(){
+      var on = rail.classList.contains('has-more');
+      var more = tools.scrollWidth - tools.clientWidth;
+      var atStart = tools.scrollLeft <= 1, atEnd = tools.scrollLeft >= more - 1;
+      tools.classList.toggle('more-start', on && !atStart);
+      tools.classList.toggle('more-end', on && !atEnd);
+      back.disabled = !on || atStart;
+      fwd.disabled = !on || atEnd;
+    }
+    function keepActiveInView(){
+      if (!rail.classList.contains('has-more')) return;
+      var act = tools.querySelector('.rail-btn.active');
+      if (!act) return;
+      var t = tools.getBoundingClientRect(), b = act.getBoundingClientRect();
+      if (b.left < t.left + EDGE) tools.scrollLeft -= (t.left + EDGE) - b.left;
+      else if (b.right > t.right - EDGE) tools.scrollLeft += b.right - (t.right - EDGE);
+    }
+    function fit(){
+      rail.classList.remove('has-more');
+      for (var s = 0; s < STEPS.length; s++) rail.classList.remove(STEPS[s]);
+      // no width: the tools are put away ("Edit with AI"), there is nothing to fit
+      if (tools.clientWidth){
+        for (var i = 0; i < STEPS.length && overflows(); i++) rail.classList.add(STEPS[i]);
+        if (overflows()) rail.classList.add('has-more');
+      }
+      keepActiveInView();
+      syncEdges();
+    }
+    function step(dir){
+      var by = dir * Math.max(80, Math.round(tools.clientWidth * 0.7));
+      if (tools.scrollBy) tools.scrollBy({ left: by, behavior: 'smooth' }); else tools.scrollLeft += by;
+    }
+    return { fit: fit, syncEdges: syncEdges, keepActiveInView: keepActiveInView, step: step };
+  }
+  /* toolsRowFitter:end */
+  var refitToolsRow = (function(){
+    var rail = document.querySelector('.ed-rail'), tools = rail.querySelector('.rail-tools');
+    var back = document.getElementById('rail-scroll-back'), fwd = document.getElementById('rail-scroll-fwd');
+    var row = toolsRowFitter(rail, tools, back, fwd), queued = false;
+    // once a frame at most: fitting changes the sizes being watched, and the next frame finds them settled
+    function refit(){
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(function(){ queued = false; row.fit(); });
+    }
+    /* the row's room changes with the window, a panel or the chat opening, and the page switch appearing once
+       the site is in; the tools come back from "Edit with AI" with a width again */
+    if (window.ResizeObserver){
+      var watch = new ResizeObserver(refit);
+      watch.observe(rail); watch.observe(tools); watch.observe(rail.querySelector('.rail-fixed'));
+    }
+    window.addEventListener('resize', refit);
+    tools.addEventListener('scroll', row.syncEdges, { passive: true });
+    back.addEventListener('click', function(){ row.step(-1); });
+    fwd.addEventListener('click', function(){ row.step(1); });
+    refit();
+    return refit;
+  })();
+
   /* ---------- rail + side panels ---------- */
   var railBtns = document.querySelectorAll('.rail-btn[data-panel]');
   var panels = { add: document.getElementById('panel-add'), layers: document.getElementById('panel-layers'), design: document.getElementById('panel-design'), forms: document.getElementById('panel-forms') };
@@ -1933,6 +2037,8 @@
   function openPanel(name){
     Object.keys(panels).forEach(function(k){ panels[k].hidden = (k !== name); });
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
+    // a panel of the same width as the one before changes no size: the row still brings its tool into view
+    refitToolsRow();
     if (name === 'layers') rebuildLayersPanel();
     if (name === 'design') syncDesignPanel();
     if (name === 'forms' && window.RevampEditorForms) RevampEditorForms.panelShown();
