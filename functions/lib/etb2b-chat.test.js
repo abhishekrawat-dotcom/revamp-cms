@@ -1039,7 +1039,7 @@ function btnIn(node, label) { return all(node, function (e) { return e.localName
   function tokensOf(s) { var out = {}; s.replace(/--([a-z0-9-]+)\s*:\s*([^;]+);/gi, function (mm3, k, v) { out[k] = v.trim(); }); return out; }
   var LIGHT = tokensOf(block(PAGE, ':root{'));
   var DARK = Object.assign({}, LIGHT, tokensOf(block(PAGE, ':root[data-theme="dark"]{')));
-  check('C.9 the console\'s tokens were read from Event_Listing.html', LIGHT.surface === '#FFFFFF' && DARK.surface === '#1B1A16' && Object.keys(LIGHT).length > 40, Object.keys(LIGHT).length);
+  check('C.9 the console\'s tokens were read from Event_Listing.html', LIGHT.surface === '#FFFFFF' && DARK.surface === '#201C1B' && Object.keys(LIGHT).length > 40, Object.keys(LIGHT).length);
   var calls = varCalls(css);
   /* the page's tokens (with fallbacks); the kit's own --rvc-vh / --rvc-vt (set from script, with fallbacks) are not */
   var aliases = calls.filter(function (c) { return c.fallback !== null && !/^--rvc-/.test(c.name); });

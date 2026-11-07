@@ -153,7 +153,9 @@ var TAB_LABELS = {
 var FILTER_VIEWS = ['active', 'upcoming', 'completed', 'draft', 'cancelled'];
 var VIEW_LABELS = { active: 'Active', upcoming: 'Upcoming', completed: 'Completed', draft: 'Draft', cancelled: 'Cancelled', deleted: 'Deleted' };
 var TYPES = ['ip', 'client', 'awards'];
-var TYPE_LABELS = { ip: 'IP', client: 'Custom', awards: 'Awards' };
+/* each category's name, the one every page shows (edit-event-core.js RevampCore.TYPES, UX-005): the bot said "IP" and
+   "Custom" for what Create Event, the console and the dashboard now all call "IP Event" and "Client Event" */
+var TYPE_LABELS = { ip: 'IP Event', client: 'Client Event', awards: 'Awards' };
 var FILTER_SORTS = ['start', 'registrations', 'visitors'];
 var LIST_STATUSES = ['draft', 'upcoming', 'active', 'completed', 'cancelled'];
 var LIST_SORTS = ['start', 'created', 'updated', 'registrations', 'visitors', 'name'];
@@ -2154,7 +2156,7 @@ module.exports._test = {
   SCHEMA: SCHEMA, buildPrompt: buildPrompt, cleanAnswer: cleanAnswer, resolveText: resolveText, guardText: guardText, guardFor: guardFor,
   urlFor: urlFor, runList: runList, cleanFilter: cleanFilter, cleanCreate: cleanCreate, grounded: grounded, saidWords: saidWords, cleanCell: cleanCell,
   memoryText: memoryText, harmOf: harmOf,
-  REFUSALS: REFUSALS, SITE_POSTS: SITE_POSTS, POST_TEMPLATES: POST_TEMPLATES, MAILERS: MAILERS, CAPS: CAPS, dayKey: dayKey,
+  REFUSALS: REFUSALS, TYPE_LABELS: TYPE_LABELS, SITE_POSTS: SITE_POSTS, POST_TEMPLATES: POST_TEMPLATES, MAILERS: MAILERS, CAPS: CAPS, dayKey: dayKey,
   todayBlock: todayBlock, periodOf: periodOf, contextFor: contextFor, cleanView: cleanView, patchLabel: patchLabel, clock: clock,
   KINDS: KINDS, OPEN_TARGETS: OPEN_TARGETS, MSG: MSG, STRICT_OPTIONAL_MAX: STRICT_OPTIONAL_MAX,
   portalSaid: portalSaid, namedPortals: namedPortals, portalSlug: portalSlug, subjectSaid: subjectSaid, portalLine: portalLine

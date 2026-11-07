@@ -1,0 +1,19 @@
+/* app-logo.css — the app's logo in both themes (UX-023), the same on every page that shows it: the events
+   dashboard, sign-in, Create Event, the Activity log and Mailer performance.
+
+   Each page puts both pictures in its top bar, side by side in the markup:
+     <img class="… app-logo-light" src="assets/app-logo.png" …>       for a light ground
+     <img class="… app-logo-dark"  src="assets/app-logo-dark.png" …>  for a dark ground
+   and this shows the one that suits the theme. The dark one changes only the black lettering to light; the red ET
+   square never changes (ET's logo rule; tools/build-app-logo.js makes it and checks it). On the dark theme the
+   light picture used to show only its red square on the dashboard and sign-in, and sat on a white chip elsewhere.
+
+   The app's theme switch sets data-theme on <html> before the page paints; the media query covers a page whose
+   switch has not run, which follows the computer's own setting as the page's colours do. */
+.app-logo-dark{ display:none !important; }
+:root[data-theme="dark"] .app-logo-light{ display:none !important; }
+:root[data-theme="dark"] .app-logo-dark{ display:block !important; }
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]) .app-logo-light{ display:none !important; }
+  :root:not([data-theme="light"]) .app-logo-dark{ display:block !important; }
+}
