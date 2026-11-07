@@ -197,9 +197,9 @@ check('the site is read once the console is up, and handed to the Dashboard', /s
 check('the glance lists no longer claim a section is hidden without knowing', !/The Speakers section is hidden on the site|The Sponsors section is hidden on the site|The Agenda section is hidden on the site/.test(page));
 check('the core asks GET /api/event/site-outline', /api\('GET', '\/api\/event\/site-outline\?eventId=' \+ q\(eventId\)\)/.test(read('edit-event-core.js')) && /fetchSiteOutline: fetchSiteOutline/.test(read('edit-event-core.js')));
 
-/* the site editor opens at the section the console names */
+/* the site editor opens at the section the console names, once the site is up and its opening state is over (B14) */
 var ed = read('editor-template-ui.js');
-check('the editor selects ?section= once the site is up', /function focusAskedSection\(\)/.test(ed) && /logoUnitNotice\(\);\s*focusAskedSection\(\);/.test(ed) &&
+check('the editor selects ?section= once the site is up', /function focusAskedSection\(\)/.test(ed) && /logoUnitNotice\(\);\s*setOpening\(null\);\s*focusAskedSection\(\);/.test(ed) &&
   /get\('section'\)/.test(ed) && /selectSection\(sec\)/.test(ed));
 
 /* ---------- the Dashboard, in a vm over the real core, with the notes ---------- */

@@ -18,6 +18,8 @@ const ACTION_AREA = Object.assign({ 'registration-approved': 'registrations', 'r
   require('./activity').AREA_OF);
 
 function areaOf(entry) {
+  /* a Basics edit is Content's, even one stored as Settings before UX-015 (lib/activity.js isBasicsEdit) */
+  if (require('./activity').isBasicsEdit(entry)) return 'content';
   var a = entry && entry.area;
   if (typeof a === 'string' && AREAS.indexOf(a) !== -1) return a;
   var action = String((entry && entry.action) || '');

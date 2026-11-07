@@ -419,7 +419,7 @@ async function main() {
   p.ce('S.step = 1; S.step1Phase = "category"; S.basics.portal = ""; S.brief.previous = "' + CIO_LINK + '"; S.brief.etEvent = { portal: "cio", kind: "event", id: "9", title: "ETCIO Annual Conclave", link: "' + CIO_LINK + '", dateLabel: "" }');
   p.ce('stepPortal = "cio"; pickCategory("IP")');
   check('3. a first pick of the portal keeps a previous edition of that portal', p.ce('S.basics.portal') === 'cio' && p.ce('S.brief.etEvent.id') === '9' && p.ce('S.brief.previous') === CIO_LINK);
-  check('3. …and its toast names the portal with the type', p.log.toasts.length === 1 && p.log.toasts[0].msg === 'ETCIO · IP & Residential Event selected', p.log.toasts);
+  check('3. …and its toast names the portal with the type', p.log.toasts.length === 1 && p.log.toasts[0].msg === 'ETCIO · IP Event selected', p.log.toasts);
   /* a type changed later, from the details: the portal stays, and Cancel puts the box back */
   p.ce('S.step1Phase = "details"; S.creationMethod = "template"; changeCategory()');
   check('3. Change opens the first screen on the draft\'s portal', p.ce('S.step1Phase') === 'category' && p.ce('stepPortal') === 'cio' && p.ce('S.catReturnPhase') === 'details');
@@ -864,11 +864,11 @@ async function main() {
   p = load();
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "hr"; S.basics.category = "IP"; applySmartDefaults()');
-  check('the details chip reads "ETHRWorld · IP & Residential Event"', p.$('cat-bar-portal').textContent === 'ETHRWorld' && p.$('cat-bar-name').textContent === 'IP & Residential Event');
+  check('the details chip reads "ETHRWorld · IP Event"', p.$('cat-bar-portal').textContent === 'ETHRWorld' && p.$('cat-bar-name').textContent === 'IP Event');
   p.ce('renderAiEntry = function(){}; S.step = 1; S.step1Phase = "category"; S.catReturnPhase = null; renderFoot()');
   check('the first screen\'s footer asks for both', p.$('foot-note').textContent === 'Choose the portal and a microsite type to continue.');
   p.ce('S.catReturnPhase = "details"; renderFoot()');
-  check('…and while changing them, names what Cancel keeps', p.$('foot-note').textContent === 'Pick a type, or cancel to keep ETHRWorld · IP & Residential Event.');
+  check('…and while changing them, names what Cancel keeps', p.$('foot-note').textContent === 'Pick a type, or cancel to keep ETHRWorld · IP Event.');
   p = load({ search: '?new=1&portal=hr' });
   p.ce('start = function(){ window.__log.started = true; }');
   p.ce('init()');

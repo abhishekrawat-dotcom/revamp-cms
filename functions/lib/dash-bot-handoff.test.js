@@ -866,13 +866,13 @@ function withPicker(P) {
   check('E.2 … picking a type opens the brief form with it', JSON.stringify(K.phases()) === '["details"]' && P.ctx.S.basics.category === 'Client' && P.ctx.S.creationMethod === 'brief' &&
     P.ctx.S.catReturnPhase === null && P.ctx.S.brief.current === LINK, [K.phases(), P.ctx.S.basics.category]);
   check('E.2 … with the portal it is on: ETRetail', P.ctx.S.basics.portal === 'retail' && P.ctx.ELS['cat-portal-error'].hidden === true, P.ctx.S.basics.portal);
-  check('E.2 … with a plain "selected" toast (no form was on screen to be "updated"), naming the portal chosen', JSON.stringify(K.toasts()) === '["ETRetail · Custom Events selected"]', K.toasts());
+  check('E.2 … with a plain "selected" toast (no form was on screen to be "updated"), naming the portal chosen', JSON.stringify(K.toasts()) === '["ETRetail · Client Event selected"]', K.toasts());
   check('E.2 … and the way to the brief form is used once', P.ctx.S.aiPrefill.thenDetails === false);
   /* afterwards the page works as it always did: Back to the method screen, change the type there → back to the method screen */
   P.ctx.S.step1Phase = 'method'; P.ctx.changeCategory();
   grid = K.grid(); foot = K.foot();
   check('E.2 … later, changing the type: now the chosen type is "Current", with Cancel', grid.indexOf('aria-current="true" data-cat="Client"') !== -1 && grid.indexOf('category-current') !== -1 &&
-    foot.back.hidden === false && foot.back.textContent === 'Cancel' && foot.note === 'Pick a type, or cancel to keep ETRetail · Custom Events.', [foot.note]);
+    foot.back.hidden === false && foot.back.textContent === 'Cancel' && foot.note === 'Pick a type, or cancel to keep ETRetail · Client Event.', [foot.note]);
   P.ctx.pickCategory('Awards');
   check('E.2 … and that pick goes back to the method screen, as before', K.phases().slice(-1)[0] === 'method' && P.ctx.S.basics.category === 'Awards', K.phases());
   P.ctx.S.step1Phase = 'details'; P.ctx.changeCategory(); P.ctx.pickCategory('IP');

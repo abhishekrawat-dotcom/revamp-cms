@@ -225,6 +225,7 @@ function loadConsole(o) {
     notify: function (m, ms) { toasts.push([m, ms]); },
     LEAVE: null, EV: null,
     C: {
+      CATEGORY_KEYS: ['ip', 'client', 'awards'], typeLabel: function (k) { return ({ ip: 'IP Event', awards: 'Awards' })[k] || k; },
       updateEvent: function (id, patch, opts) {
         updates.push({ id: id, patch: JSON.parse(JSON.stringify(patch)), opts: opts ? JSON.parse(JSON.stringify(opts)) : undefined });
         return o.update ? o.update(patch, opts) : Promise.resolve({ ok: true });
@@ -302,9 +303,10 @@ function loadConsole(o) {
 check('3 previewBits\' fallback is the name the site shows: The Economic Times Business Verticals',
   /var NO_PORTAL_SITE_NAME = 'The Economic Times Business Verticals';/.test(MAIN) &&
   /portal: portalName\(v\('portal'\)\) \|\| NO_PORTAL_SITE_NAME \}/.test(CONSOLE_FNS.wireBasics) && MAIN.indexOf("'ET Oneworld' }") === -1);
-var histSrc = (/\n  var HIST_AREA = (\{[\s\S]*?\});\n/.exec(MAIN) || [])[1];
-var HIST = histSrc ? vm.runInNewContext('(' + histSrc + ')') : {};
-check('4 HIST_AREA[\'portal-set\'] is "Portal set"', HIST['portal-set'] === 'Portal set' && HIST.created === 'Event created', HIST['portal-set']);
+/* B11 (UX-015): both activity logs read their words from activity-words.js, which the console loads */
+var HIST = require('../../activity-words.js').ACTIONS;
+check('4 the Activity log\'s word for portal-set is "Portal set"', HIST['portal-set'] === 'Portal set' && HIST.created === 'Event created' &&
+  CONSOLE.indexOf('<script src="activity-words.js"></script>') !== -1, HIST['portal-set']);
 var storedSrc = (/\n    var STORED = (\{[^}]*\});/.exec(CONSOLE_FNS.wireBasics) || [])[1];
 var STORED = storedSrc ? vm.runInNewContext('(' + storedSrc + ')') : {};
 check('4 STORED.portal is \'portal\' (the other fields as they were)', STORED.portal === 'portal' && STORED.cat === 'category' && STORED.desc === 'description' &&

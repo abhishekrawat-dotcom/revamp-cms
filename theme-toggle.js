@@ -141,5 +141,13 @@
     get: getPreferred,
     mount: mountThemeToggle
   };
+  /* The same switch under a name of its own: on the site editor, templates/_shared/rv-theme.js takes the name
+     RevampTheme for the site's colors and fonts, and the account menu's light/dark switch (auth.js,
+     data-rv-account-theme) still has to find this one. current() is the theme shown now. */
+  global.RevampColorMode = {
+    toggle: toggle,
+    apply: applyTheme,
+    current: function () { return document.documentElement.getAttribute('data-theme') || getPreferred(); }
+  };
 
 })(window);
