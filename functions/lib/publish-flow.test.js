@@ -128,7 +128,14 @@ const cases = [
 check('5 the console counts unchecked AI sections exactly as the server does', cases.every(function (c) { return T.aiUncheckedOf(c) === L.aiUncheckedOf(c); }), cases.map(function (c) { return [T.aiUncheckedOf(c), L.aiUncheckedOf(c)]; }));
 check('5 server refusals: nothing-new and not-saved are states, approval-required asks', T.errorPlan({ code: 'nothing-to-publish' }) === 'nothing-new' && T.errorPlan({ code: 'site-not-saved' }) === 'not-saved' &&
   T.errorPlan({ code: 'approval-required' }) === 'ask' && T.errorPlan({ code: 'x' }) === 'show' && T.errorPlan(null) === 'show');
-check('5 when and who before the number (UX-112)', /^The site as saved on \d+ \w+, \d+:\d\d [ap]m by p@x\.in \(version 4\)$/.test(T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4)), T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4));
+check('5 when and who before the number (UX-112)', /^The site as saved on \d+ \w+ 2026, \d+:\d\d [ap]m by p@x\.in \(version 4\)$/.test(T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4)), T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4));
+
+/* dates in the dialogs are written RevampCore's one way, as on every other page (UX-010) */
+core.fmtDate = function (iso, o) { return o && o.time ? 'FMT(' + iso + ')' : 'no-time'; };
+check('5 the saved moment is RevampCore.fmtDate\'s, with its time', T.savedLine({ savedAt: '2026-11-03T06:54:00Z', savedBy: 'p@x.in' }, 4) === 'The site as saved on FMT(2026-11-03T06:54:00Z) by p@x.in (version 4)');
+core.fmtDate = function () { return '—'; };
+check('5 a date RevampCore cannot read is left out, not shown as a dash', T.savedLine({ savedAt: 'x', savedBy: 'p@x.in' }, 4) === 'The site as saved by p@x.in (version 4)');
+delete core.fmtDate;
 
 /* a failed request in the dialogs is said the console's way (UX-008): never a server fault's own sentence */
 core.errText = function (err) { return err.status >= 500 ? 'Something went wrong on our side. Please try again.' : 'core:' + err.message; };

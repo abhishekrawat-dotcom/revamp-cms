@@ -40,12 +40,16 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
   }
   var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  /* "3 Nov, 12:24 pm" in the viewer's clock; '' for no date */
+  /* "3 Nov 2026, 12:24 pm": RevampCore's one way of writing a moment, as on every other page (UX-010); the same
+     words in the viewer's clock where RevampCore is not loaded; '' for no date */
   function when(iso) {
-    var d = new Date(iso || '');
-    if (!iso || isNaN(d.getTime())) return '';
+    var C = window.RevampCore;
+    if (!iso) return '';
+    if (C && typeof C.fmtDate === 'function') { var said = C.fmtDate(iso, { time: true }); return said === '—' ? '' : said; }
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
     var h = d.getHours(), m = d.getMinutes();
-    return d.getDate() + ' ' + MONTHS[d.getMonth()] + ', ' + (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
+    return d.getDate() + ' ' + MONTHS[d.getMonth()] + ' ' + d.getFullYear() + ', ' + (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
   }
   function listWords(list) {
     if (list.length < 2) return list.join('');
@@ -189,7 +193,7 @@
     return (err && err.message) || 'Please try again.';
   }
 
-  /* "The site as saved on 3 Nov, 12:24 pm by priya@… (version 7)" — when and who first, the number last (UX-112) */
+  /* "The site as saved on 3 Nov 2026, 12:24 pm by priya@… (version 7)" — when and who first, the number last (UX-112) */
   function savedLine(a, version) {
     var at = when(a && a.savedAt), by = String((a && a.savedBy) || '').trim();
     return 'The site as saved' + (at ? ' on ' + at : '') + (by ? ' by ' + by : '') + ' (version ' + version + ')';
