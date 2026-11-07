@@ -80,9 +80,9 @@
   input,select,textarea{ font-family: var(--font-body); font-size: 13.5px; color: var(--text); }
   ::selection{ background: var(--accent-soft); }
   :focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
-  .button-settings-pop :focus-visible{ outline: none; }
-  /* …but a keyboard user still sees which color or control has the focus in the pop-over */
-  .button-settings-pop .swatch:focus-visible, .button-settings-pop select:focus-visible, .button-settings-pop input:focus-visible{ box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  /* In the style pop-over (Aa) the ring is drawn as a shadow, which its tight rows do not clip; every control in it
+     shows one, its buttons too (UX-085: none may lose the ring) */
+  .button-settings-pop :focus-visible{ outline: none; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
   [hidden]{ display: none !important; }
   .mono{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
@@ -596,6 +596,11 @@
   .dp-input{ width:100%; border:1px solid var(--border); border-radius:7px; padding:7px 8px;
     background:var(--surface); color:var(--text); font:inherit; font-size:12.5px; }
   .dp-hint{ font-size:11px; color:var(--text-faint); line-height:1.45; }
+  /* A setting that is not part of the page, so not part of Save and Undo, says so where it is set (UX-088): every
+     other change waits for Save. The tick marks it saved; while a choice is on its way it says "Saving…". */
+  .dp-autosave{ display:flex; align-items:flex-start; gap:6px; font-size:11.5px; line-height:1.45; color:var(--text-muted); }
+  .dp-autosave::before{ content:'\2713'; flex-shrink:0; font-weight:800; color:var(--ok, #2F8F5B); }
+  .dp-autosave.is-saving::before{ content:'\2026'; color:var(--text-faint); }
   .dp-divider{ height:1px; background:var(--border); margin:4px 0; }
 
   .panel-search{
@@ -603,6 +608,8 @@
     border-radius: 8px; padding: 8px 10px; color: var(--text-faint);
   }
   .panel-search input{ border:none; background:none; outline:none; color:var(--text); font-size:13px; width:100%; }
+  /* the box's own ring stands in for the field's, which is off so it does not sit inside the box (UX-085) */
+  .panel-search:focus-within{ border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 
   .blk-cat{ font-size: 11px; font-weight: 800; letter-spacing:.06em; text-transform:uppercase; color: var(--text-faint); margin-bottom:8px; display:block; }
   .blk-grid{ display:grid; grid-template-columns: 1fr 1fr; gap: 9px; }
@@ -725,8 +732,14 @@
   .device-toggle button{ width:30px; height:26px; border-radius:6px; border:none; background:none; color: var(--text-faint); display:flex; align-items:center; justify-content:center; }
   .device-toggle button.active{ background: var(--surface); color: var(--accent-strong); box-shadow: var(--shadow-sm); }
   .history-toggle{ align-self:center; margin-left:6px; display:flex; align-items:center; gap:2px; }
-  .history-toggle button{ width:28px; height:26px; border-radius:6px; border:1px solid var(--border); background: var(--surface-2); color: var(--text-faint); }
-  .history-toggle button:disabled{ opacity:.4; }
+  /* Undo and Redo say their names in the text colour, and a step that cannot be taken looks it: faded, with a
+     no-entry cursor (UX-084). When the row runs short of room (.is-snug) the names go and the arrows stay; the
+     buttons keep their names for screen readers (aria-label). */
+  .history-toggle button{ height:26px; display:inline-flex; align-items:center; gap:5px; padding:0 9px; border-radius:6px; border:1px solid var(--border); background: var(--surface); color: var(--text); font-size:13px; font-weight:600; white-space:nowrap; }
+  .history-toggle button:hover:not(:disabled){ background: var(--surface-2); }
+  .history-toggle button:disabled{ opacity:.4; cursor:not-allowed; }
+  .ed-rail.is-snug .history-toggle .hist-word{ display:none; }
+  .ed-rail.is-snug .history-toggle button{ padding:0 7px; }
   /* these float over the site being edited, not over the CMS, so they keep one dark pill in both themes
      (var(--text) is near-white in the dark theme, which made the labels white on white) */
   .tpl-sel-toolbar, .tpl-sec-toolbar, .tpl-pop{ position:absolute; z-index:40; background:#241B1A; color:#fff; border:1px solid rgba(255,255,255,.14); border-radius:8px; box-shadow: var(--shadow-md); font-size:12px; }
@@ -739,7 +752,8 @@
   /* a record from Content: where it is edited, instead of tools (editor-template-ui.js recordPill) */
   .tpl-sel-toolbar .tpl-tb-text{ padding:4px 6px; color:rgba(255,255,255,.86); font-size:12.5px; }
   .tpl-sel-toolbar .tpl-tb-link{ color:#fff; font-size:12.5px; font-weight:600; text-decoration:underline; text-underline-offset:2px; padding:4px 7px; border-radius:5px; }
-  .tpl-sel-toolbar .tpl-tb-link:hover, .tpl-sel-toolbar .tpl-tb-link:focus-visible{ background:rgba(255,255,255,.18); outline:none; }
+  /* the keyboard's ring stays on the link, as on the pill's buttons (UX-085: no control may lose it) */
+  .tpl-sel-toolbar .tpl-tb-link:hover, .tpl-sel-toolbar .tpl-tb-link:focus-visible{ background:rgba(255,255,255,.18); }
   /* a small form opened from the element toolbar (Link) */
   .tpl-pop{ z-index:41; width:300px; max-width:calc(100% - 12px); padding:12px; display:flex; flex-direction:column; gap:10px; }
   .tpl-pop h4{ font-size:13px; font-weight:700; color:#fff; }
@@ -767,6 +781,20 @@
      editor-canvas.js's fit() to scale against — the page then scrolls inside the iframe, like a real browser window. */
   .frame.tpl-frame{ align-self:stretch; height:100%; display:flex; min-height:0; }
   .tpl-viewport{ flex:1; width:100%; min-height:0; overflow:hidden; border-radius:10px; position:relative; }
+  /* Mobile (UX-083): the page as a phone shows it, centred on the stage inside a phone's dark edge
+     (editor-canvas.js phoneBox places and sizes it, and says where: --phone-*); the desktop page's white card makes
+     way for it (fit() marks the card .is-phone, which every browser reads, where :has() is missing in some). The edge
+     lies over the page and lets clicks through, so its round inner corners cover the page's square ones. Its shadow
+     is kept within the 16px phoneBox leaves round the edge: the canvas clips what goes further, which cut a deeper
+     shadow off flat along its bottom. */
+  .frame.tpl-frame.is-phone{ background:transparent; box-shadow:none; outline:0; }
+  .tpl-viewport[data-device="mobile"] .tpl-iframe{ background:#fff; }
+  .tpl-viewport[data-device="mobile"]::before{ content:''; position:absolute; z-index:4; pointer-events:none; box-sizing:border-box;
+    left:calc(var(--phone-left) - 10px); top:calc(var(--phone-top) - 10px); width:calc(var(--phone-width) + 20px); height:calc(var(--phone-height) + 20px);
+    border:10px solid #1c1a1f; border-radius:38px; box-shadow:0 0 0 1px var(--border), 0 6px 14px -6px rgba(0,0,0,.45); }
+  /* the page is one keyboard stop (UX-085): its ring is drawn over the page, which would otherwise cover it */
+  .tpl-viewport:focus{ outline:none; }
+  .tpl-viewport:focus-visible::after{ content:''; position:absolute; inset:0; z-index:5; border:3px solid var(--accent); border-radius:10px; pointer-events:none; }
   /* shown in place of the canvas when the site cannot be opened; the frame is white in both themes, so its
      colours are fixed rather than taken from the theme */
   .tpl-load-error{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:48px 24px; text-align:center; color:#241B1A; }
@@ -804,7 +832,8 @@
   .ed[data-opening] .ed-rail button{ opacity:.45; pointer-events:none; }
   .tpl-iframe{ display:block; border:0; transform-origin: top left; }
 
-  .stage{ --stage-pad-top: 34px; flex:1; overflow:auto; padding: var(--stage-pad-top) 24px 90px; display:flex; justify-content:center; }
+  /* the bottom gutter keeps the canvas clear of ETB2B AI's launcher in the corner (84px from the bottom) (UX-087) */
+  .stage{ --stage-pad-top: 34px; flex:1; overflow:auto; padding: var(--stage-pad-top) 24px 104px; display:flex; justify-content:center; }
   .frame{
     width: 100%; max-width: 1180px; background:#fff; border-radius: 10px; box-shadow: var(--shadow-lg);
     position: relative; transform-origin: top center; color:#1c1c1c; min-height: 10px; align-self:flex-start;
@@ -1402,7 +1431,8 @@
             <button type="button" data-edges="sharp" aria-pressed="false">Sharp</button>
             <button type="button" data-edges="smooth" aria-pressed="true">Smooth</button>
           </div>
-          <span class="hint" id="dp-edges-hint">Sharp: each section ends in a straight line. Smooth: where the colour changes, one section fades into the next. The editor always shows sharp edges, so nothing covers what you edit: open Preview to see Smooth. Saved at once; goes live when you publish.</span>
+          <span class="hint" id="dp-edges-hint">Sharp: each section ends in a straight line. Smooth: where the colour changes, one section fades into the next. The editor always shows sharp edges, so nothing covers what you edit: open Preview to see Smooth.</span>
+          <span class="dp-autosave" id="dp-edges-saved" role="status">Saved by itself as you choose, no need to press Save. Goes live when you publish.</span>
         </div>
         <div class="th-rows" data-th-group="spacing"></div>
 
@@ -1438,6 +1468,7 @@
         <div class="dp-divider" data-hero-video-row hidden></div>
         <div class="field" id="dp-hero-video" data-hero-video-row hidden>
           <span class="dp-section-title">Banner video</span>
+          <span class="dp-autosave">Saved by itself as you change it, no need to press Save. A published site shows it within a minute, without publishing again.</span>
           <div id="dp-hero-video-body"></div>
         </div>
 
@@ -1507,8 +1538,8 @@
          <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
         </div>
         <div class="history-toggle" role="group" aria-label="Undo / redo" id="tpl-history-toggle">
-         <button id="btn-tpl-undo" title="Undo (Ctrl+Z)" disabled>&#8630;</button>
-         <button id="btn-tpl-redo" title="Redo (Ctrl+Shift+Z)" disabled>&#8631;</button>
+         <button id="btn-tpl-undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg><span class="hist-word">Undo</span></button>
+         <button id="btn-tpl-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg><span class="hist-word">Redo</span></button>
         </div>
        </div>
       </nav>
@@ -1634,25 +1665,19 @@
       });
     }
 
-    /* one-time modal, shown once per draft — acknowledging it (the only way to close it) marks it seen */
+    /* One-time welcome, shown once per draft, in the editor's own dialog (UX-086): its button, Escape or a click
+       beside it closes it, and any of the three marks it seen. Opened once this script has set the dialog up
+       (openDialog is further down), still long before the canvas has finished opening. */
     if (stored(modalSeenKey) !== '0') return;
-
-    var scrim = document.createElement('div');
-    scrim.className = 'scrim';
-    scrim.innerHTML =
-      '<div class="modal gb-welcome-modal"><div class="modal-body">' +
-      '<h3>Your site is ready to review</h3>' +
-      '<div class="callout ai">' + SPARK +
-        '<span><strong>This draft is yours now</strong> — Running Generate from a brief again will start a brand-new draft — it will not update this one. From here, make any further changes by editing directly, right here.</span>' +
-      '</div>' +
-      '</div><div class="modal-foot">' +
-      '<button class="btn btn-primary" id="gb-welcome-ok">Got it, let’s look</button>' +
-      '</div></div>';
-    document.body.appendChild(scrim);
-    scrim.querySelector('#gb-welcome-ok').addEventListener('click', function(){
-      scrim.remove();
-      store(modalSeenKey, '1');
-    });
+    setTimeout(function(){
+      openDialog({
+        title: 'Your site is ready to review',
+        bodyHtml: '<div class="callout ai">' + SPARK + '<span><strong>This draft is yours now.</strong> Edit anything directly on the page. ' +
+          'Generating from the brief again makes a new draft and does not change this one.</span></div>',
+        actions: [{ label: 'Got it, let’s look', kind: 'primary', autofocus: true }],
+        onClose: function(){ store(modalSeenKey, '1'); }
+      });
+    }, 0);
   })();
 
   var frame = document.getElementById('frame');
@@ -2065,6 +2090,32 @@
       railBtns.forEach(function(b){ b.classList.remove('active'); });
     });
   });
+  /* ETB2B AI's greeting is said once per person, not on every open (UX-087): it folds to the launcher's face 8 seconds
+     after the page opens, or at the first click on the editor or the page, and stays folded on later visits
+     (remembered in this browser for the person signed in). The canvas also keeps a gutter clear of the face (.stage).
+     It is kept apart from the launcher's own script above, so that a page whose launcher is drawn some other way
+     simply has no greeting to fold: then it finds no #chat-launcher and does nothing. */
+  (function(){
+    var launcher = document.getElementById('chat-launcher');
+    if (!launcher) return;
+    function greetedKey(){
+      var u = window.RevampAuth && RevampAuth.currentUser ? RevampAuth.currentUser() : null;
+      return 'revamp.aiGreeted.' + ((u && u.uid) || 'anyone');
+    }
+    function greeted(){ try { return localStorage.getItem(greetedKey()) === '1'; } catch(e){ return false; } }
+    function quiet(){
+      launcher.classList.add('is-quiet');
+      try { localStorage.setItem(greetedKey(), '1'); } catch(e){ /* storage blocked: it folds for this visit only */ }
+    }
+    if (greeted()) launcher.classList.add('is-quiet');
+    if (window.RevampAuth && RevampAuth.whenResolved) RevampAuth.whenResolved().then(function(){ if (greeted()) launcher.classList.add('is-quiet'); }, function(){});
+    setTimeout(quiet, 8000);
+    // a mouse click anywhere, the launcher's included, folds it; opening the chat from the keyboard is a click too
+    document.addEventListener('mousedown', quiet, { capture: true, once: true });
+    launcher.addEventListener('click', quiet);
+    // a click in the canvas moves the focus into its frame, which this window hears as losing it
+    window.addEventListener('blur', function(){ if (document.activeElement && document.activeElement.tagName === 'IFRAME') quiet(); });
+  })();
   /* ---------- section picker ----------
      One way to add a section, from the section pill's "+ Section", the tools row's "Sections" and the Layers
      menu's "Add section below": the site's own sections first (RevampTemplateUI.librarySections()), then the
@@ -2711,7 +2762,7 @@
   });
 
   /* section edges: Sharp | Smooth, the one in use marked */
-  var edgesField = document.getElementById('dp-edges-field'), edgesBox = document.getElementById('dp-edges');
+  var edgesField = document.getElementById('dp-edges-field'), edgesBox = document.getElementById('dp-edges'), edgesSaved = document.getElementById('dp-edges-saved');
   function syncEdges(){
     var info = window.RevampTemplateUI.sectionEdgesInfo && window.RevampTemplateUI.sectionEdgesInfo();
     edgesField.hidden = !info;
@@ -2722,6 +2773,9 @@
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
       b.disabled = info.saving;
     });
+    // saved by itself, not with Save (UX-088): the line says so, and "Saving…" while the choice is on its way
+    edgesSaved.classList.toggle('is-saving', !!info.saving);
+    edgesSaved.textContent = info.saving ? 'Saving…' : 'Saved by itself as you choose, no need to press Save. Goes live when you publish.';
   }
   edgesBox.addEventListener('click', function(e){
     var b = e.target.closest('[data-edges]');
