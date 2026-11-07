@@ -193,7 +193,9 @@ check('2 the console no longer reads a table of portal names', !/\bPORTALS\b/.te
 var NAMES = ['shownPortal', 'rosterName', 'paintPortalChip', 'openSetPortal', 'portalSet', 'paintHeader', 'errText', 'localIso', 'fgroup', 'viewBasics', 'wireBasics',
   'regSettings', 'buildRegForms', 'wireSetForm',
   /* the header's state chips and Basics' share picture, which the header and Basics now run through */
-  'paintState', 'shareUrlOf', 'sharePictureField', 'wireSharePicture'];
+  'paintState', 'shareUrlOf', 'sharePictureField', 'wireSharePicture',
+  /* the header's Publish, painted with the state chips (B06, UX-105); without publish-flow.js loaded it is left alone */
+  'paintPublishButton'];
 var CONSOLE_FNS = {};
 NAMES.forEach(function (n) { CONSOLE_FNS[n] = fnSrc(MAIN, n); check('2 found function ' + n, !!CONSOLE_FNS[n]); });
 var CONSOLE_VARS = ['NO_PORTAL_CHOICE', 'NO_PORTAL_SITE_NAME', 'BASICS_PORTAL', 'DESC_MIN', 'REGF', 'APPROVAL', 'SHARE_AUTO', 'SHARE_OWN'].map(function (n) { var s = varSrc(MAIN, n); check('2 found var ' + n, !!s); return s; }).join('');

@@ -367,7 +367,8 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('7 the mark comes off as soon as the words are the event\'s own, by any road', /settlePlaceholders\(\)/.test(body('record')) && /editorWords\.placeholderLeft/.test(body('settlePlaceholders')));
   check('7 the canvas outlines what is left', /html\[data-rv-editing\] \[data-rv-placeholder\]\{ outline:1\.5px dashed/.test(CANVAS_CSS));
   check('7 Publish asks about them after the logo check, before the AI review', /logoUnitGate\(\)\) return;\s*\n\s*\/\*[^*]*\*\/\s*\n\s*if \(window\.RevampTemplateUI\.placeholderGate && window\.RevampTemplateUI\.placeholderGate\(publishOn\)\) return;\s*\n\s*publishOn\(\);/.test(INLINE) &&
-    /function publishOn\(\)\{\s*\n\s*if \(window\.RevampTemplateUI\.hasAiProvenance\(\)\)/.test(INLINE));
+    /* B06 (UX-104): the AI review lists only the sections nobody has checked yet */
+    /function publishOn\(\)\{[\s\S]{0,200}var info = window\.RevampTemplateUI\.aiProvenanceSections\(\);\s*\n\s*if \(info\.generated\.length\)/.test(INLINE));
   check('7 … hidden sections do not count (they are not saved)', /!el\.closest\('\.is-hidden-sec'\)/.test(body('shownPlaceholders')));
   check('7 "Show them" brings the first one into view, on its own page', /revealElement\(first\)/.test(body('showPlaceholders')) && /showPage\(on\)/.test(body('showPlaceholders')));
 

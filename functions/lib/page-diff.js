@@ -54,6 +54,14 @@ var MAX_LISTED = 300000;     // bytes the listed changes hold in all (a record a
 var BLOCK = /^(p|div|section|article|header|footer|main|aside|nav|h[1-6]|li|ul|ol|dl|dt|dd|tr|td|th|table|figure|figcaption|blockquote|details|summary|form|button|a|br|hr)$/;
 
 function attr(el, name) { return (el.attribs && el.attribs[name]) || ''; }
+/* A section's name as a person reads it. The saved page no longer carries the editor's own names (data-sec-name is an
+   editor mark, taken off when the page is saved), so the reviewer and the Activity log were shown the section's key:
+   "overview", "previous-agenda", "hero-2" (UX-112). Its key in words is what is left: "Overview", "Previous agenda",
+   "Hero 2". */
+function sectionWords(key) {
+  var w = String(key || '').replace(/#\d+$/, '').replace(/[-_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim().toLowerCase();
+  return w ? w.charAt(0).toUpperCase() + w.slice(1) : '';
+}
 function ordinal(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 
 /* a record drawn into a list, or the model or a card of such a list (not the page's own words either way) */
@@ -161,7 +169,7 @@ function readPage(html) {
     domutils.findAll(function (e) { return isItem(e) && !insideItem(e); }, [el]).forEach(function (item) { domutils.removeElement(item); });
     sections.push({
       key: key,
-      name: attr(el, 'data-sec-name') || attr(el, 'data-rv-section'),
+      name: attr(el, 'data-sec-name') || sectionWords(attr(el, 'data-rv-key') || attr(el, 'data-rv-section')),
       hidden: /(^|\s)is-hidden-sec(\s|$)/.test(attr(el, 'class')),
       lines: lines, pictures: pictures, shape: shapeOf(el), css: css
     });
@@ -193,6 +201,16 @@ var DESIGN_NAMES = {
   animation: 'Section animation', motion: 'Motion', reveals: 'Scroll effects', bgImage: 'Page background picture', bgOpacity: 'Background strength'
 };
 var DESIGN_SKIP = /^(--default-color|--body-color|--bg-color|--para-font-size|--primary-font-size|--bg-spacing|line-height|font-family|--theme-color-hex)$/;
+var COLOUR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\(.*\))$/i;
+/* A site setting the list above does not name, in words rather than as the CSS variable it is kept in (UX-112: the
+   Activity log read "--rv-theme-fill: the design's own → #e02751"): "Theme fill colour". */
+function designWords(key, values) {
+  var w = String(key || '').replace(/^--/, '').replace(/^rv-/, '').replace(/[-_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/\bcolor\b/gi, 'colour').replace(/\bbg\b/gi, 'background').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (!w) return 'A site setting';
+  if (!/colour/.test(w) && (values || []).some(function (v) { return COLOUR.test(String(v || '').trim()); })) w += ' colour';
+  return w.charAt(0).toUpperCase() + w.slice(1);
+}
 
 /* the lines of `a` that are not in `b`, in a's order (a line that occurs twice in a and once in b counts once) */
 function onlyIn(a, b) {
@@ -208,15 +226,20 @@ function diffPages(beforeHtml, afterHtml) {
   B.sections.forEach(function (s, i) { b[s.key] = s; s.at = i; });
 
   /* ---- site-wide design ---- */
-  var was = [], now = [];
+  var was = [], now = [], changedKeys = [];
   Object.keys(Object.assign({}, A.design, B.design)).forEach(function (k) {
     if (DESIGN_SKIP.test(k) || (A.design[k] || '') === (B.design[k] || '')) return;
-    var label = DESIGN_NAMES[k] || k;
+    changedKeys.push(k);
+    var label = DESIGN_NAMES[k] || designWords(k, [A.design[k], B.design[k]]);
     if (was.some(function (l) { return l.indexOf(label + ':') === 0; })) return;       // the same setting, kept in two places
     was.push(label + ': ' + (A.design[k] || 'the design’s own'));
     now.push(label + ': ' + (B.design[k] || 'the design’s own'));
   });
-  if (was.length) items.push({ section: '', name: 'Site design', type: 'design', before: was.join('\n'), after: now.join('\n'), note: '' });
+  /* only colours changed: said so, which is what a marketer looks for (UX-112) */
+  var colours = !!was.length && changedKeys.every(function (k) {
+    return [A.design[k], B.design[k]].every(function (v) { return !v || COLOUR.test(String(v).trim()); });
+  });
+  if (was.length) items.push({ section: '', name: colours ? 'Site colours' : 'Site design', type: 'design', before: was.join('\n'), after: now.join('\n'), note: '' });
 
   /* ---- sections ---- */
   B.sections.forEach(function (s) {

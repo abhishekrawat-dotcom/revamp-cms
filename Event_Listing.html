@@ -320,6 +320,20 @@
      it would start the line, so the row reaches 17px left of the line and the dot of any part that starts a line falls
      in that strip, which .ev-meta-line clips. It used to be a part of its own and stayed alone at the end of the line. */
   .ev-meta-line{ font-size:12px; color:var(--text-muted); margin-top:7px; overflow:hidden; }
+  /* a change waiting for approval (UX-102): the row's badge, and the list of everything waiting above the tabs */
+  .apv-badge{ display:inline-flex; align-items:center; gap:6px; margin-top:7px; padding:3px 10px; border-radius:999px; border:1px dashed var(--border-strong, var(--border));
+    background:var(--warn-soft); color:var(--text); font-size:11.5px; font-weight:700; text-decoration:none; white-space:nowrap; }
+  .apv-badge:hover{ text-decoration:underline; }
+  .apv-badge::before{ content:''; width:7px; height:7px; border-radius:50%; background:var(--warn); }
+  .apv-waiting{ margin:0 0 14px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+  .apv-waiting[hidden]{ display:none; }
+  .apv-waiting h2{ margin:0 0 4px; font-size:14px; font-weight:700; color:var(--text); }
+  .apv-waiting p{ margin:0 0 8px; font-size:12.5px; color:var(--text-muted); }
+  .apv-waiting ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
+  .apv-waiting li{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; font-size:13px; color:var(--text); }
+  .apv-waiting li .grow{ flex:1 1 220px; min-width:0; }
+  .apv-waiting li .meta{ color:var(--text-muted); font-size:12px; }
+  .apv-waiting li a.btn{ text-decoration:none; }
   .ev-meta-row{ display:flex; align-items:center; flex-wrap:wrap; row-gap:4px; margin-left:-17px; }
   .ev-meta-row > *{ margin-left:17px; min-width:0; }
   .ev-meta-next::before{ content:'\00B7'; content:'\00B7' / ''; display:inline-block; width:17px; margin-left:-17px; text-align:center; color:var(--text-faint); font-family:var(--font-body); }
@@ -737,6 +751,8 @@
     <div class="chip-row" id="chip-row"></div>
   </section>
 
+  <!-- what is waiting for approval, on every portal: an approver sees it as the dashboard opens (UX-102) -->
+  <section class="apv-waiting" id="apv-waiting" aria-labelledby="apv-waiting-h" hidden></section>
   <div class="section-bar">
     <div class="section-bar-left">
       <nav class="tabs-row" id="status-tabs" role="tablist"></nav>
@@ -1018,6 +1034,9 @@
       published: ev.published === true, publishedPath: ev.publishedPath || null,
       templateId: ev.templateId || null, dateLabel: ev.dateLabel || '', dateMode: ev.dateMode || '',
       client: typeof ev.client === 'string' ? ev.client : '',
+      /* the request waiting for approval ({ id, toVersion, requestedBy, requestedAt, reviewPath }) or null: the list
+         says what is waiting, and the row says so with the way to its review page (UX-102) */
+      approval: ev.approval && typeof ev.approval === 'object' && ev.approval.id ? ev.approval : null,
       searchIn: searchCells(ev)
     };
   }
@@ -2516,6 +2535,7 @@
     renderCreateDrafts();
     /* the Insights cards count what the list shows, so they are drawn with it (UX-039) */
     renderInsights();
+    renderWaiting();
     /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
     var allPortals = state.portal === 'all', cols = allPortals ? 6 : 5;
     $('results-view').classList.toggle('all-portals', allPortals);
@@ -2556,7 +2576,7 @@
       return '<tr data-row="' + e.id + '" data-status="' + e.status + '" class="st-' + e.status + '" tabindex="0">' +
         '<td><div class="ev-name-cell"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '"></span>' +
           '<div class="ev-name-main">' + nameHTML(e, '') +
-          '<div class="ev-meta-line">' + metaLine(e) + '</div></div></div></td>' +
+          '<div class="ev-meta-line">' + metaLine(e) + '</div>' + approvalBadgeHTML(e) + '</div></div></td>' +
         '<td class="col-portal">' + portalCellHTML(e) + '</td>' +
         '<td class="ev-date-cell">' + dateCellHTML(e) + '</td>' +
         '<td><span class="vis-num">' + fmtNum(e.visitors) + '</span></td>' +
@@ -2571,7 +2591,7 @@
       return '<div class="ev-card fade-in' + (e.status === 'deleted' ? ' is-static' : '') + '" data-card="' + e.id + '">' +
         '<div class="ev-card-top"><span class="status-dot ' + e.status + '" data-tooltip="' + statusLabel(e.status) + '" style="margin-top:7px;"></span>' +
           '<div class="ev-name-main">' + nameHTML(e, ' style="font-weight:700;font-size:14.5px;"') +
-          '<div class="ev-meta-line">' + metaLine(e) + '</div></div>' +
+          '<div class="ev-meta-line">' + metaLine(e) + '</div>' + approvalBadgeHTML(e) + '</div>' +
         '</div>' +
         '<div class="ev-card-info">' +
           '<div class="ev-card-portal">' + IC.globe + portalCellHTML(e) + '</div>' +
@@ -2590,6 +2610,60 @@
     renderPagination(total, totalPages);
     wireRowEvents();
   }
+  /* =========================================================
+     WAITING FOR APPROVAL (UX-102) — a request was only a link, and a link nobody shares waits for ever (EventSphere
+     sends no e-mail). GET /api/events says which events have a request waiting (lib/approval-list.js); the list of
+     them stands above the tabs, on every portal and whatever the filters, with the way to each review page, and each
+     row says so too. It speaks to an approver as theirs to decide; to everyone else it says who decides.
+  ========================================================= */
+  function waitingEvents(){
+    return EVENTS.filter(function(e){ return e.approval && e.status !== 'deleted'; }).sort(function(a, b){
+      return String(a.approval.requestedAt || '') < String(b.approval.requestedAt || '') ? -1 : 1;
+    });
+  }
+  function reviewHrefOf(e){
+    return e.approval.reviewPath || ('/review.html?event=' + encodeURIComponent(e.id) + '&request=' + encodeURIComponent(e.approval.id));
+  }
+  function approvalBadgeHTML(e){
+    if (!e.approval || e.status === 'deleted') return '';
+    var a = e.approval;
+    var t = 'Version ' + (a.toVersion || '') + ' was sent for approval' + (a.requestedBy ? ' by ' + a.requestedBy : '') + (a.requestedAt ? ' on ' + fmtWaitWhen(a.requestedAt) : '') + '. Open its review page.';
+    return '<a class="apv-badge" href="' + esc(reviewHrefOf(e)) + '" target="_blank" rel="noopener" title="' + esc(t) + '">Waiting for approval · Review</a>';
+  }
+  function fmtWaitWhen(iso){
+    var d = new Date(iso || '');
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleString(undefined, { day:'numeric', month:'short', hour:'numeric', minute:'2-digit', hour12:true });
+  }
+  /* an approver is somebody config/approvals names, or anybody while it names nobody; not known yet: unsaid */
+  function approverHere(){
+    if (!state.approvers) return null;
+    if (!state.approvers.length) return true;
+    return state.approvers.indexOf(listingMe().email.toLowerCase()) !== -1;
+  }
+  var WAITING_SHOWN = 5;
+  function renderWaiting(){
+    var box = $('apv-waiting');
+    if (!box) return;
+    var list = state.loading || state.loadFailed ? [] : waitingEvents();
+    if (!list.length){ box.hidden = true; box.innerHTML = ''; return; }
+    var mine = approverHere(), me = listingMe().email.toLowerCase();
+    var who = state.approvers && state.approvers.length ? state.approvers.join(', ') : '';
+    var head = (mine ? 'Waiting for your approval' : 'Waiting for approval') + ' (' + list.length + ')';
+    var line = mine ? 'Open each one to see what changed and approve it or send it back with a reason. Changes you sent yourself need another approver.'
+      : (who ? 'Only ' + who + ' can approve these. EventSphere does not e-mail them: send them the review link.' : 'Anyone on the team other than the person who sent it can approve these.');
+    box.innerHTML = '<h2 id="apv-waiting-h">' + esc(head) + '</h2><p>' + esc(line) + '</p><ul>' +
+      list.slice(0, WAITING_SHOWN).map(function(e){
+        var a = e.approval, own = me && String(a.requestedBy || '').toLowerCase() === me;
+        return '<li><span class="grow"><a class="ev-link" href="edit-event.html?event=' + encodeURIComponent(e.id) + '">' + esc(e.name) + '</a> ' +
+          '<span class="meta">' + esc('version ' + (a.toVersion || '') + (a.requestedBy ? ', sent by ' + (own ? 'you' : a.requestedBy) : '') + (a.requestedAt ? ' on ' + fmtWaitWhen(a.requestedAt) : '') +
+          (e.portal ? ' · ' + portalNameOf(e.portal) : '')) + '</span></span>' +
+          '<a class="btn btn-secondary btn-sm" href="' + esc(reviewHrefOf(e)) + '" target="_blank" rel="noopener">Review</a></li>';
+      }).join('') + '</ul>' +
+      (list.length > WAITING_SHOWN ? '<p style="margin:8px 0 0">and ' + (list.length - WAITING_SHOWN) + ' more: each one\u2019s row says “Waiting for approval”.</p>' : '');
+    box.hidden = false;
+  }
+
   /* the event's name: a link to its console, except for a deleted event, which the console cannot open */
   function nameHTML(e, extra){
     if (e.status === 'deleted') return '<span class="ev-link is-static" data-venue-id="' + e.id + '"' + extra + '>' + esc(e.name) + '</span>';

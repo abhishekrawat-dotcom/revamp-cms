@@ -80,6 +80,8 @@
   var changeListeners = [];
   function pageChanged() {
     drawFormPreviews(true);
+    // the AI pills are the editor's drawing too: a section put back by Undo gets its pill again (UX-104)
+    if (aiMarkersOn) renderAiProvenanceBadges();
     drawHeroVideo();
     changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
@@ -283,8 +285,7 @@
   }
   /* Who approves, which version is live and what waits for approval (GET /api/event/approval): asked as the editor
      opens, beside the event and the site, not after everything else — the Save button and the state chip beside it
-     come with the site (UX-077). loadSiteInfo() takes the answer. (Not askApproval(): that is Publish's "Send for
-     approval" question.) */
+     come with the site (UX-077). loadSiteInfo() takes the answer. (Publish asks again, fresh, in publish-flow.js.) */
   var approvalAsk = null;
   function prefetchApproval() {
     approvalAsk = eventId && window.RevampCore && RevampCore.fetchApproval ? RevampCore.fetchApproval(eventId) : null;
@@ -1495,8 +1496,13 @@
   var AI_SPARK_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
   var AI_INFO_SVG = '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/></svg>';
 
+  /* data-rv-ai-mark (UX-104): a pill drawn now is the editor's drawing, like an embedded form's preview — never part of
+     a snapshot (editor-canvas.js nodeHtml) nor of the saved page — so drawing the pills when the switch is turned on,
+     or again after an undo, records nothing and makes nothing "unsaved". An AI-designed site has always had the marks
+     and never the pills (they were drawn only for a brief's draft): the switch now shows them there too. Pills saved
+     inside a page before this (a brief's draft) stay as they were. */
   function renderAiProvenanceBadges() {
-    if (!canvas) return;
+    if (!canvas || !canvas.doc) return;
     // data-ed="none" (editor-canvas.js's walk()) is the template-authoring escape hatch for "never make this
     // editable" — the same one templates/README.md documents for template markup. Badges aren't template
     // markup, but they hit the exact same problem: canvas.restore() re-walks every section it rebuilds from a
@@ -1514,6 +1520,7 @@
       var span = canvas.doc.createElement('span');
       span.className = 'ai-prov-badge';
       span.setAttribute('data-ed', 'none');
+      span.setAttribute('data-rv-ai-mark', '');
       span.innerHTML = AI_SPARK_SVG + '<span>AI-generated</span>';
       sec.insertBefore(span, sec.firstChild);
     });
@@ -1522,6 +1529,7 @@
       var span = canvas.doc.createElement('span');
       span.className = 'ai-skip-badge';
       span.setAttribute('data-ed', 'none');
+      span.setAttribute('data-rv-ai-mark', '');
       span.innerHTML = AI_INFO_SVG + '<span>Not generated — add manually</span>';
       sec.insertBefore(span, sec.firstChild);
     });
@@ -1540,6 +1548,7 @@
       var span = canvas.doc.createElement('span');
       span.className = 'ai-media-skip-badge';
       span.setAttribute('data-ed', 'none');
+      span.setAttribute('data-rv-ai-mark', '');
       span.innerHTML = AI_INFO_SVG + '<span>Template photo/video — replace manually</span>';
       sec.appendChild(span);
     });
@@ -1557,7 +1566,10 @@
   function aiProvenanceSections() {
     if (!canvas) return { generated: [], skipped: [] };
     function list(attr) {
-      return Array.prototype.map.call(canvas.doc.querySelectorAll('[' + attr + ']'), function (sec) {
+      /* a hidden section does not go live, so nobody is asked to check it */
+      return Array.prototype.filter.call(canvas.doc.querySelectorAll('[' + attr + ']'), function (sec) {
+        return !sec.classList.contains('is-hidden-sec');
+      }).map(function (sec) {
         var id = sec.getAttribute('data-rv-key') || sec.getAttribute('data-rv-section');
         return { id: id, name: sec.getAttribute('data-sec-name') || id };
       });
@@ -1570,6 +1582,38 @@
   function setAiMarkers(show) {
     aiMarkersOn = !!show;
     if (canvas) canvas.doc.documentElement.classList.toggle('show-ai-markers', aiMarkersOn);
+    // the switch on and nothing to see was the finding (UX-104): the pills are drawn where they are missing
+    if (aiMarkersOn) renderAiProvenanceBadges();
+  }
+
+  /* "Check what the AI wrote" (custom_editor.html): the sections ticked lose their mark, so the next Publish asks only
+     about what nobody has checked yet, in any browser (UX-104). It is the person's own step: Publish saves it, as part
+     of their save, or as a version of its own ("no visible change", in their name) when nothing else was unsaved, so
+     the approver sees who checked them. (Kept as an automatic update instead, it was dropped whenever the page came
+     out a byte different from the staged one — the server keeps an editor state only beside its own page — and the
+     sections were asked about again, and still counted as unchecked by the console.) -> how many were marked */
+  function markAiChecked(ids) {
+    if (!canvas || remounting || aiWorking) return 0;
+    var want = {}, n = 0;
+    (ids || []).forEach(function (id) { if (id) want[id] = 1; });
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-ai-generated]'), function (sec) {
+      var id = sec.getAttribute('data-rv-key') || sec.getAttribute('data-rv-section');
+      if (!want[id]) return;
+      sec.removeAttribute('data-ai-generated');
+      n++;
+    });
+    if (n) commitNow();
+    return n;
+  }
+  /* "Show" beside a section in that list: the dialog closes and the section is selected, in view */
+  function showAiSection(id) {
+    if (!canvas || !id) return false;
+    var sec = Array.prototype.filter.call(canvas.doc.querySelectorAll('[data-rv-section]'), function (el) {
+      return (el.getAttribute('data-rv-key') || el.getAttribute('data-rv-section')) === id;
+    })[0];
+    if (!sec) return false;
+    selectSection(sec);
+    return true;
   }
 
   /* C1 — "cleared once a human edits that section": called at each of this file's own actual content-edit
@@ -2159,7 +2203,7 @@
         Array.prototype.forEach.call(item.querySelectorAll('[data-rv-field][style*="background-image"]'), function (el) { el.style.backgroundImage = ''; });
       });
       // an embedded form's preview is the editor's drawing, not the section's markup
-      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview]'), function (n) { n.remove(); });
+      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark]'), function (n) { n.remove(); });
       RevampAuth.authedFetch('/api/redesign-section', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2221,7 +2265,7 @@
   function devSource(sec) {
     var copy = sec.cloneNode(true);
     // an embedded form's preview is the editor's drawing, not the section's markup
-    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview]'), function (n) { n.remove(); });
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark]'), function (n) { n.remove(); });
     [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('*'))).forEach(function (n) {
       DEV_MARKS.forEach(function (a) { n.removeAttribute(a); });
       n.classList.remove('ed-selected', 'sec-active', 'rv-in');
@@ -6802,6 +6846,7 @@
   var siteInfo = null;          // { savedVersion, publishedVersion, published, pending, required, me } from the server
   var savedMark = null;         // { version, hash } — what this browser last saved or opened from the server
   var saving = false, stateTimer = null;
+  var publishBusy = false;      // Publish is saving and asking where the site stands: its button says so
   var savingNow = null;         // the save on its way, while there is one (leaving waits for it)
   /* The saved version this editor's page is made on (workSafety.openPlan, then each save): the server refuses a
      save made on another one, and the person is asked. */
@@ -6841,10 +6886,25 @@
       siteInfo = {
         savedVersion: a.savedVersion || 0, published: !!a.published, publishedVersion: a.publishedVersion || 0,
         pending: a.request && a.request.status === 'pending' ? a.request : null, required: a.required !== false,
-        me: a.me || ''
+        me: a.me || '',
+        /* the newest request when it is not the one waiting: a rejection is told on the chip and under the top bar
+           (UX-103) */
+        last: !(a.request && a.request.status === 'pending') && Array.isArray(a.requests) && a.requests[0] ? a.requests[0] : null
       };
-    }, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true, me: '' }; })
+      paintDecision(a);
+    }, function () { siteInfo = siteInfo || { savedVersion: 0, published: false, publishedVersion: 0, pending: null, required: true, me: '', last: null }; })
       .then(renderSiteState);
+  }
+  /* what became of the last request for approval, for whoever asked (publish-flow.js decisionNotice): a line under the
+     top bar on the next visit, "Priya rejected version 5: “…”", until it is dismissed (UX-103) */
+  function paintDecision(a) {
+    if (window.RevampPublishFlow) RevampPublishFlow.paintDecision(document.getElementById('pf-decision'), a, { me: a && a.me, eventId: eventId });
+  }
+  /* siteInfo in fetchApproval's shape, for publish-flow.js's readings */
+  function approvalShape() {
+    var i = siteInfo || {};
+    return { savedVersion: i.savedVersion, published: i.published, publishedVersion: i.publishedVersion, required: i.required !== false,
+      request: i.pending ? { status: 'pending', id: i.pending.id, toVersion: i.pending.toVersion } : null };
   }
   function reviewHref(id) { return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(id); }
 
@@ -6855,15 +6915,21 @@
     chip.hidden = save.hidden = !eventId || !canvas;
     if (!eventId || !canvas || !siteInfo) return;
     var dirty = isDirty(), v = siteInfo.savedVersion, kind = 'plain', text, href = '', title = '';
-    if (!v) { kind = 'warn'; text = 'Not saved yet'; title = 'Save puts this site on the staging address.'; }
+    var pend = siteInfo.pending, last = siteInfo.last, saved = '/preview/' + eventId + '?staged=1';
+    /* words a marketer uses: saved, not live yet, waiting for approval, live; the version number only where two have
+       to be told apart (UX-112) */
+    if (!v) { kind = 'warn'; text = 'Not saved yet'; title = 'Save keeps the site on the server, where your team can see it. Nothing goes live until it is published.'; }
     else if (dirty && autoOnly()) {
-      kind = 'plain'; text = 'Updated automatically'; href = '/preview/' + eventId + '?staged=1';
+      kind = 'plain'; text = 'Updated automatically'; href = saved;
       title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Nothing of yours is waiting to be saved; Save keeps these updates apart from your own changes.';
     }
-    else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Staging still shows version ' + v + '. Save to update it.'; href = '/preview/' + eventId + '?staged=1'; }
-    else if (siteInfo.pending && siteInfo.pending.toVersion === v) { kind = 'wait'; text = 'v' + v + ' · waiting for approval'; href = reviewHref(siteInfo.pending.id); title = 'Sent for approval by ' + siteInfo.pending.requestedBy + '. Open the review page.'; }
-    else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'v' + v + ' · live'; href = '/e/' + eventId; title = 'This version is the live site.'; }
-    else { text = 'v' + v + ' · saved to staging'; href = '/preview/' + eventId + '?staged=1'; title = 'Open the staging site.'; }
+    else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Your changes are only in this browser. Save keeps them (the saved site still shows version ' + v + ').'; href = saved; }
+    else if (pend && pend.toVersion === v) { kind = 'wait'; text = 'Waiting for approval'; href = reviewHref(pend.id); title = 'Version ' + v + ' was sent for approval' + (pend.requestedBy ? ' by ' + pend.requestedBy : '') + '. Open the review page.'; }
+    /* saved again after sending: the request still holds the older version, and the newer save is not in it (UX-111) */
+    else if (pend && pend.toVersion < v) { kind = 'wait'; text = 'v' + v + ' saved · v' + pend.toVersion + ' waiting'; href = reviewHref(pend.id); title = 'Version ' + v + ' is not in the request yet: Send for approval adds it. Version ' + pend.toVersion + ' is waiting for approval.'; }
+    else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'Live'; href = '/e/' + eventId; title = 'What you see is the live site (version ' + v + '). Open it.'; }
+    else if (last && last.status === 'rejected' && last.toVersion === v) { kind = 'bad'; text = 'Changes rejected'; href = reviewHref(last.id); title = 'Rejected' + (last.decidedBy ? ' by ' + last.decidedBy : '') + (last.decisionNote ? ': “' + last.decisionNote + '”' : '') + '. Change what is asked, save and send it again.'; }
+    else { text = 'Saved · not live yet'; href = saved; title = 'Version ' + v + ' is saved. Open the saved site; it goes live once it is published.'; }
     chip.className = 'site-state ' + kind;
     chip.textContent = text; chip.title = title;
     if (href) { chip.href = href; chip.target = '_blank'; chip.rel = 'noopener'; } else { chip.removeAttribute('href'); }
@@ -6873,7 +6939,11 @@
     save.disabled = saving || !dirty || !!busy;
     save.title = busy || save.getAttribute('data-title');
     save.textContent = saving ? 'Saving…' : 'Save';
-    if (pub) pub.textContent = siteInfo.required ? 'Publish changes' : 'Publish';
+    /* Publish says what it would do before it is pressed, in the console's words (publish-flow.js, UX-105) */
+    if (pub && window.RevampPublishFlow) {
+      if (publishBusy) { pub.textContent = 'Checking…'; pub.setAttribute('aria-busy', 'true'); }
+      else { pub.removeAttribute('aria-busy'); RevampPublishFlow.paintButton(pub, RevampPublishFlow.buttonState(approvalShape(), { dirty: dirty })); }
+    }
     syncCardSaves(dirty);
   }
   /* The site lives in this browser's copy until Save; a change only moves the chip to "Unsaved changes". */
@@ -6882,14 +6952,6 @@
     stateTimer = setTimeout(renderSiteState, 250);
   }
 
-  function modal(html, cls) {
-    var scrim = document.createElement('div');
-    scrim.className = 'scrim';
-    scrim.innerHTML = '<div class="modal ' + (cls || '') + '">' + html + '</div>';
-    document.body.appendChild(scrim);
-    scrim.addEventListener('click', function (e) { if (e.target === scrim || (e.target.closest && e.target.closest('[data-close]'))) scrim.remove(); });
-    return scrim;
-  }
   function when(iso) { var d = new Date(iso || ''); return isNaN(d) ? '' : d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
 
   function cancelled() { return Object.assign(new Error('cancelled'), { cancelled: true }); }
@@ -7016,12 +7078,20 @@
       if (!opts.quiet) {
         var autoTold = autoOut && !autoOut.unchanged ? 'updated automatically (' + auto.names.join(', ') + ')' : '';
         var text = out === autoOut
-          ? (autoOut.unchanged ? 'Nothing new to save: staging already shows version ' + out.version + '.' : 'Saved to staging as version ' + out.version + ' — ' + autoTold + '.')
-          : out.unchanged ? 'Nothing new to save: staging already shows version ' + out.version + '.'
-            : 'Saved to staging as version ' + out.version + (out.summary ? ' — ' + out.summary : '') + (autoTold ? '. Also ' + autoTold + ', as version ' + autoOut.version + '.' : '');
-        showToast(text, {
-          action: { label: 'Open staging', onClick: function () { window.open('/preview/' + eventId + '?staged=1', '_blank'); } }
-        });
+          ? (autoOut.unchanged ? 'Nothing new to save: version ' + out.version + ' already has it.' : 'Saved (version ' + out.version + '): ' + autoTold + '.')
+          : out.unchanged ? 'Nothing new to save: version ' + out.version + ' already has it.'
+            : 'Saved (version ' + out.version + ')' + (out.summary ? ': ' + out.summary : '') + '.' + (autoTold ? ' Also ' + autoTold + ', as version ' + autoOut.version + '.' : '');
+        var pend = siteInfo.pending;
+        /* the request waiting for approval holds an older version: this save is not in it until it is added (UX-111) */
+        if (pend && pend.toVersion < out.version) {
+          showToast(text + ' The request waiting for approval still holds version ' + pend.toVersion + '.', {
+            action: { label: 'Add this save', onClick: function () { publish(); } }
+          });
+        } else {
+          showToast(text + (siteInfo.published || out.unchanged ? '' : ' Not live yet.'), {
+            action: { label: 'Open the saved site', onClick: function () { window.open('/preview/' + eventId + '?staged=1', '_blank'); } }
+          });
+        }
       }
       return out;
     }, function (err) {
@@ -7032,88 +7102,58 @@
     return savingNow;
   }
 
-  function showPublished(result) {
-    var pubName = (currentEvent && currentEvent.name) || 'Untitled event';
-    if (currentEvent) { currentEvent.published = true; renderTopbar(); }
-    var m = modal(
-      '<div class="modal-body">' +
-      '<div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
-      '<h3>Published</h3><p>' + escHtml(pubName) + '’s latest changes are now live at:</p>' +
-      '<span class="url">' + escHtml(result.publishedUrl) + '</span></div>' +
-      '<div class="modal-foot"><button class="btn btn-secondary" data-close>Keep editing</button>' +
-      '<a class="btn btn-primary" href="' + escHtml(result.publishedUrl) + '" target="_blank" rel="noopener">View live page</a></div>');
-    return m;
-  }
-
-  /* Publish changes: saves what is unsaved, then asks for approval of everything saved since what is live.
-     Where approval has been switched off (Review page → Who approves), it publishes at once instead. */
+  /* Publish: saves what is unsaved, then goes on through the one Publish the console uses too (publish-flow.js,
+     RevampCore.openPublishFlow, UX-105): nothing new is said kindly, a request already waiting is shown with its link
+     and who approves, a new one is asked for with a note, and where approval has been switched off (Review page ›
+     Who approves) it asks once and publishes. The AI-written sections, the logo unit's notice and the sample words
+     are asked about before (custom_editor.html). */
   function publish() {
-    if (!canvas || !eventId || saving) return;
+    if (!canvas || !eventId || saving || publishBusy) return;
     // Publish saves first: while ETB2B AI is busy that would send half of its change for approval
     var busy = workSafety.busyLine(aiState);
     if (busy) { showToast(busy + '.'); return; }
     deselect();
     flush();
     if (logoUnitGate()) return;
+    publishBusy = true; renderSiteState();
     var ready = isDirty() ? saveToStaging({ quiet: true }) : Promise.resolve();
     ready.then(function () {
-      if (siteInfo && siteInfo.required === false) {
-        showToast('Publishing…');
-        return RevampCore.publishEvent(eventId).then(function (result) {
-          siteInfo.published = true; siteInfo.publishedVersion = result.publishedVersion; renderSiteState();
-          showPublished(result);
-        });
-      }
-      if (siteInfo && siteInfo.published && siteInfo.publishedVersion === siteInfo.savedVersion) {
-        showToast('Version ' + siteInfo.savedVersion + ' is already live: there is nothing new to publish.');
-        return;
-      }
-      askApproval();
+      publishBusy = false; renderSiteState();
+      if (!RevampCore.openPublishFlow) throw new Error('The publish window could not load. Reload the editor and try again.');
+      return RevampCore.openPublishFlow(eventId, {
+        from: 'editor', name: currentEvent && currentEvent.name, opener: document.getElementById('btn-publish'),
+        busy: function (on) { publishBusy = !!on; renderSiteState(); },
+        toast: function (text, o) { showToast(text, o && o.kind === 'error' ? { kind: 'error' } : null); },
+        onDone: function (out) {
+          if (out.kind === 'published') {
+            siteInfo.published = true; siteInfo.publishedVersion = out.result.publishedVersion; siteInfo.pending = null;
+            if (currentEvent) { currentEvent.published = true; renderTopbar(); }
+          } else if (out.kind === 'sent') {
+            var r = out.request;
+            siteInfo.pending = { id: r.id, toVersion: r.toVersion, requestedBy: (siteInfo.pending && siteInfo.pending.requestedBy) || siteInfo.me || '' };
+          }
+          siteInfo.last = null;
+          renderSiteState();
+          paintDecision(null);
+        },
+        /* the saved page still has the logo unit's notice open: the dialog goes, and the notice and the logo come up */
+        onError: function (err) { if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return true; } return false; }
+      });
     }).catch(function (err) {
+      publishBusy = false; renderSiteState();
       if (err && (err.cancelled || err.message === 'busy')) return;
       if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return; }
-      if (err && err.status) showToast('Could not publish — ' + err.message, { kind: 'error' });
+      showToast('Could not publish — ' + ((err && err.message) || 'please try again.'), { kind: 'error' });
     });
   }
 
-  function askApproval() {
-    var pending = siteInfo && siteInfo.pending, v = siteInfo.savedVersion;
-    var m = modal(
-      '<div class="modal-body"><h3>Send for approval</h3>' +
-      '<p>Version ' + v + ' is on staging. It goes live once it is approved' + (siteInfo.published ? '; until then the live site stays on version ' + siteInfo.publishedVersion : '') + '. ' +
-      'The approver sees every change saved since ' + (siteInfo.published ? 'the live version' : 'the start') + ', and who made it.</p>' +
-      (pending ? '<p class="apv-note">A request by ' + escHtml(pending.requestedBy) + ' is already waiting (version ' + pending.toVersion + '). Sending updates it to version ' + v + '.</p>' : '') +
-      '<textarea id="apv-msg" rows="3" maxlength="1000" placeholder="Note for the approver (optional): what changed and why"></textarea></div>' +
-      '<div class="modal-foot"><button class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary" id="apv-send">Send for approval</button></div>', 'apv-modal');
-    var send = m.querySelector('#apv-send');
-    send.addEventListener('click', function () {
-      send.disabled = true; send.textContent = 'Sending…';
-      RevampCore.requestApproval(eventId, m.querySelector('#apv-msg').value).then(function (r) {
-        m.remove();
-        siteInfo.pending = { id: r.id, toVersion: r.toVersion, requestedBy: (pending && pending.requestedBy) || 'you' };
-        renderSiteState();
-        var link = r.reviewUrl || (location.origin + r.reviewPath);
-        var d = modal(
-          '<div class="modal-body"><div class="ic"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg></div>' +
-          '<h3>' + (r.updated ? 'Request updated' : 'Sent for approval') + '</h3>' +
-          '<p>Version ' + r.toVersion + ' — ' + escHtml(r.summary || 'changes') + '. Share this link with the approver: it lists what changed, who changed it, and shows the live site beside the new one.</p>' +
-          '<span class="url" id="apv-link">' + escHtml(link) + '</span></div>' +
-          '<div class="modal-foot"><button class="btn btn-secondary" id="apv-copy">Copy link</button>' +
-          '<a class="btn btn-primary" href="' + escHtml(r.reviewPath) + '" target="_blank" rel="noopener">Open review page</a></div>', 'apv-modal');
-        d.querySelector('#apv-copy').addEventListener('click', function () {
-          var btn = this;
-          (navigator.clipboard ? navigator.clipboard.writeText(link) : Promise.reject()).then(function () { btn.textContent = 'Copied'; }, function () {
-            var range = document.createRange(); range.selectNodeContents(d.querySelector('#apv-link'));
-            var sel = getSelection(); sel.removeAllRanges(); sel.addRange(range); btn.textContent = 'Select and copy';
-          });
-        });
-      }, function (err) {
-        send.disabled = false; send.textContent = 'Send for approval';
-        /* the saved page still has the logo unit's notice open: the dialog goes, and the notice and the logo come up */
-        if (err && err.code === 'logo-unit-unanswered') { m.remove(); logoNoteRefused(err); return; }
-        showToast('Could not send for approval — ' + (err && err.message ? err.message : 'please try again.'), { kind: 'error' });
-      });
-    });
+  /* What Publish would do with what is saved, for custom_editor.html to ask the AI and sample-words questions only
+     when there is something to send (UX-104): 'nothing-new' and 'waiting' go straight on, so nobody ticks a list
+     to be told there was nothing to publish. Unsaved changes are always something to send. */
+  function publishPlan() {
+    if (!siteInfo || !window.RevampPublishFlow || isDirty()) return 'send';
+    var k = RevampPublishFlow.planOf(approvalShape()).kind;
+    return k === 'nothing-new' || k === 'waiting' ? k : 'send';
   }
 
   /* Every way out of the editor that this page starts itself (the event rail, Back to events) comes through
@@ -7176,7 +7216,7 @@
     if (!eventId || !t.card || !t.card.foot) return;
     var foot = t.card.foot;
     var b = document.createElement('button'); b.type = 'button'; b.className = 'btn btn-primary btn-sm chat-save'; b.textContent = 'Save';
-    b.title = 'Save the site to staging, so the change is kept on the server';
+    b.title = 'Save the site, so the change is kept on the server';
     b.addEventListener('click', function () { saveToStaging().then(null, function () {}); });
     var note = document.createElement('span'); note.className = 'ai-task-local'; note.textContent = 'In this browser only until you Save.';
     foot.insertBefore(b, t.button ? t.button.nextSibling : foot.firstChild);
@@ -7244,6 +7284,9 @@
     },
     placeFormSection: whenPageFree(placeFormSection), revealElement: whenPageFree(revealElement),
     hasAiProvenance: hasAiProvenance, aiProvenanceSections: aiProvenanceSections, setAiMarkers: setAiMarkers,
+    /* "Check what the AI wrote" (UX-104): markAiChecked(ids) once they are ticked, showAiSection(id) for "Show", and
+       publishPlan() so the question is asked only when there is something to send */
+    markAiChecked: whenPageFree(markAiChecked), showAiSection: whenPageFree(showAiSection), publishPlan: publishPlan,
     /* for editor-ai-mode.js ("Edit with AI" live view): the mounted canvas (null while there is none),
        onChange(fn) after every change to the page, and leaveEditing() — stops typing in place and lets go of the
        selected element, keeping the selected section (the chat's reference) */

@@ -248,13 +248,14 @@
       main.innerHTML = '<div class="side" style="grid-column:1/-1;border:0">' +
         '<p class="empty">No request is waiting for approval for this event. ' +
         (data.published ? 'Version ' + data.publishedVersion + ' is live' : 'The site is not live yet') +
-        (data.savedVersion ? '; version ' + data.savedVersion + ' is on staging.' : '.') + '</p>' + pastHtml() + settingsHtml() + '</div>';
+        /* plain words, not "staging" (UX-112) */
+        (data.savedVersion && !(data.published && data.publishedVersion === data.savedVersion) ? '; the last save (version ' + data.savedVersion + ') is not live yet.' : '.') + '</p>' + pastHtml() + settingsHtml() + '</div>';
       wireSettings();
       return;
     }
     badge.hidden = false; badge.className = 'badge ' + r.status; badge.textContent = r.status === 'pending' ? 'Waiting for approval' : r.status;
     document.getElementById('sub').textContent = 'Requested by ' + r.requestedBy + ' · ' + when(r.requestedAt) + ' · ' +
-      (r.firstPublish ? 'first publication, version ' + r.toVersion : 'version ' + r.fromVersion + ' → ' + r.toVersion);
+      (r.firstPublish ? 'First time live (version ' + r.toVersion + ')' : 'version ' + r.fromVersion + ' → ' + r.toVersion);
 
     var people = (r.contributors || []).join(', ') || r.requestedBy;
     var side =

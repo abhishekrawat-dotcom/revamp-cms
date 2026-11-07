@@ -283,6 +283,8 @@ const { splitImportedPage } = require('./import-split');
 const { diffPages, summarise, listed, changeCount } = require('./page-diff');
 /* the event's records drawn into a saved site on the server (Content reaches the staged copy at once) */
 const siteRecords = require('./site-records');
+/* the request waiting on each event of the list, and the AI-written sections nobody has checked (UX-102, UX-105) */
+const approvalList = require('./approval-list');
 const { safeFetch } = require('./safe-fetch');
 /* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
 const siteA11y = require('./site-a11y');
@@ -8474,7 +8476,7 @@ function handleEventUpdate(req, res) {
 var EVENTS_LIST_LIMIT = 1000;
 var EVENT_LIST_FIELDS = ['name', 'category', 'status', 'start', 'end', 'dateLabel', 'dateMode', 'venue', 'city', 'client',
   'templateId', 'logoUrl', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'published', 'publishedAt',
-  'publishedVersion', 'counters', 'site', 'generatedAt', 'deletedAt', 'deletedBy', 'discardingAt', 'portal'];
+  'publishedVersion', 'counters', 'site', 'generatedAt', 'deletedAt', 'deletedBy', 'discardingAt', 'portal', 'approval'];
 
 function eventListItem(id, d) {
   var c = isPlainObject(d.counters) ? d.counters : {}, site = isPlainObject(d.site) ? d.site : null;
@@ -8501,6 +8503,8 @@ function eventListItem(id, d) {
        portal's own: a query on the portal would leave out the events that have none yet. */
     portal: etEvents.isPortal(d.portal) ? d.portal : '',
     portalName: portalNameOf(d.portal),
+    /* the request waiting for approval, or null: the dashboard lists what is waiting and marks the row (UX-102) */
+    approval: approvalList.listApproval(id, d),
     payment: { type: 'free' }
   };
   item.hasSite = (!!site && +site.version > 0) || item.hasGeneratedSite;
@@ -8813,7 +8817,7 @@ function handleSitePut(req, res) {
         var catchUp = same && automatic && pageHtml === beforeHtml && beforeSnapshot != null && snapshotText !== beforeSnapshot;
         if (catchUp) {
           return saveObject(fb, sitePath(eventId, 'snapshot.json'), snapshotText, 'application/json; charset=utf-8').then(function () {
-            return commitSiteLock(fb, eventId, token, { site: Object.assign({}, previous, { snapshotVersion: current }) });
+            return commitSiteLock(fb, eventId, token, { site: Object.assign({}, previous, { snapshotVersion: current, aiUnchecked: approvalList.aiUncheckedOf(body.snapshot) }) });
           }).then(function () {
             sendJson(res, 200, { version: current, updatedAt: previous.updatedAt || null, unchanged: true, summary: 'no change', changes: 0,
               stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
@@ -8832,7 +8836,8 @@ function handleSitePut(req, res) {
           saveObject(fb, sitePath(eventId, 'page.html'), pageHtml, 'text/html; charset=utf-8')
         ]).then(function () {
           return commitSiteLock(fb, eventId, token, {
-            site: { version: version, snapshotVersion: version, templateId: templateId, updatedAt: now, updatedBy: actor },
+            /* aiUnchecked: the AI-written sections nobody has checked yet in this state, for the console's Publish */
+            site: { version: version, snapshotVersion: version, templateId: templateId, updatedAt: now, updatedBy: actor, aiUnchecked: approvalList.aiUncheckedOf(body.snapshot) },
             updatedAt: now
           });
         }).then(function () { return true; });
@@ -9974,7 +9979,7 @@ function handleApprovalRequest(req, res) {
         var pendingId = data.approval && data.approval.id;
         var doc = {
           status: 'pending', eventId: eventId, updatedAt: now, fromVersion: liveVersion, toVersion: version,
-          firstPublish: !liveVersion, note: note, items: items, summary: !liveVersion ? 'first publication of the site' : summarise(items),
+          firstPublish: !liveVersion, note: note, items: items, summary: !liveVersion ? 'the whole site, going live for the first time' : summarise(items),
           contributors: people,
           saves: saves.map(function (c) { var o = { id: c.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note }; if (c.kind) o.kind = c.kind; return o; })
         };
@@ -10047,13 +10052,20 @@ function handleApprovalGet(req, res) {
           eventId: eventId, name: data.name || eventId, me: actorOf(decoded),
           published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0,
           publishedPath: data.published === true ? publicPathOf(eventId) : null, savedVersion: siteVersionOf(data),
+          /* when and by whom the site was last saved, and how many AI-written sections nobody has checked in it (null:
+             not known for a site saved before that was counted): Publish says the one and sends the person to the
+             site editor's check for the other, wherever it is pressed (UX-105, UX-112) */
+          savedAt: (data.site && data.site.updatedAt) || null, savedBy: (data.site && data.site.updatedBy) || '',
+          aiUnchecked: data.site && typeof data.site.aiUnchecked === 'number' ? data.site.aiUnchecked : null,
           /* canDecide: may approve or reject; canApprove: may approve too (not while the logo unit's notice is open,
              said in whyNot — it can still be rejected with that reason) */
           request: request, canDecide: canDecide, canApprove: canDecide && !logoNote && !checkErr,
           whyNot: why || (logoNote ? logoNoteError(logoNote, 'approver').message : checkErr ? checkErr.message : ''),
           checks: check ? check.items : null,
           approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required,
-          requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null }; }),
+          /* with each decision's reason: the editor and the console tell the person who asked what was decided and why,
+             on their next visit (UX-103) */
+          requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null, decisionNote: v.decisionNote || '' }; }),
           logoNote: !!logoNote
         });
         });

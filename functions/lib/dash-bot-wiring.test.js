@@ -115,12 +115,13 @@ var LIST_FIELDS_AT_DC1A8E1 = ['name', 'category', 'status', 'start', 'end', 'dat
 function withPortalFields(list) {
   return { items: list.items.map(function (it) {
     var out = {};
-    Object.keys(it).forEach(function (k) { out[k] = it[k]; if (k === 'hasGeneratedSite') { out.portal = ''; out.portalName = ''; } });
+    /* and, since B06 (UX-102), the request waiting for approval right after them: null, as none of them has one */
+    Object.keys(it).forEach(function (k) { out[k] = it[k]; if (k === 'hasGeneratedSite') { out.portal = ''; out.portalName = ''; out.approval = null; } });
     return out;
   }) };
 }
 var EXPECTED_LIVE_NOW = withPortalFields(EXPECTED_LIVE), EXPECTED_DELETED_NOW = withPortalFields(EXPECTED_DELETED);
-var LIST_FIELDS_NOW = LIST_FIELDS_AT_DC1A8E1.concat(['portal']);
+var LIST_FIELDS_NOW = LIST_FIELDS_AT_DC1A8E1.concat(['portal', 'approval']);
 
 require.cache[require.resolve('./firebase')] = { id: require.resolve('./firebase'), filename: require.resolve('./firebase'), loaded: true,
   exports: { getFirebase: function () { return FB; } } };
