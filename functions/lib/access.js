@@ -81,6 +81,10 @@ const SERVED_TYPES = new Set(['.html', '.js', '.css', '.json', '.svg', '.png', '
   '.ico', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.pdf', '.txt']);
 const TOP_LEVEL_TYPES = new Set(['.html', '.js', '.css', '.ico', '.png', '.svg', '.txt']);
 const NEVER_SERVED = new Set(['server.js', 'package.json', 'package-lock.json']);
+/* top-level pages that are developer tools, not part of the product: preview-draft.html opened the editor on a
+   throwaway copy of an AI draft and answered in developer messages ("Missing ?eventId=<id> in the URL."); nothing
+   links to it, and the console and the dashboard open an event's site in the editor themselves (UX-115) */
+const DEV_ONLY_PAGES = new Set(['preview-draft.html']);
 
 /* rel: the decoded request path relative to the repository root, "/"-separated ("templates/x/y.css") */
 function isServableFile(rel) {
@@ -90,7 +94,7 @@ function isServableFile(rel) {
   const name = parts[parts.length - 1];
   if (NEVER_SERVED.has(name) || /\.(backup|bak|orig|old|tmp)(\.|$)|~$/.test(name)) return false;
   const ext = path.extname(name);
-  if (parts.length === 1) return TOP_LEVEL_TYPES.has(ext);
+  if (parts.length === 1) return TOP_LEVEL_TYPES.has(ext) && !DEV_ONLY_PAGES.has(name);
   return SERVED_DIRS.has(parts[0]) && SERVED_TYPES.has(ext);
 }
 

@@ -3,6 +3,8 @@
 <title>Opening generated draft…</title>
 <p style="font:14px system-ui;padding:24px">Loading the AI-generated draft…</p>
 <script>
+  // NOT SERVED (UX-115): functions/lib/access.js lists this page in DEV_ONLY_PAGES, so server.js and tools/serve.js
+  // answer 404 for it. Kept only as a record of how a generated draft is handed to the editor.
   // Dev/demo bridge: ?eventId=<id>[&templateId=<id>] -> fetches that event's latest /api/generate-content
   // draft from Firestore (via GET /api/draft), writes it as 'revamp.editor.handoff.v1' (the exact shape
   // create-event.html's own wizard hand-off uses), and opens the real editor on it — same effect as

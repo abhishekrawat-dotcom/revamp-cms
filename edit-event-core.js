@@ -68,6 +68,7 @@
                                    publishedVersion}; 409 when no site was ever saved. Publishes the SAVED
                                    site. (publishEvent(eventId, html) — the older form — still works.)
      .unpublishEvent(eventId)     POST   /api/event/unpublish
+     .restoreVersion(eventId, n)  POST   /api/event/restore-version: version n, live before, live again (approvers)
      .previewUrl(eventId)         -> absolute URL of /preview/<id> (a string, not a promise)
      .publicUrl(event)            -> absolute URL of the event's public page, location.origin + /e/<id>
                                    (a string, not a promise; '' when the event has no id)
@@ -463,6 +464,12 @@ window.RevampCore = (function(){
   function unpublishEvent(eventId){
     return need(eventId, 'unpublishEvent: eventId') ||
       api('POST', '/api/event/unpublish', { eventId: String(eventId).trim() });
+  }
+  /* An approver puts a version that was live before back live, at once (UX-107; approvers only, as taking a site
+     offline is). -> {restoredVersion, replacedVersion, publishedPath, publishedUrl, publishedAt, publishedVersion} */
+  function restoreVersion(eventId, version){
+    return need(eventId, 'restoreVersion: eventId') ||
+      api('POST', '/api/event/restore-version', { eventId: String(eventId).trim(), version: +version || 0, origin: location.origin });
   }
 
   /* The older Preview (a page stored at a storage URL). New code opens previewUrl(eventId) instead;
@@ -1452,7 +1459,7 @@ window.RevampCore = (function(){
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
-    fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent,
+    fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent, restoreVersion: restoreVersion,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData,

@@ -3,21 +3,60 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Settings &mdash; Revamp CMS</title>
-</head>
-<body>
-<noscript><p>This page has moved. <a href="/Event_Listing.html">Go to your events</a>.</p></noscript>
-<script src="sidebar.js"></script>
+<meta name="robots" content="noindex">
+<title>Publishing approvals &mdash; EventSphere</title>
 <script>
-/* Settings is a view of the event console; this address is kept so old links and bookmarks still
-   arrive there, on the tab they asked for. */
+/* An event's settings are a view of its console; this address is kept so old links and bookmarks still arrive
+   there, on the tab they asked for. Without an event (or with ?tab=approvals) it is the one place of the rule
+   every event shares: who approves changes before they go live (settings.js, UX-108). */
 (function(){
   var q = new URLSearchParams(location.search);
   var id = String(q.get('event') || '').trim();
   var tab = String(q.get('tab') || '');
+  if (!id || tab === 'approvals') return;
   if (['form', 'seo', 'links', 'visibility', 'history'].indexOf(tab) === -1) tab = 'form';
-  location.replace(id ? '/edit-event.html?event=' + encodeURIComponent(id) + '#settings/' + tab : '/Event_Listing.html');
+  location.replace('/edit-event.html?event=' + encodeURIComponent(id) + '#settings/' + tab);
 })();
 </script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="edit-event.css">
+<script>try{var t=localStorage.getItem("revamp-theme");document.documentElement.setAttribute("data-theme",t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light");}catch(e){}</script>
+<style>
+  [hidden]{ display:none !important; }
+  .pa-main{ max-width:760px; margin:0 auto; padding:22px 24px 80px; }
+  .pa-main label.pa-check{ display:flex; gap:10px; align-items:flex-start; margin:12px 0 0; font-size:13.5px; line-height:1.45; }
+  .pa-main label.pa-check input{ width:17px; height:17px; margin:1px 0 0; accent-color:var(--accent); flex-shrink:0; }
+  .pa-msg{ margin:12px 0 0; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.5; background:var(--surface-2); }
+  .pa-msg.err{ background:var(--accent-soft); color:var(--accent-strong); font-weight:600; }
+  .pa-acts{ display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+  .pa-log{ list-style:none; margin:0; padding:0; font-size:13px; }
+  .pa-log li{ padding:9px 0; border-bottom:1px solid var(--border); line-height:1.5; overflow-wrap:anywhere; }
+  .pa-log li:last-child{ border-bottom:0; }
+  .pa-log .meta{ color:var(--text-muted); font-size:12px; }
+  @media (max-width: 760px){ .pa-main{ padding:16px 16px 70px; } .pa-acts .btn{ flex:1 1 auto; justify-content:center; } }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="back-btn" id="pa-back" href="/Event_Listing.html"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back to events</span></a>
+  <span class="ev-title"><h1>Settings</h1><span class="meta">Every event</span></span>
+  <span class="topbar-acts">
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span data-rv-account></span>
+  </span>
+</header>
+<main class="pa-main">
+  <div class="vhead">
+    <div class="crumb">Settings</div>
+    <h2 id="pa-heading" tabindex="-1">Publishing approvals</h2>
+    <div class="sub">Who approves changes before they go live. This rule is the same for every event.</div>
+  </div>
+  <div id="pa-body"><p class="pa-msg">Loading the approval rule…</p></div>
+</main>
+<script src="theme-toggle.js"></script>
+<script src="edit-event-core.js"></script>
+<script src="auth.js"></script>
+<script src="settings.js"></script>
 </body>
 </html>

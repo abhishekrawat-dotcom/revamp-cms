@@ -9,8 +9,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
   /* The page an approver opens from the link in an approval request: what changed and who changed it on the
-     left, the live site beside the proposed one on the right, Approve / Reject at the bottom of the list.
-     Data: GET /api/event/approval; decision: POST /api/event/approval/decide (functions/lib/api.js). */
+     left, the live site beside the proposed one on the right, Approve / Reject at the bottom of the list. On a
+     phone: the list, the proposed page at the phone's width, then Approve / Reject kept at the foot (UX-106).
+     Once a version is live an approver can put the one before it back from here (UX-107).
+     Data: GET /api/event/approval; decision: POST /api/event/approval/decide; putting a version back: POST
+     /api/event/restore-version (functions/lib/api.js). */
   /* the console's neutrals (edit-event.css), in both themes, so the page reads as the same product (UX-007) */
   :root{
     --bg:#FAF7F6; --surface:#fff; --surface-2:#F3EEED; --border:#E0D7D5; --text:#241B1A; --muted:#756865;
@@ -43,7 +46,12 @@
   .btn.primary{ background:var(--ok); border-color:var(--ok); color:#fff; }
   .btn.danger{ color:var(--bad); border-color:var(--bad); }
   .btn.small{ padding:5px 10px; font-size:12px; }
-  main{ flex:1; min-height:0; display:grid; grid-template-columns:minmax(340px, 420px) 1fr; }
+  /* the list on the left, the pages on the right, and Approve / Reject under the list (a grid cell of its own, so
+     on a phone it can come after the pages, UX-106) */
+  main{ flex:1; min-height:0; display:grid; grid-template-columns:minmax(340px, 420px) 1fr; grid-template-rows:minmax(0, 1fr) auto; }
+  main > .side{ grid-column:1; grid-row:1; }
+  main > .view{ grid-column:2; grid-row:1 / span 2; }
+  main > .decide{ grid-column:1; grid-row:2; }
   .side{ overflow:auto; border-right:1px solid var(--border); background:var(--surface); padding:16px 18px 28px; }
   .side h2{ font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:22px 0 8px; }
   .side h2:first-child{ margin-top:0; }
@@ -55,6 +63,12 @@
   .saves li:last-child{ border-bottom:0; }
   .saves .meta{ color:var(--muted); font-size:12px; }
   .chg{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  /* a change that names its section: a click shows it in the pages (UX-109) */
+  .chg[data-section]{ cursor:pointer; }
+  .chg[data-section]:hover{ border-color:var(--muted); }
+  .chg[data-section]:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .chg .show{ margin-left:auto; font-size:11.5px; font-weight:600; color:var(--muted); white-space:nowrap; }
+  .chg .miss{ color:var(--muted); font-size:12px; margin-top:6px; }
   .chg .top{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; }
   .chg .kind{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); }
   .chg .kind.added{ background:var(--ok-soft); color:var(--ok); } .chg .kind.removed{ background:var(--bad-soft); color:var(--bad); }
@@ -82,16 +96,20 @@
   .chk .hint{ color:var(--muted); font-size:12px; margin-top:6px; }
   .chk-ok{ color:var(--ok); font-size:13px; margin:0; }
   .empty{ color:var(--muted); font-size:13px; }
-  .decide{ position:sticky; bottom:-28px; background:var(--surface); border-top:1px solid var(--border); margin:18px -18px -28px; padding:14px 18px 18px; }
-  .decide textarea, .settings input[type=text]{ width:100%; font:inherit; font-size:13px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical; }
+  .decide{ background:var(--surface); border-top:1px solid var(--border); border-right:1px solid var(--border); padding:14px 18px 18px; }
+  .decide textarea{ width:100%; font:inherit; font-size:13px; padding:9px 11px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); resize:vertical; }
   .decide .row{ display:flex; gap:8px; margin-top:10px; }
   .decide .row .btn{ flex:1; justify-content:center; }
   .msg{ font-size:12.5px; margin-top:8px; padding:8px 10px; border-radius:8px; background:var(--warn-soft); color:var(--warn); }
   .msg.err{ background:var(--bad-soft); color:var(--bad); } .msg.ok{ background:var(--ok-soft); color:var(--ok); }
-  details.settings{ margin-top:22px; border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:13px; }
-  details.settings summary{ cursor:pointer; font-weight:600; }
-  details.settings label{ display:flex; gap:8px; align-items:flex-start; margin-top:10px; }
-  details.settings .hint{ color:var(--muted); font-size:12px; margin:4px 0 0; }
+  /* a plain statement: what happened, neither good nor bad news (UX-116: "Rejected" was said in green) */
+  .msg.plain{ background:var(--surface-2); color:var(--text); }
+  .msg a{ font-weight:600; }
+  .badge.superseded{ background:var(--surface-2); color:var(--muted); }
+  /* putting the previous version back (UX-107) */
+  .restore{ border:1px solid var(--border); border-radius:10px; padding:10px 12px; font-size:13px; }
+  .restore p{ margin:0 0 8px; } .restore .row{ display:flex; flex-wrap:wrap; gap:8px; }
+  .restore .row a{ font-size:12.5px; color:var(--muted); align-self:center; }
   .view{ display:flex; flex-direction:column; min-width:0; min-height:0; }
   .tabs{ display:flex; gap:6px; padding:10px 14px; align-items:center; border-bottom:1px solid var(--border); background:var(--surface); }
   .tabs .btn.on{ background:var(--text); color:var(--surface); border-color:var(--text); }
@@ -105,8 +123,36 @@
   .pane .cap a{ font-weight:500; color:var(--muted); margin-left:auto; }
   .pane .box{ flex:1; min-height:0; position:relative; overflow:hidden; }
   .pane iframe{ position:absolute; top:0; left:0; border:0; background:#fff; transform-origin:0 0; }
+  /* until the page in a pane has loaded, a pane says so instead of sitting blank (UX-109) */
+  .box-load{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:10px; background:var(--surface-2); color:var(--muted); font-size:13px; z-index:1; }
+  .box-load::before{ content:""; width:16px; height:16px; border-radius:50%; border:2px solid var(--border); border-top-color:var(--muted); animation:rv-spin .8s linear infinite; }
+  @keyframes rv-spin{ to{ transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce){ .box-load::before{ animation:none; } }
+  .seg{ display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .seg .btn{ border:0; border-radius:0; }
+  .seg .btn.on{ background:var(--text); color:var(--surface); }
   .loading{ padding:60px 20px; text-align:center; color:var(--muted); grid-column:1/-1; }
-  @media (max-width: 900px){ main{ grid-template-columns:1fr; grid-template-rows:auto 70vh; } .side{ border-right:0; border-bottom:1px solid var(--border); } body{ height:auto; } }
+  /* a phone or a narrow window: the list, then the page being approved at the screen's own width, then Approve /
+     Reject as a bar kept at the foot of the screen (UX-106: the title was squeezed into a 70 px column, Approve came
+     before the page, and the page was a 15-30% desktop thumbnail) */
+  @media (max-width: 900px){
+    body{ height:auto; }
+    main{ grid-template-columns:1fr; grid-template-rows:auto; }
+    main > .side, main > .view, main > .decide{ grid-column:1; grid-row:auto; }
+    .side{ border-right:0; border-bottom:1px solid var(--border); overflow:visible; }
+    .view{ height:80vh; }
+    .decide{ position:sticky; bottom:0; z-index:5; border-right:0; box-shadow:0 -6px 18px rgba(0,0,0,.12); padding:10px 16px 12px; }
+    .decide .row{ margin-top:8px; }
+  }
+  @media (max-width: 700px){
+    header{ padding:10px 16px; gap:10px; }
+    header .grow{ flex-basis:100%; order:3; }
+    #status{ order:2; margin-left:auto; }
+    .side{ padding:14px 16px 22px; }
+    .tabs{ flex-wrap:wrap; padding:8px 12px; }
+    /* two pages side by side are unreadable at this width */
+    .tabs [data-view="both"], .tabs .sync{ display:none; }
+  }
 </style>
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
@@ -127,31 +173,46 @@
 <script src="theme-toggle.js"></script>
 <script src="edit-event-core.js"></script>
 <script src="auth.js"></script>
+<script src="activity-words.js"></script>
 <script>
 (function(){
-  var C = window.RevampCore;
+  var C = window.RevampCore, AW = window.RevampActivityWords;
   var qs = new URLSearchParams(location.search);
   var eventId = String(qs.get('event') || '').trim(), requestId = String(qs.get('request') || '').trim();
+  /* the request this address named: when it is not found, the page says so instead of "nothing is waiting" (UX-116) */
+  var askedFor = requestId;
   var main = document.getElementById('main'), data = null;
 
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   /* "3 Nov 2026, 12:40 pm": RevampCore's one way of writing a moment (UX-010) */
   function when(iso){ return C.fmtDate(iso, { time: true }); }
+  /* a person by name, read from their company address as the logs do it, the address kept in the tooltip (UX-116) */
+  function who(email){
+    if (!email) return '—';
+    var name = AW && AW.personName ? AW.personName(email) : email;
+    return name && name !== email ? '<span title="' + esc(email) + '">' + esc(name) + '</span>' : esc(email);
+  }
+  function whoText(email){ return AW && AW.personName && email ? AW.personName(email) : String(email || ''); }
+  /* a phone or a narrow window: one page at a time, at the screen's own width (UX-106) */
+  function narrow(){ return !!(window.matchMedia && matchMedia('(max-width: 900px)').matches); }
   var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design',
     'record-added':'Added', 'record-removed':'Removed', 'record-changed':'Changed', 'record-order':'New order' };
   /* the class that colours a change's badge */
   var TONE = { added:'added', removed:'removed', 'record-added':'added', 'record-removed':'removed' };
+  /* a request's state in words, for its badge and the list of earlier requests */
+  var STATUS = { pending: 'Waiting for approval', approved: 'Approved', rejected: 'Rejected', superseded: 'Closed' };
   function isRecord(it){ return /^record-/.test(it.type || ''); }
   /* past what one request keeps, the server lists no more changes but counts them in a last "more" item (page-diff.js
      listed): it is told after the groups, and counted in "What changed (N)", so the approver knows every change */
   function isMore(it){ return it.type === 'more'; }
   function changeCount(items){ return items.reduce(function(n, it){ return n + (isMore(it) ? (+it.count || 0) : 1); }, 0); }
   var LEVEL = { block:'Holds it back', warn:'Check', info:'Good to know' };
+  function liveVersion(){ return data && data.published ? (+data.publishedVersion || 0) : 0; }
 
   /* What the site check found on the proposed version: listed before the changes, so the approver sees what would
      go live (template text, a broken picture, a button that leads nowhere) before deciding. */
   function checksHtml(r){
-    if (r.status !== 'pending') return '';
+    if (r.status !== 'pending' || data.stale) return '';
     if (data.checks === false) return '<h2>Before it goes live</h2><p class="empty">The proposed version could not be checked just now. Approving checks it again.</p>';
     if (data.checks == null) return '<h2>Before it goes live</h2><p class="empty">Checking the proposed version…</p>';
     if (!data.checks.length) return '<h2>Before it goes live</h2><p class="chk-ok">Nothing found: no template text, every picture can be shown, every button leads somewhere.</p>';
@@ -175,7 +236,7 @@
      gives way to the reason (the note being typed is kept). The server checks again on Approve whatever this says. */
   function loadChecks(){
     var r = data && data.request;
-    if (!r || r.status !== 'pending' || typeof C.authedFetch !== 'function') return;
+    if (!r || r.status !== 'pending' || data.stale || typeof C.authedFetch !== 'function') return;
     var url = '/api/event/approval?eventId=' + encodeURIComponent(eventId) + '&id=' + encodeURIComponent(r.id) + '&checks=1';
     function fill(){ var box = document.getElementById('checks-box'); if (box) box.innerHTML = checksHtml(r); }
     C.authedFetch(url, { method: 'GET' }).then(function(res){ return res.ok ? res.json() : null; }).then(function(d){
@@ -188,7 +249,7 @@
       if (dec && could !== (data.canApprove !== false)){
         var typed = (document.getElementById('d-note') || {}).value || '';
         dec.outerHTML = decideHtml();
-        var note = document.getElementById('d-note'); if (note) note.value = typed;
+        var note = document.getElementById('d-note'); if (note && typed) note.value = typed;
         wireDecide();
       }
     }, function(){ data.checks = false; fill(); });
@@ -196,13 +257,16 @@
 
   function changeHtml(it){
     var ba = '';
+    /* a change that names its section can be shown in the pages: a click scrolls them to it (UX-109) */
+    var jump = it.section && it.type !== 'design' ? ' data-section="' + esc(it.section) + '" data-type="' + esc(it.type) + '" tabindex="0" role="button" title="Show it in the page"' : '';
+    var show = jump ? '<span class="show">Show ↘</span>' : '';
     /* one of the event's records (page-diff.js): what names it, and for a change the lines that differ */
     if (it.type === 'record-added' || it.type === 'record-removed'){
-      return '<div class="chg"><div class="top"><span class="kind ' + esc(TONE[it.type]) + '">' + esc(KIND[it.type]) + '</span><span>' + esc(it.name || 'Record') + '</span></div>' +
+      return '<div class="chg"' + jump + '><div class="top"><span class="kind ' + esc(TONE[it.type]) + '">' + esc(KIND[it.type]) + '</span><span>' + esc(it.name || 'Record') + '</span>' + show + '</div>' +
         '<div class="rec">“' + esc(it.type === 'record-added' ? it.after : it.before) + '”</div></div>';
     }
     if (it.type === 'record-changed' && it.note){
-      return '<div class="chg"><div class="top"><span class="kind">' + esc(KIND[it.type]) + '</span><span>' + esc(it.name || 'Record') + ' “' + esc(it.note) + '”</span></div>' +
+      return '<div class="chg"' + jump + '><div class="top"><span class="kind">' + esc(KIND[it.type]) + '</span><span>' + esc(it.name || 'Record') + ' “' + esc(it.note) + '”</span>' + show + '</div>' +
         '<div class="ba">' + (it.before ? '<div class="b"><b>Before</b>' + esc(it.before) + '</div>' : '') + (it.after ? '<div class="a"><b>After</b>' + esc(it.after) + '</div>' : '') + '</div></div>';
     }
     if (it.type === 'moved') ba = '<div class="extra">' + esc(it.before) + ' → ' + esc(it.after) + '</div>';
@@ -211,8 +275,8 @@
         (it.before ? '<div class="b"><b>Before</b>' + esc(it.before) + '</div>' : '') +
         (it.after ? '<div class="a"><b>After</b>' + esc(it.after) + '</div>' : '') + '</div>';
     }
-    return '<div class="chg"><div class="top"><span class="kind ' + esc(TONE[it.type] || it.type) + '">' + esc(KIND[it.type] || it.type) + '</span>' +
-      '<span>' + esc(it.name || it.section || 'Page') + '</span></div>' + ba +
+    return '<div class="chg"' + jump + '><div class="top"><span class="kind ' + esc(TONE[it.type] || it.type) + '">' + esc(KIND[it.type] || it.type) + '</span>' +
+      '<span>' + esc(it.name || it.section || 'Page') + '</span>' + show + '</div>' + ba +
       (it.note ? '<div class="extra">' + esc(it.note) + '</div>' : '') + '</div>';
   }
 
@@ -247,6 +311,87 @@
     return '';
   }
 
+  /* What each pane and its tab are called, by what is true now (UX-110: after approval the live version was still
+     called "Proposed", and the one before it "Before"). */
+  function paneWords(r){
+    var lv = liveVersion();
+    if (r.status === 'pending') return { beforeTab: 'Live now', before: 'Live now · version ' + lv, afterTab: 'Proposed', after: 'Proposed · version ' + r.toVersion };
+    if (r.status === 'approved'){
+      var isLive = lv === r.toVersion;
+      return { beforeTab: 'Previously live', before: 'Previously live · version ' + r.fromVersion, afterTab: isLive ? 'Live now' : 'Published',
+        after: (isLive ? 'Live now' : 'Published') + ' · version ' + r.toVersion + (isLive ? '' : lv ? ' · version ' + lv + ' is live now' : ' · not live now') };
+    }
+    if (r.status === 'rejected') return { beforeTab: 'Live then', before: 'Live then · version ' + r.fromVersion, afterTab: 'Rejected', after: 'Rejected · version ' + r.toVersion };
+    return { beforeTab: 'Before', before: 'Before · version ' + r.fromVersion, afterTab: 'Version ' + r.toVersion, after: 'Closed · version ' + r.toVersion };
+  }
+  function versionsWords(r){
+    var lv = liveVersion();
+    if (r.status === 'pending') return r.firstPublish ? 'not live yet → version ' + r.toVersion : 'live version ' + (lv || r.fromVersion) + ' → version ' + r.toVersion;
+    var from = r.firstPublish ? 'not live before' : 'version ' + r.fromVersion;
+    if (r.status === 'approved') return from + ' → version ' + r.toVersion + (lv === r.toVersion ? ' (live)' : '');
+    return from + ' → version ' + r.toVersion + (r.status === 'rejected' ? ' (rejected)' : ' (closed)');
+  }
+
+  /* The rule every event shares, read-only here: its one place is Settings › Publishing approvals (UX-108) */
+  function rulesHtml(){
+    return '<h2>Who approves</h2><p class="empty">' +
+      (data.approvers.length ? 'Approvers: ' + esc(data.approvers.map(whoText).join(', ')) + '.' : 'Any signed-in member of the team can approve.') +
+      (data.allowSelf ? ' A person may approve their own changes.' : ' Nobody approves their own changes.') + (data.required ? '' : ' Approval is switched off: Publish goes live at once.') +
+      ' <a href="/settings.html?event=' + encodeURIComponent(eventId) + '&amp;tab=approvals">See or change this in Settings</a></p>';
+  }
+
+  /* Putting the version that was live before back live (UX-107): offered on the request that put the live version
+     live, and when nothing is waiting. Approvers only (as taking the site offline is); anybody else is told who can. */
+  function restoreHtml(r){
+    var p = data.previousLive, lv = liveVersion();
+    if (!lv || !p || !p.version) return '';
+    if (r && !(r.status === 'approved' && r.toVersion === lv)) return '';
+    var head = r ? '<h2>Undo this approval</h2>' : '<h2>The live version</h2>';
+    var lead = '<p>Version ' + lv + ' is live. Version ' + esc(p.version) + ' was live before it' + (p.at ? ' (from ' + esc(when(p.at)) + ')' : '') + '.</p>';
+    if (!data.mayTakeDown){
+      return head + '<div class="restore">' + lead + '<p class="empty" style="margin:0">Only an approver' + (data.approvers.length ? ' (' + esc(data.approvers.join(', ')) + ')' : '') +
+        ' can put version ' + esc(p.version) + ' back or take the site offline.</p></div>';
+    }
+    return head + '<div class="restore" id="rs-box">' + lead +
+      '<div class="row"><button class="btn" type="button" id="rs-open">Put version ' + esc(p.version) + ' back…</button>' +
+      '<a href="/edit-event.html?event=' + encodeURIComponent(eventId) + '#settings/visibility">Take the site offline instead</a></div><div id="rs-ask"></div></div>';
+  }
+  function wireRestore(){
+    var open = document.getElementById('rs-open');
+    if (!open) return;
+    var p = data.previousLive, lv = liveVersion(), url = location.origin + (data.publishedPath || '/e/' + eventId);
+    open.onclick = function(){
+      open.hidden = true;
+      var ask = document.getElementById('rs-ask');
+      ask.innerHTML = '<div class="msg plain" role="alertdialog" aria-labelledby="rs-q"><p id="rs-q" style="margin:0 0 6px"><b>Put version ' + esc(p.version) + ' back live?</b></p>' +
+        '<p style="margin:0 0 6px">' + esc(url) + ' will show version ' + esc(p.version) + ' again, at once, in place of version ' + lv + '.</p>' +
+        '<p style="margin:0">Version ' + lv + ' stays saved: it can be changed and sent for approval again.</p></div>' +
+        '<div class="row" style="margin-top:8px"><button class="btn" type="button" id="rs-keep">Keep version ' + lv + ' live</button>' +
+        '<button class="btn danger" type="button" id="rs-go">Put version ' + esc(p.version) + ' back</button></div><div id="rs-msg"></div>';
+      /* the safe answer has the focus, so a stray Enter changes nothing */
+      document.getElementById('rs-keep').focus();
+      document.getElementById('rs-keep').onclick = function(){ ask.innerHTML = ''; open.hidden = false; open.focus(); };
+      document.getElementById('rs-go').onclick = function(){
+        var go = this, keep = document.getElementById('rs-keep'), msg = document.getElementById('rs-msg');
+        go.disabled = keep.disabled = true; msg.className = 'msg'; msg.textContent = 'Putting version ' + p.version + ' back…';
+        C.restoreVersion(eventId, p.version).then(function(out){
+          return load().then(function(){
+            note('ok', 'Version ' + esc(out.restoredVersion) + ' is live again at <a href="' + esc(out.publishedPath) + '" target="_blank" rel="noopener">' + esc(out.publishedUrl || out.publishedPath) + '</a>. Version ' + esc(out.replacedVersion) + ' is still saved.');
+          });
+        }, function(err){
+          go.disabled = keep.disabled = false; msg.className = 'msg err'; msg.textContent = 'Version ' + lv + ' is still live. ' + C.errText(err);
+        });
+      };
+    };
+  }
+  /* a line at the top of the list: what just happened */
+  function note(kind, html){
+    var m = document.createElement('div');
+    m.className = 'msg ' + kind; m.style.margin = '0 0 14px'; m.setAttribute('role', 'status');
+    m.innerHTML = html;
+    var side = document.querySelector('.side'); if (side) side.insertBefore(m, side.firstChild);
+  }
+
   function render(){
     var r = data.request;
     document.getElementById('title').textContent = 'Review changes — ' + (data.name || eventId);
@@ -255,80 +400,102 @@
     var badge = document.getElementById('status');
     if (!r){
       badge.hidden = true;
-      document.getElementById('sub').textContent = 'Nothing is waiting for approval.';
-      main.innerHTML = '<div class="side" style="grid-column:1/-1;border:0">' +
-        '<p class="empty">No request is waiting for approval for this event. ' +
+      var missing = !!askedFor;
+      document.getElementById('sub').textContent = missing ? 'This request was not found.' : 'Nothing is waiting for approval.';
+      main.innerHTML = '<div class="side" style="grid-column:1/-1;grid-row:1/-1;border:0">' +
+        (missing ? '<div class="msg" role="status" style="margin:0 0 14px">This request was not found — it may have been replaced by a newer one. The requests made for this event are listed below.</div>' : '') +
+        '<p class="empty">' + (missing ? '' : 'No request is waiting for approval for this event. ') +
         (data.published ? 'Version ' + data.publishedVersion + ' is live' : 'The site is not live yet') +
         /* plain words, not "staging" (UX-112) */
-        (data.savedVersion && !(data.published && data.publishedVersion === data.savedVersion) ? '; the last save (version ' + data.savedVersion + ') is not live yet.' : '.') + '</p>' + pastHtml() + settingsHtml() + '</div>';
-      wireSettings();
+        (data.savedVersion && !(data.published && data.publishedVersion === data.savedVersion) ? '; the last save (version ' + data.savedVersion + ') is not live yet.' : '.') + '</p>' +
+        restoreHtml(null) + pastHtml() + rulesHtml() + '</div>';
+      wireRestore();
       return;
     }
-    badge.hidden = false; badge.className = 'badge ' + r.status; badge.textContent = r.status === 'pending' ? 'Waiting for approval' : r.status;
-    document.getElementById('sub').textContent = 'Requested by ' + r.requestedBy + ' · ' + when(r.requestedAt) + ' · ' +
+    badge.hidden = false;
+    badge.className = 'badge ' + (data.stale ? 'superseded' : r.status);
+    badge.textContent = data.stale ? 'Out of date' : (STATUS[r.status] || r.status);
+    document.getElementById('sub').textContent = 'Requested by ' + whoText(r.requestedBy) + ' · ' + when(r.requestedAt) + ' · ' +
       (r.firstPublish ? 'First time live (version ' + r.toVersion + ')' : 'version ' + r.fromVersion + ' → ' + r.toVersion);
 
-    var people = (r.contributors || []).join(', ') || r.requestedBy;
+    var people = (r.contributors || []).length ? r.contributors.map(who).join(', ') : who(r.requestedBy);
+    var words = paneWords(r), lv = liveVersion();
+    var closedBy = { approved: 'Approved by', rejected: 'Rejected by', superseded: 'Closed by' }[r.status];
+    var proposed = '/preview/' + encodeURIComponent(eventId) + '?version=' + r.toVersion;
+    /* listed against the version live when it was sent, which an earlier version put back since may have replaced */
+    var against = r.status === 'pending' && !r.firstPublish && lv && r.fromVersion && lv !== r.fromVersion
+      ? '<p class="more-note">These changes are listed against version ' + esc(r.fromVersion) + ', which was live when they were sent. Version ' + lv + ' is live now.</p>' : '';
     var side =
       '<h2>Request</h2><dl class="who">' +
-      '<dt>Requested by</dt><dd>' + esc(r.requestedBy) + '</dd>' +
+      '<dt>Requested by</dt><dd>' + who(r.requestedBy) + '</dd>' +
       '<dt>When</dt><dd>' + esc(when(r.requestedAt)) + (r.updatedAt && r.updatedAt !== r.requestedAt ? ' (updated ' + esc(when(r.updatedAt)) + ')' : '') + '</dd>' +
-      '<dt>Changes by</dt><dd>' + esc(people) + '</dd>' +
-      '<dt>Versions</dt><dd>' + (r.firstPublish ? 'not live yet → version ' + r.toVersion : 'live version ' + r.fromVersion + ' → version ' + r.toVersion) + '</dd>' +
+      '<dt>Changes by</dt><dd>' + people + '</dd>' +
+      '<dt>Versions</dt><dd>' + esc(versionsWords(r)) + '</dd>' +
       '<dt>Summary</dt><dd>' + esc(r.summary || '—') + '</dd>' +
-      (r.status !== 'pending' ? '<dt>' + (r.status === 'approved' ? 'Approved by' : 'Rejected by') + '</dt><dd>' + esc(r.decidedBy) + ' · ' + esc(when(r.decidedAt)) + '</dd>' : '') +
+      (closedBy ? '<dt>' + closedBy + '</dt><dd>' + who(r.decidedBy) + ' · ' + esc(when(r.decidedAt)) + '</dd>' : '') +
       '</dl>' +
-      (r.note ? '<div class="note">' + esc(r.note) + '</div>' : '') +
-      (r.decisionNote ? '<div class="note"><b>' + (r.status === 'approved' ? 'Approver’s note' : 'Reason') + ':</b> ' + esc(r.decisionNote) + '</div>' : '') +
+      /* each note says whose it is (UX-116: the requester's note was an unlabelled grey box) */
+      (r.note ? '<div class="note"><b>Note from ' + esc(whoText(r.requestedBy)) + ':</b> ' + esc(r.note) + '</div>' : '') +
+      (r.decisionNote ? '<div class="note"><b>' + (r.status === 'approved' ? 'Approver’s note' : r.status === 'superseded' ? 'Why it was closed' : 'Reason') + ':</b> ' + esc(r.decisionNote) + '</div>' : '') +
+      restoreHtml(r) +
       '<div id="checks-box">' + checksHtml(r) + '</div>' +
 
       '<h2>Saves in this request (' + (r.saves || []).length + ')</h2>' +
       ((r.saves || []).length ? '<ul class="saves">' + r.saves.map(function(s){
-        return '<li><b>Version ' + esc(s.version) + '</b>' + saveTag(s) + ' — ' + esc(s.summary || 'saved') + '<div class="meta">' + esc(s.by) + ' · ' + esc(when(s.at)) + '</div>' +
+        return '<li><b>Version ' + esc(s.version) + '</b>' + saveTag(s) + ' — ' + esc(s.summary || 'saved') + '<div class="meta">' + who(s.by) + ' · ' + esc(when(s.at)) + '</div>' +
           (s.note ? '<div class="meta">“' + esc(s.note) + '”</div>' : '') + '</li>';
       }).join('') + '</ul>' : '<p class="empty">The individual saves were not recorded for these versions.</p>') +
 
-      '<h2>What changed (' + changeCount(r.items || []) + ')</h2>' +
-      ((r.items || []).length ? changesHtml(r.items, '/preview/' + encodeURIComponent(eventId) + '?version=' + encodeURIComponent(r.toVersion)) :
-        '<p class="empty">' + (r.firstPublish ? 'This is the first time the site goes live: the whole site is new. See it on the right.' : 'No difference a reader would see was found between the two versions.') + '</p>') +
-      settingsHtml() + decideHtml();
+      '<h2>What changed (' + changeCount(r.items || []) + ')</h2>' + against +
+      ((r.items || []).length ? changesHtml(r.items, proposed) :
+        '<p class="empty">' + (r.firstPublish ? 'This is the first time the site goes live: the whole site is new. The proposed page is shown ' + (narrow() ? 'below' : 'on the right') + '.' : 'No difference a reader would see was found between the two versions.') + '</p>') +
+      rulesHtml();
 
-    var live = data.published && !r.firstPublish && r.status === 'pending';
-    var proposed = '/preview/' + encodeURIComponent(eventId) + '?version=' + r.toVersion;
+    var pendingLive = data.published && !r.firstPublish && r.status === 'pending';
     var before = r.status === 'pending' ? '/e/' + encodeURIComponent(eventId) : (r.fromVersion ? '/preview/' + encodeURIComponent(eventId) + '?version=' + r.fromVersion : '');
-    var hasBefore = r.status === 'pending' ? live : !!r.fromVersion;
+    var hasBefore = r.status === 'pending' ? pendingLive : !!r.fromVersion;
+    /* the panes ask for the page with no ribbon (?frame=1): each one's caption says what it is; "Open" gives the page
+       with its ribbon */
+    function framed(u){ return u + (u.indexOf('?') === -1 ? '?' : '&') + 'frame=1'; }
+    var one = !hasBefore || narrow();
     main.innerHTML = '<div class="side">' + side + '</div>' +
       '<div class="view"><div class="tabs">' +
-      (hasBefore ? '<button class="btn small on" data-view="both">Side by side</button><button class="btn small" data-view="before">' + (r.status === 'pending' ? 'Live now' : 'Before') + '</button>' : '') +
-      '<button class="btn small' + (hasBefore ? '' : ' on') + '" data-view="after">Proposed</button><span class="sp"></span>' +
-      (hasBefore ? '<label><input type="checkbox" id="sync" checked> Scroll together</label>' : '') + '</div>' +
-      '<div class="panes' + (hasBefore ? '' : ' one') + '" id="panes">' +
-      (hasBefore ? '<div class="pane" data-pane="before"><div class="cap">' + (r.status === 'pending' ? 'Live now · version ' + r.fromVersion : 'Before · version ' + r.fromVersion) +
-        '<a href="' + before + '" target="_blank" rel="noopener">Open ↗</a></div><div class="box"><iframe id="f-before" title="Before" src="' + before + '"></iframe></div></div>' : '') +
-      '<div class="pane" data-pane="after"><div class="cap">Proposed · version ' + r.toVersion + '<a href="' + proposed + '" target="_blank" rel="noopener">Open ↗</a></div>' +
-      '<div class="box"><iframe id="f-after" title="Proposed" src="' + proposed + '"></iframe></div></div></div></div>';
-    wireView(); wireDecide(); wireSettings();
+      (hasBefore ? '<button class="btn small' + (one ? '' : ' on') + '" data-view="both">Side by side</button><button class="btn small" data-view="before">' + esc(words.beforeTab) + '</button>' : '') +
+      '<button class="btn small' + (one ? ' on' : '') + '" data-view="after">' + esc(words.afterTab) + '</button><span class="sp"></span>' +
+      (hasBefore ? '<label class="sync"><input type="checkbox" id="sync" checked> Scroll together</label>' : '') +
+      /* the page laid out at its desktop width and shrunk to fit, or at the pane's own width, full size (UX-106, UX-109) */
+      '<span class="seg" role="group" aria-label="Page width"><button class="btn small" type="button" data-width="actual" title="The page at this pane’s own width, full size">Actual size</button>' +
+      '<button class="btn small" type="button" data-width="desktop" title="The page as a 1280 px desktop screen shows it, shrunk to fit">Desktop</button></span></div>' +
+      '<div class="panes' + (one ? ' one' : '') + '" id="panes">' +
+      (hasBefore ? '<div class="pane" data-pane="before"' + (one ? ' hidden' : '') + '><div class="cap">' + esc(words.before) +
+        '<a href="' + esc(before) + '" target="_blank" rel="noopener">Open ↗</a></div><div class="box"><div class="box-load" role="status">Loading the page…</div><iframe id="f-before" title="' + esc(words.before) + '" src="' + esc(r.status === 'pending' ? before : framed(before)) + '"></iframe></div></div>' : '') +
+      '<div class="pane" data-pane="after"><div class="cap">' + esc(words.after) + '<a href="' + esc(proposed) + '" target="_blank" rel="noopener">Open ↗</a></div>' +
+      '<div class="box"><div class="box-load" role="status">Loading the page…</div><iframe id="f-after" title="' + esc(words.after) + '" src="' + esc(framed(proposed)) + '"></iframe></div></div></div></div>' +
+      decideHtml();
+    wireView(); wireDecide(); wireRestore(); wireJumps();
   }
 
   function pastHtml(){
     var list = (data.requests || []);
     if (!list.length) return '';
     return '<h2>Earlier requests</h2><ul class="saves">' + list.map(function(p){
+      var st = STATUS[p.status] || p.status;
       return '<li><a href="/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(p.id) + '"><b>Version ' + esc(p.toVersion) + '</b></a> — ' + esc(p.summary || '') +
-        '<div class="meta">' + esc(p.status) + ' · requested by ' + esc(p.requestedBy) + ' ' + esc(when(p.requestedAt)) + (p.decidedBy ? ' · ' + esc(p.status) + ' by ' + esc(p.decidedBy) + ' ' + esc(when(p.decidedAt)) : '') + '</div></li>';
+        '<div class="meta">' + esc(st) + ' · requested by ' + who(p.requestedBy) + ' ' + esc(when(p.requestedAt)) + (p.decidedBy ? ' · ' + esc(st.toLowerCase()) + ' by ' + who(p.decidedBy) + ' ' + esc(when(p.decidedAt)) : '') + '</div></li>';
     }).join('') + '</ul>';
   }
 
   /* ---------- approve / reject ---------- */
   function decideHtml(){
     var r = data.request;
-    if (r.status !== 'pending') return '';
+    if (!r || r.status !== 'pending') return '';
     if (!data.canDecide) return '<div class="decide"><div class="msg">' + esc(data.whyNot || 'You cannot decide this request.') + '</div></div>';
     /* it can be rejected but not approved (the logo unit still has a notice to answer, or the site check found what
-       holds it back — listed above): said, and only Reject offered */
+       holds it back — listed above): said, and only Reject offered, with the reason already in the note so the
+       approver does not have to type again what the page already says (UX-116) */
     var approvable = data.canApprove !== false;
     return '<div class="decide">' + (approvable ? '' : '<div class="msg err">' + esc(data.whyNot || 'These changes cannot be approved yet.') + '</div>') +
-      '<textarea id="d-note" rows="2" maxlength="1000" placeholder="Note (needed when rejecting: what should be fixed)"></textarea>' +
+      '<textarea id="d-note" rows="2" maxlength="1000" placeholder="Note (needed when rejecting: what should be fixed)">' + (approvable ? '' : esc(String(data.whyNot || '').slice(0, 1000))) + '</textarea>' +
       '<div class="row"><button class="btn danger" id="d-reject">Reject</button>' + (approvable ? '<button class="btn primary" id="d-approve">Approve and publish</button>' : '') + '</div>' +
       '<div id="d-msg"></div></div>';
   }
@@ -337,56 +504,73 @@
     if (!no) return;
     function busy(on){ if (ok) ok.disabled = on; no.disabled = on; }
     function decide(decision){
-      var note = document.getElementById('d-note').value.trim(), msg = document.getElementById('d-msg');
-      if (decision === 'reject' && !note){ msg.className = 'msg err'; msg.textContent = 'Say why, so the person who made the changes knows what to fix.'; document.getElementById('d-note').focus(); return; }
+      var note0 = document.getElementById('d-note').value.trim(), msg = document.getElementById('d-msg');
+      if (decision === 'reject' && !note0){ msg.className = 'msg err'; msg.textContent = 'Say why, so the person who made the changes knows what to fix.'; document.getElementById('d-note').focus(); return; }
       busy(true); msg.className = 'msg'; msg.textContent = decision === 'approve' ? 'Publishing version ' + data.request.toVersion + '…' : 'Recording…';
-      C.decideApproval(eventId, data.request.id, decision, note).then(function(out){
+      var first = !!data.request.firstPublish;
+      C.decideApproval(eventId, data.request.id, decision, note0).then(function(out){
         requestId = data.request.id;
         return load().then(function(){
-          var m = document.createElement('div');
-          m.className = 'msg ok'; m.style.margin = '14px 0 0';
-          m.innerHTML = decision === 'approve' ? 'Approved. Version ' + esc(out.publishedVersion) + ' is live at <a href="' + esc(out.publishedPath) + '" target="_blank" rel="noopener">' + esc(out.publishedUrl || out.publishedPath) + '</a>.' : 'Rejected. The live site is unchanged.';
-          var side = document.querySelector('.side'); if (side) side.insertBefore(m, side.firstChild);
+          /* good news in green; a rejection is said plainly (UX-116: it was green, and said "the live site is
+             unchanged" when nothing was live) */
+          if (decision === 'approve') note('ok', 'Approved. Version ' + esc(out.publishedVersion) + ' is live at <a href="' + esc(out.publishedPath) + '" target="_blank" rel="noopener">' + esc(out.publishedUrl || out.publishedPath) + '</a>.');
+          else note('plain', first ? 'Rejected. Nothing was published.' : 'Rejected. The live site is unchanged.');
         });
       }, function(err){
-        busy(false); msg.className = 'msg err'; msg.textContent = (err && err.message) || 'The decision could not be recorded.';
+        busy(false); msg.className = 'msg err'; msg.textContent = C.errText(err);
       });
     }
     if (ok) ok.addEventListener('click', function(){ decide('approve'); });
     no.addEventListener('click', function(){ decide('reject'); });
   }
 
-  /* ---------- who approves ---------- */
-  function settingsHtml(){
-    return '<details class="settings"><summary>Who approves</summary>' +
-      '<p class="hint">' + (data.approvers.length ? 'Approvers: ' + esc(data.approvers.join(', ')) + '.' : 'Any signed-in member of the team can approve.') +
-      (data.allowSelf ? ' A person may approve their own request.' : ' Nobody approves their own request.') + (data.required ? '' : ' Approval is switched off: Publish goes live at once.') + '</p>' +
-      '<label style="display:block">Approvers (e-mail addresses, separated by commas; empty = anyone on the team)<input type="text" id="s-approvers" value="' + esc(data.approvers.join(', ')) + '" style="margin-top:6px"></label>' +
-      '<label><input type="checkbox" id="s-self"' + (data.allowSelf ? ' checked' : '') + '> <span>A person may approve their own request</span></label>' +
-      '<label><input type="checkbox" id="s-required"' + (data.required ? ' checked' : '') + '> <span>Changes need approval before they go live</span></label>' +
-      '<div style="margin-top:10px"><button class="btn small" id="s-save">Save</button></div><div id="s-msg"></div></details>';
-  }
-  function wireSettings(){
-    var b = document.getElementById('s-save');
-    if (!b) return;
-    b.addEventListener('click', function(){
-      var msg = document.getElementById('s-msg');
-      b.disabled = true;
-      C.saveApprovalSettings({
-        approvers: document.getElementById('s-approvers').value, allowSelf: document.getElementById('s-self').checked, required: document.getElementById('s-required').checked
-      }).then(function(){ return load(); }, function(err){
-        b.disabled = false; msg.className = 'msg err'; msg.textContent = (err && err.message) || 'The settings could not be saved.';
-      });
+  /* ---------- a change, shown in the pages (UX-109) ----------
+     Both pages are on this host, so the section a change names can be found in each and scrolled to the middle of
+     its pane, outlined for two seconds. On a phone the page comes into view first. */
+  var syncBusy = false;
+  function wireJumps(){
+    Array.prototype.forEach.call(document.querySelectorAll('.chg[data-section]'), function(el){
+      function go(){ jumpTo(el); }
+      el.addEventListener('click', function(e){ if (e.target && e.target.closest && e.target.closest('a')) return; go(); });
+      el.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
     });
   }
+  function jumpTo(el){
+    var key = el.getAttribute('data-section'), sel = '[data-rv-section="' + key.replace(/["\\]/g, '\\$&') + '"]', hit = false;
+    var view = document.querySelector('.view');
+    if (narrow() && view && view.scrollIntoView) view.scrollIntoView({ block: 'start' });
+    syncBusy = true;
+    Array.prototype.forEach.call(document.querySelectorAll('.pane'), function(pane){
+      if (pane.hidden) return;
+      var f = pane.querySelector('iframe');
+      try {
+        var d = f && f.contentDocument, s = d && d.querySelector(sel);
+        if (!s || !s.getBoundingClientRect().height) return;
+        s.scrollIntoView({ block: 'center' });
+        var was = [s.style.outline, s.style.outlineOffset];
+        s.style.outline = '3px solid #ED1C24'; s.style.outlineOffset = '-3px';
+        setTimeout(function(){ s.style.outline = was[0]; s.style.outlineOffset = was[1]; }, 2000);
+        hit = true;
+      } catch (e) { /* a page that cannot be reached is not scrolled */ }
+    });
+    setTimeout(function(){ syncBusy = false; }, 300);
+    var miss = el.querySelector('.miss');
+    if (!hit && !miss){
+      miss = document.createElement('div'); miss.className = 'miss';
+      var t = el.getAttribute('data-type');
+      miss.textContent = t === 'removed' || t === 'record-removed' ? 'It is not on the new page: it was removed.' : t === 'hidden' ? 'It is hidden on this page, so it cannot be shown.' : 'It cannot be shown on the page in view.';
+      el.appendChild(miss);
+    } else if (hit && miss) miss.parentNode.removeChild(miss);
+  }
 
-  /* ---------- the two pages, at desktop width, scaled to fit ---------- */
-  var PAGE_W = 1280;
+  /* ---------- the pages: at desktop width shrunk to fit, or at the pane's own width full size ---------- */
+  var PAGE_W = 1280, widthMode = narrow() ? 'actual' : 'desktop';
   function fit(){
+    Array.prototype.forEach.call(document.querySelectorAll('[data-width]'), function(b){ b.classList.toggle('on', b.getAttribute('data-width') === widthMode); });
     Array.prototype.forEach.call(document.querySelectorAll('.pane .box'), function(box){
       var f = box.querySelector('iframe'); if (!f || !box.clientWidth) return;
-      var s = Math.min(1, box.clientWidth / PAGE_W);
-      f.style.width = (box.clientWidth / s) + 'px'; f.style.height = (box.clientHeight / s) + 'px'; f.style.transform = 'scale(' + s + ')';
+      var s = widthMode === 'actual' ? 1 : Math.min(1, box.clientWidth / PAGE_W);
+      f.style.width = (box.clientWidth / s) + 'px'; f.style.height = (box.clientHeight / s) + 'px'; f.style.transform = s === 1 ? 'none' : 'scale(' + s + ')';
     });
   }
   function wireView(){
@@ -400,22 +584,29 @@
         fit();
       });
     });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-width]'), function(btn){
+      btn.addEventListener('click', function(){ widthMode = btn.getAttribute('data-width'); fit(); });
+    });
     fit();
+    /* each pane says it is loading until its page has come */
+    Array.prototype.forEach.call(document.querySelectorAll('.pane iframe'), function(f){
+      f.addEventListener('load', function(){ var l = f.parentNode.querySelector('.box-load'); if (l) l.parentNode.removeChild(l); });
+    });
     /* both pages are on this host, so one can follow the other down the page — by how far down it is, not by
        pixels: the two versions are rarely the same height */
-    var a = document.getElementById('f-before'), b = document.getElementById('f-after'), busy = false;
+    var a = document.getElementById('f-before'), b = document.getElementById('f-after');
     if (!a || !b) return;
     function follow(from, to){
       try {
         var fw = from.contentWindow, tw = to.contentWindow;
         fw.addEventListener('scroll', function(){
           var sync = document.getElementById('sync');
-          if (busy || !sync || !sync.checked) return;
+          if (syncBusy || !sync || !sync.checked || from.closest('.pane').hidden || to.closest('.pane').hidden) return;
           var fd = fw.document.documentElement, td = tw.document.documentElement;
           var max = fd.scrollHeight - fw.innerHeight, tmax = td.scrollHeight - tw.innerHeight;
-          busy = true;
+          syncBusy = true;
           tw.scrollTo(0, max > 0 ? (fw.scrollY / max) * tmax : 0);
-          setTimeout(function(){ busy = false; }, 40);
+          setTimeout(function(){ syncBusy = false; }, 40);
         }, { passive: true });
       } catch (e) { /* a page that cannot be reached is simply not followed */ }
     }

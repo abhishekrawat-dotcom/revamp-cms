@@ -7400,10 +7400,12 @@
       title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Nothing of yours is waiting to be saved; Save keeps these updates apart from your own changes.';
     }
     else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Your changes are only in this browser. Save keeps them (the saved site still shows version ' + v + ').'; href = saved; }
+    /* live is said before a request: a request for a version that is already live is over, whatever it still says
+       (UX-108: the chip read "waiting for approval" for the live version) */
+    else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'Live'; href = '/e/' + eventId; title = 'What you see is the live site (version ' + v + '). Open it.'; }
     else if (pend && pend.toVersion === v) { kind = 'wait'; text = 'Waiting for approval'; href = reviewHref(pend.id); title = 'Version ' + v + ' was sent for approval' + (pend.requestedBy ? ' by ' + pend.requestedBy : '') + '. Open the review page.'; }
     /* saved again after sending: the request still holds the older version, and the newer save is not in it (UX-111) */
     else if (pend && pend.toVersion < v) { kind = 'wait'; text = 'v' + v + ' saved · v' + pend.toVersion + ' waiting'; href = reviewHref(pend.id); title = 'Version ' + v + ' is not in the request yet: Send for approval adds it. Version ' + pend.toVersion + ' is waiting for approval.'; }
-    else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'Live'; href = '/e/' + eventId; title = 'What you see is the live site (version ' + v + '). Open it.'; }
     else if (last && last.status === 'rejected' && last.toVersion === v) { kind = 'bad'; text = 'Changes rejected'; href = reviewHref(last.id); title = 'Rejected' + (last.decidedBy ? ' by ' + last.decidedBy : '') + (last.decisionNote ? ': “' + last.decisionNote + '”' : '') + '. Change what is asked, save and send it again.'; }
     else { text = 'Saved · not live yet'; href = saved; title = 'Version ' + v + ' is saved. Open the saved site; it goes live once it is published.'; }
     chip.className = 'site-state ' + kind;

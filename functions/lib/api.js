@@ -9415,7 +9415,9 @@ function contentMapFor(templateId) {
            shareLive: with shareView, when the event is already published: 'changed' (the saved site has changes
            the live one has not) or 'same' — the ribbon says so, and #rv-site-config says live with the live
            site's path, so its forms send a guest there instead of saying the site is not open,
-           pageBase: the address its internal-page links start from ('/s/<token>') } */
+           pageBase: the address its internal-page links start from ('/s/<token>'),
+           ribbonText: the team preview's ribbon in words that fit the page shown ("Preview — same as the live site"),
+           noRibbon: true for none (a review page's pane), noTools: true for no theme switcher and no "Edit with AI" } */
 function publishTransform(html, opts) {
   var tokens = tokenizeHtml(html);
   var out = tokens.map(function (t) { return html.slice(t.s, t.e); });
@@ -9623,7 +9625,9 @@ function publishTransform(html, opts) {
 
   /* ---- 5. preview ribbon ---- */
   var liveView = mode === 'preview' && opts.liveView === true;
-  var ribbon = mode === 'preview' && !liveView
+  /* opts.noRibbon: a review page's pane, whose own caption says which version it is and whether it is live (UX-110):
+     a ribbon over the page would only cover its foot */
+  var ribbon = mode === 'preview' && !liveView && opts.noRibbon !== true
     ? '<div data-rv-preview-ribbon style="position:fixed;left:0;right:0;bottom:0;z-index:2147483000;padding:7px 12px;background:#191b1f;color:#fff;font:600 12px/1.4 Inter,Arial,sans-serif;letter-spacing:.04em;text-align:center;pointer-events:none">' + shareRibbonText(opts) + '</div>'
     : '';
 
@@ -9639,8 +9643,9 @@ function publishTransform(html, opts) {
   if (ribbon) { if (bodyOpen !== -1) out[bodyOpen] = out[bodyOpen] + ribbon + '\n'; else tailText = ribbon + '\n' + tailText; }
   /* ---- 6. preview of an AI-designed site: its themes, to try on the page itself; and the way back into the
      editor, at the section in view. Neither is on a published page, nor in the editor's own live view. ---- */
-  /* a shareable preview link (opts.shareView) is a guest's page: none of the team's tools on it */
-  var editorTools = mode === 'preview' && !liveView && opts.shareView !== true;
+  /* a shareable preview link (opts.shareView) is a guest's page: none of the team's tools on it; nor a saved version
+     opened for review (opts.noTools): it is shown exactly as approving it would put it live (UX-109) */
+  var editorTools = mode === 'preview' && !liveView && opts.shareView !== true && opts.noTools !== true;
   var switcher = editorTools ? themeSwitcherHtml(opts.event, opts.eventId, opts.templateId) : '';
   if (switcher) tailText += switcher;
   if (editorTools && opts.editButton === true) tailText += '<script src="/templates/_shared/rv-preview-edit.js" data-rv-runtime></script>\n';
@@ -9668,7 +9673,8 @@ function publishTransform(html, opts) {
 /* The preview ribbon's words. A shareable link (opts.shareView) is seen by guests, and it often shows the
    coming changes of a site that is already live: it must not tell them the site is not open when it is. */
 function shareRibbonText(opts) {
-  if (opts.shareView !== true) return 'Preview — not published';
+  /* the team's own preview says what is true of the page it shows (handlePreviewPage previewRibbon, UX-110) */
+  if (opts.shareView !== true) return opts.ribbonText ? escHtmlText(opts.ribbonText) : 'Preview — not published';
   if (opts.shareLive === 'same') return 'Preview — this version is live';
   return opts.shareLive ? 'Preview — changes not live yet' : 'Preview — not live yet';
 }
@@ -9796,6 +9802,8 @@ function handleEventPublish(req, res) {
         });
       }
 
+      /* the request waiting for approval that this publish overtakes: its version, or an older one, goes live now */
+      var overtaken = data.approval && data.approval.id && (+data.approval.toVersion || 0) <= version ? String(data.approval.id) : '';
       return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
         var pageHtml = got[0], livePath = publishedObjectPath(eventId);
         /* the version already live going out again (its event's details changed) is not held: it is live as it is */
@@ -9815,6 +9823,9 @@ function handleEventPublish(req, res) {
           });
         });
       }).then(function () {
+        /* a request still waiting for this version or an older one is overtaken by this publish (approval was
+           switched off meanwhile): it is closed, so it can never put the older version back (UX-108) */
+        if (overtaken) changes.approval = fieldDelete();
         return commitSiteLock(fb, eventId, token, Object.assign(changes, {
           published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
           publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages
@@ -9825,7 +9836,9 @@ function handleEventPublish(req, res) {
           publishedPath: publicPathOf(eventId), publishedUrl: base + publicPathOf(eventId),
           publishedAt: now, publishedVersion: version
         });
-        logActivity(fb, eventId, decoded, 'published', 'version ' + version);
+        if (overtaken) closeSuperseded(fb, eventId, overtaken, actor, 'Version ' + version + ' was published directly (approval was switched off), so this request was closed.');
+        recordPublish(fb, eventId, version, actor, 'direct', data.published === true ? +data.publishedVersion || 0 : 0);
+        logActivity(fb, eventId, decoded, 'published', 'version ' + version, { version: version });
       }, function (err) {
         return Promise.all(undo.map(function (step) { return step(); }))
           .then(function () { forgetCachedPage(eventId); return releaseSiteLock(fb, eventId, token); })
@@ -10105,7 +10118,9 @@ function handleApprovalGet(req, res) {
       return Promise.all([wanted ? ref.collection('approvals').doc(wanted).get() : Promise.resolve(null), list]).then(function (x) {
         var snap = x[0];
         var request = snap && snap.exists ? approvalView(snap.id, snap.data()) : null;
-        var why = request ? whyNotApprover(cfg, actorOf(decoded), request.requestedBy) : '';
+        /* a request a newer live version has overtaken is said so, and cannot be decided (staleRequestWhy) */
+        var stale = staleRequestWhy(request, data);
+        var why = request ? (stale || whyNotApprover(cfg, actorOf(decoded), request.requestedBy)) : '';
         /* a request whose version's logo unit still carries its notice cannot be approved (publishVersion's logoGate):
            said before the approver tries, so they can reject it with the reason */
         var pendingNew = request && request.status === 'pending' && !(data.published === true && +data.publishedVersion === request.toVersion);
@@ -10116,7 +10131,19 @@ function handleApprovalGet(req, res) {
            (siteCheckOf): listed for the approver before they decide, and what blocks it keeps Approve away, as the
            logo unit's notice does. The site editor reads this view on every open, and does not wait for it. */
         var wantChecks = qs.get('checks') === '1';
-        return page.then(function (html) {
+        /* the version live before the one live now, when it is still kept: an approver may put it back (UX-107) */
+        var previous = data.published === true ? liveVersionsOf(fb, eventId).then(function (list) {
+          var p = previousLiveOf(list, +data.publishedVersion || 0);
+          if (!p) return null;
+          return fb.bucket.file(versionPath(eventId, p.version)).exists().then(function (e) { return e && e[0] ? p : null; });
+        }).then(null, function (err) {
+          console.error('api: the versions live before on ' + eventId + ' could not be read — ' + (err && err.message));
+          return null;
+        }) : Promise.resolve(null);
+        return Promise.all([page, previous]).then(function (pp) {
+          previous = pp[1];
+          return pp[0];
+        }).then(function (html) {
           return html == null || !wantChecks ? { html: html, check: null } : livePageOf(fb, eventId, data).then(function (livePage) {
             return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage });
           }).then(function (check) {
@@ -10145,6 +10172,10 @@ function handleApprovalGet(req, res) {
           whyNot: why || (logoNote ? logoNoteError(logoNote, 'approver').message : checkErr ? checkErr.message : ''),
           checks: check ? check.items : null,
           approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required,
+          /* the version that was live before this one ({ version, at }), still kept, or null; and whether the person
+             asking may put it back or take the site offline (approvers only, lib/access.js notAnApprover) */
+          previousLive: previous, mayTakeDown: !require('./access').notAnApprover(cfg.approvers, actorOf(decoded)),
+          stale: !!stale,
           /* with each decision's reason: the editor and the console tell the person who asked what was decided and why,
              on their next visit (UX-103) */
           requests: x[1].docs.map(function (d) { var v = d.data(); return { id: d.id, status: v.status, requestedBy: v.requestedBy, requestedAt: v.requestedAt, toVersion: v.toVersion, summary: v.summary, decidedBy: v.decidedBy || '', decidedAt: v.decidedAt || null, decisionNote: v.decisionNote || '' }; }),
@@ -10161,6 +10192,63 @@ function handleApprovalGet(req, res) {
 function publishedPagesOf(html) {
   var list = sitePages.readPages(html, TOKEN_KIT).map(function (p) { return { slug: p.slug, title: p.title }; });
   return list.length ? list : fieldDelete();
+}
+
+/* ---------- which versions have been live, and requests that a newer live version has overtaken ----------
+   Every time a version goes live it is noted in events/<id>/publishes ({ version, at, by, how: 'approved' | 'direct' |
+   'restored', replaced }) — a collection of its own, so a copy of the event (api-events.js clones an allow-list of
+   collections) never inherits another event's history. It is what lets an approver put the previous version back
+   (POST /api/event/restore-version, UX-107). Noting it never fails the publish. */
+function recordPublish(fb, eventId, version, actor, how, replaced) {
+  try {
+    return eventDocRef(fb, eventId).collection('publishes').add({ version: +version, at: new Date().toISOString(), by: actor, how: how, replaced: +replaced || 0 })
+      .then(null, function (err) { console.error('api: could not note that ' + eventId + ' v' + version + ' went live — ' + (err && err.message)); });
+  } catch (err) { console.error('api: could not note that ' + eventId + ' v' + version + ' went live — ' + (err && err.message)); return Promise.resolve(); }
+}
+/* The versions that have been live, newest first: [{ version, at }]. From the publishes noted above and, for what went
+   live before they were noted, the approved requests (each one's version went live when it was decided, and its
+   fromVersion was live until then). requests: [{ status, toVersion, fromVersion, decidedAt, requestedAt }]. */
+function liveVersionsFrom(publishes, requests) {
+  var list = [];
+  (publishes || []).forEach(function (p) { if (+p.version > 0 && p.at) list.push({ version: +p.version, at: String(p.at) }); });
+  (requests || []).forEach(function (r) {
+    if (!r || r.status !== 'approved' || !r.decidedAt) return;
+    if (+r.toVersion > 0) list.push({ version: +r.toVersion, at: String(r.decidedAt) });
+    /* live just before this one went live: placed a moment before its decision */
+    if (+r.fromVersion > 0) list.push({ version: +r.fromVersion, at: String(r.requestedAt || r.decidedAt), before: true });
+  });
+  list.sort(function (a, b) { return a.at < b.at ? 1 : a.at > b.at ? -1 : (a.before ? 1 : 0) - (b.before ? 1 : 0); });
+  return list.map(function (x) { return { version: x.version, at: x.at }; });
+}
+/* the version that was live before the one live now -> { version, at } | null (at: when it went live) */
+function previousLiveOf(list, liveVersion) {
+  var i = 0;
+  while (i < list.length && list[i].version === liveVersion) i++;
+  if (i === 0) return null;          // the live version is not in the record: nothing to say which came before it
+  return i < list.length ? list[i] : null;
+}
+function liveVersionsOf(fb, eventId) {
+  var ref = eventDocRef(fb, eventId);
+  return Promise.all([
+    ref.collection('publishes').orderBy('at', 'desc').limit(40).get().then(function (snap) { return snap.docs.map(function (d) { return d.data(); }); }),
+    ref.collection('approvals').orderBy('requestedAt', 'desc').limit(40).get().then(function (snap) { return snap.docs.map(function (d) { return d.data(); }); })
+  ]).then(function (r) { return liveVersionsFrom(r[0], r[1]); });
+}
+/* A request still waiting whose version (or a newer one) is already live can no longer be decided: approving it
+   would put that version live again over a newer one (UX-108: approving an old request put v9 live over v10).
+   -> '' when it may still be decided, else why not */
+function staleRequestWhy(request, data) {
+  if (!request || request.status !== 'pending' || data.published !== true) return '';
+  var live = +data.publishedVersion || 0, v = +request.toVersion || 0;
+  if (!live || live < v) return '';
+  return live === v ? 'Version ' + v + ' is already live, so there is nothing left to approve in this request.'
+    : 'Version ' + live + ' is live now, which is newer than this request (version ' + v + '): approving it would put an older version back. Send the site for approval again if it still needs to go live.';
+}
+/* closes such a request: status 'superseded', with who and why; never the reason the caller fails */
+function closeSuperseded(fb, eventId, id, actor, why) {
+  if (!id) return Promise.resolve();
+  return eventDocRef(fb, eventId).collection('approvals').doc(id).update({ status: 'superseded', decidedBy: actor, decidedAt: new Date().toISOString(), decisionNote: why })
+    .then(null, function (err) { console.error('api: could not close the overtaken request ' + id + ' of ' + eventId + ' — ' + (err && err.message)); });
 }
 
 /* Makes one kept version the live page. The caller has decided that it may. */
@@ -10222,9 +10310,17 @@ function handleApprovalDecide(req, res) {
       var snap = r[1], cfg = r[2];
       if (!snap.exists) throw httpError(404, 'That request does not exist.', { code: 'request-not-found' });
       var request = snap.data();
+      if (request.status === 'superseded') throw httpError(409, 'A newer version went live after this request was sent, so it was closed. Send the site for approval again if it still needs to go live.', { code: 'request-closed' });
       if (request.status !== 'pending') throw httpError(409, 'This request was already ' + request.status + (request.decidedBy ? ' by ' + request.decidedBy : '') + '.', { code: 'request-closed' });
       var why = whyNotApprover(cfg, actor, request.requestedBy);
       if (why) throw httpError(403, why, { code: 'not-an-approver' });
+      /* a newer version (or this one) is live already: closed as overtaken, never put live over it */
+      var stale = staleRequestWhy(request, r[0]);
+      if (stale) {
+        return closeSuperseded(fb, eventId, id, actor, stale).then(function () {
+          return (r[0].approval && r[0].approval.id === id ? ref.update({ approval: fieldDelete() }) : Promise.resolve()).then(null, function () {});
+        }).then(function () { throw httpError(409, stale, { code: 'request-stale' }); });
+      }
       var closed = { decidedBy: actor, decidedAt: now, decisionNote: note };
       if (decision === 'reject') {
         return reqRef.update(Object.assign({ status: 'rejected' }, closed))
@@ -10238,6 +10334,7 @@ function handleApprovalDecide(req, res) {
         approval: fieldDelete(), lastApproval: { id: id, by: actor, at: now, requestedBy: request.requestedBy, version: request.toVersion }
       }, { logoGate: true }).then(function (out) {
         return reqRef.update(Object.assign({ status: 'approved' }, closed)).then(function () {
+          recordPublish(fb, eventId, request.toVersion, actor, 'approved', r[0].published === true ? +r[0].publishedVersion || 0 : 0);
           logActivity(fb, eventId, decoded, 'approved', 'version ' + request.toVersion + ' — ' + (request.summary || '') + (note ? ' — “' + note + '”' : ''), { approvalId: id, version: request.toVersion, requestedBy: request.requestedBy });
           logActivity(fb, eventId, decoded, 'published', 'version ' + request.toVersion + ', requested by ' + request.requestedBy + ', approved by ' + actor, { approvalId: id, version: request.toVersion });
           sendJson(res, 200, Object.assign({ id: id, status: 'approved' }, out));
@@ -10247,10 +10344,29 @@ function handleApprovalDecide(req, res) {
   });
 }
 
+/* ---------- the approval rule (config/approvals), for every event ----------
+   GET  /api/settings/approvals -> { approvers, allowSelf, required, me, canEdit, whyNot, history: [{ at, by, before,
+        after }] } — its one place is Settings › Publishing approvals (settings.html); the review page only shows it
+   PUT  /api/settings/approvals { approvers, allowSelf, required } -> { approvers, allowSelf, required }
+   Who may change it (UX-108: any member could turn approval off for every event, unasked and unrecorded):
+     - once approvers are named, only they;
+     - while none are named everyone approves, so anyone may name the first approvers — but approval cannot be
+       switched off, nor people let approve their own changes, until somebody is named who answers for it. There is
+       no platform-admin role in this product to hand that to instead.
+   Every change is recorded with what it was before and after (config/approvals/log), and the page shows it. */
+function approvalSettingsWhyNot(cfg, email) {
+  return require('./access').notAnApprover(cfg.approvers, email, 'change these settings');
+}
+var APPROVALS_LOG = function (fb) { return fb.db.collection('config').doc('approvals').collection('log'); };
 function handleApprovalSettingsGet(req, res) {
-  withAdmin(req, res, function (fb) {
-    approvalsConfig(fb).then(function (cfg) { sendJson(res, 200, cfg); })
-      .catch(function (err) { sendFailure(res, 'approval settings', err, 'The settings could not be loaded.'); });
+  withAdmin(req, res, function (fb, decoded) {
+    var me = actorOf(decoded).toLowerCase();
+    Promise.all([approvalsConfig(fb), APPROVALS_LOG(fb).orderBy('at', 'desc').limit(10).get().then(function (snap) {
+      return snap.docs.map(function (d) { var v = d.data() || {}; return { at: v.at || null, by: v.by || '', before: v.before || null, after: v.after || null }; });
+    }, function (err) { console.error('api: the approval settings log could not be read — ' + (err && err.message)); return []; })]).then(function (r) {
+      var cfg = r[0], why = approvalSettingsWhyNot(cfg, me);
+      sendJson(res, 200, Object.assign({}, cfg, { me: me, canEdit: !why, whyNot: why, history: r[1] }));
+    }).catch(function (err) { sendFailure(res, 'approval settings', err, 'The settings could not be loaded.'); });
   });
 }
 function handleApprovalSettingsPut(req, res) {
@@ -10259,18 +10375,29 @@ function handleApprovalSettingsPut(req, res) {
     list = list.map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(Boolean);
     var bad = list.filter(function (e) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); })[0];
     if (bad) return sendJson(res, 400, { error: '"' + bad + '" is not an e-mail address.', field: 'approvers' });
+    var actor = actorOf(decoded).toLowerCase();
+    var doc = { approvers: list.filter(function (e, i) { return list.indexOf(e) === i; }).slice(0, 50), allowSelf: body.allowSelf === true, required: body.required !== false,
+      updatedAt: new Date().toISOString(), updatedBy: actor };
     approvalsConfig(fb).then(function (cfg) {
       /* once approvers are named, only they change who approves — else anyone could add themselves */
-      if (cfg.approvers.length && cfg.approvers.indexOf(actorOf(decoded).toLowerCase()) === -1) {
-        return sendJson(res, 403, { error: 'Only an approver (' + cfg.approvers.join(', ') + ') can change these settings.', code: 'not-an-approver' });
+      var why = approvalSettingsWhyNot(cfg, actor);
+      if (why) throw httpError(403, why, { code: 'not-an-approver' });
+      /* with nobody named, nobody answers for switching approval off or for self-approval */
+      if (!doc.approvers.length && (!doc.required || doc.allowSelf)) {
+        throw httpError(400, 'Name at least one approver first. While anyone on the team can approve, approval cannot be switched off and nobody may approve their own changes.', { code: 'approvers-needed', field: 'approvers' });
       }
-      return write();
+      var before = { approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required };
+      var after = { approvers: doc.approvers, allowSelf: doc.allowSelf, required: doc.required };
+      var same = JSON.stringify(before) === JSON.stringify(after);
+      return fb.db.collection('config').doc('approvals').set(doc).then(function () {
+        sendJson(res, 200, after);
+        if (same) return;
+        console.log('api: approval settings changed by ' + actor + ' — ' + JSON.stringify(before) + ' -> ' + JSON.stringify(after));
+        return APPROVALS_LOG(fb).add({ at: doc.updatedAt, by: actor, before: before, after: after }).then(null, function (err) {
+          console.error('api: the approval settings change could not be recorded — ' + (err && err.message));
+        });
+      });
     }).catch(function (err) { sendFailure(res, 'approval settings', err, 'The settings could not be saved.'); });
-    function write() {
-    var doc = { approvers: list.filter(function (e, i) { return list.indexOf(e) === i; }).slice(0, 50), allowSelf: body.allowSelf === true, required: body.required !== false,
-      updatedAt: new Date().toISOString(), updatedBy: actorOf(decoded) };
-    return fb.db.collection('config').doc('approvals').set(doc).then(function () { sendJson(res, 200, { approvers: doc.approvers, allowSelf: doc.allowSelf, required: doc.required }); });
-    }
   });
 }
 
@@ -11126,6 +11253,42 @@ function handleEventUnpublish(req, res) {
   });
 }
 
+/* ---------- POST /api/event/restore-version ----------
+   Body { eventId, version } -> 200 { restoredVersion, replacedVersion, publishedPath, publishedUrl, publishedAt,
+   publishedVersion }. Puts a version that was live before back live, at once, in place of the live one (UX-107: a
+   wrong approval could only be undone by editing forward and waiting for a second approval). Approvers only, like
+   taking a site offline (owner decision #4, lib/access.js notAnApprover); the version must have been live before
+   (liveVersionsOf) and still be kept. It is not put through the site check again: it was approved and live once, and
+   the point is to undo the version that replaced it. The saved site is left as it is, so the newer saves show as
+   "not live yet" and can be sent for approval again. */
+function handleRestoreVersion(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
+    var eventId = eventIdOr400(res, body.eventId);
+    if (!eventId) return;
+    var version = parseInt(body.version, 10), actor = actorOf(decoded), replaced = 0;
+    if (!(version > 0)) return sendJson(res, 400, { error: 'Say which version to put back.', field: 'version' });
+    approvalsConfig(fb).then(function (cfg) {
+      var why = require('./access').notAnApprover(cfg.approvers, actor, 'put an earlier version of a live site back');
+      if (why) throw httpError(403, why, { code: 'not-an-approver' });
+      return loadLiveEvent(fb, eventId);
+    }).then(function (data) {
+      if (data.published !== true) throw httpError(409, 'The site is not live, so there is no live version to replace. Publish it instead.', { code: 'not-live' });
+      replaced = +data.publishedVersion || 0;
+      if (version === replaced) throw httpError(409, 'Version ' + version + ' is already the live version.', { code: 'already-live' });
+      return liveVersionsOf(fb, eventId).then(function (list) {
+        if (!list.some(function (x) { return x.version === version; })) {
+          throw httpError(409, 'Version ' + version + ' has never been live, so it cannot be put back. Send it for approval instead.', { code: 'never-live' });
+        }
+        return publishVersion(fb, req, eventId, version, actor, body.origin, null, null);
+      });
+    }).then(function (out) {
+      recordPublish(fb, eventId, version, actor, 'restored', replaced);
+      logActivity(fb, eventId, decoded, 'published', 'version ' + version + ' put back in place of version ' + replaced, { version: version });
+      sendJson(res, 200, Object.assign({ restoredVersion: version, replacedVersion: replaced }, out));
+    }).catch(function (err) { sendFailure(res, 'restore version', err, 'The earlier version could not be put back. The live site is unchanged. Please try again.'); });
+  });
+}
+
 /* ---------- POST /api/event/stage — only for editors still running the previous script ----------
    The previous Preview button sends the page it has in hand and opens whatever `stagingUrl` comes back.
    It used to be written to a PUBLIC Storage object, so an unreleased site could be read by anyone who
@@ -11415,7 +11578,7 @@ function themeSwitcherHtml(event, eventId, templateId) {
 
 /* ?draft=1 — the page as this person last previewed it from the editor, or the site as last saved when that is
    newer or they have never pressed Preview (the console's and the listing's Preview open this same address).
-   -> Promise<html | null> */
+   -> Promise<{ html | null, from: 'draft' | 'saved' | 'staging' }> — from says which, for the ribbon's words */
 function ownDraftOrSaved(fb, eventId, user) {
   function updated(path) {
     return fb.bucket.file(path).getMetadata().then(function (r) { return Date.parse(r[0] && r[0].updated) || 0; }, function (err) {
@@ -11424,11 +11587,33 @@ function ownDraftOrSaved(fb, eventId, user) {
     });
   }
   var draft = draftObjectPath(eventId, user), saved = sitePath(eventId, 'page.html'), staging = stagingObjectPath(eventId);
+  function from(path, kind) { return readObject(fb, path).then(function (html) { return { html: html, from: kind }; }); }
   return Promise.all([updated(draft), updated(saved)]).then(function (t) {
-    if (t[0] >= 0 && t[0] >= t[1]) return readObject(fb, draft);
-    if (t[1] >= 0) return readObject(fb, saved);
-    return readObject(fb, staging);
+    if (t[0] >= 0 && t[0] >= t[1]) return from(draft, 'draft');
+    if (t[1] >= 0) return from(saved, 'saved');
+    return from(staging, 'staging');
   });
+}
+
+/* The team preview's ribbon, in words that are true of the page it shows (UX-110: a live, unchanged site said
+   "not published", and so did the version an approver had just put live). wantVersion: ?version=N; from: which
+   page ?draft=1 found (ownDraftOrSaved), '' for the saved site; data: the event. */
+function previewRibbon(data, wantVersion, from) {
+  var live = data.published === true ? (+data.publishedVersion || 0) : 0;
+  if (wantVersion) return 'Version ' + wantVersion + (live === wantVersion ? ' — this version is live' : live ? ' — not the live version' : ' — not published');
+  if (!live) return 'Preview — not published';
+  /* the person's own unsaved preview may differ from anything saved: never called the live site */
+  if (from !== 'draft' && live === siteVersionOf(data)) return 'Preview — same as the live site';
+  return 'Preview — changes not live yet';
+}
+
+/* "Nothing to preview yet" with the way on: the site editor, where the site is made and saved (UX-065: the page
+   had no button, and many real drafts land on it) */
+function nothingToPreviewPage(data, eventId) {
+  var tpl = (data && data.site && data.site.templateId) || (data && data.templateId) || '';
+  var href = '/custom_editor.html?event=' + encodeURIComponent(eventId) + (tpl ? '&template=' + encodeURIComponent(tpl) : '');
+  return messagePage('Nothing to preview yet', 'This event’s site has not been saved yet. Design it in the site editor and save it, then preview it.',
+    { href: href, label: 'Open the site editor' });
 }
 
 function handlePreviewPage(req, res, eventId, slug) {
@@ -11454,25 +11639,31 @@ function handlePreviewPage(req, res, eventId, slug) {
       }
       var data = snap.data();
       if (!staged && !ownDraft && !siteVersionOf(data)) {
-        return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
+        return sendHtml(req, res, 404, nothingToPreviewPage(data, eventId), 'no-store');
       }
+      function page(t, kind) { return { html: t, from: kind || '' }; }
       var source = ownDraft ? ownDraftOrSaved(fb, eventId, user) : wantVersion
-        ? readObject(fb, versionPath(eventId, wantVersion)).then(function (t) { return t == null && wantVersion === siteVersionOf(data) ? readObject(fb, sitePath(eventId, 'page.html')) : t; })
-        : readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html'));
+        ? readObject(fb, versionPath(eventId, wantVersion)).then(function (t) { return t == null && wantVersion === siteVersionOf(data) ? readObject(fb, sitePath(eventId, 'page.html')) : t; }).then(page)
+        : readObject(fb, staged ? stagingObjectPath(eventId) : sitePath(eventId, 'page.html')).then(function (t) { return page(t, staged ? 'staging' : 'saved'); });
       var formsRead = publicFormsFor(fb, eventId, data);         // alongside the page (never rejects)
-      return source.then(function (html) {
+      /* ?frame=1: the review page's panes (review.html), whose captions say what each one is */
+      var framed = queryOf(req).get('frame') === '1';
+      return source.then(function (got0) {
+        var html = got0.html;
         if (html == null && wantVersion) {
           return sendHtml(req, res, 404, messagePage('That version is not stored', 'Version ' + wantVersion + ' of this site was saved before versions were kept, or does not exist.'), 'no-store');
         }
         if (html == null) {
-          return sendHtml(req, res, 404, messagePage('Nothing to preview yet', 'This event’s site has not been saved. Open it in the site editor first.'), 'no-store');
+          return sendHtml(req, res, 404, nothingToPreviewPage(data, eventId), 'no-store');
         }
-        /* "Edit with AI" back into the editor — not on a saved version opened for review (?version=N) */
+        /* "Edit with AI" back into the editor and the theme switcher — not on a saved version opened for review
+           (?version=N): it is shown as approving it would put it live (UX-109) */
         return Promise.all([formsRead, pictures.prepare(fb, html)]).then(function (got) {
           var formsPayload = got[0];
           return withHeroVideo(fb, publishTransform(html, {
             eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload, pictures: got[1],
-            templateId: (data.site && data.site.templateId) || data.templateId
+            templateId: (data.site && data.site.templateId) || data.templateId,
+            noTools: !!wantVersion, noRibbon: framed, ribbonText: previewRibbon(data, wantVersion, got0.from)
           }), data);
         }).then(function (page) {
           /* /preview/<id>/<slug>: one of the site's internal pages (site-pages.js) */
@@ -11911,6 +12102,7 @@ var ROUTES = {
   'GET /api/settings/approvals': handleApprovalSettingsGet,
   'PUT /api/settings/approvals': handleApprovalSettingsPut,
   'POST /api/event/unpublish': handleEventUnpublish,
+  'POST /api/event/restore-version': handleRestoreVersion,
   'POST /api/event/stage': handleEventStage,
   'POST /api/event/live-view': handleEventLiveView,
   /* shareable preview links (lib/share-preview.js): make, list, stop */

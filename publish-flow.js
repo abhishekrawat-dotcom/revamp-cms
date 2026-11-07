@@ -112,7 +112,7 @@
       return { to: '', names: [], alone: false, line: a.allowSelf ? 'Anyone on the team can approve it.' : 'Anyone on the team other than you can approve it.' };
     }
     if (!others.length) {
-      return { to: '', names: [], alone: true, line: 'You are the only approver, and nobody approves their own changes: another approver has to be added (review page › Who approves).' };
+      return { to: '', names: [], alone: true, line: 'You are the only approver, and nobody approves their own changes: another approver has to be added (Settings › Publishing approvals).' };
     }
     return { to: others.join(', '), names: others, alone: false, line: 'Send the link to ' + listWords(others) + (others.length > 1 ? ': any of them can approve it.' : ': they approve changes.') };
   }

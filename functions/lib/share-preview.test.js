@@ -442,7 +442,8 @@ var MP = 'qa-share-multi';           // a site with an internal page
     !('live' in unpubCfg) && !('livePath' in unpubCfg), ribbonOf(unpubPage.text) + ' ' + JSON.stringify(unpubCfg).slice(0, 200));
   var lvPrev = await call('GET', '/preview/qa-share-live', { token: 'editor' });
   var lvPrevCfg = siteConfigOf(lvPrev.text) || {};
-  check('6b contrast: /preview/ of a live event keeps its own ribbon and config (no shared, no live)', lvPrev.status === 200 && ribbonOf(lvPrev.text) === 'Preview — not published' &&
+  /* the team's ribbon says what is true too (UX-110): a live site with newer saves is not "not published" */
+  check('6b contrast: /preview/ of a live event keeps its own ribbon and config (no shared, no live)', lvPrev.status === 200 && ribbonOf(lvPrev.text) === 'Preview — changes not live yet' &&
     !('live' in lvPrevCfg) && !('shared' in lvPrevCfg), ribbonOf(lvPrev.text));
   check('6b liveStateOf: not published -> "", same version -> same, newer save -> changed, no publishedVersion -> changed',
     SP._test.liveStateOf({ site: { version: 3 } }) === '' && SP._test.liveStateOf({ published: 'yes', publishedVersion: 3, site: { version: 3 } }) === '' &&
@@ -465,7 +466,7 @@ var MP = 'qa-share-multi';           // a site with an internal page
   function normalise(t, id, token) {
     return String(t)
       .replace(/Preview — not published/g, 'Preview — not live yet')
-      .replace(/Preview — (changes not live yet|this version is live)/g, 'Preview — not live yet')
+      .replace(/Preview — (changes not live yet|this version is live|same as the live site)/g, 'Preview — not live yet')
       .replace(/<script[^>]*rv-theme\.js[^>]*><\/script>\n?/g, '')
       .replace(/<script type="application\/json" id="rv-themes"[^>]*>[^<]*<\/script>\n?/g, '')
       .replace(/<script[^>]*rv-theme-switcher\.js[^>]*><\/script>\n?/g, '')

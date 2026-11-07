@@ -1018,6 +1018,8 @@
          facts Set portal's window needs are kept beside them (published is kept further down) */
       portal: typeof ev.portal === 'string' ? ev.portal : '', portalName: typeof ev.portalName === 'string' ? ev.portalName : '',
       hasGeneratedSite: ev.hasGeneratedSite === true,
+      /* the site has been saved at least once: only then is there a page to preview (UX-065) */
+      siteSaved: !!(ev.site && +ev.site.version > 0),
       status: window.RevampLifecycle.of(ev, Date.now()),
       start: ev.start || null, end: ev.end || null,
       registrations: Number(counters.registrations) || 0, visitors: Number(counters.views) || 0,
@@ -2381,13 +2383,18 @@
         (lock ? ' aria-disabled="true" title="' + esc(whoMayRemove()) + '"' : '') + '>' + it[1] + ' ' + it[2] + (lock ? '<span class="item-note">Approvers only</span>' : '') + '</button>';
     }).join('');
     var quickIcons = '';
+    /* Preview only for a site that has been saved: with none there is no page to show (the preview tab said "Nothing
+       to preview yet" with no way on, and many drafts are like that, UX-065), so the eye gives way to "Design the
+       site", which opens the site editor */
+    var previewIcon = e.siteSaved ? quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view')
+      : quickActionIcon('design', svg('<path d="M3 21l3.5-1 11-11-2.5-2.5-11 11z"/><path d="M14 6l2.5 2.5"/><path d="M17 3l4 4"/>', 14), 'Design the site', e.id, 'qa-view');
     if (e.status === 'draft'){
       /* a draft is previewed like any other event: its last editor preview, or its saved site */
       quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
-        quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view');
+        previewIcon;
     } else if (e.status !== 'deleted'){
       quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
-        quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view') +
+        previewIcon +
         quickActionIcon('reports', IC.chart, 'Report', e.id, 'qa-report');
     }
     return '<div class="row-action-group">' + quickIcons +
@@ -2804,6 +2811,9 @@
       case 'view':
         /* the same page the Design editor's Preview opens (and the event console's Preview) */
         window.open('/preview/' + encodeURIComponent(e.id) + '?draft=1', '_blank'); break;
+      case 'design':
+        /* no saved site yet: the site editor, on the event's own template (as the console's "Open the site editor") */
+        window.location.href = '/custom_editor.html?event=' + encodeURIComponent(e.id) + (e.templateId ? '&template=' + encodeURIComponent(e.templateId) : ''); break;
       case 'reports':
         window.location.href = 'audience-registrations.html?event=' + id; break;
       case 'duplicate':

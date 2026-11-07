@@ -5871,9 +5871,16 @@
       if (!APPROVAL && !APPROVAL_FAILED) notes.push('Checking who can take the site offline…');
       else if (may) acts.push('<button class="btn btn-danger" type="button" id="vis-offline">Take the site offline…</button>');
       else notes.push('Only an approver can take the site offline' + (APPROVAL && APPROVAL.approvers && APPROVAL.approvers.length ? ' (' + APPROVAL.approvers.join(', ') + ')' : '') + '.');
+      /* and the version live before this one, put back at once, for approvers too (UX-107): known from the same
+         reading (fetchApproval's previousLive, a version still kept); the button goes before "Take the site offline…" */
+      var prev = APPROVAL && APPROVAL.previousLive;
+      if (prev && prev.version){
+        if (may) acts.splice(acts.length - 1, 0, '<button class="btn btn-secondary" type="button" id="vis-restore">Put version ' + esc(prev.version) + ' back…</button>');
+        notes.push('Version ' + (st.liveVersion || '') + ' is live. Version ' + prev.version + ' was live before it' + (may ? '.' : '; only an approver can put it back.'));
+      }
     }
 
-    return vhead('Visibility', 'Whether the site is live, and the way to publish it or take it offline.') +
+    return vhead('Visibility', 'Whether the site is live, and the way to publish it, put an earlier version back or take it offline.') +
       '<div class="panel"><div class="panel-body">' +
         '<div class="vis-state">' +
           '<span class="vis-ico vis-ico-' + (st.live ? 'live' : 'off') + '">' + svg(st.live ? IC.globe : IC.lock, 22) + '</span>' +
@@ -5904,6 +5911,48 @@
     if (pub) pub.onclick = doPublish;
     var off = $('vis-offline');
     if (off) off.onclick = takeOffline;
+    var back = $('vis-restore');
+    if (back) back.onclick = restorePrevious;
+  }
+
+  /* POST /api/event/restore-version (UX-107), after a question that names the address and both versions. The server
+     refuses anybody who is not an approver, and a version that was never live; the dialog then says so. */
+  function restorePrevious(){
+    var p = APPROVAL && APPROVAL.previousLive;
+    if (!p || !p.version) return;
+    var lv = +EV.publishedVersion || 0, url = C.publicUrl(EV);
+    var m = openModal(
+      '<div class="modal-head"><h3>Put version ' + esc(p.version) + ' back live?</h3></div>' +
+      '<div class="modal-body"><div class="confirm-msg">' +
+        '<p><b>' + esc(url) + '</b> will show version ' + esc(p.version) + ' again, to everyone, at once, in place of version ' + lv + '.</p>' +
+        '<p>Version ' + lv + ' stays saved: it can be changed and sent for approval again.</p>' +
+      '</div></div>' +
+      '<div class="modal-foot">' +
+        '<span class="modal-err" id="rs-err" role="alert"></span>' +
+        '<button class="btn btn-secondary" type="button" id="rs-keep">Keep version ' + lv + ' live</button>' +
+        '<button class="btn btn-danger" type="button" id="rs-go">Put version ' + esc(p.version) + ' back</button>' +
+      '</div>',
+      /* focus starts on the safe answer, so a stray Enter never changes the live site */
+      { style: 'width:min(480px,100%)', initialFocus: '#rs-keep' });
+    $('rs-keep').onclick = m.close;
+    $('rs-go').onclick = function(){
+      $('rs-err').textContent = '';
+      m.busy(true, $('rs-go'), 'Putting it back…');
+      C.restoreVersion(EV.id, p.version).then(function(out){
+        m.close();
+        EV.published = true; EV.publishedVersion = out.publishedVersion; EV.publishedAt = out.publishedAt;
+        EV.publishedPath = out.publishedPath || EV.publishedPath;
+        if (APPROVAL) APPROVAL.previousLive = null;
+        paintHeader();
+        render();
+        notify('Version ' + out.restoredVersion + ' is live again at ' + url + '. Version ' + out.replacedVersion + ' is still saved.');
+        refreshState();
+      }, function(err){
+        console.error('Restore failed:', err);
+        m.busy(false, $('rs-go'));
+        $('rs-err').textContent = 'Version ' + lv + ' is still live. ' + errText(err);
+      });
+    };
   }
 
   /* POST /api/event/unpublish, after a question that names the address. The server refuses anybody who is not
@@ -6255,9 +6304,12 @@
   /* The site itself, as the Design editor's Preview shows it: /preview/<id>?draft=1 — this person's last preview
      from the editor, or the site as last saved when that is newer (functions/lib/api.js ownDraftOrSaved). */
   function openPreview(){
+    /* a site never saved has nothing to preview: the button is "Design the site" and opens the editor (UX-065) */
+    if (!siteSaved()) { location.href = editorUrl(); return; }
     var url = C.previewUrl(EV.id);
     if (url) window.open(url + '?draft=1', '_blank');   // a new tab every time, never this one
   }
+  function siteSaved(){ return !!(EV && EV.site && +EV.site.version > 0); }
 
   /* Publishes the site as it was last saved in the site editor, through the one Publish the editor uses too
      (publish-flow.js, UX-105): it says first when there is nothing new, when a request is already waiting, or when the
@@ -6295,6 +6347,15 @@
      (or "Publish…" with approval switched off). Read from the event and fetchApproval's answer; until that has come
      only the event is known. */
   function paintPublishButton(){
+    /* the header's other site button: Preview says what it does too. With no saved site there is no page to show, so
+       it is "Design the site" and leads to the site editor, never to a tab saying "Nothing to preview yet" (UX-065) */
+    var pv = $('btn-preview'), pvSaved = !!(EV && EV.site && +EV.site.version > 0);
+    if (pv && EV && pv.querySelector){
+      var pvLabel = pv.querySelector('span'), pvIcon = pv.querySelector('svg');
+      if (pvLabel) pvLabel.textContent = pvSaved ? 'Preview' : 'Design the site';
+      if (pvIcon) pvIcon.style.display = pvSaved ? '' : 'none';
+      pv.title = pvSaved ? 'Open the site in a new tab, as it was last saved or previewed' : 'The site has not been saved yet: design it in the site editor first';
+    }
     var F = window.RevampPublishFlow, btn = $('btn-publish');
     if (!F || !btn || !EV) return;
     var st = C.siteState(EV, APPROVAL);
