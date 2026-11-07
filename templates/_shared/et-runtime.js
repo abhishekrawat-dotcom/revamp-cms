@@ -1369,6 +1369,57 @@
     try { var list = JSON.parse(text || '[]'); return Object.prototype.toString.call(list) === '[object Array]' ? list : []; } catch (e) { return []; }
   }
 
+  function navLinkOf(li) { return li.querySelector('a[href^="#"]'); }
+  function navHidden(el) { return !el || el.hidden || el.hasAttribute('data-rv-nav-empty') || el.style.display === 'none'; }
+  function navWords(t) { return String(t || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').replace(/^ | $/g, ''); }
+
+  /* Which links of an ET bar a visitor gets, and in what order, read from the page without changing anything:
+       targets  [{ href, el, li }]  the links to a section that is on the page and shown, in the order of those
+                                    sections on the page (the owner may have moved a section)
+       forms    [li]                the links the owner pointed at a form (rv-forms.js opens it in a pop-up): they go
+                                    to no section and are kept, after the others, in their own order
+       left     [li]                the links left out: one that repeats a page tab of the site's own, or one to a
+                                    section that is not on the page or not shown
+     A link hidden itself (rv-data.js's data-rv-nav-empty) is in none of the three. The bar's own layout() below
+     uses this, and so does the site editor, read-only (RevampSections.navPlan, editor-template-ui.js previewNav),
+     so the menu on its canvas shows what visitors will get. shown(el), when given, says whether a section a link
+     goes to is shown: the editor passes its own rule, because a section it hides is still on its canvas. */
+  function navPlan(root, shown) {
+    var plan = { targets: [], forms: [], left: [] };
+    var list = root && root.querySelector('.rv-etnav-list');
+    if (!list) return plan;
+    /* A section link that goes where one of the site's own pages goes (an award site's Jury, FAQs and Award
+       Categories are each a page tab and a home section): the page is the fuller one, so the section's link is not
+       offered as well — "Jury" and "FAQs" were each twice in the phone's menu. The same rule as et-nav.js
+       repeatsPage, for a bar built before it: the tab's words, the page's title or its slug as the section's id. */
+    var tabs = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab[data-rv-page-link]'));
+    var pageWords = {};
+    tabs.forEach(function (a) { pageWords[navWords(a.textContent)] = 1; pageWords['#' + a.getAttribute('data-rv-page-link')] = 1; });
+    if (tabs.length) pagesOf().forEach(function (p) { if (p && typeof p.title === 'string' && p.title) pageWords[navWords(p.title)] = 1; });
+    function repeatsPage(li) {
+      var a = navLinkOf(li);
+      return !!a && tabs.length > 0 && (pageWords[navWords(a.textContent)] === 1 || pageWords[a.getAttribute('href')] === 1);
+    }
+    /* the section a link goes to, when it is on the page and shown (rv-data.js hides an empty one, and its links) */
+    function targetOf(li) {
+      var a = navLinkOf(li);
+      if (!a || a.getAttribute('href').length < 2 || navHidden(li) || navHidden(a)) return null;
+      var el = resolveHash(a.getAttribute('href'));
+      if (!el) return null;
+      return (shown ? shown(el) : !el.hidden && getComputedStyle(el).display !== 'none') ? el : null;
+    }
+    each(list.children, function (li) {
+      if (repeatsPage(li)) { plan.left.push(li); return; }
+      var a = navLinkOf(li);
+      if (a && a.hasAttribute('data-rv-form') && !navHidden(li) && !navHidden(a)) { plan.forms.push(li); return; }
+      var el = targetOf(li);
+      if (el) plan.targets.push({ href: a.getAttribute('href'), el: el, li: li });
+      else if (!navHidden(li)) plan.left.push(li);
+    });
+    plan.targets.sort(function (a, b) { return a.el.compareDocumentPosition(b.el) & 4 ? -1 : 1; });
+    return plan;
+  }
+
   function etNav(root) {
     if (root.__rvNav || editing()) return;
     var bar = root.querySelector('.rv-etnav-bar');
@@ -1401,28 +1452,7 @@
     }
 
     function items() { return list ? Array.prototype.slice.call(list.children) : []; }
-    function linkOf(li) { return li.querySelector('a[href^="#"]'); }
-    /* A section link that goes where one of the site's own pages goes (an award site's Jury, FAQs and Award
-       Categories are each a page tab and a home section): the page is the fuller one, so the section's link is not
-       offered as well — "Jury" and "FAQs" were each twice in the phone's menu. The same rule as et-nav.js
-       repeatsPage, for a bar built before it: the tab's words, the page's title or its slug as the section's id. */
-    var tabs = Array.prototype.slice.call(root.querySelectorAll('.rv-etnav-tab[data-rv-page-link]'));
-    var pageWords = {};
-    function wordsOf(t) { return String(t || '').toLowerCase().replace(/&/g, 'and').replace(/[^a-z0-9]+/g, ' ').replace(/^ | $/g, ''); }
-    tabs.forEach(function (a) { pageWords[wordsOf(a.textContent)] = 1; pageWords['#' + a.getAttribute('data-rv-page-link')] = 1; });
-    if (tabs.length) pagesOf().forEach(function (p) { if (p && typeof p.title === 'string' && p.title) pageWords[wordsOf(p.title)] = 1; });
-    function repeatsPage(li) {
-      var a = linkOf(li);
-      return !!a && tabs.length > 0 && (pageWords[wordsOf(a.textContent)] === 1 || pageWords[a.getAttribute('href')] === 1);
-    }
-    function hiddenEl(el) { return !el || el.hidden || el.hasAttribute('data-rv-nav-empty') || el.style.display === 'none'; }
-    /* the section a link goes to, when it is on the page and shown (rv-data.js hides an empty one, and its links) */
-    function targetOf(li) {
-      var a = linkOf(li);
-      if (!a || a.getAttribute('href').length < 2 || hiddenEl(li) || hiddenEl(a)) return null;
-      var el = resolveHash(a.getAttribute('href'));
-      return el && !el.hidden && getComputedStyle(el).display !== 'none' ? el : null;
-    }
+    var linkOf = navLinkOf;
     function rank(li) {
       var a = linkOf(li), key = a ? a.getAttribute('href') + ' ' + a.textContent : '';
       for (var r = 0; r < NAV_DROP.length; r++) if (NAV_DROP[r].test(key)) return r;
@@ -1438,24 +1468,16 @@
       lis.forEach(function (li) { li.classList.remove('is-over'); });
       setMore(false);
       more.hidden = true;
-      targets = [];
-      formItems = [];
-      var live = lis.filter(function (li) {
-        if (repeatsPage(li)) { li.classList.add('is-over'); return false; }
-        /* a link the owner pointed at a form (rv-forms.js opens it in a pop-up) goes to no section, and is kept */
-        var a = linkOf(li);
-        if (a && a.hasAttribute('data-rv-form') && !hiddenEl(li) && !hiddenEl(a)) { formItems.push(li); return true; }
-        var el = targetOf(li);
-        if (el) targets.push({ href: linkOf(li).getAttribute('href'), el: el, li: li });
-        else if (!hiddenEl(li)) li.classList.add('is-over');
-        return !!el;
-      });
+      /* a link to nothing on the page, or one that repeats a page tab, is left out (navPlan) */
+      var plan = navPlan(root);
+      plan.left.forEach(function (li) { li.classList.add('is-over'); });
+      targets = plan.targets;
+      formItems = plan.forms;
       /* the links in the order of their sections on the page (the owner may have moved a section); links to
          forms after them, in their own order */
-      targets.sort(function (a, b) { return a.el.compareDocumentPosition(b.el) & 4 ? -1 : 1; });
       targets.forEach(function (t, i) { t.li.style.order = i; });
       formItems.forEach(function (li, i) { li.style.order = targets.length + i; });
-      live = targets.map(function (t) { return t.li; }).concat(formItems);
+      var live = targets.map(function (t) { return t.li; }).concat(formItems);
       var over = [];
       var max = floating ? NAV_FLOAT_MAX : Infinity;
       /* on a phone the row is not shown: its links are in the menu */
@@ -1667,6 +1689,8 @@
     editing: editing,
     editorMode: editorMode,
     resolveHash: resolveHash,
+    /* the ET bar's links a visitor gets, read-only: the site editor's canvas menu follows it (navPlan above) */
+    navPlan: navPlan,
     goTo: goTo
   };
 

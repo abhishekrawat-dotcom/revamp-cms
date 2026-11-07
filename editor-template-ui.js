@@ -81,8 +81,47 @@
   function pageChanged() {
     drawFormPreviews(true);
     drawHeroVideo();
+    previewNav();
     changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
+  /* The ET bar's menu on the canvas shows the links visitors will get, in their order (UX-088). The site's runtime
+     leaves out a link to a section that is hidden, deleted, empty or on another page and orders the links as the
+     sections are ordered, but only on the live page and the preview: while editing it changes nothing, so the canvas
+     kept every link in the order it was saved with. Here the runtime's own rule (RevampSections.navPlan, read-only)
+     says which links stay and in what order, with the editor's own idea of a hidden section (it is still on the
+     canvas, as a slim bar), and a rule of the editor's own puts the menu in that order: a <style data-rv-editor>
+     that is never saved (editor-canvas.js serialize drops it) and is in no snapshot (it lives in <head>). */
+  function shownToVisitors(el) {
+    if (el.hidden || el.closest('.is-hidden-sec, [data-rv-empty]')) return false;
+    return canvas.win.getComputedStyle(el).display !== 'none';
+  }
+  function previewNav() {
+    if (!canvas || remounting || !canvas.doc) return;
+    var doc = canvas.doc, rs = canvas.win && canvas.win.RevampSections, css = [];
+    if (rs && typeof rs.navPlan === 'function') {
+      Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-etnav]'), function (root) {
+        var list = root.querySelector('.rv-etnav-list');
+        if (!list) return;
+        var plan;
+        try { plan = rs.navPlan(root, shownToVisitors); } catch (err) { if (window.console) console.error(err); return; }
+        var lis = Array.prototype.slice.call(list.children);
+        var order = plan.targets.map(function (t) { return lis.indexOf(t.li); }).concat(plan.forms.map(function (li) { return lis.indexOf(li); }));
+        var sec = root.closest('[data-rv-section][data-rv-key]');
+        var sel = (sec ? '[data-rv-key="' + sec.getAttribute('data-rv-key').replace(/["\\]/g, '\\$&') + '"] ' : '') + '.rv-etnav-list';
+        css.push(editorPolish.navRule(sel, lis.length, order));
+      });
+    }
+    var st = doc.getElementById('rv-editor-nav-preview'), text = css.join('\n');
+    if (!text) { if (st) st.parentNode.removeChild(st); return; }
+    if (!st) {
+      st = doc.createElement('style');
+      st.id = 'rv-editor-nav-preview';
+      st.setAttribute('data-rv-editor', '');
+      (doc.head || doc.documentElement).appendChild(st);
+    }
+    if (st.textContent !== text) st.textContent = text;
+  }
+
   /* An embedded form shows a preview of its fields on the canvas (editor-forms.js). A page put back from an undo
      step, or a block just added, has none yet: missingOnly draws only those. The preview is never part of a
      snapshot (editor-canvas.js nodeHtml), so drawing it changes nothing that is recorded. */
@@ -217,6 +256,7 @@
       designChanged();
       drawFormPreviews(false);
       drawHeroVideo();
+      previewNav();
       /* Preview and Publish stay disabled until the site is mounted AND filled: pressed any earlier they
          would capture the template's own placeholder text. With no event there is nothing to publish to. */
       document.getElementById('btn-publish').hidden = !eventId;
@@ -382,7 +422,9 @@
     var name = '', meta = '';
     if (ev) {
       name = ev.name || 'Untitled event';
-      meta = [ev.published ? 'Published' : 'Not published', ev.start ? RevampCore.fmtDT(ev.start) : '', ev.venue].filter(Boolean).join(' · ');
+      /* the dates and place as the site prints them ("5–7 Dec 2026 · Taj Wellington Mews, Chennai"): not the start
+         alone with the time the event happened to be created at (UX-086) */
+      meta = editorPolish.topbarMeta(ev, RevampCore.fmtRange);
     } else if (!eventId && canvas) {
       name = canvas.template.name || canvas.template.title || templateId;
       meta = 'Template preview';
@@ -1749,6 +1791,9 @@
     if (ptr < 0 || ptr >= undoStack.length) return;
     typingPtr = -1;
     dismissUndoToast();
+    /* what this step was, named before the pointer moves: Undo takes back the step from ptr to the page shown,
+       Redo puts back the step from the page shown to ptr (UX-084) */
+    var what = by < 0 ? editorPolish.stepWhat(undoStack[ptr], undoStack[undoPtr]) : editorPolish.stepWhat(undoStack[undoPtr], undoStack[ptr]);
     undoPtr = ptr;
     canvas.restore(undoStack[undoPtr], restoreOpts());
     /* a step back or forward is the person's own page unless it is the one saved (Undo after "Open version N"
@@ -1762,6 +1807,14 @@
     designChanged();
     pageChanged();
     logoUnitNotice();      // an answered note can come back with the step, and an open one go
+    sayStep((by < 0 ? 'Undone: ' : 'Redone: ') + what + '.');
+  }
+  /* One line after each Undo or Redo saying what it was; pressed several times in a row, each line takes the
+     place of the one before instead of piling up. */
+  var stepToast = null;
+  function sayStep(msg) {
+    if (stepToast) stepToast.dismiss();
+    stepToast = showToast(msg) || null;
   }
   function undo() { step(-1); }
   function redo() { step(1); }
@@ -1920,6 +1973,15 @@
     return type === 'text' || type === 'button';
   }
 
+  /* the usual align and copy pictures, in place of the arrow and square glyphs (⇤ ↔ ⇥ ⧉) that said nothing without
+     their tooltip (UX-084); each button also has its name for screen readers */
+  var TB_SVG = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+  var TB_ICON = {
+    alignLeft: TB_SVG + '<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/></svg>',
+    alignCenter: TB_SVG + '<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/></svg>',
+    alignRight: TB_SVG + '<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/></svg>',
+    duplicate: TB_SVG + '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'
+  };
   function buildToolbar(el) {
     var type = el.getAttribute('data-editable');
     var link = canLink(el) ? '<button data-action="link" title="Where this leads when clicked">Link</button>' : '';
@@ -1929,15 +1991,15 @@
     var html = '';
     if (type === 'text') {
       html +=
-        '<button class="icon-only" data-action="bold" title="Bold"><b>B</b></button>' +
-        '<button class="icon-only" data-action="italic" title="Italic"><i>I</i></button>' +
-        '<button class="icon-only" data-action="underline" title="Underline"><u>U</u></button>' +
-        '<button class="icon-only" data-action="strikethrough" title="Strikethrough"><s>S</s></button>' +
+        '<button class="icon-only" data-action="bold" title="Bold" aria-label="Bold"><b aria-hidden="true">B</b></button>' +
+        '<button class="icon-only" data-action="italic" title="Italic" aria-label="Italic"><i aria-hidden="true">I</i></button>' +
+        '<button class="icon-only" data-action="underline" title="Underline" aria-label="Underline"><u aria-hidden="true">U</u></button>' +
+        '<button class="icon-only" data-action="strikethrough" title="Strikethrough" aria-label="Strikethrough"><s aria-hidden="true">S</s></button>' +
         (look ? '<span class="tpl-tb-sep"></span>' + look : '') +
         '<span class="tpl-tb-sep"></span>' +
-        '<button class="icon-only" data-action="align-left" title="Align left">&#8676;</button>' +
-        '<button class="icon-only" data-action="align-center" title="Align center">&#8596;</button>' +
-        '<button class="icon-only" data-action="align-right" title="Align right">&#8677;</button>' +
+        '<button class="icon-only" data-action="align-left" title="Align left" aria-label="Align left">' + TB_ICON.alignLeft + '</button>' +
+        '<button class="icon-only" data-action="align-center" title="Align center" aria-label="Align center">' + TB_ICON.alignCenter + '</button>' +
+        '<button class="icon-only" data-action="align-right" title="Align right" aria-label="Align right">' + TB_ICON.alignRight + '</button>' +
         (link ? '<span class="tpl-tb-sep"></span>' + link : '');
     } else if (type === 'button') {
       html += look + (look && link ? '<span class="tpl-tb-sep"></span>' : '') + link;
@@ -1959,12 +2021,12 @@
       var around = groupOf(el.closest('[data-rv-section]'), item), at = around.indexOf(item);
       html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
         '<button data-action="item-add" title="Add another item like this one, right after it">+ Add item</button>' +
-        '<button class="icon-only" data-action="item-earlier" title="Move this item earlier"' + (at <= 0 ? ' disabled' : '') + '>&#8592;</button>' +
-        '<button class="icon-only" data-action="item-later" title="Move this item later"' + (at === around.length - 1 ? ' disabled' : '') + '>&#8594;</button>' +
+        '<button class="icon-only" data-action="item-earlier" title="Move this item earlier" aria-label="Move this item earlier"' + (at <= 0 ? ' disabled' : '') + '>&#8592;</button>' +
+        '<button class="icon-only" data-action="item-later" title="Move this item later" aria-label="Move this item later"' + (at === around.length - 1 ? ' disabled' : '') + '>&#8594;</button>' +
         '<button data-action="item-remove" title="Remove this item">Remove item</button>';
     }
     html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
-      '<button class="icon-only" data-action="duplicate" title="Duplicate">&#10697;</button>' +
+      '<button class="icon-only" data-action="duplicate" title="Duplicate" aria-label="Duplicate">' + TB_ICON.duplicate + '</button>' +
       '<button class="icon-only danger" data-action="delete" title="Delete" aria-label="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
       '<button class="icon-only" data-action="deselect" title="Close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
     selToolbar.innerHTML = html;
@@ -3082,6 +3144,7 @@
     renderPageSwitch(pages);
     if (next !== was) {
       try { canvas.win.scrollTo(0, 0); } catch (e) { /* nothing to scroll */ }
+      previewNav();          // another page's sections: another set of links
       repositionToolbars();
       if (!quiet) { sectionsChanged(); changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } }); }
     }
@@ -3710,6 +3773,7 @@
     canvas.doc.addEventListener('input', onCanvasInput, true);
     canvas.win.addEventListener('scroll', repositionToolbars, { passive: true });
     canvas.win.addEventListener('keydown', onGlobalKey);
+    wireCanvasKeys();
     if (canvas.onResize === null) canvas.onResize = repositionToolbars;
     canvas.onNavigate = recoverCanvas;
     // a canvas mounted afresh (opening, recovering) shows the page that was shown
@@ -3752,8 +3816,52 @@
     });
   }
 
+  /* ---------- the keyboard on the canvas (UX-085) ----------
+     The site page is one Tab stop: editor-canvas.js makes the canvas's frame that stop and keeps the site's own
+     links out of the Tab order, which walked a keyboard user through dozens of them with no way back to the tools.
+     On the stop, Enter picks a section (the one selected, else the first of the page shown) and moves to its tools,
+     and the up and down arrows pick the section before or after it. Escape from a section's or an element's tools
+     comes back to the stop (onGlobalKey). Tab inside the page itself (after a click in it, or leaving a text being
+     edited) also comes back to the stop. */
+  function canvasStop() { return canvas && canvas.iframe ? canvas.iframe.parentNode : null; }
+  function wireCanvasKeys() {
+    var stop = canvasStop();
+    if (!stop || stop.__rvKeys) return;
+    stop.__rvKeys = true;
+    stop.addEventListener('keydown', function (e) {
+      if (e.target !== stop || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      if (!canvas || remounting) return;
+      if (aiWorking) { busyToast(); return; }
+      var secs = pageSections(), at = secs.indexOf(activeSectionEl);
+      if (!secs.length) return;
+      var next = e.key === 'Enter' ? (at < 0 ? secs[0] : activeSectionEl)
+        : e.key === 'ArrowUp' ? secs[Math.max(0, at - 1)] : secs[at < 0 ? 0 : Math.min(secs.length - 1, at + 1)];
+      if (next !== activeSectionEl || selectedEl) selectSection(next);
+      if (e.key !== 'Enter') return;
+      // once the page has scrolled to it, the section's tools are where the focus goes
+      setTimeout(function () {
+        if (activeSectionEl !== next) return;
+        positionToolbars();
+        var first = !secToolbar.hidden && secToolbar.querySelector('button:not([disabled])');
+        if (first) first.focus();
+      }, 450);
+    });
+    canvas.doc.addEventListener('keydown', function (e) {
+      if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
+      e.preventDefault();
+      stop.focus();
+    }, true);
+  }
+
   function onGlobalKey(e) {
-    if (e.key === 'Escape') { deselect(); return; }
+    if (e.key === 'Escape') {
+      var inTools = selToolbar && (selToolbar.contains(document.activeElement) || secToolbar.contains(document.activeElement));
+      deselect();
+      if (inTools && canvasStop()) canvasStop().focus();
+      return;
+    }
     var mod = e.ctrlKey || e.metaKey;
     if (!mod || editingEl) return;
     if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
@@ -6573,6 +6681,109 @@
       turnStatus: turnStatus, planLead: planLead, undoQuestion: undoQuestion, UNDO_GONE: UNDO_GONE };
   })();
   /* workSafety:end */
+
+  /* editorPolish:begin — small things the editor works out and says (UX batch B21). Plain functions of their
+     arguments that use nothing of the editor or the page: functions/lib/editor-polish.test.js runs this block as it is.
+       stepWhat(older, newer)     what one undo step changed, in a few words ("“Agenda” deleted"), read from the two
+                                  snapshots on either side of it, for the toast after Undo and Redo (UX-084)
+       topbarMeta(ev, fmtRange)   the line under the event's name in the top bar: published or not, the event's dates
+                                  as its site shows them (never a time nobody chose) and its place (UX-086)
+       navRule(sel, total, order) the canvas menu's rule: the links in the order visitors get them, the others out of
+                                  sight (order: the indexes of the links kept, from the site runtime's navPlan; UX-088) */
+  var editorPolish = (function () {
+    function squash(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+    function unescape(s) {
+      return s.replace(/&quot;/g, '"').replace(/&#39;/g, '\'').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&');
+    }
+    /* the opening tag of a node's HTML as the browser writes it (attribute values always in double quotes) */
+    function openTag(html) {
+      var m = /^<[^\s>\/]+(?:\s+[^\s=>"'\/]+(?:="[^"]*")?)*\s*\/?>/.exec(String(html || ''));
+      return m ? m[0] : '';
+    }
+    function attr(tag, name) {
+      var m = new RegExp('\\s' + name + '="([^"]*)"').exec(tag);
+      return m ? unescape(m[1]) : null;
+    }
+    /* the sections of a snapshot (editor-canvas.js snapshot: the page's top-level nodes as HTML), with the key and
+       name the editor gives each (data-rv-key, data-sec-name) and whether it is hidden */
+    function sectionsOf(snap) {
+      var out = [];
+      ((snap && snap.nodes) || []).forEach(function (html, i) {
+        var tag = openTag(html), type = tag ? attr(tag, 'data-rv-section') : null;
+        if (type === null) return;
+        var cls = attr(tag, 'class') || '';
+        out.push({
+          key: attr(tag, 'data-rv-key') || type + '@' + i,
+          name: squash(attr(tag, 'data-sec-name')) || squash(type.replace(/[-_]+/g, ' ')) || 'a section',
+          hidden: /(^|\s)is-hidden-sec(\s|$)/.test(cls),
+          html: html
+        });
+      });
+      return out;
+    }
+    function quoted(s) { return '“' + s.slice(0, 60) + '”'; }
+    function keys(list) { return list.map(function (s) { return s.key; }); }
+    function byKey(list, key) { return list.filter(function (s) { return s.key === key; })[0] || null; }
+    function without(list, key) { return list.filter(function (k) { return k !== key; }).join('\n'); }
+
+    /* older: the page before the step, newer: after it. Undo passes the step it takes back the other way round
+       than Redo would, so both read the step itself: "Undone: “Agenda” deleted", "Redone: “Agenda” deleted". */
+    function stepWhat(older, newer) {
+      if (!older || !newer) return 'the last change';
+      var a = sectionsOf(older), b = sectionsOf(newer), ak = keys(a), bk = keys(b);
+      var added = b.filter(function (s) { return ak.indexOf(s.key) === -1; });
+      var gone = a.filter(function (s) { return bk.indexOf(s.key) === -1; });
+      if (added.length === 1 && !gone.length) return quoted(added[0].name) + ' added';
+      if (gone.length === 1 && !added.length) return quoted(gone[0].name) + ' deleted';
+      if (added.length || gone.length) return 'changes to ' + (added.length + gone.length) + ' sections';
+      var shown = b.filter(function (s) { return byKey(a, s.key).hidden !== s.hidden; });
+      if (shown.length === 1) return quoted(shown[0].name) + (shown[0].hidden ? ' hidden' : ' shown again');
+      if (ak.join('\n') !== bk.join('\n')) {
+        /* two neighbours that changed places (Move up / Move down): which of them was moved cannot be told, so both
+           are named; otherwise the one section whose move explains the new order; several moved at once are "the order" */
+        var at = [];
+        ak.forEach(function (k, i) { if (bk[i] !== k) at.push(i); });
+        if (at.length === 2 && at[1] === at[0] + 1 && ak[at[0]] === bk[at[1]] && ak[at[1]] === bk[at[0]]) {
+          return quoted(byKey(a, ak[at[0]]).name) + ' and ' + quoted(byKey(a, ak[at[1]]).name) + ' swapped places';
+        }
+        var moved = bk.filter(function (k) { return without(ak, k) === without(bk, k); })[0];
+        return moved ? quoted(byKey(b, moved).name) + ' moved' : 'the order of the sections';
+      }
+      var changed = b.filter(function (s) { return byKey(a, s.key).html !== s.html; });
+      if (changed.length === 1) return 'the change to ' + quoted(changed[0].name);
+      if (changed.length > 1) return 'changes to ' + changed.length + ' sections';
+      if (older.design !== newer.design || older.html !== newer.html || older.body !== newer.body) return 'a change to the whole site’s look';
+      return 'the last change';
+    }
+
+    /* As the site's own bar prints them (functions/lib/et-nav.js shortDate and placeOf): "5–7 Dec 2026 · Taj
+       Wellington Mews, Chennai". fmtRange: RevampCore.fmtRange, which gives no time; a month, a quarter or "to be
+       announced" has no start, only the words Create Event wrote for it (dateLabel). */
+    function placeOf(ev) {
+      var venue = squash(ev.venue), city = squash(ev.city);
+      if (venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) !== -1) city = '';
+      return [venue, city].filter(Boolean).join(', ') || squash(ev.location);
+    }
+    function topbarMeta(ev, fmtRange) {
+      if (!ev) return '';
+      var when = (ev.start && typeof fmtRange === 'function' ? squash(fmtRange(ev.start, ev.end)) : '') || squash(ev.dateLabel);
+      return [ev.published ? 'Published' : 'Not published', when, placeOf(ev)].filter(Boolean).join(' · ');
+    }
+
+    function navRule(sel, total, order) {
+      var out = [], kept = {};
+      (order || []).forEach(function (i, at) {
+        if (i < 0 || kept[i]) return;
+        kept[i] = 1;
+        out.push(sel + ' > li:nth-child(' + (i + 1) + '){order:' + at + '}');
+      });
+      for (var i = 0; i < total; i++) if (!kept[i]) out.push(sel + ' > li:nth-child(' + (i + 1) + '){display:none!important}');
+      return out.join('\n');
+    }
+
+    return { stepWhat: stepWhat, topbarMeta: topbarMeta, navRule: navRule };
+  })();
+  /* editorPolish:end */
 
   /* editorWords:begin — what the editor says about the logo's check (UX-082) and about copy that came with a section
      or block the owner added (UX-081), and when such copy still counts as a placeholder. Plain functions of their
