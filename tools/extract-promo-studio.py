@@ -196,6 +196,27 @@ async function fmtApply(el,btn,onchange){
     (r'''Ask whoever set up this platform to turn on performance tracking.''',
      r'''Ask your Oneworld admin to turn on performance tracking.''',
      1, 'the "not being saved" note names who to ask (UX-133)'),
+    # P28 to P33 (2026-11-07, ce0e58d): each message says what it is, so Promotions shows a failure in red until it is
+    # dismissed and a note without the success tick. They were first written straight into the copied code; they are
+    # patches here so that copying the platform again keeps them.
+    (r'''catch(err){ toast(String(err.message||err)); }''',
+     r'''catch(err){ toast(String(err.message||err),undefined,"error"); }''',
+     2, 'an icon that could not be removed or uploaded is said as a failure'),
+    (r'''toast(msg,5000); return null; }''',
+     r'''toast(msg,5000,"error"); return null; }''',
+     1, 'an AI request that failed is said as a failure'),
+    (r'''.error||"Save failed"); return false; }''',
+     r'''.error||"Save failed",undefined,"error"); return false; }''',
+     1, 'a save that failed is said as a failure'),
+    (r'''toast("This draft has not been saved yet"); return; }''',
+     r'''toast("This draft has not been saved yet",undefined,"info"); return; }''',
+     2, 'Rename and Delete on a draft never saved say so as a note'),
+    (r'''toast(j.error||"Could not change the layout"); return; }''',
+     r'''toast(j.error||"Could not change the layout",undefined,"error"); return; }''',
+     1, 'a layout that could not be changed is said as a failure'),
+    (r'''toast(j.error||"Could not read that file"); return; }''',
+     r'''toast(j.error||"Could not read that file",undefined,"error"); return; }''',
+     1, 'an HTML file that could not be read is said as a failure'),
 ]
 for n, (old, new, want, why) in enumerate(PATCHES, 1):
     got = JS.count(old)
