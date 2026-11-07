@@ -213,7 +213,8 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-072: a real conflict asks in the editor\'s words, with Replace and Open version N instead',
     /workSafety\.conflictWords\(cur, siteInfo && siteInfo\.me, when\(cur\.updatedAt\)\)/.test(save) && /if \(answer === 'replace'\) return send\(true\);/.test(save) && /openSavedVersion\(\)/.test(save));
   check('7 UX-072: after a save the copy is on the saved version', /baseVersion = out\.version;/.test(save) && /if \(undoStack\[undoPtr\] === snap\) localEdited = false;/.test(save));
-  check('7 UX-072: the approval GET\'s "me" is kept, so "You saved version N" is told apart', /me: a\.me \|\| ''/.test(body('loadSiteInfo')));
+  // the approval GET's answer is read in one place, takeApproval (the opening read and Publish's fresh one, B06)
+  check('7 UX-072: the approval GET\'s "me" is kept, so "You saved version N" is told apart', /me: a\.me \|\| ''/.test(body('takeApproval')) && /return asked\.then\(takeApproval,/.test(body('loadSiteInfo')));
 
   check('7 UX-089: Save returns early while ETB2B AI is busy, saying why', /var busy = workSafety\.busyLine\(aiState\);\s*if \(busy\) \{ showToast\(busy \+ '\.'\); return Promise\.reject\(cancelled\(\)\); \}/.test(save) &&
     save.indexOf('workSafety.busyLine(aiState)') < save.indexOf('flush();'));
