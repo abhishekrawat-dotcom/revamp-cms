@@ -19,6 +19,8 @@
                           from the server; the roster itself is portal-picker.js's (window.RevampPortals), so
                           no table of portal names is kept here
      .TYPES               the one table of event categories (key -> label); no page keeps its own
+     .CATEGORY_KEYS       ['ip','client','awards']: the categories Create Event makes, the only ones offered
+     .typeLabel(key)      a category's name ('' for none; an unknown one as stored)
      .slugify(text)       the event-address rule (same as the backend's)
      .isReservedSlug(s)   true for an address no event can have (gen-…, imported-…, numbers, new, …)
 
@@ -188,10 +190,24 @@ window.RevampCore = (function(){
     ticket:   '<path d="M3 8.5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.3a2.2 2.2 0 0 0 0 4.4v1.3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.3a2.2 2.2 0 0 0 0-4.4z"/><path d="M14 6.5v11"/>'
   };
 
+  /* The event categories, ONE name each, used on every page (UX-005): Create Event's cards, the console's
+     Category list and header, the dashboard's Event type filter, row chip and phone Filters sheet. They were
+     "IP & Residential Event" / "IP Event" / "Intellectual Property (IP)" for the same thing on three pages.
+     CATEGORY_KEYS are the three Create Event makes, and the only ones any page offers. The others are only
+     named, for an event made before there were three: such an event still shows its own category, and the
+     dashboard's filter lists one only while some loaded event has it. The server keeps the same names
+     (functions/lib/promo.js CATEGORY_LABELS, dash-bot.js TYPE_LABELS); events-dashboard-b11.test.js checks
+     that they agree. */
   var TYPES = {
-    ip:'IP Event', client:'Client Event', editorial:'Editorial',
-    leadgen:'Lead-Gen Microsite', roundtable:'Round Table', awards:'Awards'
+    ip:'IP Event', client:'Client Event', awards:'Awards',
+    editorial:'Editorial', leadgen:'Lead-Gen Microsite', roundtable:'Round Table', virtual:'Virtual Event'
   };
+  var CATEGORY_KEYS = ['ip', 'client', 'awards'];
+  /* a category's name, or '' for none: a value the table does not know is shown as it is stored */
+  function typeLabel(key){
+    var k = String(key == null ? '' : key).trim();
+    return Object.prototype.hasOwnProperty.call(TYPES, k.toLowerCase()) ? TYPES[k.toLowerCase()] : k;
+  }
 
   /* deterministic pseudo-random — no longer used to seed fake event/attendee data (that's gone, see
      fetchEvent/fetchRegistrations below), but kept: other files (edit-event-marketing.js,
@@ -1063,7 +1079,7 @@ window.RevampCore = (function(){
   return {
     $: $, esc: esc, svg: svg, IC: IC, AV: AV,
     comma: comma, compact: compact, money: money, fmtDate: fmtDate, fmtDT: fmtDT, fmtRange: fmtRange, rnd: rnd,
-    TYPES: TYPES,
+    TYPES: TYPES, CATEGORY_KEYS: CATEGORY_KEYS, typeLabel: typeLabel,
     authedFetch: authedFetch, slugify: slugify, isReservedSlug: isReservedSlug,
     fetchEvents: fetchEvents, fetchEvent: fetchEvent, createEvent: createEvent, updateEvent: updateEvent,
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,

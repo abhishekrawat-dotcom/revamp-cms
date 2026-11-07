@@ -630,7 +630,7 @@ function contentFrom(site, brief, ev) {
 
 /* The stored category is a code; people (and the AI) read its label. The same table as RevampCore.TYPES
    (edit-event-core.js), which the browser keeps; a code not in it has no label rather than a made-up one. */
-var CATEGORY_LABELS = { ip: 'IP Event', client: 'Client Event', editorial: 'Editorial', leadgen: 'Lead-Gen Microsite', roundtable: 'Round Table', awards: 'Awards' };
+var CATEGORY_LABELS = { ip: 'IP Event', client: 'Client Event', awards: 'Awards', editorial: 'Editorial', leadgen: 'Lead-Gen Microsite', roundtable: 'Round Table', virtual: 'Virtual Event' };
 function categoryLabelOf(ev) {
   return oneLine(ev.categoryLabel, 80) || ownEntry(CATEGORY_LABELS, String(ev.category || '').toLowerCase()) || '';
 }

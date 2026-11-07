@@ -346,7 +346,7 @@
   .cat-portal .hint:empty{ display: none; }
   .cat-portal .callout{ margin-top: 10px; }
   .cat-types{ display: flex; flex-direction: column; gap: 10px; }
-  /* the details form's chip: "ETHRWorld · IP & Residential Event · Change" */
+  /* the details form's chip: "ETHRWorld · IP Event · Change" */
   .cat-chip #cat-bar-portal:not(:empty)::after{ content: ' \00B7'; font-weight: 400; color: var(--text-muted); }
   /* "This edition's own URL" on another portal: the way to change the event's portal, under the warning */
   .gb-portal-change{ align-self: flex-start; height: 30px; margin-top: 4px; padding: 0 10px; }
@@ -2442,9 +2442,12 @@
     Awards:  '<path d="M7 4h10v4.5a5 5 0 01-10 0z"/><path d="M7 6H4.4a2.6 2.6 0 002.8 3M17 6h2.6a2.6 2.6 0 01-2.8 3"/><path d="M12 13.5V16M8.5 20h7"/>'
   };
 
+  /* Each category's name (label) is the one every page uses, edit-event-core.js's RevampCore.TYPES (UX-005): it was
+     "IP & Residential Event" and "Custom Events" here, "IP Event" and "Client Event" in the console, and
+     "Intellectual Property (IP)" and "Client" on the dashboard. The blurb says what each covers. */
   var CATS = {
     IP: {
-      label: 'IP & Residential Event',
+      label: 'IP Event',
       blurb: 'Build owned conferences, summits, conclaves, and residential experiences.',
       meta: 'Owned event experiences',
       badge: 'Most popular',
@@ -2455,14 +2458,14 @@
       hint: 'IP and residential events include the full section stack. Use an exact date, month, or quarter while the edition is being planned.'
     },
     Client: {
-      label: 'Custom Events',
+      label: 'Client Event',
       blurb: 'Create client events, lead generation campaigns, roundtables, and virtual events.',
       meta: 'Flexible event formats',
       dateTitle: 'Event schedule',
       dateModes: ['none','exact','month','tbd'],
       defaultDateMode: 'exact',
       venue: true, nomination: false, campaign: false, client: 'optional',
-      hint: 'Custom events cover client activations, lead generation, roundtables, and virtual formats. Add a client or sponsor only when relevant.'
+      hint: 'Client events cover client activations, lead generation, roundtables, and virtual formats. Add a client or sponsor only when relevant.'
     },
     Awards: {
       label: 'Awards',

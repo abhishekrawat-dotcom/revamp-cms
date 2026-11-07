@@ -217,6 +217,7 @@
   .popover.right{ left:auto; right:0; }
   .popover.wide{ min-width:300px; }
   .popover-label{ padding:6px 8px 4px; font-size:10.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--text-faint); }
+  .popover-empty{ padding:6px 8px 8px; font-size:12.5px; color:var(--text-muted); }
   .popover-item{ display:flex; align-items:center; gap:9px; width:100%; padding:8px 9px; border-radius:7px; font-size:13px; color:var(--text); text-align:left; background:none; border:none; }
   .popover-item:hover{ background:var(--surface-2); }
   .popover-item svg{ color:var(--text-faint); flex-shrink:0; }
@@ -898,9 +899,20 @@
      it was missing here, and metaLine() below then threw on that one row, which left the whole list page on
      skeleton rows for everyone. typeLabel() is the tolerant lookup every reader must use: a category this
      table has never heard of shows as its own name instead of taking the page down. */
-  var EVENT_TYPES = { ip:'Intellectual Property (IP)', client:'Client', editorial:'Editorial', virtual:'Virtual Events', leadgen:'Lead-Gen Microsites', roundtable:'Round Table', awards:'Awards' };
+  /* The category names are edit-event-core.js's (RevampCore.TYPES), the same on every page (UX-005): this page had
+     its own set ("Intellectual Property (IP)", "Client", "Virtual Events"…) for what Create Event calls by other
+     names. The Event type filter offers only the categories some loaded event has (offeredTypes). */
+  var EVENT_TYPES = (window.RevampCore && window.RevampCore.TYPES) || {};
   var TYPE_TAG_CLASS = { ip:'ev-tag-blue', client:'ev-tag-teal', editorial:'ev-tag-violet', virtual:'ev-tag-rose', leadgen:'ev-tag-cyan', roundtable:'ev-tag-amber', awards:'ev-tag-amber' };
   function typeLabel(type){ return EVENT_TYPES[type] || (type ? String(type) : 'Event'); }
+  /* The Event type filter's choices: a category is offered only when some loaded event has it (an event in
+     Deleted Events too), so it never offers one that would show nothing, nor the old categories nobody can make
+     any more; one already ticked stays, so its tick can be taken off. In the table's order. */
+  function offeredTypes(){
+    return Object.keys(EVENT_TYPES).filter(function(k){
+      return state.filters.types.indexOf(k) !== -1 || EVENTS.some(function(e){ return e.type === k; });
+    });
+  }
   /* ET's portal roster, [{slug, name}] by name, as GET /api/et/portals answers it through portal-picker.js
      (window.RevampPortals) — the very list the server checks every event's portal against. This page used to
      keep an invented table of eleven (two of them with slugs ET does not use) and a fixed "current" portal. */
@@ -940,7 +952,8 @@
       id: ev.id, slug: ev.slug || ev.id, name: ev.name || 'Untitled event',
       /* no city is no city: it used to be '—', which the venue tooltip printed as "Venue to be confirmed, —" (UX-020) */
       venue: ev.venue || 'Venue to be confirmed', city: ev.city || '',
-      type: ev.category || 'ip',
+      /* the category's key as RevampCore.TYPES spells it (lower case): an event stored as "IP" is still an IP Event */
+      type: String(ev.category || 'ip').toLowerCase(),
       /* the event's stored portal (a roster slug, '' for none yet) and its name, both from the server; the two
          facts Set portal's window needs are kept beside them (published is kept further down) */
       portal: typeof ev.portal === 'string' ? ev.portal : '', portalName: typeof ev.portalName === 'string' ? ev.portalName : '',
@@ -2041,10 +2054,11 @@
     if (i===-1) arr.push(val); else arr.splice(i,1);
   }
   function renderTypePopover(){
-    $('type-popover').innerHTML = '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
+    var offered = offeredTypes();
+    $('type-popover').innerHTML = '<div class="popover-label">Event type</div>' + (offered.length ? offered.map(function(k){
       var on = state.filters.types.indexOf(k) !== -1;
-      return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
-    }).join('');
+      return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(EVENT_TYPES[k]) + '</button>';
+    }).join('') : '<p class="popover-empty">No events to filter yet.</p>');
     $('type-popover').querySelectorAll('[data-type]').forEach(function(b){
       b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
     });
@@ -2238,7 +2252,7 @@
   }
   /* the event's type; a deleted event also says when it went and who deleted it */
   function metaLine(e){
-    var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type).replace(' (IP)','')) + '</span>';
+    var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type)) + '</span>';
     if (e.status === 'deleted' && e.deletedAt) out += '<span class="dotsep">&middot;</span><span class="ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
     return out;
   }
@@ -3138,9 +3152,9 @@
       '<h3 id="sheet-title" style="font-size:16px;margin-bottom:12px;">Filters</h3>' +
       '<label class="popover-label" for="m-portal" style="display:block;">Portal</label>' +
       '<select class="finput" id="m-portal" style="margin-bottom:8px;">' + portalOpts + '</select>' +
-      '<div class="popover-label">Event type</div>' + Object.keys(EVENT_TYPES).map(function(k){
+      '<div class="popover-label">Event type</div>' + offeredTypes().map(function(k){
         var on = state.filters.types.indexOf(k)!==-1;
-        return '<button class="check-row ' + (on?'on':'') + '" data-mtype="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + EVENT_TYPES[k] + '</button>';
+        return '<button class="check-row ' + (on?'on':'') + '" data-mtype="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(EVENT_TYPES[k]) + '</button>';
       }).join('') +
       (state.portal === 'all' ? '<div class="popover-label" style="margin-top:8px;">Portal</div>' + portalFilterRows().map(function(p){
         var on = state.filters.portals.indexOf(p.slug)!==-1;

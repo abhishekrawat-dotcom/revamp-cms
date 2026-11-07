@@ -219,6 +219,7 @@ function loadConsole(o) {
     notify: function (m, ms) { toasts.push([m, ms]); },
     LEAVE: null, EV: null,
     C: {
+      CATEGORY_KEYS: ['ip', 'client', 'awards'], typeLabel: function (k) { return ({ ip: 'IP Event', awards: 'Awards' })[k] || k; },
       updateEvent: function (id, patch, opts) {
         updates.push({ id: id, patch: JSON.parse(JSON.stringify(patch)), opts: opts ? JSON.parse(JSON.stringify(opts)) : undefined });
         return o.update ? o.update(patch, opts) : Promise.resolve({ ok: true });

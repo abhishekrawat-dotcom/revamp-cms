@@ -434,7 +434,7 @@ async function main() {
   check('…ticking a box redraws it and the focus stays on that box', S.doc.activeElement && S.doc.activeElement.getAttribute('data-mtype') === 'ip' && /check-row on/.test(S.$('sheet-root').innerHTML));
   S.dom.key(S.doc.activeElement, 'Escape');
   check('…Escape closes it, focus back on Filters, and the list is drawn with the box ticked', S.$('sheet-root').innerHTML === '' && S.doc.activeElement === fb &&
-    S.$('chip-row').textContent.indexOf('Type: Intellectual Property (IP)') !== -1, S.$('chip-row').textContent);
+    S.$('chip-row').textContent.indexOf('Type: IP Event') !== -1, S.$('chip-row').textContent);
   S.$('chip-clear-all').click();
 
   /* ======== UX-031 QR codes from a published row ======== */

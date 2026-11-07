@@ -1029,11 +1029,13 @@
        an option of its own — otherwise the list would show its first entry and a save of any other
        field would look as if that had been chosen. */
     var cat = e.category == null ? '' : String(e.category);
-    var catOptions = Object.keys(TYPES).map(function(k){
+    /* only the three categories Create Event makes are offered (UX-005); an event made before them keeps its own
+       in the list, by its name, until someone picks one of the three */
+    var catOptions = C.CATEGORY_KEYS.map(function(k){
       return '<option value="' + esc(k) + '"' + (k === cat ? ' selected' : '') + '>' + esc(TYPES[k]) + '</option>';
     }).join('');
     if (!cat) catOptions = '<option value="" selected>Choose a category</option>' + catOptions;
-    else if (!TYPES.hasOwnProperty(cat)) catOptions = '<option value="' + esc(cat) + '" selected>' + esc(cat) + '</option>' + catOptions;
+    else if (C.CATEGORY_KEYS.indexOf(cat) === -1) catOptions = '<option value="' + esc(cat) + '" selected>' + esc(C.typeLabel(cat)) + '</option>' + catOptions;
 
     /* The portal, as the server named it. Until portal-picker.js has ET's roster (wireBasics then fills the
        list in), the list holds the current portal alone; with none yet, a first choice says so. */

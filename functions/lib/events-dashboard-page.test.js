@@ -73,7 +73,11 @@ function varSource(name) {
   if (!m) throw new Error('no var ' + name);
   return m[0];
 }
-var helpers = {};
+/* the page reads its category names from edit-event-core.js (RevampCore.TYPES, UX-005): that one table, as the core
+   file writes it */
+var CORE_SRC = fs.readFileSync(path.join(ROOT, 'edit-event-core.js'), 'utf8');
+var CORE_TYPES = (new Function(/\n  var TYPES = (\{[\s\S]*?\});/.exec(CORE_SRC)[0] + '\nreturn TYPES;'))();
+var helpers = { window: { RevampCore: { TYPES: CORE_TYPES } } };
 vm.createContext(helpers);
 vm.runInContext([varSource('EVENT_TYPES'), varSource('MONTH_SHORT'), varSource('IST_OFFSET_MIN')].concat(
   ['pad2', 'validDay', 'istDay', 'cleanRange', 'inDays', 'fmtDayRange', 'parseListingHash', 'listingHash', 'searchLine', 'searchCells', 'searchHit', 'mapApiEventToRow'].map(fnSource)).join('\n'), helpers);
@@ -273,6 +277,8 @@ function stand(opt) {
       openSetPortal: function () {}
     };
   }
+  /* edit-event-core.js, which the page loads before its own script, gives it the category names (UX-005) */
+  ctx.RevampCore = { TYPES: CORE_TYPES };
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
