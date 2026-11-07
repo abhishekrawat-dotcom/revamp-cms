@@ -148,7 +148,8 @@ function check(html, ctx) {
       if (answers[1].skipped) ul.push(plural(answers[1].skipped, 'more picture from another site was', 'more pictures from other sites were') + ' not checked.');
       var nUnknown = unknownLinks.length + unknownPics.length;
       push({ code: 'links-unchecked', level: 'info',
-        title: nUnknown ? plural(nUnknown, 'link or picture could not be checked', 'links and pictures could not be checked') : 'Some links were not checked',
+        title: nUnknown ? plural(nUnknown, 'link or picture could not be checked', 'links and pictures could not be checked')
+          : answers[0].skipped && answers[1].skipped ? 'Not every link and picture was checked' : answers[0].skipped ? 'Not every link was checked' : 'Not every picture from another site was checked',
         lines: ul, hint: 'Some sites do not answer checks like this one, so they may well work. Open them yourself to be sure.',
         fix: sectionFixes(eventId, event, unknownLinks.concat(unknownPics)) });
     }

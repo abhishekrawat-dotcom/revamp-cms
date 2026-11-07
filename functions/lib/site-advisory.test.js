@@ -83,6 +83,8 @@ ok(SC.datesIn('12-13 March 2026, March 12, 2026, Mar 14, May 5 but may 6, June 2
   'dates are read in the ways pages write them ("may" the word is not May)', SC.datesIn('12-13 March 2026, March 12, 2026, Mar 14, May 5 but may 6, June 2024, 30th Nov – 1st Dec 2026'));
 var dates = SC.dateFindings(PAGE, kit, EVENT).map(function (d) { return d.text + '@' + d.section; });
 ok(dates.join('|') === '12 Mar 2026@Header|25 March 2026@About', 'dates that are not the event\'s: the header\'s date, a day in the words; never a deadline, history, the event\'s own days, or the footer\'s other events', dates);
+ok(SC.dateFindings(page('<section data-rv-section="previous-agenda"><div class="pe-agd-date">18 February 2026</div></section>'), kit, EVENT).length === 0,
+  'a previous edition\'s agenda gives its own days: not the event\'s to compare (seen on a live page, 8 Nov 2026)');
 ok(SC.dateFindings(PAGE, kit, Object.assign({}, EVENT, { dateMode: 'month' })).length === 0 && SC.dateFindings(PAGE, kit, { name: 'x' }).length === 0, 'an event with no exact dates: nothing to compare with');
 ok(SC.dateFindings(page('<section data-rv-section="hero"><p>12 March 2025</p></section><section data-rv-section="story"><p>On 12 March 2025 it began.</p></section>'), kit, EVENT).length === 1,
   'last year\'s date in the banner is said; in the words of a section, it is history');
@@ -90,6 +92,8 @@ var places = SC.venueFindings(PAGE, kit, EVENT).map(function (p) { return p.text
 ok(places.join('|') === 'Taj Lands End, Mumbai@Header|Delhi@Banner', 'places that are not the event\'s: another venue in its city, another city in the banner; never the footer', places);
 ok(SC.venueFindings(page('<header data-rv-section="nav"><span class="x-place">JW Marriott, Mumbai</span><span class="y-venue">Mumbai</span></header>'), kit, EVENT).length === 0, 'the event\'s venue, or only its city, is fine');
 ok(SC.venueFindings(page('<header data-rv-section="nav"><span class="x-place">Bangalore</span></header>'), kit, { venue: 'Taj', city: 'Bengaluru' }).length === 0, 'a city by its other name is the same city');
+ok(SC.venueFindings(page('<section data-rv-section="hero"><span class="t5-meta-venue">Venue</span><span class="t5-meta-place">Location:</span></section>'), kit, EVENT).length === 0,
+  'a label over the place ("Venue") is not a place (tech500\'s banner, seen in the browser check of 8 Nov 2026)');
 var fb = SC.formButtons(PAGE, kit);
 ok(fb.length === 3 && fb[0].forms.length === 0 && fb[1].forms[0] === 'nomination' && fb[2].forms[0] === 'old-form', 'what opens a form: the main one, a named one', fb);
 ok(SC.bannerLogo(PAGE, kit).shown === false && SC.bannerLogo(page('<section data-rv-section="hero"><div data-rv-logo-unit><img src="/x.png"></div></section>'), kit).shown === true, 'the banner\'s logo unit');
@@ -117,6 +121,7 @@ pending.push(hooks.siteCheckOf(fakeFb({ 'events/a/x.png': 'x' }), 'qa-a', EVENT,
   var by = {}; r.items.forEach(function (x) { by[x.code] = x; });
   var codes = r.items.map(function (x) { return x.code + ':' + x.level; });
   ok(!r.blocking && r.items.every(function (x) { return !x.advisory || x.level !== 'block'; }), 'what the check before Publish finds never holds the version back', codes);
+  ok(hooks.siteCheckError(r, 'approver') === null && hooks.siteCheckError(r, 'owner') === null, 'so neither Send, Publish nor Approve is refused for it (siteCheckError)');
   ok(['links', 'outside-pictures', 'links-unchecked', 'empty-sections', 'dates', 'venue', 'logo-unit', 'et-logo', 'forms-off'].every(function (c) { return by[c] && by[c].advisory; }), 'each kind is found and marked advisory', codes);
   ok(r.pending === 0 && !by['links-pending'], 'every outside site answered within the wait: nothing pending', r.pending);
   var L = by.links;

@@ -642,6 +642,7 @@ var OTHER_MOMENT_AFTER = /^[^.!?]{0,24}\b(?:deadline|last\s+date|closes?|onwards
 /* sections about other dates than the event's */
 var OTHER_DATES_SECTION = /timeline|key-?dates|important-?dates|deadline|nominat|jury|process|past|previous|prev-|glimpse|gallery|testimonial|news|blog|press|media|archive|history|winners|edition|journey|milestone|legacy|categor/i;
 var DATE_MARK = /(?:^|[-_])(?:date|dates|when)$/i;
+var FACT_LABEL = /^(?:the\s+)?(?:venue|location|place|where|city|date|dates|when)\s*[:?]?$/i;
 var PLACE_MARK = /(?:^|[-_])(?:venue|location|place|where|city)$/i;
 
 /* the dates in a text -> [{ text, at, y (0: none written), m, d1, d2, monthOnly }] */
@@ -737,9 +738,10 @@ function dateFindings(html, kit, event) {
     seen[k] = 1;
     out.push({ text: text, section: where.section, key: where.key });
   }
-  /* an element that states the date: every date in it is the event's */
+  /* an element that states the date: every date in it is the event's — unless it stands in a section about other
+     dates (a previous edition's agenda gives its own days) */
   facts.marks.forEach(function (mk) {
-    if (mk.what !== 'date') return;
+    if (mk.what !== 'date' || OTHER_DATES_SECTION.test(String(mk.sec || '') + ' ' + String(mk.key || ''))) return;
     datesIn(mk.text).forEach(function (d) { if (!withinEvent(d, days)) add(d.text, mk); });
   });
   facts.sections.forEach(function (x) {
@@ -792,7 +794,8 @@ function venueFindings(html, kit, event) {
      city — never another venue in the same city ("Taj Lands End, Mumbai" once the event moved to the JW Marriott) —
      and no other city */
   facts.marks.forEach(function (mk) {
-    if (mk.what !== 'place' || !mk.text || placeholderOf(mk.text)) return;
+    /* a label ("Venue", "Location:") over the place is not a place */
+    if (mk.what !== 'place' || !mk.text || placeholderOf(mk.text) || FACT_LABEL.test(mk.text)) return;
     var low = plainLower(mk.text);
     function has(w) { return low.indexOf(' ' + w + ' ') !== -1; }
     var cities = cityNamesIn(mk.text);
