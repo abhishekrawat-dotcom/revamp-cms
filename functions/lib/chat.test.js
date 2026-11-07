@@ -622,6 +622,12 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   ok(hs.properties.kind.enum.join() === 'edit,reply,undo,handoff', 'the editor\'s schema offers "handoff"', hs.properties.kind.enum.join());
   var hp = hooks.buildChatPrompt({ instruction: 'how many registrations?', sections: clone(SECTIONS) });
   ok(/"handoff" if the latest message is not about this site's page at all/.test(hp) && /For "handoff", leave everything empty/.test(hp), 'and its prompt says when a message is handed to the events side');
+  /* B15 verifier: what only a person does is answered by the events side's fixed sentence (who does it, and where),
+     which this prompt does not have; and the product is called what the owner named it, never an old name the
+     model could repeat */
+  ok(/or asks to delete, cancel or restore the event, publish the site, take it offline or approve anything: the events side of ETB2B AI answers it/.test(hp),
+    'the handoff covers delete, cancel, restore, publish, take offline and approve');
+  ok(/another page of ETB2B EventSphere/.test(hp) && !/Oneworld 2\.0/.test(hp), 'and names the product ETB2B EventSphere, never Oneworld 2.0');
   var turnsBefore = turnsOf(EVH, 'u-asha').length, linesBefore = activityOf(EVH).length;
   answers.push(noChange({ kind: 'handoff', summary: 'Let me check your events.', design: { themeColor: '#000000' }, textEdits: [{ sectionId: 'overview', find: 'Where', replace: 'There' }] }));
   out = await call('POST', '/api/chat-edit', { eventId: EVH, instruction: 'how many registrations does this event have?', sections: SECTIONS });

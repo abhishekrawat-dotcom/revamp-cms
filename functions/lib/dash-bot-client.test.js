@@ -898,7 +898,7 @@ var LIST = {
   check('D.2 …suggestions for an event, each one only fills the box', same(oc.suggestions.map(function (x) { return x.text; }), ['How many registrations does this event have?', 'Open this event’s speakers', 'Make a save-the-date post for this event', 'Create an IP event called … on … in …']));
   check('D.2 …quick ideas stay after the first turn (they fill, never send)', oc.quickIdeas.length === 2 && oc.quickIdeas.every(function (q) { return q.label && q.text; }));
   check('D.2 …the foot note does not speak of a list that is not here', oc.footNote === 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.');
-  check('D.2 …"Email Customer Care" mails Customer Care, naming the page', oc.help && oc.help.label === 'Email Customer Care' && oc.help.href === 'mailto:customercare@economictimesb2b.com?subject=' + encodeURIComponent('Oneworld 2.0 help: Event console'), oc.help);
+  check('D.2 …"Email Customer Care" mails Customer Care, naming the page', oc.help && oc.help.label === 'Email Customer Care' && oc.help.href === 'mailto:customercare@economictimesb2b.com?subject=' + encodeURIComponent('ETB2B EventSphere help: Event console'), oc.help);
   check('D.2 …the attach button takes pictures here, for the event\'s site editor', oc.attach && oc.attach.max === 4 && /image\/png/.test(oc.attach.accept) && !/pdf/.test(oc.attach.accept) && oc.attach.label === 'Attach a picture' && typeof oc.attach.add === 'function', oc.attach);
   check('D.2 …it is placed bottom-right, under the page\'s own windows', same(oc.placement, { right: 22, bottom: 22, compact: false }) && same(oc.zIndex, { launcher: 65, panel: 69 }));
   await Pe0.say('How many registrations here?');

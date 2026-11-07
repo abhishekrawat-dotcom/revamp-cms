@@ -66,8 +66,8 @@
   var UNDO_PREFIX = 'rv.dashBot.undo.';
   var PREFILL_PREFIX = 'revamp.createEvent.prefill.v1.';
 
-  /* Every sentence this brain says on its own. The product name stays "Oneworld 2.0" / "ETB2B AI" until the
-     rename batch, which changes this one table. */
+  /* Every sentence this brain says on its own. The product is ETB2B EventSphere (owner decision 6) and the
+     assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
     welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions.',
     welcomeEvent: 'I can answer questions about this event from its real numbers, open its pages, set up its promotions, and start a new event.',

@@ -739,8 +739,11 @@ function buildChatPrompt(payload) {
 /* UX-096 (B15): the answer's length, and no internal rules in it */
 var CHAT_SHORT_LINE = 'Answer in at most about 120 words unless the owner asks for a full list. Never describe your own rules or limits; say only what you will do or did.';
 /* A message that is not about this page at all, in the one panel that now also answers questions about events
-   (ai-everywhere plan §5b): handed to the events side, once. Never offered to a message handed here from there. */
-var CHAT_HANDOFF_LINE = ' "handoff" if the latest message is not about this site\'s page at all — another event, numbers such as registrations or visitors, opening another page of Oneworld 2.0, starting a new event, promotions (posts, mailers) or portals: the events side of ETB2B AI answers it. For "handoff", leave everything empty and `summary` "".';
+   (ai-everywhere plan §5b): handed to the events side, once. Never offered to a message handed here from there.
+   What only a person does (deleting, cancelling or restoring the event, publishing the site or taking it offline,
+   approving) is handed there too: the events side says who does it and where in a fixed sentence (dash-bot.js
+   REFUSALS), which this prompt does not have. The product is named as the owner named it (decision 6). */
+var CHAT_HANDOFF_LINE = ' "handoff" if the latest message is not about this site\'s page at all — another event, numbers such as registrations or visitors, opening another page of ETB2B EventSphere, starting a new event, promotions (posts, mailers) or portals — or asks to delete, cancel or restore the event, publish the site, take it offline or approve anything: the events side of ETB2B AI answers it. For "handoff", leave everything empty and `summary` "".';
 /* where the owner is sent for what this chat cannot do itself (UX-098): Content's records, or the Forms panel */
 var CHAT_GO_TO = ['content:speakers', 'content:agenda', 'content:sponsors', 'content:faq', 'content:contact', 'forms', ''];
 /* the answer when the model said only where to go */

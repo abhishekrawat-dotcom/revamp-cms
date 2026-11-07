@@ -112,8 +112,8 @@
   var LOGO_TYPES = { 'image/png': 1, 'image/webp': 1, 'image/svg+xml': 1 };
   var CE_INPUTS = { logo: { input: 'f-logo', box: 'logo-cell' }, brief: { input: 'gb-doc', box: 'gb-doc-row' } };
 
-  /* Every sentence a person reads from this file. The product name stays "Oneworld 2.0" / "ETB2B AI" until the
-     rename batch, which changes this one table. */
+  /* Every sentence a person reads from this file. The product is ETB2B EventSphere (owner decision 6, 2026-11-03)
+     and the assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
     scopeGlobal: 'Your events',
     scopeEvent: 'This event',
@@ -125,7 +125,7 @@
     cantTell: 'I couldn’t tell whether that is about this page. Name the part of the page, for example “the hero”.',
     goBackWhich: 'Do you want me to undo my last change, or open another page? Say “undo that”, or name the page, for example “go back to the console”.',
     helpLabel: 'Email Customer Care',
-    helpSubject: 'Oneworld 2.0 help: ',
+    helpSubject: 'ETB2B EventSphere help: ',
 
     /* errors, the same for both brains (UX-097) */
     session: 'Your session has ended. Sign in again.',
@@ -137,7 +137,7 @@
     tooLarge: 'That message and its attachments are too large to send. Remove an attachment and try again.',
     unchanged: 'Nothing was changed.',
     pageUnchanged: 'Your page is unchanged.',
-    aiConfig: 'ETB2B AI is switched off right now. {unchanged} Please tell the Oneworld 2.0 support team.',
+    aiConfig: 'ETB2B AI is switched off right now. {unchanged} Please tell the ETB2B EventSphere support team.',
     aiBlocked: 'ETB2B AI couldn’t work with that request. {unchanged} Try saying it another way.',
     aiBusy: 'ETB2B AI is busy right now. {unchanged} Try again in a minute.',
     aiBadOutput: 'ETB2B AI gave an answer it couldn’t use. {unchanged} Try again.',
@@ -244,6 +244,21 @@
     /\b(?:which|list|my) events\b/i,
     /\bother events?\b/i
   ];
+  /* What only a person does, never ETB2B AI: deleting, cancelling or restoring an event, publishing a site or taking
+     it offline, approving. The events side answers these with its fixed sentence saying who does it and where
+     (functions/lib/dash-bot.js REFUSALS: an approver, in Settings › Visibility, for going offline); the editor's own
+     model has no such sentence, so these never go to it. Read before the page words ("publish this page", "take
+     this page offline"), on the message without its quoted words, so "Change the button to “Publish now”" stays an
+     edit. "event" followed by a part of the page ("remove the event logo") is the page's. */
+  var NEVER_CUES = [
+    /\b(?:delete|remove|cancel|restore|undelete|trash|archive)\s+(?:this|the|my|our|that|its)?\s*event\b(?!['\u2019]s|\s+(?:logo|name|date|title|picture|image|photo|banner|section|details|description|text|venue|hero|heading|tagline|card|button)s?\b)/i,
+    /\b(?:take|taking|put|bring)\b[^.?!]{0,40}\boffline\b/i,
+    /\bun-?publish\b/i,
+    /\bpublish\b/i,
+    /\bgo live\b|\bmake (?:it|the site|this site|the page|this page) live\b/i,
+    /\b(?:approve|reject)\b/i
+  ];
+  var QUOTED = /[\u201c"][^\u201c\u201d"]*[\u201d"]/g;
   function hasPicture(recs) {
     if (!isArr(recs)) return false;
     for (var i = 0; i < recs.length; i++) if (recs[i] && recs[i].kind === 'image') return true;
@@ -256,14 +271,17 @@
     if (UNDO_RE.test(t)) return 'undo';
     if (GO_BACK_RE.test(t)) return 'ask';
     if (hasPicture(recs)) return 'edit';
+    var bare = t.replace(QUOTED, ' ');
+    for (var n = 0; n < NEVER_CUES.length; n++) if (NEVER_CUES[n].test(bare)) return 'dash';
     if (PAGE_CUE.test(t)) return 'edit';
     for (var i = 0; i < DASH_CUES.length; i++) if (DASH_CUES[i].test(t)) return 'dash';
     return 'edit';
   }
 
   /* ================================================================ errors, said once for both brains */
-  /* the old product name, as some server sentences still have it until the rename batch */
-  var OLD_NAME = /\bRevamp\b/i;
+  /* the product's two old names, as some server sentences still have them until the rename batch: such a sentence
+     is never shown, this table's own words are */
+  var OLD_NAME = /\bRevamp\b|\bOneworld\b/i;
   function problem(text, retryable) {
     var e = new Error(text);
     if (retryable === false) e.retryable = false;

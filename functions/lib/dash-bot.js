@@ -180,7 +180,7 @@ var KINDS = ['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'po
 
 /* The pages the assistant is on (plan §3b), what each is called in the prompt, whether it is a page of one event,
    and the History area its exchanges are written under (only areas lib/activity.js accepts). A page that is not
-   here is "a page of Oneworld 2.0"; a page that is not a page of one event never keeps an event. */
+   here is "a page of ETB2B EventSphere"; a page that is not a page of one event never keeps an event. */
 var PAGES = {
   dashboard: { label: 'the events dashboard' },
   console: { label: 'the console', ofEvent: true, area: 'event' },
@@ -263,15 +263,22 @@ var MAILER_FIELDS = ['mailerOpens', 'mailerClicks'];
    answer names exactly one. Delete and restore are real now, on this very dashboard (an approver's row menu, and
    the Deleted Events view): no address opens a row's menu, and the console has no Delete, so their sentences say
    where the control is instead of linking away from it. Cancel and unpublish point nowhere: nothing here cancels
-   an event, and pointing at a screen that does not do it would mislead. */
+   an event, and pointing at a screen that does not do it would mislead.
+   `away` is the same sentence asked anywhere but the dashboard (the console, the editor, Promotions, review, …):
+   there is no list on those pages, so it names the dashboard the control is on. `inEditor` is publish's in the
+   site editor, which has its own Publish changes at the top: no link away from the person's work there. */
 var REFUSALS = {
-  delete: { text: 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.', link: null },
-  cancel: { text: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it from its row in this list (More actions, then Delete event) and restore it later.', link: null },
-  publish: { text: 'Publishing stays with you. Open the event and use Publish at the top.', link: 'console' },
+  delete: { text: 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.', link: null,
+    away: 'Deleting an event is never done by ETB2B AI. An approver deletes it on the events dashboard, from its row: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.' },
+  cancel: { text: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it from its row in this list (More actions, then Delete event) and restore it later.', link: null,
+    away: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it on the events dashboard, from its row (More actions, then Delete event), and restore it later.' },
+  publish: { text: 'Publishing stays with you. Open the event and use Publish at the top.', link: 'console',
+    inEditor: 'Publishing stays with you. Use Publish changes at the top of the editor.' },
   /* owner decision 4 (2026-11-03): only an approver takes a live site offline, from Settings › Visibility */
   unpublish: { text: 'Taking a live site offline is never done by ETB2B AI. Only an approver can, in the event\'s Settings › Visibility: Take the site offline.', link: null },
   approve: { text: 'Approvals stay with the approvers. Site changes are approved from the Review changes link in the approval request; registrations on the event\'s Registrations page.', link: 'registrations' },
-  restore: { text: 'Restoring a deleted event is never done by ETB2B AI. An approver restores it from Deleted Events: More (⋯) above this list, then Deleted Events, then Restore on its row.', link: null },
+  restore: { text: 'Restoring a deleted event is never done by ETB2B AI. An approver restores it from Deleted Events: More (⋯) above this list, then Deleted Events, then Restore on its row.', link: null,
+    away: 'Restoring a deleted event is never done by ETB2B AI. An approver restores it on the events dashboard: More (⋯) above the list, then Deleted Events, then Restore on its row.' },
   send: { text: 'Sending mail, WhatsApp or social posts isn\'t part of this release. I can open the mailer or post, ready to download.', link: 'promotions' },
   pay: { text: 'Payments aren\'t part of this release.', link: null },
   'edit-site': { text: 'Changing a site is done in its editor, and ETB2B AI in the editor can do it for you.', link: 'editor' },
@@ -790,7 +797,7 @@ function rowOf(ev, ctx) {
    is named only by its token, so its name reaches the prompt only inside the fenced table. */
 function placeLine(ctx) {
   var p = ctx.place, page = PAGES[p.page];
-  return (page ? page.label : 'a page of Oneworld 2.0') + (p.eventId ? ' of {{' + p.eventId + '}}' : '') + (p.tab ? ' (' + p.tab + ')' : '');
+  return (page ? page.label : 'a page of ETB2B EventSphere') + (p.eventId ? ' of {{' + p.eventId + '}}' : '') + (p.tab ? ' (' + p.tab + ')' : '');
 }
 function viewLine(ctx) {
   var v = ctx.view, bits = [];
@@ -906,8 +913,8 @@ function buildPrompt(ctx) {
   var here = p.eventId ? '{{' + p.eventId + '}}' : '';
   return [
     /* 1. who and where */
-    dash ? 'You are ETB2B AI on the events dashboard of Oneworld 2.0, ET B2B\'s event-site CMS. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.'
-      : 'You are ETB2B AI in Oneworld 2.0, ET B2B\'s event-site CMS, on ' + placeLine(ctx) + '. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.',
+    dash ? 'You are ETB2B AI on the events dashboard of ETB2B EventSphere, ET B2B\'s event-site CMS. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.'
+      : 'You are ETB2B AI in ETB2B EventSphere, ET B2B\'s event-site CMS, on ' + placeLine(ctx) + '. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.',
     ctx.handedFrom ? 'The site editor\'s ETB2B AI passed this message to you because it is not about the page: answer it yourself, as well as you can.' : null,
     '',
     /* 2. today */
@@ -974,7 +981,7 @@ function buildPrompt(ctx) {
     !inEditor && arr(ctx.attachments).length ? '- files: one entry per attached file (ATTACHED below), its number `n` and its `role`: "logo" (a picture the person calls the logo), "brief" (the PDF or text file that describes the event) or "none". With a brief file, method is "brief".' : null,
     '',
     /* 8. out of scope */
-    'OUT OF SCOPE: anything that is not about these events or Oneworld 2.0 gets kind "reply" with one polite line on what ETB2B AI can help with here (starting an event, opening its pages, answering from its real numbers, setting up promotions).',
+    'OUT OF SCOPE: anything that is not about these events or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (starting an event, opening its pages, answering from its real numbers, setting up promotions).',
     '',
     /* 9. what the person is looking at */
     dash ? 'WHAT ' + name.toUpperCase() + ' IS LOOKING AT: ' + viewLine(ctx) + '.'
@@ -1984,6 +1991,11 @@ function refusalFor(parsed, ctx, idsKept, notes, forced) {
   var raw = isObj(parsed.refuse) ? parsed.refuse : {};
   var what = forced || (REFUSE_ACTIONS.indexOf(raw.action) !== -1 ? raw.action : 'other');
   var r = REFUSALS[what], ev = idsKept.length === 1 ? ctx.byId[idsKept[0]] : null, sentence = r.text, answerRaw = r.text;
+  /* the sentence for the page it is asked on: "this list" is only true on the dashboard, and the editor publishes
+     from its own top bar */
+  var page = ctx.place && ctx.place.page ? ctx.place.page : 'dashboard', link = r.link;
+  if (page === 'editor' && r.inEditor) { sentence = answerRaw = r.inEditor; link = null; }
+  else if (page !== 'dashboard' && r.away) { sentence = answerRaw = r.away; }
   if (what === 'other') {
     sentence = ''; answerRaw = '';
     if (!forced) {
@@ -1997,14 +2009,14 @@ function refusalFor(parsed, ctx, idsKept, notes, forced) {
     if (!sentence) { sentence = r.fallback; answerRaw = r.fallback; }
   }
   var pointer = { text: sentence };
-  if (r.link && ev) {
+  if (link && ev) {
     var tab = '';
     if (what === 'send') {
       var promo = isObj(parsed.promo) ? parsed.promo : {};
       tab = ids(MAILERS).indexOf(promo.mailer) !== -1 || /\b(?:e-?mails?|mailers?|mail)\b/i.test(ctx.message) ? 'mailers' : 'posts';
     }
-    pointer.href = urlFor(r.link, ev, tab);
-    pointer.hrefLabel = r.link === 'console' ? 'Open ' + ev.name : navLabel(r.link, ev, tab).replace(/^the /, 'The ');
+    pointer.href = urlFor(link, ev, tab);
+    pointer.hrefLabel = link === 'console' ? 'Open ' + ev.name : navLabel(link, ev, tab).replace(/^the /, 'The ');
   }
   return { kind: 'refuse', parts: [{ t: 'text', v: sentence }], answerRaw: answerRaw, list: null, choices: null,
     action: { type: 'refuse', what: what, pointer: pointer }, events: ev ? [ev.id] : [], notes: uniq(notes), memo: '' };

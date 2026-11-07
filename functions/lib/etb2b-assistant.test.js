@@ -217,6 +217,10 @@ function fakeBrain(name, script) {
   ['editor-store.js', 'portal-picker.js'].forEach(function (f) { check('S.1 …and ' + f + ' is served', require('./access').isServableFile(f) === true); });
   check('S.1 every sentence it says is in one TEXT table (the rename batch changes one place), and none says Revamp',
     !/Revamp CMS|\bRevamp\b(?![A-Z])/.test(SRC.replace(/Revamp[A-Z][A-Za-z]+/g, '')));
+  /* UX-097 (B15 verifier): owner decision 6 named the product ETB2B EventSphere; no string it says, and no comment,
+     names "Oneworld 2.0", and no quoted string names Oneworld at all */
+  check('S.1 …and none says Oneworld 2.0 or Oneworld (owner decision 6: ETB2B EventSphere)', !/Oneworld 2\.0/.test(SRC) && !/'[^'\n]*Oneworld[^'\n]*'/.test(SRC),
+    (SRC.match(/[^\n]*Oneworld[^\n]*/g) || []));
 
   /* ======== S.2 where the person is ======== */
   var P0 = await shellPage();
@@ -330,6 +334,17 @@ function fakeBrain(name, script) {
   check('S.3 a bare "go back" could be either: it is asked about, never taken as an undo; "go back to …" names its place',
     ['go back', 'Go back.', 'GO BACK!', '  go back  '].every(function (t) { return Pb.A.route(t, [], {}) === 'ask'; }) &&
     Pb.A.route('Go back to the console', [], {}) === 'dash' && Pb.A.route('go back to the hero section', [], {}) === 'edit');
+  /* B15 verifier: what only a person does goes to the events side, whose fixed sentence says who does it and where
+     (an approver; Settings › Visibility for going offline), never to the editor's model, which has no such sentence
+     and would cost a Sonnet call and a screenshot; the page's own words stay with the editor */
+  var NEVER = ['Take the site offline', 'take this page offline please', 'Delete this event', 'delete the event', 'Cancel this event',
+    'Restore the event', 'Publish the site', 'publish this page', 'Unpublish it', 'Can it go live today?', 'Make the site live', 'Approve the changes'];
+  var neverWrong = NEVER.filter(function (t) { return Pb.A.route(t, [], { page: 'editor' }) !== 'dash'; });
+  check('S.3 delete, cancel, restore, publish, take offline and approve go to the events side, page words or not', neverWrong.length === 0, neverWrong);
+  var STAY = ['Remove the event logo from the hero', 'Change the button to “Publish now”', 'Delete the event date from the banner', 'Remove the second paragraph of the overview',
+    'Delete the FAQ section', 'Add a line saying the paper is published in March'];
+  var stayWrong = STAY.filter(function (t) { return Pb.A.route(t, [], { page: 'editor' }) !== 'edit'; });
+  check('S.3 …while a part of the page named with them, or a quoted label, stays an edit', stayWrong.length === 0, stayWrong);
 
   /* in the editor: the rule, one hop, local undo */
   var editB = fakeBrain('edit', function (t) { return /handoff/.test(t) ? { kind: 'handoff' } : { kind: 'edit', turnId: 'TurnEdit01' }; });
@@ -499,7 +514,7 @@ function fakeBrain(name, script) {
   var Pcon = await shellPage({ dash: true, page: 'console', path: '/edit-event.html', search: '?event=qa-main', keepClear: '.savebar.on', globals: { RevampPortals: { setWorking: function () {}, cachedWorking: function () { return 'cio'; } } } });
   var co = Pcon.opts();
   check('S.4 the console: id "ai", "This event", kept clear of its save bar', co.id === 'ai' && co.scope === 'This event' && co.keepClear === '.savebar.on');
-  check('S.4 …help is a mail to Customer Care naming the page', co.help.href === 'mailto:customercare@economictimesb2b.com?subject=Oneworld%202.0%20help%3A%20Event%20console', co.help.href);
+  check('S.4 …help is a mail to Customer Care naming the page', co.help.href === 'mailto:customercare@economictimesb2b.com?subject=ETB2B%20EventSphere%20help%3A%20Event%20console', co.help.href);
   co.help.onClick();
   check('S.4 …which opens through a link (the page is not left)', same(Pcon.anchors, [co.help.href]) && Pcon.assigned.length === 0);
   check('S.4 …a page with the portal picker already has it: none loaded', Pcon.scripts.indexOf('/portal-picker.js') === -1);
@@ -570,7 +585,8 @@ function fakeBrain(name, script) {
     [{ status: 429, body: { code: 'chat-rate' } }, 'That is a lot of messages in a short time. Please wait a few minutes and try again.', 'retry'],
     [{ status: 429, body: { code: 'dash-bot-daily' } }, 'You have used today’s ETB2B AI allowance. It resets at midnight (India time).', 'no-retry'],
     [{ status: 400, body: { code: 'too-long' } }, 'Keep the message under 4,000 characters. For a longer brief, ask me to start a new event from a brief, then paste it on Create Event.', 'no-retry'],
-    [{ status: 503, body: { code: 'ai-config', error: 'Tell the Revamp team' } }, 'ETB2B AI is switched off right now. Nothing was changed. Please tell the Oneworld 2.0 support team.', 'no-retry'],
+    [{ status: 503, body: { code: 'ai-config', error: 'Tell the Revamp team' } }, 'ETB2B AI is switched off right now. Nothing was changed. Please tell the ETB2B EventSphere support team.', 'no-retry'],
+    [{ status: 429, body: { code: 'chat-rate', error: 'Slow down, says Oneworld 2.0.' } }, 'That is a lot of messages in a short time. Please wait a few minutes and try again.', 'retry'],
     [{ status: 400, body: { code: 'ai-blocked', error: 'rewording the brief' } }, 'ETB2B AI couldn’t work with that request. Nothing was changed. Try saying it another way.', 'no-retry'],
     [{ status: 429, body: { code: 'ai-quota', error: 'quota' } }, 'ETB2B AI is busy right now. Nothing was changed. Try again in a minute.', 'retry'],
     [{ status: 503, body: { code: 'ai-unavailable', retryable: false } }, 'ETB2B AI is busy right now. Nothing was changed. Try again in a minute.', 'retry'],
@@ -593,17 +609,19 @@ function fakeBrain(name, script) {
   ];
   TABLE.forEach(function (row) { var got = msg(row[0]); check('S.6 ' + JSON.stringify(row[0]).slice(0, 70) + ' → ' + row[1].slice(0, 40), got[0] === row[1] && got[1] === row[2], got); });
   check('S.6 in the editor the same sentence says "Your page is unchanged."', E({ status: 502, body: { code: 'ai-bad-output' } }, EDIT).message === 'ETB2B AI gave an answer it couldn’t use. Your page is unchanged. Try again.' &&
-    E({ status: 503, body: { code: 'ai-config' } }, EDIT).message === 'ETB2B AI is switched off right now. Your page is unchanged. Please tell the Oneworld 2.0 support team.');
+    E({ status: 503, body: { code: 'ai-config' } }, EDIT).message === 'ETB2B AI is switched off right now. Your page is unchanged. Please tell the ETB2B EventSphere support team.');
   check('S.6 ai-rejected in the editor: "Your page is unchanged."', E({ status: 502, body: { code: 'ai-rejected', retryable: false } }, EDIT).message === 'ETB2B AI couldn’t take that request. Your page is unchanged. Try saying it another way, or remove an attachment.' &&
     E({ status: 502, body: { code: 'ai-something' } }, EDIT).message === 'ETB2B AI couldn’t answer that. Your page is unchanged. Try again, or say it another way.');
   var saidAll = [];
   TABLE.forEach(function (row) { saidAll.push(E(row[0], DASH).message, E(row[0], EDIT).message); });
-  check('S.6 no sentence errorFor gives names the old product, whatever the server said', saidAll.every(function (t) { return !/Revamp/.test(t); }), saidAll.filter(function (t) { return /Revamp/.test(t); }));
+  check('S.6 no sentence errorFor gives names the old product, whatever the server said', saidAll.every(function (t) { return !/Revamp|Oneworld/.test(t); }), saidAll.filter(function (t) { return /Revamp|Oneworld/.test(t); }));
   var Poff = await shellPage({ offline: true });
   check('S.6 offline: its sentence', Poff.A.errorFor({ network: new Error('x') }, DASH).message === 'You’re offline. Check your connection and try again.');
   check('S.6 a 401 asks for sign-in', E({ status: 401 }, DASH).signIn === true && E({ network: { status: 401 } }, DASH).signIn === true);
   var allText = Object.keys(P0.A.TEXT).map(function (k) { return P0.A.TEXT[k]; }).join('\n');
-  check('S.6 no sentence names the old product or carries a double full stop', !/Revamp|\.\.(?!\.)/.test(allText.replace(/…/g, '')), allText.match(/Revamp|\.\./g));
+  check('S.6 no sentence names the old product or carries a double full stop', !/Revamp|Oneworld|\.\.(?!\.)/.test(allText.replace(/…/g, '')), allText.match(/Revamp|Oneworld|\.\./g));
+  check('S.6 the switched-off sentence and the help mail name the product as the owner did (ETB2B EventSphere)',
+    /ETB2B EventSphere/.test(P0.A.TEXT.aiConfig) && P0.A.TEXT.helpSubject === 'ETB2B EventSphere help: ', [P0.A.TEXT.aiConfig, P0.A.TEXT.helpSubject]);
 
   /* ======== S.7 attachments per place ======== */
   var POL = T.POLICIES, cf = T.checkFile;
