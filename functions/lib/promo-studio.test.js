@@ -136,7 +136,8 @@ function load(search, o) {
     MAILERS: null,
     $: function (id) { return els[id] || null; },
     escapeHtml: function (s) { return String(s == null ? '' : s); },
-    toast: function (m, ms) { calls.toast.push(arguments.length > 1 ? [m, ms] : [m]); },
+    /* what was said, how long, and as what kind (UX-006: the page draws a message by the kind the studio gives) */
+    toast: function (m, ms, kind) { var a = [m, ms, kind].slice(0, arguments.length || 1); calls.toast.push(a); },
     openMailer: function (id, saveId) { calls.open.push([id, saveId]); },
     closeMailer: function () {},
     /* the platform's Download to send and Copy HTML, the menus and its in-app dialog (o.answer: what the sender picks) */
@@ -199,19 +200,19 @@ check('UX-139: the team\'s page has no nav of its own (its body is marked ow-tea
 /* the toasts: kind × state */
 var TOASTS = {
   download: {
-    tracked: ['Downloaded m.html — opens and clicks will show on your dashboard once it\'s sent.', 5000],
-    off: ['Downloaded m.html', 5000],
-    untracked: ['Downloaded m.html — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000]
+    tracked: ['Downloaded m.html — opens and clicks will show on your dashboard once it\'s sent.', 5000, 'success'],
+    off: ['Downloaded m.html', 5000, 'success'],
+    untracked: ['Downloaded m.html — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000, 'success']
   },
   copy: {
-    tracked: ['HTML copied — paste into your ESP'],
-    off: ['HTML copied — paste into your ESP'],
-    untracked: ['HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000]
+    tracked: ['HTML copied — paste into your ESP', undefined, 'success'],
+    off: ['HTML copied — paste into your ESP', undefined, 'success'],
+    untracked: ['HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000, 'success']
   },
   zip: {
-    tracked: ['Downloaded — saved edits included'],
-    off: ['Downloaded — saved edits included'],
-    untracked: ['Downloaded — saved edits included. Not tracked this time: download again to see their opens and clicks on your dashboard.', 5000]
+    tracked: ['Downloaded — saved edits included', undefined, 'success'],
+    off: ['Downloaded — saved edits included', undefined, 'success'],
+    untracked: ['Downloaded — saved edits included. Not tracked this time: download again to see their opens and clicks on your dashboard.', 5000, 'success']
   }
 };
 Object.keys(TOASTS).forEach(function (kind) {
@@ -1418,7 +1419,7 @@ check('UX-133: owDashNotRecorded leaves numbers being recorded to the platform',
 /* ---- UX-136: sizes in KB / MB ---- */
 check('UX-136: a picture\'s size reads as people read it', ev.sb.owSize(2611 * 1024) === '2.5 MB' && ev.sb.owSize(1024 * 1024) === '1.0 MB' && ev.sb.owSize(480 * 1024) === '480 KB' &&
   ev.sb.owSize(100) === '1 KB' && ev.sb.owSize(0) === '1 KB', [ev.sb.owSize(2611 * 1024), ev.sb.owSize(480 * 1024)]);
-check('UX-136: the picture export\'s toast uses it ("PNG downloaded (2.5 MB)", not "(2611kb)")', owSrc.indexOf("toast(format.toUpperCase() + ' downloaded (' + owSize(blob.size) + ')');") !== -1 &&
+check('UX-136: the picture export\'s toast uses it ("PNG downloaded (2.5 MB)", not "(2611kb)")', owSrc.indexOf("toast(format.toUpperCase() + ' downloaded (' + owSize(blob.size) + ')', undefined, 'success');") !== -1 &&
   owSrc.indexOf("'kb)'") === -1);
 
 /* ---- UX-136: the mail is scaled to fit the studio's stage, never up ---- */

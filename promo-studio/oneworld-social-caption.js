@@ -83,7 +83,8 @@
   function templateOf(tid) {
     try { return (typeof findTpl === 'function' && findTpl(tid)) || null; } catch (e) { return null; }
   }
-  function say(m, ms) { if (typeof toast === 'function') toast(m, ms); }
+  /* kind: 'success' | 'error' | 'info', so the page draws each message as what it is (oneworld-social.js toast) */
+  function say(m, ms, kind) { if (typeof toast === 'function') toast(m, ms, kind); }
   function eventId() {
     if (typeof EVENT_ID !== 'undefined' && EVENT_ID) return String(EVENT_ID);
     try { return new URLSearchParams(location.search).get('event') || ''; } catch (e) { return ''; }
@@ -430,10 +431,10 @@
     try {
       clip = navigator.clipboard && navigator.clipboard.writeText ? Promise.resolve(navigator.clipboard.writeText(text)) : Promise.reject(new Error('no clipboard'));
     } catch (e) { clip = Promise.reject(e); }
-    clip.then(function () { say('Caption copied.'); }, function () {
+    clip.then(function () { say('Caption copied.', undefined, 'success'); }, function () {
       var w = viewOf(c);
       if (w) { w.ta.focus(); w.ta.select(); }
-      say('Press Ctrl+C (⌘C on a Mac) to copy the selected caption.', LONG);
+      say('Press Ctrl+C (⌘C on a Mac) to copy the selected caption.', LONG, 'info');
     });
   }
 
@@ -442,7 +443,7 @@
   function writeCaption(c) {
     if (CS !== c || c.aiBusy) return;
     /* a testimonial is about a real quote; with none typed, the AI would only have the event to quote from */
-    if (c.tid === TESTIMONIAL && !quoteOf(c)) { say(QUOTE_GUARD, LONG); return; }
+    if (c.tid === TESTIMONIAL && !quoteOf(c)) { say(QUOTE_GUARD, LONG, 'error'); return; }
     var v = viewOf(c), current = v ? v.ta.value : shown(c);
     c.aiBusy = true;
     paintMeta();
@@ -450,19 +451,19 @@
       c.aiBusy = false;
       if (CS !== c) return;
       paintMeta();
-      if (!r.ok) { say(aiError(r), LONG); return; }
+      if (!r.ok) { say(aiError(r), LONG, 'error'); return; }
       var j = r.json || {};
       var text = j.text || (j.options && j.options[0] && (j.options[0].text || j.options[0]));
-      if (!text || typeof text !== 'string') { say('No caption came back. Try again.', LONG); return; }
+      if (!text || typeof text !== 'string') { say('No caption came back. Try again.', LONG, 'error'); return; }
       c.before = c.text;
       c.canUndo = true;
       c.text = text;
       paintText();
-      say('Caption written.');
+      say('Caption written.', undefined, 'success');
       /* the route's warning (the copy links to a site not yet published) follows once the first toast has gone */
       if (j.warning && typeof j.warning === 'string') {
         var warning = j.warning;
-        setTimeout(function () { if (CS === c) say(warning, LONG); }, TOAST_MS + 200);
+        setTimeout(function () { if (CS === c) say(warning, LONG, 'info'); }, TOAST_MS + 200);
       }
     });
   }
@@ -509,7 +510,7 @@
     send('/api/promo/write', { eventId: eventId(), task: 'headline', post: postFor(c.tid), current: input ? String(input.value || '') : '' }).then(function (r) {
       s.busy = false;
       if (CS !== c) return;
-      if (!r.ok) { paintSugg(c, key); say(aiError(r), LONG); return; }
+      if (!r.ok) { paintSugg(c, key); say(aiError(r), LONG, 'error'); return; }
       var j = r.json || {};
       var raw = Array.isArray(j.options) ? j.options : Array.isArray(j.headlines) ? j.headlines : (j.text ? [j.text] : []);
       s.options = raw.map(function (x) { return typeof x === 'string' ? x : (x && (x.text || x.headline)) || ''; })

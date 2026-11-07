@@ -1718,7 +1718,7 @@ function iconPopPaint(){
     const gone=ICONS.uploaded.find(u=>u.id===id);
     if(!(await uiConfirm("Remove this icon?",`“${escapeHtml(gone?gone.name:"this icon")}” is taken out of the library. Tiles already using it keep their picture.`,{ok:"Remove",danger:true}))) return;
     try{ await iconsDelete(id); toast("Icon removed"); }
-    catch(err){ toast(String(err.message||err)); }
+    catch(err){ toast(String(err.message||err),undefined,"error"); }
     if(ICP.el){ iconPopPaint(); iconPopPlace(); }
   }));
   const q2=el.querySelector(".icq");
@@ -1740,7 +1740,7 @@ function iconPopPaint(){
       const url=await iconsUpload(f);
       commit(url);
       toast(`Uploaded ${f.name}`);
-    }catch(err){ toast(String(err.message||err)); }
+    }catch(err){ toast(String(err.message||err),undefined,"error"); }
     ICP.busy=false;
     if(ICP.el){ iconPopPaint(); iconPopPlace(); }
   });
@@ -2237,7 +2237,7 @@ async function mlAi(body){
   // The inline box renders low in the panel — below the fold when the Enhance
   // confirm sits high, so a user saw nothing. ALWAYS toast the message too, so a
   // failure (typically no API key) surfaces regardless of scroll position.
-  if(!r.ok){ const msg=j.error||"AI request failed"; if(out)out.innerHTML=`<div class="ml-err">${escapeHtml(msg)}</div>`; toast(msg,5000); return null; }
+  if(!r.ok){ const msg=j.error||"AI request failed"; if(out)out.innerHTML=`<div class="ml-err">${escapeHtml(msg)}</div>`; toast(msg,5000,"error"); return null; }
   if(out)out.innerHTML=""; return j;
 }
 async function mlAiSubjects(){
@@ -2342,7 +2342,7 @@ async function mlPutSave(saveId,name){
   toast("Saving…");
   const r=await api("/api/mailer/save",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,mailerId:MD.id,doc:MD.doc,saveId:saveId||null,name:name||""})});
-  if(!r.ok){ toast((await r.json().catch(()=>({}))).error||"Save failed"); return false; }
+  if(!r.ok){ toast((await r.json().catch(()=>({}))).error||"Save failed",undefined,"error"); return false; }
   const j=await r.json();
   MD.dirty=false; MD.saved=true;
   MD.saveId=j.save.saveId; MD.saveName=j.save.name;
@@ -2377,7 +2377,7 @@ async function mlSaveAs(){
 }
 async function mlRenameVersion(){
   closeMenus();
-  if(!MD.saveId){ toast("This draft has not been saved yet"); return; }
+  if(!MD.saveId){ toast("This draft has not been saved yet",undefined,"info"); return; }
   const typed=await uiPrompt("Rename this version",{value:MD.saveName,placeholder:"Version name",ok:"Rename"});
   if(typed===null)return;
   const name=mlUniqueName(typed,MD.saveId);
@@ -2389,7 +2389,7 @@ async function mlRenameVersion(){
 }
 async function mlDeleteVersion(){
   closeMenus();
-  if(!MD.saveId){ toast("This draft has not been saved yet"); return; }
+  if(!MD.saveId){ toast("This draft has not been saved yet",undefined,"info"); return; }
   if(!await uiConfirm("Delete this version?",`“${escapeHtml(MD.saveName)}” will be removed. Your other saved versions are kept.`,{ok:"Delete version",danger:true}))return;
   const r=await api("/api/mailer/save/delete",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,mailerId:MD.id,saveId:MD.saveId})});
@@ -2437,7 +2437,7 @@ async function mlRelayoutTo(id){
   const r=await api("/api/mailer/relayout",{method:"POST",headers:{"content-type":"application/json"},
     body:JSON.stringify({portal:S.portal,event:S.event,mailerId:id,doc:MD.doc,params:{}})});
   mlBusyDone();
-  if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.error||"Could not change the layout"); return; }
+  if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.error||"Could not change the layout",undefined,"error"); return; }
   const j=await r.json();
   // A new layout is a NEW draft: it is not the version the sender opened, so it
   // must not overwrite it on the next Save. Clearing saveId turns Save into
@@ -2473,7 +2473,7 @@ async function mlImportFile(input){
   const r=await api(`/api/mailer/import?portal=${encodeURIComponent(S.portal)}&event=${encodeURIComponent(S.event)}`,
     {method:"POST",headers:{"content-type":"text/html"},body:await f.arrayBuffer()});
   mlBusyDone();
-  if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.error||"Could not read that file"); return; }
+  if(!r.ok){ const j=await r.json().catch(()=>({})); toast(j.error||"Could not read that file",undefined,"error"); return; }
   const j=await r.json();
   // Remember the document that was open, so a near-empty or wrong import is one
   // click to recover from rather than a dead end. The old doc object is detached

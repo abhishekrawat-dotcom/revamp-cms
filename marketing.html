@@ -475,11 +475,13 @@
   }
   function relayToast(t){
     if (!t || typeof t !== 'object' || t.m == null) return;
-    /* the platform's own ✓ goes: the message's kind draws its mark (RevampCore.toast reads the kind from the words,
-       as the platform's toasts have none: a failure stays up in red, something done gets the tick) */
+    /* the platform's own ✓ goes: the message's kind draws its mark. The studio sends the kind where it knows it
+       (every Oneworld message, and the platform's where its words are a server's own); only a message sent without
+       one has its kind read from the words by RevampCore.toast (a failure stays up in red, something done gets the tick) */
     var text = String(t.m).slice(0, 300).replace(/^\s*[✓✔]\s*/, '');
     if (!text.trim()) return;
-    toast(text, { kind: 'auto', duration: Number(t.ms) > 0 ? Number(t.ms) : undefined });
+    var kind = t.k === 'success' || t.k === 'error' || t.k === 'info' ? t.k : 'auto';
+    toast(text, { kind: kind, duration: Number(t.ms) > 0 ? Number(t.ms) : undefined });
   }
   window.addEventListener('message', function(e){
     var d = e.data;

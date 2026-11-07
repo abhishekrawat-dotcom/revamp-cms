@@ -190,10 +190,59 @@ check('UX-006 the events list: toast and toastAction are RevampCore.toast, and i
   /if \(!mayRemove\(\)\)\{ toast\(whoMayRemove\(\), 'error'\); break; \}/.test(LISTING) && LISTING.indexOf('.toast-btn{') === -1);
 check('UX-006 Registrations and Promotions no longer keep a host of their own', REG.indexOf('id="toast-host"') === -1 && PROMO.indexOf('id="toast-host"') === -1);
 var OW = read('promo-studio/oneworld.js'), OWS = read('promo-studio/oneworld-social.js');
-check('UX-006 the mailer and social studios in Promotions hand every message to the page around them (RevampCore.toast)',
-  OW.indexOf("if (owFramed() && owTall()) { owPost({ rvToast: { m: String(m), ms: ms } }); return; }") !== -1 &&
-  OWS.indexOf("if (owTall() && owFramed()) { owTell({ rvToast: { m: String(m == null ? '' : m), ms: ms } }); return; }") !== -1 &&
-  PROMO.indexOf("toast(text, { kind: 'auto', duration: Number(t.ms) > 0 ? Number(t.ms) : undefined });") !== -1);
+check('UX-006 the mailer and social studios in Promotions hand every message to the page around them (RevampCore.toast), with its kind',
+  OW.indexOf("toast = function (m, ms, kind) {\n  if (owFramed() && owTall()) { owPost({ rvToast: { m: String(m), ms: ms, k: kind } }); return; }") !== -1 &&
+  OWS.indexOf("function toast(m, ms, kind) {\n  if (owTall() && owFramed()) { owTell({ rvToast: { m: String(m == null ? '' : m), ms: ms, k: kind } }); return; }") !== -1);
+(function () {
+  /* the page's relay, run: the studio's kind is used as it is; only a message without one is read from its words */
+  var src = (/\n  function relayToast\(t\)\{[\s\S]*?\n  \}\n/.exec(PROMO) || [''])[0];
+  var said = [], sb = { toast: function (m, o) { said.push([m, o.kind, o.duration]); } };
+  vm.runInNewContext(src + '; this.relayToast = relayToast;', sb);
+  sb.relayToast({ m: 'Uploading pictures did not load. Reload the page and try again.', ms: 9000, k: 'error' });
+  sb.relayToast({ m: 'The QR code was left out: the site is not published.', ms: 9000, k: 'info' });
+  sb.relayToast({ m: '✓ Downloaded ZIP', k: 'success' });
+  sb.relayToast({ m: 'Download failed' });
+  sb.relayToast({ m: 'Section moved', k: 'shout' });
+  check('UX-006 Promotions draws a studio message as the kind it was sent with, and reads the words only when none came',
+    !!src && JSON.stringify(said) === JSON.stringify([['Uploading pictures did not load. Reload the page and try again.', 'error', 9000],
+      ['The QR code was left out: the site is not published.', 'info', 9000], ['Downloaded ZIP', 'success', undefined], ['Download failed', 'auto', undefined], ['Section moved', 'auto', undefined]]), said);
+})();
+(function () {
+  /* the frames' toast, run: in Promotions the kind goes up with the message */
+  var src = (/\nfunction toast\(m, ms, kind\) \{[\s\S]*?\n\}\n/.exec(OWS) || [''])[0];
+  var told = [], sb = { owTall: function () { return true; }, owFramed: function () { return true; }, owTell: function (d) { told.push(d.rvToast); }, $: function () { return null; } };
+  vm.runInNewContext(src + '; this.toast = toast;', sb);
+  sb.toast('The picture was uploaded, but the element it was for is no longer on the canvas.', 9000, 'error');
+  check('UX-006 … the posts\' frame sends it', !!src && JSON.stringify(told) === JSON.stringify([{ m: 'The picture was uploaded, but the element it was for is no longer on the canvas.', ms: 9000, k: 'error' }]), told);
+})();
+/* Oneworld's own messages in the studios all say what kind they are, so none is left to a guess from its words (which
+   took "The picture was uploaded, but …" for a success and "… did not load" for a passing note) */
+(function () {
+  var CAP = read('promo-studio/oneworld-social-caption.js');
+  function untold(src, fn) {
+    return src.split('\n').filter(function (line) {
+      var l = line.replace(/\/\*.*?\*\//g, '').replace(/^\s*\/\/.*$/, '');
+      if (l.indexOf(fn + '(') === -1 || /function (toast|say|owDeepToast)\(/.test(l) || /owToast/.test(l)) return false;
+      if (fn === 'toast' && /owDeepToast\(/.test(l) && !/[^p]toast\(/.test(l.replace(/owDeepToast\(/g, ''))) return false;
+      return !/, (?:'(?:success|error|info)'|L\.unsure \? 'error' : 'info')\);/.test(l);
+    });
+  }
+  var left = untold(OW, 'toast').concat(untold(OWS, 'toast'), untold(CAP, 'say'));
+  check('UX-006 every Oneworld message in the studios gives its kind', left.length === 0, left);
+  check('UX-006 … the three that were misread: "did not load" and "… no longer on the canvas" are failures, the QR note is a note',
+    OWS.indexOf("toast('Uploading pictures did not load. Reload the page and try again.', OW_LONG, 'error');") !== -1 &&
+    OWS.indexOf("toast('The picture was uploaded, but the element it was for is no longer on the canvas.', OW_LONG, 'error');") !== -1 &&
+    OWS.indexOf("if (q.dropped) toast(OW_MSG.qr, OW_LONG, 'info');") !== -1 && OWS.indexOf("toast(said, OW_LONG, L.unsure ? 'error' : 'info');") !== -1);
+  var MS = read('promo-studio/mailer-studio.js');
+  check('UX-006 … and the platform\'s, where its words are the server\'s own sentence, say "error"',
+    count(MS, 'catch(err){ toast(String(err.message||err),undefined,"error"); }') === 2 && MS.indexOf('toast(msg,5000,"error"); return null; }') !== -1 &&
+    MS.indexOf('.error||"Save failed",undefined,"error"); return false; }') !== -1 && MS.indexOf('toast(j.error||"Could not change the layout",undefined,"error");') !== -1 &&
+    MS.indexOf('toast(j.error||"Could not read that file",undefined,"error");') !== -1 && count(MS, 'toast("This draft has not been saved yet",undefined,"info");') === 2);
+  var K = core().C.toastKind;
+  check('UX-006 … and the words read better for the platform\'s messages that come with none',
+    K('Uploading pictures did not load.') === 'error' && K('The banner didn’t load') === 'error' && K('Cut 2 element(s)') === 'success' && K('Pasted 2 element(s)') === 'success' &&
+    K('Reset to the original template') === 'success' && K('Reset failed') === 'error' && K('Open an event first') === 'info');
+})();
 
 /* ======================= UX-008 one "could not load" state ======================= */
 (function () {
@@ -282,9 +331,8 @@ check('UX-007 Registrations: an account menu to sign out, and no event switcher'
    way out. The site editor's switch was inside its account menu, and the console, Promotions and Registrations put
    the pair before Preview: the editor, the events list and the logs put it last. */
 var PAIR = '<span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>\\s*(?:<!--[^>]*-->\\s*)?<span data-rv-account></span>';
-var EDITOR_PAGE = read('custom_editor.html'), CREATE = read('create-event.html'), LIST = read('Event_Listing.html'), PROMO = read('marketing.html');
-var HEADERS = { 'edit-event.html': CONSOLE, 'custom_editor.html': EDITOR_PAGE, 'marketing.html': PROMO, 'audience-registrations.html': REG,
-  'activity-log.html': ALOG, 'mailer-performance.html': MP, 'review.html': REVIEW, 'Event_Listing.html': LIST, 'create-event.html': CREATE, 'portal-review.html': read('portal-review.html') };
+var HEADERS = { 'edit-event.html': CONSOLE, 'custom_editor.html': EDITOR, 'marketing.html': PROMO, 'audience-registrations.html': REG,
+  'activity-log.html': ALOG, 'mailer-performance.html': MP, 'review.html': REVIEW, 'Event_Listing.html': LISTING, 'create-event.html': WIZ, 'portal-review.html': read('portal-review.html') };
 var badEnd = Object.keys(HEADERS).filter(function (f) {
   var page = HEADERS[f];
   var after = f === 'create-event.html' ? '\\s*<button class="icon-btn" id="btn-close"' : '\\s*(?:</span>|</div>)?\\s*(?:</div>\\s*)?</header>';
@@ -292,7 +340,7 @@ var badEnd = Object.keys(HEADERS).filter(function (f) {
 });
 check('UX-007 every page with an account: the light/dark switch and the account menu side by side, one of each, at the end of the top bar', badEnd.length === 0, badEnd);
 check('UX-007 … so the site editor\'s switch is in its top bar like every other page\'s, not inside its account menu',
-  EDITOR_PAGE.indexOf('data-rv-account-theme></span>') === -1);
+  EDITOR.indexOf('data-rv-account-theme></span>') === -1);
 check('UX-007 … and the console, Promotions and Registrations have Preview, Share preview and Publish before the pair, as the editor has',
   new RegExp('id="btn-publish">Publish</button>\\s*(?:<!--[^>]*-->\\s*)?' + PAIR + '\\s*</span>\\s*</header>').test(CONSOLE) &&
   new RegExp('<span>Preview</span>\\s*</button>\\s*(?:<!--[^>]*-->\\s*)?' + PAIR + '\\s*</span>\\s*</header>').test(PROMO) &&

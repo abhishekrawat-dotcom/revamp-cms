@@ -1307,12 +1307,12 @@ window.RevampCore = (function(){
        toast(msg, 'error')                the same, shorter
      More options: action { label, onClick } adds one button (Undo, Open copy) and keeps the message eight
      seconds at least; retry: a function adds "Try again"; sticky keeps any message until it is dismissed;
-     duration: how long it stays (ms); kind 'auto' reads the wording (pages that have no kinds of their own,
-     such as the Promotions studios). Pausing the mouse on a message holds it. Returns the function that
-     closes it (also as .dismiss). */
+     duration: how long it stays (ms); kind 'auto' reads the wording (for a message that comes with no kind: the
+     platform code inside the Promotions studios has none, while Oneworld's own messages there send theirs).
+     Pausing the mouse on a message holds it. Returns the function that closes it (also as .dismiss). */
   var TOAST_MAX = 4;
-  var FAIL_WORDS = /\b(fail(ed|s|ure)?|could ?n[o'’]t|cannot|can[’']t|unable|(is|was)n[’']t (saved|added|sent|loaded|uploaded|allowed|available)|not (been )?(saved|added|sent|loaded|uploaded|allowed|available)|blocked|refused|error)\b/i;
-  var DONE_WORDS = /\b(saved|uploaded|downloaded|copied|added|removed|deleted|renamed|reverted|applied|imported|switched|rewritten|enhanced|rebuilt|undone|redone|moved|created|sent|published|updated|restored|discarded)\b/i;
+  var FAIL_WORDS = /\b(fail(ed|s|ure)?|could ?n[o'’]t|did ?n[o'’]t|cannot|can[’']t|unable|(is|was)n[’']t (saved|added|sent|loaded|uploaded|allowed|available)|not (been )?(saved|added|sent|loaded|uploaded|allowed|available)|blocked|refused|error)\b/i;
+  var DONE_WORDS = /\b(saved|uploaded|downloaded|copied|added|removed|deleted|renamed|reverted|applied|imported|switched|rewritten|enhanced|rebuilt|undone|redone|moved|created|sent|published|updated|restored|discarded|pasted|cut|reset)\b/i;
   function toastKind(msg){
     var s = String(msg == null ? '' : msg);
     if (FAIL_WORDS.test(s)) return 'error';
