@@ -50,6 +50,9 @@
       { label: 'Shorten the overview', text: 'Shorten the overview to two sentences' },
       { label: 'A new hero picture', text: 'Make a new hero picture of …' }
     ],
+    /* under the box: what ETB2B AI does here. Not the other pages' line ("it never deletes … anything"), which is
+       not true in the editor: here it changes and can remove parts of the page, each change with its Undo */
+    footNote: 'ETB2B AI changes this page when you ask, and every change has an Undo. It never saves, publishes, deletes an event or approves anything.',
     attachLabel: 'Attach a picture',
     attachHint: 'Pictures go on this page where you say, for example “use this as the hero background”.',
     needWords: 'Say what the picture is for, for example “use this as the hero background”.',
@@ -460,6 +463,7 @@
       welcome: function () { return { text: TEXT.welcome(U.chat.eventName()) }; },
       suggestions: TEXT.suggestions,
       quickIdeas: TEXT.quickIdeas,
+      footNote: TEXT.footNote,
       attach: { accept: ACCEPT, max: MAX_PICTURES, numbered: true, label: TEXT.attachLabel, hint: TEXT.attachHint, needWords: TEXT.needWords, add: attachAdd },
       context: {
         current: function () { var f = U.chat.focus(); var l = focusLabel(f); return l ? { label: l, title: TEXT.focusTitle } : null; },

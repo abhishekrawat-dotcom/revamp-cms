@@ -4053,7 +4053,7 @@
     stillApplying: 'One moment — ETB2B AI is still applying your last change.',
     stillAnswering: 'One moment — ETB2B AI is still answering your last message.',
     notReady: 'The page is still loading. Send your message again in a moment.',
-    stoppedWaiting: 'Stopped. Nothing was changed.',
+    stoppedWaiting: 'Stopped. Your page is unchanged.',          // the editor's words for it, as its error lines say (UX-097)
     stopping: 'Stopping after the step in progress…',
     /* the change's own Stop, on its card while it is being applied (the panel's Stop is for a message still waiting
        for its answer: that one gives the words back for Try again, which here would make the same change twice) */

@@ -686,6 +686,9 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   check('A.11 the delete sentence names the real Delete: approvers, the row\'s More actions, Delete event, Deleted Events',
     REF.delete.text === 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.' &&
     REF.delete.link === null, REF.delete);
+  /* owner decision 4: taking a live site offline is for approvers only (Settings › Visibility, "Take the site offline…") */
+  check('A.11 the take-offline sentence says only an approver can, and where', REF.unpublish.text === 'Taking a live site offline is never done by ETB2B AI. Only an approver can, in the event\'s Settings › Visibility: Take the site offline.' &&
+    REF.unpublish.link === null, REF.unpublish);
   check('A.11 the restore sentence names Deleted Events and its Restore', /never done by ETB2B AI/.test(REF.restore.text) && /approver restores it from Deleted Events/.test(REF.restore.text) &&
     /Restore on its row/.test(REF.restore.text) && REF.restore.link === null, REF.restore);
   check('A.11 cancel says plainly there is no Cancel, and no longer shares the delete sentence', /there is no Cancel for an event yet/.test(REF.cancel.text) && REF.cancel.text !== REF.delete.text && REF.cancel.link === null, REF.cancel);

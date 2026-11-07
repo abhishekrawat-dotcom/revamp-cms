@@ -587,7 +587,7 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
     UI_SRC.indexOf('card.offerStop(') > UI_SRC.indexOf('currentTurn = t;                  // until setAiWorking(false)'));
   check('E.1 …a keyboard user who pressed it lands on the change\'s Undo (or the message box when nothing changed)',
     /if \(card\.stopHadFocus\) \{ card\.stopHadFocus = false; b\.focus\(\); \}/.test(UI_SRC) && (UI_SRC.match(/if \(card\.stopHadFocus && viewCan\('focusInput'\)\) chatView\.focusInput\(\);/g) || []).length === 2);
-  check('E.1 Stop while waiting: "Stopped. Nothing was changed." and the turn kept as stopped', /stoppedWaiting: 'Stopped\. Nothing was changed\.'/.test(UI_SRC) && /reportTurn\(r\.body\.turnId, 'stopped'\)/.test(UI_SRC));
+  check('E.1 Stop while waiting: "Stopped. Your page is unchanged." (the editor\'s words, as its error lines) and the turn kept as stopped', /stoppedWaiting: 'Stopped\. Your page is unchanged\.'/.test(UI_SRC) && /reportTurn\(r\.body\.turnId, 'stopped'\)/.test(UI_SRC));
   check('E.1 the wait for the page says it honestly (UX-097)', UI_SRC.indexOf('ETB2B AI is looking at your page (a few seconds)…') !== -1);
   check('E.1 the dropped suggestions are gone (UX-095)', UI_SRC.indexOf('Make the buttons rounder') === -1 && UI_SRC.indexOf('Add a short FAQ section') === -1 && CLIENT.indexOf('Make the buttons rounder') === -1);
   check('E.1 a step names what it becomes (UX-099): designLine, “old” → “new”', /function designLine\(key, value\)/.test(UI_SRC) && UI_SRC.indexOf("'” → “'") !== -1);
@@ -655,6 +655,10 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   check('E.3 the welcome is the editor\'s (the person\'s first name, this event)', wt.indexOf('Hi Asha') !== -1 && wt.indexOf('I change this page when you ask') !== -1 && wt.indexOf('answer questions about QA AIE Main') !== -1, wt.slice(0, 300));
   check('E.3 the events side\'s welcome is not used here', wt.indexOf('The events side’s welcome.') === -1);
   check('E.3 the editor\'s suggestions', EC.TEXT.suggestions.every(function (s) { return wt.indexOf(s.label) !== -1; }) && wt.indexOf('Show drafts') === -1);
+  /* the note under the box is the editor's own: here ETB2B AI does change (and can remove) parts of the page, so the
+     other pages' "It never deletes … anything" would not be true */
+  check('E.3 the note under the box says what ETB2B AI does in the editor', wt.indexOf('ETB2B AI changes this page when you ask, and every change has an Undo. It never saves, publishes, deletes an event or approves anything.') !== -1 &&
+    wt.indexOf('It never deletes, cancels, publishes or approves anything.') === -1);
   check('E.3 the event\'s conversation was read once (the editor\'s own replay)', env.seam.historyCalls === 1);
   check('E.3 the scope line names the event', env.$('scope') && env.$('scope').textContent === 'This event: QA AIE Main', env.$('scope') && env.$('scope').textContent);
   var sug = all(env.wrap(), function (e) { return e.localName === 'button' && e.textContent === 'Shorten the overview to two sentences'; })[0];

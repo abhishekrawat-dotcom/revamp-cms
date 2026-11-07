@@ -266,7 +266,8 @@ var REFUSALS = {
   delete: { text: 'Deleting an event is never done by ETB2B AI. An approver deletes it from its row in this list: More actions (⋯), then Delete event. It then waits in Deleted Events, where an approver can restore it.', link: null },
   cancel: { text: 'Cancelling an event is never done by ETB2B AI, and there is no Cancel for an event yet. An approver can delete it from its row in this list (More actions, then Delete event) and restore it later.', link: null },
   publish: { text: 'Publishing stays with you. Open the event and use Publish at the top.', link: 'console' },
-  unpublish: { text: 'Taking a live site down is never done by ETB2B AI. It stays a manual step for you.', link: null },
+  /* owner decision 4 (2026-11-03): only an approver takes a live site offline, from Settings › Visibility */
+  unpublish: { text: 'Taking a live site offline is never done by ETB2B AI. Only an approver can, in the event\'s Settings › Visibility: Take the site offline.', link: null },
   approve: { text: 'Approvals stay with the approvers. Site changes are approved from the Review changes link in the approval request; registrations on the event\'s Registrations page.', link: 'registrations' },
   restore: { text: 'Restoring a deleted event is never done by ETB2B AI. An approver restores it from Deleted Events: More (⋯) above this list, then Deleted Events, then Restore on its row.', link: null },
   send: { text: 'Sending mail, WhatsApp or social posts isn\'t part of this release. I can open the mailer or post, ready to download.', link: 'promotions' },
