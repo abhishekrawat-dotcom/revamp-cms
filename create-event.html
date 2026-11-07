@@ -1958,7 +1958,7 @@
   <div class="draft-warning" id="draft-warning" role="alert" hidden></div>
   <main class="wiz-body">
     <!-- while a draft is fetched from the person's account (Resume on another computer: openDraft) -->
-    <p class="hint tpl-loading draft-opening" id="draft-opening" role="status" hidden><span class="gb-spin"></span> Opening your draft…</p>
+    <p class="hint tpl-loading draft-opening" id="draft-opening" role="status" hidden><span class="gb-spin"></span> <span id="draft-opening-text">Opening your draft…</span></p>
 
     <!-- ---------- STEP 1 : BASIC DETAILS ---------- -->
     <section class="step-wrap full" id="step-1" hidden>
@@ -3364,16 +3364,20 @@
      Save & exit and close, are wired by start()): put away from the moment the draft is asked for until start() shows
      the step it opens on, so the page shows only "Opening your draft…" meanwhile, and only the dialog's own buttons when
      it could not be opened. Save & exit goes with them (nothing has been typed here to save); the close button still
-     leaves, straight back to Drafts, as nothing can be lost yet. */
+     leaves, straight back to Drafts, as nothing can be lost yet.
+     text and toDrafts: the same wait for another reason. Create Event beside an unfinished draft first puts that draft in
+     the account (keepOrAsk), which can take seconds on a slow connection: the line says so, and close goes back to the
+     events list it came from, not Drafts (a draft that has not reached the account yet is not listed there). */
   var draftOpening = false;
-  function showOpening(on){
-    var el = $('draft-opening'), foot = $('wiz-foot'), saveExit = $('btn-save-exit'), close = $('btn-close');
+  function showOpening(on, text, toDrafts){
+    var el = $('draft-opening'), line = $('draft-opening-text'), foot = $('wiz-foot'), saveExit = $('btn-save-exit'), close = $('btn-close');
     draftOpening = !!on;
     if (el) el.hidden = !on;
     if (!on) return;
+    if (line) line.textContent = text || 'Opening your draft…';
     if (foot) foot.hidden = true;
     if (saveExit) saveExit.hidden = true;
-    if (close) close.onclick = function(){ if (draftOpening) exitToDashboard(true); };
+    if (close) close.onclick = function(){ if (draftOpening) exitToDashboard(toDrafts !== false); };
   }
   /* the pictures the account holds for draft `d` that this browser does not have in that version (or has older),
      fetched into the draft's own slots before the form reads them; one that cannot be fetched is said missing by
@@ -11555,7 +11559,15 @@
      events dashboard) and the new event starts at once (fresh); when it is not, and cannot be put there now, the
      person is asked (ask), because discarding it would then lose it. */
   function keepOrAsk(stored, fresh, ask){
-    ensureInAccount(stored).then(function(ok){ if (ok) fresh(); else ask(); });     // true, or 'theirs': not this person's to ask about
+    /* ensureInAccount can wait up to ENSURE_TIMEOUT_MS on a slow account, and the page has no step to show until it
+       answers: said meanwhile, with the footer put away, instead of a blank page with a Continue that does nothing.
+       A draft already in the account answers at once, so the line never shows for it. The footer stays away behind
+       the "unfinished event" question too: its own buttons are the ways on, and start() brings the footer back. */
+    showOpening(true, 'Saving your unfinished draft to your account…', false);
+    ensureInAccount(stored).then(function(ok){
+      showOpening(false);
+      if (ok) fresh(); else ask();     // true, or 'theirs': not this person's to ask about
+    });
   }
   /* ETB2B AI's details for id, or null: none, too old, already used, or unreadable (storage blocked or the script missing) */
   function takePrefill(id){

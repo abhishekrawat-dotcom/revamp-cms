@@ -518,6 +518,8 @@ function page(o) {
     /* UX-048: the draft in the person's account. The real ones ask the server (create-event-saves.test.js covers them) */
     'function migrateLegacyDraft(){ CALLS.push(["migrate"]); }',
     'function ensureInAccount(d){ CALLS.push(["ensure", d && d.draftId]); return Promise.resolve(IN_ACCOUNT); }',
+    /* the "Saving your unfinished draft…" line keepOrAsk shows while it waits (create-event-saves.test.js covers it) */
+    'function showOpening(){}',
     'function openDraft(id, local, fromAccount){ CALLS.push(["open", id, !!fromAccount]); start(local); }',
     /* the real start() restores the draft, then fills it (applyAiPrefill), then draws the form: here, the middle */
     'function start(){ CALLS.push(["start", aiPrefill ? aiPrefill.prefillId : null, aiNote ? aiNote.kind : null]); if (aiPrefill) applyAiPrefill(RESUMED); if (aiNote && aiNote.kind === "filled") aiNote.snap = aiDraftKey(); renderAiPrefillNote(); }',

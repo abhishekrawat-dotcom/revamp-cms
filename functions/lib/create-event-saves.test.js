@@ -274,6 +274,7 @@ async function main() {
       writerId: function () { return 'wtest01'; }, serverSlot: CD.serverSlot, localSlot: CD.localSlot, whenLabel: CD.whenLabel,
       put: function (id, rev, state, opts) {
         A.calls.push('put ' + id + ' ' + rev + (opts && opts.force ? ' force' : ''));
+        if (A.hangPut) return new Promise(function () {});      // an account that takes a save and never answers
         if (A.fail) return Promise.reject(A.fail);
         var cur = A.store[id], curRev = cur ? cur.rev : 0;
         if (!(opts && opts.force) && curRev !== rev) {
@@ -416,6 +417,41 @@ async function main() {
   await sleep(20); await tick();
   check('UX-048 …when it cannot be put there now, the person is asked as before, and told why', p.ctx.__started === undefined && p.log.modals.length === 1 &&
     p.log.modals[0].title === 'You have an unfinished event' && p.log.modals[0].body.indexOf('it could not be saved to your account just now, so it is not in your Drafts') !== -1);
+  /* …and while it is being put there on a slow account the page says so, instead of a blank page with a dead Continue */
+  A = account(); A.hangPut = true;
+  p = acctPage(A, { search: '?new=1', draft: Object.assign({}, old, { basics: { category: 'IP', name: 'QA Local Only' } }) });
+  p.ce('ENSURE_TIMEOUT_MS = 40');
+  p.ce('window.__realStart = start; start = function(d){ window.__started = d === null ? "new" : d; return window.__realStart(d); }');
+  p.ce('init()');
+  await tick();
+  check('regression: Create Event beside a draft not in the account yet: while it is saved there the page says so, not a blank page',
+    p.$('draft-opening').hidden === false && p.$('draft-opening-text').textContent === 'Saving your unfinished draft to your account…' &&
+    p.ctx.__started === undefined && p.log.modals.length === 0, p.$('draft-opening-text').textContent);
+  check('regression: …with the footer\'s Back and Continue and the header\'s Save & exit put away (no step to act on yet)',
+    p.$('wiz-foot').hidden === true && p.$('btn-save-exit').hidden === true);
+  p.ce('window.__realExit = exitToDashboard; exitToDashboard = function(t){ window.__left = t; }');
+  p.$('btn-close').onclick();
+  check('regression: …and the close button leaves, to the events list (not Drafts: that draft is not listed there yet)', p.ctx.__left === false, p.ctx.__left);
+  p.ce('exitToDashboard = window.__realExit');
+  await sleep(80); await tick();
+  check('regression: …an account that does not answer in time: the line goes and the person is asked about the unfinished event',
+    p.$('draft-opening').hidden === true && p.log.modals.length === 1 && p.log.modals[0].title === 'You have an unfinished event' && p.ctx.__started === undefined,
+    p.log.modals.map(function (m) { return m.title; }));
+  check('regression: …behind that question the footer stays put away: its own buttons are the ways on', p.$('wiz-foot').hidden === true);
+  p.log.modals[0].onConfirm();
+  await tick();
+  check('regression: …Continue this draft opens it, with the footer and Save & exit back and Continue on its step',
+    p.ce('S.basics.name') === 'QA Local Only' && p.$('wiz-foot').hidden === false && p.$('btn-save-exit').hidden === false &&
+    p.$('btn-next').hidden === false && p.$('btn-next').textContent.indexOf('Continue') !== -1 && p.ce('draftOpening') === false);
+  /* a draft the account already has answers at once: the line is never left showing, and the new event starts */
+  A = account();
+  A.store[old.draftId] = { rev: 2, state: Object.assign({}, old), writer: 'wtest01' };
+  p = acctPage(A, { search: '?new=1', draft: Object.assign({}, old, { rev: 2, syncedAt: old.savedAt }) });
+  p.ce('window.__realStart = start; start = function(d){ window.__started = d === null ? "new" : d; return window.__realStart(d); }');
+  p.ce('init()');
+  await tick();
+  check('regression: …one already in the account: the new event starts at once, with no saving line and its footer shown',
+    p.ctx.__started === 'new' && p.$('draft-opening').hidden === true && p.$('wiz-foot').hidden === false && A.calls.filter(function (c) { return /^put /.test(c); }).length === 0, A.calls);
   A = account();
   p = acctPage(A, { search: '?new=1', draft: Object.assign({}, old, { owner: 'u-someone-else' }) });
   p.ce('start = function(d){ window.__started = d === null ? "new" : (d && d.draftId) || "current"; }');
