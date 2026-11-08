@@ -78,6 +78,33 @@ var empty = SC.emptySections(PAGE, kit);
 ok(empty.length === 1 && empty[0].section === 'Speakers' && empty[0].heading === 'Speakers', 'an empty section: shown, with only its heading; a hidden one is not shown, so not empty', empty);
 ok(SC.emptySections(page('<section data-rv-section="reg"><h2>Register</h2><div data-rv-form-embed="register"></div></section><section data-rv-section="b" style="background:url(x.jpg)"><h2>B</h2></section>'), kit).length === 0,
   'a section the forms runtime fills, or with a background picture, is not empty');
+/* what is in a section besides its first heading (the browser check of 8 Nov 2026 called each of these "only its
+   heading", every heading being skipped) */
+var FILLED = {
+  'a stats section in spans': '<section data-rv-section="stats"><div class="stat"><span>500+</span><span>Delegates</span></div><div class="stat"><span>60+</span><span>Speakers</span></div></section>',
+  'a stats section in headings': '<section data-rv-section="numbers"><h2>In numbers</h2><div><h3>500+</h3><p>Delegates</p></div></section>',
+  'a list of key topics': '<section data-rv-section="topics"><h2>Key topics</h2><ul><li>AI</li><li>Cloud</li><li>Data</li></ul></section>',
+  'cards with h4 titles': '<section data-rv-section="why"><h2>Why attend</h2><div><h4>Learn</h4></div><div><h4>Meet</h4></div></section>',
+  'an FAQ with one short answer': '<section data-rv-section="faq"><h2>FAQ</h2><h3>Is it free?</h3><p>Yes.</p></section>',
+  'an FAQ in details': '<section data-rv-section="faq2"><h2>FAQ</h2><details><summary>Free?</summary><p>Yes.</p></details></section>',
+  'an SVG-only section': '<section data-rv-section="map"><svg viewBox="0 0 10 10"><path d="M0 0h10"/></svg></section>',
+  'a banner with its title and date': '<section data-rv-section="hero"><h1>Tech Summit</h1><p>12–13 Mar 2027</p></section>',
+  'a banner with only its title': '<section data-rv-section="hero"><h1>Tech Summit</h1></section>',
+  'a film in a frame': '<section data-rv-section="film"><h2>Watch</h2><iframe src="https://www.youtube.com/embed/x"></iframe></section>'
+};
+Object.keys(FILLED).forEach(function (what) {
+  var got = SC.emptySections(page(FILLED[what]), kit);
+  ok(got.length === 0, what + ' is not empty', got);
+});
+var EMPTIES = [
+  '<section data-rv-section="speakers"><h2>Speakers</h2><div class="grid"></div></section>',
+  '<section data-rv-section="speakers"><p class="eyebrow">Speakers</p><h2>Meet the minds</h2><div class="grid"></div></section>',
+  '<section data-rv-section="agenda"><h2>Agenda</h2><ul></ul><ul><li class="hidden">Day one</li></ul><svg hidden></svg><h3 hidden>Day 1</h3></section>'
+];
+EMPTIES.forEach(function (html, n) {
+  var got = SC.emptySections(page(html), kit);
+  ok(got.length === 1 && got[0].heading, 'still empty (' + n + '): a heading, a short label, an empty grid, and what is hidden', got);
+});
 
 ok(SC.datesIn('12-13 March 2026, March 12, 2026, Mar 14, May 5 but may 6, June 2024, 30th Nov – 1st Dec 2026').map(function (d) { return d.text; }).join('|') === '12-13 March 2026|March 12, 2026|Mar 14|May 5|June 2024|30th Nov|1st Dec 2026',
   'dates are read in the ways pages write them ("may" the word is not May)', SC.datesIn('12-13 March 2026, March 12, 2026, Mar 14, May 5 but may 6, June 2024, 30th Nov – 1st Dec 2026'));
@@ -97,6 +124,8 @@ ok(SC.venueFindings(page('<section data-rv-section="hero"><span class="t5-meta-v
 var fb = SC.formButtons(PAGE, kit);
 ok(fb.length === 3 && fb[0].forms.length === 0 && fb[1].forms[0] === 'nomination' && fb[2].forms[0] === 'old-form', 'what opens a form: the main one, a named one', fb);
 ok(SC.bannerLogo(PAGE, kit).shown === false && SC.bannerLogo(page('<section data-rv-section="hero"><div data-rv-logo-unit><img src="/x.png"></div></section>'), kit).shown === true, 'the banner\'s logo unit');
+ok(SC.bannerLogo(PAGE, kit).key === 'hero' && SC.bannerLogo(page('<section data-rv-section="banner" id="banner"><h1>T</h1></section>'), kit).key === 'banner',
+  'the banner\'s section key, for the link to it: "banner" on tech500 (the browser check of 8 Nov 2026 linked "hero", which that page has not)');
 var rec = SC.etLogoRecoloured(PAGE, kit);
 ok(rec.length === 1 && rec[0].section === 'Footer' && /filter/.test(rec[0].how), 'an ET logo under a colour filter breaks the rule (its red square changes)', rec);
 ok(SC.etLogoRecoloured(page('<img src="/assets/et-b2b-logo.svg" alt="ETB2B">'), kit).length === 0, 'the ET logo as it is: fine');
@@ -188,7 +217,57 @@ pending.push(Promise.all(pending).then(function () {
   var n = 0;
   return hooks.siteCheckOf(fakeFb({}), 'qa-d', { name: 'D' }, page('<section data-rv-section="links">' + many + '</section>'), { forms: null, advisory: { version: 1, waitMs: 2000, fetch: function (u, o) { n++; return stubFetch(u, o); } } }).then(function (r) {
     var u = r.items.filter(function (x) { return x.code === 'links-unchecked'; })[0];
-    ok(n === 40 && u && /5 more links were not checked: at most 40 are checked each time/.test(u.lines.join('\n')), 'at most 40 links are asked about; the rest are said not checked', { n: n, u: u });
+    ok(n === 40 && u && /5 more links were not checked: at most 40 links and pictures from other sites are checked each time/.test(u.lines.join('\n')), 'at most 40 links are asked about; the rest are said not checked', { n: n, u: u });
+  });
+}));
+/* about 40 addresses a check in all, links and pictures together (it was 40 of each: 80) */
+pending.push(Promise.all(pending).then(function () {
+  LC._reset();
+  var many = '';
+  for (var i = 0; i < 30; i++) many += '<a href="https://l' + i + '.example/">Link ' + i + '</a><img src="https://p' + i + '.example/a.jpg" alt="p">';
+  var heads = [];
+  return hooks.siteCheckOf(fakeFb({}), 'qa-d2', { name: 'D' }, page('<section data-rv-section="links">' + many + '</section>'), { forms: null, advisory: { version: 1, waitMs: 2000,
+    fetch: function (u, o) { heads.push(o.method + ' ' + u); return Promise.resolve({ status: 200, headers: { 'content-type': /p\d+\.example/.test(u) ? 'image/jpeg' : 'text/html' } }); } } }).then(function (r) {
+    var u = r.items.filter(function (x) { return x.code === 'links-unchecked'; })[0];
+    var links = heads.filter(function (h) { return /\/\/l\d/.test(h); }).length, pics = heads.filter(function (h) { return /\/\/p\d/.test(h); }).length;
+    ok(heads.length === 40 && links === 20 && pics === 20 && heads.every(function (h) { return /^HEAD /.test(h); }), '30 links and 30 pictures: 40 asked in all, 20 of each, each by HEAD alone when it answers', { n: heads.length, links: links, pics: pics });
+    ok(u && u.title === 'Not every link and picture was checked' && /10 more links were not checked\./.test(u.lines.join('\n')) && /10 more pictures from other sites were not checked: at most 40 links and pictures/.test(u.lines.join('\n')),
+      'and the rest of each are said not checked', u);
+  });
+}));
+/* the console's own items have their place to put it right too: the buttons the live page puts right, and ET's
+   header and footer (its one-click repair is in the console's site check) */
+pending.push(Promise.all(pending).then(function () {
+  var P = page('<header data-rv-section="nav" id="nav"><a href="#hero">Home</a></header><section data-rv-section="hero" id="hero"><h1>E</h1></section>' +
+    '<section data-rv-section="about" data-rv-key="about-9" id="about"><h2>About</h2><p>Long words to make it not empty for sure here and there.</p><a class="btn" href="#missing-target">Read more</a></section>' +
+    '<footer data-rv-section="footer" id="footer"><p>Footer words</p></footer>', 'id="gen" class="microsite rv-generated"');
+  return hooks.siteCheckOf(fakeFb({}), 'qa-f', { name: 'F' }, P, {}).then(function (r) {
+    var by = {}; r.items.forEach(function (x) { by[x.code] = x; });
+    ok(by.buttons && by.buttons.fix && by.buttons.fix[0].where === 'editor' && by.buttons.fix[0].key === 'about-9' && /&section=about-9$/.test(by.buttons.fix[0].href),
+      'what the live page puts right links to its section in the site editor', by.buttons);
+    ok(by['et-chrome'] && by['et-chrome'].fix && by['et-chrome'].fix[0].where === 'console' && by['et-chrome'].fix[0].href === '/edit-event.html?event=qa-f#dashboard' &&
+      /Update this site’s header and footer/.test(by['et-chrome'].fix[0].label), 'ET\'s header and footer link to the console, where its one-click repair is', by['et-chrome']);
+  });
+}));
+/* the wait counts from when the request came in: reading the event first does not add to it */
+pending.push(Promise.all(pending).then(function () {
+  LC._reset();
+  var never = function () { return new Promise(function () {}); };
+  var t0 = Date.now();
+  return hooks.siteCheckOf(fakeFb({}), 'qa-g', { name: 'G' }, page('<section data-rv-section="l"><h2>L</h2><a href="https://hang.example/">Hang</a></section>'),
+    { forms: null, advisory: { version: 1, waitMs: 1500, since: Date.now() - 1200, fetch: never } }).then(function (r) {
+    var ms = Date.now() - t0;
+    ok(ms < 900 && r.pending === 1, 'a request 1.2 s old with a wait of 1.5 s waits about 0.3 s more, not 1.5 s', { ms: ms, pending: r.pending });
+  });
+}));
+/* the forms are read while other sites are asked, not before */
+pending.push(Promise.all(pending).then(function () {
+  LC._reset();
+  var started = 0, formsAsked = 0;
+  var slowForms = new Promise(function (r) { setTimeout(function () { formsAsked = Date.now(); r(FORMS); }, 400); });
+  return SA.check(PAGE, { kit: kit, eventId: 'qa-h', event: EVENT, forms: slowForms, version: 1, waitMs: 2000,
+    fetch: function (u, o) { if (!started) started = Date.now(); return stubFetch(u, o); } }).then(function (r) {
+    ok(started && formsAsked && started < formsAsked && r.items.some(function (x) { return x.code === 'forms-off'; }), 'other sites are asked while the forms are still being read, and the forms are still checked', { started: started, formsAsked: formsAsked });
   });
 }));
 /* the existing items gain their places too */

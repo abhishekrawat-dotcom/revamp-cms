@@ -16,7 +16,8 @@
      check(html, ctx) -> Promise<{ items, pending }>
        ctx: { kit (api.js TOKEN_KIT), eventId, event (the event's data), inspect (site-checks.js inspect of the page,
               when the caller has it), forms (the public forms payload, or null when
-              it could not be read: then forms are not checked), pages ([{ slug }] the site's internal pages),
+              it could not be read: then forms are not checked; or a Promise of it, so other sites are asked
+              while it is read), pages ([{ slug }] the site's internal pages),
               version (the site's version: outside answers are remembered per version), waitMs (how long to wait for
               other sites to answer; what is still unknown is counted in pending and said so),
               fetch, fetchOptions, fileExists (tests) }
@@ -101,9 +102,12 @@ function check(html, ctx) {
   var outsidePics = pics.filter(function (p) { return p.kind === 'outside'; });
   var key = String(eventId || '') + '@' + String(ctx.version || 0);
   var ask = { key: key, waitMs: ctx.waitMs, fetch: ctx.fetch, fetchOptions: ctx.fetchOptions };
+  /* about 40 addresses a check, links and pictures together (link-check.js share) */
+  var budget = linkCheck.share(links.length, outsidePics.length, linkCheck.MAX_PER_CHECK);
   return Promise.all([
-    linkCheck.check(links, Object.assign({ kind: 'link' }, ask)),
-    linkCheck.check(outsidePics, Object.assign({ kind: 'picture' }, ask))
+    linkCheck.check(links, Object.assign({ kind: 'link', max: budget.links }, ask)),
+    linkCheck.check(outsidePics, Object.assign({ kind: 'picture', max: budget.pictures }, ask)),
+    Promise.resolve(ctx.forms).then(null, function () { return null; })
   ]).then(function (answers) {
     var items = [];
     function push(item) { items.push(Object.assign({ advisory: true }, item)); }
@@ -144,8 +148,9 @@ function check(html, ctx) {
       var ul = unknownLinks.map(function (l) { return quote(l.label || shortUrl(l.url), 50) + ' (' + l.section + ') goes to ' + shortUrl(l.url) + ': ' + byLink[l.url].why; })
         .concat(unknownPics.map(function (p) { return 'The picture ' + quote(fileOf(p.url)) + ' (' + p.section + '): ' + byPic[p.url].why; }));
       ul = cap(ul);
-      if (answers[0].skipped) ul.push(plural(answers[0].skipped, 'more link was', 'more links were') + ' not checked: at most ' + linkCheck.MAX_PER_CHECK + ' are checked each time, those shown most first.');
-      if (answers[1].skipped) ul.push(plural(answers[1].skipped, 'more picture from another site was', 'more pictures from other sites were') + ' not checked.');
+      var most = 'at most ' + linkCheck.MAX_PER_CHECK + ' links and pictures from other sites are checked each time, those shown most first.';
+      if (answers[0].skipped) ul.push(plural(answers[0].skipped, 'more link was', 'more links were') + ' not checked' + (answers[1].skipped ? '.' : ': ' + most));
+      if (answers[1].skipped) ul.push(plural(answers[1].skipped, 'more picture from another site was', 'more pictures from other sites were') + ' not checked: ' + most);
       var nUnknown = unknownLinks.length + unknownPics.length;
       push({ code: 'links-unchecked', level: 'info',
         title: nUnknown ? plural(nUnknown, 'link or picture could not be checked', 'links and pictures could not be checked')
@@ -191,10 +196,11 @@ function check(html, ctx) {
     var design = (event.designPlan && event.designPlan.design) || {};
     var ins = ctx.inspect || siteChecks.inspect(text, kit);
     var wantsLogo = !ins.imported && (ins.generated || !!design.logoUnitUrl || !!event.logoUrl);
-    if (wantsLogo && !siteChecks.bannerLogo(page, kit).shown) {
+    var banner = wantsLogo ? siteChecks.bannerLogo(page, kit) : null;
+    if (banner && !banner.shown) {
       push({ code: 'logo-unit', level: 'warn', title: 'The banner shows no event logo',
         lines: [], hint: 'The event’s logo belongs on the banner. Put it back in the site editor (select the banner), or upload it in Content › Basics.',
-        fix: [editorFix(eventId, event, 'hero', 'Banner'), basics] });
+        fix: [editorFix(eventId, event, banner.key || 'hero', 'Banner'), basics] });
     }
     var recoloured = siteChecks.etLogoRecoloured(page, kit);
     if (recoloured.length) {
@@ -205,7 +211,7 @@ function check(html, ctx) {
     }
 
     /* what opens a form that is switched off, or that no longer exists */
-    var payload = ctx.forms;
+    var payload = answers[2];
     if (payload && Array.isArray(payload.forms)) {
       var known = {};
       payload.forms.forEach(function (f) { if (f && f.id) known[f.id] = f; });

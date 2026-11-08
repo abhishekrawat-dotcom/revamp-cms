@@ -10117,6 +10117,7 @@ function approvalView(id, d) {
 }
 
 function handleApprovalGet(req, res) {
+  var since = Date.now();
   withAdmin(req, res, function (fb, decoded) {
     var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
     if (!eventId) return;
@@ -10157,7 +10158,7 @@ function handleApprovalGet(req, res) {
         }).then(function (html) {
           return html == null || !wantChecks ? { html: html, check: null } : livePageOf(fb, eventId, data).then(function (livePage) {
             /* with the check before Publish (advisory), as the person sending it saw it: the approver sees the same list */
-            return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage, advisory: { version: request.toVersion, waitMs: advisoryWait(qs.get('wait')) } });
+            return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage, advisory: { version: request.toVersion, waitMs: advisoryWait(qs.get('wait')), since: since } });
           }).then(function (check) {
             return { html: html, check: check };
           }, function (err) {
@@ -10435,7 +10436,7 @@ function handleApprovalSettingsPut(req, res) {
        opts: { forms (the public forms payload, when read), records: true to read Content's records too,
                live: true for the page that is live (says why search engines are kept away), probe (tests),
                livePage: the page of the version that is live now (livePageOf), when a newer one is checked,
-               advisory: { version, waitMs, fetch?, fetchOptions? } to add the check before Publish too
+               advisory: { version, waitMs, since? (when the request came in: waitMs counts from it), fetch?, fetchOptions? } to add the check before Publish too
                (lib/site-advisory.js: links and pictures on other sites, empty sections, dates and place, the
                banner's logo, forms switched off) — the publish window and the review page ask for it; the gate
                never does, so it never holds anything back nor makes publishing wait for other sites }
@@ -10733,10 +10734,12 @@ function siteCheckOf(fb, eventId, data, html, opts) {
 
   var samples = siteChecks.sampleHits(page, TOKEN_KIT, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
   var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
-  var adv = opts.advisory ? (opts.forms !== undefined ? Promise.resolve(opts.forms) : publicFormsFor(fb, eventId, data)).then(function (forms) {
+  /* the forms are handed over still being read, so other sites are asked meanwhile: the first list comes sooner */
+  var adv = opts.advisory ? Promise.resolve().then(function () {
     return siteAdvisory.check(page, {
-      kit: TOKEN_KIT, eventId: eventId, event: data, inspect: ins, forms: forms, pages: sitePages.readPages(page, TOKEN_KIT),
-      version: opts.advisory.version, waitMs: opts.advisory.waitMs, fetch: opts.advisory.fetch, fetchOptions: opts.advisory.fetchOptions
+      kit: TOKEN_KIT, eventId: eventId, event: data, inspect: ins, forms: opts.forms !== undefined ? opts.forms : publicFormsFor(fb, eventId, data),
+      pages: sitePages.readPages(page, TOKEN_KIT), version: opts.advisory.version, waitMs: advisoryLeft(opts.advisory),
+      fetch: opts.advisory.fetch, fetchOptions: opts.advisory.fetchOptions
     });
   }).then(null, function (err) {
     /* the check before Publish is advice: when it fails, the rest of the check still stands */
@@ -10780,7 +10783,9 @@ function siteCheckOf(fb, eventId, data, html, opts) {
       if (ins.hasFooter && !ins.etFooter) lines.push('The footer has no privacy, terms or contact links.');
       items.push({ code: 'et-chrome', level: 'warn', title: 'This site was built before ET’s header and footer', lines: lines,
         hint: 'In the event console, one click puts them in as a new saved version' + (opts.live ? ' and sends it for approval' : '') + '. Nothing else on the page changes.',
-        action: chromeAction });
+        action: chromeAction,
+        /* the console shows its site check, with that button, above every tab */
+        fix: [siteAdvisory.consoleFix(eventId, 'dashboard', chromeAction ? '“' + chromeAction.label + '” in the event console' : 'The event console')] });
     }
     var sample = siteData ? siteChecks.recordPlaceholders(siteData) : [];
     if (sample.length) {
@@ -10810,7 +10815,8 @@ function siteCheckOf(fb, eventId, data, html, opts) {
       var hides = fixed.changes.some(function (c) { return c.what !== 'nav' && /^(?:is hidden|taken out)/.test(c.how); });
       items.push({ code: 'buttons', level: hides ? 'warn' : 'info', title: 'Put right on the live page as it is shown',
         lines: capLines(fixed.changes.map(function (c) { return quoteText(c.label, 50) + ' (' + c.section + ') ' + c.how; })),
-        hint: 'Nothing to do: visitors get these. Change them in the site editor to make them part of the site.' });
+        hint: 'Nothing to do: visitors get these. Change them in the site editor to make them part of the site.',
+        fix: inEditor(fixed.changes) });
     }
     if (opts.live) {
       var why = siteChecks.noindexReason(Object.assign({ id: eventId }, data), page, TOKEN_KIT);
@@ -10911,7 +10917,16 @@ function siteCheckGate(fb, eventId, data, html, who, forms) {
    pending says how many are still being asked, and asking again picks up their answers. */
 var ADVISORY_WAIT_MS = 2500, ADVISORY_WAIT_MAX_MS = 8000;
 function advisoryWait(v) { var n = parseInt(v, 10); return n >= 0 ? Math.min(n, ADVISORY_WAIT_MAX_MS) : ADVISORY_WAIT_MS; }
+/* What is left of the wait when other sites start being asked: the wait is counted from when the request came in
+   (advisory.since), so reading the event and its pages first does not add to it — the publish window's first list
+   comes about wait ms after it asked, with what is known by then (the browser check of 8 Nov 2026 saw 4.9 s for a
+   wait of 2.5 s). Without since, the whole wait. */
+function advisoryLeft(a) {
+  var wait = Math.max(0, +a.waitMs || 0);
+  return a.since > 0 ? Math.max(0, wait - (Date.now() - a.since)) : wait;
+}
 function handleSiteCheck(req, res) {
+  var since = Date.now();
   withAdmin(req, res, function (fb) {
     var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
     if (!eventId) return;
@@ -10926,7 +10941,7 @@ function handleSiteCheck(req, res) {
         if (html == null) return sendJson(res, 200, Object.assign(base, { items: [], blocking: false, found: false }));
         /* the saved version of a live site is checked against the live page, as asking for its approval will be */
         return (of === 'saved' ? livePageOf(fb, eventId, data) : Promise.resolve(null)).then(function (livePage) {
-          var advisory = qs.get('advisory') === '1' ? { version: of === 'live' ? base.publishedVersion : base.savedVersion, waitMs: advisoryWait(qs.get('wait')) } : null;
+          var advisory = qs.get('advisory') === '1' ? { version: of === 'live' ? base.publishedVersion : base.savedVersion, waitMs: advisoryWait(qs.get('wait')), since: since } : null;
           return siteCheckOf(fb, eventId, data, html, { records: true, live: of === 'live', livePage: livePage, advisory: advisory });
         }).then(function (check) {
           sendJson(res, 200, Object.assign(base, { items: check.items, blocking: check.blocking, found: true, pending: check.pending || 0 }));

@@ -5,10 +5,12 @@
    answered 404, and nothing said so: the site check (site-checks.js, api.js siteCheckOf) reads the page, and only
    pictures in storage were asked about. Here each outside address is asked about, from the server, bounded:
 
-     - at most MAX_PER_CHECK addresses of each kind (links, pictures) per check, the most visible first (the caller
-       orders them); the rest are counted as not checked, never silently dropped;
-     - HEAD first (nothing is downloaded); a site that refuses HEAD or answers it with an error is asked once more
-       with GET, which reads at most GET_MAX_BYTES of the answer;
+     - at most MAX_PER_CHECK addresses per check, links and pictures together (share() splits them: half each, and
+       what one kind leaves goes to the other, links first), the most visible first (the caller orders them); the
+       rest are counted as not checked, never silently dropped;
+     - HEAD first; a site that refuses HEAD or answers it with an error is asked once more with GET. Neither reads
+       anything of the answer but its status and headers (safe-fetch.js headersOnly): a 404 page is often large
+       (ET's and GitHub's are over 64 KB), and it is its status, not its size, that says the page is not there;
      - short timeouts, and a few at a time across the whole server (CONCURRENCY), so one page with slow links does
        not hold up anybody else's;
      - NEVER an address inside our own network: every request goes through safe-fetch.js, which refuses private,
@@ -22,13 +24,16 @@
    being asked about (pending); the asking goes on, and the next check of the same version picks the answers up.
 
      check(list, opts) -> Promise<{ results: [{ url, state, status, why }], pending, skipped }>
-       list: [{ url }] in the order to check them (only the first opts.max, MAX_PER_CHECK by default, are checked)
+       list: [{ url }] in the order to check them (only the first opts.max, MAX_PER_CHECK by default, are checked;
+       opts.max 0 checks none)
        opts: { key, kind ('link' | 'picture'), waitMs, max, fetch (tests: (url, options) -> Promise like safeFetch),
                fetchOptions (tests: merged into every safeFetch call, e.g. a stub lookup) }
        state: 'ok' | 'broken' (visitors reach nothing) | 'unknown' (could not be checked: the site would not say, or
               took too long) — why says it in words for the owner, '' when ok.
      probe(url, kind, fetch, fetchOptions) -> Promise<{ state, status, why }>   one address, never rejects
-   Node 20, CommonJS. Tests: link-check.test.js (no real network). */
+     share(links, pictures, max) -> { links, pictures }   how many of each one check asks about (counts in, counts out)
+   Node 20, CommonJS. Tests: link-check.test.js (through the real safe-fetch.js, against a local stub of other
+   sites) and site-advisory.test.js (the network stubbed). */
 'use strict';
 
 var safeFetch = require('./safe-fetch').safeFetch;
@@ -37,7 +42,7 @@ var net = require('net');
 
 var MAX_PER_CHECK = 40;
 var CONCURRENCY = 12;
-var HEAD_TIMEOUT_MS = 4000, GET_TIMEOUT_MS = 5000, GET_MAX_BYTES = 64 * 1024, MAX_REDIRECTS = 5;
+var HEAD_TIMEOUT_MS = 4000, GET_TIMEOUT_MS = 5000, MAX_REDIRECTS = 5;
 var VERSION_TTL_MS = 30 * 60 * 1000, MAX_VERSIONS = 200;
 var URL_TTL_MS = 10 * 60 * 1000, MAX_URLS = 5000;
 
@@ -56,12 +61,14 @@ function verdict(status, type, kind) {
 }
 
 /* An address safe-fetch.js would refuse for a reason that is not the visitor's problem (a port other than the web's
-   own, a user name in it): not checked, said so. -> why | '' */
-function notCheckable(url) {
-  var u;
+   own, a user name in it): not checked, said so — whether the link names it or a redirect leads on to it (then
+   leadsOn: true, and so a scheme other than the web's too, an app's own address, say). -> why | '' */
+function notCheckable(url, leadsOn) {
+  var u, it = leadsOn ? 'it leads on to ' : 'it ';
   try { u = new URL(url); } catch (e) { return ''; }
-  if (u.username || u.password) return 'not checked: it has a user name or password in it';
-  if (u.port && !((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443'))) return 'not checked: it uses port ' + u.port;
+  if (leadsOn && u.protocol !== 'http:' && u.protocol !== 'https:') return 'not checked: it leads on to an address that is not a web page (' + u.protocol.replace(/:$/, '') + ')';
+  if (u.username || u.password) return 'not checked: ' + (leadsOn ? it + 'an address with' : 'it has') + ' a user name or password in it';
+  if (u.port && !((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443'))) return 'not checked: ' + (leadsOn ? it : 'it uses ') + 'port ' + u.port;
   return '';
 }
 
@@ -80,25 +87,40 @@ function probe(url, kind, fetch, fetchOptions) {
   var skip = notCheckable(url);
   if (skip) return Promise.resolve({ state: 'unknown', status: 0, why: skip });
   function ask(method) {
-    var o = Object.assign({ method: method, timeoutMs: method === 'HEAD' ? HEAD_TIMEOUT_MS : GET_TIMEOUT_MS, maxBytes: method === 'HEAD' ? 1 : GET_MAX_BYTES,
+    var o = Object.assign({ method: method, timeoutMs: method === 'HEAD' ? HEAD_TIMEOUT_MS : GET_TIMEOUT_MS, headersOnly: true,
       maxRedirects: MAX_REDIRECTS, headers: { Accept: kind === 'picture' ? 'image/*,*/*;q=0.5' : 'text/html,*/*;q=0.5' } }, fetchOptions || {});
     return Promise.resolve().then(function () { return fetch(url, o); }).then(function (r) {
       return { status: (r && r.status) || 0, type: r && r.headers ? r.headers['content-type'] : '' };
-    }, function (err) { return { error: (err && err.code) || 'unreachable' }; });
+    }, function (err) {
+      err = err || {};
+      return { error: err.code || 'unreachable', status: +err.status || 0, url: err.url || '', hops: +err.hops || 0, redirects: err.redirects || '' };
+    });
   }
-  function fromError(code) {
+  /* what a refusal or a failure means for a visitor (e: ask()'s answer with .error) */
+  function fromError(e) {
+    var code = e.error;
     if (code === 'blocked-address') return { state: 'broken', status: 0, why: INSIDE };
-    if (code === 'bad-url') return { state: 'broken', status: 0, why: 'it is not a web address a browser can open' };
-    if (code === 'too-large') return { state: 'ok', status: 200, why: '' };           // it answered, with plenty
+    if (code === 'bad-url') {
+      if (!e.hops) return { state: 'broken', status: 0, why: 'it is not a web address a browser can open' };
+      /* a redirect that leads on to an address we do not open: inside our network is still nowhere for a visitor;
+         another port or an app's address is "not checked", as when the link names it outright */
+      if (e.url && namesInside(e.url)) return { state: 'broken', status: 0, why: INSIDE };
+      return { state: 'unknown', status: 0, why: notCheckable(e.url, true) || 'not checked: it leads on to an address we do not open' };
+    }
+    /* too large: the answer came, with a body larger than we read; its status says what it is (never assumed fine) */
+    if (code === 'too-large') return e.status ? verdict(e.status, '', kind) : { state: 'unknown', status: 0, why: 'it could not be checked just now' };
     if (code === 'timeout') return { state: 'unknown', status: 0, why: 'its site took too long to answer; open it to be sure' };
+    /* redirects: a browser follows more of them, and keeps the cookie a site sets on the way, which we never do */
+    if (e.redirects === 'loop') return { state: 'unknown', status: 0, why: 'not checked: it sends us round a circle of redirects (some sites do until a browser keeps their cookie); open it to be sure' };
+    if (e.redirects) return { state: 'unknown', status: 0, why: 'not checked: it redirects more than ' + MAX_REDIRECTS + ' times; open it to be sure' };
     return { state: 'broken', status: 0, why: 'its site could not be reached' };
   }
   return ask('HEAD').then(function (h) {
     if (!h.error && h.status >= 200 && h.status < 400) return verdict(h.status, h.type, kind);
     /* the address itself is refused (private, not a web address): asking again changes nothing */
-    if (h.error === 'blocked-address' || h.error === 'bad-url') return fromError(h.error);
+    if (h.error === 'blocked-address' || h.error === 'bad-url' || h.redirects) return fromError(h);
     /* many sites answer HEAD with 403, 404, 405 or nothing at all, and GET properly: GET decides */
-    return ask('GET').then(function (g) { return g.error ? fromError(g.error) : verdict(g.status, g.type, kind); });
+    return ask('GET').then(function (g) { return g.error ? fromError(g) : verdict(g.status, g.type, kind); });
   }).then(null, function () { return { state: 'unknown', status: 0, why: 'it could not be checked just now' }; });
 }
 
@@ -138,10 +160,22 @@ function remember(kind, url, result) {
   RECENT.set(kind + ' ' + url, { at: Date.now(), result: result });
 }
 
+/* How many links and how many pictures one check asks about, MAX_PER_CHECK together: half each, and what one kind
+   does not need goes to the other — links first, as visitors press them. */
+function share(links, pictures, max) {
+  max = max >= 0 ? Math.floor(max) : MAX_PER_CHECK;
+  links = Math.max(0, links | 0); pictures = Math.max(0, pictures | 0);
+  var half = Math.floor(max / 2), l = Math.min(links, half), p = Math.min(pictures, max - half);
+  var spare = max - l - p, more = Math.min(links - l, spare);
+  l += more; spare -= more;
+  p += Math.min(pictures - p, spare);
+  return { links: l, pictures: p };
+}
+
 function check(list, opts) {
   opts = opts || {};
   var kind = opts.kind === 'picture' ? 'picture' : 'link';
-  var max = opts.max > 0 ? opts.max : MAX_PER_CHECK;
+  var max = typeof opts.max === 'number' && opts.max >= 0 ? Math.floor(opts.max) : MAX_PER_CHECK;
   var urls = [], seen = {};
   (list || []).forEach(function (x) { var u = String((x && x.url) || x || ''); if (u && !seen[u]) { seen[u] = 1; urls.push(u); } });
   var asked = urls.slice(0, max), skipped = urls.length - asked.length;
@@ -179,4 +213,4 @@ function check(list, opts) {
 /* tests only: forget everything (each test starts from nothing) */
 function _reset() { VERSIONS.clear(); RECENT.clear(); }
 
-module.exports = { check: check, probe: probe, verdict: verdict, MAX_PER_CHECK: MAX_PER_CHECK, _reset: _reset, _state: function () { return { active: active, waiting: waiting.length }; } };
+module.exports = { check: check, probe: probe, verdict: verdict, share: share, MAX_PER_CHECK: MAX_PER_CHECK, _reset: _reset, _state: function () { return { active: active, waiting: waiting.length }; } };

@@ -510,7 +510,7 @@ function inspect(html, kit) {
      dateFindings(html, kit, event)     -> [{ text, section, key }]   a date the page states that is not the event's
      venueFindings(html, kit, event)    -> [{ text, section, key }]   a place the page states that is not the event's
      formButtons(html, kit)             -> [{ label, forms: [id], section, key, embed }]   what opens or shows a form
-     bannerLogo(html, kit)              -> { shown, src }   the banner's logo unit (or bound event logo) as shown
+     bannerLogo(html, kit)              -> { shown, src, key }   the banner's logo unit (or bound event logo) as shown; key: the banner's section
      etLogoRecoloured(html, kit)        -> [{ section, key, how }]   an ET logo with a colour filter on it
    Each takes the page's text, or read(html, kit) of it.
    ===================================================================================================== */
@@ -585,11 +585,18 @@ function pictureRefs(html, kit) {
 }
 
 /* ---------- empty sections ----------
-   A section a visitor sees with nothing in it: no picture, film, form, link or button, and no words beyond its
-   heading and a short label (EMPTY_WORDS_MAX letters). A section the page hides (data-rv-empty, hidden by the
-   owner) is not shown, so it is not empty; nor is one the page's runtime fills (a form, the hero film). */
+   A section a visitor sees with nothing in it: no picture, drawing, film, form, link or button, no list, no figure,
+   and no words beyond its heading and a short label (EMPTY_WORDS_MAX letters). Only the FIRST heading is the
+   section's own: a later one is what the section shows (a card's title, a question, "500+" over "Delegates"), and a
+   banner's heading is the event's name, which is what a banner is for. A number in the words ("60+", a date) is a
+   fact, never a label. (The browser check of 8 Nov 2026 found a stats section, a list of key topics, cards with h4
+   titles, an FAQ with one short answer, an SVG-only section and a banner with its title and date all called "only
+   its heading" when every heading was skipped.) A section the page hides (data-rv-empty, hidden by the owner) is
+   not shown, so it is not empty; nor is one the page's runtime fills (a form, the hero film). */
 var EMPTY_WORDS_MAX = 30;
-var SUBSTANCE = /^(?:img|picture|video|audio|iframe|object|embed|canvas|form|input|select|textarea|table|a|button)$/;
+/* svg, iframe, object, select and textarea are read past (SKIP), but a visitor sees them: they count first */
+var SUBSTANCE = /^(?:img|picture|video|audio|iframe|object|embed|canvas|svg|form|input|select|textarea|table|a|button|details|summary)$/;
+var LISTED = /^(?:li|dt|dd)$/;
 var FILLED_BY_RUNTIME = ['data-rv-form-embed', 'data-rv-hv', 'data-rv-award-cta', 'data-register-cta', 'data-nominate-form', 'data-interest-form', 'data-rv-countdown'];
 function emptySections(html, kit) {
   var s = scanOf(html, kit), out = [];
@@ -598,20 +605,29 @@ function emptySections(html, kit) {
     if (t.t !== 'open' || c.skip || c.hidden || c.chrome) continue;
     var id = kit.attrValue(t, 'data-rv-section');
     if (!id || id === 'nav' || id === 'footer') continue;
-    var substance = /url\(/i.test(decode(kit.attrValue(t, 'style') || '')), words = 0, heading = '';
+    var substance = /url\(/i.test(decode(kit.attrValue(t, 'style') || '')), words = 0, heading = '', banner = isBanner(id);
     for (var k = i + 1; k < s.ends[i] && !substance; k++) {
       var x = s.tokens[k], xc = s.ctx[k];
-      if (x.t === 'open' && (xc.skip || xc.hidden)) { k = s.ends[k]; continue; }
       if (x.t === 'open') {
+        if (xc.hidden) { k = s.ends[k]; continue; }
         if (SUBSTANCE.test(x.name) || /url\(/i.test(decode(kit.attrValue(x, 'style') || ''))) { substance = true; break; }
+        if (xc.skip) { k = s.ends[k]; continue; }
         if (FILLED_BY_RUNTIME.some(function (a) { return kit.attrOf(x, a); })) { substance = true; break; }
         if (/^h[1-6]$/.test(x.name)) {
-          if (!heading) heading = labelOf(s, k, kit);
+          var said = labelOf(s, k, kit);
+          if (said && (heading || banner)) { substance = true; break; }
+          if (!heading) heading = said;
           k = s.ends[k];
+          continue;
         }
+        if (LISTED.test(x.name) && labelOf(s, k, kit)) { substance = true; break; }
         continue;
       }
-      if (x.t === 'text' && !xc.skip && !xc.hidden) words += clean(s.html.slice(x.s, x.e)).length;
+      if (x.t === 'text' && !xc.skip && !xc.hidden) {
+        var w = clean(s.html.slice(x.s, x.e));
+        if (/\d/.test(w)) { substance = true; break; }
+        words += w.length;
+      }
       if (words > EMPTY_WORDS_MAX) substance = true;
     }
     if (!substance) out.push({ section: sectionName(id), key: c.key || id, heading: heading });
@@ -843,17 +859,19 @@ function formButtons(html, kit) {
 
 /* ---------- the banner's logo ---------- */
 function bannerLogo(html, kit) {
-  var s = scanOf(html, kit), unitEnd = -1;
+  /* key: the banner section's, so "put it right" opens the editor on it ("banner" on tech500, "hero" elsewhere) */
+  var s = scanOf(html, kit), unitEnd = -1, key = '';
   for (var i = 0; i < s.tokens.length; i++) {
     var t = s.tokens[i], c = s.ctx[i];
     if (t.t !== 'open' || c.skip || c.hidden) continue;
+    if (!key && isBanner(c.section)) key = c.key;
     if (kit.attrOf(t, 'data-rv-logo-unit')) { unitEnd = s.ends[i]; continue; }
     if (t.name !== 'img') continue;
     var src = decode(kit.attrValue(t, 'src') || '').trim();
     if (!src) continue;
-    if (i < unitEnd || kit.attrValue(t, 'data-rv-bind') === 'event.logo' || (kit.attrOf(t, 'data-rv-logo') && isBanner(c.section))) return { shown: true, src: src };
+    if (i < unitEnd || kit.attrValue(t, 'data-rv-bind') === 'event.logo' || (kit.attrOf(t, 'data-rv-logo') && isBanner(c.section))) return { shown: true, src: src, key: key };
   }
-  return { shown: false, src: '' };
+  return { shown: false, src: '', key: key };
 }
 
 /* ---------- the ET logo rule: only its black or grey lettering may change colour; the red square never does ----------
@@ -914,7 +932,8 @@ function repair(html, kit, opts) {
   var forms = (opts.forms && Array.isArray(opts.forms.forms)) ? opts.forms.forms : [];
   var nominateForm = forms.filter(function (f) { return f && /nominat/i.test(String(f.name || '') + ' ' + String(f.title || '')); })[0];
 
-  function note(what, link, how) { changes.push({ what: what, label: link.label, section: placeOf(link), how: how }); }
+  /* key: the section the site editor finds it by, so the check can link there (site-advisory.js sectionFixes) */
+  function note(what, link, how) { changes.push({ what: what, label: link.label, section: placeOf(link), key: link.key, how: how }); }
   function rewrite(i) { out[i] = kit.writeTag(s.tokens[i]); touched = true; }
   function opensForm(link, enquiry) {
     var t = s.tokens[link.i];
