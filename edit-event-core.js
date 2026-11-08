@@ -72,8 +72,10 @@
      .unpublishEvent(eventId)     POST   /api/event/unpublish
      .restoreVersion(eventId, n)  POST   /api/event/restore-version: version n, live before, live again (approvers)
      .previewUrl(eventId)         -> absolute URL of /preview/<id> (a string, not a promise)
-     .publicUrl(event)            -> absolute URL of the event's public page, location.origin + /e/<id>
+     .publicUrl(event)            -> absolute URL of the event's public page, the public base + /e/<id>
                                    (a string, not a promise; '' when the event has no id)
+     .publicBase()                -> the public base the server named (X-Public-Base), else this origin
+     .notePublicBase(res)         -> keeps the X-Public-Base of a fetch Response a page made on its own
      .siteState(event, approval)  -> where the site stands: live / offline / draft, a request waiting or
                                    rejected, newer changes not live, and the chips that say so (see the function)
      .mayTakeOffline(approval)    -> false only when approvers are named and the signed-in person is not one
@@ -389,6 +391,7 @@ window.RevampCore = (function(){
   }
 
   function readJsonResponse(res){
+    notePublicBase(res);
     return res.json().catch(function(){ return {}; }).then(function(data){
       if (!res.ok){
         var said = data && typeof data.error === 'string' && data.error;
@@ -533,9 +536,40 @@ window.RevampCore = (function(){
   function fetchApprovalSettings(){ return api('GET', '/api/settings/approvals'); }
   function saveApprovalSettings(settings){ return api('PUT', '/api/settings/approvals', settings || {}); }
 
-  /* Both are plain strings, built from the host this page is on — never a made-up domain. The public
-     address of an event is /e/<id> whether or not it is published yet (callers say "not live yet"
-     from event.published; the address itself does not change). */
+  /* ---- where the published sites are (UX-001, owner decision #2) ----
+     Every /api/ answer carries X-Public-Base: the ONE setting the server builds every public address from
+     (functions/lib/public-base.js: PUBLIC_BASE_URL, else the hosted address). It is kept here and in this
+     browser, so the next page shows the same address from its first paint; the pages never keep a host of
+     their own (the made-up etoneworld.com and events.economictimes.indiatimes.com were exactly that). Until
+     an answer has said it, it is this page's own origin, which serves the sites as well. A page that drew an
+     address before the first answer can listen for 'revamp:publicbase' and draw it again. */
+  var PUBLIC_BASE_KEY = 'rv-public-base', publicBaseNow = '';
+  function cleanBase(v){
+    var m = /^(https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?)\/?$/.exec(String(v == null ? '' : v).trim());
+    return m ? m[1] : '';
+  }
+  function publicBase(){
+    if (!publicBaseNow){
+      try { publicBaseNow = cleanBase(window.localStorage.getItem(PUBLIC_BASE_KEY)); } catch (e) { /* storage blocked: the answer still says it */ }
+    }
+    return publicBaseNow || location.origin;
+  }
+  /* res: a fetch Response from this server (any /api/ answer); pages that fetch on their own pass theirs too */
+  function notePublicBase(res){
+    var v = '';
+    try { v = cleanBase(res && res.headers && typeof res.headers.get === 'function' ? res.headers.get('X-Public-Base') : ''); } catch (e) { v = ''; }
+    if (!v) return;
+    var was = publicBase();
+    publicBaseNow = v;
+    try { window.localStorage.setItem(PUBLIC_BASE_KEY, v); } catch (e) { /* not kept: this page still has it */ }
+    if (was !== v){
+      try { window.dispatchEvent(new CustomEvent('revamp:publicbase', { detail: { base: v } })); } catch (e) { /* an old browser: the next paint has it */ }
+    }
+  }
+
+  /* Both are plain strings — never a made-up domain. A preview is the CMS's own signed-in page, so it is on
+     this page's host; the public address of an event is the public base + /e/<id> whether or not it is
+     published yet (callers say "not live yet" from event.published; the address itself does not change). */
   function previewUrl(eventId){
     eventId = String(eventId == null ? '' : eventId).trim();
     return eventId ? location.origin + '/preview/' + encodeURIComponent(eventId) : '';
@@ -549,7 +583,7 @@ window.RevampCore = (function(){
       id = String(event == null ? '' : event).trim();
     }
     if (!path && id) path = '/e/' + encodeURIComponent(id);
-    return path ? location.origin + path : '';
+    return path ? publicBase() + path : '';
   }
 
   /* ---- where the event's site stands ----
@@ -1472,7 +1506,7 @@ window.RevampCore = (function(){
     fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent, restoreVersion: restoreVersion,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
-    stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
+    stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
     uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,

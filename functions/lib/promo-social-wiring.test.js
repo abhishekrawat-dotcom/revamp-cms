@@ -20,7 +20,8 @@ const Module = require('module');
 
 process.env.ALLOWED_EMAIL_DOMAIN = 'timesinternet.in';
 delete process.env.K_SERVICE;
-delete process.env.PUBLIC_BASE_URL;
+/* the one public address (lib/public-base.js, UX-001): the wired helpers must hand it on */
+process.env.PUBLIC_BASE_URL = 'https://cms.example';
 
 var ROOT = path.resolve(__dirname, '..', '..');
 var passed = 0, failed = 0, notes = [];

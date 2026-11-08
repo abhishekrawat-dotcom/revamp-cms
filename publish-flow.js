@@ -673,7 +673,8 @@
     var C = window.RevampCore;
     return new Promise(function (done) {
       var outcome = { kind: 'closed' };
-      var url = location.origin + '/e/' + encodeURIComponent(eventId);
+      /* the address every page shows for the site (RevampCore.publicUrl: the one public base, UX-001) */
+      var url = C.publicUrl(eventId);
       var d = dialog({
         title: 'Publish the site?', opener: opts.opener,
         body: '<p>' + esc(savedLine(a, plan.version)) + ' goes live at <b>' + esc(url) + '</b> at once.</p>' +
@@ -690,7 +691,7 @@
         C.publishEvent(eventId).then(function (out) {
           outcome = { kind: 'published', result: out };
           if (typeof opts.onDone === 'function') opts.onDone(outcome);
-          var live = out.publishedUrl || (location.origin + (out.publishedPath || '/e/' + encodeURIComponent(eventId)));
+          var live = out.publishedUrl || C.publicUrl({ id: eventId, publishedPath: out.publishedPath });
           d.onClose = null;
           d.close(true);
           var r = dialog({

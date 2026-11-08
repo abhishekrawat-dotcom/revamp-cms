@@ -384,7 +384,7 @@
   function wireRestore(){
     var open = document.getElementById('rs-open');
     if (!open) return;
-    var p = data.previousLive, lv = liveVersion(), url = location.origin + (data.publishedPath || '/e/' + eventId);
+    var p = data.previousLive, lv = liveVersion(), url = C.publicUrl({ id: eventId, publishedPath: data.publishedPath });   // the one public address (UX-001)
     open.onclick = function(){
       open.hidden = true;
       var ask = document.getElementById('rs-ask');

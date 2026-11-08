@@ -198,6 +198,8 @@ ok(/Go to the event’s home page/.test(hooks.noSuchPageHtml('x', {})) && hooks.
 ok(hooks.messagePage('T', 'M', { href: 'https://evil.example', label: 'Go' }).indexOf('evil') === -1, 'only a link on this site');
 /* the routes, end to end: a live award site, a draft, a wrong page address, the calendar file */
 var pending = [];
+/* the sites' address is the one setting (lib/public-base.js, UX-001), not the host a request names */
+process.env.PUBLIC_BASE_URL = 'https://sites.example';
 function route(url, method) {
   return new Promise(function (resolve) {
     var got = { status: 0, headers: {}, body: '' };

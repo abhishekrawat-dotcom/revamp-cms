@@ -30,8 +30,8 @@ if (!ids.length || ids.some(function (id) { return !/^[a-z0-9][a-z0-9-]{0,99}$/.
   console.error('usage: node tools/republish-current.js --event <id> [--event <id> …] [--dry]');
   process.exit(2);
 }
-/* the address published pages are served from (publicBaseFor prefers PUBLIC_BASE_URL when it is set) */
-const ORIGIN = 'https://revamp-cms--revamp-cms.us-east4.hosted.app';
+/* the address published pages are served from: the one setting every address is built from (UX-001) */
+const ORIGIN = require('../functions/lib/public-base').publicSiteBase();
 
 const { getFirebase } = require('../functions/lib/firebase');
 const api = require('../functions/lib/api');

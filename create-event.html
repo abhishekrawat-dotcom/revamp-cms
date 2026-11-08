@@ -3891,6 +3891,13 @@
   }
   /* what stands in front of the box: that address without the event's own part ("host/e/") */
   function addressPrefix(){ return siteAddress('x').replace(/x$/, '').replace(/^https?:\/\//, ''); }
+  /* the server names the public base in its first answer (X-Public-Base, UX-001); a prefix drawn before it came
+     is drawn again, so the box never shows another host than the one the site will be at */
+  window.addEventListener('revamp:publicbase', function(){
+    var el = $('slug-prefix-text'), pre = $('slug-prefix'), box = $('f-slug');
+    if (el) el.textContent = addressPrefix();
+    if (pre) pre.title = siteAddress((box && box.value) || 'your-event');
+  });
 
   /* ---------- is the address free? ----------
      Asked of the server a moment after the typing stops (GET /api/event/slug-available, RevampCore.slugAvailable).

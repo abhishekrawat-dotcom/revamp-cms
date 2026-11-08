@@ -1076,6 +1076,8 @@
     if (!window.RevampAuth || typeof window.RevampAuth.getIdToken !== 'function') return Promise.reject(loadError('Not signed in.', 401));
     return window.RevampAuth.getIdToken().then(function(token){
       return fetch(url, { headers: { 'Authorization': 'Bearer ' + token } }).then(function(res){
+        /* the answer names where the sites are (X-Public-Base): Copy event link and the QR codes use it (UX-001) */
+        if (window.RevampCore && typeof window.RevampCore.notePublicBase === 'function') window.RevampCore.notePublicBase(res);
         return res.json().catch(function(){ return {}; }).then(function(data){
           if (!res.ok) throw loadError((data && data.error) || ('Could not load events (' + res.status + ')'), res.status);
           return Array.isArray(data && data.items) ? data.items : [];
@@ -2372,8 +2374,9 @@
     } else {
       if (e.status !== 'draft') items.push(['setup', IC.settings, 'Event setup'], ['sep']);
       items.push(['duplicate', IC.copy, 'Clone event']);
-      /* a draft has no site on the web yet, so no link to copy */
-      if (e.status !== 'draft') items.push(['copylink', IC.link, 'Copy event link']);
+      /* only a site that is live has a link that opens (publishedPath): a draft, or a site taken offline, has none
+         to copy (UX-001) */
+      if (e.published && e.publishedPath) items.push(['copylink', IC.link, 'Copy event link']);
       /* QR codes for a site that is live: from here they reach phones too, where the toolbar's QR Codes is hidden (UX-031) */
       if (e.published) items.push(['qr', IC.qrcode, 'QR codes']);
       items.push(['sep'], ['delete', IC.trash, 'Delete event', true, locked]);

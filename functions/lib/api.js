@@ -294,6 +294,8 @@ const { safeFetch } = require('./safe-fetch');
 /* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
 const siteA11y = require('./site-a11y');
 const siteSeo = require('./site-seo');
+/* the one address of the published sites (UX-001) */
+const publicBase = require('./public-base');
 const sitePages = require('./site-pages');
 /* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
 const siteChecks = require('./site-checks');
@@ -8805,9 +8807,8 @@ function cleanOrigin(v) {
   return m ? m[1] : '';
 }
 
-/* The address this server is reached at, for the absolute URLs a page needs (canonical link, og:url) and
-   for the publishedUrl a client is handed. PUBLIC_BASE_URL wins when it is set; otherwise it is the
-   address the signed-in user's own browser is using right now, which for an admin request is the CMS. */
+/* The address this request reached the server at, from its own headers: what a signed-in page links back
+   to (a preview, the review page), since that is where its person is signed in. */
 function requestOrigin(req) {
   var h = req.headers || {};
   var host = String(h['x-forwarded-host'] || h.host || '').split(',')[0].trim();
@@ -8816,8 +8817,20 @@ function requestOrigin(req) {
   if (proto !== 'http' && proto !== 'https') proto = /^(localhost|127\.0\.0\.1)(:|$)/.test(host) ? 'http' : 'https';
   return proto + '://' + host;
 }
+/* The address of the published sites, for every absolute URL a visitor follows: the canonical link and
+   og:url, the publishedUrl a client is handed, the sitemap and robots.txt, mailers, Promotions' QR codes and
+   share links. It is ONE setting (lib/public-base.js: PUBLIC_BASE_URL, else the hosted address; owner
+   decision #2, UX-001), not the host a request came in on: a page published or a link made from another
+   address (a local copy of the CMS, a second domain) must still send people to where the site really is.
+   The arguments are kept so every caller reads the same; neither changes the answer. */
 function publicBaseFor(req, bodyOrigin) {
-  return cleanOrigin(process.env.PUBLIC_BASE_URL || '') || cleanOrigin(bodyOrigin) || requestOrigin(req);
+  return publicBase.publicSiteBase();
+}
+/* The CMS's own address, for links into signed-in pages (a preview, the review page): the page's own origin
+   when it sent one, else the request's, else the public base. Those pages need the person's sign-in, which
+   lives on the address they are using, so a public domain set later must not move them. */
+function cmsOriginFor(req, bodyOrigin) {
+  return cleanOrigin(bodyOrigin) || requestOrigin(req) || publicBase.publicSiteBase();
 }
 
 /* ---------- GET /api/event/site?eventId= ----------
@@ -10126,7 +10139,7 @@ function handleApprovalRequest(req, res) {
           }).then(function () {
             logActivity(fb, eventId, decoded, 'approval-requested', 'version ' + version + ' — ' + doc.summary + (open ? ' (request updated)' : ''), { approvalId: target.id, version: version });
             var reviewPath = reviewPathOf(eventId, target.id);
-            sendJson(res, 200, { id: target.id, status: 'pending', toVersion: version, fromVersion: liveVersion, summary: doc.summary, updated: !!open, reviewPath: reviewPath, reviewUrl: publicBaseFor(req, body.origin) + reviewPath });
+            sendJson(res, 200, { id: target.id, status: 'pending', toVersion: version, fromVersion: liveVersion, summary: doc.summary, updated: !!open, reviewPath: reviewPath, reviewUrl: cmsOriginFor(req, body.origin) + reviewPath });
           });
         });
       });
@@ -11408,7 +11421,7 @@ function handleEventStage(req, res) {
       return saveObject(fb, draft ? draftObjectPath(eventId, decoded) : stagingObjectPath(eventId), rewriteOrigins(body.html, [cleanOrigin(body.origin)]), 'text/html; charset=utf-8');
     }).then(function () {
       var previewPath = '/preview/' + eventId + (draft ? '?draft=1' : '?staged=1');
-      sendJson(res, 200, { stagingUrl: publicBaseFor(req, body.origin) + previewPath, previewPath: previewPath });
+      sendJson(res, 200, { stagingUrl: cmsOriginFor(req, body.origin) + previewPath, previewPath: previewPath });
     }).catch(function (err) { sendFailure(res, 'stage', err, 'The preview could not be prepared. Please try again.'); });
   });
 }
@@ -11568,6 +11581,18 @@ function liveEventSnap(fb, eventId) {
   return p;
 }
 
+/* The id of the section a QR code's /agenda or /speakers stands for on a one-page site: an element whose id is that
+   word, else the first whose id holds it ("previous-speakers"). '' for any other name, or when the page has none. */
+var SECTION_ANCHOR_WORDS = { agenda: /agenda/i, speakers: /speaker/i };
+function sectionAnchorFor(html, slug) {
+  var word = has(SECTION_ANCHOR_WORDS, slug) ? SECTION_ANCHOR_WORDS[slug] : null;
+  if (!word || typeof html !== 'string') return '';
+  var ids = [], re = /\sid\s*=\s*["']([A-Za-z][A-Za-z0-9_-]{0,80})["']/g, m;
+  while ((m = re.exec(html))) ids.push(m[1]);
+  var exact = ids.filter(function (id) { return id.toLowerCase() === slug; })[0];
+  return exact || ids.filter(function (id) { return word.test(id); })[0] || '';
+}
+
 /* The document with one of its internal pages selected (site-pages.js): { html, found, page, pages } */
 function selectSitePage(html, slug) { return sitePages.selectPage(html, slug, TOKEN_KIT); }
 
@@ -11593,6 +11618,15 @@ function handlePublicPage(req, res, eventId, slug) {
     function send(entry) {
       if (!slug) return sendLivePage(entry);
       var chosen = sitePages.SLUG_RE.test(slug) ? selectSitePage(entry.source, slug) : { found: false };
+      /* /agenda and /speakers are what the dashboard's QR codes name (Event_Listing.html eventPublicUrl). A one-page
+         site has no such page but usually such a section: the code then opens the home page at that section, so a
+         code printed on a badge or a standee leads to the agenda rather than to "no such page" (UX-001). */
+      var anchor = !chosen.found ? sectionAnchorFor(entry.source, slug) : '';
+      if (anchor) {
+        var query = String(req.url || '').split('#')[0].split('?')[1];
+        res.writeHead(302, { Location: publicPathOf(eventId) + (query ? '?' + query : '') + '#' + encodeURIComponent(anchor), 'Cache-Control': LIVE_PAGE_CACHE_CONTROL });
+        return res.end();
+      }
       /* the site is live, only this address is wrong (a mistyped or an old page name): say so, and the way home */
       if (!chosen.found) return sendNoSuchPage(req, res, eventId, data);
       sendLivePage(cachePage(slugKey, chosen.html));
@@ -11617,7 +11651,7 @@ function handlePublicPage(req, res, eventId, slug) {
           var formsPayload = got[1];
           html = publishTransform(html, {
             eventId: eventId, event: data, mode: 'live', templateId: data.templateId, forms: formsPayload, pictures: got[2],
-            publicBase: cleanOrigin(process.env.PUBLIC_BASE_URL || '')
+            publicBase: publicBase.publicSiteBase()
           });
           return withHeroVideo(fb, html, data).then(function (page) {
             send(cachePage(key, page));
@@ -11820,7 +11854,7 @@ function shareRoute(handlerName) {
 
 /* =====================================================================================================
    GET /robots.txt and GET /sitemap.xml — for search engines (site-seo.js). Public. The sitemap lists every
-   published event's /e/<id> (and /e/<id>/<slug> for each of its internal pages, event.publishedPages) at the address this server is reached at (PUBLIC_BASE_URL when set), except one
+   published event's /e/<id> (and /e/<id>/<slug> for each of its internal pages, event.publishedPages) at the public address (publicBaseFor: PUBLIC_BASE_URL, else the hosted address), except one
    whose owner gave it a canonical address elsewhere (that address is the one to list, and it is not ours), and
    one kept out of search: its owner said so (settings.seo.noindex), it is a test ("test event 5"), or its live
    page is still the template itself ("Event name goes here") — the same reasons its page and header say
@@ -12352,6 +12386,10 @@ function routeApi(req, res) {
 
   if (req.method === 'OPTIONS' && isPublicApiPath(urlPath)) return audience('handlePublicOptions')(req, res);
 
+  /* Every /api/ answer says where the published sites are (the one setting, publicBaseFor): the pages build
+     each address they show or copy from it (RevampCore.publicUrl), so no page keeps a host of its own. */
+  if (urlPath.indexOf('/api/') === 0 && !res.headersSent) res.setHeader('X-Public-Base', publicBaseFor(req, ''));
+
   var handler = ROUTES[req.method + ' ' + urlPath];
   if (handler) return handler(req, res);
 
@@ -12378,6 +12416,7 @@ module.exports._testHooks = {
   redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
   TRACK_PIXEL: TRACK_PIXEL,   // the open pixel answered when lib/promo-track.js cannot be loaded (must equal its PIXEL)
+  sectionAnchorFor: sectionAnchorFor, publicBaseFor: publicBaseFor, cmsOriginFor: cmsOriginFor,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, otherPortalOf: otherPortalOf, siteOfPortal: siteOfPortal, sitePortal: sitePortal, sitePortalOf: sitePortalOf, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
