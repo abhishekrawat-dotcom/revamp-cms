@@ -28,17 +28,17 @@
   --rvc-border: #E0D7D5;
   --rvc-border-strong: #CFC3C0;
   --rvc-text: #241B1A;
-  --rvc-text-muted: #756865;
-  --rvc-text-faint: #A0908C;
-  --rvc-accent: #ED1C24;
+  --rvc-text-muted: #655855;
+  --rvc-text-faint: #6E605D;
+  --rvc-accent: #D3141B;
   --rvc-accent-strong: #B3151B;
   --rvc-accent-soft: #FBDBDC;
   --rvc-accent-contrast: #FFFFFF;
-  --rvc-draft: #8A7A99;
+  --rvc-draft: #6B5C7B;
   --rvc-draft-soft: #EEE8F2;
   --rvc-ok: #16794F;
   --rvc-ok-soft: #E4F5EC;
-  --rvc-warn: #A9700F;
+  --rvc-warn: #845B10;
   --rvc-warn-soft: #FBF0DA;
   --rvc-crit: #C13333;
   --rvc-crit-soft: #FBE8E7;
@@ -72,8 +72,8 @@
     --rvc-border: #3F3532;
     --rvc-border-strong: #4D413D;
     --rvc-text: #EDE6E4;
-    --rvc-text-muted: #A89C99;
-    --rvc-text-faint: #7C716E;
+    --rvc-text-muted: #B0A4A1;
+    --rvc-text-faint: #A69A97;
     --rvc-accent: #FF6B70;
     --rvc-accent-strong: #FF8A8E;
     --rvc-accent-soft: #3A1518;
@@ -99,8 +99,8 @@
   --rvc-border: #3F3532;
   --rvc-border-strong: #4D413D;
   --rvc-text: #EDE6E4;
-  --rvc-text-muted: #A89C99;
-  --rvc-text-faint: #7C716E;
+  --rvc-text-muted: #B0A4A1;
+  --rvc-text-faint: #A69A97;
   --rvc-accent: #FF6B70;
   --rvc-accent-strong: #FF8A8E;
   --rvc-accent-soft: #3A1518;
@@ -239,7 +239,7 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-sent-pic{ width:56px; height:56px; object-fit:cover; border-radius:8px; border:1px solid var(--rvc-border); background:var(--rvc-surface); }
 .rvc-sent-item.is-doc{ padding:3px 8px 3px 6px; border-radius:8px; background:var(--rvc-surface); border:1px solid var(--rvc-border); font-size:12px; }
 .rvc-sent-name{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px; }
-.rvc-sent-num{ position:absolute; top:-6px; left:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:var(--rvc-text); color:var(--rvc-surface); font-size:10.5px; font-weight:800; line-height:18px; text-align:center; }
+.rvc-sent-num{ position:absolute; top:-6px; left:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:var(--rvc-text); color:var(--rvc-surface); font-size:11px; font-weight:800; line-height:18px; text-align:center; }
 .rvc-sent-item.is-doc .rvc-sent-num{ position:static; }
 .rvc-doc-ico{ display:inline-flex; flex-shrink:0; color:var(--rvc-text-muted); }
 .rvc-error .rvc-msg{ background:var(--rvc-crit-soft); color:var(--rvc-crit); }
@@ -344,7 +344,7 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-achip-pic{ flex-shrink:0; width:32px; height:32px; border-radius:7px; overflow:hidden; display:flex; align-items:center; justify-content:center; background:var(--rvc-surface); }
 .rvc-achip-img{ width:32px; height:32px; object-fit:cover; }
 .rvc-achip.is-error .rvc-doc-ico{ color:var(--rvc-crit); }
-.rvc-achip-num{ position:absolute; top:-6px; left:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:var(--rvc-text); color:var(--rvc-surface); font-size:10.5px; font-weight:800; line-height:18px; text-align:center; }
+.rvc-achip-num{ position:absolute; top:-6px; left:-6px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:var(--rvc-text); color:var(--rvc-surface); font-size:11px; font-weight:800; line-height:18px; text-align:center; }
 .rvc-achip-main{ min-width:0; display:flex; flex-direction:column; }
 .rvc-achip-name{ max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
 .rvc-achip-state{ font-size:11px; color:var(--rvc-text-muted); overflow-wrap:anywhere; }

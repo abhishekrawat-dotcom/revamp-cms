@@ -2129,7 +2129,7 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
   var PALETTE = ['surface', 'surface-2', 'surface-3', 'border', 'border-strong', 'text', 'text-muted', 'text-faint', 'accent', 'accent-strong', 'accent-soft', 'accent-contrast',
     'draft', 'draft-soft', 'ok', 'ok-soft', 'warn', 'warn-soft', 'crit', 'crit-soft', 'shadow-sm', 'shadow-md', 'shadow-lg', 'r-sm', 'r-md', 'r-lg'];
   var badLight = PALETTE.filter(function (t) { return !KIT_LIGHT['rvc-' + t] || norm(KIT_LIGHT['rvc-' + t]) !== norm(LIGHT[t]); });
-  check('C.9 the light palette is the dashboard\'s :root, value for value (one look: ET red #ED1C24 on every page)', badLight.length === 0 && KIT_LIGHT['rvc-accent'] === '#ED1C24', badLight);
+  check('C.9 the light palette is the dashboard\'s :root, value for value (one look: the ET red fill #D3141B on every page, UX-004)', badLight.length === 0 && KIT_LIGHT['rvc-accent'] === '#D3141B', badLight);
   check('C.9 … and #FF6B70 in its dark palette', KIT_DARK_THEME['rvc-accent'] === '#FF6B70', KIT_DARK_THEME['rvc-accent']);
   check('C.9 the kit\'s font is the dashboard\'s Inter stack', norm(KIT_LIGHT['rvc-font']) === norm(LIGHT['font-body']));
   var DARK_KEYS = PALETTE.filter(function (t) { return !/^r-/.test(t); });
@@ -2244,14 +2244,14 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
   check('C.10 the sender, the dividers, the status and the scope use --text-muted (UX-100: they were 3.06:1)', /\.rvc-meta\{[^}]*color:var\(--rvc-text-muted\)/.test(css) &&
     /\.rvc-divider\{[^}]*color:var\(--rvc-text-muted\)/.test(css) && /\.rvc-status\{[^}]*color:var\(--rvc-text-muted\)/.test(css) && /\.rvc-scope\{[^}]*color:var\(--rvc-text-muted\)/.test(css));
   check('C.10 … at 11px or more', /\.rvc-meta\{[^}]*font-size:11px/.test(css) && /\.rvc-divider\{[^}]*font-size:11px/.test(css));
-  check('C.10 the "as of" line uses --text-muted, not the too-pale --text-faint', /\.rvc-asof\{[^}]*color:var\(--rvc-text-muted\)/.test(css) && ratio(KIT_LIGHT['rvc-text-faint'], KIT_LIGHT['rvc-surface-2']) < 4.5);
-  check('C.10 chip words are --text (the status colours as words would fail AA)', /\.rvc-chip\{[^}]*color:var\(--rvc-text\)/.test(css) && ratio(KIT_LIGHT['rvc-draft'], KIT_LIGHT['rvc-draft-soft']) < 4.5);
-  check('C.10 a primary button is on --accent-strong (white on --accent fails AA at this size)', /\.rvc-btn-primary\{ background:var\(--rvc-accent-strong\)/.test(css) && ratio(KIT_LIGHT['rvc-accent-contrast'], KIT_LIGHT['rvc-accent']) < 4.5);
+  check('C.10 the "as of" line uses --text-muted (and --text-faint is readable too since UX-004)', /\.rvc-asof\{[^}]*color:var\(--rvc-text-muted\)/.test(css) && ratio(KIT_LIGHT['rvc-text-faint'], KIT_LIGHT['rvc-surface-2']) >= 4.5);
+  check('C.10 chip words are --text (the status colours as words would fail AA)', /\.rvc-chip\{[^}]*color:var\(--rvc-text\)/.test(css) && ratio(KIT_LIGHT['rvc-text'], KIT_LIGHT['rvc-draft-soft']) >= 4.5);
+  check('C.10 a primary button is on --accent-strong (its words read on it; white on --accent reads too since UX-004)', /\.rvc-btn-primary\{ background:var\(--rvc-accent-strong\)/.test(css) && ratio(KIT_LIGHT['rvc-accent-contrast'], KIT_LIGHT['rvc-accent-strong']) >= 4.5 && ratio(KIT_LIGHT['rvc-accent-contrast'], KIT_LIGHT['rvc-accent']) >= 4.5);
   check('C.10 the ↳ line on the person\'s bubble is --text', /\.rvc-msg-ctx\{[^}]*color:var\(--rvc-text\)/.test(css));
-  /* UX-100's small text (the sender, dividers, the status) on the console's palette (B11): 5.35:1 on the light panel,
-     6.34:1 on the dark one (the plan's 5.43 / 6.75 were the dashboard's old greys) */
-  check('C.10 the contrast numbers of the plan (§8 UX-100), on the console\'s palette', Math.round(ratio(KIT_LIGHT['rvc-text-muted'], KIT_LIGHT['rvc-surface']) * 100) / 100 === 5.35 &&
-    Math.round(ratio(KIT_DARK['rvc-text-muted'], KIT_DARK['rvc-surface']) * 100) / 100 === 6.34);
+  /* UX-100's small text (the sender, dividers, the status) on the console's palette: 6.82:1 on the light panel,
+     6.97:1 on the dark one since UX-004's readable greys (5.35 / 6.34 before; the plan's 5.43 / 6.75 were the dashboard's old ones) */
+  check('C.10 the contrast numbers of the plan (§8 UX-100), on the console\'s palette', Math.round(ratio(KIT_LIGHT['rvc-text-muted'], KIT_LIGHT['rvc-surface']) * 100) / 100 === 6.82 &&
+    Math.round(ratio(KIT_DARK['rvc-text-muted'], KIT_DARK['rvc-surface']) * 100) / 100 === 6.97);
 
   if (failed) { console.error('etb2b-chat: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('etb2b-chat: all ' + passed + ' checks passed');

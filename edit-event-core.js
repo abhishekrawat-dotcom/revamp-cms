@@ -316,7 +316,8 @@ window.RevampCore = (function(){
     return '₹ ' + comma(n);
   }
 
-  var AV    = ['#ED1C24','#2F6FB0','#2F8F5B','#8A5A9E','#9C6B14','#B3151B','#3E7C7C','#A2457A'];
+  /* initials are white on these: each at 4.5:1 or more (UX-004; the ET red and the green were 4.38 and 4.04) */
+  var AV    = ['#D3141B','#2F6FB0','#23744A','#8A5A9E','#9C6B14','#B3151B','#3E7C7C','#A2457A'];
 
   /* ---------------------------------------------------------------- real backend (functions/lib/api.js)
      Every event identifier from here on is the real Firestore id string (e.g. 'ethrworld-nextsummit'),
@@ -1281,9 +1282,9 @@ window.RevampCore = (function(){
     '.rv-le-acts{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:10px}',
     '.rv-le-btn{display:inline-flex;align-items:center;gap:7px;box-sizing:border-box;padding:8px 15px;border-radius:9px;font-family:inherit;font-size:13px;font-weight:700;line-height:1.3;' +
       'cursor:pointer;text-decoration:none;border:1.5px solid var(--border,#E6E4DE);background:var(--surface,#FFFFFF);color:var(--text,#1D1B17)}',
-    '.rv-le-btn:hover{border-color:var(--accent,#ED1C24)}',
-    '.rv-le-btn.primary{background:var(--accent,#ED1C24);border-color:var(--accent,#ED1C24);color:var(--accent-contrast,#FFFFFF)}',
-    '.rv-le-btn:focus-visible{outline:2px solid var(--accent,#ED1C24);outline-offset:2px}',
+    '.rv-le-btn:hover{border-color:var(--accent,#D3141B)}',
+    '.rv-le-btn.primary{background:var(--accent,#D3141B);border-color:var(--accent,#D3141B);color:var(--accent-contrast,#FFFFFF)}',
+    '.rv-le-btn:focus-visible{outline:2px solid var(--accent,#D3141B);outline-offset:2px}',
     '@media (prefers-reduced-motion:reduce){.rv-toast,.rv-toasts{transition:none}}'
   ].join('\n');
   function sharedCss(){

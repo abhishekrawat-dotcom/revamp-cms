@@ -334,6 +334,17 @@ ok(hooks.repeatedHeadingIds([{ parsed: { sections: [{ id: 'overview', html: '<h2
   ok(/#leaders \.quote-grid::before,\s*#leaders \.quote-grid::after \{\s*content: none;\s*display: none;/.test(lead), 'OCT-3: the quotes grid starts in its first cell (the .row\'s ::before takes none)');
 })();
 
+/* UX-001: the dashboard's Agenda and Speakers QR codes name /e/<id>/agenda and /speakers; a one-page site opens at
+   that section (its ?ag= kept), and one without it says "no such page" with the way home */
+FB.docs['events/qa-ux-b02-qr'] = { name: 'QR Summit', createdAt: '2026-11-01T00:00:00.000Z', published: true, publishedVersion: 2, publishedAt: '2026-11-02T00:00:00.000Z',
+  site: { version: 2, templateId: 'gen-qa-ux-b02-qr' } };
+FB.files['events/qa-ux-b02-qr/published/index.html'] = PAGE.replace('<title>AutoTech</title>', '<title>QR Summit</title>').replace('</body>', '<section id="agenda"><h2>Agenda</h2></section></body>');
+pending.push(Promise.all([route('/e/qa-ux-b02-qr/agenda?ag=mailer'), route('/e/qa-ux-b02-qr/speakers'), route('/e/qa-ux-b02-qr/agenda')]).then(function (r) {
+  ok(r[0].status === 302 && r[0].headers.Location === '/e/qa-ux-b02-qr?ag=mailer#agenda', 'UX-001 the Agenda QR code opens a one-page site at its agenda, the AG code kept', r[0].status + ' ' + JSON.stringify(r[0].headers));
+  ok(r[2].status === 302 && r[2].headers.Location === '/e/qa-ux-b02-qr#agenda', '…and without an AG code', r[2].headers.Location);
+  ok(r[1].status === 404 && /This page does not exist/.test(r[1].body) && /Go to QR Summit/.test(r[1].body), 'UX-001 a site with no speakers section: "no such page" and the way home', r[1].status);
+}));
+
 Promise.all(pending).then(function () {
   if (failures.length) {
     console.error('published-page-ux: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - '));

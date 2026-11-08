@@ -522,7 +522,7 @@ LIGHT = LIGHT || {}; DARK = DARK || {};
   '--accent', '--accent-soft', '--accent-ink', '--ok', '--ok-soft', '--bad', '--bad-soft', '--s-open', '--s-click', '--ow-accent-text', '--ow-accent-soft'].forEach(function (k) {
   check('token ' + k + ' is set in both themes', !!LIGHT[k] && !!DARK[k], [LIGHT[k], DARK[k]]);
 });
-check('the console\'s palette: warm background, ET red, Inter', LIGHT['--bg'] === '#FAF7F6' && LIGHT['--accent'] === '#ED1C24' && DARK['--bg'] === '#171514' &&
+check('the console\'s palette: warm background, the ET red fill (#D3141B, UX-004), Inter', LIGHT['--bg'] === '#FAF7F6' && LIGHT['--accent'] === '#D3141B' && DARK['--bg'] === '#171514' &&
   DARK['--accent'] === '#FF6B70' && /^'Inter'/.test(LIGHT['--font-body'] || ''));
 /* the studio reads --accent with getComputedStyle and parses it as #rrggbb for its editing ring (mailer-studio.js) */
 check('--accent is a plain #rrggbb in both themes (the editing ring parses it)', /^#[0-9A-Fa-f]{6}$/.test(LIGHT['--accent']) && /^#[0-9A-Fa-f]{6}$/.test(DARK['--accent']) &&

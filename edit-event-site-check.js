@@ -86,7 +86,7 @@
       '.site-check .sc-item.warn{border-left-color:var(--warn)}' +
       '.site-check .sc-item.info{border-left-color:var(--border)}' +
       '.site-check .sc-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;font-weight:700}' +
-      '.site-check .sc-lvl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}' +
+      '.site-check .sc-lvl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:2px 7px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}' +
       '.site-check .block .sc-lvl{background:var(--accent);color:var(--accent-contrast)}' +
       '.site-check .warn .sc-lvl{background:var(--warn-soft);color:var(--warn)}' +
       '.site-check ul{margin:6px 0 0;padding-left:18px}.site-check li{margin:2px 0;overflow-wrap:anywhere}' +

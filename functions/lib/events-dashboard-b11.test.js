@@ -97,7 +97,7 @@ check('UX-005 the dashboard keeps no table of its own', /\n  var EVENT_TYPES = \
 [['Event_Listing.html', PAGE], ['activity-log.html', ALOG], ['mailer-performance.html', MPERF]].forEach(function (f) {
   var css = f[1].slice(f[1].indexOf('<style>'), f[1].indexOf('</style>'));
   var light = block(css, ':root{'), sysDark = block(css, ':root:not([data-theme="light"]){'), dark = block(css, ':root[data-theme="dark"]{');
-  check('UX-014 ' + f[0] + ': ET red #ED1C24 and the console\'s warm ground in light', /--accent:\s*#ED1C24;/.test(light) && /--bg:\s*#FAF7F6;/.test(light) && /--text:\s*#241B1A;/.test(light), light.slice(0, 300));
+  check('UX-014 ' + f[0] + ': the console\'s ET red fill (#D3141B since UX-004: white on it reads) and warm ground in light', /--accent:\s*#D3141B;/.test(light) && /--bg:\s*#FAF7F6;/.test(light) && /--text:\s*#241B1A;/.test(light), light.slice(0, 300));
   check('UX-014 ' + f[0] + ': #FF6B70 and the warm dark ground, for the computer\'s dark and for the switch\'s', /--accent:\s*#FF6B70;/.test(sysDark) && /--accent:\s*#FF6B70;/.test(dark) && /--bg:\s*#171514;/.test(dark) && /--bg:\s*#171514;/.test(sysDark));
   check('UX-014 ' + f[0] + ': no #FF0035 / #FF4D6D red and no cool greys left', !/#FF0035|#FF4D6D|#F7F7F4|#1B1A16|#141310/i.test(f[1]));
 });
@@ -111,7 +111,7 @@ var OLD_DASH = ['#F7F7F4', '#F1F0EC', '#E7E5DF', '#E6E4DE', '#D7D4CB', '#1D1B17'
 var kitOld = OLD_DASH.filter(function (h) { return KIT.toUpperCase().indexOf(h) !== -1; });
 check('UX-014 ETB2B AI\'s kit carries none of the dashboard\'s old reds and cool greys', kitOld.length === 0, kitOld);
 var kitDark = (/\[data-theme="dark"\] \.rvc\{[^}]*\}/.exec(KIT) || [''])[0];
-check('UX-014 …its red is the console\'s #ED1C24 (and #FF6B70 in a dark palette of its own, if it writes one)', /--rvc-accent:\s*(var\(--accent,\s*)?#ED1C24\)?;/i.test(KIT) &&
+check('UX-014 …its red is the console\'s #D3141B (and #FF6B70 in a dark palette of its own, if it writes one)', /--rvc-accent:\s*(var\(--accent,\s*)?#D3141B\)?;/i.test(KIT) &&
   (!kitDark || /--rvc-accent:\s*#FF6B70;/i.test(kitDark)), kitDark.slice(0, 200));
 check('UX-014 the Figma import page reads the app\'s choice before it paints, and has the switch', FIGMA.indexOf('localStorage.getItem("revamp-theme")') !== -1 &&
   FIGMA.indexOf('<script src="../theme-toggle.js"></script>') !== -1 && FIGMA.indexOf('<span data-theme-toggle-target') !== -1);

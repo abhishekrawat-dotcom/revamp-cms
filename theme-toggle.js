@@ -52,7 +52,7 @@
         'background:var(--surface-2,#F3EEED);border-color:var(--border,#E0D7D5);color:var(--text,#1D1B17);' +
       '}' +
       '.theme-toggle-btn:focus-visible{' +
-        'outline:2px solid var(--accent,#ED1C24);outline-offset:2px;' +
+        'outline:2px solid var(--accent,#D3141B);outline-offset:2px;' +
       '}' +
       '.theme-toggle-btn svg{display:block;}' +
       '.theme-toggle-btn .tgl-sun{display:none;}' +

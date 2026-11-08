@@ -69,7 +69,7 @@ html[data-rv-editing] [data-rv-section][data-rv-ai-busy] > *{ opacity:.45; point
 [data-ai-generated], [data-ai-skipped]{ position:relative; }
 .ai-prov-badge, .ai-skip-badge{
   display:none; position:absolute; top:8px; left:8px; z-index:6; align-items:center; gap:4px;
-  font-size:10px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+  font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
   padding:3px 8px 3px 6px; border-radius:999px; pointer-events:none; white-space:nowrap;
 }
 html.show-ai-markers [data-ai-generated] > .ai-prov-badge,
@@ -86,7 +86,7 @@ html.show-ai-markers [data-ai-skipped] > .ai-skip-badge{ display:flex; }
    pair of claims about the same section. */
 .ai-media-skip-badge{
   display:none; position:absolute; bottom:8px; left:8px; z-index:6; align-items:center; gap:4px;
-  font-size:10px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
+  font-size:11px; font-weight:800; letter-spacing:.03em; text-transform:uppercase;
   padding:3px 8px 3px 6px; border-radius:999px; pointer-events:none; white-space:nowrap;
   background:#E9E2E0; color:#756865;
 }

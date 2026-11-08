@@ -293,7 +293,7 @@
     '.rvpf-qa-item.is-block{border-left-color:var(--accent);background:var(--accent-soft)}',
     '.rvpf-qa-item.is-warn{border-left-color:var(--warn)}',
     '.rvpf-qa-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;font-weight:700;color:var(--text)}',
-    '.rvpf-qa-lvl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}',
+    '.rvpf-qa-lvl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}',
     '.rvpf-qa-item.is-block .rvpf-qa-lvl{background:var(--accent);color:var(--accent-contrast,#fff)}',
     '.rvpf-qa-item.is-warn .rvpf-qa-lvl{background:var(--warn-soft);color:var(--text)}',
     '.rvpf-qa-item ul{margin:4px 0 0;padding-left:18px}.rvpf-qa-item li{margin:2px 0;overflow-wrap:anywhere}',

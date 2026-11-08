@@ -4070,7 +4070,7 @@
       $('aq-list').innerHTML = Q.map(function(e, i){
         return '<button class="qi' + (e.err ? ' failed' : '') + '" type="button" data-q="' + i + '" aria-current="' + (i === qi) + '"' +
             (e.err ? ' title="Not saved yet"' : '') + '>' +
-            '<span class="qph" style="font-family:var(--font-mono);font-size:9.5px">' + esc(e.start) + '</span>' +
+            '<span class="qph" style="font-family:var(--font-mono);font-size:11px">' + esc(e.start) + '</span>' +
             '<span class="qn">' + (e.title ? esc(e.title) : '<em>Session ' + (i + 1) + '</em>') + '</span>' +
             (Q.length > 1 ? '<span class="qx" data-qx="' + i + '" role="button" aria-label="Remove">' +
               svg('<path d="M18 6L6 18M6 6l12 12"/>', 13) + '</span>' : '') +

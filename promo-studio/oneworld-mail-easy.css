@@ -50,11 +50,11 @@
 /* ---- "+ Add a section": the sections in plain groups ---- */
 #mlPal.ml-pal{display:block;padding:8px 10px 10px;max-height:min(460px,calc(100vh - 140px));overflow-y:auto}
 .ow-addg{margin:4px 0 8px}
-.ow-addh{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--soft);font-weight:650;margin:6px 2px 6px}
+.ow-addh{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--soft);font-weight:650;margin:6px 2px 6px}
 .ow-addl{display:grid;grid-template-columns:1fr 1fr;gap:5px}
 .ow-addl[hidden]{display:none}
 #mlPal .ow-addb{justify-content:flex-start;min-height:34px}
-.ow-adv-tag{margin-left:auto;font-size:10px;font-weight:600;color:var(--soft);border:1px solid var(--line);border-radius:999px;padding:0 6px}
+.ow-adv-tag{margin-left:auto;font-size:11px;font-weight:600;color:var(--soft);border:1px solid var(--line);border-radius:999px;padding:0 6px}
 #mlPal .ow-more-tg{display:block;width:100%;border:0;background:transparent;padding:6px 2px;font-size:12px;font-weight:650;color:var(--ink2)}
 #mlPal .ow-more-tg:hover{background:transparent;color:var(--ink)}
 .ow-addg-more .ow-addl{margin-top:4px}

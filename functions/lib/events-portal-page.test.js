@@ -87,7 +87,7 @@ check('D.3 the switcher menu is at most 340 px wide and 60vh tall, its list scro
   /* (with the cooler red of before B11, --accent-strong on --accent-soft fell just short in light; --text reads at AA with either) */
   check('D.3 the callout\'s links are --text, which reads at AA on --accent-soft', /\.portal-callout \.pn-link\{ color:var\(--text\); \}/.test(CSS) &&
     ratio(block(/:root\{/).text, block(/:root\{/)['accent-soft']) >= 4.5);
-  check('D.3 counts are --text-muted (the page\'s --text-faint would fail AA)', /\.pn-opt \.pn-count\{[^}]*color:var\(--text-muted\)/.test(CSS) && ratio(block(/:root\{/)['text-faint'], block(/:root\{/).surface) < 4.5);
+  check('D.3 counts are --text-muted (and the page\'s --text-faint reads too since UX-004)', /\.pn-opt \.pn-count\{[^}]*color:var\(--text-muted\)/.test(CSS) && ratio(block(/:root\{/)['text-faint'], block(/:root\{/).surface) >= 4.5);
 })();
 
 /* the toolbar, the ⋯ menu, the KPI and the Latest Activity markup at dc1a8e1, copied here: they must not change.
