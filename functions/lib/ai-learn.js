@@ -40,8 +40,9 @@
    not working (a fixed word match on their message, isComplaint: no AI), or when a page that carries the assistant
    has an error (POST /api/ai-qa/note from etb2b-assistant.js: a window error or an unhandled rejection, signed-in
    team only). Each note has the page, the event, what was asked, what the AI did, what happened, the error text,
-   the browser and the window size. Notes are throttled per person and in all (noteGate: duplicates within ten
-   minutes are dropped, and a person or the server that sends too many is told to stop), grouped by what they are
+   the browser and the window size. Notes are throttled per person and in all (noteGate: the same page error from
+   the same person within ten minutes is dropped, and a person or the server that sends too many is told to stop;
+   every undo and complaint is its own note, since each one is a real AI turn), grouped by what they are
    about (groupOf), counted in the report, and an approver can mark a group resolved (POST /api/ai-report/resolve);
    a note after that shows the group as back.
 
@@ -502,21 +503,23 @@ function noteOf(kind, f, nowMs) {
   return note;
 }
 function writeNote(fb, note) {
-  if (noteGate(note.uid, note.group, Date.parse(note.at))) return Promise.resolve(null);
+  /* an undo or a complaint is never a duplicate: each one followed a real AI turn (which has its own limits), and
+     the same kind undone twice is two times ETB2B AI got it wrong. Only a page error can repeat in a loop. */
+  if (noteGate(note.uid, note.kind === 'page-error' ? note.group : '', Date.parse(note.at))) return Promise.resolve(null);
   return fb.db.collection(NOTES).add(note).then(null, function (err) {
     warn('note', 'a QA note was not kept — ' + (err && err.message));
     return null;
   });
 }
 
-/* The throttle every note goes through, in this process: the same note from the same person within ten minutes is
-   dropped ('duplicate'), a person may leave CAPS.notePerPerson notes in ten minutes ('rate') and everyone together
-   CAPS.noteAll ('busy'). '' lets it through. It never grows without bound. */
+/* The throttle every note goes through, in this process: the same note (group) from the same person within ten
+   minutes is dropped ('duplicate'; a group of '' is never one), a person may leave CAPS.notePerPerson notes in ten
+   minutes ('rate') and everyone together CAPS.noteAll ('busy'). '' lets it through. It never grows without bound. */
 var gate = { mine: {}, all: [], seen: {}, seenCount: 0 };
 function noteGate(uid, group, nowMs) {
   var now = typeof nowMs === 'number' && !isNaN(nowMs) ? nowMs : clock.now(), w = CAPS.noteWindowMs;
-  var key = uid + '|' + group;
-  if (gate.seen[key] && now - gate.seen[key] < CAPS.noteDedupeMs) return 'duplicate';
+  var key = group ? uid + '|' + group : '';
+  if (key && gate.seen[key] && now - gate.seen[key] < CAPS.noteDedupeMs) return 'duplicate';
   var mine = (gate.mine[uid] || []).filter(function (t) { return now - t < w; });
   if (mine.length >= CAPS.notePerPerson) { gate.mine[uid] = mine; return 'rate'; }
   gate.all = gate.all.filter(function (t) { return now - t < w; });
@@ -529,6 +532,7 @@ function noteGate(uid, group, nowMs) {
     Object.keys(gate.mine).forEach(function (k) { if (!gate.mine[k].some(function (t) { return now - t < w; })) delete gate.mine[k]; });
     gate.seenCount = Object.keys(gate.seen).length;
   }
+  if (!key) return '';
   if (!gate.seen[key]) gate.seenCount++;
   gate.seen[key] = now;
   return '';
@@ -781,9 +785,12 @@ function handleNote(req, res) {
   H.withAdminBody(req, res, H.BODY_LIMITS.tiny || 16 * 1024, function (fb, decoded, body) {
     if (body.kind !== 'page-error' || !line(body.error, 10)) return H.sendJson(res, 400, { error: 'An error text is required.' });
     var nowMs = clock.now();
+    /* what the last answer was, as the page says it: "dash:refuse" is the dash brain's refusal (the brain is kept on
+       its own, so the report reads "refuse", never the page's shorthand) */
+    var didM = /^(dash|edit|promo):([a-z][a-z-]{0,20})$/.exec(line(body.did, 24));
     var note = noteOf('page-error', {
-      decoded: decoded, page: body.page, tab: body.tab, eventId: body.eventId, asked: body.asked,
-      did: { kind: line(body.did, 24), target: '' }, happened: 'page error', error: body.error,
+      decoded: decoded, page: body.page, tab: body.tab, eventId: body.eventId, asked: body.asked, brain: didM ? didM[1] : '',
+      did: { kind: didM ? didM[2] : '', target: '' }, happened: 'page error', error: body.error,
       where: line(body.where, 160) || whereOf(body.source, body.line, body.col), stack: body.stack,
       ua: req.headers && req.headers['user-agent'], screen: body.screen
     }, nowMs);

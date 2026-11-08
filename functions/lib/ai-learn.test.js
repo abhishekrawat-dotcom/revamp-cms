@@ -28,6 +28,7 @@ var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail).slice(0, 900) : '')); }
 function clone(v) { return v == null ? v : JSON.parse(JSON.stringify(v)); }
 function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+function uniqOf(list) { return list.filter(function (x, i) { return list.indexOf(x) === i; }); }
 function wait(ms) { return new Promise(function (r) { setTimeout(r, ms || 20); }); }
 
 /* ---------- an in-memory Firestore: paths, merge, increments, where (==, >=, <), orderBy, limit, select, add,
@@ -296,7 +297,7 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   await wait();
   check('L.6 what the editor cannot do here (sent to Content): could not do', entries().some(function (e) { return e.brain === 'edit' && e.outcome === 'could-not' && e.rule === 'sent to content:speakers' && e.intent === 'add speaker'; }));
 
-  /* The race the browser check found: the editor applies a change about a second after the answer, while its entry
+  /* A race found in review: the editor applies a change about a second after the answer, while its entry
      waits for the first list of event names. The report waits for this process's own write, and looks again a
      little later for one another process is writing; "applied" then "undone" a moment apart end undone. */
   var realCol = FB.db.collection, savedRetry = L.CAPS.outcomeRetryMs;
@@ -363,6 +364,7 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   var pe = notes().filter(function (n) { return n.kind === 'page-error'; })[0];
   check('L.8 a page error: 202 at once, kept with the event\'s name, the page and tab, where, the browser and window', r.status === 202 && r.body.kept === true && !!pe &&
     pe.eventName === 'Autotech Summit 2026' && pe.tab === 'content/speakers' && pe.where === 'edit-event.js:120:9' && pe.browser === 'Chrome 131 · macOS' && pe.screen === '1440x900', pe);
+  check('L.8 …the last answer the page names ("dash:reply") is kept as the brain and what it did ("reply")', pe.brain === 'dash' && pe.did.kind === 'reply', [pe.brain, pe.did]);
   check('L.8 …links reduced, no query, no host; the asked words stripped of the other event and the e-mail',
     pe.error.indexOf('revamp.example') === -1 && pe.error.indexOf('?v=') === -1 && pe.stack.indexOf('revamp.example') === -1 && pe.stack.indexOf('/edit-event.js') !== -1 &&
     pe.asked === 'compare with another event, mail [email]', pe);
@@ -394,6 +396,20 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   var b = T.noteOf('page-error', { page: 'console', error: 'Failed to load event 77aa00bb11 after 5 tries', where: 'edit-event.js:131:2', decoded: { uid: 'u2' } }, t0);
   var cdiff = T.noteOf('page-error', { page: 'editor', error: 'Failed to load event 77aa00bb11 after 5 tries', where: 'edit-event.js:131:2', decoded: { uid: 'u2' } }, t0);
   check('L.9 one fault from two people (other ids, counts and lines) is one group; another page is another', a.group === b.group && a.group !== cdiff.group && a.title === 'Failed to load event # after # tries');
+  T.resetGate();
+  var twice = [T.noteGate('u3', '', t0), T.noteGate('u3', '', t0 + 1000)];
+  check('L.9 a group of "" (an undo or a complaint) is never a duplicate, only counted for the rate', twice[0] === '' && twice[1] === '' && T.gateSize() === 0, twice);
+  T.resetGate();
+  var u1 = 'UndoTwice000000001', u2 = 'UndoTwice000000002', who3 = { uid: 'u-twice', email: 'twice@timesinternet.in', name: 'Twice' };
+  for (var turn of [u1, u2]) {
+    await T.writeEntry(FB, T.entryOf({ brain: 'edit', decoded: who3, eventId: AUTO, page: 'editor', intent: 'swap banner', words: 'swap the banner', outcome: 'done', turnId: turn, known: [] }, Date.now() - 3000));
+    await L.recordOutcome(FB, { brain: 'edit', turnId: turn, status: 'undone', decoded: who3 });
+  }
+  check('L.9 the same kind of change undone twice by one person in a minute: two QA notes in one group (it got it wrong twice)',
+    notes().filter(function (n) { return n.uid === 'u-twice' && n.kind === 'undo'; }).length === 2 &&
+    uniqOf(notes().filter(function (n) { return n.uid === 'u-twice'; }).map(function (n) { return n.group; })).length === 1);
+  Object.keys(FB.docs).forEach(function (k) { var d = FB.docs[k]; if (/u-twice~/.test(k) || (d && d.uid === 'u-twice')) delete FB.docs[k]; });
+  T.resetGate();
   check('L.9 an undo groups by page and intent', T.noteOf('undo', { page: 'editor', intent: 'swap banner' }, t0).group === T.noteOf('undo', { page: 'editor', intent: 'swap banner' }, t0 + 5).group &&
     T.noteOf('undo', { page: 'editor', intent: 'swap banner' }, t0).group !== T.noteOf('undo', { page: 'editor', intent: 'shorten title' }, t0).group);
 
