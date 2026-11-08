@@ -290,20 +290,71 @@
      asks for another page, numbers, a new event, a portal or other events, or for what only a person does (deleting,
      taking offline, publishing, approving: the events side's fixed sentences say who and where). Words about posts and
      mailers are the open editor's here, so DASH_CUES' promotions cue is not read. Sending is the promo brain's to
-     answer: it never sends, and says so. */
+     answer: it never sends, and says so.
+     Registrations, visitors or sign-ups go to the events side only when the message ASKS for them (how many, the
+     numbers, who registered, a page that shows them): "Write a subject line saying registrations close on Friday"
+     is about the mail's words. The two brains are not alike here: the promo brain hands a message that is not about
+     the post back to the events side (one extra call), but the events side cannot hand one to the promo brain, so a
+     request for the post's words sent there is lost. */
+  var REG_WORDS = '(?:registrations?|registrants?|visitors?|sign-?ups?|attendees?|check-?ins?|checked in|conversions?|waitlists?)';
   var PROMO_DASH_CUES = [
     DASH_CUES[0],
-    /\bhow many (?:registrations?|registrants|visitors|sign-?ups|people (?:have )?registered|events?)\b/i,
-    /\b(?:registrations?|registrants|visitors|sign-?ups|checked in|conversion|waitlist)\b/i,
+    /\bhow many (?:registrations?|registrants|visitors|sign-?ups|attendees|people (?:have )?(?:registered|signed up|checked in)|(?:have )?(?:registered|signed up|checked in)|events?)\b/i,
+    /* "registrations so far", "visitor numbers", "the conversion rate" */
+    new RegExp('\\b' + REG_WORDS + '\\s+(?:count|counts|numbers?|figures?|totals?|so far|stats|statistics|rate|data|report|trend|today|yesterday|this week|last week|this month)\\b', 'i'),
+    /* "the number of sign-ups", "a list of registrants" */
+    new RegExp('\\b(?:count|number|numbers|total|totals|figures|stats|statistics|list|rate|report|breakdown)\\s+of\\s+(?:the\\s+|our\\s+|this event[\'’]s\\s+)?' + REG_WORDS + '\\b', 'i'),
+    /* a question about them: "what is the conversion?", "any registrations today?", "do we have a waitlist?" */
+    new RegExp('^(?:what(?:[\'’]s| is| are| was| were)?|how(?:[\'’]s| is| are| was| were)?|any|are there|is there|did|do we have|have we|show(?: me)?|list|give me|tell me|get me|check)\\b[^.?!]{0,50}\\b' + REG_WORDS + '\\b', 'i'),
+    /\bwho (?:has |have )?(?:registered|signed up|checked in)\b/i,
+    /* the word alone ("registrations?", "visitors today") */
+    new RegExp('^(?:the |our |this event[\'’]s )?' + REG_WORDS + '(?: (?:so far|today|now|count|numbers?))?$', 'i'),
     DASH_CUES[3], DASH_CUES[4], DASH_CUES[6], DASH_CUES[7], DASH_CUES[8], DASH_CUES[9]
   ];
+  /* A request to write or change the post's or mail's words. What follows it is what the words are to say, never a
+     question or an order to ETB2B AI: "Change the title to Registrations open", "Write a LinkedIn caption saying we
+     will publish the full agenda next week", "Make the preview text invite visitors to the expo floor". */
+  var PROMO_PART = '(?:subject(?: lines?)?|preview(?: text)?|pre-?header|captions?|titles?|headings?|headlines?|sub-?titles?|sub-?headings?|taglines?|lines?|sentences?|paragraphs?|intro(?:duction)?|opening|body|text|words?|wording|copy|message|buttons?|cta|hashtags?|footer|greeting|sign-?off|closing|posts?|mail|mailer|e-?mail|blurb|bio|quote)';
+  /* verbs that always mean writing (a "draft" is also a saved version, so only "draft a …" is one) */
+  var WRITE_ANY = /\b(?:write|rewrite|re-write|reword|rephrase|redraft|compose|shorten|lengthen|tighten|polish|punch up|draft(?= (?:a|an|the|me|new|some|this|that|it)\b))\b/i;
+  /* verbs that mean writing when a part of the post follows them: "make the caption …", "add a line …" */
+  var WRITE_PART = new RegExp('\\b(?:change|edit|update|make|add|put|insert|include|replace|turn|give me|suggest|come up with|create|set|use|fix|improve|tweak|want|need|like)\\b[^.?!;]{0,60}?\\b' + PROMO_PART + '\\b', 'i');
+  /* what to say, at the start of a clause: "mention the waitlist", "invite visitors to the expo floor" ("tell me"
+     and "ask you" are questions to ETB2B AI) */
+  var COPY_START = /^(?:say|mention|tell (?!me\b|us\b)|invite|encourage|announce|remind|promote|highlight|urge|note|focus on|talk about|ask (?!me\b|you\b|how\b|what\b|which\b|who\b|why\b|when\b)|let\s(?:people|everyone|them|readers|visitors|delegates|attendees|guests) know|(?:make|have|get) it (?:say|read|about|mention|invite|encourage|announce|tell|sound|focus))\b/i;
+  /* a part first: "Subject line: Registrations close Friday", "the caption should mention the waitlist" */
+  var PART_FIRST = new RegExp('^(?:(?:the|this|that|our|a|an|new|better|linkedin|instagram|x)\\s+)*' + PROMO_PART + '(?:\\s*[:–—-]|\\s+(?:should|must|needs?|has to|ought to|could|can|would|will|to|says?|reads?)\\b)', 'i');
+  /* "can you", "please", "now" before what is asked */
+  var POLITE = /^(?:(?:(?:can|could|would|will) you|please|pls|now|also|and|ok(?:ay)?,?|then|so)\s+)+/i;
+  /* where one request ends and another may begin: a full stop, a question mark, a semicolon, "then", or "and"
+     before a question to ETB2B AI ("… and tell me how many registrations we have") */
+  var CLAUSE_END = /[.?!;]+\s*|,?\s+(?:and\s+)?then\s+|\s+and\s+(?=(?:also\s+)?(?:tell me|show me|take me|go to|how many)\b)/i;
+  /* where in a clause a request to write starts, or -1 */
+  function writeAt(c) {
+    if (COPY_START.test(c) || PART_FIRST.test(c)) return 0;
+    var at = -1, m;
+    m = WRITE_ANY.exec(c); if (m) at = m.index;
+    m = WRITE_PART.exec(c); if (m && (at === -1 || m.index < at)) at = m.index;
+    return at;
+  }
   function routePromo(text, recs) {
     var t = str(text).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
     if (UNDO_RE.test(t)) return 'undo';
     if (GO_BACK_RE.test(t)) return 'ask';
     var bare = t.replace(QUOTED, ' ');
-    for (var n = 0; n < NEVER_CUES.length; n++) if (NEVER_CUES[n].test(bare)) return 'dash';
-    for (var i = 0; i < PROMO_DASH_CUES.length; i++) if (PROMO_DASH_CUES[i].test(bare)) return 'dash';
+    /* what is read for the events side's cues: each clause up to its request to write (if it has one) */
+    var read = [];
+    bare.split(CLAUSE_END).forEach(function (c) {
+      c = str(c).replace(/^[\s,]+|[\s,]+$/g, '').replace(POLITE, '');
+      if (!c) return;
+      var at = writeAt(c);
+      if (at === -1) read.push(c);
+      else if (at > 0) read.push(c.slice(0, at).replace(/[\s,]+(?:and\s*)?$/i, ''));
+    });
+    for (var k = 0; k < read.length; k++) {
+      for (var n = 0; n < NEVER_CUES.length; n++) if (NEVER_CUES[n].test(read[k])) return 'dash';
+      for (var i = 0; i < PROMO_DASH_CUES.length; i++) if (PROMO_DASH_CUES[i].test(read[k])) return 'dash';
+    }
     return 'promo';
   }
 

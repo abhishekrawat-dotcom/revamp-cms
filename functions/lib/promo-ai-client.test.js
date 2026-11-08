@@ -152,7 +152,23 @@ var EDIT_ANSWER = { kind: 'edit', intent: 'shorten title', summary: 'I shortened
     ['undo that', 'undo'], ['undo', 'undo'], ['go back', 'ask'],
     ['how many registrations do we have?', 'dash'], ['open the console', 'dash'], ['take me to the speakers page', 'dash'], ['start a new event', 'dash'],
     ['switch to ETAuto', 'dash'], ['list my events', 'dash'], ['delete this event', 'dash'], ['publish the site', 'dash'], ['take the site offline', 'dash'], ['approve it', 'dash'],
-    ['Change the button to “Publish now”', 'promo'], ['what about other events?', 'dash']
+    ['Change the button to “Publish now”', 'promo'], ['what about other events?', 'dash'],
+    /* registrations, visitors, sign-ups, publishing and approving as what the words are to say (verifier of B18-ai.2):
+       the events side cannot hand a message back here, so these must reach the post's or mail's ETB2B AI */
+    ['Write a subject line saying registrations close on Friday', 'promo'], ['Make the preview text invite visitors to the expo floor', 'promo'],
+    ['Add a line to the opening paragraph that registrations are now open', 'promo'], ['Change the title to Registrations open', 'promo'],
+    ['Write a LinkedIn caption saying we will publish the full agenda next week', 'promo'], ['Write a caption encouraging early sign-ups', 'promo'],
+    ['Make the caption invite visitors to the expo floor', 'promo'], ['Write preview text about the waitlist opening for the masterclass', 'promo'],
+    ['Make the subtitle say entries approved by the jury', 'promo'], ['Tell visitors about the expo floor', 'promo'], ['Remind everyone registrations close Friday', 'promo'],
+    ['Can you say registrations close on Friday?', 'promo'], ['The subject should say registrations close Friday', 'promo'], ['Subject line: Registrations close Friday', 'promo'],
+    ['registrations close on Friday, put that in the subject', 'promo'], ['I want the caption to say registrations are open', 'promo'], ['Make it say the waitlist is open', 'promo'],
+    ['Change the subject. Say registrations close Friday.', 'promo'], ['Make a new post for the event', 'promo'], ['Open my draft', 'promo'],
+    /* …while asking for the numbers, a page that shows them, or what only a person does, still goes to the events side */
+    ['How many registrations so far?', 'dash'], ['registrations?', 'dash'], ['What is the conversion rate?', 'dash'], ['Any registrations today?', 'dash'],
+    ['Who registered yesterday?', 'dash'], ['Show me the registrations', 'dash'], ['What are the visitor numbers this week?', 'dash'], ['Give me the number of sign-ups', 'dash'],
+    ['Do we have a waitlist?', 'dash'], ['Could you tell me how many visitors the site had?', 'dash'], ['Open the registrations page and write a caption', 'dash'],
+    ['Write a caption, then tell me how many registrations we have', 'dash'], ['Write a subject and tell me how many sign-ups we have', 'dash'],
+    ['Publish this post on LinkedIn', 'dash'], ['Approve the registrations', 'dash'], ['Change the title, then publish the site', 'dash'], ['Create a new event for retail', 'dash']
   ];
   var wrong = corpus.filter(function (c) { return R(c[0], []) !== c[1]; }).map(function (c) { return [c[0], R(c[0], []), c[1]]; });
   check('C.2 the rule while an editor is in "Edit with AI" (' + corpus.length + ' messages)', !wrong.length, wrong);
