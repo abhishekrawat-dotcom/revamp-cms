@@ -73,6 +73,8 @@
   .nav-right{ margin-left:auto; display:flex; align-items:center; gap:10px; flex-shrink:0; }
 
   .app{ max-width:1240px; margin:0 auto; padding:22px 24px 90px; display:flex; flex-direction:column; gap:16px; }
+  /* the tiles and the four parts, with the same space between them as the rest of the page */
+  #body{ display:flex; flex-direction:column; gap:16px; }
   .head h1{ font-size:22px; margin:0; letter-spacing:-.01em; }
   .head p{ margin:4px 0 0; color:var(--text-muted); font-size:13px; max-width:820px; }
 
@@ -86,7 +88,7 @@
   /* the range: three choices in one bar, then the custom days, then what is shown */
   .controls{ display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--r-md); padding:14px; }
   .seg{ display:inline-flex; border:1px solid var(--border-strong); border-radius:var(--r-sm); overflow:hidden; }
-  .seg button{ border:0; background:var(--surface); padding:8px 14px; font-weight:600; cursor:pointer; min-height:36px; }
+  .seg button{ border:0; background:var(--surface); padding:8px 14px; font-weight:600; cursor:pointer; min-height:36px; white-space:nowrap; }
   .seg button + button{ border-left:1px solid var(--border-strong); }
   .seg button[aria-pressed="true"]{ background:var(--accent-soft); color:var(--accent-strong); }
   .f{ display:flex; flex-direction:column; gap:4px; }
@@ -167,6 +169,7 @@
   @media (max-width: 480px){
     .nav-back-long{ display:none; }
     .nav-back-short{ display:inline; }
+    .controls > .f{ width:100%; }
     .seg{ width:100%; }
     .seg button{ flex:1; padding:8px 6px; }
     .custom{ width:100%; }
@@ -254,6 +257,10 @@
     'could-not': 'Could not do', failed: 'Failed', error: 'Error', pending: 'Result not reported' };
   var KIND = { undo: 'Undone change', 'page-error': 'Page error', complaint: 'Said it was not working' };
   var STATUS = { open: 'Open', back: 'Back after it was resolved', resolved: 'Resolved' };
+  /* the pages by the names people know them by (functions/lib/ai-learn.js PAGE_WORDS), never the page's id */
+  var PAGE = { dashboard: 'Dashboard', console: 'Console', 'create-event': 'Create Event', editor: 'Site editor', promotions: 'Promotions',
+    review: 'Review', 'activity-log': 'Activity log', registrations: 'Registrations', 'mailer-performance': 'Mailer performance',
+    'portal-review': 'Portal review', 'ai-report': 'This report' };
 
   function api(url, method, body){
     if (!window.RevampAuth || typeof window.RevampAuth.authedFetch !== 'function') return Promise.reject(new Error('Please sign in again.'));
@@ -340,7 +347,7 @@
     var rows = [];
     function add(k, v, pre){ if (v) rows.push('<dt>' + esc(k) + '</dt><dd>' + (pre ? '<pre>' + esc(v) + '</pre>' : esc(v)) + '</dd>'); }
     add('When', when(x.at) + ' · ' + x.who);
-    add('Page', (x.page || '') + (x.tab ? ' › ' + x.tab : ''));
+    add('Page', (PAGE[x.page] || x.page || '') + (x.tab ? ' › ' + x.tab : ''));
     if (x.event && x.event.id) rows.push('<dt>Event</dt><dd><a href="edit-event.html?event=' + encodeURIComponent(x.event.id) + '">' + esc(x.event.name || x.event.id) + '</a></dd>');
     add('Asked', x.asked ? '“' + x.asked + '”' : '');
     add('ETB2B AI did', x.did);
