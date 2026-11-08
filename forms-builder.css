@@ -220,3 +220,14 @@
 .regforms .rg-err[hidden]{ display: none; }
 .regforms .rg-honest{ margin: 4px 0 24px; font-size: 12.5px; color: var(--fb-muted); }
 .regforms .rg-builder{ margin: 0 0 18px; }
+
+/* A phone (UX-002 screen-size sweep): below 720px every control of the builder is a 40px tap target, and an icon-only
+   one 40px wide, as on the rest of the console there (edit-event.css). The link to a form's responses keeps its line:
+   only the area that takes the tap grows (an inline link's padding moves nothing). Layout only. */
+@media (max-width: 720px){
+  .fb-btn, .fb-btn-sm, .fb-scrim .fb-btn, .fb-menu button, .fb-fname, .fb-switch, .fb-req, .fb-grip{ min-height: 40px; }
+  .fb input[type="text"]:not(.rv-form-input), .fb select:not(.rv-form-input){ min-height: 40px; }
+  .fb-icon{ width: 40px; height: 40px; }
+  .fb-icon-gap{ width: 40px; }
+  .fb-row-meta .fb-link{ padding-top: 13px; padding-bottom: 13px; }
+}

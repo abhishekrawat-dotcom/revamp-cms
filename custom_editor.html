@@ -270,11 +270,12 @@
   .mode-toggle button[aria-checked="true"]{ background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
   .mode-toggle button[data-mode="ai"][aria-checked="true"]{ color: var(--review); }
   .mode-toggle button:focus-visible{ outline: 2px solid var(--accent); outline-offset: 1px; }
-  /* a narrower bar shows the short names ("AI" / "Myself"), below 900px the icons alone; each button keeps its
-     whole name for screen readers (aria-label), and none is ever squeezed to nothing (UX-078) */
+  /* a narrower bar shows the short names ("AI" / "Myself"), below 1000px the icons alone (the one-row bar from 901px
+     needs that room for the event's name, UX-002); each button keeps its whole name for screen readers (aria-label)
+     and in its tooltip, and none is ever squeezed to nothing (UX-078) */
   .mode-toggle .mt-short{ display:none; }
   @media (max-width: 1180px){ .mode-toggle .mt-long{ display:none; } .mode-toggle .mt-short{ display:inline; } .mode-toggle button{ padding:0 9px; } }
-  @media (max-width: 900px){ .mode-toggle .mt-short{ display:none; } }
+  @media (max-width: 1000px){ .mode-toggle .mt-short{ display:none; } }
 
   /* a site with internal pages: which page the canvas shows (editor-template-ui.js renderPageSwitch; hidden otherwise) */
   .ed-page-switch{ display:inline-flex; align-items:center; gap:7px; height:34px; padding:0 4px 0 11px; border-radius:10px; background: var(--surface-2); border:1px solid var(--border); flex-shrink:0;
@@ -1186,6 +1187,28 @@
     #btn-publish{ --btn-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 2L11 13'/%3E%3Cpath d='M22 2l-7 20-4-9-9-4 20-7z'/%3E%3C/svg%3E"); }
     /* publish-flow.js shows a short word here below 600px ("Send…") with no gap of its own */
     #btn-publish[data-rvpf-short]::before{ margin-right:6px; }
+  }
+  /* A phone held sideways (360-390px tall): the two rows above took 109px, 28% of the screen. Their padding is made
+     smaller and the mode switch loses its ring (its buttons stay 40px), so they take 87px, under a quarter of the
+     screen, and every control stays a 40px target. */
+  @media (max-width: 900px) and (max-height: 500px){
+    .topbar{ padding-top:2px; padding-bottom:2px; }
+    .topbar #btn-preview, .topbar #btn-share-preview, .topbar .site-state, .topbar #btn-save, .topbar #btn-publish{ margin-top:2px; }
+    .topbar .mode-toggle{ padding:0; border-width:0; }
+  }
+  /* 901 to 1100px (a small laptop, a tablet held sideways): the one-row bar needed about 1000px with the event's name
+     at its 180px, so the light/dark switch and the account were pushed off the side of a 901-983px window. Here
+     Publish says its short word ("Send…"; its whole words stay its name and tooltip, as in the console below 900px)
+     and the gaps are a little tighter, which leaves room to spare; should a long "where the site stands" still not
+     fit, the event's name gives way first, down to its 180px, and then that chip (cut with "…", its meaning in its
+     tooltip), rather than anything going off the screen. */
+  @media (min-width: 901px) and (max-width: 1100px){
+    .topbar{ gap:10px; padding-left:12px; padding-right:12px; }
+    .topbar .topbar-acts{ gap:6px; flex-shrink:0.01; min-width:0; }
+    .topbar #btn-publish[data-rvpf-short]:not([aria-busy]){ font-size:0; gap:0; padding-left:12px; padding-right:12px; }
+    .topbar #btn-publish[data-rvpf-short]:not([aria-busy])::after{ content:attr(data-rvpf-short); font-size:13px; }
+    .topbar .site-state:not([hidden]){ display:block; flex:0 1 auto; min-width:44px; overflow:hidden; text-overflow:ellipsis; }
+    .topbar .site-state::before{ display:inline-block; vertical-align:middle; margin:-2px 6px 0 0; }
   }
   @media (max-width: 720px){
     .ed-rail .rail-tools, .ed-rail .rail-scroll, #rail-more-menu, #panel-add, #panel-layers, #panel-design, #panel-forms, #lyr-ctx-menu,

@@ -19,7 +19,11 @@
         compared every changed page at 1440 before and after), the tools that need a big screen are put away there,
         and Save and Publish stay in the top bar's second row with an icon beside their words;
      5. the console's top bar keeps what is saved in sight at every width, in shorter words where it is narrow;
-     6. the published sites' ET bar and footer make their links 40px tap targets on a phone.
+     6. the published sites' ET bar and footer make their links 40px tap targets on a phone;
+     7. the site editor's one-row top bar from 901 to 1100 px fits (Publish's short word, tighter gaps, the site-state
+        chip gives way before anything goes off the screen), and its two rows take under a quarter of a phone held
+        sideways;
+     8. the registration forms builder's controls are 40px tap targets on a phone.
    Exits 1 listing every failure. */
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
@@ -155,9 +159,39 @@ var navCss = require('./et-nav').build({ name: 'Brand World Summit 2026', cta: {
 var footCss = require('./et-footer').build({ portal: 'brandequity', mode: 'light', year: 2026, events: [],
   event: { name: 'Brand World Summit 2026', date: '5 Dec 2026', place: 'Chennai', button: { label: 'Register Now', href: '#contact-us', register: true } } }).css;
 check('ET bar on a phone: the menu button, the logo and the action are 40px targets, the name\'s tap area grows in place',
-  /@media \(max-width:860px\)\{\.rv-etnav-burger\{width:40px;height:40px\}\.rv-etnav-logo\{display:flex;align-items:center;min-height:40px\}\.rv-etnav-cta\{min-height:40px;display:inline-flex;align-items:center\}\.rv-etnav-name\{padding-top:10px;padding-bottom:10px;margin-top:-10px;margin-bottom:-10px\}\}/.test(navCss));
+  /@media \(max-width:860px\)\{\.rv-etnav-burger\{width:40px;height:40px\}\.rv-etnav-logo\{display:flex;align-items:center;min-height:40px\}\.rv-etnav-cta\{min-height:40px;display:inline-flex;align-items:center\}\.rv-etnav-name\{padding-top:10\.5px;padding-bottom:10\.5px;margin-top:-10\.5px;margin-bottom:-10\.5px\}\}/.test(navCss));
 check('ET footer on a phone: the social links are 40px, the words-links\' tap areas grow in place',
   /@media \(max-width:860px\)\{\.etf-social a\{width:40px;height:40px\}\.etf-links a,\.etf-h a\{padding-top:12px;padding-bottom:12px\}\.etf-logo-link\{padding-top:6px;padding-bottom:6px;margin-top:-6px;margin-bottom:-6px\}\}/.test(footCss));
+
+/* ---------- 7. the site editor's top bar from 901 to 1100px, and on a phone held sideways ---------- */
+function exactBlocks(src, q) {
+  var out = [], at = 0;
+  for (;;) {
+    var i = src.indexOf(q, at); if (i === -1) return out;
+    var j = src.indexOf('{', i), depth = 0, k = j;
+    for (; k < src.length; k++) { if (src[k] === '{') depth++; else if (src[k] === '}' && --depth === 0) break; }
+    out.push(src.slice(j + 1, k)); at = k;
+  }
+}
+var mid = exactBlocks(EDITOR, '@media (min-width: 901px) and (max-width: 1100px)').join('\n');
+check('editor, 901-1100px: Publish shows its short word (its whole words stay its name), as the console does below 900px',
+  /\.topbar #btn-publish\[data-rvpf-short\]:not\(\[aria-busy\]\)\{ font-size:0;/.test(mid) && /\.topbar #btn-publish\[data-rvpf-short\]:not\(\[aria-busy\]\)::after\{ content:attr\(data-rvpf-short\); font-size:13px; \}/.test(mid), mid.slice(0, 300));
+check('editor, 901-1100px: tighter gaps, and the site-state chip gives way (cut with "…") before anything is pushed off the screen',
+  /\.topbar\{ gap:10px;/.test(mid) && /\.topbar \.topbar-acts\{ gap:6px; flex-shrink:0\.01; min-width:0; \}/.test(mid) &&
+  /\.topbar \.site-state:not\(\[hidden\]\)\{ display:block; flex:0 1 auto; min-width:44px; overflow:hidden; text-overflow:ellipsis; \}/.test(mid));
+check('editor: those rules are only between 901 and 1100px (the two-row bar keeps below 900 its whole Publish words)',
+  (EDITOR.match(/content:attr\(data-rvpf-short\)/g) || []).length === 1);
+var sideways = exactBlocks(EDITOR, '@media (max-width: 900px) and (max-height: 500px)').join('\n');
+check('editor, a phone held sideways: the two rows\' padding is smaller and the mode switch has no ring (109px was 28% of a 390px-tall screen)',
+  /\.topbar\{ padding-top:2px; padding-bottom:2px; \}/.test(sideways) && /\.topbar \.mode-toggle\{ padding:0; border-width:0; \}/.test(sideways) && /margin-top:2px;/.test(sideways), sideways);
+
+/* ---------- 8. the registration forms builder on a phone ---------- */
+var FB = read('forms-builder.css'), fbPhone = mediaBlocks(FB, '720px').join('\n');
+check('forms builder, below 720px: its buttons, menus, switches, field rows and inputs are 40px tall, its icon buttons 40px square',
+  /\.fb-btn, \.fb-btn-sm, \.fb-scrim \.fb-btn, \.fb-menu button, \.fb-fname, \.fb-switch, \.fb-req, \.fb-grip\{ min-height: 40px; \}/.test(fbPhone) &&
+  /\.fb-icon\{ width: 40px; height: 40px; \}/.test(fbPhone) && /:not\(\.rv-form-input\)\{ min-height: 40px; \}/.test(fbPhone), fbPhone);
+check('forms builder: "0 responses" keeps its line, only its tap area grows (an inline link\'s padding moves nothing)',
+  /\.fb-row-meta \.fb-link\{ padding-top: 13px; padding-bottom: 13px; \}/.test(fbPhone));
 
 if (failures.length) { console.error('page-skeleton: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - ')); process.exit(1); }
 console.log('page-skeleton: all ' + checks + ' checks passed');
