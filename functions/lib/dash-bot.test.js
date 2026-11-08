@@ -1353,7 +1353,7 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
     memP.slice(memP.indexOf('THE CONVERSATION'), memP.indexOf('THE CONVERSATION') + 600));
   /* FAIL CLOSED (owner decision 10): a page of one event whose event this person's list does not have gets the
      fixed refusal: no model call, nothing kept anywhere, no History line, never the assistant for every event */
-  var callsBefore = calls.length;
+  var callsBefore = calls.length, dayBefore = FB.docs['dashChats/u-pia/days/2026-11-03'].turns;
   out = await ask('hello', 'pia', { place: { page: 'console', eventId: 'gone' } });
   await tick();
   check('A.20 route: a deleted event in the address: the fixed refusal, with the dashboard one click away', out.status === 200 && out.body.kind === 'refuse' &&
@@ -1364,6 +1364,8 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
     out = await ask('Which events go live this month?', 'pia', { place: unc });
     check('A.20 route: fail closed for ' + JSON.stringify(unc) + ': the fixed refusal, the model not asked', out.status === 200 && partsText(out.body.parts) === T.MSG.unconfirmed && calls.length === callsBefore, out.body);
   }
+  /* no model was asked for any of those six, so none of them is one of today's ETB2B AI messages (verifier, 8 Nov 2026) */
+  check('A.20 route: …and the six fixed refusals cost none of today\'s messages', FB.docs['dashChats/u-pia/days/2026-11-03'].turns === dayBefore, [dayBefore, FB.docs['dashChats/u-pia/days/2026-11-03'].turns]);
   answers.push({ kind: 'reply', text: 'Hello.' });
   out = await ask('hello', 'pia', { place: { page: 'activity-log', eventId: '' } });
   check('A.20 route: the all-events Activity log (no event in its address) keeps the assistant for every event', out.status === 200 && out.body.kind === 'reply' && out.body.scope === 'global' && calls.length === callsBefore + 1, out.body);
@@ -1372,7 +1374,8 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   out = await ask('make the hero darker', 'pia', { place: EDITOR });
   await tick();
   check('A.20 route: a handoff in the editor: kind handoff, no turn id, nothing kept, no History line', out.status === 200 && out.body.kind === 'handoff' && !out.body.turnId && eventTurns('autotech-2026', 'u-pia').length === beforeHand && activityLines.length === linesHand, out.body);
-  check('A.20 route: …and it still took one of today\'s messages (the model was asked)', FB.docs['dashChats/u-pia/days/2026-11-03'].turns === 11, FB.docs['dashChats/u-pia/days/2026-11-03'].turns);
+  /* the all-events Activity log's reply and the handoff both asked the model: one message each */
+  check('A.20 route: …and it still took one of today\'s messages (the model was asked)', FB.docs['dashChats/u-pia/days/2026-11-03'].turns === dayBefore + 2 && dayBefore === 3, [dayBefore, FB.docs['dashChats/u-pia/days/2026-11-03'].turns]);
   answers.push({ kind: 'reply', text: 'It has 42.' });
   out = await ask('how many registrations does this event have?', 'pia', { place: EDITOR, handedFrom: 'edit' });
   await tick();

@@ -556,7 +556,7 @@ function fakeBrain(name, script) {
   var ch = Pev.kit.chat;
   check('S.5 inside an event: GET /api/chat/history?eventId=qa-main, both brains\' turns in order', n === 3 && Pev.calls.some(function (c) { return c.url === '/api/chat/history?eventId=qa-main'; }) &&
     same(ch.users.map(function (u) { return u.text; }), ['Make the hero darker', 'How many registrations?', 'Stop that']), ch.users);
-  check('S.5 …"Earlier in this conversation" … "Now"; the header names the event in one line', same(ch.dividers, ['Earlier in this conversation', 'Now']) && same(ch.scopes, ['Working on QA AIE Main with a line break only']), ch.scopes);
+  check('S.5 …"Earlier in this conversation" … "Now"; the header names the event in one line', same(ch.dividers, ['Earlier in this conversation', 'Now']) && same(ch.scopes, ['This event only: QA AIE Main with a line break']), ch.scopes);
   check('S.5 …the dash turn drawn by the dash brain; editor changes as plain lines with no Undo', ch.bubbles[1].content === 'dash: How many registrations?' &&
     ch.bubbles[0].notes.join('|') === 'Done: Hero darker|Done in the site editor, then undone.' && ch.bubbles[2].content === 'Stopped — nothing on the page changed.' && !ch.bubbles[2].notes.length,
     ch.bubbles.map(function (b) { return [b.content, b.notes]; }));
@@ -568,7 +568,7 @@ function fakeBrain(name, script) {
   await Peh.opts().loadHistory(Peh.kit.chat);
   check('S.5 in the editor its own brain replays the event\'s conversation (its changes come back with their Undo)', !!editWriter && !Peh.calls.some(function (c) { return /chat\/history/.test(c.url); }));
   check('S.5 …a dash turn it meets goes to the dash brain (writer.other), and writer.event names the event', Peh.kit.chat.bubbles.some(function (b) { return b.content === 'dash: from dash'; }) &&
-    same(Peh.kit.chat.scopes, ['Working on QA Main only']));
+    same(Peh.kit.chat.scopes, ['This event only: QA Main']));
   var Pbad = await shellPage({ page: 'console', search: '?event=qa-main', brains: { dash: histB }, answer: function (u) { return /chat\/history/.test(u) ? { status: 403, body: { error: 'no' } } : null; } });
   var hx = await rejection(Pbad.opts().loadHistory(Pbad.kit.chat));
   check('S.5 an event conversation that cannot be read rejects, with words for the kit', hx && /^Your earlier messages could not be loaded \(403\)\.$/.test(hx.message), hx && hx.message);

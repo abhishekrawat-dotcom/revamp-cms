@@ -1029,7 +1029,7 @@ function buildScopedPrompt(ctx) {
     'OUT OF SCOPE: anything that is not about this event or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (answering from this event\'s real numbers, opening its pages, setting up its promotions).',
     '',
     /* 8. where the person is */
-    'WHERE ' + name.toUpperCase() + ' IS: ' + placeLine(ctx) + '. "This event", "here", "this page", "we", "our" and a question that names no event mean ' + here + '. "It", "its" and a follow-up mean ' + here + ' too, except right after the person asked about another event: then they mean that other event, so answer kind "refuse" with refuse.action "other-event". Its row in the EVENTS table ends with THIS EVENT.',
+    'WHERE ' + name.toUpperCase() + ' IS: ' + placeLine(ctx) + '. "This event", "here", "this page", "we", "our" and a question that names no event mean ' + here + '. "It", "its" and a follow-up mean ' + here + ' too, except right after the person asked about another event: then they mean that other event, so answer kind "refuse" with refuse.action "other-event". A word that stands for something the same message names first is about that thing here ("open the speakers, they need photos": they are this event\'s speakers). Its row in the EVENTS table ends with THIS EVENT.',
     '',
     /* 9. the conversation */
     'THE CONVERSATION SO FAR (oldest first; other events are said only as "another event"):',
@@ -2192,8 +2192,51 @@ function promoAction(ev, post, sitePost, mailer) {
 
 /* ---------- locked to the event (owner decision 10) ---------- */
 
-/* "it", "its", "they", "that one": a follow-up, which right after a question about another event means that event */
-var FOLLOW_UP_RE = /\b(?:it|its|it's|it’s|they|them|their|theirs|that one|that event|the other one|the same one)\b/i;
+/* "it", "its", "they", "that one": a follow-up word, which right after a question about another event means that
+   event ("and its visitors?"), unless the same message gives it one of this event's own things to stand for first
+   (followUpWord). The longer words come first, so "it's" is never read as "it". */
+var FOLLOW_WORD_RE = /\b(that one|that event|the other one|the same one|it's|its|it|they|them|their|theirs)\b/g;
+/* this event's own things a later "it" (one) or "they" (several) in the same message can stand for: "open the
+   speakers, they need photos", "open the agenda and make it shorter". The event's figures and pages are not here:
+   "how many registrations do they have?" stays a follow-up. */
+var OWN_ONE_RE = /\b(?:agenda|gallery|faq|form|page|section|banner|hero|logo|photo|picture|image|post|mailer|mail|e-?mail|template|button|menu|link|heading|title|headline|video|slide|bio|footer|header|colou?r|font|text|line|paragraph|caption|session|talk|panel|speaker|sponsor|partner|award|category|ticket)\b/;
+var OWN_MANY_RE = /\b(?:speakers|sponsors|partners|exhibitors|sessions|talks|panels|panell?ists|photos|pictures|images|logos|banners|posts|mailers|mails|e-?mails|templates|forms|fields|pages|sections|buttons|menus|links|headings|titles|headlines|videos|slides|bios|faqs|questions|awards|categories|nominations|nominees|winners|judges|jurors|tickets|names|timings|slots|colou?rs|fonts|words|lines|captions|details)\b/;
+/* "its" or "their" with one of these after it is about an event whatever came before ("the speakers and their
+   registrations"): its figures, its pages and its main sections */
+var EVENT_PART_AFTER_RE = /^\s+(?:registrations?|registrants?|attendees?|delegates?|visitors?|views?|numbers?|figures?|site|website|dates?|venue|city|status|portal|promotions?|console|editor|insights|start|end|history|activity|live|preview|speakers?|sponsors?|partners?|agenda|gallery|faqs?|awards?|jury)\b/;
+/* where one part of a message ends and the next begins, for the "how many" of the part a word is in */
+var CLAUSE_END_RE = /[,;:!?.]|\s[-–—]\s|\b(?:and|but|so|because|as|since|then|while)\b/g;
+function clauseAround(s, at) {
+  var start = 0, end = s.length, m;
+  CLAUSE_END_RE.lastIndex = 0;
+  while ((m = CLAUSE_END_RE.exec(s))) {
+    if (m.index + m[0].length <= at) start = m.index + m[0].length;
+    else if (m.index >= at) { end = m.index; break; }
+  }
+  return s.slice(start, end);
+}
+/* Whether the message holds a follow-up word that may stand for the event asked about just before. A word is not
+   one when the message gave it something of this event's own to stand for first: a thing of the same number comes
+   before it, no preposition comes right before it ("a post for it" is about an event), it is not "its"/"their"
+   with the event's figures or sections after it, and its part of the message does not ask "how many". "That one",
+   "that event", "the other one" and "the same one" always are, and "IT" in capitals (the trade) never is. The
+   model is told the same; this is the check that does not depend on it. */
+function followUpWord(message) {
+  var raw = String(message || ''), s = raw.toLowerCase().replace(/’/g, '\''), m;
+  FOLLOW_WORD_RE.lastIndex = 0;
+  while ((m = FOLLOW_WORD_RE.exec(s))) {
+    var w = m[1];
+    if (w.indexOf(' ') !== -1) return true;
+    if (w === 'it' && raw.substr(m.index, 2) === 'IT' && raw !== raw.toUpperCase()) continue;
+    var before = s.slice(0, m.index), after = s.slice(m.index + w.length);
+    var many = w === 'they' || w === 'them' || w === 'their' || w === 'theirs';
+    if (!(many ? OWN_MANY_RE : OWN_ONE_RE).test(before)) return true;
+    if (/\b(?:for|of|about|on|in|at|from|with|to|into|by|than)\s*$/.test(before)) return true;
+    if ((w === 'its' || w === 'their') && EVENT_PART_AFTER_RE.test(after)) return true;
+    if (/\bhow (?:many|much)\b/.test(clauseAround(s, m.index))) return true;
+  }
+  return false;
+}
 /* the person naming the event they are in, which a follow-up word never overrides */
 var THIS_EVENT_RE = /\b(?:this event|this one|this page|this site|here|our event|my event)\b/i;
 /* Whether the newest remembered turn was about another event: it named one (from before the lock), or it was the
@@ -2229,10 +2272,11 @@ function scopeBreak(parsed, asked, kind, unknown, ctx) {
   var listRaw = isObj(parsed.list) ? parsed.list : null;
   var counts = tokensIn(said).some(function (t) { return t.special === 'count' || t.special === 'total'; });
   if (kind === 'reply' && ((listRaw && ruleGiven(listRaw)) || counts)) return 'scope-list';
-  /* "and its visitors?" right after a question about another event is about that event. A change to this page (a
-     handoff, or the edit-site refusal that becomes one) and Undo are about this page whatever was asked before. */
+  /* "and its visitors?" right after a question about another event is about that event; "open the speakers, they
+     need photos" is not (followUpWord). A change to this page (a handoff, or the edit-site refusal that becomes one)
+     and Undo are about this page whatever was asked before. */
   var editSite = kind === 'handoff' || (kind === 'refuse' && isObj(parsed.refuse) && parsed.refuse.action === 'edit-site');
-  if (!editSite && kind !== 'undo' && followsElsewhere(ctx.turns, here.id) && FOLLOW_UP_RE.test(ctx.message) && !THIS_EVENT_RE.test(ctx.message)) return 'scope-follow-up';
+  if (!editSite && kind !== 'undo' && followsElsewhere(ctx.turns, here.id) && followUpWord(ctx.message) && !THIS_EVENT_RE.test(ctx.message)) return 'scope-follow-up';
   return '';
 }
 /* The one plain line for anything beyond the event the page is locked to: "I work on <this event> here only: use
@@ -2607,6 +2651,21 @@ function claimDay(fb, userRef, day, at) {
     });
   });
 }
+/* Gives back the message claimDay() counted, for an answer that asked no model: the fail-closed refusal of a page
+   whose event cannot be confirmed (owner decision 10) is the product's own fixed line, so it is not one of the
+   person's ETB2B AI messages today. Never below zero. Resolves true when one was given back. */
+function releaseDay(fb, userRef, day, at) {
+  var ref = userRef.collection('days').doc(day);
+  return fb.db.runTransaction(function (tx) {
+    return tx.get(ref).then(function (snap) {
+      var d = snap.exists ? (snap.data() || {}) : {};
+      var turns = Math.max(0, Math.floor(Number(d.turns) || 0));
+      if (!turns) return false;
+      tx.set(ref, { turns: turns - 1, updatedAt: at }, { merge: true });
+      return true;
+    });
+  });
+}
 /* What each model call used, on the person's own document and on the day's: Claude's price, and every
    provider's tokens (Gemini's price is not tracked, so the daily message cap is what bounds it). Recording it
    is never the reason a request fails. */
@@ -2705,8 +2764,14 @@ function handleChat(req, res) {
           docs: got[0], turns: [], now: started, turnId: '', place: rawPlace, attachments: files, handedFrom: body.handedFrom });
         ctx.notes = ctx.notes.concat(files.notes);
         /* FAIL CLOSED (owner decision 10): a page of one event whose event this person's list does not have gets
-           the fixed refusal, with no model call and nothing kept, never the assistant for every event */
-        if (ctx.unconfirmed) return H.sendJson(res, 200, unconfirmedAnswer(ctx));
+           the fixed refusal, with no model call and nothing kept, never the assistant for every event. The message
+           claimed above is given back first (the list had to be read to know), so it costs none of today's
+           allowance; a failure to give it back never withholds the answer. */
+        if (ctx.unconfirmed) {
+          return releaseDay(fb, userRef, day, new Date(clock.now()).toISOString()).catch(function (err) {
+            console.error('dash-bot: today\'s message was not given back after a fail-closed answer — ' + (err && err.message));
+          }).then(function () { H.sendJson(res, 200, unconfirmedAnswer(ctx)); });
+        }
         var eventId = ctx.place.eventId;
         /* the event's conversation was read for an event the list does not have: the person's own is read instead */
         var turnsRead = eventId === askedId ? Promise.resolve(got[1]) : readTurns(conversationRef(fb, decoded, eventId));
@@ -2887,5 +2952,6 @@ module.exports._test = {
   PAGES: PAGES, cleanPlace: cleanPlace, placeLine: placeLine, placeArea: placeArea, cleanAttachments: cleanAttachments, cleanThumb: cleanThumb,
   createFiles: createFiles, attachedBlock: attachedBlock, setTurns: setTurns, TURN_STATUSES: TURN_STATUSES, lastTurnElsewhere: lastTurnElsewhere,
   scopeBreak: scopeBreak, scopedRefusal: scopedRefusal, followsElsewhere: followsElsewhere, onlyThisEvent: onlyThisEvent, DASHBOARD_URL: DASHBOARD_URL,
+  followUpWord: followUpWord, releaseDay: releaseDay, claimDay: claimDay,
   REFUSE_ACTIONS: REFUSE_ACTIONS
 };

@@ -192,7 +192,8 @@ var tk = function (f) { return '{{' + OTHER + (f ? '.' + f : '') + '}}'; };
     var kept = convOf(MAIN), last = kept[kept.length - 1];
     check('S.2 ' + br[0] + ': the scoped line with Open the dashboard, nothing of the other event shown', scoped(out) && out.body.notes.indexOf(br[2]) !== -1 && calls.length === beforeCalls + 1, out.body);
     check('S.2 ' + br[0] + ': kept in this event\'s conversation, as a refusal that names no event', kept.length === beforeTurns + 1 && last.dashKind === 'refuse' && last.status === 'refused' &&
-      JSON.stringify(last.events) === '[]' && last.notes.indexOf('scope-locked') !== -1 && last.answerRaw.indexOf('{{' + MAIN + '}}') !== -1 && !leaks({ a: last.answer, r: last.answerRaw, p: last.parts, x: last.action }), last);
+      JSON.stringify(last.events) === '[]' && last.notes.indexOf('scope-locked') !== -1 && last.answerRaw.indexOf('{{' + MAIN + '}}') !== -1 && !leaks({ a: last.answer, r: last.answerRaw, p: last.parts, x: last.action }) &&
+      last.action && last.action.type === 'refuse' && last.action.label === 'Refused: other-event', last);
   }
   check('S.2 nothing at all was written under the other event (no conversation, no History line)', written('events/' + OTHER + '/').length === 0 && !activity.some(function (l) { return l.eventId !== MAIN; }), written('events/' + OTHER + '/'));
 
@@ -252,6 +253,50 @@ var tk = function (f) { return '{{' + OTHER + (f ? '.' + f : '') + '}}'; };
     prompt.slice(prompt.indexOf('THE CONVERSATION'), prompt.indexOf('THE CONVERSATION') + 900));
   check('S.4 …and "open its editor" right after it opens nothing: the scoped line', scoped(out) && out.body.notes.indexOf('scope-follow-up') !== -1, out.body);
 
+  /* ===== S.4b a word the same message gives something of this event's own to stand for is not a follow-up =====
+     (verifier, 8 Nov 2026: "ok, open the speakers, they need photos" right after a scoped refusal was refused too) */
+  async function refusedFirst() {
+    answers.push({ kind: 'reply', events: [OTHER], text: tk() + ' has ' + tk('registrations') + ' registrations so far.' });
+    var o = await ask('How many registrations does CIO Awards Night 2026 have?', Q);
+    return scoped(o);
+  }
+  var OWN = [
+    ['ok, open the speakers, they need photos', { kind: 'open', events: [MAIN], open: { target: 'content', tab: 'speakers', carry: false }, text: 'Opening the speakers.' }, '/edit-event.html?event=' + MAIN + '#content/speakers'],
+    ['open the agenda and make it shorter', { kind: 'open', events: [], open: { target: 'content', tab: 'agenda', carry: false }, text: 'Opening the agenda.' }, '/edit-event.html?event=' + MAIN + '#content/agenda'],
+    ['open the sponsors, their logos look old', { kind: 'open', events: [MAIN], open: { target: 'content', tab: 'sponsors', carry: false }, text: 'Opening the sponsors.' }, '/edit-event.html?event=' + MAIN + '#content/sponsors'],
+    ['make a save-the-date post and share it', { kind: 'promo', events: [MAIN], promo: { post: 'generic.announcement', sitePost: '', mailer: '' }, text: 'Opening it.' }, '/marketing.html?event=' + MAIN + '&tab=posts']
+  ];
+  for (var ow of OWN) {
+    var wasRefused = await refusedFirst();
+    answers.push(ow[1]);
+    out = await ask(ow[0], Q);
+    check('S.4b after a scoped refusal, "' + ow[0] + '": this event\'s own page, not the scoped line', wasRefused && out.body.kind !== 'refuse' && out.body.action && out.body.action.type === 'navigate' &&
+      out.body.action.url.indexOf(ow[2]) === 0 && out.body.notes.indexOf('scope-follow-up') === -1 && !leaks(out.body), out.body);
+  }
+  var STILL = [
+    ['and their speakers?', { kind: 'open', events: [MAIN], open: { target: 'content', tab: 'speakers', carry: false }, text: 'Opening them.' }],
+    ['open the speakers and their registrations', { kind: 'reply', events: [MAIN], text: '{{' + MAIN + '}} has {{' + MAIN + '.registrations}} registrations so far.' }],
+    ['make a post for it', { kind: 'promo', events: [MAIN], promo: { post: 'generic.announcement', sitePost: '', mailer: '' }, text: 'Opening it.' }],
+    ['open the speakers, how many do they have?', { kind: 'open', events: [MAIN], open: { target: 'content', tab: 'speakers', carry: false }, text: 'Opening them.' }],
+    ['open the speakers and its agenda', { kind: 'open', events: [MAIN], open: { target: 'content', tab: 'agenda', carry: false }, text: 'Opening it.' }]
+  ];
+  for (var st of STILL) {
+    await refusedFirst();
+    answers.push(st[1]);
+    out = await ask(st[0], Q);
+    check('S.4b …while "' + st[0] + '" right after it is still about the other event: the scoped line', scoped(out) && out.body.notes.indexOf('scope-follow-up') !== -1, out.body);
+  }
+  var FW = T.followUpWord;
+  check('S.4b followUpWord: a word with nothing of this event\'s own before it, or tied to the event, is a follow-up',
+    ['and its visitors?', 'and when does it start?', 'open its editor', 'what about them?', 'how many registrations do they have?', 'open the promotions for it',
+      'the agenda of it', 'is that one live?', 'and the other one?', 'open the speakers and their registrations', 'open the speakers and its agenda', 'open the speakers, how many do they have?',
+      'open the agenda, its speakers?', 'open the speakers, it’s their visitors I want'].every(FW));
+  check('S.4b …and a word the message gives something of its own to stand for is not',
+    ['ok, open the speakers, they need photos', 'open the agenda and make it shorter', 'open the sponsors, their logos look old', 'open the gallery, its photos are old',
+      'make a post and share it', 'add a banner, it should be blue', 'open the speakers', 'IT leaders should see the agenda', 'the speakers, they need their photos'].every(function (m) { return !FW(m); }),
+    ['ok, open the speakers, they need photos', 'open the agenda and make it shorter', 'open the sponsors, their logos look old', 'open the gallery, its photos are old',
+      'make a post and share it', 'add a banner, it should be blue', 'open the speakers', 'IT leaders should see the agenda', 'the speakers, they need their photos'].filter(FW));
+
   /* ===== S.5 a forged place, and FAIL CLOSED for an event the person cannot see ===== */
   var FAIL_CLOSED = [
     ['a deleted event', { page: 'console', eventId: 'qa-ux-ai-scope-gone' }],
@@ -267,16 +312,29 @@ var tk = function (f) { return '{{' + OTHER + (f ? '.' + f : '') + '}}'; };
     ['the Activity log of a deleted event', { page: 'activity-log', eventId: 'qa-ux-ai-scope-gone' }]
   ];
   await tick();
+  /* today's allowance: the person's own day document (claimDay), whichever page they ask on */
+  function dayTurns() { var k = Object.keys(docs).filter(function (x) { return /^dashChats\/[^/]+\/days\/[^/]+$/.test(x); }); return k.length === 1 ? +docs[k[0]].turns : NaN; }
   for (var fc of FAIL_CLOSED) {
-    var c0 = calls.length, keys0 = Object.keys(docs).length, lines0 = activity.length;
+    var c0 = calls.length, keys0 = Object.keys(docs).length, lines0 = activity.length, day0 = dayTurns();
     answers.push({ kind: 'reply', list: { title: '', statuses: [], site: '', when: '', types: [], mine: false, portal: 'all', createdFrom: '', createdTo: '', startFrom: '', startTo: '', search: 'CIO', sort: '', dir: '', limit: 0 }, text: 'Here are all your events.' });
     out = await ask('Which events are there? Show the CIO Awards', fc[1]);
     await tick();
     check('S.5 fail closed, ' + fc[0] + ': the fixed refusal, the model not asked, nothing kept, nothing about any event',
       out.status === 200 && out.body.kind === 'refuse' && text(out.body.parts) === T.MSG.unconfirmed && out.body.action.pointer.href === '/Event_Listing.html' && out.body.scope === 'none' &&
       !out.body.turnId && calls.length === c0 && Object.keys(docs).length === keys0 && activity.length === lines0 && !leaks(out.body) && out.body.parts.length === 1, [out.body, calls.length - c0]);
+    check('S.5 fail closed, ' + fc[0] + ': it costs none of today\'s ETB2B AI messages (no model was asked)', day0 > 0 && dayTurns() === day0, [day0, dayTurns()]);
     answers.length = 0;
   }
+  var dayIn = dayTurns();
+  answers.push({ kind: 'reply', events: [MAIN], text: '{{' + MAIN + '}} has {{' + MAIN + '.registrations}} registrations so far.' });
+  await ask('How many registrations here?', CONSOLE);
+  check('S.5 …while a message the model answers still counts one', dayTurns() === dayIn + 1, [dayIn, dayTurns()]);
+  var zeroRef = FB.db.collection('dashChats').doc('u-nobody');
+  var gave = await T.releaseDay(FB, zeroRef, '2026-11-08', 'x');
+  check('S.5 releaseDay never takes a day below zero', gave === false && !docs['dashChats/u-nobody/days/2026-11-08'], docs['dashChats/u-nobody/days/2026-11-08']);
+  await T.claimDay(FB, zeroRef, '2026-11-08', 'x');
+  gave = await T.releaseDay(FB, zeroRef, '2026-11-08', 'x');
+  check('S.5 …and gives back exactly the one claimed', gave === true && docs['dashChats/u-nobody/days/2026-11-08'].turns === 0, docs['dashChats/u-nobody/days/2026-11-08']);
   /* a forged place for an event the person can see is still locked to that one event, whatever else it carries */
   answers.push({ kind: 'reply', list: { title: '', statuses: [], site: '', when: '', types: [], mine: false, portal: 'all', createdFrom: '', createdTo: '', startFrom: '', startTo: '', search: '', sort: '', dir: '', limit: 0 }, text: 'Here they are.' });
   out = await ask('List all my events', { page: 'console', eventId: MAIN, tab: '', scope: 'all', locked: false, allEvents: true }, { eventId: OTHER, slug: OTHER, scope: 'global' });

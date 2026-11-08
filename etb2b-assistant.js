@@ -14,7 +14,7 @@
        for both brains);
      - it routes each message to a BRAIN. The "dash brain" (dash-bot-client.js, POST /api/dash-bot) answers on
        every page: questions from real data, opening pages, promotions, a new event, portals; inside an event, that
-       event only (owner decision 10: the panel's line says "Working on <event> only"). The "edit brain"
+       event only (owner decision 10: the panel's line says "This event only: <event>"). The "edit brain"
        (editor-chat-client.js, POST /api/chat-edit) exists only in the site editor, where it changes the page and
        makes pictures. In the editor a fixed rule (route(), below) picks the brain; either brain may hand the
        message to the other once ("handoff"), never back; "undo that" there is local and costs no AI call, and goes
@@ -118,9 +118,10 @@
   var TEXT = {
     scopeGlobal: 'Your events',
     /* inside an event ETB2B AI works on that event only (owner decision 10), and the panel's line says so; it is
-       one line under the title, cut with … at a phone's width (the whole name is its title) */
+       one line under the title, cut with … at a phone's width (the whole name is its title). "only" comes before
+       the name, so a long name is what the cut takes, never the word that says ETB2B AI is locked to it. */
     scopeEvent: 'This event only',
-    scopeEventNamed: 'Working on {name} only',
+    scopeEventNamed: 'This event only: {name}',
     earlier: 'Earlier in this conversation',
     now: 'Now',
     historyFailed: 'Your earlier messages could not be loaded',

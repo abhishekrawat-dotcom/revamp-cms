@@ -662,7 +662,7 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   check('E.3 the note under the box says what ETB2B AI does in the editor', wt.indexOf('ETB2B AI changes this page when you ask, and every change has an Undo. It never saves, publishes, deletes an event or approves anything.') !== -1 &&
     wt.indexOf('It never deletes, cancels, publishes or approves anything.') === -1);
   check('E.3 the event\'s conversation was read once (the editor\'s own replay)', env.seam.historyCalls === 1);
-  check('E.3 the scope line names the event it works on only', env.$('scope') && env.$('scope').textContent === 'Working on QA AIE Main only', env.$('scope') && env.$('scope').textContent);
+  check('E.3 the scope line names the event it works on only', env.$('scope') && env.$('scope').textContent === 'This event only: QA AIE Main', env.$('scope') && env.$('scope').textContent);
   var sug = all(env.wrap(), function (e) { return e.localName === 'button' && e.textContent === 'Shorten the overview to two sentences'; })[0];
   if (sug) sug.click();
   await settle(6);
@@ -1066,7 +1066,7 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   await settle(8);
   check('E.10 history: the editor reads the event\'s conversation itself', h.seam.historyCalls === 1);
   check('E.10 history: a turn the events side answered is the events side\'s to draw', h.dash.replays.length === 1 && threadText(h).indexOf('42 registrations, as of 12:05 pm.') !== -1);
-  check('E.10 history: the scope line comes from the event\'s name', h.$('scope').textContent === 'Working on Agentic AI Summit 2027 only', h.$('scope').textContent);
+  check('E.10 history: the scope line comes from the event\'s name', h.$('scope').textContent === 'This event only: Agentic AI Summit 2027', h.$('scope').textContent);
 
   /* ======== E.3 the editor's site never came: the panel answers questions and says why it cannot edit ======== */
   var nf = editorPage();

@@ -978,6 +978,16 @@ var LIST = {
   var b8 = Pe8.last();
   check('D.2s the server\'s scoped line: its words once, with Open the dashboard, nothing else done', b8.content.length === 1 && b8.content[0].v.indexOf('I work on QA Main here only') === 0 &&
     b8.notes.length === 0 && b8.links.length === 1 && b8.links[0].href === '/Event_Listing.html' && b8.links[0].label === 'Open the dashboard' && Pe8.turnCalls().length === 0 && Pe8.assigned.length === 0, b8);
+  /* the same line read back from the event's history (GET /api/chat/history keeps the action's type and label only):
+     it gets its Open the dashboard again; any other refusal read back is drawn as before, with no link */
+  var scopedKept = { id: 'TurnConsoleR03', question: 'How is Autotech doing?', answer: scopedLine.body.parts[0].v, parts: scopedLine.body.parts, list: null, asOf: 'x', kind: 'reply', dashKind: 'refuse',
+    status: 'refused', brain: 'dash', action: { type: 'refuse', label: 'Refused: other-event' }, at: '2026-11-03T06:30:00.000Z' };
+  Pe8.ctx.RevampDashBot.brain.replay(scopedKept);
+  var b8h = Pe8.last();
+  check('D.2s the scoped line replayed from the history keeps Open the dashboard (and only that)', b8h !== b8 && b8h.content[0].v.indexOf('I work on QA Main here only') === 0 &&
+    b8h.links.length === 1 && b8h.links[0].href === '/Event_Listing.html' && b8h.links[0].label === 'Open the dashboard' && b8h.notes.length === 0 && Pe8.assigned.length === 0, b8h);
+  Pe8.ctx.RevampDashBot.brain.replay(Object.assign({}, scopedKept, { id: 'TurnConsoleR04', action: { type: 'refuse', label: 'Refused: publish' } }));
+  check('D.2s …another refusal replayed gets no link (as before)', Pe8.last().links.length === 0 && Pe8.last().notes.length === 0, Pe8.last());
   var Pe9 = await conPage({ answers: [ok({ turnId: 'TurnConsoleC01', kind: 'choose', parts: [{ t: 'text', v: 'Which one?' }], list: null, action: null, asOf: 'x', notes: [],
     choices: [{ eventId: 'qa-main', name: 'QA Main', action: navHere('x', '/edit-event.html?event=qa-main').body.action }, { eventId: 'autotech-2026', name: 'Autotech 2026', action: navAnswer('x', '/edit-event.html?event=autotech-2026').body.action }] })] });
   await Pe9.say('Open the console');
@@ -1187,7 +1197,7 @@ var LIST = {
   var ech = Peh.kit.chat;
   check('D.6 in an event: GET /api/chat/history?eventId=qa-main (not the dashboard\'s)', Peh.calls.some(function (c) { return c.url === '/api/chat/history?eventId=qa-main' && c.method === 'GET'; }) &&
     !Peh.calls.some(function (c) { return c.url === '/api/dash-bot/history'; }), Peh.calls.map(function (c) { return c.url; }));
-  check('D.6 …the header names the event it works on only', same(ech.scopes, ['Working on QA AIE Main only']), ech.scopes);
+  check('D.6 …the header names the event it works on only', same(ech.scopes, ['This event only: QA AIE Main']), ech.scopes);
   check('D.6 …"Earlier in this conversation", the four turns in order, then "Now"', n2 === 4 && same(ech.dividers, ['Earlier in this conversation', 'Now']) && ech.users.length === 4 &&
     same(ech.users.map(function (u) { return u.text; }), EH.turns.map(function (t) { return t.question; })), [n2, ech.dividers]);
   check('D.6 …an editor change shown plainly here, with its done lines and no Undo', ech.bubbles[0].content === 'Done.' && ech.bubbles[0].notes.indexOf('Done: Hero: background made darker') !== -1 &&

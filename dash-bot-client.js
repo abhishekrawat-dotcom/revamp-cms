@@ -72,6 +72,10 @@
   var EVENT_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
   var UNDO_PREFIX = 'rv.dashBot.undo.';
   var DASHBOARD_URL = '/Event_Listing.html';
+  /* the stored label of the server's one line for anything beyond the event a page is locked to (lib/dash-bot.js
+     scopedRefusal, kept by actionForStore as "Refused: " + what): read back from the history, it gets its Open the
+     dashboard again, as the live answer had */
+  var SCOPED_REFUSAL_LABEL = 'Refused: other-event';
   var PREFILL_PREFIX = 'revamp.createEvent.prefill.v1.';
 
   /* Every sentence this brain says on its own. The product is ETB2B EventSphere (owner decision 6) and the
@@ -1041,6 +1045,8 @@
       else if (t.status === 'failed') b.note(TEXT.failedBefore);
       else if (a.type === 'navigate' && NAV_OK.test(str(a.url))) b.link(str(a.url), labelOf(a.label, 'Open it'));
       else if (a.type === 'create') b.note('Opened ' + labelOf(a.label, 'Create Event, filled in') + '.');
+    } else if (a && a.type === 'refuse' && str(a.label) === SCOPED_REFUSAL_LABEL) {
+      b.link(DASHBOARD_URL, TEXT.openDashboard);
     }
     var heldList = id ? heldSnap(id + '.list') : null;
     if (heldList) {
