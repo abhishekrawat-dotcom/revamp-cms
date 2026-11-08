@@ -330,11 +330,26 @@ async function main() {
     var buttons = html.match(/<button\b[^>]*\bdata-share-preview\b[^>]*>/g) || [];
     check('U.2 ' + pg[0] + ': exactly one [data-share-preview] button', buttons.length === 1, buttons.length);
     var b = buttons[0] || '';
-    check('U.2 ' + pg[0] + ': it is a type=button, starts hidden, and keeps its name as an aria-label', /type="button"/.test(b) && /\shidden(\s|>)/.test(b) && /aria-label="Share preview"/.test(b) && /id="btn-share-preview"/.test(b));
-    var prevEnd = html.indexOf('</button>', html.indexOf('id="btn-preview"'));
-    var between = html.slice(prevEnd + '</button>'.length, html.indexOf(b));
-    check('U.2 ' + pg[0] + ': it comes straight after Preview', prevEnd > 0 && /^\s*(<!--[^]*?-->\s*)?$/.test(between), between.slice(0, 120));
-    check('U.2 ' + pg[0] + ': its label "Share preview" is in a <span> (hidden below 720px)', /<span>Share preview<\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))));
+    // the console's Share is an item of Preview's menu (owner decision 13: one Preview, not two buttons): "Share preview link…"
+    var inMenu = pg[0] === 'edit-event.html';
+    check('U.2 ' + pg[0] + ': it is a type=button, starts hidden, and keeps its name as an aria-label', /type="button"/.test(b) && /\shidden(\s|>)/.test(b) &&
+      (inMenu ? /aria-label="Share preview link"/.test(b) : /aria-label="Share preview"/.test(b)) && /id="btn-share-preview"/.test(b));
+    if (inMenu) {
+      var menuAt = html.indexOf('<span class="ev-menu" id="pv-menu" hidden>'), splitAt = html.indexOf('<span class="pv-split" id="pv-split">');
+      var openAt = html.indexOf('id="pv-open"');
+      check('U.2 edit-event.html: it is the item after Open preview in the menu of Preview\'s arrow, inside Preview\'s own group',
+        splitAt > 0 && html.indexOf('id="btn-preview"') > splitAt && html.indexOf('id="btn-preview-more"') > splitAt && menuAt > splitAt &&
+        openAt > menuAt && html.indexOf(b) > openAt && html.indexOf('</span>', html.indexOf(b)) > html.indexOf(b) &&
+        /aria-controls="pv-menu"/.test(html.slice(html.indexOf('id="btn-preview-more"') - 80, menuAt)));
+      check('U.2 edit-event.html: its words "Share preview link…" are in a <span>, which the menu keeps at every width',
+        /<span>Share preview link…<\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))) &&
+        /\.topbar \.ev-menu \[data-share-preview\] > span\{ display:inline; \}/.test(fs.readFileSync(path.join(ROOT, 'edit-event.css'), 'utf8')));
+    } else {
+      var prevEnd = html.indexOf('</button>', html.indexOf('id="btn-preview"'));
+      var between = html.slice(prevEnd + '</button>'.length, html.indexOf(b));
+      check('U.2 ' + pg[0] + ': it comes straight after Preview', prevEnd > 0 && /^\s*(<!--[^]*?-->\s*)?$/.test(between), between.slice(0, 120));
+      check('U.2 ' + pg[0] + ': its label "Share preview" is in a <span> (hidden below 720px)', /<span>Share preview<\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))));
+    }
     // the editor-only icon rule is keyed to "#ed-mode-toggle ~ [data-share-preview]": in the editor the mode switch
     // must be an earlier sibling of the button (same parent), and the console must not have one or it loses its label
     if (pg[0] === 'custom_editor.html') {

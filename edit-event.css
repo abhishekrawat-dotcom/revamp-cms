@@ -1451,14 +1451,14 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .alog-f .inp{ color-scheme: dark; } }
 
 /* ============ WHAT IS SAVED (the console's top bar; edit-event.html paintSaveState) ============ */
-/* the site editor's save chip (custom_editor.html .site-state), so both say it the same way (UX-011); a narrow
-   top bar keeps its room for the event's name and the buttons */
-.save-state{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap;
-  background: var(--surface-2); color: var(--text-muted); border:1px solid var(--border); }
-.save-state::before{ content:''; width:7px; height:7px; border-radius:50%; background: currentColor; opacity:.75; }
-.save-state.warn{ background: var(--warn-soft); color: var(--warn); border-color: transparent; }
-.save-state.ok{ background: var(--ok-soft); color: var(--ok); border-color: transparent; }
-.save-state.wait{ color: var(--text); border-style: dashed; }
+/* quiet words in the line under the event's name, after the date (owner decision 13: a lighter top bar), with the
+   site editor's words (UX-011). Only "Unsaved changes" takes a colour, the one state that asks for something */
+.save-state{ display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; font-size:11.5px; font-weight:500; white-space:nowrap; color: var(--text-muted); }
+.ev-sub .meta + .save-state::before{ content:'·'; }
+/* where the date gives way (a phone; a narrow window while "No portal yet" shows), so does the dot after it */
+@media (max-width: 680px){ .ev-sub.has-portal-chip .meta + .save-state::before{ content:none; } }
+@media (max-width: 600px){ .ev-title.with-state .ev-sub .meta + .save-state::before{ content:none; } }
+.save-state.warn{ color: var(--warn); font-weight:700; }
 /* a narrower top bar says it in a word (paintSaveState writes both), and never hides it: what is saved is worth the
    room at every width */
 .save-state .ss-short{ display:none; }
@@ -1471,7 +1471,7 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 /* the name keeps room of its own; the chips take what is left and never push it out of sight */
 .ev-name-row{ display:flex; align-items:center; gap:8px; min-width:0; }
 .ev-name-row h1{ flex:0 1 auto; min-width:min(12em, 45%); }
-.ev-state{ display:inline-flex; align-items:center; gap:6px; flex:0 1 auto; min-width:0; }
+.ev-state{ position:relative; display:inline-flex; align-items:center; gap:6px; flex:0 1 auto; min-width:0; }
 .ev-state[hidden]{ display:none; }
 .ev-chip{
   display:inline-block; padding:2px 9px; border-radius:999px; white-space:nowrap; max-width:100%;
@@ -1483,16 +1483,47 @@ a.ev-chip:hover{ border-color: currentColor; }
 .ev-chip-warn{ background: var(--warn-soft); color: var(--warn); }
 .ev-chip-bad{ background: var(--accent-soft); color: var(--accent-strong); }
 .ev-chip-mute{ background: var(--surface-3); color: var(--text-muted); }
-.ev-live{ font-size:12px; font-weight:700; white-space:nowrap; text-decoration:none; }
-.ev-live:hover{ text-decoration:underline; }
 .ev-chip-short{ display:none; }
-/* a narrower top bar says the state in a word or two, and then only the main one; the rest is on the
-   Dashboard and in Visibility */
+/* ONE tag (owner decision 13): a button around the pill, opening the menu with the whole story (edit-event.html
+   paintState). The button is what is pressed, the pill is what shows */
+.ev-tag{ display:inline-flex; align-items:center; min-width:0; max-width:100%; padding:0; margin:0; border:0; border-radius:999px;
+  background:none; color:inherit; font:inherit; cursor:pointer; }
+.ev-tag .ev-chip{ display:inline-flex; align-items:center; gap:4px; min-width:0; }
+.ev-tag .ev-chip > span{ overflow:hidden; text-overflow:ellipsis; }
+.ev-tag .ev-chip > svg{ flex:0 0 auto; }
+.ev-tag:hover .ev-chip, .ev-tag[aria-expanded="true"] .ev-chip{ border-color: currentColor; }
+.ev-tag:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+/* a narrower top bar says it in a word or two; the menu still has it all */
 @media (max-width: 1180px){
-  .ev-state .ev-live{ display:none; }
   .ev-state .ev-chip-long{ display:none; } .ev-state .ev-chip-short{ display:inline; }
 }
-@media (max-width: 900px){ .ev-state .ev-chip-more{ display:none; } }
+
+/* ============ THE TOP BAR'S MENUS (where the site stands; Preview's other ways) ============ */
+.pv-split{ position:relative; display:inline-flex; align-items:center; flex:0 0 auto; }
+.pv-split.has-more #btn-preview{ border-top-right-radius:0; border-bottom-right-radius:0; }
+.pv-split .pv-more{ margin-left:-1px; padding-left:8px; padding-right:8px; border-top-left-radius:0; border-bottom-left-radius:0; }
+.pv-split .pv-more[aria-expanded="true"]{ background: var(--surface-2); }
+.ev-menu{ position:absolute; top:calc(100% + 6px); z-index:60; display:flex; flex-direction:column; gap:2px;
+  width:max-content; min-width:220px; max-width:min(320px, calc(100vw - 24px)); padding:6px; box-sizing:border-box;
+  background: var(--surface); color: var(--text); border:1px solid var(--border); border-radius:10px; box-shadow: var(--shadow-lg);
+  white-space:normal; text-align:left; }
+.topbar .ev-menu[hidden]{ display:none; }
+.ev-state-menu{ left:0; }
+.pv-split .ev-menu{ right:0; }
+.ev-menu-line{ display:flex; flex-direction:column; gap:2px; padding:6px 10px; font-size:12.5px; line-height:1.35; }
+.ev-menu-line b{ font-weight:700; }
+.ev-menu-line small{ font-size:11.5px; font-weight:500; color: var(--text-muted); }
+.ev-menu-line + .ev-menu-item{ margin-top:4px; }
+.ev-menu-item{ display:flex; align-items:center; gap:8px; width:100%; min-height:40px; padding:8px 10px; box-sizing:border-box;
+  border:0; border-radius:7px; background:none; color: var(--text); font:inherit; font-size:13px; font-weight:600;
+  text-align:left; text-decoration:none; white-space:nowrap; cursor:pointer; }
+.ev-menu-item:hover, .ev-menu-item:focus-visible{ background: var(--surface-2); }
+.ev-menu-item:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; }
+.ev-menu-item.ev-live{ color: var(--accent-strong); }
+.topbar .ev-menu-item[hidden]{ display:none; }
+/* share-preview.js makes its button icon-only in a narrow top bar; in the menu it keeps its words */
+.topbar .ev-menu [data-share-preview] > span{ display:inline; }
+.topbar .ev-menu [data-share-preview]{ padding-left:10px; padding-right:10px; }
 /* a phone: the name has the first line to itself, and under it, in the date's place (the date is in Basics),
    the state and — while the event has no portal — the Set portal button side by side. Beside the name, the
    chip squeezed the name out altogether; on three lines of their own, name, state and button overflow the
@@ -1503,7 +1534,6 @@ a.ev-chip:hover{ border-color: currentColor; }
   .ev-title.with-state .ev-name-row{ display:contents; }
   .ev-name-row h1{ flex-basis:100%; min-width:0; }
   .ev-title.with-state .ev-sub .meta{ display:none; }
-  .ev-title.with-state .ev-sub:not(.has-portal-chip){ display:none; }
   .ev-chip{ padding:0 7px; font-size:11px; }
 }
 
@@ -1588,17 +1618,17 @@ a.ev-chip:hover{ border-color: currentColor; }
 
 /* ============ THE CONSOLE'S TOP BAR AT EVERY WIDTH (edit-event.html header.ev-bar; UX-002) ============
    The event's name is the one proof of which event is open, so the words around it give way first, as in the site
-   editor: "Back to events" below 1180px, Preview's and Share preview's below 900px, where Publish also says its short
+   editor: "Back to events" below 1180px, Preview's below 900px, where Publish also says its short
    word (each keeps its whole words for screen readers). On a phone the bar takes two rows: the way back, the name, the light/dark switch and the account above;
-   what is saved, Preview, Share preview and Publish below, each a 40px tap target. The rail and every sticky part
+   Preview (with its menu) and Publish below, each a 40px tap target; what is saved stays under the name. The rail and every sticky part
    under the bar are placed under its new height (--topbar-h). Layout only: nothing here applies above 1180px. */
 @media (max-width: 1180px){
   .topbar.ev-bar .back-btn{ padding:7px 9px; }
   .topbar.ev-bar .back-btn span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 }
 @media (max-width: 900px){
-  .topbar.ev-bar #btn-preview span, .topbar.ev-bar #btn-share-preview > span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
-  .topbar.ev-bar #btn-preview, .topbar.ev-bar #btn-share-preview{ padding-left:10px; padding-right:10px; }
+  .topbar.ev-bar #btn-preview > span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .topbar.ev-bar #btn-preview{ padding-left:10px; padding-right:10px; }
   /* Publish shows its short word ("Send…", which publish-flow.js writes; its whole words stay its name and tooltip),
      as it already does below 600px, so a tablet held upright shows more of the event's name */
   .topbar.ev-bar #btn-publish[data-rvpf-short]:not([aria-busy]){ font-size:0; gap:0; padding-left:12px; padding-right:12px; }
@@ -1611,9 +1641,11 @@ a.ev-chip:hover{ border-color: currentColor; }
   .topbar.ev-bar .ev-title{ order:2; flex:1 1 0; }
   .topbar.ev-bar [data-theme-toggle-target], .topbar.ev-bar [data-rv-account]{ order:3; }
   .topbar.ev-bar::after{ content:''; order:4; flex-basis:100%; height:0; }
-  .topbar.ev-bar .save-state, .topbar.ev-bar .btn{ order:5; margin-top:8px; min-height:40px; }
-  .topbar.ev-bar #btn-preview, .topbar.ev-bar #btn-share-preview{ min-width:40px; }
-  .topbar.ev-bar .save-state{ margin-right:auto; }
+  .topbar.ev-bar .pv-split, .topbar.ev-bar .btn{ order:5; margin-top:8px; min-height:40px; }
+  .topbar.ev-bar .pv-split .btn{ margin-top:0; }
+  .topbar.ev-bar #btn-preview{ min-width:40px; }
+  .topbar.ev-bar .pv-split{ margin-right:auto; }
+  .topbar.ev-bar .pv-split .ev-menu{ right:auto; left:0; }
   .topbar.ev-bar ~ .shell{ --topbar-h:104px; }
 }
 
@@ -1626,4 +1658,8 @@ a.ev-chip:hover{ border-color: currentColor; }
   #b-logo-orig{ padding-top:11px; padding-bottom:11px; }
   .back-btn{ justify-content:center; }
   .topbar #btn-preview, .topbar #btn-share-preview{ min-width:40px; }
+  /* the console's state tag: a 40px tap whose extra height is taken back by its margins, so the pill and the
+     lines around it stay where they were; and Preview's arrow */
+  .topbar .ev-tag{ min-height:40px; margin:-10px 0; }
+  .topbar .pv-more{ min-width:40px; }
 }

@@ -186,7 +186,8 @@ check('1 no page or section file reads RevampCore.PORTALS', !stray.length, stray
 check('2 the console\'s script was found', MAIN.length > 100000);
 check('2 the console loads portal-picker.js right after auth.js', /<script src="auth\.js"><\/script>\s*<!--[^>]*-->\s*<script src="portal-picker\.js"><\/script>/.test(CONSOLE) &&
   (CONSOLE.match(/<script src="portal-picker\.js">/g) || []).length === 1);
-check('2 the console\'s top bar has #ev-portal, hidden, right after #ev-meta', /<span class="meta" id="ev-meta"><\/span>\s*<!--[^>]*-->\s*<span class="ev-portal" id="ev-portal" hidden><\/span>/.test(CONSOLE));
+// between them, what is saved: quiet words after the date (owner decision 13)
+check('2 the console\'s top bar has #ev-portal, hidden, right after #ev-meta and what is saved', /<span class="meta" id="ev-meta"><\/span>\s*<!--[^>]*-->\s*<span class="save-state" id="ev-save" role="status" hidden><\/span>\s*<!--[^>]*-->\s*<span class="ev-portal" id="ev-portal" hidden><\/span>/.test(CONSOLE));
 check('2 the console\'s window title before an event loads names the product ("EventSphere" in a tab, owner decision 6)', /<title>Event console &mdash; EventSphere<\/title>/.test(CONSOLE) && CONSOLE.indexOf('Revamp CMS') === -1);
 check('2 the console no longer reads a table of portal names', !/\bPORTALS\b/.test(MAIN));
 
