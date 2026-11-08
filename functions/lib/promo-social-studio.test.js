@@ -80,15 +80,16 @@ check('the theme script before any stylesheet, link or script (the first paint i
 check('the extractor writes the same tag in the same place', count(py, THEME_TAG) === 1 && py.indexOf(THEME_TAG) < py.indexOf('<link rel="stylesheet" href="promo-studio/mailer-studio.css">'));
 var sheets = [], shRe = /<link rel="stylesheet" href="([^"]+)">/g, sh;
 while ((sh = shRe.exec(page))) sheets.push(sh[1]);
-check('stylesheets: the platform\'s, then Oneworld\'s tokens, then the social page\'s own', sheets.join() === 'promo-studio/mailer-studio.css,promo-studio/oneworld.css,promo-studio/oneworld-social.css', sheets);
+/* B18-ai: then the "Edit with AI | Edit myself" toggle's, shared with the mailer page */
+check('stylesheets: the platform\'s, then Oneworld\'s tokens, then the social page\'s own, then the AI mode\'s', sheets.join() === 'promo-studio/mailer-studio.css,promo-studio/oneworld.css,promo-studio/oneworld-social.css,promo-studio/oneworld-ai-mode.css', sheets);
 check('every stylesheet is in the head', page.lastIndexOf('stylesheet') < headEnd);
 var scripts = [], scRe = /<script src="([^"]+)"><\/script>/g, sc;
 while ((sc = scRe.exec(page))) scripts.push(sc[1]);
-check('the scripts, in order: theme, sign-in, the exact drawing, zip, the bundle, the copied code, then Oneworld\'s four (the easy panel before the caption, the caption last)', scripts.join() === [
+check('the scripts, in order: theme, sign-in, the exact drawing, zip, the bundle, the copied code, then Oneworld\'s five (the easy panel before the caption, then "Edit with AI | Edit myself", B18-ai, last)', scripts.join() === [
   'promo-studio/oneworld-theme.js', 'auth.js', 'assets/vendor/html-to-image-exact.js', 'assets/vendor/jszip.min.js', 'assets/vendor/promo-social.js',
   'promo-studio/social-studio.js', 'promo-studio/oneworld-social.js', 'promo-studio/oneworld-social-art.js', 'promo-studio/oneworld-social-easy.js',
-  'promo-studio/oneworld-social-caption.js'].join(), scripts);
-check('no other script on the page', count(page, '<script') === 10);
+  'promo-studio/oneworld-social-caption.js', 'promo-studio/oneworld-ai-mode.js'].join(), scripts);
+check('no other script on the page', count(page, '<script') === 11);
 /* the server sends only an allow-list of files (access.js): the page itself, and everything it loads from this server */
 var access = require('./access');
 check('the server sends the page, and only to someone signed in', access.isServableFile('promo-social-studio.html') &&
@@ -96,7 +97,7 @@ check('the server sends the page, and only to someone signed in', access.isServa
 var local = (page.match(/(?:src|href)="[^"]+"/g) || []).map(function (a) { return a.replace(/^(?:src|href)="|"$/g, ''); })
   .filter(function (u) { return !/^(https?:)?\/\/|^#|^data:|^about:/.test(u); });
 var unserved = local.filter(function (u) { return !access.isServableFile(u.split('?')[0]); });
-check('every file the page loads is one the server sends', local.length === 13 && !unserved.length, { local: local, unserved: unserved });
+check('every file the page loads is one the server sends', local.length === 15 && !unserved.length, { local: local, unserved: unserved });
 /* the files the page shares with the mailer page are already there; the rest are made by the other parts of this build */
 ['auth.js', 'assets/vendor/jszip.min.js', 'promo-studio/oneworld-theme.js', 'promo-studio/mailer-studio.css', 'promo-studio/oneworld.css'].forEach(function (f) {
   check('the page\'s ' + f + ' is there', exists(f));

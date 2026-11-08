@@ -6100,7 +6100,8 @@
       turns.forEach(function (h) {
         if (!h || typeof h !== 'object') return;
         try {
-          if (h.brain !== 'dash') { replayTurn(h); return; }
+          /* the events side's turns and the post and mailer editors' (brain 'promo') are not this editor's changes */
+          if (h.brain !== 'dash' && h.brain !== 'promo') { replayTurn(h); return; }
           if (writer && typeof writer.other === 'function' && writer.other(h) !== false) return;
           drawUserTurn(h.question, '', 0, h.at);
           appendChatMsg('ai', h.answer, { at: h.at });

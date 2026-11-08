@@ -916,6 +916,10 @@ var EDIT_OUTCOMES = { answered: 'answered', applying: 'its result is not known',
    (plan §5c). */
 function memoryText(turns, scoped) {
   return turns.slice(-CAPS.memoryTurns).map(function (t) {
+    /* a turn of the post and mailer editors' ETB2B AI (lib/promo-ai.js, brain 'promo') is about a post or a mail */
+    if (scoped && t.brain === 'promo') {
+      return '[In the post or mailer editor they asked: “' + unfenced(displayLine(t.question, CAPS.memoryChars)) + '” — ' + (EDIT_OUTCOMES[t.status] || 'answered').replace('the page', 'the post or mail') + ']';
+    }
     if (scoped && t.brain !== 'dash') {
       return '[In the site editor they asked: “' + unfenced(displayLine(t.question, CAPS.memoryChars)) + '” — ' + (EDIT_OUTCOMES[t.status] || 'answered') + ']';
     }

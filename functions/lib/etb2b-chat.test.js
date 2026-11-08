@@ -2013,6 +2013,19 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     check('K.12 setQuickIdeas() replaces them (the editor\'s two modes)', byClass(q, 'rvc-quick-btn').map(function (x) { return x.textContent; }).join() === 'Open Content › Speakers' && q.hidden === false);
     mm.chat.setQuickIdeas([]);
     check('K.12 setQuickIdeas([]) hides them', q.hidden === true);
+    /* the welcome follows the page's mode too (Promotions while a post or mail is open in "Edit with AI", B18-ai) */
+    var T12 = mm.$('thread'), wl = byClass(T12, 'rvc-welcome')[0];
+    var heads0 = byClass(wl, 'rvc-welcome-h')[0].textContent;
+    mm.chat.setWelcome({ text: 'In Edit with AI I change this post.', suggestions: [{ label: 'Shorten the title', text: 'Make the title shorter.' }] });
+    check('K.12 setWelcome() replaces the welcome\'s words and suggestions, keeps its heading, and stays first in the thread',
+      byClass(T12, 'rvc-welcome')[0] === wl && T12.children[0] === wl && byClass(wl, 'rvc-welcome-h')[0].textContent === heads0 &&
+      byClass(wl, 'rvc-welcome-p')[0].textContent === 'In Edit with AI I change this post.' &&
+      byClass(wl, 'rvc-suggestion').map(function (x) { return x.textContent; }).join() === 'Shorten the title', byClass(wl, 'rvc-suggestion').length);
+    byClass(wl, 'rvc-suggestion')[0].click();
+    check('K.12 …its suggestion fills the box and sends nothing', mm.$('input').value === 'Make the title shorter.' && mm.log.sent.length === 1);
+    mm.chat.setWelcome(null);
+    check('K.12 setWelcome(null) brings the page\'s own welcome back', byClass(wl, 'rvc-welcome-p')[0].textContent === mm.opts.welcome.text &&
+      byClass(wl, 'rvc-suggestion').length === mm.opts.suggestions.length);
     var e2 = setup();
     var m2 = mountChat(e2, { quickIdeas: [{ label: 'x', text: 'x' }], loadHistory: function (w) { w.user('Old', { at: OLD_AT }); return Promise.resolve(); } });
     m2.chat.open(); await settle();

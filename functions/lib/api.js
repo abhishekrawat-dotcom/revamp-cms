@@ -665,6 +665,8 @@ function chatHistoryText(payload) {
          in one neutral line, the owner's own words and no more. Its answer is never repeated here: it can hold the
          names of other events, typed by other people, which must never reach this prompt (plan §5c). */
       if (t && t.brain === 'dash') return '[The owner asked the events side of ETB2B AI: “' + chatLine(t.question, 300) + '” — answered there; nothing on this page changed]';
+      /* a turn of the post and mailer editors' ETB2B AI (lib/promo-ai.js, brain 'promo'): about a post or a mail, never this page */
+      if (t && t.brain === 'promo') return '[The owner asked ETB2B AI in the post or mailer editor: “' + chatLine(t.question, 300) + '” — that was about a post or a mail; nothing on this page changed]';
       var lines = ['User: ' + String(t.question || '').slice(0, 2000), 'You: ' + String(t.answer || '').slice(0, 1500)];
       /* a picture the AI made (or could not make): the model remembers what and where, so "make it brighter"
          or "try another" can mean that picture */
@@ -928,7 +930,7 @@ function chatPictureFocus(focus) {
 /* the newest stored turn's picture: a short follow-up ("try another") may mean the same place. A question the
    events side answered in between (brain 'dash') is not a turn of this chat's, so it is passed over. */
 function chatLastPicture(turns) {
-  var own = (Array.isArray(turns) ? turns : []).filter(function (t) { return !(t && t.brain === 'dash'); });
+  var own = (Array.isArray(turns) ? turns : []).filter(function (t) { return !(t && (t.brain === 'dash' || t.brain === 'promo')); });
   var last = own.length ? own[own.length - 1] : null;
   return last && last.newPicture && typeof last.newPicture === 'object' ? last.newPicture : null;
 }
@@ -1276,7 +1278,8 @@ function handleChatTurn(req, res) {
     var ref = chatUserRef(fb, eventId, chatUid(decoded)).collection('turns').doc(turnId);
     ref.get().then(function (snap) {
       /* a turn the events side answered in this conversation is reported through /api/dash-bot/turn, never as a change */
-      if (!snap.exists || (snap.data() || {}).brain === 'dash') return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
+      /* a turn of the post and mailer editors is reported through /api/promo/ai-edit/turn (lib/promo-ai.js) */
+      if (!snap.exists || (snap.data() || {}).brain === 'dash' || (snap.data() || {}).brain === 'promo') return sendJson(res, 404, { error: 'This conversation turn is not yours or no longer exists.' });
       var was = snap.data(), patch = { status: status, updatedAt: new Date().toISOString() };
       if (status !== 'undone') { patch.done = lines(body.done); patch.notDone = lines(body.notDone); }
       /* A change where nothing took effect is not "applied" or "partly", whatever an editor (an older one, cached in
@@ -1319,7 +1322,9 @@ function handleChatHistory(req, res) {
        which the panel replays with its own parts, list and action. */
     function shape(t) {
       var out = { id: t.id, question: t.question, answer: t.answer, kind: t.kind, status: t.status, done: t.done || [], notDone: t.notDone || [], focus: t.focus || '', pictures: t.pictures || 0, at: t.at,
-        brain: t.brain === 'dash' ? 'dash' : 'edit' };
+        brain: t.brain === 'dash' ? 'dash' : t.brain === 'promo' ? 'promo' : 'edit' };
+      /* the post and mailer editors' ETB2B AI (lib/promo-ai.js): which editor, and the short label of what was asked */
+      if (out.brain === 'promo') { out.editor = t.editor === 'mail' ? 'mail' : 'post'; out.intent = String(t.intent || ''); }
       if (out.brain === 'dash') {
         var a = t.action && typeof t.action === 'object' ? t.action : null;
         out.parts = Array.isArray(t.parts) ? t.parts : [];
@@ -12014,6 +12019,22 @@ var promo = function (handler) {
   };
 };
 
+/* lib/promo-ai.js (ETB2B AI in the post and mailer editors, batch B18-ai) takes the Promotions helpers and the chat's
+   own: the person's rate bucket and conversation (one per person per event, as the site editor's and the events
+   side's), their live events (the lock to the event), the History, and the ET logo rule every AI prompt carries.
+   lib/promo.js is wired too: it reads the event's facts (buildKit). */
+function promoAiHelpers() {
+  return Object.assign(promoHelpers(), { sendJson, chatRateOk, chatUid, chatName, chatUserRef, liveEventDocs, logActivity, eventDocRef,
+    isEventId, ET_LOGO_COLOUR_RULE });
+}
+var promoAi = function (handler) {
+  var run = inModule('promo-ai', handler);
+  return function (req, res) {
+    try { require('./promo').wire(promoHelpers()); require('./promo-ai').wire(promoAiHelpers()); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+};
+
 /* lib/promo-mailer.js (Promotions → Mailers, the promotional platform's studio) takes the same helpers */
 var promoMailer = function (handler) {
   var run = inModule('promo-mailer', handler);
@@ -12242,6 +12263,8 @@ var ROUTES = {
   'GET /api/promo/details': promo('handleDetails'),
   'GET /api/promo/image': promo('handleImage'),
   'POST /api/promo/write': promo('handleWrite'),
+  'POST /api/promo/ai-edit': promoAi('handleEdit'),          // ETB2B AI in the post and mailer editors (lib/promo-ai.js)
+  'POST /api/promo/ai-edit/turn': promoAi('handleTurn'),
   'GET /api/promo/mailers': promoMailer('handleCatalog'),
   'GET /api/promo/mailer/saves': promoMailer('handleSaves'),
   'GET /api/promo/mailer/roster': promoMailer('handleRoster'),

@@ -58,6 +58,9 @@ var PROFILES = {
   'picture-check': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 30000, maxOutputTokens: 2000 },
   /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
   'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
+  /* ETB2B AI in the post and mailer editors (lib/promo-ai.js): reads a request against one post or mail and writes
+     its few changed words, a subject line or a caption from a fact sheet — the same work as promo-write */
+  'promo-edit': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 55000, maxOutputTokens: 6000 },
   /* the mailer studio's AI (lib/promo-mailer.js, the promotional platform's four tools): subject lines, a field
      rewritten in a tone and a whole-mail polish on Haiku, as the platform runs them; "Enhance whole mailer"
      — the one call that restructures a mail — on Opus at high effort, as the platform runs it */

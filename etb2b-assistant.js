@@ -19,7 +19,10 @@
        makes pictures. In the editor a fixed rule (route(), below) picks the brain; either brain may hand the
        message to the other once ("handoff"), never back; "undo that" there is local and costs no AI call, and goes
        to the brain whose change in this panel is the newest (a portal switch is put back by the dash brain, a page
-       change by the editor's); a bare "go back" is asked about (undo, or another page?), never guessed;
+       change by the editor's); a bare "go back" is asked about (undo, or another page?), never guessed. The "promo
+       brain" (promo-ai-client.js, POST /api/promo/ai-edit) exists only on Promotions, and answers only while a post or
+       a mail is open in its editor in "Edit with AI" (batch B18-ai): it changes that post or mail, with Undo; there a
+       rule of its own (routePromo) picks it or the dash brain, and it may hand a message to the dash brain once;
      - it takes ATTACHMENTS everywhere (the attach button, drag and drop, paste: the kit draws them as chips), with
        a policy per place that says plainly what a file is for: without an event a brief (PDF or text) and a logo
        start a new event through Create Event's own inputs; inside an event pictures can go on to that event's site
@@ -35,10 +38,11 @@
                                      long as the panel is up (so the conversation shown, the one stored and "this
                                      event" always match, even when the page rewrites its address); the console's
                                      section and Promotions' tab are read afresh
-     registerBrain(name, brain)      'dash' | 'edit'. brain: { send(text, o) -> Promise, replay?(turn, writer) -> bool,
+     registerBrain(name, brain)      'dash' | 'edit' | 'promo'. brain: { send(text, o) -> Promise, replay?(turn, writer) -> bool,
                                      loadHistory?(writer), stop?(), undoLocal?(text, o) -> Promise, onMount?(chat),
                                      welcome?(place, me), help?(place), changedAt?() -> ms of its newest change in
-                                     this tab that Undo can still take back, 0 for none }
+                                     this tab that Undo can still take back, 0 for none, active?() -> bool (the promo
+                                     brain: an editor is open in "Edit with AI") }
      registerPlace(adapter)          the page's adapter (only the site editor has one): { welcome, suggestions, quickIdeas,
                                      footNote, attach, route(text, recs), context: { current(), onChange(fn), clear() },
                                      dock, phoneSheet, phoneQuery, wrapAttrs, onMount(chat), leave(url) }
@@ -47,6 +51,7 @@
      leave(url)                      opens a page ETB2B AI was asked for, through the page's own guard for unsaved work
      markReopen()                    Back (or a reload) to this page reopens the panel (sessionStorage, per page)
      route(text, recs, place)        the editor's rule: 'undo' | 'ask' | 'edit' | 'dash' (pure, tested on a corpus)
+     routePromo(text, recs)          the rule while a post or mail is open in "Edit with AI": 'undo' | 'ask' | 'promo' | 'dash'
      errorFor(r, place)              -> Error with .retryable, the sentence for a failed answer ({status, body} or a
                                      network failure { network: err })
      wireAttachments(recs)           what the dash brain's server is sent for the chips of a message
@@ -288,6 +293,77 @@
     if (PAGE_CUE.test(t)) return 'edit';
     for (var i = 0; i < DASH_CUES.length; i++) if (DASH_CUES[i].test(t)) return 'dash';
     return 'edit';
+  }
+  /* While a post or a mail is open in "Edit with AI" on Promotions (batch B18-ai), the message is about it unless it
+     asks for another page, numbers, a new event, a portal or other events, or for what only a person does (deleting,
+     taking offline, publishing, approving: the events side's fixed sentences say who and where). Words about posts and
+     mailers are the open editor's here, so DASH_CUES' promotions cue is not read. Sending is the promo brain's to
+     answer: it never sends, and says so.
+     Registrations, visitors or sign-ups go to the events side only when the message ASKS for them (how many, the
+     numbers, who registered, a page that shows them): "Write a subject line saying registrations close on Friday"
+     is about the mail's words. The two brains are not alike here: the promo brain hands a message that is not about
+     the post back to the events side (one extra call), but the events side cannot hand one to the promo brain, so a
+     request for the post's words sent there is lost. */
+  var REG_WORDS = '(?:registrations?|registrants?|visitors?|sign-?ups?|attendees?|check-?ins?|checked in|conversions?|waitlists?)';
+  var PROMO_DASH_CUES = [
+    DASH_CUES[0],
+    /\bhow many (?:registrations?|registrants|visitors|sign-?ups|attendees|people (?:have )?(?:registered|signed up|checked in)|(?:have )?(?:registered|signed up|checked in)|events?)\b/i,
+    /* "registrations so far", "visitor numbers", "the conversion rate" */
+    new RegExp('\\b' + REG_WORDS + '\\s+(?:count|counts|numbers?|figures?|totals?|so far|stats|statistics|rate|data|report|trend|today|yesterday|this week|last week|this month)\\b', 'i'),
+    /* "the number of sign-ups", "a list of registrants" */
+    new RegExp('\\b(?:count|number|numbers|total|totals|figures|stats|statistics|list|rate|report|breakdown)\\s+of\\s+(?:the\\s+|our\\s+|this event[\'’]s\\s+)?' + REG_WORDS + '\\b', 'i'),
+    /* a question about them: "what is the conversion?", "any registrations today?", "do we have a waitlist?" */
+    new RegExp('^(?:what(?:[\'’]s| is| are| was| were)?|how(?:[\'’]s| is| are| was| were)?|any|are there|is there|did|do we have|have we|show(?: me)?|list|give me|tell me|get me|check)\\b[^.?!]{0,50}\\b' + REG_WORDS + '\\b', 'i'),
+    /\bwho (?:has |have )?(?:registered|signed up|checked in)\b/i,
+    /* the word alone ("registrations?", "visitors today") */
+    new RegExp('^(?:the |our |this event[\'’]s )?' + REG_WORDS + '(?: (?:so far|today|now|count|numbers?))?$', 'i'),
+    DASH_CUES[3], DASH_CUES[4], DASH_CUES[6], DASH_CUES[7], DASH_CUES[8], DASH_CUES[9]
+  ];
+  /* A request to write or change the post's or mail's words. What follows it is what the words are to say, never a
+     question or an order to ETB2B AI: "Change the title to Registrations open", "Write a LinkedIn caption saying we
+     will publish the full agenda next week", "Make the preview text invite visitors to the expo floor". */
+  var PROMO_PART = '(?:subject(?: lines?)?|preview(?: text)?|pre-?header|captions?|titles?|headings?|headlines?|sub-?titles?|sub-?headings?|taglines?|lines?|sentences?|paragraphs?|intro(?:duction)?|opening|body|text|words?|wording|copy|message|buttons?|cta|hashtags?|footer|greeting|sign-?off|closing|posts?|mail|mailer|e-?mail|blurb|bio|quote)';
+  /* verbs that always mean writing (a "draft" is also a saved version, so only "draft a …" is one) */
+  var WRITE_ANY = /\b(?:write|rewrite|re-write|reword|rephrase|redraft|compose|shorten|lengthen|tighten|polish|punch up|draft(?= (?:a|an|the|me|new|some|this|that|it)\b))\b/i;
+  /* verbs that mean writing when a part of the post follows them: "make the caption …", "add a line …" */
+  var WRITE_PART = new RegExp('\\b(?:change|edit|update|make|add|put|insert|include|replace|turn|give me|suggest|come up with|create|set|use|fix|improve|tweak|want|need|like)\\b[^.?!;]{0,60}?\\b' + PROMO_PART + '\\b', 'i');
+  /* what to say, at the start of a clause: "mention the waitlist", "invite visitors to the expo floor" ("tell me"
+     and "ask you" are questions to ETB2B AI) */
+  var COPY_START = /^(?:say|mention|tell (?!me\b|us\b)|invite|encourage|announce|remind|promote|highlight|urge|note|focus on|talk about|ask (?!me\b|you\b|how\b|what\b|which\b|who\b|why\b|when\b)|let\s(?:people|everyone|them|readers|visitors|delegates|attendees|guests) know|(?:make|have|get) it (?:say|read|about|mention|invite|encourage|announce|tell|sound|focus))\b/i;
+  /* a part first: "Subject line: Registrations close Friday", "the caption should mention the waitlist" */
+  var PART_FIRST = new RegExp('^(?:(?:the|this|that|our|a|an|new|better|linkedin|instagram|x)\\s+)*' + PROMO_PART + '(?:\\s*[:–—-]|\\s+(?:should|must|needs?|has to|ought to|could|can|would|will|to|says?|reads?)\\b)', 'i');
+  /* "can you", "please", "now" before what is asked */
+  var POLITE = /^(?:(?:(?:can|could|would|will) you|please|pls|now|also|and|ok(?:ay)?,?|then|so)\s+)+/i;
+  /* where one request ends and another may begin: a full stop, a question mark, a semicolon, "then", or "and"
+     before a question to ETB2B AI ("… and tell me how many registrations we have") */
+  var CLAUSE_END = /[.?!;]+\s*|,?\s+(?:and\s+)?then\s+|\s+and\s+(?=(?:also\s+)?(?:tell me|show me|take me|go to|how many)\b)/i;
+  /* where in a clause a request to write starts, or -1 */
+  function writeAt(c) {
+    if (COPY_START.test(c) || PART_FIRST.test(c)) return 0;
+    var at = -1, m;
+    m = WRITE_ANY.exec(c); if (m) at = m.index;
+    m = WRITE_PART.exec(c); if (m && (at === -1 || m.index < at)) at = m.index;
+    return at;
+  }
+  function routePromo(text, recs) {
+    var t = str(text).replace(/\s+/g, ' ').replace(/^\s+|\s+$/g, '');
+    if (UNDO_RE.test(t)) return 'undo';
+    if (GO_BACK_RE.test(t)) return 'ask';
+    var bare = t.replace(QUOTED, ' ');
+    /* what is read for the events side's cues: each clause up to its request to write (if it has one) */
+    var read = [];
+    bare.split(CLAUSE_END).forEach(function (c) {
+      c = str(c).replace(/^[\s,]+|[\s,]+$/g, '').replace(POLITE, '');
+      if (!c) return;
+      var at = writeAt(c);
+      if (at === -1) read.push(c);
+      else if (at > 0) read.push(c.slice(0, at).replace(/[\s,]+(?:and\s*)?$/i, ''));
+    });
+    for (var k = 0; k < read.length; k++) {
+      for (var n = 0; n < NEVER_CUES.length; n++) if (NEVER_CUES[n].test(read[k])) return 'dash';
+      for (var i = 0; i < PROMO_DASH_CUES.length; i++) if (PROMO_DASH_CUES[i].test(read[k])) return 'dash';
+    }
+    return 'promo';
   }
 
   /* ================================================================ errors, said once for both brains */
@@ -745,7 +821,7 @@
     return { page: pagePlace.page, eventId: pagePlace.eventId, tab: p ? p.tab : '' };
   }
   function registerBrain(name, brain) {
-    if ((name !== 'dash' && name !== 'edit') || !brain || !isFn(brain.send)) return false;
+    if ((name !== 'dash' && name !== 'edit' && name !== 'promo') || !brain || !isFn(brain.send)) return false;
     brains[name] = brain;
     if (chatRef && isFn(brain.onMount)) { try { brain.onMount(chatRef); } catch (e) { warn('a brain could not start: ' + (e && e.message)); } }
     return true;
@@ -820,6 +896,12 @@
      (its newest change still on the page, as before). */
   function undoBy() {
     var d = brains.dash, e = brains.edit, dAt = changedAt('dash'), eAt = changedAt('edit');
+    /* on Promotions, with a post or mail open: the promo brain's change, unless the dash brain's is newer */
+    if (promoOn()) {
+      var pAt = changedAt('promo');
+      if (d && isFn(d.undoLocal) && dAt && dAt > pAt) return 'dash';
+      return isFn(brains.promo.undoLocal) ? 'promo' : '';
+    }
     /* two changes stamped with the same millisecond (only a test is that quick): the one that answered last is newer */
     if (d && isFn(d.undoLocal) && dAt && (dAt > eAt || (dAt === eAt && lastAnswered === 'dash'))) return 'dash';
     return e && isFn(e.undoLocal) ? 'edit' : '';
@@ -850,13 +932,29 @@
   function canEdit() {
     return !!brains.edit && !!pagePlace && pagePlace.page === 'editor' && (!!adapter || !brains.dash);
   }
-  function usable(name) { return name === 'dash' ? !!brains.dash : canEdit(); }
+  /* The promo brain answers only on Promotions, and only while a post or a mail is open in "Edit with AI" there */
+  function promoOn() {
+    var b = brains.promo;
+    if (!b || !pagePlace || pagePlace.page !== 'promotions' || !pagePlace.eventId) return false;
+    try { return isFn(b.active) ? !!b.active() : false; } catch (e) { return false; }
+  }
+  function usable(name) { return name === 'dash' ? !!brains.dash : name === 'promo' ? promoOn() : canEdit(); }
   function send(text, o) {
     o = o || {};
     var p = place();
     qaAsked(text);
     var which = brains.dash ? 'dash' : 'edit';
-    if (canEdit()) {
+    if (promoOn()) {
+      var w;
+      try { w = routePromo(text, o.attachments || []); } catch (e) { w = 'promo'; }
+      if (w === 'ask') { if (chatRef) chatRef.ai(TEXT.goBackWhich, {}); return Promise.resolve({ kind: 'ask' }); }
+      if (w === 'undo') {
+        var byP = undoBy();
+        if (byP) return undoWith(byP, text, o);
+        w = 'promo';
+      }
+      which = w === 'dash' && brains.dash ? 'dash' : 'promo';
+    } else if (canEdit()) {
       try { which = adapter && isFn(adapter.route) ? adapter.route(text, o.attachments || [], p) : route(text, o.attachments || [], p); } catch (e) { which = 'edit'; }
       if (which !== 'undo' && which !== 'ask' && which !== 'dash') which = 'edit';
       if (which === 'dash' && !brains.dash) which = 'edit';
@@ -871,7 +969,7 @@
     if (!usable(which)) return Promise.reject(problem(fill(TEXT.noAnswer, { unchanged: p.page === 'editor' ? TEXT.pageUnchanged : TEXT.unchanged })));
     return callBrain(which, text, o, '').then(function (r) {
       if (!isHandoff(r)) return r;
-      var other = which === 'edit' ? 'dash' : 'edit';
+      var other = which === 'edit' || which === 'promo' ? 'dash' : promoOn() ? 'promo' : 'edit';
       /* the other brain is not here (the editor is not ready): one plain sentence, no second hop */
       if (!usable(other)) { if (chatRef) chatRef.ai(TEXT.cantTell, {}); return r; }
       return callBrain(other, text, o, which).then(function (r2) {
@@ -900,12 +998,27 @@
     (isArr(t.notDone) ? t.notDone : []).slice(0, 12).forEach(function (d) { if (typeof d === 'string' && d) b.note('Not done: ' + oneLine(d, 200)); });
     if (line && said) b.note(line);
   }
+  /* a turn of the post and mailer editors (brain 'promo'), shown where that brain is not (the site editor, the
+     console): its words, and what became of it, in plain lines */
+  var PROMO_LINES = { applied: 'Done in the {what} editor.', partly: 'Partly done in the {what} editor.', failed: 'This change could not be made.',
+    undone: 'Done in the {what} editor, then undone.', applying: 'This change was still being made when the editor was closed.',
+    stopped: 'Stopped — nothing was changed.' };
+  function plainPromoReplay(t, w) {
+    var at = t.at || null, what = t.editor === 'mail' ? 'mailer' : 'post';
+    if (t.question) w.user(str(t.question), { at: at });
+    var said = str(t.answer).replace(/^\s+|\s+$/g, '');
+    var line = own(PROMO_LINES, t.status) ? fill(PROMO_LINES[t.status], { what: what }) : '';
+    var b = w.ai(said || line || ' ', { at: at });
+    if (line && said && b && isFn(b.note)) b.note(line);
+    return true;
+  }
   function replayTurn(t, w) {
     t = t && typeof t === 'object' ? t : {};
-    var name = t.brain === 'dash' ? 'dash' : 'edit';
+    var name = t.brain === 'dash' ? 'dash' : t.brain === 'promo' ? 'promo' : 'edit';
     var b = brains[name];
     if (b && isFn(b.replay) && b.replay(t, w) !== false) return;
     if (name === 'edit') plainEditReplay(t, w);
+    if (name === 'promo') plainPromoReplay(t, w);
   }
   function api(url, method) {
     var auth = root.RevampAuth;
@@ -925,7 +1038,15 @@
     var w = {
       divider: writer.divider, user: writer.user, ai: writer.ai, custom: writer.custom,
       event: setScopeEvent,
-      other: function (t) { var d = brains.dash; return d && isFn(d.replay) ? d.replay(t, w) : false; }
+      other: function (t) {
+        /* the site editor hands back the turns that are not its own: the events side's, and the post and mailer editors' */
+        if (t && t.brain === 'promo') {
+          var p = brains.promo;
+          if (p && isFn(p.replay) && p.replay(t, w) !== false) return true;
+          return plainPromoReplay(t, w);
+        }
+        var d = brains.dash; return d && isFn(d.replay) ? d.replay(t, w) : false;
+      }
     };
     if (canEdit() && isFn(brains.edit.loadHistory)) return brains.edit.loadHistory(w);
     return api('/api/chat/history?eventId=' + encodeURIComponent(p.eventId), 'GET').then(function (r) {
@@ -1035,7 +1156,7 @@
     mounting = false;
     mounted = !!chatRef;
     if (!chatRef) { refused = true; settleReady(null); return null; }
-    ['dash', 'edit'].forEach(function (n) {
+    ['dash', 'edit', 'promo'].forEach(function (n) {
       var b = brains[n];
       if (b && isFn(b.onMount)) { try { b.onMount(chatRef); } catch (e) { warn('a brain could not start: ' + (e && e.message)); } }
     });
@@ -1205,6 +1326,7 @@
     say: say,
     stop: stop,
     route: route,
+    routePromo: routePromo,
     errorFor: errorFor,
     policyFor: policyFor,
     wireAttachments: wireAttachments,
@@ -1224,6 +1346,8 @@
 
   /* the dash brain (dash-bot-client.js) loads first and waits here; a brain loaded later registers itself */
   if (root.RevampDashBot && root.RevampDashBot.brain) registerBrain('dash', root.RevampDashBot.brain);
+  /* the post and mailer editors' brain (promo-ai-client.js, Promotions only) loads first too */
+  if (root.RevampPromoAi && root.RevampPromoAi.brain) registerBrain('promo', root.RevampPromoAi.brain);
   if (doc && doc.readyState === 'loading' && isFn(doc.addEventListener)) doc.addEventListener('DOMContentLoaded', boot);
   else boot();
 })(typeof window !== 'undefined' ? window : this);

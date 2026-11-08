@@ -56,7 +56,7 @@
          markUndone(onUndo), setScope(text), setContext({label, title, prefix?, onClear}|null),
          addAttachment(rec) -> bool, attachments() -> [rec], clearAttachments(), thread() -> element,
          reveal(node) -> bool, setDock(bool), isDocked(), setPhoneSheet('full'|'half'),
-         setQuickIdeas([{label, text}]), relayout() -> lift in px, lift()
+         setQuickIdeas([{label, text}]), setWelcome({heading?, text?, suggestions?}|null), relayout() -> lift in px, lift()
          close() and fold() stop a page that is about to open (as Stay here does), since its Stay here would be
          out of sight; a countdown that starts while the panel is shut shows in the folded bar, with Stay here.
          setBusy(true, text, {onStop}) shows Stop in the busy strip: Stop calls onStop, unlocks the box and marks
@@ -645,10 +645,16 @@
     /* ---------- the welcome (always first in the thread) ---------- */
     var welcomeOpts = opts.welcome || {};
     var welcome = el('div', 'rvc-welcome');
-    welcome.appendChild(el('h3', 'rvc-welcome-h', trim(welcomeOpts.heading) || TEXT.hi(title)));
-    if (trim(welcomeOpts.text)) welcome.appendChild(el('p', 'rvc-welcome-p', trim(welcomeOpts.text)));
-    var suggestions = isArray(opts.suggestions) ? opts.suggestions : [];
-    if (suggestions.length) {
+    /* the page's own welcome, kept so setWelcome(null) can bring it back (Promotions shows the post or mailer
+       editor's while one is open in "Edit with AI", and the events side's again when it closes) */
+    var firstWelcome = { heading: trim(welcomeOpts.heading) || TEXT.hi(title), text: trim(welcomeOpts.text),
+      suggestions: isArray(opts.suggestions) ? opts.suggestions : [] };
+    function drawWelcome(w) {
+      welcome.textContent = '';
+      welcome.appendChild(el('h3', 'rvc-welcome-h', w.heading));
+      if (w.text) welcome.appendChild(el('p', 'rvc-welcome-p', w.text));
+      var suggestions = w.suggestions;
+      if (!suggestions.length) return;
       var sg = el('div', 'rvc-suggest');
       sg.setAttribute('role', 'group');
       sg.setAttribute('aria-label', TEXT.suggestions);
@@ -666,6 +672,14 @@
       }
       welcome.appendChild(sg);
     }
+    /* {heading?, text?, suggestions?}: what it leaves out stays the page's own; null: the page's own again */
+    function setWelcome(w) {
+      if (!w || typeof w !== 'object') { drawWelcome(firstWelcome); return; }
+      drawWelcome({ heading: trim(w.heading) || firstWelcome.heading,
+        text: typeof w.text === 'string' ? trim(w.text) : firstWelcome.text,
+        suggestions: isArray(w.suggestions) ? w.suggestions : firstWelcome.suggestions });
+    }
+    drawWelcome(firstWelcome);
     thread.appendChild(welcome);
 
     /* ---------- quick ideas: under the box once the conversation has begun; they fill, never send ---------- */
@@ -2123,6 +2137,7 @@
       isDocked: function () { return docked; },
       setPhoneSheet: function (kind) { half = kind === 'half'; syncMode(); },
       setQuickIdeas: function (list) { quickIdeas = cleanIdeas(list); drawQuick(); },
+      setWelcome: setWelcome,
       relayout: relayout,
       lift: function () { return liftNow; }
     };
