@@ -330,18 +330,18 @@ async function main() {
     var buttons = html.match(/<button\b[^>]*\bdata-share-preview\b[^>]*>/g) || [];
     check('U.2 ' + pg[0] + ': exactly one [data-share-preview] button', buttons.length === 1, buttons.length);
     var b = buttons[0] || '';
-    // the console's Share is an item of Preview's menu (owner decision 13: one Preview, not two buttons): "Share preview link…"
-    var inMenu = pg[0] === 'edit-event.html';
+    // on both pages Share is an item of Preview's menu (owner decision 13: one Preview, not two buttons): "Share preview link…"
+    var inMenu = true;
     check('U.2 ' + pg[0] + ': it is a type=button, starts hidden, and keeps its name as an aria-label', /type="button"/.test(b) && /\shidden(\s|>)/.test(b) &&
       (inMenu ? /aria-label="Share preview link"/.test(b) : /aria-label="Share preview"/.test(b)) && /id="btn-share-preview"/.test(b));
     if (inMenu) {
       var menuAt = html.indexOf('<span class="ev-menu" id="pv-menu" hidden>'), splitAt = html.indexOf('<span class="pv-split" id="pv-split">');
       var liveAt = html.indexOf('id="pv-live"');
-      check('U.2 edit-event.html: it is the item after Live site in the menu of Preview\'s arrow, inside Preview\'s own group',
+      check('U.2 ' + pg[0] + ': it is the item after Live site in the menu of Preview\'s arrow, inside Preview\'s own group',
         splitAt > 0 && html.indexOf('id="btn-preview"') > splitAt && html.indexOf('id="btn-preview-more"') > splitAt && menuAt > splitAt &&
         liveAt > menuAt && html.indexOf(b) > liveAt && html.indexOf('</span>', html.indexOf(b)) > html.indexOf(b) &&
         /aria-controls="pv-menu"/.test(html.slice(html.indexOf('id="btn-preview-more"') - 80, menuAt)));
-      check('U.2 edit-event.html: its words "Share preview link…" and who it is for are in a <span>, which the menu keeps at every width',
+      check('U.2 ' + pg[0] + ': its words "Share preview link…" and who it is for are in a <span>, which the menu keeps at every width',
         /<span class="mi-words"><span class="mi-name">Share preview link…<\/span><small id="pv-share-desc">A 7-day link for people without an ET login<\/small><\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))) &&
         /aria-describedby="pv-share-desc"/.test(b) &&
         /\.topbar \.ev-menu \[data-share-preview\] > span\.mi-words\{ display:flex; \}/.test(fs.readFileSync(path.join(ROOT, 'edit-event.css'), 'utf8')));
@@ -351,24 +351,21 @@ async function main() {
       check('U.2 ' + pg[0] + ': it comes straight after Preview', prevEnd > 0 && /^\s*(<!--[^]*?-->\s*)?$/.test(between), between.slice(0, 120));
       check('U.2 ' + pg[0] + ': its label "Share preview" is in a <span> (hidden below 720px)', /<span>Share preview<\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))));
     }
-    // the editor-only icon rule is keyed to "#ed-mode-toggle ~ [data-share-preview]": in the editor the mode switch
-    // must be an earlier sibling of the button (same parent), and the console must not have one or it loses its label
+    // the old editor-only icon rule ("#ed-mode-toggle ~ [data-share-preview]") must not reach the menu item: in the
+    // editor Share is no longer a sibling of the mode switch, and the console has no mode switch
     if (pg[0] === 'custom_editor.html') {
-      var toggleAt = html.indexOf('id="ed-mode-toggle"');
-      var toggleEnd = html.indexOf('</div>', html.indexOf('data-mode="manual"', toggleAt)) + '</div>'.length;
-      var gap = html.slice(toggleEnd, html.indexOf(b)).replace(/<!--[^]*?-->/g, '');
-      var depth = 0, lowest = 0;
-      (gap.match(/<\/?(div|span)\b/g) || []).forEach(function (t) { depth += t.charAt(1) === '/' ? -1 : 1; if (depth < lowest) lowest = depth; });
-      check('U.2 custom_editor.html: the mode switch is an earlier sibling of the button (the icon-only rule needs it)',
-        toggleAt > 0 && toggleEnd > toggleAt && html.indexOf(b) > toggleEnd && depth === 0 && lowest === 0, { depth: depth, lowest: lowest });
+      var tAt = html.indexOf('id="ed-mode-toggle"'), tEnd = html.indexOf('</div>', html.indexOf('data-mode="manual"', tAt)) + '</div>'.length;
+      var gap2 = html.slice(tEnd, html.indexOf(b)).replace(/<!--[^]*?-->/g, '');
+      check('U.2 custom_editor.html: Share sits inside Preview\'s group, not beside the mode switch', tAt > 0 && /<span class="pv-split" id="pv-split">/.test(gap2));
     } else {
-      check('U.2 edit-event.html: no #ed-mode-toggle, so the console keeps the "Share preview" label', html.indexOf('ed-mode-toggle') === -1);
+      check('U.2 edit-event.html: no #ed-mode-toggle', html.indexOf('ed-mode-toggle') === -1);
     }
     var tags = html.match(/<script src="share-preview\.js"><\/script>/g) || [];
     check('U.2 ' + pg[0] + ': exactly one share-preview.js script', tags.length === 1 && (html.match(/<script[^>]*share-preview/g) || []).length === 1, tags.length);
     var at = html.indexOf('<script src="share-preview.js">');
     check('U.2 ' + pg[0] + ': the script comes after edit-event-core.js and auth.js', at > html.indexOf('<script src="edit-event-core.js">') && html.indexOf('<script src="edit-event-core.js">') > 0 && at > html.indexOf('<script src="auth.js">'));
-    check('U.2 ' + pg[0] + ': the script sits right after ' + pg[1], html.indexOf('<script src="' + pg[1] + '"></script>\n<script src="share-preview.js"></script>') !== -1);
+    // the shared top-bar menu (topbar-menu.js, owner decision 13) loads between them, on both pages
+    check('U.2 ' + pg[0] + ': the script sits right after ' + pg[1] + ' and the top bar\'s menu', html.indexOf('<script src="' + pg[1] + '"></script>\n<script src="topbar-menu.js"></script>\n<script src="share-preview.js"></script>') !== -1);
     check('U.2 ' + pg[0] + ': the script comes after the button it wires', at > html.indexOf(b));
   });
   check('U.2 the server sends share-preview.js to the pages', require('./access').isServableFile('share-preview.js') === true);

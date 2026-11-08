@@ -7392,7 +7392,7 @@
   }
   function reviewHref(id) { return '/review.html?event=' + encodeURIComponent(eventId) + '&request=' + encodeURIComponent(id); }
 
-  /* the chip beside Save: where this site stands, and the way to it */
+  /* the words under the event's name: where this site stands, and the way to it */
   function renderSiteState() {
     var chip = document.getElementById('site-state'), save = document.getElementById('btn-save'), pub = document.getElementById('btn-publish');
     if (!chip || !save) return;
@@ -7418,6 +7418,12 @@
     else { text = 'Saved · not live yet'; href = saved; title = 'Version ' + v + ' is saved. Open the saved site; it goes live once it is published.'; }
     chip.className = 'site-state ' + kind;
     chip.textContent = text; chip.title = title;
+    /* Preview's menu has the live site while there is one: what visitors see (owner decision 13) */
+    var liveItem = document.getElementById('pv-live');
+    if (liveItem) {
+      liveItem.hidden = !siteInfo.published;
+      if (siteInfo.published) liveItem.setAttribute('href', window.RevampCore && RevampCore.publicUrl ? RevampCore.publicUrl(currentEvent || eventId) : '/e/' + eventId);
+    }
     if (href) { chip.href = href; chip.target = '_blank'; chip.rel = 'noopener'; } else { chip.removeAttribute('href'); }
     /* while ETB2B AI is busy a save would keep half of its change: Save waits, and says why */
     var busy = workSafety.busyLine(aiState);

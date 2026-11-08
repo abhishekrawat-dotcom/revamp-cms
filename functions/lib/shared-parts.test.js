@@ -306,7 +306,7 @@ check('UX-008 the review page: the same state, never the server\'s sentence',
 check('UX-008 the site editor: the same words for a missing event, and no Preview, Publish or rail then',
   /var said = window\.RevampCore && RevampCore\.loadErrorText \? RevampCore\.loadErrorText\(\{ status: status \}\) : null;/.test(EDUI) && /noEvent: true/.test(EDUI) &&
   /document\.body\.classList\.toggle\('ed-no-event', !!spec\.noEvent\);/.test(EDUI) &&
-  EDITOR.indexOf('body.ed-no-event #btn-preview, body.ed-no-event #btn-publish, body.ed-no-event .ed-workspace > .rail{ display:none; }') !== -1 &&
+  EDITOR.indexOf('body.ed-no-event #btn-preview, body.ed-no-event .pv-split, body.ed-no-event #btn-publish, body.ed-no-event .ed-workspace > .rail{ display:none; }') !== -1 &&
   EDUI.indexOf('We could not find this event') === -1);
 (function () {
   var src = fnSrc(EDUI, 'whyNot');

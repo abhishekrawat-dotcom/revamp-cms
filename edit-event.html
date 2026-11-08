@@ -10,7 +10,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <!-- the ?v= mark changes when this page needs a newer stylesheet, so a browser never pairs this page with an older
      copy it kept (the server lets browsers keep stylesheets for 5 minutes) -->
-<link rel="stylesheet" href="edit-event.css?v=bar2">
+<link rel="stylesheet" href="edit-event.css?v=bar3">
 <link rel="stylesheet" href="forms-builder.css">
 <link rel="stylesheet" href="hero-video-ui.css">
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
@@ -72,13 +72,13 @@
   <span class="topbar-acts">
     <!-- Preview (the latest saved version), and beside it a small arrow for the two other ways to see the site, each
          saying who it is for: the live site, and a link for people without an ET login (owner decision 13, v2). The menu
-         opens under the arrow (wireMenus); share-preview.js wires its Share item as it did the old button -->
+         opens under the arrow (topbar-menu.js, shared with the site editor); share-preview.js wires its Share item -->
     <span class="pv-split" id="pv-split">
       <button class="btn btn-secondary" type="button" id="btn-preview">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
         <span>Preview</span>
       </button>
-      <button class="btn btn-secondary pv-more" type="button" id="btn-preview-more" hidden aria-expanded="false" aria-controls="pv-menu" aria-label="More ways to preview" title="More ways to preview">
+      <button class="btn btn-secondary pv-more" type="button" id="btn-preview-more" hidden data-topbar-menu data-follows="btn-preview" aria-expanded="false" aria-controls="pv-menu" aria-label="More ways to preview" title="More ways to preview">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <span class="ev-menu" id="pv-menu" hidden>
@@ -127,6 +127,7 @@
 <!-- the banner video: its rules (shared with the server) and its settings (shared with the site editor) -->
 <script src="templates/_shared/rv-hero-video-core.js"></script>
 <script src="hero-video-ui.js"></script>
+<script src="topbar-menu.js"></script>
 <script src="share-preview.js"></script>
 <!-- the words both activity logs use (window.RevampActivityWords, UX-015) -->
 <script src="activity-words.js"></script>
@@ -6909,8 +6910,6 @@
   /* Preview, Publish and the rail only mean something once there is an event behind them. */
   function setChrome(ready){
     $('btn-preview').hidden = !ready;
-    $('btn-preview-more').hidden = !ready;
-    if ($('pv-split').classList) $('pv-split').classList.toggle('has-more', ready);
     $('btn-publish').hidden = !ready;
     $('rail').hidden = !ready;
     if (!ready) $('ev-save').hidden = true;
@@ -6942,53 +6941,6 @@
     C.renderLoadError($('view'), err, { kind: kind, none: 'the event you want to edit', title: 'ev-name', onRetry: init });
   }
 
-  /* The top bar's small menu (owner decision 13): Preview's other ways to see the site. Its arrow opens a box under
-     it; pressing it again, Escape, a press or the focus anywhere else, or choosing an item closes it. Opened from the
-     keyboard, the focus goes to its first item. */
-  var MENUS = [['btn-preview-more', 'pv-menu']];
-  function setMenu(btn, box, open){
-    if (!btn || !box) return;
-    box.hidden = !open;
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-  function closeMenus(except){
-    MENUS.forEach(function(m){
-      var b = $(m[0]), box = $(m[1]);
-      if (b && box && b !== except && !box.hidden) setMenu(b, box, false);
-    });
-  }
-  function wireMenus(){
-    document.addEventListener('click', function(e){
-      var t = e.target && e.target.closest ? e.target : null;
-      var btn = t ? t.closest('#btn-preview-more') : null;
-      if (btn){
-        var box = $(btn.getAttribute('aria-controls'));
-        closeMenus(btn);
-        setMenu(btn, box, !!(box && box.hidden));
-        if (box && !box.hidden && e.detail === 0){
-          var first = box.querySelector('a:not([hidden]), button:not([hidden])');
-          if (first) first.focus();
-        }
-        return;
-      }
-      /* a press on the menu's own edge keeps it open */
-      if (t && t.closest('.ev-menu') && !t.closest('a, button')) return;
-      closeMenus(null);
-    });
-    document.addEventListener('focusin', function(e){
-      var t = e.target;
-      if (t && t.closest && !t.closest('.ev-menu, #btn-preview-more')) closeMenus(null);
-    });
-    document.addEventListener('keydown', function(e){
-      if (e.key !== 'Escape') return;
-      var open = document.querySelector('.ev-menu:not([hidden])');
-      if (!open) return;
-      var btn = document.querySelector('[aria-controls="' + open.id + '"]');
-      setMenu(btn, open, false);
-      if (btn) btn.focus();
-    });
-  }
-
   var booted = false;
 
   function boot(){
@@ -7004,7 +6956,6 @@
 
       $('btn-preview').onclick = openPreview;
       $('btn-publish').onclick = doPublish;
-      wireMenus();
 
       /* one listener for every sub-tab and in-view link, so they work on whatever #view is showing —
          a loaded view, "Loading…" or "Couldn’t load this" alike */

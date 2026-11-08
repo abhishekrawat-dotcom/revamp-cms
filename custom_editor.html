@@ -7,7 +7,7 @@
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="edit-event.css">
+<link rel="stylesheet" href="edit-event.css?v=bar3">
 <link rel="stylesheet" href="forms-builder.css">
 <link rel="stylesheet" href="hero-video-ui.css">
 <link rel="stylesheet" href="etb2b-chat.css">
@@ -697,15 +697,18 @@
   .tpl-load-error .btn-secondary:hover{ background:#F3EEED; }
   body.ed-load-failed .ed-rail, body.ed-load-failed .side-panel{ display:none; }
   /* no event at all (UX-008): no Preview, no Publish and no event rail, only the way back */
-  body.ed-no-event #btn-preview, body.ed-no-event #btn-publish, body.ed-no-event .ed-workspace > .rail{ display:none; }
+  body.ed-no-event #btn-preview, body.ed-no-event .pv-split, body.ed-no-event #btn-publish, body.ed-no-event .ed-workspace > .rail{ display:none; }
   /* The event's name is the one proof of which site is open: it keeps 180px whatever else is in the bar, and the
      labels around it give way first — Back to events, then Preview's word and the mode switch's long names
      (UX-078). The rest of the meta line is in its tooltip. */
   .topbar .ev-title{ padding-right:4px; min-width:180px; flex:1 1 220px; }
+  /* above the tools row under it (.ed-rail, 40) and the side panels (35), so Preview's menu opens over them; still
+     under the editor's own pop-ups and dialogs (80 and up) */
+  .ed > .topbar{ z-index:50; }
   .topbar [data-rv-account]{ flex-shrink:0; }
   /* the words go out of sight, not out of the page: they stay the link's name for screen readers */
   @media (max-width: 1366px){ .topbar .back-btn{ padding:7px 9px; } .topbar .back-btn span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; } }
-  @media (max-width: 1180px){ #btn-preview span{ display:none; } #btn-preview{ padding-left:10px; padding-right:10px; } }
+  @media (max-width: 1180px){ #btn-preview > span{ display:none; } #btn-preview{ padding-left:10px; padding-right:10px; } }
   @media (max-width: 900px){ .topbar .ev-title{ min-width:120px; } }
 
   /* ---------- while the site opens (editor-template-ui.js setOpening, UX-077) ----------
@@ -764,15 +767,19 @@
   .range-value{ float:right; font-family:var(--font-mono); font-size:11px; color:var(--text-faint); text-transform:none; letter-spacing:0; }
   .button-settings-pop .pop-actions{ display:flex; justify-content:flex-en d; gap:7px; margin-top:13px; }
   /* ---------- publish modal ---------- */
-  .site-state{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:5px 10px; border-radius:999px; white-space:nowrap;
-    background: var(--surface-2, var(--surface)); color: var(--text-muted); border:1px solid var(--border); text-decoration:none; }
-  .site-state::before{ content:''; width:7px; height:7px; border-radius:50%; background: currentColor; opacity:.75; }
-  .site-state.warn{ background: var(--warn-soft); color: var(--warn); border-color: transparent; }
-  .site-state.ok{ background: var(--ok-soft); color: var(--ok); border-color: transparent; }
-  .site-state.wait{ color: var(--text); border-style: dashed; }
-  a.site-state[href]:hover{ filter: brightness(.97); text-decoration: underline; }
+  /* where the site stands: quiet words after the dates under the event's name (owner decision 13, as the console's
+     "what is saved"); only what asks for something takes a colour: unsaved (amber), rejected (red), waiting */
+  .ed-sub{ display:flex; align-items:center; gap:6px; min-width:0; margin-top:1px; }
+  .ed-sub .meta{ min-width:0; flex:0 1000 auto; margin-top:0; }
+  .site-state{ display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; font-size:11.5px; font-weight:500; white-space:nowrap;
+    color: var(--text-muted); text-decoration:none; }
+  .topbar .site-state[hidden]{ display:none; }
+  .ed-sub .meta:not(:empty) + .site-state::before{ content:'·'; }
+  .site-state.warn{ color: var(--warn); font-weight:700; }
+  .site-state.wait{ color: var(--text); font-weight:600; }
+  a.site-state[href]:hover{ text-decoration: underline; }
   /* the last request was rejected (UX-103) */
-  .site-state.bad{ background: var(--accent-soft); color: var(--text); border-color: transparent; }
+  .site-state.bad{ color: var(--accent-strong); font-weight:700; }
   .scrim{ position: fixed; inset: 0; background: rgba(30,26,10,.5); z-index: 90; display:flex; align-items:center; justify-content:center; padding: 22px; }
   .modal{ background: var(--surface); border: 1px solid var(--border); border-radius: 14px; width: 100%; max-width: 420px; box-shadow: var(--shadow-lg); overflow:hidden; text-align:center; }
   .modal-body{ padding: 30px 26px 22px; display:flex; flex-direction:column; align-items:center; gap:12px; }
@@ -1136,9 +1143,8 @@
   /* ---------- a phone or a narrow window (UX-002) ----------
      Below 900px the top bar takes two rows, so nothing is pushed off the screen (a tablet held upright laid it out
      856px wide): the way back, the event's name, the mode switch, the light/dark switch and the account above (order
-     4, the default for the bar's own parts); Preview, Share preview, where the site stands (it takes what room is
-     left, so it never pushes Publish onto a third row), Save and Publish below, Save and Publish with an icon beside
-     their words. Every control there is a 40px tap target.
+     4, the default for the bar's own parts; where the site stands is under the name); Preview with its arrow, Save and
+     Publish below, Save and Publish with an icon beside their words. Every control there is a 40px tap target.
      Below 720px, a phone: the editor opens in Edit with AI (editor-ai-mode.js startMode), the site at the phone's own
      width and ETB2B AI as a sheet along the bottom. What needs a big screen is put away in both modes: the tools row
      (Add, Sections, Layers, Theme, Forms, More) with the panels it opens, and the element and section pills with their
@@ -1150,15 +1156,16 @@
     .topbar .back-btn{ order:1; min-width:40px; min-height:40px; justify-content:center; }
     .topbar .ev-title{ order:2; flex:1 1 0; min-width:0; padding-right:0; }
     .topbar .ev-title .meta{ display:none; }
+    .ed-sub .meta:not(:empty) + .site-state::before{ content:none; }
     .topbar .topbar-acts > *{ order:4; }
     .topbar #ed-mode-toggle{ order:3; }
     .topbar::after{ content:''; order:5; flex-basis:100%; height:0; }
-    .topbar #btn-preview, .topbar #btn-share-preview, .topbar .site-state{ order:6; margin-top:6px; }
+    .topbar .pv-split{ order:6; margin-top:6px; margin-right:auto; }
+    .topbar .pv-split .ev-menu{ right:auto; left:0; }
     .topbar #btn-save, .topbar #btn-publish{ order:7; margin-top:6px; }
     .topbar .btn{ min-height:40px; }
-    .topbar #btn-preview, .topbar #btn-share-preview{ min-width:40px; padding-left:10px; padding-right:10px; }
-    .topbar .site-state:not([hidden]){ display:block; flex:1 1 0; min-width:0; margin-right:auto; overflow:hidden; text-overflow:ellipsis; line-height:38px; padding-top:0; padding-bottom:0; }
-    .topbar .site-state::before{ display:inline-block; vertical-align:middle; margin:-2px 6px 0 0; }
+    .topbar #btn-preview{ min-width:40px; padding-left:10px; padding-right:10px; }
+    .topbar .pv-more{ min-width:40px; }
     .mode-toggle button{ height:40px; min-width:40px; justify-content:center; }
     #btn-save::before, #btn-publish::before{ content:''; width:15px; height:15px; flex-shrink:0; background:currentColor;
       -webkit-mask:var(--btn-ic) center / contain no-repeat; mask:var(--btn-ic) center / contain no-repeat; }
@@ -1199,7 +1206,13 @@
     </a>
     <span class="ev-title">
       <h1 id="ed-event-name">&nbsp;</h1>
-      <span class="meta" id="ed-event-meta"></span>
+      <!-- the dates and place, then where the site stands in quiet words (unsaved / saved, not live yet / waiting for
+           approval / live), a link to it when there is one: under the name, not a pill among the buttons (owner
+           decision 13). Painted by editor-template-ui.js renderSiteState -->
+      <span class="ed-sub">
+        <span class="meta" id="ed-event-meta"></span>
+        <a class="site-state" id="site-state" hidden></a>
+      </span>
     </span>
     <!-- Only what acts on this site is up here (UX-078): the AI markers switch is in the Layers panel and the page
          switcher is in the tools row. The light/dark switch and the account end the bar, as on every page (UX-007):
@@ -1218,22 +1231,35 @@
           <span class="mt-long" aria-hidden="true">Edit myself</span><span class="mt-short" aria-hidden="true">Myself</span>
         </button>
       </div>
-      <!-- start disabled: only enabled once the canvas has actually mounted AND (template mode) its AI
-           content fill has finished — see editor-template-ui.js's boot(). Publishing/previewing before
-           that captures the template's raw, unfilled placeholder markup, not the real content. -->
-      <button class="btn btn-secondary" type="button" id="btn-preview" aria-label="Preview" title="Open the site as it is now in a new tab" disabled>
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
-        <span>Preview</span>
-      </button>
-      <!-- a link to the site as last saved for people with no ET account; share-preview.js shows it once Preview is ready -->
-      <button class="btn btn-secondary" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview" title="Make a link anyone can open, without signing in, to see the site as last saved">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
-        <span>Share preview</span>
-      </button>
-      <!-- where the site stands (unsaved / saved, not live yet / waiting for approval / live), and Save: the
-           only thing that keeps changes on the server — see editor-template-ui.js's saveToStaging(). Publish's words
-           come from publish-flow.js buttonState, the console's own (UX-105). -->
-      <a class="site-state" id="site-state" hidden></a>
+      <!-- Preview (the site as it is now), and beside it a small arrow for the two other ways to see the site, each
+           saying who it is for: the live site, and a link for people without an ET login (owner decision 13, as in
+           the console). topbar-menu.js opens the menu and wakes the arrow with Preview; share-preview.js wires Share -->
+      <span class="pv-split" id="pv-split">
+        <!-- start disabled: only enabled once the canvas has actually mounted AND (template mode) its AI
+             content fill has finished — see editor-template-ui.js's boot(). Publishing/previewing before
+             that captures the template's raw, unfilled placeholder markup, not the real content. -->
+        <button class="btn btn-secondary" type="button" id="btn-preview" aria-label="Preview" title="Open the site as it is now in a new tab" disabled>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+          <span>Preview</span>
+        </button>
+        <button class="btn btn-secondary pv-more" type="button" id="btn-preview-more" hidden disabled data-topbar-menu data-follows="btn-preview" aria-expanded="false" aria-controls="pv-menu" aria-label="More ways to preview" title="More ways to preview">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <span class="ev-menu" id="pv-menu" hidden>
+          <!-- while the site is live: the public site, what visitors see (renderSiteState sets the address) -->
+          <a class="ev-menu-item" id="pv-live" target="_blank" rel="noopener" hidden aria-describedby="pv-live-desc">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+            <span class="mi-words"><span class="mi-name">Live site ↗</span><small id="pv-live-desc">What visitors see now</small></span>
+          </a>
+          <button class="ev-menu-item" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview link" aria-describedby="pv-share-desc" title="Make a link anyone can open, without signing in, to see the site as last saved">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
+            <span class="mi-words"><span class="mi-name">Share preview link…</span><small id="pv-share-desc">A 7-day link for people without an ET login</small></span>
+          </button>
+        </span>
+      </span>
+      <!-- Save: the only thing that keeps changes on the server — see editor-template-ui.js's saveToStaging(). Where
+           the site stands is under the event's name (#site-state). Publish's words come from publish-flow.js
+           buttonState, the console's own (UX-105). -->
       <button class="btn btn-secondary" type="button" id="btn-save" title="Save (Ctrl/⌘ + S): keeps your changes on the server. Nothing goes live until it is published." hidden disabled>Save</button>
       <button class="btn btn-primary" type="button" id="btn-publish" disabled>Send for approval…</button>
       <!-- the light/dark switch (theme-toggle.js), then the signed-in user's avatar and Sign out (auth.js) -->
@@ -1509,6 +1535,7 @@
 <script src="editor-ai-picture.js"></script>
 <script src="editor-template-ui.js"></script>
 <script src="editor-ai-mode.js"></script>
+<script src="topbar-menu.js"></script>
 <script src="share-preview.js"></script>
 <!-- ETB2B AI: the chat kit, the events side, the shell, then the editor's part (it waits for the site) -->
 <script src="etb2b-chat.js"></script>
