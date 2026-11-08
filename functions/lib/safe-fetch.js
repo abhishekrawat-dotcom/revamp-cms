@@ -2,10 +2,18 @@
 
      checkPublicUrl(url)        -> Promise<{ ok, reason, code }>       (never rejects)
      safeFetch(url, options)    -> Promise<{ status, headers, body: Buffer, finalUrl }>
-       options: { timeoutMs = 15000, maxBytes = 5 MB, maxRedirects = 3, accept, headers }
+       options: { timeoutMs = 15000, maxBytes = 5 MB, maxRedirects = 3, accept, headers, method = 'GET', headersOnly }
          accept: content types the answer may have — "text/html", a prefix "image/", or a RegExp
+         method: 'GET' or 'HEAD' (a HEAD answer has no body: the site check asks whether a link answers at
+                 all, without downloading what it leads to — link-check.js)
+         headersOnly: true resolves as soon as the status and headers arrive, with an empty body, and reads none
+                 of it (a HEAD always does): the site check needs to know only how an address answers
        rejects with an Error whose message can be shown to the user and whose .code is one of
        "bad-url" | "blocked-address" | "too-large" | "timeout" | "bad-type" | "unreachable"
+       and, for a caller that words it (link-check.js): .url, the address refused, and .hops, how many redirects
+       led there (0: the address asked for); .status on "too-large", the status of the answer that was too large;
+       .redirects on "unreachable" when it redirected too many times: 'loop' when it came back to an address it had
+       already been to, else 'too-many'
 
    The rules, applied to the first address and again to every redirect:
      - http or https, on the standard port, with no user name or password in the address;
@@ -123,7 +131,7 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
     var timer = setTimeout(function () { finish(fetchError('timeout')); }, Math.max(1, deadlineAt - Date.now()));
 
     var options = {
-      method: 'GET', host: target.host, port: pinned.port, path: url.pathname + url.search, headers: headers, agent: false,
+      method: opts.method, host: target.host, port: pinned.port, path: url.pathname + url.search, headers: headers, agent: false,
       /* the connection goes to the address that was checked; the name is never resolved again */
       lookup: function (hostname, lookupOptions, cb) {
         if (typeof lookupOptions === 'function') { cb = lookupOptions; lookupOptions = {}; }
@@ -143,8 +151,18 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
         return finish(null, { redirect: String(res.headers.location) });
       }
       if (status >= 200 && status < 300 && !typeAccepted(opts.accept, res.headers['content-type'])) return finish(fetchError('bad-type'));
+      /* A HEAD answer has no body, whatever its headers say: the size a GET would send, and how a GET's body would
+         be compressed. Passing that empty body to gunzip failed (Wikipedia, GitHub and ET all name an encoding on
+         HEAD), so every HEAD came back "unreachable". It, and a caller that wants only the status and headers
+         (headersOnly), resolves here and reads nothing. */
+      if (opts.method === 'HEAD' || opts.headersOnly) {
+        res.resume();
+        return finish(null, { status: status, headers: res.headers, body: Buffer.alloc(0), finalUrl: url.href });
+      }
+      /* too large carries the status it came with: a 404 page can be large too, and is still a 404 */
+      function tooLarge() { return Object.assign(fetchError('too-large'), { status: status }); }
       var declared = +res.headers['content-length'];
-      if (declared && declared > opts.maxBytes && !res.headers['content-encoding']) return finish(fetchError('too-large'));
+      if (declared && declared > opts.maxBytes && !res.headers['content-encoding']) return finish(tooLarge());
 
       var encoding = String(res.headers['content-encoding'] || '').trim().toLowerCase();
       var stream = res;
@@ -156,7 +174,7 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
       var chunks = [], size = 0;
       stream.on('data', function (chunk) {
         size += chunk.length;
-        if (size > opts.maxBytes) return finish(fetchError('too-large'));
+        if (size > opts.maxBytes) return finish(tooLarge());
         chunks.push(chunk);
       });
       stream.on('error', function () { finish(fetchError('unreachable')); });
@@ -172,6 +190,8 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
 function safeFetch(raw, options) {
   options = options || {};
   var opts = {
+    method: options.method === 'HEAD' ? 'HEAD' : 'GET',
+    headersOnly: options.headersOnly === true,
     maxBytes: options.maxBytes > 0 ? options.maxBytes : DEFAULT_MAX_BYTES,
     accept: options.accept || null,
     headers: options.headers || null
@@ -179,18 +199,25 @@ function safeFetch(raw, options) {
   var maxRedirects = options.maxRedirects >= 0 ? options.maxRedirects : DEFAULT_MAX_REDIRECTS;
   var deadlineAt = Date.now() + (options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_TIMEOUT_MS);
 
+  /* been: the addresses asked so far, to tell a loop from a long chain of redirects (the same requests either way) */
+  var been = [];
   function hop(address, redirectsLeft) {
     if (Date.now() >= deadlineAt) return Promise.reject(fetchError('timeout'));
     var lookupTimer, lookupTimeout = new Promise(function (resolve, reject) {
       lookupTimer = setTimeout(function () { reject(fetchError('timeout')); }, Math.max(1, deadlineAt - Date.now()));
     });
+    var hops = been.length;
     return Promise.race([resolvePublicUrl(address, options.lookup), lookupTimeout]).finally(function () { clearTimeout(lookupTimer); }).then(function (target) {
-      if (!target.ok) throw Object.assign(new Error(target.reason), { code: target.code });
+      if (!target.ok) throw Object.assign(new Error(target.reason), { code: target.code, url: String(address), hops: hops });
+      been.push(target.url.href);
       return requestOnce(target, opts, deadlineAt, options._connectTo).then(function (answer) {
         if (!answer.redirect) return answer;
-        if (redirectsLeft <= 0) throw fetchError('unreachable', 'It redirects too many times.');
         var next;
         try { next = new URL(answer.redirect, target.url).href; } catch (e) { throw fetchError('unreachable'); }
+        if (redirectsLeft <= 0) {
+          var loop = been.indexOf(next) !== -1;
+          throw Object.assign(fetchError('unreachable', loop ? 'It redirects round in a circle.' : 'It redirects too many times.'), { redirects: loop ? 'loop' : 'too-many' });
+        }
         return hop(next, redirectsLeft - 1);
       });
     });
