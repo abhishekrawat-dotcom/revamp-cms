@@ -93,7 +93,14 @@ function fakeFb() {
         return Promise.resolve({ docs: list, size: list.length, empty: !list.length });
       } };
   }
+  /* transactions one after another, as Firestore's serializable transactions behave for one document */
+  var txQueue = Promise.resolve();
   function runTransaction(fn) {
+    var run = txQueue.then(function () { return runOne(fn); });
+    txQueue = run.then(null, function () {});
+    return run;
+  }
+  function runOne(fn) {
     var writes = [];
     var tx = {
       get: function (ref) { return ref.get(); },
@@ -288,6 +295,49 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   r = await call('POST', '/api/chat-edit', { eventId: AUTO, instruction: 'add Priya as a speaker', sections: SECTIONS });
   await wait();
   check('L.6 what the editor cannot do here (sent to Content): could not do', entries().some(function (e) { return e.brain === 'edit' && e.outcome === 'could-not' && e.rule === 'sent to content:speakers' && e.intent === 'add speaker'; }));
+
+  /* The race the browser check found: the editor applies a change about a second after the answer, while its entry
+     waits for the first list of event names. The report waits for this process's own write, and looks again a
+     little later for one another process is writing; "applied" then "undone" a moment apart end undone. */
+  var realCol = FB.db.collection, savedRetry = L.CAPS.outcomeRetryMs;
+  T.resetCaches();
+  FB.db.collection = function (n) {
+    var c = realCol(n);
+    if (n !== 'events') return c;
+    var sel = c.select;
+    c.select = function () { var q = sel.apply(c, arguments), get = q.get; q.get = function () { return wait(60).then(get); }; return q; };
+    return c;
+  };
+  var slowId = 'RaceTurn0000000001';
+  var slow = L.recordTurn(FB, { brain: 'edit', decoded: { uid: 'u-race', email: 'race@timesinternet.in', name: 'Race Test' }, eventId: AUTO, eventName: 'Autotech Summit 2026',
+    page: 'editor', intent: 'swap banner', words: 'swap the banner', did: { kind: 'edit', target: 'design' }, outcome: 'pending', turnId: slowId });
+  var applied = L.recordOutcome(FB, { brain: 'edit', turnId: slowId, status: 'applied', decoded: { uid: 'u-race', email: 'race@timesinternet.in' } });
+  check('L.6 race: the report came before the entry was written', !entryOfTurn('edit', slowId));
+  await Promise.all([slow, applied]);
+  FB.db.collection = realCol;
+  check('L.6 race: …it waited for this process\'s own write, and the entry is done', !!entryOfTurn('edit', slowId) && entryOfTurn('edit', slowId).outcome === 'done', entryOfTurn('edit', slowId));
+  L.CAPS.outcomeRetryMs = [30, 60];
+  var farId = 'RaceTurn0000000002';
+  var far = L.recordOutcome(FB, { brain: 'dash', turnId: farId, status: 'undone', decoded: { uid: 'u-race', email: 'race@timesinternet.in' } });
+  await wait(10);
+  await T.writeEntry(FB, T.entryOf({ brain: 'dash', decoded: { uid: 'u-race', email: 'race@timesinternet.in', name: 'Race Test' }, eventId: AUTO, page: 'console',
+    intent: 'open speakers', words: 'open the speakers', outcome: 'done', turnId: farId, known: [] }, Date.now() - 5000));
+  await far;
+  check('L.6 race: an entry another process writes a moment later is found on the next look, undone with how soon',
+    entryOfTurn('dash', farId).outcome === 'undone' && entryOfTurn('dash', farId).undoneAfterSec >= 4, entryOfTurn('dash', farId));
+  var never = Date.now();
+  await L.recordOutcome(FB, { brain: 'dash', turnId: 'RaceTurn0000000003', status: 'done', decoded: { uid: 'u-race', email: 'race@timesinternet.in' } });
+  check('L.6 race: a turn with no entry is looked for a bounded number of times, then let go', Date.now() - never < 1000 && !entryOfTurn('dash', 'RaceTurn0000000003'));
+  var both = 'RaceTurn0000000004';
+  await T.writeEntry(FB, T.entryOf({ brain: 'edit', decoded: { uid: 'u-race', email: 'race@timesinternet.in', name: 'Race Test' }, eventId: AUTO, page: 'editor',
+    intent: 'swap banner', words: 'swap the banner', outcome: 'pending', turnId: both, known: [] }, Date.now()));
+  await Promise.all([L.recordOutcome(FB, { brain: 'edit', turnId: both, status: 'undone', decoded: { uid: 'u-race' } }),
+    L.recordOutcome(FB, { brain: 'edit', turnId: both, status: 'applied', decoded: { uid: 'u-race' } })]);
+  check('L.6 race: "undone" and a late "applied" together leave it undone (read and changed in one transaction)', entryOfTurn('edit', both).outcome === 'undone', entryOfTurn('edit', both));
+  L.CAPS.outcomeRetryMs = savedRetry;
+  /* this race's person and notes are taken out again, so the report's counts below are the ones they were written for */
+  Object.keys(FB.docs).forEach(function (k) { var d = FB.docs[k]; if (/~?u-race~/.test(k) || (d && d.uid === 'u-race')) delete FB.docs[k]; });
+  T.resetGate();
 
   /* ===== L.7 a complaint ===== */
   scripted['dash-bot'].push({ kind: 'reply', events: [AUTO], text: 'Sorry about that.', intent: 'report broken form' });

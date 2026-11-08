@@ -69,6 +69,10 @@ var CAPS = {
   noteWindowMs: 10 * 60 * 1000, notePerPerson: 12, noteAll: 400, noteDedupeMs: 10 * 60 * 1000,
   errorChars: 300, stackChars: 900, askedChars: 300,
   namesMs: 10 * 60 * 1000,    // how long the list of event names used for stripping is kept in this process
+  /* a page's report can come before its turn's entry is written (the site editor applies a change about a second
+     after the answer, while the first list of event names may still be read): the entry is looked for again after
+     these waits, so "done" is never lost to that race when the report reaches another server process */
+  outcomeRetryMs: [1500, 4000],
   sweepEveryMs: 60 * 60 * 1000, sweepBatch: 200
 };
 var DAY_MS = 86400000, IST_MS = 330 * 60000;
@@ -363,11 +367,15 @@ function knownEvents(fb) {
    known: every event the person can see, when the brain has read them (the dash brain); without it the names are
    read here (knownEvents). A message that says something is not working also becomes a QA note.
    -> Promise<entry|null>, which never rejects. */
+/* the entries this process is writing, by turn key, so a report of what became of that turn waits for its entry
+   instead of missing it (recordOutcome); each one is let go as soon as its write ends, so this never grows */
+var writing = {};
 function recordTurn(fb, t) {
   if (!fb || !fb.db || !isObj(t)) return Promise.resolve(null);
   var nowMs = clock.now();
+  var key = BRAINS[t.brain] && TURN_ID_RE.test(str(t.turnId)) ? t.brain + ':' + t.turnId : '';
   var known = Array.isArray(t.known) ? Promise.resolve(t.known) : knownEvents(fb);
-  return known.then(function (list) {
+  var done = known.then(function (list) {
     var entry = entryOf(Object.assign({}, t, { known: list }), nowMs);
     return writeEntry(fb, entry).then(function () {
       if (!entry.complaint) return entry;
@@ -381,6 +389,9 @@ function recordTurn(fb, t) {
     warn('turn', 'a turn was not recorded — ' + (err && err.message));
     return null;
   });
+  if (!key) return done;
+  writing[key] = done;
+  return done.then(function (entry) { if (writing[key] === done) delete writing[key]; return entry; });
 }
 
 /* What became of a turn, from the page's own report (the routes have already checked the turn is the reporter's):
@@ -391,22 +402,37 @@ function recordOutcome(fb, o) {
   var brain = BRAINS[o.brain] ? o.brain : '', turnId = str(o.turnId);
   var outcome = outcomeOf(brain, o.status, o.note);
   if (!brain || !TURN_ID_RE.test(turnId) || !outcome) return Promise.resolve(null);
-  var nowMs = clock.now(), uid = uidOf(o.decoded);
-  return Promise.resolve().then(function () {
-    return fb.db.collection(RECORD).where('turnKey', '==', brain + ':' + turnId).limit(1).get();
-  }).then(function (snap) {
-    var doc = snap && snap.docs && snap.docs[0];
+  /* nowMs: when the report came, so "how soon" is the person's, never the time spent waiting for the entry */
+  var uid = uidOf(o.decoded), key = brain + ':' + turnId, nowMs = clock.now();
+  function find(waits) {
+    return fb.db.collection(RECORD).where('turnKey', '==', key).limit(1).get().then(function (snap) {
+      var doc = snap && snap.docs && snap.docs[0];
+      if (doc || !waits.length) return doc || null;
+      return new Promise(function (resolve) { setTimeout(resolve, waits[0]); }).then(function () { return find(waits.slice(1)); });
+    });
+  }
+  /* this process's own write of the entry first, when it is still going; then the store, looked at again a little
+     later when the entry is not there yet (another process is writing it) */
+  return Promise.resolve(writing[key]).then(function () { return find(arr(CAPS.outcomeRetryMs).slice()); }).then(function (doc) {
     if (!doc) return null;
-    var e = doc.data() || {};
-    /* only the person's own entry, and a change once undone is not "done" again by a late report */
-    if (e.uid !== uid || (e.outcome === 'undone' && outcome === 'done')) return null;
-    var patch = { outcome: outcome, updatedAt: iso(nowMs) };
-    var why = outcome === 'refused' ? 'other-event' : line(o.note || arr(o.notDone)[0], CAPS.ruleChars);
-    if ((outcome === 'failed' || outcome === 'refused') && why) patch.rule = strip(why, { hereId: e.eventId, max: CAPS.ruleChars });
-    var at = Date.parse(e.at);
-    if (outcome === 'undone' && !isNaN(at)) patch.undoneAfterSec = Math.max(0, Math.round((nowMs - at) / 1000));
-    return doc.ref.update(patch).then(function () {
-      if (outcome !== 'undone' || e.outcome === 'undone') return null;
+    /* read and changed in one transaction: an "applied" and an "undone" sent a moment apart never leave the entry
+       "done" because the earlier one was written last */
+    var e = null, patch = null;
+    return fb.db.runTransaction(function (tx) {
+      return tx.get(doc.ref).then(function (now) {
+        e = now.exists ? (now.data() || {}) : null;
+        patch = null;
+        /* only the person's own entry, and a change once undone is not "done" again by a late report */
+        if (!e || e.uid !== uid || (e.outcome === 'undone' && outcome === 'done')) return;
+        patch = { outcome: outcome, updatedAt: iso(nowMs) };
+        var why = outcome === 'refused' ? 'other-event' : line(o.note || arr(o.notDone)[0], CAPS.ruleChars);
+        if ((outcome === 'failed' || outcome === 'refused') && why) patch.rule = strip(why, { hereId: e.eventId, max: CAPS.ruleChars });
+        var at = Date.parse(e.at);
+        if (outcome === 'undone' && !isNaN(at)) patch.undoneAfterSec = Math.max(0, Math.round((nowMs - at) / 1000));
+        tx.update(doc.ref, patch);
+      });
+    }).then(function () {
+      if (!patch || outcome !== 'undone' || e.outcome === 'undone') return null;
       return writeNote(fb, noteOf('undo', {
         decoded: o.decoded, brain: e.brain, eventId: e.eventId, eventName: e.eventName, page: e.page, tab: e.tab, intent: e.intent,
         asked: e.words, did: e.did, happened: 'undone after ' + (patch.undoneAfterSec != null ? patch.undoneAfterSec + ' s' : 'a while'),
