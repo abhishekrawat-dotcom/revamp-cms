@@ -20,6 +20,12 @@ var promo = require('./promo');
 var llm = require('./llm');
 var chatPicture = require('./chat-picture');
 var T = promoAi._test;
+/* the record of what people ask (lib/ai-learn.js): what this brain hands it is caught here, never written */
+var aiLearn = require('./ai-learn');
+var realRecordTurn = aiLearn.recordTurn, realRecordOutcome = aiLearn.recordOutcome;
+var learnt = { turns: [], outcomes: [] };
+aiLearn.recordTurn = function (fb, t) { learnt.turns.push(t); return Promise.resolve(null); };
+aiLearn.recordOutcome = function (fb, o) { learnt.outcomes.push(o); return Promise.resolve(null); };
 
 var passed = 0, failed = 0;
 function check(name, ok, detail) { if (ok) { passed++; return; } failed++; console.error('FAIL ' + name + (detail !== undefined ? ' — ' + JSON.stringify(detail) : '')); }
@@ -331,6 +337,73 @@ var STATE = { design: 'Speaker card', width: 1080, height: 1080, words: [{ targe
   check('P.5 an Undo keeps what had been done, and says so in the History', h.store.turns['u1/PROMOTURN1234'].status === 'undone' && same(h.store.turns['u1/PROMOTURN1234'].done, ['Wrote the subject line']) &&
     /Undid an ETB2B AI change to a mail/.test(h.logs[0].detail));
 
+  /* ======== P.7 the record of what people ask (lib/ai-learn.js, owner decision 11) ======== */
+  function reqUa(body) { return { body: body, headers: { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/131.0 Safari/537.36' } }; }
+  learnt.turns.length = 0; learnt.outcomes.length = 0;
+  h = harness(); calls.length = 0;
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Shorten the title', place: { page: 'console', eventId: 'qa-ux-b18-ai-x' }, state: STATE }), {});
+  await settle();
+  check('P.7 the fail-closed refusal asked no model: not an AI turn, not recorded', h.sent[0].body.kind === 'refuse' && calls.length === 0 && learnt.turns.length === 0, learnt.turns);
+  h = harness();
+  nextParsed = edit({ intent: 'Shorten Title', summary: 'I shortened the title.', words: [{ target: 'e1', text: 'Meet Asha' }] });
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Shorten the title', place: PLACE, state: STATE, screen: '1440x900' }), {});
+  await settle();
+  var rt = learnt.turns[0], o7 = h.sent[0] && h.sent[0].body;
+  check('P.7 a change: one entry, brain promo, this event and its name, Promotions › posts, the intent, the words, pending, the turn', learnt.turns.length === 1 && rt.brain === 'promo' &&
+    rt.eventId === 'qa-ux-b18-ai-x' && rt.eventName === 'QA Retail Leaders Forum 2026' && rt.page === 'promotions' && rt.tab === 'posts' && rt.intent === 'shorten title' &&
+    rt.words === 'Shorten the title' && rt.outcome === 'pending' && rt.did.kind === 'edit' && rt.did.target === 'words' && rt.turnId === o7.turnId, rt);
+  check('P.7 …with the person\'s own events to take out of the words, the browser and the window size', rt && rt.known.length === DOCS.length && rt.known[1].name === 'Autotech Summit 2026' &&
+    /Chrome/.test(rt.ua) && rt.screen === '1440x900' && rt.decoded && rt.decoded.uid === 'u1', rt);
+  check('P.7 …written after the answer was sent', h.sent.length === 1 && o7.kind === 'edit');
+  learnt.turns.length = 0; h = harness();
+  nextParsed = { kind: 'handoff', intent: 'open page', summary: '', words: [], people: [], subject: '', preview: '', caption: '', background: { make: false, scene: '', style: 'photo' }, perSpeaker: false };
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'mail', message: 'how many registrations?', place: { page: 'promotions', eventId: 'qa-ux-b18-ai-x', tab: 'mailers' }, state: STATE }), {});
+  await settle();
+  check('P.7 a handoff is recorded by the events side, not here', h.sent[0].body.kind === 'handoff' && learnt.turns.length === 0, learnt.turns);
+  learnt.turns.length = 0; h = harness();
+  nextParsed = { kind: 'reply', intent: 'question', summary: 'Autotech Summit 2026 had 40 speakers; this mail has one.', words: [], people: [], subject: '', preview: '', caption: '', background: { make: false, scene: '', style: 'photo' }, perSpeaker: false };
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'mail', message: 'compare with Autotech Summit 2026', place: { page: 'promotions', eventId: 'qa-ux-b18-ai-x', tab: 'mailers' }, state: STATE }), {});
+  await settle();
+  rt = learnt.turns[0];
+  check('P.7 a reply held to the event: refused, the rule "other-event", Promotions › mailers', h.sent[0].body.kind === 'refuse' && rt && rt.outcome === 'refused' && rt.rule === 'other-event' &&
+    rt.tab === 'mailers' && /^[A-Za-z0-9]{10,40}$/.test(rt.turnId), rt);
+  learnt.turns.length = 0; h = harness();
+  var callBefore = llm.callJson;
+  llm.callJson = function () { return Promise.resolve({ error: 'The AI is busy.', code: 'ai-unavailable', status: 503 }); };
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Shorten the title', place: PLACE, state: STATE }), {});
+  await settle();
+  check('P.7 an answer that failed: one entry "error" with its code, after the failure was sent', h.sent[0].status === 503 && learnt.turns.length === 1 &&
+    learnt.turns[0].outcome === 'error' && learnt.turns[0].rule === 'ai-unavailable' && learnt.turns[0].did.kind === 'error', learnt.turns);
+  learnt.turns.length = 0; h = harness();
+  llm.callJson = function () { return Promise.resolve({ parsed: { kind: 'nonsense', summary: '' } }); };
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Shorten the title', place: PLACE, state: STATE }), {});
+  await settle();
+  check('P.7 …and an answer that could not be used', h.sent[0].status === 502 && learnt.turns.length === 1 && learnt.turns[0].rule === 'ai-bad-output', learnt.turns);
+  llm.callJson = callBefore;
+  learnt.turns.length = 0;
+  aiLearn.recordTurn = function () { throw new Error('the record is down'); };
+  h = harness();
+  nextParsed = edit({ intent: 'shorten title', summary: 'I shortened the title.', words: [{ target: 'e1', text: 'Meet Asha' }] });
+  var errBefore = console.error, errs = [];
+  console.error = function (m) { errs.push(String(m)); };
+  promoAi.handleEdit(reqUa({ eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Shorten the title', place: PLACE, state: STATE }), {});
+  await settle();
+  console.error = errBefore;
+  check('P.7 a record that cannot be written never changes or fails the answer', h.sent.length === 1 && h.sent[0].status === 200 && h.sent[0].body.kind === 'edit' &&
+    errs.some(function (m) { return /not recorded/.test(m); }), { sent: h.sent, errs: errs });
+  aiLearn.recordTurn = function (fb, t) { learnt.turns.push(t); return Promise.resolve(null); };
+  h = harness(); learnt.outcomes.length = 0;
+  h.store.turns['u1/PROMOTURN1234'] = { brain: 'promo', editor: 'post', question: 'Shorten the title', status: 'applying', done: [] };
+  h.store.turns['u1/EDITTURN12345'] = { question: 'site', status: 'applying' };
+  promoAi.handleTurn(reqUa({ eventId: 'qa-ux-b18-ai-x', turnId: 'PROMOTURN1234', status: 'undone', screen: '390x844' }), {});
+  promoAi.handleTurn(reqUa({ eventId: 'qa-ux-b18-ai-x', turnId: 'EDITTURN12345', status: 'applied' }), {});
+  promoAi.handleTurn(reqUa({ eventId: 'qa-ux-b18-ai-x', turnId: 'PROMOTURN1234', status: 'answered' }), {});
+  await settle();
+  var ro = learnt.outcomes[0];
+  check('P.7 the page\'s report of what became of a change goes to the record (an undo there is a QA note)', learnt.outcomes.length === 1 && ro.brain === 'promo' &&
+    ro.turnId === 'PROMOTURN1234' && ro.status === 'undone' && ro.screen === '390x844' && /Chrome/.test(ro.ua) && ro.decoded.uid === 'u1', learnt.outcomes);
+  check('P.7 …never for another brain\'s turn or a status it does not know', learnt.outcomes.length === 1);
+
   /* ======== P.6 the other brains ======== */
   var api = require('./api');
   var hooks = api._testHooks || {};
@@ -354,6 +427,7 @@ var STATE = { design: 'Speaker card', width: 1080, height: 1080, words: [{ targe
   check('P.6 a site section\'s picture is unchanged', chatPicture.promptFor(Object.assign({}, np, { aspect: undefined }), {}).indexOf('Landscape, 4:3.') !== -1);
 
   promo.buildKit = realKit; llm.callJson = realCall; chatPicture.readLeft = realLeft; chatPicture.make = realMake;
+  aiLearn.recordTurn = realRecordTurn; aiLearn.recordOutcome = realRecordOutcome;
   console.log('promo-ai: ' + passed + ' passed' + (failed ? ', ' + failed + ' FAILED' : ''));
   if (failed) process.exit(1);
 })().catch(function (e) { console.error(e); process.exit(1); });

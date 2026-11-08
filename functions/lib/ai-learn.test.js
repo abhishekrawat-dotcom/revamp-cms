@@ -213,6 +213,17 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
     same(['applied', 'partly', 'failed', 'undone', 'stopped', 'answered'].map(function (x) { return T.outcomeOf('edit', x); }), ['done', 'partly', 'failed', 'undone', 'stopped', '']) &&
     same(['done', 'undone', 'failed', 'stopped', 'applied'].map(function (x) { return T.outcomeOf('dash', x); }), ['done', 'undone', 'failed', 'stopped', '']));
   check('L.3 …a dash action the page refused for being about another event is a refusal', T.outcomeOf('dash', 'failed', 'about another event') === 'refused');
+  /* the post and mailer editors' brain (lib/promo-ai.js, B18-ai) */
+  f = L.promoFacts({ kind: 'edit', intent: 'shorten title', changes: { words: [{ target: 'e1', text: 'x' }], people: [], subject: '', preview: 'Hear it', caption: '', background: null, perSpeaker: false } });
+  check('L.3 post or mail change: pending until the editor reports it, and the parts it changes', f.outcome === 'pending' && f.did.kind === 'edit' && f.did.target === 'words,preview-text' && f.fallback === 'change words', f);
+  f = L.promoFacts({ kind: 'edit', changes: { words: [], people: [], subject: '', preview: '', caption: '', background: { scene: 'a hall', style: 'photo' }, perSpeaker: true } });
+  check('L.3 …a new background and one post per speaker', f.did.target === 'background,post-per-speaker' && f.fallback === 'change background', f);
+  f = L.promoFacts({ kind: 'refuse', intent: 'question', summary: 'I work on X here only', changes: { words: [], people: [] } });
+  check('L.3 post or mail reply that named another event: refused, the rule "other-event"', f.outcome === 'refused' && f.rule === 'other-event' && f.did.target === '', f);
+  check('L.3 post or mail reply and undo', L.promoFacts({ kind: 'reply', changes: null }).outcome === 'answered' && L.promoFacts({ kind: 'reply' }).fallback === 'question' &&
+    L.promoFacts({ kind: 'undo' }).outcome === 'done' && L.promoFacts(null).outcome === 'answered');
+  check('L.3 reports: the post and mailer editors\' applied/partly/failed/undone/stopped, as the site editor\'s',
+    same(['applied', 'partly', 'failed', 'undone', 'stopped', 'answered', 'done'].map(function (x) { return T.outcomeOf('promo', x); }), ['done', 'partly', 'failed', 'undone', 'stopped', '', '']));
 
   /* ===== L.4 an entry ===== */
   var now0 = Date.parse('2026-11-08T10:00:00.000Z');

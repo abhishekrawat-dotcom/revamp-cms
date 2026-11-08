@@ -33,7 +33,8 @@
    answer, kind, intent, status, done, notDone, place, at, updatedAt, newPicture? }. The other brains read these as
    one neutral line (lib/api.js chatHistoryText, lib/dash-bot.js memoryText). Each turn has a short `intent` (the
    model's own label of what was asked: "shorten title", "swap speaker", "post per speaker") and its outcome, in the
-   same shape as the dash brain's turns, so the request record (batch AI-learn-a) can take it in one line.
+   same shape as the dash brain's turns; the request record (lib/ai-learn.js) takes each answer and its outcome
+   (recordPromoTurn, and recordOutcome in handleTurn).
 
    A NEW BACKGROUND is made by ETB2B AI pictures (lib/chat-picture.js: its subject check, the person's day limit, the
    picture model, the check for people, words and logos, and storage under the event): the first step stores the
@@ -519,6 +520,7 @@ function handleEdit(req, res) {
 
     H.liveEventDocs(fb, decoded, 'live').then(function (docs) {
       var mine = arr(docs).filter(function (d) { return d && d.id === eventId; })[0];
+      function rec(a, turnId) { recordPromoTurn(fb, req, decoded, body, eventId, docs, a, turnId); }
       /* FAIL CLOSED (owner decision 10): not Promotions of this event, or not one of this person's live events */
       if (!placeOk(body.place, eventId) || !mine) {
         return H.sendJson(res, 200, { kind: 'refuse', intent: '', summary: MSG.unconfirmed, changes: null, skipped: [], scope: 'none' });
@@ -543,8 +545,8 @@ function handleEdit(req, res) {
           route: 'promo-edit', eventId: eventId, maxOutputTokens: CAPS.outputTokens, timeoutMs: CAPS.timeoutMs,
           onUsage: H.aiUsageRecorder(fb, eventId, 'promo-edit')
         }).then(function (r) {
-          if (!r || r.error) return H.sendAiFailure(res, Object.assign({ error: MSG.failed, code: 'ai-unavailable', retryable: true, status: 502 }, r || {}));
-          if (!isObj(r.parsed) || (KINDS.indexOf(r.parsed.kind) === -1 && !line(r.parsed.summary))) return H.sendJson(res, 502, { error: MSG.badOutput, code: 'ai-bad-output', retryable: true });
+          if (!r || r.error) { H.sendAiFailure(res, Object.assign({ error: MSG.failed, code: 'ai-unavailable', retryable: true, status: 502 }, r || {})); return rec({ code: (r && r.code) || 'ai-unavailable' }); }
+          if (!isObj(r.parsed) || (KINDS.indexOf(r.parsed.kind) === -1 && !line(r.parsed.summary))) { H.sendJson(res, 502, { error: MSG.badOutput, code: 'ai-bad-output', retryable: true }); return rec({ code: 'ai-bad-output', intent: isObj(r.parsed) ? r.parsed.intent : '' }); }
           var answer = cleanAnswer(r.parsed, ctx);
           /* not about this post or mail: the browser hands it to the events side, whose turn is the one kept */
           if (answer.kind === 'handoff') return H.sendJson(res, 200, { kind: 'handoff', intent: answer.intent, summary: '', changes: null, skipped: [] });
@@ -556,7 +558,7 @@ function handleEdit(req, res) {
             /* the model's summary spoke of the background too: it gives way, as in cleanAnswer */
             else answer.summary = MSG.donePartly;
           }
-          return keep(fb, decoded, userRef, eventId, body.place, state, message, answer, res);
+          return keep(fb, decoded, userRef, eventId, body.place, state, message, answer, res, rec);
         });
       });
     }).catch(function (err) {
@@ -564,8 +566,33 @@ function handleEdit(req, res) {
     });
   });
 }
+/* ---------- the record of what people ask (lib/ai-learn.js, owner decision 11) ----------
+   One entry per answer the model gave here, written after the answer has gone: a record that cannot be written never
+   changes, holds up or fails an answer. As for the other brains (lib/dash-bot.js recordDashTurn), a handoff is recorded
+   by the brain that answers it, and the fail-closed refusal asked no model, so it is not an AI turn. known: the
+   person's own events, so every event's name and id is taken out of their words.
+   a: the answer (cleanAnswer's shape) or { code } for an answer that failed. */
+function learn() { try { return require('./ai-learn'); } catch (e) { return null; } }
+function knownOf(docs) {
+  return arr(docs).filter(function (d) { return d && typeof d.id === 'string'; }).map(function (d) { return { id: d.id, name: line(isObj(d.data) ? d.data.name : '', 200) }; });
+}
+var TABS = { posts: 1, 'site-posts': 1, mailers: 1 };
+function recordPromoTurn(fb, req, decoded, body, eventId, docs, a, turnId) {
+  var L = learn();
+  if (!L) return;
+  try {
+    var mine = arr(docs).filter(function (d) { return d && d.id === eventId; })[0], place = isObj(body.place) ? body.place : {};
+    var facts = isObj(a) && a.code ? { did: { kind: 'error', target: '' }, outcome: 'error', rule: a.code, fallback: 'question' } : L.promoFacts(a);
+    var tab = TABS[str(place.tab)] ? str(place.tab) : body.editor === 'mail' ? 'mailers' : 'posts';
+    L.recordTurn(fb, { brain: 'promo', decoded: decoded, eventId: mine ? eventId : '', eventName: mine && isObj(mine.data) ? str(mine.data.name) : '',
+      page: 'promotions', tab: tab, intent: isObj(a) ? a.intent : '', fallback: facts.fallback, words: str(body.message), did: facts.did,
+      outcome: facts.outcome, rule: facts.rule, turnId: turnId || '', known: knownOf(docs),
+      ua: req && req.headers ? req.headers['user-agent'] : '', screen: str(body.screen) });
+  } catch (err) { console.error('promo-ai: the turn was not recorded — ' + (err && err.message)); }
+}
+
 /* the turn, kept under the person who asked; a change is "applying" until the browser says how it went */
-function keep(fb, decoded, userRef, eventId, place, state, message, answer, res) {
+function keep(fb, decoded, userRef, eventId, place, state, message, answer, res, rec) {
   var now = new Date().toISOString(), turnRef = userRef.collection('turns').doc();
   var turn = {
     brain: 'promo', editor: state.editor, question: message.slice(0, 4000), answer: answer.summary, kind: answer.kind, intent: answer.intent,
@@ -594,6 +621,7 @@ function keep(fb, decoded, userRef, eventId, place, state, message, answer, res)
     out.turnId = turnRef.id;
     if (bg) out.newPicture = { pending: true, aspect: turn.newPicture.aspect };
     H.sendJson(res, 200, out);
+    rec(answer, turnRef.id);
     if (answer.kind !== 'edit') H.logActivity(fb, eventId, decoded, 'ai-chat', 'Asked ETB2B AI in the ' + (state.editor === 'post' ? 'social post' : 'mailer') + ' editor: “' + line(message, 120) + '”' + (answer.kind === 'undo' ? ' — undo' : ' — answered'), { area: 'promotions' });
   }, function (err) {
     /* the answer is not withheld because it could not be kept; a new background needs its turn, so it is not offered */
@@ -605,6 +633,7 @@ function keep(fb, decoded, userRef, eventId, place, state, message, answer, res)
       else out.skipped.push(postWords(chatPicture.sentence('started')));
     }
     H.sendJson(res, 200, out);
+    rec(answer);
   });
 }
 
@@ -656,6 +685,9 @@ function handleTurn(req, res) {
       if (status === 'undone') { patch.done = arr(was.done); patch.undoneAt = patch.updatedAt; }
       return ref.update(patch).then(function () {
         H.sendJson(res, 200, { ok: true, status: status });
+        /* what became of the change, in the record (lib/ai-learn.js): an undo is also a QA note */
+        var L = learn();
+        if (L) { try { L.recordOutcome(fb, { brain: 'promo', turnId: turnId, status: status, decoded: decoded, notDone: patch.notDone, ua: req.headers ? req.headers['user-agent'] : '', screen: str(body.screen) }); } catch (e) { console.error('promo-ai: the outcome was not recorded — ' + (e && e.message)); } }
         var what = was.editor === 'mail' ? 'a mail' : 'a social post', q = '“' + line(was.question, 120) + '”';
         var detail = status === 'undone' ? 'Undid an ETB2B AI change to ' + what + ': ' + q
           : status === 'failed' ? 'ETB2B AI could not change ' + what + ': ' + q

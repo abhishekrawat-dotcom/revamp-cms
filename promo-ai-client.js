@@ -140,9 +140,15 @@
     return !!place.eventId && place.page === 'promotions' && ev === place.eventId;
   }
 
+  /* the window's size, "1440x900", for a QA note about this turn (functions/lib/ai-learn.js); '' when the browser does not say */
+  function screenNow() {
+    var w = 0, h = 0;
+    try { w = Math.round(root.innerWidth || 0); h = Math.round(root.innerHeight || 0); } catch (e) { return ''; }
+    return w > 0 && h > 0 ? w + 'x' + h : '';
+  }
   function report(eventId, turnId, status, done, notDone) {
     if (!TURN_ID.test(str(turnId))) return Promise.resolve(false);
-    return api('/api/promo/ai-edit/turn', 'POST', { eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [] })
+    return api('/api/promo/ai-edit/turn', 'POST', { eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [], screen: screenNow() })
       .then(function () { return true; }, function () { return false; /* the History line is a nicety; the post already changed */ });
   }
   function notes(b, list, prefix) {
@@ -165,7 +171,7 @@
     var state = null;
     try { state = s.ai.state(); } catch (e) { state = null; }
     if (!state) return Promise.resolve({ handoff: true, kind: 'handoff' });
-    var body = { eventId: place.eventId, editor: kind, message: message, place: { page: 'promotions', eventId: place.eventId, tab: place.tab }, state: state };
+    var body = { eventId: place.eventId, editor: kind, message: message, place: { page: 'promotions', eventId: place.eventId, tab: place.tab }, state: state, screen: screenNow() };
 
     var finished = false, stopped = false, resolveOuter = null, rejectOuter = null;
     var outer = new Promise(function (resolve, reject) { resolveOuter = resolve; rejectOuter = reject; });

@@ -246,12 +246,30 @@ function editFacts(answer, o) {
   var fallback = kind === 'edit' ? 'change ' + (parts[0] || 'page').replace(/-/g, ' ') : kind === 'undo' ? 'undo change' : 'question';
   return { did: { kind: kind, target: parts.join(',') || (answer.goTo ? 'go:' + answer.goTo : '') }, outcome: outcome, rule: rule, fallback: fallback };
 }
-/* What a page's report of a turn means for the record. The dash brain (and any later brain) reports done, undone,
-   failed, stopped; the site editor applied, partly, failed, undone, stopped. A dash action that the page itself
-   refused because it was for another event (dash-bot-client.js, owner decision 10) is a refusal, not a failure. */
+/* the parts of a change of the post and mailer editors' brain (lib/promo-ai.js cleanAnswer's `changes`) */
+var PROMO_PARTS = [['words', 'words'], ['people', 'people'], ['subject', 'subject'], ['preview', 'preview-text'], ['caption', 'caption'],
+  ['background', 'background'], ['perSpeaker', 'post-per-speaker']];
+/* -> the same from an answer of the post and mailer editors' brain (lib/promo-ai.js): a refusal there is a reply that
+   named another event (owner decision 10) */
+function promoFacts(answer) {
+  answer = isObj(answer) ? answer : {};
+  var kind = str(answer.kind) || 'reply', c = isObj(answer.changes) ? answer.changes : {}, parts = [];
+  PROMO_PARTS.forEach(function (p) {
+    var v = c[p[0]];
+    if (Array.isArray(v) ? v.length : !!v) parts.push(p[1]);
+  });
+  var outcome = kind === 'edit' ? 'pending' : kind === 'undo' ? 'done' : kind === 'refuse' ? 'refused' : 'answered';
+  var rule = kind === 'refuse' ? 'other-event' : '';
+  var fallback = kind === 'edit' ? 'change ' + (parts[0] || 'post').replace(/-/g, ' ') : kind === 'undo' ? 'undo change' :
+    kind === 'refuse' ? 'refused ' + rule.replace(/-/g, ' ') : 'question';
+  return { did: { kind: kind, target: parts.join(',') }, outcome: outcome, rule: line(rule, CAPS.ruleChars), fallback: fallback };
+}
+/* What a page's report of a turn means for the record. The dash brain reports done, undone, failed, stopped; the
+   site editor and the post and mailer editors applied, partly, failed, undone, stopped. A dash action that the page
+   itself refused because it was for another event (dash-bot-client.js, owner decision 10) is a refusal, not a failure. */
 function outcomeOf(brain, status, note) {
   status = str(status);
-  if (brain === 'edit') return { applied: 'done', partly: 'partly', failed: 'failed', undone: 'undone', stopped: 'stopped' }[status] || '';
+  if (brain === 'edit' || brain === 'promo') return { applied: 'done', partly: 'partly', failed: 'failed', undone: 'undone', stopped: 'stopped' }[status] || '';
   if (status === 'failed' && /another event/i.test(str(note))) return 'refused';
   return { done: 'done', undone: 'undone', failed: 'failed', stopped: 'stopped' }[status] || '';
 }
@@ -825,7 +843,7 @@ function handleNote(req, res) {
 }
 
 module.exports = {
-  wire: wire, recordTurn: recordTurn, recordOutcome: recordOutcome, dashFacts: dashFacts, editFacts: editFacts,
+  wire: wire, recordTurn: recordTurn, recordOutcome: recordOutcome, dashFacts: dashFacts, editFacts: editFacts, promoFacts: promoFacts,
   handleReport: handleReport, handleResolve: handleResolve, handleNote: handleNote, CAPS: CAPS
 };
 module.exports._test = {

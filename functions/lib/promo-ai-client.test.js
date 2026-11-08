@@ -123,6 +123,7 @@ function page(o) {
       }
     }
   };
+  if (!o.noSize) { ctx.innerWidth = 1440; ctx.innerHeight = 900; }
   ctx.window = ctx; ctx.top = ctx;
   vm.createContext(ctx);
   if (o.dash) ctx.RevampDashBot = { brain: o.dash };
@@ -245,6 +246,7 @@ var EDIT_ANSWER = { kind: 'edit', intent: 'shorten title', summary: 'I shortened
     bub && bub.notes.indexOf('Done: Changed “Title”') !== -1 && bub.undos.length === 1);
   var rep = p.calls.filter(function (c) { return c.url === '/api/promo/ai-edit/turn'; });
   check('C.3 the outcome is reported (applied, then undone)', rep.length >= 2 && rep[0].body.status === 'applied' && same(rep[0].body.done, ['Changed “Title”']) && rep[1].body.status === 'undone', rep.map(function (x) { return x.body; }));
+  check('C.3 the window size goes with the message and each report, for a QA note', sent && sent.body.screen === '1440x900' && rep.length >= 2 && rep.every(function (x) { return x.body.screen === '1440x900'; }), [sent && sent.body.screen, rep.map(function (x) { return x.body.screen; })]);
   check('C.3 the panel\'s Undo goes the same way, and the shell\'s marks it Undone', chat.undone.length === 1 && typeof chat.undone[0] === 'function');
 
   var st6 = fakeStudio();
