@@ -126,7 +126,7 @@ function page(o) {
   ctx.window = ctx; ctx.top = ctx;
   vm.createContext(ctx);
   if (o.dash) ctx.RevampDashBot = { brain: o.dash };
-  vm.runInContext(BRAIN, ctx, { filename: 'promo-ai-client.js' });
+  if (!o.noBrain) vm.runInContext(BRAIN, ctx, { filename: 'promo-ai-client.js' });
   vm.runInContext(SHELL, ctx, { filename: 'etb2b-assistant.js' });
   return settle().then(function () { return { ctx: ctx, A: ctx.RevampAssistant, kit: kit, calls: calls, winListeners: winListeners, studios: o.studios || [] }; });
 }
@@ -196,6 +196,12 @@ var EDIT_ANSWER = { kind: 'edit', intent: 'shorten title', summary: 'I shortened
   check('C.2 a promo turn read back: its words and what became of it', hw.users[0] === 'Write a subject' && hw.ais[0].t === 'Done: a new subject.' &&
     hw.ais[0].b.notes.indexOf('Done in the mailer editor, then undone.') !== -1, hw.ais.map(function (a) { return [a.t, a.b.notes]; }));
 
+  var p4b = await page({ page: 'console', noBrain: true, studios: [], dash: fakeDash(), history: { event: { id: 'qa-ux-b18-ai-x', name: 'QA' }, turns: [{ brain: 'promo', editor: 'post', question: 'Shorten the title', answer: 'I shortened it.', status: 'applied' }] } });
+  var cw = { users: [], ais: [], user: function (t) { cw.users.push(t); }, ai: function (t) { var b = { notes: [], note: function (n) { cw.ais[cw.ais.length - 1].notes.push(n); } }; cw.ais.push({ t: t, notes: [] }); return b; }, divider: function () {}, custom: function () {} };
+  await p4b.A.chat().opts.loadHistory(cw);
+  check('C.2 where the promo brain is not (the console), its turn is plain lines, never a change with Undo', cw.users[0] === 'Shorten the title' && cw.ais[0].t === 'I shortened it.' &&
+    cw.ais[0].notes.indexOf('Done in the post editor.') !== -1, cw.ais);
+
   /* ======== C.3 the brain ======== */
   var other = fakeStudio({ eventId: 'autotech' });
   var p5 = await page({ studios: [other], dash: fakeDash(), answer: function () { return { body: EDIT_ANSWER }; } });
@@ -255,6 +261,14 @@ var EDIT_ANSWER = { kind: 'edit', intent: 'shorten title', summary: 'I shortened
   var e10 = await p10.A.chat().opts.send('Shorten the title', {}).then(function () { return null; }, function (e) { return e; });
   check('C.3 a failed answer is the shell\'s sentence', e10 && /a lot of messages/.test(e10.message), e10 && e10.message);
 
+  var st11 = fakeStudio({ applyResult: { changed: false, done: [], notDone: [] } });
+  var p11 = await page({ studios: [st11], dash: fakeDash(), answer: function (url) { return url === '/api/promo/ai-edit' ? { body: EDIT_ANSWER } : null; } });
+  var r11 = await p11.A.chat().opts.send('Show all the speakers', {});
+  await settle();
+  var rep11 = p11.calls.filter(function (c) { return c.url === '/api/promo/ai-edit/turn'; })[0];
+  check('C.3 asked for what is already so: said plainly, no Undo, and not counted as a failure', r11.status === 'applied' && rep11 && rep11.body.status === 'applied' &&
+    p11.kit.chat.bubbles.some(function (b) { return b.notes.indexOf('It was already like that, so nothing needed changing.') !== -1 && !b.undos.length; }), [r11, rep11 && rep11.body]);
+
   check('C.3 its replay: the words, and what became of the change', (function () {
     var b = p.ctx.RevampPromoAi.brain, out = { u: [], a: [] };
     var ww = { user: function (t) { out.u.push(t); }, ai: function (t) { var x = { notes: [], note: function (n) { x.notes.push(n); } }; out.a.push(x); x.t = t; return x; } };
@@ -267,6 +281,8 @@ var EDIT_ANSWER = { kind: 'edit', intent: 'shorten title', summary: 'I shortened
   var MK = fs.readFileSync(path.join(ROOT, 'marketing.html'), 'utf8');
   check('C.4 Promotions loads the brain once, before the assistant', (MK.match(/src="promo-ai-client\.js"/g) || []).length === 1 && MK.indexOf('src="promo-ai-client.js"') < MK.indexOf('src="etb2b-assistant.js"'));
   check('C.4 Promotions hears the studio\'s mode and shows ETB2B AI over it then', MK.indexOf("if (d.rvAiMode != null)") !== -1 && MK.indexOf("classList.toggle('promo-studio-ai', on)") !== -1);
+  check('C.4 the site editor replays only its own changes: a promo turn goes to the shell\'s plain lines', fs.readFileSync(path.join(ROOT, 'editor-template-ui.js'), 'utf8').indexOf("if (h.brain !== 'dash' && h.brain !== 'promo') { replayTurn(h); return; }") !== -1 &&
+    fs.readFileSync(path.join(ROOT, 'editor-chat-client.js'), 'utf8').indexOf("if (!U || !t || t.brain === 'dash' || t.brain === 'promo') return false;") !== -1);
   ['promo-social-studio.html', 'promo-mailer-studio.html'].forEach(function (f) {
     var s = fs.readFileSync(path.join(ROOT, f), 'utf8');
     check('C.4 ' + f + ' loads the toggle last, and its stylesheet', s.lastIndexOf('<script') === s.indexOf('<script src="promo-studio/oneworld-ai-mode.js"></script>') &&

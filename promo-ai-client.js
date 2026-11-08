@@ -47,6 +47,8 @@
     slow: 'ETB2B AI is taking too long. Nothing was changed. Try again.',
     pictureFailed: 'The new background could not be made: ',
     pictureHeld: 'The new background was made but not put on the post: ',
+    pictureStopped: 'Stopped — the new background was not put on the post.',
+    already: 'It was already like that, so nothing needed changing.',
     downloadLabel: 'Download {n} speaker posts (ZIP)',
     downloaded: 'Downloading the speaker posts.',
     downloadGone: 'Those posts are no longer ready: ask me again.',
@@ -193,7 +195,7 @@
         resolveOuter({ kind: 'edit', turnId: turnId, intent: intent, status: 'failed' });
         return;
       }
-      doEdit(now, a, place, what).then(function (status) {
+      doEdit(now, a, place, what, function () { return stopped; }).then(function (status) {
         settle();
         resolveOuter({ kind: 'edit', turnId: turnId, intent: intent, status: status });
       }, function (e) {
@@ -211,7 +213,8 @@
   }
 
   /* the change, its notes, its Undo, then the background and the per-speaker posts that follow it -> status */
-  function doEdit(s, a, place, what) {
+  /* isStopped: the person pressed Stop while a background was being made: it is then not put on the post */
+  function doEdit(s, a, place, what, isStopped) {
     var turnId = str(a.turnId), c = a.changes || {};
     var b = chat.ai(str(a.summary) || 'Done.', {});
     var done = [], notDone = (a.skipped || []).slice();
@@ -233,7 +236,7 @@
       notes(b, (a.skipped || []).concat(res.notDone || []), 'Not done: ');
       if (res.changed) offerUndo();
       var next = Promise.resolve();
-      if (a.newPicture && a.newPicture.pending) next = next.then(function () { return makeBackground(s, a, place, b); }).then(function (got) {
+      if (a.newPicture && a.newPicture.pending) next = next.then(function () { return makeBackground(s, a, place, b, isStopped); }).then(function (got) {
         if (got.done) { done.push(got.done); offerUndo(); }
         if (got.notDone) notDone.push(got.notDone);
       });
@@ -242,6 +245,12 @@
         if (got.notDone) notDone.push(got.notDone);
       });
       return next.then(function () {
+        /* asked for what the post or mail already is ("show all the speakers" when it does): nothing to change, said
+           plainly, and not counted as a failure */
+        if (!done.length && !notDone.length) {
+          b.note(TEXT.already);
+          done.push(TEXT.already);
+        }
         var status = done.length && notDone.length ? 'partly' : done.length ? 'applied' : 'failed';
         report(place.eventId, turnId, status, done, notDone);
         return status;
@@ -249,7 +258,7 @@
     });
   }
   /* the second step: the background the stored turn asked for, then on the post */
-  function makeBackground(s, a, place, b) {
+  function makeBackground(s, a, place, b, isStopped) {
     busy(true, TEXT.picture);
     var giveUp = null;
     var got = new Promise(function (resolve, reject) {
@@ -261,6 +270,7 @@
       var p = r && r.body && typeof r.body === 'object' ? r.body : {};
       if (!r.ok || p.error || !p.url) { var why = str(p.error) || 'ask again.'; b.note(TEXT.pictureFailed + why); return { notDone: 'The new background: ' + why }; }
       if (p.held) { var held = str(p.heldWhy) || 'it did not pass its check.'; b.note(TEXT.pictureHeld + held); return { notDone: 'The new background: ' + held }; }
+      if (isFn(isStopped) && isStopped()) { b.note(TEXT.pictureStopped); return { notDone: TEXT.pictureStopped }; }
       var now = frameById(s.frame.id);
       if (!now || !now.ai.active() || !sameEvent(now, placeNow())) { b.note(TEXT.closed); return { notDone: TEXT.closed }; }
       return Promise.resolve(now.ai.background(p.url, str(a.turnId))).then(function (res) {

@@ -75,6 +75,7 @@
   function own(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
   function arr(x) { return Array.prototype.slice.call(x || []); }
   function str(v) { return v == null ? '' : String(v); }
+  function shortWords(v) { var t = str(v).replace(/\s+/g, ' ').trim(); return t.length > 160 ? t.slice(0, 159).replace(/\s+\S*$/, '') + '…' : t; }
   function framed() { try { return window.parent !== window; } catch (e) { return false; } }
   function tellParent(msg) { try { if (framed()) window.parent.postMessage(msg, location.origin); } catch (e) { /* not framed */ } }
   function editorOpen() { var r = doc.getElementById(ROOT_ID); return !!(r && r.classList.contains('on')); }
@@ -319,7 +320,8 @@
     if (swapped) easy.setPeople(easy.pure.peopleParams(EDIT.tid, after));
     if (c.caption && window.OWSCap && OWSCap.get) {
       capBefore = OWSCap.get();
-      if (capBefore && OWSCap.set(str(c.caption))) { capChanged = true; done.push('Wrote the caption'); }
+      /* in "Edit with AI" the caption box is out of sight, so the answer says the words */
+      if (capBefore && OWSCap.set(str(c.caption))) { capChanged = true; done.push('Wrote the caption: “' + shortWords(c.caption) + '”'); }
     }
     var changed = postNow() !== before || capChanged;
     if (changed) {
@@ -366,8 +368,9 @@
       paths.push(path);
       done.push('Changed “' + names[path] + '”');
     });
-    if (c.subject) { edits.push({ kind: 'subject', value: str(c.subject), typing: true }); done.push('Wrote the subject line'); }
-    if (c.preview) { edits.push({ kind: 'preview', value: str(c.preview), typing: true }); done.push('Wrote the preview text'); }
+    /* in "Edit with AI" the pinned subject and preview text are out of sight, so the answer says the words */
+    if (c.subject) { edits.push({ kind: 'subject', value: str(c.subject), typing: true }); done.push('Wrote the subject line: “' + shortWords(c.subject) + '”'); }
+    if (c.preview) { edits.push({ kind: 'preview', value: str(c.preview), typing: true }); done.push('Wrote the preview text: “' + shortWords(c.preview) + '”'); }
     arr(c.people).forEach(function (p) {
       var b = owBlockById(str(p.target));
       if (!b) { notDone.push('A people section — ' + TEXT.noBlock); return; }

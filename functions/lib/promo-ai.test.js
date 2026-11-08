@@ -315,6 +315,9 @@ var STATE = { design: 'Speaker card', width: 1080, height: 1080, words: [{ targe
     check('P.6 a post\'s background is never the site editor\'s "last picture"', hooks.chatLastPicture([{ brain: 'promo', newPicture: { subject: 'x' } }]) === null);
   }
 
+  var dm = require('./dash-bot')._test.memoryText([{ brain: 'promo', question: 'Write a subject', answer: 'SECRET', status: 'undone' }], true);
+  check('P.6 the events side reads a promo turn as one neutral line about a post or a mail', /In the post or mailer editor they asked: “Write a subject” — the post or mail was changed, then undone/.test(dm) && dm.indexOf('SECRET') === -1, dm);
+
   /* the picture rules make a post's background in the post's own shape (lib/chat-picture.js POST_ASPECTS) */
   var np = { placement: 'background', subject: 'a calm conference hall at dusk', sectionName: 'Social post background', kind: 'subject', ownerSubject: true, aspect: '4:5', design: { mode: 'dark' } };
   var pp = chatPicture.promptFor(np, {});

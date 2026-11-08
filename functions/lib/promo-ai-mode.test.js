@@ -188,7 +188,7 @@ function socialGlobals() {
     g.EDIT.els[1].text === 'Meera Iyer' && g.EDIT.els[3].src === 'https://p/meera.jpg', g.EDIT.els);
   check('M.2 the post\'s people setting follows the swap, and the caption is written', g.edParams.speakerId === 'sp2' && g._caption.text === 'Hear Meera Iyer #RLF2026');
   check('M.2 what was done and not done, in plain words', res.changed === true && res.done.indexOf('Changed “Label above the name”') !== -1 && res.done.indexOf('Meera Iyer is on the post now') !== -1 &&
-    res.done.indexOf('Wrote the caption') !== -1 && res.notDone.length === 1, res);
+    res.done.indexOf('Wrote the caption: “Hear Meera Iyer #RLF2026”') !== -1 && res.notDone.length === 1, res);
   var u = await AI.undo('T1');
   check('M.2 Undo with no AI call puts the post, its people and its caption back', u.ok === true && g.EDIT.els[0].text === 'Meet our speaker' && g.EDIT.els[1].text === 'Asha Rao' &&
     g.edParams.speakerId === 'sp1' && g._caption.text === null && g.edHist.length === 0, [u, g.EDIT.els[0], g.edParams]);
@@ -270,7 +270,8 @@ function socialGlobals() {
   check('M.3 the change is ONE step of the studio\'s history', m.MLH.stack.length === 2 && m.MLH.at === 1);
   check('M.3 people by this event\'s roster, keeping what a row had', m.MD.doc.blocks[3].props.items.length === 2 && m.MD.doc.blocks[3].props.items[0].bio === 'kept' &&
     m.MD.doc.blocks[3].props.items[1].name === 'Meera Iyer' && m.MD.doc.blocks[4].props.name === 'Meera Iyer' && m.MD.doc.subject === 'Meet retail\'s leaders');
-  check('M.3 what was done, and a text not in the mail said', r.changed === true && r.done.indexOf('Wrote the subject line') !== -1 && r.notDone.length === 1, r);
+  check('M.3 what was done (the subject\'s words said, as the panel is out of sight), and a text not in the mail said', r.changed === true &&
+    r.done.indexOf('Wrote the subject line: “Meet retail\'s leaders”') !== -1 && r.done.indexOf('Wrote the preview text: “Two days in Mumbai”') !== -1 && r.notDone.length === 1, r);
   var mu = await MAI.undo('M1');
   check('M.3 Undo, no AI call: the mail as it was', mu.ok === true && m.MD.doc.subject === 'Join us' && m.MD.doc.blocks[3].props.items.length === 1, mu);
   await MAI.apply({ subject: 'Another subject' }, 'M2');
