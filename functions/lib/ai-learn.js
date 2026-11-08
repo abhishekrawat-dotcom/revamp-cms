@@ -296,9 +296,19 @@ function cleanEventId(v) { var id = str(v).trim(); return EVENT_ID_RE.test(id) ?
 /* ================================================================ the record */
 
 /* "not working", "broken", "error", "bug", "wrong" (the owner's words) and the ways people say them. A fixed match,
-   so whether a message is a complaint never depends on a model. */
-var COMPLAINT_RE = /\b(?:not\s+working|(?:does\s*n[o'’]?t|do\s*n[o'’]?t|is\s*n[o'’]?t|isnt|doesnt|dont|won[’']?t|wont|not)\s+(?:work|working|load|loading|open|opening|save|saving|show|showing)|broken|break(?:s|ing)?|errors?|bugs?|buggy|wrong|fail(?:s|ed|ing)?|crash(?:es|ed|ing)?|stuck|glitch(?:es|y)?)\b/i;
-function isComplaint(text) { return COMPLAINT_RE.test(str(text)); }
+   so whether a message is a complaint never depends on a model. It must not catch ordinary requests, or every one
+   of them becomes a false "Said it was not working" note:
+   - no "break", "breaks" or "breaking": agenda breaks (coffee, lunch, networking) and titles like "Breaking
+     barriers" are among the most common requests here; "broken" and "broke" stay.
+   - "do not" / "don't" only with work or load ("the buttons don't work"): with show, open or save it is an
+     instruction ("Do not show the venue", "Don't open the speakers page").
+   - a bare "not" only in the -ing forms ("not working", "not loading", "not showing"), so "please do not show ..."
+     is not caught by "not show".
+   - a "what happens if ..." / "what if ..." / "in case ..." clause is a question about what the site does
+     ("What happens if a payment fails?"), so it is left out before matching; the rest of the message still counts. */
+var COMPLAINT_RE = /\b(?:(?:does\s*n[o'’]?t|is\s*n[o'’]?t|are\s*n[o'’]?t|won[’']?t|wont|will\s+not)\s+(?:work|working|load|loading|open|opening|save|saving|show|showing)|do\s*n[o'’]?t\s+(?:work|load)|not\s+(?:working|loading|opening|saving|showing)|broken|broke|errors?|bugs?|buggy|wrong|fail(?:s|ed|ing)?|crash(?:es|ed|ing)?|stuck|glitch(?:es|y)?)\b/i;
+var HYPOTHETICAL_RE = /\b(?:what\s+(?:happens|would\s+happen|will\s+happen|should\s+happen)\s+(?:if|when)|what\s+if|in\s+case)\b[^.?!\n]*/gi;
+function isComplaint(text) { return COMPLAINT_RE.test(str(text).replace(HYPOTHETICAL_RE, ' ')); }
 
 /* The entry kept for one turn (pure: tested as it is). t: the turn as recordTurn takes it. */
 function entryOf(t, nowMs) {

@@ -348,8 +348,29 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   check('L.7 "not working" in the message: a QA note with what was asked (phone out), what ETB2B AI did and the window',
     !!comp && comp.page === 'registrations' && comp.asked === 'the registration form is not working, call me on [phone]' && comp.did.kind === 'reply' && comp.screen === '390x844' &&
     comp.title === 'Said it was not working: “report broken form”', comp);
+  /* the verifier's turn: an agenda break asked in the console is kept as an entry but is no QA note */
+  var compBefore = notes().filter(function (n) { return n.kind === 'complaint'; }).length;
+  scripted['dash-bot'].push({ kind: 'reply', events: [AUTO], text: 'That is done in the site editor.', intent: 'add agenda item' });
+  r = await call('POST', '/api/dash-bot', { message: 'Add a 15 minute coffee break at 11 am to the agenda', place: { page: 'console', eventId: AUTO }, screen: '390x844' });
+  await wait();
+  var coffee = entries().filter(function (e) { return e.words === 'Add a 15 minute coffee break at 11 am to the agenda'; })[0];
+  check('L.7 "Add a 15 minute coffee break" through /api/dash-bot: kept as an entry, not a complaint, no QA note',
+    r.status === 200 && !!coffee && coffee.complaint === false && notes().filter(function (n) { return n.kind === 'complaint'; }).length === compBefore, coffee);
   check('L.7 the match is fixed words, no AI', T.isComplaint('this is broken') && T.isComplaint('there is a bug') && T.isComplaint('wrong date shown') && T.isComplaint('it does not load') &&
     T.isComplaint('I get an error') && !T.isComplaint('make the title bigger') && !T.isComplaint('open the speakers'));
+  /* ordinary requests are not complaints: an agenda break, an instruction with "do not" / "don't", a title with
+     "Breaking", or a question about what happens if something fails would each add a false QA note */
+  var NOT_COMPLAINTS = ['Add a 15 minute coffee break at 11 am to the agenda', 'Add a networking lunch break after the keynote',
+    'Add two tea breaks to day 2', 'Do not show the venue on the banner', 'Don\u2019t open the speakers page, just tell me who is speaking',
+    "don't save it yet", 'dont show the date', 'Add a "Breaking barriers" session', 'What happens if a payment fails?',
+    'What if someone types the wrong email?', 'In case the upload fails, show a friendly message', 'please do not open a new tab'];
+  check('L.7 an agenda break, a "do not" instruction, a "Breaking" title or a "what if" question is not a complaint',
+    NOT_COMPLAINTS.filter(function (m) { return T.isComplaint(m); }).length === 0, NOT_COMPLAINTS.filter(function (m) { return T.isComplaint(m); }));
+  var COMPLAINTS = ['not working', 'the agenda is not showing', 'the logo is not loading', "the buttons don't work", 'the pictures do not load',
+    "the page won't open", 'it will not save', "it doesn't save", 'the speakers aren\u2019t showing', 'it isnt working', 'the layout broke after I saved',
+    'the upload failed. What if I try again?', "it's broken, what if I reload?", 'the editor crashed', 'the page is stuck'];
+  check('L.7 the ways people say something is not working are still complaints, also beside a "what if" question',
+    COMPLAINTS.filter(function (m) { return !T.isComplaint(m); }).length === 0, COMPLAINTS.filter(function (m) { return !T.isComplaint(m); }));
 
   /* ===== L.8 POST /api/ai-qa/note ===== */
   T.resetGate();
