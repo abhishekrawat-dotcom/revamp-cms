@@ -17,7 +17,8 @@
      4. the phone rules: they are all inside a (max-width) media query, so nothing changes at 1440 px (and the sweep
         compared every changed page at 1440 before and after), the tools that need a big screen are put away there,
         and Save and Publish stay in the top bar's second row with an icon beside their words;
-     5. the console's top bar keeps what is saved in sight at every width, in shorter words where it is narrow.
+     5. the console's top bar keeps what is saved in sight at every width, in shorter words where it is narrow;
+     6. the published sites' ET bar and footer make their links 40px tap targets on a phone.
    Exits 1 listing every failure. */
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
@@ -146,6 +147,16 @@ var narrow = mediaBlocks(CSS, '1100px').join('\n');
 check('at 1100px and below the short words show and the whole ones stay for screen readers',
   /\.save-state \.ss-short\{ display:none; \}/.test(CSS) && /\.save-state \.ss-long\{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect\(0 0 0 0\); white-space:nowrap; \}/.test(narrow) &&
   /\.save-state \.ss-short\{ display:inline; \}/.test(narrow), narrow.slice(0, 300));
+
+/* ---------- 6. the published sites' ET bar and footer: 40px targets on a phone (built into a site when its bar and
+   footer are next made: a new site, a regenerated one) ---------- */
+var navCss = require('./et-nav').build({ name: 'Brand World Summit 2026', cta: { label: 'Register Now', href: '#contact-us' } }).css;
+var footCss = require('./et-footer').build({ portal: 'brandequity', mode: 'light', year: 2026, events: [],
+  event: { name: 'Brand World Summit 2026', date: '5 Dec 2026', place: 'Chennai', button: { label: 'Register Now', href: '#contact-us', register: true } } }).css;
+check('ET bar on a phone: the menu button, the logo and the action are 40px targets, the name\'s tap area grows in place',
+  /@media \(max-width:860px\)\{\.rv-etnav-burger\{width:40px;height:40px\}\.rv-etnav-logo\{display:flex;align-items:center;min-height:40px\}\.rv-etnav-cta\{min-height:40px;display:inline-flex;align-items:center\}\.rv-etnav-name\{padding-top:10px;padding-bottom:10px;margin-top:-10px;margin-bottom:-10px\}\}/.test(navCss));
+check('ET footer on a phone: the social links are 40px, the words-links\' tap areas grow in place',
+  /@media \(max-width:860px\)\{\.etf-social a\{width:40px;height:40px\}\.etf-links a,\.etf-h a\{padding-top:12px;padding-bottom:12px\}\.etf-logo-link\{padding-top:6px;padding-bottom:6px;margin-top:-6px;margin-bottom:-6px\}\}/.test(footCss));
 
 if (failures.length) { console.error('page-skeleton: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - ')); process.exit(1); }
 console.log('page-skeleton: all ' + checks + ' checks passed');
