@@ -1588,8 +1588,8 @@ a.ev-chip:hover{ border-color: currentColor; }
 
 /* ============ THE CONSOLE'S TOP BAR AT EVERY WIDTH (edit-event.html header.ev-bar; UX-002) ============
    The event's name is the one proof of which event is open, so the words around it give way first, as in the site
-   editor: "Back to events" below 1180px, Preview's and Share preview's below 900px (each keeps its words for screen
-   readers). On a phone the bar takes two rows: the way back, the name, the light/dark switch and the account above;
+   editor: "Back to events" below 1180px, Preview's and Share preview's below 900px, where Publish also says its short
+   word (each keeps its whole words for screen readers). On a phone the bar takes two rows: the way back, the name, the light/dark switch and the account above;
    what is saved, Preview, Share preview and Publish below, each a 40px tap target. The rail and every sticky part
    under the bar are placed under its new height (--topbar-h). Layout only: nothing here applies above 1180px. */
 @media (max-width: 1180px){
@@ -1599,6 +1599,10 @@ a.ev-chip:hover{ border-color: currentColor; }
 @media (max-width: 900px){
   .topbar.ev-bar #btn-preview span, .topbar.ev-bar #btn-share-preview > span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
   .topbar.ev-bar #btn-preview, .topbar.ev-bar #btn-share-preview{ padding-left:10px; padding-right:10px; }
+  /* Publish shows its short word ("Send…", which publish-flow.js writes; its whole words stay its name and tooltip),
+     as it already does below 600px, so a tablet held upright shows more of the event's name */
+  .topbar.ev-bar #btn-publish[data-rvpf-short]:not([aria-busy]){ font-size:0; gap:0; padding-left:12px; padding-right:12px; }
+  .topbar.ev-bar #btn-publish[data-rvpf-short]:not([aria-busy])::after{ content:attr(data-rvpf-short); font-size:13px; }
 }
 @media (max-width: 600px){
   .topbar.ev-bar{ height:104px; flex-wrap:wrap; align-content:center; row-gap:0; column-gap:8px; padding:0 10px; }

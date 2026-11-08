@@ -111,16 +111,16 @@ function mediaBlocks(src, q) {
     out.push(src.slice(j + 1, k)); at = k;
   }
 }
-var phone = mediaBlocks(EDITOR, '720px').join('\n');
+var phone = mediaBlocks(EDITOR, '720px').join('\n'), narrowBar = mediaBlocks(EDITOR, '900px').join('\n');
 check('editor, below 720px: the tools row, the pills and their pop-ups are put away in both modes',
   /\.ed-rail \.rail-tools, \.ed-rail \.rail-scroll, #rail-more-menu, #panel-add, #panel-layers, #panel-design, #panel-forms, #lyr-ctx-menu,\s*\.tpl-sel-toolbar, \.tpl-sec-toolbar, \.tpl-pop, #gt-style-pop\{ display:none !important; \}/.test(phone), phone.slice(0, 400));
-check('editor, below 720px: the top bar wraps onto two rows, Save and Publish in the second with their words and an icon',
-  /\.topbar\{ height:auto; flex-wrap:wrap;/.test(phone) && /\.topbar \.topbar-acts\{ display:contents; \}/.test(phone) &&
-  /\.topbar::after\{ content:''; order:5; flex-basis:100%; height:0; \}/.test(phone) && /\.topbar #btn-save, \.topbar #btn-publish\{ order:7;/.test(phone) &&
-  /#btn-save::before, #btn-publish::before\{ content:''; width:15px; height:15px;/.test(phone) && /\.topbar \.btn\{ min-height:40px; \}/.test(phone));
+check('editor, below 900px (a phone, or a tablet held upright): the top bar wraps onto two rows, Save and Publish in the second with their words and an icon',
+  /\.topbar\{ height:auto; flex-wrap:wrap;/.test(narrowBar) && /\.topbar \.topbar-acts\{ display:contents; \}/.test(narrowBar) &&
+  /\.topbar::after\{ content:''; order:5; flex-basis:100%; height:0; \}/.test(narrowBar) && /\.topbar #btn-save, \.topbar #btn-publish\{ order:7;/.test(narrowBar) &&
+  /#btn-save::before, #btn-publish::before\{ content:''; width:15px; height:15px;/.test(narrowBar) && /\.topbar \.btn\{ min-height:40px; \}/.test(narrowBar));
 check('editor: the phone rules are only ever inside (max-width) queries (nothing changes at 1440)',
   EDITOR.indexOf('.topbar .topbar-acts{ display:contents; }') === EDITOR.indexOf('.topbar .topbar-acts{ display:contents; }', 0) &&
-  phone.indexOf('.topbar .topbar-acts{ display:contents; }') !== -1 && (EDITOR.match(/\.topbar \.topbar-acts\{ display:contents; \}/g) || []).length === 1);
+  narrowBar.indexOf('.topbar .topbar-acts{ display:contents; }') !== -1 && (EDITOR.match(/\.topbar \.topbar-acts\{ display:contents; \}/g) || []).length === 1);
 var consolePhone = mediaBlocks(CSS, '600px').join('\n');
 check('console, below 600px: the top bar takes two rows (name, theme and account above; what is saved, Preview, Share and Publish below)',
   /\.topbar\.ev-bar\{[^}]*flex-wrap:wrap;/.test(consolePhone) && /\.topbar\.ev-bar \.topbar-acts\{ display:contents; \}/.test(consolePhone) &&

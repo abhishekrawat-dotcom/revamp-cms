@@ -1133,16 +1133,18 @@
      height it was drawn with */
   .lyr-ai-markers > div > label{ display:block; }
 
-  /* ---------- a phone, below 720px (UX-002) ----------
-     The editor opens in Edit with AI there (editor-ai-mode.js startMode): the site at the phone's own width, and
-     ETB2B AI as a sheet along the bottom. What needs a big screen is put away in both modes: the tools row (Add,
-     Sections, Layers, Theme, Forms, More) with the panels it opens, and the element and section pills with their
-     pop-ups; the device switch and Undo / Redo stay. The top bar takes two rows, so nothing is pushed off the screen:
-     the way back, the event's name, the mode switch, the light/dark switch and the account above (order 4, the
-     default for the bar's own parts); Preview, Share
-     preview, where the site stands, Save and Publish below, Save and Publish with an icon beside their words. Every
-     control there is a 40px tap target. The event's sections lie in one row along the top, as in the console. */
-  @media (max-width: 720px){
+  /* ---------- a phone or a narrow window (UX-002) ----------
+     Below 900px the top bar takes two rows, so nothing is pushed off the screen (a tablet held upright laid it out
+     856px wide): the way back, the event's name, the mode switch, the light/dark switch and the account above (order
+     4, the default for the bar's own parts); Preview, Share preview, where the site stands (it takes what room is
+     left, so it never pushes Publish onto a third row), Save and Publish below, Save and Publish with an icon beside
+     their words. Every control there is a 40px tap target.
+     Below 720px, a phone: the editor opens in Edit with AI (editor-ai-mode.js startMode), the site at the phone's own
+     width and ETB2B AI as a sheet along the bottom. What needs a big screen is put away in both modes: the tools row
+     (Add, Sections, Layers, Theme, Forms, More) with the panels it opens, and the element and section pills with their
+     pop-ups; the device switch and Undo / Redo stay. The event's sections lie in one row along the top, as in the
+     console. */
+  @media (max-width: 900px){
     .topbar{ height:auto; flex-wrap:wrap; row-gap:0; column-gap:6px; padding:6px 10px 8px; }
     .topbar .topbar-acts{ display:contents; }
     .topbar .back-btn{ order:1; min-width:40px; min-height:40px; justify-content:center; }
@@ -1165,6 +1167,8 @@
     #btn-publish{ --btn-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 2L11 13'/%3E%3Cpath d='M22 2l-7 20-4-9-9-4 20-7z'/%3E%3C/svg%3E"); }
     /* publish-flow.js shows a short word here below 600px ("Send…") with no gap of its own */
     #btn-publish[data-rvpf-short]::before{ margin-right:6px; }
+  }
+  @media (max-width: 720px){
     .ed-rail .rail-tools, .ed-rail .rail-scroll, #rail-more-menu, #panel-add, #panel-layers, #panel-design, #panel-forms, #lyr-ctx-menu,
     .tpl-sel-toolbar, .tpl-sec-toolbar, .tpl-pop, #gt-style-pop{ display:none !important; }
     .ed-rail{ height:48px; padding:0 10px; }
