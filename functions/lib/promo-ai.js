@@ -93,7 +93,17 @@ var MSG = {
   tooMany: 'left out: more people than that section shows',
   notHere: 'left out: that is not part of this ',
   perSpeakerNot: 'One post per speaker is made from a speaker’s post, and needs at least 2 speakers in Content › Speakers.',
-  done: 'Done.'
+  done: 'Done.',
+  /* said in place of the model's own summary when part of what it returned was left out: the notes under it say
+     what was done and what was not, so the summary never claims a change that was taken out */
+  donePartly: 'Done, apart from what is marked “Not done” below.',
+  /* a reply whose own words had a number that is not in the event's details ("this summit drew 500+ leaders") */
+  numberReply: 'I left that answer out: it had a number that is not in this event’s details, and I only use the event’s own figures. To use a real figure, add it to the event under Content in its console.',
+  /* the events side's scoped line (lib/dash-bot.js MSG.scopedBefore/scopedAfter), word for word, so the one
+     assistant says the same thing on every page of an event */
+  scopedBefore: 'I work on ',
+  scopedAfter: ' here only: use the events dashboard for other events, a new event or another portal.',
+  scopedNoName: 'I work on this event here only: use the events dashboard for other events, a new event or another portal.'
 };
 
 function str(v) { return v == null ? '' : String(v); }
@@ -199,6 +209,24 @@ function otherNamesOf(docs, eventId) {
   return out;
 }
 function namesOther(text, otherNames) { var w = normalized(text); return arr(otherNames).some(function (n) { return w.indexOf(n) !== -1; }); }
+/* The numbers the model's own summary may also use besides the sources: what describes this post or mail itself
+   (how long each of its texts is, in characters and in words, how many texts and places it has, its size), the
+   limits it was told (a subject's 70 characters, a preview's 110, each network's caption length) and how many
+   speakers, partners and sessions the event has. "The subject is 38 characters, under the 70 limit" is true of the
+   mail; "this summit drew 500+ leaders" is not in any of it. */
+function selfNumbers(st, roster) {
+  var out = [CAPS.subject, CAPS.preview];
+  Object.keys(NETWORKS).forEach(function (k) { out.push(NETWORKS[k].max); });
+  var texts = arr(st && st.words).map(function (w) { return w.text; });
+  if (st && st.caption) texts.push(st.caption.text);
+  if (st && st.subject) texts.push(st.subject);
+  if (st && st.preview) texts.push(st.preview);
+  texts.forEach(function (t) { out.push(str(t).length, words(t).length); });
+  out.push(arr(st && st.words).length, arr(st && st.people).length);
+  if (st && st.width) out.push(st.width, st.height);
+  if (roster) out.push(arr(roster.speakers).length, arr(roster.sponsors).length, arr(roster.sessions).length);
+  return out.join(' ');
+}
 
 /* the picture model's shape nearest to the post's */
 function aspectOf(w, h) {
@@ -407,12 +435,37 @@ function cleanAnswer(parsed, ctx) {
       if (bgm.make === true) skipped.push('A new picture is not made for a mail here: click a picture in the mail (in Edit myself) to swap it.');
     }
   }
+  /* LOCKED TO THE EVENT, for the words the person reads too (owner decision 10). The model never saw another
+     event, so a summary that names one took it from the person's message or an old turn: the answer reaches past
+     this event, and, as the events side does (lib/dash-bot.js scopeBreak 'scope-named-other'), it is the one scoped
+     line, with nothing changed, whatever else it held. An Undo is about this post whatever it says: its words are
+     dropped instead. */
+  if (summary && namesOther(summary, ctx.otherNames)) {
+    if (kind !== 'undo') {
+      var evName = line((ctx.kit && ctx.kit.event && ctx.kit.event.name) || (ctx.eventData && ctx.eventData.name), 200);
+      return { kind: 'refuse', intent: intent, summary: evName ? MSG.scopedBefore + evName + MSG.scopedAfter : MSG.scopedNoName,
+        changes: { words: [], people: [], subject: '', preview: '', caption: '', background: null, perSpeaker: false }, skipped: [], scope: 'locked' };
+    }
+    summary = '';
+  }
   var changed = hasChanges(changes);
   if (kind === 'edit' && !changed) kind = 'reply';
   if (kind !== 'edit') changes = { words: [], people: [], subject: '', preview: '', caption: '', background: null, perSpeaker: false };
-  /* the summary never claims a change that was taken out: with nothing left to do, the skipped reasons are the answer */
-  if (!summary) summary = kind === 'edit' ? MSG.done : skipped.length ? 'Nothing was changed: ' + skipped.join('; ') + '.' : '';
+  /* a number in the summary that is in none of the event's details, the post's own words and lengths, or the
+     person's messages is an invented fact ("this summit drew 500+ leaders"), as it would be in a change: an edit
+     says only that it is done (its notes list what), a reply says why it was left out */
+  if (summary && !grounded(summary, ctx.sources + '\n' + selfNumbers(st, ctx.roster))) {
+    if (kind === 'edit') summary = skipped.length ? MSG.donePartly : MSG.done;
+    else if (kind === 'undo') summary = '';
+    /* an edit with nothing left: the reasons below are its answer */
+    else summary = parsed.kind === 'edit' && skipped.length ? '' : MSG.numberReply;
+  }
+  /* the summary never claims a change that was taken out: with nothing left to do, the skipped reasons are the
+     answer; with part of it left out, the model's summary (written for all of it) gives way to a plain line, and the
+     notes under it say what was done and what was not */
+  if (!summary) summary = kind === 'edit' ? (skipped.length ? MSG.donePartly : MSG.done) : skipped.length ? 'Nothing was changed: ' + skipped.join('; ') + '.' : '';
   else if (parsed.kind === 'edit' && kind === 'reply' && skipped.length) summary = 'Nothing was changed: ' + skipped.join('; ') + '.';
+  else if (kind === 'edit' && skipped.length) summary = MSG.donePartly;
   return { kind: kind, intent: intent, summary: summary, changes: changes, skipped: kind === 'edit' ? skipped : [] };
 }
 function hasChanges(c) { return !!(c.words.length || c.people.length || c.subject || c.preview || c.caption || c.background || c.perSpeaker); }
@@ -500,6 +553,8 @@ function handleEdit(req, res) {
             answer.changes.background = null;
             answer.skipped.push(postWords(chatPicture.sentence(picLeft.failedOut ? 'failLimit' : 'limit', { perDay: picLeft.perDay })));
             if (!hasChanges(answer.changes)) { answer.kind = 'reply'; answer.summary = answer.skipped.join(' '); answer.skipped = []; }
+            /* the model's summary spoke of the background too: it gives way, as in cleanAnswer */
+            else answer.summary = MSG.donePartly;
           }
           return keep(fb, decoded, userRef, eventId, body.place, state, message, answer, res);
         });
@@ -616,4 +671,4 @@ module.exports = { wire: wire, handleEdit: handleEdit, handleTurn: handleTurn, M
 /* the pure parts, for functions/lib/promo-ai.test.js */
 module.exports._test = { cleanState: cleanState, rosterOf: rosterOf, numbersIn: numbersIn, grounded: grounded, otherNamesOf: otherNamesOf,
   namesOther: namesOther, aspectOf: aspectOf, memoryText: memoryText, buildPrompt: buildPrompt, schemaFor: schemaFor, cleanAnswer: cleanAnswer,
-  cleanIntent: cleanIntent, postWords: postWords, doneList: doneList, placeOk: placeOk, hasChanges: hasChanges, NETWORKS: NETWORKS };
+  cleanIntent: cleanIntent, postWords: postWords, doneList: doneList, placeOk: placeOk, hasChanges: hasChanges, selfNumbers: selfNumbers, NETWORKS: NETWORKS };

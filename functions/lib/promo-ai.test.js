@@ -149,6 +149,33 @@ check('P.4 a mail gets no caption, no new picture and no per-speaker posts', m3.
 check('P.4 handoff passes nothing on', (function () { var h = answer({ kind: 'handoff', intent: 'open page', summary: 'x', words: [{ target: 'e1', text: 'y' }] }); return h.kind === 'handoff' && h.changes.words.length === 0 && h.summary === ''; })());
 check('P.4 a reply keeps its words and changes nothing', (function () { var r = answer({ kind: 'reply', intent: 'question', summary: 'The title says Meet our speaker.', words: [{ target: 'e1', text: 'y' }] }); return r.kind === 'reply' && !T.hasChanges(r.changes) && /Meet our speaker/.test(r.summary); })());
 check('P.4 an unknown kind is a reply', answer({ kind: 'delete', summary: 'ok' }).kind === 'reply');
+/* the lock and the grounding read the summary too, the words the person reads (verifier of B18-ai.3) */
+var s1 = answer({ kind: 'reply', intent: 'question', summary: 'Autotech Summit 2026 had 40 speakers; this post has one.' });
+check('P.4 a reply whose own words name another event is the events side\'s scoped line, nothing else', s1.kind === 'refuse' &&
+  s1.summary === 'I work on QA Retail Leaders Forum 2026 here only: use the events dashboard for other events, a new event or another portal.' &&
+  s1.summary.indexOf('Autotech') === -1 && !T.hasChanges(s1.changes), s1);
+var s2 = answer(edit({ words: [{ target: 'e1', text: 'Hear from Autotech Summit 2026' }], background: { make: true, scene: 'a calm conference hall', style: 'photo' },
+  summary: 'I changed the title to Hear from Autotech Summit 2026 and made a new background.' }));
+check('P.4 an edit whose summary names another event changes nothing and says the scoped line', s2.kind === 'refuse' && !T.hasChanges(s2.changes) &&
+  /^I work on QA Retail Leaders Forum 2026 here only/.test(s2.summary), s2);
+var s3 = answer(edit({ words: [{ target: 'e1', text: 'Hear from Autotech Summit 2026' }], background: { make: true, scene: 'a calm conference hall', style: 'photo' },
+  summary: 'I changed the title and made a new background.' }));
+check('P.4 an edit with a change left out never claims it: a plain line, the background kept, the reason in its notes', s3.kind === 'edit' &&
+  s3.summary === promoAi.MSG.donePartly && s3.changes.words.length === 0 && !!s3.changes.background && s3.skipped.some(function (x) { return /another event/.test(x); }), s3);
+var s4 = answer({ kind: 'reply', intent: 'question', summary: 'This summit drew 500+ leaders last year.' });
+check('P.4 a reply with a number not in the event\'s details is not said; why is', s4.kind === 'reply' && s4.summary === promoAi.MSG.numberReply && s4.summary.indexOf('500') === -1, s4);
+var s5 = answer(edit({ words: [{ target: 'e1', text: 'Meet Asha' }], summary: 'I shortened the title, as 500+ leaders will read it.' }));
+check('P.4 an edit whose summary invents a number keeps its change and says only Done', s5.kind === 'edit' && s5.summary === 'Done.' && s5.changes.words.length === 1, s5);
+var s6 = answer({ kind: 'reply', intent: 'question', summary: 'The title is 16 characters and 3 words; the event has 2 speakers and 300 delegates, on 12 March 2026.' });
+check('P.4 numbers true of the post itself or the event (lengths, counts, limits, details) are kept', s6.summary.indexOf('16 characters') !== -1, s6);
+var s7 = answer({ kind: 'reply', intent: 'question', summary: 'A subject line works best under 70 characters.' }, Object.assign({}, CTX, { state: mail }));
+check('P.4 …and the limits ETB2B AI was told', /70 characters/.test(s7.summary), s7);
+var s8 = answer(edit({ words: [{ target: 'e1', text: 'Meet Asha' }, { target: 'nope', text: 'x' }], summary: 'I shortened the title and the subtitle.' }));
+check('P.4 any change left out turns the summary into the plain line', s8.kind === 'edit' && s8.summary === promoAi.MSG.donePartly, s8);
+var s9 = answer({ kind: 'undo', intent: 'undo', summary: 'Put back the title from Autotech Summit 2026.' });
+check('P.4 an Undo is never refused for its words, which are dropped', s9.kind === 'undo' && s9.summary === '', s9);
+var s10 = answer(edit({ words: [{ target: 'e1', text: 'Meet Asha' }], summary: 'I shortened the title to Meet Asha.' }));
+check('P.4 a clean edit keeps the model\'s own summary', s10.summary === 'I shortened the title to Meet Asha.', s10);
 check('P.4 intent: a short plain label, never a number', T.cleanIntent('Swap Speaker 2 to Asha!!') === 'swap speaker to asha' && T.cleanIntent('') === 'other' && T.cleanIntent('a b c d e f g') === 'a b c d e');
 check('P.4 the picture side\'s sentences are said for the post, with the product\'s name', T.postWords('Nothing on your site changed. Tell the Revamp team.') === 'Nothing on your post changed. Tell the ETB2B EventSphere support team.');
 
