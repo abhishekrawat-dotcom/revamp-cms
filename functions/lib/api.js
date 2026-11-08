@@ -107,9 +107,10 @@
 //                          GET /api/promo/analytics, GET /api/promo/analytics/all
 //     lib/promo-mailer.js  GET /api/promo/mailers, /api/promo/mailer/* except previews and banner (open, render,
 //                          save, download, AI …),
-//                          GET/POST/DELETE /api/promo/icons (Promotions → Mailers, the platform's mailer studio)
+//                          GET/POST/DELETE /api/promo/icons, POST /api/promo/mailer/picture (Promotions → Mailers,
+//                          the platform's mailer studio)
 //     lib/promo-social.js  Promotions → Social posts (the platform's post templates): GET /api/promo/social/catalog,
-//                          GET/POST/DELETE /api/promo/social/art, POST /api/promo/social/art/psd,
+//                          GET/POST/DELETE /api/promo/social/art, POST /api/promo/social/art/psd and /art/default,
 //                          POST /api/promo/social/html, GET/POST /api/promo/social/layout, GET /api/promo/social/layouts,
 //                          POST /api/promo/social/layout/base, POST /api/promo/social/layout/reset,
 //                          POST /api/promo/social/picture
@@ -296,6 +297,8 @@ const siteSeo = require('./site-seo');
 const sitePages = require('./site-pages');
 /* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
 const siteChecks = require('./site-checks');
+/* the check before Publish: what is good to put right, advisory (owner decision #11, part 3.2) */
+const siteAdvisory = require('./site-advisory');
 /* what the site shows of the console's Content tabs, read off its page (site-outline.js) */
 const siteOutline = require('./site-outline');
 
@@ -10136,6 +10139,7 @@ function approvalView(id, d) {
 }
 
 function handleApprovalGet(req, res) {
+  var since = Date.now();
   withAdmin(req, res, function (fb, decoded) {
     var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
     if (!eventId) return;
@@ -10175,7 +10179,8 @@ function handleApprovalGet(req, res) {
           return pp[0];
         }).then(function (html) {
           return html == null || !wantChecks ? { html: html, check: null } : livePageOf(fb, eventId, data).then(function (livePage) {
-            return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage });
+            /* with the check before Publish (advisory), as the person sending it saw it: the approver sees the same list */
+            return siteCheckOf(fb, eventId, data, html, { records: true, livePage: livePage, advisory: { version: request.toVersion, waitMs: advisoryWait(qs.get('wait')), since: since } });
           }).then(function (check) {
             return { html: html, check: check };
           }, function (err) {
@@ -10200,7 +10205,7 @@ function handleApprovalGet(req, res) {
              said in whyNot — it can still be rejected with that reason) */
           request: request, canDecide: canDecide, canApprove: canDecide && !logoNote && !checkErr,
           whyNot: why || (logoNote ? logoNoteError(logoNote, 'approver').message : checkErr ? checkErr.message : ''),
-          checks: check ? check.items : null,
+          checks: check ? check.items : null, checksPending: check ? check.pending || 0 : 0,
           approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required,
           /* the version that was live before this one ({ version, at }), still kept, or null; and whether the person
              asking may put it back or take the site offline (approvers only, lib/access.js notAnApprover) */
@@ -10452,7 +10457,13 @@ function handleApprovalSettingsPut(req, res) {
        items: [{ code, level: 'block' | 'warn' | 'info', title, lines: [text], hint, action? }]
        opts: { forms (the public forms payload, when read), records: true to read Content's records too,
                live: true for the page that is live (says why search engines are kept away), probe (tests),
-               livePage: the page of the version that is live now (livePageOf), when a newer one is checked }
+               livePage: the page of the version that is live now (livePageOf), when a newer one is checked,
+               advisory: { version, waitMs, since? (when the request came in: waitMs counts from it), fetch?, fetchOptions? } to add the check before Publish too
+               (lib/site-advisory.js: links and pictures on other sites, empty sections, dates and place, the
+               banner's logo, forms switched off) — the publish window and the review page ask for it; the gate
+               never does, so it never holds anything back nor makes publishing wait for other sites }
+       -> also pending: how many outside links and pictures are still being asked about (advisory only), and
+          each item's fix: [{ where, key | route, label, href }] — the places to put it right
    'block' holds a version back: publishing it, asking for its approval and approving it all refuse (409
    'site-check', the items with the answer) — never the version already live going out again.
    A version of a site that is live is held back only by what it would put live that is not live already: a
@@ -10718,6 +10729,8 @@ function templateSamples(templateId) {
    those fields: a sponsor's or speaker's logo and photo can be stored inline and are not wanted here.
    -> Promise<{ partners, speakers, faqs, sessions, contacts } | null> (null: could not be read; nothing is said) */
 var CONTENT_NAMES = { partners: ['name'], speakers: ['name'], faqs: ['question'], sessions: ['title'], contacts: ['name', 'email', 'phone'] };
+/* the console tab each kind of record is put right in (edit-event.html's routes) */
+var RECORD_TABS = { partners: 'content/sponsors', speakers: 'content/speakers', faqs: 'content/faq', sessions: 'content/agenda', contacts: 'content/contact' };
 function contentNames(fb, eventId) {
   var ref = eventDocRef(fb, eventId), kinds = Object.keys(CONTENT_NAMES);
   return Promise.all(kinds.map(function (k) {
@@ -10743,33 +10756,48 @@ function siteCheckOf(fb, eventId, data, html, opts) {
 
   var samples = siteChecks.sampleHits(page, TOKEN_KIT, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
   var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
-  return Promise.all([pictureProblems(fb, page, opts.probe), logoProblems(fb, data, ins.logos), records]).then(function (got) {
-    var pics = got[0], logos = got[1], siteData = got[2], items = [];
+  /* the forms are handed over still being read, so other sites are asked meanwhile: the first list comes sooner */
+  var adv = opts.advisory ? Promise.resolve().then(function () {
+    return siteAdvisory.check(page, {
+      kit: TOKEN_KIT, eventId: eventId, event: data, inspect: ins, forms: opts.forms !== undefined ? opts.forms : publicFormsFor(fb, eventId, data),
+      pages: sitePages.readPages(page, TOKEN_KIT), version: opts.advisory.version, waitMs: advisoryLeft(opts.advisory),
+      fetch: opts.advisory.fetch, fetchOptions: opts.advisory.fetchOptions
+    });
+  }).then(null, function (err) {
+    /* the check before Publish is advice: when it fails, the rest of the check still stands */
+    console.error('api: the check before Publish of ' + eventId + ' failed — ' + (err && err.message));
+    return null;
+  }) : Promise.resolve(null);
+  /* the places to put right what the check finds (the site editor at a section, the console at a tab) */
+  function inEditor(places) { return siteAdvisory.sectionFixes(eventId, data, places || []); }
+  function placesOf(list) { var out = []; (list || []).forEach(function (h) { out = out.concat(h.places || []); }); return out; }
+  return Promise.all([pictureProblems(fb, page, opts.probe), logoProblems(fb, data, ins.logos), records, adv]).then(function (got) {
+    var pics = got[0], logos = got[1], siteData = got[2], advice = got[3], items = [];
     /* each kind that holds a version back, split in two when the live page has some of it already (onLive) */
     blockUnlessLive(items, 'placeholders', ins.placeholders, onLive.placeholder, function (list) {
       return { title: 'Template text is still on the page',
         lines: capLines(list.map(function (h) { return quoteText(h.text) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
-        hint: 'Write the event’s own words in the site editor, or take the section out, then save.' };
+        hint: 'Write the event’s own words in the site editor, or take the section out, then save.', fix: inEditor(placesOf(list)) };
     });
     /* another event's quotes, people or logos the template shows as samples of its design */
     blockUnlessLive(items, 'samples', samples, onLive.sample, function (list) {
       return { title: 'Samples from the template are still on the page',
         lines: capLines(list.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
-        hint: 'They belong to another event (its quotes, people or logos). Put this event’s own in, or take them out, in the site editor, then save.' };
+        hint: 'They belong to another event (its quotes, people or logos). Put this event’s own in, or take them out, in the site editor, then save.', fix: inEditor(placesOf(list)) };
     });
     blockUnlessLive(items, 'pictures', pics, onLive.picture, function (list) {
       var fixable = list.filter(function (p) { return p.fixUrl; }).length;
       return { title: list.length === 1 ? '1 picture cannot be shown' : list.length + ' pictures cannot be shown',
         lines: capLines(list.map(function (p) { return quoteText(p.url.split('/').pop(), 60) + ': ' + p.why; })),
         hint: fixable ? 'The right address of ' + (fixable === 1 ? 'it' : fixable + ' of them') + ' is known. Correct it here, or replace the picture in the site editor.' : 'Replace it in the site editor, then save.',
-        action: fixable ? { kind: 'pictures', label: fixable === 1 ? 'Correct the picture’s address' : 'Correct the pictures’ addresses' } : null };
+        action: fixable ? { kind: 'pictures', label: fixable === 1 ? 'Correct the picture’s address' : 'Correct the pictures’ addresses' } : null, fix: inEditor([]) };
     });
     var chromeAction = ins.generated && ins.hasNav && ins.hasFooter ? { kind: 'et-chrome', label: 'Update this site’s header and footer' } : null;
     blockUnlessLive(items, 'logo-year', logos.wrong, onLive.logo, function (list) {
       return { title: 'The ' + (list[0].where === 'footer' ? 'footer' : 'header') + ' logo shows another year',
         lines: list.map(function (l) { return (l.where === 'footer' ? 'Footer' : 'Header') + ': ' + l.years.join(', ') + ' — this edition is ' + logos.want; }),
         hint: chromeAction ? 'ET’s header and footer use the portal’s logo and this edition’s name and date.' : 'Replace the logo in the site editor with this edition’s, then save.',
-        action: chromeAction };
+        action: chromeAction, fix: inEditor([]) };
     });
     if (ins.generated && ((ins.hasNav && !ins.etNav) || (ins.hasFooter && !ins.etFooter))) {
       var lines = [];
@@ -10777,13 +10805,16 @@ function siteCheckOf(fb, eventId, data, html, opts) {
       if (ins.hasFooter && !ins.etFooter) lines.push('The footer has no privacy, terms or contact links.');
       items.push({ code: 'et-chrome', level: 'warn', title: 'This site was built before ET’s header and footer', lines: lines,
         hint: 'In the event console, one click puts them in as a new saved version' + (opts.live ? ' and sends it for approval' : '') + '. Nothing else on the page changes.',
-        action: chromeAction });
+        action: chromeAction,
+        /* the console shows its site check, with that button, above every tab */
+        fix: [siteAdvisory.consoleFix(eventId, 'dashboard', chromeAction ? '“' + chromeAction.label + '” in the event console' : 'The event console')] });
     }
     var sample = siteData ? siteChecks.recordPlaceholders(siteData) : [];
     if (sample.length) {
       items.push({ code: 'records', level: 'warn', title: 'Sample entries in Content',
         lines: sample.map(function (r) { return r.label + ': ' + r.items.slice(0, 5).map(function (t) { return quoteText(t, 50); }).join(', ') + (r.items.length > 5 ? ' …' : ''); }),
-        hint: 'Rename or delete them there. The page shows Content’s entries as they were when the site was last saved in the editor.' });
+        hint: 'Rename or delete them there. The page shows Content’s entries as they were when the site was last saved in the editor.',
+        fix: sample.slice(0, 4).map(function (r) { return siteAdvisory.consoleFix(eventId, RECORD_TABS[r.kind] || 'content/basics', r.label); }) });
     }
     var reps = repeatedPageHeadings(page);
     if (reps.length) {
@@ -10791,12 +10822,14 @@ function siteCheckOf(fb, eventId, data, html, opts) {
         lines: capLines(reps.map(function (r) { return quoteText(r.text, 70) + ' — ' + siteChecks.sectionName(r.id) + ' repeats ' + (r.firstId === 'hero' ? 'the banner' : siteChecks.sectionName(r.firstId)); })),
         hint: ins.generated ? 'Visitors read the same heading twice. ETB2B AI can write the later section a heading of its own from what that section says, as a new saved version' + (opts.live ? ' sent for approval' : '') + '; or change it in the site editor.'
           : 'Visitors read the same heading twice. Give the later section a heading of its own in the site editor, then save.',
-        action: ins.generated ? { kind: 'headings', label: reps.length === 1 ? 'Write it a heading of its own' : 'Write them headings of their own' } : null });
+        action: ins.generated ? { kind: 'headings', label: reps.length === 1 ? 'Write it a heading of its own' : 'Write them headings of their own' } : null,
+        fix: inEditor(reps.map(function (r) { return { key: r.id, section: siteChecks.sectionName(r.id) }; })) });
     }
     if (after.payment.length) {
       items.push({ code: 'payment', level: 'warn', title: 'A button promises tickets or payment',
         lines: capLines(after.payment.map(function (p) { return quoteText(p.label, 50) + ' — ' + p.section; })),
-        hint: 'Online payment is not available yet. Use words such as “Register” or “Request an invitation”.' });
+        hint: 'Online payment is not available yet. Use words such as “Register” or “Request an invitation”.',
+        fix: inEditor(after.payment) });
     }
     if (fixed.changes.length) {
       /* a button hidden, or what an import cannot run taken out, is worth a look; a menu link hidden with its empty
@@ -10804,7 +10837,8 @@ function siteCheckOf(fb, eventId, data, html, opts) {
       var hides = fixed.changes.some(function (c) { return c.what !== 'nav' && /^(?:is hidden|taken out)/.test(c.how); });
       items.push({ code: 'buttons', level: hides ? 'warn' : 'info', title: 'Put right on the live page as it is shown',
         lines: capLines(fixed.changes.map(function (c) { return quoteText(c.label, 50) + ' (' + c.section + ') ' + c.how; })),
-        hint: 'Nothing to do: visitors get these. Change them in the site editor to make them part of the site.' });
+        hint: 'Nothing to do: visitors get these. Change them in the site editor to make them part of the site.',
+        fix: inEditor(fixed.changes) });
     }
     if (opts.live) {
       var why = siteChecks.noindexReason(Object.assign({ id: eventId }, data), page, TOKEN_KIT);
@@ -10812,9 +10846,11 @@ function siteCheckOf(fb, eventId, data, html, opts) {
         lines: [why === 'owner' ? 'Its settings say so.' : why === 'test' ? 'Its name says it is a test (' + quoteText(data.name, 60) + ').' : 'Its page is still the template (' + quoteText((ins.placeholders.filter(function (h) { return h.strong; })[0] || {}).text || 'Event name goes here') + ').'],
         hint: 'It stays live for anyone with its address; search engines are asked not to list it, and the sitemap leaves it out.' });
     }
+    /* the check before Publish: after what the site check says, never a block (site-advisory.js) */
+    if (advice) advice.items.forEach(function (x) { if (x.level !== 'block') items.push(x); });
     var order = { block: 0, warn: 1, info: 2 };
     items.sort(function (a, b) { return order[a.level] - order[b.level]; });
-    return { items: items, blocking: items.some(function (x) { return x.level === 'block'; }) };
+    return { items: items, blocking: items.some(function (x) { return x.level === 'block'; }), pending: advice ? advice.pending : 0 };
   });
 }
 
@@ -10893,12 +10929,26 @@ function siteCheckGate(fb, eventId, data, html, who, forms) {
   });
 }
 
-/* ---------- GET /api/event/site-check?eventId=&of=live|saved ----------
+/* ---------- GET /api/event/site-check?eventId=&of=live|saved[&advisory=1&wait=ms] ----------
    The site check of the page that is live (of=live, the default) or of the site as last saved (of=saved), for
    the event console: what blocks, what to know, and what can be put right in one click (an item's action:
    'et-chrome', 'pictures' — POST /api/event/site/repair). -> { eventId, of, published, publishedVersion,
-   savedVersion, approvalVersion (the version waiting for approval, 0 when none), items, blocking, found } */
+   savedVersion, approvalVersion (the version waiting for approval, 0 when none), items, blocking, found, pending }
+   advisory=1 (the publish window, publish-flow.js): the check before Publish too (siteCheckOf's advisory), waiting
+   at most wait ms (ADVISORY_WAIT_MS by default, never more than ADVISORY_WAIT_MAX_MS) for other sites to answer;
+   pending says how many are still being asked, and asking again picks up their answers. */
+var ADVISORY_WAIT_MS = 2500, ADVISORY_WAIT_MAX_MS = 8000;
+function advisoryWait(v) { var n = parseInt(v, 10); return n >= 0 ? Math.min(n, ADVISORY_WAIT_MAX_MS) : ADVISORY_WAIT_MS; }
+/* What is left of the wait when other sites start being asked: the wait is counted from when the request came in
+   (advisory.since), so reading the event and its pages first does not add to it — the publish window's first list
+   comes about wait ms after it asked, with what is known by then (the browser check of 8 Nov 2026 saw 4.9 s for a
+   wait of 2.5 s). Without since, the whole wait. */
+function advisoryLeft(a) {
+  var wait = Math.max(0, +a.waitMs || 0);
+  return a.since > 0 ? Math.max(0, wait - (Date.now() - a.since)) : wait;
+}
 function handleSiteCheck(req, res) {
+  var since = Date.now();
   withAdmin(req, res, function (fb) {
     var qs = queryOf(req), eventId = eventIdOr400(res, qs.get('eventId'));
     if (!eventId) return;
@@ -10913,9 +10963,10 @@ function handleSiteCheck(req, res) {
         if (html == null) return sendJson(res, 200, Object.assign(base, { items: [], blocking: false, found: false }));
         /* the saved version of a live site is checked against the live page, as asking for its approval will be */
         return (of === 'saved' ? livePageOf(fb, eventId, data) : Promise.resolve(null)).then(function (livePage) {
-          return siteCheckOf(fb, eventId, data, html, { records: true, live: of === 'live', livePage: livePage });
+          var advisory = qs.get('advisory') === '1' ? { version: of === 'live' ? base.publishedVersion : base.savedVersion, waitMs: advisoryWait(qs.get('wait')), since: since } : null;
+          return siteCheckOf(fb, eventId, data, html, { records: true, live: of === 'live', livePage: livePage, advisory: advisory });
         }).then(function (check) {
-          sendJson(res, 200, Object.assign(base, { items: check.items, blocking: check.blocking, found: true }));
+          sendJson(res, 200, Object.assign(base, { items: check.items, blocking: check.blocking, found: true, pending: check.pending || 0 }));
         });
       });
     }).catch(function (err) { sendFailure(res, 'site check', err, 'The site could not be checked. Please try again.'); });
@@ -12208,11 +12259,13 @@ var ROUTES = {
   'GET /api/promo/icons': promoMailer('handleIcons'),
   'POST /api/promo/icons': promoMailer('handleIconUpload'),
   'DELETE /api/promo/icons': promoMailer('handleIconDelete'),
+  'POST /api/promo/mailer/picture': promoMailer('handlePicture'),
   'GET /api/promo/social/catalog': promoSocial('handleCatalog'),
   'GET /api/promo/social/art': promoSocial('handleArt'),
   'POST /api/promo/social/art': promoSocial('handleArtUpload'),
   'POST /api/promo/social/art/psd': promoSocial('handleArtPsd'),
   'DELETE /api/promo/social/art': promoSocial('handleArtDelete'),
+  'POST /api/promo/social/art/default': promoSocial('handleArtDefault'),
   'POST /api/promo/social/html': promoSocial('handleHtml'),
   'GET /api/promo/social/layout': promoSocial('handleLayout'),
   'GET /api/promo/social/layouts': promoSocial('handleLayouts'),

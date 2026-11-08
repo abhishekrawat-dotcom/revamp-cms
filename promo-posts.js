@@ -279,7 +279,7 @@
       },
       groups: function (D) {
         return [{ title: 'Words on the post', fields: [
-          { key: 'kicker', label: 'Kicker', def: 'Save the date' },
+          { key: 'kicker', label: 'Small line above the title', def: 'Save the date' },
           { key: 'bigDate', label: 'Date', def: eventOf(D.kit).dateLabel || '' },
           { key: 'bigPlace', label: 'Place', def: placeOf(D.kit) },
           { key: 'tagline', label: 'Line under the place', def: firstSentence(eventOf(D.kit).description || contentOf(D.kit).overview), long: true },
@@ -329,7 +329,7 @@
         var s = this.person(D), ses = sessionFor(D.kit, s);
         return [
           { title: 'Words on the post', fields: [
-            { key: 'sp:' + s.id + ':kicker', label: 'Kicker', def: (s.group && !/^speakers?$/i.test(s.group)) ? String(s.group).replace(/s$/i, '').replace(/^keynote$/i, 'Keynote speaker') : 'Speaker' },
+            { key: 'sp:' + s.id + ':kicker', label: 'Small line above the title', def: (s.group && !/^speakers?$/i.test(s.group)) ? String(s.group).replace(/s$/i, '').replace(/^keynote$/i, 'Keynote speaker') : 'Speaker' },
             { key: 'sp:' + s.id + ':session', label: 'Session line', def: ses ? ses.title : '', long: true }
           ] },
           personGroup(s, 'The speaker')
@@ -378,7 +378,7 @@
       instance: function (kit, cfg) { return ((cfg.picks.speakers || []).length || Math.min(8, speakersOf(kit).length)) + ' speakers'; },
       groups: function (D) {
         var g = [{ title: 'Words on the post', fields: [
-          { key: 'kicker', label: 'Kicker', def: 'Speakers' },
+          { key: 'kicker', label: 'Small line above the title', def: 'Speakers' },
           { key: 'headline', label: 'Headline', def: 'Meet the speakers' }
         ] }];
         this.people(D).forEach(function (s) { g.push(personGroup(s, s.name, true)); });
@@ -411,7 +411,7 @@
       groups: function (D) {
         var p = this.partner(D);
         return [{ title: 'Words on the post', fields: [
-          { key: 'kicker', label: 'Kicker', def: 'Welcoming our' },
+          { key: 'kicker', label: 'Small line above the title', def: 'Welcoming our' },
           { key: 'pt:' + p.id + ':tier', label: 'Tier', def: tierLabel(p.tier) },
           { key: 'pt:' + p.id + ':name', label: 'Partner name', def: p.name }
         ] }];
@@ -457,7 +457,7 @@
       },
       instance: function (kit, cfg) { return ((cfg.picks.partners || []).length || partnersOf(kit).length) + ' partners'; },
       groups: function (D) {
-        var f = [{ key: 'kicker', label: 'Kicker', def: '' }, { key: 'headline', label: 'Headline', def: 'Our partners' }];
+        var f = [{ key: 'kicker', label: 'Small line above the title', def: '' }, { key: 'headline', label: 'Headline', def: 'Our partners' }];
         this.tiers(D).forEach(function (t) { f.push({ key: 'tier:' + t.tier, label: 'Tier label: ' + t.tier, def: t.tier === 'Partners' ? '' : tierLabel(t.tier) }); });
         return [{ title: 'Words on the post', fields: f }];
       },
@@ -489,7 +489,7 @@
          partners and days; with none of either, its example note leads to the place its own are typed */
       need: function (kit) { return statsOf(kit).length ? '' : { why: 'The event has no numbers yet: none of its own, and no speakers, sessions, partners or dates to count.', fix: ['Add headline numbers in Content → Basics', 'content/basics/numbers'] }; },
       groups: function (D) {
-        var f = [{ key: 'kicker', label: 'Kicker', def: '' }, { key: 'headline', label: 'Headline', def: 'In numbers' }];
+        var f = [{ key: 'kicker', label: 'Small line above the title', def: '' }, { key: 'headline', label: 'Headline', def: 'In numbers' }];
         statsOf(D.kit).slice(0, 6).forEach(function (s, i) {
           f.push({ key: 'st:' + i + ':value', label: 'Number ' + (i + 1), def: String(s.value || '') });
           f.push({ key: 'st:' + i + ':label', label: 'Label ' + (i + 1), def: String(s.label || '') });
@@ -533,7 +533,7 @@
       instance: function (kit, cfg) { var s = byId(sessionsOf(kit), cfg.picks.session) || sessionsOf(kit)[0]; return s ? s.title : ''; },
       groups: function (D) {
         var s = this.session(D), g = [{ title: 'Words on the post', fields: [
-          { key: 'kicker', label: 'Kicker', def: 'Session' },
+          { key: 'kicker', label: 'Small line above the title', def: 'Session' },
           { key: 's:' + s.id + ':when', label: 'Day and time', def: sessionWhen(s) },
           { key: 's:' + s.id + ':title', label: 'Session title', def: s.title, long: true }
         ] }];
@@ -573,7 +573,7 @@
            seen on the gallery's preview of an event that has started, which says so in its chip */
         var d = Math.max(0, daysToGo(D.kit) || 0);
         return [{ title: 'Words on the post', fields: [
-          { key: 'kicker', label: 'Kicker', def: '' },
+          { key: 'kicker', label: 'Small line above the title', def: '' },
           { key: 'number', label: 'Number', def: String(d) },
           { key: 'unit', label: 'Under the number', def: d === 1 ? 'Day to go' : 'Days to go' },
           { key: 'tagline', label: 'Line under it', def: '', long: true }
@@ -610,7 +610,7 @@
         return listOf(D.kit, key).slice(0, 8).map(function (t, i) { return D.T(prefix + ':' + i); }).filter(Boolean);
       },
       groups: function (D) {
-        var f = [{ key: 'kicker', label: 'Kicker', def: '' }, { key: 'headline', label: 'Headline', def: headline }];
+        var f = [{ key: 'kicker', label: 'Small line above the title', def: '' }, { key: 'headline', label: 'Headline', def: headline }];
         listOf(D.kit, key).slice(0, 8).forEach(function (t, i) { f.push({ key: prefix + ':' + i, label: 'Line ' + (i + 1), def: t, long: true }); });
         return [{ title: 'Words on the post', fields: f }];
       },
@@ -1530,8 +1530,8 @@
           (need.fix ? '<span class="ps-why"><a href="' + esc(fixLink(EVENT_ID, need.fix[1])) + '">' + esc(need.fix[0]) + '</a></span>' : '<span>Not available for this event.</span>') + '</div></div>';
       }
       var thumb = '<div class="ps-thumb" data-thumb="' + t.id + '" style="aspect-ratio:' + FMT[LAST.format].w + '/' + FMT[LAST.format].h + '">' + spin() + '</div>';
-      return '<button type="button" class="ps-card" data-open="' + t.id + '" aria-label="' + esc(t.label + '. ' + sub) + '">' + thumb +
-        '<div class="ps-card-body"><b>' + esc(t.label) + '</b><span>' + esc(sub) + '</span></div></button>';
+      return '<button type="button" class="ps-card" data-open="' + t.id + '" aria-label="' + esc('Edit ' + t.label + '. ' + sub) + '">' + thumb +
+        '<div class="ps-card-body"><b>' + esc(t.label) + '</b><span>' + esc(sub) + '</span><span class="ps-card-edit" aria-hidden="true">Edit</span></div></button>';
     }).join('');
     root.innerHTML = '<div class="ps">' +
       '<div class="ps-bar"><p class="ps-note">Each post is drawn in this site’s own look — its picture, logo unit, fonts and colours — from its real content. Pick one to change its words and download it.</p>' +
@@ -1666,7 +1666,7 @@
       var c = it.config || {}, t = TYPE[c.type], f = FMT[c.format];
       var when = it.updatedAt ? new Date(it.updatedAt) : null;
       return '<li data-sid="' + esc(it.id) + '"><div class="nm"><b>' + esc(it.name || 'Untitled') + '</b><span>' + esc([t ? t.label : 'Unknown type', f ? f.label : '', when && !isNaN(when) ? 'saved ' + when.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ')) + '</span></div>' +
-        '<button type="button" class="btn btn-sm btn-secondary" data-s-open' + (t ? '' : ' disabled') + '>Open</button>' +
+        '<button type="button" class="btn btn-sm btn-secondary" data-s-open' + (t ? '' : ' disabled') + '>Edit</button>' +
         '<button type="button" class="btn btn-sm btn-ghost" data-s-rename>Rename</button>' +
         '<button type="button" class="btn btn-sm btn-ghost" data-s-del>Delete</button></li>';
     }).join('') + '</ul>';
@@ -1762,9 +1762,16 @@
     ED = { cfg: cfg, savedId: savedId, name: name, dirty: false, sugg: null };
     window.addEventListener('beforeunload', onLeave);
     root.innerHTML = '<div class="ps">' +
+      /* UX-131, UX-132: the top bar says where Back goes, and holds Save and Download, as the other two tabs' editors do
+         (they sat at the bottom of the panel, below the caption) */
       '<div class="ps-ed-head">' +
-        '<button type="button" class="btn btn-secondary" id="ps-back">' + ICON.back + '<span>All posts</span></button>' +
+        '<button type="button" class="btn btn-secondary" id="ps-back">' + ICON.back + '<span>Back to posts</span></button>' +
         '<div class="ps-ed-title"><h3>' + esc(t.label) + '</h3><span id="ps-ed-sub"></span></div>' +
+        '<div class="ps-ed-acts">' +
+          '<button type="button" class="btn btn-secondary" id="ps-save">' + (savedId ? 'Save changes' : 'Save') + '</button>' +
+          '<button type="button" class="btn btn-primary" id="ps-png">' + ICON.down + '<span>Download</span></button>' +
+          '<button type="button" class="btn btn-secondary" id="ps-zip">Download all sizes</button>' +
+        '</div>' +
         '<span id="ps-ask"></span>' +
       '</div>' +
       '<div class="ps-ed">' +
@@ -1773,6 +1780,9 @@
         '<div class="ps-panel" id="ps-panel"></div>' +
       '</div></div>';
     root.querySelector('#ps-back').onclick = leaveEditor;
+    root.querySelector('#ps-png').onclick = function () { downloadOne(this); };
+    root.querySelector('#ps-zip').onclick = function () { downloadFormats(this); };
+    root.querySelector('#ps-save').onclick = function () { savePost(this); };
     paintPanel();
     redraw(true);
     /* the editor's own heading goes to the top of the window, so the whole preview is in view */
@@ -1888,14 +1898,11 @@
           '<button type="button" class="btn btn-sm btn-ghost" id="ps-cap-copy">Copy caption</button>' +
           (cfg.caption != null ? '<button type="button" class="btn btn-sm btn-ghost" id="ps-cap-reset">Back to the facts</button>' : '') + '</div>' +
       '</div></section>' +
-      '<section class="panel"><div class="panel-head"><h3>Download and save</h3></div><div class="panel-body">' +
-        '<div class="ps-actions">' +
-          '<button type="button" class="btn btn-primary" id="ps-png">' + ICON.down + '<span>Download PNG</span></button>' +
-          '<button type="button" class="btn btn-secondary" id="ps-zip">Download all formats (ZIP)</button>' +
-          (cfg.type === 'speaker' && speakersOf(KIT).length > 1 ? '<button type="button" class="btn btn-secondary" id="ps-batch-ed">Download all speaker spotlights (' + speakersOf(KIT).length + ')</button>' : '') +
-        '</div>' +
-        '<div class="field"><label for="ps-name">Name</label><input class="inp" id="ps-name" maxlength="120" value="' + esc(name) + '"></div>' +
-        '<button type="button" class="btn btn-secondary" id="ps-save">' + (ED.savedId ? 'Save changes' : 'Save') + '</button>' +
+      /* Save and Download are in the top bar (openEditor); the name the post is saved under, and every speaker's post at
+         once, stay here */
+      '<section class="panel"><div class="panel-head"><h3>Name and posting</h3></div><div class="panel-body">' +
+        '<div class="field"><label for="ps-name">Saved as</label><input class="inp" id="ps-name" maxlength="120" value="' + esc(name) + '"></div>' +
+        (cfg.type === 'speaker' && speakersOf(KIT).length > 1 ? '<div class="ps-actions"><button type="button" class="btn btn-secondary" id="ps-batch-ed">Download all speaker spotlights (' + speakersOf(KIT).length + ')</button></div>' : '') +
         '<p class="ps-honest">' + ICON.info + '<span>Posting straight to LinkedIn, Instagram or X is not part of this release. Download the picture, copy the caption, and post them from the event’s own account.</span></p>' +
       '</div></section>';
     var panel = root.querySelector('#ps-panel');
@@ -1987,13 +1994,10 @@
     };
     wireCapReset();
     panel.querySelector('#ps-cap-ai').onclick = function () { writeCaption(this); };
-    panel.querySelector('#ps-png').onclick = function () { downloadOne(this); };
-    panel.querySelector('#ps-zip').onclick = function () { downloadFormats(this); };
     var be = panel.querySelector('#ps-batch-ed');
     if (be) be.onclick = function () { batchSpeakers(be, { format: cfg.format, background: cfg.background, texts: cfg.texts }); };
     var nm = panel.querySelector('#ps-name');
     nm.oninput = function () { nm.setAttribute('data-typed', '1'); ED.name = nm.value; changed(false); };
-    panel.querySelector('#ps-save').onclick = function () { savePost(this); };
   }
   function wireCapReset() {
     var r = root.querySelector('#ps-cap-reset');
@@ -2212,7 +2216,7 @@
       });
     }, Promise.resolve()).then(function () {
       if (caption) files.push({ name: 'caption.txt', text: caption });
-      return P.zip(files, fileBase(cfg) + '-all-formats.zip');
+      return P.zip(files, fileBase(cfg) + '-all-sizes.zip');
     }).then(function () { busy(btn, false); toast('ZIP downloaded: ' + FORMATS.length + ' pictures' + (caption ? ' and the caption' : '') + '.'); },
       function (err) { busy(btn, false); fail('The ZIP could not be made.', err); });
   }

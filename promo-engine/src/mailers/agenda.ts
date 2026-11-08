@@ -13,7 +13,8 @@ export const agendaMailer: Mailer = {
   id: "mailer.agenda",
   group: "Agenda",
   label: "Agenda / Sessions",
-  description: "Session-by-session send: times, titles and the speakers on each panel, with a CTA to the full agenda.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The agenda, session by session: times, titles and the speakers on each panel, with a button to the full agenda.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM, ...BANNER_PARAMS,

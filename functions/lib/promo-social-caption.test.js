@@ -337,6 +337,28 @@ function field(x, key) { return x.$('edOpts').querySelector('[data-key="' + key 
     JSON.stringify(x.htmls()[0].body.items) === JSON.stringify([{ templateId: 'generic.who-should-attend', format: 'ig_square', params: { theme: 'dark' } }]), x.htmls()[0] && x.htmls()[0].body);
   x.sb.owRenderCaption();
   check('tab: drawn again, the facts are not asked again', x.htmls().length === 1);
+  /* UX-122: the easy panel's Caption section hands its own box; the textarea carries the key the panel puts focus back by */
+  var easyBox = x.dom.document.createElement('div');
+  x.dom.sideBody.parentNode.appendChild(easyBox);
+  x.sb.owRenderCaption(easyBox);
+  var boxTa = easyBox.querySelector('textarea');
+  check('UX-122: drawn into the box it is given (the easy panel\'s Caption section)', !!boxTa && boxTa.id === 'owCapText' &&
+    boxTa.getAttribute('data-ow-key') === 'cap' && x.htmls().length === 1, [!!boxTa, boxTa && boxTa.getAttribute('data-ow-key')]);
+  easyBox.parentNode.removeChild(easyBox);
+  x.sb.owRenderCaption();
+  /* UX-122: the post's people swapped in place: the facts are asked again for them, a caption typed stays */
+  x.sb.OWSCap.paramsChanged({ theme: 'dark', speakerId: 's2' });
+  await settle();
+  check('UX-122 paramsChanged: the facts are asked again with the new options', x.htmls().length === 2 &&
+    JSON.stringify(x.htmls()[1].body.items[0].params) === JSON.stringify({ theme: 'dark', speakerId: 's2' }), x.htmls().length);
+  x.$('owCapText').value = 'Typed by me'; x.$('owCapText').oninput();
+  x.sb.OWSCap.paramsChanged({ theme: 'dark', speakerId: 's3' });
+  await settle();
+  check('UX-122 paramsChanged: a caption typed is kept as it is', x.$('owCapText').value === 'Typed by me' && x.sb.OWSCap.textFor('generic.who-should-attend') === 'Typed by me');
+  x.sb.OWSCap.paramsChanged({ theme: 'dark' });
+  x.$('owCapReset').onclick();
+  await settle();
+  x.sb.owRenderCaption();
   /* the elements of the tab as drawn now */
   ta = x.$('owCapText'); lab = x.dom.sideBody.querySelector('label'); segBtns = x.$('owCapNet').querySelectorAll('button[data-v]');
   check('tab: drawn again, the same text', ta.value === facts);
@@ -506,12 +528,12 @@ function field(x, key) { return x.$('edOpts').querySelector('[data-key="' + key 
   x.open({ templateId: 'generic.testimonial', format: 'ig_square', params: { theme: 'dark' } });
   x.sb.owRenderCaption();
   await settle();
-  check('testimonial with no quote: no facts, and the textarea says to type the quote first', x.$('owCapText').value === '' && x.$('owCapText').placeholder === 'Type the quote in Options first.' &&
+  check('testimonial with no quote: no facts, and the textarea says to type the quote first', x.$('owCapText').value === '' && x.$('owCapText').placeholder === 'Type the quote under Words first.' &&
     x.cap.textFor('generic.testimonial') === '');
   x.$('owCapAi').click();
   await settle();
   check('testimonial with no quote: Write with AI asks nothing and says why (6 s)', x.writes().length === 0 &&
-    JSON.stringify(x.lastToast()) === JSON.stringify(['Type the quote in Options, then Apply & re-render: a testimonial shows a real quote, never a made-up one.', 6000]), x.lastToast());
+    JSON.stringify(x.lastToast()) === JSON.stringify(['Type the quote under Words, then Update post: a testimonial shows a real quote, never a made-up one.', 6000]), x.lastToast());
   x.open({ templateId: 'generic.testimonial', format: 'ig_square', params: { theme: 'dark', quote: 'It changed how we buy AI.' } });
   x.sb.owRenderCaption();
   await settle();
@@ -705,7 +727,7 @@ function field(x, key) { return x.$('edOpts').querySelector('[data-key="' + key 
       check('G.5 ' + tid + ': one Suggest headlines under ' + HEAD[tid], btns.length === 1 && f.nextSibling === btns[0] && btns[0].textContent === 'Suggest headlines' &&
         btns[0].type === 'button' && btns[0].className === 'btn ghost sm ow-sugg', btns.length);
       check('G.5 ' + tid + ': then the list, then the line (hidden until there are suggestions)', btns[0].nextSibling && btns[0].nextSibling.classList.contains('ow-sugg-list') &&
-        btns[0].nextSibling.nextSibling.textContent === 'Apply & re-render to use it; layout edits are reset.' && !shown(btns[0].nextSibling.nextSibling));
+        btns[0].nextSibling.nextSibling.textContent === 'Update post to use it: anything you moved or restyled goes back to the design’s own.' && !shown(btns[0].nextSibling.nextSibling));
       z.cap.decorateOptions();
       check('G.5 ' + tid + ': asked twice, still one button', z.dom.sideBody.querySelectorAll('.ow-sugg').length === 1);
     } else {

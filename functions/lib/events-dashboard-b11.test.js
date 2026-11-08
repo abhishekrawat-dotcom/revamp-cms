@@ -177,20 +177,22 @@ var PROMO_SAID = [
   ['updated', 'Mailer “Launch invite” renamed to “Final invite”', 'Mailer changed'],
   ['deleted', 'Mailer “Launch invite” (Invite) deleted', 'Mailer deleted'],
   ['deleted', '2 versions of the Invite mailer deleted', 'Mailer deleted'],
+  ['updated', 'Mailer picture uploaded', 'Mailer picture added'],
   ['updated', 'Post art: Logo uploaded', 'Social post art added'],
   ['updated', 'Post art: Logo from the PSD uploaded', 'Social post art added'],
   ['deleted', 'Post art: Background 2 removed', 'Social post art removed'],
   ['deleted', 'Post art: PSD background cleared by a new PSD', 'Social post art removed'],
   ['updated', 'Post picture uploaded', 'Social post picture added'],
   ['updated', 'Post layout saved: Square · 1:1', 'Social post layout saved'],
-  ['deleted', 'Post layout reset: Square · 1:1', 'Social post layout reset']
+  ['deleted', 'Post layout reset: Square · 1:1', 'Social post layout reset'],
+  ['updated', 'Post background for all posts: Background 1', 'Social post background set']
 ];
 var promoWrong = PROMO_SAID.filter(function (c) { return AWORDS.actionLabel(c[0], 'promotions', c[1]) !== c[2]; }).map(function (c) { return [c[1], AWORDS.actionLabel(c[0], 'promotions', c[1])]; });
 check('UX-015 Promotions: a mailer\'s entry says Mailer…, a social post\'s says Social post… (never "Mailer deleted" for a post layout reset)', promoWrong.length === 0, promoWrong);
 check('UX-015 …a Promotions entry that names neither is Promotions\', not a mailer\'s; another verb is said by the general table', AWORDS.actionLabel('updated', 'promotions', '') === 'Changed in Promotions' &&
   AWORDS.actionLabel('deleted', 'promotions') === 'Removed from Promotions' && AWORDS.actionLabel('file-uploaded', 'promotions', 'Post art: Logo uploaded') === 'File uploaded');
 /* and every entry the two Promotions writers make today is one of the shapes above: each logActivity(…, { area:
-   'promotions' }) call's detail begins "Post art: ", "Post picture" or "Post layout" (social posts) or names the
+   'promotions' }) call's detail begins "Post art: ", "Post picture", "Post layout" or "Post background" (social posts) or names the
    mailer (mailers). A new kind of entry written with other words fails here, so its words are added above first. */
 function promoCalls(file) {
   return read(file).split('\n').filter(function (l) { return l.indexOf('logActivity(') !== -1 && l.indexOf("area: 'promotions'") !== -1; }).map(function (l) {
@@ -200,10 +202,10 @@ function promoCalls(file) {
   });
 }
 var postCalls = promoCalls('functions/lib/promo-social.js'), mailerCalls = promoCalls('functions/lib/promo-mailer.js');
-check('UX-015 lib/promo-social.js\'s six Promotions entries are each said as a social post\'s', postCalls.length === 6 && postCalls.every(function (c) {
-  return /^Post (art: |picture|layout)/.test(c.detail) && /^Social post (art|picture|layout) /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
+check('UX-015 lib/promo-social.js\'s seven Promotions entries are each said as a social post\'s', postCalls.length === 7 && postCalls.every(function (c) {
+  return /^Post (art: |picture|layout|background )/.test(c.detail) && /^Social post (art|picture|layout|background) /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
 }), postCalls.map(function (c) { return [c.verb, c.detail.slice(0, 40), AWORDS.actionLabel(c.verb, 'promotions', c.detail)]; }));
-check('UX-015 lib/promo-mailer.js\'s four Promotions entries are each said as a mailer\'s', mailerCalls.length === 4 && mailerCalls.every(function (c) {
+check('UX-015 lib/promo-mailer.js\'s five Promotions entries (B18 added the picture uploaded into a mail) are each said as a mailer\'s', mailerCalls.length === 5 && mailerCalls.every(function (c) {
   return /^Mailer /.test(AWORDS.actionLabel(c.verb, 'promotions', c.detail));
 }), mailerCalls.map(function (c) { return [c.verb, c.detail.slice(0, 40), AWORDS.actionLabel(c.verb, 'promotions', c.detail)]; }));
 check('UX-015 a person by name from their address; the platform as the platform; a non-address as it is', AWORDS.personName('sachitanand.rai@timesinternet.in') === 'Sachitanand Rai' &&

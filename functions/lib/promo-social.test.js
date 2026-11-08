@@ -402,7 +402,7 @@ var steps = [
   /* ===== C.9 cold wiring ===== */
   function () {
     check('C.9 wire() wires lib/promo-mailer.js with the same helpers (a cold instance\'s first social request works)', MAILER.wired.length === 1 && MAILER.wired[0] === H);
-    check('module: every route of ROUTES is an exported handler', Object.keys(mod.ROUTES).length === 12 &&
+    check('module: every route of ROUTES is an exported handler', Object.keys(mod.ROUTES).length === 13 &&
       Object.keys(mod.ROUTES).every(function (r) { return typeof mod[mod.ROUTES[r]] === 'function'; }));
     /* lib/api.js (Unit D) routes to these names: when its lines are there, they must match */
     var api = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
@@ -1251,6 +1251,7 @@ var steps = [
       ['handleArtUpload', 'RAW', ART + 'E&slot=bg1&from=upload'],
       ['handleArtPsd', 'JSON', '/api/promo/social/art/psd', { name: 'x', bytes: 1, canvasWidth: 10, canvasHeight: 10, found: { background: true, logoUnit: false } }],
       ['handleArtDelete', 'DELETE', ART + 'E&slot=bg1'],
+      ['handleArtDefault', 'JSON', '/api/promo/social/art/default', { bg: 'design' }],
       ['handleHtml', 'JSON', '/api/promo/social/html', { items: [{ templateId: 'generic.testimonial', format: 'ig_square' }] }],
       ['handleLayout', 'GET', LAYOUT_URL + '?eventId=E&templateId=speaker.individual&format=ig_portrait&theme=light&bg=2'],
       ['handleLayouts', 'GET', '/api/promo/social/layouts?eventId=E'],
@@ -1293,6 +1294,79 @@ var steps = [
     };
     return Promise.all([limitOf(mod.handleHtml, { items: [] }), limitOf(mod.handleArtPsd, {}), limitOf(mod.handleLayoutSave, {}), limitOf(mod.handleLayoutReset, {})]).then(function (l) {
       check('§5c body limits: html 256 KB, PSD summary 16 KB, layout save 2 MiB (BODY_LIMITS.ai), reset 16 KB', l[0] === 256 * KB && l[1] === 16 * KB && l[2] === 2 * MB && l[3] === 16 * KB, l);
+    });
+  },
+
+  /* ===== UX-129: the site's own logo unit, "Use for all posts", the design's own background; UX-122: owRole ===== */
+  function () {
+    var u = function (s) { return 'https://storage.googleapis.com/' + BUCKET + '/events/rich/' + s + '.png'; };
+    /* siteLogoOf: a unit is used only on the ground it was drawn for; on a dark post a unit for a light ground takes the
+       site's own copy for a dark ground, never one made here */
+    var SL = T.siteLogoOf;
+    check('UX-129 siteLogoOf: no kit, no brand, no unit: none', JSON.stringify(SL(null)) === '{"dark":"","light":""}' && JSON.stringify(SL({ brand: { logoUnit: null } })) === '{"dark":"","light":""}');
+    check('UX-129 siteLogoOf: a unit of no known tone serves both', JSON.stringify(SL({ brand: { logoUnit: { url: u('lu'), tone: '' } } })) === JSON.stringify({ dark: u('lu'), light: u('lu') }));
+    check('UX-129 siteLogoOf: a unit drawn for a dark ground: dark posts only',
+      JSON.stringify(SL({ brand: { logoUnit: { url: u('lu'), tone: 'dark', darkUrl: u('lu-dark') } } })) === JSON.stringify({ dark: u('lu'), light: '' }));
+    check('UX-129 siteLogoOf: a unit for a light ground: light posts, and its copy for a dark ground on dark ones',
+      JSON.stringify(SL({ brand: { logoUnit: { url: u('lu'), tone: 'light', darkUrl: u('lu-dark') } } })) === JSON.stringify({ dark: u('lu-dark'), light: u('lu') }));
+    check('UX-129 siteLogoOf: a unit for a light ground with no copy: none on dark posts (the name in type, never a recoloured unit)',
+      JSON.stringify(SL({ brand: { logoUnit: { url: u('lu'), tone: 'light' } } })) === JSON.stringify({ dark: '', light: u('lu') }));
+    /* artFor: the uploaded logo first, then the site's for the post's theme; 'design': no background picture */
+    var site = { dark: u('site-dark'), light: '' }, doc = { background: { url: u('psd-bg') }, bg1: { url: u('bg1') } };
+    check('UX-129 artFor: no logo uploaded: the site\'s for a dark post, none for a light one',
+      T.artFor(doc, '', site, 'dark').logoUnitUrl === u('site-dark') && T.artFor(doc, '', site, 'light').logoUnitUrl === undefined);
+    check('UX-129 artFor: a logo uploaded wins over the site\'s', T.artFor(Object.assign({ logoUnit: { url: u('up') } }, doc), '', site, 'dark').logoUnitUrl === u('up'));
+    check('UX-122 artFor: "design" draws no background picture, even with a design file uploaded', T.artFor(doc, 'design', site, 'dark').backgroundUrl === undefined &&
+      T.artFor(doc, '', site, 'dark').backgroundUrl === u('psd-bg') && T.artFor(doc, '1', site, 'dark').backgroundUrl === u('bg1'));
+    check('UX-122 keyParts and parseKey know "design"', T.keyParts('speaker.individual', 'ig_square', 'dark', 'design').key === 'speaker.individual__ig_square__dark_bgdesign' &&
+      T.parseKey('speaker.individual__ig_square__dark_bgdesign').bg === 'design' && T.keyParts('speaker.individual', 'ig_square', 'dark', 'other') === 'unknown background');
+    check('UX-129 useBgOf: a removed background is not the default any more', T.useBgOf({ useBg: '2' }) === '' && T.useBgOf({ useBg: '2', bg2: { url: u('bg2') } }) === '2' &&
+      T.useBgOf({ useBg: 'design' }) === 'design' && T.useBgOf({ useBg: 'x' }) === '' && T.useBgOf({}) === '');
+    check('UX-129 cardItem: the card asks on the default background', JSON.stringify(T.cardItem({ id: 't', formats: [{ id: 'story' }], available: true }, '1').params) === '{"bg":"1"}' &&
+      JSON.stringify(T.cardItem({ id: 't', formats: [], available: true }, '').params) === '{}');
+    /* the html route draws the site's logo unit when none is uploaded */
+    var kit0 = EVENTS.rich.kit;
+    EVENTS.rich.kit = Object.assign({}, kit0, { brand: { logoUnit: { url: 'https://img.etb2bimg.com/files/site-unit.png', tone: 'dark' } } });
+    DOCS['events/rich/promoSocial/art'] = {};
+    var item = function (theme) { return { templateId: 'generic.announcement', format: 'ig_square', params: { theme: theme } }; };
+    return post(mod.handleHtml, '/api/promo/social/html', { eventId: 'rich', items: [item('dark'), item('light')] }).then(function (r) {
+      var it = r.json.items || [];
+      check('UX-129 a dark post carries the site\'s logo unit', /class="lockup-img" src="https:\/\/img\.etb2bimg\.com\/files\/site-unit\.png"/.test(it[0] && it[0].html), it[0] && it[0].html && it[0].html.slice(0, 200));
+      check('UX-129 a light post, where that unit would not be read, sets the name in type', it[1] && it[1].html && !/class="lockup-img"/.test(it[1].html) && /class="lockup-name"/.test(it[1].html));
+      return call(mod.handleCatalog, { url: '/api/promo/social/catalog?eventId=rich' });
+    }).then(function (r) {
+      check('UX-129 the catalog says which logo the site gives each theme', JSON.stringify(r.json.event.siteLogo) === JSON.stringify({ dark: 'https://img.etb2bimg.com/files/site-unit.png', light: '' }), r.json.event && r.json.event.siteLogo);
+      EVENTS.rich.kit = kit0;
+      /* "Use for all posts" */
+      DOCS['events/rich/promoSocial/art'] = { bg2: { url: u('bg2'), from: 'upload' } };
+      return Promise.all([post(mod.handleArtDefault, '/api/promo/social/art/default', { eventId: 'rich', bg: '2' }),
+        post(mod.handleArtDefault, '/api/promo/social/art/default', { eventId: 'rich', bg: 'nope' })]);
+    }).then(function (r) {
+      check('UX-129 Use for all posts: kept, and answered as GET art', r[0].status === 200 && r[0].json.ok === true && r[0].json.useBg === '2' && r[0].json.bg2 === true && artDoc('rich').useBg === '2', r[0].json);
+      check('UX-129 … with an activity line', activity('rich').indexOf('Post background for all posts: Background 2') !== -1);
+      check('UX-129 an unknown background: 400', r[1].status === 400 && r[1].json.error === 'unknown background', r[1].json);
+      return post(mod.handleArtDefault, '/api/promo/social/art/default', { eventId: 'rich', bg: '3' });
+    }).then(function (r) {
+      check('UX-129 a background not uploaded cannot be the default: 409, with what to do', r.status === 409 && /Upload background 3 first/.test(r.json.error) && artDoc('rich').useBg === '2', r.json);
+      return call(mod.handleArt, { url: ART + 'rich' });
+    }).then(function (r) {
+      check('UX-129 GET art says the default', r.json.useBg === '2', r.json);
+      return call(mod.handleCatalog, { url: '/api/promo/social/catalog?eventId=rich&cards=1' });
+    }).then(function (r) {
+      check('UX-129 the catalog\'s cards are asked on the default background', (r.json.cards || []).length > 0 && r.json.cards.every(function (c) { return c.item.params.bg === '2'; }));
+      return call(mod.handleArtDelete, { url: ART + 'rich&slot=bg2', method: 'DELETE' });
+    }).then(function (r) {
+      check('UX-129 removing that background clears the default', r.status === 200 && artDoc('rich').bg2 === null && artDoc('rich').useBg === null, artDoc('rich'));
+      return post(mod.handleArtDefault, '/api/promo/social/art/default', { eventId: 'rich', bg: '' });
+    }).then(function (r) {
+      check('UX-129 "" puts the platform\'s own default back', r.status === 200 && r.json.useBg === '' && artDoc('rich').useBg === null, r.json);
+      /* owRole is kept on save when it is plain; anything else is dropped */
+      var els = sampleEls();
+      els[1].owRole = 'an-date frost';
+      els[2].owRole = 'x" onload="y';
+      var out = T.cleanElements(els, { bucket: BUCKET, eventId: 'rich' }).list;
+      check('UX-122 cleanElements keeps a plain owRole and drops one with anything else in it', out[1].owRole === 'an-date frost' && !own(out[2], 'owRole') && !own(out[0], 'owRole'), out.map(function (e) { return e.owRole; }));
+      DOCS['events/rich/promoSocial/art'] = {};
     });
   },
 

@@ -381,7 +381,8 @@ export const awardNominationsMailer: Mailer = {
   id: "mailer.award-nominations",
   group: "Awards",
   label: "Call for nominations",
-  description: "Entries are open: the deadline, why to enter, how to enter and the jury — the long ask, for an award taking submissions.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Entries are open: the deadline, why and how to enter, and the jury. The full invitation, for an award taking entries.",
   params(event) {
     const a = event.award;
     return [
@@ -483,7 +484,8 @@ export const awardDeadlineMailer: Mailer = {
   id: "mailer.award-deadline",
   group: "Awards",
   label: "Nominations close soon",
-  description: "The short urgent one: the closing date as a statement, one line of copy and a single button. No grids, no numbers, no countdown.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The short reminder: the closing date in big letters, one line and one button. Nothing else.",
   params(event) {
     const a = event.award;
     return [
@@ -570,7 +572,8 @@ export const awardJuryMailer: Mailer = {
   id: "mailer.award-jury",
   group: "Awards",
   label: "Meet the jury",
-  description: "Who decides — the roster in a photo grid under its own name, with the award's editions/categories/winners for scale.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Who decides: the jury in a photo grid, with the award's editions, categories and winners to show its size.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM,
@@ -596,7 +599,7 @@ export const awardJuryMailer: Mailer = {
     // Three, not two: a grid of two portraits is a pair, not a panel, and this
     // send's entire claim is that a panel decided it.
     const ok = (event.speakers || []).length >= 3;
-    return { ok, missing: ok ? [] : ["a roster of 3+ (this award publishes no jury)"] };
+    return { ok, missing: ok ? [] : ["a jury of at least 3 (this award publishes no jury)"] };
   },
   build(event, params) {
     const n = Number(params.juryCount ?? 9);
@@ -651,6 +654,7 @@ export const awardCeremonyMailer: Mailer = {
   id: "mailer.award-ceremony",
   group: "Awards",
   label: "Ceremony invitation",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
   description: "Save the date for the night itself: when and where, where nominations stand, the jury and the partners.",
   params(event) {
     return [
@@ -721,7 +725,8 @@ export const awardWinnersMailer: Mailer = {
   id: "mailer.award-winners",
   group: "Awards",
   label: "Winners announced",
-  description: "It has been decided: the winners/categories/editions band, the jury that chose, and one link to the published list.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The winners are out: how many winners, categories and editions, the jury that chose, and one link to the full list.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM,

@@ -20,7 +20,8 @@
    other byte as it was. Everything here is idempotent: running it on its own output changes nothing.
 
      inspect(html, kit)                 -> { placeholders, links, payment, logos, etNav, etFooter, generated, imported }
-     placeholderHits(html, kit)         -> [{ text, count, sections, strong }]   template text a visitor would read
+     placeholderHits(html, kit)         -> [{ text, count, sections, places, strong }]   template text a visitor would read
+                                          (places: [{ key, section }], the sections it is in, for a link to each)
      recordPlaceholders(siteData)       -> [{ kind, label, items: [text] }]        sample entries in Content
      looksLikeTest(event)               -> bool   an event named as a test ("test event 5", "… (test)")
      noindexReason(event, html, kit)    -> 'owner' | 'test' | 'template' | ''
@@ -31,7 +32,7 @@
      samplesOf(html, kit)               -> { texts, srcs }   what a template marks as a sample of its design (data-rv-sample:
                                           another event's quotes, people, logos), its quotes and its pictures (never a
                                           role or a company, which the owner's own cards can share)
-     sampleHits(html, kit, samples)     -> [{ text, picture, count, sections }]   those still shown on a page, by content: a
+     sampleHits(html, kit, samples)     -> [{ text, picture, count, sections, places }]   those still shown on a page, by content: a
                                           card the owner rewrote no longer counts
      storageRefs(html)                  -> [{ url, bucket, path }]   every picture of storage.googleapis.com
      nearBucket(a, b)                   -> bool   a bucket name one or two letters away from ours (a typo)
@@ -163,10 +164,10 @@ function matchEnds(tokens) {
   return ends;
 }
 
-/* every token with what it stands in: { hidden, skip, section, chrome ('nav' | 'footer' | ''), end } */
+/* every token with what it stands in: { hidden, skip, section, key, chrome ('nav' | 'footer' | ''), end } */
 function scan(html, kit) {
   var tokens = kit.tokenizeHtml(html), ends = matchEnds(tokens), A = kit.attrValue;
-  var root = { hidden: false, skip: false, section: '', chrome: '', end: tokens.length, form: false };
+  var root = { hidden: false, skip: false, section: '', key: '', chrome: '', end: tokens.length, form: false };
   var ctx = new Array(tokens.length), stack = [root], ids = {};
   for (var i = 0; i < tokens.length; i++) {
     while (stack.length > 1 && i > stack[stack.length - 1].end) stack.pop();
@@ -180,6 +181,8 @@ function scan(html, kit) {
     var node = {
       hidden: cur.hidden || isHiddenTag(t, kit), skip: cur.skip || !!SKIP[t.name],
       section: sec || cur.section, chrome: chrome, end: ends[i], page: cur.page || A(t, 'data-rv-page') != null,
+      /* the name the site editor finds the section by (its data-rv-key, else its id): a link to fix something there */
+      key: sec ? String(A(t, 'data-rv-key') || sec) : cur.key,
       form: cur.form || t.name === 'form'
     };
     ctx[i] = node;
@@ -281,9 +284,14 @@ function linksOf(s, kit) {
     var label = labelOf(s, i, kit);
     var st = stateOf(s, i, kit);
     out.push({ i: i, tag: t.name, label: label, kind: kindOf(label), state: st.state, href: st.href || '', target: st.target || '', targetI: st.targetI,
-      section: c.section, chrome: c.chrome, buttonish: buttonish(t, kit) });
+      section: c.section, key: c.key, chrome: c.chrome, buttonish: buttonish(t, kit) });
   }
   return out;
+}
+
+/* the sections something was found in, for a link to each in the site editor: [{ key, section }] once each */
+function addPlace(list, key, name) {
+  if (key && !list.some(function (p) { return p.key === key; })) list.push({ key: key, section: name });
 }
 
 /* ---------- placeholders on the page ---------- */
@@ -300,10 +308,11 @@ function placeholderHits(html, kit) {
     var hit = placeholderOf(text);
     if (!hit) continue;
     var key = text.toLowerCase();
-    if (!found[key]) { found[key] = { text: text, count: 0, sections: [], strong: hit.strong }; order.push(key); }
+    if (!found[key]) { found[key] = { text: text, count: 0, sections: [], places: [], strong: hit.strong }; order.push(key); }
     found[key].count++;
     var name = sectionName(c.section);
     if (found[key].sections.indexOf(name) === -1) found[key].sections.push(name);
+    addPlace(found[key].places, c.key, name);
   }
   return order.map(function (k) { return found[k]; });
 }
@@ -338,11 +347,12 @@ function samplesOf(html, kit) {
 function sampleHits(html, kit, samples) {
   if (!samples || (!samples.texts.length && !samples.srcs.length)) return [];
   var s = typeof html === 'string' ? scan(html, kit) : html, found = {}, order = [];
-  function add(key, text, section, picture) {
-    if (!found[key]) { found[key] = { text: text, picture: !!picture, count: 0, sections: [] }; order.push(key); }
+  function add(key, text, section, picture, sectionKey) {
+    if (!found[key]) { found[key] = { text: text, picture: !!picture, count: 0, sections: [], places: [] }; order.push(key); }
     found[key].count++;
     var name = sectionName(section);
     if (found[key].sections.indexOf(name) === -1) found[key].sections.push(name);
+    addPlace(found[key].places, sectionKey, name);
   }
   for (var i = 0; i < s.tokens.length; i++) {
     var t = s.tokens[i], c = s.ctx[i];
@@ -350,10 +360,10 @@ function sampleHits(html, kit, samples) {
     /* a quote, read whole as samplesOf reads it */
     if (t.t === 'open' && /^(?:p|blockquote|q)$/.test(t.name)) {
       var words = labelOf(s, i, kit);
-      if (words.length >= SAMPLE_WORDS_MIN && samples.texts.indexOf(words) !== -1) { add('t:' + words, words, c.section); i = s.ends[i]; }
+      if (words.length >= SAMPLE_WORDS_MIN && samples.texts.indexOf(words) !== -1) { add('t:' + words, words, c.section, false, c.key); i = s.ends[i]; }
     } else if (t.t === 'open' && t.name === 'img') {
       var src = decode(kit.attrValue(t, 'src') || '').trim();
-      if (src && samples.srcs.indexOf(src) !== -1) add('p:' + src, src.replace(/[?#].*$/, '').split('/').pop(), c.section, true);
+      if (src && samples.srcs.indexOf(src) !== -1) add('p:' + src, src.replace(/[?#].*$/, '').split('/').pop(), c.section, true, c.key);
     }
   }
   return order.map(function (k) { return found[k]; });
@@ -481,9 +491,406 @@ function inspect(html, kit) {
     placeholders: placeholderHits(s, kit),
     links: links,
     payment: links.filter(function (l) { return l.state === 'form' || l.buttonish ? PAYMENT_RE.test(l.label) && l.label.length <= 40 : false; })
-      .map(function (l) { return { label: l.label, section: sectionName(l.section) }; }),
+      .map(function (l) { return { label: l.label, section: sectionName(l.section), key: l.key }; }),
     logos: logos, hasNav: hasNav, hasFooter: hasFooter, etNav: etNav, etFooter: etFooterOn
   };
+}
+
+/* =====================================================================================================
+   BEFORE PUBLISH — what is good to put right, read off the page (owner decision #11, part 3.2: the check
+   before Publish, ~/.revamp-cms-qa/ai-learning/SPEC.md). Advisory: none of this holds a version back.
+   lib/site-advisory.js words it for the person publishing and the approver, with a link to the place.
+     outsideLinks(html, kit)            -> [{ url, label, section, key, chrome, count }]  links to other sites, the
+                                          ones a visitor sees most first (buttons, then words, header, footer)
+     pageLinks(html, kit, slugs)        -> [{ label, page, section, key }]   links to an internal page the site does
+                                          not have (rv-pages.js; slugs: its page list)
+     pictureRefs(html, kit)             -> [{ url, kind: 'outside' | 'own', section, key }]   the pictures a visitor
+                                          sees that are not in storage (storage's own: api.js pictureProblems)
+     emptySections(html, kit)           -> [{ section, key, heading }]   a section shown with nothing in it
+     dateFindings(html, kit, event)     -> [{ text, section, key }]   a date the page states that is not the event's
+     venueFindings(html, kit, event)    -> [{ text, section, key }]   a place the page states that is not the event's
+     formButtons(html, kit)             -> [{ label, forms: [id], section, key, embed }]   what opens or shows a form
+     bannerLogo(html, kit)              -> { shown, src, key }   the banner's logo unit (or bound event logo) as shown; key: the banner's section
+     etLogoRecoloured(html, kit)        -> [{ section, key, how }]   an ET logo with a colour filter on it
+   Each takes the page's text, or read(html, kit) of it.
+   ===================================================================================================== */
+
+function scanOf(html, kit) { return typeof html === 'string' || html == null ? scan(String(html == null ? '' : html), kit) : html; }
+
+/* ---------- outside links ---------- */
+function outsideLinks(html, kit) {
+  var s = scanOf(html, kit), seen = {}, out = [];
+  linksOf(s, kit).forEach(function (l, n) {
+    if (l.tag !== 'a' || l.state !== 'ok' || !/^https?:\/\/[^\s]+$/i.test(l.href)) return;
+    var url = l.href.replace(/#.*$/, '');
+    if (seen[url]) { seen[url].count++; return; }
+    seen[url] = { url: url, label: l.label, section: placeOf(l), key: l.key, chrome: l.chrome, count: 1, rank: l.chrome === 'footer' ? 3 : l.chrome ? 2 : l.buttonish ? 0 : 1, n: n };
+    out.push(seen[url]);
+  });
+  out.sort(function (a, b) { return a.rank - b.rank || a.n - b.n; });
+  return out.map(function (x) { return { url: x.url, label: x.label, section: x.section, key: x.key, chrome: x.chrome, count: x.count }; });
+}
+
+/* ---------- links to an internal page (rv-pages.js: data-rv-page-link="<slug>") the site does not have ---------- */
+function pageLinks(html, kit, slugs) {
+  var s = scanOf(html, kit), out = [], have = {};
+  (slugs || []).forEach(function (p) { have[String(p && p.slug != null ? p.slug : p)] = 1; });
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (t.t !== 'open' || c.skip || c.hidden || !kit.attrOf(t, 'data-rv-page-link')) continue;
+    var to = String(kit.attrValue(t, 'data-rv-page-link') || '').trim();
+    if (!to || to === 'home' || have[to]) continue;
+    out.push({ label: labelOf(s, i, kit), page: to, section: placeOf(c), key: c.key });
+  }
+  return out;
+}
+
+/* ---------- pictures not in storage ---------- */
+var STORAGE_HOST = /^https?:\/\/storage\.googleapis\.com\//i;
+var OWN_FILES = /^\/(?:templates|assets)\/[^?#]+/;
+function pictureUrlOf(raw) {
+  var u = decode(raw == null ? '' : raw).trim();
+  if (!u || /^(?:data|blob|about|javascript):/i.test(u) || u.charAt(0) === '#') return null;
+  if (u.indexOf('//') === 0) u = 'https:' + u;
+  if (/^https?:\/\//i.test(u)) return STORAGE_HOST.test(u) ? null : { url: u, kind: 'outside' };
+  if (OWN_FILES.test(u)) return { url: u.replace(/[?#].*$/, ''), kind: 'own' };
+  return null;                       // another address of this host (its builder's paths are dropped on the way out)
+}
+function pictureRefs(html, kit) {
+  var s = scanOf(html, kit), out = [], seen = {};
+  function add(raw, c) {
+    var p = pictureUrlOf(raw);
+    if (!p || seen[p.url]) return;
+    seen[p.url] = 1;
+    out.push({ url: p.url, kind: p.kind, section: placeOf(c), key: c.key });
+  }
+  function firstOf(set) { return String(set || '').split(',')[0].trim().split(/\s+/)[0]; }
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (t.t !== 'open' || c.skip || c.hidden) continue;
+    if (t.name === 'img') {
+      /* the first picture a srcset offers stands for the others: they are copies of one picture */
+      if (kit.attrValue(t, 'src')) add(kit.attrValue(t, 'src'), c);
+      else add(firstOf(decode(kit.attrValue(t, 'srcset') || '')), c);
+    } else if (t.name === 'source' && kit.attrValue(t, 'srcset') && /^image\//i.test(String(kit.attrValue(t, 'type') || 'image/'))) {
+      add(firstOf(decode(kit.attrValue(t, 'srcset'))), c);
+    }
+    var style = decode(kit.attrValue(t, 'style') || '');
+    if (style.indexOf('url(') !== -1) {
+      var re = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, m;
+      while ((m = re.exec(style))) add(m[2], c);
+    }
+  }
+  return out;
+}
+
+/* ---------- empty sections ----------
+   A section a visitor sees with nothing in it: no picture, drawing, film, form, link or button, no list, no figure,
+   and no words beyond its heading and a short label (EMPTY_WORDS_MAX letters). Only the FIRST heading is the
+   section's own: a later one is what the section shows (a card's title, a question, "500+" over "Delegates"), and a
+   banner's heading is the event's name, which is what a banner is for. A number in the words ("60+", a date) is a
+   fact, never a label. (The browser check of 8 Nov 2026 found a stats section, a list of key topics, cards with h4
+   titles, an FAQ with one short answer, an SVG-only section and a banner with its title and date all called "only
+   its heading" when every heading was skipped.) A section the page hides (data-rv-empty, hidden by the owner) is
+   not shown, so it is not empty; nor is one the page's runtime fills (a form, the hero film). */
+var EMPTY_WORDS_MAX = 30;
+/* svg, iframe, object, select and textarea are read past (SKIP), but a visitor sees them: they count first */
+var SUBSTANCE = /^(?:img|picture|video|audio|iframe|object|embed|canvas|svg|form|input|select|textarea|table|a|button|details|summary)$/;
+var LISTED = /^(?:li|dt|dd)$/;
+var FILLED_BY_RUNTIME = ['data-rv-form-embed', 'data-rv-hv', 'data-rv-award-cta', 'data-register-cta', 'data-nominate-form', 'data-interest-form', 'data-rv-countdown'];
+function emptySections(html, kit) {
+  var s = scanOf(html, kit), out = [];
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (t.t !== 'open' || c.skip || c.hidden || c.chrome) continue;
+    var id = kit.attrValue(t, 'data-rv-section');
+    if (!id || id === 'nav' || id === 'footer') continue;
+    var substance = /url\(/i.test(decode(kit.attrValue(t, 'style') || '')), words = 0, heading = '', banner = isBanner(id);
+    for (var k = i + 1; k < s.ends[i] && !substance; k++) {
+      var x = s.tokens[k], xc = s.ctx[k];
+      if (x.t === 'open') {
+        if (xc.hidden) { k = s.ends[k]; continue; }
+        if (SUBSTANCE.test(x.name) || /url\(/i.test(decode(kit.attrValue(x, 'style') || ''))) { substance = true; break; }
+        if (xc.skip) { k = s.ends[k]; continue; }
+        if (FILLED_BY_RUNTIME.some(function (a) { return kit.attrOf(x, a); })) { substance = true; break; }
+        if (/^h[1-6]$/.test(x.name)) {
+          var said = labelOf(s, k, kit);
+          if (said && (heading || banner)) { substance = true; break; }
+          if (!heading) heading = said;
+          k = s.ends[k];
+          continue;
+        }
+        if (LISTED.test(x.name) && labelOf(s, k, kit)) { substance = true; break; }
+        continue;
+      }
+      if (x.t === 'text' && !xc.skip && !xc.hidden) {
+        var w = clean(s.html.slice(x.s, x.e));
+        if (/\d/.test(w)) { substance = true; break; }
+        words += w.length;
+      }
+      if (words > EMPTY_WORDS_MAX) substance = true;
+    }
+    if (!substance) out.push({ section: sectionName(id), key: c.key || id, heading: heading });
+    i = s.ends[i];                       // a section inside a section is part of it
+  }
+  return out;
+}
+
+/* ---------- the event's dates and place, as the page states them ----------
+   The page is what the editor last saved: nothing on a live page draws the event's details again (rv-live.js is not
+   part of this release), so a date or venue changed in Content › Basics after the site was saved still shows the old
+   one — on the banner, in the header (et-nav.js writes them in), in an FAQ answer. Read are: the elements that say
+   the date or the place (data-rv-bind="event.date" / "event.venue" / "event.city", a class or id that ends in
+   date / venue / location / place), and the dates written anywhere in a section's words. Never the footer (ET's
+   footer lists its other events, with their dates and places), and never a date the words around it say is another
+   moment (a deadline, nominations, last year's edition…) or that stands in a section about other dates. */
+var MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+var MON = '(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+var DAY = '(\\d{1,2})(?:st|nd|rd|th)?';
+var TO = '\\s*(?:[-–—]|to|&|and)\\s*';
+var YEAR = '(?:,?\\s+((?:19|20)\\d{2}))?';
+var DATE_DMY = new RegExp('(?:^|[^\\w])(' + DAY + '(?:' + TO + DAY + ')?\\s+' + MON + '\\.?(?![a-z])' + YEAR + ')(?![\\w])', 'gi');
+var DATE_MDY = new RegExp('(?:^|[^\\w])(' + MON + '\\.?\\s+' + DAY + '(?:' + TO + DAY + ')?' + YEAR + ')(?![\\w])', 'gi');
+var DATE_MY = new RegExp('(?:^|[^\\w])(' + MON + '\\.?,?\\s+((?:19|20)\\d{2}))(?![\\w])', 'gi');
+/* the words before a date that make it another moment than the event */
+var OTHER_MOMENT = /\b(?:deadline|clos(?:e|es|ed|ing)|last\s+date|due|until|till|before|since|after|nominat\w*|submi\w*|entr(?:y|ies)|appl(?:y|ication)s?|previous|past|last\s+(?:year|edition)|held\s+on|was\s+held|took\s+place|founded|launched|established|early[\s-]?bird|opens?|published|updated|posted|announc\w*|shortlist\w*|jury|result\w*)\b[^.!?]*$/i;
+var OTHER_MOMENT_AFTER = /^[^.!?]{0,24}\b(?:deadline|last\s+date|closes?|onwards)\b/i;
+/* sections about other dates than the event's */
+var OTHER_DATES_SECTION = /timeline|key-?dates|important-?dates|deadline|nominat|jury|process|past|previous|prev-|glimpse|gallery|testimonial|news|blog|press|media|archive|history|winners|edition|journey|milestone|legacy|categor/i;
+var DATE_MARK = /(?:^|[-_])(?:date|dates|when)$/i;
+var FACT_LABEL = /^(?:the\s+)?(?:venue|location|place|where|city|date|dates|when)\s*[:?]?$/i;
+var PLACE_MARK = /(?:^|[-_])(?:venue|location|place|where|city)$/i;
+
+/* the dates in a text -> [{ text, at, y (0: none written), m, d1, d2, monthOnly }] */
+function datesIn(text) {
+  text = String(text || '');
+  var out = [], taken = [];
+  function free(a, b) { return !taken.some(function (r) { return a < r[1] && b > r[0]; }); }
+  function month(word) {
+    /* "may" is a word too: only "May" (or "MAY") is the month */
+    if (/^may$/i.test(word) && word !== 'May' && word !== 'MAY') return 0;
+    return MONTHS[word.slice(0, 3).toLowerCase()] || 0;
+  }
+  function push(m, parts) {
+    var whole = m[1], start = m.index + m[0].indexOf(whole);
+    if (!free(start, start + whole.length)) return;
+    var mo = month(parts.mon);
+    if (!mo) return;
+    var d1 = +parts.d1 || 0, d2 = +parts.d2 || d1;
+    if (!parts.monthOnly && (d1 < 1 || d1 > 31 || d2 < d1 || d2 > 31)) return;
+    taken.push([start, start + whole.length]);
+    out.push({ text: whole.trim(), at: start, y: +parts.y || 0, m: mo, d1: d1, d2: d2, monthOnly: !!parts.monthOnly });
+  }
+  var m;
+  DATE_DMY.lastIndex = 0;
+  while ((m = DATE_DMY.exec(text))) push(m, { d1: m[2], d2: m[3], mon: m[4], y: m[5] });
+  DATE_MDY.lastIndex = 0;
+  while ((m = DATE_MDY.exec(text))) push(m, { mon: m[2], d1: m[3], d2: m[4], y: m[5] });
+  DATE_MY.lastIndex = 0;
+  while ((m = DATE_MY.exec(text))) push(m, { mon: m[2], y: m[3], monthOnly: true });
+  out.sort(function (a, b) { return a.at - b.at; });
+  return out;
+}
+/* the event's own days: { a: yyyymmdd, b: yyyymmdd, years: [y…] }, or null when it has no exact dates */
+function eventDays(event) {
+  event = event || {};
+  if (event.dateMode && event.dateMode !== 'exact') return null;
+  function ymd(v) { var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? +m[1] * 10000 + +m[2] * 100 + +m[3] : 0; }
+  var a = ymd(event.start), b = ymd(event.end) || a;
+  if (!a) return null;
+  if (b < a) b = a;
+  var years = [];
+  for (var y = Math.floor(a / 10000); y <= Math.floor(b / 10000); y++) years.push(y);
+  return { a: a, b: b, years: years };
+}
+/* whether a date the page states is (within) the event's days */
+function withinEvent(d, days) {
+  if (d.monthOnly) {
+    var ym = d.y * 100 + d.m;
+    return ym >= Math.floor(days.a / 100) && ym <= Math.floor(days.b / 100);
+  }
+  var years = d.y ? [d.y] : days.years;
+  return years.some(function (y) {
+    for (var day = d.d1; day <= d.d2; day++) { var v = y * 10000 + d.m * 100 + day; if (v < days.a || v > days.b) return false; }
+    return true;
+  });
+}
+function classTokens(t, kit) { return kit.classListOf(t).concat([String(kit.attrValue(t, 'id') || '')]).filter(Boolean); }
+/* the visible words of each section (not the footer), and the elements that state the date or the place */
+function eventFacts(s, kit) {
+  var bySection = {}, order = [], marks = [];
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (c.skip || c.hidden || c.chrome === 'footer') continue;
+    if (t.t === 'open') {
+      var bind = String(kit.attrValue(t, 'data-rv-bind') || '');
+      var toks = classTokens(t, kit);
+      var what = bind === 'event.date' || toks.some(function (x) { return DATE_MARK.test(x); }) ? 'date'
+        : bind === 'event.venue' || bind === 'event.city' || toks.some(function (x) { return PLACE_MARK.test(x); }) ? 'place' : '';
+      /* a whole section named so ("venue") is a section about the place, not the place itself */
+      if (what && !kit.attrValue(t, 'data-rv-section') && t.name !== 'section' && !VOID[t.name] && s.ends[i] > i) {
+        marks.push({ what: what, text: labelOf(s, i, kit), section: placeOf(c), key: c.key, sec: c.section });
+        i = s.ends[i];
+      }
+      continue;
+    }
+    if (t.t !== 'text') continue;
+    var words = clean(s.html.slice(t.s, t.e));
+    if (!words) continue;
+    var k = c.chrome ? 'chrome:' + c.chrome : c.key || c.section || '';
+    if (!bySection[k]) { bySection[k] = { words: [], section: placeOf(c), key: c.key, sec: c.section, chrome: c.chrome }; order.push(k); }
+    bySection[k].words.push(words);
+  }
+  return { sections: order.map(function (k) { var x = bySection[k]; x.text = x.words.join(' '); return x; }), marks: marks };
+}
+function isBanner(sec) { return /^(?:hero|banner)$/i.test(String(sec || '')); }
+function dateFindings(html, kit, event) {
+  var days = eventDays(event);
+  if (!days) return [];
+  var s = scanOf(html, kit), facts = eventFacts(s, kit), out = [], seen = {};
+  function add(text, where) {
+    var k = where.section + '|' + text;
+    if (seen[k]) return;
+    seen[k] = 1;
+    out.push({ text: text, section: where.section, key: where.key });
+  }
+  /* an element that states the date: every date in it is the event's — unless it stands in a section about other
+     dates (a previous edition's agenda gives its own days) */
+  facts.marks.forEach(function (mk) {
+    if (mk.what !== 'date' || OTHER_DATES_SECTION.test(String(mk.sec || '') + ' ' + String(mk.key || ''))) return;
+    datesIn(mk.text).forEach(function (d) { if (!withinEvent(d, days)) add(d.text, mk); });
+  });
+  facts.sections.forEach(function (x) {
+    if (OTHER_DATES_SECTION.test(String(x.sec || '') + ' ' + String(x.key || ''))) return;
+    var prominent = isBanner(x.sec) || x.chrome === 'nav';
+    datesIn(x.text).forEach(function (d) {
+      if (withinEvent(d, days)) return;
+      /* a date of another year, outside the banner and the header, is history ("in March 2024 we began") */
+      if (d.y && days.years.indexOf(d.y) === -1 && !prominent) return;
+      var before = x.text.slice(Math.max(0, d.at - 60), d.at), after = x.text.slice(d.at + d.text.length);
+      if (OTHER_MOMENT.test(before) || OTHER_MOMENT_AFTER.test(after)) return;
+      add(d.text, x);
+    });
+  });
+  return out;
+}
+/* places a visitor reads as a city, with the names they go by */
+var CITIES = [['mumbai', 'bombay', 'navi mumbai'], ['delhi', 'new delhi', 'delhi ncr'], ['bengaluru', 'bangalore'], ['chennai', 'madras'], ['hyderabad'],
+  ['kolkata', 'calcutta'], ['pune'], ['gurugram', 'gurgaon'], ['noida', 'greater noida'], ['goa'], ['ahmedabad'], ['jaipur'], ['kochi', 'cochin'],
+  ['chandigarh'], ['lucknow'], ['indore'], ['bhubaneswar'], ['coimbatore'], ['visakhapatnam', 'vizag'], ['dubai'], ['abu dhabi'], ['singapore'],
+  ['london'], ['new york'], ['riyadh'], ['doha']];
+/* words of a venue's name that say what kind of place it is, not which one */
+var PLACE_GENERIC = ['hotel', 'hotels', 'resort', 'centre', 'center', 'convention', 'exhibition', 'international', 'expo', 'hall', 'auditorium',
+  'grand', 'the', 'and', 'venue', 'india', 'campus', 'tower', 'towers', 'road', 'marg', 'complex'];
+function plainLower(text) { return ' ' + String(text || '').toLowerCase().replace(/[^a-z]+/g, ' ') + ' '; }
+function cityNamesIn(text) {
+  var t = plainLower(text), out = [];
+  CITIES.forEach(function (names, g) {
+    var hit = names.filter(function (n) { return t.indexOf(' ' + n + ' ') !== -1; })[0];
+    if (hit) out.push({ group: g, name: hit });
+  });
+  return out;
+}
+function venueFindings(html, kit, event) {
+  event = event || {};
+  var place = [event.venue, event.city].map(function (v) { return clean(v || ''); }).filter(Boolean).join(', ');
+  if (!place) return [];
+  var own = cityNamesIn(place).map(function (c) { return c.group; });
+  function wordsOf(v) { return plainLower(v).trim().split(' ').filter(function (w) { return w.length >= 4 && PLACE_GENERIC.indexOf(w) === -1; }); }
+  var venueWords = wordsOf(event.venue), cityWords = wordsOf(event.city);
+  var s = scanOf(html, kit), facts = eventFacts(s, kit), out = [], seen = {};
+  function add(text, where) {
+    var k = where.section + '|' + text;
+    if (seen[k]) return;
+    seen[k] = 1;
+    out.push({ text: text.length > 90 ? text.slice(0, 89) + '…' : text, section: where.section, key: where.key });
+  }
+  function others(text) { return cityNamesIn(text).filter(function (c) { return own.indexOf(c.group) === -1; }); }
+  /* an element that states the place: it names the event's venue (or, with no venue known, its city), or only its
+     city — never another venue in the same city ("Taj Lands End, Mumbai" once the event moved to the JW Marriott) —
+     and no other city */
+  facts.marks.forEach(function (mk) {
+    /* a label ("Venue", "Location:") over the place is not a place */
+    if (mk.what !== 'place' || !mk.text || placeholderOf(mk.text) || FACT_LABEL.test(mk.text)) return;
+    var low = plainLower(mk.text);
+    function has(w) { return low.indexOf(' ' + w + ' ') !== -1; }
+    var cities = cityNamesIn(mk.text);
+    var ownCity = cities.some(function (c) { return own.indexOf(c.group) !== -1; }) || (cityWords.length > 0 && cityWords.every(has));
+    var rest = low;
+    cities.forEach(function (c) { rest = rest.split(' ' + c.name + ' ').join(' '); });
+    cityWords.forEach(function (w) { rest = rest.split(' ' + w + ' ').join(' '); });
+    var onlyCity = rest.replace(/[^a-z]/g, '').length < 3;
+    var right = venueWords.length ? venueWords.some(has) || (ownCity && onlyCity) : ownCity;
+    if (!right || others(mk.text).length) add(mk.text, mk);
+  });
+  /* the banner's and the header's words: a city that is not the event's (when the event's is a city known here) */
+  if (own.length) facts.sections.forEach(function (x) {
+    if (!(isBanner(x.sec) || x.chrome === 'nav')) return;
+    others(x.text).forEach(function (c) { add(c.name.replace(/\b[a-z]/g, function (ch) { return ch.toUpperCase(); }), x); });
+  });
+  return out;
+}
+
+/* ---------- forms: what on the page opens or shows one ----------
+   The forms runtime (templates/_shared/rv-forms.js) opens the event's main form for data-register-cta and #register,
+   a named one for data-rv-form="<id>" and #rv-form-<id>, draws one in place for data-rv-form-embed="<id>"; an award
+   site's lifecycle button opens one of two (rv-award-cta.js). forms: [] means the event's main form. */
+function formButtons(html, kit) {
+  var s = scanOf(html, kit), out = [], A = kit.attrValue;
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (t.t !== 'open' || c.skip || c.hidden) continue;
+    var ids = [], embed = false;
+    if (kit.attrOf(t, 'data-rv-form-embed')) { ids.push(String(A(t, 'data-rv-form-embed') || '')); embed = true; }
+    else if (kit.attrOf(t, 'data-nominate-form') || kit.attrOf(t, 'data-interest-form')) {
+      ['data-nominate-form', 'data-interest-form'].forEach(function (a) { var v = String(A(t, a) || ''); if (v) ids.push(v); });
+    } else if (A(t, 'data-rv-form')) ids.push(String(A(t, 'data-rv-form')));
+    else if (t.name === 'a' || t.name === 'button') {
+      var href = decode(A(t, 'href') || '').trim(), m = /^#rv-form-([a-z][a-z0-9-]{0,39})$/.exec(href);
+      if (m) ids.push(m[1]);
+      else if (!kit.attrOf(t, 'data-register-cta') && href !== '#register') continue;
+    } else if (!kit.attrOf(t, 'data-register-cta')) continue;
+    if (c.form && !embed) continue;                              // a form's own buttons
+    out.push({ label: embed ? '' : labelOf(s, i, kit), forms: ids.filter(Boolean), section: placeOf(c), key: c.key, embed: embed });
+    if (embed) i = s.ends[i];
+  }
+  return out;
+}
+
+/* ---------- the banner's logo ---------- */
+function bannerLogo(html, kit) {
+  /* key: the banner section's, so "put it right" opens the editor on it ("banner" on tech500, "hero" elsewhere) */
+  var s = scanOf(html, kit), unitEnd = -1, key = '';
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (t.t !== 'open' || c.skip || c.hidden) continue;
+    if (!key && isBanner(c.section)) key = c.key;
+    if (kit.attrOf(t, 'data-rv-logo-unit')) { unitEnd = s.ends[i]; continue; }
+    if (t.name !== 'img') continue;
+    var src = decode(kit.attrValue(t, 'src') || '').trim();
+    if (!src) continue;
+    if (i < unitEnd || kit.attrValue(t, 'data-rv-bind') === 'event.logo' || (kit.attrOf(t, 'data-rv-logo') && isBanner(c.section))) return { shown: true, src: src, key: key };
+  }
+  return { shown: false, src: '', key: key };
+}
+
+/* ---------- the ET logo rule: only its black or grey lettering may change colour; the red square never does ----------
+   A colour filter on the picture of an ET logo (inline, or Tailwind's own classes) changes the red square too. */
+var ET_LOGO_SRC = /(?:^|[\/_-])(?:et[-_]?b2b|etb2b|et[-_]logo|economic[-_]?times)[^\/]*\.(?:svg|png|webp|jpe?g)(?:[?#]|$)/i;
+var FILTER_STYLE = /(?:^|;)\s*(?:-webkit-)?filter\s*:\s*[^;]*\b(?:invert|hue-rotate|grayscale|sepia|saturate|brightness\(\s*0)/i;
+var FILTER_CLASS = /^(?:invert|grayscale|sepia|saturate-0|brightness-0|hue-rotate-\d+|dark:invert|dark:brightness-0)$/;
+function etLogoRecoloured(html, kit) {
+  var s = scanOf(html, kit), out = [];
+  for (var i = 0; i < s.tokens.length; i++) {
+    var t = s.tokens[i], c = s.ctx[i];
+    if (t.t !== 'open' || t.name !== 'img' || c.skip || c.hidden) continue;
+    var src = decode(kit.attrValue(t, 'src') || ''), alt = clean(kit.attrValue(t, 'alt') || '');
+    if (!ET_LOGO_SRC.test(src) && !/^(?:ET|ETB2B|The Economic Times)\b/.test(alt)) continue;
+    var cls = kit.classListOf(t).filter(function (x) { return FILTER_CLASS.test(x); })[0];
+    var how = FILTER_STYLE.test(decode(kit.attrValue(t, 'style') || '')) ? 'a colour filter' : cls ? 'the class “' + cls + '”' : '';
+    if (how) out.push({ section: placeOf(c), key: c.key, how: how });
+  }
+  return out;
 }
 
 /* =====================================================================================================
@@ -525,7 +932,8 @@ function repair(html, kit, opts) {
   var forms = (opts.forms && Array.isArray(opts.forms.forms)) ? opts.forms.forms : [];
   var nominateForm = forms.filter(function (f) { return f && /nominat/i.test(String(f.name || '') + ' ' + String(f.title || '')); })[0];
 
-  function note(what, link, how) { changes.push({ what: what, label: link.label, section: placeOf(link), how: how }); }
+  /* key: the section the site editor finds it by, so the check can link there (site-advisory.js sectionFixes) */
+  function note(what, link, how) { changes.push({ what: what, label: link.label, section: placeOf(link), key: link.key, how: how }); }
   function rewrite(i) { out[i] = kit.writeTag(s.tokens[i]); touched = true; }
   function opensForm(link, enquiry) {
     var t = s.tokens[link.i];
@@ -907,5 +1315,11 @@ module.exports = {
   samplesOf: samplesOf, sampleHits: sampleHits,
   noindexReason: noindexReason, robots: robots, isNoindexPage: isNoindexPage, repair: repair, storageRefs: storageRefs,
   nearBucket: nearBucket, yearsIn: yearsIn, sectionName: sectionName, ENQUIRY: ENQUIRY, REGISTER_RE: REGISTER_RE,
-  PARTNER_RE: PARTNER_RE, PAYMENT_RE: PAYMENT_RE
+  PARTNER_RE: PARTNER_RE, PAYMENT_RE: PAYMENT_RE,
+  /* before Publish (advisory): lib/site-advisory.js. read(html, kit): one reading of a page that each of these
+     takes in place of the page's text, so a page is tokenized once for all of them */
+  read: function (html, kit) { return scan(String(html == null ? '' : html), kit); },
+  outsideLinks: outsideLinks, pageLinks: pageLinks, pictureRefs: pictureRefs, emptySections: emptySections,
+  dateFindings: dateFindings, venueFindings: venueFindings, formButtons: formButtons, bannerLogo: bannerLogo,
+  etLogoRecoloured: etLogoRecoloured, datesIn: datesIn, eventDays: eventDays
 };

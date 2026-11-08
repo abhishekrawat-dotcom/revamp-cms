@@ -7628,6 +7628,15 @@
         },
         /* the saved page still has the logo unit's notice open: the dialog goes, and the notice and the logo come up */
         onError: function (err) { if (err && err.code === 'logo-unit-unanswered') { logoNoteRefused(err); return true; } return false; },
+        /* a "put it right" link of the check before Publish: the section, selected here (its key, else its id — the
+           same rule as ?section=, focusAskedSection) */
+        showSection: function (key) {
+          if (!canvas) return false;
+          var sec = canvas.sections().filter(function (el) { return el.getAttribute('data-rv-key') === key || el.getAttribute('data-rv-section') === key; })[0];
+          if (!sec || !isLive(sec)) { showToast('That section is not on the page now.'); return false; }
+          selectSection(sec);
+          return true;
+        },
         recheck: typeof o.recheck === 'function'
       });
     }).then(function (out) {

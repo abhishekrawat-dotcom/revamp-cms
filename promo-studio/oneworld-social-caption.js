@@ -3,7 +3,8 @@
    platform's own code, copied into promo-studio/social-studio.js; this file loads last and adds what Oneworld's own
    posts studio has and the platform's has not (promo-posts.js), so the merge keeps the owner's named features:
 
-     - the editor's 4th tab, Caption (the copied paintSide calls owRenderCaption(), patch S18): LinkedIn, Instagram
+     - the editor's Caption, a section of its easy panel since UX-122 (oneworld-social-easy.js calls
+       owRenderCaption(host); it was the 4th tab, patch S18, before): LinkedIn, Instagram
        and X captions made from the template's own caption, shaped per network by Oneworld's rules (promo-posts.js
        lines()), with the date · place line, "Register: <link>" while the site is published, and the hashtag; edited
        freely, written by the AI, copied, or put back to the facts;
@@ -66,9 +67,9 @@
 
   var HINT = 'Made from the event’s facts. Edit it freely.';
   var HONEST = 'Posting straight to LinkedIn, Instagram or X is not part of this release. Download the picture, copy the caption, and post them from the event’s own account.';
-  var QUOTE_FIRST = 'Type the quote in Options first.';
-  var QUOTE_GUARD = 'Type the quote in Options, then Apply & re-render: a testimonial shows a real quote, never a made-up one.';
-  var SUGG_NOTE = 'Apply & re-render to use it; layout edits are reset.';
+  var QUOTE_FIRST = 'Type the quote under Words first.';
+  var QUOTE_GUARD = 'Type the quote under Words, then Update post: a testimonial shows a real quote, never a made-up one.';
+  var SUGG_NOTE = 'Update post to use it: anything you moved or restyled goes back to the design’s own.';
 
   function own(table, key) { return typeof key === 'string' && Object.prototype.hasOwnProperty.call(table, key); }
   function netOf(id) { for (var i = 0; i < NETWORKS.length; i++) if (NETWORKS[i].id === id) return NETWORKS[i]; return null; }
@@ -310,9 +311,9 @@
     return v && document.getElementById('owCapText') === v.ta ? v : null;
   }
 
-  /* the copied paintSide calls this when the Caption tab is picked (patch S18) */
-  function owRenderCaption() {
-    var body = document.getElementById('edSideBody');
+  /* the easy panel's Caption section calls this with its box (oneworld-social-easy.js); with none, the tools' box */
+  function owRenderCaption(host) {
+    var body = host && host.nodeType === 1 ? host : document.getElementById('edSideBody');
     if (!body) return;
     var c = ensure();
     body.textContent = '';
@@ -338,6 +339,8 @@
     label.appendChild(forText); label.appendChild(document.createTextNode(' ')); label.appendChild(count);
     var ta = node('textarea', 'ow-cap-text');
     ta.id = 'owCapText';
+    /* the easy panel, drawn again while this is typed in, puts the focus and the cursor back by this key */
+    ta.setAttribute('data-ow-key', 'cap');
     ta.rows = 7;
     ta.oninput = function () {
       if (CS !== c) return;
@@ -551,6 +554,13 @@
       return { network: CS.network, text: CS.text };
     },
     dirty: function () { return !!CS && (CS.network !== CS.base.network || CS.text !== CS.base.text); },
+    /* the post's people were swapped in place (oneworld-social-easy.js): the caption made from the event's facts is
+       asked again for them; a caption typed or written stays as it is */
+    paramsChanged: function (params) {
+      if (!CS) return;
+      CS.params = copy(params);
+      if (CS.text == null) { factsFor(CS); paintText(); }
+    },
     /* called when the save's answer comes: what was sent is now saved, not what is on screen, since the owner may
        have gone on typing while the save was on its way (the editor is not locked while saving), and those words
        must still count as a change. A load that sent nothing (the answer is for a save made before this load) has

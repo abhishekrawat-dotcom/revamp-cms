@@ -173,7 +173,8 @@ export const resilienceMailer: Mailer = {
   id: "mailer.resilience",
   group: "Invitation",
   label: "Single-session invitation",
-  description: "Banner, a Register button, the pitch, then Event Details and a Why Attend? icon grid — the short dark invite for one session.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The banner, a Register button and the pitch, then the event details and why to attend, with icons: the short dark invitation for one session.",
   params(event) {
     return [
       // Dark throughout, as the reference is — but still an override, because a
@@ -212,7 +213,7 @@ export const resilienceMailer: Mailer = {
     // literal string "NA", and then render the grid empty — availability and the
     // render have to answer the same question.
     const has = usable(event.whyJoin).length || usable(event.keyPoints).length || usable(event.whoShouldAttend).length;
-    return { ok: !!has, missing: has ? [] : ["why join us / key discussion points"] };
+    return { ok: !!has, missing: has ? [] : ["reasons to join or key topics"] };
   },
   build(event, params) {
     const nTiles = Number(params.tileCount ?? 5);

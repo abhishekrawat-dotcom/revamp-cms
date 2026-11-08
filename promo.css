@@ -125,6 +125,10 @@ html:has(.ps-lb:not([hidden])), html:has(.ps-lb:not([hidden])) body{ overflow:hi
 .ps-ed-head h3{ font-size:17px; }
 .ps-ed-head .ps-ed-title{ flex:1; min-width:200px; }
 .ps-ed-head .ps-ed-title span{ display:block; font-size:12px; color: var(--text-muted); margin-top:1px; }
+/* UX-132: Save and Download in the editor's top bar, which stays in view while the panel scrolls */
+.ps-ed-head{ position:sticky; top: var(--topbar-h, 60px); z-index:5; background: var(--bg); padding:8px 0; }
+.ps-ed-acts{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ps-card-body .ps-card-edit{ align-self:flex-start; margin-top:6px; font-size:12px; font-weight:700; color: var(--text); border:1px solid var(--border); border-radius:7px; padding:3px 10px; }
 .ps-ask{ display:flex; align-items:center; gap:9px; padding:9px 12px; border-radius:10px; background: var(--warn-soft); color: var(--warn); font-size:12.5px; font-weight:700; flex-wrap:wrap; }
 .ps-ed{ display:grid; grid-template-columns: minmax(0,1fr) 372px; gap:18px; align-items:start; }
 .ps-stage-wrap{

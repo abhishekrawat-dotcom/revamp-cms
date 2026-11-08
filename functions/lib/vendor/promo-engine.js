@@ -24,6 +24,7 @@ __export(src_exports, {
   ALL_TEMPLATES: () => ALL_TEMPLATES,
   ASSET_BASE: () => ASSET_BASE,
   AiUnavailable: () => AiUnavailable,
+  BLOCK_GROUPS: () => BLOCK_GROUPS,
   BLOCK_SCHEMAS: () => BLOCK_SCHEMAS,
   COPY_FIELDS: () => COPY_FIELDS,
   DEFAULT_FORMATS: () => DEFAULT_FORMATS,
@@ -54,6 +55,7 @@ __export(src_exports, {
   newSendId: () => newSendId,
   openUrl: () => openUrl,
   parseEdition: () => parseEdition,
+  pictureKey: () => pictureKey,
   polishCopy: () => polishCopy,
   qrTile: () => qrTile,
   readable: () => readable,
@@ -68,6 +70,7 @@ __export(src_exports, {
   setAiCaller: () => setAiCaller,
   signClick: () => signClick,
   suggestSubjects: () => suggestSubjects,
+  tagPictures: () => tagPictures,
   trackTarget: () => trackTarget,
   verifyClick: () => verifyClick
 });
@@ -1798,14 +1801,14 @@ var SECTION_BG = [
       { value: "tile", label: "Card colour" },
       { value: "custom", label: "Custom\u2026" }
     ],
-    hint: "Bands the whole section. \u201CCard colour\u201D is the deeper shade the mail already uses for tiles and cards."
+    hint: "Colours the whole section. \u201CCard colour\u201D is the deeper shade the mail already uses for its cards."
   },
   {
     key: "tintColor",
     label: "Background colour",
     type: "color",
     showWhen: { tint: ["custom"] },
-    hint: "Hex; anything else falls back to the tinted shade, because a value that is not a colour must never reach the style attribute. Every text colour in the section is re-measured against what you pick, so a dark background flips the type light rather than hiding it."
+    hint: "Any colour you like: the words in the section change to stay readable on it."
   }
 ];
 var SECTION_BG_TYPES = /* @__PURE__ */ new Set([
@@ -1912,27 +1915,27 @@ function houseIconNames(texts) {
 var houseIconUrl = (name) => `${ASSET_BASE}/assets/icons/${name}-dark.png`;
 var BLOCK_SCHEMAS = {
   banner: {
-    label: "Banner image",
+    label: "Banner picture",
     icon: "\u25AD",
     addable: true,
     fields: [
-      { key: "url", label: "Image URL", type: "url", hint: "Must be publicly reachable \u2014 inboxes can't load local files." },
+      { key: "url", label: "Picture", type: "url", hint: "Click the picture in the mail to upload another, or paste the address of a picture that is online." },
       { key: "href", label: "Links to", type: "url" },
-      { key: "alt", label: "Alt text", type: "text" }
+      { key: "alt", label: "Picture description", type: "text", hint: "Read out to people who cannot see the picture." }
     ],
     // ONEWORLD PORT (owner C): a Banner block added in the studio starts on the event's composed mail banner.
     make: (e) => ({ url: e.bannerUrl || e.keyVisualUrl || "", href: siteUrl(e), alt: e.name })
   },
   logobar: {
-    label: "Logo bar",
+    label: "Logo at the top",
     icon: "\u2726",
     addable: true,
     fields: [
       {
         key: "logo",
-        label: "Logo URL",
+        label: "Logo",
         type: "url",
-        hint: "Defaults to the portal's masthead (PNG \u2014 email clients don't render SVG). Set MAILER_ASSET_BASE so the URL is publicly reachable before a real send."
+        hint: "Your portal's logo until you change it. Use a PNG or JPG: many email apps cannot show SVG."
       },
       {
         key: "size",
@@ -1945,13 +1948,13 @@ var BLOCK_SCHEMAS = {
           { value: "large", label: "Large (270px)" },
           { value: "xl", label: "Extra large (360px)" }
         ],
-        hint: "Desktop cap; phones scale down automatically."
+        hint: "Its size on a computer; phones shrink it to fit."
       },
       {
         key: "logoLight",
-        label: "Logo URL (dark backgrounds)",
+        label: "Logo on dark backgrounds",
         type: "url",
-        hint: "Light-ink masthead, used automatically when the mailer sits on a dark card."
+        hint: "A light version of the logo, used by itself when the mail has a dark background."
       },
       { key: "href", label: "Links to", type: "url" },
       { key: "right", label: "Right-hand text", type: "text" }
@@ -1964,11 +1967,11 @@ var BLOCK_SCHEMAS = {
     })
   },
   hero: {
-    label: "Hero band",
+    label: "Title band",
     icon: "\u25B0",
     addable: true,
     fields: [
-      { key: "ribbon", label: "Ribbon", type: "text", hint: "Small pill above the title. Leave empty to hide." },
+      { key: "ribbon", label: "Small label above the title", type: "text", hint: "Leave it empty to hide it." },
       { key: "title", label: "Title", type: "text", rich: true },
       { key: "sub", label: "Sub-line", type: "textarea", rich: true },
       { key: "meta", label: "Date / venue line", type: "text" },
@@ -2020,7 +2023,7 @@ var BLOCK_SCHEMAS = {
     icon: "H",
     addable: true,
     fields: [
-      { key: "eyebrow", label: "Eyebrow", type: "text" },
+      { key: "eyebrow", label: "Small line above the heading", type: "text" },
       { key: "text", label: "Heading", type: "text", rich: true },
       { key: "size", label: "Size (px)", type: "number" },
       {
@@ -2028,7 +2031,7 @@ var BLOCK_SCHEMAS = {
         label: "Style",
         type: "select",
         options: [{ value: "no", label: "Normal heading" }, { value: "yes", label: "Section label (uppercase)" }],
-        hint: "The house mailers label sections in caps \u2014 OVERVIEW, PARTNERS, CONTACT US."
+        hint: "ET's own mailers name their sections in capitals: OVERVIEW, PARTNERS, CONTACT US."
       },
       // Same three tones, same key, as the `text` block — an accent heading used to
       // mean building it out of a paragraph instead. "Default" is the ink this block
@@ -2040,11 +2043,10 @@ var BLOCK_SCHEMAS = {
         type: "select",
         default: "ink",
         options: [
-          { value: "ink", label: "Default (full contrast)" },
-          { value: "accent", label: "Accent" },
-          { value: "body", label: "Muted" }
-        ],
-        hint: "Every choice is contrast-checked against the mailer background."
+          { value: "body", label: "Body" },
+          { value: "ink", label: "Strong" },
+          { value: "accent", label: "Accent" }
+        ]
       },
       ALIGN,
       ...SECTION_BG
@@ -2058,10 +2060,10 @@ var BLOCK_SCHEMAS = {
     fields: [
       {
         key: "text",
-        label: "Copy",
+        label: "Words",
         type: "textarea",
         rich: true,
-        hint: "One paragraph per line. **bold**, *italic*, __underline__, ~~strike~~, ==highlight==, [label](https://\u2026)"
+        hint: "Each new line starts a paragraph."
       },
       { key: "size", label: "Size (px)", type: "number" },
       {
@@ -2077,17 +2079,16 @@ var BLOCK_SCHEMAS = {
         type: "select",
         default: "body",
         options: [
-          { value: "body", label: "Body (muted)" },
-          { value: "ink", label: "Strong (full contrast)" },
+          { value: "body", label: "Body" },
+          { value: "ink", label: "Strong" },
           { value: "accent", label: "Accent" }
-        ],
-        hint: "Every choice is contrast-checked against the mailer background. Pick an exact colour below to override it."
+        ]
       },
       {
         key: "color",
         label: "Exact colour",
         type: "color",
-        hint: "Overrides Colour above with a hex you choose. Leave empty to use the contrast-checked tone instead."
+        hint: "Used instead of the colour chosen above. Leave it empty to use that choice."
       },
       {
         key: "lh",
@@ -2104,7 +2105,7 @@ var BLOCK_SCHEMAS = {
     make: () => ({ text: "Write your copy here.", size: 15, align: "left", weight: "400", tone: "body", lh: "1.55" })
   },
   bullets: {
-    label: "Bullet list",
+    label: "List of points",
     icon: "\u22EE",
     addable: true,
     fields: [
@@ -2124,7 +2125,7 @@ var BLOCK_SCHEMAS = {
           { value: "cards", label: "One card per point" },
           { value: "tiles", label: "Solid colour tiles" }
         ],
-        hint: "Ticked lists and tinted panels are the reference treatment for 'who should attend' / 'key discussion points'."
+        hint: "Ticked lists and tinted panels suit \u201CWho should attend\u201D and \u201CKey topics\u201D."
       },
       {
         key: "marker",
@@ -2168,20 +2169,20 @@ var BLOCK_SCHEMAS = {
         key: "bg",
         label: "Button colour",
         type: "color",
-        hint: "Hex. Empty uses the mailer's accent."
+        hint: "Leave it empty to use the mail's accent colour."
       },
       {
         key: "ink",
         label: "Label colour",
         type: "color",
-        hint: "Hex. Empty works it out from the fill. Either way it is nudged until it clears AA, so the label can never end up unreadable."
+        hint: "Leave it empty to use one that reads well on the button. Any colour is adjusted until it is easy to read."
       },
       {
         key: "border",
         label: "Border colour",
         type: "color",
         showWhen: { variant: ["outline"] },
-        hint: "Hex. Empty follows the button colour."
+        hint: "Leave it empty to match the button colour."
       },
       {
         key: "borderWidth",
@@ -2195,7 +2196,7 @@ var BLOCK_SCHEMAS = {
         label: "Corner radius (px)",
         type: "number",
         default: "8",
-        hint: "0 square \xB7 8 house default \xB7 99 pill. Outlook on Windows squares every button off regardless."
+        hint: "0 is square, 8 is the usual, 99 is fully round. Outlook on Windows always shows square corners."
       },
       {
         key: "size",
@@ -2205,7 +2206,7 @@ var BLOCK_SCHEMAS = {
         options: [{ value: "sm", label: "Small" }, { value: "md", label: "Medium" }, { value: "lg", label: "Large" }]
       },
       { key: "fontSize", label: "Text size (px)", type: "number", default: "14" },
-      ONOFF_FIELD("full", "Full width", "Spans the column \u2014 the usual mobile-first CTA."),
+      ONOFF_FIELD("full", "Full width", "Makes the button as wide as the mail, which is easiest to tap on a phone."),
       ONOFF_FIELD("caps", "Uppercase label"),
       ALIGN
     ],
@@ -2225,7 +2226,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   meta: {
-    label: "Date / venue tiles",
+    label: "Date and venue",
     icon: "\u25A4",
     addable: true,
     fields: [
@@ -2241,7 +2242,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   stats: {
-    label: "Stat tiles",
+    label: "Headline numbers",
     icon: "\u25EB",
     addable: true,
     fields: [
@@ -2258,7 +2259,7 @@ var BLOCK_SCHEMAS = {
           { value: "plain", label: "No fill, accent figures" },
           { value: "rules", label: "Underlined figures" }
         ],
-        hint: "From the ET reference mailers. One row on desktop, two per row on a phone."
+        hint: "Layouts from ET's own mailers. One row on a computer, two per row on a phone."
       },
       { key: "title", label: "Heading", type: "text", rich: true, hint: "Optional label above the figures \u2014 e.g. SUMMIT HIGHLIGHTS." },
       YESNO_FIELD("icons", "Icon above each figure", "The conference layout puts a glyph over every number.", "no"),
@@ -2268,7 +2269,7 @@ var BLOCK_SCHEMAS = {
     make: (e) => ({ style: "band", title: "", items: e.stats.slice(0, 4) })
   },
   speakers: {
-    label: "Speaker grid",
+    label: "Speakers",
     icon: "\u229E",
     addable: true,
     fields: [
@@ -2290,7 +2291,7 @@ var BLOCK_SCHEMAS = {
           { value: "tiles", label: "Colour tiles (no photos)" },
           { value: "checker", label: "Checkerboard (photo / name tiles)" }
         ],
-        hint: "Layouts from the ET reference mailers. Falls back to colour tiles when the API has no portraits."
+        hint: "Layouts from ET's own mailers. A speaker without a photo shows a colour tile instead."
       },
       // "feature" is two-up by definition and crops square, so neither of these
       // would change anything there.
@@ -2323,16 +2324,16 @@ var BLOCK_SCHEMAS = {
       },
       {
         key: "max",
-        label: "Max speakers",
+        label: "Most speakers shown",
         type: "number",
-        hint: "How many may appear. Extras beyond this are not rendered."
+        hint: "The most that can appear in this section."
       },
       {
         key: "pick",
         label: "Speakers on this event",
         type: "multipick",
         source: "speakers",
-        hint: "Every speaker this event has. Tick up to the max above; untick to remove."
+        hint: "Tick who appears in the mail."
       },
       { key: "note", label: "Note below", type: "text", rich: true },
       ...SECTION_BG,
@@ -2344,7 +2345,7 @@ var BLOCK_SCHEMAS = {
           { key: "name", label: "Name" },
           { key: "role", label: "Designation" },
           { key: "company", label: "Company" },
-          { key: "photo", label: "Photo URL", type: "url" },
+          { key: "photo", label: "Photo", type: "url" },
           { key: "bio", label: "Bio line", type: "textarea" },
           { key: "linkedin", label: "LinkedIn", type: "url" },
           { key: "facebook", label: "Facebook", type: "url" },
@@ -2361,15 +2362,15 @@ var BLOCK_SCHEMAS = {
     })
   },
   speaker: {
-    label: "Speaker spotlight",
+    label: "One speaker, large",
     icon: "\u2605",
     addable: true,
     fields: [
-      { key: "eyebrow", label: "Eyebrow", type: "text" },
+      { key: "eyebrow", label: "Small line above the heading", type: "text" },
       { key: "name", label: "Name", type: "text" },
       { key: "role", label: "Designation", type: "text" },
       { key: "company", label: "Company", type: "text" },
-      { key: "photo", label: "Photo URL", type: "url" },
+      { key: "photo", label: "Photo", type: "url" },
       { key: "link", label: "Profile link", type: "url" },
       ...SECTION_BG
     ],
@@ -2379,7 +2380,7 @@ var BLOCK_SCHEMAS = {
     }
   },
   sponsors: {
-    label: "Partner logos",
+    label: "Partners",
     icon: "\u25C8",
     addable: true,
     fields: [
@@ -2388,7 +2389,7 @@ var BLOCK_SCHEMAS = {
         label: "Heading",
         type: "text",
         rich: true,
-        hint: "Sits above everything. With Show tier label on and partners from more than one tier, each tier ALSO gets its own label below this."
+        hint: "Shown above the logos. With \u201CShow tier label\u201D on and partners in more than one tier, each tier also gets its own label."
       },
       {
         key: "style",
@@ -2418,16 +2419,16 @@ var BLOCK_SCHEMAS = {
       { ...COLS(5), showWhen: { style: ["cards", "bordered", "plain"] } },
       {
         key: "max",
-        label: "Max partners",
+        label: "Most partners shown",
         type: "number",
-        hint: "How many may appear. Extras beyond this are not rendered."
+        hint: "The most that can appear in this section."
       },
       {
         key: "pick",
         label: "Partners on this event",
         type: "multipick",
         source: "sponsors",
-        hint: "Every partner this event has. Tick up to the max above; untick to remove."
+        hint: "Tick who appears in the mail."
       },
       ...SECTION_BG,
       {
@@ -2436,7 +2437,7 @@ var BLOCK_SCHEMAS = {
         type: "list",
         itemFields: [
           { key: "title", label: "Name" },
-          { key: "logo", label: "Logo URL", type: "url" },
+          { key: "logo", label: "Logo", type: "url" },
           { key: "url", label: "Links to", type: "url" },
           { key: "tier", label: "Tier", type: "text" }
         ]
@@ -2452,7 +2453,7 @@ var BLOCK_SCHEMAS = {
     }
   },
   sessions: {
-    label: "Agenda list",
+    label: "Agenda",
     icon: "\u2630",
     addable: true,
     fields: [
@@ -2484,14 +2485,14 @@ var BLOCK_SCHEMAS = {
         label: "First day, intro line",
         type: "textarea",
         showWhen: { style: ["days"] },
-        hint: "Sits under the day heading, as the conference reference has. Yours to write \u2014 the agenda API carries no day summary."
+        hint: "A line under the day heading. Write your own: the agenda has no summary of the day."
       },
       { key: "day2Text", label: "Second day, intro line", type: "textarea", showWhen: { style: ["days"] } },
       {
         key: "max",
-        label: "Max sessions",
+        label: "Most sessions shown",
         type: "number",
-        hint: "How many may appear. Extras beyond this are not rendered."
+        hint: "The most that can appear in this section."
       },
       YESNO_FIELD("showTime", "Show time"),
       YESNO_FIELD("showWho", "Show speakers"),
@@ -2500,7 +2501,7 @@ var BLOCK_SCHEMAS = {
         label: "Sessions on this event",
         type: "multipick",
         source: "sessions",
-        hint: "Every session this event has. Tick up to the max above; untick to remove."
+        hint: "Tick which sessions appear in the mail."
       },
       ...SECTION_BG,
       {
@@ -2520,7 +2521,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   lozenges: {
-    label: "Statement lines",
+    label: "Big statement lines",
     icon: "\u25B0",
     addable: true,
     fields: [
@@ -2562,7 +2563,7 @@ var BLOCK_SCHEMAS = {
         label: "Corner radius (px)",
         type: "number",
         default: "99",
-        hint: "99 is a pill. Outlook on Windows squares every band off regardless."
+        hint: "99 is fully round. Outlook on Windows always shows square corners."
       },
       ONOFF_FIELD("caps", "Uppercase"),
       ...SECTION_BG
@@ -2577,7 +2578,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   pricing: {
-    label: "Price tiers",
+    label: "Ticket prices",
     icon: "\u25A4",
     addable: true,
     fields: [
@@ -2594,7 +2595,7 @@ var BLOCK_SCHEMAS = {
         key: "items",
         label: "Tiers",
         type: "list",
-        hint: "There is no pricing endpoint on the ET APIs, so these are yours to fill \u2014 nothing here is taken from the event.",
+        hint: "Ticket prices are not stored with the event, so type them here. Nothing here is filled in for you.",
         itemFields: [
           { key: "name", label: "Tier" },
           { key: "price", label: "Price" },
@@ -2619,16 +2620,16 @@ var BLOCK_SCHEMAS = {
     })
   },
   navbar: {
-    label: "Nav bar",
+    label: "Row of links",
     icon: "\u2261",
     addable: true,
     fields: [
-      { key: "logo", label: "Logo URL", type: "url" },
+      { key: "logo", label: "Logo", type: "url" },
       {
         key: "items",
         label: "Links",
         type: "list",
-        hint: "The APIs carry no site navigation, so these are yours. Each one defaults to the event microsite so none is a dead link.",
+        hint: "Type the links you want. Each one opens the event's site until you change it, so none leads nowhere.",
         itemFields: [{ key: "label", label: "Label" }, { key: "href", label: "Links to", type: "url" }]
       },
       { key: "label", label: "Button", type: "text" },
@@ -2654,7 +2655,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   mosaic: {
-    label: "Photo mosaic",
+    label: "Photo collage",
     icon: "\u25A6",
     addable: true,
     fields: [
@@ -2690,8 +2691,8 @@ var BLOCK_SCHEMAS = {
         key: "items",
         label: "Photos",
         type: "list",
-        hint: "Four works best \u2014 a 2\xD72 grid. Seeded from the event's own speaker photos; replace the URLs with your own artwork.",
-        itemFields: [{ key: "url", label: "Image URL", type: "url" }, { key: "alt", label: "Alt text" }]
+        hint: "Four works best (two rows of two). They start as the event's speaker photos: click a photo in the mail to swap it.",
+        itemFields: [{ key: "url", label: "Photo", type: "url" }, { key: "alt", label: "Photo description" }]
       }
     ],
     // Seeded from REAL event artwork rather than blank frames, so the block says
@@ -2706,7 +2707,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   social: {
-    label: "Social row",
+    label: "Social media links",
     icon: "\u25CF",
     addable: true,
     fields: [
@@ -2723,7 +2724,7 @@ var BLOCK_SCHEMAS = {
         key: "items",
         label: "Accounts",
         type: "list",
-        hint: "The APIs carry no social handles, so these are yours \u2014 they default to the portal's own pages.",
+        hint: "Type your event's social pages. They start as your portal's own pages.",
         itemFields: [{ key: "network", label: "facebook / x / linkedin / instagram / youtube" }, { key: "href", label: "Links to", type: "url" }]
       },
       ...SECTION_BG
@@ -2736,7 +2737,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   quote: {
-    label: "Pull quote",
+    label: "Quote",
     icon: "\u275D",
     addable: true,
     fields: [
@@ -2788,7 +2789,7 @@ var BLOCK_SCHEMAS = {
         key: "panelBg",
         label: "Panel colour",
         type: "color",
-        hint: "Hex. Empty uses the mailer's own primary. Every line on the panel is re-measured against whatever you pick.",
+        hint: "Leave it empty to use the mail's main colour. The words on the panel change to stay readable on whatever you pick.",
         showWhen: { style: ["panel", "card"] }
       },
       YESNO_FIELD("mark", "Quotation mark", "The oversized \u201D above the quote, as the reference has.", "yes"),
@@ -2818,13 +2819,13 @@ var BLOCK_SCHEMAS = {
     })
   },
   image: {
-    label: "Inline image",
+    label: "Picture",
     icon: "\u2B1A",
     addable: true,
     fields: [
-      { key: "url", label: "Image URL", type: "url" },
+      { key: "url", label: "Picture", type: "url" },
       { key: "href", label: "Links to", type: "url" },
-      { key: "alt", label: "Alt text", type: "text" },
+      { key: "alt", label: "Picture description", type: "text", hint: "Read out to people who cannot see the picture." },
       { key: "width", label: "Width (px)", type: "number" },
       // `ALIGN`'s first option is Left, which is where a display:block image has
       // always sat, so a document with no `align` renders the same bytes.
@@ -2841,7 +2842,7 @@ var BLOCK_SCHEMAS = {
         type: "select",
         default: "",
         options: [
-          { value: "", label: "House default (10px)" },
+          { value: "", label: "Usual (10px)" },
           { value: "0", label: "Square" },
           { value: "12", label: "Rounded" },
           { value: "999", label: "Circle" }
@@ -2852,7 +2853,7 @@ var BLOCK_SCHEMAS = {
     make: () => ({ url: "", href: "", alt: "", width: INNER })
   },
   features: {
-    label: "Icon tiles",
+    label: "Points with icons",
     icon: "\u25C7",
     addable: true,
     fields: [
@@ -2879,7 +2880,7 @@ var BLOCK_SCHEMAS = {
         key: "items",
         label: "Tiles",
         type: "list",
-        hint: "The ET APIs expose no iconography, so the artwork is yours \u2014 these seed from the house icon set. Choose a house glyph or upload your own; a tile with no icon still prints its words.",
+        hint: "Each tile starts with one of ET's own icons. Choose another or upload your own; a tile without an icon still shows its words.",
         itemFields: [
           { key: "icon", label: "Icon", type: "icon" },
           { key: "title", label: "Title" },
@@ -2910,7 +2911,7 @@ var BLOCK_SCHEMAS = {
   // this seeds the SHAPE only and every card is filled in by hand — the same way
   // `pricing` seeds tiers without prices.
   resources: {
-    label: "Resource cards",
+    label: "Cards with links",
     icon: "\u25A2",
     addable: true,
     fields: [
@@ -2929,9 +2930,9 @@ var BLOCK_SCHEMAS = {
         key: "items",
         label: "Resources",
         type: "list",
-        hint: "One card per resource. The APIs carry no downloads, so the cover image and link are yours: upload or paste a cover, the title, and where it opens.",
+        hint: "One card per report, guide or video: its cover picture, its title and the page it opens.",
         itemFields: [
-          { key: "image", label: "Cover image URL", type: "url" },
+          { key: "image", label: "Cover picture", type: "url" },
           { key: "title", label: "Title", type: "textarea" },
           { key: "url", label: "Links to", type: "url" }
         ]
@@ -2946,7 +2947,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   circles: {
-    label: "Circle callouts",
+    label: "Points in circles",
     icon: "\u25EF",
     addable: true,
     fields: [
@@ -2973,7 +2974,7 @@ var BLOCK_SCHEMAS = {
         key: "items",
         label: "Circles",
         type: "list",
-        hint: "Two to four. Text does not flow around a curve in email HTML, so a caption longer than the circle holds is shrunk a step and then clipped \u2014 keep them to a few words.",
+        hint: "Two to four. Email cannot bend words around a circle, so a long one is made smaller and then cut: keep each to a few words.",
         itemFields: [{ key: "text", label: "Text", type: "textarea" }]
       }
     ],
@@ -2989,7 +2990,7 @@ var BLOCK_SCHEMAS = {
     }
   },
   ribbon: {
-    label: "Edition flag",
+    label: "Edition label",
     icon: "\u2691",
     addable: true,
     fields: [
@@ -3011,7 +3012,7 @@ var BLOCK_SCHEMAS = {
     })
   },
   contacts: {
-    label: "Contact rows",
+    label: "Contact people",
     icon: "\u2706",
     addable: true,
     fields: [
@@ -3032,9 +3033,9 @@ var BLOCK_SCHEMAS = {
       ]
     })
   },
-  divider: { label: "Divider", icon: "\u2014", addable: true, fields: [], make: () => ({}) },
+  divider: { label: "Line", icon: "\u2014", addable: true, fields: [], make: () => ({}) },
   spacer: {
-    label: "Spacer",
+    label: "Space",
     icon: "\u2423",
     addable: true,
     fields: [{ key: "height", label: "Height (px)", type: "number" }],
@@ -3049,13 +3050,13 @@ var BLOCK_SCHEMAS = {
         key: "portal",
         label: "Portal name",
         type: "text",
-        hint: "Auto-filled from the selected portal \u2014 appears before the address."
+        hint: "Filled in from your portal; shown before the address."
       },
       {
         key: "unsubscribe",
         label: "Unsubscribe link",
         type: "text",
-        hint: "The ESP token the house mailers use. Leave as-is unless your send tool differs."
+        hint: "The code your email tool replaces with each reader's unsubscribe link. Leave it as it is unless your email tool uses another."
       },
       { key: "address", label: "Registered address", type: "textarea" }
     ],
@@ -3072,7 +3073,7 @@ var BLOCK_SCHEMAS = {
     label: "Custom HTML",
     icon: "</>",
     addable: true,
-    fields: [{ key: "html", label: "HTML", type: "textarea", hint: "Dropped in as-is. Keep it table-based to stay email-safe." }],
+    fields: [{ key: "html", label: "HTML", type: "textarea", hint: "Put into the mail exactly as you write it. Lay it out with tables so every email app shows it." }],
     make: () => ({ html: "<p>Custom HTML</p>" })
   }
 };
@@ -4231,11 +4232,36 @@ function renderDoc(doc, event, opts = {}) {
   const rows = (doc.blocks || []).map((b) => {
     if (!b || typeof b !== "object" || typeof b.type !== "string") return "";
     const html2 = renderBlock(b, ctx);
-    return html2 || (opts.editor ? placeholderRow(b, ctx) : "");
+    return html2 ? opts.editor ? tagPictures(html2, b) : html2 : opts.editor ? placeholderRow(b, ctx) : "";
   }).join("");
   const html = emailPage(ctx, { subject: doc.subject, preheader: doc.preheader, rows });
   const swept = html.replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, "").replace(/<\s*\/?\s*script\b[^>]*>/gi, "");
-  return opts.editor ? swept : swept.replace(/ data-(block-id|ed)="[^"]*"/g, "");
+  return opts.editor ? swept : swept.replace(/ data-(block-id|ed|img)="[^"]*"/g, "");
+}
+var PICTURE_PROPS = ["url", "logo", "logoLight", "photo", "image"];
+var PICTURE_ITEM_PROPS = ["photo", "logo", "image", "url"];
+function pictureKey(src) {
+  const s = String(src || "").replace(/&amp;/g, "&").trim();
+  const et = /^https?:\/\/[^/]*etb2bimg\.com\/(?:imgv2\/[^/]+\/)?files\/(.+)$/i.exec(s);
+  return et ? "et:" + et[1] : s;
+}
+function tagPictures(html, b) {
+  const q = b && b.props || {};
+  const byKey = /* @__PURE__ */ new Map();
+  const add = (v, path) => {
+    if (typeof v !== "string" || !v.trim()) return;
+    const k = pictureKey(safeUrl(v) || v);
+    if (k && !byKey.has(k)) byKey.set(k, path);
+  };
+  for (const k of PICTURE_PROPS) add(q[k], k);
+  if (Array.isArray(q.items)) q.items.forEach((it, i) => {
+    if (it && typeof it === "object") for (const k of PICTURE_ITEM_PROPS) add(it[k], `items.${i}.${k}`);
+  });
+  if (!byKey.size) return html;
+  return html.replace(/<img\b([^>]*?)\ssrc="([^"]*)"/gi, (m, pre, src) => {
+    const path = byKey.get(pictureKey(src));
+    return path && !/\sdata-img=/.test(pre) ? `<img${pre} data-img="${esc(b.id + "|" + path)}" src="${src}"` : m;
+  });
 }
 function blockIsEmpty(b, event, doc) {
   return renderBlock(b, renderCtx(event, doc)) === "";
@@ -4248,11 +4274,43 @@ function blockOf(type, props) {
 function makeBlock(type, event) {
   return blockOf(type, BLOCK_SCHEMAS[type].make(event));
 }
+var BLOCK_GROUPS = {
+  heading: "text",
+  text: "text",
+  bullets: "text",
+  quote: "text",
+  button: "text",
+  hero: "text",
+  banner: "pictures",
+  image: "pictures",
+  mosaic: "pictures",
+  logobar: "pictures",
+  speakers: "people",
+  speaker: "people",
+  sponsors: "people",
+  contacts: "people",
+  meta: "event",
+  sessions: "event",
+  stats: "event",
+  pricing: "event",
+  footer: "footer",
+  social: "footer",
+  lozenges: "more",
+  navbar: "more",
+  features: "more",
+  resources: "more",
+  circles: "more",
+  ribbon: "more",
+  divider: "more",
+  spacer: "more",
+  html: "advanced"
+};
 function blockPalette() {
   return Object.keys(BLOCK_SCHEMAS).map((type) => ({
     type,
     label: BLOCK_SCHEMAS[type].label,
     icon: BLOCK_SCHEMAS[type].icon,
+    group: BLOCK_GROUPS[type] || "more",
     addable: BLOCK_SCHEMAS[type].addable,
     fields: BLOCK_SCHEMAS[type].fields
   }));
@@ -4555,7 +4613,8 @@ var announcementMailer = {
   id: "mailer.announcement",
   group: "Announcement",
   label: "Event Announcement",
-  description: "Full announcement send: banner, hero, date/venue, why attend, speaker preview, partners, CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The full announcement: the banner, the title, date and venue, why to attend, a first look at the speakers, the partners and a Register button.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4621,7 +4680,8 @@ var speakersMailer = {
   id: "mailer.speakers",
   group: "Speaker",
   label: "Speaker Announcement",
-  description: "Line-up send: a uniform speaker grid (hand-picked or top-N), with date/venue and CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The speakers: a grid of the speakers you choose (or the first ones), with the date, the venue and a Register button.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4655,7 +4715,7 @@ var speakersMailer = {
     ];
   },
   requires(event) {
-    return { ok: event.speakers.length >= 2, missing: event.speakers.length >= 2 ? [] : ["speakers (2+)"] };
+    return { ok: event.speakers.length >= 2, missing: event.speakers.length >= 2 ? [] : ["at least 2 speakers"] };
   },
   build(event, params) {
     const list = selectSpeakers2(event, params);
@@ -4690,7 +4750,8 @@ var speakerSpotlightMailer = {
   id: "mailer.speaker-spotlight",
   group: "Speaker",
   label: "Speaker Spotlight",
-  description: "One speaker, front and centre: big photo, role, a session/quote line, plus the rest of the line-up.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "One speaker in focus: a large photo, their role, a line about their session, and the other speakers below.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4753,7 +4814,8 @@ var partnersMailer = {
   id: "mailer.partners",
   group: "Partner",
   label: "Partner Line-up",
-  description: "Sponsor-focused send: logos stacked by tier (presenting \u2192 associate), with a thank-you note and CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "All about the partners: their logos by tier (the presenting partner first), a thank-you note and a Register button.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4781,7 +4843,7 @@ var partnersMailer = {
   },
   requires(event) {
     const n = event.sponsorTiers.reduce((a, t) => a + t.sponsors.length, 0);
-    return { ok: n >= 1, missing: n ? [] : ["sponsors"] };
+    return { ok: n >= 1, missing: n ? [] : ["partners"] };
   },
   build(event, params) {
     const groups = selectSponsors(event, params);
@@ -4815,7 +4877,8 @@ var partnerSpotlightMailer = {
   id: "mailer.partner-spotlight",
   group: "Partner",
   label: "Presenting Partner Spotlight",
-  description: "One partner front and centre: big logo lockup, an about note, and the rest of the roster below.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "One partner in focus: its logo large, a few words about it, and the other partners below.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4841,7 +4904,7 @@ var partnerSpotlightMailer = {
   },
   requires(event) {
     const n = event.sponsorTiers.reduce((a, t) => a + t.sponsors.length, 0);
-    return { ok: n >= 1, missing: n ? [] : ["sponsors"] };
+    return { ok: n >= 1, missing: n ? [] : ["partners"] };
   },
   build(event, params) {
     const groups = selectSponsors(event, params);
@@ -4882,7 +4945,8 @@ var agendaMailer = {
   id: "mailer.agenda",
   group: "Agenda",
   label: "Agenda / Sessions",
-  description: "Session-by-session send: times, titles and the speakers on each panel, with a CTA to the full agenda.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The agenda, session by session: times, titles and the speakers on each panel, with a button to the full agenda.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4939,7 +5003,8 @@ var discussionMailer = {
   id: "mailer.discussion",
   group: "Announcement",
   label: "Key Discussion Points",
-  description: "Agenda themes and audience profile as ticked panels, with the numbers band and speaker preview.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The key topics and who should attend as ticked panels, with the headline numbers and a first look at the speakers.",
   params(event) {
     return [
       THEME_PARAM,
@@ -4976,7 +5041,7 @@ var discussionMailer = {
   },
   requires(event) {
     const has = event.keyPoints.length || event.whoShouldAttend.length || event.whyJoin.length;
-    return { ok: !!has, missing: has ? [] : ["key discussion points / who should attend"] };
+    return { ok: !!has, missing: has ? [] : ["key topics or who should attend"] };
   },
   build(event, params) {
     const nSpeakers = Number(params.speakerCount ?? 4);
@@ -5025,7 +5090,8 @@ var reminderMailer = {
   id: "mailer.reminder",
   group: "Reminder",
   label: "Final Call / Countdown",
-  description: "Urgency send: days-to-go band, one-line pitch, stat tiles, speaker strip and a single hard CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The reminder: days to go, a one-line pitch, the headline numbers, a row of speakers and one Register button.",
   params(event) {
     const d = daysToGo(event);
     return [
@@ -5119,7 +5185,8 @@ var conferenceMailer = {
   id: "mailer.conference",
   group: "Conference",
   label: "Full conference programme",
-  description: "Photo hero with two CTAs, the line-up, the numbers band, agenda, partners and price tiers \u2014 the long-form event send.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The full programme: a photo title band with two buttons, the speakers, the headline numbers, the agenda, the partners and ticket prices.",
   params(event) {
     return [
       THEME_PARAM,
@@ -5378,7 +5445,8 @@ var resilienceMailer = {
   id: "mailer.resilience",
   group: "Invitation",
   label: "Single-session invitation",
-  description: "Banner, a Register button, the pitch, then Event Details and a Why Attend? icon grid \u2014 the short dark invite for one session.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The banner, a Register button and the pitch, then the event details and why to attend, with icons: the short dark invitation for one session.",
   params(event) {
     return [
       // Dark throughout, as the reference is — but still an override, because a
@@ -5430,7 +5498,7 @@ var resilienceMailer = {
   },
   requires(event) {
     const has = usable(event.whyJoin).length || usable(event.keyPoints).length || usable(event.whoShouldAttend).length;
-    return { ok: !!has, missing: has ? [] : ["why join us / key discussion points"] };
+    return { ok: !!has, missing: has ? [] : ["reasons to join or key topics"] };
   },
   build(event, params) {
     const nTiles = Number(params.tileCount ?? 5);
@@ -5507,7 +5575,8 @@ var decryptMailer = {
   id: "mailer.decrypt",
   group: "Programme",
   label: "Programme teaser",
-  description: "Edition flag, banner, circle callouts, a jury checkerboard and a colour band \u2014 the \u201Cmore to come\u201D send for an awards or council programme.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "An edition label, the banner, points in circles, the jury in a checkerboard and a colour band: the \u201Cmore to come\u201D mail for an awards or council programme.",
   params(event) {
     return [
       THEME_PARAM,
@@ -5515,7 +5584,7 @@ var decryptMailer = {
       ...BANNER_PARAMS,
       {
         key: "flag",
-        label: "Edition flag",
+        label: "Edition label",
         type: "text",
         default: flagFor(event),
         hint: "The edition the APIs parse out of the event name. Events with no edition fall back to the date, which this design shows nowhere else. Empty hides the tab."
@@ -5523,7 +5592,7 @@ var decryptMailer = {
       { key: "topicsTitle", label: "Callouts heading", type: "text", default: "At a glance" },
       {
         key: "callouts",
-        label: "Circle callouts",
+        label: "Points in circles",
         type: "textarea",
         default: calloutsFrom(event).join("\n"),
         hint: "One per line, a few words each \u2014 text does not wrap around a curve. Seeded from the event's own figures because the APIs carry no programme milestones or deadlines; replace them with the real ones."
@@ -5584,7 +5653,7 @@ var decryptMailer = {
   },
   requires(event) {
     const ok = event.speakers.length >= 2;
-    return { ok, missing: ok ? [] : ["speakers (2+) for the jury grid"] };
+    return { ok, missing: ok ? [] : ["at least 2 speakers for the jury grid"] };
   },
   build(event, params) {
     const nJury = Number(params.juryCount ?? 8);
@@ -5791,7 +5860,8 @@ var awardNominationsMailer = {
   id: "mailer.award-nominations",
   group: "Awards",
   label: "Call for nominations",
-  description: "Entries are open: the deadline, why to enter, how to enter and the jury \u2014 the long ask, for an award taking submissions.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Entries are open: the deadline, why and how to enter, and the jury. The full invitation, for an award taking entries.",
   params(event) {
     const a = event.award;
     return [
@@ -5912,7 +5982,8 @@ var awardDeadlineMailer = {
   id: "mailer.award-deadline",
   group: "Awards",
   label: "Nominations close soon",
-  description: "The short urgent one: the closing date as a statement, one line of copy and a single button. No grids, no numbers, no countdown.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The short reminder: the closing date in big letters, one line and one button. Nothing else.",
   params(event) {
     const a = event.award;
     return [
@@ -5999,7 +6070,8 @@ var awardJuryMailer = {
   id: "mailer.award-jury",
   group: "Awards",
   label: "Meet the jury",
-  description: "Who decides \u2014 the roster in a photo grid under its own name, with the award's editions/categories/winners for scale.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Who decides: the jury in a photo grid, with the award's editions, categories and winners to show its size.",
   params(event) {
     return [
       THEME_PARAM,
@@ -6035,7 +6107,7 @@ var awardJuryMailer = {
   requires(event) {
     if (!event.award) return NOT_AN_AWARD;
     const ok = (event.speakers || []).length >= 3;
-    return { ok, missing: ok ? [] : ["a roster of 3+ (this award publishes no jury)"] };
+    return { ok, missing: ok ? [] : ["a jury of at least 3 (this award publishes no jury)"] };
   },
   build(event, params) {
     const n = Number(params.juryCount ?? 9);
@@ -6085,6 +6157,7 @@ var awardCeremonyMailer = {
   id: "mailer.award-ceremony",
   group: "Awards",
   label: "Ceremony invitation",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
   description: "Save the date for the night itself: when and where, where nominations stand, the jury and the partners.",
   params(event) {
     return [
@@ -6162,7 +6235,8 @@ var awardWinnersMailer = {
   id: "mailer.award-winners",
   group: "Awards",
   label: "Winners announced",
-  description: "It has been decided: the winners/categories/editions band, the jury that chose, and one link to the published list.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The winners are out: how many winners, categories and editions, the jury that chose, and one link to the full list.",
   params(event) {
     return [
       THEME_PARAM,
@@ -6253,7 +6327,8 @@ var allInOneMailer = {
   id: "mailer.all-in-one",
   group: "All in one",
   label: "Everything",
-  description: "Every section this event has data for \u2014 overview, numbers, topics, audience, speakers, a spotlight, agenda, partners and contacts \u2014 in one mail to cut back from.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Every section this event has details for (overview, numbers, topics, audience, speakers, one speaker in focus, agenda, partners and contacts) in one mail, to trim down from.",
   params(event) {
     return [
       THEME_PARAM,
@@ -6344,7 +6419,8 @@ var blankMailer = {
   id: "mailer.blank",
   group: "Blank",
   label: "Blank canvas",
-  description: "Start with nothing but the masthead and the legal footer, and build the mail block by block.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Start with only the logo at the top and the footer, and add the sections you want.",
   // Nothing to bulk-download: an unbuilt blank would just add an empty file to
   // the ZIP. You build this one in the studio and download it from there.
   bulk: false,
@@ -9169,6 +9245,7 @@ function groupSponsors(sponsors) {
   ALL_TEMPLATES,
   ASSET_BASE,
   AiUnavailable,
+  BLOCK_GROUPS,
   BLOCK_SCHEMAS,
   COPY_FIELDS,
   DEFAULT_FORMATS,
@@ -9199,6 +9276,7 @@ function groupSponsors(sponsors) {
   newSendId,
   openUrl,
   parseEdition,
+  pictureKey,
   polishCopy,
   qrTile,
   readable,
@@ -9213,6 +9291,7 @@ function groupSponsors(sponsors) {
   setAiCaller,
   signClick,
   suggestSubjects,
+  tagPictures,
   trackTarget,
   verifyClick
 });

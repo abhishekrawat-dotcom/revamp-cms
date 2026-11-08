@@ -97,6 +97,10 @@
   .chk.warn .lvl{ background:var(--warn-soft); color:var(--warn); }
   .chk ul{ margin:6px 0 0; padding-left:18px; } .chk li{ margin:2px 0; word-break:break-word; }
   .chk .hint{ color:var(--muted); font-size:12px; margin-top:6px; }
+  /* where to put it right (the check before Publish): the section in the site editor, the console's tab, in a new tab */
+  .chk .fixes{ display:flex; flex-wrap:wrap; gap:2px 10px; margin-top:6px; font-size:12px; color:var(--muted); }
+  .chk .fixes a{ color:var(--text); font-weight:600; padding:3px 0; }
+  .chk-state{ font-size:12.5px; color:var(--muted); margin:0 0 8px; }
   .chk-ok{ color:var(--ok); font-size:13px; margin:0; }
   .empty{ color:var(--muted); font-size:13px; }
   .decide{ background:var(--surface); border-top:1px solid var(--border); border-right:1px solid var(--border); padding:14px 18px 18px; }
@@ -213,16 +217,24 @@
   function liveVersion(){ return data && data.published ? (+data.publishedVersion || 0) : 0; }
 
   /* What the site check found on the proposed version: listed before the changes, so the approver sees what would
-     go live (template text, a broken picture, a button that leads nowhere) before deciding. */
+     go live (template text, a broken picture, a button that leads nowhere) before deciding. It includes the check
+     before Publish the requester saw (owner decision #11, part 3.2: links and pictures on other sites, empty sections,
+     dates and place, the banner's logo, forms switched off), which never holds Approve back; each item links to where
+     it is put right, in a new tab, so the review stays open. */
   function checksHtml(r){
     if (r.status !== 'pending' || data.stale) return '';
     if (data.checks === false) return '<h2>Before it goes live</h2><p class="empty">The proposed version could not be checked just now. Approving checks it again.</p>';
     if (data.checks == null) return '<h2>Before it goes live</h2><p class="empty">Checking the proposed version…</p>';
-    if (!data.checks.length) return '<h2>Before it goes live</h2><p class="chk-ok">Nothing found: no template text, every picture can be shown, every button leads somewhere.</p>';
-    return '<h2>Before it goes live (' + data.checks.length + ')</h2>' + data.checks.map(function(c){
+    if (!data.checks.length) return '<h2>Before it goes live</h2><p class="chk-ok">Nothing found: no template text, every picture can be shown, every button and link leads somewhere, and the dates, place, logo and forms are the event’s.</p>';
+    var still = +data.checksPending || 0;
+    return '<h2>Before it goes live (' + data.checks.length + ')</h2>' +
+      (still ? '<p class="chk-state" role="status">Still checking ' + still + (still === 1 ? ' link' : ' links') + ' on other sites…</p>' : '') +
+      data.checks.map(function(c){
+      var fixes = (c.fix || []).filter(function(f){ return f && f.href && f.label; });
       return '<div class="chk ' + esc(c.level) + '"><div class="top"><span class="lvl">' + esc(LEVEL[c.level] || c.level) + '</span><span>' + esc(c.title) + '</span></div>' +
         ((c.lines || []).length ? '<ul>' + c.lines.map(function(l){ return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>' : '') +
-        (c.hint ? '<div class="hint">' + esc(c.hint) + '</div>' : '') + '</div>';
+        (c.hint ? '<div class="hint">' + esc(c.hint) + '</div>' : '') +
+        (fixes.length ? '<div class="fixes">Put it right: ' + fixes.map(function(f){ return '<a href="' + esc(f.href) + '" target="_blank" rel="noopener">' + esc(f.label) + '</a>'; }).join(' ') + '</div>' : '') + '</div>';
     }).join('');
   }
 
@@ -237,17 +249,24 @@
   /* The site check of the proposed version (?checks=1), asked for once the request is on screen: it reads the
      pictures in storage and takes a moment. What it finds fills its box; when it holds the version back, Approve
      gives way to the reason (the note being typed is kept). The server checks again on Approve whatever this says. */
-  function loadChecks(){
+  /* Links and pictures on other sites are slow to answer: while some are still being asked (checksPending), the
+     check is asked again, the server waiting on their answers (wait=), CHECK_POLLS times at most. */
+  var CHECK_POLLS = 6, checkPolls = 0;
+  function loadChecks(again){
     var r = data && data.request;
     if (!r || r.status !== 'pending' || data.stale || typeof C.authedFetch !== 'function') return;
-    var url = '/api/event/approval?eventId=' + encodeURIComponent(eventId) + '&id=' + encodeURIComponent(r.id) + '&checks=1';
+    if (!again) checkPolls = 0;
+    checkPolls++;
+    var url = '/api/event/approval?eventId=' + encodeURIComponent(eventId) + '&id=' + encodeURIComponent(r.id) + '&checks=1' + (again ? '&wait=6000' : '');
     function fill(){ var box = document.getElementById('checks-box'); if (box) box.innerHTML = checksHtml(r); }
     C.authedFetch(url, { method: 'GET' }).then(function(res){ return res.ok ? res.json() : null; }).then(function(d){
       if (!data || !data.request || data.request.id !== r.id) return;
-      if (!d || !Array.isArray(d.checks)) { data.checks = false; fill(); return; }
+      /* a later ask that fails leaves the list as it was, without "still checking" */
+      if (!d || !Array.isArray(d.checks)) { if (again && Array.isArray(data.checks)) data.checksPending = 0; else data.checks = false; fill(); return; }
       var could = data.canApprove !== false;
-      data.checks = d.checks; data.canApprove = d.canApprove; data.whyNot = d.whyNot;
+      data.checks = d.checks; data.canApprove = d.canApprove; data.whyNot = d.whyNot; data.checksPending = d.checksPending || 0;
       fill();
+      if (data.checksPending > 0 && checkPolls < CHECK_POLLS) loadChecks(true);
       var dec = document.querySelector('.decide');
       if (dec && could !== (data.canApprove !== false)){
         var typed = (document.getElementById('d-note') || {}).value || '';
@@ -255,7 +274,7 @@
         var note = document.getElementById('d-note'); if (note && typed) note.value = typed;
         wireDecide();
       }
-    }, function(){ data.checks = false; fill(); });
+    }, function(){ if (again && Array.isArray(data.checks)) data.checksPending = 0; else data.checks = false; fill(); });
   }
 
   function changeHtml(it){

@@ -62,7 +62,9 @@
   var POST_ACTIONS = {
     'Post art': { 'updated': 'Social post art added', 'deleted': 'Social post art removed' },
     'Post picture': { 'updated': 'Social post picture added', 'deleted': 'Social post picture removed' },
-    'Post layout': { 'updated': 'Social post layout saved', 'deleted': 'Social post layout reset' }
+    'Post layout': { 'updated': 'Social post layout saved', 'deleted': 'Social post layout reset' },
+    /* "Use for all posts" (UX-129): the background every social post of the event starts on */
+    'Post background': { 'updated': 'Social post background set' }
   };
   var POST_OTHER = { 'created': 'Social post saved', 'updated': 'Social post changed', 'deleted': 'Social post removed' };
   /* a Promotions entry whose detail names neither (none is written today): said as Promotions', not as a mailer's */
@@ -91,6 +93,8 @@
       }
       return own(POST_OTHER, a) ? POST_OTHER[a] : '';
     }
+    /* a picture uploaded into a mail (lib/promo-mailer.js handlePicture) is not yet a change to any saved mailer */
+    if (/^Mailer picture\b/.test(d) && a === 'updated') return 'Mailer picture added';
     if (/\bmailer\b/i.test(d)) return own(MAILER_ACTIONS, a) ? MAILER_ACTIONS[a] : '';
     return own(PROMOTIONS_OTHER, a) ? PROMOTIONS_OTHER[a] : '';
   }

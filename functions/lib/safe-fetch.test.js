@@ -38,6 +38,20 @@ var helper = http.createServer(function (req, res) {
   if (req.url === '/slow-body') { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.write('start'); return; }   // never ends
   if (req.url === '/pdf') { res.writeHead(200, { 'Content-Type': 'application/pdf' }); return res.end('%PDF'); }
   if (req.url === '/echo-headers') { res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(req.headers)); }
+  if (req.url === '/big-head') { res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': 50 * 1024 * 1024 }); return res.end(); }
+  if (req.url === '/method') { res.writeHead(200, { 'Content-Type': 'text/plain', 'X-Method': req.method }); return res.end(req.method === 'HEAD' ? undefined : 'body'); }
+  /* what Wikipedia, GitHub and ET do: a HEAD answer that names the encoding and size a GET would get, and no body */
+  if (req.url === '/gz-head') {
+    var gzBody = require('zlib').gzipSync('<p>hi</p>');
+    res.writeHead(200, { 'Content-Type': 'text/html', 'Content-Encoding': 'gzip', 'Content-Length': req.method === 'HEAD' ? 5000 : gzBody.length });
+    return res.end(req.method === 'HEAD' ? undefined : gzBody);
+  }
+  /* a "not found" page bigger than anything read (ET's and GitHub's are over 64 KB) */
+  if (req.url === '/big404') { res.writeHead(404, { 'Content-Type': 'text/html', 'Content-Length': 50 * 1024 * 1024 }); return res.write('x'); }
+  if (req.url === '/big404-chunked') { res.writeHead(404, { 'Content-Type': 'text/html' }); return res.end(Buffer.alloc(300 * 1024, 120)); }
+  var chain = /^\/chain\/(\d+)$/.exec(req.url);
+  if (chain) { res.writeHead(302, { Location: '/chain/' + (+chain[1] + 1) }); return res.end(); }
+  if (req.url === '/to-8443') { res.writeHead(301, { Location: 'https://public.test:8443/' }); return res.end(); }
   if (req.url === '/secret') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('INTERNAL SECRET'); }
   res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('no');
 });
@@ -137,6 +151,45 @@ async function run() {
 
   var echoed = JSON.parse((await viaHelper('/echo-headers', { headers: { Cookie: 'a=b', Authorization: 'Bearer x', 'X-Extra': '1' } })).body.toString());
   ok(!echoed.cookie && !echoed.authorization && echoed['x-extra'] === '1' && /^RevampCMS-Fetcher/.test(echoed['user-agent']), 'no cookie or credential is sent; the User-Agent is fixed', JSON.stringify(echoed));
+
+  /* --- HEAD (the site check's outside links, link-check.js): asked without the body, under the same rules --- */
+  var head = await viaHelper('/method', { method: 'HEAD' });
+  ok(head.status === 200 && head.headers['x-method'] === 'HEAD' && head.body.length === 0, 'method HEAD is sent as HEAD and answers with no body', head.headers['x-method']);
+  ok((await viaHelper('/method')).headers['x-method'] === 'GET', 'GET stays the default');
+  ok(await codeOf(viaHelper('/big-head', { method: 'HEAD', maxBytes: 1024 })) === 'resolved:200', 'a HEAD answer naming a large size is not "too large": nothing is sent');
+  hits.length = 0;
+  ok(await codeOf(viaHelper('/to-metadata', { method: 'HEAD' })) === 'blocked-address' && await codeOf(viaHelper('/to-loopback', { method: 'HEAD' })) === 'bad-url',
+    'a HEAD redirected to the metadata service or loopback is refused like a GET');
+  ok(!hits.some(function (h) { return /\/secret/.test(h); }), 'and the internal address is never reached', hits.join(', '));
+
+  /* a HEAD answer that names an encoding has no body to decode: it answers (it was "unreachable" for every HEAD to
+     Wikipedia, GitHub and ET, found 8 Nov 2026) */
+  var gz = await viaHelper('/gz-head', { method: 'HEAD' }).catch(function (e) { return e; });
+  ok(gz && gz.status === 200 && gz.body.length === 0, 'a HEAD answered with Content-Encoding: gzip and no body resolves 200, not "unreachable"', gz && (gz.code || gz.status));
+  var gzGet = await viaHelper('/gz-head').catch(function (e) { return e; });
+  ok(gzGet && gzGet.status === 200 && gzGet.body.toString() === '<p>hi</p>', 'and its GET is still decoded', gzGet && (gzGet.code || gzGet.body.toString()));
+
+  /* headersOnly: the status and headers, nothing of the body read — a large "not found" page is a 404 */
+  t0 = Date.now();
+  ok(await codeOf(viaHelper('/big404', { headersOnly: true, maxBytes: 1024 })) === 'resolved:404', 'headersOnly: a 404 whose body is declared 50 MB answers 404');
+  ok(await codeOf(viaHelper('/big404-chunked', { headersOnly: true, maxBytes: 1024 })) === 'resolved:404', 'headersOnly: a 404 with a 300 KB body sent in chunks answers 404');
+  ok(Date.now() - t0 < 2000, 'both promptly, the body never read (' + (Date.now() - t0) + ' ms)');
+  var big = await viaHelper('/big404', { maxBytes: 1024 }).catch(function (e) { return e; });
+  ok(big instanceof Error && big.code === 'too-large' && big.status === 404, 'without headersOnly, "too large" says the status it came with (404), so a caller never takes it for a working page', big && big.code + ' ' + big.status);
+  var bigc = await viaHelper('/big404-chunked', { maxBytes: 1024 }).catch(function (e) { return e; });
+  ok(bigc instanceof Error && bigc.code === 'too-large' && bigc.status === 404, 'and so when the body grows past maxBytes as it streams', bigc && bigc.code + ' ' + bigc.status);
+
+  /* redirects: a loop is told from a long chain, and a refused hop says where it led (link-check.js words them) */
+  var loop = await viaHelper('/loop').catch(function (e) { return e; });
+  ok(loop.code === 'unreachable' && loop.redirects === 'loop', 'a redirect loop says so (redirects: "loop")', loop.redirects);
+  var long = await viaHelper('/chain/0').catch(function (e) { return e; });
+  ok(long.code === 'unreachable' && long.redirects === 'too-many', 'a chain longer than maxRedirects says "too-many"', long.redirects);
+  var hopped = await viaHelper('/to-loopback').catch(function (e) { return e; });
+  ok(hopped.code === 'bad-url' && hopped.hops === 1 && hopped.url === 'http://127.0.0.1:' + port + '/secret', 'a refused hop names the address it led to and how many redirects led there', JSON.stringify({ hops: hopped.hops, url: hopped.url }));
+  var port8443 = await viaHelper('/to-8443').catch(function (e) { return e; });
+  ok(port8443.code === 'bad-url' && port8443.hops === 1 && /:8443\//.test(port8443.url), 'a redirect to another port is refused at the hop, and says where', JSON.stringify({ code: port8443.code, url: port8443.url }));
+  var first = await safeFetch('http://127.0.0.1/').catch(function (e) { return e; });
+  ok(first.hops === 0, 'the address asked for itself has hops 0', first.hops);
 
   var err = await safeFetch('http://10.0.0.1/').catch(function (e) { return e; });
   ok(err instanceof Error && err.code === 'blocked-address' && /private or internal/.test(err.message), 'the error says why in words fit to show', err && err.message);

@@ -8,7 +8,7 @@
        for icons, go through it; the URLs and bodies it builds are the platform's, re-addressed here.
      - S: the open event (this page's ?event=), and its portal (from the catalog).
      - the event page's mailer half (the platform's renderEventDetail, mailers only): the event's header,
-       "Recently updated", the template cards, Open studio and Download all (.zip).
+       "Saved", the template cards, Edit a mailer and Download all mailers (ZIP).
      - mlExport: a picture of the mail is drawn here, in the browser (the platform renders it with Chrome on its
        server, which Oneworld's server does not have); "Save as PDF" opens the mail for the browser's own
        Print → Save as PDF.
@@ -47,7 +47,8 @@
        picture sizes read in KB / MB (UX-136); the dashboard does not say "nothing made yet" while nothing can be
        recorded (UX-133); the team's page has no nav of its own and lines up with the bar above it (UX-136, UX-139).
 
-   Function declarations here replace the platform's of the same name: this file is the last script. Oneworld's
+   Function declarations here replace the platform's of the same name: this file loads after the studio (only the
+   "Edit myself" layout, promo-studio/oneworld-mail-easy.js, batch B18, comes after it and replaces mlProps). Oneworld's
    own versions: mark and crumbs (this page keeps no URL or crumb trail of its own), showPortals (the event's
    mailer page, or the event listing), showAnalytics (the platform's, with the OW_VIEW check and Try again),
    anOpen, anToggleVer (by row index), mlExport, and mailerArt and savedCardHtml (a card's live preview).
@@ -258,10 +259,11 @@ function owRenderPage() {
     '<div id="evNav" class="secnav">' +
       '<button id="nav-mail" class="on" type="button">Promotional mailers <span class="n">' + mailCount + '</span></button>' +
       '<span class="sp" id="secActions">' +
-        '<button class="btn alt sm" onclick="openMailer()">Open studio</button> ' +
-        /* the console's secondary button, as Open studio beside it (owner D): the platform's own .btn lost to its
+        /* "Edit" opens a design on every Promotions tab, and Download all says what it downloads (UX-132) */
+        '<button class="btn alt sm" onclick="openMailer()">Edit a mailer</button> ' +
+        /* the console's secondary button, as Edit a mailer beside it (owner D): the platform's own .btn lost to its
            .secnav button rule there and showed as plain grey words */
-        '<button class="btn alt sm" onclick="downloadAllMailers()">Download all (.zip)</button>' +
+        '<button class="btn alt sm" onclick="downloadAllMailers()">Download all mailers (ZIP)</button>' +
       '</span>' +
     '</div>' +
     '<div id="secMail">' +
@@ -925,8 +927,9 @@ toast = function (m, ms, kind) {
 
 /* ---------- the mailer dashboard (the platform's AN … paintAnalytics, in promo-studio/mailer-studio.js) ---------- */
 function owDashSubline() {
-  return OW_SCOPE === 'all' ? 'Opens and clicks for every event\'s mailers downloaded or copied from Oneworld.'
-    : 'Opens and clicks for every mailer of this event downloaded or copied from Oneworld.';
+  /* UX-128: no product name and no "this platform": what the numbers are of is enough */
+  return OW_SCOPE === 'all' ? 'Opens and clicks for every event\'s mailers that were downloaded or copied.'
+    : 'Opens and clicks for this event\'s mailers that were downloaded or copied.';
 }
 function owDashPickLabel() { return OW_SCOPE === 'all' ? 'Pick an event →' : 'Make a mailer →'; }
 /* UX-133 (PATCHES P26): while opens and clicks are not recorded, the empty dashboard says that, where the platform
@@ -1055,7 +1058,8 @@ function owTrackToast(kind, tracked, fname) {
     return toast('Downloaded ' + f + ' — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000, 'success');
   }
   if (kind === 'copy') {
-    if (off || tracked) return toast('HTML copied — paste into your ESP', undefined, 'success');
+    /* "ESP" is a mail developer's word: an event manager knows it as the tool they send their mails from */
+    if (off || tracked) return toast('HTML copied — paste it into the tool you send your mails from', undefined, 'success');
     return toast('HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000, 'success');
   }
   if (off || tracked) return toast('Downloaded — saved edits included', undefined, 'success');

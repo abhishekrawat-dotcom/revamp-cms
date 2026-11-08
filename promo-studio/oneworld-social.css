@@ -97,6 +97,63 @@ button.thumb{width:100%;margin:0;padding:0;border:0;border-bottom:1px solid var(
 .ow-filler-note[hidden]{display:none}
 .ow-filler-note .ow-ex{position:static;flex:none}
 
+/* ---- UX-128, UX-129, UX-131: "Pictures for your posts" (oneworld-social-art.js owStripHtml): pills are buttons,
+   the logo line and "Every post starts on" under them, and the status line's one action ---- */
+.ow-strip-b{flex:1;min-width:0}
+.assets-slots button.slot{font:inherit;cursor:pointer}
+.ow-strip-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;font-size:12.5px;color:var(--ink2)}
+.ow-strip-row label{font-weight:600}
+.ow-strip-row select{max-width:100%;width:auto}
+.ow-logo-t{font-weight:600}
+.ow-status-act{margin-left:6px;vertical-align:middle}
+
+/* ---- UX-122: the editor's top bar in words (Back to posts), and the easy panel beside the post
+   (oneworld-social-easy.js): Words, Pictures, People, Caption, then Advanced layout around the platform's tools ---- */
+.ed-top .back{width:auto;padding:0 11px;font-size:12.5px;font-weight:600;color:var(--ink2)}
+.ed-side{width:340px}
+.ow-easy-sec{border-bottom:1px solid var(--line2);padding:0 0 14px;margin:0 0 14px}
+.ow-easy-h{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);font-weight:700;margin:0 0 10px}
+details.ow-easy-sec>summary.ow-easy-h{cursor:pointer;margin:0;list-style-position:inside}
+details.ow-easy-sec[open]>summary.ow-easy-h{margin-bottom:10px}
+.ow-word{display:flex;flex-direction:column;gap:4px;margin:0 0 10px;padding:6px 8px;border-radius:8px}
+.ow-word.on{background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line)}
+.ow-word-l{font-size:12px;font-weight:600;color:var(--ink2)}
+.ed-side textarea.ow-word-t{min-height:0;resize:vertical;font-size:13px;line-height:1.4}
+.ow-word .btn{align-self:flex-start;margin-top:4px}
+.ow-easy-hint{font-size:11.5px;line-height:1.45;color:var(--soft);margin:4px 0 0}
+.ow-easy-empty{font-size:12.5px;color:var(--soft);margin:0}
+.ow-pic,.ow-person{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 10px}
+.ow-pic .ow-word-l,.ow-person .ow-word-l{flex:0 0 100%}
+.ow-pic-sel{flex:1;min-width:0}
+.ow-pic-t{flex:1;min-width:0;font-size:12.5px;color:var(--ink2)}
+.ow-pic-note{font-size:11.5px;color:var(--ok);font-weight:600}
+#owPerSpeaker{width:100%;justify-content:center;margin-top:4px}
+.ow-adv{margin:0}
+.ow-adv-s{cursor:pointer;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);font-weight:700;padding:2px 0}
+.ow-adv[open]>.ow-adv-s{margin-bottom:8px}
+.ow-adv-note{font-size:11.5px;line-height:1.45;color:var(--soft);margin:0 0 10px}
+.ow-adv-reset{width:100%;justify-content:center;margin-top:14px}
+/* the post's own words, typed in place */
+.ednode.ow-typing{cursor:text;user-select:text;-webkit-user-select:text;outline:calc(2px/var(--s)) solid var(--ow-accent)}
+.ednode.ow-typing .edtxt{outline:none;user-select:text;-webkit-user-select:text}
+.ednode.ow-hl{outline:calc(2px/var(--s)) dashed var(--ow-accent)}
+.ednode.tx{cursor:text}
+/* with Advanced layout open a click picks a word up to move it (a double click types) */
+#editor.ow-adv-open .ednode.tx{cursor:move}
+/* UX-131: a Layers row is a button now (S36): it looks as the row did */
+button.ed-layer{width:100%;border:0;background:transparent;font:inherit;text-align:left}
+button.ed-layer.on{background:var(--panel2)}
+
+/* ---- UX-132: the Saved list under the cards, as Site-look posts has ---- */
+.ow-saved-list{margin-top:22px;border:1px solid var(--line);border-radius:var(--r-lg);background:var(--panel);padding:14px 16px}
+.ow-saved-h{font-size:14px;margin:0}
+.ow-saved-sub,.ow-saved-empty{font-size:12px;color:var(--soft);margin:3px 0 0}
+.ow-saved-ul{list-style:none;margin:10px 0 0;padding:0}
+.ow-saved-li{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line2)}
+.ow-saved-t{flex:1;min-width:0;font-size:12.5px;color:var(--ink2)}
+.ow-saved-t b{color:var(--ink)}
+.ow-saved-w{display:block;font-size:11.5px;color:var(--soft);margin-top:2px}
+
 /* A phone (UX-009). The layout editor needs the post and its panel side by side: at 390px the post was a 64px
    thumbnail beside a panel two thirds of the width. Below 700px it says so in their place and keeps only Back (the
    posts, their Download and their captions stay usable there). The hashtag chip's wrap is in oneworld.css. */
