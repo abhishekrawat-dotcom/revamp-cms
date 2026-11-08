@@ -340,9 +340,12 @@ function headingLevels(headings) {
      7. the words of the ET top bar a visitor cannot read: "About Vertical" names the portal (et-nav.js aboutLabel)
         on a page built before the bar said so;
      8. a contact's e-mail and phone shown as plain text become links (mailto:, tel:), and on an AI-designed site a
-        play glyph that plays nothing is not shown (visitorLinks) — never on an imported page.
-   What 5 and 8 add to <head> and the top of <body> (the skip link, the hidden h1, their rules) carries
-   data-rv-a11y and is written afresh every run; what 8 does in the page is seen on the next run and kept.
+        play glyph that plays nothing is not shown (visitorLinks) — never on an imported page;
+     9. every page (template, AI-designed, imported): on a phone, each link and button smaller than a thumb gets a
+        40px area that takes the tap, with nothing on the page moved or drawn differently
+        (templates/_shared/rv-taps.js, written into <head>; UX-002 screen-size sweep).
+   What 5, 8 and 9 add to <head> and the top of <body> (the skip link, the hidden h1, their rules, the tap script)
+   carries data-rv-a11y and is written afresh every run; what 8 does in the page is seen on the next run and kept.
    Any failure leaves the page exactly as it came: a page is never lost to this pass. */
 var siteSeo = require('./site-seo');
 var shareCard = require('./share-card');
@@ -353,6 +356,18 @@ var heroVideoCore = require('../../templates/_shared/rv-hero-video-core.js');
    from them, holding only what the page shows (seo-fields.js, seo-schema.js) */
 var seoFields = require('./seo-fields');
 var seoSchema = require('./seo-schema');
+/* 9, on an AI-designed site: a section's "Read more" (a <summary>, 26px tall) cannot grow without moving what is
+   under it, as its margins fold into its <details>' own; an AI design is ours to space, so on a phone it is given
+   40px, its words in the middle. The script below then has nothing to do for it. */
+var GEN_TAP_CSS = '@media (max-width:860px){body.rv-generated [data-rv-section] summary{min-height:40px;align-content:center}}';
+/* 9: the tap script as a page carries it, read once: its comments and indentation are for the people who read the
+   file, not for every visitor's phone. Should the file be missing from a deployment, pages go out without it. */
+var TAPS_JS = (function () {
+  try {
+    return require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-taps.js'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]+/gm, '').replace(/\n{2,}/g, '\n').trim();
+  } catch (e) { return ''; }
+})();
 
 /* the skip link, hidden until it has the keyboard's focus, and the visually hidden h1 (data-rv-a11y) */
 var A11Y_CSS = '.rv-skip{position:fixed;left:12px;top:-200px;z-index:2147483647;padding:10px 16px;border-radius:8px;background:#ffffff;color:#14161b;' +
@@ -611,6 +626,8 @@ function pagePassUnsafe(html, opts, kit) {
 
   /* ---- 8. a contact's e-mail and phone are links; a play glyph that plays nothing is not shown ---- */
   var extraCss = imported ? '' : visitorLinks(html, tokens, out, kit, generated);
+  /* 9, the AI-designed site's own rule (GEN_TAP_CSS), with the rest of this pass's */
+  if (generated) extraCss += GEN_TAP_CSS;
 
   /* the hidden h1, last: nothing above writes its hero's tag again after it */
   if (h1At !== -1) {
@@ -618,6 +635,8 @@ function pagePassUnsafe(html, opts, kit) {
     a11yCss = true;
   }
   if (a11yCss || extraCss) head.unshift('<style data-rv-a11y>' + (a11yCss ? A11Y_CSS : '') + extraCss + '</style>');
+  /* ---- 9. tap targets on a phone ---- */
+  if (TAPS_JS) head.push('<script data-rv-a11y>' + TAPS_JS + '</script>');
 
   var headText = head.length ? head.join('\n') + '\n' : '';
   if (headText) {
@@ -834,4 +853,4 @@ function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&qu
 
 module.exports = { palette: palette, readingVars: readingVars, guardCss: guardCss, viewportContent: viewportContent, headingLevels: headingLevels,
   pagePass: pagePass, heroPictures: heroPictures, shareCandidates: shareCandidates, contentPicture: contentPicture, contactHref: contactHref,
-  parseColour: parseColour, resolve: resolve };
+  parseColour: parseColour, resolve: resolve, TAPS_JS: TAPS_JS, GEN_TAP_CSS: GEN_TAP_CSS };
