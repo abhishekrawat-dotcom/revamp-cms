@@ -195,8 +195,10 @@
   .subtabs button:hover{ color: var(--text); }
   .subtabs button[aria-pressed="true"], .subtabs button[aria-selected="true"]{ color: var(--accent-strong); border-bottom-color: var(--accent); }
   .subtabs button:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; border-radius:6px; }
+  /* the count takes its tab's own colour at full strength: faded (opacity .7) it was 3.25:1 in light, 4.29:1 in dark
+     and 3.91:1 on the open tab's red (UX-004); the mono figures set it apart */
   .subtabs .cnt{
-    font-size:11px; font-family: var(--font-mono); opacity:.7; margin-left:5px;
+    font-size:11px; font-family: var(--font-mono); margin-left:5px;
   }
   .subtabs .cnt[hidden]{ display:none; }
 
@@ -889,7 +891,9 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
   content:""; position:absolute; right:-28px; top:-34px; width:104px; height:104px;
   border-radius:50%; background: rgba(255,255,255,.12);
 }
-.mock-hero .mp{ font-size:9.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; opacity:.88; }
+/* the miniature's words are words a person reads too: 11px or more, and white at full strength on the red
+   (faded to .88 at 9.5px they were 4.41:1, UX-004) */
+.mock-hero .mp{ font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
 .mock-hero .mt{
   font-family: var(--font-display); font-size:16px; font-weight:700; line-height:1.24; margin-top:5px;
   position:relative; z-index:1; overflow-wrap:anywhere;
@@ -918,11 +922,11 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
   padding:13px; color:#fff; position:relative; overflow:hidden;
   background: linear-gradient(140deg, #D3141B 0%, #B3151B 68%, #5E0A0E 100%);
 }
-.mock-og .img .mp{ font-size:9.5px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; opacity:.88; }
+.mock-og .img .mp{ font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; }
 .mock-og .img .mt{ font-family: var(--font-display); font-size:17px; font-weight:700; line-height:1.2; overflow-wrap:anywhere; }
-.mock-og .img .md{ font-size:10.5px; font-family: var(--font-mono); opacity:.9; }
+.mock-og .img .md{ font-size:11px; font-family: var(--font-mono); }
 .mock-og .cap{ padding:10px 13px; border-top:1px solid var(--border); }
-.mock-og .cap .dom{ font-size:10px; text-transform:uppercase; letter-spacing:.05em; color: var(--text-faint); font-weight:700; }
+.mock-og .cap .dom{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color: var(--text-faint); font-weight:700; }
 .mock-og .cap b{ display:block; font-size:12.5px; margin:2px 0; overflow-wrap:anywhere; }
 .mock-og .cap span{ font-size:11.5px; color: var(--text-muted); line-height:1.45; overflow-wrap:anywhere; }
 

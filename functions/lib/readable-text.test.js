@@ -2,9 +2,10 @@
      - every page family's colour tokens (each token block of each page and shared stylesheet) give 4.5:1 or more
        for text: the faint and muted text on every surface of their theme, each status colour on its own tint,
        and the words on a filled button (white on ET red, dark words on the dark theme's light red and green);
-     - nothing under 11px in the CMS's own styles (a miniature of the public site, a template's own section styles
-       and the platform's copied studio stylesheet are not the CMS's words; the studio's are raised after it, in
-       promo-studio/oneworld.css);
+     - nothing under 11px in the CMS's own styles, the console's miniatures of the site (Live preview, Social preview)
+       included: they are words a person reads (a template's own section styles in the editor's page are the site's
+       design; the platform's copied studio stylesheet is raised after it, in promo-studio/oneworld.css);
+     - no text faded with opacity below its colour's 4.5:1 (the sub-tab counts, the miniatures' small capitals);
      - the avatar colours behind white initials are readable.
    The browser re-measure (every page, both themes) is ~/.revamp-cms-qa/ux-final/work-b02-a/contrast.js.
    No network, no production, no AI. Exits 1 on any failure. */
@@ -93,9 +94,10 @@ check('white initials on every avatar colour at 4.5:1 or more', AV.length === 8 
 /* ---------- nothing under 11px ---------- */
 var listed = require('child_process').execFileSync('git', ['ls-files', '*.html', '*.css', '*.js'], { cwd: ROOT, encoding: 'utf8' }).split('\n').filter(Boolean);
 var SKIP = /^(templates\/|payment\/|functions\/|promo-engine\/|template-previews\/|lovable-scraper-service\/|tools\/|assets\/vendor\/|promo-studio\/(mailer|social)-studio\.)|\.test\.js$/;
-/* a miniature of the public site (.mock-*, Create Event's .prev-*) is a picture of it; a template's own section styles
-   in the editor's page are the site's design */
-var EXEMPT = /\.mock-|\.prev-|\.s-discussion-points|\.track-card|\.editorial-topic/;
+/* a template's own section styles in the editor's page are the site's design. The console's miniatures (.mock-*) are
+   not exempt: a person reads them as they do the rest (Create Event's old .prev-* miniature styled no markup and is
+   gone) */
+var EXEMPT = /\.s-discussion-points|\.track-card|\.editorial-topic/;
 var tiny = [];
 listed.filter(function (f) { return !SKIP.test(f); }).forEach(function (f) {
   read(f).split('\n').forEach(function (line, i) {
@@ -105,6 +107,20 @@ listed.filter(function (f) { return !SKIP.test(f); }).forEach(function (f) {
   });
 });
 check('no text under 11px in the CMS\'s own styles', !tiny.length, tiny);
+check('the sweep reads the console\'s miniatures too (the old 9.5px Live preview line would be caught)',
+  !EXEMPT.test('.mock-hero .mp{ font-size:9.5px; }') && listed.indexOf('edit-event.css') !== -1 && !SKIP.test('edit-event.css'));
+
+/* ---------- text faded below its colour's contrast ----------
+   opacity multiplies into the colour: the sub-tab counts' .7 made --text-muted 3.25:1 in light, 4.29:1 in dark and
+   3.91:1 on the open tab's red; the miniatures' .88 made white on red 4.41:1 */
+var EE = read('edit-event.css').replace(/\/\*[\s\S]*?\*\//g, '');
+function ruleOf(css, sel) { var i = css.indexOf(sel + '{'); return i === -1 ? null : css.slice(i, css.indexOf('}', i) + 1); }
+var faded = ['.subtabs .cnt', '.mock-hero .mp', '.mock-og .img .mp', '.mock-og .img .md'].filter(function (sel) {
+  var r = ruleOf(EE, sel); return !r || /opacity\s*:/.test(r) || !/font-size:11px/.test(r);
+});
+check('the sub-tab counts and the miniatures\' small words are at full strength, 11px or more', !faded.length, faded);
+check('white on the miniatures\' red reaches 4.5:1 at its lightest stop', ratio('#FFFFFF', '#D3141B') >= 4.5 &&
+  /\.mock-hero\{[^}]*linear-gradient\(135deg, #D3141B 0%, #B3151B 100%\)/.test(EE) && /\.mock-og \.img\{[^}]*linear-gradient\(140deg, #D3141B 0%, #B3151B 68%, #5E0A0E 100%\)/.test(EE));
 var studioCss = read('promo-studio/mailer-studio.css').replace(/\/\*[\s\S]*?\*\//g, ''), ow = read('promo-studio/oneworld.css');
 var lifted = ow.slice(ow.indexOf('READABLE TEXT (UX-004)'));
 var small = [], r3 = /([^{}]+)\{([^{}]*)\}/g, b3;
