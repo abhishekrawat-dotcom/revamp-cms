@@ -677,7 +677,7 @@
         var canvas = null, gaveUp = false, early = false;
         function ready() {
           clearTimeout(stalled);
-          canvas = makeCanvas(viewport, iframe, res.template);
+          canvas = makeCanvas(viewport, iframe, res.template, frame);
           guardNavigation(canvas.doc);
           resolve(canvas);
         }
@@ -721,7 +721,10 @@
     doc.addEventListener('submit', function (e) { e.preventDefault(); }, true);
   }
 
-  function makeCanvas(viewport, iframe, template) {
+  /* frame: the element the page was mounted in (mount's frameEl). fit() marks it while a phone is shown and destroy()
+     unmarks it. It is handed in: read as a global it was only ever the site editor's own #frame (an id is a window
+     property), so Create Event's preview, which has none, threw "frame is not defined" on every load. */
+  function makeCanvas(viewport, iframe, template, frame) {
     var doc = iframe.contentDocument;
     var win = iframe.contentWindow;
     var device = 'desktop';
