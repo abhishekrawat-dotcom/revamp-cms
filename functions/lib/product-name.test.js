@@ -50,15 +50,22 @@ var pages = listed.filter(function (f) {
 var HEAD_BY_B02B = { 'custom_editor.html': 1, 'create-event.html': 1, 'edit-event.html': 1 };
 function pendingHead(f, title) { return !!HEAD_BY_B02B[f] && /Revamp|Oneworld/.test(title); }
 var ICON_LINK = '<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">';
+/* a tab is where space is tight: "EventSphere" alone (owner decision #6), the one form on every page, so the static
+   titles agree with the ones the pages set once they have loaded ("Edit · <event> — EventSphere"). A tab that reads
+   "— ETB2B EventSphere" (B02-b's heads of Create Event, the site editor and the console, before this merged) is the
+   other form, and is caught here: drop "ETB2B " from that <title>. */
+var TAB_TITLE = /^[^—&]+ (?:—|&mdash;) EventSphere$/;
 var badTitle = [], noIcon = [], pending = [];
 pages.forEach(function (f) {
   var html = read(f), m = /^([ \t]*)<title>([^<]*)<\/title>[ \t]*\r?\n([^\n]*)/m.exec(html);
   var title = m ? m[2] : '';
   if (pendingHead(f, title)) { pending.push(f); return; }
-  if (!m || !/(?:—|&mdash;) (?:ETB2B )?EventSphere$/.test(title)) badTitle.push(f + ': ' + title);
+  if (!m || !TAB_TITLE.test(title)) badTitle.push(f + ': ' + title);
   if (!m || m[3].trim() !== ICON_LINK) noIcon.push(f);
 });
 check('the sweep found the pages', pages.length >= 18 && pages.indexOf('index.html') !== -1 && pages.indexOf('promo-social-studio.html') !== -1, pages);
+check('the tab form is "<Page> — EventSphere" and only that', TAB_TITLE.test('Events — EventSphere') && TAB_TITLE.test('Create Event &mdash; EventSphere') &&
+  !TAB_TITLE.test('Create Event &mdash; ETB2B EventSphere') && !TAB_TITLE.test('Site editor — ETB2B EventSphere') && !TAB_TITLE.test('EventSphere'));
 check('every page\'s tab reads "<Page> — EventSphere"', !badTitle.length, badTitle);
 check('every page names the ET square as its tab icon, on the line after its title', !noIcon.length, noIcon);
 check('only B02-b\'s three pages wait for its merge', pending.every(function (f) { return HEAD_BY_B02B[f]; }), pending);
