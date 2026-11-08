@@ -23,7 +23,7 @@ var py = read('tools/extract-promo-studio.py');
 check('the dashboard subline is Oneworld\'s, in the skeleton and the painted page', count(studio, 'owDashSubline()') === 2, count(studio, 'owDashSubline()'));
 check('no Vercel left in the studio\'s words', studio.indexOf('vercel') === -1);
 check('no data written into a row\'s inline handler', studio.indexOf('anOpen(\'${') === -1);
-check('the Link tracking hint is Oneworld\'s', studio.indexOf('no Oneworld address on hover') !== -1 && studio.indexOf('Opens are counted either way.') !== -1 &&
+check('the Link tracking hint is in the product\'s words (UX-003)', studio.indexOf('no EventSphere address on hover') !== -1 && studio.indexOf('Opens are counted either way.') !== -1 &&
   studio.indexOf('(if tracking is configured') === -1);
 check('the Link tracking field is still the one oneworld.css hides (its selector still matches)', studio.indexOf('<select onchange="MD.doc.trackLinks=') !== -1);
 check('the code says it carries patches', /unchanged except PATCHES \(listed in tools\/extract-promo-studio\.py\)/.test(studio.slice(0, 400)));

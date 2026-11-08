@@ -147,7 +147,7 @@ ok(/"startDate":"2026-12-05","endDate":"2026-12-07"/.test(pass(PAGE, { name: 'X'
 /* UX-150: the calendar file */
 var ics = S.calendarIcs({ name: 'Brand World Summit 2026; South', start: '2026-12-05T10:41', end: '2026-12-07T23:41', venue: 'Taj Wellington Mews, Chennai', city: 'Chennai' },
   { id: 'brand-world-summit-2026', url: 'https://sites.example/e/brand-world-summit-2026', stamp: new Date('2026-11-03T10:00:00Z') });
-ok(/^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\nPRODID:-\/\/ET B2B\/\/Oneworld 2\.0\/\/EN\r\n/.test(ics) && /\r\nEND:VCALENDAR\r\n$/.test(ics), 'an RFC 5545 calendar, CRLF lines');
+ok(/^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\nPRODID:-\/\/ET B2B\/\/ETB2B EventSphere\/\/EN\r\n/.test(ics) && /\r\nEND:VCALENDAR\r\n$/.test(ics), 'an RFC 5545 calendar, CRLF lines');
 ok(/\r\nDTSTART;VALUE=DATE:20261205\r\nDTEND;VALUE=DATE:20261208\r\n/.test(ics), 'all day, 5 to 7 December (the end is the day after, as calendars count)');
 ok(/\r\nSUMMARY:Brand World Summit 2026\\; South\r\n/.test(ics) && /\r\nLOCATION:Taj Wellington Mews\\, Chennai\r\n/.test(ics) && /\r\nURL:https:\/\/sites\.example\/e\/brand-world-summit-2026\r\n/.test(ics) && /\r\nUID:brand-world-summit-2026@oneworld\.etb2b\r\n/.test(ics), 'its name, place (the city not twice) and site, escaped');
 var timed = S.calendarIcs({ name: 'T', start: '2026-12-05T09:30', end: '2026-12-05T18:00' }, { id: 't', stamp: new Date('2026-11-03T10:00:00Z') });

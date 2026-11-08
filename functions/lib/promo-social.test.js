@@ -724,7 +724,7 @@ var steps = [
       sharp({ create: { width: 200, height: 100, channels: 3, background: '#d04040' } }).jpeg().withMetadata({ orientation: 6 }).toBuffer().then(function (b) { return upload(mod.handleArtUpload, ART + 'rich&slot=bg2&from=upload', b); })
     ]).then(function (r) {
       check('C.3 an empty body: "empty upload"', r[0].status === 400 && r[0].json.error === 'empty upload', r[0].json);
-      check('C.3 a text file: the picture sentence', r[1].status === 400 && r[1].json.error === 'That file is not a picture Oneworld can read. Upload a PNG, JPG, WebP, GIF, AVIF, TIFF or SVG.', r[1].json);
+      check('C.3 a text file: the picture sentence', r[1].status === 400 && r[1].json.error === 'That file is not a picture EventSphere can read. Upload a PNG, JPG, WebP, GIF, AVIF, TIFF or SVG.', r[1].json);
       check('C.3 a 5000 × 5000 picture: the 16 million pixel sentence', r[2].status === 400 && r[2].json.error === 'That picture is too large to use (more than 16 million pixels). Make it smaller and upload it again.', r[2].json);
       check('C.3 an EXIF-rotated photo is stored upright', r[3].status === 200 && r[3].json.width === 100 && r[3].json.height === 200, r[3].json);
       return png(5000, 2000);
@@ -861,7 +861,7 @@ var steps = [
         upload(mod.handlePicture, '/api/promo/social/picture?eventId=rich', Buffer.alloc(8 * MB + 1, 1))
       ]);
     }).then(function (r) {
-      check('§13 picture: empty, not a picture, too many pixels, too large', r[0].json.error === 'empty upload' && /not a picture Oneworld can read/.test(r[1].json.error) &&
+      check('§13 picture: empty, not a picture, too many pixels, too large', r[0].json.error === 'empty upload' && /not a picture EventSphere can read/.test(r[1].json.error) &&
         /more than 16 million pixels/.test(r[2].json.error) && r[3].status === 413 && r[3].json.error === 'That upload is too large.', r.map(function (x) { return [x.status, x.json.error]; }));
     });
   },

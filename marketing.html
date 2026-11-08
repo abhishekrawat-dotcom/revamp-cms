@@ -4,7 +4,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Promotions &mdash; Oneworld 2.0</title>
+<title>Promotions &mdash; EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" crossorigin="anonymous" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
@@ -186,7 +187,8 @@
     var cat = C.TYPES[ev.category] || ev.category;
     if (cat) bits.push(cat);
     $('ev-meta').textContent = bits.join('  |  ');
-    document.title = 'Promotions — ' + name + ' — Oneworld 2.0';
+    /* '<Page> · <Event> — EventSphere', as every event page's tab reads (UX-003) */
+    document.title = 'Promotions · ' + name + ' — EventSphere';
     paintPortalChip(ev, name);
   }
   /* "No portal yet" and Set portal beside the date line while the event has none: RevampPortals' chip, and on a

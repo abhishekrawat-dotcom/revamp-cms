@@ -22,7 +22,7 @@ var EV = 'qa-art';
 var TOO_LARGE = 'That upload is too large.';
 var PSD_TOO_LARGE = 'This PSD is too large to read in the browser. Save a flattened copy of at most 64 megapixels and 16,384 px a side (8,000 × 8,000 px fits), or upload the background and logo as pictures.';
 var PSD_UNREADABLE = 'This PSD could not be read. Save it again from Photoshop with Maximize Compatibility on, or upload the background and logo as pictures.';
-var NOT_A_PICTURE = 'That file is not a picture Oneworld can read. Upload a PNG, JPG, WebP, GIF, AVIF, TIFF or SVG.';
+var NOT_A_PICTURE = 'That file is not a picture EventSphere can read. Upload a PNG, JPG, WebP, GIF, AVIF, TIFF or SVG.';
 
 /* ---------- a small page: elements, text, the few calls the uploads make ---------- */
 function decodeEntities(s) { return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, '\'').replace(/&amp;/g, '&'); }

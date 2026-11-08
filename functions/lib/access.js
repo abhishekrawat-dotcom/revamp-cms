@@ -38,7 +38,7 @@ function isAllowedUser(decoded) {
 }
 
 function deniedMessage() {
-  return 'Only @' + ALLOWED_DOMAIN + ' Google accounts can use Revamp.';
+  return 'Only @' + ALLOWED_DOMAIN + ' Google accounts can use ETB2B EventSphere.';
 }
 
 /* its own named app, so checking a token needs no service account and doesn't depend on getFirebase()'s

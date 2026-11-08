@@ -2153,7 +2153,7 @@ function mlProps(){
           <option value="no" ${String(MD.doc.trackLinks??"no")==="no"?"selected":""}>Off — links point straight at the real page</option>
           <option value="yes" ${String(MD.doc.trackLinks??"no")==="yes"?"selected":""}>On — count clicks (links go via this platform)</option>
         </select>
-        <div class="hint">Off by default: links go straight to the real page, with no Oneworld address on hover and no click figures. Turning it on sends every link through Oneworld's own address so clicks can be counted — recipients see that address on hover. Opens are counted either way.</div></div>
+        <div class="hint">Off by default: links go straight to the real page, with no EventSphere address on hover and no click figures. Turning it on sends every link through EventSphere's own address so clicks can be counted — recipients see that address on hover. Opens are counted either way.</div></div>
       <div class="fld"><label>Save button on pictures</label>
         <select onchange="MD.doc.imageGuard=this.value;MD.dirty=true;mlRender(0)">
           <option value="yes" ${String(MD.doc.imageGuard??"yes")!=="no"?"selected":""}>Hide it — pictures sit in an empty anchor</option>

@@ -266,7 +266,7 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
     w413.text === 'It is 9.5 MB; a photo can be up to 8 MB.' && w413.fixable === false, [w415, w413]);
   check('Gallery: a failure to send can be retried', w0.fixable === true && w0.text === 'T:offline', w0);
   check('Gallery: a file the browser cannot show gets no broken preview, and Retry is only offered when it can help', /if \(galKind\(file\)\) try \{ preview = URL\.createObjectURL\(file\)/.test(gal) && /\(p\.fixable \? '<button class="btn btn-secondary btn-sm" type="button" data-galretry=/.test(gal));
-  check('Payment: one honest panel inside the event', /'payment':\s+viewPayment/.test(page) && /Online payment and invoices are not part of Oneworld 2\.0 yet\. Registrations are free and are not affected\./.test(page) && /data-goto="content\/basics">Back to Content/.test(page));
+  check('Payment: one honest panel inside the event', /'payment':\s+viewPayment/.test(page) && /Online payment and invoices are not part of ETB2B EventSphere yet\. Registrations are free and are not affected\./.test(page) && /data-goto="content\/basics">Back to Content/.test(page));
 
   /* the route table, run */
   var sections = (/var SECTIONS = (\[[\s\S]*?\n  \]);/.exec(main) || [])[1];

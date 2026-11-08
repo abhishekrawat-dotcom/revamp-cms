@@ -485,7 +485,8 @@
     if (nameEl) { nameEl.textContent = name || '\u00a0'; nameEl.title = name; }
     // cut short in a narrow top bar: the whole line is in its tooltip (UX-078)
     if (metaEl) { metaEl.textContent = meta; metaEl.title = meta; }
-    document.title = (name ? name + ' - ' : '') + 'Site editor';
+    // '<Page> · <Event> — EventSphere', as every event page's tab reads (UX-003)
+    document.title = 'Site editor' + (name ? ' \u00b7 ' + name : '') + ' \u2014 EventSphere';
     // the canvas's "Opening \u2026" names the event as soon as it is known
     var opening = document.getElementById('stage-loading-title');
     if (opening && name && ev && document.querySelector('.ed[data-opening]')) opening.textContent = 'Opening ' + name + '\u2026';

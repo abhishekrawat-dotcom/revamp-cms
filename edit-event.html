@@ -6212,7 +6212,7 @@
   function viewPayment(){
     return vhead('Payment', 'Taking payment for passes, and the invoices that go with it.') +
       '<div class="panel"><div class="panel-body">' + emptyState(IC.card, 'Payment is not available yet',
-        'Online payment and invoices are not part of Oneworld 2.0 yet. Registrations are free and are not affected.',
+        'Online payment and invoices are not part of ETB2B EventSphere yet. Registrations are free and are not affected.',
         '<button class="btn btn-secondary btn-sm" type="button" data-goto="content/basics">Back to Content</button>') +
       '</div></div>';
   }
@@ -6784,7 +6784,8 @@
     var catLabel = TYPES[EV.category] || EV.category;
     if (catLabel) metaBits.push(catLabel);
     $('ev-meta').textContent = metaBits.join('  |  ');
-    document.title = 'Edit — ' + name + ' — Oneworld 2.0';
+    /* '<Page> · <Event> — EventSphere', the one tab title of every event page (UX-003; the short product name fits a tab) */
+    document.title = 'Edit · ' + name + ' — EventSphere';
     paintPortalChip();
     paintState();
   }
@@ -6888,7 +6889,7 @@
     $('ev-meta').textContent = '';
     $('ev-state').hidden = true;
     $('rail').innerHTML = '';
-    document.title = 'Edit Event — Oneworld 2.0';
+    document.title = 'Edit event — EventSphere';
     C.renderLoadError($('view'), err, { kind: kind, none: 'the event you want to edit', title: 'ev-name', onRetry: init });
   }
 

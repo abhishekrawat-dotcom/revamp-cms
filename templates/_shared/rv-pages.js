@@ -111,11 +111,16 @@
     return sel.join(',\n') + '{display:none!important}\n';
   }
 
-  /* "Award Categories | ET Awards 2026": the document title of an internal page */
+  /* "Award Categories | ET Awards 2026": the document title of an internal page. A preview's title starts
+     "Preview · " (the server's publishTransform, UX-003) and keeps it first, so a preview tab and the live
+     site's tab differ even when the tab is cut short: "Preview · Award Categories | ET Awards 2026". */
+  var PREVIEW_MARK = 'Preview \u00b7 ';
   function titleFor(page, siteTitle) {
-    siteTitle = String(siteTitle == null ? '' : siteTitle).trim();
-    if (!page) return siteTitle;
-    return siteTitle && siteTitle !== page.title ? page.title + ' | ' + siteTitle : page.title;
+    var raw = String(siteTitle == null ? '' : siteTitle).replace(/^\s+/, '');
+    if (!page) return raw.trim();
+    var mark = raw.indexOf(PREVIEW_MARK) === 0 ? PREVIEW_MARK : '';
+    var site = raw.slice(mark.length).trim();
+    return mark + (site && site !== page.title ? page.title + ' | ' + site : page.title);
   }
 
   function matchesAny(el, list) {
@@ -239,10 +244,13 @@
     /* the server says which page this is; a copy of the page it did not serve goes by its address */
     var start = html.hasAttribute('data-rv-current-page') || !live ? currentOf(doc) : pageFromPath(win.location && win.location.pathname, pages);
     var current = show(doc, start, { pages: pages });
-    var siteTitle = doc.title;
+    /* the site's own title, without the page it opened on ("Preview · " kept in front: titleFor) */
+    var mark = doc.title.indexOf(PREVIEW_MARK) === 0 ? PREVIEW_MARK : '';
+    var siteTitle = doc.title.slice(mark.length);
     var opening = has(pages, current);
     if (opening && siteTitle.indexOf(opening.title + ' | ') === 0) siteTitle = siteTitle.slice(opening.title.length + 3);
     else if (opening && siteTitle === opening.title) siteTitle = '';
+    siteTitle = mark + siteTitle;
 
     function go(slug, hash, push) {
       var shown = show(doc, slug, { pages: pages });

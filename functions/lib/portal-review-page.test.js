@@ -18,7 +18,7 @@ var css = read('edit-event.css');
 
 /* ======== 1. the page as a file ======== */
 var title = (/<title>([\s\S]*?)<\/title>/.exec(page) || [])[1];
-check('the title says Oneworld 2.0', title === 'Fill in portals — Oneworld 2.0', title);
+check('the title says EventSphere (UX-003)', title === 'Fill in portals — EventSphere', title);
 check('no "Revamp CMS" on the page', page.indexOf('Revamp CMS') === -1);
 check('the server sends the page', access.isServableFile('portal-review.html') === true);
 check('the page needs sign-in', access.isPublic({ method: 'GET', headers: {} }, '/portal-review.html') === false);
@@ -260,7 +260,7 @@ async function main() {
   check('G.1 a conflict, in words, with where each portal was found', pw[1].indexOf('Its sources disagree: ETCIO, ETHRWorld.') !== -1 &&
     pw[1].indexOf('ETCIO from the ET page its design was modelled on; ETHRWorld from this edition\'s own ET record.') !== -1, pw[1]);
   check('G.1 only the generated site, in words', pw[2].indexOf('Only its site\'s generated bar and footer say ETRetail.') !== -1, pw[2]);
-  check('G.1 a stored value that is not an ET portal needs a person', pw[3].indexOf('It holds a portal Oneworld does not list. Set the right one.') !== -1, pw[3]);
+  check('G.1 a stored value that is not an ET portal needs a person', pw[3].indexOf('It holds a portal EventSphere does not list. Set the right one.') !== -1, pw[3]);
   check('G.1 already set: folded, with what its sources also mention', /<details class="panel pr-fold" id="pr-set">/.test(P.$('pr-body').innerHTML) &&
     words(set[0]).indexOf('Auto Expo · ETAuto') === 0 && words(set[0]).indexOf('Set by a person.') !== -1 && words(set[0]).indexOf('Its sources also mention ETHRWorld.') !== -1, words(set[0]));
   var visible = words(P.$('pr-body').innerHTML + ' ' + P.$('pr-status').innerHTML);

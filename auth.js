@@ -367,7 +367,7 @@
       return firebase.auth().signInWithPopup(provider).then(function (cred) {
         if (isAllowedEmail(cred.user.email)) return cred.user;
         return firebase.auth().signOut().then(function () {
-          var err = new Error('Use your @' + ALLOWED_DOMAIN + ' Google account — ' + cred.user.email + ' can’t sign in to Revamp.');
+          var err = new Error('Use your @' + ALLOWED_DOMAIN + ' Google account — ' + cred.user.email + ' can’t sign in to ETB2B EventSphere.');
           err.code = 'revamp/domain-not-allowed';
           throw err;
         });

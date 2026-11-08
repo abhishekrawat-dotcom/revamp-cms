@@ -26,7 +26,7 @@ check('the frame\'s page exists', fs.existsSync(path.join(ROOT, 'promo-mailer-st
 check('the page needs sign-in', access.isPublic({ method: 'GET', headers: {} }, '/mailer-performance.html') === false);
 
 var title = (/<title>([\s\S]*?)<\/title>/.exec(page) || [])[1];
-check('the title', title && title.replace(/&mdash;/g, '—') === 'Mailer performance — Oneworld 2.0', title);
+check('the title', title && title.replace(/&mdash;/g, '—') === 'Mailer performance — EventSphere', title);
 check('one title, in the head', count(page, '<title>') === 1 && page.indexOf('<title>') < page.indexOf('</head>'));
 
 var FRAME = '<iframe id="mp-frame" class="mp-frame" title="Mailer performance" src="promo-mailer-studio.html?scope=all">';

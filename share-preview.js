@@ -533,7 +533,7 @@
     E.copy = button('Copy', 'btn btn-primary', function () { copyLink(s, input); });
     E.made.appendChild(el('div', { className: 'rvsp-row' }, [input, E.copy]));
     E.made.appendChild(el('p', { text: (untilText(link.expiresAt) ? untilText(link.expiresAt) + ' ' : '') + 'Later saves show up on this link too.' }));
-    E.made.appendChild(el('p', { className: 'rvsp-small', text: 'Copy it now — Oneworld 2.0 keeps only a fingerprint of this link, so it can’t be shown again.' }));
+    E.made.appendChild(el('p', { className: 'rvsp-small', text: 'Copy it now — ETB2B EventSphere keeps only a fingerprint of this link, so it can’t be shown again.' }));
     made.warnings.forEach(function (w) {
       E.made.appendChild(el('div', { className: 'rvsp-note' }, [icon(IC_WARN, 18), el('p', { text: w.message })]));
     });

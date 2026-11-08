@@ -95,7 +95,7 @@ var SLOT_LABELS = { background: 'PSD background', logoUnit: 'Logo', bg1: 'Backgr
 var SLOT_FROM = { background: ['psd'], logoUnit: ['psd', 'upload'], bg1: ['upload'], bg2: ['upload'], bg3: ['upload'] };
 
 var EXAMPLE_REFUSED = 'Example content cannot be saved, downloaded or sent. Add the event\'s own speakers, partners and details, then try again.';
-var NOT_A_PICTURE = 'That file is not a picture Oneworld can read. Upload a PNG, JPG, WebP, GIF, AVIF, TIFF or SVG.';
+var NOT_A_PICTURE = 'That file is not a picture EventSphere can read. Upload a PNG, JPG, WebP, GIF, AVIF, TIFF or SVG.';
 var TOO_MANY_PIXELS = 'That picture is too large to use (more than 16 million pixels). Make it smaller and upload it again.';
 var TOO_LARGE_UPLOAD = 'That upload is too large.';
 var TOO_LARGE_STORED = 'That picture is too large to keep, even compressed. Make it smaller and upload it again.';
@@ -103,7 +103,7 @@ var LAYOUT_CHANGED = 'This layout was changed by someone else meanwhile. Reload 
 var LAYOUT_TOO_LARGE = 'This layout is too large to save. Remove some pictures or text and save again.';
 var NOT_THIS_LAYOUT = 'That picture is not this layout\'s.';
 /* the picture-address rule (owner O2 = c): the editor says the same when an address is pasted */
-var PICTURE_REFUSED = 'Oneworld can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.';
+var PICTURE_REFUSED = 'EventSphere can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.';
 var QR_LABEL = 'Scan to register';
 
 function httpErr(status, message, extra) { var e = new Error(message); e.status = status; e.body = Object.assign({ error: message }, extra || {}); return e; }
@@ -799,21 +799,21 @@ function cleanElements(raw, where) {
     var bad = function (why) { return httpErr(400, 'Element ' + (i + 1) + ' of this layout cannot be saved: ' + why + '. Undo that change, or Reset the layout, then save again.'); };
     if (!isPlainObject(el)) throw bad('it is not an element');
     var out = {};
-    if (typeof el.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,64}$/.test(el.id)) throw bad('its id is not one Oneworld can keep');
+    if (typeof el.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,64}$/.test(el.id)) throw bad('its id is not one EventSphere can keep');
     out.id = el.id;
     if (ELEMENT_TYPES.indexOf(el.type) === -1) throw bad('its kind is unknown');
     out.type = el.type;
     NUMBER_FIELDS.forEach(function (k) {
       if (el[k] == null || el[k] === '') return;
       var n = typeof el[k] === 'number' ? el[k] : (typeof el[k] === 'string' && /^-?\d+(\.\d+)?$/.test(el[k].trim()) ? +el[k] : NaN);
-      if (!Number.isFinite(n) || Math.abs(n) > 100000) throw bad('its ' + k + ' is not a number Oneworld can keep');
+      if (!Number.isFinite(n) || Math.abs(n) > 100000) throw bad('its ' + k + ' is not a number EventSphere can keep');
       out[k] = n;
     });
     if (el.fontFamily != null && el.fontFamily !== '') {
       /* the browser reports a family with quotes ('Georgia, "Times New Roman", serif'); kept with single ones, so the
          value can never end the style attribute it is written into */
       var ff = String(el.fontFamily).replace(/"/g, '\'');
-      if (!FONT_FAMILY.test(ff)) throw bad('its font is not one Oneworld can use');
+      if (!FONT_FAMILY.test(ff)) throw bad('its font is not one EventSphere can use');
       out.fontFamily = ff;
     }
     if (el.text != null) {
@@ -827,7 +827,7 @@ function cleanElements(raw, where) {
       if (typeof el[k] !== 'string' && typeof el[k] !== 'number') throw bad('its ' + k + ' is not a style value');
       var v = String(el[k]);
       if (v.length > NUMBERS.styleLength) throw bad('its ' + k + ' is too long');
-      if (BAD_STYLE.test(v)) throw bad('its ' + k + ' holds something Oneworld does not allow in a style');
+      if (BAD_STYLE.test(v)) throw bad('its ' + k + ' holds something EventSphere does not allow in a style');
       out[k] = v;
     });
     if (el.src != null && el.src !== '') {
@@ -894,7 +894,7 @@ function cleanCaption(raw) {
   if (raw == null) return null;
   if (!isPlainObject(raw)) throw httpErr(400, 'The caption could not be read.');
   var network = raw.network == null || raw.network === '' ? 'linkedin' : String(raw.network);
-  if (NETWORKS.indexOf(network) === -1) throw httpErr(400, 'The caption is for a network Oneworld does not know.');
+  if (NETWORKS.indexOf(network) === -1) throw httpErr(400, 'The caption is for a network EventSphere does not know.');
   if (raw.text != null && typeof raw.text !== 'string') throw httpErr(400, 'The caption could not be read.');
   var text = raw.text == null ? null : raw.text;
   if (text != null && text.length > NUMBERS.captionText) throw httpErr(400, 'The caption is longer than ' + NUMBERS.captionText.toLocaleString('en-US') + ' characters.');

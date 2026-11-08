@@ -9432,7 +9432,8 @@ function withPictures(fb) {
   };
 }
 var RUNTIME_STYLE = /\/templates\/_shared\/rv-live\.css$/;
-var SITE_FAVICON = '/assets/et-b2b-logo.svg';
+/* the red ET square, exactly as it is in the ET B2B logo (assets/favicon.svg): the same icon as every CMS tab (UX-003) */
+var SITE_FAVICON = '/assets/favicon.svg';
 
 function urlPathOnly(url) { return String(url || '').replace(/[?#].*$/, ''); }
 
@@ -9604,15 +9605,18 @@ function publishTransform(html, opts) {
   if (shareImage.charAt(0) === '/' && opts.publicBase) shareImage = opts.publicBase + shareImage;
 
   var head = [], titleDone = !name;
+  /* a preview's tab says it is one ("Preview · <event>"), so it cannot be taken for the live site's tab beside it
+     (UX-003); a shared link still unfurls under the event's own name (og:title) */
+  var tabTitle = mode === 'preview' ? 'Preview \u00b7 ' + name : name;
   if (name) {
     for (i = 0; i < tokens.length && !titleDone; i++) {
       if (!(inHead(i) || (bodyOpen !== -1 && i < bodyOpen))) continue;
       if (tokens[i].t !== 'open' || tokens[i].name !== 'title' || out[i] === '') continue;
-      if (tokens[i + 1] && tokens[i + 1].t === 'raw') out[i + 1] = escHtmlText(name);
-      else out[i] += escHtmlText(name);
+      if (tokens[i + 1] && tokens[i + 1].t === 'raw') out[i + 1] = escHtmlText(tabTitle);
+      else out[i] += escHtmlText(tabTitle);
       titleDone = true;
     }
-    if (!titleDone) head.push('<title data-rv-head>' + escHtmlText(name) + '</title>');
+    if (!titleDone) head.push('<title data-rv-head>' + escHtmlText(tabTitle) + '</title>');
   }
   function meta(attr, key, value) { if (value) head.push('<meta ' + attr + '="' + key + '" content="' + escHtmlAttr(value) + '" data-rv-head>'); }
   meta('name', 'description', description);

@@ -260,7 +260,7 @@ function loadConsole(o) {
   check('2 header with a portal: "Name | ETHRWorld"', c.$('ev-name').textContent === 'Agentic AI Summit | ETHRWorld', c.$('ev-name').textContent);
   check('2 … the date line as before', c.$('ev-meta').textContent === '12 Nov 2026  |  IP Event', c.$('ev-meta').textContent);
   check('2 … the chip hidden and empty, and no room kept for it', c.$('ev-portal').hidden === true && c.$('ev-portal').innerHTML === '' && !c.sub.classList.contains('has-portal-chip'));
-  check('2 … the window title says Oneworld 2.0', c.sb.document.title === 'Edit — Agentic AI Summit — Oneworld 2.0', c.sb.document.title);
+  check('2 … the window title names the event and EventSphere (UX-003)', c.sb.document.title === 'Edit · Agentic AI Summit — EventSphere', c.sb.document.title);
 
   var n = loadConsole({ ev: { id: 'ev-2', name: '  ', portal: '', portalName: '', start: '2026-11-12', category: 'awards', generatedAt: '2026-10-01T00:00:00Z', published: true }, RP: fakePortals() });
   n.sb.paintHeader();
@@ -271,7 +271,7 @@ function loadConsole(o) {
   check('2 … with the phone\'s button of the same words', /<button type="button" class="ev-portal-mini" data-set-portal="ev-2" aria-label="No portal yet\. Set portal">Set portal<\/button>/.test(host.innerHTML), host.innerHTML);
   check('2 … the chip was asked for this event', n.sb.RevampPortals.log.chip.length === 1 && n.sb.RevampPortals.log.chip[0].eventId === 'ev-2');
   check('2 … the line that holds it knows (the phone hides the date line for the button)', n.sub.classList.contains('has-portal-chip'));
-  check('2 … the title says Oneworld 2.0', n.sb.document.title === 'Edit — Untitled event — Oneworld 2.0');
+  check('2 … the title says EventSphere (UX-003)', n.sb.document.title === 'Edit · Untitled event — EventSphere');
   /* both on one header: where the site stands beside the name, the portal chip under it */
   var stateC = c.$('ev-state'), stateN = n.$('ev-state');
   check('2 the header also paints where the site stands, with a portal and without one', stateC.hidden === false && /class="ev-chip ev-chip-mute"[^>]*>.*Draft/.test(stateC.innerHTML) &&
@@ -784,7 +784,7 @@ function loadPromo(o) {
   p.sb.paintHeader({ name: 'Agentic AI Summit', portal: 'hr', portalName: 'ETHRWorld', start: '2026-11-12', category: 'ip' });
   check('5 with a portal: "Name | ETHRWorld", the chip hidden', p.$('ev-name').textContent === 'Agentic AI Summit | ETHRWorld' && p.$('ev-portal').hidden === true &&
     p.$('ev-meta').textContent === '12 Nov 2026  |  IP Event');
-  check('5 … the window title as before', p.sb.document.title === 'Promotions — Agentic AI Summit — Oneworld 2.0', p.sb.document.title);
+  check('5 … the window title names the event and EventSphere (UX-003)', p.sb.document.title === 'Promotions · Agentic AI Summit — EventSphere', p.sb.document.title);
 
   var RP = fakePortals();
   var q = loadPromo({ RP: RP, eventId: 'ev-q' });
