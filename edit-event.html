@@ -1832,7 +1832,9 @@
       var refused = function(){
         var box = $('b-slug');
         if (box){ box.focus(); box.select(); }
-        notify('Could not copy here. The address is selected: press Ctrl+C (⌘C on a Mac) — ' + full);
+        /* an 'info' message, not notify()'s green tick: nothing was copied (the dashboard's Copy event link says
+           it the same way) */
+        C.toast('Could not copy here. The address is selected: press Ctrl+C (⌘C on a Mac) — ' + full, { kind: 'info' });
       };
       if (navigator.clipboard && navigator.clipboard.writeText){
         navigator.clipboard.writeText(full).then(done, refused);

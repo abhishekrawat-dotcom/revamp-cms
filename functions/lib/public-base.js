@@ -15,7 +15,12 @@
    Node 20, CommonJS, no dependencies. */
 'use strict';
 
-var DEFAULT_PUBLIC_BASE = 'https://revamp-cms--revamp-cms.us-east4.hosted.app';
+/* where the service itself (the CMS) is hosted. The editor saves pages there, so an absolute address in a saved
+   version is on this host, whatever the public base is later: tools/republish-current.js rewrites it with this,
+   not with publicSiteBase(). */
+var HOSTED_ORIGIN = 'https://revamp-cms--revamp-cms.us-east4.hosted.app';
+/* until ET's own domain is attached, the sites are reached where the service is */
+var DEFAULT_PUBLIC_BASE = HOSTED_ORIGIN;
 
 /* "http://localhost:8123", "https://cms.example.com" — nothing else (no path, no credentials). */
 function cleanOrigin(v) {
@@ -29,4 +34,4 @@ function publicSiteBase() {
   return cleanOrigin(process.env.PUBLIC_BASE_URL || '') || DEFAULT_PUBLIC_BASE;
 }
 
-module.exports = { DEFAULT_PUBLIC_BASE: DEFAULT_PUBLIC_BASE, cleanOrigin: cleanOrigin, publicSiteBase: publicSiteBase };
+module.exports = { HOSTED_ORIGIN: HOSTED_ORIGIN, DEFAULT_PUBLIC_BASE: DEFAULT_PUBLIC_BASE, cleanOrigin: cleanOrigin, publicSiteBase: publicSiteBase };

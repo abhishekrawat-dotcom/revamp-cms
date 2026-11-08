@@ -2312,12 +2312,18 @@
     return '<span class="reg-num">' + fmtNum(e.registrations) + '</span>';
   }
   /* the event's type and its address (/e/<id>, where its site is or will be served), so two events of one name can be
-     told apart (UX-040); a deleted event also says when it went and who deleted it */
+     told apart (UX-040); a deleted event also says when it went and who deleted it.
+     The row shows the address's own part (/e/<id>) and the whole address on hover: it is the one Copy event link and
+     the QR codes use (eventPublicUrl, the one setting, UX-001). The host is the same on every row, and written out on
+     each it would wrap every row's second line on a laptop. */
   function metaLine(e){
     var out = '<span class="ev-tag ' + (TYPE_TAG_CLASS[e.type]||'ev-tag-blue') + '">' + esc(typeLabel(e.type)) + '</span>';
     /* ev-meta-next: the dot before it is drawn by the stylesheet, and is left out where the part starts a line */
     if (e.status === 'deleted' && e.deletedAt) out += '<span class="ev-meta-next ev-deleted-note">Deleted ' + esc(fmtDate(e.deletedAt)) + (e.deletedBy ? ' by ' + esc(e.deletedBy) : '') + '</span>';
-    else out += '<span class="ev-meta-next ev-addr" title="' + (e.published ? 'The site\'s address' : 'The site\'s address once it is published') + '">/e/' + esc(e.id) + '</span>';
+    else {
+      var full = eventPublicUrl(e), own = full.replace(/^https?:\/\/[^\/]+/, '') || '/e/' + e.id;
+      out += '<span class="ev-meta-next ev-addr" title="' + esc((e.published ? 'The site\'s address: ' : 'The site\'s address once it is published: ') + full) + '">' + esc(own) + '</span>';
+    }
     return '<span class="ev-meta-row">' + out + '</span>';
   }
 

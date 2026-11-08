@@ -30,8 +30,11 @@ if (!ids.length || ids.some(function (id) { return !/^[a-z0-9][a-z0-9-]{0,99}$/.
   console.error('usage: node tools/republish-current.js --event <id> [--event <id> …] [--dry]');
   process.exit(2);
 }
-/* the address published pages are served from: the one setting every address is built from (UX-001) */
-const ORIGIN = require('../functions/lib/public-base').publicSiteBase();
+/* The CMS's own address: the host the editor saved these pages on, so publishVersion turns its absolute addresses
+   into the site's own (/assets/…, /e/…). Not the public base: once that is ET's own domain (UX-149) a saved page's
+   hosted.app addresses would no longer be rewritten. The public address itself comes from the one setting inside
+   publishVersion (publicBaseFor, UX-001). */
+const ORIGIN = require('../functions/lib/public-base').HOSTED_ORIGIN;
 
 const { getFirebase } = require('../functions/lib/firebase');
 const api = require('../functions/lib/api');

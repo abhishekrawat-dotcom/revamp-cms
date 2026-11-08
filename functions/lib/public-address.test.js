@@ -34,6 +34,10 @@ check('a PUBLIC_BASE_URL that is not a bare origin is not used', PB.publicSiteBa
 process.env.PUBLIC_BASE_URL = 'javascript:alert(1)';
 check('nor one that is not http(s)', PB.publicSiteBase() === HOSTED);
 delete process.env.PUBLIC_BASE_URL;
+check('the CMS\'s own hosted address is kept apart from the public base (a saved page\'s absolute addresses are on it)', PB.HOSTED_ORIGIN === HOSTED);
+var REPUB = read('tools/republish-current.js');
+check('tools/republish-current.js rewrites a saved page with the CMS\'s own address, not the public base (it would stop once a domain is set)',
+  /const ORIGIN = require\('\.\.\/functions\/lib\/public-base'\)\.HOSTED_ORIGIN;/.test(REPUB) && REPUB.replace(/\/\*[\s\S]*?\*\//g, '').indexOf('publicSiteBase') === -1);
 
 var api = require('./api');
 var H = api._testHooks;
@@ -103,6 +107,24 @@ var again = loadCore(HOSTED);
 check('the next page has it from its first paint', again.C.publicUrl({ id: 'qa-x' }) === HOSTED + '/e/qa-x');
 again.C.notePublicBase({ headers: { get: function () { return 'https://x.example/e/evil'; } } });
 check('a header that is not a bare origin is ignored', again.C.publicBase() === HOSTED);
+/* a page whose calls all go through RevampAuth.authedFetch (Create Event: portals, working portal, drafts) reads it
+   too: in a fresh browser its address field was this page's own host */
+var AUTH = read('auth.js');
+check('every authedFetch answer is read for it (the first one and the one after a refreshed token)',
+  /if \(res\.status !== 401\) return notePublicBase\(res\);/.test(AUTH) && /if \(again\.status !== 401\) return notePublicBase\(again\);/.test(AUTH));
+var authNote = AUTH.slice(AUTH.indexOf('function notePublicBase(res) {'), AUTH.indexOf('function authedFetch('));
+var fresh = loadCore('');
+var authCtx = { window: { RevampCore: fresh.C } };
+vm.createContext(authCtx);
+vm.runInContext(authNote + '\nthis.note = notePublicBase;', authCtx);
+var handed = { headers: { get: function (k) { return /^x-public-base$/i.test(k) ? HOSTED : null; } } };
+check('…so a fresh browser whose first page is Create Event builds the address from the answer, and keeps it',
+  authCtx.note(handed) === handed && fresh.C.publicUrl('your-event') === HOSTED + '/e/your-event' && fresh.store['rv-public-base'] === HOSTED &&
+  fresh.fired.indexOf('revamp:publicbase') !== -1, fresh.C.publicUrl('your-event'));
+var bare = { window: {} };
+vm.createContext(bare);
+vm.runInContext(authNote + '\nthis.note = notePublicBase;', bare);
+check('…and a page without RevampCore still gets its answer', bare.note(handed) === handed);
 var coreSrc = read('edit-event-core.js');
 check('every RevampCore answer is read for it (readJsonResponse)', /function readJsonResponse\(res\)\{\s*notePublicBase\(res\);/.test(coreSrc));
 check('a preview stays on this page\'s host', /return eventId \? location\.origin \+ '\/preview\/'/.test(coreSrc));
@@ -113,6 +135,9 @@ check('console Basics shows the whole address from RevampCore.publicUrl, with no
   /id="b-slug" value="' \+ esc\(C\.publicUrl\(e\)\) \+ '"/.test(ED) && ED.indexOf('<span class="pre">etoneworld') === -1);
 check('its Copy copies the same address, and says so when the browser refuses instead of claiming it copied',
   /var full = C\.publicUrl\(EV\);/.test(ED) && /writeText\(full\)\.then\(done, refused\)/.test(ED) && /Could not copy here/.test(ED));
+check('…as a plain message, not a green tick (nothing was copied)',
+  /C\.toast\('Could not copy here\. The address is selected: press Ctrl\+C \(⌘C on a Mac\) — ' \+ full, \{ kind: 'info' \}\);/.test(ED) &&
+  !/notify\('Could not copy here/.test(ED));
 check('its Search and Social previews name the public base\'s host', /function publicHost\(\)\{ return C\.publicBase\(\)/.test(ED) &&
   (ED.match(/esc\(publicHost\(\)\)/g) || []).length === 2);
 check('the contact e-mail placeholder is name@company.com', ED.indexOf('placeholder="name@company.com"') !== -1);
@@ -128,6 +153,8 @@ var EL = read('Event_Listing.html');
 check('the dashboard reads the base from its own event-list answer', /RevampCore\.notePublicBase\(res\)/.test(EL));
 check('Copy event link and the QR codes use RevampCore.publicUrl (the event\'s published path), not a slug of its name',
   /var base = C && typeof C\.publicUrl === 'function' \? C\.publicUrl\(e\)/.test(EL) && /var url = eventPublicUrl\(e\);/.test(EL) && /var baseUrl = eventPublicUrl\(e, /.test(EL));
+check('each row shows its address\'s own part (/e/<id>) and the whole address on hover, from the same helper',
+  /var full = eventPublicUrl\(e\), own = full\.replace\(/.test(EL) && /esc\(\(e\.published \? 'The site\\'s address: ' : 'The site\\'s address once it is published: '\) \+ full\)/.test(EL));
 check('Copy event link is offered only for a live site (a draft or an offline site has no link that opens)',
   /if \(e\.published && e\.publishedPath\) items\.push\(\['copylink'/.test(EL));
 
