@@ -10,7 +10,9 @@
      3. fontFamily has its " turned into ';
      4. whatever is drawn from the event's QR unit (.ow-qr: the code img.ow-qr-code and its caption .ow-qr-t) is
         marked owQr: true, so the code and its caption leave a saved layout together;
-     5. extract() ends by hiding what became an element (renderer.ts:420), as the platform did before its screenshot.
+     5. extract() ends by hiding what became an element (renderer.ts:420), as the platform did before its screenshot;
+     6. a text, picture or frame carries owRole, its class names in the template, so the editor's Words list can name
+        it in plain words ("Date", "Speaker's name") instead of showing only its text (UX-122).
    Bundled into assets/vendor/promo-social.js (window.OWSocial) by tools/build-promo-social.js. */
 
 /** One editable element of a flattened post (renderer.ts:161-175, plus owQr). */
@@ -31,6 +33,8 @@ export interface EditableEl {
   // ONEWORLD PORT: drawn from the event's QR unit (the code, or its caption), so it is left out of a saved layout once
   // the site is unpublished
   owQr?: boolean;
+  // ONEWORLD PORT (6): the template's class names for what the element was drawn from ("an-date", "spk-name")
+  owRole?: string;
 }
 
 /** Flatten the post drawn in `doc` (a W × H frame) into editable elements, marking each with data-edit. */
@@ -45,6 +49,16 @@ export function extractElements(doc: Document, W: number, H: number): EditableEl
   // Unmarked elements get no owQr key at all, so a layout without a QR code is the platform's JSON.
   const qrOf = (...els: any[]) => els.some((e) => !!e && ((e.classList && e.classList.contains("ow-qr-code")) || !!(e.closest && e.closest(".ow-qr"))))
     ? { owQr: true } : {};
+  // ONEWORLD PORT (6): the first of these elements with a class gives owRole (letters, digits, spaces, dashes; at most
+  // 80 characters, the server's own rule). An element drawn from a classless node gets no owRole key at all.
+  const roleOf = (...els: any[]) => {
+    for (const e of els) {
+      const c = e && typeof e.getAttribute === "function" ? String(e.getAttribute("class") || "") : "";
+      const v = c.replace(/[^A-Za-z0-9 _-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80).trim();
+      if (v) return { owRole: v };
+    }
+    return {};
+  };
 
   const out: any[] = []; let id = 0;
   const alpha = (c: string) => {
@@ -113,7 +127,7 @@ export function extractElements(doc: Document, W: number, H: number): EditableEl
           // ONEWORLD PORT (2): the picture's real address; the drawing frame swapped it for a blob: and kept it in data-ow-src
           src: img.getAttribute("data-ow-src") || img.currentSrc || img.src, objectFit: ics.objectFit || "cover", objectPosition: ics.objectPosition || "center",
           imgScale: 1, imgX: 0, imgY: 0, imgRotate: 0, scrim,
-          ...qrOf(el, img) }); // ONEWORLD PORT (4)
+          ...qrOf(el, img), ...roleOf(el, img) }); // ONEWORLD PORT (4), (6)
         el.setAttribute("data-edit", "1"); img.setAttribute("data-framed", "1"); img.setAttribute("data-edit", "1");
         return;
       }
@@ -153,7 +167,7 @@ export function extractElements(doc: Document, W: number, H: number): EditableEl
         // ONEWORLD PORT (2): the picture's real address; the drawing frame swapped it for a blob: and kept it in data-ow-src
         src: el.getAttribute("data-ow-src") || el.currentSrc || el.src, objectFit: cs.objectFit, objectPosition: cs.objectPosition, radius,
         background: cs.backgroundColor, padding: cs.padding,
-        ...qrOf(el) }); // ONEWORLD PORT (4): the QR code itself
+        ...qrOf(el), ...roleOf(el, el.parentElement) }); // ONEWORLD PORT (4): the QR code itself; (6)
       el.setAttribute("data-edit", "1"); return;
     }
     const directText = Array.from(el.childNodes).some((n: any) => n.nodeType === 3 && n.textContent.trim());
@@ -185,7 +199,7 @@ export function extractElements(doc: Document, W: number, H: number): EditableEl
         whiteSpace: singleLine ? "nowrap" : cs.whiteSpace,
         background: cs.backgroundColor, backdropFilter: cs.backdropFilter || (cs as any).webkitBackdropFilter || "none",
         padding, radius: cs.borderRadius, boxShadow: cs.boxShadow,
-        ...qrOf(el) }); // ONEWORLD PORT (4): the QR code's caption
+        ...qrOf(el), ...roleOf(el) }); // ONEWORLD PORT (4): the QR code's caption; (6)
       el.setAttribute("data-edit", "1");
       if (bullet) { // draw the dot on top of the tile background
         const padL = parseFloat(cs.paddingLeft) || 0;

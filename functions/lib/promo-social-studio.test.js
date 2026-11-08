@@ -23,9 +23,10 @@ var pBlock = py.slice(pStart, py.indexOf('\n]\n', pStart));
 var patchRe = /\('(S\d+′?)',\s*'(code|markup)',\s*r'''([\s\S]*?)''',\s*r'''([\s\S]*?)''',\s*(\d+),/g, pm, patches = [];
 while ((pm = patchRe.exec(pBlock))) patches.push({ id: pm[1], where: pm[2], old: pm[3], neu: pm[4], times: Number(pm[5]) });
 var IDS = [];
-for (var n = 1; n <= 28; n++) IDS.push('S' + n + (n === 5 || n === 7 ? '′' : ''));
-check('28 patches, S1 to S28 in order (S5′ and S7′ as revised)', patches.map(function (p) { return p.id; }).join() === IDS.join(), patches.map(function (p) { return p.id; }));
-check('only S8 and S26 change the markup', patches.filter(function (p) { return p.where === 'markup'; }).map(function (p) { return p.id; }).join() === 'S8,S26');
+// S5′, S7′, S8′ and S17′ are revised; S18 is gone (its Caption tab is the easy panel's Caption section, UX-122)
+for (var n = 1; n <= 37; n++) if (n !== 18) IDS.push('S' + n + (n === 5 || n === 7 || n === 8 || n === 17 ? '′' : ''));
+check('36 patches, S1 to S37 in order (S5′, S7′, S8′ and S17′ as revised, no S18)', patches.map(function (p) { return p.id; }).join() === IDS.join(), patches.map(function (p) { return p.id; }));
+check('S8′, S26 and S29-S32 change the markup', patches.filter(function (p) { return p.where === 'markup'; }).map(function (p) { return p.id; }).join() === 'S8′,S26,S29,S30,S31,S32');
 check('S24 and S27 apply three times each, every other patch once', patches.every(function (p) { return p.times === (p.id === 'S24' || p.id === 'S27' ? 3 : 1); }));
 patches.forEach(function (p) {
   var where = p.where === 'markup' ? page : studio;
@@ -42,7 +43,7 @@ check('the extractor stops before writing when a count differs', py.indexOf('sys
 function compiles(src, name) { try { new vm.Script(src, { filename: name }); return true; } catch (e) { return String(e && e.message); } }
 check('social-studio.js parses', compiles(studio, 'social-studio.js') === true, compiles(studio, 'social-studio.js'));
 ['async function openEvent', 'function renderEventDetail', 'function buildParams', 'function edSave', 'async function applyOptions',
-  'owRenderCaption()', 'owLeaveEditor()', 'owNudgeSnap()', 'owConfirmReset()', 'owMayDiscard()', '!e.defaultPrevented'].forEach(function (s) {
+  'owSideHost().innerHTML', 'owSizeName(f)', '${owStripHtml(assets)}', 'owLeaveEditor()', 'owNudgeSnap()', 'owConfirmReset()', 'owMayDiscard()', '!e.defaultPrevented'].forEach(function (s) {
   check('the code has ' + s, studio.indexOf(s) !== -1);
 });
 // the drawer, Generate all and the drawer's way into the editor are not copied (nothing on this page reaches them)
@@ -59,7 +60,7 @@ check('social-studio.js parses', compiles(studio, 'social-studio.js') === true, 
 });
 var ADAPTER = ['EVENT_ID', 'S', 'CAT', 'SEL', 'MAILERS', 'previewCache', 'thumbCache', 'api', 'OWS', 'mark', 'crumbs', 'setProdNav', 'openPortal',
   'showPortals', 'renderEvents', 'mailerCards', 'renderEvSaved', 'owLeaveEditor', 'owNudgeSnap', 'owConfirmReset', 'owMayDiscard', 'owRenderCaption',
-  'OWSArt', 'OWSCap', 'OWSocial'];
+  'owSideHost', 'owSizeName', 'owStripHtml', 'OWSArt', 'OWSCap', 'OWSEasy', 'OWSocial'];
 ADAPTER.forEach(function (g) {
   check('the code does not declare ' + g + ' (Oneworld\'s files do)', !new RegExp('\\b(function|const|let|var|class)\\s+' + g + '\\b').test(studio));
 });
@@ -83,10 +84,11 @@ check('stylesheets: the platform\'s, then Oneworld\'s tokens, then the social pa
 check('every stylesheet is in the head', page.lastIndexOf('stylesheet') < headEnd);
 var scripts = [], scRe = /<script src="([^"]+)"><\/script>/g, sc;
 while ((sc = scRe.exec(page))) scripts.push(sc[1]);
-check('the scripts, in order: theme, sign-in, the exact drawing, zip, the bundle, the copied code, then Oneworld\'s three (caption last)', scripts.join() === [
+check('the scripts, in order: theme, sign-in, the exact drawing, zip, the bundle, the copied code, then Oneworld\'s four (the easy panel before the caption, the caption last)', scripts.join() === [
   'promo-studio/oneworld-theme.js', 'auth.js', 'assets/vendor/html-to-image-exact.js', 'assets/vendor/jszip.min.js', 'assets/vendor/promo-social.js',
-  'promo-studio/social-studio.js', 'promo-studio/oneworld-social.js', 'promo-studio/oneworld-social-art.js', 'promo-studio/oneworld-social-caption.js'].join(), scripts);
-check('no other script on the page', count(page, '<script') === 9);
+  'promo-studio/social-studio.js', 'promo-studio/oneworld-social.js', 'promo-studio/oneworld-social-art.js', 'promo-studio/oneworld-social-easy.js',
+  'promo-studio/oneworld-social-caption.js'].join(), scripts);
+check('no other script on the page', count(page, '<script') === 10);
 /* the server sends only an allow-list of files (access.js): the page itself, and everything it loads from this server */
 var access = require('./access');
 check('the server sends the page, and only to someone signed in', access.isServableFile('promo-social-studio.html') &&
@@ -94,7 +96,7 @@ check('the server sends the page, and only to someone signed in', access.isServa
 var local = (page.match(/(?:src|href)="[^"]+"/g) || []).map(function (a) { return a.replace(/^(?:src|href)="|"$/g, ''); })
   .filter(function (u) { return !/^(https?:)?\/\/|^#|^data:|^about:/.test(u); });
 var unserved = local.filter(function (u) { return !access.isServableFile(u.split('?')[0]); });
-check('every file the page loads is one the server sends', local.length === 12 && !unserved.length, { local: local, unserved: unserved });
+check('every file the page loads is one the server sends', local.length === 13 && !unserved.length, { local: local, unserved: unserved });
 /* the files the page shares with the mailer page are already there; the rest are made by the other parts of this build */
 ['auth.js', 'assets/vendor/jszip.min.js', 'promo-studio/oneworld-theme.js', 'promo-studio/mailer-studio.css', 'promo-studio/oneworld.css'].forEach(function (f) {
   check('the page\'s ' + f + ' is there', exists(f));
@@ -129,7 +131,12 @@ check('nine web fonts, each in the link', webFonts.length === 9 && webFonts.ever
    this page passes its own host, so it is never looked up) */
 var lookups = {}, luRe = /\$\("([A-Za-z0-9_-]+)"\)/g, lu;
 while ((lu = luRe.exec(studio))) lookups[lu[1]] = 1;
-var unknown = Object.keys(lookups).filter(function (id) { return id !== 'dParams' && page.indexOf('id="' + id + '"') === -1 && studio.indexOf('id="' + id + '"') === -1; });
+/* the uploads strip is drawn by Oneworld's own file since S37 (owStripHtml): its ids are written there */
+var artSrc = exists('promo-studio/oneworld-social-art.js') ? read('promo-studio/oneworld-social-art.js') : '';
+var unknown = Object.keys(lookups).filter(function (id) {
+  return id !== 'dParams' && page.indexOf('id="' + id + '"') === -1 && studio.indexOf('id="' + id + '"') === -1 &&
+    artSrc.indexOf('id="' + id + '"') === -1 && artSrc.indexOf('.id = \'' + id + '\'') === -1;
+});
 check('every id the code looks up exists', unknown.length === 0, unknown);
 check('dParams is only ever a fallback for a missing host', count(studio, '$("dParams")') === 2 && studio.indexOf('host||$("dParams")') !== -1 && studio.indexOf('(host||$("dParams"))') !== -1);
 
@@ -237,7 +244,7 @@ var CATALOG = { catalog: { categories: [{ label: 'Generic', templates: [{ id: 'g
   await B.run('applyOptions()');
   check('S5′ go ahead: re-rendered fresh, with the theme, the background (D4) and the typed options', bLoads.join() === 'true' && B.run('edMode') === 'props' &&
     B.run('JSON.stringify(edParams)') === '{"theme":"light","bg":"2","title":"Typed title"}', B.run('JSON.stringify(edParams)'));
-  check('S5′ go ahead: the platform\'s toast', bToasts.length === 1 && bToasts[0][0] === '✓ Options applied — re-rendered from the template', bToasts);
+  check('S5′ go ahead: the toast in plain words (UX-128)', bToasts.length === 1 && bToasts[0][0] === '✓ Post updated from the design', bToasts);
   /* S6: the all-sizes ZIP is drawn on the chosen background */
   var zipBodies = [];
   B.sb.CAT = CATALOG; B.run('EDIT.tid="generic.announcement"; edParams={ theme:"dark", bg:"1" };');
@@ -363,17 +370,50 @@ var CATALOG = { catalog: { categories: [{ label: 'Generic', templates: [{ id: 'g
   tx = W.el('epText'); tx.value = 'One more'; tx.oninput();
   check('S16: without a line break it stays one line', W.run('EDIT.els[1].whiteSpace') === 'nowrap');
 
-  /* S17, S18: the Caption tab */
-  var P = loadStudio(), cap = 0, opt = 0, props = 0;
-  P.sb.owRenderCaption = function () { cap++; }; P.sb.renderOptions = function () { opt++; }; P.sb.renderProps = function () { props++; }; P.sb.renderInsert = noop;
-  P.run('edTab("caption")');
-  var side = P.el('edSide').innerHTML;
-  var tabs = (side.match(/<button[^>]*>[^<]*<\/button>/g) || []).map(function (b) { return b.replace(/<[^>]+>/g, ''); });
-  check('S17: four tabs: Style, Insert, Options, Caption', tabs.join() === 'Style,Insert,Options,Caption', tabs);
-  check('S17: the Caption tab is on while it is open', /<button class="on" onclick="edTab\('caption'\)">Caption<\/button><\/div><div id="edSideBody"><\/div>/.test(side));
-  check('S18: the Caption tab shows the caption panel', cap === 1 && opt === 0 && props === 0);
+  /* S17′: the platform's three tabs are drawn in Advanced layout's box (owSideHost), not over the whole side */
+  var P = loadStudio(), opt = 0, props = 0, advBox = makeEl('div');
+  P.sb.owSideHost = function () { return advBox; };
+  P.sb.renderOptions = function () { opt++; }; P.sb.renderProps = function () { props++; }; P.sb.renderInsert = noop;
   P.run('edTab("options")');
-  check('S18: the other tabs are as they were', cap === 1 && opt === 1 && /<button class="" onclick="edTab\('caption'\)">Caption/.test(P.el('edSide').innerHTML));
+  var tabs = (advBox.innerHTML.match(/<button[^>]*>[^<]*<\/button>/g) || []).map(function (b) { return b.replace(/<[^>]+>/g, ''); });
+  check('S17′: three tabs, Style, Insert and Options, in Advanced layout\'s box', tabs.join() === 'Style,Insert,Options' && P.el('edSide').innerHTML === '', tabs);
+  check('S17′: the Options tab draws the options', opt === 1 && props === 0 && /<button class="on" onclick="edTab\('options'\)">Options<\/button><\/div><div id="edSideBody"><\/div>/.test(advBox.innerHTML));
+  P.run('edTab("props")');
+  check('S17′: the Style tab draws the element\'s style', props === 1 && opt === 1);
+
+  /* S29-S32: the top bar in plain words (UX-122, UX-131, UX-132) */
+  var top = page.slice(page.indexOf('<div class="ed-top">'), page.indexOf('<div class="ed-body">'));
+  check('S8′: Back says where it goes, in visible words', /<button class="back" type="button" onclick="owLeaveEditor\(\)">← Back to posts<\/button>/.test(top) && top.indexOf('title="Back"') === -1);
+  check('S29: the editor is "Edit post"', top.indexOf('<div class="ttl">Edit post</div>') !== -1 && page.indexOf('Layout editor') === -1);
+  check('S30: the top bar\'s Background select is the state, out of sight', /<select id="edBg" onchange="edSetBg\(\)" title="Background" hidden aria-hidden="true" tabindex="-1"><\/select>/.test(top));
+  var acts = (top.match(/<button[^>]*>[^<]*<\/button>/g) || []).map(function (b) { return b.replace(/<[^>]+>/g, ''); });
+  check('S31: Undo, Redo, Save, Download, Download all sizes in the top bar; Reset is not there; no emoji', acts.slice(-5).join() === '↶ Undo,↷ Redo,Save,Download,Download all sizes' &&
+    top.indexOf('edReset()') === -1 && top.indexOf('💾') === -1 && top.indexOf('⬇') === -1, acts);
+  check('S31: Download all sizes is the ZIP, with its own id', /<button class="btn alt sm" id="owZipTop" onclick="edDownloadZip\(\)">Download all sizes<\/button>/.test(top));
+  check('S32: the zoom reads 100%, not Fit', page.indexOf('<span class="z" id="edZoomPct">100%</span>') !== -1);
+  check('the Options tab no longer holds the ZIP or the API\'s words (S35)', studio.indexOf('Download all sizes (ZIP)') === -1 && studio.indexOf('Data comes from the API') === -1 &&
+    studio.indexOf('Apply &amp; re-render') === -1 && studio.indexOf('>Update post</button>') !== -1);
+  /* S33: the zoom shows the size it is shown at, Fit included */
+  var Z = loadStudio();
+  Z.run('EDIT.width=1080; EDIT.height=1080; edZoom="fit";');
+  Z.el('edCanvas').clientWidth = 592; Z.el('edCanvas').clientHeight = 900;
+  Z.el('edStage').style.setProperty = noop; Z.sb.layoutGroupFrame = noop;
+  Z.run('layoutStage()');
+  check('S33: at Fit the zoom reads the percentage', Z.el('edZoomPct').textContent === '50%', Z.el('edZoomPct').textContent);
+  /* S34: sizes in plain words */
+  Z.sb.CAT = CATALOG; Z.sb.owSizeName = function (f) { return 'Name of ' + f.id; }; Z.sb.loadEditor = noop;
+  Z.el('edTpl').value = 'generic.announcement';
+  Z.run('switchEditorTpl()');
+  check('S34: the size menu names each size (owSizeName)', Z.el('edFmt').innerHTML === '<option value="ig_square">Name of ig_square</option><option value="landscape">Name of landscape</option>', Z.el('edFmt').innerHTML);
+  /* S36: Layers rows are buttons */
+  var Ly = loadStudio();
+  Ly.sb.wirePanel = noop;
+  Ly.run('EDIT.els=[{ id:"e0", type:"text", x:0, y:0, w:10, text:"Hello <b>" }, { id:"e1", type:"shape", x:0, y:0, w:10, h:10 }]; edSelSet=[1]; edSel=1;');
+  Ly.doc.set('edSideBody', makeEl('div'));
+  Ly.run('renderProps()');
+  var lb = Ly.el('edSideBody').innerHTML;
+  check('S36: each Layers row is a button, pressed when selected, the words escaped', (lb.match(/<button type="button" class="ed-layer /g) || []).length === 2 &&
+    lb.indexOf('data-i="1" aria-pressed="true"') !== -1 && lb.indexOf('data-i="0" aria-pressed="false"') !== -1 && lb.indexOf('Hello &lt;b&gt;') !== -1 && lb.indexOf('<div class="ed-layer "') === -1 && lb.indexOf('<div class="ed-layer on') === -1, lb.slice(-400));
 
   /* S19-S21: the template options escape the event's names; the values still come back as they were */
   var optsHost = makeEl('div');
@@ -491,8 +531,9 @@ var CATALOG = { catalog: { categories: [{ label: 'Generic', templates: [{ id: 'g
      is refused before any statement runs (as the browser does), and its declarations are made, but none of its code
      runs on this bare stand-in page (its own test runs it). ---- */
   var OW = { 'promo-studio/oneworld-social.js': ['api', 'S', 'CAT', 'MAILERS', 'previewCache', 'thumbCache', 'mark', 'crumbs', 'setProdNav', 'openPortal',
-    'mailerCards', 'renderEvSaved', 'owLeaveEditor', 'owNudgeSnap', 'owConfirmReset', 'owMayDiscard'],
-    'promo-studio/oneworld-social-art.js': [], 'promo-studio/oneworld-social-caption.js': ['owRenderCaption'] };
+    'mailerCards', 'renderEvSaved', 'owLeaveEditor', 'owNudgeSnap', 'owConfirmReset', 'owMayDiscard', 'owSizeName'],
+    'promo-studio/oneworld-social-art.js': ['owStripHtml'], 'promo-studio/oneworld-social-easy.js': ['owSideHost'],
+    'promo-studio/oneworld-social-caption.js': ['owRenderCaption'] };
   var X = loadStudio(true), STOP = '__stop_before_the_first_statement__';
   Object.keys(OW).forEach(function (f) {
     if (!exists(f)) { notes.push(f + ' is not there yet: its fit with this code was not checked'); return; }

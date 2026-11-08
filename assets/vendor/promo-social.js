@@ -57,6 +57,14 @@ var OWSocial = (() => {
     const document2 = doc;
     const getComputedStyle = (el, pseudo) => doc.defaultView.getComputedStyle(el, pseudo);
     const qrOf = (...els) => els.some((e) => !!e && (e.classList && e.classList.contains("ow-qr-code") || !!(e.closest && e.closest(".ow-qr")))) ? { owQr: true } : {};
+    const roleOf = (...els) => {
+      for (const e of els) {
+        const c2 = e && typeof e.getAttribute === "function" ? String(e.getAttribute("class") || "") : "";
+        const v2 = c2.replace(/[^A-Za-z0-9 _-]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80).trim();
+        if (v2) return { owRole: v2 };
+      }
+      return {};
+    };
     const out = [];
     let id = 0;
     const alpha = (c2) => {
@@ -134,7 +142,8 @@ var OWSocial = (() => {
             imgY: 0,
             imgRotate: 0,
             scrim,
-            ...qrOf(el, img)
+            ...qrOf(el, img),
+            ...roleOf(el, img)
           });
           el.setAttribute("data-edit", "1");
           img.setAttribute("data-framed", "1");
@@ -211,7 +220,8 @@ var OWSocial = (() => {
           radius,
           background: cs.backgroundColor,
           padding: cs.padding,
-          ...qrOf(el)
+          ...qrOf(el),
+          ...roleOf(el, el.parentElement)
         });
         el.setAttribute("data-edit", "1");
         return;
@@ -258,7 +268,8 @@ var OWSocial = (() => {
           padding,
           radius: cs.borderRadius,
           boxShadow: cs.boxShadow,
-          ...qrOf(el)
+          ...qrOf(el),
+          ...roleOf(el)
         });
         el.setAttribute("data-edit", "1");
         if (bullet) {

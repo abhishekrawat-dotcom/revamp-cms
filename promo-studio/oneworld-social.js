@@ -92,16 +92,16 @@ var OW_TESTIMONIAL = 'generic.testimonial';
    promo-examples.js FILLER_LINES): their option keys */
 var OW_PREDICTION = 'generic.prediction-outcome', OW_FILLER_KEYS = ['prediction', 'outcome'];
 var OW_MSG = {
-  testimonial: 'Type the quote in Options, then Apply & re-render: a testimonial shows a real quote, never a made-up one.',
-  prediction: 'Write this event’s own prediction and outcome first, in Options (then Apply & re-render) or on the canvas: the words there now are the template’s example, not this event’s.',
-  predictionNote: 'The prediction and outcome are the template’s example words, not this event’s. Write its own, in Options or on the canvas, before downloading.',
-  picture: 'Oneworld can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.',
+  testimonial: 'Type the quote under Words, then Update post: a testimonial shows a real quote, never a made-up one.',
+  prediction: 'Write this event’s own prediction and outcome first, under Words or on the post itself: the words there now are the template’s example, not this event’s.',
+  predictionNote: 'The prediction and outcome are the template’s example words, not this event’s. Write its own, under Words or on the post itself, before downloading.',
+  picture: 'EventSphere can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.',
   qr: 'The QR code was left out: the site is not published.',
   carried: 'Your text and picture changes from another size of this post were carried in here.',
-  unsure: 'A change from another size of this post was not carried in: Oneworld could not tell which element it belongs to here, and does not guess. Make it here if this size needs it.',
+  unsure: 'A change from another size of this post was not carried in: EventSphere could not tell which element it belongs to here, and does not guess. Make it here if this size needs it.',
   leftOut: 'A picture could not be loaded and was left out: ',
   tooLarge: 'This layout is too large to save. Remove some pictures or text and save again.',
-  offline: 'Oneworld could not be reached. Check your connection and try again.',
+  offline: 'EventSphere could not be reached. Check your connection and try again.',
   failed: 'Something went wrong with the posts. Please try again.'
 };
 
@@ -141,6 +141,32 @@ function owHost(u) { var m = /^[a-z]+:\/\/([^/?#]+)/i.exec(String(u || '')); ret
 /* the layout's key, as the platform's (SRC src/server.ts layoutVariant): template, size, theme, background */
 function owKey(tid, fmt, theme, bg) { return tid + '__' + fmt + '__' + (theme || 'dark') + '_bg' + (bg || 'psd'); }
 function owFixLink(route) { return '/edit-event.html?event=' + OW_E + '#' + route; }
+/* UX-122: a size in plain words, with its pixels and where it is used (the editor's size menu), and its short name
+   (the notes, the cards' Saved tag and the ZIP's toast), instead of a ratio. A size the engine adds later keeps its
+   own label until it is named here. */
+var OW_SIZE_NAMES = {
+  ig_square: { name: 'Instagram square', short: 'Square', px: '1080×1080' },
+  ig_portrait: { name: 'Instagram / LinkedIn portrait', short: 'Portrait', px: '1080×1350' },
+  landscape: { name: 'LinkedIn / X landscape', short: 'Landscape', px: '1200×675' },
+  story: { name: 'Story', short: 'Story', px: '1080×1920' }
+};
+/* the pixels are the size's own, else the catalog's list of sizes, else the engine's as named here (formats.ts) */
+function owSizeName(f) {
+  f = f || {};
+  var n = Object.prototype.hasOwnProperty.call(OW_SIZE_NAMES, f.id) ? OW_SIZE_NAMES[f.id] : null;
+  var px = f.width && f.height ? ' ' + f.width + '×' + f.height : '';
+  return n ? n.name + (px || owSizePx(f.id) || ' ' + n.px) : String(f.label || f.ratio || f.id || '');
+}
+function owSizeShort(f) {
+  f = f || {};
+  return Object.prototype.hasOwnProperty.call(OW_SIZE_NAMES, f.id) ? OW_SIZE_NAMES[f.id].short : String(f.label || f.ratio || f.id || '');
+}
+/* the catalog's formats carry no pixels (registry.ts buildCatalog): the catalog's own list of sizes has them */
+function owSizePx(id) {
+  var all = (CAT && Array.isArray(CAT.formats)) ? CAT.formats : [];
+  var f = all.filter(function (x) { return x && x.id === id; })[0];
+  return f && f.width && f.height ? ' ' + f.width + '×' + f.height : '';
+}
 /* at most ms for p; the timer is cleared as soon as p settles */
 function owWithin(p, ms) {
   return new Promise(function (ok) {
@@ -192,7 +218,7 @@ function owRoute(u, o) {
   if (path === '/api/editor/assets') return owRoster();
   if (path === '/api/psd' || path === '/api/background' || path === '/api/logo') return owUpload(path, q, o);
   if (/^\/api\/promo\//.test(path)) return owAuthed(u, owWithEvent(o));
-  return Promise.resolve(owFail(404, 'That is not part of Oneworld\'s social posts.'));
+  return Promise.resolve(owFail(404, 'That is not part of EventSphere\'s social posts.'));
 }
 /* UX-121: the catalog comes with every card's post in it (GET …/catalog?cards=1, made from the same reading of the
    event), so the first card is drawn one round trip sooner. Promotions (marketing.html) asks for it while this frame
@@ -215,11 +241,74 @@ function owCatalog() {
       if (!j || typeof j !== 'object') return owResp(text, r.status);
       owSeedCards(j.cards);
       delete j.cards;
+      owPlainCatalog(j);
       owPrefetchCards(j);
       return owJson(j, r.status);
     });
   });
 }
+/* UX-128: the engine's words for its templates are a developer's ("Audience-persona grid built from the event's
+   who_should_attend list", "Kicker", "needs speakers (>=2)"). The engine is the platform's code, kept as it is, so
+   its catalog is put into plain words here, once, before anything shows it: each template's description, and each
+   option's label, hint and choices, by their own key. A text the engine changes is no longer found here and shows
+   as the engine has it (promo-social-adapter.test.js holds every text below against the engine's). */
+var OW_PLAIN_DESCRIPTIONS = {
+  'generic.announcement': 'Save-the-date post: the logo, dates, venue, your headline numbers and a button.',
+  'generic.who-should-attend': 'Who the event is for, as a grid of the roles in its “Who should attend” list.',
+  'generic.summit-highlights': 'The event’s headline numbers at a glance: speakers, sessions, attendees…',
+  'generic.prediction-outcome': 'Last year’s prediction beside this year’s outcome, in two cards.',
+  'generic.testimonial': 'A quote from a speaker, with their name, title and photo.',
+  'partner.tier-ladder': 'Your partners grouped by tier (Presenting, Powered by, Gold…). The top 10 unless you pick them.',
+  'partner.presenting-spotlight': 'One partner on its own, with its tier (“Welcoming our Presenting Partner”).',
+  'speaker.individual': 'One speaker: photo, name, designation and company.',
+  'speaker.combined': 'Your speakers in one grid that fits however many there are. Pick them, or show the top ones.'
+};
+var OW_PLAIN_LABELS = {
+  theme: 'Colours', kicker: 'Small line above the title', stats: 'Headline numbers', title: 'Title', headline: 'Title',
+  speakerId: 'Speaker', speakerIds: 'Speakers on the post', group: 'Speaker group', limit: 'How many to show',
+  sponsorId: 'Partner', sponsorIds: 'Partners on the post', tier: 'Tier', maxSponsors: 'How many partners to show',
+  maxTiers: 'How many tiers to show', roleLabel: 'Label above the name', quote: 'Quote', author: 'Name under the quote',
+  authorTitle: 'Title and company under the quote', prediction: 'Prediction', outcome: 'Outcome',
+  predictionLabel: 'Label on the prediction card', outcomeLabel: 'Label on the outcome card'
+};
+var OW_PLAIN_HINTS = {
+  theme: 'Light words for a dark background, or dark words for a light one.',
+  speakerIds: 'Leave them all unticked to show the top speakers, in the site’s order.',
+  group: 'Shows only this group when no speakers are ticked.',
+  sponsorId: 'Picks one partner, whatever the tier below says.',
+  tier: 'Shows the first partner of this tier when no partner is picked.',
+  sponsorIds: 'Leave them all unticked to show the top partners of the highest tiers.'
+};
+var OW_PLAIN_CHOICES = { theme: { dark: 'Dark background, light words', light: 'Light background, dark words' } };
+function owPlainCatalog(cat) {
+  ((cat && cat.catalog && cat.catalog.categories) || []).forEach(function (c) {
+    ((c && c.templates) || []).forEach(function (t) {
+      if (!t) return;
+      if (Object.prototype.hasOwnProperty.call(OW_PLAIN_DESCRIPTIONS, t.id)) t.description = OW_PLAIN_DESCRIPTIONS[t.id];
+      (Array.isArray(t.params) ? t.params : []).forEach(function (p) {
+        if (!p || typeof p.key !== 'string') return;
+        var k = p.key, own = function (o) { return Object.prototype.hasOwnProperty.call(o, k); };
+        if (own(OW_PLAIN_LABELS)) p.label = OW_PLAIN_LABELS[k];
+        if (own(OW_PLAIN_HINTS)) p.hint = OW_PLAIN_HINTS[k];
+        if (own(OW_PLAIN_CHOICES) && Array.isArray(p.options)) {
+          p.options.forEach(function (o) { if (o && Object.prototype.hasOwnProperty.call(OW_PLAIN_CHOICES[k], o.value)) o.label = OW_PLAIN_CHOICES[k][o.value]; });
+        }
+      });
+    });
+  });
+  return cat;
+}
+/* what a template still needs, in plain words: the engine names it by its data ("who_should_attend", "speakers
+   (>=2)"); a need it adds later is shown as it says it */
+var OW_NEEDS = {
+  who_should_attend: 'who should attend', 'speakers (>=2)': 'at least 2 speakers', speakers: 'speakers', sponsors: 'partners',
+  stats: 'headline numbers', 'event date/venue': 'the event’s date and venue'
+};
+function owNeedsWords(missing) {
+  var words = owArr(missing).map(function (m) { m = String(m); return Object.prototype.hasOwnProperty.call(OW_NEEDS, m) ? OW_NEEDS[m] : m; });
+  return words.length ? 'Needs: ' + owListWords(words) : 'Not ready yet';
+}
+
 /* Promotions' early catalog for this event, taken once: a promise of { status, text } or null */
 function owTakePrefetch() {
   try {
@@ -710,14 +799,16 @@ function owDraw(html, W, H, o) {
 /* what an example fills, in words, and where the real ones are added: go is the console's route (promo-posts.js
    fixLink; a third part is the field on the tab, edit-event.html showPlace), at its name on screen. Who should
    attend and the event's own numbers are typed in Content → Basics (UX-130); a quote or a prediction only ever
-   in the post itself. Mailers (oneworld.js OW_FIX) and Site-look posts (promo-posts.js) say the same. */
+   in the post itself: the quote in the editor's Words (oneworld-social-easy.js quoteBox; the Options tab it was in
+   sits under Advanced layout since UX-122). Mailers (oneworld.js OW_FIX) and Site-look posts (promo-posts.js) say
+   the same. */
 var OW_FILL = {
   speakers: { w: 'speakers', go: 'content/speakers', at: 'Content → Speakers' },
   sponsors: { w: 'partners', go: 'content/sponsors', at: 'Content → Sponsors' },
   sessions: { w: 'sessions', go: 'content/agenda', at: 'Content → Agenda' },
   stats: { w: 'numbers', go: 'content/basics/numbers', at: 'Content → Basics' },
   audience: { w: '“who should attend” list', go: 'content/basics/audience', at: 'Content → Basics' },
-  quote: { w: 'quote and its speaker', tail: 'open it and type the real quote in Options' },
+  quote: { w: 'quote and its speaker', tail: 'open it with Edit, type the real quote under Words and pick its speaker under People' },
   prediction: { w: 'prediction and outcome', tail: 'open it and write this event’s own' }
 };
 var OW_STATE = { past: 'Past event', 'no-date-venue': 'No date or venue yet', 'no-date': 'No date yet', closed: 'Nominations closed' };
@@ -744,7 +835,8 @@ function owNoteEl(filled) {
 }
 /* The platform's card (SRC index.html:1973-1979). Changed for owner B: the picture is a button that shows it full
    size; a template the event cannot make yet is drawn too (a spinner until then, not "preview N/A"), and has no
-   Generate button. Words are escaped, though the engine's own. */
+   Edit button. UX-132: the button is "Edit", as on the other two tabs ("Generate" sounded like AI); UX-128: what a
+   template still needs in plain words (owNeedsWords). Words are escaped, though the engine's own. */
 function cardHtml(t) {
   var safe = owSafeId(t.id), label = escapeHtml(t.label), zoom = ' data-ow-zoom="' + escapeHtml(t.id) + '" aria-label="See ' + label + ' full size"';
   var badge = t.isNew ? '<span class="newbadge">NEW</span>' : '';
@@ -755,8 +847,8 @@ function cardHtml(t) {
     '    <div class="b"><div class="cat">' + escapeHtml(t.catLabel) + '</div><div class="nm">' + label + '</div>\n' +
     '      <div class="ds">' + escapeHtml(t.description) + '</div>\n' +
     '      <div class="cta">' + (t.available
-      ? '<button class="btn sm" style="width:100%;justify-content:center" onclick=\'openEditor(' + JSON.stringify(t.id) + ')\'>Generate &amp; edit →</button>'
-      : '<div class="warn">needs ' + escapeHtml((t.missing || []).join(', ')) + '</div>') + '</div>\n' +
+      ? '<button class="btn sm" style="width:100%;justify-content:center" onclick=\'openEditor(' + JSON.stringify(t.id) + ')\'>Edit</button>'
+      : '<div class="warn">' + escapeHtml(owNeedsWords(t.missing)) + '</div>') + '</div>\n' +
     '    </div></div>';
 }
 /* The platform's loadThumbs (SRC index.html:1980-1992), on one request for every card: the templates the event can
@@ -770,9 +862,10 @@ function cardHtml(t) {
 function loadThumbs(tpls) {
   var gen = OWS.thumbGen;
   var list = (tpls || []).map(function (t) { return { t: t, item: owCardItem(t) }; });
-  if (!list.length) return Promise.resolve();
+  if (!list.length) return (OWS.thumbsP = Promise.resolve());
   owThumbsCount(gen, 0, list.length);
-  return Promise.all([owCachedHtml(list.map(function (x) { return x.item; })), owLayouts()]).then(function (r) {
+  /* kept, so an upload can say "updated on all posts" once the cards it redrew are in (oneworld-social-art.js) */
+  return (OWS.thumbsP = Promise.all([owCachedHtml(list.map(function (x) { return x.item; })), owLayouts()]).then(function (r) {
     var answers = r[0], done = 0;
     var rows = list.map(function (x, i) { return { t: x.t, a: answers[i] }; });
     var order = rows.filter(function (r) { return r.t.available; }).concat(rows.filter(function (r) { return !r.t.available; }));
@@ -782,13 +875,21 @@ function loadThumbs(tpls) {
   }, function () {
     if (gen === OWS.thumbGen) list.forEach(function (x) { owThumbSay(x.t, '—'); });
     owThumbsCount(gen, list.length, list.length);
-  });
+  }));
 }
-/* a card's post: the template at its first size with its default options; a template the event cannot make yet, the
+/* a card's post: the template at its first size with its default options, on the background chosen for all posts; a
+   template the event cannot make yet, the
    Testimonial (no quote of its own) and Prediction vs Outcome (the template's own words, UX-135), as a preview with
    only its gap filled and marked */
 function owCardItem(t) {
-  return { templateId: t.id, format: owFirstFormat(t), params: {}, preview: !t.available || t.id === OW_TESTIMONIAL || t.id === OW_PREDICTION };
+  var bg = owUseBg();
+  return { templateId: t.id, format: owFirstFormat(t), params: bg ? { bg: bg } : {}, preview: !t.available || t.id === OW_TESTIMONIAL || t.id === OW_PREDICTION };
+}
+/* UX-129: the background every post starts on ("Use for all posts"), as the server keeps it ('' for the design file's,
+   else the design's own); the server's card posts ask the same (promo-social.js cardItem) */
+function owUseBg() {
+  var b = OWS.art && typeof OWS.art.useBg === 'string' ? OWS.art.useBg : '';
+  return /^(design|[123])$/.test(b) ? b : '';
 }
 /* "Drawing your posts — 3 of 9" above the cards while they are drawn (more than one at a time); gone when done */
 function owThumbsCount(gen, n, total) {
@@ -812,19 +913,19 @@ function owCardTheme(t) {
   var th = ((t && t.params) || []).filter(function (p) { return p && p.key === 'theme'; })[0];
   return (th && th.default) || 'dark';
 }
-/* the sizes of a template with a saved layout, in any theme or background, as their ratios */
+/* the sizes of a template with a saved layout, in any theme or background, by their short names */
 function owSavedSizes(t) {
   return ((t && t.formats) || []).filter(function (f) {
     return (OWS.layouts || []).some(function (l) { return l && l.templateId === t.id && l.format === f.id; });
-  }).map(function (f) { return f.ratio || f.id; });
+  }).map(owSizeShort);
 }
 function owThumb(t, a, gen) {
   if (gen !== OWS.thumbGen) return Promise.resolve();         // the cards were asked for again meanwhile
   var sizes = t.available ? owSavedSizes(t) : [];
-  var own = t.available ? owSavedOf(t.id, owFirstFormat(t), owCardTheme(t), '') : null;
+  var own = t.available ? owSavedOf(t.id, owFirstFormat(t), owCardTheme(t), owUseBg()) : null;
   if (!own) return owThumbDraw(t, a, gen, { saved: false, sizes: sizes });
   /* the card's own size is saved: its saved layout, as the editor opens it (the template's post if it cannot be had) */
-  return owGetSaved(t.id, owFirstFormat(t), owCardTheme(t), '').then(function (sv) {
+  return owGetSaved(t.id, owFirstFormat(t), owCardTheme(t), owUseBg()).then(function (sv) {
     if (!sv) return owThumbDraw(t, a, gen, { saved: false, sizes: sizes });
     var q = owQrCheck(sv.elements);
     var html = window.OWSocial.renderEditableHtml(sv.width, sv.height, String(sv.base || ''), q.list);
@@ -978,7 +1079,7 @@ document.addEventListener('keydown', function (e) {
   var z = e.target && e.target.closest && e.target.closest('[data-ow-zoom]');
   if (z && String(z.tagName).toUpperCase() !== 'BUTTON' && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); owOpenThumb(z.getAttribute('data-ow-zoom')); }
 });
-/* The picture at its full width, its name, and what can be done: Generate & edit for a template the event can make;
+/* The picture at its full width, its name, and what can be done: Edit for a template the event can make;
    for an example, what is an example and where to add the real ones. Never a download. */
 function owLightbox(blobUrl, label, info) {
   owCloseLightbox(true);
@@ -1001,7 +1102,7 @@ function owLightbox(blobUrl, label, info) {
   var sp = document.createElement('span'); sp.className = 'ow-lb-sp'; bar.appendChild(sp);
   if (info.available && info.id) {
     var go = document.createElement('button');
-    go.type = 'button'; go.className = 'btn sm'; go.textContent = 'Generate & edit →';
+    go.type = 'button'; go.className = 'btn sm'; go.textContent = 'Edit';
     go.onclick = function () { owCloseLightbox(); openEditor(info.id); };
     bar.appendChild(go);
   }
@@ -1194,7 +1295,7 @@ function owSizeWords() {
   if (!t || !EDIT.width || t.kind === 'psd' || !owEditorOpen()) return '';
   var fmts = t.formats || [], p = edParams || {}, theme = p.theme || 'dark', bg = p.bg || '';
   if (fmts.length < 2) return '';
-  var ratio = function (f) { return f.ratio || f.id; };
+  var ratio = owSizeShort;
   var saved = fmts.filter(function (f) { return !!owSavedOf(t.id, f.id, theme, bg); }), rest = fmts.filter(function (f) { return saved.indexOf(f) === -1; });
   if (!saved.length) return OWS.carried ? OW_MSG.carried + ' Save to keep this size as it is.' : '';
   if (!rest.length) return '';
@@ -1240,7 +1341,7 @@ function owRestoreControls() {
   var t = findTpl(L.tid), fmt = $('edFmt');
   $('edTpl').value = L.tid;
   if (t && fmt) {
-    fmt.innerHTML = (t.formats || []).map(function (f) { return '<option value="' + escapeHtml(f.id) + '">' + escapeHtml(f.ratio) + '</option>'; }).join('');
+    fmt.innerHTML = (t.formats || []).map(function (f) { return '<option value="' + escapeHtml(f.id) + '">' + escapeHtml(owSizeName(f)) + '</option>'; }).join('');
     fmt.style.display = t.kind === 'psd' ? 'none' : '';
   }
   if (fmt) fmt.value = L.fmt;
@@ -1629,7 +1730,7 @@ function owZip(body) {
         var t = findTpl(d.it.templateId) || {}, id = String(d.it.templateId), dot = id.indexOf('.');
         zip.file(owSlug(t.category || id.slice(0, dot)) + '-' + owSlug(t.subtype || id.slice(dot + 1)) + '-' + d.it.format + '.png', d.blob);
         captions[d.it.templateId] = d.a.caption;
-        said.push({ how: d.how, unsure: d.unsure, ratio: (((t.formats || []).filter(function (f) { return f.id === d.it.format; })[0]) || {}).ratio || d.it.format });
+        said.push({ how: d.how, unsure: d.unsure, ratio: owSizeShort(((t.formats || []).filter(function (f) { return f.id === d.it.format; })[0]) || { id: d.it.format }) });
         drawn++;
       });
       if (!drawn) throw owErr(422, (got[0] && got[0].error) || 'The posts could not be drawn.');
@@ -1675,7 +1776,7 @@ function owZipWords(said) {
     return r.length ? owListWords(r) + ' ' + h[1] : '';
   }).filter(Boolean);
   var unsure = said.filter(function (x) { return x.unsure; }).map(function (x) { return x.ratio; });
-  return '✓ Downloaded ZIP — ' + parts.join('; ') + '.' + (unsure.length ? ' A change Oneworld could not match to one element was left out of ' +
+  return '✓ Downloaded ZIP — ' + parts.join('; ') + '.' + (unsure.length ? ' A change EventSphere could not match to one element was left out of ' +
     owListWords(unsure) + ', rather than guessed.' : '');
 }
 
@@ -1713,7 +1814,7 @@ function owFillerSaved() {
   var p = edParams || {}, theme = p.theme || 'dark', bg = p.bg || '';
   var fmts = (t.formats || []).filter(function (f) { return f.id !== EDIT.fmt && !!owSavedOf(t.id, f.id, theme, bg); });
   return Promise.all(fmts.map(function (f) {
-    return owGetSaved(t.id, f.id, theme, bg).then(function (sv) { return sv && owFillerIn(t.id, sv.elements) ? (f.ratio || f.id) : null; },
+    return owGetSaved(t.id, f.id, theme, bg).then(function (sv) { return sv && owFillerIn(t.id, sv.elements) ? owSizeShort(f) : null; },
       function () { return null; });
   })).then(function (r) { return r.filter(Boolean); });
 }
@@ -1775,12 +1876,9 @@ edDownloadZip = function () {
     return v;
   }, function (e) { done(); throw e; });
 };
-/* the ZIP button, shut and reading "Drawing all sizes…" while a ZIP is drawn (the Options panel may have been drawn
-   again meanwhile: it is the button shown now that is set) */
-function owZipBtn() {
-  var body = $('edSideBody');
-  return body ? owArr(body.querySelectorAll('button')).filter(function (b) { return b.getAttribute('onclick') === 'edDownloadZip()'; })[0] || null : null;
-}
+/* the ZIP button (Download all sizes, in the editor's top bar since UX-132: S31), shut and reading "Drawing all
+   sizes…" while a ZIP is drawn */
+function owZipBtn() { return $('owZipTop'); }
 function owZipButton(busy) {
   var btn = owZipBtn();
   if (!btn) return null;
@@ -1900,15 +1998,15 @@ renderOptions = function () {
   owZipHint();
   if (window.OWSCap && typeof OWSCap.decorateOptions === 'function') OWSCap.decorateOptions();
 };
-/* UX-118: under "Download all sizes (ZIP)", what each size in it is */
+/* UX-118: what each size in Download all sizes is, said on the top bar's button (its title, and its description to a
+   screen reader: the bar has no room for the sentence) */
+var OW_ZIP_HINT = 'Every size as you made it: this one as it is on the canvas, a saved size as saved, and the others from the template with the text and picture changes made here (saved or not) and in your saved sizes.';
 function owZipHint() {
   var btn = owZipBtn();
-  if (btn && OWS.zipBusy) owZipButton(true);                   // the panel was drawn again while a ZIP is being drawn
-  if (!btn || $('owZipHint')) return;
-  var h = document.createElement('div');
-  h.id = 'owZipHint'; h.className = 'hint';
-  h.textContent = 'Every size as you made it: this one as it is on the canvas, a saved size as saved, and the others from the template with the text and picture changes made here (saved or not) and in your saved sizes.';
-  btn.parentNode.insertBefore(h, btn.nextSibling);
+  if (btn && OWS.zipBusy) owZipButton(true);
+  if (!btn || btn.getAttribute('title') === OW_ZIP_HINT) return;
+  btn.setAttribute('title', OW_ZIP_HINT);
+  btn.setAttribute('aria-description', OW_ZIP_HINT);
 }
 /* UX-134: the console's header above this frame already names the event and its date, and the platform's event card
    repeated them (with the venue and an empty grey logo square), filling a phone's first screen. It is replaced by
