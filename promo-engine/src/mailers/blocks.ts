@@ -150,9 +150,9 @@ const SECTION_BG: Field[] = [
       { value: "tile", label: "Card colour" },
       { value: "custom", label: "Custom…" },
     ],
-    hint: "Bands the whole section. “Card colour” is the deeper shade the mail already uses for tiles and cards." },
+    hint: "Colours the whole section. “Card colour” is the deeper shade the mail already uses for its cards." },
   { key: "tintColor", label: "Background colour", type: "color", showWhen: { tint: ["custom"] },
-    hint: "Hex; anything else falls back to the tinted shade, because a value that is not a colour must never reach the style attribute. Every text colour in the section is re-measured against what you pick, so a dark background flips the type light rather than hiding it." },
+    hint: "Any colour you like: the words in the section change to stay readable on it." },
 ];
 
 /** Which block types offer a section background. A block that never offered the
@@ -277,22 +277,27 @@ export function houseIconNames(texts: string[]): string[] {
 }
 const houseIconUrl = (name: string) => `${ASSET_BASE}/assets/icons/${name}-dark.png`;
 
+/* ONEWORLD PORT (B18, UX-123 / UX-128): the block names, field names and hints below are in the words an event manager
+   uses ("Headline numbers", not "Stat tiles"; "Picture", not "Image URL"); none speaks of "the API", an "endpoint",
+   a "hex" or "AA", and the colour choices read Body / Strong / Accent, with the contrast check left to work without a
+   word (the panel warns only when a colour fails it). The keys, values and defaults are the platform's own, so every
+   saved mailer renders as before. */
 export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
   banner: {
-    label: "Banner image", icon: "▭", addable: true,
+    label: "Banner picture", icon: "▭", addable: true,
     fields: [
-      { key: "url", label: "Image URL", type: "url", hint: "Must be publicly reachable — inboxes can't load local files." },
+      { key: "url", label: "Picture", type: "url", hint: "Click the picture in the mail to upload another, or paste the address of a picture that is online." },
       { key: "href", label: "Links to", type: "url" },
-      { key: "alt", label: "Alt text", type: "text" },
+      { key: "alt", label: "Picture description", type: "text", hint: "Read out to people who cannot see the picture." },
     ],
     // ONEWORLD PORT (owner C): a Banner block added in the studio starts on the event's composed mail banner.
     make: (e) => ({ url: e.bannerUrl || e.keyVisualUrl || "", href: siteUrl(e), alt: e.name }),
   },
   logobar: {
-    label: "Logo bar", icon: "✦", addable: true,
+    label: "Logo at the top", icon: "✦", addable: true,
     fields: [
-      { key: "logo", label: "Logo URL", type: "url",
-        hint: "Defaults to the portal's masthead (PNG — email clients don't render SVG). Set MAILER_ASSET_BASE so the URL is publicly reachable before a real send." },
+      { key: "logo", label: "Logo", type: "url",
+        hint: "Your portal's logo until you change it. Use a PNG or JPG: many email apps cannot show SVG." },
       { key: "size", label: "Logo size", type: "select", default: "medium",
         options: [
           { value: "small", label: "Small (150px)" },
@@ -300,9 +305,9 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
           { value: "large", label: "Large (270px)" },
           { value: "xl", label: "Extra large (360px)" },
         ],
-        hint: "Desktop cap; phones scale down automatically." },
-      { key: "logoLight", label: "Logo URL (dark backgrounds)", type: "url",
-        hint: "Light-ink masthead, used automatically when the mailer sits on a dark card." },
+        hint: "Its size on a computer; phones shrink it to fit." },
+      { key: "logoLight", label: "Logo on dark backgrounds", type: "url",
+        hint: "A light version of the logo, used by itself when the mail has a dark background." },
       { key: "href", label: "Links to", type: "url" },
       { key: "right", label: "Right-hand text", type: "text" },
     ],
@@ -313,9 +318,9 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   hero: {
-    label: "Hero band", icon: "▰", addable: true,
+    label: "Title band", icon: "▰", addable: true,
     fields: [
-      { key: "ribbon", label: "Ribbon", type: "text", hint: "Small pill above the title. Leave empty to hide." },
+      { key: "ribbon", label: "Small label above the title", type: "text", hint: "Leave it empty to hide it." },
       { key: "title", label: "Title", type: "text", rich: true },
       { key: "sub", label: "Sub-line", type: "textarea", rich: true },
       { key: "meta", label: "Date / venue line", type: "text" },
@@ -343,23 +348,22 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
   heading: {
     label: "Heading", icon: "H", addable: true,
     fields: [
-      { key: "eyebrow", label: "Eyebrow", type: "text" },
+      { key: "eyebrow", label: "Small line above the heading", type: "text" },
       { key: "text", label: "Heading", type: "text", rich: true },
       { key: "size", label: "Size (px)", type: "number" },
       { key: "caps", label: "Style", type: "select",
         options: [{ value: "no", label: "Normal heading" }, { value: "yes", label: "Section label (uppercase)" }],
-        hint: "The house mailers label sections in caps — OVERVIEW, PARTNERS, CONTACT US." },
+        hint: "ET's own mailers name their sections in capitals: OVERVIEW, PARTNERS, CONTACT US." },
       // Same three tones, same key, as the `text` block — an accent heading used to
       // mean building it out of a paragraph instead. "Default" is the ink this block
       // has always used, so a document with no `tone` does not move; every slot here
       // is one the palette already fitted against the card.
       { key: "tone", label: "Colour", type: "select", default: "ink",
         options: [
-          { value: "ink", label: "Default (full contrast)" },
+          { value: "body", label: "Body" },
+          { value: "ink", label: "Strong" },
           { value: "accent", label: "Accent" },
-          { value: "body", label: "Muted" },
-        ],
-        hint: "Every choice is contrast-checked against the mailer background." },
+        ] },
       ALIGN,
       ...SECTION_BG,
     ],
@@ -368,20 +372,19 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
   text: {
     label: "Paragraph", icon: "¶", addable: true,
     fields: [
-      { key: "text", label: "Copy", type: "textarea", rich: true,
-        hint: "One paragraph per line. **bold**, *italic*, __underline__, ~~strike~~, ==highlight==, [label](https://…)" },
+      { key: "text", label: "Words", type: "textarea", rich: true,
+        hint: "Each new line starts a paragraph." },
       { key: "size", label: "Size (px)", type: "number" },
       { key: "weight", label: "Weight", type: "select", default: "400",
         options: [{ value: "400", label: "Regular" }, { value: "500", label: "Medium" }, { value: "700", label: "Bold" }] },
       { key: "tone", label: "Colour", type: "select", default: "body",
         options: [
-          { value: "body", label: "Body (muted)" },
-          { value: "ink", label: "Strong (full contrast)" },
+          { value: "body", label: "Body" },
+          { value: "ink", label: "Strong" },
           { value: "accent", label: "Accent" },
-        ],
-        hint: "Every choice is contrast-checked against the mailer background. Pick an exact colour below to override it." },
+        ] },
       { key: "color", label: "Exact colour", type: "color",
-        hint: "Overrides Colour above with a hex you choose. Leave empty to use the contrast-checked tone instead." },
+        hint: "Used instead of the colour chosen above. Leave it empty to use that choice." },
       { key: "lh", label: "Line height", type: "select", default: "1.55",
         options: [{ value: "1.35", label: "Tight" }, { value: "1.55", label: "Normal" }, { value: "1.8", label: "Airy" }] },
       ONOFF_FIELD("italic", "Italic"),
@@ -392,7 +395,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     make: () => ({ text: "Write your copy here.", size: 15, align: "left", weight: "400", tone: "body", lh: "1.55" }),
   },
   bullets: {
-    label: "Bullet list", icon: "⋮", addable: true,
+    label: "List of points", icon: "⋮", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       { key: "style", label: "Layout", type: "select", default: "plain",
@@ -406,7 +409,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
           { value: "cards", label: "One card per point" },
           { value: "tiles", label: "Solid colour tiles" },
         ],
-        hint: "Ticked lists and tinted panels are the reference treatment for 'who should attend' / 'key discussion points'." },
+        hint: "Ticked lists and tinted panels suit “Who should attend” and “Key topics”." },
       { key: "marker", label: "Marker", type: "select", default: "",
         showWhen: { style: ["plain", "ticks", "two", "panel", "panelTwo", "cards"] },
         options: [
@@ -434,19 +437,19 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { key: "variant", label: "Style", type: "select", default: "solid",
         options: [{ value: "solid", label: "Solid fill" }, { value: "outline", label: "Outline (no fill)" }] },
       { key: "bg", label: "Button colour", type: "color",
-        hint: "Hex. Empty uses the mailer's accent." },
+        hint: "Leave it empty to use the mail's accent colour." },
       { key: "ink", label: "Label colour", type: "color",
-        hint: "Hex. Empty works it out from the fill. Either way it is nudged until it clears AA, so the label can never end up unreadable." },
+        hint: "Leave it empty to use one that reads well on the button. Any colour is adjusted until it is easy to read." },
       { key: "border", label: "Border colour", type: "color",
-        showWhen: { variant: ["outline"] }, hint: "Hex. Empty follows the button colour." },
+        showWhen: { variant: ["outline"] }, hint: "Leave it empty to match the button colour." },
       { key: "borderWidth", label: "Border width (px)", type: "number",
         showWhen: { variant: ["outline"] }, default: "2" },
       { key: "radius", label: "Corner radius (px)", type: "number", default: "8",
-        hint: "0 square · 8 house default · 99 pill. Outlook on Windows squares every button off regardless." },
+        hint: "0 is square, 8 is the usual, 99 is fully round. Outlook on Windows always shows square corners." },
       { key: "size", label: "Size", type: "select", default: "md",
         options: [{ value: "sm", label: "Small" }, { value: "md", label: "Medium" }, { value: "lg", label: "Large" }] },
       { key: "fontSize", label: "Text size (px)", type: "number", default: "14" },
-      ONOFF_FIELD("full", "Full width", "Spans the column — the usual mobile-first CTA."),
+      ONOFF_FIELD("full", "Full width", "Makes the button as wide as the mail, which is easiest to tap on a phone."),
       ONOFF_FIELD("caps", "Uppercase label"),
       ALIGN,
     ],
@@ -454,7 +457,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       variant: "solid", bg: "", ink: "", radius: 8, size: "md", fontSize: 14, full: "no", caps: "no" }),
   },
   meta: {
-    label: "Date / venue tiles", icon: "▤", addable: true,
+    label: "Date and venue", icon: "▤", addable: true,
     fields: [
       { key: "items", label: "Tiles", type: "list", itemFields: [{ key: "label", label: "Label" }, { key: "value", label: "Value" }] },
       ...SECTION_BG,
@@ -468,7 +471,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   stats: {
-    label: "Stat tiles", icon: "◫", addable: true,
+    label: "Headline numbers", icon: "◫", addable: true,
     fields: [
       { key: "style", label: "Layout", type: "select", default: "band",
         options: [
@@ -479,7 +482,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
           { value: "plain", label: "No fill, accent figures" },
           { value: "rules", label: "Underlined figures" },
         ],
-        hint: "From the ET reference mailers. One row on desktop, two per row on a phone." },
+        hint: "Layouts from ET's own mailers. One row on a computer, two per row on a phone." },
       { key: "title", label: "Heading", type: "text", rich: true, hint: "Optional label above the figures — e.g. SUMMIT HIGHLIGHTS." },
       YESNO_FIELD("icons", "Icon above each figure", "The conference layout puts a glyph over every number.", "no"),
       { key: "items", label: "Stats", type: "list", itemFields: [{ key: "value", label: "Value" }, { key: "label", label: "Label" }] },
@@ -488,7 +491,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     make: (e) => ({ style: "band", title: "", items: e.stats.slice(0, 4) }),
   },
   speakers: {
-    label: "Speaker grid", icon: "⊞", addable: true,
+    label: "Speakers", icon: "⊞", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       // The heading is pre-filled by several templates ("Also speaking", "Speakers")
@@ -504,7 +507,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
           { value: "tiles", label: "Colour tiles (no photos)" },
           { value: "checker", label: "Checkerboard (photo / name tiles)" },
         ],
-        hint: "Layouts from the ET reference mailers. Falls back to colour tiles when the API has no portraits." },
+        hint: "Layouts from ET's own mailers. A speaker without a photo shows a colour tile instead." },
       // "feature" is two-up by definition and crops square, so neither of these
       // would change anything there.
       { ...COLS(4), showWhen: { style: ["cards", "circle", "rows", "tiles"] },
@@ -522,14 +525,14 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         showWhen: { style: ["cards"] } },
       { ...YESNO_FIELD("showSocial", "Show social icons", "Only handles you fill in appear. LinkedIn seeds from the event; the rest are yours.", "no"),
         showWhen: { style: ["cards"] } },
-      { key: "max", label: "Max speakers", type: "number",
-        hint: "How many may appear. Extras beyond this are not rendered." },
+      { key: "max", label: "Most speakers shown", type: "number",
+        hint: "The most that can appear in this section." },
       { key: "pick", label: "Speakers on this event", type: "multipick", source: "speakers",
-        hint: "Every speaker this event has. Tick up to the max above; untick to remove." },
+        hint: "Tick who appears in the mail." },
       { key: "note", label: "Note below", type: "text", rich: true },
       ...SECTION_BG,
       { key: "items", label: "Speakers", type: "list",
-        itemFields: [{ key: "name", label: "Name" }, { key: "role", label: "Designation" }, { key: "company", label: "Company" }, { key: "photo", label: "Photo URL", type: "url" },
+        itemFields: [{ key: "name", label: "Name" }, { key: "role", label: "Designation" }, { key: "company", label: "Company" }, { key: "photo", label: "Photo", type: "url" },
           { key: "bio", label: "Bio line", type: "textarea" },
           { key: "linkedin", label: "LinkedIn", type: "url" }, { key: "facebook", label: "Facebook", type: "url" }, { key: "x", label: "X", type: "url" }] },
     ],
@@ -539,13 +542,13 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   speaker: {
-    label: "Speaker spotlight", icon: "★", addable: true,
+    label: "One speaker, large", icon: "★", addable: true,
     fields: [
-      { key: "eyebrow", label: "Eyebrow", type: "text" },
+      { key: "eyebrow", label: "Small line above the heading", type: "text" },
       { key: "name", label: "Name", type: "text" },
       { key: "role", label: "Designation", type: "text" },
       { key: "company", label: "Company", type: "text" },
-      { key: "photo", label: "Photo URL", type: "url" },
+      { key: "photo", label: "Photo", type: "url" },
       { key: "link", label: "Profile link", type: "url" },
       ...SECTION_BG,
     ],
@@ -555,10 +558,10 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     },
   },
   sponsors: {
-    label: "Partner logos", icon: "◈", addable: true,
+    label: "Partners", icon: "◈", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true,
-        hint: "Sits above everything. With Show tier label on and partners from more than one tier, each tier ALSO gets its own label below this." },
+        hint: "Shown above the logos. With “Show tier label” on and partners in more than one tier, each tier also gets its own label." },
       { key: "style", label: "Layout", type: "select", default: "cards",
         options: [
           { value: "cards", label: "White logo cards" },
@@ -573,13 +576,13 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         hint: "Groups partners under their own tier name (Gold, Silver, …) when they span more than one. One tier, or none set, shows the Heading above instead." },
       { ...YESNO_FIELD("showName", "Show partner name under logo"), showWhen: { style: ["cards", "bordered", "plain"] } },
       { ...COLS(5), showWhen: { style: ["cards", "bordered", "plain"] } },
-      { key: "max", label: "Max partners", type: "number",
-        hint: "How many may appear. Extras beyond this are not rendered." },
+      { key: "max", label: "Most partners shown", type: "number",
+        hint: "The most that can appear in this section." },
       { key: "pick", label: "Partners on this event", type: "multipick", source: "sponsors",
-        hint: "Every partner this event has. Tick up to the max above; untick to remove." },
+        hint: "Tick who appears in the mail." },
       ...SECTION_BG,
       { key: "items", label: "Partners", type: "list",
-        itemFields: [{ key: "title", label: "Name" }, { key: "logo", label: "Logo URL", type: "url" },
+        itemFields: [{ key: "title", label: "Name" }, { key: "logo", label: "Logo", type: "url" },
           { key: "url", label: "Links to", type: "url" }, { key: "tier", label: "Tier", type: "text" }] },
     ],
     make: (e) => {
@@ -595,7 +598,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     },
   },
   sessions: {
-    label: "Agenda list", icon: "☰", addable: true,
+    label: "Agenda", icon: "☰", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       { key: "style", label: "Layout", type: "select", default: "cards",
@@ -611,14 +614,14 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { key: "align", label: "Heading alignment", type: "select", default: "left",
         options: [{ value: "left", label: "Left" }, { value: "center", label: "Centred, with a rule" }] },
       { key: "day1Text", label: "First day, intro line", type: "textarea", showWhen: { style: ["days"] },
-        hint: "Sits under the day heading, as the conference reference has. Yours to write — the agenda API carries no day summary." },
+        hint: "A line under the day heading. Write your own: the agenda has no summary of the day." },
       { key: "day2Text", label: "Second day, intro line", type: "textarea", showWhen: { style: ["days"] } },
-      { key: "max", label: "Max sessions", type: "number",
-        hint: "How many may appear. Extras beyond this are not rendered." },
+      { key: "max", label: "Most sessions shown", type: "number",
+        hint: "The most that can appear in this section." },
       YESNO_FIELD("showTime", "Show time"),
       YESNO_FIELD("showWho", "Show speakers"),
       { key: "pick", label: "Sessions on this event", type: "multipick", source: "sessions",
-        hint: "Every session this event has. Tick up to the max above; untick to remove." },
+        hint: "Tick which sessions appear in the mail." },
       ...SECTION_BG,
       { key: "items", label: "Sessions", type: "list",
         itemFields: [{ key: "day", label: "Day" }, { key: "time", label: "Time" }, { key: "title", label: "Session", type: "textarea" }, { key: "who", label: "Speakers", type: "textarea" }] },
@@ -629,7 +632,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   lozenges: {
-    label: "Statement lines", icon: "▰", addable: true,
+    label: "Big statement lines", icon: "▰", addable: true,
     fields: [
       { key: "items", label: "Lines", type: "list", rich: true,
         itemFields: [{ key: "text", label: "Line", type: "text" }],
@@ -650,7 +653,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         ] },
       { key: "size", label: "Text size (px)", type: "number", default: "26" },
       { key: "radius", label: "Corner radius (px)", type: "number", default: "99",
-        hint: "99 is a pill. Outlook on Windows squares every band off regardless." },
+        hint: "99 is fully round. Outlook on Windows always shows square corners." },
       ONOFF_FIELD("caps", "Uppercase"),
       ...SECTION_BG,
     ],
@@ -660,14 +663,14 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   pricing: {
-    label: "Price tiers", icon: "▤", addable: true,
+    label: "Ticket prices", icon: "▤", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       { key: "align", label: "Heading alignment", type: "select", default: "left",
         options: [{ value: "left", label: "Left" }, { value: "center", label: "Centred, with a rule" }] },
       { key: "currency", label: "Currency symbol", type: "text", default: "\u20b9" },
       { key: "items", label: "Tiers", type: "list",
-        hint: "There is no pricing endpoint on the ET APIs, so these are yours to fill — nothing here is taken from the event.",
+        hint: "Ticket prices are not stored with the event, so type them here. Nothing here is filled in for you.",
         itemFields: [
           { key: "name", label: "Tier" },
           { key: "price", label: "Price" },
@@ -690,11 +693,11 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   navbar: {
-    label: "Nav bar", icon: "\u2261", addable: true,
+    label: "Row of links", icon: "\u2261", addable: true,
     fields: [
-      { key: "logo", label: "Logo URL", type: "url" },
+      { key: "logo", label: "Logo", type: "url" },
       { key: "items", label: "Links", type: "list",
-        hint: "The APIs carry no site navigation, so these are yours. Each one defaults to the event microsite so none is a dead link.",
+        hint: "Type the links you want. Each one opens the event's site until you change it, so none leads nowhere.",
         itemFields: [{ key: "label", label: "Label" }, { key: "href", label: "Links to", type: "url" }] },
       { key: "label", label: "Button", type: "text" },
       { key: "href", label: "Button link", type: "url" },
@@ -712,7 +715,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   mosaic: {
-    label: "Photo mosaic", icon: "\u25a6", addable: true,
+    label: "Photo collage", icon: "\u25a6", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       // Same control, same words and same rule as `sessions` and `pricing` — a
@@ -728,8 +731,8 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         options: [{ value: "left", label: "Left" }, { value: "right", label: "Right" }] },
       ...SECTION_BG,
       { key: "items", label: "Photos", type: "list",
-        hint: "Four works best \u2014 a 2\u00d72 grid. Seeded from the event's own speaker photos; replace the URLs with your own artwork.",
-        itemFields: [{ key: "url", label: "Image URL", type: "url" }, { key: "alt", label: "Alt text" }] },
+        hint: "Four works best (two rows of two). They start as the event's speaker photos: click a photo in the mail to swap it.",
+        itemFields: [{ key: "url", label: "Photo", type: "url" }, { key: "alt", label: "Photo description" }] },
     ],
     // Seeded from REAL event artwork rather than blank frames, so the block says
     // something the moment it lands and the sender edits rather than fills.
@@ -740,14 +743,14 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   social: {
-    label: "Social row", icon: "\u25cf", addable: true,
+    label: "Social media links", icon: "\u25cf", addable: true,
     fields: [
       { key: "title", label: "Line above", type: "text", rich: true },
       { key: "tone", label: "Icon colour", type: "select", default: "auto",
         options: [{ value: "auto", label: "Automatic" }, { value: "light", label: "Light (for dark bands)" }, { value: "dark", label: "Dark (for light bands)" }] },
       { key: "size", label: "Icon size (px)", type: "number", default: "20" },
       { key: "items", label: "Accounts", type: "list",
-        hint: "The APIs carry no social handles, so these are yours \u2014 they default to the portal's own pages.",
+        hint: "Type your event's social pages. They start as your portal's own pages.",
         itemFields: [{ key: "network", label: "facebook / x / linkedin / instagram / youtube" }, { key: "href", label: "Links to", type: "url" }] },
       ...SECTION_BG,
     ],
@@ -758,7 +761,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   quote: {
-    label: "Pull quote", icon: "\u275D", addable: true,
+    label: "Quote", icon: "\u275D", addable: true,
     fields: [
       { key: "text", label: "Quote", type: "textarea", rich: true },
       { key: "name", label: "Said by", type: "text" },
@@ -781,7 +784,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         options: [{ value: "square", label: "Square" }, { value: "round", label: "Rounded" }, { value: "circle", label: "Circle" }],
         showWhen: { style: ["panel"] } },
       { key: "panelBg", label: "Panel colour", type: "color",
-        hint: "Hex. Empty uses the mailer's own primary. Every line on the panel is re-measured against whatever you pick.",
+        hint: "Leave it empty to use the mail's main colour. The words on the panel change to stay readable on whatever you pick.",
         showWhen: { style: ["panel", "card"] } },
       YESNO_FIELD("mark", "Quotation mark", "The oversized \u201D above the quote, as the reference has.", "yes"),
       { key: "size", label: "Quote size", type: "select", default: "15",
@@ -793,11 +796,11 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       photoWidth: "230", shape: "square", panelBg: "", mark: "yes", size: "15", align: "left" }),
   },
   image: {
-    label: "Inline image", icon: "⬚", addable: true,
+    label: "Picture", icon: "⬚", addable: true,
     fields: [
-      { key: "url", label: "Image URL", type: "url" },
+      { key: "url", label: "Picture", type: "url" },
       { key: "href", label: "Links to", type: "url" },
-      { key: "alt", label: "Alt text", type: "text" },
+      { key: "alt", label: "Picture description", type: "text", hint: "Read out to people who cannot see the picture." },
       { key: "width", label: "Width (px)", type: "number" },
       // `ALIGN`'s first option is Left, which is where a display:block image has
       // always sat, so a document with no `align` renders the same bytes.
@@ -810,7 +813,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       // something a layout may depend on.
       { key: "radius", label: "Corners", type: "select", default: "",
         options: [
-          { value: "", label: "House default (10px)" },
+          { value: "", label: "Usual (10px)" },
           { value: "0", label: "Square" },
           { value: "12", label: "Rounded" },
           { value: "999", label: "Circle" },
@@ -820,7 +823,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     make: () => ({ url: "", href: "", alt: "", width: INNER }),
   },
   features: {
-    label: "Icon tiles", icon: "◇", addable: true,
+    label: "Points with icons", icon: "◇", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       // 2/3/4 only: one per row is a paragraph with a picture over it, not a grid,
@@ -832,7 +835,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { ...ALIGN, default: "center" },
       ...SECTION_BG,
       { key: "items", label: "Tiles", type: "list",
-        hint: "The ET APIs expose no iconography, so the artwork is yours — these seed from the house icon set. Choose a house glyph or upload your own; a tile with no icon still prints its words.",
+        hint: "Each tile starts with one of ET's own icons. Choose another or upload your own; a tile without an icon still shows its words.",
         itemFields: [
           { key: "icon", label: "Icon", type: "icon" },
           { key: "title", label: "Title" },
@@ -861,7 +864,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
   // this seeds the SHAPE only and every card is filled in by hand — the same way
   // `pricing` seeds tiers without prices.
   resources: {
-    label: "Resource cards", icon: "▢", addable: true,
+    label: "Cards with links", icon: "▢", addable: true,
     fields: [
       { key: "title", label: "Heading", type: "text", rich: true },
       { key: "cols", label: "Per row", type: "select", default: "3",
@@ -870,9 +873,9 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       { ...ALIGN, default: "left" },
       ...SECTION_BG,
       { key: "items", label: "Resources", type: "list",
-        hint: "One card per resource. The APIs carry no downloads, so the cover image and link are yours: upload or paste a cover, the title, and where it opens.",
+        hint: "One card per report, guide or video: its cover picture, its title and the page it opens.",
         itemFields: [
-          { key: "image", label: "Cover image URL", type: "url" },
+          { key: "image", label: "Cover picture", type: "url" },
           { key: "title", label: "Title", type: "textarea" },
           { key: "url", label: "Links to", type: "url" },
         ] },
@@ -883,7 +886,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   circles: {
-    label: "Circle callouts", icon: "◯", addable: true,
+    label: "Points in circles", icon: "◯", addable: true,
     fields: [
       { key: "size", label: "Circle size", type: "select", default: "medium",
         options: [{ value: "small", label: "Small" }, { value: "medium", label: "Medium" }, { value: "large", label: "Large" }] },
@@ -895,7 +898,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
         ] },
       ...SECTION_BG,
       { key: "items", label: "Circles", type: "list",
-        hint: "Two to four. Text does not flow around a curve in email HTML, so a caption longer than the circle holds is shrunk a step and then clipped — keep them to a few words.",
+        hint: "Two to four. Email cannot bend words around a circle, so a long one is made smaller and then cut: keep each to a few words.",
         itemFields: [{ key: "text", label: "Text", type: "textarea" }] },
     ],
     // Seeded from the event's own headline figures where it has them — a circle
@@ -911,7 +914,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     },
   },
   ribbon: {
-    label: "Edition flag", icon: "⚑", addable: true,
+    label: "Edition label", icon: "⚑", addable: true,
     fields: [
       { key: "flag", label: "Flag", type: "text", hint: "e.g. “4th edition”. Empty and the tab is not drawn at all." },
       { key: "hashtag", label: "Hashtag", type: "text", hint: "Sits at the right-hand end of the same row. Empty and nothing prints there." },
@@ -926,7 +929,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     }),
   },
   contacts: {
-    label: "Contact rows", icon: "✆", addable: true,
+    label: "Contact people", icon: "✆", addable: true,
     fields: [
       { key: "title", label: "Section label", type: "text", rich: true, hint: "Shown as a caps section label above the rows." },
       { key: "items", label: "Contacts", type: "list",
@@ -941,9 +944,9 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
       ],
     }),
   },
-  divider: { label: "Divider", icon: "—", addable: true, fields: [], make: () => ({}) },
+  divider: { label: "Line", icon: "—", addable: true, fields: [], make: () => ({}) },
   spacer: {
-    label: "Spacer", icon: "␣", addable: true,
+    label: "Space", icon: "␣", addable: true,
     fields: [{ key: "height", label: "Height (px)", type: "number" }],
     make: () => ({ height: 24 }),
   },
@@ -951,9 +954,9 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
     label: "Footer", icon: "▁", addable: true,
     fields: [
       { key: "portal", label: "Portal name", type: "text",
-        hint: "Auto-filled from the selected portal — appears before the address." },
+        hint: "Filled in from your portal; shown before the address." },
       { key: "unsubscribe", label: "Unsubscribe link", type: "text",
-        hint: "The ESP token the house mailers use. Leave as-is unless your send tool differs." },
+        hint: "The code your email tool replaces with each reader's unsubscribe link. Leave it as it is unless your email tool uses another." },
       { key: "address", label: "Registered address", type: "textarea" },
     ],
     make: (e) => ({
@@ -965,7 +968,7 @@ export const BLOCK_SCHEMAS: Record<BlockType, BlockSchema> = {
   },
   html: {
     label: "Custom HTML", icon: "</>", addable: true,
-    fields: [{ key: "html", label: "HTML", type: "textarea", hint: "Dropped in as-is. Keep it table-based to stay email-safe." }],
+    fields: [{ key: "html", label: "HTML", type: "textarea", hint: "Put into the mail exactly as you write it. Lay it out with tables so every email app shows it." }],
     make: () => ({ html: "<p>Custom HTML</p>" }),
   },
 };
@@ -2525,7 +2528,7 @@ export function renderDoc(doc: MailerDoc, event: EventEntity, opts: { editor?: b
     // for by a placeholder either (there is no block to select or edit).
     if (!b || typeof b !== "object" || typeof (b as any).type !== "string") return "";
     const html = renderBlock(b, ctx);
-    return html || (opts.editor ? placeholderRow(b, ctx) : "");
+    return html ? (opts.editor ? tagPictures(html, b) : html) : (opts.editor ? placeholderRow(b, ctx) : "");
   }).join("");
   const html = emailPage(ctx, { subject: doc.subject, preheader: doc.preheader, rows });
   // Belt and braces: the generated markup contains no scripts by construction and
@@ -2534,7 +2537,40 @@ export function renderDoc(doc: MailerDoc, event: EventEntity, opts: { editor?: b
     .replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, "")
     .replace(/<\s*\/?\s*script\b[^>]*>/gi, "");
   // The download carries no editor hooks: block ids and in-place edit handles both go.
-  return opts.editor ? swept : swept.replace(/ data-(block-id|ed)="[^"]*"/g, "");
+  return opts.editor ? swept : swept.replace(/ data-(block-id|ed|img)="[^"]*"/g, "");
+}
+
+/** ONEWORLD PORT (B18, UX-123: "click a picture to swap it"). In the studio's render each picture of a block carries
+ *  data-img="blockId|path", the prop it shows ("url", "logo", "photo", "items.2.photo", …), so a click on it can put
+ *  another picture in that very prop. It is found by address rather than written at each of the dozen places a block
+ *  draws an <img>: a picture's src is its prop's value, escaped, or for an ET picture the same file through the
+ *  resizing service (resizeUrl), so both forms are compared by the part they share. The house icons (a feature
+ *  tile's glyph, the social icons) are left alone: an icon is chosen from the icon library in the settings, not
+ *  swapped for a photo. Only the studio's render is tagged; the download strips data-img with the other hooks. */
+const PICTURE_PROPS = ["url", "logo", "logoLight", "photo", "image"];
+const PICTURE_ITEM_PROPS = ["photo", "logo", "image", "url"];
+export function pictureKey(src: string): string {
+  const s = String(src || "").replace(/&amp;/g, "&").trim();
+  const et = /^https?:\/\/[^/]*etb2bimg\.com\/(?:imgv2\/[^/]+\/)?files\/(.+)$/i.exec(s);
+  return et ? "et:" + et[1] : s;
+}
+export function tagPictures(html: string, b: Block): string {
+  const q: any = (b && b.props) || {};
+  const byKey = new Map<string, string>();
+  const add = (v: any, path: string) => {
+    if (typeof v !== "string" || !v.trim()) return;
+    const k = pictureKey(safeUrl(v) || v);
+    if (k && !byKey.has(k)) byKey.set(k, path);
+  };
+  for (const k of PICTURE_PROPS) add(q[k], k);
+  if (Array.isArray(q.items)) q.items.forEach((it: any, i: number) => {
+    if (it && typeof it === "object") for (const k of PICTURE_ITEM_PROPS) add(it[k], `items.${i}.${k}`);
+  });
+  if (!byKey.size) return html;
+  return html.replace(/<img\b([^>]*?)\ssrc="([^"]*)"/gi, (m: string, pre: string, src: string) => {
+    const path = byKey.get(pictureKey(src));
+    return path && !/\sdata-img=/.test(pre) ? `<img${pre} data-img="${esc(b.id + "|" + path)}" src="${src}"` : m;
+  });
 }
 
 /** Does this block render nothing? Used by the studio placeholder and by the AI
@@ -2555,10 +2591,26 @@ export function makeBlock(type: BlockType, event: EventEntity): Block {
   return blockOf(type, BLOCK_SCHEMAS[type].make(event));
 }
 
-/** Block palette for the studio (type + label + icon + field schema). */
-export function blockPalette(): { type: BlockType; label: string; icon: string; addable: boolean; fields: Field[] }[] {
+/** ONEWORLD PORT (B18, UX-123): the group each block is offered under in the studio's "+ Add a section", in the
+ *  words of the people who send these mails: Text, Pictures, People, Event details, Footer. The rare ones go under
+ *  "More"; Custom HTML, which only someone who writes email code should touch, under "More" as advanced. A block
+ *  missing here is offered under More (blockPalette), never left out. */
+export type BlockGroup = "text" | "pictures" | "people" | "event" | "footer" | "more" | "advanced";
+export const BLOCK_GROUPS: Record<BlockType, BlockGroup> = {
+  heading: "text", text: "text", bullets: "text", quote: "text", button: "text", hero: "text",
+  banner: "pictures", image: "pictures", mosaic: "pictures", logobar: "pictures",
+  speakers: "people", speaker: "people", sponsors: "people", contacts: "people",
+  meta: "event", sessions: "event", stats: "event", pricing: "event",
+  footer: "footer", social: "footer",
+  lozenges: "more", navbar: "more", features: "more", resources: "more", circles: "more", ribbon: "more",
+  divider: "more", spacer: "more",
+  html: "advanced",
+};
+
+/** Block palette for the studio (type + label + icon + group + field schema). */
+export function blockPalette(): { type: BlockType; label: string; icon: string; group: BlockGroup; addable: boolean; fields: Field[] }[] {
   return (Object.keys(BLOCK_SCHEMAS) as BlockType[]).map((type) => ({
-    type, label: BLOCK_SCHEMAS[type].label, icon: BLOCK_SCHEMAS[type].icon,
+    type, label: BLOCK_SCHEMAS[type].label, icon: BLOCK_SCHEMAS[type].icon, group: BLOCK_GROUPS[type] || "more",
     addable: BLOCK_SCHEMAS[type].addable, fields: BLOCK_SCHEMAS[type].fields,
   }));
 }

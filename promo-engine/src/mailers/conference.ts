@@ -72,7 +72,8 @@ export const conferenceMailer: Mailer = {
   id: "mailer.conference",
   group: "Conference",
   label: "Full conference programme",
-  description: "Photo hero with two CTAs, the line-up, the numbers band, agenda, partners and price tiers — the long-form event send.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The full programme: a photo title band with two buttons, the speakers, the headline numbers, the agenda, the partners and ticket prices.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM,

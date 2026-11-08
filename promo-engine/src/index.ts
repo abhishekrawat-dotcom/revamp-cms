@@ -3,7 +3,7 @@
    Source: ~/Downloads/Social Post Generator/app/src (the owner's platform), copied unchanged except where a
    comment says "ONEWORLD PORT". */
 export { ALL_MAILERS, getMailer, buildDoc, buildMailerCatalog, mailerFileName, renderDoc } from "./mailers/registry.ts";
-export { BLOCK_SCHEMAS, COPY_FIELDS, makeBlock, blockIsEmpty, renderCtx, migrateSponsorTiers, blockPalette, sanitiseFragment } from "./mailers/blocks.ts";
+export { BLOCK_SCHEMAS, COPY_FIELDS, makeBlock, blockIsEmpty, renderCtx, migrateSponsorTiers, blockPalette, sanitiseFragment, BLOCK_GROUPS, tagPictures, pictureKey } from "./mailers/blocks.ts";
 export { relayout } from "./mailers/relayout.ts";
 export { importHtml } from "./mailers/importhtml.ts";
 /* ONEWORLD PORT: the link helpers too, so lib/promo-track.js's click redirect checks a link with the very functions that

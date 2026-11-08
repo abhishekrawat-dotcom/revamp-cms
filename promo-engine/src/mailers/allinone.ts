@@ -30,7 +30,8 @@ export const allInOneMailer: Mailer = {
   id: "mailer.all-in-one",
   group: "All in one",
   label: "Everything",
-  description: "Every section this event has data for — overview, numbers, topics, audience, speakers, a spotlight, agenda, partners and contacts — in one mail to cut back from.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "Every section this event has details for (overview, numbers, topics, audience, speakers, one speaker in focus, agenda, partners and contacts) in one mail, to trim down from.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM, ...BANNER_PARAMS,

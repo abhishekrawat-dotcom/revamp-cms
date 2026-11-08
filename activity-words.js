@@ -93,6 +93,8 @@
       }
       return own(POST_OTHER, a) ? POST_OTHER[a] : '';
     }
+    /* a picture uploaded into a mail (lib/promo-mailer.js handlePicture) is not yet a change to any saved mailer */
+    if (/^Mailer picture\b/.test(d) && a === 'updated') return 'Mailer picture added';
     if (/\bmailer\b/i.test(d)) return own(MAILER_ACTIONS, a) ? MAILER_ACTIONS[a] : '';
     return own(PROMOTIONS_OTHER, a) ? PROMOTIONS_OTHER[a] : '';
   }

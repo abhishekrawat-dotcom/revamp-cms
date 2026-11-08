@@ -107,7 +107,8 @@
 //                          GET /api/promo/analytics, GET /api/promo/analytics/all
 //     lib/promo-mailer.js  GET /api/promo/mailers, /api/promo/mailer/* except previews and banner (open, render,
 //                          save, download, AI …),
-//                          GET/POST/DELETE /api/promo/icons (Promotions → Mailers, the platform's mailer studio)
+//                          GET/POST/DELETE /api/promo/icons, POST /api/promo/mailer/picture (Promotions → Mailers,
+//                          the platform's mailer studio)
 //     lib/promo-social.js  Promotions → Social posts (the platform's post templates): GET /api/promo/social/catalog,
 //                          GET/POST/DELETE /api/promo/social/art, POST /api/promo/social/art/psd and /art/default,
 //                          POST /api/promo/social/html, GET/POST /api/promo/social/layout, GET /api/promo/social/layouts,
@@ -12223,6 +12224,7 @@ var ROUTES = {
   'GET /api/promo/icons': promoMailer('handleIcons'),
   'POST /api/promo/icons': promoMailer('handleIconUpload'),
   'DELETE /api/promo/icons': promoMailer('handleIconDelete'),
+  'POST /api/promo/mailer/picture': promoMailer('handlePicture'),
   'GET /api/promo/social/catalog': promoSocial('handleCatalog'),
   'GET /api/promo/social/art': promoSocial('handleArt'),
   'POST /api/promo/social/art': promoSocial('handleArtUpload'),

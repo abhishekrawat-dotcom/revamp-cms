@@ -42,7 +42,7 @@ var pStart = py.indexOf('PATCHES = [');
 var pBlock = py.slice(pStart, py.indexOf('\n]\n', pStart));
 var patchRe = /\(r'''([\s\S]*?)''',\s*r'''([\s\S]*?)''',\s*(\d+),/g, pm, patches = [];
 while ((pm = patchRe.exec(pBlock))) patches.push({ old: pm[1], neu: pm[2], times: Number(pm[3]) });
-check('twenty-seven patches, P1 to P27', patches.length === 27, patches.length);
+check('forty-nine patches, P1 to P49', patches.length === 49, patches.length);
 patches.forEach(function (p, i) {
   check('P' + (i + 1) + ': the platform\'s text is gone', count(studio, p.old) === 0, count(studio, p.old));
   check('P' + (i + 1) + ': its replacement is there ' + p.times + ' time(s)', count(studio, p.neu) === p.times, count(studio, p.neu));
@@ -70,9 +70,10 @@ check('P12: an available mailer opens as before', pickOf(MS2, 'mailer.a', null) 
 var order = ['class="ow-bar"', 'id="prodNav"', 'data-v="dash"', 'data-v="events"', 'id="content"'].map(function (s) { return page.indexOf(s); });
 check('ow-bar, the nav and its two buttons come before the content, in that order', order.every(function (n, i) { return n !== -1 && (i === 0 || n > order[i - 1]); }), order);
 check('one nav', count(page, 'id="prodNav"') === 1);
-check('oneworld.js is the last script, after the studio', page.indexOf('src="promo-studio/mailer-studio.js"') !== -1 &&
+check('oneworld.js comes after the studio, and the easy layout (oneworld-mail-easy.js, B18) is the last script', page.indexOf('src="promo-studio/mailer-studio.js"') !== -1 &&
   page.indexOf('src="promo-studio/mailer-studio.js"') < page.indexOf('src="promo-studio/oneworld.js"') &&
-  page.indexOf('<script', page.indexOf('src="promo-studio/oneworld.js"')) === -1);
+  page.indexOf('src="promo-studio/oneworld.js"') < page.indexOf('src="promo-studio/oneworld-mail-easy.js"') &&
+  page.indexOf('<script', page.indexOf('src="promo-studio/oneworld-mail-easy.js"')) === -1);
 
 /* ---- oneworld.css ---- */
 var cssRules = owCss.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -190,8 +191,8 @@ check('Refresh / Try again skip the team cache once', team.sb.owUrl('/api/analyt
   team.sb.owUrl('/api/analytics') === '/api/promo/analytics/all');
 check('an event in the address wins over scope=all', load('?event=x&scope=all').sb.OW_SCOPE === 'event');
 check('the subline and the empty-state button per scope',
-  ev.sb.owDashSubline() === 'Opens and clicks for every mailer of this event downloaded or copied from Oneworld.' && ev.sb.owDashPickLabel() === 'Make a mailer →' &&
-  team.sb.owDashSubline() === 'Opens and clicks for every event\'s mailers downloaded or copied from Oneworld.' && team.sb.owDashPickLabel() === 'Pick an event →');
+  ev.sb.owDashSubline() === 'Opens and clicks for this event\'s mailers that were downloaded or copied.' && ev.sb.owDashPickLabel() === 'Make a mailer →' &&
+  team.sb.owDashSubline() === 'Opens and clicks for every event\'s mailers that were downloaded or copied.' && team.sb.owDashPickLabel() === 'Pick an event →');
 ev.sb.owNavLabels(); team.sb.owNavLabels();
 check('the nav reads Dashboard / Mailers on an event', ev.navEvents.textContent === 'Mailers' && ev.navEvents.title === 'This event\'s mailers', ev.navEvents);
 check('UX-139: the team\'s page has no nav of its own (its body is marked ow-team, which hides the row), and its nav is left as it is',
@@ -205,8 +206,8 @@ var TOASTS = {
     untracked: ['Downloaded m.html — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000, 'success']
   },
   copy: {
-    tracked: ['HTML copied — paste into your ESP', undefined, 'success'],
-    off: ['HTML copied — paste into your ESP', undefined, 'success'],
+    tracked: ['HTML copied — paste it into the tool you send your mails from', undefined, 'success'],
+    off: ['HTML copied — paste it into the tool you send your mails from', undefined, 'success'],
     untracked: ['HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000, 'success']
   },
   zip: {
@@ -558,9 +559,9 @@ check('colour-scheme only on fields and side panes, never the page or the canvas
 var dl = load('?event=x');
 dl.sb.MAILERS = { mailers: [], event: {} };
 dl.sb.owRenderPage();
-check('"Download all (.zip)" is the console\'s secondary button, as Open studio beside it',
-  dl.els.content.innerHTML.indexOf('<button class="btn alt sm" onclick="downloadAllMailers()">Download all (.zip)</button>') !== -1 &&
-  dl.els.content.innerHTML.indexOf('<button class="btn alt sm" onclick="openMailer()">Open studio</button>') !== -1 &&
+check('"Download all mailers (ZIP)" is the console\'s secondary button, as Edit a mailer beside it (UX-132: one vocabulary)',
+  dl.els.content.innerHTML.indexOf('<button class="btn alt sm" onclick="downloadAllMailers()">Download all mailers (ZIP)</button>') !== -1 &&
+  dl.els.content.innerHTML.indexOf('<button class="btn alt sm" onclick="openMailer()">Edit a mailer</button>') !== -1 &&
   dl.els.content.innerHTML.indexOf('class="btn sm" onclick="downloadAllMailers()"') === -1);
 /* .btn.alt (0,2,0) beats the platform's .secnav button (0,1,1), which turned a plain .btn into grey words */
 var platformCss = read('promo-studio/mailer-studio.css');
@@ -839,7 +840,7 @@ check('UX-138: the fold keeps the grid\'s columns when open, and is gone when sh
   cssRules.indexOf('.mgrid .ow-award-cards[hidden]{display:none}') !== -1);
 check('the catalog is whole again after the cards are drawn', cards.sb.MAILERS.mailers.length === 7);
 check('mailerArt is Oneworld\'s: a picture slot named tpl:<id>, the sections as its tooltip', cardsHtml.indexOf('<div class="art ow-prev" data-prev="tpl:mailer.announcement" data-label="Announcement" title="Sections in this mail: Header · Hero" onclick="owPrevOpen(this)" onkeydown="owPrevKeyDown(event,this)"><span class="sk"></span></div>') !== -1);
-check('… and the platform\'s card around it (its needs line on an unavailable one)', cardsHtml.indexOf('<div class="warn">needs speakers (2+)</div>') !== -1 && cardsHtml.indexOf('<div class="mcard dis">') !== -1);
+check('… and the platform\'s card around it (its needs line on an unavailable one)', cardsHtml.indexOf('<div class="warn">Needs speakers (2+)</div>') !== -1 && cardsHtml.indexOf('<div class="mcard dis">') !== -1);
 var savedHtml = cards.sb.renderEvSaved();
 check('savedCardHtml is Oneworld\'s: the version\'s own slot, keyed by its saved time', savedHtml.indexOf('data-prev="save:s1" data-ver="' + (T0 - 1000) + '" data-label="First go"') !== -1 &&
   savedHtml.indexOf('data-prev="save:s2" data-ver="' + (T0 - 5000) + '"') !== -1);
@@ -928,7 +929,7 @@ pending.push(settle(30).then(function () {
   check('a past event: the real mail with its chip, no Example badge', rem.innerHTML === '<span class="ow-chip">Past event</span>' && frameOf(rem).srcdoc === '<html>REMINDER</html>', rem.innerHTML);
   var ag = pv.slot('tpl:mailer.agenda');
   check('no picture for it: the slot hides and the card keeps its needs line', ag.classList.contains('ow-none') && ag.innerHTML === '' && !frameOf(ag) &&
-    /<div class="warn">needs agenda sessions<\/div>/.test(pv.content.innerHTML));
+    /<div class="warn">Needs agenda sessions<\/div>/.test(pv.content.innerHTML));
   check('a saved version: its own mail', frameOf(pv.slot('save:s1')) && frameOf(pv.slot('save:s1')).srcdoc === '<html>SAVED s1</html>');
 
   /* the whole mail of an example: what it lacks, where to add it, and no way to open it */
@@ -1407,7 +1408,7 @@ check('UX-134: no hashtag and a live site with no address: an empty line, which 
 });
 
 /* ---- UX-133: an empty dashboard while nothing is recorded says so, and names who to ask ---- */
-check('UX-133: the "not being saved" note names who to ask', studio.indexOf('Ask your Oneworld admin to turn on performance tracking.') !== -1 && studio.indexOf('whoever set up') === -1);
+check('UX-133: the "not being saved" note names who to ask', studio.indexOf('Ask your ETB2B EventSphere admin to turn on performance tracking.') !== -1 && studio.indexOf('whoever set up') === -1);
 var paintSrc = studioFn('paintAnalytics');
 check('UX-133: the platform\'s dashboard asks owDashNotRecorded first when it has nothing to show', !!paintSrc && paintSrc.indexOf('${empty?owDashNotRecorded(a)||`<div class="card an-empty">') !== -1);
 function paintEmpty(scope, data, mailers) {

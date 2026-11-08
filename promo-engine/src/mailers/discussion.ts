@@ -16,7 +16,8 @@ export const discussionMailer: Mailer = {
   id: "mailer.discussion",
   group: "Announcement",
   label: "Key Discussion Points",
-  description: "Agenda themes and audience profile as ticked panels, with the numbers band and speaker preview.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The key topics and who should attend as ticked panels, with the headline numbers and a first look at the speakers.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM, ...BANNER_PARAMS,
@@ -41,7 +42,7 @@ export const discussionMailer: Mailer = {
   },
   requires(event) {
     const has = event.keyPoints.length || event.whoShouldAttend.length || event.whyJoin.length;
-    return { ok: !!has, missing: has ? [] : ["key discussion points / who should attend"] };
+    return { ok: !!has, missing: has ? [] : ["key topics or who should attend"] };
   },
   build(event, params) {
     const nSpeakers = Number(params.speakerCount ?? 4);

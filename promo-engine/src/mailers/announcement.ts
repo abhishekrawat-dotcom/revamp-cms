@@ -13,7 +13,8 @@ export const announcementMailer: Mailer = {
   id: "mailer.announcement",
   group: "Announcement",
   label: "Event Announcement",
-  description: "Full announcement send: banner, hero, date/venue, why attend, speaker preview, partners, CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The full announcement: the banner, the title, date and venue, why to attend, a first look at the speakers, the partners and a Register button.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM, ...BANNER_PARAMS,

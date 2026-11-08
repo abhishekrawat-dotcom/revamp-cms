@@ -124,15 +124,16 @@ export const decryptMailer: Mailer = {
   id: "mailer.decrypt",
   group: "Programme",
   label: "Programme teaser",
-  description: "Edition flag, banner, circle callouts, a jury checkerboard and a colour band — the “more to come” send for an awards or council programme.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "An edition label, the banner, points in circles, the jury in a checkerboard and a colour band: the “more to come” mail for an awards or council programme.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM,
       ...BANNER_PARAMS,
-      { key: "flag", label: "Edition flag", type: "text", default: flagFor(event),
+      { key: "flag", label: "Edition label", type: "text", default: flagFor(event),
         hint: "The edition the APIs parse out of the event name. Events with no edition fall back to the date, which this design shows nowhere else. Empty hides the tab." },
       { key: "topicsTitle", label: "Callouts heading", type: "text", default: "At a glance" },
-      { key: "callouts", label: "Circle callouts", type: "textarea", default: calloutsFrom(event).join("\n"),
+      { key: "callouts", label: "Points in circles", type: "textarea", default: calloutsFrom(event).join("\n"),
         hint: "One per line, a few words each — text does not wrap around a curve. Seeded from the event's own figures because the APIs carry no programme milestones or deadlines; replace them with the real ones." },
       { key: "juryTitle", label: "Grid heading", type: "text", default: "",
         hint: "Empty uses what the event calls these people itself (their roster group). The APIs expose no jury, so nothing here claims one." },
@@ -159,7 +160,7 @@ export const decryptMailer: Mailer = {
     // The checkerboard is the spine of this design. One person is not a
     // checkerboard, so it takes at least two before the mail is offered.
     const ok = event.speakers.length >= 2;
-    return { ok, missing: ok ? [] : ["speakers (2+) for the jury grid"] };
+    return { ok, missing: ok ? [] : ["at least 2 speakers for the jury grid"] };
   },
   build(event, params) {
     const nJury = Number(params.juryCount ?? 8);

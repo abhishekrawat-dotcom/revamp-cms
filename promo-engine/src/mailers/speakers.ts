@@ -16,7 +16,8 @@ export const speakersMailer: Mailer = {
   id: "mailer.speakers",
   group: "Speaker",
   label: "Speaker Announcement",
-  description: "Line-up send: a uniform speaker grid (hand-picked or top-N), with date/venue and CTA.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "The speakers: a grid of the speakers you choose (or the first ones), with the date, the venue and a Register button.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM, ...BANNER_PARAMS,
@@ -33,7 +34,7 @@ export const speakersMailer: Mailer = {
     ];
   },
   requires(event) {
-    return { ok: event.speakers.length >= 2, missing: event.speakers.length >= 2 ? [] : ["speakers (2+)"] };
+    return { ok: event.speakers.length >= 2, missing: event.speakers.length >= 2 ? [] : ["at least 2 speakers"] };
   },
   build(event, params) {
     const list = selectSpeakers(event, params);
@@ -76,7 +77,8 @@ export const speakerSpotlightMailer: Mailer = {
   id: "mailer.speaker-spotlight",
   group: "Speaker",
   label: "Speaker Spotlight",
-  description: "One speaker, front and centre: big photo, role, a session/quote line, plus the rest of the line-up.",
+  // ONEWORLD PORT (B18, UX-123 / UX-128): the card's words are plain, never "send", "CTA", "top-N" or "hard CTA".
+  description: "One speaker in focus: a large photo, their role, a line about their session, and the other speakers below.",
   params(event) {
     return [
       THEME_PARAM, ACCENT_PARAM,
