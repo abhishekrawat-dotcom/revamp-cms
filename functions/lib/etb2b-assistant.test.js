@@ -211,8 +211,9 @@ function fakeBrain(name, script) {
   check('S.1 no literal line separator inside the source (it ends a regex literal in older engines)', !/[\u2028\u2029]/.test(SRC) && !/[\u2028\u2029]/.test(DASH_SRC) && !/[\u2028\u2029]/.test(PREFILL_SRC));
   check('S.1 a page may load it (a top-level .js the server sends)', require('./access').isServableFile('etb2b-assistant.js') === true);
   check('S.1 nothing a person or a model typed becomes markup here', SRC.indexOf('innerHTML') === -1 && SRC.indexOf('insertAdjacentHTML') === -1 && SRC.indexOf('document.write') === -1);
-  check('S.1 the only route it reads itself is an event\'s conversation (GET), and it never deletes, publishes, approves or sends',
-    (SRC.match(/'\/api\/[^']*'/g) || []).every(function (u) { return u === '\'/api/chat/history?eventId=\''; }) && !/'DELETE'|\/publish|unpublish|\/approve|\/payment/i.test(SRC), SRC.match(/'\/api\/[^']*'/g));
+  /* and the one it writes to is a page error's QA note (owner decision 11, lib/ai-learn.js) */
+  check('S.1 the only routes it calls itself are an event\'s conversation (GET) and a page error\'s QA note, and it never deletes, publishes, approves or sends',
+    (SRC.match(/'\/api\/[^']*'/g) || []).every(function (u) { return u === '\'/api/chat/history?eventId=\'' || u === '\'/api/ai-qa/note\''; }) && !/'DELETE'|\/publish|unpublish|\/approve|\/payment/i.test(SRC), SRC.match(/'\/api\/[^']*'/g));
   check('S.1 the scripts it may load on demand are this site\'s own two', (SRC.match(/loadScript\('([^']+)'/g) || []).sort().join() === "loadScript('/editor-store.js',loadScript('/portal-picker.js'");
   ['editor-store.js', 'portal-picker.js'].forEach(function (f) { check('S.1 …and ' + f + ' is served', require('./access').isServableFile(f) === true); });
   check('S.1 every sentence it says is in one TEXT table (the rename batch changes one place), and none says Revamp',
@@ -226,7 +227,8 @@ function fakeBrain(name, script) {
   var P0 = await shellPage();
   var T = P0.A._test;
   var rp = T.readPlace;
-  check('S.2 the ten pages', same(P0.A.PAGES.slice().sort(), ['activity-log', 'console', 'create-event', 'dashboard', 'editor', 'mailer-performance', 'portal-review', 'promotions', 'registrations', 'review']));
+  /* the eleventh, What people ask ETB2B AI (ai-report.html), is the approvers' report of owner decision 11 */
+  check('S.2 the eleven pages', same(P0.A.PAGES.slice().sort(), ['activity-log', 'ai-report', 'console', 'create-event', 'dashboard', 'editor', 'mailer-performance', 'portal-review', 'promotions', 'registrations', 'review']));
   check('S.2 the console: its event and section', same(rp('console', { search: '?event=qa-main', hash: '#content/speakers' }), { page: 'console', eventId: 'qa-main', tab: 'content/speakers' }));
   check('S.2 …#dashboard, #activity, #settings/seo, #design/editor are sections; anything else is none', same(['#dashboard', '#activity', '#settings/seo', '#design/editor', '#x', '#content/', '#content/Speakers', '#../x'].map(function (h) {
     return rp('console', { search: '?event=a1', hash: h }).tab; }), ['dashboard', 'activity', 'settings/seo', 'design/editor', '', '', '', '']));
@@ -235,8 +237,8 @@ function fakeBrain(name, script) {
   check('S.2 Promotions: its tab, only the three it has', rp('promotions', { search: '?event=a1&tab=mailers' }).tab === 'mailers' && rp('promotions', { search: '?event=a1&tab=sales' }).tab === '');
   check('S.2 review, registrations, the activity log of an event: their event', ['review', 'registrations', 'activity-log'].every(function (pg) { return rp(pg, { search: '?event=qa-main' }).eventId === 'qa-main'; }) &&
     rp('activity-log', { search: '' }).eventId === '');
-  check('S.2 the dashboard, Create Event, mailer performance and portal review are never one event\'s, whatever the address says',
-    ['dashboard', 'create-event', 'mailer-performance', 'portal-review'].every(function (pg) { return rp(pg, { search: '?event=qa-main' }).eventId === ''; }));
+  check('S.2 the dashboard, Create Event, mailer performance, portal review and the AI report are never one event\'s, whatever the address says',
+    ['dashboard', 'create-event', 'mailer-performance', 'portal-review', 'ai-report'].every(function (pg) { return rp(pg, { search: '?event=qa-main' }).eventId === ''; }));
   check('S.2 an event id that is not one is dropped', ['?event=QA', '?event=-x', '?event=a/b', '?event=a%20b', '?event=' + new Array(90).join('a'), '?event=%E0%A4'].every(function (q) { return rp('console', { search: q }).eventId === ''; }));
   check('S.2 an unknown page is no place', rp('settings', {}) === null && rp('', {}) === null && rp('__proto__', {}) === null);
   check('S.2 a published site, a preview, a shared link, a template, the sign-in page and a framed studio are never places for it',

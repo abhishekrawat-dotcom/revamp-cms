@@ -55,6 +55,14 @@
      carry(eventId, recs, text)      keeps pictures (and the words) for that event's site editor (IndexedDB + a pointer)
      takeCarry(eventId)              -> Promise<{ text, files, expected } | null>   the editor's side, read once
 
+   QA NOTES (owner decision 11). On a page that carries the assistant, for a signed-in team member, a script error
+   (window "error") or a promise nobody handled ("unhandledrejection") is sent once to POST /api/ai-qa/note with the
+   page, the event, the window's size and, within two minutes of one, the last message to ETB2B AI and what kind of
+   answer it got (functions/lib/ai-learn.js keeps it for the approvers' report). Never a loop and never in the way:
+   each fault once per page load, at most QA_NOTE_MAX a page, nothing at all after the server says no or cannot be
+   reached, and this reporter catches its own every failure. Another site's hidden "Script error.", the browser's
+   ResizeObserver warning and a browser add-on's errors are not notes.
+
    Where it never appears: inside a frame (the Promotions studios), on a published site, a preview or a shared link
    (/e/, /s/, /preview/), on a page with no mount, or for someone signed out. The pages that carry it say so with
    one attribute; functions/lib/assistant-pages.test.js holds that list.
@@ -77,10 +85,10 @@
   var PAGE_LABELS = {
     'dashboard': 'Events dashboard', 'console': 'Event console', 'create-event': 'Create Event', 'editor': 'Site editor',
     'promotions': 'Promotions', 'review': 'Review', 'activity-log': 'Activity log', 'registrations': 'Registrations',
-    'mailer-performance': 'Mailer performance', 'portal-review': 'Portal review'
+    'mailer-performance': 'Mailer performance', 'portal-review': 'Portal review', 'ai-report': 'What people ask ETB2B AI'
   };
   /* pages that are never about one event, whatever their address says */
-  var NO_EVENT = { dashboard: 1, 'create-event': 1, 'mailer-performance': 1, 'portal-review': 1 };
+  var NO_EVENT = { dashboard: 1, 'create-event': 1, 'mailer-performance': 1, 'portal-review': 1, 'ai-report': 1 };
   var EVENT_ID = /^[a-z0-9][a-z0-9-]{0,79}$/;
   var CONSOLE_TAB = /^(?:dashboard|activity|(?:content|settings|design)\/[a-z][a-z-]{0,39})$/;
   var PROMO_TABS = { posts: 1, 'site-posts': 1, mailers: 1 };
@@ -796,6 +804,7 @@
   var editChanges = [], lastAnswered = '';
   function noteAnswer(name, r) {
     if (!r || typeof r !== 'object' || isHandoff(r)) return;
+    qaAnswered(name, r);
     lastAnswered = name;
     if (name !== 'edit') return;
     if (r.kind === 'edit' && (r.status === 'applied' || r.status === 'partly')) editChanges.push(now());
@@ -845,6 +854,7 @@
   function send(text, o) {
     o = o || {};
     var p = place();
+    qaAsked(text);
     var which = brains.dash ? 'dash' : 'edit';
     if (canEdit()) {
       try { which = adapter && isFn(adapter.route) ? adapter.route(text, o.attachments || [], p) : route(text, o.attachments || [], p); } catch (e) { which = 'edit'; }
@@ -1038,6 +1048,71 @@
     return chatRef;
   }
 
+  /* ---------- QA notes: page errors (owner decision 11) ---------- */
+  var QA_NOTE_URL = '/api/ai-qa/note', QA_NOTE_MAX = 5, QA_LAST_MS = 2 * 60 * 1000;
+  var qa = { listening: false, ready: false, off: false, sent: 0, seen: {}, held: [], last: null };
+  /* what was last asked here and what kind of answer came, so a fault right after an AI change says so */
+  function qaAsked(text) { qa.last = { asked: oneLine(text, 300), did: '', at: now() }; }
+  function qaAnswered(name, r) { if (qa.last && r && typeof r === 'object') qa.last.did = oneLine(name + ':' + str(r.kind || (r.action && r.action.type) || ''), 24); }
+  function qaSkip(msg, src) {
+    if (!msg || /^Script error\.?$/i.test(msg)) return true;           // another site's script: the browser hides what happened
+    if (/ResizeObserver loop/i.test(msg)) return true;                  // the browser's own harmless warning
+    return /^(?:chrome|moz|safari|safari-web|ms-browser)-extension:/i.test(str(src));   // a browser add-on's error
+  }
+  function qaSend(note) {
+    if (qa.off || qa.sent >= QA_NOTE_MAX) return;
+    qa.sent += 1;
+    var auth = root.RevampAuth;
+    if (!auth || !isFn(auth.authedFetch)) { qa.off = true; return; }
+    root.setTimeout(function () {
+      try {
+        Promise.resolve(auth.authedFetch(QA_NOTE_URL, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(note) }))
+          .then(function (res) { if (!res || !res.ok) qa.off = true; }, function () { qa.off = true; });
+      } catch (e) { qa.off = true; }
+    }, 0);
+  }
+  /* one fault, as the page saw it: kept until the sign-in is known, then sent once */
+  function qaNote(msg, src, lineNo, col, stack) {
+    try {
+      msg = oneLine(msg, 300);
+      if (qa.off || qaSkip(msg, src)) return;
+      var key = msg + '|' + str(src).split('?')[0] + '|' + (lineNo || 0);
+      if (own(qa.seen, key)) return;
+      qa.seen[key] = 1;
+      var p = place(), w = 0, h = 0;
+      try { w = Math.round(root.innerWidth || 0); h = Math.round(root.innerHeight || 0); } catch (e) { w = h = 0; }
+      var note = { kind: 'page-error', error: msg, source: str(src).split('?')[0].slice(0, 300), line: +lineNo || 0, col: +col || 0,
+        stack: str(stack).slice(0, 1500), page: p.page, eventId: p.eventId, tab: p.tab, screen: w + 'x' + h };
+      if (qa.last && now() - qa.last.at < QA_LAST_MS) { note.asked = qa.last.asked; note.did = qa.last.did; }
+      if (qa.ready) qaSend(note);
+      else if (qa.held.length < QA_NOTE_MAX) qa.held.push(note);
+    } catch (e) { /* a note is never worth a fault of its own */ }
+  }
+  function onPageError(e) {
+    if (!e) return;
+    var err = e.error;
+    qaNote(e.message || (err && err.message), e.filename, e.lineno, e.colno, err && err.stack);
+  }
+  function onRejection(e) {
+    var r = e ? e.reason : null;
+    var msg = r && typeof r === 'object' ? (r.message || r.error || '') : str(r);
+    qaNote('Unhandled rejection: ' + (str(msg) || 'no reason given'), '', 0, 0, r && r.stack);
+  }
+  function qaListen() {
+    if (qa.listening || !isFn(root.addEventListener)) return;
+    qa.listening = true;
+    root.addEventListener('error', onPageError);
+    root.addEventListener('unhandledrejection', onRejection);
+  }
+  /* signed in: what was held goes; signed out: nothing is sent, now or later */
+  function qaSignedIn(yes) {
+    if (!yes) { qa.off = true; qa.held = []; return; }
+    qa.ready = true;
+    var held = qa.held;
+    qa.held = [];
+    held.forEach(qaSend);
+  }
+
   /* ---------- start: after the sign-in check, on a page that carries the mount ---------- */
   var authOk = false;
   function whenEditorReady() {
@@ -1053,6 +1128,7 @@
     })();
   }
   function afterAuth(signedIn) {
+    qaSignedIn(signedIn);
     if (!signedIn) { refused = true; settleReady(null); return; }
     authOk = true;
     var p = place();
@@ -1069,6 +1145,7 @@
     var page = str(mountEl.getAttribute('data-rv-assistant'));
     if (!own(PAGE_LABELS, page)) { warn('unknown place "' + page + '": not mounted'); refused = true; settleReady(null); return; }
     if (framed() || forbiddenPath(root.location)) { refused = true; settleReady(null); return; }
+    qaListen();
     /* The event is read once, here. The conversation shown, the one each message is stored in and what "this event"
        means are then that event's for as long as the panel is up, even when the page rewrites its address (the
        activity log's Event filter does): a message is never stored in another conversation than the one on screen. */
@@ -1140,7 +1217,8 @@
     _test: { readPlace: readPlace, framed: framed, forbiddenPath: forbiddenPath, checkFile: checkFile, classify: classify, cleanName: cleanName,
       prepare: prepare, dataBytes: dataBytes, mailHelp: mailHelp, POLICIES: POLICIES, UNDO_RE: UNDO_RE, KEEP_MS: KEEP_MS,
       HANDOFF_PREFIX: HANDOFF_PREFIX, HANDOFF_INDEX: HANDOFF_INDEX, CARRY_PREFIX: CARRY_PREFIX, CARRY_INDEX: CARRY_INDEX, CARRY_POINTER: CARRY_POINTER,
-      onPrefillApplied: onPrefillApplied, CE_INPUTS: CE_INPUTS }
+      onPrefillApplied: onPrefillApplied, CE_INPUTS: CE_INPUTS,
+      qa: function () { return qa; }, qaNote: qaNote, onPageError: onPageError, onRejection: onRejection, qaSignedIn: qaSignedIn, QA_NOTE_MAX: QA_NOTE_MAX }
   };
   root.RevampAssistant = A;
 

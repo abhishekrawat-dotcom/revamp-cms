@@ -337,7 +337,9 @@ check('UX-007 Registrations: an account menu to sign out, and no event switcher'
    the pair before Preview: the editor, the events list and the logs put it last. */
 var PAIR = '<span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>\\s*(?:<!--[^>]*-->\\s*)?<span data-rv-account></span>';
 var HEADERS = { 'edit-event.html': CONSOLE, 'custom_editor.html': EDITOR, 'marketing.html': PROMO, 'audience-registrations.html': REG,
-  'activity-log.html': ALOG, 'mailer-performance.html': MP, 'review.html': REVIEW, 'Event_Listing.html': LISTING, 'create-event.html': WIZ, 'portal-review.html': read('portal-review.html') };
+  'activity-log.html': ALOG, 'mailer-performance.html': MP, 'review.html': REVIEW, 'Event_Listing.html': LISTING, 'create-event.html': WIZ, 'portal-review.html': read('portal-review.html'),
+  /* the approvers' report of what people ask ETB2B AI (owner decision 11) has the same bar */
+  'ai-report.html': read('ai-report.html') };
 var badEnd = Object.keys(HEADERS).filter(function (f) {
   var page = HEADERS[f];
   var after = f === 'create-event.html' ? '\\s*<button class="icon-btn" id="btn-close"' : '\\s*(?:</span>|</div>)?\\s*(?:</div>\\s*)?</header>';

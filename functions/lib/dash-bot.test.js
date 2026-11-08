@@ -374,7 +374,8 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   /* "portal" (switch the dashboard's portal) is the owner's addition of 3 Nov 2026 (plan §17) */
   /* "handoff" (the site editor's own ETB2B AI answers a message about the page) is the owner's addition of 5 Nov 2026 */
   check('A.6 the kind enum is exact', JSON.stringify(S.properties.kind.enum) === JSON.stringify(['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'portal', 'handoff']));
-  check('A.6 text and kind are required', JSON.stringify(S.required) === JSON.stringify(['kind', 'text']));
+  /* intent: the kind of request in a few words, for the record of what people ask (lib/ai-learn.js, owner decision 11) */
+  check('A.6 text, kind and intent are required', JSON.stringify(S.required) === JSON.stringify(['kind', 'text', 'intent']) && S.properties.intent.type === 'STRING');
   check('A.6 promo.post is the engine\'s 9 post templates', JSON.stringify(S.properties.promo.properties.post.enum.filter(Boolean)) === JSON.stringify(engine.ALL_TEMPLATES.map(function (t) { return t.id; })) && engine.ALL_TEMPLATES.length === 9);
   check('A.6 promo.mailer is the engine\'s 18 mailers', JSON.stringify(S.properties.promo.properties.mailer.enum.filter(Boolean)) === JSON.stringify(engine.ALL_MAILERS.map(function (t) { return t.id; })) && engine.ALL_MAILERS.length === 18);
   var postsSrc = fs.readFileSync(path.join(__dirname, '..', '..', 'promo-posts.js'), 'utf8');

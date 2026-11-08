@@ -220,6 +220,13 @@
     });
   }
 
+  /* the window's size, "1440x900", for a QA note about this turn (functions/lib/ai-learn.js): what was on screen;
+     '' when the browser does not say */
+  function screenNow() {
+    var w = 0, h = 0;
+    try { w = Math.round(root.innerWidth || 0); h = Math.round(root.innerHeight || 0); } catch (e) { return ''; }
+    return w > 0 && h > 0 ? w + 'x' + h : '';
+  }
   /* How a turn ended, for the person's history and ETB2B AI's memory: undone, failed, stopped, or done with a
      choice. A turn kept in an event's conversation is reported there (eventId). Resolves once the server has
      answered (or could not be reached), never rejects. */
@@ -228,6 +235,8 @@
     var body = { turnId: turnId, status: status };
     if (note) body.note = str(note).slice(0, 300);
     if (turnEvents[turnId]) body.eventId = turnEvents[turnId];
+    var size = screenNow();
+    if (size) body.screen = size;
     return api('/api/dash-bot/turn', 'POST', body, keepalive).then(function () { return true; },
       function () { return false; /* the history line is a nicety; the page already did it */ });
   }
@@ -332,6 +341,8 @@
     var recs = isArr(o.attachments) ? o.attachments.filter(function (r) { return r && typeof r === 'object'; }) : [];
     var handedFrom = o.handedFrom === 'edit' ? 'edit' : '';
     var body = { message: message, view: viewNow(), place: here };
+    var size = screenNow();
+    if (size) body.screen = size;
     var A = shell();
     var wired = recs.length && A && isFn(A.wireAttachments) ? A.wireAttachments(recs) : [];
     if (wired.length) body.attachments = wired;

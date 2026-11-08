@@ -120,6 +120,8 @@
 //                          GET /api/dash-bot/history (your own conversation; ?all=1 everyone's, for the approvers).
 //                          It reads the same events GET /api/events lists, through liveEventDocs() — see
 //                          dashBotHelpers() for what it is handed.
+//     lib/ai-learn.js      the record of what people ask ETB2B AI (both chats write it), GET /api/ai-report and
+//                          POST /api/ai-report/resolve (the approvers' report), POST /api/ai-qa/note (a page error).
 //     lib/ai-hero.js       POST /api/event/ai-hero: the first hero picture of an event started from the dashboard's
 //                          ETB2B AI, made once Create Event has created the event (one per event, a small daily
 //                          allowance per person) — see aiHeroHelpers() for what it is handed.
@@ -778,6 +780,8 @@ function chatResponseSchema(payload) {
       kind: { type: 'STRING', enum: payload.handedFrom ? ['edit', 'reply', 'undo'] : ['edit', 'reply', 'undo', 'handoff'] },
       summary: { type: 'STRING' },
       goTo: { type: 'STRING', enum: CHAT_GO_TO.slice(), description: 'the Content page or the Forms panel the owner is sent to for what this chat cannot do; "" for none' },
+      /* the kind of request, for the record of what people ask (lib/ai-learn.js); required, so strict mode counts no new optional field */
+      intent: { type: 'STRING', description: 'the KIND of request in 2 to 4 plain lowercase words, e.g. "shorten title", "swap banner", "add speakers section"; never a name, number or date' },
       design: { type: 'OBJECT', properties: designProps },   // no `required` — a partial patch, any subset
       textEdits: {
         type: 'ARRAY',
@@ -792,7 +796,7 @@ function chatResponseSchema(payload) {
         }
       }
     },
-    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'goTo']
+    required: ['kind', 'summary', 'design', 'textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'goTo', 'intent']
   };
   /* STRICT MODE. Claude's structured output refuses a schema with more than 24 optional parameters — a property its object does not list as required, counted over every object — and this one had 32,
      so every chat message was refused once and asked again in plain mode (QA, 3 Nov 2026). So every field of a
@@ -957,6 +961,17 @@ function chatRateOk(uid, now) {
   return true;
 }
 function chatLine(text, max) { return String(text || '').replace(/\s+/g, ' ').trim().slice(0, max || 120); }
+/* The record of what people ask ETB2B AI (lib/ai-learn.js, owner decision 11): one entry for each answer the model gave
+   here, written after the answer has gone, so it never changes or holds up an answer. o: { answer, parsed, turnId,
+   pictureRefused } or { code } for an answer that failed. */
+function learnEdit(req, fb, decoded, payload, eventId, eventData, o) {
+  try {
+    var L = require('./ai-learn'), f = o.answer ? L.editFacts(o.answer, o) : { did: { kind: 'error', target: '' }, outcome: 'error', rule: o.code || 'error', fallback: 'question' };
+    L.recordTurn(fb, { brain: 'edit', decoded: decoded, eventId: eventId, eventName: eventData && eventData.name, page: 'editor', intent: o.parsed && o.parsed.intent,
+      fallback: f.fallback, words: payload.instruction, did: f.did, outcome: f.outcome, rule: f.rule, turnId: o.turnId, handedFrom: payload.handedFrom,
+      ua: req.headers['user-agent'], screen: payload.screen });
+  } catch (err) { console.error('chat-edit: the turn was not recorded — ' + (err && err.message)); }
+}
 
 function handleChatEdit(req, res) {
   withAdminBody(req, res, BODY_LIMITS.ai, function (fb, decoded, payload) {
@@ -1015,7 +1030,7 @@ function handleChatEdit(req, res) {
       var images = seen.images.concat(view);
       return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
     }).then(function (r) {
-      if (r.error) return sendAiFailure(res, r);
+      if (r.error) { sendAiFailure(res, r); return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: r.code || 'ai-unavailable' }); }
       var parsed = r.parsed;
       /* Not about this page (plan §5b): the browser sends it to the events side, whose turn is the one kept. So
          nothing is kept here and nothing goes in the History, and nothing on the page changes. A message handed
@@ -1160,7 +1175,8 @@ function handleChatEdit(req, res) {
         skipped.push(chatPicture.sentence('notMadePart', { name: lostNames.join(', ') }));
       }
       if (!summary && !hasChange && !goTo) {
-        return sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
+        sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
+        return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: 'ai-bad-output', parsed: parsed });
       }
       var kind = pictureReply || lostReply ? 'reply' : parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
       if (!summary && pictureAsk) summary = 'I\'m making a new picture for “' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”; it takes about half a minute.';
@@ -1172,7 +1188,8 @@ function handleChatEdit(req, res) {
       if (kind !== 'edit') answer.design = {};
       /* the picture is made in a second step from the stored turn, so it needs an event to keep the turn under */
       if (kind === 'edit' && pictureAsk && userRef) answer.newPicture = chatPicture.answerOf(pictureAsk);
-      if (!userRef) return sendJson(res, 200, answer);
+      var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply };
+      if (!userRef) { sendJson(res, 200, answer); return learnEdit(req, fb, decoded, payload, eventId, eventData, learnt); }
       /* kept under the person who asked: a reply is finished; a change is "applying" until the editor says how it went */
       var now = new Date().toISOString(), turnRef = userRef.collection('turns').doc();
       var focus = payload.focus && typeof payload.focus === 'object' ? chatLine(payload.focus.name, 80) : '';
@@ -1189,6 +1206,7 @@ function handleChatEdit(req, res) {
       ]).then(function () {
         answer.turnId = turnRef.id;
         sendJson(res, 200, answer);
+        learnEdit(req, fb, decoded, payload, eventId, eventData, Object.assign(learnt, { turnId: turnRef.id }));
         if (kind !== 'edit') logActivity(fb, eventId, decoded, 'ai-chat', 'Asked ETB2B AI: “' + chatLine(turn.question) + '”' + (kind === 'undo' ? ' — undo' : ' — answered'), { area: 'site' });
       }, function (err) {
         /* the answer is not withheld because it could not be kept: the owner is told the conversation was not saved */
@@ -1206,6 +1224,7 @@ function handleChatEdit(req, res) {
           }
         }
         sendJson(res, 200, answer);
+        learnEdit(req, fb, decoded, payload, eventId, eventData, learnt);
       });
     }).catch(function (err) { sendStepFailure(res, err, err && err.status === 404 ? 404 : 500, 'The chat could not answer. Please try again.'); });
   });
@@ -1262,6 +1281,8 @@ function handleChatTurn(req, res) {
       if ((status === 'applied' || status === 'partly') && !patch.done.length) status = patch.status = 'failed';
       return ref.update(patch).then(function () {
         sendJson(res, 200, { turnId: turnId, status: status });
+        /* what became of the change, in the record (lib/ai-learn.js): an undo is also a QA note */
+        try { require('./ai-learn').recordOutcome(fb, { brain: 'edit', turnId: turnId, status: status, decoded: decoded, notDone: patch.notDone, ua: req.headers['user-agent'], screen: body.screen }); } catch (e) { console.error('chat turn: the outcome was not recorded — ' + (e && e.message)); }
         if (was.status === status) return;
         var q = '“' + chatLine(was.question) + '”';
         /* Stop on a question or an "undo that" (kind reply or undo): nothing on the page changed, and its "Asked
@@ -12031,6 +12052,17 @@ function aiHeroRoute(handler) {
   };
 }
 
+/* lib/ai-learn.js (the approvers' report "What people ask ETB2B AI", marking its QA notes resolved, and the page
+   errors the assistant's pages send) is handed this file's helpers on each call, like the modules above; a module
+   that fails to load costs only its own routes inModule()'s 503. */
+function aiLearnRoute(handler) {
+  var run = inModule('ai-learn', handler);
+  return function (req, res) {
+    try { require('./ai-learn').wire({ withAdmin, withAdminBody, sendJson, sendFailure, approvalsConfig, BODY_LIMITS }); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+}
+
 /* the same 42 bytes as lib/promo-track.js PIXEL (a test checks): a mail must never show a broken image, even
    when that module is missing from a deployment */
 var TRACK_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -12066,6 +12098,9 @@ var ROUTES = {
   'POST /api/dash-bot': dashBot('handleChat'),                // ETB2B AI on the events dashboard (lib/dash-bot.js)
   'POST /api/dash-bot/turn': dashBot('handleTurn'),
   'GET /api/dash-bot/history': dashBot('handleHistory'),
+  'GET /api/ai-report': aiLearnRoute('handleReport'),         // what people ask ETB2B AI, for the approvers (lib/ai-learn.js)
+  'POST /api/ai-report/resolve': aiLearnRoute('handleResolve'),
+  'POST /api/ai-qa/note': aiLearnRoute('handleNote'),
   'POST /api/extract-brief': handleExtractBrief,
   'POST /api/ingest-source': handleIngestSource,
   'GET /api/et/portals': handleEtPortals,

@@ -364,11 +364,20 @@ async function main() {
   S.act('live-summit', 'delete');
   check('…clicking it opens nothing, sends nothing, and says who can', !S.dialog() && S.calls('DELETE', /./).length === 0 &&
     S.toasts().indexOf('Only an approver (boss@timesinternet.in) can delete or restore an event.') !== -1, S.toasts());
+  /* What people ask ETB2B AI (owner decision 11) is for approvers only: the server refuses anybody else
+     (ai-learn.test.js), and the menu does not offer it to them */
+  check('…⋯ → Reports has no "What people ask ETB2B AI" for someone who is not an approver', !S.$('menu-ai-report') && !!S.$('menu-activity-log'));
   S.view('deleted');
   check('…Restore in Deleted Events is the same, and the banner says an approver can restore them', S.menu('gone-one')[0][2] === true && /an approver can restore them/.test(S.$('special-banner').textContent));
   S = page({ approvers: ['Asha.Rao@timesinternet.in'] });
   await flush();
   check('an approver (any case) gets Delete in red', S.menu('live-summit').filter(function (x) { return x[0] === 'delete'; })[0][2] === false && / danger"/.test(S.$('rowmenu-row-live-summit').innerHTML));
+  check('…and ⋯ → Reports links "What people ask ETB2B AI" (ai-report.html) after the Activity log',
+    !!S.$('menu-ai-report') && S.$('menu-ai-report').getAttribute('href') === 'ai-report.html' && /What people ask ETB2B AI/.test(S.$('menu-ai-report').textContent) &&
+    S.$('more-menu').innerHTML.indexOf('menu-activity-log') < S.$('more-menu').innerHTML.indexOf('menu-ai-report'));
+  S = page({});
+  await flush();
+  check('…while config/approvals names nobody, everyone approves (lib/access.js), so everyone gets the link', !!S.$('menu-ai-report'));
   /* the approvers could not be read: both stay offered, the server decides, and its 403 is said and corrects the menu */
   S = page({ approvers: ['boss@timesinternet.in'], approvalsFail: true });
   await flush();

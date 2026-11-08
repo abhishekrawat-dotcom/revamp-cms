@@ -36,7 +36,9 @@ var PAGES = [
   { file: 'activity-log.html', page: 'activity-log', id: 'rv-assistant', keep: null },
   { file: 'audience-registrations.html', page: 'registrations', id: 'rv-assistant', keep: null },
   { file: 'mailer-performance.html', page: 'mailer-performance', id: 'rv-assistant', keep: null },
-  { file: 'portal-review.html', page: 'portal-review', id: 'rv-assistant', keep: '.pr-actions' }
+  { file: 'portal-review.html', page: 'portal-review', id: 'rv-assistant', keep: '.pr-actions' },
+  /* the approvers' report of what people ask ETB2B AI (owner decision 11) */
+  { file: 'ai-report.html', page: 'ai-report', id: 'rv-assistant', keep: null }
 ];
 /* The site editor is built by its own unit (U4); its mount follows the same contract, with a fourth script after the
    three (its place adapter) and the floating toolbars to keep clear of. Its exact selector text is U4's to measure,
@@ -46,7 +48,7 @@ var KIT = ['etb2b-chat.js', 'dash-bot-client.js', 'etb2b-assistant.js'];
 var EDITOR_KIT = KIT.concat(['editor-chat-client.js']);
 var CSS = 'etb2b-chat.css';
 var ALLOWED = PAGES.map(function (p) { return p.file; }).concat([EDITOR.file]);
-var PLACES = ['dashboard', 'console', 'create-event', 'editor', 'promotions', 'review', 'activity-log', 'registrations', 'mailer-performance', 'portal-review'];
+var PLACES = ['dashboard', 'console', 'create-event', 'editor', 'promotions', 'review', 'activity-log', 'registrations', 'mailer-performance', 'portal-review', 'ai-report'];
 
 /* ---------- reading markup ---------- */
 /* The page with every comment, and the inside of every <script> and <style>, turned into spaces of the same length

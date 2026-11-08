@@ -272,7 +272,8 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   ok(oldPrompt.indexOf('What you still cannot do: make a new picture yourself (a section keeps the pictures it has; a picture the owner attaches to a message can be placed as described above); add or edit') !== -1 &&
     oldPrompt.indexOf('newPictures') === -1 && !/"role"|"banner"/.test(oldPrompt), 'an older editor\'s prompt still says the AI cannot make a picture, and offers nothing new');
   /* goTo (UX-098, B15) is a field every editor gets: "" when the answer sends the owner nowhere */
-  ok(!oldSchema.properties.newPictures && oldSchema.required.join() === 'kind,summary,design,textEdits,sectionEdits,sectionOps,newSections,newForms,ctaLinks,formEmbeds,goTo', 'and its schema has no newPictures', oldSchema.required.join());
+  /* intent (the kind of request, for the record of what people ask: lib/ai-learn.js) is required, so strict mode counts no new optional field */
+  ok(!oldSchema.properties.newPictures && oldSchema.required.join() === 'kind,summary,design,textEdits,sectionEdits,sectionOps,newSections,newForms,ctaLinks,formEmbeds,goTo,intent', 'and its schema has no newPictures', oldSchema.required.join());
   /* through the route: a model that answers a picture anyway to an older editor is not heard */
   answers.push(edit('I\'m making a new banner picture.', { newPictures: [{ sectionId: 'hero', placement: 'hero', slot: 0, subject: 'the Mumbai skyline at dusk', kind: 'place', alt: 'Mumbai at dusk' }] }));
   out = await call('POST', '/api/chat-edit', { eventId: EVP, instruction: 'make a new hero picture of the Mumbai skyline at dusk', sections: picSections() }, 'meera');

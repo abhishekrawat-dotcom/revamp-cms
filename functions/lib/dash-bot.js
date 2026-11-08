@@ -106,6 +106,12 @@
    Every turn asked inside an event is also a line in that event's History ("Asked ETB2B AI: “…” — answered"), as
    every exchange in the editor is. The daily allowance stays one per person, wherever they ask.
 
+   THE RECORD (owner decision 11, lib/ai-learn.js). Every turn the model answered here is one entry of the record of
+   what people ask ETB2B AI: its `intent` (a few words the model gives for the kind of request, part of the same one
+   answer), the person's words with e-mails, phones, links and every event's name and id taken out, what was done
+   and how it ended; /turn adds what the page did with it (an undo is also a QA note). It is written after the answer
+   has gone and never changes one.
+
    COST. The editor chat's rate bucket is shared (chatRateOk: 60 messages in 10 minutes per person), and each
    person has CAPS.dayTurns messages and US$CAPS.dayUsd a day (India days), claimed in a transaction before the
    model is asked. One model call per message (route 'dash-bot' in lib/llm.js), 6,000 output tokens, a 55 s
@@ -207,7 +213,9 @@ var PAGES = {
   'activity-log': { label: 'the Activity log', ofEvent: true, area: 'event', allEvents: true },
   registrations: { label: 'the Registrations page', ofEvent: true, area: 'registrations' },
   'mailer-performance': { label: 'Mailer performance' },
-  'portal-review': { label: 'the portal review page' }
+  'portal-review': { label: 'the portal review page' },
+  /* the approvers' report of what people ask ETB2B AI (ai-report.html, owner decision 11): no event */
+  'ai-report': { label: 'the report of what people ask ETB2B AI' }
 };
 /* the console's own sections, for the History area of a question asked in one */
 var CONSOLE_AREAS = { content: 'content', settings: 'settings', design: 'design', forms: 'forms' };
@@ -1047,7 +1055,7 @@ function buildScopedPrompt(ctx) {
     ctx.message,
     '',
     /* 11. output */
-    'OUTPUT: one JSON object that matches the schema. `text` and `kind` are required. Add only the block this kind uses (`open`, `promo` or `refuse`), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
+    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`open`, `promo` or `refuse`), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
 }
@@ -1160,7 +1168,7 @@ function buildPrompt(ctx) {
     ctx.message,
     '',
     /* 12. output */
-    'OUTPUT: one JSON object that matches the schema. `text` and `kind` are required. Add only the block this kind uses (`create`, `open`, `filter`, `promo` or `refuse`; `list` goes with a "reply"), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
+    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`create`, `open`, `filter`, `promo` or `refuse`; `list` goes with a "reply"), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })   // a line this place does not have
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
 }
@@ -1226,9 +1234,12 @@ var SCHEMA = {
       post: sEnum(ids(POST_TEMPLATES).concat([''])), sitePost: sEnum(ids(SITE_POSTS).concat([''])), mailer: sEnum(ids(MAILERS).concat(['']))
     }, 'kind "promo"'),
     refuse: sBlock({ action: sEnum(REFUSE_ACTIONS) }, 'kind "refuse"'),
-    switchTo: sBlock({ portal: sStr('the slug of the portal to work in, or "all"') }, 'kind "portal"')
+    switchTo: sBlock({ portal: sStr('the slug of the portal to work in, or "all"') }, 'kind "portal"'),
+    /* the kind of request in a few words, for the record of what people ask (lib/ai-learn.js, owner decision 11):
+       never shown to anyone as an answer, and required, so Claude's strict-mode count of optional fields is unchanged */
+    intent: sStr('the KIND of request in 2 to 4 plain lowercase words, e.g. "open speakers", "count registrations", "new event from brief", "list drafts"; never a name, number, date or address')
   },
-  required: ['kind', 'text']
+  required: ['kind', 'text', 'intent']
 };
 
 /* ---------- the guard: what the model may say in its own words ---------- */
@@ -2717,6 +2728,28 @@ function rekeyPrefill(answer) {
   a.url = '/create-event.html?new=1&prefill=' + pid;
 }
 
+/* ---------- the record of what people ask (lib/ai-learn.js, owner decision 11) ----------
+   One entry per turn the model was asked about, written after the answer has gone: a record that cannot be written
+   never changes, holds up or fails an answer. A handoff is recorded by the brain that answers it, and an answer that
+   asked no model (the fail-closed refusal, the daily limit) is not an AI turn. known: the person's own events, so
+   every event's name and id can be taken out of their words. */
+function learn() { try { return require('./ai-learn'); } catch (e) { return null; } }
+function recordDashTurn(fb, ctx, req, body, o) {
+  var L = learn();
+  if (!L) return;
+  try {
+    var here = ctx.place || {}, ev = here.eventId ? ctx.byId[here.eventId] : null;
+    var facts = o.answer ? L.dashFacts(o.answer) : { did: { kind: 'error', target: '' }, outcome: 'error', rule: o.code || 'error', fallback: 'question' };
+    L.recordTurn(fb, { brain: 'dash', decoded: ctx.decoded, eventId: ev ? ev.id : '', eventName: ev ? ev.name : '', page: here.page, tab: here.tab,
+      intent: isObj(o.parsed) ? o.parsed.intent : '', fallback: facts.fallback, words: ctx.message, did: facts.did, outcome: facts.outcome,
+      rule: facts.rule, turnId: o.turnId || '', known: o.known, handedFrom: ctx.handedFrom,
+      ua: req && req.headers ? req.headers['user-agent'] : '', screen: isObj(body) ? body.screen : '' });
+  } catch (err) { console.error('dash-bot: the turn was not recorded — ' + (err && err.message)); }
+}
+function knownOf(docs) {
+  return arr(docs).filter(function (d) { return d && typeof d.id === 'string'; }).map(function (d) { return { id: d.id, name: text(isObj(d.data) ? d.data.name : '') }; });
+}
+
 /* ---------- POST /api/dash-bot ---------- */
 
 /* The conversation a turn belongs to: the event's own (the site editor's document for this person, through lib/api.js
@@ -2786,12 +2819,16 @@ function handleChat(req, res) {
             if (!r || r.error) {
               var failure = Object.assign({ error: 'The AI service is not answering right now. Try again in a minute.', code: 'ai-unavailable', retryable: true }, r || {});
               if (!(failure.status >= 400)) failure.status = 502;
-              return H.sendAiFailure(res, failure);
+              H.sendAiFailure(res, failure);
+              return recordDashTurn(fb, ctx, req, body, { code: failure.code || 'ai-unavailable', known: knownOf(got[0]) });
             }
             var parsed = r.parsed;
             var asked = kindOf(parsed);
             var usable = isObj(parsed) && ((typeof parsed.text === 'string' && parsed.text.trim()) || (KINDS.indexOf(asked) !== -1 && asked !== 'reply') || !!harmOf(asked));
-            if (!usable) return H.sendJson(res, 502, { code: 'ai-bad-output', retryable: true, error: MSG.badOutput });
+            if (!usable) {
+              H.sendJson(res, 502, { code: 'ai-bad-output', retryable: true, error: MSG.badOutput });
+              return recordDashTurn(fb, ctx, req, body, { code: 'ai-bad-output', parsed: parsed, known: knownOf(got[0]) });
+            }
             return cleanAnswer(parsed, ctx).then(function (answer) { return keep(answer, r); });
             function keep(answer, r) {
               /* a message for the site editor's own ETB2B AI: nothing is kept and nothing goes in the History; the
@@ -2829,6 +2866,7 @@ function handleChat(req, res) {
                 turnRef.set(turn)
               ]).then(function () {
                 H.sendJson(res, 200, reply);
+                recordDashTurn(fb, ctx, req, body, { answer: answer, parsed: parsed, turnId: turnRef.id, known: knownOf(got[0]) });
                 /* every exchange inside an event is a line in its History, as each one in the editor is */
                 if (eventId) {
                   var line = maskEmail(displayLine(message, CAPS.historyLine));
@@ -2843,6 +2881,7 @@ function handleChat(req, res) {
                 rekeyPrefill(reply);
                 reply.notKept = true;
                 H.sendJson(res, 200, reply);
+                recordDashTurn(fb, ctx, req, body, { answer: answer, parsed: parsed, known: knownOf(got[0]) });
               });
             }
           });
@@ -2878,6 +2917,10 @@ function handleTurn(req, res) {
       if (note) patch.note = note;
       return ref.update(patch).then(function () {
         H.sendJson(res, 200, { turnId: turnId, status: status });
+        /* what became of the turn, in the record (lib/ai-learn.js): an undo is also a QA note */
+        var L = learn();
+        if (L) L.recordOutcome(fb, { brain: 'dash', turnId: turnId, status: status, decoded: decoded, note: note,
+          ua: req.headers ? req.headers['user-agent'] : '', screen: body.screen });
         /* Stop inside an event: the turn's "Asked ETB2B AI … — answered" line went in the event's History when it
            was kept, before the person stopped waiting, so the History says so once, as lib/api.js handleChatTurn
            does for a question in the site editor; nothing was done */

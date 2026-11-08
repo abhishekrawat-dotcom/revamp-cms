@@ -4616,11 +4616,17 @@
       if (x.button && x.status !== 'undone') { x.button.disabled = true; x.button.title = 'This change is too long ago to undo from the chat. Use Undo in the top bar.'; }
     });
   }
+  /* the window's size, "1440x900", for a QA note about an AI turn (functions/lib/ai-learn.js): what was on screen */
+  function chatScreen() {
+    var w = 0, h = 0;
+    try { w = Math.round(window.innerWidth || 0); h = Math.round(window.innerHeight || 0); } catch (e) { return undefined; }
+    return w > 0 && h > 0 ? w + 'x' + h : undefined;
+  }
   /* -> a promise that settles either way. keepalive: sent as the page goes (the tab is closing) */
   function reportTurn(turnId, status, done, notDone, keepalive) {
     if (!eventId || !turnId || !window.RevampAuth) return Promise.resolve();
     var opts = { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [] }) };
+      body: JSON.stringify({ eventId: eventId, turnId: turnId, status: status, done: done || [], notDone: notDone || [], screen: chatScreen() }) };
     if (keepalive) opts.keepalive = true;
     return Promise.resolve(RevampAuth.authedFetch('/api/chat/turn', opts)).then(function () {}, function () {});
   }
@@ -6413,7 +6419,7 @@
         setChatStatus('thinking', CHAT_TEXT.reading);
         return send$('/api/chat-edit', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent,
+          body: JSON.stringify({ eventId: eventId || '', instruction: instruction, history: eventId ? [] : localHistory, design: currentDesignContext(), sections: sectionsContext(instruction, focus && focus.sectionId), focus: focus || undefined, attachmentCount: sent.length, attachments: sent, screen: chatScreen(),
             view: view.shots, viewWhat: view.what, viewLeftOut: view.leftOut || 0, viewUndrawn: view.undrawn || [],
             // the event's forms, so "add an Express interest button" reuses a form that exists instead of making another
             forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [],

@@ -1480,7 +1480,8 @@
   ========================================================= */
   var REPORT_IC = {
     mailers: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 3v18h18"/><path d="M8 17v-4"/><path d="M13 17V8"/><path d="M18 17v-7"/></svg>',
-    log: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 8v4l3 2"/><path d="M3.05 11a9 9 0 1 1 .5 4"/><path d="M3 4v5h5"/></svg>'
+    log: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 8v4l3 2"/><path d="M3.05 11a9 9 0 1 1 .5 4"/><path d="M3 4v5h5"/></svg>',
+    ai: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>'
   };
   /* Deleted Events, and Cancelled only while some event is cancelled: nothing in the product cancels an event, so a
      view that could only ever be empty is not offered (UX-034). Drafts is a tab now (UX-018). Counted on the working
@@ -1498,7 +1499,10 @@
       /* the cross-event reports: they used to be buttons on the toolbar, which now keeps Create Event alone */
       '<div class="popover-sep"></div><div class="popover-label">Reports</div>' +
       '<a class="popover-item" href="mailer-performance.html" id="menu-mailer-performance">' + REPORT_IC.mailers + ' Mailer performance</a>' +
-      '<a class="popover-item" href="activity-log.html" id="menu-activity-log">' + REPORT_IC.log + ' Activity log</a>';
+      '<a class="popover-item" href="activity-log.html" id="menu-activity-log">' + REPORT_IC.log + ' Activity log</a>' +
+      /* what people ask ETB2B AI, for approvers only (owner decision 11): the server refuses anybody else as well, so
+         the link is drawn only once the approvers are known and this person is one of them */
+      (approverHere() === true ? '<a class="popover-item" href="ai-report.html" id="menu-ai-report">' + REPORT_IC.ai + ' What people ask ETB2B AI</a>' : '');
     $('more-menu').querySelectorAll('[data-special]').forEach(function(b){
       b.addEventListener('click', function(){ goToBucket(b.getAttribute('data-special'), false); });
     });
