@@ -133,7 +133,12 @@ function load(o) {
     EDIT: { width: 1080, height: 1080, tid: o.tid || 'speaker.individual', fmt: 'ig_square', base: 'blob:base', els: o.els || speakerEls() },
     edNodes: [], edSel: -1, edParams: { theme: 'dark' }, edMode: 'props', CAT: { event: { name: 'QA Summit 2026', siteLogo: { dark: '', light: '' } } },
     OWS: { art: o.art || {}, orig: o.orig || {} }, OW_E: 'qa-1',
-    pushHistory: function () { log.hist++; ctx.updUndo(); },
+    /* the platform's history as social-studio.js keeps it: the elements only, 80 steps, a new step ends Redo; its
+       Undo and Redo put the elements back and draw the side again (selectEl -> paintSide) */
+    edHist: [], edRedo: [],
+    pushHistory: function () { log.hist++; ctx.edHist.push(JSON.stringify(ctx.EDIT.els)); if (ctx.edHist.length > 80) ctx.edHist.shift(); ctx.edRedo = []; ctx.updUndo(); },
+    edUndo: function () { if (!ctx.edHist.length) return; ctx.edRedo.push(JSON.stringify(ctx.EDIT.els)); ctx.EDIT.els = JSON.parse(ctx.edHist.pop()); ctx.paintSide(); ctx.updUndo(); },
+    edRedoFn: function () { if (!ctx.edRedo.length) return; ctx.edHist.push(JSON.stringify(ctx.EDIT.els)); ctx.EDIT.els = JSON.parse(ctx.edRedo.pop()); ctx.paintSide(); ctx.updUndo(); },
     updUndo: function () {}, updLayerLabel: function () {}, layoutGroupFrame: function () {}, owFillerNote: function () {},
     applyNode: function (n, el) { log.applied.push(el.id); },
     paintSide: function () { var h = ctx.owSideHost(); h.textContent = ''; var t = doc.createElement('div'); t.className = 'ed-tabs'; h.appendChild(t); },
@@ -253,6 +258,12 @@ function load(o) {
     x.doc.querySelector('#owAdvHost .ed-tabs') !== null && /Reset to the design/.test(adv.textContent));
   var heads = x.doc.querySelectorAll('#owEasy .ow-easy-h').map(function (h) { return h.textContent; });
   check('the easy panel, in order: Words, Pictures, People, Caption', heads.join() === 'Words,Pictures,People,Caption', heads);
+  /* the caption file writes its words into a box it finds by id, so its section must be on the page when it draws */
+  var capDrawn = [];
+  x.ctx.owRenderCaption = function (host) { capDrawn.push(host.id === 'owCapHost' && x.doc.body.contains(host)); };
+  x.E.repaint();
+  check('Caption: drawn into its section once the section is on the page (a box drawn off the page stayed empty)', capDrawn.join() === 'true', capDrawn);
+  delete x.ctx.owRenderCaption;
   var rows = x.doc.querySelectorAll('#owWords .ow-word');
   check('Words: a labelled box for each text, the label tied to its box', rows.length === 7 && rows.every(function (r) {
     var l = r.querySelector('label'), t = r.querySelector('textarea'); return l && t && l.getAttribute('for') === t.id && t.getAttribute('data-ow-key') === 'w:' + r.getAttribute('data-ow-el');
@@ -284,6 +295,58 @@ function load(o) {
   var ysel = y.doc.getElementById('owPeople').querySelector('select');
   ysel.value = '2'; ysel.onchange(); await tick();
   check('People: … and Keep editing leaves the post and its options as they were', y.log.loads.length === 0 && y.ctx.edParams.speakerId === undefined && y.ctx.EDIT.els[4].text === 'Ananya Rao');
+  /* ---------- Undo and Redo after a swap in place: the people setting and the caption come back with the words ---------- */
+  var u = load();
+  u.ctx.OWS.loaded = { tid: 'speaker.individual', fmt: 'ig_square', params: { theme: 'dark' } };
+  u.ctx.paintSide(); await tick();
+  var usel = u.doc.getElementById('owPeople').querySelector('select');
+  usel.value = '1'; usel.onchange(); await tick();
+  check('swap: the options the layout on screen has (OWS.loaded.params, which Keep editing puts back) name Meera too',
+    u.ctx.edParams.speakerId === 's2' && u.ctx.OWS.loaded.params.speakerId === 's2' && u.ctx.OWS.loaded.params.theme === 'dark', u.ctx.OWS.loaded.params);
+  var told = u.log.caption.length;
+  u.ctx.edUndo(); await tick();
+  var upick = u.doc.getElementById('owPeople').querySelector('select');
+  check('Undo after a swap: Ananya\'s words and photo, the post\'s speaker setting back to the design\'s, the caption told, the picker on Ananya',
+    u.ctx.EDIT.els[4].text === 'Ananya Rao' && u.ctx.EDIT.els[7].src === 'https://img.etb2bimg.com/a.jpg' && u.ctx.edParams.speakerId === undefined &&
+    !('speakerId' in u.ctx.edParams) && u.ctx.edParams.theme === 'dark' && u.log.caption.length === told + 1 && u.log.caption[told].speakerId === undefined &&
+    upick.options[0].selected === true && u.ctx.OWS.loaded.params.speakerId === undefined, [u.ctx.edParams, u.log.caption.length - told]);
+  u.ctx.edRedoFn(); await tick();
+  check('Redo: Meera again, with her speaker setting and caption',
+    u.ctx.EDIT.els[4].text === 'Meera Iyer' && u.ctx.edParams.speakerId === 's2' && u.log.caption[u.log.caption.length - 1].speakerId === 's2' &&
+    u.doc.getElementById('owPeople').querySelector('select').options[1].selected === true && u.ctx.OWS.loaded.params.speakerId === 's2');
+  /* two swaps, then two Undos: each step brings back its own person */
+  var usel2 = u.doc.getElementById('owPeople').querySelector('select');
+  usel2.value = '0'; usel2.onchange(); await tick();
+  check('a second swap in place: back to Ananya, by her id now', u.ctx.EDIT.els[4].text === 'Ananya Rao' && u.ctx.edParams.speakerId === 's1');
+  u.ctx.edUndo(); await tick();
+  var mid = u.ctx.edParams.speakerId, midText = u.ctx.EDIT.els[4].text;
+  u.ctx.edUndo(); await tick();
+  check('… Undo: Meera (s2); Undo again: Ananya as the design drew her (no speaker setting)', mid === 's2' && midText === 'Meera Iyer' &&
+    u.ctx.EDIT.els[4].text === 'Ananya Rao' && u.ctx.edParams.speakerId === undefined, [mid, midText, u.ctx.edParams]);
+  check('… and the first swap is undone too, so nothing is left to undo', u.ctx.edHist.length === 0 && u.E.state.hp.length === 0 && u.E.state.rp.length === 2);
+  /* a word typed after an Undo ends Redo, for the people setting too */
+  u.E.set([{ id: 'e9', set: { text: 'Book now' } }], { step: 'words:e9', from: 'words' });
+  check('a change after Undo ends Redo (the elements and the people setting alike)', u.ctx.edRedo.length === 0 && u.E.state.rp.length === 0 && u.E.state.hp.length === 1);
+  /* a click that picks a word up (the platform's startDrag records a step), then typing in it: one step, not two */
+  var c = load();
+  c.ctx.pushHistory();                                           // the click
+  c.E.set([{ id: 'e6', set: { text: 'Sundaram Foods Ltd' } }], { step: 'canvas:e6', from: 'canvas' });
+  check('a click on a word then typing: one Undo step, and the one Undo brings the old words back', c.ctx.edHist.length === 1 && c.log.hist === 1 &&
+    (c.ctx.edUndo(), c.ctx.EDIT.els[6].text === 'Sundaram Foods' && c.ctx.edHist.length === 0), c.ctx.edHist.length);
+  c.ctx.pushHistory();                                           // a click on the post after that Undo: a step
+  c.ctx.edRedo.push('{"a later step":1}'); c.ctx.updUndo();      // as if a Redo were still there
+  var before = c.log.hist;
+  c.ctx.pushHistory();                                           // another click, nothing changed in between
+  check('… a step that changes nothing is not made, yet still ends Redo, as the platform\'s did', c.ctx.edRedo.length === 0 && c.E.state.rp.length === 0 &&
+    c.ctx.edHist.length === 1 && c.log.hist === before, [c.ctx.edRedo.length, c.ctx.edHist.length, c.log.hist - before]);
+  /* a load or a Reset empties the platform's lists: the people settings follow; a step this file never saw keeps the setting */
+  c.ctx.edHist = []; c.ctx.edRedo = []; c.ctx.updUndo();
+  check('a load or a Reset (both lists emptied) empties the people settings too', c.E.state.hp.length === 0 && c.E.state.rp.length === 0);
+  c.ctx.edParams = { theme: 'dark', speakerId: 's2' };
+  c.ctx.edHist.push(JSON.stringify(c.ctx.EDIT.els)); c.ctx.updUndo();
+  c.ctx.edUndo();
+  check('Undo of a step with no people setting known leaves the setting as it is', c.ctx.edParams.speakerId === 's2' && c.E.state.rp.length === 1);
+
   /* Advanced layout open: the hint says double-click */
   x.doc.getElementById('owAdv').open = true;
   (x.doc.getElementById('owAdv').listeners.toggle || []).forEach(function (f) { f(); });

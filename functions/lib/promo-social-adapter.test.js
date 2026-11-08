@@ -611,6 +611,10 @@ function respJson(r) { return r.json(); }
     ann.querySelector('.cta button').getAttribute('onclick') === 'openEditor("generic.announcement")' && ann.querySelector('.cta button').textContent === 'Edit');
   check('F.3b: the Testimonial card is openable and badged as an example', !!B.$('th-generic_testimonial').querySelector('.ow-ex') && tst.querySelector('.cta button').getAttribute('onclick') === 'openEditor("generic.testimonial")' &&
     /Example quote and its speaker/.test(tst.querySelector('.ow-ex-note').textContent));
+  /* UX-122 put the quote box in the editor's Words and the Options tab under Advanced layout: the note says where it is now */
+  check('F.3b: the Testimonial note says to type the quote under Words and pick its speaker under People, not in Options',
+    tst.querySelector('.ow-ex-note').textContent === 'Example quote and its speaker — open it with Edit, type the real quote under Words and pick its speaker under People',
+    tst.querySelector('.ow-ex-note').textContent);
   check('F.3b: an available card that is not an example has no badge', !B.$('th-generic_announcement').querySelector('.ow-ex') && !ann.querySelector('.ow-ex-note'));
   var thumbShots = B.shots.slice(0, 4);
   /* UX-121: at the card's size (a 100 px card here, at the floor of three tenths), not at 1080 px */

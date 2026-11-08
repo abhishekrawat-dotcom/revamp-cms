@@ -157,9 +157,87 @@
     ta.rows = Math.max(1, Math.min(6, lines + (ta.value.length > 42 ? 1 : 0)));
   }
 
+  /* ---------- Undo and Redo cover the people on the post too ----------
+     The platform's history (edHist, edRedo) keeps only the elements. A swap in place also changes which person the
+     post's options pick (edParams.speakerId and the like), and the caption, Download all sizes, a later Update post
+     and Save all read those options. So beside each step of the history is the people setting it had (OWE.hp for
+     edHist, OWE.rp for edRedo, one each, newest last): Undo and Redo put the elements and the setting back together,
+     and the caption follows. Without this, Undo showed the old speaker while the caption and a Save named the new one. */
+  var PEOPLE_KEYS = ['speakerId', 'sponsorId', 'speakerIds', 'sponsorIds'];
+  OWE.hp = [];
+  OWE.rp = [];
+  /* the four options a swap changes, as JSON (one string per step, compared as it is) */
+  function peopleOf(p) {
+    var o = {};
+    p = p || {};
+    PEOPLE_KEYS.forEach(function (k) { if (p[k] !== undefined) o[k] = p[k]; });
+    return JSON.stringify(o);
+  }
+  /* options p with the people setting `json` in place of its own (an option the setting has not is taken out) */
+  function withPeople(p, json) {
+    var o = JSON.parse(json), out = Object.assign({}, p || {});
+    PEOPLE_KEYS.forEach(function (k) { if (own(o, k)) out[k] = o[k]; else delete out[k]; });
+    return out;
+  }
+  /* The post's people setting becomes `json`; the caption is told when it changed. The options the layout on screen
+     was drawn with (OWS.loaded.params) follow too: a "Discard your changes?" answered Keep editing puts the options
+     back from them (owRestoreControls), and they must name the people the post shows now, not those it was drawn with. */
+  function setPeople(json) {
+    if (json == null) return false;
+    var changed = json !== peopleOf(edParams);
+    edParams = withPeople(edParams, json);
+    if (window.OWS && OWS.loaded) OWS.loaded.params = withPeople(OWS.loaded.params, json);
+    if (changed) tellCaption();
+    return changed;
+  }
+  /* One people setting per step, whatever the platform did to its lists: a load or a Reset empties them, more than 80
+     steps drop the oldest. They line up from the newest; a step this file never saw has none (null: Undo leaves the
+     setting as it is). */
+  function lineUp() {
+    function fitTo(a, n) { a = a.slice(Math.max(0, a.length - n)); while (a.length < n) a.unshift(null); return a; }
+    OWE.hp = fitTo(OWE.hp, edHist.length);
+    OWE.rp = fitTo(OWE.rp, edRedo.length);
+  }
   /* an Undo or Redo starts a new step: the next word typed is undone on its own */
   var updUndo0 = updUndo;
-  updUndo = function () { OWE.lastStep = ''; return updUndo0.apply(this, arguments); };
+  updUndo = function () { OWE.lastStep = ''; lineUp(); return updUndo0.apply(this, arguments); };
+  /* A step is the elements and the people setting before a change. One that would put back what is on screen already
+     is not made: a click on a word starts a drag (the platform's startDrag records a step) and typing in it then
+     recorded a second, the same, so the first Undo changed nothing. A new change still ends Redo, as it always did. */
+  var pushHistory0 = pushHistory;
+  pushHistory = function () {
+    var ppl = peopleOf(edParams);
+    if (edHist.length && edHist[edHist.length - 1] === JSON.stringify(EDIT.els) && OWE.hp[OWE.hp.length - 1] === ppl) {
+      edRedo = [];
+      updUndo();
+      return;
+    }
+    OWE.hp.push(ppl);
+    return pushHistory0.apply(this, arguments);
+  };
+  /* the setting goes back first, so the side the platform's Undo draws (selectEl, paintSide) shows it */
+  var edUndo0 = edUndo;
+  edUndo = function () {
+    if (OWE.typing) stopTyping();
+    if (edHist.length) {
+      lineUp();
+      var back = OWE.hp.pop();
+      OWE.rp.push(peopleOf(edParams));
+      setPeople(back);
+    }
+    return edUndo0.apply(this, arguments);
+  };
+  var edRedoFn0 = edRedoFn;
+  edRedoFn = function () {
+    if (OWE.typing) stopTyping();
+    if (edRedo.length) {
+      lineUp();
+      var fwd = OWE.rp.pop();
+      OWE.hp.push(peopleOf(edParams));
+      setPeople(fwd);
+    }
+    return edRedoFn0.apply(this, arguments);
+  };
 
   /* ---------- the side: easy panel, then Advanced layout ---------- */
 
@@ -224,7 +302,7 @@
     easy.appendChild(picturesSection());
     var ppl = peopleSection();
     if (ppl) easy.appendChild(ppl);
-    easy.appendChild(captionSection());
+    captionSection(easy);
     markSelected();
     if (key) {
       var again = easy.querySelector('[data-ow-key="' + key.replace(/["\\]/g, '') + '"]');
@@ -585,9 +663,9 @@
     var after = OWE.people.map(function (h, j) { return j === k ? { kind: h.kind, person: to } : h; });
     var params = peopleParams(EDIT.tid, after);
     if (plan.ok && plan.changes.length) {
+      /* the step setEls records holds the people setting from before, so Undo brings back both */
       setEls(plan.changes, { from: 'people' });
-      edParams = Object.assign({}, edParams, params);
-      tellCaption();
+      setPeople(peopleOf(Object.assign({}, edParams, params)));
       say((hit.kind === 'speaker' ? to.name : to.title) + ' is on the post now.', 'success');
       paintEasy();
       return Promise.resolve(true);
@@ -672,7 +750,10 @@
 
   /* ---------- 4. Caption ---------- */
 
-  function captionSection() {
+  /* The caption is drawn once its section is on the page: the caption file finds its box by id (viewOf) before it
+     writes the words in, so a box drawn off the page stayed empty whenever the words were known already (after an
+     Undo, or a click on the post, drew the panel again), while the download still had them. */
+  function captionSection(parent) {
     var d = make('details', 'ow-easy-sec ow-cap-sec');
     d.id = 'owCapSec';
     if (OWE.capOpen) d.setAttribute('open', '');
@@ -681,6 +762,7 @@
     host.id = 'owCapHost';
     d.appendChild(host);
     d.addEventListener('toggle', function () { OWE.capOpen = d.open; });
+    parent.appendChild(d);
     if (typeof window.owRenderCaption === 'function') window.owRenderCaption(host);
     return d;
   }

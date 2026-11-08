@@ -799,14 +799,16 @@ function owDraw(html, W, H, o) {
 /* what an example fills, in words, and where the real ones are added: go is the console's route (promo-posts.js
    fixLink; a third part is the field on the tab, edit-event.html showPlace), at its name on screen. Who should
    attend and the event's own numbers are typed in Content → Basics (UX-130); a quote or a prediction only ever
-   in the post itself. Mailers (oneworld.js OW_FIX) and Site-look posts (promo-posts.js) say the same. */
+   in the post itself: the quote in the editor's Words (oneworld-social-easy.js quoteBox; the Options tab it was in
+   sits under Advanced layout since UX-122). Mailers (oneworld.js OW_FIX) and Site-look posts (promo-posts.js) say
+   the same. */
 var OW_FILL = {
   speakers: { w: 'speakers', go: 'content/speakers', at: 'Content → Speakers' },
   sponsors: { w: 'partners', go: 'content/sponsors', at: 'Content → Sponsors' },
   sessions: { w: 'sessions', go: 'content/agenda', at: 'Content → Agenda' },
   stats: { w: 'numbers', go: 'content/basics/numbers', at: 'Content → Basics' },
   audience: { w: '“who should attend” list', go: 'content/basics/audience', at: 'Content → Basics' },
-  quote: { w: 'quote and its speaker', tail: 'open it and type the real quote in Options' },
+  quote: { w: 'quote and its speaker', tail: 'open it with Edit, type the real quote under Words and pick its speaker under People' },
   prediction: { w: 'prediction and outcome', tail: 'open it and write this event’s own' }
 };
 var OW_STATE = { past: 'Past event', 'no-date-venue': 'No date or venue yet', 'no-date': 'No date yet', closed: 'Nominations closed' };
