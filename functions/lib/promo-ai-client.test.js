@@ -57,10 +57,10 @@ function el(props) {
 function makeKit() {
   var kit = { chat: null };
   kit.mount = function (host, opts) {
-    var chat = { opts: opts, bubbles: [], busy: [], ideas: [], undone: [],
+    var chat = { opts: opts, bubbles: [], busy: [], ideas: [], welcomes: [], undone: [],
       open: function () {}, close: function () {}, isOpen: function () { return false; }, focusInput: function () {}, fold: function () {},
       setBusy: function (on, t) { chat.busy.push(on ? t || 'on' : 'off'); }, setScope: function () {}, setContext: function () {}, divider: function () {},
-      markUndone: function (fn) { chat.undone.push(fn); }, setQuickIdeas: function (l) { chat.ideas.push(l); },
+      markUndone: function (fn) { chat.undone.push(fn); }, setQuickIdeas: function (l) { chat.ideas.push(l); }, setWelcome: function (w) { chat.welcomes.push(w); },
       user: function () { return {}; },
       ai: function (c, o) {
         var b = { content: c, o: o || {}, notes: [], buttons: [], undos: [],
@@ -177,6 +177,18 @@ var EDIT_ANSWER = { kind: 'edit', intent: 'shorten title', summary: 'I shortened
   var p = await page({ studios: [st], dash: dash, answer: function (url) { return url === '/api/promo/ai-edit' ? { body: EDIT_ANSWER } : null; } });
   var chat = p.kit.chat;
   check('C.2 the shell picks up the promo brain that loaded before it', !!p.ctx.RevampPromoAi && chat !== null);
+  var PW = p.ctx.RevampPromoAi.WELCOME, PI = p.ctx.RevampPromoAi.IDEAS;
+  check('C.2 with a post in "Edit with AI", the panel\'s welcome and suggestions are the post\'s, not the events side\'s', chat.welcomes[chat.welcomes.length - 1] === PW.post &&
+    /this post/.test(PW.post.text) && PW.post.suggestions === PI.post && chat.ideas[chat.ideas.length - 1] === PI.post &&
+    !/registrations/i.test(JSON.stringify(PW)) && /this mail/.test(PW.mail.text) && PW.mail.suggestions === PI.mail, chat.welcomes);
+  st.ai.active_ = false;
+  (p.winListeners.message || []).forEach(function (fn) { fn({ origin: 'https://x', data: { rvAiMode: 'off' } }); });
+  await settle();
+  check('C.2 …and the events side\'s come back when it leaves "Edit with AI"', chat.welcomes[chat.welcomes.length - 1] === null &&
+    JSON.stringify(chat.ideas[chat.ideas.length - 1]) === JSON.stringify([{ label: 'dq', text: 'dq' }]), chat.welcomes);
+  st.ai.active_ = true;
+  (p.winListeners.message || []).forEach(function (fn) { fn({ origin: 'https://x', data: { rvAiMode: 'ai' } }); });
+  await settle();
   var r = await p.A.chat().opts.send('Shorten the title', {});
   await settle();
   check('C.2 on Promotions, with a post in "Edit with AI", a message about it goes to the promo brain', p.calls.some(function (c) { return c.url === '/api/promo/ai-edit'; }) && dash.sent.length === 0 &&

@@ -68,6 +68,15 @@
       { label: 'Show all speakers', text: 'Show all of the event’s speakers in this mail.' },
       { label: 'Tighten the words', text: 'Make the opening paragraph shorter and clearer.' }]
   };
+  /* the panel's welcome while an editor is open in "Edit with AI": what this ETB2B AI does, and the same four ideas as
+     suggestions (the events side's "How many registrations…" and "Open this event's registrations" come back when
+     it closes) */
+  var WELCOME = {
+    post: { text: 'In Edit with AI, I change this post: its words, its speakers and partners, its caption, a new background, or one post per speaker. Each change is made at once, with Undo. I never post, send or download anything.',
+      suggestions: IDEAS.post },
+    mail: { text: 'In Edit with AI, I change this mail: its words, which speakers, partners and sessions it shows, its subject line and its preview text. Each change is made at once, with Undo. I never send or download anything.',
+      suggestions: IDEAS.mail }
+  };
 
   var chat = null, inFlight = null, stopNow = null;
   var changes = [];                    // this tab's changes: { turnId, at, what, frame, undone }
@@ -365,8 +374,10 @@
     var s = openStudio(), m = s ? s.ai.kind() : '';
     if (m === lastMode) return;
     lastMode = m;
-    if (!chat || !isFn(chat.setQuickIdeas)) return;
-    try { chat.setQuickIdeas(m ? IDEAS[m] : dashIdeas()); } catch (e) { /* the ideas are a nicety */ }
+    if (!chat) return;
+    if (isFn(chat.setQuickIdeas)) { try { chat.setQuickIdeas(m ? IDEAS[m] : dashIdeas()); } catch (e) { /* the ideas are a nicety */ } }
+    /* null: the page's own welcome (the events side's) again */
+    if (isFn(chat.setWelcome)) { try { chat.setWelcome(m ? WELCOME[m] : null); } catch (e) { /* the welcome is a nicety */ } }
   }
   if (root.addEventListener) {
     root.addEventListener('message', function (e) {
@@ -399,7 +410,7 @@
     }
   };
   var chatWired = false;
-  root.RevampPromoAi = { brain: brain, TEXT: TEXT, IDEAS: IDEAS, _test: { openStudio: openStudio, sameEvent: sameEvent, changes: changes } };
+  root.RevampPromoAi = { brain: brain, TEXT: TEXT, IDEAS: IDEAS, WELCOME: WELCOME, _test: { openStudio: openStudio, sameEvent: sameEvent, changes: changes } };
   /* the shell usually loads after this file and picks the brain up itself; loaded later, it is told here */
   var A0 = shell();
   if (A0 && isFn(A0.registerBrain)) A0.registerBrain('promo', brain);
