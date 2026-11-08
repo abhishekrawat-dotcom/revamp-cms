@@ -187,7 +187,7 @@ check('2 the console\'s script was found', MAIN.length > 100000);
 check('2 the console loads portal-picker.js right after auth.js', /<script src="auth\.js"><\/script>\s*<!--[^>]*-->\s*<script src="portal-picker\.js"><\/script>/.test(CONSOLE) &&
   (CONSOLE.match(/<script src="portal-picker\.js">/g) || []).length === 1);
 check('2 the console\'s top bar has #ev-portal, hidden, right after #ev-meta', /<span class="meta" id="ev-meta"><\/span>\s*<!--[^>]*-->\s*<span class="ev-portal" id="ev-portal" hidden><\/span>/.test(CONSOLE));
-check('2 the console\'s window title before an event loads says Oneworld 2.0', /<title>Edit Event &mdash; Oneworld 2\.0<\/title>/.test(CONSOLE) && CONSOLE.indexOf('Revamp CMS') === -1);
+check('2 the console\'s window title before an event loads names the product (ETB2B EventSphere, owner decision 6)', /<title>Event console &mdash; ETB2B EventSphere<\/title>/.test(CONSOLE) && CONSOLE.indexOf('Revamp CMS') === -1);
 check('2 the console no longer reads a table of portal names', !/\bPORTALS\b/.test(MAIN));
 
 var NAMES = ['shownPortal', 'rosterName', 'paintPortalChip', 'openSetPortal', 'portalSet', 'paintHeader', 'errText', 'localIso', 'fgroup', 'viewBasics', 'wireBasics',

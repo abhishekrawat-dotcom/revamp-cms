@@ -272,6 +272,10 @@ function build(data) {
     '.' + c + '-card a:hover .' + c + '-cap{color:var(--rv-text)}',
     '.' + c + '-copy{margin:28px 0 0;text-align:center;font-size:0.875rem;color:var(--rv-muted)}',
     '@media (max-width:820px){.' + c + '-grid{grid-template-columns:1fr 1fr}.' + c + '-happening{grid-column:1/-1}}',
+    /* a phone: every link a thumb hits is a 40px target (UX-002 screen-size sweep); a link that is a line of words keeps
+       its place and only the area that takes the tap grows */
+    '@media (max-width:860px){.' + c + '-social a{width:40px;height:40px}.' + c + '-links a,.' + c + '-h a{padding-top:12px;padding-bottom:12px}' +
+      '.' + c + '-logo-link{padding-top:6px;padding-bottom:6px;margin-top:-6px;margin-bottom:-6px}}',
     '@media (max-width:520px){.' + c + '-in{padding-left:16px;padding-right:16px}.' + c + '-event-btn{width:100%}.' + c + '-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.' + c + '-grid{gap:20px 16px}}'
   ].join('');
   return { html: html, css: css };

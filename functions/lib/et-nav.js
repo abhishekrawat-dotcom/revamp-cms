@@ -299,6 +299,10 @@ function build(o) {
       '.' + c + '-bar.rv-etnav--float .' + c + '-event{flex:1 1 auto;margin:0;padding:0;border-top:0;max-width:none}' +
       '.' + c + '-bar.rv-etnav--float .' + c + '-links{display:none}' +
     '}',
+    /* a phone: every part a thumb hits is a 40px target (UX-002 screen-size sweep); the event's name, a line of words,
+       keeps its place and only the area that takes the tap grows */
+    '@media (max-width:860px){.' + c + '-burger{width:40px;height:40px}.' + c + '-logo{display:flex;align-items:center;min-height:40px}' +
+      '.' + c + '-cta{min-height:40px;display:inline-flex;align-items:center}.' + c + '-name{padding-top:10px;padding-bottom:10px;margin-top:-10px;margin-bottom:-10px}}',
     '@media (prefers-reduced-motion:reduce){.' + c + '-bar.rv-etnav--float,.' + c + '-drawer,.' + c + '-scrim{animation:none}}'
   ].join('\n');
   return { html: html, css: css };

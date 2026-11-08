@@ -302,3 +302,10 @@ body.ow-team .content{padding:22px max(24px,calc((100% - 1240px) / 2 + 24px)) 48
     flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px;text-align:center;font-size:15px;line-height:1.5;font-weight:600}
 }
 .hchip{max-width:100%;overflow-wrap:anywhere}
+
+/* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall; a link
+   that is a line of words keeps its place and only the area that takes the tap grows. Layout only. */
+@media (max-width: 720px){
+  .btn, #prodNav button, #nav-mail, #owAwardTg, .ed-top .back{ min-height:40px; }
+  .ow-prev .ow-ex-note a{ padding-top:6px; padding-bottom:6px; margin-top:-6px; margin-bottom:-6px; }
+}

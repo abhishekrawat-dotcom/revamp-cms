@@ -90,6 +90,15 @@
     return sizes[name] || sizes.desktop;
   }
   function narrow() { return window.innerWidth <= MOBILE_MAX; }
+  /* Which mode the editor opens in. A phone opens in Edit with AI whatever was chosen on a bigger screen: the tools of
+     Edit myself need a big screen, while the live view and ETB2B AI's sheet along the bottom are made for a phone
+     (UX-002). An address that asks for a mode (?mode=) still wins. Opening this way is for this visit only: the mode
+     remembered for this person is left as it is, for their next visit on a bigger screen. */
+  function startMode(asked, saved, isNarrow) {
+    if (asked === 'ai' || asked === 'manual') return asked;
+    if (isNarrow) return 'ai';
+    return saved === 'ai' || saved === 'manual' ? saved : 'manual';
+  }
 
   /* ---------- the toggle ---------- */
   function buildToggle() {
@@ -655,7 +664,7 @@
       url.searchParams.delete('mode'); url.searchParams.delete('section');
       try { history.replaceState(history.state, '', url.href); } catch (e) { /* the address stays as it is */ }
     }
-    var start = asked === 'ai' || asked === 'manual' ? asked : remembered() || 'manual';
+    var start = startMode(asked, remembered(), narrow());
     // an address or the preview's button opens a mode for this visit; the mode remembered is the one last chosen
     if (start === 'ai') setMode('ai', { section: section, keep: true });
     else if (section) {
@@ -674,6 +683,7 @@
     sectionRect: sectionRect,
     setChatOpen: setChatOpen,
     eventId: function () { return EVENT_ID; },
+    _test: { startMode: startMode },
     openAt: function (section) {
       if (!isReady) return false;
       /* called from the preview's tab, which closes straight after: the work is done on this page's own

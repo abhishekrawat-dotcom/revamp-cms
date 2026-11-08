@@ -1455,7 +1455,13 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .save-state.warn{ background: var(--warn-soft); color: var(--warn); border-color: transparent; }
 .save-state.ok{ background: var(--ok-soft); color: var(--ok); border-color: transparent; }
 .save-state.wait{ color: var(--text); border-style: dashed; }
-@media (max-width: 1100px){ .save-state{ display:none; } }
+/* a narrower top bar says it in a word (paintSaveState writes both), and never hides it: what is saved is worth the
+   room at every width */
+.save-state .ss-short{ display:none; }
+@media (max-width: 1100px){
+  .save-state .ss-long{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .save-state .ss-short{ display:inline; }
+}
 
 /* ============ WHERE THE SITE STANDS (header chips; RevampCore.siteState) ============ */
 /* the name keeps room of its own; the chips take what is left and never push it out of sight */
@@ -1575,3 +1581,41 @@ a.ev-chip:hover{ border-color: currentColor; }
 @media (max-width:480px){ .pd-num{ grid-template-columns: minmax(70px, 96px) minmax(0, 1fr) auto; } }
 /* the field a link from Promotions pointed at, outlined for a moment (showPlace) */
 .field.is-pointed{ border-radius:8px; box-shadow: 0 0 0 3px var(--surface-3), 0 0 0 4px var(--text-muted); transition: box-shadow .3s; }
+
+/* ============ THE CONSOLE'S TOP BAR AT EVERY WIDTH (edit-event.html header.ev-bar; UX-002) ============
+   The event's name is the one proof of which event is open, so the words around it give way first, as in the site
+   editor: "Back to events" below 1180px, Preview's and Share preview's below 900px (each keeps its words for screen
+   readers). On a phone the bar takes two rows: the way back, the name, the light/dark switch and the account above;
+   what is saved, Preview, Share preview and Publish below, each a 40px tap target. The rail and every sticky part
+   under the bar are placed under its new height (--topbar-h). Layout only: nothing here applies above 1180px. */
+@media (max-width: 1180px){
+  .topbar.ev-bar .back-btn{ padding:7px 9px; }
+  .topbar.ev-bar .back-btn span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+}
+@media (max-width: 900px){
+  .topbar.ev-bar #btn-preview span, .topbar.ev-bar #btn-share-preview > span{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+  .topbar.ev-bar #btn-preview, .topbar.ev-bar #btn-share-preview{ padding-left:10px; padding-right:10px; }
+}
+@media (max-width: 600px){
+  .topbar.ev-bar{ height:104px; flex-wrap:wrap; align-content:center; row-gap:0; column-gap:8px; padding:0 10px; }
+  .topbar.ev-bar .topbar-acts{ display:contents; }
+  .topbar.ev-bar .back-btn{ order:1; min-width:40px; min-height:40px; justify-content:center; }
+  .topbar.ev-bar .ev-title{ order:2; flex:1 1 0; }
+  .topbar.ev-bar [data-theme-toggle-target], .topbar.ev-bar [data-rv-account]{ order:3; }
+  .topbar.ev-bar::after{ content:''; order:4; flex-basis:100%; height:0; }
+  .topbar.ev-bar .save-state, .topbar.ev-bar .btn{ order:5; margin-top:8px; min-height:40px; }
+  .topbar.ev-bar #btn-preview, .topbar.ev-bar #btn-share-preview{ min-width:40px; }
+  .topbar.ev-bar .save-state{ margin-right:auto; }
+  .topbar.ev-bar ~ .shell{ --topbar-h:104px; }
+}
+
+/* ============ TAP TARGETS ON A PHONE (UX-002 screen-size sweep) ============
+   Below 720px every control on the pages that share this file (the console, the site editor, Promotions,
+   Registrations, Settings, Portal review) is at least 40px tall, and an icon-only one 40px wide. Layout only. */
+@media (max-width: 720px){
+  .btn, .icon-btn, .back-btn, .subtabs button, .inp, .spill, .seg button, .rdy-item, .grp-head .gname, .gdate{ min-height:40px; }
+  .icon-btn, .back-btn, .btn-ghost{ min-width:40px; }
+  #b-logo-orig{ padding-top:11px; padding-bottom:11px; }
+  .back-btn{ justify-content:center; }
+  .topbar #btn-preview, .topbar #btn-share-preview{ min-width:40px; }
+}

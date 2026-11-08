@@ -160,6 +160,12 @@
     /* two pages side by side are unreadable at this width */
     .tabs [data-view="both"], .tabs .sync{ display:none; }
   }
+  /* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
+     icon-only one 40px wide; a link that is a line of words keeps its place and only the area that takes the tap grows.
+     Layout only. */
+  @media (max-width: 720px){
+    .back-btn, .btn{ min-height:40px; }
+  }
 </style>
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">

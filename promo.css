@@ -334,3 +334,10 @@ html:has(.ps-lb:not([hidden])), html:has(.ps-lb:not([hidden])) body{ overflow:hi
 .promo-mailer-frame, .promo-social-frame{ display:block; width:100%; height:calc(100vh - 220px); min-height:620px; border:0; border-radius:12px; background: var(--bg); }
 .promo-mailer-frame.is-studio, .promo-social-frame.is-studio{ position:fixed; inset:0; width:100vw; height:100vh; min-height:0; border-radius:0; z-index:1000; }
 html.promo-studio-open, html.promo-studio-open body{ overflow:hidden; }
+
+/* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall; a link
+   that is a line of words keeps its place and only the area that takes the tap grows. Layout only. */
+@media (max-width: 720px){
+  #ps-gfmt, #ps-batch{ min-height:40px; }
+  .ps-why a{ padding-top:13px; padding-bottom:13px; }
+}

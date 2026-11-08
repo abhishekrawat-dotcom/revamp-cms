@@ -458,6 +458,8 @@
       '.rv-acct-btn:focus-visible,.rv-acct-item:focus-visible,.rv-auth-btn:focus-visible,.rv-auth-link:focus-visible{outline:2px solid var(--rv-accent);outline-offset:2px;}',
       '.rv-acct-btn img{width:100%;height:100%;object-fit:cover;display:block;}',
       '.rv-acct-btn svg{width:18px;height:18px;display:block;}',
+      /* a phone: a 40px tap target (UX-002 screen-size sweep) */
+      '@media (max-width:720px){.rv-acct-btn{width:40px;height:40px;min-width:40px;}}',
       '.rv-acct-pop{position:fixed;z-index:2147483000;box-sizing:border-box;width:260px;max-width:calc(100vw - 16px);padding:6px;' +
         'background:var(--rv-surface);color:var(--rv-text);border:1px solid var(--rv-border);border-radius:12px;' +
         'box-shadow:0 14px 32px -14px rgba(0,0,0,.35);' + font + 'font-size:13px;line-height:1.4;text-align:left;}',

@@ -1,6 +1,11 @@
-<!-- Oneworld 2.0 : per-event admin console ("Edit event") -->
+<!doctype html>
+<html lang="en">
+<head>
+<!-- The event console ("Edit event"): one event's content, settings and site -->
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Edit Event &mdash; Oneworld 2.0</title>
+<title>Event console &mdash; ETB2B EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
@@ -29,9 +34,19 @@
     .ev-portal-mini{ display:inline-flex; }
   }
 </style>
+<style>
+  /* Standards mode (UX-002). The console used to be drawn in quirks mode, where a table did not take the page's line
+     height and a line holding only an icon or a small label was as tall as that icon or label. These keep each of
+     those parts exactly as tall as it was drawn. (A block of its own: the one above is the header's, shared word for
+     word with Promotions.) */
+  table{ line-height:normal; }
+  .check-row > span > svg, .sec-row .grip > svg{ display:block; }
+  .mock-hero .mp, #b-logo-note > div > span{ display:block; }
+</style>
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 
-<header class="topbar">
+<!-- ev-bar: the console's own top bar, which keeps the event's name in sight at every width (edit-event.css) -->
+<header class="topbar ev-bar">
   <a class="back-btn" href="Event_Listing.html">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M15 18l-6-6 6-6"/></svg>
     <span>Back to events</span>
@@ -700,7 +715,10 @@
     if (el.getAttribute('data-state') === state && !el.hidden) return;
     el.setAttribute('data-state', state);
     el.className = 'save-state' + (state === 'dirty' ? ' warn' : state === 'saved' ? ' ok' : ' wait');
-    el.textContent = state === 'saving' ? 'Saving…' : state === 'dirty' ? 'Unsaved changes' : 'All changes saved';
+    /* the whole words, and the short ones a narrower top bar shows in their place (edit-event.css); the whole words
+       stay for screen readers there */
+    var words = state === 'saving' ? ['Saving…', 'Saving…'] : state === 'dirty' ? ['Unsaved changes', 'Unsaved'] : ['All changes saved', 'Saved'];
+    el.innerHTML = '<span class="ss-long">' + words[0] + '</span><span class="ss-short" aria-hidden="true">' + words[1] + '</span>';
     el.title = state === 'dirty' ? 'Save, or Discard, in the bar at the bottom of this view.' : state === 'saved' ? 'Everything you changed here is saved to the event.' : '';
     el.hidden = false;
   }

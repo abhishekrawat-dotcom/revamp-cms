@@ -28,3 +28,12 @@ body{
 #banner .cntnd img.logo:not([src]){display:none}
 #banner .cntnd img.logo[src]:not([hidden]) + .banner-title{position:absolute;width:1px;height:1px;margin:-1px;padding:0;border:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap}
 #banner .cntnd .banner-title{overflow-wrap:anywhere}
+
+/* A contact card's inner row kept Bootstrap's -15px gutters on a screen where its column has no room for them, so it
+   reached 15px past the edge of a phone and the whole page scrolled sideways (UX-002 screen-size sweep). Below the
+   width where the cards stack, the row's gutters and its column's padding are both taken away: the card's contents
+   stay exactly where they were, and nothing sticks out. */
+@media (max-width: 991px){
+  .contact-point > .row{ margin-left:0; margin-right:0; }
+  .contact-point > .row > [class*="col-"]{ padding-left:0; padding-right:0; }
+}

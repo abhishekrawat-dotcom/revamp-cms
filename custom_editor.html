@@ -1,5 +1,10 @@
-﻿<!-- Revamp CMS - Site editor -->
-<title>Site Editor &mdash; Revamp CMS</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site editor &mdash; ETB2B EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="edit-event.css">
@@ -1123,6 +1128,61 @@
 
   .s-foot{ padding: 30px 40px; background: var(--site-foot-bg); color: var(--site-foot-text); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12px; }
   .s-foot .logo{ font-family: var(--site-display-font); font-weight:700; color: var(--site-foot-logo); font-size:15px; }
+
+  /* Standards mode (UX-002): in quirks mode a line holding only a label was as tall as the label; this one keeps the
+     height it was drawn with */
+  .lyr-ai-markers > div > label{ display:block; }
+
+  /* ---------- a phone, below 720px (UX-002) ----------
+     The editor opens in Edit with AI there (editor-ai-mode.js startMode): the site at the phone's own width, and
+     ETB2B AI as a sheet along the bottom. What needs a big screen is put away in both modes: the tools row (Add,
+     Sections, Layers, Theme, Forms, More) with the panels it opens, and the element and section pills with their
+     pop-ups; the device switch and Undo / Redo stay. The top bar takes two rows, so nothing is pushed off the screen:
+     the way back, the event's name, the mode switch, the light/dark switch and the account above (order 4, the
+     default for the bar's own parts); Preview, Share
+     preview, where the site stands, Save and Publish below, Save and Publish with an icon beside their words. Every
+     control there is a 40px tap target. The event's sections lie in one row along the top, as in the console. */
+  @media (max-width: 720px){
+    .topbar{ height:auto; flex-wrap:wrap; row-gap:0; column-gap:6px; padding:6px 10px 8px; }
+    .topbar .topbar-acts{ display:contents; }
+    .topbar .back-btn{ order:1; min-width:40px; min-height:40px; justify-content:center; }
+    .topbar .ev-title{ order:2; flex:1 1 0; min-width:0; padding-right:0; }
+    .topbar .ev-title .meta{ display:none; }
+    .topbar .topbar-acts > *{ order:4; }
+    .topbar #ed-mode-toggle{ order:3; }
+    .topbar::after{ content:''; order:5; flex-basis:100%; height:0; }
+    .topbar #btn-preview, .topbar #btn-share-preview, .topbar .site-state{ order:6; margin-top:6px; }
+    .topbar #btn-save, .topbar #btn-publish{ order:7; margin-top:6px; }
+    .topbar .btn{ min-height:40px; }
+    .topbar #btn-preview, .topbar #btn-share-preview{ min-width:40px; padding-left:10px; padding-right:10px; }
+    .topbar .site-state:not([hidden]){ display:block; flex:1 1 0; min-width:0; margin-right:auto; overflow:hidden; text-overflow:ellipsis; line-height:38px; padding-top:0; padding-bottom:0; }
+    .topbar .site-state::before{ display:inline-block; vertical-align:middle; margin:-2px 6px 0 0; }
+    .mode-toggle button{ height:40px; min-width:40px; justify-content:center; }
+    #btn-save::before, #btn-publish::before{ content:''; width:15px; height:15px; flex-shrink:0; background:currentColor;
+      -webkit-mask:var(--btn-ic) center / contain no-repeat; mask:var(--btn-ic) center / contain no-repeat; }
+    /* a disk for Save, a paper plane for Publish (Send for approval) */
+    #btn-save{ --btn-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z'/%3E%3Cpath d='M17 21v-8H7v8M7 3v5h8'/%3E%3C/svg%3E"); padding-left:11px; padding-right:12px; }
+    #btn-publish{ --btn-ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 2L11 13'/%3E%3Cpath d='M22 2l-7 20-4-9-9-4 20-7z'/%3E%3C/svg%3E"); }
+    /* publish-flow.js shows a short word here below 600px ("Send…") with no gap of its own */
+    #btn-publish[data-rvpf-short]::before{ margin-right:6px; }
+    .ed-rail .rail-tools, .ed-rail .rail-scroll, #rail-more-menu, #panel-add, #panel-layers, #panel-design, #panel-forms, #lyr-ctx-menu,
+    .tpl-sel-toolbar, .tpl-sec-toolbar, .tpl-pop, #gt-style-pop{ display:none !important; }
+    .ed-rail{ height:48px; padding:0 10px; }
+    .ed-rail .rail-fixed{ margin-left:auto; }
+    .device-toggle button{ width:40px; height:40px; }
+    .history-toggle button{ height:40px; min-width:40px; justify-content:center; }
+    /* a notice above the page: its words take the full width, its buttons go under them */
+    .ed-notice{ flex-wrap:wrap; padding:8px 10px; row-gap:6px; }
+    .ed-notice .ed-notice-text{ flex-basis:100%; }
+    .ed-notice button{ min-height:40px; }
+    .ed-notice button.ed-notice-x{ min-width:40px; }
+    .ed-workspace{ flex-direction:column; }
+    .ed-workspace > .rail{ flex:0 0 auto; width:auto; height:auto; flex-direction:row; gap:4px; padding:6px 8px; overflow-x:auto; overflow-y:hidden;
+      border-right:0; border-bottom:1px solid var(--border); scrollbar-width:none; }
+    .ed-workspace > .rail::-webkit-scrollbar{ display:none; }
+    .ed-workspace > .rail .rail-item{ flex:0 0 auto; width:auto; min-width:64px; padding:6px 10px; gap:3px; border-radius:10px; }
+    .ed-workspace > .rail .rail-item .soon{ display:none; }
+  }
 </style>
 
 <!-- data-opening: the site is still opening, and the tools wait (editor-template-ui.js setOpening) -->

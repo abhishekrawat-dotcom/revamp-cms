@@ -162,3 +162,9 @@ button.ed-layer.on{background:var(--panel2)}
   #editor.on::after{content:"The layout editor needs a larger screen. Open this post on a computer, or on a tablet held sideways, to change its layout.";
     flex:1;display:flex;align-items:center;justify-content:center;padding:32px 24px;text-align:center;font-size:15px;line-height:1.5;font-weight:600}
 }
+
+/* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall; a link
+   that is a line of words keeps its place and only the area that takes the tap grows. Layout only. */
+@media (max-width: 720px){
+  .btn, select, .ed-top .back, [id^="slot-"]{ min-height:40px; }
+}

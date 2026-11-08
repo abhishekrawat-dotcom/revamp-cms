@@ -439,7 +439,9 @@ check('UX-011 Settings › Registration saves with the console\'s save bar (Disc
 })();
 (function () {
   var src = fnSrc(CONSOLE, 'paintSaveState');
-  var chip = { hidden: true, attrs: {}, className: '', textContent: '', title: '', getAttribute: function (k) { return this.attrs[k] === undefined ? null : this.attrs[k]; }, setAttribute: function (k, v) { this.attrs[k] = String(v); } };
+  var chip = { hidden: true, attrs: {}, className: '', innerHTML: '', title: '', getAttribute: function (k) { return this.attrs[k] === undefined ? null : this.attrs[k]; }, setAttribute: function (k, v) { this.attrs[k] = String(v); } };
+  /* the whole words (a narrower bar shows short ones in their place, UX-002: page-skeleton.test.js) */
+  Object.defineProperty(chip, 'textContent', { get: function () { var m = /<span class="ss-long">([^<]*)<\/span>/.exec(this.innerHTML); return m ? m[1] : ''; } });
   var sb = { EV: { id: 'qa' }, busy: false, dirty: false, MODAL: null, $: function (id) { return id === 'ev-save' ? chip : { hidden: false }; } };
   vm.runInNewContext('var LEAVE = { dirty: function(){ return dirty; } }; function writesOut(){ return busy; }\n' + src + '; this.paintSaveState = paintSaveState;', sb);
   sb.paintSaveState();

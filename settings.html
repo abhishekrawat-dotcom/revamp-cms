@@ -35,6 +35,12 @@
   .pa-log li:last-child{ border-bottom:0; }
   .pa-log .meta{ color:var(--text-muted); font-size:12px; }
   @media (max-width: 760px){ .pa-main{ padding:16px 16px 70px; } .pa-acts .btn{ flex:1 1 auto; justify-content:center; } }
+  /* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
+     icon-only one 40px wide; a link that is a line of words keeps its place and only the area that takes the tap grows.
+     Layout only. */
+  @media (max-width: 720px){
+    .pa-main label.pa-check{ min-height:40px; }
+  }
 </style>
 </head>
 <body>

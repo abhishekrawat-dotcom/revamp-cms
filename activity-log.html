@@ -122,20 +122,31 @@
   .empty{ padding:40px 16px; text-align:center; color:var(--text-muted); }
   .more{ display:flex; justify-content:center; padding:4px 0; }
 
+  /* Below 900px the log is a list of cards rather than a table: at a tablet's width the table's fixed columns (who,
+     event, area) left "What" too little room, so it ran out of its card and "Before and after" was cut off (UX-002
+     screen-size sweep). */
   @media (max-width: 900px){
     .filters{ grid-template-columns:repeat(2, minmax(0,1fr)); }
     .f.wide{ grid-column:1 / -1; }
-  }
-  @media (max-width: 700px){
-    .nav-inner{ padding:0 16px; gap:8px; }
-    .nav-brand img{ height:22px; }
-    .app{ padding:16px 16px 60px; }
     thead{ display:none; }
     table, tbody, tr, td{ display:block; width:auto !important; }
     tr{ border-bottom:1px solid var(--border); padding:10px 14px; }
     tr:last-child{ border-bottom:none; }
     td{ border:none; padding:2px 0; }
     td.when{ font-size:12px; }
+  }
+  @media (max-width: 700px){
+    .nav-inner{ padding:0 16px; gap:8px; }
+    .nav-brand img{ height:22px; }
+    .app{ padding:16px 16px 60px; }
+  }
+  /* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
+     icon-only one 40px wide; a link that is a line of words keeps its place and only the area that takes the tap grows.
+     Layout only. */
+  @media (max-width: 720px){
+    .nav-brand{ display:flex; align-items:center; }
+    .nav-brand, .nav-back, .btn, .f select, .f input{ min-height:40px; }
+    details.changes summary{ padding-top:11px; padding-bottom:11px; margin-top:-11px; margin-bottom:-11px; }
   }
 </style>
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->

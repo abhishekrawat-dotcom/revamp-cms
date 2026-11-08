@@ -48,6 +48,8 @@
         'color:var(--text-muted,#6C6A60);cursor:pointer;flex-shrink:0;' +
         'transition:background .15s,border-color .15s,color .15s;' +
       '}' +
+      /* a phone: a 40px tap target (UX-002 screen-size sweep) */
+      '@media (max-width:720px){.theme-toggle-btn{width:40px;height:40px;}}' +
       '.theme-toggle-btn:hover{' +
         'background:var(--surface-2,#F3EEED);border-color:var(--border,#E0D7D5);color:var(--text,#1D1B17);' +
       '}' +

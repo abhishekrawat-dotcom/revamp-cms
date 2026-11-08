@@ -1,7 +1,11 @@
-<!-- ET Oneworld - Self-Serve Microsite Builder : "Create Event" first-run flow -->
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Create Event: the self-serve site builder's first-run flow -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Create Event &mdash; Revamp CMS</title>
+<title>Create Event &mdash; ETB2B EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <!-- sets the saved light / dark choice on <html> before anything is painted -->
 <script src="theme-toggle.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1960,6 +1964,19 @@
     .live-preview-body.reviewing.show-site .ai-review{ display: none; }
     .live-preview-body.reviewing.show-site #live-preview-canvas{ display: flex; padding: 10px; }
     .ai-site-toggle:not([hidden]){ display: flex; }
+  }
+
+  /* Standards mode (UX-002). The page used to be drawn in quirks mode, where a line holding only a small label or an
+     icon was as tall as that label or icon, and a table did not take the page's line height. These keep each of those
+     parts exactly as tall as it was drawn. */
+  .step-head > .eyebrow, .tpl-carousel-info-head > .tpl-carousel-count{ display:block; }
+  .dropzone > .ico{ display:flex; }
+  table{ line-height:normal; }
+  /* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
+     icon-only one 40px wide. Layout only. */
+  @media (max-width: 720px){
+    .btn, .rail-step, .sec-row, .switch, .icon-btn, .tpl-carousel-nav, #btn-change-cat{ min-height:40px; }
+    .icon-btn, .tpl-carousel-nav, .rail-step{ min-width:40px; }
   }
 
 </style>
