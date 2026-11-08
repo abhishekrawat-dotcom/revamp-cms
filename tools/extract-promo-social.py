@@ -22,7 +22,9 @@ declarations replace the platform's of the same name:
   promo-studio/oneworld-social-art.js      the PSD, background and logo uploads, drawn and sized in the browser
   promo-studio/oneworld-social-easy.js     the editor's easy panel (Words, Pictures, People, Caption), typing on the
                                            post itself, and Advanced layout around the platform's own tools
-  promo-studio/oneworld-social-caption.js  the Caption tab, Write with AI and Suggest headlines (loads last)
+  promo-studio/oneworld-social-caption.js  the Caption tab, Write with AI and Suggest headlines
+  promo-studio/oneworld-ai-mode.js         "Edit with AI | Edit myself" and ETB2B AI's way into the editor (loads last;
+                                           shared with the mailer page, with promo-studio/oneworld-ai-mode.css)
 
 Left out on purpose: generateAll (its "Generate all" button is never shown once a product is chosen), the
 Generate drawer and its preview / download (nothing opens it), and editFromDrawer (the drawer's way into the
@@ -281,6 +283,7 @@ HTML = '''<!doctype html>
 <link rel="stylesheet" href="promo-studio/mailer-studio.css">
 <link rel="stylesheet" href="promo-studio/oneworld.css">
 <link rel="stylesheet" href="promo-studio/oneworld-social.css">
+<link rel="stylesheet" href="promo-studio/oneworld-ai-mode.css">
 </head>
 <body class="ow-embed ow-social">
   <div id="app" style="display:block">
@@ -300,6 +303,7 @@ HTML = '''<!doctype html>
 <script src="promo-studio/oneworld-social-art.js"></script>
 <script src="promo-studio/oneworld-social-easy.js"></script>
 <script src="promo-studio/oneworld-social-caption.js"></script>
+<script src="promo-studio/oneworld-ai-mode.js"></script>
 </body>
 </html>
 '''

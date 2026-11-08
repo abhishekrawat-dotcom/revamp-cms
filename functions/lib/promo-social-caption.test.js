@@ -824,8 +824,11 @@ function field(x, key) { return x.$('edOpts').querySelector('[data-key="' + key 
   try {
     var page = fs.readFileSync(path.join(ROOT, 'promo-social-studio.html'), 'utf8');
     var at = page.indexOf('src="' + FILE + '"');
-    check('the page loads it once, after oneworld-social.js, as the last script', at !== -1 && page.indexOf('src="' + FILE + '"', at + 1) === -1 &&
-      page.indexOf('src="promo-studio/oneworld-social.js"') !== -1 && page.indexOf('src="promo-studio/oneworld-social.js"') < at && page.indexOf('<script', at + 1) === -1);
+    /* B18-ai: only "Edit with AI | Edit myself" (oneworld-ai-mode.js) comes after it */
+    var aiAt = page.indexOf('<script src="promo-studio/oneworld-ai-mode.js"></script>');
+    check('the page loads it once, after oneworld-social.js, with only the AI mode after it', at !== -1 && page.indexOf('src="' + FILE + '"', at + 1) === -1 &&
+      page.indexOf('src="promo-studio/oneworld-social.js"') !== -1 && page.indexOf('src="promo-studio/oneworld-social.js"') < at &&
+      aiAt > at && page.indexOf('<script', at + 1) === aiAt && page.indexOf('<script', aiAt + 1) === -1);
   } catch (er) { console.log('note: promo-social-studio.html is not there yet; its script order is checked by promo-social-studio.test.js'); }
 
   console.log(passed + ' passed, ' + failed + ' failed');

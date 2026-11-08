@@ -69,6 +69,8 @@ var CHECK_MAX_BYTES = 3700000;        // a picture larger than this is not sent 
 var RETRY_NEEDS_MS = 50000;           // the time a second picture and its check need before the deadline
 var CHECK_RESERVE_MS = 15000;         // kept back from the second picture's deadline for its check
 var WIDE_ASPECT = '16:9';             // the shape asked for where the place is wide (gemini.js IMAGE_ASPECTS)
+/* a social post's own shapes (lib/promo-ai.js aspectOf), and how the prompt says each */
+var POST_ASPECTS = { '1:1': 'Square, 1:1.', '4:5': 'Portrait, 4:5.', '9:16': 'Tall portrait, 9:16.', '16:9': 'Landscape, 16:9.' };
 var WIDE_RATIO = 1.3;                 // a section background at least this much wider than tall is a wide place
 var STALE_MS = 5 * 60 * 1000;         // a picture "being made" for longer than this was lost (the process died)
 var VARIANTS_BUDGET_MS = 20000;       // WebP copies past this are left to arrive on their own
@@ -1286,7 +1288,11 @@ function promptFor(np, eventData) {
   var rule = peopleRule(np);
   var noPeople = rule === 'none' ? NO_FIGURES : rule === 'distant' ? NO_FIGURE_SHAPES : '';
   /* a wide place gets a wide picture (make() asks the model for 16:9), and the words say the same */
-  function shaped(prompt) { return wideOf(np) && !hero ? lastReplaced(prompt, 'Landscape, 4:3.', 'Landscape, 16:9.') : prompt; }
+  /* a post's background (lib/promo-ai.js) is made in the post's own shape, and the words say so */
+  function shaped(prompt) {
+    if (!hero && POST_ASPECTS[np.aspect]) return lastReplaced(prompt, 'Landscape, 4:3.', POST_ASPECTS[np.aspect]);
+    return wideOf(np) && !hero ? lastReplaced(prompt, 'Landscape, 4:3.', 'Landscape, 16:9.') : prompt;
+  }
   function ending(prompt) { prompt = shaped(prompt); return noPeople ? prompt + ' ' + noPeople : prompt; }
   /* the owner named the scene: it leads, and the event's field, venue, city and previous banner stay out */
   if (np.ownerSubject === true) return ending(subjectPrompt(np, design, keyVisual ? 'subject' : kind, level, plan));
@@ -1603,6 +1609,7 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
   function picture(text, until) {
     var opts = { route: 'chat-picture', eventId: eventId, timeoutMs: TIMEOUT_MS, deadlineAt: until };
     if (wideOf(np)) opts.aspectRatio = WIDE_ASPECT;
+    else if (POST_ASPECTS[np.aspect]) opts.aspectRatio = np.aspect;
     var call;
     try { call = Promise.resolve(gemini.callGeminiImage(text, opts)); } catch (err) { call = Promise.reject(err); }
     return call.then(function (r) {
@@ -1705,8 +1712,10 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
         }).then(function () {
           if (typeof deps.logActivity === 'function') {
             try {
-              deps.logActivity(fb, eventId, o.decoded, 'ai-chat', 'ETB2B AI made a new picture for “' + cleanSectionName(np.sectionName) + '”' +
-                (heldWhy ? ' and kept it off the page (it did not pass its check)' : '') + ': ' + oneLine(np.subject, 80), { area: 'site' });
+              /* a social post's background (lib/promo-ai.js) is a line of Promotions, not of the site */
+              var post = np.area === 'promotions';
+              deps.logActivity(fb, eventId, o.decoded, 'ai-chat', 'ETB2B AI made a new ' + (post ? 'background for a social post' : 'picture for “' + cleanSectionName(np.sectionName) + '”') +
+                (heldWhy ? ' and kept it off the ' + (post ? 'post' : 'page') + ' (it did not pass its check)' : '') + ': ' + oneLine(np.subject, 80), { area: post ? 'promotions' : 'site' });
             } catch (err) { console.error('chat-picture: the History line was not written — ' + (err && err.message)); }
           }
           return { status: 200, body: madeBody(done) };

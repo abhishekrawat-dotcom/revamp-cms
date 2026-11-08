@@ -11,7 +11,8 @@ into Oneworld, by line range, unchanged except PATCHES (listed below):
   assets/vendor/quill/             the vendored Quill the platform edits long copy with
   promo-mailer-studio.html         the page: the product nav, the studio's markup, then those files, then
                                    promo-studio/oneworld.js and promo-studio/oneworld-mail-easy.js (the "Edit myself"
-                                   layout, batch B18), and, first in its head, promo-studio/oneworld-theme.js:
+                                   layout, batch B18), promo-studio/oneworld-ai-mode.js ("Edit with AI | Edit
+                                   myself", batch B18-ai, with its .css), and, first in its head, promo-studio/oneworld-theme.js:
                                    Oneworld's light or dark, before anything paints
 
 promo-studio/oneworld.js is Oneworld's own (hand-written): the request helper on Oneworld's routes and
@@ -354,6 +355,7 @@ HTML = '''<!doctype html>
 <link rel="stylesheet" href="promo-studio/mailer-studio.css">
 <link rel="stylesheet" href="promo-studio/oneworld.css">
 <link rel="stylesheet" href="promo-studio/oneworld-mail-easy.css">
+<link rel="stylesheet" href="promo-studio/oneworld-ai-mode.css">
 <script src="assets/vendor/quill/quill.js"></script>
 <script type="module" src="promo-studio/richtext.js"></script>
 </head>
@@ -372,6 +374,7 @@ HTML = '''<!doctype html>
 <script src="promo-studio/mailer-studio.js"></script>
 <script src="promo-studio/oneworld.js"></script>
 <script src="promo-studio/oneworld-mail-easy.js"></script>
+<script src="promo-studio/oneworld-ai-mode.js"></script>
 </body>
 </html>
 '''

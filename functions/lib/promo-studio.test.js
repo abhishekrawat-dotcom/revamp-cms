@@ -70,10 +70,12 @@ check('P12: an available mailer opens as before', pickOf(MS2, 'mailer.a', null) 
 var order = ['class="ow-bar"', 'id="prodNav"', 'data-v="dash"', 'data-v="events"', 'id="content"'].map(function (s) { return page.indexOf(s); });
 check('ow-bar, the nav and its two buttons come before the content, in that order', order.every(function (n, i) { return n !== -1 && (i === 0 || n > order[i - 1]); }), order);
 check('one nav', count(page, 'id="prodNav"') === 1);
-check('oneworld.js comes after the studio, and the easy layout (oneworld-mail-easy.js, B18) is the last script', page.indexOf('src="promo-studio/mailer-studio.js"') !== -1 &&
+/* B18-ai: "Edit with AI | Edit myself" (oneworld-ai-mode.js) comes after the easy layout, as the very last script */
+check('oneworld.js comes after the studio, then the easy layout (oneworld-mail-easy.js, B18), then the AI mode (oneworld-ai-mode.js, B18-ai), the last script', page.indexOf('src="promo-studio/mailer-studio.js"') !== -1 &&
   page.indexOf('src="promo-studio/mailer-studio.js"') < page.indexOf('src="promo-studio/oneworld.js"') &&
   page.indexOf('src="promo-studio/oneworld.js"') < page.indexOf('src="promo-studio/oneworld-mail-easy.js"') &&
-  page.indexOf('<script', page.indexOf('src="promo-studio/oneworld-mail-easy.js"')) === -1);
+  page.indexOf('src="promo-studio/oneworld-mail-easy.js"') < page.indexOf('src="promo-studio/oneworld-ai-mode.js"') &&
+  page.indexOf('<script', page.indexOf('src="promo-studio/oneworld-ai-mode.js"')) === -1);
 
 /* ---- oneworld.css ---- */
 var cssRules = owCss.replace(/\/\*[\s\S]*?\*\//g, '');

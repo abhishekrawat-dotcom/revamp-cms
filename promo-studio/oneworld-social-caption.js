@@ -573,7 +573,23 @@
       if (CS.text != null) return CS.text;
       return factsNow(CS) ? shown(CS) : null;
     },
-    decorateOptions: decorateOptions
+    decorateOptions: decorateOptions,
+    /* ETB2B AI in the editor (promo-studio/oneworld-ai-mode.js): the caption as the box shows it, and a caption
+       it wrote put in the box (text null puts back the one made from the event's facts). Either is false or null
+       while the editor has no caption yet. */
+    get: function () {
+      var c = ensure();
+      if (!c) return null;
+      return { network: c.network, text: c.text, shown: c.text != null ? c.text : (factsNow(c) ? shown(c) : null) };
+    },
+    set: function (text, network) {
+      var c = ensure();
+      if (!c) return false;
+      if (network && netOf(network)) c.network = network;
+      c.text = text == null ? null : String(text);
+      paintText();
+      return true;
+    }
   };
   window.owRenderCaption = owRenderCaption;
   window.owCapShape = owCapShape;

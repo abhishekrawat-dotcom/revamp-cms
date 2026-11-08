@@ -267,7 +267,10 @@ var mkHead = MK.slice(0, MK.indexOf('</head>'));
 var mkStyles = (mkHead.match(/<style>[\s\S]*?<\/style>/g) || []).join('\n');
 check('Promotions: html.promo-studio-open .rvc{ visibility:hidden; } is in a <style> in its head',
   /(^|\n)\s*html\.promo-studio-open \.rvc\{ visibility:hidden; \}/.test(mkStyles));
-check('Promotions: …and it is the page\'s only rule about the assistant', (MK.match(/\.rvc\b/g) || []).length === 1);
+/* B18-ai: while the full-window studio's editor is in "Edit with AI", the assistant stands over it (layers above 1000) */
+check('Promotions: html.promo-studio-open.promo-studio-ai .rvc shows it over the studio in "Edit with AI"',
+  /(^|\n)\s*html\.promo-studio-open\.promo-studio-ai \.rvc\{ visibility:visible; --rvc-z-launcher:1001 !important; --rvc-z-panel:1002 !important; \}/.test(mkStyles));
+check('Promotions: …and those two are the page\'s only rules about the assistant', (MK.match(/\.rvc\b/g) || []).length === 2);
 check('Promotions: the page sets that class on <html> while a studio is full-window',
   MK.indexOf("document.documentElement.classList.toggle('promo-studio-open', open);") !== -1);
 check('Promotions: .rvc is the kit\'s own wrap (etb2b-chat.css styles it)', /(^|\n)\.rvc\s*\{/.test(read(CSS)));

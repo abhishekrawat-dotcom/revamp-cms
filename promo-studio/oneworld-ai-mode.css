@@ -1,0 +1,38 @@
+/* "Edit with AI | Edit myself" in the social post and mailer editors (promo-studio/oneworld-ai-mode.js, batch B18-ai):
+   the site editor's toggle (custom_editor.html .mode-toggle), in the studios' own tokens (oneworld.css), so it follows
+   the console's light and dark. "Edit with AI" shows the post or the mail full size: the panel beside it gives way,
+   nothing on it can be clicked, and it keeps clear of ETB2B AI's panel at the bottom right. */
+.mode-toggle{display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:10px;background:var(--panel2);border:1px solid var(--line);flex-shrink:0}
+.mode-toggle button{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:0;border-radius:7px;background:transparent;
+  color:var(--soft);font:inherit;font-size:12.5px;font-weight:700;white-space:nowrap;cursor:pointer}
+.mode-toggle button:hover{color:var(--ink)}
+.mode-toggle button[aria-checked="true"]{background:var(--panel);color:var(--ink);box-shadow:var(--sh-sm)}
+/* the site editor's review colour for "Edit with AI" (edit-event.css --review), light and dark */
+.mode-toggle button[data-mode="ai"][aria-checked="true"]{color:#8A5A9E}
+:root[data-theme="dark"] .mode-toggle button[data-mode="ai"][aria-checked="true"]{color:#C89BDA}
+.mode-toggle button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.mode-toggle .mt-short{display:none}
+@media (max-width:1180px){.mode-toggle .mt-long{display:none}.mode-toggle .mt-short{display:inline}.mode-toggle button{padding:0 9px}}
+@media (max-width:900px){.mode-toggle .mt-short{display:none}}
+/* the editors give way to a message on a phone (oneworld.css, oneworld-social.css): so does the toggle */
+@media (max-width:699px){.mode-toggle{display:none}}
+
+/* the line under the top bar while "Edit with AI" is on */
+.ow-ai-hint{display:none;padding:8px 16px;font-size:12.5px;line-height:1.45;color:var(--ink2);background:var(--panel2);border-bottom:1px solid var(--line)}
+body.ow-ai-mode .ow-ai-hint{display:block}
+
+/* the post full size: the panel gives way, and the post is looked at, not clicked */
+body.ow-ai-mode #edSide{display:none}
+body.ow-ai-mode #edStage{pointer-events:none}
+body.ow-ai-mode #edGroup,body.ow-ai-mode .edguide{display:none !important}
+/* the mail full size: its settings panel gives way, and the sections cannot be picked or added */
+body.ow-ai-mode #mlProps,body.ow-ai-mode #mlPop{display:none !important}
+body.ow-ai-mode #mlOv{pointer-events:none;visibility:hidden}
+/* ETB2B AI's open panel stands at the bottom right (etb2b-chat.css: about 400px wide): the post or mail keeps clear */
+@media (min-width:1100px){
+  body.ow-ai-mode.ow-ai-chat-open #edCanvas{padding-right:420px}
+  body.ow-ai-mode.ow-ai-chat-open #mlStage{padding-right:420px}
+}
+/* what ETB2B AI just changed on the post, outlined for two seconds */
+.ednode.ow-ai-flash{outline:3px solid #8A5A9E;outline-offset:4px}
+:root[data-theme="dark"] .ednode.ow-ai-flash{outline-color:#C89BDA}

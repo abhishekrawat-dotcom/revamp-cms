@@ -459,7 +459,7 @@
     },
     replay: function (t) {
       var U = ui();
-      if (!U || !t || t.brain === 'dash') return false;
+      if (!U || !t || t.brain === 'dash' || t.brain === 'promo') return false;
       return U.chat.replayTurn(t);
     }
   };

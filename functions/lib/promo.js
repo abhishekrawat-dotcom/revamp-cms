@@ -1237,7 +1237,8 @@ function wire(helpers) { H = helpers; }
 
 /* imageUrlProblem and importIdOf: the social posts' layouts (lib/promo-social.js) accept a picture address only
    when the image route would fetch it for the event, by this same rule */
-module.exports = { wire, handleKit, handleDetails, handleImage, handleWrite, buildKit, imageUrlProblem, importIdOf };
+/* factSheet: ETB2B AI in the post and mailer editors (lib/promo-ai.js) is told the event's facts in these same words */
+module.exports = { wire, handleKit, handleDetails, handleImage, handleWrite, buildKit, imageUrlProblem, importIdOf, factSheet };
 
 /* the pure parts, and the two network checks (run there against a stand-in lib/safe-fetch.js), for promo.test.js */
 module.exports._test = {

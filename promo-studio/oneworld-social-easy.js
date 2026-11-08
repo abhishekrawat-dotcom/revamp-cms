@@ -686,10 +686,13 @@
   /* "Make one post per speaker": every speaker's card in this size, as a ZIP. Each is this post with the speaker
      swapped in (its layout edits kept), or, when that cannot be done in place (a picture the design shows that one
      of them lacks), the design drawn for that speaker. */
-  function perSpeaker(btn) {
-    if (OWE.batch) return Promise.resolve();
+  /* o.keep (ETB2B AI, oneworld-ai-mode.js): the ZIP is handed back as { blob, name, count, message } and not
+     downloaded, since ETB2B AI never downloads for the person; its answer offers the Download button instead. */
+  function perSpeaker(btn, o) {
+    o = o || {};
+    if (OWE.batch) return Promise.resolve(o.keep ? null : undefined);
     var list = OWE.rosterNow, hit = OWE.people.filter(function (h) { return h.kind === 'speaker'; })[0];
-    if (!list || !list.speakers.length) return Promise.resolve();
+    if (!list || !list.speakers.length) return Promise.resolve(o.keep ? null : undefined);
     OWE.batch = true;
     if (btn) { btn.disabled = true; btn.textContent = 'Drawing the posts…'; }
     var W = EDIT.width, H = EDIT.height, base = EDIT.base, els = owClone(EDIT.els), tid = EDIT.tid, fmt = EDIT.fmt, params = owClone(edParams);
@@ -731,20 +734,29 @@
       if (!done) throw new Error('The posts could not be drawn.');
       return zip.generateAsync({ type: 'blob' });
     }).then(function (blob) {
+      var zipName = owSlug((CAT && CAT.event && CAT.event.name) || 'event') + '-speaker-posts-' + fmt + '.zip';
+      var size = owSizeShort(((findTpl(tid) || {}).formats || []).filter(function (f) { return f.id === fmt; })[0] || { id: fmt });
+      var why = fromDesign.length ? '. ' + fromDesign.length + ' of them ' + (fromDesign.length === 1 ? 'was' : 'were') + ' drawn from the design, as their picture differs from this one.' : '.';
+      if (o.keep) return { blob: blob, name: zipName, count: done, message: done + ' speaker posts are ready (' + size + ')' + why };
       var a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = owSlug((CAT && CAT.event && CAT.event.name) || 'event') + '-speaker-posts-' + fmt + '.zip';
+      a.download = zipName;
       a.click();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 60000);
-      var size = owSizeShort(((findTpl(tid) || {}).formats || []).filter(function (f) { return f.id === fmt; })[0] || { id: fmt });
-      say('✓ Downloaded ' + done + ' speaker posts (' + size + ')' + (fromDesign.length ? '. ' + fromDesign.length + ' of them ' +
-        (fromDesign.length === 1 ? 'was' : 'were') + ' drawn from the design, as their picture differs from this one.' : '.'), 'success');
-    }).then(null, function (e) {
+      say('✓ Downloaded ' + done + ' speaker posts (' + size + ')' + why, 'success');
+    }).then(function (kept) { return kept; }, function (e) {
+      if (o.keep) throw e;
       say('The speaker posts could not be made: ' + (owMessage(e) || 'please try again.'), 'error');
-    }).then(function () {
+    }).then(function (kept) {
       OWE.batch = false;
       var b = el$('owPerSpeaker');
       if (b) { b.disabled = false; b.textContent = 'Make one post per speaker (' + list.speakers.length + ')'; }
+      return kept;
+    }, function (e) {
+      OWE.batch = false;
+      var b = el$('owPerSpeaker');
+      if (b) { b.disabled = false; b.textContent = 'Make one post per speaker (' + list.speakers.length + ')'; }
+      throw e;
     });
   }
 
@@ -959,6 +971,9 @@
     set: setEls, words: function () { return wordsOf(EDIT.els); }, people: function () { return OWE.people.slice(); },
     swapTo: swapTo, perSpeaker: perSpeaker, repaint: paintEasy, startTyping: startTyping, stopTyping: stopTyping,
     paintSaved: paintSaved, openSaved: openSaved, state: OWE,
+    /* ETB2B AI swaps people in place in one step (oneworld-ai-mode.js): after its setEls, the post's people setting
+       follows, as swapTo's does, so Undo, the caption, Save and Download name who the post shows */
+    setPeople: function (params) { return setPeople(peopleOf(Object.assign({}, edParams, params || {}))); },
     pure: { roleName: roleName, wordsOf: wordsOf, findPeople: findPeople, swapPlan: swapPlan, peopleParams: peopleParams, titleLines: titleLines }
   };
 })();

@@ -40,6 +40,9 @@
   .promo-deep-note > span{ flex:1 1 220px; min-width:0; }
   /* a studio opened full-window covers the whole page: ETB2B AI is hidden with it, and so kept out of Tab's way */
   html.promo-studio-open .rvc{ visibility:hidden; }
+  /* ...except while its editor is in "Edit with AI" (promo-studio/oneworld-ai-mode.js, batch B18-ai): then ETB2B AI is
+     how the post or mail is changed, and stands at the bottom right over the studio (layer 1000, promo.css) */
+  html.promo-studio-open.promo-studio-ai .rvc{ visibility:visible; --rvc-z-launcher:1001 !important; --rvc-z-panel:1002 !important; }
 </style>
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
 </head>
@@ -96,6 +99,9 @@
 <script src="promo-kit.js"></script>
 <script src="promo-posts.js"></script>
 <script src="promo-banner.js"></script>
+<!-- ETB2B AI's brain for the post and mailer editors ("Edit with AI", batch B18-ai): it reaches the open studio frame.
+     It loads before the assistant (etb2b-assistant.js), which picks it up, as it does the dash brain. -->
+<script src="promo-ai-client.js"></script>
 
 <script>
 (function(){
@@ -457,6 +463,16 @@
       return !!(f && f.classList.contains('is-studio') && onScreen(k));
     });
     document.documentElement.classList.toggle('promo-studio-open', open);
+    aiMode();
+  }
+  /* "Edit with AI" in the editor of the full-window frame shown (promo-studio/oneworld-ai-mode.js says { rvAiMode }):
+     ETB2B AI comes over the studio. A frame in a hidden tab, or not full-window, does not count. */
+  function aiMode(){
+    var on = [FRAMES.social, FRAMES.mailer].some(function(k){
+      var f = $(k.id);
+      return !!(f && f._rvAi === 'ai' && f.classList.contains('is-studio') && onScreen(k));
+    });
+    document.documentElement.classList.toggle('promo-studio-ai', on);
   }
   /* the frame grows to its content, never below the studio's own minimum; not while it fills the window */
   function grow(f, kind, h){
@@ -473,7 +489,7 @@
     f.addEventListener('load', function(){
       var w = f.contentWindow;
       try {
-        w.addEventListener('pagehide', function(){ if ($(kind.id) !== f) return; studioClose(f, kind); f._rvTall = false; });
+        w.addEventListener('pagehide', function(){ if ($(kind.id) !== f) return; f._rvAi = ''; studioClose(f, kind); f._rvTall = false; });
       } catch (e) { /* not ours to watch */ }
     });
   }
@@ -497,6 +513,7 @@
     else if (d[kind.studio] === 'close') studioClose(f, kind);
     if (d[kind.height] != null) grow(f, kind, d[kind.height]);
     if (d.rvToast) relayToast(d.rvToast);
+    if (d.rvAiMode != null) { f._rvAi = d.rvAiMode === 'ai' ? 'ai' : ''; aiMode(); }
     if (d.rvBanner === 'ensure' && kind === FRAMES.mailer) {
       var id = d.id, win = e.source;
       ensureBanner(!!d.fresh).then(function(r){
