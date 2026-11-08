@@ -336,14 +336,15 @@ async function main() {
       (inMenu ? /aria-label="Share preview link"/.test(b) : /aria-label="Share preview"/.test(b)) && /id="btn-share-preview"/.test(b));
     if (inMenu) {
       var menuAt = html.indexOf('<span class="ev-menu" id="pv-menu" hidden>'), splitAt = html.indexOf('<span class="pv-split" id="pv-split">');
-      var openAt = html.indexOf('id="pv-open"');
-      check('U.2 edit-event.html: it is the item after Open preview in the menu of Preview\'s arrow, inside Preview\'s own group',
+      var liveAt = html.indexOf('id="pv-live"');
+      check('U.2 edit-event.html: it is the item after Live site in the menu of Preview\'s arrow, inside Preview\'s own group',
         splitAt > 0 && html.indexOf('id="btn-preview"') > splitAt && html.indexOf('id="btn-preview-more"') > splitAt && menuAt > splitAt &&
-        openAt > menuAt && html.indexOf(b) > openAt && html.indexOf('</span>', html.indexOf(b)) > html.indexOf(b) &&
+        liveAt > menuAt && html.indexOf(b) > liveAt && html.indexOf('</span>', html.indexOf(b)) > html.indexOf(b) &&
         /aria-controls="pv-menu"/.test(html.slice(html.indexOf('id="btn-preview-more"') - 80, menuAt)));
-      check('U.2 edit-event.html: its words "Share preview link…" are in a <span>, which the menu keeps at every width',
-        /<span>Share preview link…<\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))) &&
-        /\.topbar \.ev-menu \[data-share-preview\] > span\{ display:inline; \}/.test(fs.readFileSync(path.join(ROOT, 'edit-event.css'), 'utf8')));
+      check('U.2 edit-event.html: its words "Share preview link…" and who it is for are in a <span>, which the menu keeps at every width',
+        /<span class="mi-words"><span class="mi-name">Share preview link…<\/span><small id="pv-share-desc">A 7-day link for people without an ET login<\/small><\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))) &&
+        /aria-describedby="pv-share-desc"/.test(b) &&
+        /\.topbar \.ev-menu \[data-share-preview\] > span\.mi-words\{ display:flex; \}/.test(fs.readFileSync(path.join(ROOT, 'edit-event.css'), 'utf8')));
     } else {
       var prevEnd = html.indexOf('</button>', html.indexOf('id="btn-preview"'));
       var between = html.slice(prevEnd + '</button>'.length, html.indexOf(b));

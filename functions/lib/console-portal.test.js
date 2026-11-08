@@ -276,7 +276,7 @@ function loadConsole(o) {
   /* both on one header: where the site stands beside the name, the portal chip under it */
   var stateC = c.$('ev-state'), stateN = n.$('ev-state');
   check('2 the header also paints where the site stands, with a portal and without one', stateC.hidden === false && /class="ev-chip ev-chip-mute"[^>]*>.*Draft/.test(stateC.innerHTML) &&
-    stateN.hidden === false && /class="ev-chip ev-chip-ok"/.test(stateN.innerHTML) && /View live site/.test(stateN.innerHTML) && host.hidden === false, [stateC.innerHTML, stateN.innerHTML]);
+    stateN.hidden === false && /class="ev-chip ev-chip-ok"/.test(stateN.innerHTML) && !/<a\b/.test(stateN.innerHTML) && host.hidden === false, [stateC.innerHTML, stateN.innerHTML]);
   chipClick(host);
   var op = n.sb.RevampPortals.log.open[0];
   check('2 Set portal opens RevampPortals\' dialog for this event, with no portal current, and the site\'s facts', !!op && op.eventId === 'ev-2' &&

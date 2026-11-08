@@ -8,7 +8,9 @@
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
-<link rel="stylesheet" href="edit-event.css">
+<!-- the ?v= mark changes when this page needs a newer stylesheet, so a browser never pairs this page with an older
+     copy it kept (the server lets browsers keep stylesheets for 5 minutes) -->
+<link rel="stylesheet" href="edit-event.css?v=bar2">
 <link rel="stylesheet" href="forms-builder.css">
 <link rel="stylesheet" href="hero-video-ui.css">
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
@@ -68,8 +70,9 @@
     </span>
   </span>
   <span class="topbar-acts">
-    <!-- Preview, and beside it a small arrow for the other ways to show the site: one button, not two (owner decision 13).
-         The menu opens under the arrow (wireMenus); share-preview.js wires its Share item as it did the old button -->
+    <!-- Preview (the latest saved version), and beside it a small arrow for the two other ways to see the site, each
+         saying who it is for: the live site, and a link for people without an ET login (owner decision 13, v2). The menu
+         opens under the arrow (wireMenus); share-preview.js wires its Share item as it did the old button -->
     <span class="pv-split" id="pv-split">
       <button class="btn btn-secondary" type="button" id="btn-preview">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
@@ -79,13 +82,14 @@
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <span class="ev-menu" id="pv-menu" hidden>
-        <button class="ev-menu-item" type="button" id="pv-open">
-          <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
-          <span>Open preview</span>
-        </button>
-        <button class="ev-menu-item" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview link" title="Make a link anyone can open, without signing in, to see the site as last saved">
+        <!-- while the site is live: the public site, what visitors see (paintState sets the address) -->
+        <a class="ev-menu-item" id="pv-live" target="_blank" rel="noopener" hidden aria-describedby="pv-live-desc">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+          <span class="mi-words"><span class="mi-name">Live site ↗</span><small id="pv-live-desc">What visitors see now</small></span>
+        </a>
+        <button class="ev-menu-item" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview link" aria-describedby="pv-share-desc" title="Make a link anyone can open, without signing in, to see the site as last saved">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
-          <span>Share preview link…</span>
+          <span class="mi-words"><span class="mi-name">Share preview link…</span><small id="pv-share-desc">A 7-day link for people without an ET login</small></span>
         </button>
       </span>
     </span>
@@ -6604,8 +6608,6 @@
       if (pvIcon) pvIcon.style.display = pvSaved ? '' : 'none';
       pv.title = pvSaved ? 'Open the site in a new tab, as it was last saved or previewed' : 'The site has not been saved yet: design it in the site editor first';
     }
-    /* the menu's Open preview is Preview itself; with no saved site there is nothing to open, so only Share is left */
-    if ($('pv-open')) $('pv-open').hidden = !pvSaved;
     var F = window.RevampPublishFlow, btn = $('btn-publish');
     if (!F || !btn || !EV) return;
     var st = C.siteState(EV, APPROVAL);
@@ -6825,10 +6827,11 @@
     paintState();
   }
 
-  /* Where the site stands, next to the name on every view, as ONE tag (owner decision 13): Draft / Live / Offline, and
-     after it what is happening to the changes, if anything (waiting for approval, rejected, not published). The tag
-     opens a small menu with the whole story: since when it is live, who asked and when, and the links (the request's
-     review page, the live site). Links open a new tab, so nothing typed here is ever lost to them. */
+  /* Where the site stands, next to the name on every view, as ONE plain tag (owner decision 13): Draft / Live / Offline,
+     and after it what is happening to the changes, if anything (waiting for approval, rejected, not published). Only
+     while a request waits or was rejected is it a link, to that request's review page (a new tab, so nothing typed
+     here is lost); the reason for a rejection is in the banner under the bar (#ev-decision). Pointing at the tag
+     tells since when the site is live and who asked. The live site itself is in Preview's menu (#pv-live). */
   function paintState(){
     var box = $('ev-state');
     if (!box) return;
@@ -6836,17 +6839,21 @@
     var main = st.chips[0], more = st.chips[1];
     var extra = st.pending ? 'waiting for approval' : st.rejected ? 'changes rejected' : st.newer ? 'changes not published' : '';
     var long = main.short + (extra ? ' · ' + extra : ''), short = more ? more.short : main.short;
-    var lines = st.chips.map(function(c){
-      return '<span class="ev-menu-line"><b>' + esc(c.text.replace(/ · Review$/, '')) + '</b>' + (c.title ? '<small>' + esc(c.title) + '</small>' : '') + '</span>';
-    }).join('');
-    var links = (more && more.href ? '<a class="ev-menu-item" href="' + esc(more.href) + '" target="_blank" rel="noopener">Open the review ↗</a>' : '') +
-      (st.live ? '<a class="ev-menu-item ev-live" href="' + esc(C.publicUrl(EV)) + '" target="_blank" rel="noopener">View live site ↗</a>' : '');
-    /* the button is a 40px tap on a phone (edit-event.css); the pill inside it is what shows. The whole words, and a
-       word or two for a narrow top bar (edit-event.css shows one of them) */
-    box.innerHTML = '<button type="button" class="ev-tag" id="ev-state-btn" aria-expanded="false" aria-controls="ev-state-menu" title="Where the site stands">' +
-      '<span class="ev-chip ev-chip-' + (more ? more.tone : main.tone) + '"><span class="ev-chip-long">' + esc(long) + '</span><span class="ev-chip-short">' + esc(short) + '</span>' +
-      '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></span></button>' +
-      '<span class="ev-menu ev-state-menu" id="ev-state-menu" hidden>' + lines + links + '</span>';
+    var tip = [main.text];
+    if (more) tip.push(more.href ? String(more.title || '').replace(/^Version \d+ was /, 'Changes were ') : more.text);
+    if (more && more.href) tip.push('Opens the review in a new tab');
+    /* the whole words, and a word or two for a narrow top bar (edit-event.css shows one of them) */
+    var pill = '<span class="ev-chip ev-chip-' + (more ? more.tone : main.tone) + '"' + (more && more.href ? '' : ' title="' + esc(tip.join(' · ')) + '"') + '>' +
+      '<span class="ev-chip-long">' + esc(long) + '</span><span class="ev-chip-short">' + esc(short) + '</span>' + (more && more.href ? '<span aria-hidden="true">↗</span>' : '') + '</span>';
+    /* the link is a 40px tap on a phone (edit-event.css .ev-tag); the pill inside it is what shows */
+    box.innerHTML = more && more.href
+      ? '<a class="ev-tag" href="' + esc(more.href) + '" target="_blank" rel="noopener" title="' + esc(tip.join(' · ')) + '">' + pill + '</a>'
+      : pill;
+    var pl = $('pv-live');
+    if (pl){
+      pl.hidden = !st.live;
+      if (st.live && pl.setAttribute) pl.setAttribute('href', C.publicUrl(EV));
+    }
     box.hidden = false;
     paintPublishButton();
     /* what became of the last request, for whoever asked: under the header until dismissed (UX-103) */
@@ -6935,10 +6942,10 @@
     C.renderLoadError($('view'), err, { kind: kind, none: 'the event you want to edit', title: 'ev-name', onRetry: init });
   }
 
-  /* The top bar's two small menus (owner decision 13): where the site stands, and the other ways to preview. Its
-     button opens a box under it; pressing it again, Escape, a press or the focus anywhere else, or choosing an item
-     closes it. Opened from the keyboard, the focus goes to its first item. */
-  var MENUS = [['ev-state-btn', 'ev-state-menu'], ['btn-preview-more', 'pv-menu']];
+  /* The top bar's small menu (owner decision 13): Preview's other ways to see the site. Its arrow opens a box under
+     it; pressing it again, Escape, a press or the focus anywhere else, or choosing an item closes it. Opened from the
+     keyboard, the focus goes to its first item. */
+  var MENUS = [['btn-preview-more', 'pv-menu']];
   function setMenu(btn, box, open){
     if (!btn || !box) return;
     box.hidden = !open;
@@ -6953,24 +6960,24 @@
   function wireMenus(){
     document.addEventListener('click', function(e){
       var t = e.target && e.target.closest ? e.target : null;
-      var btn = t ? t.closest('#ev-state-btn, #btn-preview-more') : null;
+      var btn = t ? t.closest('#btn-preview-more') : null;
       if (btn){
         var box = $(btn.getAttribute('aria-controls'));
         closeMenus(btn);
         setMenu(btn, box, !!(box && box.hidden));
         if (box && !box.hidden && e.detail === 0){
-          var first = box.querySelector('a, button:not([hidden])');
+          var first = box.querySelector('a:not([hidden]), button:not([hidden])');
           if (first) first.focus();
         }
         return;
       }
-      /* the lines of words in a menu are for reading: a press on them keeps it open */
+      /* a press on the menu's own edge keeps it open */
       if (t && t.closest('.ev-menu') && !t.closest('a, button')) return;
       closeMenus(null);
     });
     document.addEventListener('focusin', function(e){
       var t = e.target;
-      if (t && t.closest && !t.closest('.ev-menu, #ev-state-btn, #btn-preview-more')) closeMenus(null);
+      if (t && t.closest && !t.closest('.ev-menu, #btn-preview-more')) closeMenus(null);
     });
     document.addEventListener('keydown', function(e){
       if (e.key !== 'Escape') return;
@@ -6980,7 +6987,6 @@
       setMenu(btn, open, false);
       if (btn) btn.focus();
     });
-    $('pv-open').onclick = function(){ $('btn-preview').click(); };
   }
 
   var booted = false;
