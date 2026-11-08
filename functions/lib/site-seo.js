@@ -87,7 +87,7 @@ function scriptJson(v) {
 
 function robotsTxt(base) {
   var lines = [
-    '# Revamp CMS: published event sites are public; previews, the API and the CMS itself are not.',
+    '# ETB2B EventSphere: published event sites are public; previews, the API and the CMS itself are not.',
     'User-agent: *',
     'Allow: /e/',
     /* what a published site loads, so a crawler that draws the page sees it as a visitor does */
@@ -167,7 +167,7 @@ function calendarIcs(event, o) {
   if (!start || !name) return '';
   var end = eventDate(event.end, timed && chosenTime(event.end));
   if (end && end.slice(0, 10) < start.slice(0, 10)) end = '';
-  var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ET B2B//Oneworld 2.0//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT'];
+  var lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ET B2B//ETB2B EventSphere//EN', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT'];
   lines.push('UID:' + icsText(str(o.id) || name) + '@oneworld.etb2b');
   lines.push('DTSTAMP:' + icsStamp(o.stamp instanceof Date && isFinite(o.stamp.getTime()) ? o.stamp : new Date()));
   if (start.length > 10) {

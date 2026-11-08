@@ -30,9 +30,9 @@ const COMPRESSIBLE = /^(text\/|application\/json|image\/svg)/;
    it does not list (the server and its config, the backend source, tooling, the scraper service, internal
    documents, backups, dotfiles) answers 404 here, exactly like a file that does not exist. */
 
-/* The pages ask for /favicon.ico on every load and the repository has no such file; the ET mark answers
-   for it. (Published event sites name the same file in their own <link rel="icon">.) */
-const FAVICON = { path: path.join(root, 'assets', 'et-b2b-logo.svg'), type: 'image/svg+xml' };
+/* A browser asks for /favicon.ico on its own; the red ET square answers for it (assets/favicon.svg, cut from the ET
+   B2B logo unchanged), the same icon every page and every published site names in its <link rel="icon">. */
+const FAVICON = { path: path.join(root, 'assets', 'favicon.svg'), type: 'image/svg+xml' };
 
 /* versioned: the request names the file's current content hash (?v=…, written by functions/lib/delivery.js
    into every page it serves) — that address can never mean other bytes, so it is kept for a year. */

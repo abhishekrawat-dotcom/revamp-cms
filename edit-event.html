@@ -4,7 +4,7 @@
 <!-- The event console ("Edit event"): one event's content, settings and site -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Event console &mdash; ETB2B EventSphere</title>
+<title>Event console &mdash; EventSphere</title>
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
@@ -1229,11 +1229,13 @@
         '<p class="field-over" id="b-desc-over" role="status" hidden></p>' +
         '<p class="hint" id="b-desc-hint">' + DESC_MIN + ' to ' + DESC_IDEAL + ' characters reads best; ' + DESC_MAX + ' at most.</p></div>' +
 
-      /* the address is the event's id: it is fixed when the event is created */
+      /* the address is the event's id: it is fixed when the event is created. It is shown whole, as the one
+         every page shows and copies (RevampCore.publicUrl: the public base + /e/<id>, UX-001): it was
+         "etoneworld.com/<slug>", a domain that does not exist. A read-only box scrolls, so a long host fits
+         any width. */
       '<div class="field c12"><label for="b-slug">Site address</label>' +
         '<div class="inp-grp">' +
-          '<span class="pre">etoneworld.com/</span>' +
-          '<input class="inp" id="b-slug" value="' + esc(e.slug || e.id) + '" spellcheck="false" readonly>' +
+          '<input class="inp" id="b-slug" value="' + esc(C.publicUrl(e)) + '" data-path="' + esc(e.slug || e.id) + '" spellcheck="false" readonly>' +
           '<button class="gbtn" type="button" id="b-copy" title="Copy the full address">' +
             svg(IC.link, 13) + '<span>Copy</span></button>' +
         '</div>' +
@@ -1560,10 +1562,13 @@
       var d = trimmed('desc') || 'Add a short description and it will appear here.';
       var venue = place() || 'Venue to be confirmed';
       var when = s.a ? fmtDT(localIso(s.a)) : 'Date to be announced';
-      var path = $('b-slug').value || 'your-event';
+      var path = ($('b-slug') && $('b-slug').getAttribute('data-path')) || EV.id || 'your-event';
       /* the portal chosen in the list, as the site names it; with none, the name the site shows instead */
       return { title:title, d:d, venue:venue, when:when, path:path, portal: portalName(v('portal')) || NO_PORTAL_SITE_NAME };
     }
+
+    /* the host a search result and a link preview name: the public base's (UX-001) */
+    function publicHost(){ return C.publicBase().replace(/^https?:\/\//, ''); }
 
     function paintPreview(){
       var host = $('b-preview'), note = $('b-pvnote');
@@ -1572,7 +1577,7 @@
 
       if (mode === 'serp'){
         html = '<div class="mock mock-serp">' +
-            '<div class="u">etoneworld.com &rsaquo; ' + esc(b.path) + '</div>' +
+            '<div class="u">' + esc(publicHost()) + ' &rsaquo; e &rsaquo; ' + esc(b.path) + '</div>' +
             '<div class="t">' + esc(b.title) + ' | ' + esc(b.portal) + '</div>' +
             '<div class="d">' + esc(b.when) + ' · ' + esc(b.venue) + '. ' + esc(b.d) + '</div>' +
           '</div>';
@@ -1582,7 +1587,7 @@
             '<div class="img"><span class="mp">' + esc(b.portal) + '</span>' +
               '<span class="mt">' + esc(b.title) + '</span>' +
               '<span class="md">' + esc(b.when) + ' · ' + esc(b.venue) + '</span></div>' +
-            '<div class="cap"><span class="dom">etoneworld.com</span>' +
+            '<div class="cap"><span class="dom">' + esc(publicHost()) + '</span>' +
               '<b>' + esc(b.title) + '</b><span>' + esc(b.d) + '</span></div>' +
           '</div>';
         n = 'What a WhatsApp, LinkedIn or X share unfurls into.';
@@ -1829,7 +1834,8 @@
 
     var copy = $('b-copy');
     if (copy) copy.addEventListener('click', function(){
-      var full = 'etoneworld.com/' + $('b-slug').value;
+      /* the same address the box shows, as the dashboard's Copy event link copies it */
+      var full = C.publicUrl(EV);
       var done = function(){
         copy.classList.add('done');
         copy.querySelector('span').textContent = 'Copied';
@@ -1839,9 +1845,18 @@
         }, 1600);
         notify('Address copied — ' + full);
       };
+      /* the browser refused (no permission, not a secure page): the address is selected to copy by hand,
+         instead of a "copied" that did not happen */
+      var refused = function(){
+        var box = $('b-slug');
+        if (box){ box.focus(); box.select(); }
+        /* an 'info' message, not notify()'s green tick: nothing was copied (the dashboard's Copy event link says
+           it the same way) */
+        C.toast('Could not copy here. The address is selected: press Ctrl+C (⌘C on a Mac) — ' + full, { kind: 'info' });
+      };
       if (navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText('https://' + full).then(done, done);
-      } else { done(); }
+        navigator.clipboard.writeText(full).then(done, refused);
+      } else { refused(); }
     });
 
     /* ---- the portal: ET's roster from portal-picker.js, with the stored portal chosen. While the event
@@ -4075,7 +4090,7 @@
       $('aq-list').innerHTML = Q.map(function(e, i){
         return '<button class="qi' + (e.err ? ' failed' : '') + '" type="button" data-q="' + i + '" aria-current="' + (i === qi) + '"' +
             (e.err ? ' title="Not saved yet"' : '') + '>' +
-            '<span class="qph" style="font-family:var(--font-mono);font-size:9.5px">' + esc(e.start) + '</span>' +
+            '<span class="qph" style="font-family:var(--font-mono);font-size:11px">' + esc(e.start) + '</span>' +
             '<span class="qn">' + (e.title ? esc(e.title) : '<em>Session ' + (i + 1) + '</em>') + '</span>' +
             (Q.length > 1 ? '<span class="qx" data-qx="' + i + '" role="button" aria-label="Remove">' +
               svg('<path d="M18 6L6 18M6 6l12 12"/>', 13) + '</span>' : '') +
@@ -5949,7 +5964,7 @@
           '<div class="field c6"><label for="ct-name">Owner</label>' +
             '<input class="inp" id="ct-name" value="' + esc(e.name || '') + '" placeholder="e.g. Priya Sharma"></div>' +
           '<div class="field c6"><label for="ct-email">Email</label>' +
-            '<input class="inp" id="ct-email" type="email" value="' + esc(e.email || '') + '" placeholder="name@etoneworld.com"></div>' +
+            '<input class="inp" id="ct-email" type="email" value="' + esc(e.email || '') + '" placeholder="name@company.com"></div>' +
           '<div class="field c6"><label for="ct-phone">Phone</label>' +
             '<input class="inp" id="ct-phone" type="tel" value="' + esc(e.phone || '') + '" placeholder="+91 98200 00000"></div>' +
           '<div class="field c12"><p class="hint" style="margin:0">Give an email address, a phone number, or both — ' +
@@ -6217,7 +6232,7 @@
   function viewPayment(){
     return vhead('Payment', 'Taking payment for passes, and the invoices that go with it.') +
       '<div class="panel"><div class="panel-body">' + emptyState(IC.card, 'Payment is not available yet',
-        'Online payment and invoices are not part of Oneworld 2.0 yet. Registrations are free and are not affected.',
+        'Online payment and invoices are not part of ETB2B EventSphere yet. Registrations are free and are not affected.',
         '<button class="btn btn-secondary btn-sm" type="button" data-goto="content/basics">Back to Content</button>') +
       '</div></div>';
   }
@@ -6789,7 +6804,8 @@
     var catLabel = TYPES[EV.category] || EV.category;
     if (catLabel) metaBits.push(catLabel);
     $('ev-meta').textContent = metaBits.join('  |  ');
-    document.title = 'Edit — ' + name + ' — Oneworld 2.0';
+    /* '<Page> · <Event> — EventSphere', the one tab title of every event page (UX-003; the short product name fits a tab) */
+    document.title = 'Edit · ' + name + ' — EventSphere';
     paintPortalChip();
     paintState();
   }
@@ -6893,7 +6909,7 @@
     $('ev-meta').textContent = '';
     $('ev-state').hidden = true;
     $('rail').innerHTML = '';
-    document.title = 'Edit Event — Oneworld 2.0';
+    document.title = 'Edit event — EventSphere';
     C.renderLoadError($('view'), err, { kind: kind, none: 'the event you want to edit', title: 'ev-name', onRetry: init });
   }
 

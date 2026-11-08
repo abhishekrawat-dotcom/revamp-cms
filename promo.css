@@ -9,7 +9,7 @@
 .promo-head h2{ font-size:24px; }
 .promo-head .sub{ font-size:13px; color: var(--text-muted); margin-top:3px; max-width:720px; }
 .promo-tabs{ margin-top:16px; }
-.promo-tabs button .tab-note{ font-size:10.5px; font-weight:700; color: var(--text-faint); margin-left:6px; }
+.promo-tabs button .tab-note{ font-size:11px; font-weight:700; color: var(--text-faint); margin-left:6px; }
 .promo-pane[hidden]{ display:none; }
 .promo-state{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; padding:110px 20px; text-align:center; color: var(--text-muted); }
 .promo-state .spin{ width:26px; height:26px; border-width:3px; }
@@ -64,7 +64,7 @@
 .ps-card.off [data-example-thumb], .ps-card.off .ps-thumb:has(> .ps-chip){ cursor:zoom-in; }
 .ps-ex{
   display:inline-flex; align-items:center; padding:3px 8px; border-radius:6px; background: var(--text); color: var(--bg);
-  box-shadow: 0 0 0 1px var(--surface); font-size:10.5px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; line-height:1.4;
+  box-shadow: 0 0 0 1px var(--surface); font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; line-height:1.4;
 }
 .ps-ex-note{ display:block; font-size:12px; line-height:1.45; color: var(--text-muted); }
 .ps-ex-note a{ color: var(--accent-strong); font-weight:700; }

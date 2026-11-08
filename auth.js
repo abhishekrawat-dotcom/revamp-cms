@@ -320,6 +320,19 @@
     return signedOutError();
   }
 
+  /* Every /api/ answer names where the published sites are (X-Public-Base, UX-001). A page whose calls all go
+     through here and never through RevampCore's own reader (Create Event: portals, working portal, drafts) would
+     otherwise draw an event's address on its own host in a fresh browser, and keep it once the public address is
+     a different domain. RevampCore keeps it when the page loads edit-event-core.js; a page without it has no
+     address to draw. */
+  function notePublicBase(res) {
+    var core = window.RevampCore;
+    if (core && typeof core.notePublicBase === 'function') {
+      try { core.notePublicBase(res); } catch (e) { /* the answer itself is still handed back */ }
+    }
+    return res;
+  }
+
   function authedFetch(url, opts) {
     var target = null;
     try { target = new URL(String(url), location.href); } catch (e) { /* not a URL at all */ }
@@ -338,14 +351,14 @@
       }, function (err) {
         throw tokenFailure(err);
       }).then(function (res) {
-        if (res.status !== 401) return res;
+        if (res.status !== 401) return notePublicBase(res);
         // the server refused a token Firebase considered good: get a brand-new one and try once more
         return freshToken(user, true).then(function (token) {
           return fetch(target.href, withAuth(opts, token));
         }, function (err) {
           throw tokenFailure(err);
         }).then(function (again) {
-          if (again.status !== 401) return again;
+          if (again.status !== 401) return notePublicBase(again);
           /* The server refused even a brand-new token. Leaving for the sign-in page here would throw away
              whatever was being saved (UX-013): the page stays as it is, under the "You have been signed out"
              box, and the caller is told 'revamp/signed-out', so it can say "sign in again, then press Save". */
@@ -367,7 +380,7 @@
       return firebase.auth().signInWithPopup(provider).then(function (cred) {
         if (isAllowedEmail(cred.user.email)) return cred.user;
         return firebase.auth().signOut().then(function () {
-          var err = new Error('Use your @' + ALLOWED_DOMAIN + ' Google account — ' + cred.user.email + ' can’t sign in to Revamp.');
+          var err = new Error('Use your @' + ALLOWED_DOMAIN + ' Google account — ' + cred.user.email + ' can’t sign in to ETB2B EventSphere.');
           err.code = 'revamp/domain-not-allowed';
           throw err;
         });

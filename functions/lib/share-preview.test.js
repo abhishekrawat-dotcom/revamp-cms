@@ -138,7 +138,8 @@ function fakeFb() {
 var FB = fakeFb();
 require.cache[require.resolve('./firebase')] = { id: require.resolve('./firebase'), filename: require.resolve('./firebase'), loaded: true, exports: { getFirebase: function () { return FB; } } };
 process.env.ALLOWED_EMAIL_DOMAIN = 'timesinternet.in';
-delete process.env.PUBLIC_BASE_URL;
+/* a share link is sent to people outside: it is on the sites' one address (lib/public-base.js, UX-001) */
+process.env.PUBLIC_BASE_URL = 'https://sites.example';
 /* other hosts' stylesheets are never fetched here (lib/delivery.js) */
 require('./delivery')._testFetch(function (url, done) { done(null); });
 
@@ -244,7 +245,7 @@ var MP = 'qa-share-multi';           // a site with an internal page
   var tok1 = tokenOf(made.body && made.body.url);
   check('1 make: 200 for a team member', made.status === 200 && !!tok1, made.status + ' ' + made.text.slice(0, 300));
   check('1 make: the answer is no-store', made.headers['cache-control'] === 'no-store', made.headers['cache-control']);
-  check('1 make: url is the origin asked for + /s/<43-char token>', made.body.url === 'https://cms.example/s/' + tok1, made.body.url);
+  check('1 make: url is the sites\' one address + /s/<43-char token>, not the origin the page is on', made.body.url === 'https://sites.example/s/' + tok1, made.body.url);
   var link1 = made.body.link || {};
   var doc1 = FB.docs['sharePreviews/' + T.hashToken(tok1)];
   check('1 make: the document id is hashToken(token), and the answer\'s id is that hash', !!doc1 && link1.id === T.hashToken(tok1), link1.id);
@@ -267,10 +268,10 @@ var MP = 'qa-share-multi';           // a site with an internal page
   check('1 the History line reads in IST, en-IN', SP._test.istDateTime('2026-11-10T10:50:00.000Z') === '10 Nov 2026, 4:20 pm IST' && SP._test.istDay('2026-11-03T10:50:00.000Z') === '3 Nov' &&
     SP._test.istDateTime('2026-11-09T19:00:00.000Z') === '10 Nov 2026, 12:30 am IST' && SP._test.istDateTime('2026-11-10T06:30:00.000Z') === '10 Nov 2026, 12:00 pm IST');
   var noOrigin = await call('POST', '/api/event/share-preview', { token: 'editor', body: { eventId: EV } });
-  check('1 make: without an origin, the address this server was reached at', noOrigin.status === 200 && /^http:\/\/localhost\/s\/[A-Za-z0-9_-]{43}$/.test(noOrigin.body.url), noOrigin.body && noOrigin.body.url);
+  check('1 make: without an origin, the same address', noOrigin.status === 200 && /^https:\/\/sites\.example\/s\/[A-Za-z0-9_-]{43}$/.test(noOrigin.body.url), noOrigin.body && noOrigin.body.url);
   var tok1b = tokenOf(noOrigin.body.url);
   var badOrigin = await call('POST', '/api/event/share-preview', { token: 'editor', body: { eventId: EV, origin: 'javascript:alert(1)' } });
-  check('1 make: an origin that is not one is ignored', badOrigin.status === 200 && /^http:\/\/localhost\/s\//.test(badOrigin.body.url), badOrigin.body && badOrigin.body.url);
+  check('1 make: an origin that is not one is ignored', badOrigin.status === 200 && /^https:\/\/sites\.example\/s\//.test(badOrigin.body.url), badOrigin.body && badOrigin.body.url);
   tokenOf(badOrigin.body.url);
 
   /* ============ 2. refusals ============ */
@@ -494,7 +495,7 @@ var MP = 'qa-share-multi';           // a site with an internal page
   var mpAgendaSlash = await call('GET', '/s/' + tokMP + '/agenda/');
   var mpNope = await call('GET', '/s/' + tokMP + '/nope');
   check('9 /s/<t> is the home page', mpHome.status === 200 && !/<html[^>]*data-rv-current-page/.test(mpHome.text) && mpHome.text.indexOf('SAVED-MP') !== -1, mpHome.status);
-  check('9 /s/<t>/agenda is the Agenda page', mpAgenda.status === 200 && /<html[^>]*data-rv-current-page="agenda"/.test(mpAgenda.text) && /<title>Agenda \| /.test(mpAgenda.text), mpAgenda.status + ' ' + mpAgenda.text.slice(0, 200));
+  check('9 /s/<t>/agenda is the Agenda page, its tab saying it is a preview (UX-003)', mpAgenda.status === 200 && /<html[^>]*data-rv-current-page="agenda"/.test(mpAgenda.text) && /<title>Preview · Agenda \| /.test(mpAgenda.text), mpAgenda.status + ' ' + mpAgenda.text.slice(0, 200));
   check('9 … with a trailing slash too', mpAgendaSlash.status === 200 && /data-rv-current-page="agenda"/.test(mpAgendaSlash.text));
   check('9 its page links point to /s/<t> and /s/<t>/agenda', mpAgenda.text.indexOf('data-rv-page-link="agenda" href="/s/' + tokMP + '/agenda"') !== -1 &&
     mpAgenda.text.indexOf('data-rv-page-link="home" href="/s/' + tokMP + '"') !== -1 && mpAgenda.text.indexOf('href="/preview/') === -1, (mpAgenda.text.match(/data-rv-page-link="[^"]*" href="[^"]*"/g) || []).join(' '));

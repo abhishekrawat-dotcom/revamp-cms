@@ -6,15 +6,15 @@
   --fb-surface-2: var(--surface-2, #f3eeed);
   --fb-border: var(--border, #e0d7d5);
   --fb-text: var(--text, #241b1a);
-  --fb-muted: var(--text-muted, #756865);
-  --fb-faint: var(--text-faint, #a0908c);
-  --fb-accent: var(--accent, #ed1c24);
+  --fb-muted: var(--text-muted, #655855);
+  --fb-faint: var(--text-faint, #6E605D);
+  --fb-accent: var(--accent, #D3141B);
   --fb-accent-strong: var(--accent-strong, #b3151b);
   --fb-accent-soft: var(--accent-soft, #fbdbdc);
   --fb-on-accent: #fff;
-  --fb-ok: var(--ok, #2f8f5b);
+  --fb-ok: var(--ok, #1F6E43);
   --fb-ok-soft: var(--ok-soft, #dfeee1);
-  --fb-warn: var(--warn, #9c6b14);
+  --fb-warn: var(--warn, #7A5410);
   --fb-warn-soft: var(--warn-soft, #f3e7c8);
   --fb-danger: var(--crit, #c2291f);
   --fb-radius: 10px;
@@ -81,7 +81,7 @@
 .fb-row-meta{ font-size: 12px; color: var(--fb-muted); overflow-wrap: anywhere; }
 .fb-link{ color: var(--fb-accent-strong); font-weight: 600; text-decoration: none; }
 .fb-link:hover{ text-decoration: underline; }
-.fb-badge{ font-size: 10.5px; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; color: var(--fb-accent-strong); background: var(--fb-accent-soft); border-radius: 100px; padding: 2px 8px; }
+.fb-badge{ font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .04em; color: var(--fb-accent-strong); background: var(--fb-accent-soft); border-radius: 100px; padding: 2px 8px; }
 .fb-flags{ display: flex; gap: 5px; flex-wrap: wrap; margin-top: 2px; }
 .fb-flag{ font-size: 11px; font-weight: 650; color: var(--fb-muted); border: 1px solid var(--fb-border); border-radius: 100px; padding: 1px 8px; }
 .fb-flag.is-closed{ color: var(--fb-warn); border-color: color-mix(in srgb, var(--fb-warn) 50%, transparent); background: var(--fb-warn-soft); }
@@ -101,7 +101,7 @@
 .fb-menu button:hover:not([disabled]), .fb-menu button:focus-visible{ background: var(--fb-surface-2); outline: none; }
 .fb-menu button[disabled]{ opacity: .5; cursor: not-allowed; }
 .fb-menu button.fb-danger{ color: var(--fb-danger); }
-.fb-menu-h{ font-size: 10.5px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; color: var(--fb-faint); padding: 8px 10px 3px; }
+.fb-menu-h{ font-size: 11px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; color: var(--fb-faint); padding: 8px 10px 3px; }
 
 /* the form */
 .fb-form-view{ display: flex; flex-direction: column; gap: 12px; }

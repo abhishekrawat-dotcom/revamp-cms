@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!-- The doctype and the viewport line (UX-038): without them a phone laid this page out 980 px wide in quirks mode,
      where the phone rule below never applied and the sign-in button sat under the marketing panel. -->
-<title>Revamp CMS</title>
+<title>Sign in &mdash; EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
@@ -19,19 +20,19 @@
     --surface-3: #E9E2E0;
     --border: #E0D7D5;
     --text: #241B1A;
-    --text-muted: #756865;
-    --text-faint: #A0908C;
+    --text-muted: #655855;
+    --text-faint: #6E605D;
 
-    --accent: #ED1C24;
+    --accent: #D3141B;
     --accent-strong: #B3151B;
     --accent-soft: #FBDBDC;
     --accent-contrast: #FFFFFF;
 
-    --ok: #2F8F5B;
+    --ok: #1F6E43;
     --ok-soft: #DFEEE1;
-    --warn: #9C6B14;
+    --warn: #7A5410;
     --warn-soft: #F3E7C8;
-    --review: #8A5A9E;
+    --review: #7B4F8E;
     --review-soft: #EBE0F0;
     --archived: #857F6A;
     --archived-soft: #E7E3D2;
@@ -54,8 +55,8 @@
       --surface-3: #352D2B;
       --border: #3F3532;
       --text: #EDE6E4;
-      --text-muted: #A89C99;
-      --text-faint: #7C716E;
+      --text-muted: #B0A4A1;
+      --text-faint: #A69A97;
 
       --accent: #FF6B70;
       --accent-strong: #FF8A8E;
@@ -84,8 +85,8 @@
     --surface-3: #352D2B;
     --border: #3F3532;
     --text: #EDE6E4;
-    --text-muted: #A89C99;
-    --text-faint: #7C716E;
+    --text-muted: #B0A4A1;
+    --text-faint: #A69A97;
 
     --accent: #FF6B70;
     --accent-strong: #FF8A8E;
@@ -266,7 +267,7 @@
         <p class="login-status" id="login-checking" role="status">Checking your session&hellip;</p>
 
         <div id="login-ready" hidden>
-          <h2>Sign in to Revamp</h2>
+          <h2>Sign in to ETB2B EventSphere</h2>
           <span class="sub">Sign in with your @timesinternet.in Google account.</span>
           <div class="login-error" id="login-error" role="alert" hidden></div>
 
@@ -408,7 +409,7 @@
     // Otherwise an earlier sign-in (Firebase Auth persists it) goes straight in.
     if (params.get('signout') === '1' || params.get('denied') === '1') {
       showSignIn();
-      if (params.get('denied') === '1') showError('Only @' + RevampAuth.allowedDomain + ' Google accounts can use Revamp. Sign in with your company account.');
+      if (params.get('denied') === '1') showError('Only @' + RevampAuth.allowedDomain + ' Google accounts can use ETB2B EventSphere. Sign in with your company account.');
       RevampAuth.signOutUser().catch(function(){
         showError('Could not finish signing out. Check your connection and reload this page.');
       });

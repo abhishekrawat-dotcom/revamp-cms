@@ -293,7 +293,7 @@
     '.rvpf-qa-item.is-block{border-left-color:var(--accent);background:var(--accent-soft)}',
     '.rvpf-qa-item.is-warn{border-left-color:var(--warn)}',
     '.rvpf-qa-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 8px;font-weight:700;color:var(--text)}',
-    '.rvpf-qa-lvl{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}',
+    '.rvpf-qa-lvl{font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--surface-2);color:var(--text-muted);white-space:nowrap}',
     '.rvpf-qa-item.is-block .rvpf-qa-lvl{background:var(--accent);color:var(--accent-contrast,#fff)}',
     '.rvpf-qa-item.is-warn .rvpf-qa-lvl{background:var(--warn-soft);color:var(--text)}',
     '.rvpf-qa-item ul{margin:4px 0 0;padding-left:18px}.rvpf-qa-item li{margin:2px 0;overflow-wrap:anywhere}',
@@ -673,7 +673,8 @@
     var C = window.RevampCore;
     return new Promise(function (done) {
       var outcome = { kind: 'closed' };
-      var url = location.origin + '/e/' + encodeURIComponent(eventId);
+      /* the address every page shows for the site (RevampCore.publicUrl: the one public base, UX-001) */
+      var url = C.publicUrl(eventId);
       var d = dialog({
         title: 'Publish the site?', opener: opts.opener,
         body: '<p>' + esc(savedLine(a, plan.version)) + ' goes live at <b>' + esc(url) + '</b> at once.</p>' +
@@ -690,7 +691,7 @@
         C.publishEvent(eventId).then(function (out) {
           outcome = { kind: 'published', result: out };
           if (typeof opts.onDone === 'function') opts.onDone(outcome);
-          var live = out.publishedUrl || (location.origin + (out.publishedPath || '/e/' + encodeURIComponent(eventId)));
+          var live = out.publishedUrl || C.publicUrl({ id: eventId, publishedPath: out.publishedPath });
           d.onClose = null;
           d.close(true);
           var r = dialog({

@@ -147,7 +147,7 @@ ok(/"startDate":"2026-12-05","endDate":"2026-12-07"/.test(pass(PAGE, { name: 'X'
 /* UX-150: the calendar file */
 var ics = S.calendarIcs({ name: 'Brand World Summit 2026; South', start: '2026-12-05T10:41', end: '2026-12-07T23:41', venue: 'Taj Wellington Mews, Chennai', city: 'Chennai' },
   { id: 'brand-world-summit-2026', url: 'https://sites.example/e/brand-world-summit-2026', stamp: new Date('2026-11-03T10:00:00Z') });
-ok(/^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\nPRODID:-\/\/ET B2B\/\/Oneworld 2\.0\/\/EN\r\n/.test(ics) && /\r\nEND:VCALENDAR\r\n$/.test(ics), 'an RFC 5545 calendar, CRLF lines');
+ok(/^BEGIN:VCALENDAR\r\nVERSION:2\.0\r\nPRODID:-\/\/ET B2B\/\/ETB2B EventSphere\/\/EN\r\n/.test(ics) && /\r\nEND:VCALENDAR\r\n$/.test(ics), 'an RFC 5545 calendar, CRLF lines');
 ok(/\r\nDTSTART;VALUE=DATE:20261205\r\nDTEND;VALUE=DATE:20261208\r\n/.test(ics), 'all day, 5 to 7 December (the end is the day after, as calendars count)');
 ok(/\r\nSUMMARY:Brand World Summit 2026\\; South\r\n/.test(ics) && /\r\nLOCATION:Taj Wellington Mews\\, Chennai\r\n/.test(ics) && /\r\nURL:https:\/\/sites\.example\/e\/brand-world-summit-2026\r\n/.test(ics) && /\r\nUID:brand-world-summit-2026@oneworld\.etb2b\r\n/.test(ics), 'its name, place (the city not twice) and site, escaped');
 var timed = S.calendarIcs({ name: 'T', start: '2026-12-05T09:30', end: '2026-12-05T18:00' }, { id: 't', stamp: new Date('2026-11-03T10:00:00Z') });
@@ -198,6 +198,8 @@ ok(/Go to the event’s home page/.test(hooks.noSuchPageHtml('x', {})) && hooks.
 ok(hooks.messagePage('T', 'M', { href: 'https://evil.example', label: 'Go' }).indexOf('evil') === -1, 'only a link on this site');
 /* the routes, end to end: a live award site, a draft, a wrong page address, the calendar file */
 var pending = [];
+/* the sites' address is the one setting (lib/public-base.js, UX-001), not the host a request names */
+process.env.PUBLIC_BASE_URL = 'https://sites.example';
 function route(url, method) {
   return new Promise(function (resolve) {
     var got = { status: 0, headers: {}, body: '' };
@@ -331,6 +333,17 @@ ok(hooks.repeatedHeadingIds([{ parsed: { sections: [{ id: 'overview', html: '<h2
   var lead = tf('cx-leaders-forum/sections/leaders/style.css').replace(/\/\*[\s\S]*?\*\//g, '');
   ok(/#leaders \.quote-grid::before,\s*#leaders \.quote-grid::after \{\s*content: none;\s*display: none;/.test(lead), 'OCT-3: the quotes grid starts in its first cell (the .row\'s ::before takes none)');
 })();
+
+/* UX-001: the dashboard's Agenda and Speakers QR codes name /e/<id>/agenda and /speakers; a one-page site opens at
+   that section (its ?ag= kept), and one without it says "no such page" with the way home */
+FB.docs['events/qa-ux-b02-qr'] = { name: 'QR Summit', createdAt: '2026-11-01T00:00:00.000Z', published: true, publishedVersion: 2, publishedAt: '2026-11-02T00:00:00.000Z',
+  site: { version: 2, templateId: 'gen-qa-ux-b02-qr' } };
+FB.files['events/qa-ux-b02-qr/published/index.html'] = PAGE.replace('<title>AutoTech</title>', '<title>QR Summit</title>').replace('</body>', '<section id="agenda"><h2>Agenda</h2></section></body>');
+pending.push(Promise.all([route('/e/qa-ux-b02-qr/agenda?ag=mailer'), route('/e/qa-ux-b02-qr/speakers'), route('/e/qa-ux-b02-qr/agenda')]).then(function (r) {
+  ok(r[0].status === 302 && r[0].headers.Location === '/e/qa-ux-b02-qr?ag=mailer#agenda', 'UX-001 the Agenda QR code opens a one-page site at its agenda, the AG code kept', r[0].status + ' ' + JSON.stringify(r[0].headers));
+  ok(r[2].status === 302 && r[2].headers.Location === '/e/qa-ux-b02-qr#agenda', '…and without an AG code', r[2].headers.Location);
+  ok(r[1].status === 404 && /This page does not exist/.test(r[1].body) && /Go to QR Summit/.test(r[1].body), 'UX-001 a site with no speakers section: "no such page" and the way home', r[1].status);
+}));
 
 Promise.all(pending).then(function () {
   if (failures.length) {

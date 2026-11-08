@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Registrations - Revamp CMS</title>
+  <title>Registrations &mdash; EventSphere</title>
+  <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="edit-event.css">
@@ -42,7 +43,7 @@
     .toolbar .acts{ margin-left:auto; display:flex; gap:8px; }
 
     .rep-tbl{ width:100%; border-collapse:collapse; font-size:13.5px; }
-    .rep-tbl th{ background:var(--surface-2); color:var(--text-muted); padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
+    .rep-tbl th{ background:var(--surface-2); color:var(--text-muted); padding:10px 12px; text-align:left; border-bottom:1px solid var(--border); font-size:11px; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }
     .rep-tbl td{ padding:10px 12px; border-bottom:1px solid var(--border); vertical-align:middle; }
     .rep-tbl td .clip{ display:block; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .rep-tbl tbody tr{ cursor:pointer; }
@@ -81,7 +82,7 @@
     .drawer-body{ flex:1; overflow-y:auto; padding:16px 18px; }
     .drawer-foot{ display:flex; gap:8px; padding:12px 18px; border-top:1px solid var(--border); flex-wrap:wrap; }
     .dsec{ margin-bottom:20px; }
-    .dsec h4{ font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); margin-bottom:9px; }
+    .dsec h4{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--text-faint); margin-bottom:9px; }
     .drow{ display:flex; gap:12px; font-size:13px; padding:5px 0; align-items:baseline; }
     .drow .k{ color:var(--text-muted); min-width:120px; max-width:45%; flex-shrink:0; font-weight:600; overflow-wrap:anywhere; }
     .drow .v{ font-weight:650; min-width:0; overflow-wrap:anywhere; white-space:pre-wrap; }
@@ -314,7 +315,8 @@
     var ev = S.ev;
     $('event-name').textContent = ev ? (String(ev.name || '').trim() || 'Untitled event') : (eventId ? 'Loading…' : 'Registrations');
     $('event-meta').textContent = ev ? 'Reporting › Registrations' : '';
-    document.title = (ev ? (ev.name || eventId) + ' — ' : '') + 'Registrations - Revamp CMS';
+    /* '<Page> · <Event> — EventSphere', as every event page's tab reads (UX-003) */
+    document.title = 'Registrations' + (ev ? ' · ' + (String(ev.name || '').trim() || eventId) : '') + ' — EventSphere';
   }
 
   function render(){

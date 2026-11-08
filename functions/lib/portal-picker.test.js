@@ -627,7 +627,8 @@ async function main() {
       check('D.2 ' + th[0] + ': --' + p[0] + ' on --' + p[1] + ' ≥ 4.5 (' + p[2] + ')', rr >= 4.5, { ratio: Math.round(rr * 100) / 100, fg: a, bg: c });
     });
   });
-  check('D.2 (why not --warn or --accent words: they fall short in light)', ratio(THEMES[0][1].warn, THEMES[0][1]['warn-soft']) < 4.5 && ratio(THEMES[0][1]['accent-contrast'], THEMES[0][1].accent) < 4.5);
+  /* they fell short in light (3.71 and 4.38) until UX-004's readable tokens; both read now */
+  check('D.2 --warn words on its tint and white on --accent read in light too (UX-004)', ratio(THEMES[0][1].warn, THEMES[0][1]['warn-soft']) >= 4.5 && ratio(THEMES[0][1]['accent-contrast'], THEMES[0][1].accent) >= 4.5);
 
   if (failed) { console.error('portal-picker: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('portal-picker: all ' + passed + ' checks passed');

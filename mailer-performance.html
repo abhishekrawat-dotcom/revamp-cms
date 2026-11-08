@@ -8,7 +8,8 @@
      the team scope lives in promo-studio/oneworld.js), which reads GET /api/promo/analytics/all (lib/promo-track.js).
      This page is only the bar above it, so the team view and each event's Promotions → Mailers dashboard stay one
      piece of code. Linked from the events listing (Event_Listing.html, beside "Activity log"). -->
-<title>Mailer performance — Oneworld 2.0</title>
+<title>Mailer performance — EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
@@ -21,12 +22,12 @@
 <style>
   :root{
     --bg:#FAF7F6; --surface:#FFFFFF; --surface-2:#F3EEED; --surface-3:#E9E2E0;
-    --border:#E0D7D5; --border-strong:#CFC3C0; --text:#241B1A; --text-muted:#756865; --text-faint:#A0908C;
-    --accent:#ED1C24; --accent-strong:#B3151B; --accent-soft:#FBDBDC; --accent-contrast:#FFFFFF;
-    --ok:#16794F; --ok-soft:#E4F5EC; --warn:#A9700F; --warn-soft:#FBF0DA; --crit:#C13333; --crit-soft:#FBE8E7;
-    --tag-blue:#1D5FA3; --tag-blue-soft:#E3EEFB; --tag-teal:#0E7C6B; --tag-teal-soft:#E0F5F0;
+    --border:#E0D7D5; --border-strong:#CFC3C0; --text:#241B1A; --text-muted:#655855; --text-faint:#6E605D;
+    --accent:#D3141B; --accent-strong:#B3151B; --accent-soft:#FBDBDC; --accent-contrast:#FFFFFF;
+    --ok:#16794F; --ok-soft:#E4F5EC; --warn:#845B10; --warn-soft:#FBF0DA; --crit:#C13333; --crit-soft:#FBE8E7;
+    --tag-blue:#1D5FA3; --tag-blue-soft:#E3EEFB; --tag-teal:#0B6E5F; --tag-teal-soft:#E0F5F0;
     --tag-violet:#7A3FA0; --tag-violet-soft:#F1E7F8; --tag-cyan:#0E7490; --tag-cyan-soft:#DFF4F8;
-    --tag-amber:#9C6B0B; --tag-amber-soft:#F7EEDA; --tag-rose:#B23A6B; --tag-rose-soft:#FBE7EF;
+    --tag-amber:#7F5709; --tag-amber-soft:#F7EEDA; --tag-rose:#B23A6B; --tag-rose-soft:#FBE7EF;
     --r-sm:8px; --r-md:12px;
     --font-body:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;
     --font-mono:'IBM Plex Mono','SFMono-Regular',Consolas,monospace;
@@ -34,7 +35,7 @@
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
-      --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+      --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#B0A4A1; --text-faint:#A69A97;
       --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
       --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
       --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;
@@ -44,7 +45,7 @@
   }
   :root[data-theme="dark"]{
     --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --surface-3:#352D2B;
-    --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#A89C99; --text-faint:#7C716E;
+    --border:#3F3532; --border-strong:#4D413D; --text:#EDE6E4; --text-muted:#B0A4A1; --text-faint:#A69A97;
     --accent:#FF6B70; --accent-strong:#FF8A8E; --accent-soft:#3A1518; --accent-contrast:#2B0A0B;
     --ok:#4CB484; --ok-soft:#173225; --warn:#D8A64A; --warn-soft:#332711; --crit:#E27A7A; --crit-soft:#3A1E1D;
     --tag-blue:#7EB6E8; --tag-blue-soft:#132A3D; --tag-teal:#5FCDB8; --tag-teal-soft:#0F2B24;

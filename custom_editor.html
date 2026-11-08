@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Site editor &mdash; ETB2B EventSphere</title>
+<title>Site editor &mdash; EventSphere</title>
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Noticia+Text:wght@400;700&family=Playfair+Display:wght@400;600;700&family=Poppins:wght@400;500;600;700&family=Lora:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap">
@@ -20,19 +20,19 @@
     --surface-3: #E9E2E0;
     --border: #E0D7D5;
     --text: #241B1A;
-    --text-muted: #756865;
-    --text-faint: #A0908C;
+    --text-muted: #655855;
+    --text-faint: #6E605D;
 
-    --accent: #ED1C24;
+    --accent: #D3141B;
     --accent-strong: #B3151B;
     --accent-soft: #FBDBDC;
     --accent-contrast: #FFFFFF;
 
-    --ok: #2F8F5B;
+    --ok: #1F6E43;
     --ok-soft: #DFEEE1;
-    --warn: #9C6B14;
+    --warn: #7A5410;
     --warn-soft: #F3E7C8;
-    --review: #8A5A9E;
+    --review: #7B4F8E;
     --review-soft: #EBE0F0;
     --archived: #857F6A;
     --archived-soft: #E7E3D2;
@@ -51,7 +51,7 @@
   @media (prefers-color-scheme: dark){
     :root:not([data-theme="light"]){
       --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
-      --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
+      --border: #3F3532; --text: #EDE6E4; --text-muted: #B0A4A1; --text-faint: #A69A97;
       --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
       --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
       --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
@@ -63,7 +63,7 @@
   }
   :root[data-theme="dark"]{
     --bg: #171514; --surface: #201C1B; --surface-2: #2A2422; --surface-3: #352D2B;
-    --border: #3F3532; --text: #EDE6E4; --text-muted: #A89C99; --text-faint: #7C716E;
+    --border: #3F3532; --text: #EDE6E4; --text-muted: #B0A4A1; --text-faint: #A69A97;
     --accent: #FF6B70; --accent-strong: #FF8A8E; --accent-soft: #3A1518; --accent-contrast: #2B0A0B;
     --ok: #4FAE7A; --ok-soft: #1F3524; --warn: #D6A544; --warn-soft: #3A2E14;
     --review: #C298DA; --review-soft: #332A3C; --archived: #A79F86; --archived-soft: #2C2919;
@@ -159,7 +159,7 @@
   .ai-gate-row input[type="checkbox"]{ width:16px; height:16px; flex-shrink:0; accent-color: var(--accent); }
   .ai-gate-name{ flex:1; font-size:13px; font-weight:600; }
   .ai-gate-pill{
-    display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:800; text-transform:uppercase;
+    display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; text-transform:uppercase;
     letter-spacing:.03em; padding:3px 8px; border-radius:999px; flex-shrink:0; white-space:nowrap;
   }
   .ai-gate-pill svg{ flex-shrink:0; }
@@ -330,7 +330,7 @@
   .dev-pick select{ font: inherit; font-size:13px; padding: 6px 10px; border:1px solid var(--border); border-radius:8px; background: var(--surface); color: var(--text); max-width: 320px; }
   .dev-tabs{ display:flex; align-items:center; gap:4px; padding: 8px 18px 0; border-bottom: 1px solid var(--border); }
   .dev-tabs button{ font: inherit; font-size:13px; font-weight:700; padding: 8px 14px; border:0; background:none; color: var(--text-muted); border-bottom: 2px solid transparent; cursor:pointer; }
-  .dev-tabs button.active{ color: var(--accent-strong, #c8102e); border-bottom-color: var(--accent, #ED1C24); }
+  .dev-tabs button.active{ color: var(--accent-strong, #c8102e); border-bottom-color: var(--accent, #D3141B); }
   .dev-note{ margin-left:auto; font-size:11.5px; color: var(--text-muted); padding-bottom:6px; text-align:right; max-width: 48%; }
   .dev-wrap{ display:flex; align-items:center; gap:6px; margin-left:14px; font-size:12px; color: var(--text-muted); cursor:pointer; padding-bottom:6px; }
   .dev-keys{ font-size:11.5px; color: var(--text-faint); padding: 0 0 6px 10px; }
@@ -381,7 +381,7 @@
   .rvc .ai-task{ border:1px solid var(--rvc-border); border-radius:var(--rvc-r-md); background:var(--rvc-surface); box-shadow:var(--rvc-shadow-sm); overflow:hidden; }
   .rvc .ai-task-head{ display:flex; align-items:center; gap:8px; padding:10px 12px 8px; }
   .rvc .ai-task-title{ flex:1; min-width:0; font-size:12.5px; font-weight:700; color:var(--rvc-text); }
-  .rvc .ai-task-badge{ flex-shrink:0; padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:700; letter-spacing:.02em; }
+  .rvc .ai-task-badge{ flex-shrink:0; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.02em; }
   .rvc .ai-task.is-run .ai-task-badge{ background:var(--rvc-accent-soft); color:var(--rvc-accent-strong); }
   .rvc .ai-task.is-applied .ai-task-badge{ background:var(--rvc-ok-soft); color:var(--rvc-ok); }
   .rvc .ai-task.is-partly .ai-task-badge{ background:var(--rvc-warn-soft); color:var(--rvc-warn); }
@@ -432,7 +432,7 @@
   .dp-theme-list{ display:flex; flex-direction:column; gap:8px; }
   .dp-theme{ display:flex; align-items:center; gap:12px; width:100%; padding:8px; border:1px solid var(--border); border-radius:10px; background: var(--surface); text-align:left; cursor:pointer; font:inherit; color: var(--text); }
   .dp-theme:hover{ border-color: var(--text-muted); }
-  .dp-theme.on{ border-color: var(--accent, #ED1C24); box-shadow: 0 0 0 1px var(--accent, #ED1C24); }
+  .dp-theme.on{ border-color: var(--accent, #D3141B); box-shadow: 0 0 0 1px var(--accent, #D3141B); }
   .dp-theme-swatch{ position:relative; flex-shrink:0; width:64px; height:44px; border-radius:7px; border:1px solid; overflow:hidden; display:flex; align-items:flex-end; padding:5px; gap:3px; }
   .dp-theme-swatch i{ width:12px; height:12px; border-radius:3px; }
   .dp-theme-swatch b{ position:absolute; top:3px; right:6px; font-size:15px; font-weight:700; }
@@ -491,7 +491,7 @@
   /* A setting that is not part of the page, so not part of Save and Undo, says so where it is set (UX-088): every
      other change waits for Save. The tick marks it saved; while a choice is on its way it says "Saving…". */
   .dp-autosave{ display:flex; align-items:flex-start; gap:6px; font-size:11.5px; line-height:1.45; color:var(--text-muted); }
-  .dp-autosave::before{ content:'\2713'; flex-shrink:0; font-weight:800; color:var(--ok, #2F8F5B); }
+  .dp-autosave::before{ content:'\2713'; flex-shrink:0; font-weight:800; color:var(--ok, #1F6E43); }
   .dp-autosave.is-saving::before{ content:'\2026'; color:var(--text-faint); }
   .dp-divider{ height:1px; background:var(--border); margin:4px 0; }
 
@@ -560,7 +560,7 @@
   .lyr-row .nm:hover{ background: var(--surface-3); }
   .lyr-row.hidden-sec .nm-text{ opacity:.55; text-decoration:line-through; }
   .lyr-row .nm-text{ max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .lyr-row .nm-note{ font-size:10.5px; font-weight:600; line-height:1.3; color: var(--text-faint); white-space:normal; }
+  .lyr-row .nm-note{ font-size:11px; font-weight:600; line-height:1.3; color: var(--text-faint); white-space:normal; }
   .lyr-row .nm-input{ flex:1; min-width:0; height:28px; border:1.5px solid var(--accent); border-radius:6px; padding:0 7px; background: var(--surface); color: var(--text); font: inherit; font-size:12.5px; font-weight:600; }
   .lyr-row .lyr-show{ flex-shrink:0; border:1px solid var(--border); background: var(--surface); color: var(--text); border-radius:6px; padding:3px 9px; font-size:11.5px; font-weight:700; }
   .lyr-row .lyr-show:hover{ border-color: var(--accent); color: var(--accent-strong); }
@@ -871,7 +871,7 @@
   .ed-dialog .ed-dialog-body{ font-size:13.5px; color: var(--text-muted); display:flex; flex-direction:column; gap:10px; }
   .ed-dialog .modal-foot{ justify-content:flex-end; flex-wrap:wrap; padding: 14px 24px 22px; }
   .ed-dialog .modal-foot .ed-dialog-aside{ margin-right:auto; }
-  .btn.btn-danger{ background: var(--crit); border-color: var(--crit); color:#fff; }
+  .btn.btn-danger{ background: var(--crit); border-color: var(--crit); color: var(--accent-contrast); }   /* dark words on the light red of the dark theme (UX-004) */
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
 
@@ -1375,7 +1375,7 @@
           <div class="dp-row">
             <div>
               <label for="motion-master-toggle" style="display:block">Enable motion effects</label>
-              <span class="dp-hint" style="display:block;font-size:10.5px">Off: visitors see the site with no animation or transitions</span>
+              <span class="dp-hint" style="display:block;font-size:11px">Off: visitors see the site with no animation or transitions</span>
             </div>
             <label class="toggle-sw">
               <input type="checkbox" id="motion-master-toggle" checked>
@@ -1387,7 +1387,7 @@
             <div class="dp-row" style="margin-top:2px" data-dp-control>
               <div>
                 <label for="motion-reveals-toggle" style="display:block;font-size:12px;font-weight:600">Scroll Reveals</label>
-                <span class="dp-hint" style="display:block;font-size:10.5px">Blocks fade in as visitors scroll to them</span>
+                <span class="dp-hint" style="display:block;font-size:11px">Blocks fade in as visitors scroll to them</span>
               </div>
               <label class="toggle-sw">
                 <input type="checkbox" id="motion-reveals-toggle" checked>

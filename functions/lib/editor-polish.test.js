@@ -248,6 +248,8 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
     /\.frame\.tpl-frame\.is-phone\{ background:transparent; box-shadow:none; outline:0; \}/.test(STYLE) &&
     /\.tpl-viewport\[data-device="mobile"\]::before\{[^}]*pointer-events:none;[^}]*left:calc\(var\(--phone-left\) - 10px\);[^}]*border:10px solid #1c1a1f; border-radius:38px;/.test(STYLE) &&
     /viewport\.style\.setProperty\('--phone-width', Math\.round\(box\.width \* scale\) \+ 'px'\);/.test(fit) && /viewport\.style\.removeProperty\(k\)/.test(fit));
+  check('4 the card fit() marks is the one the page was mounted in, handed to the canvas (as a global it was only the site editor\'s #frame: Create Event\'s preview threw "frame is not defined")',
+    /canvas = makeCanvas\(viewport, iframe, res\.template, frame\);/.test(CANVAS) && /function makeCanvas\(viewport, iframe, template, frame\) \{/.test(CANVAS));
   check('4 the card is marked by a class, not by :has() (missing in Firefox before 121), and is white again once the canvas is gone',
     noComments(STYLE).indexOf(':has(') === -1 && /frame\.classList\.toggle\('is-phone', device === 'mobile'\);/.test(fit) &&
     /destroy: function \(\) \{ resizing\.disconnect\(\); viewport\.remove\(\); frame\.classList\.remove\('is-phone'\); \}/.test(CANVAS));

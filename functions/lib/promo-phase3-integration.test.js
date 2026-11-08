@@ -28,11 +28,12 @@ const { PassThrough } = require('stream');
 var SUITE_ENV = Object.assign({}, process.env);
 delete SUITE_ENV.GEMINI_API_KEY;
 delete SUITE_ENV.ANTHROPIC_API_KEY;
-/* a local server, no tracking, no public address of its own: what the developer machine is */
+/* a local server, no tracking: what the developer machine is. The public address is the one setting every
+   address is built from (lib/public-base.js, UX-001), here the test's own host */
 delete process.env.K_SERVICE;
 delete process.env.TRACK_SECRET;
 delete process.env.TRACK_SECRET_PREVIOUS;
-delete process.env.PUBLIC_BASE_URL;
+process.env.PUBLIC_BASE_URL = 'https://cms.example';
 delete process.env.GEMINI_API_KEY;
 delete process.env.ANTHROPIC_API_KEY;
 process.env.ALLOWED_EMAIL_DOMAIN = 'timesinternet.in';

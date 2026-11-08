@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Review changes &mdash; Revamp CMS</title>
+<title>Review changes &mdash; EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <style>
@@ -16,12 +17,12 @@
      /api/event/restore-version (functions/lib/api.js). */
   /* the console's neutrals (edit-event.css), in both themes, so the page reads as the same product (UX-007) */
   :root{
-    --bg:#FAF7F6; --surface:#fff; --surface-2:#F3EEED; --border:#E0D7D5; --text:#241B1A; --muted:#756865;
-    --accent:#ED1C24; --ok:#2F8F5B; --ok-soft:#DFEEE1; --warn:#9C6B14; --warn-soft:#F3E7C8; --bad:#B3261E; --bad-soft:#F7DEDC;
+    --bg:#FAF7F6; --surface:#fff; --surface-2:#F3EEED; --border:#E0D7D5; --text:#241B1A; --muted:#655855;
+    --accent:#D3141B; --ok:#1F6E43; --ok-soft:#DFEEE1; --on-ok:#fff; --warn:#7A5410; --warn-soft:#F3E7C8; --bad:#B3261E; --bad-soft:#F7DEDC;
   }
   :root[data-theme="dark"]{
-    --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --border:#3F3532; --text:#EDE6E4; --muted:#A89C99;
-    --ok:#4FAE7A; --ok-soft:#1F3524; --warn:#D6A544; --warn-soft:#3A2E14; --bad:#F0857D; --bad-soft:#3B1E1C;
+    --bg:#171514; --surface:#201C1B; --surface-2:#2A2422; --border:#3F3532; --text:#EDE6E4; --muted:#B0A4A1;
+    --ok:#4FAE7A; --ok-soft:#1F3524; --on-ok:#10251A; --warn:#D6A544; --warn-soft:#3A2E14; --bad:#F0857D; --bad-soft:#3B1E1C;
   }
   *{ box-sizing:border-box; }
   /* hidden means hidden, also on a .btn (which sets its own display) */
@@ -45,7 +46,7 @@
   .badge.rejected{ background:var(--bad-soft); color:var(--bad); }
   .btn{ font:inherit; font-weight:600; font-size:13px; padding:8px 14px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--text); cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }
   .btn:disabled{ opacity:.55; cursor:not-allowed; }
-  .btn.primary{ background:var(--ok); border-color:var(--ok); color:#fff; }
+  .btn.primary{ background:var(--ok); border-color:var(--ok); color:var(--on-ok); }   /* dark words on the light green of the dark theme (UX-004) */
   .btn.danger{ color:var(--bad); border-color:var(--bad); }
   .btn.small{ padding:5px 10px; font-size:12px; }
   /* the list on the left, the pages on the right, and Approve / Reject under the list (a grid cell of its own, so
@@ -73,26 +74,26 @@
   .chg .show{ margin-left:auto; font-size:11.5px; font-weight:600; color:var(--muted); white-space:nowrap; }
   .chg .miss{ color:var(--muted); font-size:12px; margin-top:6px; }
   .chg .top{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; }
-  .chg .kind{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); }
+  .chg .kind{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); }
   .chg .kind.added{ background:var(--ok-soft); color:var(--ok); } .chg .kind.removed{ background:var(--bad-soft); color:var(--bad); }
   .chg .ba{ margin-top:8px; display:grid; gap:6px; font-size:12.5px; }
   .chg .ba div{ padding:6px 9px; border-radius:6px; white-space:pre-wrap; word-break:break-word; max-height:132px; overflow:auto; }
   .chg .ba .b{ background:var(--bad-soft); } .chg .ba .a{ background:var(--ok-soft); }
-  .chg .ba b{ font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; display:block; margin-bottom:2px; }
+  .chg .ba b{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; opacity:.7; display:block; margin-bottom:2px; }
   .chg .extra{ color:var(--muted); font-size:12px; margin-top:6px; }
   .chg .rec{ margin-top:6px; font-size:12.5px; word-break:break-word; }
   .more-note{ border:1px dashed var(--border); border-radius:10px; padding:10px 12px; margin:8px 0; font-size:13px; color:var(--muted); word-break:break-word; }
   .more-note a{ color:inherit; font-weight:600; }
   .side h3{ font-size:12.5px; font-weight:700; margin:14px 0 6px; }
   .side h3 small{ font-weight:500; color:var(--muted); }
-  .tag{ display:inline-block; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:5px; background:var(--surface-2); color:var(--muted); margin-left:6px; vertical-align:1px; }
+  .tag{ display:inline-block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:1px 6px; border-radius:5px; background:var(--surface-2); color:var(--muted); margin-left:6px; vertical-align:1px; }
   /* the site check of the proposed version (functions/lib/api.js siteCheckOf): what holds it back, what to know */
   .chk{ border:1px solid var(--border); border-left-width:4px; border-radius:10px; padding:10px 12px; margin-bottom:8px; font-size:13px; }
   .chk.block{ border-left-color:var(--bad); background:var(--bad-soft); }
   .chk.warn{ border-left-color:var(--warn); }
   .chk.info{ border-left-color:var(--border); }
   .chk .top{ display:flex; align-items:baseline; gap:8px; font-weight:700; }
-  .chk .lvl{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); white-space:nowrap; }
+  .chk .lvl{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; padding:2px 7px; border-radius:5px; background:var(--surface-2); color:var(--muted); white-space:nowrap; }
   .chk.block .lvl{ background:var(--bad); color:var(--surface); }
   .chk.warn .lvl{ background:var(--warn-soft); color:var(--warn); }
   .chk ul{ margin:6px 0 0; padding-left:18px; } .chk li{ margin:2px 0; word-break:break-word; }
@@ -390,7 +391,7 @@
   function wireRestore(){
     var open = document.getElementById('rs-open');
     if (!open) return;
-    var p = data.previousLive, lv = liveVersion(), url = location.origin + (data.publishedPath || '/e/' + eventId);
+    var p = data.previousLive, lv = liveVersion(), url = C.publicUrl({ id: eventId, publishedPath: data.publishedPath });   // the one public address (UX-001)
     open.onclick = function(){
       open.hidden = true;
       var ask = document.getElementById('rs-ask');

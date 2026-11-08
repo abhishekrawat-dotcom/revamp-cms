@@ -18,7 +18,7 @@ var css = read('promo.css');
 
 /* ---------- marketing.html, as a file ---------- */
 var title = (/<title>([\s\S]*?)<\/title>/.exec(page) || [])[1];
-check('the title says Oneworld 2.0', title && title.replace(/&mdash;/g, '—') === 'Promotions — Oneworld 2.0', title);
+check('the title says EventSphere (UX-003)', title && title.replace(/&mdash;/g, '—') === 'Promotions — EventSphere', title);
 check('the file\'s comment says Oneworld 2.0', /^<!doctype html>\s*<!-- Oneworld 2\.0 : one event's Promotions/.test(page), page.slice(0, 160));
 check('no "Revamp CMS" left on the page', page.indexOf('Revamp CMS') === -1);
 
@@ -175,7 +175,7 @@ var P = load({ search: '?event=ev-1' });
 pending.push(settle().then(function () {
   var view = P.els.view.innerHTML;
   check('the heading line says what each tab makes', view.indexOf('<div class="sub">Social posts in the ET portal’s look, posts in this site’s own look, and mailers — all from this event’s real speakers, partners and agenda.</div>') !== -1, view.slice(0, 400));
-  check('the window\'s title names the event and Oneworld 2.0', P.doc.title === 'Promotions — Agentic AI Summit — Oneworld 2.0', P.doc.title);
+  check('the window\'s title names the event and EventSphere (UX-003)', P.doc.title === 'Promotions · Agentic AI Summit — EventSphere', P.doc.title);
   check('three tab buttons in order', (view.match(/data-tab="([\w-]+)"/g) || []).join() === 'data-tab="posts",data-tab="site-posts",data-tab="mailers"');
   check('three panes, each with its root', ['promo-social-root', 'promo-posts-root', 'promo-mailers-root'].every(function (r) { return !!P.els[r]; }));
   check('no tab in the address: Social posts', selected(P) === 'posts' && !P.els['pane-posts'].hidden && P.els['pane-site-posts'].hidden && P.els['pane-mailers'].hidden);
@@ -522,7 +522,7 @@ check('the badge is set apart from any post under it', !!only('.ps-ex') && /var\
    the address; its script (edit-event-marketing.js, which no longer parsed) is gone. */
 var oldPage = read('edit-event-marketing.html');
 var oldTitle = (/<title>([\s\S]*?)<\/title>/.exec(oldPage) || [])[1];
-check('UX-137: the old address is titled Promotions — Oneworld 2.0', oldTitle && oldTitle.replace(/&mdash;/g, '—') === 'Promotions — Oneworld 2.0', oldTitle);
+check('UX-137: the old address is titled Promotions — EventSphere', oldTitle && oldTitle.replace(/&mdash;/g, '—') === 'Promotions — EventSphere', oldTitle);
 check('UX-137: no "Revamp CMS" and no "workbench" on it', oldPage.indexOf('Revamp CMS') === -1 && !/workbench/i.test(oldPage.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, '')));
 check('UX-137: it loads no script file, and edit-event-marketing.js is gone', !/<script\s+src=/.test(oldPage) && !fs.existsSync(path.join(ROOT, 'edit-event-marketing.js')));
 var oldJs = ((/<script>([\s\S]*?)<\/script>/.exec(oldPage)) || [])[1] || '';
@@ -537,7 +537,7 @@ check('UX-137: the rest of the address goes along, and a tab it names is kept', 
 check('UX-137: no event (or a blank one) goes to the events listing', JSON.stringify(oldGoesTo('')) === JSON.stringify(['/Event_Listing.html']) &&
   JSON.stringify(oldGoesTo('?event=%20%20')) === JSON.stringify(['/Event_Listing.html']));
 var oldDash = read('edit-event-dashboard.html');
-check('UX-137: the old Dashboard address is titled for Oneworld 2.0 too', oldDash.indexOf('Revamp CMS') === -1 && /<title>Dashboard &mdash; Oneworld 2\.0<\/title>/.test(oldDash));
+check('UX-137: the old Dashboard address is titled for EventSphere too', oldDash.indexOf('Revamp CMS') === -1 && /<title>Dashboard &mdash; EventSphere<\/title>/.test(oldDash));
 
 /* ---- UX-121: the framed studios are not held for the Kit, and Social posts' catalog is asked for early ---- */
 var kitFails = load({ search: '?event=ev-1', kitLoad: function (n) { return n === 1 ? Promise.reject(Object.assign(new Error('down'), { status: 503 })) : Promise.resolve({ brand: {}, content: {} }); } });

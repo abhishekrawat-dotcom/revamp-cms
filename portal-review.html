@@ -11,7 +11,8 @@
      POST /api/events/portal-backfill, which checks each again before it writes. Nothing here works a portal out
      itself, and nothing is written until an approver presses the button. Linked from the dashboard's
      "No portal yet" notice (Event_Listing.html). -->
-<title>Fill in portals — Oneworld 2.0</title>
+<title>Fill in portals — EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="edit-event.css">
@@ -104,7 +105,7 @@
   </a>
   <span class="ev-title">
     <h1>Fill in portals</h1>
-    <span class="meta">Oneworld 2.0 · events made before portals</span>
+    <span class="meta">ETB2B EventSphere · events made before portals</span>
   </span>
   <span class="topbar-acts">
     <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
@@ -116,7 +117,7 @@
   <div class="vhead">
     <div class="crumb">Portals</div>
     <h2 id="pr-heading" tabindex="-1">Fill in the portals of existing events</h2>
-    <div class="sub">Every event in Oneworld 2.0 now belongs to one ET portal. Events made before that have none yet. This page reads each event's own records, and offers a portal only where every one of them names the same portal. Nothing is filled in until an approver presses the button, and nothing is guessed.</div>
+    <div class="sub">Every event in ETB2B EventSphere now belongs to one ET portal. Events made before that have none yet. This page reads each event's own records, and offers a portal only where every one of them names the same portal. Nothing is filled in until an approver presses the button, and nothing is guessed.</div>
   </div>
   <div id="pr-status"></div>
   <div id="pr-body"><p class="pr-empty">Reading every event's records…</p></div>
@@ -207,7 +208,7 @@
 
   /* ---------- names: only ET's roster names a portal; a slug is never shown ---------- */
   function nameOf(slug){ return own(S.names, slug) ? S.names[slug] : ''; }
-  function shownName(slug){ return nameOf(slug) || 'a portal Oneworld does not list'; }
+  function shownName(slug){ return nameOf(slug) || 'a portal EventSphere does not list'; }
 
   /* ---------- reading the evidence the server gives (it is never worked out again here) ---------- */
   function evidence(it){ return arr(it.evidence).filter(function(e){ return e && typeof e.portal === 'string' && e.portal; }); }
@@ -270,7 +271,7 @@
   function reasonsOf(it){
     var out = [], stored = storedSlug(it), named = nameBlocks(it), slugs = slugsIn(it), conflict = arr(it.conflict);
     var siteOnly = arr(it.blockers).indexOf('site-only') !== -1;
-    if (stored && !nameOf(stored)) return ['It holds a portal Oneworld does not list. Set the right one.'];
+    if (stored && !nameOf(stored)) return ['It holds a portal EventSphere does not list. Set the right one.'];
     if (named.length){
       var head = 'Its name says ' + joinAnd(named.map(shownName));
       if (!conflict.length && !siteOnly && slugs.length) head += '; ' + joinAnd(slugs.map(function(s){ return saysClause(it, s); }));

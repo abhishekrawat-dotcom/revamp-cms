@@ -110,11 +110,11 @@ ok(publishTransform(out, { eventId: 'qa-fixture', event: EVENT, mode: 'live', te
 var gen = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'G' }, mode: 'preview', templateId: 'gen-qa-fixture', origins: [ORIGIN] });
 var gcfg = JSON.parse(/<script id="rv-site-config"[^>]*>([\s\S]*?)<\/script>/.exec(gen)[1]);
 ok(Array.isArray(gcfg.contentMap) && gcfg.contentMap.length === 0 && gcfg.mode === 'preview', 'an AI-designed site gets an empty contentMap; preview mode is stated');
-ok(gen.indexOf('href="/assets/et-b2b-logo.svg"') !== -1 && count(gen, 'rel="icon"') === 1, 'no logo: the default icon');
+ok(gen.indexOf('href="/assets/favicon.svg"') !== -1 && count(gen, 'rel="icon"') === 1, 'no logo: the default icon');
 ok(gen.indexOf('data-rv-preview-ribbon') !== -1 && gen.indexOf('noindex') !== -1, 'a preview has the ribbon and is not indexed');
 ['javascript:alert(1)', 'data:image/svg+xml,<svg onload=alert(1)>', '//evil.example/x.png', '/x" onerror="y'].forEach(function (bad) {
   var o = publishTransform(PAGE, { eventId: 'qa-fixture', event: { name: 'G', logoUrl: bad }, mode: 'live', templateId: 'tech500', origins: [ORIGIN] });
-  ok(o.indexOf('href="/assets/et-b2b-logo.svg"') !== -1 && o.indexOf('onerror="y"') === -1 && o.indexOf('evil.example') === -1, 'a logo that is not an uploaded picture is not used as the icon: ' + bad);
+  ok(o.indexOf('href="/assets/favicon.svg"') !== -1 && o.indexOf('onerror="y"') === -1 && o.indexOf('evil.example') === -1, 'a logo that is not an uploaded picture is not used as the icon: ' + bad);
 });
 
 /* ---- an AI-designed site: section headings held to the type scale, the hero's own type kept ---- */

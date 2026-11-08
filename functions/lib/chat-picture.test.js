@@ -867,7 +867,7 @@ function entry(sectionId, placement, extra) {
     res = await run(ref);
     check(res.status === gemini.FAILURES[code].status && res.body.error === cp.SENTENCES[code] && imageCalls.length === n, code + ': asked again, the same answer and no new call');
   }
-  check(cp.SENTENCES['ai-config'] === 'Making pictures is not working on this server. Nothing on your site changed. Tell the Revamp team.' && cp.SENTENCES['ai-rejected'] === cp.SENTENCES['ai-config'], 'a server problem says so in plain words');
+  check(cp.SENTENCES['ai-config'] === 'Making pictures is not working on this server. Nothing on your site changed. Tell the ETB2B EventSphere team.' && cp.SENTENCES['ai-rejected'] === cp.SENTENCES['ai-config'], 'a server problem says so in plain words');
   /* an answer with no picture in it, or bytes that are not a picture */
   FB.docs[QPATH] = { day: TODAY, made: 0, failed: 0 };
   ref = turnOf(askOf('hero', 'hero'));

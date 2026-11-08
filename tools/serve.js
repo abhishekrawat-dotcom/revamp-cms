@@ -56,7 +56,7 @@ function serve(req, res) {
   if (rel.endsWith('/')) rel += 'index.html';
   let file = path.join(root, rel);
   if (!file.startsWith(root + path.sep)) return notFound(res);
-  if (rel === '/favicon.ico') file = path.join(root, 'assets', 'et-b2b-logo.svg');     // as server.js does
+  if (rel === '/favicon.ico') file = path.join(root, 'assets', 'favicon.svg');     // the red ET square, as server.js answers it
   else if (!isServableFile(path.relative(root, file).split(path.sep).join('/'))) return notFound(res);
   fs.readFile(file, (err, buf) => {
     if (err) return notFound(res);

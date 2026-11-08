@@ -39,8 +39,8 @@ var MAX_IMAGES = 6;
 
 var FAILURES = {
   'ai-quota': { status: 429, retryable: true, error: 'The AI service is at its limit right now. Try again in a few minutes.' },
-  'ai-config': { status: 503, retryable: false, error: 'AI features are not set up on this server. Tell the Revamp team.' },
-  'ai-rejected': { status: 502, retryable: false, error: 'The AI service could not take this request. Tell the Revamp team.' },
+  'ai-config': { status: 503, retryable: false, error: 'AI features are not set up on this server. Tell the ETB2B EventSphere team.' },
+  'ai-rejected': { status: 502, retryable: false, error: 'The AI service could not take this request. Tell the ETB2B EventSphere team.' },
   'ai-unavailable': { status: 502, retryable: true, error: 'The AI service is not answering right now. Try again in a minute.' },
   'ai-timeout': { status: 504, retryable: true, error: 'This took too long and was stopped - nothing was changed. Try again.' },
   'ai-blocked': { status: 422, retryable: false, error: 'The AI could not work with this content. Try rewording the brief.' },

@@ -229,6 +229,8 @@ var liveOne = hooks.publishTransform(ONE_PAGE, { eventId: 'tech-one', event: ev,
 ok(liveOne.indexOf('rv-pages') === -1 && liveOne.indexOf('data-rv-current-page') === -1, 'a one-page site gets nothing of it');
 
 /* ---------- 7. the routes ---------- */
+/* the sites' address is the one setting (lib/public-base.js, UX-001): here the test's own host */
+process.env.PUBLIC_BASE_URL = 'http://localhost';
 function call(method, url, opts) {
   opts = opts || {};
   return new Promise(function (resolve) {
@@ -268,8 +270,8 @@ Promise.all([
     call('GET', '/preview/tech-one/jury', { token: 'editor' })
   ]);
 }).then(function (r) {
-  ok(r[0].status === 200 && !/<html[^>]*data-rv-current-page/.test(r[0].text) && /<title>ET Awards 2026<\/title>/.test(r[0].text), '/preview/<id> is the home page', r[0].status + ' ' + r[0].text.slice(0, 200));
-  ok(r[1].status === 200 && /<html lang="en"[^>]* data-rv-current-page="jury"/.test(r[1].text) && /<title>The Jury \| ET Awards 2026<\/title>/.test(r[1].text), '/preview/<id>/<slug> is that page', r[1].status + ' ' + r[1].text.slice(0, 300));
+  ok(r[0].status === 200 && !/<html[^>]*data-rv-current-page/.test(r[0].text) && /<title>Preview · ET Awards 2026<\/title>/.test(r[0].text), '/preview/<id> is the home page (its tab says it is a preview, UX-003)', r[0].status + ' ' + r[0].text.slice(0, 200));
+  ok(r[1].status === 200 && /<html lang="en"[^>]* data-rv-current-page="jury"/.test(r[1].text) && /<title>Preview · The Jury \| ET Awards 2026<\/title>/.test(r[1].text), '/preview/<id>/<slug> is that page, "Preview · " kept first', r[1].status + ' ' + r[1].text.slice(0, 300));
   ok(r[1].text.indexOf('<style id="rv-pages-css"') !== -1 && /data-rv-page-link="jury" href="\/preview\/et-awards\/jury"/.test(r[1].text), 'with the rule and the preview\'s page links');
   ok(r[2].status === 200 && /data-rv-current-page="jury"/.test(r[2].text), 'a trailing slash and ?draft=1 are the same page', String(r[2].status));
   ok(r[3].status === 404 && /not part of the site/.test(r[3].text), 'an unknown page of a preview is a 404', r[3].status + ' ' + r[3].text.slice(0, 120));

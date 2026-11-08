@@ -655,8 +655,8 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   check('D.3 Visitors: the window\'s page views (' + VIEWS30 + ')', R.visitors.total === String(VIEWS30), R.visitors);
   check('D.3 Mailer opens with tracking off: a dash and why, never a number', R.mailers.total === '—' && R.mailers.desc === 'Mailer tracking is not switched on yet, so no opens are counted', R.mailers);
   check('D.3 Changes to events: how many the Activity log has in the period', R.changes.total === '3', R.changes);
-  check('D.3 Newsletters and subscribers: a dash and "not part of Oneworld 2.0 yet", and it opens nothing', R.newsletters.total === '—' &&
-    /Not part of Oneworld 2\.0 yet/.test(R.newsletters.desc) && R.newsletters.html.indexOf('data-act-key') === -1, R.newsletters);
+  check('D.3 Newsletters and subscribers: a dash and "not part of ETB2B EventSphere yet", and it opens nothing', R.newsletters.total === '—' &&
+    /Not part of ETB2B EventSphere yet/.test(R.newsletters.desc) && R.newsletters.html.indexOf('data-act-key') === -1, R.newsletters);
   check('D.3 none of the old invented totals', !/5\.24K|21\.86K|3\.12L|58\.20K|2\.14K/.test(Sa.$('activity-body').innerHTML));
   check('D.3 the exact figure is in the title of the short one', R.visitors.html.indexOf('title="' + VIEWS30.toLocaleString('en-IN') + '"') !== -1);
 

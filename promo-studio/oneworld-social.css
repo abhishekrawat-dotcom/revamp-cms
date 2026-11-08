@@ -39,7 +39,7 @@ button.thumb{width:100%;margin:0;padding:0;border:0;border-bottom:1px solid var(
 .tcard.dis .cat,.tcard.dis .nm,.tcard.dis .ds{color:var(--soft)}
 /* Example badge and state chip sit on the picture, outside the post; the post carries its own EXAMPLE ribbon in the
    top-right corner, so these take the top-left */
-.ow-ex,.ow-chip{position:absolute;top:8px;left:8px;z-index:3;font-size:10.5px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:5px;pointer-events:none}
+.ow-ex,.ow-chip{position:absolute;top:8px;left:8px;z-index:3;font-size:11px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:5px;pointer-events:none}
 .ow-ex{background:var(--ink);color:var(--bg);letter-spacing:.08em;text-transform:uppercase}
 .ow-chip{background:var(--panel);color:var(--ink2);border:1px solid var(--line)}
 .ow-ex-note{font-size:11.5px;line-height:1.45;color:var(--soft);margin-top:9px}
@@ -79,7 +79,7 @@ button.thumb{width:100%;margin:0;padding:0;border:0;border-bottom:1px solid var(
 
 /* ---- UX-121, UX-127: the cards' count while they are drawn, and a card that shows (or has) a saved layout ---- */
 .ow-thumbs-note{margin:0 0 10px;font-size:12.5px;font-weight:600;color:var(--soft)}
-.ow-saved{position:absolute;top:8px;left:8px;z-index:3;font-size:10.5px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:5px;pointer-events:none;
+.ow-saved{position:absolute;top:8px;left:8px;z-index:3;font-size:11px;font-weight:800;line-height:1.2;padding:4px 8px;border-radius:5px;pointer-events:none;
   background:var(--ok-soft);color:var(--ok);border:1px solid var(--ok)}
 
 /* ---- UX-124: under the editor's bar, which sizes of this post are saved ---- */

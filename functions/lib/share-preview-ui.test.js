@@ -445,7 +445,7 @@ async function main() {
   check('U.5 create: focus moves to Copy', A.doc.activeElement === A.buttons('Copy')[0]);
   var t = A.text();
   check('U.5 create: "Works until …" a week out, and later saves show', t.indexOf('Works until Tue, 10 Nov, 4:20 pm. Later saves show up on this link too.') !== -1, t);
-  check('U.5 create: "Copy it now" and the fingerprint sentence', t.indexOf('Copy it now — Oneworld 2.0 keeps only a fingerprint of this link, so it can’t be shown again.') !== -1);
+  check('U.5 create: "Copy it now" and the fingerprint sentence', t.indexOf('Copy it now — ETB2B EventSphere keeps only a fingerprint of this link, so it can’t be shown again.') !== -1);
   check('U.5 create: the logo notice warning is shown', t.indexOf('The logo unit still has a question waiting.') !== -1);
   check('U.5 create: the status line says it is ready (announced politely)', A.status().textContent === 'Link …k3Qz is ready. Copy it now.' && A.status().getAttribute('aria-live') === 'polite');
   check('U.5 create: the new link tops the list, marked New, and the label box is cleared', A.rows().length === 3 && A.rows()[0].textContent.indexOf('…k3Qz · For Infosys sponsor team') === 0 &&
