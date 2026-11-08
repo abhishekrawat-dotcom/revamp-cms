@@ -206,8 +206,8 @@ var TOASTS = {
     untracked: ['Downloaded m.html — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000, 'success']
   },
   copy: {
-    tracked: ['HTML copied — paste into your ESP', undefined, 'success'],
-    off: ['HTML copied — paste into your ESP', undefined, 'success'],
+    tracked: ['HTML copied — paste it into the tool you send your mails from', undefined, 'success'],
+    off: ['HTML copied — paste it into the tool you send your mails from', undefined, 'success'],
     untracked: ['HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000, 'success']
   },
   zip: {

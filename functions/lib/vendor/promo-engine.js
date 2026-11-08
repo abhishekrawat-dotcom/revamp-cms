@@ -2206,7 +2206,7 @@ var BLOCK_SCHEMAS = {
         options: [{ value: "sm", label: "Small" }, { value: "md", label: "Medium" }, { value: "lg", label: "Large" }]
       },
       { key: "fontSize", label: "Text size (px)", type: "number", default: "14" },
-      ONOFF_FIELD("full", "Full width", "Spans the column \u2014 the usual mobile-first CTA."),
+      ONOFF_FIELD("full", "Full width", "Makes the button as wide as the mail, which is easiest to tap on a phone."),
       ONOFF_FIELD("caps", "Uppercase label"),
       ALIGN
     ],

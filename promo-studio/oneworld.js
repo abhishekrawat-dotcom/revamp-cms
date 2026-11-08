@@ -1058,7 +1058,8 @@ function owTrackToast(kind, tracked, fname) {
     return toast('Downloaded ' + f + ' — not tracked this time, so its opens and clicks won\'t show on your dashboard. Download it again to track it.', 5000, 'success');
   }
   if (kind === 'copy') {
-    if (off || tracked) return toast('HTML copied — paste into your ESP', undefined, 'success');
+    /* "ESP" is a mail developer's word: an event manager knows it as the tool they send their mails from */
+    if (off || tracked) return toast('HTML copied — paste it into the tool you send your mails from', undefined, 'success');
     return toast('HTML copied — not tracked this time, so its opens and clicks won\'t show on your dashboard. Copy it again to track it.', 5000, 'success');
   }
   if (off || tracked) return toast('Downloaded — saved edits included', undefined, 'success');

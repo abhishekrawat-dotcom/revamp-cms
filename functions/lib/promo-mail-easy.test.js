@@ -36,7 +36,7 @@ pal.forEach(function (b) {
     (f.itemFields || []).forEach(function (x) { words.push(x.label); });
   });
 });
-var JARGON = /\bAPIs?\b|endpoint|\bhex\b|\bAA\b|\bESP\b|MAILER_ASSET_BASE|markdown|\*\*bold\*\*|href=|\bURL\b|Eyebrow|reference mailers|house (mailers|default|icon)|masthead/i;
+var JARGON = /\bAPIs?\b|endpoint|\bhex\b|\bAA\b|\bESP\b|\bCTA\b|mobile-first|MAILER_ASSET_BASE|markdown|\*\*bold\*\*|href=|\bURL\b|Eyebrow|reference mailers|house (mailers|default|icon)|masthead/i;
 var jargon = words.filter(function (w) { return JARGON.test(w || ''); });
 check('no developer word in any block name, field, option or hint', jargon.length === 0, jargon);
 function opts(type, key) { var f = (byType[type].fields || []).filter(function (x) { return x.key === key; })[0]; return f ? f.options.map(function (o) { return o.label; }).join('/') : ''; }
@@ -126,6 +126,14 @@ check('the copier writes the easy layer into the page', py.indexOf('<script src=
 /* ---- oneworld-mail-easy.js is ES5 and uses only the console's tokens ---- */
 var easyCode = easySrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
 check('oneworld-mail-easy.js: no let, const, arrow function or template string', !/\blet\s|\bconst\s|=>|`/.test(easyCode));
+/* every toast the mailer editor can show is a sentence an event manager reads, in the same plain words as the panel
+   ("paste into your ESP" was one that slipped through: it shows on every Copy HTML while tracking is off) */
+var toastWords = [];
+[['promo-studio/oneworld.js', read('promo-studio/oneworld.js')], ['promo-studio/oneworld-mail-easy.js', easySrc], ['promo-studio/mailer-studio.js', studio]].forEach(function (f) {
+  (f[1].match(/toast\(\s*(['"`])((?:\\.|(?!\1)[^\\])*)\1/g) || []).forEach(function (t) { toastWords.push(f[0] + ': ' + t); });
+});
+check('the toasts are found in the studio files', toastWords.length >= 40, toastWords.length);
+check('no developer word in any toast of the mailer editor', !toastWords.some(function (t) { return JARGON.test(t); }), toastWords.filter(function (t) { return JARGON.test(t); }));
 check('oneworld-mail-easy.js parses', (function () { try { new vm.Script(easySrc); return true; } catch (e) { return false; } })());
 var cssRules = easyCss.replace(/\/\*[\s\S]*?\*\//g, '');
 check('the stylesheet writes no colour of its own (both themes follow the tokens)', !/#[0-9a-f]{3,6}\b|rgba?\(/i.test(cssRules), (cssRules.match(/#[0-9a-f]{3,6}\b|rgba?\([^)]*\)/gi) || []));
