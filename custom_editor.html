@@ -2871,6 +2871,8 @@
     { group: 'colors', key: 'textColor', label: 'Text color', kind: 'color', said: 'Text color' },
     { group: 'colors', key: 'bgImage', label: 'Background picture', kind: 'image', said: 'Background picture' },
     { group: 'colors', key: 'bgOpacity', label: 'Picture strength', kind: 'range', min: 0, max: 100, step: 1, unit: '%', said: 'Background picture strength', needs: 'bgImage' },
+    // the white wash over the banner's picture: 0 shows the picture clean, 100 is as designed (owner, 10 Nov 2026)
+    { group: 'colors', key: 'heroVeil', label: 'Banner overlay', kind: 'range', min: 0, max: 100, step: 1, unit: '%', said: 'Banner overlay' },
     { group: 'text', key: 'bodyFont', label: 'Font', kind: 'font', said: 'Text font' },
     { group: 'text', key: 'bodySize', label: 'Size (px)', kind: 'number', min: 10, max: 32, said: 'Text size' },
     { group: 'text', key: 'bodyWeight', label: 'Weight', kind: 'select', options: weights(300, 700), said: 'Text weight' },

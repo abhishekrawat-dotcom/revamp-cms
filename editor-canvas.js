@@ -265,6 +265,8 @@
     var generated = body.id === 'gen' || body.classList.contains('rv-generated');
     var PROSE = '[data-rv-section] :is(p, li, dd, blockquote)';
     var MIDDLE = '[data-rv-section]:not([data-rv-section="nav"]):not([data-rv-section="hero"]):not([data-rv-section="footer"])';
+    /* the white overlay over the banner's picture (functions/lib/gen-design.js heroCss lays it as .hero-veil) */
+    var HERO_VEIL = '[data-rv-section="hero"] .hero-veil';
     var styleEl = doc.querySelector('style[data-rv-design]');
     var rules = {};
     if (styleEl) { try { rules = JSON.parse(styleEl.getAttribute('data-rv-state') || '{}'); } catch (e) { rules = {}; } }
@@ -372,6 +374,8 @@
         if (rules.bodyWeight) css.push(PROSE + '{ font-weight: ' + rules.bodyWeight + ' !important; }');
         if (rules.sectionSpacing != null) css.push(MIDDLE + '{ padding-top: ' + rules.sectionSpacing + 'px !important; padding-bottom: ' + rules.sectionSpacing + 'px !important; }');
       }
+      /* the banner's white overlay (the veil over its picture), as strong as the owner set it: 100 is as designed */
+      if (rules.heroVeil != null) css.push(HERO_VEIL + '{ opacity: ' + Math.max(0, Math.min(100, rules.heroVeil)) / 100 + ' !important; }');
       var between = '[data-rv-section] ~ [data-rv-section]';
       if (rules.divider === 'line') css.push(between + '{ border-top: 1px solid #DCDEE1; }');
       if (rules.divider === 'dashed') css.push(between + '{ border-top: 1px dashed #C9CCD1; }');
@@ -430,6 +434,7 @@
         return parseInt(cssVar('--bg-spacing'), 10) || 0;
       },
       divider: function () { return rules.divider || 'none'; },
+      heroVeil: function () { return rules.heroVeil != null ? rules.heroVeil : 100; },
       animation: function () { return rules.animation || 'none'; },
       headingSize: function () { return rules.headingSize || parseInt(cssVar('--primary-font-size'), 10) || 32; },
       headingWeight: function () { return rules.headingWeight || ''; },
@@ -482,6 +487,14 @@
       bodyWeight: function (w) {
         body.style.fontWeight = w;
         if (generated) { rules.bodyWeight = clean(w); render(); }
+      },
+      /* owner, 10 Nov 2026: "an option to reduce opacity of the white overlay in the header banner manually" */
+      heroVeil: function (v) {
+        var n = Math.round(Number(v));
+        if (!isFinite(n)) return;
+        n = Math.max(0, Math.min(100, n));
+        if (n >= 100) delete rules.heroVeil; else rules.heroVeil = n;
+        render();
       },
       sectionSpacing: function (px) {
         body.style.setProperty('--bg-spacing', px + 'px 0');
@@ -606,6 +619,8 @@
       if (/^heading/.test(key)) return !!firstHeading();
       if (key === 'radius') return !!((conf.buttons && find(conf.buttons)) || (conf.cards && find(conf.cards)));
       if (key === 'reveals') return !!doc.querySelector('.animated');
+      /* only a banner with a white overlay of its own over its picture (an AI-designed banner's .hero-veil) */
+      if (key === 'heroVeil') return !!doc.querySelector(HERO_VEIL);
       /* a wallpaper behind the page would sit under sections that each paint their own background */
       if (generated && (key === 'bgImage' || key === 'bgOpacity')) return false;
       return !!setters[key];

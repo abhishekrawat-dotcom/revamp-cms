@@ -354,7 +354,7 @@ var DESIGN_ENUM_FIELDS = {
   headingAlign: ['left', 'center', 'right', 'justify']
 };
 var DESIGN_WEIGHT_FIELDS = ['headingWeight', 'bodyWeight'];
-var DESIGN_NUMERIC_FIELDS = { bodySize: [12, 24], headingSize: [20, 64], sectionSpacing: [0, 140], bgOpacity: [0, 100] };
+var DESIGN_NUMERIC_FIELDS = { bodySize: [12, 24], headingSize: [20, 64], sectionSpacing: [0, 140], bgOpacity: [0, 100], heroVeil: [0, 100] };
 var DESIGN_FIELDS = DESIGN_COLOR_FIELDS.concat(DESIGN_FONT_FIELDS, Object.keys(DESIGN_ENUM_FIELDS), DESIGN_WEIGHT_FIELDS, Object.keys(DESIGN_NUMERIC_FIELDS));
 
 /* ET's rule for every logo of its verticals (the owner, 23 Oct 2026), in every prompt that can style or edit a
@@ -749,6 +749,7 @@ function buildChatPrompt(payload) {
     '1. First decide `kind`: "edit" if the latest message (read in context of the conversation) asks for a real change to the site; "undo" if it asks to take back your last change ("undo that", "go back", "revert it", "put it back as it was") — the page then returns exactly to how it was before that change, at no cost, so never re-create the old look yourself; "reply" if it\'s a question, small talk, or anything else that doesn\'t call for a change — e.g. "what can you change here?", "why didn\'t that work?", "thanks". Don\'t force an edit out of a message that\'s just a question.' +
       (payload.handedFrom ? ' ETB2B AI\'s events side passed this message to you because it is about this page: answer it as an edit, an undo or a reply yourself.' : CHAT_HANDOFF_LINE),
     '2. If `kind` is "reply" or "undo": leave every change list empty and `design` empty, and put your answer in `summary` — natural and helpful (a list of sections is a full list); reference the actual sections/design above, don\'t make things up. A request that is too vague to do well, where reasonable readings would change the site in very different ways ("make it look more premium", "fix the design", "make it pop"), gets ONE short clarifying question as a "reply", offering two or three concrete options to choose from (e.g. "Darker and more spacious, a more classic serif for headings, or gold accents on a deep background?"). A clear request is simply done — don\'t ask for permission.',
+    '   The banner\'s white overlay (the wash over its picture) is `design.heroVeil`, 0-100 percent of its designed strength (100 = as designed, the current value is above): "reduce the white overlay", "show the banner picture more" lower it (e.g. by 30-50); never rework the banner for that.',
     '3. If `kind` is "edit": if it asks for a visual/design change (colour, font, spacing, heading style…), return a partial `design` object — ONLY the fields the instruction actually calls for, using these field names: ' + DESIGN_FIELDS.join(', ') + '. Leave out any field it didn\'t ask to change. A colour field MUST be a hex code ("#1c1c1c") — if it names a colour in words ("orange", "navy blue"), translate it to the closest real hex value yourself; never write the colour word into a colour field, it will be rejected. If it asks to change text, return `textEdits`: an array of {sectionId, find, replace}, where `find` is copied VERBATIM (exact substring, same spelling/punctuation) from that section\'s own text shown above — never invent or paraphrase the original. Never invent facts (dates, numbers, names) that aren\'t already present. A follow-up like "make it bigger instead" that refines a design mentioned earlier in the conversation should produce a fresh, complete replacement for the fields it\'s changing, not an incremental tweak instruction.',
     'A text edit applies to EVERY place that exact `find` text appears in that section. To change a word, a year, a name or a number everywhere (e.g. "change 2026 to 2027"), give `find` as just that word or number and return one edit for each section whose texts contain it — check every section\'s texts, do not stop at the first. `find` must be copied exactly from the texts above.',
     '4. For everything those two cannot do, use the tools that follow — choose the lightest tool that does the job, and combine tools freely:',
@@ -2351,6 +2352,18 @@ function buildHeroImagePrompt(brief, themeColor) {
 // has no theme-coloured gradient fallback on #hero itself when hero-bg-image fails/stays the placeholder —
 // only the dark overlay gradient ON TOP of whatever image is there. On image-generation failure, the hero
 // still renders (the placeholder grey rect + dark overlay), just without a theme-coloured look.
+/* the colour along a picture's bottom edge (its lowest 6 per cent, averaged), for the page to run on from the banner
+   (genDesign.pageColoursFrom); null for a picture that is not a PNG or cannot be read */
+function bottomColour(buffer, mimeType) {
+  if (!/png/i.test(String(mimeType || ''))) return null;
+  var img = pngLite.decode(buffer);
+  if (!img || !img.width || !img.height) return null;
+  var y0 = Math.max(0, Math.floor(img.height * 0.94)), n = 0, r = 0, g = 0, b = 0, d = img.data;
+  for (var y = y0; y < img.height; y++) {
+    for (var x = 0; x < img.width; x += 2) { var o = (y * img.width + x) * 4; if (d[o + 3] < 128) continue; r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; }
+  }
+  return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null;
+}
 function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
   return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
@@ -2374,7 +2387,9 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
       .then(function () { return pictures.storeVariants(fb, storagePath, buffer); })
       .then(function () {
         var heroImageUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
-        return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null };
+        var bottom = null;
+        try { bottom = bottomColour(buffer, r.mimeType); } catch (e) { bottom = null; }
+        return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null, heroBottom: bottom };
       })
       .catch(function (err) {
         console.error('plan-structure: hero image generated but Storage save/publish failed, degrading to no hero image — ' + err.message);
@@ -5074,6 +5089,10 @@ function handlePlanStructure(req, res) {
           design.heroImageUrl = heroImage.heroImageUrl || null;
           design.heroImageStoragePath = heroImage.heroImageStoragePath;
           design.heroImageError = heroImage.heroImageError;
+          /* the page runs on from the banner: its background is the colour the banner picture ends in, as light (or
+             dark) as the site is, and the banner's foot fades into it (genDesign.heroCss) — the owner, 10 Nov 2026 */
+          var runOn = heroImage.heroBottom ? genDesign.pageColoursFrom(heroImage.heroBottom, design.mode, design.textColor) : null;
+          if (runOn) { design.backgroundColor = runOn.backgroundColor; design.surfaceColor = runOn.surfaceColor; design.pageFromHero = true; }
           var images = made.slice(1).filter(Boolean);
           sections.forEach(function (s) {
             if (!s.image && s.imageSource === 'previous-edition') return;      // a real photo, set by etPictureRules
@@ -12525,3 +12544,4 @@ module.exports._testHooks.keepRootBackground = keepRootBackground;
 module.exports._testHooks.cssUrlQuotes = cssUrlQuotes;
 module.exports._testHooks.attrUrlQuotes = attrUrlQuotes;
 module.exports._testHooks.sanitizeGeneratedSectionHtml = sanitizeGeneratedSectionHtml;
+module.exports._testHooks.bottomColour = bottomColour;

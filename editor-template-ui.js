@@ -4010,9 +4010,10 @@
     bgColor: 'This design gives each section its own fixed background, so there is no page background to change. Ask ETB2B AI to recolor a section.',
     bgImage: 'Each section of this design has its own background. To change a section’s picture, select the section and use “Background picture”.',
     bgOpacity: 'Each section of this design has its own background, so there is no page picture to fade.',
+    heroVeil: 'This banner has no separate white overlay over its picture to adjust. Ask ETB2B AI to lighten the banner instead.',
     reveals: 'This design has no scroll effects to switch off.'
   };
-  var DESIGN_KEYS = ['themeColor', 'textColor', 'bgColor', 'bgImage', 'bgOpacity', 'bodyFont', 'bodySize', 'bodyWeight',
+  var DESIGN_KEYS = ['themeColor', 'textColor', 'bgColor', 'bgImage', 'bgOpacity', 'heroVeil', 'bodyFont', 'bodySize', 'bodyWeight',
     'sectionSpacing', 'divider', 'animation', 'headingFont', 'headingSize', 'headingWeight', 'headingColor',
     'headingCase', 'headingAlign', 'radius', 'motion', 'reveals'];
   function unsupportedReason(key) {
@@ -4335,7 +4336,7 @@
   /* kept in sync with tools/serve.js's DESIGN_FIELDS (same canvas.design vocabulary as the Design panel
      and create-event.html's "Let AI design it") */
   var CHAT_DESIGN_KEYS = ['themeColor', 'textColor', 'bgColor', 'headingColor', 'headingFont', 'bodyFont',
-    'divider', 'animation', 'headingCase', 'headingAlign', 'headingWeight', 'bodyWeight', 'bodySize', 'headingSize', 'sectionSpacing', 'bgOpacity'];
+    'divider', 'animation', 'headingCase', 'headingAlign', 'headingWeight', 'bodyWeight', 'bodySize', 'headingSize', 'sectionSpacing', 'bgOpacity', 'heroVeil'];
 
   /* What the owner is asked to approve is written in the words the Design panel and the style toolbar use,
      never in the setting's internal name. */
@@ -4344,7 +4345,7 @@
     headingFont: 'Heading font', bodyFont: 'Body font', headingCase: 'Heading text case', headingAlign: 'Heading alignment',
     headingWeight: 'Heading font weight', bodyWeight: 'Body font weight', bodySize: 'Body text size', headingSize: 'Heading size',
     sectionSpacing: 'Space between sections', divider: 'Line between sections', animation: 'Section animation',
-    bgOpacity: 'Background opacity'
+    bgOpacity: 'Background opacity', heroVeil: 'Banner overlay'
   };
   var CHAT_DESIGN_CHOICES = {
     headingCase: { none: 'Headings as typed', uppercase: 'Headings in capitals', lowercase: 'Headings in lower case', capitalize: 'Headings with each word capitalized' },
@@ -4352,7 +4353,7 @@
     divider: { none: 'No line between sections', line: 'A solid line between sections', dashed: 'A dashed line between sections', thick: 'A thick line between sections' },
     animation: { none: 'No section animation', fade: 'Sections fade in', rise: 'Sections rise in', pulse: 'Sections pulse' }
   };
-  var CHAT_DESIGN_UNITS = { bodySize: ' px', headingSize: ' px', sectionSpacing: ' px', bgOpacity: '%' };
+  var CHAT_DESIGN_UNITS = { bodySize: ' px', headingSize: ' px', sectionSpacing: ' px', bgOpacity: '%', heroVeil: '%' };
   function designLabel(key) {
     if (CHAT_DESIGN_LABELS[key]) return CHAT_DESIGN_LABELS[key];
     var words = String(key).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[-_]+/g, ' ').toLowerCase();

@@ -464,6 +464,37 @@ function heroHtml(o) {
     '</div></section>';
 }
 
+/* ---------- the page's background from the banner picture ----------
+   The owner, 10 Nov 2026: "the hero banner … should be continued till the end of website in terms of website
+   background color ending with hero background image color. so it will look like continued and not hard stopped".
+   bottomRgb: the colour along the banner picture's bottom edge. -> { backgroundColor, surfaceColor } in the site's
+   mode — that colour taken light (or dark) enough to be a page — or null when the site's own text would no longer
+   read on it at 7:1. */
+function pcHex2(n) { return ('0' + Math.max(0, Math.min(255, Math.round(n))).toString(16)).slice(-2); }
+function pcToHex(c) { return '#' + pcHex2(c[0]) + pcHex2(c[1]) + pcHex2(c[2]); }
+function pcFromHex(h) { var m = /^#?([0-9a-f]{6})$/i.exec(String(h || '')); return m ? [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)] : null; }
+function pcLum(c) {
+  return [0, 1, 2].map(function (i) { var v = c[i] / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); })
+    .reduce(function (s, v, i) { return s + v * [0.2126, 0.7152, 0.0722][i]; }, 0);
+}
+function pcContrast(a, b) { var x = pcLum(a), y = pcLum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+function pcMix(a, b, t) { return [0, 1, 2].map(function (i) { return a[i] + (b[i] - a[i]) * t; }); }
+function pageColoursFrom(bottomRgb, mode, textColor) {
+  if (!Array.isArray(bottomRgb) || bottomRgb.length < 3) return null;
+  var dark = mode === 'dark', toward = dark ? [11, 11, 16] : [255, 255, 255], bg = null;
+  /* the least change that makes it a page: a light site's background is very light, a dark site's very dark */
+  for (var t = dark ? 0.55 : 0.6; t <= 0.98; t += 0.02) {
+    var c = pcMix(bottomRgb, toward, t), L = pcLum(c);
+    if (dark ? L <= 0.025 : L >= 0.82) { bg = c; break; }
+  }
+  if (!bg) return null;
+  var text = pcFromHex(textColor) || (dark ? [244, 241, 236] : [20, 22, 27]);
+  if (pcContrast(bg, text) < 7) return null;
+  /* cards a step away from the page, towards the text */
+  var surface = pcMix(bg, text, 0.06);
+  return { backgroundColor: pcToHex(bg), surfaceColor: pcToHex(surface) };
+}
+
 function heroCss(o) {
   o = o || {};
   var dark = o.mode === 'dark';
@@ -477,6 +508,9 @@ function heroCss(o) {
     '.hero-root{position:relative;min-height:88vh;display:flex;align-items:center;justify-content:center;text-align:center;padding:clamp(96px,12vw,150px) 24px clamp(64px,9vw,110px);color:' + ink + ';background-color:' + (/^#[0-9a-f]{6}$/i.test(String(o.banner || '')) ? o.banner : 'var(--rv-bg)') + ';' +
       (o.image ? 'background-image:url("' + o.image + '");background-size:cover;background-position:center;' : 'background-image:radial-gradient(120% 90% at 50% 0%, color-mix(in srgb, var(--theme-color) 34%, transparent), transparent 70%);') + '}',
     '.hero-veil{position:absolute;inset:0;background:' + (o.image ? veil : 'none') + ';pointer-events:none}',
+    /* a picture banner runs on into the page: its foot fades into the page's own background, which is taken from the
+       picture's bottom edge (pageColoursFrom), so it never stops on a hard edge (the owner, 10 Nov 2026) */
+    o.image ? '.hero-root::after{content:"";position:absolute;left:0;right:0;bottom:0;height:min(30%,240px);background:linear-gradient(to bottom,rgba(0,0,0,0),var(--rv-bg));pointer-events:none}' : '',
     '.hero-inner{position:relative;z-index:1;width:100%;max-width:980px;margin:0 auto;display:flex;flex-direction:column;align-items:center}',
     '.hero-tagline{font-family:var(--heading-font-family);font-size:clamp(1.6rem,3.4vw,2.75rem);font-weight:600;line-height:1.18;letter-spacing:-.01em;max-width:22ch;margin:0 0 26px;color:' + ink + '}',
     '.hero-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:12px 34px;margin:0 0 34px;font-family:var(--body-font-family);font-size:1.0625rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;line-height:1.4;color:' + ink + '}',
@@ -636,6 +670,7 @@ function imagePrompt(subject, design, opts) {
 }
 
 module.exports = {
+  pageColoursFrom: pageColoursFrom, contrastOf: function (a, b) { return pcContrast(pcFromHex(a), pcFromHex(b)); },
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE, MOBILE_RULES,
   ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, IMAGE_KINDS, ctaAttrs, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
