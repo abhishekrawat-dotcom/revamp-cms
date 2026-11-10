@@ -88,6 +88,35 @@ function versioned(url) {
 }
 function pathOnly(url) { return String(url || '').replace(/[?#].*$/, ''); }
 
+/* ---------- the CMS's own pages: each stylesheet and script named with its content hash ----------
+   A signed-in page is never cached (server.js: no-store), but its stylesheets and scripts are kept for 5 minutes by
+   the browser and the hosting's cache. Right after a release a page could therefore arrive with the stylesheet it
+   replaced, and show its new parts unstyled (owner, 9 Nov). So the page is sent with every one of our own .css and
+   .js files it loads named by its content hash ("auth.js" -> "auth.js?v=<hash>"): a page always gets the files it
+   was released with, and server.js keeps those addresses for a year, as they can never mean other bytes.
+   pagePath: the page's own address ("/edit-event.html"), for its relative links. Only the opening tag of a <script>
+   and a <link> is touched: what an inline script says, and what a comment says, are left exactly as they are; another
+   host's file, a data: address, a file we do not have and any other query are left as they are too. */
+var PAGE_TAGS = /<!--[\s\S]*?-->|(<script\b[^>]*>)([\s\S]*?<\/script\s*>)|<link\b[^>]*>/gi;
+function versionPageAssets(html, pagePath) {
+  var dir = path.posix.dirname(String(pagePath || '/').replace(/[?#].*$/, '')) || '/';
+  function stamp(tag, attr) {
+    var re = new RegExp('(\\s' + attr + '\\s*=\\s*)(["\'])([^"\'\\s]*)\\2', 'i');
+    return tag.replace(re, function (all, eq, q, ref) {
+      var m = /^([^?#]+\.(?:css|js))(?:\?v=[A-Za-z0-9._-]*)?$/i.exec(ref);
+      if (!m || /^[a-z][a-z0-9+.-]*:|^\/\//i.test(m[1])) return all;
+      var abs = m[1].charAt(0) === '/' ? m[1] : path.posix.normalize(dir + '/' + m[1]);
+      var f = localFile(abs);
+      return f ? eq + q + m[1] + '?v=' + f.hash + q : all;
+    });
+  }
+  return String(html).replace(PAGE_TAGS, function (all, open, rest) {
+    if (all.charAt(1) === '!') return all;
+    if (open) return stamp(open, 'src') + rest;
+    return /\brel\s*=\s*["']?stylesheet/i.test(all) || /\bas\s*=\s*["']?(?:style|script)/i.test(all) ? stamp(all, 'href') : all;
+  });
+}
+
 /* ---------- Google Fonts ---------- */
 function fontFamilies(url) {
   var q = String(url).split('?')[1] || '', names = [];
@@ -409,7 +438,7 @@ function deadLocalPath(u) {
 
 function escAttr(s) { return String(s).replace(/&(?!amp;|#\d+;|#x[0-9a-f]+;|[a-z]+;)/gi, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
-module.exports = { deliverPage: deliverPage, assetVersion: assetVersion, versioned: versioned, fontFamilies: fontFamilies,
+module.exports = { deliverPage: deliverPage, assetVersion: assetVersion, versioned: versioned, versionPageAssets: versionPageAssets, fontFamilies: fontFamilies,
   addFontDisplay: addFontDisplay, absoluteUrls: absoluteUrls, RUNTIME_STUB: RUNTIME_STUB,
   /* step 6's rule, for lib/site-checks.js: a film whose only address is one of these has nothing to play */
   deadLocalPath: deadLocalPath,

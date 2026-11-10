@@ -143,8 +143,9 @@ check('6 editor: on a phone Preview\'s group sits on the second row, its menu op
   /\.topbar \.pv-split\{ order:6; margin-top:6px; margin-right:auto; \}/.test(ED) && /\.topbar \.pv-split \.ev-menu\{ right:auto; left:0; \}/.test(ED) && /\.topbar \.pv-more\{ min-width:40px; \}/.test(ED));
 check('6 editor: the top bar sits above the tools row under it, so Preview\'s menu opens over it, and under the editor\'s dialogs',
   /\.ed > \.topbar\{ z-index:50; \}/.test(ED) && /\.ed-rail\{[^}]*z-index: 40;/.test(ED));
-check('6 both pages ask for the stylesheet with the same version mark, and load the shared menu',
-  /href="edit-event\.css\?v=bar3"/.test(ED) && /href="edit-event\.css\?v=bar3"/.test(HTML) && /<script src="topbar-menu\.js"><\/script>/.test(ED));
+// the stylesheet's version is stamped by the server as the page is sent (lib/delivery.js versionPageAssets, page-versions.test.js)
+check('6 both pages load the stylesheet by its plain name (the server stamps its version) and the shared menu',
+  /<link rel="stylesheet" href="edit-event\.css">/.test(ED) && /<link rel="stylesheet" href="edit-event\.css">/.test(HTML) && /<script src="topbar-menu\.js"><\/script>/.test(ED));
 
 console.log(fails ? 'console-bar: ' + fails + ' of ' + n + ' checks FAILED' : 'console-bar: all ' + n + ' checks passed');
 process.exit(fails ? 1 : 0);

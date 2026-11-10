@@ -10,7 +10,7 @@ const { handleApi } = require('./functions/lib/api');
 // gate: @timesinternet.in Google sign-in for pages and /api/*; isServableFile: which files are served at all
 const { gate, isServableFile } = require('./functions/lib/access');
 // assetVersion: the content hash a page's ?v= names for one of these files (functions/lib/delivery.js)
-const { assetVersion } = require('./functions/lib/delivery');
+const { assetVersion, versionPageAssets } = require('./functions/lib/delivery');
 // redactUrl: a request address for the log, without the token of a shareable preview link (/s/<token>)
 const { redactUrl } = require('./functions/lib/share-token');
 
@@ -149,8 +149,16 @@ function serve(req, res){
       const ext = path.extname(file).toLowerCase();
       const v = /(?:^|&)v=([A-Za-z0-9._-]+)(?:&|#|$)/.exec(req.url.split('?')[1] || '');
       const versioned = !!v && ext !== '.html' && v[1] === assetVersion(url);
-      send(req, res, 200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': cacheFor(ext, versioned) }, buf,
-        file + '|' + st.mtimeMs + '|' + st.size);
+      /* a page names each of its own stylesheets and scripts by content hash (lib/delivery.js versionPageAssets), so a
+         release never pairs a new page with a file the browser kept from before; the compressed copy is keyed by what
+         is sent, which changes whenever one of those files does */
+      let body = buf, key = file + '|' + st.mtimeMs + '|' + st.size;
+      if (ext === '.html'){
+        const text = versionPageAssets(buf.toString('utf8'), url);
+        body = Buffer.from(text, 'utf8');
+        key += '|' + require('crypto').createHash('sha1').update(body).digest('hex').slice(0, 12);
+      }
+      send(req, res, 200, { 'Content-Type': types[ext] || 'application/octet-stream', 'Cache-Control': cacheFor(ext, versioned) }, body, key);
     });
   });
 }
