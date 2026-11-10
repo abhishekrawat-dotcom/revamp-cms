@@ -323,6 +323,21 @@ var CONV = 'events/' + MAIN + '/aiChats/u-asha';
   var kept = JSON.stringify(FB.docs);
   check('S.10 nothing of the documents is kept with the turn: no PDF bytes, no deck words', kept.indexOf(PDF64) === -1 && kept.indexOf('Keynote by Asha Rao') === -1);
 
+  /* ===== S.11 a picture the words did not clearly ask for is offered, then made on a yes (owner, 10 Nov 2026) ===== */
+  var PIC = { sectionId: 'hero', placement: 'hero', slot: 0, subject: 'A carved stone chariot wheel in front of a lush green forest canopy', kind: 'place', alt: 'Stone wheel and forest' };
+  scripted['chat-edit'].push(editAnswer({ kind: 'edit', summary: 'I will make the banner picture.', newPictures: [PIC] }));
+  /* the sections as the editor sends them for pictures (editor-ai-picture.js describe): the banner's role and target */
+  var PIC_SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['QA AIE Main'], role: 'hero', pics: { slots: 0, list: [], background: true, heroTarget: 'background', wide: true } },
+    { id: 'overview', name: 'Overview', texts: ['Where retail meets tech'], role: '', pics: { slots: 1, list: [{ label: 'hall', w: 800, h: 600 }] } }];
+  c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'can we use the sun temple and chandaka jungle combo in the header?', sections: PIC_SECTIONS, canMakePictures: true });
+  check('S.11 the unclear ask is answered with an offer, not "did not ask"', c.status === 200 && c.body.kind === 'reply' && c.body.summary === 'Do you want me to make a new banner picture for “Hero”? Say “yes, make it” and I will.' && !c.body.newPicture, c.body);
+  await wait();
+  var offerTurn = FB.docs[CONV + '/turns/' + c.body.turnId];
+  check('S.11 the turn keeps the offer (state "offered"), with nothing to make yet', offerTurn && offerTurn.newPicture && offerTurn.newPicture.state === 'offered' && offerTurn.newPicture.sectionId === 'hero' && !offerTurn.newPicture.subject, offerTurn && offerTurn.newPicture);
+  scripted['chat-edit'].push(editAnswer({ kind: 'edit', summary: 'Making the banner picture now.', newPictures: [PIC] }));
+  c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'yes, make it', sections: PIC_SECTIONS, canMakePictures: true });
+  check('S.11 "yes, make it" next: the picture is asked for', c.status === 200 && c.body.kind === 'edit' && c.body.newPicture && c.body.newPicture.placement === 'hero', c.body);
+
   console.log('assistant-server: ' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(function (err) { console.error(err && err.stack || err); process.exit(1); });

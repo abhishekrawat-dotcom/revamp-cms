@@ -1189,7 +1189,10 @@ function handleChatEdit(req, res) {
          answer is the server's sentence, since the model's summary promised a picture; else the sentence is
          one of the things not done, and the rest is applied. */
       var pictureReply = pictureWanted && !pictureAsk && !hasOther;
-      if (pictureReply) summary = pictureSay || chatPicture.sentence('notAsked');
+      /* the words did not clearly ask for the picture the model meant to make: ETB2B AI asks, and a short yes next
+         makes it (owner, 10 Nov 2026: "can we use the sun temple and chandaka jungle combo in the header?") */
+      var pictureOffer = pictureReply && pictureUnasked ? chatPicture.offerOf(parsed.newPictures[0], payload.sections || []) : null;
+      if (pictureReply) summary = pictureOffer ? pictureOffer.sentence : pictureSay || chatPicture.sentence('notAsked');
       else if (pictureWanted && !pictureAsk && pictureSay && !pictureUnasked) skipped.push(pictureSay);
       /* the model asked for no picture but briefed a rework around one: said in the server's words, as the
          answer when nothing else changes, else as a thing not done */
@@ -1229,6 +1232,7 @@ function handleChatEdit(req, res) {
       if (goTo) turn.goTo = goTo;
       /* what the second step makes the picture from: never anything the browser sends then */
       if (answer.newPicture) turn.newPicture = chatPicture.turnRecord(pictureAsk, payload.design);
+      else if (pictureOffer) turn.newPicture = pictureOffer.record;
       return Promise.all([
         userRef.set({ uid: uid, email: String(decoded.email || ''), name: chatName(decoded), lastAt: now }, { merge: true }),
         turnRef.set(turn)
@@ -6120,6 +6124,29 @@ function stripEditorMarks(html) {
     });
 }
 
+/* A background picture set on the section's own element, lost by the new version of the section while the owner did
+   not ask to remove or replace it, is put back on the new element (owner, 10 Nov 2026: CISO Secufest's hero went blank
+   twice after "reduce the opacity of white overlay a little bit to show the background properly"). */
+var DROP_PICTURE_RE = /\b(?:remove|delete|drop|hide|without|no|replace|swap|change|new|another|different|instead)\b[^.]{0,40}\b(?:background|picture|image|photo|bg)\b|\b(?:background|picture|image|photo)s?\b[^.]{0,20}\b(?:removed|gone|off|plain|solid|colou?r|blank)\b/i;
+function keepRootBackground(origHtml, newHtml, newCss, instruction) {
+  var root = /^\s*<[a-z][a-z0-9-]*\b[^>]*>/i.exec(String(origHtml || ''));
+  var style = root && /\bstyle\s*=\s*"([^"]*)"/i.exec(root[0]);
+  var bg = style && /background(?:-image)?\s*:[^;]*url\(\s*(?:&quot;|["'])?(https?:\/\/[^"')&\s]+)(?:&quot;|["'])?\s*\)/i.exec(style[1]);
+  if (!bg) return newHtml;
+  var url = bg[1];
+  if (String(newHtml).indexOf(url) !== -1 || String(newCss).indexOf(url) !== -1 || DROP_PICTURE_RE.test(instruction)) return newHtml;
+  console.error('redesign-section: the new version lost the section\'s own background picture; it is put back');
+  var decl = 'background-image: url(&quot;' + url + '&quot;)';
+  return String(newHtml).replace(/^(\s*<[a-z][a-z0-9-]*\b)([^>]*)>/i, function (all, open, attrs) {
+    if (/\bstyle\s*=\s*"/i.test(attrs)) {
+      return open + attrs.replace(/\bstyle\s*=\s*"([^"]*)"/i, function (a, v) { v = v.replace(/;\s*$/, ''); return 'style="' + (v ? v + '; ' : '') + decl + ';"'; }) + '>';
+    }
+    return open + attrs + ' style="' + decl + ';">';
+  });
+}
+/* url(&quot;…&quot;) is HTML's way of writing quotes, and no URL at all in a stylesheet: written plainly */
+function cssUrlQuotes(css) { return String(css || '').replace(/url\(\s*&quot;([^"]*?)&quot;\s*\)/g, 'url("$1")'); }
+
 var PICTURE_URL = /https?:\/\/[^\s"'()<>]+\.(?:png|jpe?g|webp|gif|svg|avif)(?:\?[^\s"'()<>]*)?|data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+\/=]+/gi;
 
 function buildRedesignPrompt(payload) {
@@ -6199,7 +6226,7 @@ function handleRedesignSection(req, res) {
       /* pictures go to the model as short tokens and come back as addresses (genDesign.restorePictures) */
       var found = (html.match(PICTURE_URL) || []).concat(css.match(PICTURE_URL) || []);
       found = found.filter(function (u, i) { return found.indexOf(u) === i && !/^https?:\/\/[^/]+\/templates\/_shared\//i.test(u); });
-      var pictures = {};
+      var pictures = {}, origHtml = html;
       found.forEach(function (u, i) { var token = genDesign.pictureToken('p' + (i + 1)); pictures[token] = u; html = html.split(u).join(token); css = css.split(u).join(token); });
       /* measured once pictures are tokens: a picture kept inline in the page is not text the model reads */
       if (html.length + css.length > REDESIGN_MAX_CHARS) return sendJson(res, 413, { error: 'This section has too much in it to redesign in one go. Move part of it into a second section, then redesign each.' });
@@ -6229,7 +6256,9 @@ function handleRedesignSection(req, res) {
         var newCss = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || '')));
         /* no heading above the site's type scale, as when the site was made (the hero keeps its own type) */
         if (sectionId !== 'hero' && payload.generated !== false) newCss = genDesign.capHeadingSizes(newCss, newHtml);
-        newCss = genDesign.restorePictures(newCss, pictures, found[0] || '');
+        newCss = cssUrlQuotes(genDesign.restorePictures(newCss, pictures, found[0] || ''));
+        /* a change that was not about the background keeps the section's own background picture */
+        if (mode === 'edit') newHtml = keepRootBackground(origHtml, newHtml, newCss, String(payload.instruction || ''));
         var scopedCss = scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml));
         /* an AI-designed site's section is held to a phone's width as soon as it is remade, as on the published
            page (gen-markup.js mobileSafeCss; idempotent); a fixed template's CSS is left as it was written */
@@ -12461,3 +12490,5 @@ module.exports._testHooks = {
 /* the event's fields as PATCH /api/event reads them: Content › Basics' three details for posts and mailers among them
    (promo-details.test.js) */
 module.exports._testHooks.cleanEventBody = cleanEventBody;
+module.exports._testHooks.keepRootBackground = keepRootBackground;
+module.exports._testHooks.cssUrlQuotes = cssUrlQuotes;

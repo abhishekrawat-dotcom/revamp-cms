@@ -1057,7 +1057,8 @@ function entry(sectionId, placement, extra) {
   imageAnswers.push(picture());
   await run(ref);
   var squareCall = imageCalls[imageCalls.length - 1];
-  check(squareCall.opts.aspectRatio === undefined && /Landscape, 4:3\./.test(squareCall.prompt), 'a background not known to be wide keeps the model\'s own shape', J(squareCall.opts));
+  /* owner, 10 Nov 2026: a picture is never made square by default — 4:3, as its words have always said */
+  check(squareCall.opts.aspectRatio === '4:3' && /Landscape, 4:3\./.test(squareCall.prompt), 'a background not known to be wide is made 4:3, as its words say', J(squareCall.opts));
   ref = turnOf(askOf('hero', 'hero'));
   imageAnswers.push(picture());
   await run(ref);
@@ -1065,7 +1066,7 @@ function entry(sectionId, placement, extra) {
   ref = turnOf(askOf('overview', 'picture'));
   imageAnswers.push(picture());
   await run(ref);
-  check(imageCalls[imageCalls.length - 1].opts.aspectRatio === undefined, 'a section\'s own picture is not');
+  check(imageCalls[imageCalls.length - 1].opts.aspectRatio === '4:3', 'a section\'s own picture with no frame known is made 4:3, never square', J(imageCalls[imageCalls.length - 1].opts));
 
   /* 2. every picture made is looked at once before it is used */
   var PNG2 = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(80, 9)]).toString('base64');
@@ -1090,7 +1091,8 @@ function entry(sectionId, placement, extra) {
     cc.opts.deadlineAt > Date.now() && cc.opts.deadlineAt <= Date.now() + cp.DEADLINE_MS && cc.schema === cp.CHECK_SCHEMA && typeof cc.opts.onUsage === 'function',
     'the check goes through llm.js (route picture-check: Haiku, Gemini Flash its fallback), with the picture itself, inside the same deadline', J(Object.assign({}, cc.opts, { images: undefined })));
   check(/people: true if any person or human shape can be seen anywhere in it, however small, distant, faceless, see-through, shadowy or symbolic/.test(cc.prompt) &&
-    /text: true if any letters, words, numbers or writing[^]*glyphs that look like writing/.test(cc.prompt) && /logos: true if any logo, brand mark, emblem, crest, badge, flag or watermark/.test(cc.prompt),
+    /text: true if any letters, words, numbers or writing[^]*glyphs that look like writing/.test(cc.prompt) && /logos: true if any logo, brand mark, company or team emblem, crest, badge, flag or watermark can be seen — a mark that stands for a company, a brand, an organisation, a team or a product/.test(cc.prompt) &&
+    /Carved ornaments, temple or wheel carvings, architectural motifs, leaf and line patterns and abstract shapes that stand for no one are decoration, not logos/.test(cc.prompt),
     'the banner is checked for any human shape at all, for writing and for logos', cc.prompt);
   check(checkRecorded.length === 1 && checkRecorded[0].model === 'claude-haiku-5-5', 'what the check used is recorded, as every model call\'s is', J(checkRecorded));
   var np0 = FB.docs[ref.path].newPicture;
@@ -1199,6 +1201,43 @@ function entry(sectionId, placement, extra) {
     'a look reads yes/no written as words too; an answer without all three, or a picture too large to send, is "could not look"', J([r1, r2, r3, r4]));
   check(J(cp.refusedFor({ people: true, text: true, logos: true }, 'allowed')) === J(['text', 'logos']) && J(cp.refusedFor({ people: true, text: false, logos: false }, 'distant')) === J(['people']) && J(cp.refusedFor(null, 'none')) === J([]),
     'what is refused: people where the place takes none, words and logos everywhere; nothing when it could not look');
+
+  /* ---------- owner, 10 Nov 2026: the CISO Secufest history ---------- */
+  var CISO = { event: { name: 'CISO Secufest 2027', city: 'Bhubaneswar', venue: 'Mayfair Sanctuary' } };
+  ['The Konark Sun Temple\'s carved stone chariot wheel in front of the Chandaka Dampara Wildlife Sanctuary canopy',
+    'the sun temple wheel with chandaka jungle behind it', 'Udayagiri Caves at dawn', 'Chilika lake at sunset', 'Dhauli Shanti Stupa on its hill',
+    'Konark Sun Temple at golden hour', 'Hampi ruins among boulders', 'Kaziranga grassland at dawn'].forEach(function (t) {
+    var x = cp.cleanSubject(t, CISO);
+    check(x.ok, 'a heritage or nature place is a place, not a name: "' + t + '"', J(x));
+  });
+  ['Sundar Pichai giving the keynote on stage', 'Ratan Tata walking through the Konark Sun Temple', 'Anita Desai Keynote at Chandaka Jungle'].forEach(function (t) {
+    check(!cp.cleanSubject(t, CISO).ok, 'a person\'s name is still refused, beside a place too: "' + t + '"');
+  });
+  /* an offer, then a yes */
+  var off = cp.offerOf({ sectionId: 'hero', placement: 'hero' }, SECS);
+  check(off && off.sentence === 'Do you want me to make a new banner picture for “' + (SECS.filter(function (x) { return x.id === 'hero'; })[0].name) + '”? Say “yes, make it” and I will.' &&
+    off.record.state === 'offered' && off.record.sectionId === 'hero' && !('subject' in off.record), 'an unclear ask is offered, not refused; nothing to make is stored', J(off));
+  check(cp.offerOf({ sectionId: 'nope', placement: 'hero' }, SECS) === null && cp.offerOf({ sectionId: 'hero', placement: 'x' }, SECS) === null, 'no offer for a section or place that is not there');
+  check(/You asked whether to make a new picture for/.test(cp.historyLine(off.record)), 'the model remembers it asked');
+  var OFFERED = { sectionId: 'hero', placement: 'hero', state: 'offered' }, MADE = { sectionId: 'agenda', placement: 'background', state: 'made' };
+  ['yes', 'yes, make it', 'Yes please', 'ok go ahead', 'sure', 'haan', 'create it', 'you can create like that?', 'make it'].forEach(function (t) {
+    var x = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: t, lastTurnPicture: OFFERED }));
+    check(x.ask && x.ask.placement === 'hero', 'after an offer, "' + t + '" makes it', J(x));
+  });
+  ['make the hero background navy', 'no thanks, change the headline instead and make the buttons bigger and bolder please'].forEach(function (t) {
+    var x = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: t, lastTurnPicture: OFFERED }));
+    check(x.ask === null, 'after an offer, "' + t + '" makes none', J(x));
+  });
+  var mk = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'you can create like that?', lastTurnPicture: MADE }));
+  check(mk.ask && mk.ask.placement === 'background', 'right after a picture, "you can create like that?" asks for another', J(mk));
+  /* a picture in its frame's shape */
+  check(cp.frameAspect(1200, 500) === '21:9' && cp.frameAspect(800, 600) === '4:3' && cp.frameAspect(600, 600) === '1:1' && cp.frameAspect(1000, 560) === '16:9' &&
+    cp.frameAspect(400, 600) === '2:3' && cp.frameAspect(0, 400) === '' && cp.frameAspect('x', 3) === '', 'the frame\'s nearest shape', [cp.frameAspect(1200, 500), cp.frameAspect(1000, 560)]);
+  var framed = SECS.map(function (x) { return x.id === 'overview' ? Object.assign({}, x, { pics: Object.assign({}, x.pics || {}, { slots: 1, list: [{ label: 'hall', w: 1200, h: 520 }] }) }) : x; });
+  var fa = cp.planAsk([entry('overview', 'picture', { slot: 1, kind: 'place' })], ctxOf({ instruction: 'make a new picture for the overview', sections: framed }));
+  check(fa.ask && fa.ask.aspect === '21:9' && cp.turnRecord(fa.ask, {}).aspect === '21:9', 'a picture taking a wide frame\'s place is made in that shape', J(fa.ask));
+  /* no shields or badges asked for */
+  check(/never shields, badges, crests, seals, coats of arms, padlock or shield icons/.test(cp.promptLines({ eventId: EV, picturesLeft: 3, picturesPerDay: 20 })), 'the model is told no logo-like shapes');
 
   if (failures.length) { console.error('chat-picture: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - ')); process.exit(1); }
   console.log('chat-picture: all ' + checks + ' checks passed');
