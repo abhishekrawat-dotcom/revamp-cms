@@ -5569,6 +5569,17 @@ function buildSectionCodePrompt(payload) {
 
 // "degrade, never crash" sanitizers (same discipline buildHeroImage elsewhere in this file already uses) —
 // strip what matches, keep the rest, never throw on malformed input.
+/* An address in a style attribute written with the attribute's own quote marks — style="background-image:
+   url("…")" — ends the attribute at url(: the browser reads an empty picture, which then hides the section's real
+   background (owner, 10 Nov 2026: CISO Secufest's hero went blank after "reduce the white overlay of this section";
+   reproduced in the editor: the model wrote exactly that). Outside the section's <style> blocks, such quotes are
+   written as a browser writes them (&quot;, &#39;), which is right in any attribute and reads the same as text. */
+function attrUrlQuotes(html) {
+  return String(html || '').split(/(<style\b[\s\S]*?<\/style\s*>)/i).map(function (part, i) {
+    if (i % 2) return part;
+    return part.replace(/url\(\s*"([^"<>]*)"\s*\)/gi, 'url(&quot;$1&quot;)').replace(/url\(\s*'([^'<>]*)'\s*\)/gi, 'url(&#39;$1&#39;)');
+  }).join('');
+}
 function sanitizeGeneratedSectionHtml(html) {
   try {
     var out = String(html || '');
@@ -5579,6 +5590,7 @@ function sanitizeGeneratedSectionHtml(html) {
     out = out.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '').replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '');
     out = out.replace(/(href|src)\s*=\s*"\s*javascript:[^"]*"/gi, '$1="#"');
     out = out.replace(/(href|src)\s*=\s*'\s*javascript:[^']*'/gi, "$1='#'");
+    out = attrUrlQuotes(out);
     /* Google Fonts only, in its <style> blocks and style="" attributes too; no stylesheet <link> of its own */
     out = googleFonts.googleOnlyHtml(out);
     return out;
@@ -12510,3 +12522,5 @@ module.exports._testHooks = {
 module.exports._testHooks.cleanEventBody = cleanEventBody;
 module.exports._testHooks.keepRootBackground = keepRootBackground;
 module.exports._testHooks.cssUrlQuotes = cssUrlQuotes;
+module.exports._testHooks.attrUrlQuotes = attrUrlQuotes;
+module.exports._testHooks.sanitizeGeneratedSectionHtml = sanitizeGeneratedSectionHtml;

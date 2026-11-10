@@ -21,6 +21,19 @@ check('kept as it is when the new CSS has it', H.keepRootBackground(ORIG, inCss,
 });
 check('nothing to keep when the section had no background picture of its own', H.keepRootBackground('<section id="x" style="color: red;"><p>a</p></section>', LOST, '', 'lighter') === LOST);
 check('a stylesheet\'s url(&quot;…&quot;) is written plainly', H.cssUrlQuotes('.a{background-image:url(&quot;' + URL1 + '&quot;)}') === '.a{background-image:url("' + URL1 + '")}' && H.cssUrlQuotes('.b{color:red}') === '.b{color:red}');
+/* the cause, reproduced in the editor (owner, 10 Nov 2026): putting the pictures back read url(&quot;…&quot;) as an address
+   it did not know and wrote a stand-in with bare quotes inside style="…", which ended the attribute */
+var G = require('./gen-design');
+var MAP = { 'rvimg://p1': URL1 }, OTHER = 'https://storage.googleapis.com/revamp-cms.firebasestorage.app/events/x/media/other.jpg';
+var back = G.restorePictures('<section style="background-image: url(&quot;rvimg://p1&quot;);"><h1>x</h1></section>', MAP, OTHER);
+check('an address quoted as &quot; inside style="…" is put back as itself, quotes kept', back === '<section style="background-image: url(&quot;' + URL1 + '&quot;);"><h1>x</h1></section>', back);
+back = G.restorePictures('<div style="background: url(&quot;https://evil.test/x.png&quot;) center"></div><div style="background:url(&#39;https://evil.test/y.png&#39;)"></div>', MAP, OTHER);
+check('a stand-in for an address that is not ours keeps the quotes the attribute had', back === '<div style="background: url(&quot;' + OTHER + '&quot;) center"></div><div style="background:url(&#39;' + OTHER + '&#39;)"></div>', back);
+back = G.restorePictures('.a{background:url(rvimg://p1)} .b{background:url("https://evil.test/z.png")}', MAP, OTHER);
+check('…and in a stylesheet too (bare, or in its own quotes)', back === '.a{background:url(' + URL1 + ')} .b{background:url("' + OTHER + '")}', back);
+var san = H.sanitizeGeneratedSectionHtml('<section style="background-image: url("' + URL1 + '");"><style>.a{background:url("' + URL1 + '")}</style><p>x</p></section>');
+check('a model\'s own url("…") inside an attribute is written with &quot;; its <style> blocks are left as they are',
+  san === '<section style="background-image: url(&quot;' + URL1 + '&quot;);"><style>.a{background:url("' + URL1 + '")}</style><p>x</p></section>', san);
 var API = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
 check('the section rework uses both, on the original section (before its pictures became tokens)',
   /var pictures = \{\}, origHtml = html;/.test(API) && /newCss = cssUrlQuotes\(genDesign\.restorePictures\(newCss, pictures, found\[0\] \|\| ''\)\);/.test(API) &&

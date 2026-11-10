@@ -527,10 +527,13 @@ function restorePictures(text, map, fallback) {
     if (ours(url)) return tag;
     return fallback ? tag.replace(m[0], ' src="' + fallback + '"') : '';
   });
-  out = out.replace(/url\(\s*(["']?)([^"')]*)\1\s*\)/gi, function (full, q, url) {
+  /* an address quoted as a browser writes it inside an attribute (&quot;, &#39;) is read as quoted, and one put in
+     its place keeps the quotes it had: url("…") with bare double quotes inside style="…" ends the attribute and
+     blanks the section's background (owner, 10 Nov 2026: CISO Secufest's hero, after "reduce the white overlay") */
+  out = out.replace(/url\(\s*(&quot;|&#0?39;|&#x27;|["']?)([^"'()]*?)\1\s*\)/gi, function (full, q, url) {
     url = url.trim();
     if (ours(url)) return full;
-    return fallback ? 'url("' + fallback + '")' : 'none';
+    return fallback ? 'url(' + q + fallback + q + ')' : 'none';
   });
   return out;
 }
