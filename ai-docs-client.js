@@ -135,6 +135,57 @@
     }
     return lines.join('\n');
   }
+  /* A deck's look: the colours used most on its slides (its theme's own are often the program's defaults), the fonts
+     its slides are set in, and up to two of its first slides' largest pictures as small JPEGs for the model to see. */
+  var LOOK = { colors: 8, fonts: 4, previews: 2, previewPx: 640, previewBytes: 180 * 1024 };
+  function lookOf(zip, slides) {
+    var colours = {}, fonts = {};
+    slides.forEach(function (s) {
+      var x = s.xml || '', m, re = /srgbClr val="([0-9A-Fa-f]{6})"/g;
+      while ((m = re.exec(x))) { var h = '#' + m[1].toUpperCase(); colours[h] = (colours[h] || 0) + 1; }
+      var rf = /latin typeface="([^"+][^"]{0,39})"/g;
+      while ((m = rf.exec(x))) fonts[m[1]] = (fonts[m[1]] || 0) + 1;
+    });
+    function top(o, n, min) { return Object.keys(o).filter(function (k) { return o[k] >= min; }).sort(function (a, b) { return o[b] - o[a]; }).slice(0, n); }
+    var look = { colors: top(colours, LOOK.colors, 2).map(function (h) { return { hex: h, uses: colours[h] }; }), fonts: top(fonts, LOOK.fonts, 1), previews: [] };
+    /* the largest picture of each of the first slides that have one */
+    var picks = [];
+    for (var i = 0; i < slides.length && picks.length < LOOK.previews && i < 6; i++) {
+      var best = '', bestSize = 0, rels = slides[i].rels || {};
+      for (var k in rels) {
+        if (!Object.prototype.hasOwnProperty.call(rels, k) || !/\/image$/.test(rels[k].type) || !/\.(png|jpe?g|gif|webp)$/i.test(rels[k].path)) continue;
+        var f = zip.file(rels[k].path), sz = f && f._data && f._data.uncompressedSize ? f._data.uncompressedSize : 1;
+        if (f && sz > bestSize) { best = rels[k].path; bestSize = sz; }
+      }
+      if (best && picks.indexOf(best) === -1) picks.push(best);
+    }
+    return picks.reduce(function (p, path) {
+      return p.then(function () {
+        return zip.file(path).async('blob').then(previewOf).then(function (d) { if (d) look.previews.push(d); }, function () {});
+      });
+    }, Promise.resolve()).then(function () { return look.colors.length || look.fonts.length || look.previews.length ? look : null; });
+  }
+  /* a picture drawn small on a canvas, as a JPEG data address ('' when it cannot be) */
+  function previewOf(blob) {
+    return new Promise(function (resolve) {
+      var doc = root.document, URLs = root.URL;
+      if (!doc || !URLs || typeof URLs.createObjectURL !== 'function' || typeof root.Image !== 'function') { resolve(''); return; }
+      var url = URLs.createObjectURL(blob), img = new root.Image();
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth, h = img.naturalHeight, k = Math.min(1, LOOK.previewPx / Math.max(w, h, 1));
+          var c = doc.createElement('canvas'); c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+          var g = c.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(img, 0, 0, c.width, c.height);
+          var q = 0.8, out = c.toDataURL('image/jpeg', q);
+          while (out.length * 0.75 > LOOK.previewBytes && q > 0.35) { q -= 0.15; out = c.toDataURL('image/jpeg', q); }
+          resolve(out.length * 0.75 <= LOOK.previewBytes ? out : '');
+        } catch (e) { resolve(''); }
+        URLs.revokeObjectURL(url);
+      };
+      img.onerror = function () { URLs.revokeObjectURL(url); resolve(''); };
+      img.src = url;
+    });
+  }
   function readPptx(file, name) {
     var size = +file.size || 0;
     if (!size) return fail('“' + name + '” is empty.');
@@ -159,7 +210,7 @@
             for (var k in s[1]) if (Object.prototype.hasOwnProperty.call(s[1], k) && /notesSlide$/.test(s[1][k].type)) notesPath = s[1][k].path;
             var nf = notesPath && zip.file(notesPath);
             return (nf ? nf.async('string') : Promise.resolve('')).then(function (notes) {
-              return { words: wordsOf(s[0], false), notes: notes ? wordsOf(notes, true) : '' };
+              return { words: wordsOf(s[0], false), notes: notes ? wordsOf(notes, true) : '', xml: s[0], rels: s[1] };
             });
           });
         })).then(function (slides) {
@@ -171,7 +222,10 @@
             parts.push(block); total += block.length + 2;
           });
           if (!parts.length) throw new Error('“' + name + '” has no words ETB2B AI can read: its slides are only pictures. Attach it as a PDF instead.');
-          return { kind: 'pptx', name: name, size: size, slides: slides.length, text: parts.join('\n\n'), cut: cut };
+          var deck = { kind: 'pptx', name: name, size: size, slides: slides.length, text: parts.join('\n\n'), cut: cut };
+          /* its look as well: the colours and fonts its slides use, and its first slides' main pictures, small
+             (owner, 10 Nov 2026: "adapt the theme for this website from this presentation") */
+          return lookOf(zip, slides).then(function (look) { if (look) deck.look = look; return deck; }, function () { return deck; });
         });
       });
     }).catch(function (err) {
@@ -191,7 +245,7 @@
   function wire(doc) {
     if (!doc || typeof doc !== 'object') return null;
     if (doc.kind === 'pdf') return { kind: 'pdf', name: doc.name, size: doc.size, data: doc.data };
-    if (doc.kind === 'pptx') return { kind: 'pptx', name: doc.name, size: doc.size, slides: doc.slides, text: doc.text, cut: !!doc.cut };
+    if (doc.kind === 'pptx') return { kind: 'pptx', name: doc.name, size: doc.size, slides: doc.slides, text: doc.text, cut: !!doc.cut, look: doc.look || undefined };
     return null;
   }
 

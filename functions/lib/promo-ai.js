@@ -558,7 +558,7 @@ function handleEdit(req, res) {
         };
         return llm.callJson(buildPrompt(ctx), schemaFor(ctx), {
           route: 'promo-edit', eventId: eventId, maxOutputTokens: CAPS.outputTokens, timeoutMs: CAPS.timeoutMs,
-          inlineFiles: files.files.length ? files.files : undefined,
+          inlineFiles: files.files.length ? files.files : undefined, images: files.images.length ? files.images : undefined,
           onUsage: H.aiUsageRecorder(fb, eventId, 'promo-edit')
         }).then(function (r) {
           if (!r || r.error) { H.sendAiFailure(res, Object.assign({ error: MSG.failed, code: 'ai-unavailable', retryable: true, status: 502 }, r || {})); return rec({ code: (r && r.code) || 'ai-unavailable' }); }

@@ -106,6 +106,8 @@ llm.callJson = function (prompt, schema, opts) {
   calls.push({ route: route, prompt: prompt, schema: schema, opts: opts });
   var next = (scripted[route] || []).shift();
   if (!next) return Promise.resolve({ error: 'This check scripted no answer for ' + route + '.', code: 'ai-unavailable', status: 502 });
+  /* a scripted failure: { fail: { code, status } } */
+  if (next.fail) return Promise.resolve(Object.assign({ error: 'The AI service could not take this request.' }, next.fail));
   return Promise.resolve({ parsed: next, provider: 'claude', model: 'claude-stub' });
 };
 function editAnswer(o) { return Object.assign({ kind: 'reply', summary: '', design: {}, textEdits: [], sectionEdits: [], sectionOps: [], newSections: [], newForms: [], ctaLinks: [], formEmbeds: [], goTo: '' }, o || {}); }
@@ -337,6 +339,24 @@ var CONV = 'events/' + MAIN + '/aiChats/u-asha';
   scripted['chat-edit'].push(editAnswer({ kind: 'edit', summary: 'Making the banner picture now.', newPictures: [PIC] }));
   c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'yes, make it', sections: PIC_SECTIONS, canMakePictures: true });
   check('S.11 "yes, make it" next: the picture is asked for', c.status === 200 && c.body.kind === 'edit' && c.body.newPicture && c.body.newPicture.placement === 'hero', c.body);
+
+  /* ===== S.12 refused with pictures: asked once more without them (owner, 10 Nov 2026) ===== */
+  var SHOT = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(400, 1)]).toString('base64');
+  var DECK_LOOK = { colors: [{ hex: '#92132C', uses: 239 }], fonts: ['Open Sans'], previews: [SHOT] };
+  var nBefore = calls.length;
+  scripted['chat-edit'].push({ fail: { code: 'ai-rejected', status: 502 } });
+  scripted['chat-edit'].push(editAnswer({ kind: 'edit', summary: 'I took the deck\'s crimson as the theme colour.', design: { themeColor: '#92132C' } }));
+  c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'adapt the theme for this website from this presentation', sections: SECTIONS,
+    documents: [{ kind: 'pptx', name: 'deck.pptx', slides: 2, text: 'Slide 1:\nSecufest', look: DECK_LOOK }] });
+  var first = calls[nBefore], second = calls[nBefore + 1];
+  check('S.12 the first ask carries the deck\'s slide picture, last', first && first.opts.images && first.opts.images.length >= 1 && first.opts.images[first.opts.images.length - 1].mimeType === 'image/jpeg' &&
+    /The LAST picture with this message is the main picture of the deck/.test(first.prompt) && /#92132C \(239 uses\)/.test(first.prompt) && /Its fonts: Open Sans\./.test(first.prompt), first && first.opts.images && first.opts.images.length);
+  check('S.12 refused: asked once more, without any picture, and its words no longer promise one', second && !second.opts.images && !/The LAST picture with this message/.test(second.prompt) && /#92132C/.test(second.prompt), second && second.opts);
+  check('S.12 …and the answer is used', c.status === 200 && c.body.kind === 'edit' && c.body.design && c.body.design.themeColor === '#92132C', c.body);
+  nBefore = calls.length;
+  scripted['chat-edit'].push({ fail: { code: 'ai-rejected', status: 502 } });
+  c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'make the hero darker', sections: SECTIONS });
+  check('S.12 refused with no picture at all: not asked again, the failure as before', calls.length === nBefore + 1 && c.status === 502 && c.body.code === 'ai-rejected', c.body);
 
   console.log('assistant-server: ' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

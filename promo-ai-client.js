@@ -178,7 +178,7 @@
     (Object.prototype.toString.call(o.attachments) === '[object Array]' ? o.attachments : []).forEach(function (r) {
       if (!r || typeof r !== 'object' || docs.length >= 3) return;
       if (r.wire === 'pdf' && typeof r.data === 'string' && r.data) docs.push({ kind: 'pdf', name: str(r.name), size: +r.size || 0, data: r.data });
-      else if (r.wire === 'pptx' && typeof r.text === 'string' && r.text) docs.push({ kind: 'pptx', name: str(r.name), size: +r.size || 0, slides: +r.slides || 0, text: r.text, cut: !!r.cut });
+      else if (r.wire === 'pptx' && typeof r.text === 'string' && r.text) docs.push({ kind: 'pptx', name: str(r.name), size: +r.size || 0, slides: +r.slides || 0, text: r.text, cut: !!r.cut, look: r.look || undefined });
     });
     if (docs.length) body.documents = docs;
 

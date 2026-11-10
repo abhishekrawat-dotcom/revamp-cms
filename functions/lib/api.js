@@ -702,7 +702,8 @@ function chatOutcomeText(t) {
    there (goTo). '' with none. */
 var CHAT_DOCS_USE = 'In the site editor, use what the documents say where the person asks: their words for the page\'s own text (the hero\'s line, the overview, a section\'s text, a new section) through `textEdits`, `sectionEdits` or `newSections`. ' +
   'Speakers, the agenda, partners and sponsors, FAQs and contacts come from the event\'s Content and appear on the page by themselves: when the person asks to fill those from a document, list in `summary` what the document has for them (names, titles, times and dates exactly as written) and set `goTo` to that Content page. ' +
-  'A document is never a picture: only attached pictures are placed on the page, by their numbers; a picture inside a document is not.';
+  'A document is never a picture: only attached pictures are placed on the page, by their numbers; a picture inside a document is not. ' +
+  'When the person asks to take the site\'s look or theme from a deck, use its look: its main colour as the theme colour, a second strong one as the accent, light or dark as its slides are, its fonts for headings and body text — in `design` — and the same colours in the sections\' own rework where they set their own; say in `summary` which colours and fonts you took.';
 function chatDocsLines(payload) {
   return aiDocs.docsBlock(payload.docList, payload.docMarker, CHAT_DOCS_USE);
 }
@@ -1052,12 +1053,29 @@ function handleChatEdit(req, res) {
       payload.seenNumbers = seen.numbers;
       payload.unseenNote = seen.skipped.length ? seen.skipped.join(' ') + ' Tell the owner so if it matters for the answer.' : '';
       /* the page as it looks, after the owner's own pictures (a model takes six pictures at most) */
-      var view = chatView(payload, CHAT_MAX_PICTURES - seen.images.length);
+      var view = chatView(payload, CHAT_MAX_PICTURES - seen.images.length - docs.images.length);
       payload.viewCount = view.length;
       payload.viewWhat = CHAT_VIEW_WHAT[payload.viewWhat] ? payload.viewWhat : 'visible';
-      var images = seen.images.concat(view);
-      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined,
-        inlineFiles: docs.files.length ? docs.files : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
+      /* a deck's slide pictures go last, as the documents' lines say (lib/ai-docs.js docsBlock) */
+      var images = seen.images.concat(view, docs.images);
+      function ask() {
+        return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined,
+          inlineFiles: docs.files.length ? docs.files : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
+      }
+      return ask().then(function (r) {
+        /* Both models refused the request itself (owner, 10 Nov 2026: "adapt the theme for this website from this
+           presentation" with a deck, answered "ETB2B AI couldn't take that request"). A picture a model cannot read
+           (a page screenshot, a deck's slide picture) refuses the whole request, so it is asked once more without
+           them, words only: the answer is better than none. The owner's own attached pictures go too, and the
+           prompt says they could not be seen. */
+        if (!r || r.code !== 'ai-rejected' || !images.length) return r;
+        console.error('chat-edit: the request was refused with ' + images.length + ' picture(s); asked again without them');
+        images = [];
+        payload.viewCount = 0;
+        if (payload.seenPictures) { payload.unseenNote = 'The attached pictures could not be shown to you this time; say so if it matters for the answer.'; payload.seenPictures = 0; }
+        payload.docList = (payload.docList || []).map(function (d) { return d.look ? Object.assign({}, d, { look: Object.assign({}, d.look, { previews: 0 }) }) : d; });
+        return ask();
+      });
     }).then(function (r) {
       if (r.error) { sendAiFailure(res, r); return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: r.code || 'ai-unavailable' }); }
       var parsed = r.parsed;

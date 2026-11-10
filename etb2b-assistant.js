@@ -571,7 +571,7 @@
     } else if (c.kind === 'pptx') {
       /* a deck's slide text and speaker notes, read here (ai-docs-client.js); only the words are sent */
       work = docsApi().then(function (D) { return D.read(file); }).then(function (d) {
-        rec.text = d.text; rec.slides = d.slides; rec.cut = !!d.cut;
+        rec.text = d.text; rec.slides = d.slides; rec.cut = !!d.cut; if (d.look) rec.look = d.look;
       }, function (err) { throw problem(err && err.message ? err.message : fill(TEXT.otherEvent, { name: name })); });
     } else {
       work = readText(file).then(function (t) {
@@ -609,7 +609,7 @@
       if (kind === 'text' && typeof r.text === 'string') a.text = r.text.slice(0, TEXT_CHARS);
       /* a PDF's own bytes for ETB2B AI to read, while all of the message's PDFs stay within 15 MB (the rest are named) */
       if (kind === 'pdf' && typeof r.data === 'string' && r.data && pdfRead + (+r.size || 0) <= READ_PDF_TOTAL) { a.data = r.data; pdfRead += +r.size || 0; }
-      if (kind === 'pptx' && typeof r.text === 'string') { a.text = r.text; a.slides = +r.slides || 0; a.cut = !!r.cut; }
+      if (kind === 'pptx' && typeof r.text === 'string') { a.text = r.text; a.slides = +r.slides || 0; a.cut = !!r.cut; if (r.look) a.look = r.look; }
       out.push(a);
     });
     return out;

@@ -52,6 +52,23 @@ var PDF64 = PDF.toString('base64');
   check('2 no documents: no block', D.docsBlock([], 'M', 'x') === '' && D.docsBlock(null) === '');
   check('2 keptOf: names and kinds only', JSON.stringify(D.keptOf(r.list)) === '[{"name":"brochure.pdf","kind":"pdf"},{"name":"deck.pptx","kind":"pptx"}]');
 
+  /* 2b. a deck's look (owner, 10 Nov 2026: "adapt the theme for this website from this presentation") */
+  var JPG = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(300, 2)]).toString('base64');
+  var PNG_AS_JPG = 'data:image/jpeg;base64,' + Buffer.from('89504e470d0a1a0a0000', 'hex').toString('base64');
+  var look = { colors: [{ hex: '#92132c', uses: 239 }, { hex: '8F1029', uses: 152 }, { hex: 'red', uses: 3 }, { hex: '#2B2B2B', uses: 68 }], fonts: ['Open Sans', 'Open Sans ExtraBold', '<script>', 'DM Sans'],
+    previews: [JPG, PNG_AS_JPG, JPG, JPG] };
+  r = D.cleanDocs([{ kind: 'pptx', name: 'deck.pptx', slides: 23, text: 'Slide 1:\nSecufest', look: look }]);
+  check('2b a deck\'s look is kept checked: colours as #RRGGBB with their uses, plain font names, at most two real JPEG pictures',
+    !r.error && JSON.stringify(r.list[0].look.colors) === '[{"hex":"#92132C","uses":239},{"hex":"#8F1029","uses":152},{"hex":"#2B2B2B","uses":68}]' &&
+    JSON.stringify(r.list[0].look.fonts) === '["Open Sans","Open Sans ExtraBold","DM Sans"]' && r.list[0].look.previews === 2 && r.images.length === 2 && r.images[0].mimeType === 'image/jpeg', r.list[0].look);
+  b = D.docsBlock(r.list, 'M', '');
+  check('2b the prompt names its colours and fonts, and says its slide pictures come last and are never placed',
+    b.indexOf('Its look — the colours used most on its slides: #92132C (239 uses), #8F1029 (152 uses), #2B2B2B (68 uses).') !== -1 && b.indexOf('Its fonts: Open Sans, Open Sans ExtraBold, DM Sans.') !== -1 &&
+    b.indexOf('The LAST 2 pictures with this message are the main picture of the deck\'s first slides') !== -1 && /never put one on the page/.test(b), b);
+  r = D.cleanDocs([{ kind: 'pptx', name: 'a.pptx', text: 'x', look: { previews: [JPG, JPG] } }, { kind: 'pptx', name: 'b.pptx', text: 'y', look: { previews: [JPG] } }]);
+  check('2b two pictures at most across all decks of a message', r.images.length === 2 && r.list[1].look.previews === 0);
+  check('2b no look, no lines about one', D.docsBlock(D.cleanDocs([{ kind: 'pptx', name: 'c.pptx', text: 'z', look: { colors: 'x' } }]).list, 'M', '').indexOf('Its look') === -1);
+
   /* 3. the model clients send every document with the message */
   var seen = [], realFetch = global.fetch;
   global.fetch = function (url, init) { seen.push({ url: String(url), body: JSON.parse(init.body) }); return Promise.resolve({ ok: false, status: 400, headers: { get: function () { return null; } }, text: function () { return Promise.resolve('{"error":{"message":"test"}}'); }, json: function () { return Promise.resolve({ error: { message: 'test' } }); } }); };

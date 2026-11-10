@@ -658,6 +658,8 @@ function contextFor(o) {
   if (ctx.attachments.length < files.list.length) ctx.notes.push('attachment-not-used');
   ctx.images = [];
   ctx.attachments.forEach(function (a) { if (a.image) { a.seen = ctx.images.length + 1; ctx.images.push(a.image); } else a.seen = 0; });
+  /* a deck's slide pictures (its look), after the person's own pictures, as the documents' lines say */
+  arr(files.docImages).slice(0, Math.max(0, 6 - ctx.images.length)).forEach(function (im) { ctx.images.push(im); });
   /* the PDFs the model reads, in the order they were attached (a.file numbers them) */
   ctx.files = [];
   ctx.attachments.forEach(function (a) { if (a.kind === 'pdf' && a.file && arr(files.files)[a.file - 1]) { ctx.files.push(files.files[a.file - 1]); a.file = ctx.files.length; } else if (a.kind === 'pdf') a.file = 0; });
@@ -773,7 +775,7 @@ function cleanAttachments(raw) {
       rec.text = cleanAttachedText(a.text);
     } else if (a.kind === 'pptx' || (a.kind === 'pdf' && typeof a.data === 'string' && a.data)) {
       /* a PDF without its bytes is one from a page that only names it (Create Event's brief reads it then) */
-      docs.push({ rec: rec, raw: a.kind === 'pdf' ? { kind: 'pdf', name: a.name, data: a.data } : { kind: 'pptx', name: a.name, size: a.size, slides: a.slides, text: a.text, cut: a.cut } });
+      docs.push({ rec: rec, raw: a.kind === 'pdf' ? { kind: 'pdf', name: a.name, data: a.data } : { kind: 'pptx', name: a.name, size: a.size, slides: a.slides, text: a.text, cut: a.cut, look: a.look } });
     }
     out.list.push(rec);
   }
@@ -783,9 +785,10 @@ function cleanAttachments(raw) {
     d.list.forEach(function (doc, k) {
       var rec = docs[k].rec;
       if (doc.kind === 'pdf') rec.file = doc.file;
-      else { rec.text = doc.text; rec.slides = doc.slides; rec.cut = doc.cut; }
+      else { rec.text = doc.text; rec.slides = doc.slides; rec.cut = doc.cut; if (doc.look) rec.look = doc.look; }
     });
     out.files = d.files;
+    out.docImages = d.images;
   }
   out.list.sort(function (x, y) { return x.n - y.n; });
   return out;
@@ -971,7 +974,9 @@ function attachedBlock(ctx) {
     }
     if (a.kind === 'pdf') return a.file ? a.n + '. PDF ' + name + ' (attached to this message as a document, document ' + a.file + ': read its words, tables and pictures)'
       : a.n + '. PDF ' + name + ' (not read here: Create Event\'s Generate from a brief reads it after the person confirms)';
-    if (a.kind === 'pptx') return a.n + '. PowerPoint deck ' + name + (a.slides ? ', ' + a.slides + ' slides' : '') + ' (its slide text and speaker notes are below' + (a.cut ? '; the end of the deck was cut to fit' : '') + ')';
+    if (a.kind === 'pptx') return a.n + '. PowerPoint deck ' + name + (a.slides ? ', ' + a.slides + ' slides' : '') + ' (its slide text and speaker notes are below' + (a.cut ? '; the end of the deck was cut to fit' : '') + ')' +
+      (a.look && a.look.colors.length ? '; its slides\' colours: ' + a.look.colors.map(function (c) { return c.hex; }).join(', ') : '') + (a.look && a.look.fonts.length ? '; its fonts: ' + a.look.fonts.join(', ') : '') +
+      (a.look && a.look.previews ? '; the last ' + (a.look.previews === 1 ? 'picture' : a.look.previews + ' pictures') + ' with this message show its first slides' : '');
     return a.n + '. text file ' + name + (a.text ? ' (its words are below)' : ' (empty)');
   });
   var texts = files.filter(function (a) { return (a.kind === 'text' || a.kind === 'pptx') && a.text; });
