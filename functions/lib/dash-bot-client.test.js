@@ -267,8 +267,10 @@ var LIST = {
   check('D.1 calls only its own three routes', (SRC.match(/'\/api\/[^']*'/g) || []).every(function (u) { return ['\'/api/dash-bot\'', '\'/api/dash-bot/turn\'', '\'/api/dash-bot/history\''].indexOf(u) !== -1; }), SRC.match(/'\/api\/[^']*'/g));
   check('D.1 no DELETE, publish, unpublish, approve or send call', !/'DELETE'|\/publish|unpublish|\/approve|\/send\b|\/payment/i.test(SRC));
   /* "portal" (the dashboard's own switcher, plan §17) joins them: no destructive action is in it */
-  check('D.1 the action switch knows filter, portal, navigate, create, refuse (and undo) only',
-    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).filter(function (x, i, all) { return all.indexOf(x) === i; }).sort().join(',') === 'create,filter,navigate,portal,refuse,undo',
+  /* "records" (10 Nov 2026) adds speakers or sponsors through the console's own record routes; its Undo removes only the
+     records it added itself */
+  check('D.1 the action switch knows filter, portal, navigate, create, records, refuse (and undo) only',
+    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).filter(function (x, i, all) { return all.indexOf(x) === i; }).sort().join(',') === 'create,filter,navigate,portal,records,refuse,undo',
     SRC.match(/action\.type === '([a-z]+)'/g));
   check('D.1 the answer is drawn by the kit (no innerHTML here)', SRC.indexOf('innerHTML') === -1 && SRC.indexOf('insertAdjacentHTML') === -1 && SRC.indexOf('document.write') === -1);
   check('D.1 NAV_OK is one regex literal (the integration test reads it from here)', /\bvar NAV_OK = \/\^\\\/\(\?:edit-event[^\n]*\$\/;/.test(SRC));
@@ -1229,6 +1231,109 @@ var LIST = {
   } else {
     console.log('dash-bot-client: etb2b-chat.js is not there yet, so the real-kit pass was skipped');
   }
+
+  /* ======== kind "records": speakers and sponsors added to this event (the owner, 10 Nov 2026) ======== */
+  function fakeCore(groups, items, opt) {
+    opt = opt || {};
+    var C = { groups: groups.slice(), items: items.slice(), created: [], deleted: [], n: 0, AV: ['#335577'] };
+    function listOf(res) { return res === 'speaker-groups' || res === 'partner-tiers' ? C.groups : C.items; }
+    C.fetchSub = function (res) { return Promise.resolve(listOf(res).map(function (x) { return JSON.parse(JSON.stringify(x)); })); };
+    C.createSub = function (res, ev, data) {
+      if (opt.failAt && C.created.length + 1 === opt.failAt) return Promise.reject(Object.assign(new Error(opt.msg || 'refused'), { status: 403 }));
+      var id = 'new' + (++C.n);
+      C.created.push({ res: res, ev: ev, data: data, id: id });
+      listOf(res).push(Object.assign({ id: id }, data));
+      return Promise.resolve({ id: id });
+    };
+    C.deleteSub = function (res, ev, id) {
+      C.deleted.push({ res: res, ev: ev, id: id });
+      var list = listOf(res);
+      for (var i = 0; i < list.length; i++) if (list[i].id === id) { list.splice(i, 1); break; }
+      return Promise.resolve({ ok: true });
+    };
+    return C;
+  }
+  function recordsAnswer(id, eventId, groups, extra) {
+    var ev = eventId || 'qa-main';
+    var action = { type: 'records', what: 'speakers', eventId: ev, count: 4, fromDocument: true, label: 'Add speakers', href: '/edit-event.html?event=' + ev + '#content/speakers',
+      groups: groups || [{ name: 'Influential Speakers', entries: [{ name: 'Naven Singh', role: 'CISO', company: 'Acme Bank' }, { name: 'Bruce Schneier', role: '', company: '' }] },
+        { name: 'Guest Speakers', entries: [{ name: 'Robin Uthappa', role: '', company: '' }, { name: 'Jaya Kishori', role: '', company: '' }] }] };
+    Object.keys(extra || {}).forEach(function (k) { action[k] = extra[k]; });
+    return ok({ turnId: id, kind: 'records', parts: [{ t: 'text', v: 'The brochure also mentions industry leaders, but does not name them.' }], list: null,
+      action: action, choices: null, asOf: '2026-11-10T11:45:00.000Z', notes: [], scope: 'event', eventId: ev });
+  }
+  async function settle(n) { for (var si = 0; si < (n || 12); si++) await flush(); }
+  function withCore(P, C) {
+    P.ctx.RevampCore = C;
+    P.events = [];
+    P.ctx.CustomEvent = function (type, init) { this.type = type; this.detail = init && init.detail; };
+    P.ctx.document.dispatchEvent = function (e) { P.events.push({ type: e.type, detail: e.detail }); return true; };
+    return P;
+  }
+  var CONSOLE_SRC = fs.readFileSync(path.join(ROOT, 'edit-event.html'), 'utf8');
+  check('R.0 the console draws its tab again when ETB2B AI adds or takes back records (only its own event, once nothing can be lost)',
+    /document\.addEventListener\('rv:records-changed', function\(e\)\{[\s\S]{0,200}d\.eventId !== EV\.id[\s\S]{0,80}reloadSub\(d\.tab\);/.test(CONSOLE_SRC));
+  var Prc = withCore(await conPage({ answers: [recordsAnswer('TurnRecords001')] }),
+    fakeCore([{ id: 'g1', name: 'Influential Speakers', order: 1 }], [{ id: 's0', name: 'Bruce  Schneier', groupId: 'g1', order: 1 }]));
+  await Prc.say('extract speakers from this pdf and add to this event.');
+  await settle();
+  var RC = Prc.ctx.RevampCore, rb = Prc.last();
+  check('R.1 a heading the event has is used; a new one is made once, after the event\'s own',
+    same(RC.created.filter(function (c) { return c.res === 'speaker-groups'; }).map(function (c) { return [c.data.name, c.data.order]; }), [['Guest Speakers', 2]]), RC.created);
+  var made = RC.created.filter(function (c) { return c.res === 'speakers'; });
+  check('R.1 the speakers are added in the source\'s order, under their headings, as the console makes them',
+    same(made.map(function (c) { return [c.data.name, c.data.groupId, c.data.desig, c.data.comp, c.data.status, c.data.weight]; }),
+      [['Naven Singh', 'g1', 'CISO', 'Acme Bank', 'confirmed', 'featured'], ['Robin Uthappa', 'new2', '', '', 'confirmed', 'featured'], ['Jaya Kishori', 'new2', '', '', 'confirmed', 'featured']]) &&
+    made.every(function (c) { return c.ev === 'qa-main' && c.data.colour === '#335577' && typeof c.data.order === 'number'; }), made.map(function (c) { return c.data; }));
+  check('R.1 someone already on the event is not added again, and said', !made.some(function (c) { return /Bruce/.test(c.data.name); }) &&
+    rb.notes.indexOf('Already on this event, so not added again: Bruce Schneier.') !== -1, rb.notes);
+  check('R.1 the card says who went where, that a document\'s names need a check, and that photos are added by hand',
+    rb.notes.indexOf('Added 3 speakers: Influential Speakers — Naven Singh; Guest Speakers — Robin Uthappa, Jaya Kishori.') !== -1 &&
+    rb.notes.indexOf(Prc.ctx.RevampDashBot.TEXT.recordsCheck) !== -1 && rb.notes.indexOf(Prc.ctx.RevampDashBot.TEXT.recordsNoPhotos) !== -1, rb.notes);
+  check('R.1 …with Open Speakers and Undo', rb.links.some(function (l) { return l.href === '/edit-event.html?event=qa-main#content/speakers' && l.label === 'Open Speakers'; }) &&
+    rb.buttons.some(function (bt) { return bt.undo; }), rb.links.map(function (l) { return l.href; }));
+  check('R.1 the console\'s Speakers tab is drawn again', same(Prc.events, [{ type: 'rv:records-changed', detail: { eventId: 'qa-main', tab: 'speakers' } }]), Prc.events);
+  var rt = Prc.turnCalls().filter(function (t) { return t.turnId === 'TurnRecords001'; });
+  check('R.1 the turn is reported done, with what was added', rt.length === 1 && rt[0].status === 'done' && rt[0].note === 'added 3 speakers; 1 already there' && rt[0].eventId === 'qa-main', rt);
+  var held = JSON.parse(Prc.session.getItem('rv.dashBot.undo.TurnRecords001') || 'null');
+  check('R.1 what was added is kept for Undo after a reload', held && held.kind === 'records' && same(held.snap.items, ['new1', 'new3', 'new4']) && same(held.snap.groups, ['new2']), held);
+  rb.buttons.filter(function (bt) { return bt.undo; })[0].click();
+  await settle();
+  check('R.2 Undo takes off exactly what was added, then the heading it made, now empty', same(RC.deleted.map(function (d) { return d.res + ':' + d.id; }), ['speakers:new1', 'speakers:new3', 'speakers:new4', 'speaker-groups:new2']) &&
+    RC.items.length === 1 && RC.items[0].id === 's0' && RC.groups.length === 1, RC.deleted);
+  check('R.2 …reported undone, the tab drawn again, and the Undo spent', Prc.turnCalls().some(function (t) { return t.turnId === 'TurnRecords001' && t.status === 'undone'; }) &&
+    Prc.events.length === 2 && rb.buttons.filter(function (bt) { return bt.undo; })[0].disabled === true && !Prc.session.getItem('rv.dashBot.undo.TurnRecords001'));
+
+  var Prf = withCore(await conPage({ answers: [recordsAnswer('TurnRecords002')] }), fakeCore([], [], { failAt: 3, msg: 'You have view-only access (Viewer), so this can\'t be changed from your account.' }));
+  await Prf.say('add the speakers from this brochure');
+  await settle();
+  var rf = Prf.last(), RF = Prf.ctx.RevampCore;
+  check('R.3 an event with no heading yet gets the source\'s; a refusal on the way stops the rest, said in the server\'s words',
+    same(RF.created.map(function (c) { return c.res + ':' + c.data.name; }), ['speaker-groups:Influential Speakers', 'speakers:Naven Singh']) &&
+    rf.notes.indexOf('Added 1 speaker: Influential Speakers — Naven Singh.') !== -1 && rf.notes.some(function (n) { return /^The rest could not be added: You have view-only access/.test(n); }), rf.notes);
+  check('R.3 …what was added can still be undone, and the turn says it was partly done', rf.buttons.some(function (bt) { return bt.undo; }) &&
+    Prf.turnCalls().some(function (t) { return t.turnId === 'TurnRecords002' && t.status === 'done' && /^added 1 speaker; the rest failed: You have view-only/.test(t.note); }), Prf.turnCalls());
+
+  var Pro = withCore(await conPage({ answers: [recordsAnswer('TurnRecords003', 'other-event')] }), fakeCore([], []));
+  await Pro.say('add the speakers');
+  await settle();
+  check('R.4 records for another event than this page\'s: nothing is added, said plainly', Pro.ctx.RevampCore.created.length === 0 && Pro.last().content === Pro.ctx.RevampDashBot.TEXT.otherEvent, Pro.last().content);
+
+  var Prn = await conPage({ answers: [recordsAnswer('TurnRecords004')] });
+  await Prn.say('add the speakers');
+  await settle();
+  check('R.5 a page without the console\'s record routes: nothing is done, and it says where to ask', Prn.last().notes.some(function (n) { return n.indexOf(Prn.ctx.RevampDashBot.TEXT.recordsMissing) !== -1; }) &&
+    Prn.turnCalls().some(function (t) { return t.turnId === 'TurnRecords004' && t.status === 'failed'; }), Prn.last().notes);
+
+  var Prh = withCore(await conPage({ eventHistory: { event: { id: 'qa-main', name: 'QA Main' }, turns: [
+    { id: 'TurnRecords005', brain: 'dash', question: 'add the speakers from the brochure', answer: 'x', parts: [{ t: 'text', v: 'Adding them to this event\'s Speakers.' }], status: 'done', note: 'added 3 speakers',
+      dashKind: 'records', kind: 'reply', action: { type: 'records', label: 'Add speakers', url: '/edit-event.html?event=qa-main#content/speakers', what: 'speakers' }, at: '2026-11-10T11:45:00.000Z' }] },
+    session: (function () { var st = makeStorage(); st.setItem('rv.dashBot.undo.TurnRecords005', JSON.stringify({ at: 5, kind: 'records', label: 'added 3 speakers', snap: { eventId: 'qa-main', what: 'speakers', items: ['a', 'b'], groups: [] } })); return st; })() }), fakeCore([], []));
+  await Prh.kit.chat.opts.loadHistory();
+  await settle();
+  var hb = (Prh.chat() ? Prh.chat().bubbles : []).filter(function (b) { return b.notes.indexOf('Added 3 speakers.') !== -1; })[0];
+  check('R.6 the history says what was added, with Undo where this tab still holds it, and Open Speakers', !!hb && hb.buttons.some(function (bt) { return bt.undo; }) &&
+    hb.links.some(function (l) { return l.label === 'Open Speakers'; }), Prh.chat() && Prh.chat().bubbles.map(function (b) { return b.notes; }));
 
   if (failed) { console.error('dash-bot-client: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('dash-bot-client: all ' + passed + ' checks passed');

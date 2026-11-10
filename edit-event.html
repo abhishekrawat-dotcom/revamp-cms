@@ -743,6 +743,13 @@
     SUB_STALE[tabKey] = true;
     flushReloads();
   }
+  /* ETB2B AI added (or took back) this event's speakers or sponsors (dash-bot-client.js runRecords): that tab is
+     fetched again, as soon as nothing can be lost by doing so */
+  document.addEventListener('rv:records-changed', function(e){
+    var d = (e && e.detail) || {};
+    if (!EV || d.eventId !== EV.id || !SUB_LISTS[d.tab]) return;
+    reloadSub(d.tab);
+  });
 
   /* A tab is fetched again only when nothing can be lost or raced by doing so: no dialog is open
      (it may hold typed content about these records), none of the tab's writes are still out (the

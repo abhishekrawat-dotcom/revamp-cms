@@ -1379,7 +1379,9 @@ function handleChatHistory(req, res) {
         out.list = t.list || null;
         out.asOf = t.asOf || '';
         out.dashKind = t.dashKind || 'reply';
-        out.action = a ? Object.assign({ type: String(a.type || ''), label: String(a.label || '') }, a.url ? { url: String(a.url) } : {}) : null;
+        out.action = a ? Object.assign({ type: String(a.type || ''), label: String(a.label || '') }, a.url ? { url: String(a.url) } : {}, a.what ? { what: String(a.what) } : {}) : null;
+        /* what the page said became of it ("added 10 speakers"), for the replay */
+        if (t.note) out.note = String(t.note).slice(0, 300);
         out.attachments = (Array.isArray(t.attachments) ? t.attachments : []).map(function (x) { return { name: String((x && x.name) || ''), kind: String((x && x.kind) || ''), role: String((x && x.role) || 'none') }; });
       }
       if (t.goTo) out.goTo = t.goTo;

@@ -48,8 +48,9 @@
    WHAT A PERSON GETS. Four abilities, chosen by the owner on 3 Nov 2026: start Create Event with the details they
    typed (or "Generate from a brief" with their own brief); find and open any event's pages, or filter the list;
    answer questions from the real data of the events they may see, with links; open Promotions on the post and
-   mailer templates they ask for. "Do it, then undo": every action runs at once in the browser (dash-bot-client.js)
-   and can be taken back there; there is no Apply step here.
+   mailer templates they ask for. And inside an event (10 Nov 2026), a fifth: add the speakers or sponsors their message
+   or an attached document names (kind "records", RECORD_WHAT). "Do it, then undo": every action runs at once in the
+   browser (dash-bot-client.js) and can be taken back there; there is no Apply step here.
    PORTALS (the owner, 3 Nov 2026, after the portals change): every event belongs to one of ET's portals, and the
    dashboard works one portal at a time. Lists, filters and answers follow the portal the person is looking at
    unless they name another one ("ETHRWorld's drafts", "events on ETCIO this month") or say all portals, and they
@@ -187,6 +188,11 @@ var CAPS = {
   attachments: 4,           // files with one message (the panel's own limit on these pages)
   thumbBytes: 160 * 1024,   // one picture's thumbnail, decoded (the browser makes it ≤ 512 px, ≤ 120 KB)
   attachText: 4000,         // the words of an attached text file
+  records: 80,              // speakers or sponsors added by one message
+  recordGroups: 12,         // the headings they come under
+  recordName: 120,          // a person's or a company's name
+  recordRole: 160,          // a speaker's designation or organisation
+  recordGroupName: 80,
   attachName: 80,           // a file's name, as shown and kept
   historyLine: 120          // the question, in the event's History line
 };
@@ -197,7 +203,14 @@ var CAPS = {
    is in the schema everywhere (a provider caches a schema it has seen, so it stays one schema), but the prompt
    offers it only in the editor and never to a message that was handed here; anywhere else it is read as the
    edit-site refusal. */
-var KINDS = ['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'portal', 'handoff'];
+var KINDS = ['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'portal', 'handoff', 'records'];
+/* "records" (the owner, 10 Nov 2026: "extract speakers from this pdf and add to this event" was answered "I can't add
+   speakers myself, so add them by hand on the Speakers tab"): inside an event, the speakers or sponsors the person's
+   message or an attached document names are added to the event's Speakers or Sponsors, under the headings the source
+   uses, by the browser through the console's own record routes (dash-bot-client.js runRecords), with Undo. Names,
+   titles and companies only, exactly as written: no photos, no logos, nobody the source only describes. */
+var RECORD_WHAT = ['speakers', 'sponsors'];
+var RECORD_TAB = { speakers: 'speakers', sponsors: 'sponsors' };
 
 /* The pages the assistant is on (plan §3b), what each is called in the prompt, whether it is a page of one event,
    and the History area its exchanges are written under (only areas lib/activity.js accepts). A page that is not
@@ -345,6 +358,12 @@ var MSG = {
   unknownEvent: 'an event I could not find',
   unavailable: 'not available right now',
   portalSwitch: 'Switching the dashboard to the portal you asked for.',
+  /* kind "records" (RECORD_WHAT) */
+  recordsSpeakers: 'Adding them to this event\'s Speakers.',
+  recordsSponsors: 'Adding them to this event\'s Sponsors.',
+  recordsNone: 'I couldn\'t find any names to add in your message or the attached document. Name the people, or attach the document that lists them.',
+  recordsNeedEvent: 'Open the event first: ETB2B AI adds speakers and sponsors from inside an event, on its console.',
+  recordsViewOnly: 'You have view-only access (Viewer), so ETB2B AI can\'t add speakers or sponsors for you. Ask an admin for Editor access.',
   whichPortal: 'Which portal? Name one of ET\u2019s portals, for example ETCIO or ETHRWorld.',
   /* a message handed here by the site editor's ETB2B AI that reads as a change to the page after all: never
      handed back (one hop), so the person is asked to say where on the page (plan \u00a75b) */
@@ -614,7 +633,9 @@ function contextFor(o) {
     turns: arr(o.turns), turnId: o.turnId || '', nonce: o.nonce || crypto.randomBytes(4).toString('hex'),
     events: [], byId: {}, totals: {}, notes: [],
     /* a message the site editor's ETB2B AI handed here answers here: never handed back (plan §5b) */
-    handedFrom: o.handedFrom === 'edit' ? 'edit' : ''
+    handedFrom: o.handedFrom === 'edit' ? 'edit' : '',
+    /* a Viewer (Settings › Access) changes nothing: kind "records" is answered with a sentence instead */
+    viewOnly: !!(decoded.access && decoded.access.role === 'viewer')
   };
   arr(o.docs).forEach(function (doc) {
     if (!doc || typeof doc.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(doc.id) || ctx.byId[doc.id]) return;
@@ -989,7 +1010,7 @@ function attachedBlock(ctx) {
       : 'Pictures attached in the site editor are for this page: when the person wants them on the page, answer kind "handoff".';
   } else if (p.eventId) {
     /* locked to this event (owner decision 10): an attachment here is never the start of a new event */
-    use = (docs ? 'Documents attached here are read for this event only: to answer the person\'s questions about them, and to say where in this event their content would go (its Content tabs, its site, its promotions) — opening that place when asked; you never change the event from them yourself.' + readDocs + ' ' : '') +
+    use = (docs ? 'Documents attached here are read for this event only: to answer the person\'s questions about them, to say where in this event their content would go (its Content tabs, its site, its promotions) — opening that place when asked — and, when the person asks, to add the speakers or sponsors they name to this event (kind "records"); you never change anything else in the event from them yourself.' + readDocs + ' ' : '') +
       'Pictures attached here can go to this event\'s site: when the person wants one on the site (a banner, a section\'s picture), answer kind "open" with target "editor" and the event\'s id in `events`: the product takes the pictures there for them to place. Speaker photos, sponsor logos and gallery photos are added by hand on the event\'s Content tabs: never say you added one.' +
       ' They are never used for another event or a new one: for that, answer kind "refuse" with refuse.action "other-event". Never say a picture was used: the product says what it does with each.';
   } else {
@@ -1040,12 +1061,13 @@ function buildScopedPrompt(ctx) {
     '- "reply": answer a question about this event, with its tokens (below). Example: "How many registrations do we have?" -> kind "reply", events [its id], text "' + here + ' has {{' + p.eventId + '.registrations}} registrations so far."',
     '- "promo": open this event\'s Promotions on the templates asked for, ready to edit and download. Put the event\'s id in `events`, then set `promo.post` (a Social posts template) or `promo.sitePost` (a post in the site\'s own look), and/or `promo.mailer`. Example: "Make a save-the-date post and an announcement mailer" -> kind "promo", events [its id], promo {post "generic.announcement", mailer "mailer.announcement"}.',
     '- "undo": the person asks to take back what you last did ("undo that", "put it back", "go back").',
+    '- "records": the person asks you to add speakers or sponsors to this event, named in their message or in an attached document ("add the speakers from this brochure"). Set `records.what` ("speakers" or "sponsors") and `records.groups`: one per heading the source puts them under, with its name exactly as written ("Influential Speakers", "Guest Speakers"; "" when there is none), and its `entries`: every person or company the source NAMES there, in its order, each name exactly as written; for a speaker also their designation (`role`) and organisation (`company`) exactly as written, "" when the source gives none. Never add someone the source only describes ("industry leaders to be hosted"), someone you know of from elsewhere, or a photo or logo. `text`: one short sentence about what the source lists that you did not add (people it does not name, photos), or "": the product says what it added.',
     '- "refuse": the person asks for something under WHAT YOU NEVER DO.',
     mayHandOff ? '- "handoff": the message is about this site\'s page itself: its words, design, colours, fonts, pictures, sections, buttons or forms, or a change to any of them ("make the hero darker", "what does the overview say?", "use this picture on the banner"). The site editor\'s own ETB2B AI answers those, not you. Answer kind "handoff" with text "" and nothing else. Questions about this event\'s numbers, its other pages and its promotions are yours.' : null,
     '- Return at most one action, always about this event: put its id in `events`.',
     '',
     /* 4. what you never do */
-    'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.' + (mayHandOff ? ' A change to this site\'s page is not refused here: it is a "handoff".' : ''),
+    'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. Adding this event\'s speakers or sponsors ("records") is the one change you make to the event, and only when asked. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.' + (mayHandOff ? ' A change to this site\'s page is not refused here: it is a "handoff".' : ''),
     'Here you also never answer about, open, list or change any OTHER event, never list or count events, never start a new event, never switch the portal and never filter the dashboard\'s list. For any of those, answer kind "refuse" with refuse.action "other-event": the product says where to do it.',
     '',
     /* 5. data rules and tokens */
@@ -1070,7 +1092,7 @@ function buildScopedPrompt(ctx) {
     '- A "save the date" or "announcement" post is post "generic.announcement". An "announcement mailer" is mailer "mailer.announcement". A "reminder" or "final call" is mailer "mailer.reminder". A post "in the site\'s look" is a sitePost (a save the date in the site\'s look is sitePost "announce").',
     '',
     /* 7. out of scope */
-    'OUT OF SCOPE: anything that is not about this event or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (answering from this event\'s real numbers, opening its pages, setting up its promotions).',
+    'OUT OF SCOPE: anything that is not about this event or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (answering from this event\'s real numbers, opening its pages, adding its speakers and sponsors, setting up its promotions).',
     '',
     /* 8. where the person is */
     'WHERE ' + name.toUpperCase() + ' IS: ' + placeLine(ctx) + '. "This event", "here", "this page", "we", "our" and a question that names no event mean ' + here + '. "It", "its" and a follow-up mean ' + here + ' too, except right after the person asked about another event: then they mean that other event, so answer kind "refuse" with refuse.action "other-event". A word that stands for something the same message names first is about that thing here ("open the speakers, they need photos": they are this event\'s speakers). Its row in the EVENTS table ends with THIS EVENT.',
@@ -1091,7 +1113,7 @@ function buildScopedPrompt(ctx) {
     ctx.message,
     '',
     /* 11. output */
-    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`open`, `promo` or `refuse`), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
+    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`open`, `promo`, `records` or `refuse`), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
 }
@@ -1271,6 +1293,17 @@ var SCHEMA = {
     }, 'kind "promo"'),
     refuse: sBlock({ action: sEnum(REFUSE_ACTIONS) }, 'kind "refuse"'),
     switchTo: sBlock({ portal: sStr('the slug of the portal to work in, or "all"') }, 'kind "portal"'),
+    records: sBlock({
+      what: sEnum(RECORD_WHAT, 'speakers (people) or sponsors (companies)'),
+      groups: { type: 'ARRAY', description: 'one per heading the source puts them under, in its order',
+        items: { type: 'OBJECT', properties: {
+          name: sStr('the heading exactly as written ("Guest Speakers", "Platinum Partners"), or "" when it gives none'),
+          entries: { type: 'ARRAY', description: 'everyone the source names under it, in its order', items: { type: 'OBJECT', properties: {
+            name: sStr('the person\'s or company\'s name exactly as written'),
+            role: sStr('a speaker\'s designation exactly as written, else ""'),
+            company: sStr('a speaker\'s organisation exactly as written, else ""') }, required: ['name', 'role', 'company'] } } },
+          required: ['name', 'entries'] } }
+    }, 'kind "records"'),
     /* the kind of request in a few words, for the record of what people ask (lib/ai-learn.js, owner decision 11):
        never shown to anyone as an answer, and required, so Claude's strict-mode count of optional fields is unchanged */
     intent: sStr('the KIND of request in 2 to 4 plain lowercase words, e.g. "open speakers", "count registrations", "new event from brief", "list drafts"; never a name, number, date or address')
@@ -2371,6 +2404,55 @@ function unconfirmedAnswer(ctx) {
     asOf: new Date(clock.now()).toISOString(), notes: uniq(arr(ctx.notes)), scope: 'none' };
 }
 
+/* kind "records": the speakers or sponsors to add, as the browser adds them. -> { what, groups: [{ name, entries:
+   [{ name, role, company }] }], count, fromDocument }. Every name is one plain line that looks like a name (no address,
+   no token, a letter in it). What the person typed and an attached deck's words can be checked: a name, a heading, a
+   title or a company that is not in them is left out (a heading or title: left blank). A PDF is read by the model
+   alone, so with one attached its words are taken as the model read them, and the browser says to check them. A name
+   given twice is added once; the browser also leaves out anyone already on the event. */
+function recordLine(v, max) {
+  var s = cleanCell(v, max);
+  return /\p{L}/u.test(s) && !ADDRESS_RE.test(s) && !/[<>]/.test(s) ? s : '';
+}
+function cleanRecords(raw, ctx, notes) {
+  raw = isObj(raw) ? raw : {};
+  var what = RECORD_WHAT.indexOf(raw.what) !== -1 ? raw.what : '';
+  var out = { what: what, groups: [], count: 0, fromDocument: false };
+  if (!what) { notes.push('records-what'); return out; }
+  var pdf = arr(ctx.attachments).some(function (a) { return a.kind === 'pdf' && a.file; });
+  var deck = arr(ctx.attachments).some(function (a) { return a.kind === 'pptx' && a.text; });
+  var said = ctx.said || ctx.message;
+  function ours(v) { return pdf || grounded(v, said); }
+  var seen = {};
+  arr(raw.groups).slice(0, CAPS.recordGroups).forEach(function (g) {
+    if (!isObj(g)) return;
+    var gname = recordLine(g.name, CAPS.recordGroupName);
+    if (gname && !ours(gname)) { notes.push('records-heading-not-said'); gname = ''; }
+    var entries = [];
+    arr(g.entries).forEach(function (e) {
+      if (!isObj(e) || out.count >= CAPS.records) return;
+      var name = recordLine(e.name, CAPS.recordName);
+      if (!name) { if (text(e.name)) notes.push('records-not-a-name'); return; }
+      var key = normalized(name);
+      if (seen[key]) return;
+      if (!ours(name)) { notes.push('records-not-said'); return; }
+      seen[key] = true;
+      var role = what === 'speakers' ? recordLine(e.role, CAPS.recordRole) : '', company = what === 'speakers' ? recordLine(e.company, CAPS.recordRole) : '';
+      if (role && !ours(role)) role = '';
+      if (company && !ours(company)) company = '';
+      entries.push({ name: name, role: role, company: company });
+      out.count++;
+    });
+    if (!entries.length) return;
+    var same = out.groups.filter(function (x) { return normalized(x.name) === normalized(gname); })[0];
+    if (same) same.entries = same.entries.concat(entries); else out.groups.push({ name: gname, entries: entries });
+  });
+  if (arr(raw.groups).reduce(function (n, g) { return n + arr(isObj(g) ? g.entries : null).length; }, 0) > CAPS.records) notes.push('records-capped');
+  /* from a document when one was attached and the names are not all the person's own words */
+  out.fromDocument = (pdf || deck) && out.groups.some(function (g) { return g.entries.some(function (e) { return !grounded(e.name, ctx.spoken || ctx.message); }); });
+  return out;
+}
+
 /* An answer as the person sees it, from what the model returned (§5b). -> Promise<answer>:
    { kind, parts, answerRaw, list, action, choices, events, notes, asOf, memo }
    memo is what the memory says was done (happened()): the action's label with events as {{<id>}} tokens. It is
@@ -2541,6 +2623,18 @@ function cleanAnswer(parsed, ctx) {
     if (unusedDocs.length) tail.push({ t: 'text', v: MSG.attachOneBrief + joinWords(unusedDocs.map(function (a) { return '\u201c' + a.name + '\u201d'; })) + '.' });
   } else if (kind === 'undo') {
     out.action = { type: 'undo' };
+  } else if (kind === 'records') {
+    var recs = cleanRecords(parsed.records, ctx, notes);
+    if (!place.eventId) { out.kind = 'reply'; downgrade = MSG.recordsNeedEvent; notes.push('records-no-event'); }
+    else if (ctx.viewOnly) { out.kind = 'reply'; downgrade = MSG.recordsViewOnly; notes.push('records-view-only'); }
+    else if (!recs.count) { out.kind = 'reply'; downgrade = MSG.recordsNone; }
+    else {
+      var rev = ctx.byId[place.eventId];
+      out.action = { type: 'records', what: recs.what, eventId: rev.id, groups: recs.groups, count: recs.count, fromDocument: recs.fromDocument,
+        label: recs.what === 'speakers' ? 'Add speakers' : 'Add sponsors', href: urlFor('content', rev, RECORD_TAB[recs.what]) };
+      out.memo = recs.what + ' named ' + (recs.fromDocument ? 'in the attached document' : 'in the message') + ' were added to {{' + rev.id + '}}';
+      notes.push('records-' + recs.what);
+    }
   } else if (kind === 'portal') {
     /* the dashboard's own switcher, moved: only to a roster portal (or all portals) the person named */
     var sw = isObj(parsed.switchTo) ? parsed.switchTo : {}, to = saidPortal(sw.portal, ctx, notes);
@@ -2695,7 +2789,7 @@ function cleanAnswer(parsed, ctx) {
 function actionSentence(action) {
   if (!action) return '';
   return action.type === 'create' ? MSG.creating : action.type === 'navigate' ? MSG.opening : action.type === 'filter' ? MSG.listShown :
-    action.type === 'portal' ? MSG.portalSwitch : '';
+    action.type === 'portal' ? MSG.portalSwitch : action.type === 'records' ? (action.what === 'sponsors' ? MSG.recordsSponsors : MSG.recordsSpeakers) : '';
 }
 
 /* ---------- storage ---------- */
@@ -2778,6 +2872,7 @@ function actionForStore(a, memo) {
   if (a.url) out.url = a.url;
   if (a.eventId) out.eventId = a.eventId;
   if (a.patch) out.patch = plainCopy(a.patch);
+  if (a.type === 'records') { out.what = a.what; out.count = a.count; if (a.href) out.url = a.href; }
   return out;
 }
 var STARTS_DONE = { filter: 1, open: 1, promo: 1, create: 1, portal: 1 };
@@ -3002,9 +3097,9 @@ function handleTurn(req, res) {
 
 function shapeTurn(t) {
   var a = isObj(t.action) ? t.action : null, action = null;
-  if (a) { action = { type: a.type, label: a.label || '' }; if (a.url) action.url = a.url; }
+  if (a) { action = { type: a.type, label: a.label || '' }; if (a.url) action.url = a.url; if (a.what) action.what = a.what; }
   return { id: t.id, question: t.question || '', answer: t.answer || '', parts: arr(t.parts), list: t.list || null, asOf: t.asOf || '',
-    kind: t.kind || 'reply', status: t.status || 'answered', action: action, at: t.at || '',
+    kind: t.kind || 'reply', status: t.status || 'answered', action: action, at: t.at || '', note: text(t.note),
     /* what was attached, by name only (the files themselves were never sent here) */
     attachments: arr(t.attachments).map(function (a) { return { name: text(a && a.name), kind: text(a && a.kind), role: text(a && a.role) || 'none' }; }) };
 }

@@ -26,6 +26,12 @@
                 newest one in the panel (changedAt, undoLocal): "switch to ETAuto", then "undo that", switches back
      handoff    (the site editor only) the message is about the page itself: the shell passes it to the editor's
                 own ETB2B AI, once
+     records    (inside an event) the speakers or sponsors the person's message or attached document names are added
+                to this event's Speakers or Sponsors, under the headings the source uses (made when the event has no
+                such heading yet), through the console's own record routes (RevampCore.createSub), in the source's
+                order; anyone already on the event is left out, and said. The console's tab is drawn again
+                (rv:records-changed). Undo takes off exactly what was added, and a heading it made that is empty
+                again; the ids are kept in sessionStorage, so Undo still works after a reload
    There is no action here that deletes, cancels, publishes, approves, sends or pays: those stay manual, and
    nothing in this file could do them.
 
@@ -42,7 +48,8 @@
 
    Browser storage (all optional: with storage blocked the bot still answers, Undo lasts until the tab closes)
      sessionStorage  rv.dashBot.undo.<turnId>        the list before a filter (….list for "Show these in the list"),
-                                                     the newest 15, so Undo still works after a reload
+                                                     or the records a "records" answer added; the newest 15, so Undo
+                                                     still works after a reload
      localStorage    revamp.createEvent.prefill.v1.<prefillId>   the Create Event hand-off, read once over there
      (the shell keeps "Back reopens the panel", the files for Create Event and the pictures for the editor)
 
@@ -83,7 +90,7 @@
   var TEXT = {
     welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions.',
     /* inside an event ETB2B AI works on that event only (owner decision 10): no new event from here */
-    welcomeEvent: 'I work on this event only: I can answer questions from its real numbers, open its pages and set up its promotions. Other events and new ones are on the events dashboard.',
+    welcomeEvent: 'I work on this event only: I can answer questions from its real numbers, open its pages, add its speakers and sponsors from a brochure or your message, and set up its promotions. Other events and new ones are on the events dashboard.',
     footNote: 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.',
     footNoteElsewhere: 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.',
     footNoteEvent: 'ETB2B AI works on this event only. It never deletes, cancels, publishes or approves anything.',
@@ -104,6 +111,12 @@
     notShown: 'ETB2B AI answered, but this page could not show the answer. Reload the page to see it in your history.',
     olderUndo: 'This puts the list back as it was before that message, including later changes. Undo?',
     undone: 'Done, the list is back as it was.',
+    recordsUndone: 'Done, what ETB2B AI added is taken off this event again.',
+    recordsNotAllUndone: 'Some of them could not be taken off. Reload the page and press Undo again, or remove them on the tab.',
+    recordsMissing: 'Speakers and sponsors can’t be added from this page. Open the event’s console and ask again.',
+    recordsBad: 'ETB2B AI gave a list it could not use. Try again.',
+    recordsCheck: 'Taken from the document as ETB2B AI read it: check each name and title on the tab.',
+    recordsNoPhotos: 'Photos and logos aren’t taken from documents: add them on each one.',
     portalUndone: 'Done, you are back in the portal you worked in before.',
     nothingToUndo: 'There’s nothing here I can undo. Pages I opened can be left with your browser’s Back button, and a new event I started can be cleared with Undo on the Create Event page.',
     couldNot: 'That could not be done here. ',
@@ -437,6 +450,8 @@
       var p = action.pointer && typeof action.pointer === 'object' ? action.pointer : {};
       return p.href == null || urlInScope(p.href, here);
     }
+    /* speakers or sponsors are added only to the event this page is of (eventId was checked above) */
+    if (action.type === 'records') return str(action.eventId) === here.eventId;
     return action.type === 'undo';
   }
   /* an answer's own parts, its list and its choices, inside an event: none may link to another event */
@@ -484,7 +499,7 @@
     var action = body.action && typeof body.action === 'object' ? body.action : null;
     if (body.kind === 'undo' || (action && action.type === 'undo')) {
       var undid = undoNewest();
-      var b0 = chat.ai(undid ? (undid === 'portal' ? TEXT.portalUndone : TEXT.undone) : TEXT.nothingToUndo, {});
+      var b0 = chat.ai(undid ? (undid === 'portal' ? TEXT.portalUndone : undid === 'records' ? TEXT.recordsUndone : TEXT.undone) : TEXT.nothingToUndo, {});
       if (body.notKept) b0.note(TEXT.notKept);
       return;
     }
@@ -517,6 +532,7 @@
     if (action.type === 'portal') return runPortal(action, bubble, ctx);
     if (action.type === 'navigate') return runNavigate(action, bubble, ctx);
     if (action.type === 'create') return runCreate(action, bubble, ctx);
+    if (action.type === 'records') return runRecords(action, bubble, ctx);
     if (action.type === 'refuse') { drawRefusal(action, bubble, shownText || ''); return true; }
     return false;
   }
@@ -582,10 +598,12 @@
       });
     }
     /* a "Show these in the list" change belongs to an answer, which stays answered */
-    if (c.kind === 'filter' || c.kind === 'portal') report(c.turnId, 'undone');
+    if (c.kind === 'filter' || c.kind === 'portal' || c.kind === 'records') report(c.turnId, 'undone');
   }
   function undoChange(c) {
     if (!c || c.undone) return false;
+    /* added records are taken off on their own: a list or portal change made after them is a different thing */
+    if (c.kind === 'records') return undoRecords(c);
     var later = changes.slice(changes.indexOf(c) + 1).filter(function (x) { return !x.undone; });
     if (later.length && !ask(TEXT.olderUndo)) return false;
     /* Off the dashboard the only change is the working portal: going back past it sets it to what it was before
@@ -630,7 +648,8 @@
     try { r = undoChange(c); } catch (e) { r = false; }
     return Promise.resolve(r).then(null, function () { return false; }).then(function (ok) {
       ok = ok !== false;
-      if (chat) chat.ai(ok ? (portal ? TEXT.portalUndone : TEXT.undone) : (portal ? TEXT.portalMissing : TEXT.notUndone), {});
+      var rec = c.kind === 'records';
+      if (chat) chat.ai(ok ? (portal ? TEXT.portalUndone : rec ? TEXT.recordsUndone : TEXT.undone) : (portal ? TEXT.portalMissing : rec ? TEXT.recordsNotAllUndone : TEXT.notUndone), {});
       return { ok: ok, kind: c.kind };
     });
   }
@@ -640,7 +659,7 @@
       if (changes[i].undone) continue;
       var c = changes[i], r = undoChange(c);
       if (r === false) return false;
-      return c.working != null ? 'portal' : 'list';
+      return c.working != null ? 'portal' : c.kind === 'records' ? 'records' : 'list';
     }
     return false;
   }
@@ -650,6 +669,156 @@
   function fold(c) {
     if (!chat || typeof chat.fold !== 'function') return;
     try { chat.fold((c.kind === 'portal' ? 'Now ' : 'Showing ') + c.label, c.handler); } catch (e) { /* the card keeps its Undo */ }
+  }
+
+  /* ---------- speakers and sponsors (kind "records") ---------- */
+  var RECORD_RES = {
+    speakers: { groups: 'speaker-groups', items: 'speakers', ref: 'groupId', tab: 'speakers', one: 'speaker', many: 'speakers', heading: 'Speakers', open: 'Open Speakers' },
+    sponsors: { groups: 'partner-tiers', items: 'partners', ref: 'tierId', tab: 'sponsors', one: 'sponsor', many: 'sponsors', heading: 'Sponsors', open: 'Open Sponsors' }
+  };
+  /* a name as compared: case, spacing and punctuation aside */
+  function nameKey(s) { return str(s).toLowerCase().replace(/[\s.,;:'"’‘()\-–—]+/g, ' ').replace(/^ +| +$/g, ''); }
+  function orderOf(r) { return typeof (r && r.order) === 'number' && isFinite(r.order) ? r.order : 0; }
+  /* the console's tab of that event is drawn again (edit-event.html listens) */
+  function recordsChanged(eventId, tab) {
+    try { doc.dispatchEvent(new root.CustomEvent('rv:records-changed', { detail: { eventId: eventId, tab: tab } })); } catch (e) { /* no console here */ }
+  }
+  function recordsLine(R, n) { return n + ' ' + (n === 1 ? R.one : R.many); }
+  /* fn(item, i) for every item, at most n at a time; once stop() says so, no further one is started */
+  var RECORDS_AT_ONCE = 4;
+  function inTurns(list, n, fn, stop) {
+    var next = 0;
+    function lane() {
+      if (next >= list.length || stop()) return Promise.resolve();
+      var i = next++;
+      return Promise.resolve(fn(list[i], i)).then(lane);
+    }
+    var lanes = [];
+    for (var j = 0; j < Math.min(n, list.length); j++) lanes.push(lane());
+    return Promise.all(lanes);
+  }
+  function runRecords(action, bubble, ctx) {
+    var C = root.RevampCore, R = RECORD_RES[str(action.what)], eventId = str(action.eventId);
+    if (!R || !EVENT_ID.test(eventId) || !isArr(action.groups)) return failed(bubble, ctx, TEXT.recordsBad);
+    if (eventId !== str(ctx.place && ctx.place.eventId)) return refuseOther(ctx, bubble);
+    if (!C || !isFn(C.fetchSub) || !isFn(C.createSub) || !isFn(C.deleteSub)) return failed(bubble, ctx, TEXT.recordsMissing);
+    started(ctx);
+    var made = { items: [], groups: [] }, added = [], skipped = [], failure = null;
+    Promise.all([C.fetchSub(R.groups, eventId), C.fetchSub(R.items, eventId)]).then(function (got) {
+      var groups = (isArr(got[0]) ? got[0] : []).slice().sort(function (a, b) { return orderOf(a) - orderOf(b); });
+      var items = isArr(got[1]) ? got[1] : [];
+      var have = {};
+      items.forEach(function (it) { have[nameKey(it && it.name)] = true; });
+      var nextOrder = items.reduce(function (m, it) { return Math.max(m, orderOf(it)); }, 0);
+      var groupOrder = groups.reduce(function (m, g) { return Math.max(m, orderOf(g)); }, 0);
+      /* the heading's id: one the event has (by name), else made now; no heading: the event's first, else "Speakers" */
+      function groupFor(name) {
+        var want = str(name) || (groups.length ? '' : R.heading);
+        if (!want) return Promise.resolve(groups[0].id);
+        var hit = groups.filter(function (g) { return nameKey(g.name) === nameKey(want); })[0];
+        if (hit) return Promise.resolve(hit.id);
+        groupOrder += 1;
+        return C.createSub(R.groups, eventId, { name: want, order: groupOrder }).then(function (r) {
+          groups.push({ id: r.id, name: want, order: groupOrder });
+          made.groups.push(r.id);
+          return r.id;
+        });
+      }
+      var chain = Promise.resolve();
+      action.groups.forEach(function (g) {
+        chain = chain.then(function () {
+          if (failure || !g || typeof g !== 'object') return null;
+          var entries = (isArr(g.entries) ? g.entries : []).filter(function (e) {
+            var k = nameKey(e && e.name);
+            if (!k) return false;
+            if (have[k]) { skipped.push(str(e.name)); return false; }
+            have[k] = true;
+            return true;
+          });
+          if (!entries.length) return null;
+          return groupFor(g.name).then(function (gid) {
+            var heading = str(g.name) || R.heading, done = [];
+            /* each one's place is given now, in the source's order, so they can go up RECORDS_AT_ONCE at a time */
+            var jobs = entries.map(function (e) {
+              nextOrder += 1;
+              var data = R.items === 'speakers'
+                ? { name: str(e.name), desig: str(e.role), comp: str(e.company), status: 'confirmed', weight: 'featured', order: nextOrder,
+                    colour: isArr(C.AV) && C.AV.length ? C.AV[Math.floor(Math.random() * C.AV.length)] : '' }
+                : { name: str(e.name), status: 'confirmed', weight: 'featured', order: nextOrder };
+              if (!data.colour) delete data.colour;
+              data[R.ref] = gid;
+              return data;
+            });
+            return inTurns(jobs, RECORDS_AT_ONCE, function (data, i) {
+              return C.createSub(R.items, eventId, data).then(function (r) {
+                made.items.push(r.id);
+                done[i] = { name: data.name, heading: heading };
+              }, function (err) { failure = failure || err || new Error(''); });
+            }, function () { return !!failure; }).then(function () {
+              done.forEach(function (d) { if (d) added.push(d); });
+            });
+          }, function (err) { failure = err || new Error(''); });
+        });
+      });
+      return chain;
+    }).then(null, function (err) { failure = err || new Error(''); }).then(function () {
+      if (made.items.length || made.groups.length) recordsChanged(eventId, R.tab);
+      var reason = failure ? str(failure.message) || 'The server did not take them.' : '';
+      if (added.length) {
+        /* who went where, under each heading in the order they were added */
+        var by = [], at = {};
+        added.forEach(function (a) {
+          if (!(a.heading in at)) { at[a.heading] = by.length; by.push({ heading: a.heading, names: [] }); }
+          by[at[a.heading]].names.push(a.name);
+        });
+        bubble.note('Added ' + recordsLine(R, added.length) + ': ' + by.map(function (b) { return b.heading + ' — ' + b.names.join(', '); }).join('; ') + '.');
+      }
+      if (skipped.length) bubble.note('Already on this event, so not added again: ' + skipped.join(', ') + '.');
+      if (failure) bubble.note((added.length ? 'The rest could not be added: ' : TEXT.couldNot) + reason);
+      if (added.length && action.fromDocument) bubble.note(TEXT.recordsCheck);
+      if (added.length) bubble.note(TEXT.recordsNoPhotos);
+      if (made.items.length || made.groups.length) {
+        var c = keep({ key: ctx.turnId, turnId: ctx.turnId, kind: 'records', label: 'added ' + recordsLine(R, made.items.length), bubble: bubble,
+          snap: { eventId: eventId, what: str(action.what), items: made.items.slice(), groups: made.groups.slice() } });
+        c.buttons.push(bubble.undo(c.handler));
+      }
+      var href = str(action.href);
+      if (NAV_OK.test(href) && urlEvent(href) === eventId) { try { bubble.link(href, R.open); } catch (e) { /* the note says it */ } }
+      report(ctx.turnId, added.length ? 'done' : 'failed', added.length ? 'added ' + recordsLine(R, added.length) + (failure ? '; the rest failed: ' + reason : '') + (skipped.length ? '; ' + skipped.length + ' already there' : '')
+        : (failure ? reason : 'all already there'));
+    });
+    return true;
+  }
+  /* Undo of a "records" answer: exactly the records it added, then each heading it made that is empty again */
+  function undoRecords(c) {
+    var C = root.RevampCore, s = c.snap && typeof c.snap === 'object' ? c.snap : {}, R = RECORD_RES[str(s.what)];
+    if (!C || !R || !isFn(C.deleteSub) || !EVENT_ID.test(str(s.eventId))) { if (c.bubble) c.bubble.note(TEXT.recordsMissing); return false; }
+    var left = [];
+    return inTurns(isArr(s.items) ? s.items : [], RECORDS_AT_ONCE, function (id) {
+      return C.deleteSub(R.items, s.eventId, id).then(null, function (err) { if (!(err && err.status === 404)) left.push(id); });
+    }, function () { return false; }).then(function () {
+      var groups = isArr(s.groups) ? s.groups : [];
+      if (!groups.length || !isFn(C.fetchSub)) return null;
+      return C.fetchSub(R.items, s.eventId).then(function (now) {
+        var used = {}, g2 = Promise.resolve();
+        (isArr(now) ? now : []).forEach(function (it) { if (it && it[R.ref]) used[it[R.ref]] = true; });
+        groups.forEach(function (gid) {
+          if (used[gid]) return;
+          g2 = g2.then(function () { return C.deleteSub(R.groups, s.eventId, gid).then(null, function () { return null; }); });
+        });
+        return g2;
+      }, function () { return null; });
+    }).then(function () {
+      recordsChanged(s.eventId, R.tab);
+      if (left.length) {
+        s.items = left;
+        if (c.key) setItem('sessionStorage', UNDO_PREFIX + c.key, JSON.stringify({ at: c.at, kind: c.kind, label: c.label, snap: s }));
+        if (c.bubble) c.bubble.note(TEXT.recordsNotAllUndone);
+        return false;
+      }
+      spent(c);
+      return true;
+    });
   }
 
   function runFilter(action, bubble, ctx) {
@@ -1056,6 +1225,20 @@
       else if (t.status === 'failed') b.note(TEXT.failedBefore);
       else if (a.type === 'navigate' && NAV_OK.test(str(a.url))) b.link(str(a.url), labelOf(a.label, 'Open it'));
       else if (a.type === 'create') b.note('Opened ' + labelOf(a.label, 'Create Event, filled in') + '.');
+    } else if (a && a.type === 'records') {
+      var Rr = RECORD_RES[str(a.what)] || RECORD_RES.speakers;
+      if (t.status === 'undone') b.note('Added, then undone.');
+      else if (t.status === 'failed') b.note(TEXT.failedBefore);
+      else if (t.status === 'done') {
+        b.note(t.note ? str(t.note).charAt(0).toUpperCase() + str(t.note).slice(1) + '.' : 'Added.');
+        /* Undo comes back only where this tab still holds what was added */
+        var heldR = heldSnap(id);
+        if (heldR && heldR.kind === 'records') {
+          var cr = keep({ key: id, turnId: id, kind: 'records', snap: heldR.snap, label: str(heldR.label), at: +heldR.at || 1, bubble: b });
+          cr.buttons.push(b.undo(cr.handler));
+        }
+        if (NAV_OK.test(str(a.url)) && urlEvent(a.url) === here.eventId) b.link(str(a.url), Rr.open);
+      }
     } else if (a && a.type === 'refuse' && str(a.label) === SCOPED_REFUSAL_LABEL) {
       b.link(DASHBOARD_URL, TEXT.openDashboard);
     }
