@@ -5,7 +5,7 @@
      failure = { error, status, code, retryable, timeoutMs?, provider }       (these never reject)
    provider is always 'gemini' here; model is the model that answered.
 
-   opts: { inlineFile: { mimeType, data (base64) }, timeoutMs = 60000, retry = true, deadlineAt (ms epoch),
+   opts: { inlineFile: { mimeType, data (base64) }, inlineFiles: [the same] (at most 3 in all), timeoutMs = 60000, retry = true, deadlineAt (ms epoch),
            maxOutputTokens, route, eventId, user }      — route / eventId / user only label the log line.
      callGeminiJson also takes  images: [{ mimeType, data (base64) }]  — up to 6 pictures for the model to look at.
      callGeminiImage also takes image: { mimeType, data (base64) }     — a picture to EDIT rather than start from nothing.
@@ -34,6 +34,7 @@ var GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-ima
 var DEFAULT_TIMEOUT_MS = 60000;
 var RETRY_PAUSE_MS = 1500;
 var INLINE_FILE_TYPES = ['application/pdf', 'text/plain'];
+var MAX_FILES = 3;
 var IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 var MAX_IMAGES = 6;
 
@@ -174,12 +175,15 @@ function unusableReason(data) {
 function callGeminiJson(prompt, schema, opts) {
   opts = opts || {};
   var parts = [{ text: String(prompt) }];
-  if (opts.inlineFile) {
-    var type = String(opts.inlineFile.mimeType || '').split(';')[0].trim().toLowerCase();
+  /* inlineFile, and inlineFiles: the documents a person attached to a chat message (at most MAX_FILES in all) */
+  var files = (opts.inlineFile ? [opts.inlineFile] : []).concat(Array.isArray(opts.inlineFiles) ? opts.inlineFiles : []);
+  if (files.length > MAX_FILES) throw new Error('callGeminiJson: at most ' + MAX_FILES + ' documents, not ' + files.length + '.');
+  files.forEach(function (file) {
+    var type = String(file && file.mimeType || '').split(';')[0].trim().toLowerCase();
     /* a caller's mistake, not a user's: images and other binaries are never sent to the model */
     if (INLINE_FILE_TYPES.indexOf(type) === -1) throw new Error('callGeminiJson: inlineFile must be a PDF or plain text, not "' + type + '".');
-    parts.push({ inlineData: { mimeType: type, data: opts.inlineFile.data } });
-  }
+    parts.push({ inlineData: { mimeType: type, data: file.data } });
+  });
   if (opts.images && opts.images.length) {
     if (opts.images.length > MAX_IMAGES) throw new Error('callGeminiJson: at most ' + MAX_IMAGES + ' pictures, not ' + opts.images.length + '.');
     opts.images.forEach(function (image) { parts.push(imagePart(image, 'callGeminiJson')); });

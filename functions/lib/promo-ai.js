@@ -48,6 +48,8 @@
    modules. Loading this file reads nothing and writes nothing. */
 'use strict';
 var llm = require('./llm');
+/* the PDFs and PowerPoint decks a person attaches to a message (owner decision 14) */
+var aiDocs = require('./ai-docs');
 var promo = require('./promo');
 var chatPicture = require('./chat-picture');
 
@@ -300,6 +302,10 @@ function stateLines(st, r) {
   }
   return out.join('\n').replace(/the post or mail/g, 'the ' + noun);
 }
+/* what an attached PDF or deck is for here (owner decision 14) */
+var PROMO_DOCS_USE = 'In this editor, use what the documents say where the person asks: write the post\'s or mail\'s words, its subject line, preview text or caption from them. ' +
+  'A number or a date may be used only when the FACT SHEET, the people list or a PowerPoint deck\'s own words above have it: one read only in a PDF is left out by the editor, so leave it out yourself and say in `summary` which ones the person should add to the event\'s details first. ' +
+  'A document\'s pictures are never used.';
 function buildPrompt(ctx) {
   var st = ctx.state, post = st.editor === 'post', noun = EDITORS[st.editor], ev = (ctx.kit && ctx.kit.event) || {};
   var history = memoryText(ctx.turns);
@@ -308,6 +314,7 @@ function buildPrompt(ctx) {
     'You work on this event only. You never see, name or change another event, its people or its posts.',
     history ? 'Conversation so far (oldest first):\n' + history : '',
     'The person\'s latest message:\n"' + line(ctx.message, CAPS.messageChars) + '"',
+    aiDocs.docsBlock(ctx.docList, ctx.docMarker, PROMO_DOCS_USE),
     'FACT SHEET (this event\'s real details — the only facts you may use):\n' + ctx.facts,
     rosterLines(ctx.roster),
     stateLines(st, ctx.roster),
@@ -503,7 +510,7 @@ function turnsOf(ref) {
 }
 function handleEdit(req, res) {
   if (!H) { res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' }); res.end(JSON.stringify({ error: 'This part of the service is not available right now.', code: 'module-unavailable' })); return; }
-  H.withAdminBody(req, res, H.BODY_LIMITS.ai || H.BODY_LIMITS.small, function (fb, decoded, body) {
+  H.withAdminBody(req, res, H.BODY_LIMITS.aiDocs || H.BODY_LIMITS.ai || H.BODY_LIMITS.small, function (fb, decoded, body) {
     body = isObj(body) ? body : {};
     var eventId = str(body.eventId).trim();
     if (!EVENT_ID.test(eventId) || !H.isEventId(eventId)) return H.sendJson(res, 400, { error: 'eventId is required.', code: 'bad-request' });
@@ -513,6 +520,11 @@ function handleEdit(req, res) {
     if (message.length > CAPS.messageChars) return H.sendJson(res, 400, { error: MSG.tooLong, code: 'too-long' });
     var editor = own(EDITORS, body.editor) ? body.editor : '';
     if (!editor) return H.sendJson(res, 400, { error: MSG.badEditor, code: 'bad-request' });
+    /* PDFs and decks to read (lib/ai-docs.js): checked before anything is spent, and taken off the body so their
+       contents are never recorded with the turn */
+    var files = aiDocs.cleanDocs(body.documents);
+    delete body.documents;
+    if (files.error) return H.sendJson(res, 400, { error: files.error, code: files.code });
     var uid = H.chatUid(decoded);
     if (!H.chatRateOk(uid)) return H.sendJson(res, 429, { error: MSG.rate, code: 'chat-rate', retryable: true });
     var state = cleanState(editor, body.state);
@@ -537,12 +549,16 @@ function handleEdit(req, res) {
         var ctx = {
           state: state, kit: kit, roster: roster, facts: facts, turns: turns, message: message, logoRule: H.ET_LOGO_COLOUR_RULE,
           otherNames: otherNamesOf(docs, eventId), eventData: mine.data || {},
+          docList: files.list, docMarker: 'DOC-' + require('crypto').randomBytes(6).toString('hex'),
           /* what a number may come from: the event's details, its people, the post's own words, the person's words */
           sources: [facts, rosterLines(roster), state.words.map(function (w) { return w.text; }).join('\n'), state.caption ? state.caption.text : '',
-            state.subject || '', state.preview || '', spoken].join('\n')
+            state.subject || '', state.preview || '', spoken,
+            /* a deck's words are the person's own, as an attached text file's are; a PDF is read by the model only */
+            files.list.filter(function (d) { return d.kind === 'pptx'; }).map(function (d) { return d.text; }).join('\n')].join('\n')
         };
         return llm.callJson(buildPrompt(ctx), schemaFor(ctx), {
           route: 'promo-edit', eventId: eventId, maxOutputTokens: CAPS.outputTokens, timeoutMs: CAPS.timeoutMs,
+          inlineFiles: files.files.length ? files.files : undefined,
           onUsage: H.aiUsageRecorder(fb, eventId, 'promo-edit')
         }).then(function (r) {
           if (!r || r.error) { H.sendAiFailure(res, Object.assign({ error: MSG.failed, code: 'ai-unavailable', retryable: true, status: 502 }, r || {})); return rec({ code: (r && r.code) || 'ai-unavailable' }); }

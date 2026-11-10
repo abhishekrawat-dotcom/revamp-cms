@@ -159,6 +159,8 @@ const fs = require('fs');
 const path = require('path');
 const dns = require('dns');
 const crypto = require('crypto');
+/* the documents a person attaches to an ETB2B AI message: PDFs and PowerPoint decks (owner decision 14) */
+const aiDocs = require('./ai-docs');
 const zlib = require('zlib');
 const JSZip = require('jszip');
 const { getFirebase } = require('./firebase');
@@ -317,7 +319,8 @@ var BODY_LIMITS = {
   record: 256 * KB,       // one speaker / session / sponsor / FAQ record; images are uploaded, never inline
   site: 12 * MB,          // PUT /api/event/site, and a publish / stage request that still carries the page
   tiny: 16 * KB,          // { eventId } and nothing else
-  assist: 1 * MB          // POST /api/dash-bot: a message, the page's place and up to four ≤160 KB picture thumbnails (base64)
+  assist: 22 * MB,        // POST /api/dash-bot: a message, the page's place, up to four ≤160 KB picture thumbnails and PDFs of up to 15 MB in all (base64; lib/ai-docs.js)
+  aiDocs: 24 * MB         // POST /api/chat-edit and /api/promo/ai-edit: a page's sections or a post, with PDFs of up to 15 MB in all (base64)
 };
 
 /* The most a model call may write, so an answer that runs away is cut off (and reported as unusable)
@@ -693,6 +696,16 @@ function chatOutcomeText(t) {
   if (t.status === 'applying') return 'it was being applied when this conversation was left; its result is not known';
   return '';
 }
+/* The PDFs and PowerPoint decks attached to the message (owner decision 14): what they are for in the site editor.
+   Their words go on the page through the page's own text; Content's records (speakers, agenda, partners, FAQs,
+   contacts) are entered under Content, so the answer lists what the document has for them and sends the owner
+   there (goTo). '' with none. */
+var CHAT_DOCS_USE = 'In the site editor, use what the documents say where the person asks: their words for the page\'s own text (the hero\'s line, the overview, a section\'s text, a new section) through `textEdits`, `sectionEdits` or `newSections`. ' +
+  'Speakers, the agenda, partners and sponsors, FAQs and contacts come from the event\'s Content and appear on the page by themselves: when the person asks to fill those from a document, list in `summary` what the document has for them (names, titles, times and dates exactly as written) and set `goTo` to that Content page. ' +
+  'A document is never a picture: only attached pictures are placed on the page, by their numbers; a picture inside a document is not.';
+function chatDocsLines(payload) {
+  return aiDocs.docsBlock(payload.docList, payload.docMarker, CHAT_DOCS_USE);
+}
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
   var history = chatHistoryText(payload);
@@ -714,6 +727,7 @@ function buildChatPrompt(payload) {
         (payload.unseenNote ? payload.unseenNote + ' ' : '') +
         'To place a picture on the page, the owner\'s words say what it is for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
       : '') + (canPics ? chatPictureLines(payload) : ''),
+    chatDocsLines(payload),
     ET_LOGO_COLOUR_RULE,
     '',
     'The site\'s current design settings:',
@@ -981,10 +995,17 @@ function learnEdit(req, fb, decoded, payload, eventId, eventData, o) {
 }
 
 function handleChatEdit(req, res) {
-  withAdminBody(req, res, BODY_LIMITS.ai, function (fb, decoded, payload) {
+  withAdminBody(req, res, BODY_LIMITS.aiDocs, function (fb, decoded, payload) {
     /* the second step of a new picture: make the picture a stored turn asked for */
     if (payload.step === 'picture') return handleChatPictureStep(fb, decoded, payload, res);
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
+    /* PDFs and PowerPoint decks to read (owner decision 14, lib/ai-docs.js): checked before anything is spent, and
+       taken off the payload so their contents are never kept with the turn */
+    var docs = aiDocs.cleanDocs(payload.documents);
+    delete payload.documents;
+    if (docs.error) return sendJson(res, 400, { error: docs.error, code: docs.code });
+    payload.docList = docs.list;
+    payload.docMarker = 'DOC-' + crypto.randomBytes(6).toString('hex');
     var eventId = isEventId(String(payload.eventId || '')) ? String(payload.eventId) : '';
     /* a message the events side of ETB2B AI handed here (plan §5b): answered here, never handed back */
     payload.handedFrom = payload.handedFrom === 'dash' ? 'dash' : '';
@@ -1035,7 +1056,8 @@ function handleChatEdit(req, res) {
       payload.viewCount = view.length;
       payload.viewWhat = CHAT_VIEW_WHAT[payload.viewWhat] ? payload.viewWhat : 'visible';
       var images = seen.images.concat(view);
-      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
+      return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined,
+        inlineFiles: docs.files.length ? docs.files : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
     }).then(function (r) {
       if (r.error) { sendAiFailure(res, r); return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: r.code || 'ai-unavailable' }); }
       var parsed = r.parsed;

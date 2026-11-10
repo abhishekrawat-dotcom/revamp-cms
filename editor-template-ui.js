@@ -52,7 +52,7 @@
    stays here, so the canvas, with its undo stack, Save and Publish, is still the one copy of the page.
      attachView(view)    until a view is attached, what the chat would draw is dropped (said once in the console)
      ready() -> Promise  settles once the site is on the canvas for the first time
-     send(text, o) -> Promise<{ kind, turnId, status }>   o: { attachments: [url], focus (null: none; left out:
+     send(text, o) -> Promise<{ kind, turnId, status }>   o: { attachments: [url], documents: [ai-docs wire], focus (null: none; left out:
                          what is selected), handedFrom, sentAt }; kind: edit | reply | undo | handoff | stopped.
                          Rejects with an Error { status, code, retryable } when no usable answer came; the view's
                          owner words it.
@@ -6428,7 +6428,9 @@
             // ETB2B AI may make a new picture only for an editor that can put one in (an older one is never offered it)
             canMakePictures: !!aiPictures(),
             // handed over by the events side: this answer is the last word, never handed back
-            handedFrom: handedFrom || undefined })
+            handedFrom: handedFrom || undefined,
+            // PDFs and PowerPoint decks to read (owner decision 14, lib/ai-docs.js): never numbered with the pictures
+            documents: Array.isArray(o.documents) && o.documents.length ? o.documents.slice(0, 3) : undefined })
         }).then(function (res) {
           return res.text().then(function (txt) {
             var body = null;

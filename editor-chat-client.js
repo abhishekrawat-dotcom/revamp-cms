@@ -53,10 +53,11 @@
     /* under the box: what ETB2B AI does here. Not the other pages' line ("it never deletes … anything"), which is
        not true in the editor: here it changes and can remove parts of the page, each change with its Undo */
     footNote: 'ETB2B AI changes this page when you ask, and every change has an Undo. It never saves, publishes, deletes an event or approves anything.',
-    attachLabel: 'Attach a picture',
-    attachHint: 'Pictures go on this page where you say, for example “use this as the hero background”.',
-    needWords: 'Say what the picture is for, for example “use this as the hero background”.',
-    notPicture: 'In the editor I can use pictures. A brief is read by Create Event’s Generate from a brief.',
+    attachLabel: 'Attach a picture, a PDF or a PowerPoint deck',
+    attachHint: 'Pictures go on this page where you say (“use this as the hero background”); I read PDFs and decks to use their words (“write the overview from this deck”).',
+    needWords: 'Say what the file is for, for example “use this as the hero background” or “write the overview from this PDF”.',
+    notPicture: 'Here I can use pictures, PDFs and PowerPoint decks. Save a Word file as a PDF and attach it again.',
+    tooManyDocs: 'Attach at most 3 documents to one message.',
     focusTitle: 'ETB2B AI will take your message to be about this, unless you name another part of the page',
     focusPicture: 'picture',
     undone: 'Undone. The page is back to how it was before my last change.',
@@ -84,6 +85,10 @@
   var PICTURE_EXT = /\.(?:png|jpe?g|webp|gif|svg)$/i;
   var ACCEPT = 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg';
   var MAX_PICTURES = 6;               // as the editor's tray always took, and /api/chat-edit numbers them
+  var MAX_DOCS = 3;                   // PDFs and decks with one message (lib/ai-docs.js CAPS.docs); never numbered as pictures
+  /* the shared document reader (ai-docs-client.js, loaded before this file): PDFs and PowerPoint decks (owner decision 14) */
+  function docsApi() { var D = root.RevampAiDocs; return D && isFn(D.read) && isFn(D.kindOf) ? D : null; }
+  function acceptList() { var D = docsApi(); return ACCEPT + (D ? ',' + D.ACCEPT : ''); }
   /* "Edit myself" docks the open panel as a column at every width above a phone's (PHONE_QUERY): floating, it would
      lie over the canvas's toolbars and the tools rail's Undo / Redo. Below 1100 px the column is 340 px wide, as
      the editor's own chat column was (custom_editor.html). */
@@ -401,8 +406,18 @@
   /* ---------------------------------------------------------------- the edit brain */
   /* a picture into the tray: checked here first (the file dialog asks for pictures, a drop or a paste may bring
      anything), then stored the editor's own way, which checks it again */
+  var docSeq = 0;
+  function isDocRec(r) { return !!r && r.kind === 'doc' && !!r.doc; }
   function attachAdd(file) {
-    var U = ui();
+    var U = ui(), D = docsApi();
+    /* a PDF or a deck: read here (its bytes, or a deck's words), sent with the message, never numbered as a picture */
+    if (D && D.kindOf(file)) {
+      var held = chatRef && isFn(chatRef.attachments) ? chatRef.attachments().filter(isDocRec).length : 0;
+      if (held >= MAX_DOCS) return Promise.reject(new Error(TEXT.tooManyDocs));
+      return D.read(file).then(function (doc) {
+        return { id: 'doc-' + (++docSeq), kind: 'doc', name: doc.name, size: doc.size, type: doc.kind === 'pdf' ? 'application/pdf' : 'pptx', doc: doc };
+      });
+    }
     if (!isPicture(file)) return Promise.reject(new Error(TEXT.notPicture));
     if (!U || !isFn(U.chat.upload)) return Promise.reject(new Error(TEXT.noAnswer));
     return U.chat.upload(file).then(function (p) { return recFor(p.url, p.name || (file && file.name), file && file.size); });
@@ -424,9 +439,14 @@
       var U = ui();
       o = o || {};
       if (!U) return Promise.reject(new Error(TEXT.noAnswer));
-      var urls = [];
-      (isArr(o.attachments) ? o.attachments : []).forEach(function (r) { var u = urlOf(r); if (u && urls.length < MAX_PICTURES) urls.push(u); });
+      var urls = [], docs = [], D = docsApi();
+      (isArr(o.attachments) ? o.attachments : []).forEach(function (r) {
+        if (isDocRec(r)) { var w = D ? D.wire(r.doc) : null; if (w && docs.length < MAX_DOCS) docs.push(w); return; }
+        var u = r && r.kind === 'image' ? urlOf(r) : '';
+        if (u && urls.length < MAX_PICTURES) urls.push(u);
+      });
       var sendOpts = { attachments: urls };
+      if (docs.length) sendOpts.documents = docs;
       if (o.handedFrom === 'dash') sendOpts.handedFrom = 'dash';
       return U.chat.send(text, sendOpts).then(function (r) {
         // not about this page: the shell hands it to the events side, once
@@ -472,7 +492,7 @@
       suggestions: TEXT.suggestions,
       quickIdeas: TEXT.quickIdeas,
       footNote: TEXT.footNote,
-      attach: { accept: ACCEPT, max: MAX_PICTURES, numbered: true, label: TEXT.attachLabel, hint: TEXT.attachHint, needWords: TEXT.needWords, add: attachAdd },
+      attach: { accept: acceptList(), max: MAX_PICTURES, numbered: true, label: TEXT.attachLabel, hint: TEXT.attachHint, needWords: TEXT.needWords, add: attachAdd },
       context: {
         current: function () { var f = U.chat.focus(); var l = focusLabel(f); return l ? { label: l, title: TEXT.focusTitle } : null; },
         onChange: function (fn) { U.chat.onFocusChange(fn); },

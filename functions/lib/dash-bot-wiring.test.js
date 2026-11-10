@@ -239,7 +239,7 @@ function fakeRes() {
   ok(!!h && Object.keys(h).sort().join() === K3.slice().sort().join(), 'B.2 wire() is handed exactly the K3 helpers', h && Object.keys(h));
   ok(!!h && K3.every(function (k) { return k === 'BODY_LIMITS' ? h[k] && typeof h[k] === 'object' : typeof h[k] === 'function'; }), 'B.2 … each a function (BODY_LIMITS an object)');
   ok(!!h && h.BODY_LIMITS.small === 256 * 1024 && h.BODY_LIMITS.tiny === 16 * 1024, 'B.2 BODY_LIMITS: small 256 KB, tiny 16 KB (a turn report)', h && h.BODY_LIMITS);
-  ok(!!h && h.BODY_LIMITS.assist === 1024 * 1024, 'B.2 BODY_LIMITS.assist: 1 MB (a message, the place and four ≤160 KB thumbnails)', h && h.BODY_LIMITS);
+  ok(!!h && h.BODY_LIMITS.assist === 22 * 1024 * 1024, 'B.2 BODY_LIMITS.assist: 22 MB (a message, the place, four ≤160 KB thumbnails and PDFs of up to 15 MB in all, owner decision 14)', h && h.BODY_LIMITS);
   /* one conversation per person per event for both brains: the bot's key is the editor chat's own, not a copy */
   var refFb = { db: { collection: function (n) { return { doc: function (id) { return { path: n + '/' + id, collection: function (c) { return { doc: function (d) { return { path: n + '/' + id + '/' + c + '/' + d }; } }; } }; } }; } } };
   ok(!!h && typeof h.chatUserRef === 'function' && h.chatUserRef(refFb, 'qa-main', 'u-asha').path === 'events/qa-main/aiChats/u-asha' &&
@@ -296,8 +296,8 @@ function fakeRes() {
   FB.auth.verifyIdToken = realVerify;
   ok(c.status === 403 && names() === 'wire,handleTurn', 'B.2 an account outside the company: 403', c.status + ' ' + names());
   calls = [];
-  c = await call('POST', '/api/dash-bot', undefined, 'asha', Buffer.alloc(1024 * 1024 + 1, 32));
-  ok(c.status === 413 && names() === 'wire,handleChat', 'B.2 a body over 1 MB: 413 before anything is read', c.status + ' ' + names());
+  c = await call('POST', '/api/dash-bot', undefined, 'asha', Buffer.alloc(22 * 1024 * 1024 + 1, 32));
+  ok(c.status === 413 && names() === 'wire,handleChat', 'B.2 a body over 22 MB: 413 before anything is read', c.status + ' ' + names());
   calls = [];
   var four = { message: 'Start a new event with these', attachments: [1, 2, 3, 4].map(function (n) { return { n: n, kind: 'image', name: n + '.png', thumb: 'data:image/jpeg;base64,' + new Array(Math.floor(160 * 1024 * 4 / 3)).join('A') }; }) };
   c = await call('POST', '/api/dash-bot', four);

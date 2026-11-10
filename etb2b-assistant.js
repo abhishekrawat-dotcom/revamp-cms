@@ -110,6 +110,10 @@
   var MAX_FILES = 4;                  // files with one message, as the server takes them (dash-bot.js CAPS.attachments)
   var IMAGE_MAX = 8 * 1024 * 1024;    // as every image upload (edit-event-core.js uploadImage)
   var PDF_MAX = 15 * 1024 * 1024;     // as Create Event's Overview document (create-event.html BRIEF_DOC_MAX_BYTES)
+  var READ_PDF_MAX = 10 * 1024 * 1024; // what ETB2B AI reads itself (lib/ai-docs.js CAPS.pdfBytes); a larger brief is only carried
+  var READ_PDF_TOTAL = 15 * 1024 * 1024; // all of a message's PDFs read together (lib/ai-docs.js CAPS.pdfTotalBytes)
+  var PPTX_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+  var DOC_ACCEPT = 'application/pdf,' + PPTX_TYPE + ',application/vnd.ms-powerpoint,.pdf,.pptx,.ppt';
   var LOGO_MAX = 5 * 1024 * 1024;     // as Create Event's logo box (#f-logo)
   var TEXT_CHARS = 4000;              // as a brief typed on Create Event
   var TEXT_BYTES = 32 * 1024;         // a text file larger than this cannot hold 4,000 characters worth reading
@@ -163,16 +167,18 @@
     noAnswer: 'ETB2B AI didn’t answer. {unchanged} Try again.',
 
     /* attachments */
-    attachStart: 'Attach a brief (PDF or text) or a logo',
-    attachEvent: 'Attach a picture',
-    hintStart: 'I use attachments to start a new event: a PDF or text brief, and the event’s logo.',
-    hintEvent: 'Here I can take pictures to this event’s site editor: say “use it on the site”.',
-    word: 'Create Event reads PDFs and plain text. Save the Word file as a PDF and attach it again.',
-    docInEvent: 'A brief is read when a new event’s site is generated, in Create Event. It can’t be read into this event.',
-    docInEditor: 'In the editor I can use pictures. A brief is read by Create Event’s Generate from a brief.',
+    attachStart: 'Attach a brief (PDF, PowerPoint or text), a document to ask about, or a logo',
+    attachEvent: 'Attach a picture, a PDF or a PowerPoint deck',
+    hintStart: 'I read PDFs and PowerPoint decks to answer about them, and start a new event from a brief (PDF, deck or text) and its logo.',
+    hintEvent: 'I read PDFs and PowerPoint decks to answer about them for this event, and take pictures to its site editor: say “use it on the site”.',
+    word: 'I read PDFs, PowerPoint decks and plain text. Save the Word file as a PDF and attach it again.',
+    docInEvent: 'Here I read PDFs and PowerPoint decks. Save “{name}” as a PDF and attach it again.',
+    docInEditor: 'Here I read PDFs and PowerPoint decks. Save “{name}” as a PDF and attach it again.',
+    pptOld: '“{name}” is an older PowerPoint file (.ppt) I can’t read. Save it as .pptx or PDF and attach that.',
+    readTooBig: '“{name}” is {mb} MB. I read PDFs of up to 10 MB: attach a smaller one, or only the pages that matter.',
     empty: '“{name}” is empty.',
-    otherStart: '“{name}” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP or SVG), a PDF or a text file.',
-    otherEvent: '“{name}” isn’t a picture I can use. Attach a PNG, JPG, WEBP, GIF or SVG picture.',
+    otherStart: '“{name}” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP or SVG), a PDF, a PowerPoint deck or a text file.',
+    otherEvent: '“{name}” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP, GIF or SVG), a PDF or a PowerPoint deck.',
     imageTooBig: '“{name}” is {mb} MB. Pictures can be up to 8 MB.',
     pdfTooBig: '“{name}” is {mb} MB. A brief PDF can be up to 15 MB.',
     textTooLong: '“{name}” is longer than 4,000 characters. Attach the part that matters, or the brief as a PDF.',
@@ -418,14 +424,15 @@
   /* What each place takes. Without an event: what starts a new event. Inside an event (and in the editor before its
      own attach path is there): pictures, for that event's site editor. */
   var POLICIES = {
-    start: { name: 'start', images: { png: 1, jpg: 1, webp: 1, svg: 1 }, pdf: true, text: true, max: MAX_FILES, label: TEXT.attachStart, hint: TEXT.hintStart,
-      accept: 'image/png,image/jpeg,image/webp,image/svg+xml,application/pdf,text/plain,text/markdown,.png,.jpg,.jpeg,.webp,.svg,.pdf,.txt,.md,.doc,.docx',
+    start: { name: 'start', images: { png: 1, jpg: 1, webp: 1, svg: 1 }, pdf: true, pptx: true, text: true, max: MAX_FILES, label: TEXT.attachStart, hint: TEXT.hintStart,
+      accept: 'image/png,image/jpeg,image/webp,image/svg+xml,text/plain,text/markdown,.png,.jpg,.jpeg,.webp,.svg,.txt,.md,.doc,.docx,' + DOC_ACCEPT,
       doc: TEXT.word, other: TEXT.otherStart },
-    event: { name: 'event', images: { png: 1, jpg: 1, webp: 1, svg: 1, gif: 1 }, pdf: false, text: false, max: MAX_FILES, label: TEXT.attachEvent, hint: TEXT.hintEvent,
-      accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg',
+    /* PDFs and decks are read everywhere (owner decision 14); inside an event only for that event */
+    event: { name: 'event', images: { png: 1, jpg: 1, webp: 1, svg: 1, gif: 1 }, pdf: true, pptx: true, text: false, max: MAX_FILES, label: TEXT.attachEvent, hint: TEXT.hintEvent,
+      accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg,' + DOC_ACCEPT,
       doc: TEXT.docInEvent, other: TEXT.otherEvent },
-    editor: { name: 'editor', images: { png: 1, jpg: 1, webp: 1, svg: 1, gif: 1 }, pdf: false, text: false, max: MAX_FILES, label: TEXT.attachEvent, hint: TEXT.hintEvent,
-      accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg',
+    editor: { name: 'editor', images: { png: 1, jpg: 1, webp: 1, svg: 1, gif: 1 }, pdf: true, pptx: true, text: false, max: MAX_FILES, label: TEXT.attachEvent, hint: TEXT.hintEvent,
+      accept: 'image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg,' + DOC_ACCEPT,
       doc: TEXT.docInEditor, other: TEXT.otherEvent }
   };
   /* the pages that are always about one event: there an attachment never starts a new event (owner decision 10),
@@ -447,6 +454,8 @@
     if (!t) t = EXT_TYPES[ext] || '';
     if (own(IMAGE_TYPES, t)) return { kind: 'image', sub: IMAGE_TYPES[t], type: t };
     if (t === 'application/pdf') return { kind: 'pdf', type: t };
+    if (t === PPTX_TYPE || ext === 'pptx') return { kind: 'pptx', type: PPTX_TYPE };
+    if (t === 'application/vnd.ms-powerpoint' || ext === 'ppt') return { kind: 'ppt', type: t };
     if (t === 'text/plain' || t === 'text/markdown' || t === 'text/x-markdown') return { kind: 'text', type: t === 'text/plain' ? t : 'text/markdown' };
     if (/msword|wordprocessingml|ms-word/.test(t) || ext === 'doc' || ext === 'docx') return { kind: 'word', type: t };
     return { kind: 'other', type: t };
@@ -457,9 +466,12 @@
     var name = cleanName(file && file.name), c = classify(file), size = +(file && file.size) || 0;
     if (!size) return fill(TEXT.empty, { name: name });
     if (c.kind === 'image' && own(pol.images, c.sub)) return size > IMAGE_MAX ? fill(TEXT.imageTooBig, { name: name, mb: mb(size) }) : '';
-    if (c.kind === 'pdf' && pol.pdf) return size > PDF_MAX ? fill(TEXT.pdfTooBig, { name: name, mb: mb(size) }) : '';
+    /* a brief may be carried up to 15 MB on a page without an event; elsewhere a PDF is only read, up to 10 MB */
+    if (c.kind === 'pdf' && pol.pdf) return pol.text ? (size > PDF_MAX ? fill(TEXT.pdfTooBig, { name: name, mb: mb(size) }) : '') : (size > READ_PDF_MAX ? fill(TEXT.readTooBig, { name: name, mb: mb(size) }) : '');
+    if (c.kind === 'pptx' && pol.pptx) return '';
+    if (c.kind === 'ppt') return fill(TEXT.pptOld, { name: name });
     if (c.kind === 'text' && pol.text) return size > TEXT_BYTES ? fill(TEXT.textTooLong, { name: name }) : '';
-    if (c.kind === 'word' || c.kind === 'pdf' || c.kind === 'text') return pol.doc;
+    if (c.kind === 'word' || c.kind === 'pdf' || c.kind === 'text' || c.kind === 'pptx') return fill(pol.doc, { name: name });
     return fill(pol.other, { name: name });
   }
   function dataBytes(dataUrl) {
@@ -550,7 +562,17 @@
         rec.w = t.w; rec.h = t.h;
       }, function (err) { throw problem(fill(err && err.message === 'no-reader' ? TEXT.noReader : TEXT.badPicture, { name: name })); });
     } else if (c.kind === 'pdf') {
-      work = looksLikePdf(file).then(function (ok) { if (!ok) throw problem(fill(TEXT.notPdf, { name: name })); });
+      work = looksLikePdf(file).then(function (ok) {
+        if (!ok) throw problem(fill(TEXT.notPdf, { name: name }));
+        /* what ETB2B AI reads itself (owner decision 14): up to 10 MB; a larger brief is carried to Create Event only */
+        if ((+file.size || 0) > READ_PDF_MAX) return null;
+        return docsApi().then(function (D) { return D.read(file); }).then(function (d) { rec.data = d.data; });
+      });
+    } else if (c.kind === 'pptx') {
+      /* a deck's slide text and speaker notes, read here (ai-docs-client.js); only the words are sent */
+      work = docsApi().then(function (D) { return D.read(file); }).then(function (d) {
+        rec.text = d.text; rec.slides = d.slides; rec.cut = !!d.cut;
+      }, function (err) { throw problem(err && err.message ? err.message : fill(TEXT.otherEvent, { name: name })); });
     } else {
       work = readText(file).then(function (t) {
         t = t.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f]+/g, '').replace(/^\s+|\s+$/g, '');
@@ -562,14 +584,22 @@
     return work.then(function () { held[id] = file; return rec; });
   }
   function fileOf(rec) { return rec && own(held, rec.id) ? held[rec.id] : null; }
+  /* the shared document reader (ai-docs-client.js), loaded the first time a PDF or a deck is attached */
+  function docsApi() {
+    return loadScript('/ai-docs-client.js', function () { return !!(root.RevampAiDocs && isFn(root.RevampAiDocs.read)); }).then(function (ok) {
+      if (!ok || !root.RevampAiDocs) throw problem('ETB2B AI could not read documents on this page right now. Reload the page and attach it again.');
+      return root.RevampAiDocs;
+    });
+  }
   /* What the dash brain's server is sent for a message's chips: numbered in the order shown, the picture's
-     thumbnail (as the editor's chat already sends pictures), a text file's words; a PDF only by name and size
-     (Create Event's Generate from a brief reads it, after the person confirms). */
+     thumbnail (as the editor's chat already sends pictures), a text file's words, a deck's slide text, and a PDF's own
+     bytes for ETB2B AI to read (owner decision 14) — a PDF over 10 MB only by name and size (Create Event's Generate
+     from a brief reads it, after the person confirms). */
   function wireAttachments(recs) {
-    var out = [];
+    var out = [], pdfRead = 0;
     (isArr(recs) ? recs : []).slice(0, MAX_FILES).forEach(function (r) {
       if (!r || typeof r !== 'object') return;
-      var kind = r.wire === 'pdf' || r.wire === 'text' ? r.wire : r.kind === 'image' ? 'image' : '';
+      var kind = r.wire === 'pdf' || r.wire === 'text' || r.wire === 'pptx' ? r.wire : r.kind === 'image' ? 'image' : '';
       if (!kind) return;
       var a = { n: out.length + 1, kind: kind, name: cleanName(r.name), type: str(r.type), size: +r.size || 0 };
       if (kind === 'image') {
@@ -577,6 +607,9 @@
         if (/^data:image\/jpeg;base64,[A-Za-z0-9+\/=]+$/.test(str(r.thumb))) a.thumb = r.thumb;
       }
       if (kind === 'text' && typeof r.text === 'string') a.text = r.text.slice(0, TEXT_CHARS);
+      /* a PDF's own bytes for ETB2B AI to read, while all of the message's PDFs stay within 15 MB (the rest are named) */
+      if (kind === 'pdf' && typeof r.data === 'string' && r.data && pdfRead + (+r.size || 0) <= READ_PDF_TOTAL) { a.data = r.data; pdfRead += +r.size || 0; }
+      if (kind === 'pptx' && typeof r.text === 'string') { a.text = r.text; a.slides = +r.slides || 0; a.cut = !!r.cut; }
       out.push(a);
     });
     return out;
@@ -585,6 +618,7 @@
   function carryCheck(role, rec) {
     var name = cleanName(rec && rec.name), size = +(rec && rec.size) || 0, t = str(rec && rec.type);
     if (role === 'logo') return rec && rec.kind === 'image' && own(LOGO_TYPES, t) && size > 0 && size <= LOGO_MAX ? '' : fill(TEXT.logoNot, { name: name });
+    /* a deck's words go to Create Event as the brief's text instead (lib/dash-bot.js), so the deck itself is not carried */
     if (role === 'brief') return rec && rec.wire === 'pdf' && size > 0 && size <= PDF_MAX ? '' : fill(TEXT.briefNot, { name: name });
     return 'none';
   }

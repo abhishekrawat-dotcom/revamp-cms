@@ -1398,7 +1398,8 @@
       var k = 0;
       for (var i = 0; i < items.length; i++) {
         var it = items[i];
-        var numbered = !!(attachCfg && attachCfg.numbered && it.state === 'ready');
+        /* only pictures are numbered: a document is never "attached picture 2" (owner decision 14) */
+        var numbered = !!(attachCfg && attachCfg.numbered && it.state === 'ready' && it.rec && it.rec.kind !== 'doc');
         it.num.hidden = !numbered;
         it.num.textContent = numbered ? String(++k) : '';
       }
@@ -1624,14 +1625,14 @@
       var list = isArray(recs) ? recs : [];
       if (!list.length) return;
       var strip = el('div', 'rvc-sent');
-      var numbered = !!(attachCfg && attachCfg.numbered);
+      var numbered = !!(attachCfg && attachCfg.numbered), picNo = 0;
       for (var i = 0; i < list.length; i++) {
         var r = list[i];
         if (!isObj(r)) continue;
         var name = cleanName(r.name) || TEXT.aFile;
         var item = el('span', 'rvc-sent-item');
-        if (numbered) {
-          var b = el('b', 'rvc-sent-num', String(i + 1));
+        if (numbered && r.kind !== 'doc') {
+          var b = el('b', 'rvc-sent-num', String(++picNo));
           b.setAttribute('aria-hidden', 'true');
           item.appendChild(b);
         }

@@ -337,6 +337,31 @@ var STATE = { design: 'Speaker card', width: 1080, height: 1080, words: [{ targe
   check('P.5 an Undo keeps what had been done, and says so in the History', h.store.turns['u1/PROMOTURN1234'].status === 'undone' && same(h.store.turns['u1/PROMOTURN1234'].done, ['Wrote the subject line']) &&
     /Undid an ETB2B AI change to a mail/.test(h.logs[0].detail));
 
+  /* ======== P.8 documents: a PDF the model reads, a deck's words (owner decision 14) ======== */
+  var PDF64 = Buffer.from('%PDF-1.4\n1 0 obj << >> endobj\n%%EOF\n').toString('base64');
+  h = harness(); calls.length = 0;
+  promoAi.handleEdit({ body: { eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Write the caption from this', place: PLACE, state: STATE, documents: [{ kind: 'pdf', name: 'x.pdf', data: Buffer.from('<html>').toString('base64') }] }, headers: {} }, {});
+  await settle();
+  check('P.8 a "PDF" that is not one: 400, no model asked', h.sent[0] && h.sent[0].status === 400 && h.sent[0].body.code === 'not-a-pdf' && calls.length === 0, h.sent[0]);
+  h = harness(); calls.length = 0;
+  nextParsed = edit({ intent: 'title from deck', summary: 'I wrote the title from the deck.', words: [{ target: 'e1', text: '450 retail leaders, 27 November' }] });
+  promoAi.handleEdit({ body: { eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Write the caption from these', place: PLACE, state: STATE,
+    documents: [{ kind: 'pdf', name: 'brochure.pdf', size: 40, data: PDF64 }, { kind: 'pptx', name: 'deck.pptx', size: 9000, slides: 2, text: 'Slide 1:\nRetail Next\nSlide 2:\n450 retail leaders, 27 November' }] }, headers: {} }, {});
+  await settle();
+  var pc = calls[0];
+  check('P.8 the PDF reaches the model as a document; the deck\'s words are in the prompt, fenced, with what documents are for here',
+    pc && pc.opts.inlineFiles && pc.opts.inlineFiles.length === 1 && pc.opts.inlineFiles[0].data === PDF64 && /<<<DOC-[0-9a-f]{12} document 2\nSlide 1:\nRetail Next/.test(pc.prompt) &&
+    /one read only in a PDF is left out by the editor/.test(pc.prompt), pc && pc.opts);
+  check('P.8 a deck\'s numbers are the person\'s own: words with them are written', h.sent[0] && h.sent[0].status === 200 && h.sent[0].body.kind === 'edit' &&
+    same(h.sent[0].body.changes.words, [{ target: 'e1', text: '450 retail leaders, 27 November' }]), h.sent[0] && h.sent[0].body);
+  h = harness(); calls.length = 0;
+  nextParsed = edit({ intent: 'title from pdf', summary: 'I wrote the title.', words: [{ target: 'e1', text: '450 retail leaders, 27 November' }] });
+  promoAi.handleEdit({ body: { eventId: 'qa-ux-b18-ai-x', editor: 'post', message: 'Write the title from this', place: PLACE, state: STATE,
+    documents: [{ kind: 'pdf', name: 'brochure.pdf', size: 40, data: PDF64 }] }, headers: {} }, {});
+  await settle();
+  check('P.8 …the same numbers read only in a PDF are left out, and the answer says so', h.sent[0] && h.sent[0].body.kind === 'reply' && /number that is not in the event/.test(JSON.stringify(h.sent[0].body)), h.sent[0] && h.sent[0].body);
+  check('P.8 nothing of the documents is recorded with the turn', JSON.stringify(learnt.turns).indexOf(PDF64) === -1 && JSON.stringify(learnt.turns).indexOf('Retail Next') === -1);
+
   /* ======== P.7 the record of what people ask (lib/ai-learn.js, owner decision 11) ======== */
   function reqUa(body) { return { body: body, headers: { 'user-agent': 'Mozilla/5.0 (Macintosh) Chrome/131.0 Safari/537.36' } }; }
   learnt.turns.length = 0; learnt.outcomes.length = 0;

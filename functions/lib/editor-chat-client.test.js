@@ -335,6 +335,15 @@ var SECTION_H = 600;
 /* One editor page: custom_editor.html's shell markup, the kit, the events side, the shell, the editor's stand-ins
    and then editor-chat-client.js, in the order the page loads them.
    o: { vw, vh, mode, local, store, realModes (load editor-ai-mode.js itself, with frames that load) } */
+var FAKE_DOCS = {
+  ACCEPT: 'application/pdf,.pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,.pptx,application/vnd.ms-powerpoint,.ppt',
+  kindOf: function (f) { var n = String(f && f.name || ''); return /\.pdf$/i.test(n) ? 'pdf' : /\.pptx$/i.test(n) ? 'pptx' : /\.ppt$/i.test(n) ? 'ppt' : ''; },
+  read: function (f) {
+    if (/\.ppt$/i.test(f.name)) return Promise.reject(new Error('“' + f.name + '” is an older PowerPoint file (.ppt) ETB2B AI cannot read. Save it as .pptx or PDF and attach that.'));
+    return Promise.resolve(/\.pptx$/i.test(f.name) ? { kind: 'pptx', name: f.name, size: 900, slides: 2, text: 'Slide 1:\nRetail Next' } : { kind: 'pdf', name: f.name, size: 900, data: 'JVBERi0xLjQ=' });
+  },
+  wire: function (d) { return d.kind === 'pdf' ? { kind: 'pdf', name: d.name, size: d.size, data: d.data } : { kind: 'pptx', name: d.name, size: d.size, slides: d.slides, text: d.text, cut: false }; }
+};
 function editorPage(o) {
   o = o || {};
   var thrown = [];
@@ -388,6 +397,8 @@ function editorPage(o) {
     RevampAuth: auth,
     RevampPortals: { setWorking: function () {}, cachedWorking: function () { return null; } },
     RevampStore: store,
+    /* the shared document reader (ai-docs-client.js, loaded before the editor's chat; ai-docs-client.test.js checks it) */
+    RevampAiDocs: o.noDocs ? undefined : FAKE_DOCS,
     __now: clock.now
   };
   sandbox.window = sandbox; sandbox.top = sandbox; sandbox.self = sandbox;
@@ -648,9 +659,9 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   check('E.3 a click in the panel keeps the selected section (data-keep-selection)', env.wrap().hasAttribute('data-keep-selection'));
   check('E.3 the change listener is the client\'s', env.seam.changeFns.length === 1);
   check('E.3 the focus listener is there (the shell\'s chip)', env.seam.focusFns.length >= 1);
-  check('E.3 the attach button says what it takes here', env.$('attach') && env.$('attach').getAttribute('aria-label') === 'Attach a picture');
+  check('E.3 the attach button says what it takes here', env.$('attach') && env.$('attach').getAttribute('aria-label') === 'Attach a picture, a PDF or a PowerPoint deck');
   var accept = env.$('file') ? env.$('file').getAttribute('accept') || '' : '';
-  check('E.3 the file dialog asks for pictures only', /image\/png/.test(accept) && /image\/svg\+xml/.test(accept) && !/pdf|text\//.test(accept), accept);
+  check('E.3 the file dialog asks for pictures, PDFs and PowerPoint decks (owner decision 14), never text or Word', /image\/png/.test(accept) && /image\/svg\+xml/.test(accept) && /application\/pdf/.test(accept) && /\.pptx/.test(accept) && !/text\/|docx/.test(accept), accept);
   env.A.open();
   await settle(8);
   var wt = wrapText(env);
@@ -901,12 +912,27 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   env.A.leave('/marketing.html?event=' + EVENT + '&tab=mailers');
   check('E.10 leaving the editor goes through RevampTemplateUI.leave', env.seam.ui.left[env.seam.ui.left.length - 1] === '/marketing.html?event=' + EVENT + '&tab=mailers' && env.assigned.length === 0);
 
-  /* attachments: pictures only, the editor's way; a brief is said plainly */
-  await attachFiles(env, [fileOf('brief.pdf', 'application/pdf')]);
+  /* attachments: pictures the editor's way; PDFs and decks read for their words (owner decision 14); a Word file plainly */
+  await attachFiles(env, [fileOf('brief.doc', 'application/msword')]);
   var bad = chipsOf(env)[0];
-  check('E.10 a PDF is refused on its chip, plainly', bad && bad.classList.contains('is-error') && bad.textContent.indexOf('In the editor I can use pictures. A brief is read by Create Event’s Generate from a brief.') !== -1, bad && bad.textContent);
-  check('E.10 …and never uploaded', env.seam.uploads.indexOf('brief.pdf') === -1);
+  check('E.10 a Word file is refused on its chip, plainly', bad && bad.classList.contains('is-error') && bad.textContent.indexOf('Here I can use pictures, PDFs and PowerPoint decks. Save a Word file as a PDF and attach it again.') !== -1, bad && bad.textContent);
+  check('E.10 …and never uploaded', env.seam.uploads.indexOf('brief.doc') === -1);
   byClass(bad, 'rvc-achip-rm')[0].click();
+  await attachFiles(env, [fileOf('old.ppt', 'application/vnd.ms-powerpoint')]);
+  bad = chipsOf(env)[0];
+  check('E.10 an older .ppt is refused on its chip: save it as .pptx or PDF', bad && bad.classList.contains('is-error') && /older PowerPoint file \(\.ppt\)/.test(bad.textContent), bad && bad.textContent);
+  byClass(bad, 'rvc-achip-rm')[0].click();
+  /* a picture and a PDF in one message: the picture uploaded and numbered 1, the PDF read and sent as a document,
+     never uploaded and never numbered (it is not "attached picture 2") */
+  await attachFiles(env, [fileOf('stage.png', 'image/png'), fileOf('brochure.pdf', 'application/pdf')]);
+  var mixed = chipsOf(env), nums = mixed.map(function (c) { var b = byClass(c, 'rvc-achip-num')[0]; return b && !b.hidden ? b.textContent : ''; });
+  check('E.10 a PDF beside a picture: a chip of its own, unnumbered; the picture is 1', mixed.length === 2 && nums[0] === '1' && nums[1] === '' && env.seam.uploads.indexOf('brochure.pdf') === -1, nums);
+  var sendsBefore = env.seam.sends.length;
+  await say(env, 'write the overview from this pdf');
+  var sent = env.seam.sends[env.seam.sends.length - 1];
+  check('E.10 …sent as the picture\'s address and the document to read, never as a picture address',
+    env.seam.sends.length === sendsBefore + 1 && sent.o.attachments.length === 1 && /stage\.png/.test(sent.o.attachments[0]) &&
+    sent.o.documents && sent.o.documents.length === 1 && sent.o.documents[0].kind === 'pdf' && sent.o.documents[0].data === 'JVBERi0xLjQ=', sent && sent.o);
   env.seam.uploadFails['huge.png'] = '"huge.png" is 9.4 MB. Images can be up to 8 MB.';
   await attachFiles(env, [fileOf('huge.png', 'image/png', 9.4 * 1048576)]);
   var big = chipsOf(env)[0];

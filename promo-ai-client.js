@@ -172,6 +172,15 @@
     try { state = s.ai.state(); } catch (e) { state = null; }
     if (!state) return Promise.resolve({ handoff: true, kind: 'handoff' });
     var body = { eventId: place.eventId, editor: kind, message: message, place: { page: 'promotions', eventId: place.eventId, tab: place.tab }, state: state, screen: screenNow() };
+    /* the PDFs and PowerPoint decks attached in the panel (owner decision 14; the assistant read them: a PDF's bytes, a
+       deck's words), at most three */
+    var docs = [];
+    (Object.prototype.toString.call(o.attachments) === '[object Array]' ? o.attachments : []).forEach(function (r) {
+      if (!r || typeof r !== 'object' || docs.length >= 3) return;
+      if (r.wire === 'pdf' && typeof r.data === 'string' && r.data) docs.push({ kind: 'pdf', name: str(r.name), size: +r.size || 0, data: r.data });
+      else if (r.wire === 'pptx' && typeof r.text === 'string' && r.text) docs.push({ kind: 'pptx', name: str(r.name), size: +r.size || 0, slides: +r.slides || 0, text: r.text, cut: !!r.cut });
+    });
+    if (docs.length) body.documents = docs;
 
     var finished = false, stopped = false, resolveOuter = null, rejectOuter = null;
     var outer = new Promise(function (resolve, reject) { resolveOuter = resolve; rejectOuter = reject; });

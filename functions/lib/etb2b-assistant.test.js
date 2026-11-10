@@ -214,8 +214,8 @@ function fakeBrain(name, script) {
   /* and the one it writes to is a page error's QA note (owner decision 11, lib/ai-learn.js) */
   check('S.1 the only routes it calls itself are an event\'s conversation (GET) and a page error\'s QA note, and it never deletes, publishes, approves or sends',
     (SRC.match(/'\/api\/[^']*'/g) || []).every(function (u) { return u === '\'/api/chat/history?eventId=\'' || u === '\'/api/ai-qa/note\''; }) && !/'DELETE'|\/publish|unpublish|\/approve|\/payment/i.test(SRC), SRC.match(/'\/api\/[^']*'/g));
-  check('S.1 the scripts it may load on demand are this site\'s own two', (SRC.match(/loadScript\('([^']+)'/g) || []).sort().join() === "loadScript('/editor-store.js',loadScript('/portal-picker.js'");
-  ['editor-store.js', 'portal-picker.js'].forEach(function (f) { check('S.1 …and ' + f + ' is served', require('./access').isServableFile(f) === true); });
+  check('S.1 the scripts it may load on demand are this site\'s own three (the document reader, owner decision 14)', (SRC.match(/loadScript\('([^']+)'/g) || []).sort().join() === "loadScript('/ai-docs-client.js',loadScript('/editor-store.js',loadScript('/portal-picker.js'");
+  ['ai-docs-client.js', 'editor-store.js', 'portal-picker.js'].forEach(function (f) { check('S.1 …and ' + f + ' is served', require('./access').isServableFile(f) === true); });
   check('S.1 every sentence it says is in one TEXT table (the rename batch changes one place), and none says Revamp',
     !/Revamp CMS|\bRevamp\b(?![A-Z])/.test(SRC.replace(/Revamp[A-Z][A-Za-z]+/g, '')));
   /* UX-097 (B15 verifier): owner decision 6 named the product ETB2B EventSphere; no string it says, and no comment,
@@ -266,7 +266,7 @@ function fakeBrain(name, script) {
   await Pal.opts().send('How many registrations are there?', {});
   check('S.2 the activity log opened with no event, then filtered to one: the message goes as the conversation shown (no event), so it is stored there',
     alB.sent.length === 1 && alB.sent[0].opts.place.eventId === '' && Pal.opts().scope === 'Your events' && alDrew === 1 &&
-    !Pal.calls.some(function (c) { return /chat\/history/.test(c.url); }) && Pal.opts().attach.label === 'Attach a brief (PDF or text) or a logo', alB.sent[0] && alB.sent[0].opts.place);
+    !Pal.calls.some(function (c) { return /chat\/history/.test(c.url); }) && Pal.opts().attach.label === 'Attach a brief (PDF, PowerPoint or text), a document to ask about, or a logo', alB.sent[0] && alB.sent[0].opts.place);
   var alB2 = fakeBrain('dash');
   var Pal2 = await shellPage({ page: 'activity-log', path: '/activity-log.html', search: '?event=qa-main', brains: { dash: alB2 } });
   Pal2.ctx.location.search = '?event=qa-two';
@@ -275,7 +275,7 @@ function fakeBrain(name, script) {
   await Pal2.opts().send('And yesterday?', {});
   check('S.2 …opened with an event, then switched to another or to All events: every message stays that event\'s, as the panel shows',
     alB2.sent.length === 2 && alB2.sent.every(function (x) { return x.opts.place.eventId === 'qa-main'; }) && Pal2.opts().scope === 'This event only' &&
-    Pal2.opts().attach.label === 'Attach a picture', alB2.sent.map(function (x) { return x.opts.place; }));
+    Pal2.opts().attach.label === 'Attach a picture, a PDF or a PowerPoint deck', alB2.sent.map(function (x) { return x.opts.place; }));
 
   var never = [
     ['in a frame (a framed studio)', { page: 'promotions', framed: true, search: '?event=qa-main' }],
@@ -510,8 +510,8 @@ function fakeBrain(name, script) {
   check('S.4 the dashboard: kit id "dash" (its launcher stays dash-chat-launcher), "Your events", the dashboard\'s own help', mo.id === 'dash' && mo.scope === 'Your events' && mo.help.label === 'Email Customer Care' && !mo.help.href);
   check('S.4 …the same look everywhere: "ETB2B AI", "Ask ETB2B AI", bottom-right, z 65 / 69', mo.title === 'ETB2B AI' && mo.launcherLabel === 'Ask ETB2B AI' && mo.placeholder === 'Ask ETB2B AI…' &&
     same(mo.placement, { right: 22, bottom: 22, compact: false }) && same(mo.zIndex, { launcher: 65, panel: 69 }));
-  check('S.4 …the attach button takes a brief (PDF or text) or a logo here', mo.attach.label === 'Attach a brief (PDF or text) or a logo' && mo.attach.max === 4 && mo.attach.numbered === false &&
-    /application\/pdf/.test(mo.attach.accept) && /\.docx/.test(mo.attach.accept) && mo.attach.hint === 'I use attachments to start a new event: a PDF or text brief, and the event’s logo.');
+  check('S.4 …the attach button takes a brief (PDF, PowerPoint or text), a document or a logo here', mo.attach.label === 'Attach a brief (PDF, PowerPoint or text), a document to ask about, or a logo' && mo.attach.max === 4 && mo.attach.numbered === false &&
+    /application\/pdf/.test(mo.attach.accept) && /\.docx/.test(mo.attach.accept) && mo.attach.hint === 'I read PDFs and PowerPoint decks to answer about them, and start a new event from a brief (PDF, deck or text) and its logo.' && /\.pptx/.test(mo.attach.accept));
   var Pcon = await shellPage({ dash: true, page: 'console', path: '/edit-event.html', search: '?event=qa-main', keepClear: '.savebar.on', globals: { RevampPortals: { setWorking: function () {}, cachedWorking: function () { return 'cio'; } } } });
   var co = Pcon.opts();
   check('S.4 the console: id "ai", "This event only", kept clear of its save bar', co.id === 'ai' && co.scope === 'This event only' && co.keepClear === '.savebar.on');
@@ -631,26 +631,33 @@ function fakeBrain(name, script) {
   var START = [
     [file('logo.png', 'image/png', 2000), ''], [file('photo.jpg', 'image/jpeg', 2000), ''], [file('x.webp', 'image/webp', 2000), ''], [file('evil.svg', '', 900), ''],
     [file('brief.pdf', 'application/pdf', 40000), ''], [file('notes.txt', 'text/plain', 600), ''], [file('notes.md', '', 600), ''],
-    [file('deck.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 900), 'Create Event reads PDFs and plain text. Save the Word file as a PDF and attach it again.'],
-    [file('old.doc', '', 900), 'Create Event reads PDFs and plain text. Save the Word file as a PDF and attach it again.'],
-    [file('anim.gif', 'image/gif', 900), '“anim.gif” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP or SVG), a PDF or a text file.'],
-    [file('tool.exe', 'application/x-msdownload', 900), '“tool.exe” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP or SVG), a PDF or a text file.'],
+    [file('deck.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 900), 'I read PDFs, PowerPoint decks and plain text. Save the Word file as a PDF and attach it again.'],
+    [file('old.doc', '', 900), 'I read PDFs, PowerPoint decks and plain text. Save the Word file as a PDF and attach it again.'],
+    [file('anim.gif', 'image/gif', 900), '“anim.gif” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP or SVG), a PDF, a PowerPoint deck or a text file.'],
+    [file('tool.exe', 'application/x-msdownload', 900), '“tool.exe” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP or SVG), a PDF, a PowerPoint deck or a text file.'],
     [file('empty.png', 'image/png', 0), '“empty.png” is empty.'],
     [file('huge.png', 'image/png', 9 * MB), '“huge.png” is 9.0 MB. Pictures can be up to 8 MB.'],
     [file('huge.pdf', 'application/pdf', 16 * MB), '“huge.pdf” is 16.0 MB. A brief PDF can be up to 15 MB.'],
     [file('long.txt', 'text/plain', 40000), '“long.txt” is longer than 4,000 characters. Attach the part that matters, or the brief as a PDF.'],
-    [file('max.png', 'image/png', 8 * MB), ''], [file('max.pdf', 'application/pdf', 15 * MB), '']
+    [file('max.png', 'image/png', 8 * MB), ''], [file('max.pdf', 'application/pdf', 15 * MB), ''],
+    /* owner decision 14: a PowerPoint deck is taken; an older .ppt is asked for as .pptx or PDF */
+    [file('deck.pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 30 * MB), ''], [file('deck.pptx', '', 900), ''],
+    [file('old.ppt', 'application/vnd.ms-powerpoint', 900), '“old.ppt” is an older PowerPoint file (.ppt) I can’t read. Save it as .pptx or PDF and attach that.']
   ];
   START.forEach(function (c) { var got = cf(c[0], POL.start); check('S.7 without an event: ' + c[0].name + ' → ' + (c[1] || 'taken'), got === c[1], got); });
   var EVENT = [
     [file('photo.jpg', 'image/jpeg', 2000), ''], [file('anim.gif', 'image/gif', 900), ''], [file('logo.svg', 'image/svg+xml', 900), ''],
-    [file('brief.pdf', 'application/pdf', 900), 'A brief is read when a new event’s site is generated, in Create Event. It can’t be read into this event.'],
-    [file('deck.docx', '', 900), 'A brief is read when a new event’s site is generated, in Create Event. It can’t be read into this event.'],
-    [file('notes.txt', 'text/plain', 90), 'A brief is read when a new event’s site is generated, in Create Event. It can’t be read into this event.'],
-    [file('tool.exe', '', 900), '“tool.exe” isn’t a picture I can use. Attach a PNG, JPG, WEBP, GIF or SVG picture.']
+    /* owner decision 14: inside an event a PDF (up to 10 MB) and a deck are read for this event */
+    [file('brief.pdf', 'application/pdf', 900), ''], [file('max.pdf', 'application/pdf', 10 * MB), ''],
+    [file('big.pdf', 'application/pdf', 12 * MB), '“big.pdf” is 12.0 MB. I read PDFs of up to 10 MB: attach a smaller one, or only the pages that matter.'],
+    [file('deck.pptx', '', 900), ''], [file('old.ppt', '', 900), '“old.ppt” is an older PowerPoint file (.ppt) I can’t read. Save it as .pptx or PDF and attach that.'],
+    [file('deck.docx', '', 900), 'Here I read PDFs and PowerPoint decks. Save “deck.docx” as a PDF and attach it again.'],
+    [file('notes.txt', 'text/plain', 90), 'Here I read PDFs and PowerPoint decks. Save “notes.txt” as a PDF and attach it again.'],
+    [file('tool.exe', '', 900), '“tool.exe” isn’t a file I can use here. Attach a picture (PNG, JPG, WEBP, GIF or SVG), a PDF or a PowerPoint deck.']
   ];
   EVENT.forEach(function (c) { var got = cf(c[0], POL.event); check('S.7 inside an event: ' + c[0].name + ' → ' + (c[1] || 'taken'), got === c[1], got); });
-  check('S.7 the editor (before its own attach path is there): a PDF is for Create Event', cf(file('brief.pdf', 'application/pdf', 9), POL.editor) === 'In the editor I can use pictures. A brief is read by Create Event’s Generate from a brief.');
+  check('S.7 the editor (before its own attach path is there): a PDF and a deck are read, a Word file asked for as a PDF', cf(file('brief.pdf', 'application/pdf', 9), POL.editor) === '' &&
+    cf(file('deck.pptx', '', 9), POL.editor) === '' && cf(file('a.docx', '', 9), POL.editor) === 'Here I read PDFs and PowerPoint decks. Save “a.docx” as a PDF and attach it again.');
   check('S.7 which policy where', P0.A.policyFor({ page: 'dashboard' }).name === 'start' && P0.A.policyFor({ page: 'create-event' }).name === 'start' && P0.A.policyFor({ page: 'console', eventId: 'a1' }).name === 'event' &&
     P0.A.policyFor({ page: 'activity-log', eventId: '' }).name === 'start' && P0.A.policyFor({ page: 'editor', eventId: 'a1' }).name === 'editor');
   /* owner decision 10: on a page that is always about one event an attachment never starts a new event, even when
@@ -669,7 +676,11 @@ function fakeBrain(name, script) {
     me.readAsArrayBuffer = function (part) { setImmediate(function () { me.result = new Uint8Array(String(part._head || '').split('').map(function (c) { return c.charCodeAt(0); })).buffer; me.onload(); }); }; }
   function blobFile(name, type, size, extra) { var f = file(name, type, size, extra); f.slice = function () { return { _head: f._head }; }; return f; }
   var URLS = { created: [], revoked: [] };
-  var G = { Image: FakeImage, FileReader: FakeReader, URL: { createObjectURL: function (f) { URLS.created.push(f.name); return 'blob:' + f.name; }, revokeObjectURL: function (u) { URLS.revoked.push(u); } } };
+  /* the shared document reader (ai-docs-client.js, which ai-docs-client.test.js checks itself), as the page has it once loaded */
+  var DOCS_READ = [];
+  var FakeDocs = { read: function (f) { DOCS_READ.push(f.name);
+    return Promise.resolve(/\.pptx$/.test(f.name) ? { kind: 'pptx', name: f.name, size: f.size, slides: 2, text: 'Slide 1:\nRetail Next\nSlide 2:\nAgenda', cut: false } : { kind: 'pdf', name: f.name, size: f.size, data: 'JVBERi0xLjQ=' }); } };
+  var G = { Image: FakeImage, FileReader: FakeReader, RevampAiDocs: FakeDocs, URL: { createObjectURL: function (f) { URLS.created.push(f.name); return 'blob:' + f.name; }, revokeObjectURL: function (u) { URLS.revoked.push(u); } } };
   var Pa = await shellPage({ globals: G, brains: { dash: fakeBrain('dash') } });
   var add = Pa.opts().attach.add;
   var logo = blobFile('logo.png', 'image/png', 2000);
@@ -691,7 +702,13 @@ function fakeBrain(name, script) {
   var e1 = await rejection((function () { var p = add(broken); imgs[imgs.length - 1]._fail = true; return p; })());
   check('S.7 a picture the browser cannot draw is refused: "could not be read as a picture"', e1 && e1.message === '“broken.png” could not be read as a picture.', e1 && e1.message);
   var pdf = await add(blobFile('brief.pdf', 'application/pdf', 40000, { _head: '%PDF-' }));
-  check('S.7 a PDF by its first bytes: a document chip, by name and size only (Create Event reads it)', pdf && pdf.kind === 'doc' && pdf.wire === 'pdf' && !pdf.text && !pdf.thumb, pdf);
+  check('S.7 a PDF by its first bytes: a document chip, its bytes read for ETB2B AI to read (owner decision 14)', pdf && pdf.kind === 'doc' && pdf.wire === 'pdf' && pdf.data === 'JVBERi0xLjQ=' && !pdf.text && !pdf.thumb, pdf);
+  var bigPdf = await add(blobFile('big-brief.pdf', 'application/pdf', 12 * MB, { _head: '%PDF-' }));
+  check('S.7 …a brief PDF over 10 MB on a page without an event: still a chip (Create Event reads it), its bytes not read here', bigPdf && bigPdf.wire === 'pdf' && !bigPdf.data && DOCS_READ.indexOf('big-brief.pdf') === -1, bigPdf);
+  var dk = await add(blobFile('deck.pptx', '', 90000));
+  check('S.7 a PowerPoint deck: a document chip with its slide text, read by the shared reader', dk && dk.kind === 'doc' && dk.wire === 'pptx' && dk.slides === 2 && /Retail Next/.test(dk.text) && DOCS_READ.indexOf('deck.pptx') !== -1, dk);
+  var e2b = await rejection(add(blobFile('old.ppt', '', 900)));
+  check('S.7 an older .ppt is refused at once, asked for as .pptx or PDF', e2b && /older PowerPoint file \(\.ppt\)/.test(e2b.message) && DOCS_READ.indexOf('old.ppt') === -1);
   var e2 = await rejection(add(blobFile('fake.pdf', 'application/pdf', 900, { _head: '<html' })));
   check('S.7 a file only named .pdf is refused', e2 && e2.message === '“fake.pdf” isn’t a PDF that can be read.');
   var txt = await add(blobFile('notes.txt', 'text/plain', 600, { _text: 'Line one\r\nLine\u0007 two  ' }));
@@ -701,10 +718,14 @@ function fakeBrain(name, script) {
   var e4 = await rejection(add(blobFile('blank.txt', 'text/plain', 10, { _text: '   \n ' })));
   check('S.7 a text file with no words is empty', e4 && e4.message === '“blank.txt” is empty.');
   var e5 = await rejection(add(blobFile('deck.docx', '', 900)));
-  check('S.7 Word is refused plainly at once, nothing read', e5 && e5.message === 'Create Event reads PDFs and plain text. Save the Word file as a PDF and attach it again.');
+  check('S.7 Word is refused plainly at once, nothing read', e5 && e5.message === 'I read PDFs, PowerPoint decks and plain text. Save the Word file as a PDF and attach it again.');
   var wire = Pa.A.wireAttachments([rec, pdf, txt, { kind: 'image', name: 'x.png', thumb: 'data:image/svg+xml;base64,PHN2Zz4=', type: 'image/png', size: 1 }, { kind: 'image', name: 'fifth.png' }]);
   check('S.7 what the server is sent: numbered, at most 4, a thumbnail only when it is a JPEG data address',
-    wire.length === 4 && same(wire.map(function (a) { return a.n + ':' + a.kind; }), ['1:image', '2:pdf', '3:text', '4:image']) && !!wire[0].thumb && !('thumb' in wire[3]) && wire[2].text === 'Line one\nLine two' && !('text' in wire[1]), wire);
+    wire.length === 4 && same(wire.map(function (a) { return a.n + ':' + a.kind; }), ['1:image', '2:pdf', '3:text', '4:image']) && !!wire[0].thumb && !('thumb' in wire[3]) && wire[2].text === 'Line one\nLine two' && !('text' in wire[1]) &&
+    wire[1].data === 'JVBERi0xLjQ=', wire);
+  var wire2 = Pa.A.wireAttachments([dk, bigPdf]);
+  check('S.7 …a deck goes as its words and slide count, a PDF ETB2B AI does not read by name and size only',
+    wire2[0].kind === 'pptx' && /Retail Next/.test(wire2[0].text) && wire2[0].slides === 2 && wire2[1].kind === 'pdf' && !('data' in wire2[1]), wire2);
   check('S.7 …nothing that is not a chip', same(Pa.A.wireAttachments([null, 'x', { kind: 'video' }]), []) && same(Pa.A.wireAttachments(null), []));
 
   /* ======== S.8 files kept for another page ======== */

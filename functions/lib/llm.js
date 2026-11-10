@@ -9,7 +9,7 @@
    Claude is asked first when its key is set (and LLM_PROVIDER is not 'gemini'); Gemini is the fallback.
    Without the key, or with LLM_PROVIDER=gemini, this is callGeminiJson and nothing else.
 
-   opts are exactly what callGeminiJson takes (inlineFile, images, timeoutMs, retry, deadlineAt,
+   opts are exactly what callGeminiJson takes (inlineFile, inlineFiles, images, timeoutMs, retry, deadlineAt,
    maxOutputTokens, route, eventId, user). timeoutMs / maxOutputTokens / retry are GEMINI's numbers and go
    to Gemini untouched; Claude gets the route's PROFILE instead, because the two models take different
    times and count tokens differently. The file, the pictures, deadlineAt and the log labels go to both.
@@ -121,7 +121,7 @@ function callJson(prompt, schema, opts) {
   var deadlineAt = opts.deadlineAt > 0 ? opts.deadlineAt : Date.now() + LIMITS.budgetMs;
   return callClaudeJson(prompt, schema, {
     model: profile.model, effort: profile.effort, timeoutMs: profile.timeoutMs, maxOutputTokens: profile.maxOutputTokens,
-    inlineFile: opts.inlineFile, images: opts.images, deadlineAt: deadlineAt,
+    inlineFile: opts.inlineFile, inlineFiles: opts.inlineFiles, images: opts.images, deadlineAt: deadlineAt,
     route: opts.route, eventId: opts.eventId, user: opts.user, plain: profile.plain === true
   }).then(function (first) {
     report(opts, first);

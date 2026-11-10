@@ -68,6 +68,7 @@ var DEFAULT_TIMEOUT_MS = 120000;
 var DEFAULT_MAX_OUTPUT_TOKENS = 16000;
 var RETRY_JITTER_MS = 500;
 var INLINE_FILE_TYPES = ['application/pdf', 'text/plain'];
+var MAX_FILES = 3;
 var EFFORTS = ['low', 'medium', 'high'];
 /* what Gemini's schema dialect allows and this provider's structured output refuses */
 var SCHEMA_DROP = ['minimum', 'maximum', 'minLength', 'maxLength', 'pattern', 'minItems', 'maxItems', 'format', 'nullable', 'propertyOrdering'];
@@ -123,12 +124,16 @@ function scrub(text, apiKey) { return apiKey ? String(text).split(apiKey).join('
    document best when the question follows it). A wrong type is a caller's mistake and throws. */
 function contentBlocks(promptText, opts) {
   var blocks = [];
-  if (opts.inlineFile) {
-    var type = String(opts.inlineFile.mimeType || '').split(';')[0].trim().toLowerCase();
+  /* inlineFile, and inlineFiles: the documents a person attached to a chat message (at most MAX_FILES in all) */
+  var files = (opts.inlineFile ? [opts.inlineFile] : []).concat(Array.isArray(opts.inlineFiles) ? opts.inlineFiles : []);
+  if (files.length > MAX_FILES) throw new Error('callClaudeJson: at most ' + MAX_FILES + ' documents, not ' + files.length + '.');
+  files.forEach(function (file) {
+    var type = String(file && file.mimeType || '').split(';')[0].trim().toLowerCase();
     if (INLINE_FILE_TYPES.indexOf(type) === -1) throw new Error('callClaudeJson: inlineFile must be a PDF or plain text, not "' + type + '".');
-    if (type === 'application/pdf') blocks.push({ type: 'document', source: { type: 'base64', media_type: type, data: opts.inlineFile.data } });
-    else blocks.push({ type: 'text', text: '<document>\n' + Buffer.from(String(opts.inlineFile.data || ''), 'base64').toString('utf8') + '\n</document>' });
-  }
+    if (type === 'application/pdf') blocks.push({ type: 'document', source: { type: 'base64', media_type: type, data: file.data } });
+    else blocks.push({ type: 'text', text: '<document>\n' + Buffer.from(String(file.data || ''), 'base64').toString('utf8') + '\n</document>' });
+  });
+
   if (opts.images && opts.images.length) {
     if (opts.images.length > MAX_IMAGES) throw new Error('callClaudeJson: at most ' + MAX_IMAGES + ' pictures, not ' + opts.images.length + '.');
     opts.images.forEach(function (image) {

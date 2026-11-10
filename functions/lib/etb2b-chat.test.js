@@ -1572,18 +1572,20 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     adds[3].ok({ id: 'c', name: 'brief.pdf', kind: 'doc', size: 50000 });
     await settle();
     chipEls = byClass(tray, 'rvc-achip');
-    check('K.6 a document is a chip with a document icon and its name, numbered after the picture', chipEls.length === 2 && byClass(chipEls[1], 'rvc-achip-name')[0].textContent === 'brief.pdf' &&
-      byClass(chipEls[1], 'rvc-doc-ico').length === 1 && byTag(chipEls[1], 'img').length === 0 && byClass(tray, 'rvc-achip-num').map(function (x) { return x.textContent; }).join() === '1,2');
+    /* only pictures are numbered (owner decision 14): a document is never "attached picture 2" */
+    function shownNums() { return byClass(tray, 'rvc-achip-num').filter(function (x) { return !x.hidden; }).map(function (x) { return x.textContent; }).join(); }
+    check('K.6 a document is a chip with a document icon and its name, and no number (only pictures are numbered)', chipEls.length === 2 && byClass(chipEls[1], 'rvc-achip-name')[0].textContent === 'brief.pdf' &&
+      byClass(chipEls[1], 'rvc-doc-ico').length === 1 && byTag(chipEls[1], 'img').length === 0 && shownNums() === '1', shownNums());
     byClass(chipEls[0], 'rvc-achip-rm')[0].click();
-    check('K.6 × on a ready chip: gone, the page\'s remove() hears of it, the rest renumbered', removed.length === 2 && removed[1] === REC1 &&
-      byClass(tray, 'rvc-achip-num').filter(function (x) { return !x.hidden; }).map(function (x) { return x.textContent; }).join() === '1');
+    check('K.6 × on a ready chip: gone, the page\'s remove() hears of it, the rest renumbered (the document left has none)', removed.length === 2 && removed[1] === REC1 &&
+      shownNums() === '', shownNums());
     /* send with words: the ready ones go with the message, and leave the tray */
     mm.chat.clearAttachments();
     check('K.6 clearAttachments(): the tray is empty and hidden (the page\'s remove() is not called)', tray.hidden === true && byClass(tray, 'rvc-achip').length === 0 && removed.length === 2);
     var REC2 = { id: 'p2', name: 'brief.pdf', kind: 'doc', size: 50000 };
     check('K.6 addAttachment(rec): a ready chip (the editor\'s "Use this picture")', mm.chat.addAttachment(REC1) === true && mm.chat.addAttachment(REC2) === true && byClass(tray, 'rvc-achip').length === 2);
     check('K.6 … the same one again is not doubled', mm.chat.addAttachment({ id: 'a1', name: 'photo.jpg' }) === true && byClass(tray, 'rvc-achip').length === 2);
-    check('K.6 … numbered in order: 1 and 2', byClass(tray, 'rvc-achip-num').map(function (x) { return x.textContent; }).join() === '1,2');
+    check('K.6 … the picture numbered 1, the document not numbered', shownNums() === '1', shownNums());
     /* no words with an attachment */
     type(mm, '');
     key(mm.$('input'), 'Enter');
@@ -1601,8 +1603,8 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
     check('K.6 the tray is empty once they are sent', tray.hidden === true && mm.chat.attachments().length === 0);
     var ub = turns(mm).pop();
     var sentImg = byTag(ub, 'img')[0];
-    check('K.6 the person\'s bubble shows the thumbnail (named) and the document\'s name, numbered', sentImg && sentImg.getAttribute('src') === REC1.thumb && sentImg.getAttribute('alt') === 'photo.jpg' &&
-      byClass(ub, 'rvc-sent-name')[0].textContent === 'brief.pdf' && byClass(ub, 'rvc-sent-num').map(function (x) { return x.textContent; }).join() === '1,2');
+    check('K.6 the person\'s bubble shows the thumbnail (named, numbered 1) and the document\'s name (no number)', sentImg && sentImg.getAttribute('src') === REC1.thumb && sentImg.getAttribute('alt') === 'photo.jpg' &&
+      byClass(ub, 'rvc-sent-name')[0].textContent === 'brief.pdf' && byClass(ub, 'rvc-sent-num').map(function (x) { return x.textContent; }).join() === '1');
     check('K.6 … the words are still the words', byClass(ub, 'rvc-msg-words')[0].textContent === 'Start a new event with this brief and logo');
     /* a failure puts them back, first, with the words */
     mm.pending[0].no(new Error('ETB2B AI is busy right now. Nothing was changed. Try again in a minute.'));
