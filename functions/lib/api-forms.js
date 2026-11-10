@@ -626,7 +626,7 @@ function handlePublicForms(req, res) {
           sendPublicJson(res, 200, payload, { 'Cache-Control': country ? 'private, max-age=30' : 'public, max-age=30' });
         });
       }
-      return adminFromRequest(req).then(function (who) {
+      return adminFromRequest(req, { eventId: eventId }).then(function (who) {
         if (!who) return sendPublicJson(res, 404, { error: shared.NOT_AVAILABLE, code: 'unavailable' });
         return loadPublicForms(fb, eventId, ev).then(function (payload) {
           if (country) payload.country = country;

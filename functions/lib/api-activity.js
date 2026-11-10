@@ -23,8 +23,9 @@
 // Until an index exists or while it is building, Firestore refuses the query (FAILED_PRECONDITION); the page
 // is told so in plain words (code 'index-building' / 'index-missing'), never a raw error.
 //
-// WHO SEES WHAT. mayView() is the one rule. Today every signed-in company account may open every event in
-// the events listing (live or deleted; GET /api/events), so the log shows exactly those events' entries.
+// WHO SEES WHAT. mayView() is the one rule. Everybody may open every event in the events listing (live or
+// deleted; GET /api/events) — someone who works in chosen portals only those portals' (Settings › Access,
+// lib/access-control.js) — so the log shows exactly those events' entries.
 // Entries of anything else — a half-created event, an event being removed for good, an import record, a
 // collection called 'activity' somewhere that is not an event's — are never sent.
 //
@@ -101,9 +102,10 @@ function cleanFields(fields) {
 /* d: an event document's data. The one rule for whose history this log may show (see the header). `user`
    is the signed-in account; it is part of the signature so a per-person rule has one place to go. */
 function mayView(user, d) {
-  void user;
   if (!d || typeof d.name !== 'string' || !d.name.trim()) return false;
   if (!d.createdAt || d.discardingAt) return false;
+  /* someone who works in chosen portals sees only their portals' events (lib/access-control.js) */
+  if (user && user.access && !require('./access-control').eventOk(user.access, d)) return false;
   return true;
 }
 
@@ -114,7 +116,7 @@ function loadEvents(fb, now) {
   now = now || Date.now();
   if (eventsCache.map && eventsCache.fb === fb && now - eventsCache.at < EVENTS_TTL_MS) return Promise.resolve(eventsCache.map);
   var q = fb.db.collection('events');
-  return q.select('name', 'createdAt', 'deletedAt', 'discardingAt').limit(EVENTS_LIMIT).get().then(function (snap) {
+  return q.select('name', 'createdAt', 'deletedAt', 'discardingAt', 'portal', 'createdBy').limit(EVENTS_LIMIT).get().then(function (snap) {
     var map = {};
     snap.docs.forEach(function (d) {
       if (d.id.indexOf('import-') === 0) return;

@@ -5,7 +5,7 @@
 // a plain Node http server's process, and with it every other request in flight on that instance — so
 // each helper answers the request itself (4xx/5xx) or returns a value, never throws.
 const { getFirebase } = require('./firebase');
-const { isAllowedUser, deniedMessage } = require('./access');
+const AC = require('./access-control');
 
 const DEFAULT_MAX_BODY = 32 * 1024 * 1024;   // App Hosting's own request ceiling; routes pass something tighter
 
@@ -71,33 +71,119 @@ function sessionCookieToken(req) {
   try { return decodeURIComponent(c[1]); } catch (e) { return ''; }
 }
 
-/* Every admin API route: a verified Firebase ID token for an allowed (company-domain, Google) account in
-   the Authorization header. cb(fb, decoded). */
+/* Every admin API route: a verified Firebase ID token in the Authorization header, for an account the access list
+   lets in (lib/access-control.js: a company account at the default role, or someone an admin invited, and nobody
+   blocked) — with the role the request needs (a Viewer reads, an Editor changes things, an Admin changes who has
+   access) and, for someone who works in chosen portals only, an event of one of those portals.
+   cb(fb, decoded), with decoded.access = { email, role, portals, member }. */
 function requireAdmin(req, res, cb) {
   var token = bearerToken(req);
   if (!token) return sendJson(res, 401, { error: 'Sign in required — missing Authorization: Bearer <token> header.' });
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
   fb.auth.verifyIdToken(token).then(function (decoded) {
-    if (!isAllowedUser(decoded)) return sendJson(res, 403, { error: deniedMessage() });
-    cb(fb, decoded);
+    return AC.readConfig(fb).then(function (cfg) {
+      var access = AC.accessOf(cfg, decoded);
+      if (access.denied) return sendJson(res, 403, { error: AC.deniedSentence(access.denied), code: 'no-access' });
+      decoded.access = access;
+      var path = String(req.url || '').split('?')[0], need = AC.needFor(req.method, path);
+      if (!AC.can(access, need)) return sendJson(res, 403, { error: AC.refusedSentence(access, need), code: need === 'admin' ? 'not-admin' : 'view-only', role: access.role });
+      if (AC.everywhere(access)) return cb(fb, decoded);
+      if (AC.everywhereOnly(path)) return sendJson(res, 403, { error: AC.everywhereSentence(), code: 'not-your-portal' });
+      return portalCheck(fb, req, res, access, function () { cb(fb, decoded); });
+    });
   }, function () {
     sendJson(res, 401, { error: 'Your sign-in has expired or is invalid — please log in again.' });
+  }).catch(function (err) {
+    console.error('http: ' + req.method + ' ' + String(req.url || '').split('?')[0] + ' failed — ' + (err && err.stack || err));
+    sendJson(res, 500, { error: 'Something went wrong on the server. Please try again.' });
+  });
+}
+
+/* ---------- the portal check, for someone who works in chosen portals ----------
+   The events a request names: ?eventId= (and ?portal=), and in a JSON body eventId, sourceEventId (a copy's
+   source), slug (a new event's address) and portal (a new or moved event's portal). To read the body before the
+   route does, it is taken in here and left as req.rawBody, which every body reader honours. An event that does
+   not exist yet is not refused here (its route says so, or creates it — on a portal that must be theirs). */
+var EVENT_FACTS_MS = 10000, eventFacts = new Map();
+function factsOf(fb, ids) {
+  var now = Date.now(), out = {}, want = [];
+  ids.forEach(function (id) {
+    var hit = eventFacts.get(id);
+    if (hit && hit.db === fb.db && now - hit.at < EVENT_FACTS_MS) out[id] = hit.data; else want.push(id);
+  });
+  if (!want.length) return Promise.resolve(out);
+  var refs = want.map(function (id) { return fb.db.collection('events').doc(id); });
+  var read = typeof fb.db.getAll === 'function'
+    ? fb.db.getAll.apply(fb.db, refs.concat([{ fieldMask: ['portal', 'createdBy', 'createdAt'] }]))
+    : Promise.all(refs.map(function (r) { return r.get(); }));
+  return read.then(function (snaps) {
+    if (eventFacts.size > 2000) eventFacts.clear();
+    snaps.forEach(function (snap, i) {
+      var d = snap && snap.exists ? (snap.data() || {}) : null;
+      var data = d ? { portal: d.portal || '', createdBy: d.createdBy || '', createdAt: d.createdAt || null } : null;
+      out[want[i]] = data;
+      eventFacts.set(want[i], { at: now, db: fb.db, data: data });
+    });
+    return out;
+  });
+}
+function wantsBody(req) {
+  var m = String(req.method || 'GET').toUpperCase();
+  if (m === 'GET' || m === 'HEAD' || req.rawBody || typeof req.on !== 'function') return false;
+  return /json/i.test(String((req.headers && req.headers['content-type']) || ''));
+}
+function bufferBody(req, res, cb) {
+  if (!wantsBody(req)) return cb();
+  var chunks = [], size = 0, done = false;
+  req.on('data', function (c) {
+    if (done) return;
+    size += c.length;
+    if (size > DEFAULT_MAX_BODY) { done = true; sendJson(res, 413, { error: 'That request is too large.' }); req.resume(); return; }
+    chunks.push(c);
+  });
+  req.on('end', function () { if (!done) { done = true; req.rawBody = Buffer.concat(chunks); cb(); } });
+  req.on('error', function () { if (!done) { done = true; sendJson(res, 400, { error: 'The request could not be read.' }); } });
+}
+function portalCheck(fb, req, res, access, next) {
+  bufferBody(req, res, function () {
+    var q = new URLSearchParams(String(req.url || '').split('?')[1] || ''), body = {};
+    if (req.rawBody && req.rawBody.length) { try { body = parseJsonObject(req.rawBody.toString('utf8')); } catch (e) { body = {}; } }
+    var portals = [q.get('portal'), typeof body.portal === 'string' ? body.portal : ''].map(function (p) { return String(p || '').trim(); }).filter(Boolean);
+    var badPortal = portals.filter(function (p) { return !AC.portalOk(access, p); })[0];
+    if (badPortal) return sendJson(res, 403, { error: AC.outsideSentence(access, badPortal), code: 'not-your-portal' });
+    var ids = [q.get('eventId'), body.eventId, body.sourceEventId, body.slug].filter(function (v, i, a) { return isEventId(v) && a.indexOf(v) === i; });
+    if (!ids.length) return next();
+    factsOf(fb, ids).then(function (facts) {
+      var off = ids.filter(function (id) { return !AC.eventOk(access, facts[id]); })[0];
+      if (off) return sendJson(res, 403, { error: AC.outsideSentence(access, facts[off].portal), code: 'not-your-portal' });
+      next();
+    }).catch(function (err) {
+      console.error('http: the portal check failed — ' + (err && err.message));
+      sendJson(res, 503, { error: 'Your access could not be checked just now. Please try again.' });
+    });
   });
 }
 
 /* For routes that are public but do more for a signed-in admin (site data and the preview page for an
-   unpublished event, a test registration from the preview). Resolves the decoded token of an allowed
-   admin taken from the Bearer header or the __session cookie, or null — it never rejects and never
-   answers the request. */
-function adminFromRequest(req) {
+   unpublished event, a test registration from the preview). Resolves the decoded token (with .access) of someone
+   the access list lets in, taken from the Bearer header or the __session cookie, or null — it never rejects and
+   never answers the request. opts.eventId: the event in question, which must be one of theirs. */
+function adminFromRequest(req, opts) {
   var token = bearerToken(req) || sessionCookieToken(req);
   if (!token) return Promise.resolve(null);
   var fb = getFirebase();
   if (fb.error) return Promise.resolve(null);
+  var eventId = opts && opts.eventId;
   return fb.auth.verifyIdToken(token).then(function (decoded) {
-    return isAllowedUser(decoded) ? decoded : null;
-  }, function () { return null; });
+    return AC.readConfig(fb).then(function (cfg) {
+      var access = AC.accessOf(cfg, decoded);
+      if (access.denied) return null;
+      decoded.access = access;
+      if (AC.everywhere(access) || !isEventId(eventId)) return decoded;
+      return factsOf(fb, [eventId]).then(function (facts) { return AC.eventOk(access, facts[eventId]) ? decoded : null; });
+    });
+  }).then(null, function () { return null; });
 }
 
 /* Public API routes are called from published pages, which may one day sit on another host. */

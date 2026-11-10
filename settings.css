@@ -1,0 +1,45 @@
+/* Settings (settings.html): Access (settings-access.js) and Publishing approvals (settings.js). */
+[hidden]{ display:none !important; }
+.pa-main{ max-width:760px; margin:0 auto; padding:22px 24px 80px; }
+.pa-main label.pa-check{ display:flex; gap:10px; align-items:flex-start; margin:12px 0 0; font-size:13.5px; line-height:1.45; }
+.pa-main label.pa-check input{ width:17px; height:17px; margin:1px 0 0; accent-color:var(--accent); flex-shrink:0; }
+.pa-msg{ margin:12px 0 0; padding:10px 12px; border-radius:10px; font-size:13px; line-height:1.5; background:var(--surface-2); }
+.pa-msg.err{ background:var(--accent-soft); color:var(--accent-strong); font-weight:600; }
+.pa-acts{ display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+.pa-log{ list-style:none; margin:0; padding:0; font-size:13px; }
+.pa-log li{ padding:9px 0; border-bottom:1px solid var(--border); line-height:1.5; overflow-wrap:anywhere; }
+.pa-log li:last-child{ border-bottom:0; }
+.pa-log .meta{ color:var(--text-muted); font-size:12px; }
+.pa-sec{ margin-top:34px; }
+.ac-you{ margin:0; font-size:14px; line-height:1.55; }
+.ac-you span{ color:var(--text-muted); font-size:13px; }
+.ac-frow{ grid-template-columns:1fr 1fr; }
+.ac-opt{ font-weight:500; color:var(--text-muted); }
+.ac-set{ border:0; margin:18px 0 0; padding:0; min-width:0; }
+.ac-set legend{ font-size:12.5px; font-weight:700; padding:0; margin-bottom:2px; }
+.ac-set label.pa-check span{ color:var(--text); }
+.ac-grid{ display:grid; grid-template-columns:repeat(auto-fill, minmax(170px, 1fr)); gap:4px 14px; margin-top:8px; }
+.ac-portal{ display:flex; gap:8px; align-items:center; font-size:13px; min-height:30px; }
+.ac-portal input{ width:16px; height:16px; margin:0; accent-color:var(--accent); flex-shrink:0; }
+.ac-list{ list-style:none; margin:16px 0 0; padding:0; }
+.ac-row{ display:flex; flex-wrap:wrap; gap:8px 14px; align-items:flex-start; padding:12px 0; border-top:1px solid var(--border); }
+.ac-who{ flex:1 1 260px; min-width:0; overflow-wrap:anywhere; }
+.ac-name{ font-weight:700; font-size:13.5px; }
+.ac-mail{ font-size:12.5px; color:var(--text-muted); }
+.ac-role{ margin-top:4px; font-size:13px; }
+.ac-row .meta{ color:var(--text-muted); font-size:12px; margin-top:3px; }
+.ac-chip{ display:inline-block; padding:1px 8px; border-radius:999px; font-size:12px; font-weight:700; background:var(--surface-2); border:1px solid var(--border); }
+.ac-chip.ac-admin{ background:var(--accent-soft); color:var(--accent-strong); border-color:transparent; }
+.ac-chip.ac-blocked{ background:var(--text); color:var(--surface); border-color:transparent; }
+.ac-acts{ display:flex; gap:8px; align-items:center; }
+.ac-tag{ font-size:12px; font-weight:700; color:var(--text-muted); }
+.ac-row > .pa-msg{ flex:1 1 100%; }
+@media (max-width: 760px){ .pa-main{ padding:16px 16px 70px; } .pa-acts .btn{ flex:1 1 auto; justify-content:center; } .ac-frow{ grid-template-columns:1fr; } }
+/* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
+   icon-only one 40px wide; a link that is a line of words keeps its place and only the area that takes the tap grows.
+   Layout only. */
+@media (max-width: 720px){
+  .pa-main label.pa-check{ min-height:40px; }
+  .ac-portal{ min-height:40px; }
+  .ac-acts .btn{ min-height:40px; }
+}

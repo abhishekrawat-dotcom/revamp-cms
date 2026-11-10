@@ -784,9 +784,12 @@ function teamRows(fb, fresh) {
 /* GET /api/promo/analytics/all[?fresh=1] — every event's, for the team page. backend 'firestore' only where every
    event is tracked (mode 'on'): a local or QA server tracks only qa- events, which this view leaves out. */
 function handleAnalyticsAll(req, res) {
-  H.withAdmin(req, res, function (fb) {
+  H.withAdmin(req, res, function (fb, decoded) {
     var fresh = queryOf(req).get('fresh') === '1';
     teamRows(fb, fresh).then(function (rows) {
+      /* someone who works in chosen portals sees only their portals' mailers (lib/access-control.js) */
+      var access = decoded && decoded.access, AC = require('./access-control');
+      if (access && !AC.everywhere(access)) rows = rows.filter(function (r) { return AC.portalOk(access, r.portal); });
       sendJson(res, 200, buildSummary(rows, Date.now(), mode() === 'on' ? 'firestore' : 'none'));
     }).catch(function (err) { H.sendFailure(res, 'mailer performance', err, FAILED); });
   });

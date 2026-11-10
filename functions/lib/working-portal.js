@@ -51,6 +51,12 @@ function prefRef(res, fb, decoded) {
   return fb.db.collection(PREFS).doc(key);
 }
 
+/* All portals, or one of the portals this person works in (lib/access-control.js) */
+function theirs(decoded, v) {
+  return v === ALL || !decoded || !decoded.access || AC().portalOk(decoded.access, v);
+}
+function AC() { return require('./access-control'); }
+
 function handleGet(req, res) {
   if (!H) return unwired(res);
   H.withAdmin(req, res, function (fb, decoded) {
@@ -58,8 +64,9 @@ function handleGet(req, res) {
     if (!ref) return;
     ref.get().then(function (snap) {
       var v = snap.exists ? (snap.data() || {}).workingPortal : null;
-      /* a portal taken off the roster since it was chosen is no choice: the dashboard asks again */
-      H.sendJson(res, 200, { workingPortal: isChoice(v) ? v : null });
+      /* a portal taken off the roster since it was chosen is no choice, nor one no longer theirs (Settings ›
+         Access): the dashboard asks again */
+      H.sendJson(res, 200, { workingPortal: isChoice(v) && theirs(decoded, v) ? v : null });
     }).catch(function (err) { H.sendFailure(res, 'working portal', err, 'Your portal could not be read. Please try again.'); });
   });
 }
@@ -72,6 +79,7 @@ function handlePut(req, res) {
       return H.sendJson(res, 400, { error: v == null || v === '' ? 'Choose a portal, or All portals.' : 'Unknown portal "' + str(v).slice(0, 40) + '".',
         code: 'unknown-portal', field: 'workingPortal' });
     }
+    if (!theirs(decoded, v)) return H.sendJson(res, 403, { error: AC().outsideSentence(decoded.access, v).replace(/^This event is in/, 'That is'), code: 'not-your-portal', field: 'workingPortal' });
     var ref = prefRef(res, fb, decoded);
     if (!ref) return;
     ref.set({ uid: str(decoded.uid), email: str(decoded.email), workingPortal: v, updatedAt: new Date().toISOString() }, { merge: true })

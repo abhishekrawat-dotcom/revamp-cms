@@ -1,7 +1,8 @@
-// Who may use the Revamp CMS, and what this server hands out at all.
+// Who may use ETB2B EventSphere, and what this server hands out at all.
 //
-// WHO: Google accounts on the company domain only (@timesinternet.in, or ALLOWED_EMAIL_DOMAIN). One rule,
-// used in three places so it can't drift:
+// WHO: a Google sign-in the access list lets in (lib/access-control.js, Settings › Access): every company account
+// (@timesinternet.in, or ALLOWED_EMAIL_DOMAIN) at the default role, and anyone an admin invited with another Google
+// account — never someone an admin blocked. One rule, used in three places so it can't drift:
 //   - requireAdmin() in http.js — every admin API call (Authorization: Bearer <ID token>)
 //   - gate() in server.js (App Hosting) and tools/serve.js (local dev) — the CMS pages and every other /api/*
 //     route, using the __session cookie auth.js keeps in step with the signed-in user's ID token
@@ -30,15 +31,26 @@ const SESSION_COOKIE = '__session';   // the one cookie name every Firebase host
 // /robots.txt and /sitemap.xml: for search engines, about the published sites only (lib/site-seo.js)
 const PUBLIC_PATHS = new Set(['/', '/index.html', '/auth.js', '/favicon.ico', '/robots.txt', '/sitemap.xml']);
 
-/* a Google sign-in (not email/password) with a verified address on the company domain */
+/* a Google sign-in (not email/password) with a verified address on the company domain — the rule before the
+   access list, kept for when that list cannot be read at all (no database: a local server without credentials) */
 function isAllowedUser(decoded) {
   if (!decoded || typeof decoded.email !== 'string' || decoded.email_verified !== true) return false;
   if (!decoded.firebase || decoded.firebase.sign_in_provider !== 'google.com') return false;
   return decoded.email.toLowerCase().endsWith('@' + ALLOWED_DOMAIN);
 }
 
-function deniedMessage() {
-  return 'Only @' + ALLOWED_DOMAIN + ' Google accounts can use ETB2B EventSphere.';
+function deniedMessage(why) {
+  return require('./access-control').deniedSentence(why || 'outside');
+}
+
+/* -> Promise<access> for a verified token: { email, role, portals } or { denied: 'blocked' | 'outside' | 'signin' } */
+function accessFor(decoded) {
+  var AC = require('./access-control'), fb;
+  try { fb = require('./firebase').getFirebase(); } catch (e) { fb = { error: String(e && e.message) }; }
+  if (!fb || fb.error || !fb.db) {
+    return Promise.resolve(isAllowedUser(decoded) ? { email: decoded.email.toLowerCase(), role: 'editor', portals: ['*'] } : { denied: AC.accessOf({ members: {} }, decoded).denied });
+  }
+  return AC.readConfig(fb).then(function (cfg) { return AC.accessOf(cfg, decoded); });
 }
 
 /* its own named app, so checking a token needs no service account and doesn't depend on getFirebase()'s
@@ -127,11 +139,11 @@ function isPublic(req, urlPath) {
   return path.extname(p).toLowerCase() !== '.html' && isServableFile(p.slice(1));
 }
 
-/* why: 'signin' (no or expired sign-in) | 'domain' (signed in, but not an allowed account) */
+/* why: 'signin' (no or expired sign-in) | 'outside' (signed in, but not let in) | 'blocked' (an admin blocked it) */
 function deny(req, res, urlPath, why) {
   if (urlPath.indexOf('/api/') === 0) {
-    res.writeHead(why === 'domain' ? 403 : 401, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
-    return res.end(JSON.stringify({ error: why === 'domain' ? deniedMessage() : 'Sign in required — please sign in again.' }));
+    res.writeHead(why === 'signin' ? 401 : 403, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(why === 'signin' ? { error: 'Sign in required — please sign in again.' } : { error: deniedMessage(why), code: 'no-access' }));
   }
   /* A file that is not a page (a picture, a video, a .json or .xml — "/x/clip.mp4", "/sitemap.xml") is never
      sent to anyone unless isPublic() already let it through, so signing in would not help: it is a plain
@@ -142,15 +154,15 @@ function deny(req, res, urlPath, why) {
     res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
     return res.end('Not found');
   }
-  const back = '/?' + (why === 'domain' ? 'denied=1&' : '') + 'next=' + encodeURIComponent(req.url);
+  const back = '/?' + (why === 'blocked' ? 'denied=blocked&' : why === 'signin' ? '' : 'denied=1&') + 'next=' + encodeURIComponent(req.url);
   res.writeHead(302, { Location: back, 'Cache-Control': 'no-store' });
   res.end();
 }
 
 /* WHO MAY TAKE THINGS AWAY. Deleting an event and taking a live site offline are for approvers only (the
-   owner's rule, 2026-11-03); team members draft, edit and ask for approval. An approver is an address in
-   config/approvals' `approvers` (lib/api.js approvalsConfig reads that document) — and while none are named,
-   every signed-in member approves (the approval rule's own reading), so may do these too.
+   owner's rule, 2026-11-03); team members draft, edit and ask for approval. An approver is someone with the
+   Approver or Admin role in Settings › Access (lib/api.js approvalsConfig gives the list, which always holds an
+   Admin). An empty list — which the access list never gives — would still mean everyone, as it always did.
    -> '' when `email` may, else the sentence that says who can. `what` finishes "Only an approver (…) can …". */
 function notAnApprover(approvers, email, what) {
   const list = (Array.isArray(approvers) ? approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(Boolean);
@@ -159,17 +171,24 @@ function notAnApprover(approvers, email, what) {
   return 'Only an approver (' + list.join(', ') + ') can ' + (what || 'do that') + '.';
 }
 
-/* lets the request through to next() only for public paths or an allowed, signed-in user (req.user) */
+/* lets the request through to next() only for public paths or a signed-in user the access list lets in
+   (req.user, with req.user.access) */
 function gate(req, res, next) {
   const urlPath = req.url.split('?')[0];
   if (isPublic(req, urlPath)) return next();
   const token = readToken(req);
   if (!token) return deny(req, res, urlPath, 'signin');
   verifyIdToken(token).then(function (decoded) {
-    if (!isAllowedUser(decoded)) return deny(req, res, urlPath, 'domain');
-    req.user = decoded;
-    next();
-  }, function () { deny(req, res, urlPath, 'signin'); });
+    return accessFor(decoded).then(function (access) {
+      if (access.denied) return deny(req, res, urlPath, access.denied);
+      decoded.access = access;
+      req.user = decoded;
+      next();
+    });
+  }, function () { deny(req, res, urlPath, 'signin'); }).catch(function (err) {
+    console.error('access: the sign-in check failed for ' + urlPath + ' — ' + (err && err.stack || err));
+    if (!res.headersSent) { res.writeHead(503, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }); res.end('Please try again in a moment.'); }
+  });
 }
 
-module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, gate, isServableFile, isPublic, notAnApprover };
+module.exports = { ALLOWED_DOMAIN, isAllowedUser, deniedMessage, accessFor, gate, isServableFile, isPublic, notAnApprover };

@@ -183,6 +183,7 @@ const ownerBrief = require('./owner-brief');
 const eventDescription = require('./event-description');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
+const accessControl = require('./access-control');
 /* the rules of Content › Basics' three details for posts and mailers (pure: no Firebase, no model) */
 const promoDetails = require('./promo-details');
 const googleFonts = require('./google-fonts');
@@ -1900,7 +1901,11 @@ function etJson(u, headers) {
     .then(function (r) { return r.status === 200 ? JSON.parse(r.body.toString('utf8')) : null; });
 }
 function handleEtPortals(req, res) {
-  withAdmin(req, res, function () { sendJson(res, 200, { portals: etEvents.portalList() }); });
+  /* someone who works in chosen portals is offered only those (lib/access-control.js) */
+  withAdmin(req, res, function (fb, decoded) {
+    var access = decoded && decoded.access;
+    sendJson(res, 200, { portals: etEvents.portalList().filter(function (p) { return !access || accessControl.portalOk(access, p.slug); }) });
+  });
 }
 function handleEtEvents(req, res) {
   withAdmin(req, res, function () {
@@ -8740,8 +8745,8 @@ function eventListItem(id, d) {
    raw map, audienceV and all, which is what lib/api-audience.js insightTotals() needs to total an event without
    reading it again. which: 'live' (anything else) or 'deleted'.
    ETB2B AI on the dashboard (lib/dash-bot.js) reads its events through this as well, so it can never see an event
-   the person's own list does not show, nor miss one it does. `decoded` is the person asking: there is no
-   per-person rule today (the CMS is team-wide, lib/access.js), and one added here applies to both at once. */
+   the person's own list does not show, nor miss one it does. `decoded` is the person asking: someone who works in
+   chosen portals (decoded.access, lib/access-control.js) gets only those portals' events, here for both at once. */
 function liveEventDocs(fb, decoded, which) {
   var wanted = which === 'deleted' ? 'deleted' : 'live';
   return Promise.resolve().then(function () {
@@ -8754,6 +8759,8 @@ function liveEventDocs(fb, decoded, which) {
       /* a draft that is being removed for good is in neither list (lib/api-events.js) */
       if (eventStateOf(d) !== wanted || data.discardingAt) return;
       if (typeof data.name !== 'string' || data.name.trim() === '') return;
+      /* someone who works in chosen portals sees only their portals' events (lib/access-control.js) */
+      if (decoded && decoded.access && !accessControl.eventOk(decoded.access, data)) return;
       docs.push({ id: d.id, data: data });
       /* the very value the list item shows as updatedAt (or deletedAt), so the order is the list's */
       order[d.id] = String((wanted === 'deleted' ? isoOf(data.deletedAt) : isoOf(data.updatedAt) || isoOf(data.createdAt) || null) || '');
@@ -10019,8 +10026,8 @@ function handleEventPublish(req, res) {
    beside the proposed one. Approving (POST /api/event/approval/decide) is what makes that exact version
    live; rejecting sends it back with the reason.
 
-   Who may approve (config/approvals): `approvers`, a list of e-mail addresses — empty means any signed-in
-   member of the team; and never the person who asked, unless `allowSelf` is true. `required: false` turns
+   Who may approve: the Approvers and Admins of Settings › Access (approvalsConfig, below); and never the person
+   who asked, unless config/approvals' `allowSelf` is true. `required: false` turns
    approval off and lets Publish go live at once.
 
    Everything above is written to the event's history (events/<id>/activity) with the change or the request
@@ -10030,11 +10037,15 @@ function draftObjectPath(eventId, decoded) {
 }
 function versionPath(eventId, version) { return sitePath(eventId, 'versions/' + version + '/page.html'); }
 
+/* The approvers are the people with the Approver or Admin role (Settings › Access, lib/access-control.js; the
+   owner's choice of 10 Nov 2026, replacing config/approvals' own list); config/approvals keeps allowSelf and
+   required. Until the access list is first saved, its Approvers are the ones config/approvals named, and its
+   Admin the first admin. There is always an Admin, so the list is never empty. */
 function approvalsConfig(fb) {
-  return fb.db.collection('config').doc('approvals').get().then(function (snap) {
-    var d = snap.exists ? (snap.data() || {}) : {};
+  return Promise.all([fb.db.collection('config').doc('approvals').get(), accessControl.readConfig(fb)]).then(function (r) {
+    var snap = r[0], d = snap.exists ? (snap.data() || {}) : {}, cfg = r[1];
     return {
-      approvers: (Array.isArray(d.approvers) ? d.approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(function (e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); }),
+      approvers: accessControl.approversWith(cfg, d.approvers),
       allowSelf: d.allowSelf === true,
       required: d.required !== false
     };
@@ -10518,13 +10529,11 @@ function handleApprovalDecide(req, res) {
 /* ---------- the approval rule (config/approvals), for every event ----------
    GET  /api/settings/approvals -> { approvers, allowSelf, required, me, canEdit, whyNot, history: [{ at, by, before,
         after }] } — its one place is Settings › Publishing approvals (settings.html); the review page only shows it
-   PUT  /api/settings/approvals { approvers, allowSelf, required } -> { approvers, allowSelf, required }
-   Who may change it (UX-108: any member could turn approval off for every event, unasked and unrecorded):
-     - once approvers are named, only they;
-     - while none are named everyone approves, so anyone may name the first approvers — but approval cannot be
-       switched off, nor people let approve their own changes, until somebody is named who answers for it. There is
-       no platform-admin role in this product to hand that to instead.
-   Every change is recorded with what it was before and after (config/approvals/log), and the page shows it. */
+   PUT  /api/settings/approvals { allowSelf, required } -> { approvers, allowSelf, required }
+   Who approves is no longer set here: it is everybody with the Approver or Admin role in Settings › Access
+   (approvalsConfig). An `approvers` list sent here is not used. Only an approver may change the two switches
+   (UX-108: any member could turn approval off for every event, unasked and unrecorded). Every change is recorded
+   with what it was before and after (config/approvals/log), and the page shows it. */
 function approvalSettingsWhyNot(cfg, email) {
   return require('./access').notAnApprover(cfg.approvers, email, 'change these settings');
 }
@@ -10536,35 +10545,26 @@ function handleApprovalSettingsGet(req, res) {
       return snap.docs.map(function (d) { var v = d.data() || {}; return { at: v.at || null, by: v.by || '', before: v.before || null, after: v.after || null }; });
     }, function (err) { console.error('api: the approval settings log could not be read — ' + (err && err.message)); return []; })]).then(function (r) {
       var cfg = r[0], why = approvalSettingsWhyNot(cfg, me);
-      sendJson(res, 200, Object.assign({}, cfg, { me: me, canEdit: !why, whyNot: why, history: r[1] }));
+      sendJson(res, 200, Object.assign({}, cfg, { me: me, canEdit: !why, whyNot: why, history: r[1], approversFrom: 'access' }));
     }).catch(function (err) { sendFailure(res, 'approval settings', err, 'The settings could not be loaded.'); });
   });
 }
 function handleApprovalSettingsPut(req, res) {
   withAdminBody(req, res, BODY_LIMITS.tiny, function (fb, decoded, body) {
-    var list = Array.isArray(body.approvers) ? body.approvers : String(body.approvers || '').split(/[\s,;]+/);
-    list = list.map(function (e) { return String(e || '').trim().toLowerCase(); }).filter(Boolean);
-    var bad = list.filter(function (e) { return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); })[0];
-    if (bad) return sendJson(res, 400, { error: '"' + bad + '" is not an e-mail address.', field: 'approvers' });
-    var actor = actorOf(decoded).toLowerCase();
-    var doc = { approvers: list.filter(function (e, i) { return list.indexOf(e) === i; }).slice(0, 50), allowSelf: body.allowSelf === true, required: body.required !== false,
-      updatedAt: new Date().toISOString(), updatedBy: actor };
+    var actor = actorOf(decoded).toLowerCase(), now = new Date().toISOString();
+    var doc = { allowSelf: body.allowSelf === true, required: body.required !== false, updatedAt: now, updatedBy: actor };
     approvalsConfig(fb).then(function (cfg) {
-      /* once approvers are named, only they change who approves — else anyone could add themselves */
       var why = approvalSettingsWhyNot(cfg, actor);
       if (why) throw httpError(403, why, { code: 'not-an-approver' });
-      /* with nobody named, nobody answers for switching approval off or for self-approval */
-      if (!doc.approvers.length && (!doc.required || doc.allowSelf)) {
-        throw httpError(400, 'Name at least one approver first. While anyone on the team can approve, approval cannot be switched off and nobody may approve their own changes.', { code: 'approvers-needed', field: 'approvers' });
-      }
-      var before = { approvers: cfg.approvers, allowSelf: cfg.allowSelf, required: cfg.required };
-      var after = { approvers: doc.approvers, allowSelf: doc.allowSelf, required: doc.required };
+      var before = { allowSelf: cfg.allowSelf, required: cfg.required };
+      var after = { allowSelf: doc.allowSelf, required: doc.required };
       var same = JSON.stringify(before) === JSON.stringify(after);
-      return fb.db.collection('config').doc('approvals').set(doc).then(function () {
-        sendJson(res, 200, after);
+      /* merge: config/approvals' old `approvers` list stays as it was (the access list started from it) */
+      return fb.db.collection('config').doc('approvals').set(doc, { merge: true }).then(function () {
+        sendJson(res, 200, { approvers: cfg.approvers, allowSelf: doc.allowSelf, required: doc.required });
         if (same) return;
         console.log('api: approval settings changed by ' + actor + ' — ' + JSON.stringify(before) + ' -> ' + JSON.stringify(after));
-        return APPROVALS_LOG(fb).add({ at: doc.updatedAt, by: actor, before: before, after: after }).then(null, function (err) {
+        return APPROVALS_LOG(fb).add({ at: now, by: actor, before: before, after: after }).then(null, function (err) {
           console.error('api: the approval settings change could not be recorded — ' + (err && err.message));
         });
       });
@@ -11877,6 +11877,10 @@ function handlePreviewPage(req, res, eventId, slug) {
         return sendHtml(req, res, 404, messagePage('This event does not exist', 'It may have been deleted, or the address may be wrong.'), 'no-store');
       }
       var data = snap.data();
+      /* someone who works in chosen portals previews only their portals' events (lib/access-control.js) */
+      if (user.access && !accessControl.eventOk(user.access, data)) {
+        return sendHtml(req, res, 403, messagePage('This event is not in your portals', accessControl.outsideSentence(user.access, data.portal)), 'no-store');
+      }
       if (!staged && !ownDraft && !siteVersionOf(data)) {
         return sendHtml(req, res, 404, nothingToPreviewPage(data, eventId), 'no-store');
       }
@@ -12368,6 +12372,12 @@ var ROUTES = {
   'POST /api/event/approval/decide': handleApprovalDecide,
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,
+  /* Settings › Access: who may use EventSphere, as what, and in which portals (lib/api-access.js) */
+  'GET /api/access/me': inModule('api-access', 'handleMe'),
+  'GET /api/access': inModule('api-access', 'handleGet'),
+  'POST /api/access/member': inModule('api-access', 'handleMember'),
+  'POST /api/access/remove': inModule('api-access', 'handleRemove'),
+  'POST /api/access/default': inModule('api-access', 'handleDefault'),
   'GET /api/settings/approvals': handleApprovalSettingsGet,
   'PUT /api/settings/approvals': handleApprovalSettingsPut,
   'POST /api/event/unpublish': handleEventUnpublish,

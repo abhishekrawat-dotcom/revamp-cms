@@ -1,12 +1,12 @@
-/* Settings › Publishing approvals (settings.html): the approval rule every event shares (config/approvals) — who
-   approves, whether a person may approve their own changes, and whether changes need approval at all — and every
-   change made to it, with who made it.
+/* Settings › Publishing approvals (settings.html): the approval rule every event shares (config/approvals) —
+   whether a person may approve their own changes, and whether changes need approval at all — who approves, and
+   every change made to the rule, with who made it.
 
-   It used to be a box on each event's review page, next to Approve: any member could switch approval off for every
-   event from there, unasked and unrecorded (UX-108). Now it lives here once. The review page shows it read-only with
-   a link here. Only an approver can change it (anyone, while nobody is named); the server checks the same and
-   refuses approval being switched off, or self-approval, until somebody is named
-   (functions/lib/api.js handleApprovalSettingsPut). Switching approval off asks first.
+   Who approves is set in Settings › Access above it (settings-access.js): everybody with the Approver or Admin role
+   (10 Nov 2026; it used to be a list of addresses typed here). It used to be a box on each event's review page, next
+   to Approve: any member could switch approval off for every event from there, unasked and unrecorded (UX-108). Now
+   it lives here once. The review page shows it read-only with a link here. Only an approver can change it; the
+   server checks the same (functions/lib/api.js handleApprovalSettingsPut). Switching approval off asks first.
    Data: GET / PUT /api/settings/approvals (RevampCore.fetchApprovalSettings / saveApprovalSettings). ES5. */
 (function () {
   'use strict';
@@ -30,7 +30,7 @@
   /* the rule in one sentence each, as the review page and the publish window say it */
   function ruleLines(d) {
     return [
-      d.approvers.length ? 'Approvers: ' + d.approvers.join(', ') + '.' : 'Anyone on the team can approve.',
+      d.approvers.length ? 'Approvers: ' + d.approvers.join(', ') + ' — everybody with the Approver or Admin role in Access, above.' : 'Anyone on the team can approve.',
       d.allowSelf ? 'A person may approve their own changes.' : 'Nobody approves their own changes.',
       d.required ? 'Changes go live once an approver approves them.' : 'Approval is switched off: Publish puts a saved site live at once.'
     ];
@@ -40,7 +40,8 @@
   function changeWords(b, a) {
     b = b || {}; a = a || {};
     var out = [];
-    if (JSON.stringify(b.approvers || []) !== JSON.stringify(a.approvers || [])) out.push('approvers ' + list(b.approvers) + ' → ' + list(a.approvers));
+    /* entries from before Access: who approved was part of this rule then */
+    if (b.approvers && a.approvers && JSON.stringify(b.approvers) !== JSON.stringify(a.approvers)) out.push('approvers ' + list(b.approvers) + ' → ' + list(a.approvers));
     if (!!b.required !== !!a.required) out.push(a.required ? 'approval switched on' : 'approval switched off');
     if (!!b.allowSelf !== !!a.allowSelf) out.push(a.allowSelf ? 'people may approve their own changes' : 'nobody approves their own changes');
     return out.length ? out.join('; ') : 'saved with no change';
@@ -50,10 +51,7 @@
     var d = data;
     var rule = '<ul class="na-list">' + ruleLines(d).map(function (l) { return '<li>' + esc(l) + '</li>'; }).join('') + '</ul>';
     var form = d.canEdit
-      ? '<div class="field" style="margin-top:16px"><label for="pa-approvers">Approvers</label>' +
-          '<input class="inp" id="pa-approvers" type="text" autocomplete="off" value="' + esc(d.approvers.join(', ')) + '" placeholder="name@timesinternet.in, name2@timesinternet.in">' +
-          '<p class="hint">E-mail addresses, separated by commas. Leave it empty and anyone on the team can approve, but then approval cannot be switched off.</p></div>' +
-        '<label class="pa-check"><input type="checkbox" id="pa-self"' + (d.allowSelf ? ' checked' : '') + '><span>A person may approve their own changes</span></label>' +
+      ? '<label class="pa-check" style="margin-top:16px"><input type="checkbox" id="pa-self"' + (d.allowSelf ? ' checked' : '') + '><span>A person may approve their own changes</span></label>' +
         '<label class="pa-check"><input type="checkbox" id="pa-required"' + (d.required ? ' checked' : '') + '><span>Changes need approval before they go live</span></label>' +
         '<div id="pa-ask"></div>' +
         '<div class="pa-acts" id="pa-acts"><button class="btn btn-primary" type="button" id="pa-save">Save</button></div>'
@@ -75,7 +73,6 @@
     if (!save) return;
     save.onclick = function () {
       var next = {
-        approvers: document.getElementById('pa-approvers').value,
         allowSelf: document.getElementById('pa-self').checked,
         required: document.getElementById('pa-required').checked
       };

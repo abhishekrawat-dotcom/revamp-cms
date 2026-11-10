@@ -679,8 +679,8 @@ async function main() {
   var code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   check('no per-address limit: the source never reads x-forwarded-for, the socket address or http.js rateLimit',
     !/x-forwarded-for|rateLimit|clientIp|remoteAddress/i.test(src));
-  check('the only requires are the engine, firebase, http and firebase-admin', (code.match(/require\('[^']+'\)/g) || []).sort().join() ===
-    ["require('./firebase')", "require('./http')", "require('./vendor/promo-engine')", "require('firebase-admin')"].join(), code.match(/require\('[^']+'\)/g));
+  check('the only requires are the engine, firebase, http, the access rule and firebase-admin', (code.match(/require\('[^']+'\)/g) || []).sort().join() ===
+    ["require('./access-control')", "require('./firebase')", "require('./http')", "require('./vendor/promo-engine')", "require('firebase-admin')"].join(), code.match(/require\('[^']+'\)/g));
   check('no log line mentions NOT_FOUND', !/NOT_FOUND/.test(src));
 
   /* ---------- 6. the routes ---------- */

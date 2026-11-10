@@ -266,10 +266,10 @@ function fakeRes() {
   async function approvers() { try { return (await h.approvalsConfig(FB)).approvers; } catch (e) { return 'threw: ' + e.message; } }
   CONFIG['config/approvals'] = { approvers: ['Lead@TimesInternet.in', 'not an email', ''], allowSelf: false };
   var cfg = await approvers();
-  ok(JSON.stringify(cfg) === '["lead@timesinternet.in"]', 'B.2 approvalsConfig reads config/approvals (who may read everyone\'s chats)', cfg);
+  ok(JSON.stringify(cfg) === '["lead@timesinternet.in","sachitanand.rai@timesinternet.in"]', 'B.2 approvalsConfig: the approvers config/approvals names and the first admin (Settings › Access; who may read everyone\'s chats)', cfg);
   delete CONFIG['config/approvals'];
   cfg = await approvers();
-  ok(Array.isArray(cfg) && cfg.length === 0, 'B.2 … no approvers named: an empty list (so ?all=1 is refused to everybody)', cfg);
+  ok(JSON.stringify(cfg) === '["sachitanand.rai@timesinternet.in"]', 'B.2 … no approvers named: the first admin only', cfg);
 
   calls = [];
   c = await call('POST', '/api/dash-bot/turn', { turnId: 'abcdefghij12', status: 'undone' });

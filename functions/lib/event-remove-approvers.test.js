@@ -4,8 +4,9 @@
      - lib/access.js notAnApprover, the one reading of the rule (the same function the console's take-offline uses);
      - DELETE /api/event and POST /api/event/restore: a team member who is not an approver is refused with 403
        { code: 'not-an-approver' } and the sentence naming who can, and nothing is written; an approver (any case)
-       can; with no approvers named every member can (the approval rule's own reading); a config holding only
-       things that are not e-mail addresses names nobody;
+       can. The approvers are the Approvers and Admins of Settings › Access (lib/access-control.js): until that list
+       is first saved, the ones config/approvals names and the first admin — so with none named, only the first
+       admin; a config holding only things that are not e-mail addresses names nobody else;
      - the wizard's discard of a creator's own fresh draft is not covered by the rule (it cancels Create Event);
      - a deleted event leaves GET /api/events and is listed by GET /api/events?deleted=1 (the dashboard's Deleted
        Events view), with who deleted it and when.
@@ -135,13 +136,16 @@ function listed(items, id) { return (items || []).filter(function (e) { return e
   check('notAnApprover: anybody else is told who can', access.notAnApprover(['boss@timesinternet.in', 'two@timesinternet.in'], 'member@timesinternet.in', 'delete an event') ===
     'Only an approver (boss@timesinternet.in, two@timesinternet.in) can delete an event.');
 
-  /* ---- 2. no approvers named: every signed-in member approves, so may delete and restore ---- */
+  /* ---- 2. no approvers named: the first admin approves (Settings › Access), a member (an Editor) does not ---- */
   approvers(null);
   makeEvent('qa-open-1');
   var r = await call('DELETE', '/api/event?eventId=qa-open-1', 'member');
-  check('no approvers named: a member deletes (200, deletedAt and deletedBy set)', r.status === 200 && !!FB.docs['events/qa-open-1'].deletedAt && FB.docs['events/qa-open-1'].deletedBy === 'member@timesinternet.in', r.text);
-  r = await call('POST', '/api/event/restore', 'member', { eventId: 'qa-open-1' });
-  check('no approvers named: a member restores (200, back)', r.status === 200 && !FB.docs['events/qa-open-1'].deletedAt, r.text);
+  check('no approvers named: a member (an Editor) cannot delete — only the first admin can', r.status === 403 && r.body.code === 'not-an-approver' &&
+    r.body.error === 'Only an approver (sachitanand.rai@timesinternet.in) can delete an event.' && !FB.docs['events/qa-open-1'].deletedAt, r.text);
+  r = await call('DELETE', '/api/event?eventId=qa-open-1', 'sachitanand.rai');
+  check('no approvers named: the first admin deletes (200, deletedAt and deletedBy set)', r.status === 200 && !!FB.docs['events/qa-open-1'].deletedAt && FB.docs['events/qa-open-1'].deletedBy === 'sachitanand.rai@timesinternet.in', r.text);
+  r = await call('POST', '/api/event/restore', 'sachitanand.rai', { eventId: 'qa-open-1' });
+  check('no approvers named: the first admin restores (200, back)', r.status === 200 && !FB.docs['events/qa-open-1'].deletedAt, r.text);
 
   /* ---- 3. approvers named: a member is refused, and nothing is written ---- */
   approvers(['boss@timesinternet.in', 'two@timesinternet.in']);
@@ -149,8 +153,8 @@ function listed(items, id) { return (items || []).filter(function (e) { return e
   var before = JSON.stringify(FB.docs['events/qa-live-1']);
   r = await call('DELETE', '/api/event?eventId=qa-live-1', 'member');
   check('a member who is not an approver cannot delete: 403 not-an-approver, with who can', r.status === 403 && r.body && r.body.code === 'not-an-approver' &&
-    r.body.error === 'Only an approver (boss@timesinternet.in, two@timesinternet.in) can delete an event.' &&
-    JSON.stringify(r.body.approvers) === JSON.stringify(['boss@timesinternet.in', 'two@timesinternet.in']), r.text);
+    r.body.error === 'Only an approver (boss@timesinternet.in, sachitanand.rai@timesinternet.in, two@timesinternet.in) can delete an event.' &&
+    JSON.stringify(r.body.approvers) === JSON.stringify(['boss@timesinternet.in', 'sachitanand.rai@timesinternet.in', 'two@timesinternet.in']), r.text);
   check('…and the event is untouched: still live, no deletedAt, nothing in its History', JSON.stringify(FB.docs['events/qa-live-1']) === before && lines('qa-live-1').length === 0);
   var list = await call('GET', '/api/events', 'member');
   check('…and it is still in the events list', list.status === 200 && !!listed(list.body.items, 'qa-live-1'));
@@ -173,7 +177,7 @@ function listed(items, id) { return (items || []).filter(function (e) { return e
   /* ---- 5. restore: approvers only ---- */
   r = await call('POST', '/api/event/restore', 'member', { eventId: 'qa-live-1' });
   check('a member who is not an approver cannot restore: 403 not-an-approver, with who can', r.status === 403 && r.body.code === 'not-an-approver' &&
-    r.body.error === 'Only an approver (boss@timesinternet.in, two@timesinternet.in) can restore a deleted event.', r.text);
+    r.body.error === 'Only an approver (boss@timesinternet.in, sachitanand.rai@timesinternet.in, two@timesinternet.in) can restore a deleted event.', r.text);
   check('…and it stays deleted, with nothing in its History', !!FB.docs['events/qa-live-1'].deletedAt && lines('qa-live-1', 'restored').length === 0);
   r = await call('POST', '/api/event/restore', 'two', { eventId: 'qa-live-1' });
   check('an approver restores it (200, published: true: its site is live again)', r.status === 200 && r.body.published === true && !FB.docs['events/qa-live-1'].deletedAt && !FB.docs['events/qa-live-1'].deletedBy, r.text);
@@ -193,9 +197,9 @@ function listed(items, id) { return (items || []).filter(function (e) { return e
   approvers(['not an address', '']);
   makeEvent('qa-open-2');
   r = await call('DELETE', '/api/event?eventId=qa-open-2', 'member');
-  check('a config naming only things that are not e-mail addresses names nobody (read as lib/api.js approvalsConfig reads it)', r.status === 200, r.text);
+  check('a config naming only things that are not e-mail addresses names nobody else (read as lib/api.js approvalsConfig reads it)', r.status === 403 && r.body.error === 'Only an approver (sachitanand.rai@timesinternet.in) can delete an event.', r.text);
   var settings = await call('GET', '/api/settings/approvals', 'member');
-  check('…the same reading GET /api/settings/approvals gives the dashboard', settings.status === 200 && JSON.stringify(settings.body.approvers) === '[]', settings.text);
+  check('…the same reading GET /api/settings/approvals gives the dashboard', settings.status === 200 && JSON.stringify(settings.body.approvers) === '["sachitanand.rai@timesinternet.in"]', settings.text);
 
   process.stdout.write('event-remove-approvers: ' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);

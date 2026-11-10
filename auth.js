@@ -32,11 +32,13 @@
                                              automatically when the page loads; marked data-rv-account-theme
                                              too, the menu also has the light/dark switch (theme-toggle.js).
      .isAllowedEmail(email)              -> boolean  — a @timesinternet.in address (ALLOWED_DOMAIN)
+     .access()                           -> Promise<{ you, canManage, … } | null>  the signed-in person's
+                                             access (GET /api/access/me), asked once a page
 
-   Access: only Google accounts on ALLOWED_DOMAIN may use the CMS. The server enforces it
-   (functions/lib/access.js — every CMS page and /api/* route checks the __session cookie, or the Bearer
-   header, against the same rule); this file only mirrors it so a wrong account is told at once and signed
-   out. The __session cookie is the user's current ID token: it is rewritten whenever a token is issued,
+   Access: company Google accounts (ALLOWED_DOMAIN) and the Google accounts an admin invited in Settings ›
+   Access, never one an admin blocked. The server decides it (functions/lib/access.js and access-control.js —
+   every CMS page and /api/* route checks the __session cookie, or the Bearer header); right after signing in,
+   this file asks the server (GET /api/access/me) so a wrong account is told at once and signed out. The __session cookie is the user's current ID token: it is rewritten whenever a token is issued,
    expires when the token does, and the token is renewed a few minutes before that while a page is open.
 
    On every page except the sign-in page this file also covers the page with a "You have been signed out"
@@ -154,9 +156,8 @@
         window.firebase.auth().onAuthStateChanged(function (user) {
           // first real callback ever (whatever it reports) means persistence restore is done
           markAuthResolved();
-          // a remembered sign-in from an account that isn't allowed (e.g. a personal Gmail used before the
-          // domain rule existed) is signed out; listeners then hear null, never the wrong user
-          if (user && !isAllowedEmail(user.email)) { window.firebase.auth().signOut(); return; }
+          // a remembered sign-in from an account the server does not let in is sent back by the server
+          // (the sign-in page's ?denied=…, which signs out): an invited account may be on any domain
           lastUser = user;
           if (user) {
             hadUser = true;
@@ -374,16 +375,21 @@
   function signInWithGoogle() {
     return ready().then(function (firebase) {
       var provider = new firebase.auth.GoogleAuthProvider();
-      // hd: Google's picker offers company accounts first; it's only a hint, so the check below (and the
-      // server's) is what actually decides
-      provider.setCustomParameters({ hd: ALLOWED_DOMAIN, prompt: 'select_account' });
+      // no hd (company-domain) hint: someone an admin invited signs in with their own Google account
+      provider.setCustomParameters({ prompt: 'select_account' });
       return firebase.auth().signInWithPopup(provider).then(function (cred) {
-        if (isAllowedEmail(cred.user.email)) return cred.user;
-        return firebase.auth().signOut().then(function () {
-          var err = new Error('Use your @' + ALLOWED_DOMAIN + ' Google account — ' + cred.user.email + ' can’t sign in to ETB2B EventSphere.');
-          err.code = 'revamp/domain-not-allowed';
-          throw err;
-        });
+        return cred.user.getIdToken().then(function (token) {
+          return fetch('/api/access/me', { headers: { Authorization: 'Bearer ' + token }, credentials: 'same-origin' });
+        }).then(function (r) {
+          if (r.status !== 403) return cred.user;     // let in — or the server could not say; its pages decide then
+          return r.json().catch(function () { return {}; }).then(function (body) {
+            return firebase.auth().signOut().then(function () {
+              var err = new Error((body && body.error) || (cred.user.email + ' can’t sign in to ETB2B EventSphere.'));
+              err.code = 'revamp/domain-not-allowed';
+              throw err;
+            });
+          });
+        }, function () { return cred.user; });
       });
     });
   }
@@ -482,6 +488,7 @@
       '.rv-acct-item{-webkit-appearance:none;appearance:none;box-sizing:border-box;display:block;width:100%;margin:0;padding:9px 10px;border:0;border-radius:8px;' +
         'background:transparent;color:var(--rv-text);' + font + 'font-size:13px;font-weight:500;line-height:1.3;text-align:left;cursor:pointer;}',
       '.rv-acct-item:hover:not(:disabled){background:var(--rv-surface-2);}',
+      '.rv-acct-link,.rv-acct-link:visited{color:var(--rv-text);text-decoration:none;}',
       '.rv-acct-item:disabled{cursor:default;color:var(--rv-muted);}',
       /* the light/dark switch in the menu (data-rv-account-theme): its state at the right edge */
       '.rv-acct-mode{display:flex;align-items:center;justify-content:space-between;gap:10px;}',
@@ -680,6 +687,20 @@
       emailEl.className = user.displayName ? 'rv-acct-email' : 'rv-acct-name';
       emailEl.textContent = user.email || '';
       who.appendChild(emailEl);
+      /* their role and portals, once the server has said (Settings › Access) */
+      var roleEl = document.createElement('div');
+      roleEl.className = 'rv-acct-email';
+      roleEl.hidden = true;
+      who.appendChild(roleEl);
+      access().then(function (a) {
+        if (!a || !a.you || !roleEl.parentNode) return;
+        var names = {};
+        (a.portals || []).forEach(function (p) { names[p.slug] = p.name; });
+        var every = (a.you.portals || []).indexOf('*') !== -1;
+        roleEl.textContent = (a.you.label || a.you.role) + ' · ' + (every ? 'every portal' : (a.you.portals || []).map(function (p) { return names[p] || p; }).join(', '));
+        roleEl.hidden = false;
+        place();
+      });
       /* The light/dark switch, on a page whose top bar has no room for it (the site editor, UX-078):
          theme-toggle.js switches, and the menu stays open so the change can be seen and taken back. */
       var modes = el.hasAttribute('data-rv-account-theme') ? window.RevampColorMode : null;
@@ -708,8 +729,15 @@
         item.textContent = 'Signing out…';
         signOutAndLeave();
       });
+      /* Settings: who has access (an admin changes it there) and the publishing approval rule */
+      var settings = document.createElement('a');
+      settings.className = 'rv-acct-item rv-acct-link';
+      settings.setAttribute('role', 'menuitem');
+      settings.href = '/settings.html';
+      settings.textContent = 'Access & settings';
       pop.appendChild(who);
       if (mode) pop.appendChild(mode);
+      pop.appendChild(settings);
       pop.appendChild(item);
       // leaving the menu with Tab closes it rather than stranding it open behind the focus
       pop.addEventListener('focusout', function (e) {
@@ -757,8 +785,45 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mountAccountMenus);
   else mountAccountMenus();
 
+  /* ---------------------------------------------------------------- the signed-in person's access */
+
+  // GET /api/access/me, asked once a page (asked again after a failure): { you: { email, role, label, portals },
+  // canManage, portals, … }, or null when it could not be read
+  var accessPromise = null;
+  function access() {
+    if (!accessPromise) {
+      accessPromise = authedFetch('/api/access/me').then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+      accessPromise.then(function (a) { if (!a) accessPromise = null; });
+    }
+    return accessPromise;
+  }
+  // <html data-rv-role="viewer|editor|approver|admin"> on every CMS page, for pages that hide what a role cannot
+  // do; and for a Viewer a small note that says so (the server refuses every change anyway)
+  function markRole() {
+    if (onSignInPage()) return;
+    whenResolved().then(function () {
+      if (!activeUser()) return;
+      return access().then(function (a) {
+        var role = a && a.you && a.you.role;
+        if (!role) return;
+        document.documentElement.setAttribute('data-rv-role', role);
+        if (role !== 'viewer' || document.getElementById('rv-view-only')) return;
+        var note = document.createElement('div');
+        note.id = 'rv-view-only';
+        note.setAttribute('role', 'status');
+        note.textContent = 'View only — you can look at everything here, but not change it. Ask an admin for Editor access.';
+        note.style.cssText = 'position:fixed;left:16px;bottom:16px;z-index:2147483000;max-width:calc(100vw - 32px);padding:8px 12px;border-radius:8px;' +
+          'background:#1f2937;color:#fff;font:500 13px/1.4 system-ui,-apple-system,Segoe UI,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+        document.body.appendChild(note);
+      });
+    }).catch(noop);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markRole);
+  else markRole();
+
   window.RevampAuth = {
     authedFetch: authedFetch,
+    access: access,
     signInWithGoogle: signInWithGoogle,
     signOutUser: signOutUser,
     signOutAndLeave: signOutAndLeave,

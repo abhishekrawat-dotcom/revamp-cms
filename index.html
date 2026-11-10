@@ -268,7 +268,7 @@
 
         <div id="login-ready" hidden>
           <h2>Sign in to ETB2B EventSphere</h2>
-          <span class="sub">Sign in with your @timesinternet.in Google account.</span>
+          <span class="sub">Sign in with your @timesinternet.in Google account, or the Google account you were invited with.</span>
           <div class="login-error" id="login-error" role="alert" hidden></div>
 
           <button type="button" class="btn btn-primary btn-block" id="sso-btn">
@@ -405,11 +405,14 @@
       });
     });
 
-    // /?signout=1 signs out (a link any page can use); ?denied=1 means the server refused this account.
-    // Otherwise an earlier sign-in (Firebase Auth persists it) goes straight in.
-    if (params.get('signout') === '1' || params.get('denied') === '1') {
+    // /?signout=1 signs out (a link any page can use); ?denied=1 means the server refused this account (it was
+    // not invited), ?denied=blocked that an admin took its access away. Otherwise an earlier sign-in (Firebase
+    // Auth persists it) goes straight in.
+    var denied = params.get('denied');
+    if (params.get('signout') === '1' || denied === '1' || denied === 'blocked') {
       showSignIn();
-      if (params.get('denied') === '1') showError('Only @' + RevampAuth.allowedDomain + ' Google accounts can use ETB2B EventSphere. Sign in with your company account.');
+      if (denied === 'blocked') showError('This account no longer has access to ETB2B EventSphere. Ask an admin if you need it back.');
+      else if (denied === '1') showError('This Google account has not been given access to ETB2B EventSphere. Sign in with your @' + RevampAuth.allowedDomain + ' account, or ask an admin to invite you.');
       RevampAuth.signOutUser().catch(function(){
         showError('Could not finish signing out. Check your connection and reload this page.');
       });

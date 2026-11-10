@@ -559,6 +559,8 @@ var MP = 'qa-share-multi';           // a site with an internal page
     'Recreated Event', 'qa-share-recreated', 'Pageless Event', 'qa-share-nopage', 'qa-share'].every(function (s) { return gone0.indexOf(s) === -1; }));
 
   /* ============ 11. deleting, restoring, discarding the event ============ */
+  /* deleting is for approvers (Settings › Access): until the access list is saved, those config/approvals names */
+  FB.docs['config/approvals'] = { approvers: ['deleter@timesinternet.in'], required: true };
   await makeEvent('qa-share-delx', { name: 'Delete Me' });
   var dx1 = await makeLink('qa-share-delx'), dx2 = await makeLink('qa-share-delx', 'deadmaker2');
   var dxStopped = seedLink('qa-share-delx', { revokedAt: iso(-1000), revokedBy: 'x@timesinternet.in', revokeReason: 'stopped' });

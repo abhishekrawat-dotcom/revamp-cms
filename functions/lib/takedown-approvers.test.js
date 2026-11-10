@@ -102,7 +102,7 @@ function activity(id, action) {
   liveEvent('td-one');
   var r = await call('POST', '/api/event/unpublish', { token: 'member', body: { eventId: 'td-one' } });
   ok(r.status === 403 && r.body && r.body.code === 'not-an-approver', 'a team member: 403 not-an-approver', r.status + ' ' + r.text);
-  ok(r.body && r.body.error === 'Only an approver (boss@timesinternet.in) can take a live site offline.', 'the refusal names who can', r.text);
+  ok(r.body && r.body.error === 'Only an approver (boss@timesinternet.in, sachitanand.rai@timesinternet.in) can take a live site offline.', 'the refusal names who can', r.text);
   ok(FB.docs['events/td-one'].published === true && FB.docs['events/td-one'].publishedPath === '/e/td-one' && !FB.docs['events/td-one'].unpublishedAt, 'the site stays live', JSON.stringify(FB.docs['events/td-one']));
   ok(!activity('td-one', 'unpublished').length, 'nothing is logged for a refusal');
 
@@ -116,15 +116,19 @@ function activity(id, action) {
   r = await call('GET', '/e/td-one', {});
   ok(r.status === 404 || r.status === 410 || (r.status === 200 && !/Live td-one/.test(r.text)), 'its address no longer serves the site', r.status);
 
-  /* no approvers named: anyone signed in approves, so may take a site down */
+  /* no approvers named: the first admin approves (Settings › Access); a member (an Editor) does not */
   FB.docs['config/approvals'] = { approvers: [], required: true };
   liveEvent('td-two');
   r = await call('POST', '/api/event/unpublish', { token: 'member', body: { eventId: 'td-two' } });
-  ok(r.status === 200 && FB.docs['events/td-two'].published === false, 'no approvers named: a member may', r.status + ' ' + r.text);
+  ok(r.status === 403 && FB.docs['events/td-two'].published === true, 'no approvers named: a member may not', r.status + ' ' + r.text);
+  r = await call('POST', '/api/event/unpublish', { token: 'sachitanand.rai', body: { eventId: 'td-two' } });
+  ok(r.status === 200 && FB.docs['events/td-two'].published === false, 'no approvers named: the first admin may', r.status + ' ' + r.text);
   delete FB.docs['config/approvals'];
   liveEvent('td-three');
   r = await call('POST', '/api/event/unpublish', { token: 'member', body: { eventId: 'td-three' } });
-  ok(r.status === 200 && FB.docs['events/td-three'].published === false, 'no approval settings at all: a member may', r.status + ' ' + r.text);
+  ok(r.status === 403 && FB.docs['events/td-three'].published === true, 'no approval settings at all: a member may not', r.status + ' ' + r.text);
+  r = await call('POST', '/api/event/unpublish', { token: 'sachitanand.rai', body: { eventId: 'td-three' } });
+  ok(r.status === 200 && FB.docs['events/td-three'].published === false, 'no approval settings at all: the first admin may', r.status + ' ' + r.text);
 
   /* signed out: never */
   liveEvent('td-four');

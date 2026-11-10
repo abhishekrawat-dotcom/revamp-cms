@@ -536,6 +536,11 @@ window.RevampCore = (function(){
   }
   function fetchApprovalSettings(){ return api('GET', '/api/settings/approvals'); }
   function saveApprovalSettings(settings){ return api('PUT', '/api/settings/approvals', settings || {}); }
+  /* Settings › Access (functions/lib/api-access.js): who may use EventSphere, as what, in which portals */
+  function fetchAccess(){ return api('GET', '/api/access'); }
+  function saveAccessMember(m){ return api('POST', '/api/access/member', m || {}); }
+  function removeAccessMember(email){ return api('POST', '/api/access/remove', { email: email }); }
+  function saveAccessDefault(role){ return api('POST', '/api/access/default', { role: role }); }
 
   /* ---- where the published sites are (UX-001, owner decision #2) ----
      Every /api/ answer carries X-Public-Base: the ONE setting the server builds every public address from
@@ -1507,6 +1512,7 @@ window.RevampCore = (function(){
     fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent, restoreVersion: restoreVersion,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
+    fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
     uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,

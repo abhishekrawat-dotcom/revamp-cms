@@ -18,7 +18,7 @@ var MOD = path.join(__dirname, 'working-portal.js');
 var loaded = childProcess.spawnSync(process.execPath, ['-e', 'require(' + JSON.stringify(MOD) + ')'], { env: {}, encoding: 'utf8' });
 check('the module loads with no environment at all, and says nothing', loaded.status === 0 && !loaded.stdout && !loaded.stderr, { status: loaded.status, out: loaded.stdout, err: loaded.stderr });
 var requires = (fs.readFileSync(MOD, 'utf8').match(/require\(\s*['"][^'"]+['"]\s*\)/g) || []).map(function (r) { return r.replace(/^require\(\s*['"]|['"]\s*\)$/g, ''); });
-check('it requires only lib/et-events.js', same(requires, ['./et-events']), requires);
+check('it requires only lib/et-events.js and the access rule (lib/access-control.js: a person\'s portals)', same(requires, ['./et-events', './access-control']), requires);
 var timersBefore = process.getActiveResourcesInfo().filter(function (r) { return r === 'Timeout'; }).length;
 const wp = require('./working-portal');
 check('loading it starts no timer', process.getActiveResourcesInfo().filter(function (r) { return r === 'Timeout'; }).length === timersBefore);

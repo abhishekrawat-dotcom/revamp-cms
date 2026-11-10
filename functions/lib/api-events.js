@@ -357,13 +357,13 @@ function readEventIdFrom(value) {
    back on the web exactly as it was, which would otherwise be a way round approval.
    The wizard's discard (?discard=1) is not covered: it removes only a draft its own creator made under a day
    ago and nobody has worked on (discardBlocker), which is cancelling Create Event, not deleting an event.
-   approvers: config/approvals' list, read as lib/api.js approvalsConfig reads it (trimmed, lower case, e-mail
-   addresses only); this file cannot require lib/api.js, which loads it. */
+   approvers: the Approvers and Admins of Settings › Access (lib/access-control.js), as lib/api.js approvalsConfig
+   reads them; this file cannot require lib/api.js, which loads it. */
 function approversOf(fb) {
-  return fb.db.collection('config').doc('approvals').get().then(function (snap) {
-    var d = snap && snap.exists ? (snap.data() || {}) : {};
-    return (Array.isArray(d.approvers) ? d.approvers : []).map(function (e) { return String(e || '').trim().toLowerCase(); })
-      .filter(function (e) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e); });
+  var AC = require('./access-control');
+  return Promise.all([fb.db.collection('config').doc('approvals').get(), AC.readConfig(fb)]).then(function (r) {
+    var snap = r[0], d = snap && snap.exists ? (snap.data() || {}) : {};
+    return AC.approversWith(r[1], d.approvers);
   });
 }
 /* Resolves when the caller may `what` ("delete an event"); else rejects with 403 { code: 'not-an-approver',

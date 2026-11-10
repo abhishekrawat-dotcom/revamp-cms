@@ -131,7 +131,8 @@ function live(id) { return FB.files['events/' + id + '/published/index.html'] ? 
   ok(String(FB.files['events/lu-legacy/site/page.html']) === CLEAN && live('lu-legacy') === null, 'publish (page sent along): the saved site is not overwritten, nothing went live');
 
   /* asking for approval */
-  FB.docs['config/approvals'] = { required: true, allowSelf: false };
+  /* the approver: named in config/approvals, an Approver of Settings › Access until that list is saved */
+  FB.docs['config/approvals'] = { required: true, allowSelf: false, approvers: ['approver@timesinternet.in'] };
   FB.docs['events/lu-apv'] = { name: 'Approval', createdAt: NOW, site: { version: 2, templateId: 'gen-lu-apv' } };
   await save('events/lu-apv/site/versions/2/page.html', NOTED);
   await save('events/lu-apv/site/page.html', CLEAN);           // the version kept is what is read, not page.html

@@ -448,7 +448,7 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   /* ===== L.10 the report ===== */
   FB.docs['config/approvals'] = { approvers: ['boss@timesinternet.in'], required: true };
   r = await call('GET', '/api/ai-report?range=month', undefined, 'asha');
-  check('L.10 a team member who is not an approver: 403 not-an-approver, nothing of the report', r.status === 403 && r.body.code === 'not-an-approver' && !r.body.top && /Only an approver \(boss@timesinternet\.in\)/.test(r.body.error), r.body);
+  check('L.10 a team member who is not an approver: 403 not-an-approver, nothing of the report', r.status === 403 && r.body.code === 'not-an-approver' && !r.body.top && /Only an approver \(boss@timesinternet\.in, sachitanand\.rai@timesinternet\.in\)/.test(r.body.error), r.body);
   r = await call('POST', '/api/ai-report/resolve', { group: a.group, resolved: true }, 'asha');
   check('L.10 …and cannot mark a QA group resolved', r.status === 403 && !FB.docs['aiQaGroups/' + a.group]);
   r = await call('GET', '/api/ai-report?range=month', undefined, null);
@@ -505,7 +505,9 @@ var SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['Autotech Summit 2026'] }, {
   check('L.10 a group that is not one: 400', r.status === 400);
   FB.docs['config/approvals'] = { approvers: [], required: true };
   r = await call('GET', '/api/ai-report', undefined, 'asha');
-  check('L.10 while config/approvals names nobody, everyone signed in approves (lib/access.js), as for every approver-only action', r.status === 200 && r.body.range.range === 'week');
+  check('L.10 while config/approvals names nobody, a team member still does not see it: the first admin approves (Settings › Access)', r.status === 403 && r.body.code === 'not-an-approver');
+  r = await call('GET', '/api/ai-report', undefined, 'sachitanand.rai');
+  check('L.10 …the first admin does', r.status === 200 && r.body.range.range === 'week');
   check('L.10 the approver rule is lib/access.js notAnApprover', T.whyNot({ approvers: ['boss@timesinternet.in'] }, { email: 'Boss@timesinternet.in' }) === '' &&
     T.whyNot({ approvers: ['boss@timesinternet.in'] }, { email: 'asha@timesinternet.in' }) !== '');
   /* the range */

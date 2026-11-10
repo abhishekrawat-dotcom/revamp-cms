@@ -499,7 +499,7 @@ function seed(id, data) { DOCS['events/' + id] = Object.assign({ name: id, creat
     h.httpError(403, 'x', { code: 'not-an-approver' }).body.code === 'not-an-approver' && h.isEventId('pa-old') && !h.isEventId('a/b'));
   DOCS['config/approvals'] = { approvers: ['Owner@TimesInternet.in', 'not an address'] };
   var cfg = await h.approvalsConfig(FB);
-  check('… approvalsConfig reads config/approvals (addresses, lower-cased)', JSON.stringify(cfg.approvers) === JSON.stringify(['owner@timesinternet.in']), cfg);
+  check('… approvalsConfig reads config/approvals (addresses, lower-cased), with the first admin (Settings › Access)', JSON.stringify(cfg.approvers) === JSON.stringify(['owner@timesinternet.in', 'sachitanand.rai@timesinternet.in']), cfg);
 
   /* ---------- the routes that were there keep their shape ---------- */
   check('the existing routes are all still there', ['POST /api/event', 'GET /api/event', 'PATCH /api/event', 'GET /api/events', 'GET /api/et/portals', 'GET /api/et/events', 'POST /api/ingest-source'].every(function (rt) {

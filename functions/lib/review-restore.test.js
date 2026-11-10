@@ -159,7 +159,7 @@ function settle() { return new Promise(function (r) { setTimeout(r, 15); }); }
   ok(r.body.mayTakeDown === true && r.body.previousLive.version === 6, '…an approver may', JSON.stringify(r.body.previousLive));
 
   r = await call('POST', '/api/event/restore-version', { token: 'member', body: { eventId: 'rs-one', version: 6 } });
-  ok(r.status === 403 && r.body.code === 'not-an-approver' && /Only an approver \(boss@timesinternet\.in\)/.test(r.body.error), 'a member is refused, with who can', r.status + ' ' + r.text);
+  ok(r.status === 403 && r.body.code === 'not-an-approver' && /Only an approver \(boss@timesinternet\.in, sachitanand\.rai@timesinternet\.in\)/.test(r.body.error), 'a member is refused, with who can', r.status + ' ' + r.text);
   ok(FB.docs['events/rs-one'].publishedVersion === 7 && /V7-ONE/.test(liveText('rs-one')), '…and version 7 stays live');
   r = await call('POST', '/api/event/restore-version', { token: 'boss', body: { eventId: 'rs-one', version: 5 } });
   ok(r.status === 409 && r.body.code === 'never-live', 'a version never live cannot be put back that way', r.status + ' ' + r.text);
@@ -189,10 +189,12 @@ function settle() { return new Promise(function (r) { setTimeout(r, 15); }); }
   FB.docs['events/rs-off'] = { name: 'Off', createdAt: NOW, site: { version: 3 }, published: false, publishedVersion: 3, unpublishedAt: T2 };
   r = await call('POST', '/api/event/restore-version', { token: 'boss', body: { eventId: 'rs-off', version: 2 } });
   ok(r.status === 409 && r.body.code === 'not-live', 'a site that is not live: 409 not-live', r.status + ' ' + r.text);
-  /* with nobody named, everyone approves, so anyone may */
+  /* with nobody named, the first admin approves (Settings › Access): a member may not, the first admin may */
   FB.docs['config/approvals'] = { approvers: [], required: true };
   r = await call('POST', '/api/event/restore-version', { token: 'member', body: { eventId: 'rs-one', version: 7 } });
-  ok(r.status === 200 && FB.docs['events/rs-one'].publishedVersion === 7, 'no approvers named: a member may (the take-down rule\'s own reading)', r.status + ' ' + r.text);
+  ok(r.status === 403 && r.body.code === 'not-an-approver', 'no approvers named: a member (an Editor) may not', r.status + ' ' + r.text);
+  r = await call('POST', '/api/event/restore-version', { token: 'sachitanand.rai', body: { eventId: 'rs-one', version: 7 } });
+  ok(r.status === 200 && FB.docs['events/rs-one'].publishedVersion === 7, 'no approvers named: the first admin may', r.status + ' ' + r.text);
   FB.docs['config/approvals'] = { approvers: ['boss@timesinternet.in'], required: true };
 
   /* ================= UX-108: a request a newer live version has overtaken ================= */
@@ -271,31 +273,34 @@ function settle() { return new Promise(function (r) { setTimeout(r, 15); }); }
   r = await call('GET', '/api/event/approval?eventId=ap-ok&id=reqOk001', { token: 'boss' });
   ok(r.body.previousLive && r.body.previousLive.version === 1, 'and version 1 can be put back', JSON.stringify(r.body.previousLive));
 
-  /* ================= UX-108: the approval rule ================= */
+  /* ================= UX-108: the approval rule (who approves: Settings › Access) ================= */
   delete FB.docs['config/approvals'];
-  r = await call('PUT', '/api/settings/approvals', { token: 'member', body: { approvers: '', required: false } });
-  ok(r.status === 400 && r.body.code === 'approvers-needed', 'nobody named: approval cannot be switched off', r.status + ' ' + r.text);
-  r = await call('PUT', '/api/settings/approvals', { token: 'member', body: { approvers: '', allowSelf: true, required: true } });
-  ok(r.status === 400 && r.body.code === 'approvers-needed', 'nobody named: self-approval cannot be allowed', r.status + ' ' + r.text);
+  r = await call('PUT', '/api/settings/approvals', { token: 'member', body: { required: false } });
+  ok(r.status === 403 && r.body.code === 'not-an-approver' && r.body.error === 'Only an approver (sachitanand.rai@timesinternet.in) can change these settings.', 'nobody named: a member (an Editor) may not change the rule', r.status + ' ' + r.text);
   ok(!FB.docs['config/approvals'], '…and nothing was written');
-  r = await call('PUT', '/api/settings/approvals', { token: 'member', body: { approvers: 'Boss@timesinternet.in', required: true } });
-  ok(r.status === 200 && JSON.stringify(r.body.approvers) === '["boss@timesinternet.in"]', 'nobody named: anyone may name the first approver', r.status + ' ' + r.text);
+  r = await call('PUT', '/api/settings/approvals', { token: 'sachitanand.rai', body: { approvers: 'someone@timesinternet.in', allowSelf: true, required: true } });
+  ok(r.status === 200 && JSON.stringify(r.body.approvers) === '["sachitanand.rai@timesinternet.in"]' && r.body.allowSelf === true, 'the first admin may change it; an approvers list sent is not used', r.status + ' ' + r.text);
+  ok(FB.docs['config/approvals'] && FB.docs['config/approvals'].approvers === undefined, '…nor stored');
   await settle();
   var log = sub('config/approvals/log/');
-  ok(log.length === 1 && log[0].by === 'member@timesinternet.in' && JSON.stringify(log[0].before.approvers) === '[]' && JSON.stringify(log[0].after.approvers) === '["boss@timesinternet.in"]',
+  ok(log.length === 1 && log[0].by === 'sachitanand.rai@timesinternet.in' && log[0].before.allowSelf === false && log[0].after.allowSelf === true && log[0].before.approvers === undefined,
     'the change is recorded, before and after', JSON.stringify(log));
-  r = await call('PUT', '/api/settings/approvals', { token: 'member', body: { approvers: 'member@timesinternet.in', required: true } });
-  ok(r.status === 403 && r.body.code === 'not-an-approver' && /Only an approver \(boss@timesinternet\.in\) can change these settings\./.test(r.body.error), 'named: a member is refused', r.status + ' ' + r.text);
-  r = await call('PUT', '/api/settings/approvals', { token: 'boss', body: { approvers: 'boss@timesinternet.in', required: false } });
+  /* approvers config/approvals named before Access are its Approvers until the access list is saved */
+  FB.docs['config/approvals'] = { approvers: ['boss@timesinternet.in'], allowSelf: true, required: true };
+  r = await call('PUT', '/api/settings/approvals', { token: 'member', body: { required: true } });
+  ok(r.status === 403 && r.body.code === 'not-an-approver' && /Only an approver \(boss@timesinternet\.in, sachitanand\.rai@timesinternet\.in\) can change these settings\./.test(r.body.error), 'named: a member is refused', r.status + ' ' + r.text);
+  r = await call('PUT', '/api/settings/approvals', { token: 'boss', body: { allowSelf: true, required: false } });
   ok(r.status === 200 && r.body.required === false, 'an approver may switch approval off', r.status + ' ' + r.text);
-  r = await call('PUT', '/api/settings/approvals', { token: 'boss', body: { approvers: 'boss@timesinternet.in', required: false } });
+  ok(JSON.stringify(FB.docs['config/approvals'].approvers) === '["boss@timesinternet.in"]', '…and the list named before is kept as it was');
+  r = await call('PUT', '/api/settings/approvals', { token: 'boss', body: { allowSelf: true, required: false } });
   await settle();
   log = sub('config/approvals/log/');
   ok(log.length === 2 && log.some(function (l) { return l.before.required === true && l.after.required === false && l.by === 'boss@timesinternet.in'; }), 'switching it off is recorded; saving the same again is not', JSON.stringify(log));
   r = await call('GET', '/api/settings/approvals', { token: 'member' });
-  ok(r.status === 200 && r.body.canEdit === false && /Only an approver/.test(r.body.whyNot) && r.body.history.length === 2 && r.body.me === 'member@timesinternet.in', 'GET: read-only for a member, with the history', r.text.slice(0, 400));
+  ok(r.status === 200 && r.body.canEdit === false && /Only an approver/.test(r.body.whyNot) && r.body.history.length === 2 && r.body.me === 'member@timesinternet.in' && r.body.approversFrom === 'access', 'GET: read-only for a member, with the history', r.text.slice(0, 400));
   r = await call('GET', '/api/settings/approvals', { token: 'boss' });
-  ok(r.body.canEdit === true && r.body.whyNot === '' && Array.isArray(r.body.approvers), 'GET: an approver may change it', r.text.slice(0, 300));
+  ok(r.body.canEdit === true && r.body.whyNot === '' && JSON.stringify(r.body.approvers) === '["boss@timesinternet.in","sachitanand.rai@timesinternet.in"]', 'GET: an approver may change it', r.text.slice(0, 300));
+  FB.docs['config/approvals'] = { approvers: ['boss@timesinternet.in'], required: true };
 
   /* ================= UX-115: the developer bridge is not served ================= */
   ok(access.isServableFile('preview-draft.html') === false && access.isServableFile('PREVIEW-DRAFT.HTML') === false, 'preview-draft.html is not served (any case)');
@@ -385,14 +390,14 @@ function pages() {
   /* Settings › Publishing approvals */
   var SET = read('settings.html'), SJS = read('settings.js');
   ok(SET.length < 4000 && SET.indexOf('location.replace(') !== -1 && /if \(!id \|\| tab === 'approvals'\) return;/.test(SET), 'settings.html: still sends old event links on, else the approval rule');
-  ok(SET.indexOf('Revamp CMS') === -1 && SET.indexOf('Oneworld') === -1 && /<title>Publishing approvals &mdash; EventSphere<\/title>/.test(SET), 'settings.html: the product\'s name');
+  ok(SET.indexOf('Revamp CMS') === -1 && SET.indexOf('Oneworld') === -1 && /<title>Settings &mdash; EventSphere<\/title>/.test(SET), 'settings.html: the product\'s name');
   es5('settings.js', SJS);
   ok(/Turn off approval for every event\? Publish will then go live immediately/.test(SJS) && /if \(data\.required && !next\.required\) return ask\(next\);/.test(SJS) && /getElementById\('pa-keep'\)\.focus\(\)/.test(SJS), 'settings.js: switching approval off asks first, the safe answer focused');
   ok(/d\.canEdit\s*\?/.test(SJS) && /esc\(d\.whyNot \|\| 'Only an approver can change this\.'\)/.test(SJS), 'settings.js: read-only for a non-approver, with why');
   var S = vm.runInNewContext(fnSrc(SJS, 'list') + fnSrc(SJS, 'changeWords') + '; ({ words: changeWords })', {});
   ok(S.words({ approvers: [], required: true, allowSelf: false }, { approvers: ['boss@x.in'], required: true, allowSelf: false }) === 'approvers anyone on the team → boss@x.in', 'settings.js: a change in words (approvers)', S.words({ approvers: [] }, { approvers: ['boss@x.in'] }));
   ok(S.words({ approvers: ['a@x.in'], required: true }, { approvers: ['a@x.in'], required: false }) === 'approval switched off', 'settings.js: a change in words (switched off)');
-  ok(read('publish-flow.js').indexOf('(Settings › Publishing approvals)') !== -1 && read('publish-flow.js').indexOf('review page › Who approves') === -1, 'the publish window points to Settings for adding an approver');
+  ok(read('publish-flow.js').indexOf('(Settings › Access)') !== -1 && read('publish-flow.js').indexOf('review page › Who approves') === -1, 'the publish window points to Settings › Access for adding an approver');
 
   /* the console */
   var CON = read('edit-event.html');

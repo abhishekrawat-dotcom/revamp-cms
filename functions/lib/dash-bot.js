@@ -3021,11 +3021,13 @@ function handleHistory(req, res) {
       return turnsFor(userRefOf(fb, decoded), CAPS.historyOwn).then(function (turns) { H.sendJson(res, 200, { turns: turns.map(shapeTurn) }); })
         .catch(function (err) { H.sendFailure(res, 'dash-bot history', err, 'The conversation could not be loaded.'); });
     }
-    /* everyone's, for the approvers only; with no approvers named, for nobody. This read spans every person, so
-       it is paged: the 50 people who wrote last, or one person with ?uid= */
+    /* everyone's, for the approvers only (Approvers and Admins, Settings › Access) — and only one who works on every
+       portal, since people's chats span them all. This read spans every person, so it is paged: the 50 people who
+       wrote last, or one person with ?uid= */
     H.approvalsConfig(fb).then(function (cfg) {
       var me = String(decoded.email || '').toLowerCase();
       if (!cfg.approvers.length || cfg.approvers.indexOf(me) === -1) return H.sendJson(res, 403, { code: 'not-approver', error: MSG.notApprover });
+      if (decoded.access && !require('./access-control').everywhere(decoded.access)) return H.sendJson(res, 403, { code: 'not-your-portal', error: require('./access-control').everywhereSentence() });
       var one = String(q.get('uid') || '');
       var col = fb.db.collection('dashChats');
       if (one) {

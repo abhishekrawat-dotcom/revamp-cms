@@ -237,10 +237,12 @@ function pickerPage(who) {
   seed('pi-has', { name: 'Banking Forum', portal: 'bfsi', portalFrom: 'set' }, [HR_RECORD]);
   seed('pi-deleted', { name: 'Gone', deletedAt: '2026-10-02T00:00:00.000Z' }, [HR_RECORD]);
 
+  /* filling in portals is for approvers (Settings › Access): until that list is saved, those config/approvals names */
+  DOCS['config/approvals'] = { approvers: ['maker@timesinternet.in'] };
   r = await call('GET', '/api/events/portal-evidence');
   var rep = r.json || {};
   function itemOf(report, id) { return ((report && report.items) || []).filter(function (i) { return i.eventId === id; })[0] || null; }
-  check('2 the evidence report: 200, canFill (no approvers named), every live named event', r.status === 200 && rep.canFill === true && Array.isArray(rep.items) &&
+  check('2 the evidence report: 200, canFill (an approver), every live named event', r.status === 200 && rep.canFill === true && Array.isArray(rep.items) &&
     !itemOf(rep, 'pi-deleted') && !!itemOf(rep, 'pi-none') && !!itemOf(rep, 'pi-hr'), [r.status, rep.counts]);
   check('2 certain from the previous edition\'s ET record', (itemOf(rep, 'pi-cert-record') || {}).certain === 'hr' && itemOf(rep, 'pi-cert-record').from === 'et-record' &&
     itemOf(rep, 'pi-cert-record').certainName === 'ETHRWorld', itemOf(rep, 'pi-cert-record'));
@@ -289,7 +291,7 @@ function pickerPage(who) {
   DOCS['config/approvals'] = { approvers: ['owner@timesinternet.in'] };
   seed('pi-cert-late', { name: 'People Summit 2025' }, [HR_RECORD]);
   r = await call('GET', '/api/events/portal-evidence');
-  check('2 with approvers named, the report says this person cannot fill in', r.status === 200 && r.json.canFill === false && JSON.stringify(r.json.approvers) === JSON.stringify(['owner@timesinternet.in']), r.json && r.json.canFill);
+  check('2 with approvers named, the report says this person cannot fill in', r.status === 200 && r.json.canFill === false && JSON.stringify(r.json.approvers) === JSON.stringify(['owner@timesinternet.in', 'sachitanand.rai@timesinternet.in']), r.json && r.json.canFill);
   r = await call('POST', '/api/events/portal-backfill', { items: [{ eventId: 'pi-cert-late', portal: 'hr' }] });
   check('2 … and the backfill answers 403 not-an-approver, writing nothing', r.status === 403 && r.json.code === 'not-an-approver' && !DOCS['events/pi-cert-late'].portal, r.json);
   r = await call('POST', '/api/events/portal-backfill', { items: [{ eventId: 'pi-cert-late', portal: 'hr' }] }, 'owner');

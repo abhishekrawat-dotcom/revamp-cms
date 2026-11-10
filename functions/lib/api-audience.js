@@ -635,7 +635,7 @@ function handlePublicSiteData(req, res) {
           sendPublicJson(res, 200, data, { 'Cache-Control': 'public, max-age=30' });
         });
       }
-      return adminFromRequest(req).then(function (who) {
+      return adminFromRequest(req, { eventId: eventId }).then(function (who) {
         if (!who) return sendPublicJson(res, 404, { error: NOT_AVAILABLE });
         return buildSiteData(fb, eventId, ev).then(function (data) { sendPublicJson(res, 200, data); });   // no-store
       });
@@ -1150,7 +1150,7 @@ function handleRegister(req, res) {
           var ev = liveEvent(snap);
           if (!ev) throw registerError(404, NOT_AVAILABLE, 'unavailable');
           // a test from the preview is an admin's privilege; a draft takes no registrations from anyone else
-          var allowed = preview ? adminFromRequest(req) : Promise.resolve(null);
+          var allowed = preview ? adminFromRequest(req, { eventId: eventId }) : Promise.resolve(null);
           return allowed.then(function (who) {
             if (preview && !who) throw registerError(401, 'Sign in to test registration from the preview.', 'sign-in');
             if (!preview && ev.published !== true) throw registerError(404, NOT_AVAILABLE, 'unavailable');
@@ -1916,15 +1916,17 @@ function insightTotals(fb, eventId, ev) {
 }
 
 function handleInsights(req, res) {
-  requireAdmin(req, res, function (fb) {
+  requireAdmin(req, res, function (fb, decoded) {
     guard(res, sendJson, 'load these numbers', function () {
       var win = insightsWindow(query(req), Date.now());
       if (win.error) return sendJson(res, 400, { error: win.error });
       var days = win.days, nDays = days.length;
 
       fb.db.collection('events').limit(INSIGHTS_EVENT_LIMIT)
-        .select('name', 'counters', 'createdAt', 'deletedAt', 'published', 'updatedAt').get().then(function (snap) {
-          var events = snap.docs.filter(function (d) { return liveEvent(d) && line(d.get('name'), 300); });
+        .select('name', 'counters', 'createdAt', 'deletedAt', 'published', 'updatedAt', 'portal', 'createdBy').get().then(function (snap) {
+          /* someone who works in chosen portals counts only their portals' events (lib/access-control.js) */
+          var access = decoded && decoded.access, AC = require('./access-control');
+          var events = snap.docs.filter(function (d) { return liveEvent(d) && line(d.get('name'), 300) && (!access || AC.eventOk(access, d.data() || {})); });
           return mapLimit(events, 25, function (d) {
             var ev = d.data() || {};
             return insightTotals(fb, d.id, ev).then(function (a) {

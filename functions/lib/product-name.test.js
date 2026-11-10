@@ -120,7 +120,8 @@ check('the sweep would catch an old name in a title, a message or markup', OLD.t
 
 /* the sentences that named it */
 check('sign-in: "Sign in to ETB2B EventSphere", and the wrong-account and denied messages name it', has('index.html', /<h2>Sign in to ETB2B EventSphere<\/h2>/) &&
-  has('auth.js', /can’t sign in to ETB2B EventSphere\./) && require('./access').deniedMessage() === 'Only @' + access.ALLOWED_DOMAIN + ' Google accounts can use ETB2B EventSphere.');
+  has('auth.js', /can’t sign in to ETB2B EventSphere\./) && /has not been given access to ETB2B EventSphere\./.test(require('./access').deniedMessage()) &&
+  /no longer has access to ETB2B EventSphere\./.test(require('./access').deniedMessage('blocked')));
 var gemini = read('functions/lib/gemini.js');
 check('"Tell the ETB2B EventSphere team" when AI is not set up', (gemini.match(/Tell the ETB2B EventSphere team\./g) || []).length === 2 &&
   require('./chat-picture').SENTENCES['ai-config'].indexOf('Tell the ETB2B EventSphere team.') !== -1);

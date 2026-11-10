@@ -555,6 +555,19 @@ function pickDownload(body, ev) {
 /* ---------- the routes ---------- */
 
 function queryOf(req) { return new URLSearchParams(String(req.url || '').split('?')[1] || ''); }
+/* An upload's raw bytes: cb(buffer), or `tooLarge` answered 413 here. A body already read (req.rawBody: Firebase
+   Functions, or lib/http.js's portal check) is taken as it is. */
+function rawUpload(req, res, limit, tooLarge, cb) {
+  if (req.rawBody) return req.rawBody.length > limit ? sendJson(res, 413, tooLarge) : cb(Buffer.from(req.rawBody));
+  var chunks = [], size = 0, refused = false;
+  req.on('data', function (c) {
+    if (refused) return;
+    size += c.length;
+    if (size > limit) { refused = true; sendJson(res, 413, tooLarge); req.destroy(); return; }
+    chunks.push(c);
+  });
+  req.on('end', function () { if (!refused) cb(Buffer.concat(chunks)); });
+}
 function fail(res, what, err) {
   if (err instanceof engine.AiUnavailable) return sendJson(res, 503, { error: err.message, code: 'ai-unavailable' });
   H.sendFailure(res, 'promo mailer ' + what, err, 'Something went wrong with the mailer. Please try again.');
@@ -703,16 +716,7 @@ function handleImport(req, res) {
   H.withAdmin(req, res, function (fb) {
     var eventId = H.eventIdOr400(res, queryOf(req).get('eventId'));
     if (!eventId) return;
-    var chunks = [], size = 0, refused = false;
-    req.on('data', function (c) {
-      if (refused) return;
-      size += c.length;
-      if (size > IMPORT_MAX) { refused = true; sendJson(res, 413, { error: 'That file is larger than 2 MB.' }); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', function () {
-      if (refused) return;
-      var raw = Buffer.concat(chunks);
+    rawUpload(req, res, IMPORT_MAX, { error: 'That file is larger than 2 MB.' }, function (raw) {
       if (!raw.length) return sendJson(res, 400, { error: 'empty upload' });
       var text = raw.toString('utf8');
       /* inside the chain: this runs in a stream event, where a throw would be caught by nobody */
@@ -972,16 +976,7 @@ function handleIconUpload(req, res) {
   H.withAdmin(req, res, function (fb, decoded) {
     var q = queryOf(req), eventId = H.eventIdOr400(res, q.get('eventId'));
     if (!eventId) return;
-    var chunks = [], size = 0, refused = false;
-    req.on('data', function (c) {
-      if (refused) return;
-      size += c.length;
-      if (size > ICON_MAX) { refused = true; sendJson(res, 413, { error: 'That file is too large. An icon renders at 26–72px — keep it under 2MB.' }); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', function () {
-      if (refused) return;
-      var raw = Buffer.concat(chunks);
+    rawUpload(req, res, ICON_MAX, { error: 'That file is too large. An icon renders at 26–72px — keep it under 2MB.' }, function (raw) {
       if (!raw.length) return sendJson(res, 400, { error: 'empty upload' });
       var sharp;
       try { sharp = require('sharp'); } catch (e) { return sendJson(res, 503, { error: 'Icons cannot be uploaded right now.' }); }
@@ -1059,16 +1054,7 @@ function handlePicture(req, res) {
   H.withAdmin(req, res, function (fb, decoded) {
     var eventId = H.eventIdOr400(res, queryOf(req).get('eventId'));
     if (!eventId) return;
-    var chunks = [], size = 0, refused = false;
-    req.on('data', function (c) {
-      if (refused) return;
-      size += c.length;
-      if (size > MAIL_PICTURE_MAX) { refused = true; sendJson(res, 413, { error: MAIL_PICTURE_TOO_LARGE }); req.destroy(); return; }
-      chunks.push(c);
-    });
-    req.on('end', function () {
-      if (refused) return;
-      var raw = Buffer.concat(chunks);
+    rawUpload(req, res, MAIL_PICTURE_MAX, { error: MAIL_PICTURE_TOO_LARGE }, function (raw) {
       /* inside the chain: this runs in a stream event, where a throw would be caught by nobody */
       Promise.resolve().then(function () {
         if (!raw.length) return sendJson(res, 400, { error: 'Choose a picture to upload.' });
