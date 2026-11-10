@@ -644,6 +644,23 @@ var NEW_RE = /\b(?:new|another|fresh|different|replace[sd]?|replacing|swap|chang
 /* with a picture attached, a new one only when the words say "new picture" or "make a picture": "use this as
    the new hero banner" and "replace the background with this picture" place the attachment */
 var ATTACHED_ASK_RE = /\bnew\s+(?:[\p{L}-]+\s+){0,2}?(?:pictures?|pics?|photos?|photographs?|images?|illustrations?|artworks?|visuals?|graphics?)\b|\b(?:make|create|generate|draw|design|produce)\s+(?:me\s+|us\s+)?(?:a|an|one|another)\s+(?:[\p{L}-]+\s+){0,2}?(?:pictures?|pics?|photos?|photographs?|images?|illustrations?|artworks?|visuals?|graphics?)\b|(?:नया|नई|नए)\s*(?:तस्वीर|फ़ोटो|फोटो|चित्र)|(?:तस्वीर|फ़ोटो|फोटो|चित्र)[^.?!]{0,30}बना/iu;
+/* ... or a clear making word before a picture, or before a place on the page (owner, 10 Nov 2026: "create hero
+   background image using sun temple wheel and the attached jungle view" was answered "your message did not ask for
+   one"): create / generate / design / draw / produce / render … "image", "background", "banner", "hero". "make"
+   counts only when it is not "make this / it / the …", which places the attachment ("make this the hero
+   background"); and the words in between may not point at the attachment ("design the hero using this picture"
+   places it). Through a place on the page alone (no picture word) it is not about text, buttons or a colour. */
+var ATT_VERB = '(?:(?:create|generate|draw|design|produce|render|craft|compose|paint|illustrate)(?!\\s+(?:this|that|it|these|those)\\b)' +
+  '|make(?!\\s+(?:this|that|it|these|those|the|my|our|its)\\b))\\s+(?:me\\s+|us\\s+)?(?:(?!(?:this|that|these|those|it|attached|uploaded)\\b)[\\p{L}-]+\\s+){0,3}?';
+var ATTACHED_MAKE_PIC_RE = new RegExp('\\b' + ATT_VERB + '(?:pictures?|pics?|photos?|photographs?|images?|illustrations?|artworks?|visuals?|graphics?|wallpapers?)\\b', 'iu');
+var ATTACHED_MAKE_SPOT_RE = new RegExp('\\b' + ATT_VERB + '(?:backgrounds?|backdrops?|banners?|hero|cover|header)\\b', 'iu');
+/* "… using this picture", "… with the attached image": the attachment itself is to be used, as it is ("inspired by
+   the attached photo" and "from this view" ask for a new one in its mood) */
+var USE_ATTACHED_RE = /\b(?:using|use|with)\s+(?:this|that|the\s+attached|the\s+uploaded|my|our)\s+(?:pictures?|pics?|photos?|photographs?|images?|attachments?|one)\b/i;
+function attachedAsk(s) {
+  return ATTACHED_ASK_RE.test(s) || ATTACHED_MAKE_PIC_RE.test(s) ||
+    (ATTACHED_MAKE_SPOT_RE.test(s) && !UI_RE.test(s) && !COLOUR_RE.test(s) && !SPOT_TONE_RE.test(s) && !USE_ATTACHED_RE.test(s));
+}
 /* a short follow-up to a picture just made ("brighter", "try another", "a different one"); after one that
    failed, only a retry ("again") */
 var FOLLOW_UP_RE = /\b(?:again|another|brighter|darker|warmer|cooler|softer|calmer|sharper|bolder|redo|retry)\b/i;
@@ -654,7 +671,7 @@ var FOLLOW_UP_WORDS = 12;
 /* lastTurnPicture: the newest stored turn's newPicture, or null */
 function pictureAsked(said, attached, last) {
   var s = String(said || '').replace(NEG_RE, ' ').replace(FREE_RE, ' ');
-  if (attached) return ATTACHED_ASK_RE.test(s);
+  if (attached) return attachedAsk(s);
   if (PIC_NOUN_RE.test(s)) return !((UI_RE.test(s) || COLOUR_PROP_RE.test(s)) && !NEW_RE.test(s));
   if ((MAKE_SPOT_RE.test(s) || HINDI_SPOT_RE.test(s)) && !UI_RE.test(s) && !COLOUR_RE.test(s) && !SPOT_TONE_RE.test(s)) return true;
   if (!last || words(s).length > FOLLOW_UP_WORDS || UI_RE.test(s)) return false;

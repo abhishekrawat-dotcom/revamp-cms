@@ -318,6 +318,23 @@ function entry(sectionId, placement, extra) {
     var x = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: t, attachmentCount: 1, focus: { sectionId: 'agenda' } }));
     check(x.ask === null && x.reply === cp.SENTENCES.notAsked, 'with a picture attached, "' + t + '" places the attachment: no new picture', J(x));
   });
+  /* owner, 10 Nov 2026: with a picture attached, a clear making word asks for a new picture, even with no "a" or "new"
+     ("create hero background image using sun temple wheel and the attached jungle view" was answered "your message
+     did not ask for one"); the ways of placing the attachment still place it */
+  ['create hero background image using sun temple wheel and the attached jungle view', 'generate a hero banner inspired by the attached photo',
+    'design the hero background from this jungle view', 'make hero background image using the attached', 'draw an illustration like the attached one',
+    'create a hero backdrop in the mood of this picture', 'make me a banner with this forest feel', 'create a hero background from this photo'
+  ].forEach(function (t) {
+    var x = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: t, attachmentCount: 1, focus: { sectionId: 'hero' } }));
+    check(x.ask && x.ask.n === 2, 'with a picture attached, "' + t + '" makes a new picture, numbered after the attachment', J(x));
+  });
+  ['use this as the hero background', 'make this the hero background', 'make it the agenda background', 'put this image in the hero',
+    'set the attached as the banner', 'design the hero using this picture', 'create the hero with this image as its background',
+    'replace the hero image with the attached one', 'make the banner text bigger', 'design the banner text in bold', 'make the hero background navy'
+  ].forEach(function (t) {
+    var x = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: t, attachmentCount: 1, focus: { sectionId: 'hero' } }));
+    check(x.ask === null && x.reply === cp.SENTENCES.notAsked, 'with a picture attached, "' + t + '" makes no new picture', J(x));
+  });
   /* the ways of asking that do make one */
   [['make a new background for the agenda', null], ['give the agenda a new background', null], ['create a background image here', null],
     ['a different one', MADE_BEFORE], ['another one please', MADE_BEFORE], ['try again', { sectionId: 'agenda', placement: 'background', state: 'failed' }],
