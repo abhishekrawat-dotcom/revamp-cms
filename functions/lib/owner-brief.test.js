@@ -87,4 +87,13 @@ check('plan and copy lines say the points are never shown', /DIRECTIONS that ste
 check('no rule asks for a band of the points', !/include a band/i.test(pl + cl));
 
 if (failed) { console.error('owner-brief: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
+/* owner, 10 Nov 2026: CISO Secufest Summit's buttons read "Let's Discuss (partner and engag" */
+[["Let's Discuss (partner and engagement)", "Let's Discuss"], ['Book a meeting.', 'Book a meeting'], ['Talk to us [sponsors only]', 'Talk to us'],
+  ['Request a private briefing with our partnerships and events team today', 'Request a private briefing'],
+  ['Download the brochure and agenda and speaker list', 'Download the brochure and agenda']].forEach(function (c) {
+  var got = ob.buttonWords(c[0]);
+  check('a button says "' + c[1] + '" for "' + c[0] + '" (never cut inside a word)', got === c[1], got);
+});
+var act = ob.normalise({ mainAction: "Let's Discuss (partner and engagement)" });
+check('the brief\'s own main action becomes that button', act && act.action && act.action.kind === 'custom' && act.action.label === "Let's Discuss", act && act.action);
 console.log('owner-brief: all ' + passed + ' checks passed');

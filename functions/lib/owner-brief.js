@@ -131,13 +131,29 @@ var ACTIONS = [
   { kind: 'sponsor', label: 'Become a Partner', re: /\b(become a (?:sponsor|partner)|sponsor\w*|partner with us|partnership)\b/i },
   { kind: 'register', label: 'Register Now', re: /\b(regist\w*|sign[- ]?up|book (?:a |your )?(?:seat|pass|ticket)\w*|buy (?:a )?(?:pass|ticket)\w*)\b/i }
 ];
+/* A button's words from the owner's own: what follows in brackets says what it is for, not what the button says
+   ("Let's Discuss (partner and engagement)" is "Let's Discuss"), and a long one is cut between words, never inside
+   one (owner, 10 Nov 2026: CISO Secufest Summit's buttons read "Let's Discuss (partner and engag"). */
+var BUTTON_CHARS = 32;
+function buttonWords(v) {
+  var s = String(v || '').replace(/\s+/g, ' ').trim();
+  var bare = s.replace(/\s*[(\[][^)\]]*[)\]]?\s*$/, '').trim();
+  if (bare.length >= 3) s = bare;
+  s = s.replace(/[.!,;:–—-]+$/, '').trim();
+  if (s.length <= BUTTON_CHARS) return s;
+  var cut = s.slice(0, BUTTON_CHARS + 1), at = cut.lastIndexOf(' ');
+  var out = at > 8 ? cut.slice(0, at) : s.slice(0, BUTTON_CHARS), was;
+  /* never ending on a small word the cut left hanging ("… briefing with") */
+  do { was = out; out = out.replace(/[\s,;:&–—-]+(?:and|or|with|to|for|of|the|a|an|our|your|in|on|at|by|from|&)?$/i, '').trim(); } while (out !== was);
+  return out;
+}
 function readActions(v) {
   var k = kindsIn(v, ACTIONS);
   if (k.length >= 4) return [];                                   // the option list itself, not a choice
   var out = k.slice(0, 2).map(function (kind) { return { kind: kind, label: ACTIONS.filter(function (a) { return a.kind === kind; })[0].label }; });
   if (!out.length && v) {
     /* the owner's own words for it ("Book a meeting"): the button says that */
-    var label = v.replace(/[.!]+$/, '').slice(0, 32).trim();
+    var label = buttonWords(v);
     if (label) out.push({ kind: 'custom', label: label.charAt(0).toUpperCase() + label.slice(1) });
   }
   return out;
@@ -279,4 +295,4 @@ function copyLines(o) {
   return l;
 }
 
-module.exports = { KEYS, fromText, withoutHeadings, normalise, merge, buttons, planLines, copyLines };
+module.exports = { KEYS, fromText, withoutHeadings, normalise, merge, buttons, planLines, copyLines, buttonWords };
