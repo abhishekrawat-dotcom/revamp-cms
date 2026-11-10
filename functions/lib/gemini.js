@@ -172,6 +172,28 @@ function unusableReason(data) {
   return null;
 }
 
+/* Gemini refuses an empty string among a field's choices ("response_schema.properties[goTo].enum[6]: cannot be
+   empty", 400), and the routes' schemas use one for "none" — the site editor's goTo, the events side's filters,
+   categories and date modes, page generation's mode. So whenever Claude could not answer one of those, the fallback
+   was refused too, every time (owner, 10 Nov 2026: "adapt the theme … from this presentation" — Claude answered in
+   prose, Gemini refused the request). The empty choice is sent as NONE_CHOICE and turned back into '' in the answer. */
+var NONE_CHOICE = '(none)';
+function forGemini(schema) {
+  if (Array.isArray(schema)) return schema.map(forGemini);
+  if (!schema || typeof schema !== 'object') return schema;
+  var out = {};
+  Object.keys(schema).forEach(function (k) {
+    out[k] = k === 'enum' && Array.isArray(schema.enum) ? schema.enum.map(function (v) { return v === '' ? NONE_CHOICE : v; }) : forGemini(schema[k]);
+  });
+  return out;
+}
+function fromGemini(v) {
+  if (v === NONE_CHOICE) return '';
+  if (Array.isArray(v)) return v.map(fromGemini);
+  if (v && typeof v === 'object') Object.keys(v).forEach(function (k) { v[k] = fromGemini(v[k]); });
+  return v;
+}
+
 function callGeminiJson(prompt, schema, opts) {
   opts = opts || {};
   var parts = [{ text: String(prompt) }];
@@ -188,7 +210,7 @@ function callGeminiJson(prompt, schema, opts) {
     if (opts.images.length > MAX_IMAGES) throw new Error('callGeminiJson: at most ' + MAX_IMAGES + ' pictures, not ' + opts.images.length + '.');
     opts.images.forEach(function (image) { parts.push(imagePart(image, 'callGeminiJson')); });
   }
-  var generationConfig = { responseMimeType: 'application/json', responseSchema: schema };
+  var generationConfig = { responseMimeType: 'application/json', responseSchema: forGemini(schema) };
   if (opts.maxOutputTokens > 0) generationConfig.maxOutputTokens = opts.maxOutputTokens;
 
   return call('json', GEMINI_TEXT_MODEL, { contents: [{ parts: parts }], generationConfig: generationConfig }, String(prompt).length, opts, function (data) {
@@ -201,7 +223,7 @@ function callGeminiJson(prompt, schema, opts) {
     var parsed;
     try { parsed = JSON.parse(text); } catch (e) { return { code: 'ai-bad-output', detail: 'the model text was not JSON (' + text.length + ' characters)' }; }
     if (!parsed || typeof parsed !== 'object') return { code: 'ai-bad-output', detail: 'the model text was JSON but not an object' };
-    return { parsed: parsed };
+    return { parsed: fromGemini(parsed) };
   });
 }
 
@@ -239,4 +261,4 @@ function callGeminiImage(prompt, opts) {
   });
 }
 
-module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES, IMAGE_ASPECTS };
+module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES, IMAGE_ASPECTS, forGemini, fromGemini, NONE_CHOICE };
