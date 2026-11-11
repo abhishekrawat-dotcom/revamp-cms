@@ -220,7 +220,7 @@
       else if (error && !answer) html += '<p class="hvu-err" role="alert">' + esc(error) + '</p><button type="button" class="btn btn-secondary btn-sm" id="' + id + '-retry">Try again</button>';
       else if (answer.site && answer.site.host === 'none') {
         html += '<p class="hvu-note">This site’s design has no banner a video can play behind (an imported design). ' +
-          'A banner video works on the ET templates and on sites designed with AI.</p>';
+          'A banner video works on the ETB2B templates and on sites designed with AI.</p>';
       } else {
         var v = hv();
         if (!wide || !v) html += '<p class="hvu-hint hvu-intro">A silent video that plays in a loop behind the top of the site, under an overlay that keeps its words readable. Visitors on phones, on slow connections or who ask for less motion see its still picture instead.</p>';

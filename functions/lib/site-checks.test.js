@@ -205,7 +205,7 @@ var AWARD = page('<section data-rv-section="awards-night" id="awards-night"><h2>
   '<section data-rv-section="agenda" id="agenda"><a class="btn" href="#register" data-register-cta>Buy passes</a></section>', 'id="gen" data-rv-template-id="gen-aw" class="microsite rv-generated"');
 var aw = SC.repair(AWARD, kit, {});
 var cer = tagOf(aw.html, /<a class="aw-cer-btn"[^>]*>[^<]*<\/a>/);
-ok(/>Request an invitation<\/a>$/.test(cer) && /data-rv-form-note="Seats are confirmed by the ET team; there is no online payment\."/.test(cer) && /data-rv-form-source="ceremony-invitation"/.test(cer), 'the ceremony\'s button asks for an invitation, and its form says seats are confirmed with no online payment', cer);
+ok(/>Request an invitation<\/a>$/.test(cer) && /data-rv-form-note="Seats are confirmed by the ETB2B team; there is no online payment\."/.test(cer) && /data-rv-form-source="ceremony-invitation"/.test(cer), 'the ceremony\'s button asks for an invitation, and its form says seats are confirmed with no online payment', cer);
 ok(SC.inspect(AWARD, kit).payment.length === 2 && SC.inspect(aw.html, kit).payment.map(function (p) { return p.label; }).join() === 'Buy passes', 'a button promising a sale is found; the ceremony\'s, put right, no longer is');
 ok(SC.repair(aw.html, kit, {}).html === aw.html, 'and again changes nothing');
 

@@ -33,12 +33,12 @@ const etEvents = require('./et-events');
 
 /* ---------- fixtures, in the shapes map.md §2 found on the real events ---------- */
 function ET(sub, p) { return 'https://' + sub + '.economictimes.indiatimes.com/' + (p || 'x'); }
-/* a previous-edition source whose ET record was read (previous.portal is pick.portal || portalOf(url)) */
+/* a previous-edition source whose ETB2B record was read (previous.portal is pick.portal || portalOf(url)) */
 function prevSrc(portal, url, award) {
   var u = url || ET(portal, 'last-year');
   return { type: 'previousEdition', url: u, fetchedAt: '2026-10-01T00:00:00Z', previous: { portal: portal, id: '4276', name: 'Last year', url: u, speakers: [{ name: 'A' }] }, award: award || null };
 }
-/* an ET link whose records ET's API did not return (previous: null) */
+/* an ETB2B link whose records ET's API did not return (previous: null) */
 function linkSrc(type, url) { return { type: type, url: url, fetchedAt: '2026-10-01T00:00:00Z', previous: null, award: null }; }
 function compSrc(url) { return { type: 'competitor', url: url, previous: null, award: null }; }
 function ref(type, url) { return { reference: { type: type, url: url } }; }
@@ -56,15 +56,15 @@ var v;
 
 /* digiplus-awards-2027: previous {portal:'brandequity'} and award {portal:'brandequity'} */
 v = E({ name: 'DigiPlus Awards 2027' }, [prevSrc('brandequity', ET('brandequity', 'digiplus-awards-2026'), { portal: 'brandequity', awardId: '382', micrositeId: '4276' })]);
-check('digiplus-awards: brandequity, from its ET record', v.certain === true && v.portal === 'brandequity' && v.from === 'et-record', v);
+check('digiplus-awards: brandequity, from its ETB2B record', v.certain === true && v.portal === 'brandequity' && v.from === 'et-record', v);
 check('digiplus-awards: the record and the link are both listed, the record first, each once', same(v.evidence.map(function (e) { return e.kind; }), ['et-record', 'et-link']), v.evidence);
-check('digiplus-awards: said in words', v.evidence[0].where === 'its previous edition\'s ET record' && v.evidence[1].where === 'the ET link of its previous edition', v.evidence);
+check('digiplus-awards: said in words', v.evidence[0].where === 'its previous edition\'s ETB2B record' && v.evidence[1].where === 'the ETB2B link of its previous edition', v.evidence);
 check('digiplus-awards: no conflict, blocker or hint', !v.conflict.length && !v.blockers.length && !v.hints.length && !v.disagrees.length, v);
 
 /* a cloned QA event: designPlan.reference survives the clone, sources do not */
 v = E({ name: 'QA UX Editor AI BWS', designPlan: ref('previousEdition', ET('brandequity', 'brand-world-summit')) }, []);
 check('a clone with only its design reference: brandequity, from design-reference, hint design-only',
-  v.certain && v.portal === 'brandequity' && v.from === 'design-reference' && same(v.hints, ['design-only']) && v.evidence[0].where === 'the ET page its design was modelled on', v);
+  v.certain && v.portal === 'brandequity' && v.from === 'design-reference' && same(v.hints, ['design-only']) && v.evidence[0].where === 'the ETB2B page its design was modelled on', v);
 
 /* trendies-awards-2027: a competitor link only */
 v = E({ name: 'Trendies Awards 2027' }, [compSrc(ET('brandequity', 'trendies'))]);
@@ -78,7 +78,7 @@ check('a design reference of type none is never evidence', !v.certain && !v.evid
 var HR_LINK = linkSrc('currentEdition', 'https://hr.economictimes.indiatimes.com/nextech2026');
 v = E({ name: 'Cio', published: true }, [HR_LINK]);
 check('cio: not certain, blocked by its name, link-only', !v.certain && v.portal === '' && same(v.blockers, ['name-mentions:cio']) && same(v.hints, ['link-only']), v);
-check('cio: the link is said as this edition\'s own page', v.evidence.length === 1 && v.evidence[0].kind === 'et-link' && v.evidence[0].portal === 'hr' && v.evidence[0].where === 'the ET link of this edition\'s own ET page', v.evidence);
+check('cio: the link is said as this edition\'s own page', v.evidence.length === 1 && v.evidence[0].kind === 'et-link' && v.evidence[0].portal === 'hr' && v.evidence[0].where === 'the ETB2B link of this edition\'s own ETB2B page', v.evidence);
 v = E({ name: 'ETCIO Awards 2027' }, [HR_LINK]);
 check('etcio-awards-2027: the same', !v.certain && same(v.blockers, ['name-mentions:cio']) && same(v.hints, ['link-only']), v);
 
@@ -156,7 +156,7 @@ check('a record and its own address that disagree: a conflict', !v.certain && sa
 v = E({ name: 'Summit', designPlan: { design: { logoUnitFrom: 'https://storage.googleapis.com/revamp/events/x/logo.png' } } }, []);
 check('a storage.googleapis.com logo unit page is not evidence', !v.evidence.length, v);
 v = E({ name: 'Summit', designPlan: { design: { logoUnitFrom: ET('hr', 'nextech2026') } } }, []);
-check('an ET logo unit page is: hr, from logo-unit-page', v.certain && v.portal === 'hr' && v.from === 'logo-unit-page' && v.evidence[0].where === 'the ET page its logo unit came from', v);
+check('an ET logo unit page is: hr, from logo-unit-page', v.certain && v.portal === 'hr' && v.from === 'logo-unit-page' && v.evidence[0].where === 'the ETB2B page its logo unit came from', v);
 v = E({ name: 'Summit', designPlan: ref('previousEdition', 'https://www.techgig.com/hackathon') }, [linkSrc('previousEdition', 'https://www.economictimes.indiatimes.com/x'), linkSrc('currentEdition', 'https://techgig.com/x'),
   linkSrc('previousEdition', 'https://m.economictimes.indiatimes.com/x'), linkSrc('previousEdition', 'https://evil.com/?u=https://hr.economictimes.indiatimes.com/x')]);
 check('techgig.com, www. and m.economictimes and other hosts are not evidence', !v.evidence.length, v.evidence);
@@ -178,7 +178,7 @@ var SITE = [navSec('retail'), footerSec('retail')];
 v = E({ name: 'Summit', generatedSections: SITE }, []);
 check('site-only: not certain, blocked site-only', !v.certain && v.portal === '' && same(v.blockers, ['site-only']), v);
 check('site-only: both are listed, in words', same(v.evidence.map(function (e) { return e.kind + ':' + e.portal; }), ['site-bar:retail', 'site-footer:retail']) &&
-  v.evidence[0].where === 'the ET bar its site was generated with' && v.evidence[1].where === 'the ET footer its site was generated with', v.evidence);
+  v.evidence[0].where === 'the ETB2B bar its site was generated with' && v.evidence[1].where === 'the ETB2B footer its site was generated with', v.evidence);
 v = E({ name: 'Summit', generatedSections: SITE }, [prevSrc('retail')]);
 check('site plus a matching record: retail, from et-record', v.certain && v.portal === 'retail' && v.from === 'et-record' && !v.blockers.length, v);
 check('the evidence keeps the table\'s order whatever order it was found in', same(v.evidence.map(function (e) { return e.kind; }), ['et-record', 'et-link', 'site-bar', 'site-footer']), v.evidence);
@@ -205,7 +205,7 @@ check('a stored __proto__ is no portal either', v.certain && v.portal === 'hr', 
 
 /* current-edition sources and their words */
 v = E({ name: 'Summit' }, [{ type: 'currentEdition', url: ET('gcc', 'conclave-2027'), previous: { portal: 'gcc', url: ET('gcc', 'conclave-2027') } }]);
-check('a current edition\'s record is said as this edition\'s own', v.certain && v.portal === 'gcc' && v.evidence[0].where === 'this edition\'s own ET record' && v.evidence[1].where === 'the ET link of this edition\'s own ET page', v.evidence);
+check('a current edition\'s record is said as this edition\'s own', v.certain && v.portal === 'gcc' && v.evidence[0].where === 'this edition\'s own ETB2B record' && v.evidence[1].where === 'the ETB2B link of this edition\'s own ETB2B page', v.evidence);
 v = E({ name: 'Summit' }, [linkSrc('previousEdition', ET('auto', 'a')), linkSrc('previousEdition', ET('auto', 'b'))]);
 check('the same kind, portal and words from two sources is listed once', v.certain && v.evidence.length === 1 && same(v.hints, ['link-only']), v.evidence);
 v = E({ name: 'Summit', designPlan: ref('previousEdition', ET('auto')) }, [linkSrc('previousEdition', ET('auto', 'a'))]);
@@ -519,11 +519,11 @@ async function main() {
   check('only the portal and portalFrom are written, three times in all', B.updates.length === 3 && B.updates.every(function (u) { return same(Object.keys(u.data).sort(), ['portal', 'portalFrom']); }), B.updates);
   var a = activityOf('qa-portal-prev');
   check('one portal-set line each, by the person who ran it, in the event area, with the evidence in words', a.length === 1 && a[0].action === 'portal-set' && a[0].area === 'event' && a[0].by === 'owner@timesinternet.in' &&
-    a[0].detail === 'No portal → ETHRWorld (filled in from its previous edition\'s ET record)' && same(a[0].fields, [{ field: 'portal', before: 'No portal', after: 'ETHRWorld' }]), a);
+    a[0].detail === 'No portal → ETHRWorld (filled in from its previous edition\'s ETB2B record)' && same(a[0].fields, [{ field: 'portal', before: 'No portal', after: 'ETHRWorld' }]), a);
   a = activityOf('qa-portal-link');
-  check('the link one says so', a.length === 1 && a[0].detail === 'No portal → ETCIO (filled in from the ET link of this edition\'s own ET page)', a);
+  check('the link one says so', a.length === 1 && a[0].detail === 'No portal → ETCIO (filled in from the ETB2B link of this edition\'s own ETB2B page)', a);
   a = activityOf('qa-portal-ref');
-  check('the design one says so', a.length === 1 && a[0].detail === 'No portal → ET BrandEquity (filled in from the ET page its design was modelled on)', a);
+  check('the design one says so', a.length === 1 && a[0].detail === 'No portal → ET BrandEquity (filled in from the ETB2B page its design was modelled on)', a);
   check('a skipped event gets no line and no write', ['site', 'name', 'conflict', 'comp', 'none', 'has', 'del'].every(function (id) {
     return !activityOf('qa-portal-' + id).length && same(B.docs['events/qa-portal-' + id], before['events/qa-portal-' + id]);
   }));

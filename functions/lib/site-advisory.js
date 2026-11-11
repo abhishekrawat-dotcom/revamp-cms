@@ -204,9 +204,9 @@ function check(html, ctx) {
     }
     var recoloured = siteChecks.etLogoRecoloured(page, kit);
     if (recoloured.length) {
-      push({ code: 'et-logo', level: 'warn', title: 'An ET logo is recoloured',
+      push({ code: 'et-logo', level: 'warn', title: 'A portal logo is recoloured',
         lines: cap(recoloured.map(function (r) { return r.section + ': ' + r.how + ' changes its colours'; })),
-        hint: 'Only the black or grey lettering of an ET logo may change colour; its red square never does. Use the logo as it is, in the site editor.',
+        hint: 'Only the black or grey lettering of a portal logo may change colour; its red square never does. Use the logo as it is, in the site editor.',
         fix: sectionFixes(eventId, event, recoloured) });
     }
 

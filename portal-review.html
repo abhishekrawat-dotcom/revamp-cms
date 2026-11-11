@@ -117,7 +117,7 @@
   <div class="vhead">
     <div class="crumb">Portals</div>
     <h2 id="pr-heading" tabindex="-1">Fill in the portals of existing events</h2>
-    <div class="sub">Every event in ETB2B EventSphere now belongs to one ET portal. Events made before that have none yet. This page reads each event's own records, and offers a portal only where every one of them names the same portal. Nothing is filled in until an approver presses the button, and nothing is guessed.</div>
+    <div class="sub">Every event in ETB2B EventSphere now belongs to one ETB2B portal. Events made before that have none yet. This page reads each event's own records, and offers a portal only where every one of them names the same portal. Nothing is filled in until an approver presses the button, and nothing is guessed.</div>
   </div>
   <div id="pr-status"></div>
   <div id="pr-body"><p class="pr-empty">Reading every event's records…</p></div>
@@ -141,16 +141,16 @@
      (`where`, which knows a previous edition from this edition's own page); these are for an answer without them.
      The site's bar and footer are what the site "was generated with": they only echo what it was made from. */
   var KIND_WORDS = {
-    'et-record': 'its previous edition\'s ET record',
-    'et-link': 'its ET link',
-    'design-reference': 'the ET page its design was modelled on',
-    'logo-unit-page': 'the ET page its logo unit came from',
-    'site-bar': 'the ET bar its site was generated with',
-    'site-footer': 'the ET footer its site was generated with'
+    'et-record': 'its previous edition\'s ETB2B record',
+    'et-link': 'its ETB2B link',
+    'design-reference': 'the ETB2B page its design was modelled on',
+    'logo-unit-page': 'the ETB2B page its logo unit came from',
+    'site-bar': 'the ETB2B bar its site was generated with',
+    'site-footer': 'the ETB2B footer its site was generated with'
   };
   /* the same, short, for "Its name says ETCIO; its link says ETHRWorld." */
   var KIND_SHORT = {
-    'et-record': 'its previous edition\'s ET record',
+    'et-record': 'its previous edition\'s ETB2B record',
     'et-link': 'its link',
     'design-reference': 'the design it was copied from',
     'logo-unit-page': 'its logo unit\'s page',
@@ -159,7 +159,7 @@
   };
   /* hints never decide anything; they say how thin the evidence is */
   var HINT_WORDS = {
-    'link-only': 'Only a typed ET link says so.',
+    'link-only': 'Only a typed ETB2B link says so.',
     'design-only': 'Only the design it was copied from says so.'
   };
   /* why the server left a ticked event as it was (it checks each one again when it writes) */
@@ -515,7 +515,7 @@
     if (g.ready.length){
       out += '<ul class="pr-list">' + g.ready.map(function(it, i){ return readyRow(it, i, fill); }).join('') + '</ul>';
       if (fill){
-        out += '<div class="pr-actions"><span class="grow">A site that already exists keeps its ET bar and footer until it is generated again.</span>' +
+        out += '<div class="pr-actions"><span class="grow">A site that already exists keeps its ETB2B bar and footer until it is generated again.</span>' +
           '<button type="button" class="btn btn-primary" id="pr-fill"' + (ticked && !off ? '' : ' disabled') + '>' +
           esc(S.busy ? 'Filling in…' : 'Fill in ' + plural(ticked, 'portal', 'portals')) + '</button></div>';
       }
@@ -587,7 +587,7 @@
     var sites = picked.some(function(it){ return !!it.hasGeneratedSite; }), live = picked.some(function(it){ return !!it.published; });
     var msg = n === 1 ? '1 event gets the portal shown beside it. This is logged on the event and can be changed later in its Basics.' :
       n + ' events get the portal shown beside them. This is logged on each event and can be changed later in its Basics.';
-    var notes = (sites ? '<p>A site that already exists keeps its ET bar and footer until it is generated again.</p>' : '') +
+    var notes = (sites ? '<p>A site that already exists keeps its ETB2B bar and footer until it is generated again.</p>' : '') +
       (live ? '<p>A published registration form keeps its privacy links until it is published again.</p>' : '');
     var host = $('modal-host');
     host.innerHTML = '<div class="modal-bg" id="pr-modal-bg"><div class="modal pr-modal" id="pr-modal" role="dialog" aria-modal="true" aria-labelledby="pr-modal-title" aria-describedby="pr-modal-msg">' +

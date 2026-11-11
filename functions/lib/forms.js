@@ -118,8 +118,8 @@ var ENQUIRIES = {
     source: 'partner-enquiry', done: 'Thank you. Your enquiry has reached the event team, who will get in touch about partnering.' },
   nominate: { title: 'Start a nomination', note: 'Leave your details and the awards team will send you what you need to nominate.',
     source: 'nomination-enquiry', done: 'Thank you. Your request has reached the awards team, who will get in touch about your nomination.' },
-  ceremony: { title: 'Request an invitation', note: 'Seats are confirmed by the ET team; there is no online payment.',
-    source: 'ceremony-invitation', done: 'Thank you. Your request has reached the ET team, who will get in touch to confirm your seat.' }
+  ceremony: { title: 'Request an invitation', note: 'Seats are confirmed by the ETB2B team; there is no online payment.',
+    source: 'ceremony-invitation', done: 'Thank you. Your request has reached the ETB2B team, who will get in touch to confirm your seat.' }
 };
 /* the enquiry a response's source names -> { kind, title, note, source, done } | null */
 function enquiryOf(source) {

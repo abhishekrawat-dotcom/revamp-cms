@@ -174,7 +174,7 @@ var pending = [];
 var P = load({ search: '?event=ev-1' });
 pending.push(settle().then(function () {
   var view = P.els.view.innerHTML;
-  check('the heading line says what each tab makes', view.indexOf('<div class="sub">Social posts in the ET portal’s look, posts in this site’s own look, and mailers — all from this event’s real speakers, partners and agenda.</div>') !== -1, view.slice(0, 400));
+  check('the heading line says what each tab makes', view.indexOf('<div class="sub">Social posts in the ETB2B portal’s look, posts in this site’s own look, and mailers — all from this event’s real speakers, partners and agenda.</div>') !== -1, view.slice(0, 400));
   check('the window\'s title names the event and EventSphere (UX-003)', P.doc.title === 'Promotions · Agentic AI Summit — EventSphere', P.doc.title);
   check('three tab buttons in order', (view.match(/data-tab="([\w-]+)"/g) || []).join() === 'data-tab="posts",data-tab="site-posts",data-tab="mailers"');
   check('three panes, each with its root', ['promo-social-root', 'promo-posts-root', 'promo-mailers-root'].every(function (r) { return !!P.els[r]; }));

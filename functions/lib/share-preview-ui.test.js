@@ -342,7 +342,7 @@ async function main() {
         liveAt > menuAt && html.indexOf(b) > liveAt && html.indexOf('</span>', html.indexOf(b)) > html.indexOf(b) &&
         /aria-controls="pv-menu"/.test(html.slice(html.indexOf('id="btn-preview-more"') - 80, menuAt)));
       check('U.2 ' + pg[0] + ': its words "Share preview link…" and who it is for are in a <span>, which the menu keeps at every width',
-        /<span class="mi-words"><span class="mi-name">Share preview link…<\/span><small id="pv-share-desc">A 7-day link for people without an ET login<\/small><\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))) &&
+        /<span class="mi-words"><span class="mi-name">Share preview link…<\/span><small id="pv-share-desc">A 7-day link for people without an ETB2B login<\/small><\/span>\s*<\/button>/.test(html.slice(html.indexOf(b))) &&
         /aria-describedby="pv-share-desc"/.test(b) &&
         /\.topbar \.ev-menu \[data-share-preview\] > span\.mi-words\{ display:flex; \}/.test(fs.readFileSync(path.join(ROOT, 'edit-event.css'), 'utf8')));
     } else {

@@ -258,7 +258,7 @@ function ruledOut(el, chain, url, page) {
   if (w && h && w <= 2 && h <= 2) return 'a tracking pixel';
 
   /* our own generated sites: the ET logo inside the unit is ET's, not the event's */
-  if (hasToken(el, /^rv-lu-et$/)) return 'the ET logo of our own logo unit';
+  if (hasToken(el, /^rv-lu-et$/)) return 'the portal logo of our own logo unit';
 
   if (chain.some(isMastheadBox)) return 'the platform masthead';
   if (hasToken(el, /^(top-logo-view|floating-logo-view)$/i)) return 'the platform masthead';

@@ -795,7 +795,7 @@
       }
       if (skipped.length) bubble.note('Already on this event, so not added again: ' + skipped.join(', ') + '.');
       if (failure) bubble.note((added.length ? 'The rest could not be added: ' : TEXT.couldNot) + reason);
-      if (filled.length) bubble.note('Photos and details filled in from the library (ET’s past events and EventSphere’s own) for ' + filled.join(', ') + ': check they are the same ' + (R.items === 'speakers' ? 'people' : 'companies') + '.');
+      if (filled.length) bubble.note('Photos and details filled in from the library (ETB2B’s past events and EventSphere’s own) for ' + filled.join(', ') + ': check they are the same ' + (R.items === 'speakers' ? 'people' : 'companies') + '.');
       if (added.length && action.fromDocument) bubble.note(TEXT.recordsCheck);
       if (added.length) bubble.note(TEXT.recordsNoPhotos);
       if (made.items.length || made.groups.length) {

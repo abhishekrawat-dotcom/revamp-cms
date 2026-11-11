@@ -1064,7 +1064,7 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   var pp = T.buildPrompt(ctx);
   check('A.20 off the dashboard the prompt says where the person is, the event only by its token', pp.indexOf('WHERE ASHA IS: the console of {{autotech-2026}} (content/speakers). "This event", "here", "this page", "we", "our" and a question that names no event mean {{autotech-2026}}.') !== -1 &&
     pp.indexOf('WHAT ASHA IS LOOKING AT') === -1 && pp.indexOf('events shown') === -1, pp.slice(pp.indexOf('WHERE'), pp.indexOf('WHERE') + 300));
-  check('A.20 …and opens on the place, not the dashboard', /^You are ETB2B AI in ETB2B EventSphere, ET B2B's event-site CMS, on the console of \{\{autotech-2026\}\} \(content\/speakers\)\./.test(pp) && pp.indexOf('on the events dashboard of') === -1);
+  check('A.20 …and opens on the place, not the dashboard', /^You are ETB2B AI in ETB2B EventSphere, ETB2B's event-site CMS, on the console of \{\{autotech-2026\}\} \(content\/speakers\)\./.test(pp) && pp.indexOf('on the events dashboard of') === -1);
   check('A.20 …with no old name of the product in it', !/Oneworld/.test(pp) && !/Oneworld/.test(T.buildPrompt(await placeCtx('hi', { page: 'nowhere-known', eventId: '', tab: '' }))));
   check('A.20 the event the person is in is marked THIS EVENT in the fenced table, and only it', /\nautotech-2026 \| [^\n]* \| THIS EVENT\n/.test(pp) && (pp.match(/THIS EVENT\n/g) || []).length === 1);
   /* owner decision 10: inside an event nothing that reaches other events is even offered */

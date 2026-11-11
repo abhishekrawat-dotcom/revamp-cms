@@ -32,7 +32,7 @@ function plan(previous) {
   return ORDER.filter(function (k) { return has(previous, k); }).map(function (k) {
     return {
       id: IDS[k], name: LABELS[k], kind: 'custom', prebuilt: k, image: '',
-      purpose: LABELS[k] + ' — the real ' + (k === 'glimpses' ? 'photos' : k) + ' of the previous edition' + (previous.name ? ', ' + previous.name : '') + ', from ET’s own records. Built by the server.',
+      purpose: LABELS[k] + ' — the real ' + (k === 'glimpses' ? 'photos' : k) + ' of the previous edition' + (previous.name ? ', ' + previous.name : '') + ', from ETB2B’s own records. Built by the server.',
       layout: k === 'agenda' ? 'the sessions by day, time beside title' : 'an auto-advancing carousel'
     };
   });

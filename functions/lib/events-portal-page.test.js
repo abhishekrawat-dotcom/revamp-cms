@@ -1,4 +1,4 @@
-// node functions/lib/events-portal-page.test.js — the events dashboard (Event_Listing.html) on one ET portal at a time
+// node functions/lib/events-portal-page.test.js — the events dashboard (Event_Listing.html) on one ETB2B portal at a time
 // (owner decisions of 2026-11-03; plan §4, K10; D.3–D.5):
 //   D.3 the page as a file: the invented portal table is gone, portal-picker.js loads after auth.js, the Portal column
 //       and the notice exist, and the toolbar, the ⋯ menu, the KPI and the Latest Activity markup are byte-identical to
@@ -539,9 +539,9 @@ async function main() {
   check('D.4 the switcher opens with "Your portal", a search box (focused) and one listbox', menu.hidden === false && menu.querySelector('.popover-label').textContent === 'Your portal' &&
     S.doc.activeElement === S.$('portal-nav-search') && S.$('portal-nav-search').getAttribute('placeholder') === 'Search portals' && S.$('portal-nav-list').getAttribute('role') === 'listbox');
   var opts = S.$('portal-nav-list').querySelectorAll('[role="option"]');
-  check('D.4 the list: All portals (with the live count), then "Portals with events", then "Other ET portals" — the whole roster',
+  check('D.4 the list: All portals (with the live count), then "Portals with events", then "Other ETB2B portals" — the whole roster',
     opts[0].getAttribute('data-pn') === 'all' && opts[0].textContent.indexOf('All portals6') === 0 && opts[1].getAttribute('data-pn') === 'cio' && opts[2].getAttribute('data-pn') === 'hr' &&
-    S.$('pn-g-events').textContent === 'Portals with events' && S.$('pn-g-other').textContent === 'Other ET portals' && opts.length === 1 + ROSTER.length, opts.slice(0, 3).map(function (x) { return x.textContent; }));
+    S.$('pn-g-events').textContent === 'Portals with events' && S.$('pn-g-other').textContent === 'Other ETB2B portals' && opts.length === 1 + ROSTER.length, opts.slice(0, 3).map(function (x) { return x.textContent; }));
   check('D.4 the groups are role="group", labelled', S.$('portal-nav-list').querySelectorAll('[role="group"]').length === 2 && S.$('portal-nav-list').querySelectorAll('[role="group"]').every(function (g) { return !!S.$(g.getAttribute('aria-labelledby')); }));
   check('D.4 the current one is aria-selected with a "Current" tag', opts[0].getAttribute('aria-selected') === 'true' && opts[0].textContent.indexOf('Current') !== -1 && opts.filter(function (x) { return x.getAttribute('aria-selected') === 'true'; }).length === 1);
   check('D.4 no link anywhere in it (the old menu sent every portal to index.html)', menu.querySelectorAll('a').length === 0);

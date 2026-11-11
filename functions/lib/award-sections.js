@@ -656,7 +656,7 @@ function homeSections(award, o) {
   var cs = categoriesSummary(award, o);
   add('award-categories', 'Award Categories', 'award-categories', cs ? 'Award Categories — the master categories (' + cs.lead + ') and a link to the full list. Built by the server from the award’s records.' : '',
     'the count of categories over icon cards, and a button', cs);
-  add('how-it-works', 'How Our Awards Work', 'award-process', 'How Our Awards Work — ET’s principles (judging criteria, fairness and integrity, confidentiality) and its three stages (expert tabulator, review, grand jury). Built by the server.',
+  add('how-it-works', 'How Our Awards Work', 'award-process', 'How Our Awards Work — ETB2B’s principles (judging criteria, fairness and integrity, confidentiality) and its three stages (expert tabulator, review, grand jury). Built by the server.',
     'three principle cards over three photo panels', processHome(o));
   var jh = juryHome(award, o);
   add('award-jury', 'Jury', 'award-jury', jh ? 'The ' + jh.title + ' — the real jurors of this edition (' + jh.count + '), each opening their profile, and a link to the Jury page. Built by the server.' : '',

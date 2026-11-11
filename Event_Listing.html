@@ -682,8 +682,8 @@
 <header class="main-nav">
   <div class="main-nav-inner">
     <a class="main-nav-brand" href="index.html">
-      <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ET Oneworld">
-      <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ET Oneworld">
+      <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
+      <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
     </a>
 
     <div class="main-nav-scroll">
@@ -1633,7 +1633,7 @@
         o.withEvents.map(function(p){ return portalNavOptionHTML(p.slug, p.name, p.count); }).join('') + '</div>';
     }
     if (o.others.length){
-      html += '<div role="group" aria-labelledby="pn-g-other"><div class="popover-label" id="pn-g-other">Other ET portals</div>' +
+      html += '<div role="group" aria-labelledby="pn-g-other"><div class="popover-label" id="pn-g-other">Other ETB2B portals</div>' +
         o.others.map(function(p){ return portalNavOptionHTML(p.slug, p.name, 0); }).join('') + '</div>';
     }
     if (rosterState === 'loading') html += '<div class="pn-msg">Loading portals…</div>';
@@ -3890,7 +3890,7 @@
   function openHelpModal(returnTo){
     var root = $('sheet-root');
     root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
-      '<div class="modal-card-head"><div><h3 id="help-title">Need help?</h3><p>Write your question for ET\'s Customer Care team, then send it from your own email.</p></div>' +
+      '<div class="modal-card-head"><div><h3 id="help-title">Need help?</h3><p>Write your question for ETB2B\'s Customer Care team, then send it from your own email.</p></div>' +
         '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
       '<div class="modal-card-body">' +
         '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" aria-label="Copy address" type="button">' + IC.copy + '</button></div>' +

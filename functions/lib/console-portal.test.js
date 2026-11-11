@@ -1,8 +1,8 @@
 // node functions/lib/console-portal.test.js — an event's portal in the event console (edit-event.html) and in its
 // Promotions page (marketing.html): the top bar's "Name | ETHRWorld", or "No portal yet" with Set portal while the
-// event has none (RevampPortals' chip, and a button of the same words on a phone); the Basics Portal field (ET's
+// event has none (RevampPortals' chip, and a button of the same words on a phone); the Basics Portal field (ETB2B's
 // roster from portal-picker.js, the stored portal chosen, "No portal yet — choose one" until one is stored, a
-// change sent with ifPortal, a 409 portal-changed taken in, the notes about the site's ET bar and a published
+// change sent with ifPortal, a 409 portal-changed taken in, the notes about the site's ETB2B bar and a published
 // form); the History's "Portal set"; the Registration panel's save after a portal is set (no false "someone else
 // changed" conflict, a real one still caught); and edit-event-core.js without its old table of portal names. The pages'
 // functions run in a vm over a small stand-in DOM, with RevampPortals, RevampCore and the server stubbed: no
@@ -341,7 +341,7 @@ pending.push((function () {
     !!sel && sel.options.length === 1 && sel.value === 'hr' && sel.options[0].text === 'ETHRWorld', sel && sel.options);
   var html = c.sb.viewBasics();
   check('B1 its markup: label, the select, the hint, the note; a c6 field after Category', /<div class="field c6"><label for="b-cat">Category<\/label>[\s\S]*?<\/div><div class="field c6"><label for="b-portal">Portal<\/label><select class="inp" id="b-portal">/.test(html) &&
-    html.indexOf('<p class="hint">Its previous editions, its site’s ET bar and footer, and its mailers’ branding come from this portal.</p>') !== -1 &&
+    html.indexOf('<p class="hint">Its previous editions, its site’s ETB2B bar and footer, and its mailers’ branding come from this portal.</p>') !== -1 &&
     html.indexOf('<p class="hint" id="b-portal-note" hidden></p>') !== -1);
   check('B1 the listing preview names the stored portal', c.$('b-preview').innerHTML.indexOf('ETHRWorld presents') !== -1);
   return tick().then(function () {
@@ -362,10 +362,10 @@ pending.push((function () {
     check('B1 … not dirty, the list still the roster with ETCIO chosen', !dirty(c) && sel.value === 'cio' && sel.options.length === 3);
     var t = c.toasts[c.toasts.length - 1];
     check('B1 the save note (an AI-designed, published site): the bar and footer, and the live form\'s links', !!t &&
-      t[0] === 'Basics saved. The site keeps its ET bar and footer; they change to ETCIO only if the site is generated again. Its live registration form keeps its privacy links until it is published again.' &&
+      t[0] === 'Basics saved. The site keeps its ETB2B bar and footer; they change to ETCIO only if the site is generated again. Its live registration form keeps its privacy links until it is published again.' &&
       t[1] === 9000, t);
     check('B1 … and it stays under the field', c.$('b-portal-note').hidden === false &&
-      c.$('b-portal-note').textContent === 'The site keeps its ET bar and footer; they change to ETCIO only if the site is generated again. Its live registration form keeps its privacy links until it is published again.');
+      c.$('b-portal-note').textContent === 'The site keeps its ETB2B bar and footer; they change to ETCIO only if the site is generated again. Its live registration form keeps its privacy links until it is published again.');
     /* a change of the name alone sends no portal */
     c.$('b-name').value = 'Agentic AI Summit 2027'; c.$('b-name').fire('input');
     c.$('b-save').fire('click');
@@ -581,7 +581,7 @@ pending.push((function () {
   });
 })());
 
-/* ---- the same, with the real portal-picker.js (ET's whole roster from et-events.js), so the two agree ---- */
+/* ---- the same, with the real portal-picker.js (ETB2B's whole roster from et-events.js), so the two agree ---- */
 function realPicker() {
   var roster = require('./et-events').portalList(), asked = [];
   var sb = { console: console, Promise: Promise, setTimeout: setTimeout,

@@ -1,7 +1,7 @@
 // node functions/lib/portal-review-page.test.js — "Fill in portals" (portal-review.html): the evidence report
 // (GET /api/events/portal-evidence) shown as rows a person judges, and the one approver-only button that sends exactly
 // the ticked (event, portal) pairs to POST /api/events/portal-backfill. Reads the page as a file, then runs its own
-// script in a vm over a small fake DOM, with RevampAuth (the server) and RevampPortals (ET's roster, from the real
+// script in a vm over a small fake DOM, with RevampAuth (the server) and RevampPortals (ETB2B's roster, from the real
 // et-events.js) stubbed. No network, no Firebase, no browser, no AI.
 var fs = require('fs'), path = require('path'), vm = require('vm');
 var access = require('./access');
@@ -206,22 +206,22 @@ function item(id, name, x) {
 }
 var ITEMS = [
   item('brand-world-summit-2026', 'Brand World Summit 2026', { published: true, hasGeneratedSite: true, certain: 'brandequity', certainName: 'ET BrandEquity', from: 'et-record',
-    evidence: [{ kind: 'et-record', portal: 'brandequity', where: 'its previous edition\'s ET record' }, { kind: 'et-link', portal: 'brandequity', where: 'the ET link of its previous edition' }] }),
+    evidence: [{ kind: 'et-record', portal: 'brandequity', where: 'its previous edition\'s ETB2B record' }, { kind: 'et-link', portal: 'brandequity', where: 'the ETB2B link of its previous edition' }] }),
   item('nexttech-summit', 'NextTech Summit', { certain: 'hr', certainName: 'ETHRWorld', from: 'et-link',
-    evidence: [{ kind: 'et-link', portal: 'hr', where: 'the ET link of this edition\'s own ET page' }], hints: ['link-only'] }),
+    evidence: [{ kind: 'et-link', portal: 'hr', where: 'the ETB2B link of this edition\'s own ETB2B page' }], hints: ['link-only'] }),
   item('qa-clone', 'Cloned Summit', { certain: 'brandequity', certainName: 'ET BrandEquity', from: 'design-reference',
-    evidence: [{ kind: 'design-reference', portal: 'brandequity', where: 'the ET page its design was modelled on' }], hints: ['design-only'] }),
+    evidence: [{ kind: 'design-reference', portal: 'brandequity', where: 'the ETB2B page its design was modelled on' }], hints: ['design-only'] }),
   // "certain" as a boolean, and evidence with no words of its own: the page holds either way, in its own words
   item('etcio-annual-conclave-2027', 'ETCIO Annual Conclave 2027', { certain: true, certainName: 'ETCIO', from: 'et-record',
     evidence: [{ kind: 'et-record', portal: 'cio' }] }),
-  item('cio', 'Cio', { evidence: [{ kind: 'et-link', portal: 'hr', where: 'the ET link of this edition\'s own ET page' }], blockers: ['name-mentions:cio'], hints: ['link-only'] }),
-  item('conflict-conclave', 'Conflict Conclave', { evidence: [{ kind: 'et-record', portal: 'hr', where: 'this edition\'s own ET record' }, { kind: 'design-reference', portal: 'cio', where: 'the ET page its design was modelled on' }],
+  item('cio', 'Cio', { evidence: [{ kind: 'et-link', portal: 'hr', where: 'the ETB2B link of this edition\'s own ETB2B page' }], blockers: ['name-mentions:cio'], hints: ['link-only'] }),
+  item('conflict-conclave', 'Conflict Conclave', { evidence: [{ kind: 'et-record', portal: 'hr', where: 'this edition\'s own ETB2B record' }, { kind: 'design-reference', portal: 'cio', where: 'the ETB2B page its design was modelled on' }],
     conflict: ['cio', 'hr'] }),
-  item('retail-site', 'Retail Site Summit', { hasGeneratedSite: true, evidence: [{ kind: 'site-bar', portal: 'retail', where: 'the ET bar its site was generated with' },
-    { kind: 'site-footer', portal: 'retail', where: 'the ET footer its site was generated with' }], blockers: ['site-only'] }),
+  item('retail-site', 'Retail Site Summit', { hasGeneratedSite: true, evidence: [{ kind: 'site-bar', portal: 'retail', where: 'the ETB2B bar its site was generated with' },
+    { kind: 'site-footer', portal: 'retail', where: 'the ETB2B footer its site was generated with' }], blockers: ['site-only'] }),
   item('bad-stored', 'Old Stored Value', { portal: 'hrworld' }),
   item('lovable-import', 'Lovable Import', {}),
-  item('auto-expo', 'Auto Expo', { portal: 'auto', portalFrom: 'set', disagrees: ['hr'], evidence: [{ kind: 'et-record', portal: 'hr', where: 'its previous edition\'s ET record' }] })
+  item('auto-expo', 'Auto Expo', { portal: 'auto', portalFrom: 'set', disagrees: ['hr'], evidence: [{ kind: 'et-record', portal: 'hr', where: 'its previous edition\'s ETB2B record' }] })
 ];
 var REPORT = { generatedAt: '2026-11-03T08:35:00.000Z', canFill: true, approvers: ['owner@timesinternet.in'],
   counts: { live: 10, withPortal: 2, certain: 4, blocked: 2, conflict: 1, none: 1 }, items: ITEMS };
@@ -244,13 +244,13 @@ async function main() {
     ready.length === 4 && person.length === 4 && none.length === 1 && set.length === 1, [ready.length, person.length, none.length, set.length]);
   check('G.1 every ready row is ticked, with the portal it shows', ready.every(function (r) { return /<input type="checkbox" id="pr-cb-\d+" data-pick="[^"]+" data-portal="[a-z]+" checked>/.test(r); }) &&
     ready.map(function (r) { return /data-portal="([a-z]+)"/.exec(r)[1]; }).join() === 'brandequity,hr,brandequity,cio');
-  check('G.1 a ready row shows the portal\'s name (from ET\'s roster)', words(ready[0]).indexOf('Brand World Summit 2026 → gets ET BrandEquity Published') === 0 &&
+  check('G.1 a ready row shows the portal\'s name (from ETB2B\'s roster)', words(ready[0]).indexOf('Brand World Summit 2026 → gets ET BrandEquity Published') === 0 &&
     words(ready[3]).indexOf('ETCIO Annual Conclave 2027 → gets ETCIO') === 0, [words(ready[0]), words(ready[3])]);
-  check('G.1 the evidence in words', words(ready[0]).indexOf('From its previous edition\'s ET record and the ET link of its previous edition.') !== -1 &&
-    words(ready[1]).indexOf('From the ET link of this edition\'s own ET page.') !== -1 && words(ready[2]).indexOf('From the ET page its design was modelled on.') !== -1,
+  check('G.1 the evidence in words', words(ready[0]).indexOf('From its previous edition\'s ETB2B record and the ETB2B link of its previous edition.') !== -1 &&
+    words(ready[1]).indexOf('From the ETB2B link of this edition\'s own ETB2B page.') !== -1 && words(ready[2]).indexOf('From the ETB2B page its design was modelled on.') !== -1,
     [words(ready[0]), words(ready[1]), words(ready[2])]);
-  check('evidence with no words of its own is said in the page\'s words', words(ready[3]).indexOf('From its previous edition\'s ET record.') !== -1, words(ready[3]));
-  check('G.1 the hints as sentences', words(ready[1]).indexOf('Only a typed ET link says so.') !== -1 && words(ready[2]).indexOf('Only the design it was copied from says so.') !== -1);
+  check('evidence with no words of its own is said in the page\'s words', words(ready[3]).indexOf('From its previous edition\'s ETB2B record.') !== -1, words(ready[3]));
+  check('G.1 the hints as sentences', words(ready[1]).indexOf('Only a typed ETB2B link says so.') !== -1 && words(ready[2]).indexOf('Only the design it was copied from says so.') !== -1);
   check('G.1 a "Published" tag only on the published event', /<span class="pr-tag">Published<\/span>/.test(ready[0]) && ready.slice(1).every(function (r) { return r.indexOf('pr-tag') === -1; }));
   check('G.1 no tick box outside the ready rows', [person, none, set].every(function (g) { return g.every(function (r) { return r.indexOf('type="checkbox"') === -1; }); }));
   check('G.1 blocked, conflicting and no-evidence rows each carry Set portal', person.concat(none).every(function (r) { return /data-set-portal="[^"]+"[^>]*>Set portal/.test(r); }));
@@ -258,9 +258,9 @@ async function main() {
   var pw = person.map(words);
   check('G.1 a name that says another portal, in words', pw[0].indexOf('Its name says ETCIO; its link says ETHRWorld.') !== -1, pw[0]);
   check('G.1 a conflict, in words, with where each portal was found', pw[1].indexOf('Its sources disagree: ETCIO, ETHRWorld.') !== -1 &&
-    pw[1].indexOf('ETCIO from the ET page its design was modelled on; ETHRWorld from this edition\'s own ET record.') !== -1, pw[1]);
+    pw[1].indexOf('ETCIO from the ETB2B page its design was modelled on; ETHRWorld from this edition\'s own ETB2B record.') !== -1, pw[1]);
   check('G.1 only the generated site, in words', pw[2].indexOf('Only its site\'s generated bar and footer say ETRetail.') !== -1, pw[2]);
-  check('G.1 a stored value that is not an ET portal needs a person', pw[3].indexOf('It holds a portal EventSphere does not list. Set the right one.') !== -1, pw[3]);
+  check('G.1 a stored value that is not an ETB2B portal needs a person', pw[3].indexOf('It holds a portal EventSphere does not list. Set the right one.') !== -1, pw[3]);
   check('G.1 already set: folded, with what its sources also mention', /<details class="panel pr-fold" id="pr-set">/.test(P.$('pr-body').innerHTML) &&
     words(set[0]).indexOf('Auto Expo · ETAuto') === 0 && words(set[0]).indexOf('Set by a person.') !== -1 && words(set[0]).indexOf('Its sources also mention ETHRWorld.') !== -1, words(set[0]));
   var visible = words(P.$('pr-body').innerHTML + ' ' + P.$('pr-status').innerHTML);
@@ -286,7 +286,7 @@ async function main() {
   check('G.2 a confirm opens: a labelled modal dialog', !!modal && modal.getAttribute('role') === 'dialog' && modal.getAttribute('aria-modal') === 'true' &&
     modal.getAttribute('aria-labelledby') === 'pr-modal-title' && words(P.$('modal-host').innerHTML).indexOf('Fill in 3 portals?') === 0);
   check('G.2 the confirm\'s words', words(P.$('modal-host').innerHTML).indexOf('3 events get the portal shown beside them. This is logged on each event and can be changed later in its Basics.') !== -1);
-  check('… with the site and published-form notes, since a ticked event has both', words(P.$('modal-host').innerHTML).indexOf('A site that already exists keeps its ET bar and footer until it is generated again.') !== -1 &&
+  check('… with the site and published-form notes, since a ticked event has both', words(P.$('modal-host').innerHTML).indexOf('A site that already exists keeps its ETB2B bar and footer until it is generated again.') !== -1 &&
     words(P.$('modal-host').innerHTML).indexOf('A published registration form keeps its privacy links until it is published again.') !== -1);
   check('… the page behind it is inert, and focus is on its button', P.$('pr-main').getAttribute('inert') === '' && P.$('pr-top').getAttribute('inert') === '' &&
     P.dom.doc.activeElement === P.$('pr-modal-ok'));
@@ -415,9 +415,9 @@ async function main() {
     await settle();
     var br = B.rows('ready').map(words), bp = B.rows('person').map(words), bn = B.rows('none').map(words);
     check('real verdicts: two ready, ticked', br.length === 2 && br[0].indexOf('Digiplus Awards 2027 → gets ET BrandEquity') === 0 &&
-      br[0].indexOf('From its previous edition\'s ET record.') !== -1 && br[1].indexOf('Only the design it was copied from says so.') !== -1 && B.rows('ready').every(function (r) { return / checked/.test(r); }), br);
+      br[0].indexOf('From its previous edition\'s ETB2B record.') !== -1 && br[1].indexOf('Only the design it was copied from says so.') !== -1 && B.rows('ready').every(function (r) { return / checked/.test(r); }), br);
     check('real verdicts: the name blocks, in words', bp.some(function (r) { return r.indexOf('Cio') === 0 && r.indexOf('Its name says ETCIO; its link says ETHRWorld.') !== -1; }) &&
-      bp.some(function (r) { return r.indexOf('Retail Leadership Summit') === 0 && r.indexOf('Its name says ETRetail; this edition\'s own ET record says ETHRWorld.') !== -1; }), bp);
+      bp.some(function (r) { return r.indexOf('Retail Leadership Summit') === 0 && r.indexOf('Its name says ETRetail; this edition\'s own ETB2B record says ETHRWorld.') !== -1; }), bp);
     check('real verdicts: a conflict and a site-only one need a person', bp.some(function (r) { return r.indexOf('Its sources disagree: ETCIO, ETHRWorld.') !== -1; }) &&
       bp.some(function (r) { return r.indexOf('Only its site\'s generated bar and footer say ETRetail.') !== -1; }), bp);
     check('real verdicts: a competitor\'s page is no evidence', bn.length === 1 && bn[0].indexOf('Trendies Award 2027') === 0, bn);
@@ -506,14 +506,14 @@ async function main() {
   check('… which goes to sign-in', O.calls.redirect === 1);
   var N = load({ report: REPORT, rosterFail: true });
   await settle();
-  check('G.3 ET\'s portal list cannot load: the error with Retry, and no row shows a portal it cannot name', words(N.$('pr-status').innerHTML) === 'The portal list could not be loaded. Retry' &&
+  check('G.3 ETB2B\'s portal list cannot load: the error with Retry, and no row shows a portal it cannot name', words(N.$('pr-status').innerHTML) === 'The portal list could not be loaded. Retry' &&
     N.$('pr-body').innerHTML.indexOf('pr-row') === -1);
   var U = load({ report: REPORT, reportFail: function () { return { status: 502, data: 'not json' }; } });
   await settle();
   check('a failure with no sentence of its own still says something', words(U.$('pr-status').innerHTML) === 'The events could not be read. (502) Retry', words(U.$('pr-status').innerHTML));
   var X = load({ report: REPORT, noPortals: true });
   await settle();
-  check('without portal-picker.js the page reads ET\'s roster from the server itself, and shows the rows', X.calls.roster === 1 && X.rows('ready').length === 4 &&
+  check('without portal-picker.js the page reads ETB2B\'s roster from the server itself, and shows the rows', X.calls.roster === 1 && X.rows('ready').length === 4 &&
     words(X.rows('ready')[1]).indexOf('NextTech Summit → gets ETHRWorld') === 0);
   X.click('pr-sp-person-0');
   check('… and Set portal says it cannot open, rather than doing nothing', /toast-error/.test(X.$('toast-host').innerHTML) &&

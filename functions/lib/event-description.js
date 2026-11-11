@@ -102,7 +102,8 @@ function buildPrompt(o) {
   o = o || {};
   var ev = o.event || {}, brief = o.brief || {}, owner = brief.owner || {}, prev = o.previous || null;
   var lines = [
-    'You write the short description of a business event for its website, its search listing and its promotions (ET Oneworld\'s event builder).',
+    'You write the short description of a business event for its website, its search listing and its promotions (ETB2B EventSphere\'s event builder).',
+    require('./name-rule').NAME_RULE,
     '',
     'THE EVENT:',
     'name: ' + norm(ev.name)

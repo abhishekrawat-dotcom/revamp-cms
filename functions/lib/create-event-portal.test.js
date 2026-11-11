@@ -1,4 +1,4 @@
-// node functions/lib/create-event-portal.test.js — Create Event asks the event's ET portal first, on the same
+// node functions/lib/create-event-portal.test.js — Create Event asks the event's ETB2B portal first, on the same
 // screen as its type, and everything after uses it: the previous-edition picker lists only that portal's editions
 // (no portal box of its own), "Clone design" offers only that portal's events, the record sends the portal (on
 // create, and later only when it was changed here, with ifPortal), and an older draft gets a portal only from
@@ -35,7 +35,7 @@ check('1.1 the Portal box is a combobox with its own list, hint, error and notic
   picker.indexOf('id="cat-portal-hint"') !== -1 && /id="cat-portal-error" role="alert" hidden/.test(picker) && /id="cat-portal-notice" role="status" hidden/.test(picker));
 check('1.1 its label names it', picker.indexOf('<label class="cat-q" for="cat-portal">Portal</label>') !== -1);
 check('1.1 the heading asks both questions', picker.indexOf('<h1>Which portal is this event on, and what type of microsite is it?</h1>') !== -1);
-check('1.1 the callout says what each one decides', picker.indexOf('<strong>Your choices tailor the setup.</strong>The portal decides which previous editions you can pick, the ET bar and footer on the site, and the branding of its mailers and posts. The type decides the dates, fields and nomination options. You can change both later.') !== -1);
+check('1.1 the callout says what each one decides', picker.indexOf('<strong>Your choices tailor the setup.</strong>The portal decides which previous editions you can pick, the ETB2B bar and footer on the site, and the branding of its mailers and posts. The type decides the dates, fields and nomination options. You can change both later.') !== -1);
 check('1.1 the details chip names the portal before the type', /<b id="cat-bar-portal"><\/b>\s*<b id="cat-bar-name"><\/b>/.test(page));
 check('1.1 no portal box in the previous-edition picker', page.indexOf('gb-et-portal') === -1 && SRC.indexOf('loadEtPortals') === -1 && SRC.indexOf('etPick.portal') === -1);
 check('1.1 the picker reads the event\'s own portal\'s editions', count(SRC, "'/api/et/events?portal=' + encodeURIComponent(S.basics.portal)") === 1);
@@ -49,7 +49,7 @@ check('1.1 init() reads ?portal= before history.replaceState tidies the address'
 check('1.1 the per-browser clone registry is no longer written', SRC.indexOf('registerEventTemplate(') === -1);
 check('1.1 the template card has its portal note, the current-URL field its Change button',
   /<p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden><\/p>/.test(page) && /id="gb-current-change" hidden>Change this event’s portal<\/button>/.test(page));
-/* the brief run: an ET page read fixes the portal; another portal's page refused by the server says so on its row */
+/* the brief run: an ETB2B page read fixes the portal; another portal's page refused by the server says so on its row */
 var briefSrc = SRC.slice(SRC.indexOf('function startGenerateFromBrief('), SRC.indexOf('function renderBriefProgress('));
 check('1.1 a previous or current edition read from ET marks the draft (etPageRead)', /postJson\('\/api\/ingest-source', body\)\.then\(function\(resp\)\{[\s\S]{0,260}if \(s\.field\.type !== 'competitor' && \(body\.etEvent \|\| etPortalOfUrl\(body\.url\)\)\)\{ S\.etPageRead = true; save\(\); \}/.test(briefSrc));
 check('1.1 an other-portal refusal shows the server\'s sentence on the source row', /if \(isSource\(s\) && err && err\.code === 'other-portal'\)\{\s*return serverSentence\(err\) \|\|/.test(briefSrc));
@@ -353,7 +353,7 @@ async function main() {
   check('8. Move it to ETCIO: sent against the portal the event has now, and it moves', srv.sent.length === 2 && srv.sent[1].portal === 'cio' && srv.sent[1].ifPortal === 'auto' &&
     srv.portal === 'cio' && p.ce('S.portalSent') === 'cio' && p.ce('S.basics.portal') === 'cio' && p.$('step-4').innerHTML.indexOf('gb-step-done') !== -1, srv.sent);
 
-  /* Keep is taken also where the wizard's own portal is fixed (an ET page was read): the event was moved where
+  /* Keep is taken also where the wizard's own portal is fixed (an ETB2B page was read): the event was moved where
      the lock sends the owner to change it, so the draft follows it, and a pick of the other portal goes */
   srv = portalServer('auto');
   p = await movedDraft(srv, '; S.portalSent = ""; S.etPageRead = true; S.brief.etEvent = { portal: "cio", id: "9", kind: "event", link: "' + CIO_LINK + '" }; S.brief.previous = "' + CIO_LINK + '"');
@@ -804,7 +804,7 @@ async function main() {
   check('7. the hand-off stops without a portal (currentDetailsIssue)', p.ce('currentDetailsIssue()') === 'Choose the portal this event belongs to.');
 
   /* =====================================================================================================
-     9. Locked once an ET page has been read
+     9. Locked once an ETB2B page has been read
      ===================================================================================================== */
   for (var li = 0; li < 2; li++) {
     var how = li === 0 ? 'S.etPageRead = true' : 'S.generatedEventId = "nexttech-summit"', what = li === 0 ? 'a successful source row' : 'a generated site';
@@ -824,7 +824,7 @@ async function main() {
   p.ce('S.basics.portal = ""; S.generatedEventId = "nexttech-summit"');
   check('9. a draft with no portal yet can still be given one', p.ce('portalLocked()') === false && !!p.ce('commitPortal("hr")') && p.ce('S.basics.portal') === 'hr' && p.ce('portalLocked()') === true);
   p.ce('S.basics.portal = "hr"; S.generatedEventId = null; S.etPageRead = false');
-  check('9. before any ET page is read, it can be changed freely', p.ce('portalLocked()') === false && !!p.ce('commitPortal("cio")') && p.ce('S.basics.portal') === 'cio');
+  check('9. before any ETB2B page is read, it can be changed freely', p.ce('portalLocked()') === false && !!p.ce('commitPortal("cio")') && p.ce('S.basics.portal') === 'cio');
 
   /* =====================================================================================================
      The previous-edition picker reads only the event's portal
@@ -848,7 +848,7 @@ async function main() {
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "cio"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');
   await tick();
-  check('a portal with no ET events says so by name', p.$('gb-et-status').textContent === 'ETCIO has no ET events to pick from. Paste the link to the previous edition instead.');
+  check('a portal with no ETB2B events says so by name', p.$('gb-et-status').textContent === 'ETCIO has no ETB2B events to pick from. Paste the link to the previous edition instead.');
   p = load({ etEvents: { '/api/et/events?portal=hr': [{ id: '4865', kind: 'event', title: 'NextTech 2026', link: HR_LINK, dateLabel: 'May 2026' }] } });
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "hr"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');

@@ -236,7 +236,7 @@
       '</div><div class="seo-rows">' +
       row('Canonical address', canon, F.canonicalUrl ? from('team', 'Team') : from('auto', 'Auto'), '') +
       row('Indexing', idx, F.noindex ? from('team', 'Team') : from('auto', 'Auto')) +
-      row('Short link', '<span class="seo-none">Not available.</span> <span class="seo-n">ET’s short links (such as ethrworld.com/s/…) are made by ET’s own link shortener, which EventSphere cannot use. The site’s own address is used everywhere.</span>', from('none', 'Not available')) +
+      row('Short link', '<span class="seo-none">Not available.</span> <span class="seo-n">ETB2B’s short links (such as ethrworld.com/s/…) are made by ETB2B’s own link shortener, which EventSphere cannot use. The site’s own address is used everywhere.</span>', from('none', 'Not available')) +
       '</div>');
   }
 
@@ -321,7 +321,7 @@
       '<div class="seo-sub"><div class="flabel-row"><span class="flabel">Testimonials</span>' + from('team', 'Team') + '<span class="seo-sp"></span>' +
         '<button class="btn btn-secondary btn-sm" type="button" data-seo="tm-add"' + (F.testimonials.length >= 30 ? ' disabled' : '') + '>Add a testimonial</button>' +
         '<button class="btn btn-ghost btn-sm" type="button" data-seo="prev-tm">Bring in from the previous edition</button></div>' + ts +
-        '<p class="hint">What people who were there said, in their own words: typed by the team or brought in from ET’s list for the previous edition — never written by AI.</p>' +
+        '<p class="hint">What people who were there said, in their own words: typed by the team or brought in from ETB2B’s list for the previous edition — never written by AI.</p>' +
         (notShownT ? '<p class="hint seo-warn">' + notShownT + (notShownT === 1 ? ' testimonial is' : ' testimonials are') + ' not shown on the site, so ' + (notShownT === 1 ? 'it is' : 'they are') + ' left out: add a testimonials section in the editor to show them.</p>' : '') + '</div>' +
       '<div class="seo-rows">' +
       row('Rating', rating.text, from('auto', 'Auto'), '<p class="hint">Worked out from the ratings of the testimonials the site shows. Never typed, never written by AI.</p>') +
@@ -575,7 +575,7 @@
     C.fetchSeoPrevious(ev.id).then(function (r) {
       ST.prevBusy = false; redraw();
       if (!r.previous) {
-        if (r.why === 'et-down') ST.ctx.toastError('ET’s event platform did not answer just now. Please try again in a few minutes.');
+        if (r.why === 'et-down') ST.ctx.toastError('ETB2B’s event platform did not answer just now. Please try again in a few minutes.');
         else pickPrevious(only);
         return;
       }
@@ -588,7 +588,7 @@
     if (!ev.portal) { ST.ctx.toastError('Set the event’s portal in Basics first: a previous edition comes from that portal.'); return; }
     var award = String(ev.category || '') === 'awards';
     var m = M.openModal('<div class="modal-head"><h3>Choose the previous edition</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">This event has no previous edition on record. Choose it from ' + esc(ev.portalName || ev.portal) + '’s own ' + (award ? 'awards' : 'events') + ' on ET.</p>' +
+      '<div class="modal-body"><p class="confirm-msg">This event has no previous edition on record. Choose it from ' + esc(ev.portalName || ev.portal) + '’s own ' + (award ? 'awards' : 'events') + ' on ETB2B.</p>' +
       '<div id="seo-pick-list" class="seo-pick" aria-busy="true">Loading ' + esc(ev.portalName || ev.portal) + '’s events…</div></div>' +
       '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button></div>', { style: 'width:min(620px,100%)' });
     C.fetchEtEvents(ev.portal, award ? 'award' : '').then(function (r) {
@@ -597,14 +597,14 @@
       host.removeAttribute('aria-busy');
       host.innerHTML = list.length ? '<ul class="seo-list">' + list.slice(0, 60).map(function (e) {
         return '<li><button class="btn btn-ghost seo-pick-btn" type="button" data-pick="' + esc(String(e.id)) + '"><b>' + esc(e.title) + '</b><span>' + esc(e.dateLabel || '') + '</span></button></li>';
-      }).join('') + '</ul>' : '<p class="seo-none">' + esc(ev.portalName || ev.portal) + ' has no past ' + (award ? 'awards' : 'events') + ' on ET.</p>';
+      }).join('') + '</ul>' : '<p class="seo-none">' + esc(ev.portalName || ev.portal) + ' has no past ' + (award ? 'awards' : 'events') + ' on ETB2B.</p>';
       Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (b) {
         b.onclick = function () {
           var id = b.getAttribute('data-pick'), e = list.filter(function (x) { return String(x.id) === id; })[0];
           m.close();
           ST.prevBusy = true; redraw();
           C.fetchSeoPrevious(ev.id, { portal: ev.portal, id: id }).then(function (res) {
-            if (!res.previous) { ST.prevBusy = false; redraw(); ST.ctx.toastError('ET’s event platform did not answer for that edition just now. Please try again.'); return; }
+            if (!res.previous) { ST.prevBusy = false; redraw(); ST.ctx.toastError('ETB2B’s event platform did not answer for that edition just now. Please try again.'); return; }
             /* kept as the event's previous edition for search: ETB2B AI reads its SEO as a reference from now on */
             var keep = { portal: ev.portal, id: id, name: e ? e.title : res.previous.name, link: (e && e.link) || res.previous.link || '' };
             return C.updateEvent(ev.id, { settings: { seo: { previous: keep } } }).then(function () {
@@ -616,7 +616,7 @@
         };
       });
     }, function (err) {
-      var host = $('seo-pick-list'); if (host) { host.removeAttribute('aria-busy'); host.innerHTML = '<p class="seo-none" role="alert">ET’s list could not be read: ' + esc(errText(err)) + '</p>'; }
+      var host = $('seo-pick-list'); if (host) { host.removeAttribute('aria-busy'); host.innerHTML = '<p class="seo-none" role="alert">ETB2B’s list could not be read: ' + esc(errText(err)) + '</p>'; }
     });
   }
   function bringInDialog(r, only) {
@@ -626,7 +626,7 @@
     var newT = (p.testimonials || []).filter(function (t) { return !have[t.prevId]; });
     var addr = p.seo && p.seo.streetAddress;
     var addrRow;
-    if (!addr) addrRow = '<li class="seo-bi-off">Street address and postcode: ET has none for it.</li>';
+    if (!addr) addrRow = '<li class="seo-bi-off">Street address and postcode: ETB2B has none for it.</li>';
     else if (!r.sameVenue) addrRow = '<li class="seo-bi-off">Street address and postcode: not offered, because the previous edition was at ' + esc(r.venueThen || 'another venue') + (r.venueNow ? ' and this one is at ' + esc(r.venueNow) : '') + '.</li>';
     else {
       var typed = F.streetAddress && F.streetAddress !== addr;
@@ -635,10 +635,10 @@
     }
     var tRow = newT.length ? '<li><input type="checkbox" id="seo-bi-tm"' + (only === 'addr' ? '' : ' checked') + '><label for="seo-bi-tm"><b>' + newT.length + (newT.length === 1 ? ' testimonial' : ' testimonials') + '</b><span>' +
       esc(newT.map(function (t) { return t.name + (t.rating ? ' (' + t.rating + '★)' : ''); }).join(', ')) + ' — as they wrote them, marked as from the previous edition</span></label></li>'
-      : '<li class="seo-bi-off">Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ET has none for it.') + '</li>';
+      : '<li class="seo-bi-off">Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ETB2B has none for it.') + '</li>';
     var kwRow = p.seo && p.seo.keywords && p.seo.keywords.length ? '<li class="seo-bi-off">Keywords (' + p.seo.keywords.length + '): kept as a reference for ETB2B AI, which writes this edition’s own.</li>' : '';
     var m = M.openModal('<div class="modal-head"><h3>Bring in from ' + esc(p.name || 'the previous edition') + '</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">From ET’s own record of the previous edition' + (p.link ? ' (<a href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing is changed until you save.</p>' +
+      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s own record of the previous edition' + (p.link ? ' (<a href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing is changed until you save.</p>' +
       '<ul class="seo-list seo-bi">' + addrRow + tRow + kwRow + '</ul>' +
       '<p class="hint"><button class="btn btn-ghost btn-sm" type="button" id="seo-bi-other">Choose another previous edition</button></p></div>' +
       '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button><span style="flex:1"></span><button class="btn btn-primary" type="button" id="seo-bi-go">Bring them in</button></div>',

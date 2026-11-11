@@ -118,6 +118,7 @@
    model is asked. One model call per message (route 'dash-bot' in lib/llm.js), 6,000 output tokens, a 55 s
    deadline, at most 300 events in the prompt (plus those named in the message). */
 'use strict';
+var NAME_RULE = require('./name-rule').NAME_RULE;
 const crypto = require('crypto');
 const llm = require('./llm');
 const engine = require('./vendor/promo-engine');
@@ -364,7 +365,7 @@ var MSG = {
   recordsNone: 'I couldn\'t find any names to add in your message or the attached document. Name the people, or attach the document that lists them.',
   recordsNeedEvent: 'Open the event first: ETB2B AI adds speakers and sponsors from inside an event, on its console.',
   recordsViewOnly: 'You have view-only access (Viewer), so ETB2B AI can\'t add speakers or sponsors for you. Ask an admin for Editor access.',
-  whichPortal: 'Which portal? Name one of ET\u2019s portals, for example ETCIO or ETHRWorld.',
+  whichPortal: 'Which portal? Name one of ETB2B\u2019s portals, for example ETCIO or ETHRWorld.',
   /* a message handed here by the site editor's ETB2B AI that reads as a change to the page after all: never
      handed back (one hop), so the person is asked to say where on the page (plan \u00a75b) */
   notThisPage: 'I couldn\'t tell whether that is about this page. Name the part of the page, for example \u201cthe hero\u201d.',
@@ -1048,7 +1049,7 @@ function buildScopedPrompt(ctx) {
   function tok(field) { return '{{' + p.eventId + '.' + field + '}}'; }
   return [
     /* 1. who and where */
-    'You are ETB2B AI in ETB2B EventSphere, ET B2B\'s event-site CMS, on ' + placeLine(ctx) + '. Here you work on ONE event only, ' + here + ': you help ' + name + ' with this event and nothing else. Answer in plain, short English (at most two sentences). No emojis.',
+    'You are ETB2B AI in ETB2B EventSphere, ETB2B\'s event-site CMS, on ' + placeLine(ctx) + '. Here you work on ONE event only, ' + here + ': you help ' + name + ' with this event and nothing else. Answer in plain, short English (at most two sentences). No emojis.',
     ctx.handedFrom ? 'The site editor\'s ETB2B AI passed this message to you because it is not about the page: answer it yourself, as well as you can.' : null,
     '',
     /* 2. today */
@@ -1079,7 +1080,7 @@ function buildScopedPrompt(ctx) {
     '- Never say that something was done, is being done or will be done ("I have opened …", "it has been deleted", "Deleting it now", "I\'ll publish it"): the product shows what was done.',
     'TOKENS',
     '- ' + here + ': the event\'s name.',
-    '- ' + tok('dates') + ', ' + tok('start') + ', ' + tok('end') + ', ' + tok('venue') + ', ' + tok('city') + ', ' + tok('status') + ', ' + tok('type') + ', ' + tok('created') + ', ' + tok('updated') + ', ' + tok('by') + ' (who made it), ' + tok('site') + ' (its live address, or that it is not live yet), ' + tok('portal') + ' (its ET portal, or "no portal yet").',
+    '- ' + tok('dates') + ', ' + tok('start') + ', ' + tok('end') + ', ' + tok('venue') + ', ' + tok('city') + ', ' + tok('status') + ', ' + tok('type') + ', ' + tok('created') + ', ' + tok('updated') + ', ' + tok('by') + ' (who made it), ' + tok('site') + ' (its live address, or that it is not live yet), ' + tok('portal') + ' (its ETB2B portal, or "no portal yet").',
     '- Numbers so far: ' + METRICS.concat(MAILER_FIELDS).map(tok).join(', ') + '.',
     '- {{#today}}: today\'s date.',
     'Write the words around the tokens yourself: "' + here + ' has {{' + p.eventId + '.registrations}} registrations and {{' + p.eventId + '.visitors}} visitors so far."',
@@ -1113,6 +1114,7 @@ function buildScopedPrompt(ctx) {
     ctx.message,
     '',
     /* 11. output */
+    NAME_RULE,
     'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`open`, `promo`, `records` or `refuse`), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
@@ -1131,8 +1133,8 @@ function buildPrompt(ctx) {
   var here = p.eventId ? '{{' + p.eventId + '}}' : '';
   return [
     /* 1. who and where */
-    dash ? 'You are ETB2B AI on the events dashboard of ETB2B EventSphere, ET B2B\'s event-site CMS. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.'
-      : 'You are ETB2B AI in ETB2B EventSphere, ET B2B\'s event-site CMS, on ' + placeLine(ctx) + '. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.',
+    dash ? 'You are ETB2B AI on the events dashboard of ETB2B EventSphere, ETB2B\'s event-site CMS. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.'
+      : 'You are ETB2B AI in ETB2B EventSphere, ETB2B\'s event-site CMS, on ' + placeLine(ctx) + '. You help ' + name + ' with their events. Answer in plain, short English (at most two sentences, plus a list when asked). No emojis.',
     ctx.handedFrom ? 'The site editor\'s ETB2B AI passed this message to you because it is not about the page: answer it yourself, as well as you can.' : null,
     '',
     /* 2. today */
@@ -1148,7 +1150,7 @@ function buildPrompt(ctx) {
     '- "reply": answer a question, or say something. About one event, use its tokens (below). For "which events …", "list …" or "how many events …", add a `list` rule: the product works out which events belong, so never pick or count them yourself. Example: "Which events go live this month?" -> kind "reply", text "Here are your events this month.", list {startFrom (1st of this month), startTo (last day of this month)}. Example: "How many registrations does Agentic AI have?" -> kind "reply", events [its id], text "{{<id>}} has {{<id>.registrations}} registrations so far."',
     '- "promo": open Promotions on the templates asked for, ready to edit and download. Put the event\'s id in `events`, then set `promo.post` (a Social posts template) or `promo.sitePost` (a post in the site\'s own look), and/or `promo.mailer`. Example: "Make a save-the-date post and an announcement mailer for Autotech" -> kind "promo", events [its id], promo {post "generic.announcement", mailer "mailer.announcement"}.',
     '- "undo": the person asks to take back what you last did ("undo that", "put it back", "go back").',
-    '- "portal": switch the dashboard to another of ET\'s portals, or to all portals, as its portal switcher does ("switch to ETAuto", "work in all portals"). Put the portal\'s slug (from ET PORTALS below), or "all", in `switchTo.portal`. Only when the person asks to switch the portal they work in; "show ETHRWorld\'s drafts" is a ' + (dash ? 'filter.' : 'list.'),
+    '- "portal": switch the dashboard to another of ETB2B\'s portals, or to all portals, as its portal switcher does ("switch to ETAuto", "work in all portals"). Put the portal\'s slug (from ET PORTALS below), or "all", in `switchTo.portal`. Only when the person asks to switch the portal they work in; "show ETHRWorld\'s drafts" is a ' + (dash ? 'filter.' : 'list.'),
     '- "refuse": the person asks for something under WHAT YOU NEVER DO.',
     mayHandOff ? '- "handoff": the message is about this site\'s page itself: its words, design, colours, fonts, pictures, sections, buttons or forms, or a change to any of them ("make the hero darker", "what does the overview say?", "use this picture on the banner"). The site editor\'s own ETB2B AI answers those, not you. Answer kind "handoff" with text "" and nothing else. Questions about this event\'s numbers, its other pages, other events, promotions, portals or a new event are yours.' : null,
     'Rules:',
@@ -1174,7 +1176,7 @@ function buildPrompt(ctx) {
     '- Never say that something was done, is being done or will be done ("I have opened …", "it has been deleted", "Deleting it now", "I\'ll publish it"): the product shows what was done.',
     'TOKENS',
     '- {{<id>}}: the event\'s name, as a link.',
-    '- {{<id>.dates}}, {{<id>.start}}, {{<id>.end}}, {{<id>.venue}}, {{<id>.city}}, {{<id>.status}}, {{<id>.type}}, {{<id>.created}}, {{<id>.updated}}, {{<id>.by}} (who made it), {{<id>.site}} (its live address, or that it is not live yet), {{<id>.portal}} (its ET portal, or "no portal yet").',
+    '- {{<id>.dates}}, {{<id>.start}}, {{<id>.end}}, {{<id>.venue}}, {{<id>.city}}, {{<id>.status}}, {{<id>.type}}, {{<id>.created}}, {{<id>.updated}}, {{<id>.by}} (who made it), {{<id>.site}} (its live address, or that it is not live yet), {{<id>.portal}} (its ETB2B portal, or "no portal yet").',
     '- Numbers so far: {{<id>.registrations}}, {{<id>.confirmed}}, {{<id>.waitlist}}, {{<id>.cancelledRegs}}, {{<id>.checkedIn}}, {{<id>.pending}}, {{<id>.visitors}}, {{<id>.uniques}}, {{<id>.conversion}}, {{<id>.mailerOpens}}, {{<id>.mailerClicks}}.',
     '- With a list rule: {{#count}} (how many events match) and {{#total.<number name>}} (the sum over every match, e.g. {{#total.registrations}}).',
     '- {{#today}}: today\'s date.',
@@ -1226,6 +1228,7 @@ function buildPrompt(ctx) {
     ctx.message,
     '',
     /* 12. output */
+    NAME_RULE,
     'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`create`, `open`, `filter`, `promo` or `refuse`; `list` goes with a "reply"), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })   // a line this place does not have
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');

@@ -244,9 +244,9 @@ function pickerPage(who) {
   function itemOf(report, id) { return ((report && report.items) || []).filter(function (i) { return i.eventId === id; })[0] || null; }
   check('2 the evidence report: 200, canFill (an approver), every live named event', r.status === 200 && rep.canFill === true && Array.isArray(rep.items) &&
     !itemOf(rep, 'pi-deleted') && !!itemOf(rep, 'pi-none') && !!itemOf(rep, 'pi-hr'), [r.status, rep.counts]);
-  check('2 certain from the previous edition\'s ET record', (itemOf(rep, 'pi-cert-record') || {}).certain === 'hr' && itemOf(rep, 'pi-cert-record').from === 'et-record' &&
+  check('2 certain from the previous edition\'s ETB2B record', (itemOf(rep, 'pi-cert-record') || {}).certain === 'hr' && itemOf(rep, 'pi-cert-record').from === 'et-record' &&
     itemOf(rep, 'pi-cert-record').certainName === 'ETHRWorld', itemOf(rep, 'pi-cert-record'));
-  check('2 certain from a typed ET link, hinted link-only', (itemOf(rep, 'pi-cert-link') || {}).certain === 'cio' && itemOf(rep, 'pi-cert-link').hints.indexOf('link-only') !== -1, itemOf(rep, 'pi-cert-link'));
+  check('2 certain from a typed ETB2B link, hinted link-only', (itemOf(rep, 'pi-cert-link') || {}).certain === 'cio' && itemOf(rep, 'pi-cert-link').hints.indexOf('link-only') !== -1, itemOf(rep, 'pi-cert-link'));
   check('2 certain from the design\'s reference, hinted design-only', (itemOf(rep, 'pi-cert-design') || {}).certain === 'retail' && itemOf(rep, 'pi-cert-design').hints.indexOf('design-only') !== -1, itemOf(rep, 'pi-cert-design'));
   check('2 a name that names another portal blocks it', (itemOf(rep, 'pi-name-blocked') || {}).certain === '' && itemOf(rep, 'pi-name-blocked').blockers.indexOf('name-mentions:cio') !== -1, itemOf(rep, 'pi-name-blocked'));
   check('2 the generated bar alone is never enough (site-only)', (itemOf(rep, 'pi-site-only') || {}).certain === '' && itemOf(rep, 'pi-site-only').blockers.indexOf('site-only') !== -1, itemOf(rep, 'pi-site-only'));
@@ -275,7 +275,7 @@ function pickerPage(who) {
     (results['pi-nowhere'] || {}).reason === 'not-found' && !DOCS['events/pi-name-blocked'].portal && DOCS['events/pi-has'].portal === 'bfsi' && !DOCS['events/pi-site-only'].portal && !DOCS['events/pi-nowhere'], results);
   await wait();
   var filled = linesOf('pi-cert-record', 'portal-set')[0] || {};
-  check('2 … each fill-in is one "portal-set" line in its History, in words', filled.area === 'event' && filled.detail === 'No portal → ETHRWorld (filled in from its previous edition\'s ET record)' &&
+  check('2 … each fill-in is one "portal-set" line in its History, in words', filled.area === 'event' && filled.detail === 'No portal → ETHRWorld (filled in from its previous edition\'s ETB2B record)' &&
     JSON.stringify(filled.fields) === JSON.stringify([{ field: 'portal', before: 'No portal', after: 'ETHRWorld' }]), filled);
   r = await call('POST', '/api/events/portal-backfill', { items: [{ eventId: 'pi-cert-record', portal: 'hr' }] });
   check('2 pressing again sets nothing twice', r.status === 200 && r.json.results[0].status === 'skipped' && r.json.results[0].reason === 'has-portal' && linesOf('pi-cert-record', 'portal-set').length === 1, r.json);

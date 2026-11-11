@@ -181,7 +181,7 @@ check('bound jury page: none anywhere -> no page', aw.pageSections('award-jury',
 
 /* the two calls to act */
 var rc = byId(home, 'recognition').html, cer = byId(aw.homeSections({}, { edition: 'E', dateLabel: '20 January 2027', place: 'Mumbai' }), 'awards-night').html;
-check('calls: enter (the award\'s main button) and the night (an invitation asked for, never a ticket: payment is off)', /<a class="aw-rec-btn" href="#hero" data-register-cta>Nominate Now<\/a>/.test(rc) && /<a class="aw-cer-btn" href="#hero" data-register-cta data-rv-form-title="Request an invitation" data-rv-form-note="Seats are confirmed by the ET team; there is no online payment\." data-rv-form-source="ceremony-invitation">Request an invitation<\/a>/.test(cer) && !/Ticket/i.test(cer));
+check('calls: enter (the award\'s main button) and the night (an invitation asked for, never a ticket: payment is off)', /<a class="aw-rec-btn" href="#hero" data-register-cta>Nominate Now<\/a>/.test(rc) && /<a class="aw-cer-btn" href="#hero" data-register-cta data-rv-form-title="Request an invitation" data-rv-form-note="Seats are confirmed by the ETB2B team; there is no online payment\." data-rv-form-source="ceremony-invitation">Request an invitation<\/a>/.test(cer) && !/Ticket/i.test(cer));
 check('calls: the night\'s date and venue', cer.indexOf('<span>20 January 2027</span><span>Mumbai</span>') !== -1);
 
 /* partners */

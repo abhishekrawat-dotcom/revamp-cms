@@ -218,7 +218,7 @@ function cleanSeo(s) {
   if (has(s, 'previous')) {
     var p = s.previous;
     if (p != null) {
-      if (!isObj(p) || typeof p.portal !== 'string' || !/^[a-z0-9-]{1,40}$/.test(p.portal) || typeof p.id !== 'string' || !/^[0-9]{1,12}$/.test(p.id)) return fail('The previous edition is a portal and an ET event id.', 'previous');
+      if (!isObj(p) || typeof p.portal !== 'string' || !/^[a-z0-9-]{1,40}$/.test(p.portal) || typeof p.id !== 'string' || !/^[0-9]{1,12}$/.test(p.id)) return fail('The previous edition is a portal and an ETB2B event id.', 'previous');
       if ((e = textError('The previous edition\'s name', p.name, 300) || httpError('The previous edition\'s address', p.link, 500))) return fail(e, 'previous');
       out.previous = { portal: p.portal, id: p.id, name: line(p.name), link: str(p.link).trim() };
     } else out.previous = null;

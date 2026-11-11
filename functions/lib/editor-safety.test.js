@@ -203,7 +203,7 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
     /localEdited = !savedMark \|\| \(savedMark\.hash !== snapHash\(undoStack\[undoPtr\]\) && !autoOnly\(\)\);/.test(body('step')));
   /* B05 (UX-076): the opening's updates are part of the page as it opened (bakeAuto); once the person has changed
      something they are a step of the editor's own, never the person's (commitAutomatic) */
-  check('7 UX-072: the opening\'s own updates are recorded as automatic', /if \(putRight\.length\) bakeAuto\(putRight\);/.test(SRC) && /syncEtLogos\(\)\) bakeAuto\(\['the ET logo and menu'\]\);/.test(SRC) &&
+  check('7 UX-072: the opening\'s own updates are recorded as automatic', /if \(putRight\.length\) bakeAuto\(putRight\);/.test(SRC) && /syncEtLogos\(\)\) bakeAuto\(\['the portal\\u2019s logo and menu'\]\);/.test(SRC) &&
     /if \(undoPtr !== openPtr \|\| editingEl\) \{ commitAutoStep\(names\); return; \}/.test(body('bakeAuto')) && /if \(!commitAutomatic\(\)\) return false;/.test(body('commitAutoStep')) &&
     /record\(false, true\)/.test(body('commitAutomatic')));
 

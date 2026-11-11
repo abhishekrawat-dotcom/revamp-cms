@@ -701,7 +701,7 @@ function imageUrlProblem(raw, bucket, eventId, importId) {
   if (host === 'storage.googleapis.com' && bucket && eventId && !/%2f|%5c|%2e%2e|\\/i.test(u.pathname) &&
       (u.pathname.indexOf('/' + bucket + '/events/' + eventId + '/') === 0 ||
        (importId && u.pathname.indexOf('/' + bucket + '/events/import-' + importId + '/images/') === 0))) return '';
-  return 'Pictures can only be loaded from this event\'s own files or from ET\'s image servers.';
+  return 'Pictures can only be loaded from this event\'s own files or from ETB2B\'s image servers.';
 }
 /* could this address pass for some imported site? (which one is the event's to say) */
 function inSomeImport(raw, bucket) {

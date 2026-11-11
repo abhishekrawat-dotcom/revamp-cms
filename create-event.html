@@ -1954,8 +1954,8 @@
       <div class="brand-mark">
         <!-- the ET Oneworld mark, one picture for a light ground and one for a dark ground (app-logo.css shows the one
              that suits the theme; only the dark copy's lettering is light, its red ET square is as drawn) -->
-        <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ET Oneworld">
-        <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ET Oneworld">
+        <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
+        <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
       </div>
       <span class="sep"></span>
       <span class="wiz-title">
@@ -2013,7 +2013,7 @@
         <div class="step-head">
           <span class="eyebrow">Step 1 of 2 &middot; Event details</span>
           <h1>Which portal is this event on, and what type of microsite is it?</h1>
-          <p class="desc">Choose the ET portal it belongs to, then the type that best matches the microsite you want to build.</p>
+          <p class="desc">Choose the ETB2B portal it belongs to, then the type that best matches the microsite you want to build.</p>
         </div>
 
         <!-- the event's portal (renderPortalStep): ET's roster, searchable; committed with the type card that is clicked -->
@@ -2021,7 +2021,7 @@
           <label class="cat-q" for="cat-portal">Portal</label>
           <div class="cbx">
             <input class="inp cbx-inp" id="cat-portal" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="cat-portal-list" aria-describedby="cat-portal-hint cat-portal-error" placeholder="Loading portals…" autocomplete="off" spellcheck="false" disabled>
-            <ul class="cbx-list" id="cat-portal-list" role="listbox" aria-label="ET portals" hidden></ul>
+            <ul class="cbx-list" id="cat-portal-list" role="listbox" aria-label="ETB2B portals" hidden></ul>
           </div>
           <p class="cat-portal-fixed" id="cat-portal-fixed" hidden></p>
           <p class="hint" id="cat-portal-hint"></p>
@@ -2036,7 +2036,7 @@
 
         <div class="callout">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg>
-          <span><strong>Your choices tailor the setup.</strong>The portal decides which previous editions you can pick, the ET bar and footer on the site, and the branding of its mailers and posts. The type decides the dates, fields and nomination options. You can change both later.</span>
+          <span><strong>Your choices tailor the setup.</strong>The portal decides which previous editions you can pick, the ETB2B bar and footer on the site, and the branding of its mailers and posts. The type decides the dates, fields and nomination options. You can change both later.</span>
         </div>
       </div>
 
@@ -2232,7 +2232,7 @@
             <div class="gb-grid">
               <div class="field"><span class="flabel" id="gb-mode-label">Site type</span>
                 <div class="gb-seg" role="radiogroup" aria-labelledby="gb-mode-label">
-                  <label><input type="radio" name="gb-mode" value="standard"><span><b>Standard</b><i>The usual ET sections, as the previous edition had them</i></span></label>
+                  <label><input type="radio" name="gb-mode" value="standard"><span><b>Standard</b><i>The usual ETB2B sections, as the previous edition had them</i></span></label>
                   <label><input type="radio" name="gb-mode" value="advanced"><span><b>Advanced</b><i>The AI chooses the sections for this event</i></span></label>
                 </div>
                 <p class="hint" id="gb-mode-hint"></p>
@@ -2278,7 +2278,7 @@
                 <div class="et-pick-row" id="gb-et-pickers">
                   <div class="cbx">
                     <input class="inp cbx-inp" id="gb-et-event" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-event-list" aria-label="Previous edition" placeholder="Choose this event’s portal first" autocomplete="off" spellcheck="false" disabled>
-                    <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ET events" hidden></ul>
+                    <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ETB2B events" hidden></ul>
                   </div>
                 </div>
                 <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-cancel" hidden>Keep the event picked before</button>
@@ -2287,7 +2287,7 @@
                 <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-paste">Paste the link instead</button>
                 <div class="et-link" id="gb-prev-link" hidden>
                   <input class="inp" id="gb-previous" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… (the previous edition’s site)" aria-labelledby="gb-et-label">
-                  <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-list">Choose from ET’s list instead</button>
+                  <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-list">Choose from ETB2B’s list instead</button>
                 </div>
                 <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
               </div>
@@ -4623,7 +4623,7 @@
   /* what the box's hint says about the portal it holds */
   function portalHint(){
     var p = stepPortal;
-    if (!p) return 'Search ET’s portals by name, for example ETCIO or ETHRWorld.';
+    if (!p) return 'Search ETB2B’s portals by name, for example ETCIO or ETHRWorld.';
     if (isRosterPortal(workingPortal) && p !== workingPortal) return 'This event will be listed under ' + portalName(p) + ' on the dashboard.';
     if (stepPortalFrom) return 'Set from your dashboard. Change it if this event belongs to another portal.';
     return '';
@@ -4664,7 +4664,7 @@
     fixed.textContent = locked ? portalName(S.basics.portal) : '';
     if (portalBox){
       if (portalRoster){
-        portalBox.setDisabled(false, 'Search ET’s portals');
+        portalBox.setDisabled(false, 'Search ETB2B’s portals');
         portalBox.setValue(stepPortal);
       } else {
         portalBox.setDisabled(true, portalRosterFailed ? 'The portal list is not loaded' : 'Loading portals…');
@@ -5463,8 +5463,8 @@
       box.setDisabled(!events.length, events.length ? 'Search ' + etPortalName(slug) + '’s ' + noun : 'No ' + noun + ' on this portal');
       var cur = S.brief.etEvent;
       box.setValue(cur && cur.portal === slug && (cur.kind || 'event') === kind ? String(cur.id) : '');
-      etStatus(!events.length ? etPortalName(slug) + ' has no ET ' + noun + ' to pick from. Paste the link to the previous edition instead.'
-        : etPick.partial[key] ? 'ET sent only part of ' + etPortalName(slug) + '’s older ' + noun + '. If yours is not listed, try again in a few minutes.' : '');
+      etStatus(!events.length ? etPortalName(slug) + ' has no ETB2B ' + noun + ' to pick from. Paste the link to the previous edition instead.'
+        : etPick.partial[key] ? 'ETB2B sent only part of ' + etPortalName(slug) + '’s older ' + noun + '. If yours is not listed, try again in a few minutes.' : '');
     }
     if (etPick.events[key]){ show(etPick.events[key]); return Promise.resolve(etPick.events[key]); }
     box.setItems([]); box.setValue('');
@@ -5482,7 +5482,7 @@
       box.setDisabled(true, 'Previous edition');
       /* the list failing never blocks the most important source: the link box opens by itself, with the reason */
       if (S.creationMethod === 'brief' && !S.brief.etEvent && !normalUrl(S.brief.previous) && !etPick.linkMode){
-        openPrevLink('ET’s list of ' + etPortalName(slug) + '’s ' + noun + ' is not available just now. Paste the link to last year’s site instead.', true);
+        openPrevLink('ETB2B’s list of ' + etPortalName(slug) + '’s ' + noun + ' is not available just now. Paste the link to last year’s site instead.', true);
         return;
       }
       etStatus(etPortalName(slug) + '’s ' + noun + ' could not be loaded. ' + plainError(err), function(){ loadEtEvents(); });
@@ -7256,7 +7256,7 @@
     });
     var bits = [];
     if (forms) bits.push(forms + (forms === 1 ? ' button now opens' : ' buttons now open') + ' the event\u2019s form');
-    if (links) bits.push(links + (links === 1 ? ' link that led off this site was' : ' links that led off this site were') + ' pointed at the page or ET\u2019s pages, or hidden');
+    if (links) bits.push(links + (links === 1 ? ' link that led off this site was' : ' links that led off this site were') + ' pointed at the page or ETB2B\u2019s pages, or hidden');
     if (gone.length) bits.push('taken out: ' + gone.filter(function(g, i, a){ return a.indexOf(g) === i; }).join(', '));
     return 'Design imported. ' + bits.join('; ') + '.';
   }
@@ -11822,7 +11822,7 @@
     var comps = [br.comp1, br.comp2].filter(function(u){ return !!normalUrl(u); }).length;
     items.push(comps ? (comps === 1 ? '1 competitor event' : comps + ' competitor events') + ' to compare against.' : 'No competitor events.');
     if (String(br.instructions || '').trim()) items.push('Your instructions for the AI.');
-    items.push('Site type: ' + (br.siteMode === 'advanced' ? 'Advanced — the AI chooses the sections' : 'Standard — the usual ET sections') +
+    items.push('Site type: ' + (br.siteMode === 'advanced' ? 'Advanced — the AI chooses the sections' : 'Standard — the usual ETB2B sections') +
       '. Theme: ' + (br.themeMode === 'light' ? 'light' : br.themeMode === 'dark' ? 'dark' : 'as the previous edition (or as the design decides)') + '.');
     var id = S.createdEventId || S.basics.slug;
     items.push((S.createdEventId ? 'Updates the event at ' : 'Creates the event at ') + siteAddress(id) + '.');

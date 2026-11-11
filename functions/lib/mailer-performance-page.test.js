@@ -63,7 +63,7 @@ check('theme-toggle.js and auth.js load at the end of the body', page.indexOf('<
 var header = (/<header class="nav">([\s\S]*?)<\/header>/.exec(page) || [])[1] || '';
 check('header.nav > .nav-inner', /^\s*<div class="nav-inner">/.test(header));
 /* B11 (UX-023): the logo's light and dark copies, one shown by the theme */
-check('the brand goes to the events listing', /<a class="nav-brand" href="Event_Listing.html"><img class="app-logo-light" [^>]*alt="ET Oneworld"><img class="app-logo-dark" [^>]*alt="ET Oneworld"><\/a>/.test(header));
+check('the brand goes to the events listing', /<a class="nav-brand" href="Event_Listing.html"><img class="app-logo-light" [^>]*alt="ETB2B EventSphere"><img class="app-logo-dark" [^>]*alt="ETB2B EventSphere"><\/a>/.test(header));
 var back = (/<a class="nav-back" href="Event_Listing.html"[^>]*>([\s\S]*?)<\/a>/.exec(header) || [])[1];
 check('a back link to the events listing reading "Back to events"', back !== undefined && /<span class="nav-back-long">Back to events<\/span>/.test(back) &&
   /<a class="nav-back" href="Event_Listing.html" aria-label="Back to events">/.test(header), back);

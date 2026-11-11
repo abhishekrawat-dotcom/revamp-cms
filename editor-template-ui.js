@@ -284,10 +284,10 @@
          named in the chip and saved apart from the person's changes (bakeAuto, UX-076); never while ETB2B AI is
          applying a change, when the page holds half of it */
       var putRight = [];
-      if (syncEtLogos()) putRight.push('the ET logo and menu');
+      if (syncEtLogos()) putRight.push('the portal\u2019s logo and menu');
       if (calmHeadings()) putRight.push('heading sizes');
       if (putRight.length) bakeAuto(putRight);
-      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && !aiWorking && syncEtLogos()) bakeAuto(['the ET logo and menu']); }, ms); });
+      [400, 1500].forEach(function (ms) { setTimeout(function () { if (canvas && !remounting && !aiWorking && syncEtLogos()) bakeAuto(['the portal\u2019s logo and menu']); }, ms); });
       /* opened from the preview's "Apply in editor": that theme */
       var askedTheme = new URLSearchParams(location.search).get('theme');
       var ti = themesInfo();

@@ -39,7 +39,7 @@
      links (GET /api/event/forms `consent`). */
   var CONSENT_ID = 'consent', CONSENT_TYPE = 'consent';
   var CONSENT_TITLE = 'Consent (always required)';
-  var CONSENT_NOTE = 'Every form ends with this box and visitors must tick it to submit. It cannot be removed, moved or changed. Its links are your event\u2019s ET portal\u2019s privacy, cookie and terms pages.';
+  var CONSENT_NOTE = 'Every form ends with this box and visitors must tick it to submit. It cannot be removed, moved or changed. Its links are your event\u2019s ETB2B portal\u2019s privacy, cookie and terms pages.';
   function isConsent(f) { return !!f && (f.type === CONSENT_TYPE || f.id === CONSENT_ID); }
   function ownFields(list) { return (list || []).filter(function (f) { return !isConsent(f); }); }
   /* every form asks for an email address, always required: it is how one response is told from another (the

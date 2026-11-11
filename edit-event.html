@@ -87,7 +87,7 @@
         </a>
         <button class="ev-menu-item" type="button" id="btn-share-preview" data-share-preview hidden aria-label="Share preview link" aria-describedby="pv-share-desc" title="Make a link anyone can open, without signing in, to see the site as last saved">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>
-          <span class="mi-words"><span class="mi-name">Share preview link…</span><small id="pv-share-desc">A 7-day link for people without an ET login</small></span>
+          <span class="mi-words"><span class="mi-name">Share preview link…</span><small id="pv-share-desc">A 7-day link for people without an ETB2B login</small></span>
         </button>
       </span>
     </span>
@@ -1217,7 +1217,7 @@
 
       '<div class="field c6"><label for="b-portal">Portal</label>' +
         '<select class="inp" id="b-portal">' + portalOptions + '</select>' +
-        '<p class="hint">Its previous editions, its site’s ET bar and footer, and its mailers’ branding come from this portal.</p>' +
+        '<p class="hint">Its previous editions, its site’s ETB2B bar and footer, and its mailers’ branding come from this portal.</p>' +
         '<p class="hint" id="b-portal-note" hidden></p></div>' +
 
       /* the event's own logo: an AI-designed site's hero opens with it (functions/lib/api.js, buildLogoUnit). The tile
@@ -1979,7 +1979,7 @@
     /* what a portal change leaves as it is until later (the Set portal dialog says the same before) */
     function portalNotes(name){
       var n = [];
-      if (EV.generatedAt) n.push('The site keeps its ET bar and footer; they change to ' + name + ' only if the site is generated again.');
+      if (EV.generatedAt) n.push('The site keeps its ETB2B bar and footer; they change to ' + name + ' only if the site is generated again.');
       if (EV.published === true) n.push('Its live registration form keeps its privacy links until it is published again.');
       return n.join(' ');
     }

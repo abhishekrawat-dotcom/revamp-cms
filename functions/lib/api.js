@@ -370,6 +370,7 @@ var DESIGN_FIELDS = DESIGN_COLOR_FIELDS.concat(DESIGN_FONT_FIELDS, Object.keys(D
 
 /* ET's rule for every logo of its verticals (the owner, 23 Oct 2026), in every prompt that can style or edit a
    page or a logo: when a logo's colour changes, only its black lettering may change; the red ET square never. */
+var NAME_RULE = require('./name-rule').NAME_RULE;
 var ET_LOGO_COLOUR_RULE = 'ET LOGOS (every vertical\'s — ETAuto, ETHRWorld, ETRetail and the rest — and The Economic Times Business Verticals logo): if a logo\'s colour must change to suit a dark or a light ground, ONLY its black lettering may change (to white or another colour). The red ET square, with the white "ET" in it, is NEVER changed at any cost: never recoloured, tinted, inverted, filtered (no CSS filter, mix-blend-mode or opacity on a logo), outlined, boxed or redrawn. Never recolour a logo picture yourself: the site already has the right version of each logo for a dark and a light ground.';
 
 /* The prompt: event basics + the section content already filled in step 1 (so suggestions build on what's
@@ -396,7 +397,7 @@ function buildPrompt(payload) {
      "Regenerate Design" is explicitly built to never do that. */
   var priorDesigns = (payload.priorDesigns || []).slice(-6);
   return [
-    'You are proposing fresh, trendy VISUAL REDESIGNS of an existing event microsite for ET Oneworld\'s event builder — not a different template. This is the REAL template\'s own markup and CSS, rendered live; you are only changing its real design settings (colour, typography, heading style), and optionally the order of a few sections (see below) — never which sections exist or their own internal layout.',
+    'You are proposing fresh, trendy VISUAL REDESIGNS of an existing event microsite for ETB2B EventSphere\'s event builder — not a different template. This is the REAL template\'s own markup and CSS, rendered live; you are only changing its real design settings (colour, typography, heading style), and optionally the order of a few sections (see below) — never which sections exist or their own internal layout.',
     '',
     'Event:', JSON.stringify(payload.event || {}, null, 2),
     '',
@@ -406,7 +407,7 @@ function buildPrompt(payload) {
     'Baseline template (fixed — do not suggest switching it). Its own brand swatches and which elements count as headings/buttons/cards:',
     JSON.stringify({ id: tpl.id, name: tpl.name, swatches: design.swatches || [], headings: design.headings, buttons: design.buttons, cards: design.cards }, null, 2),
     '',
-    'ET Oneworld\'s own event sites centre section headings and call-to-action buttons by convention — keep headingAlign as "center" in the large majority of your suggestions; only pick something else for a deliberate, clearly-justified editorial/asymmetric direction.',
+    'ETB2B EventSphere\'s own event sites centre section headings and call-to-action buttons by convention — keep headingAlign as "center" in the large majority of your suggestions; only pick something else for a deliberate, clearly-justified editorial/asymmetric direction.',
     '',
     themePref
       ? 'The event owner asked for this specific look: "' + themePref + '". Every design you propose should clearly read as that direction — treat it as a direct instruction, not loose inspiration.'
@@ -726,7 +727,7 @@ function buildChatPrompt(payload) {
      it cannot put on the page. */
   var canPics = payload.canMakePictures === true;
   return [
-    'You are ETB2B AI, a real conversation partner helping someone edit their already-built event microsite for ET Oneworld. You can change ANYTHING on the page the owner asks for — wording, design, the layout or content of any section, the order of sections, hiding, removing or adding sections — through the tools below. What you return is APPLIED TO THE PAGE AT ONCE (the owner can undo it with one click, and nothing goes live until they publish), so do what is asked — no more. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
+    'You are ETB2B AI, a real conversation partner helping someone edit their already-built event microsite for ETB2B EventSphere. You can change ANYTHING on the page the owner asks for — wording, design, the layout or content of any section, the order of sections, hiding, removing or adding sections — through the tools below. What you return is APPLIED TO THE PAGE AT ONCE (the owner can undo it with one click, and nothing goes live until they publish), so do what is asked — no more. This is a CHAT, not a one-shot command box: read the conversation so far, understand what the latest message means in that context ("make it a bit darker" refers to whatever was just discussed), and respond naturally.',
     '',
     (history ? 'Conversation so far (oldest first):\n' + history + '\n' : ''),
     'The user\'s latest message:', '"' + String(payload.instruction || '').slice(0, 2000) + '"',
@@ -741,6 +742,7 @@ function buildChatPrompt(payload) {
       : '') + (canPics ? chatPictureLines(payload) : ''),
     chatDocsLines(payload),
     ET_LOGO_COLOUR_RULE,
+    NAME_RULE,
     '',
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
@@ -1533,7 +1535,7 @@ function buildExtractBriefPrompt(eventMeta, ownerText) {
   var meta = Object.assign({}, eventMeta || {});
   if (ownerText) delete meta.description;                         // given below, as material
   return [
-    'You are extracting a structured brief from an event overview document, for ET Oneworld\'s event microsite builder.',
+    'You are extracting a structured brief from an event overview document, for ETB2B EventSphere\'s event microsite builder.',
     '',
     'Event basics (already known, given here only for context — do not repeat them back as extracted content):',
     JSON.stringify(meta, null, 2),
@@ -1929,7 +1931,7 @@ function handleEtEvents(req, res) {
       sendJson(res, 200, { portal: portal, kind: kind, events: events, partial: !!events.partial });
     }, function (err) {
       console.error('et/events: ' + portal + (kind === 'award' ? ' awards' : '') + ' — ' + (err && err.message));
-      sendJson(res, 502, { error: 'ET\'s ' + (kind === 'award' ? 'award' : 'event') + ' list could not be read right now. Please try again in a few minutes.', code: 'et-down' });
+      sendJson(res, 502, { error: 'ETB2B\'s ' + (kind === 'award' ? 'award' : 'event') + ' list could not be read right now. Please try again in a few minutes.', code: 'et-down' });
     });
   });
 }
@@ -2646,7 +2648,7 @@ function buildDesignPlanPrompt(payload) {
   var deck = payload.brief && payload.brief.visualIdentity && payload.brief.visualIdentity.designed === 'yes' ? payload.brief.visualIdentity : null;
   var mode = payload.themeMode || 'auto';
   var lines = [
-    'You are the lead designer of a bespoke event microsite, for ET Oneworld\'s event builder. You decide its SECTION STRUCTURE, the layout of every section, its colours and type, and which sections carry a picture. A second step writes the HTML and CSS from exactly what you decide here, so be specific.',
+    'You are the lead designer of a bespoke event microsite, for ETB2B EventSphere\'s event builder. You decide its SECTION STRUCTURE, the layout of every section, its colours and type, and which sections carry a picture. A second step writes the HTML and CSS from exactly what you decide here, so be specific.',
     ''
   ];
 
@@ -2715,6 +2717,7 @@ function buildDesignPlanPrompt(payload) {
       : 'nav, hero and footer are always present — never include them in your sections list, those are added automatically. Everything else is yours: section ids, purposes, ordering and count.',
     '',
     ET_LOGO_COLOUR_RULE,
+    NAME_RULE,
     'THE HERO IS FIXED, as on every Economic Times event site: centred, and holding only The Economic Times Business Verticals logo, the event\'s name as a wordmark, ONE line (design.heroTagline), the date and place, and two buttons. It never carries an overview, a paragraph, numbers or tracks — so the overview of the event is the FIRST section of your list, and everything a visitor needs to understand the event lives in the sections. (The server places the sponsors directly under the hero, ahead of the overview: this edition\'s sponsors section when the site has one, then the previous edition\'s sponsors; list it wherever you like — the other sections keep your order.)',
     '',
     'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.') + (payload.siteMode === 'award' ? ' On an award site, "speakers" is never used: the jury is built from records.' : ''),
@@ -5242,7 +5245,7 @@ function buildGenerateContentPrompt(payload) {
   var competitors = (payload.sources || []).filter(function (s) { return s.type === 'competitor'; });
 
   var lines = [
-    'You are generating REAL content for an event microsite, for ET Oneworld\'s event builder. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. An empty string/array is the correct answer when nothing grounded supports a field; never pad with generic filler just to fill it in.',
+    'You are generating REAL content for an event microsite, for ETB2B EventSphere\'s event builder. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. An empty string/array is the correct answer when nothing grounded supports a field; never pad with generic filler just to fill it in.',
     '',
     'Event (already known — fill in event.name/date/location below only if the material confirms or refines this):',
     JSON.stringify(payload.eventMeta || {}, null, 2)
@@ -5452,7 +5455,7 @@ function buildSectionCodePrompt(payload) {
   var radius = (design.cornerRadius || '12') + 'px';
 
   var lines = [
-    'You are writing the REAL HTML and CSS of a bespoke event microsite, for ET Oneworld\'s event builder — designing and coding it yourself to the standard of a top agency, not filling a template. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. Leave out what nothing supports; never pad with generic filler.',
+    'You are writing the REAL HTML and CSS of a bespoke event microsite, for ETB2B EventSphere\'s event builder — designing and coding it yourself to the standard of a top agency, not filling a template. Ground every fact below — never invent a date, number, named person or company that isn\'t clearly present in the material. Leave out what nothing supports; never pad with generic filler.',
     '',
     'THE DESIGN — decided already; every section follows it, so the page reads as one piece:',
     'Mood: ' + (design.mood || ''),
@@ -5519,6 +5522,7 @@ function buildSectionCodePrompt(payload) {
   lines.push('', 'THE HERO IS NOT YOURS TO WRITE: the server builds it (centred: The Economic Times Business Verticals logo, the event\'s name as a wordmark, the line "' + (design.heroTagline || '') + '", date and place, two buttons). Do not return a "hero" section. Because the hero holds no overview, the first section of the list below that is not the sponsors introduces the event properly. The sections stand on the page in the order listed below (the sponsors, when there are any, come straight after the hero), and the nav\'s links follow that order.',
     'THE ECONOMIC TIMES BRAND: never draw, write or imitate an Economic Times / ET / ETB2B logo, monogram or badge yourself — no "ET" box, no styled "ET" initials, anywhere on the site. The real logo is placed by the server in the hero.',
     ET_LOGO_COLOUR_RULE,
+    NAME_RULE,
     'THE TOP BAR IS NOT YOURS TO WRITE EITHER: the server builds the nav as ET\'s own event sites have it (the portal\'s logo, the event\'s name, date and place, a link to every section, the main action). Do not return a "nav" section.');
 
   lines.push('', 'PICTURES — the site must not be text only:');
@@ -6222,10 +6226,10 @@ function buildRedesignPrompt(payload) {
   var urls = payload.pictureTokens || [];
   var lines = [
     payload.mode === 'edit'
-      ? 'You are changing ONE section of an event microsite that is already built, for ET Oneworld\'s event builder, exactly as its owner asked. Return the section\'s whole HTML and CSS after the change.'
+      ? 'You are changing ONE section of an event microsite that is already built, for ETB2B EventSphere\'s event builder, exactly as its owner asked. Return the section\'s whole HTML and CSS after the change.'
       : payload.mode === 'create'
-        ? 'You are writing ONE NEW section for an event microsite that is already built, for ET Oneworld\'s event builder, from its owner\'s brief. Return the section\'s HTML and CSS, to the standard of a top agency.'
-        : 'You are redesigning ONE section of an event microsite that is already built, for ET Oneworld\'s event builder. Return that section\'s new HTML and CSS — a visibly different, better design of the same section, to the standard of a top agency.',
+        ? 'You are writing ONE NEW section for an event microsite that is already built, for ETB2B EventSphere\'s event builder, from its owner\'s brief. Return the section\'s HTML and CSS, to the standard of a top agency.'
+        : 'You are redesigning ONE section of an event microsite that is already built, for ETB2B EventSphere\'s event builder. Return that section\'s new HTML and CSS — a visibly different, better design of the same section, to the standard of a top agency.',
     '',
     payload.mode === 'edit'
       ? 'WHAT THE OWNER ASKED FOR: "' + String(payload.instruction).slice(0, 1500) + '"'
@@ -6262,6 +6266,7 @@ function buildRedesignPrompt(payload) {
     '- A row with more items than fit may be a carousel: data-rv-carousel on the wrapper, data-rv-carousel-track on the element holding the items, a width on each item; the page adds the buttons — never draw arrows or dots.',
     '',
     ET_LOGO_COLOUR_RULE,
+    NAME_RULE,
     'HTML rules: ONE root element carrying id="' + payload.sectionId + '", no <html>/<body>/<head>, no <script>, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
     'CSS rules: plain class selectors for the classes you use, each class prefixed with "' + payload.sectionId + '-", including one for the root element. Do NOT write [data-rv-section] in any selector and do not style html, body or :root. No @import.',
     '',
@@ -11045,14 +11050,14 @@ function siteCheckOf(fb, eventId, data, html, opts) {
     blockUnlessLive(items, 'logo-year', logos.wrong, onLive.logo, function (list) {
       return { title: 'The ' + (list[0].where === 'footer' ? 'footer' : 'header') + ' logo shows another year',
         lines: list.map(function (l) { return (l.where === 'footer' ? 'Footer' : 'Header') + ': ' + l.years.join(', ') + ' — this edition is ' + logos.want; }),
-        hint: chromeAction ? 'ET’s header and footer use the portal’s logo and this edition’s name and date.' : 'Replace the logo in the site editor with this edition’s, then save.',
+        hint: chromeAction ? 'ETB2B’s header and footer use the portal’s logo and this edition’s name and date.' : 'Replace the logo in the site editor with this edition’s, then save.',
         action: chromeAction, fix: inEditor([]) };
     });
     if (ins.generated && ((ins.hasNav && !ins.etNav) || (ins.hasFooter && !ins.etFooter))) {
       var lines = [];
       if (ins.hasNav && !ins.etNav) lines.push('The header has no menu button on phones' + (logos.notUnit ? ', and shows the logo as it was uploaded, in a box, not this edition’s logo' : '') + '.');
       if (ins.hasFooter && !ins.etFooter) lines.push('The footer has no privacy, terms or contact links.');
-      items.push({ code: 'et-chrome', level: 'warn', title: 'This site was built before ET’s header and footer', lines: lines,
+      items.push({ code: 'et-chrome', level: 'warn', title: 'This site was built before ETB2B’s header and footer', lines: lines,
         hint: 'In the event console, one click puts them in as a new saved version' + (opts.live ? ' and sends it for approval' : '') + '. Nothing else on the page changes.',
         action: chromeAction,
         /* the console shows its site check, with that button, above every tab */
@@ -11303,7 +11308,7 @@ function handleSiteRepair(req, res) {
         var nodesOf = function () { return snap ? snap.nodes : []; };
         var done = [], sectionsPatch = null, planPatch = null, chain = Promise.resolve();
         if (wanted.indexOf('et-chrome') !== -1) chain = chain.then(function () {
-          if (!/^gen-/.test(siteTemplateIdOf(data) || '')) throw httpError(409, 'Only a site the AI designed has ET’s header and footer.', { code: 'not-ai-designed' });
+          if (!/^gen-/.test(siteTemplateIdOf(data) || '')) throw httpError(409, 'Only a site the AI designed has ETB2B’s header and footer.', { code: 'not-ai-designed' });
           return etChromeFor(fb, eventId, data, page).then(function (built) {
             ['nav', 'footer'].forEach(function (id) {
               var next = replaceSiteSection(page, nodesOf(), id, built[id], !snap);
@@ -11314,7 +11319,7 @@ function handleSiteRepair(req, res) {
             sectionsPatch = Array.isArray(data.generatedSections) ? data.generatedSections.map(function (s) {
               return s && (s.id === 'nav' || s.id === 'footer') ? Object.assign({}, s, { html: built[s.id].html, css: built[s.id].css }) : s;
             }) : null;
-            done.push('ET header and footer');
+            done.push('ETB2B header and footer');
           });
         });
         if (wanted.indexOf('pictures') !== -1) chain = chain.then(function () {
@@ -11697,7 +11702,7 @@ function messagePage(title, message, link) {
     'img{height:28px;margin-bottom:28px}h1{font-size:22px;margin:0 0 10px}p{margin:0;color:#5b616b}' +
     '.way{margin-top:24px}.way a{display:inline-block;padding:11px 20px;border-radius:8px;background:#c8161d;color:#fff;font-weight:600;text-decoration:none}' +
     '.way a:hover{background:#a81219}.way a:focus-visible{outline:3px solid #191b1f;outline-offset:2px}</style></head>' +
-    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ET"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p>' + way + '</main></body></html>\n';
+    '<body><main><img src="/assets/et-b2b-wordmark.svg" alt="ETB2B"><h1>' + escHtmlText(title) + '</h1><p>' + escHtmlText(message) + '</p>' + way + '</main></body></html>\n';
 }
 
 /* ---- delivery (lib/delivery.js): compression, and what the browser is given to show a page sooner ----
@@ -12348,7 +12353,7 @@ var promo = function (handler) {
    lib/promo.js is wired too: it reads the event's facts (buildKit). */
 function promoAiHelpers() {
   return Object.assign(promoHelpers(), { sendJson, chatRateOk, chatUid, chatName, chatUserRef, liveEventDocs, logActivity, eventDocRef,
-    isEventId, ET_LOGO_COLOUR_RULE });
+    isEventId, ET_LOGO_COLOUR_RULE: ET_LOGO_COLOUR_RULE + '\n' + NAME_RULE });
 }
 var promoAi = function (handler) {
   var run = inModule('promo-ai', handler);

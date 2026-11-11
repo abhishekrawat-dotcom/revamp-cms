@@ -31,7 +31,7 @@ var places = require('./places');
 var genDesign = require('./gen-design');
 
 var FIELDS = seoFields.AI_FIELDS.slice();
-var CATEGORY = { ip: 'IP event (ET\'s own conference)', client: 'Client event', editorial: 'Editorial event', leadgen: 'Lead-gen microsite', roundtable: 'Round table', awards: 'Awards' };
+var CATEGORY = { ip: 'IP event (ETB2B\'s own conference)', client: 'Client event', editorial: 'Editorial event', leadgen: 'Lead-gen microsite', roundtable: 'Round table', awards: 'Awards' };
 var MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 
 function str(v) { return typeof v === 'string' ? v : ''; }
@@ -79,7 +79,7 @@ function buildFacts(o) {
   var place = seoFields.placeOf(e.city, e.portal);
   if (place) add('Place', place.label);
   add('Short description', e.description);
-  add('Portal (the ET publication that runs it)', o.portalName);
+  add('Portal (the ETB2B publication that runs it)', o.portalName);
   add('Kind of event', CATEGORY[str(e.category)] || e.category);
   var site = o.site || {};
   if (site.headings && site.headings.length) lines.push('The site\'s headings: ' + site.headings.join(' · '));
@@ -105,11 +105,12 @@ function buildPrompt(o) {
     'THE EVENT — these are the ONLY facts you may use:',
     facts.lines.join('\n') || '(nothing more is known)',
     '',
+    require('./name-rule').NAME_RULE,
     'NEVER INVENT A FACT. Do not state any number (attendees, speakers, editions, years of running, sessions — no "2000+", no "50 speakers"), date, month, year, venue, city, price, fee, speaker, sponsor, partner or award that is not written in the facts above. When the dates are to be announced, say nothing about when. Do not call it free, the biggest, the first or the leading unless the facts say so. Never name a person.'
   ];
   if (prev && prev.seo) {
     var p = prev.seo;
-    parts.push('', 'THE PREVIOUS EDITION\'S SEARCH TEXT on ET\'s site, ' + line(prev.name) + ' — a REFERENCE for the kind of phrases ET uses for this event. Never copy it; any year, number or place in it is the PREVIOUS edition\'s and must not be used unless the facts above say it too:');
+    parts.push('', 'THE PREVIOUS EDITION\'S SEARCH TEXT on ETB2B\'s site, ' + line(prev.name) + ' — a REFERENCE for the kind of phrases ETB2B uses for this event. Never copy it; any year, number or place in it is the PREVIOUS edition\'s and must not be used unless the facts above say it too:');
     if (p.title) parts.push('  title: ' + p.title);
     if (p.description) parts.push('  description: ' + p.description);
     if (p.keywords && p.keywords.length) parts.push('  keywords: ' + p.keywords.join('; '));

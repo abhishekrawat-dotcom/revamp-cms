@@ -103,7 +103,7 @@ var LAYOUT_CHANGED = 'This layout was changed by someone else meanwhile. Reload 
 var LAYOUT_TOO_LARGE = 'This layout is too large to save. Remove some pictures or text and save again.';
 var NOT_THIS_LAYOUT = 'That picture is not this layout\'s.';
 /* the picture-address rule (owner O2 = c): the editor says the same when an address is pasted */
-var PICTURE_REFUSED = 'EventSphere can only use pictures from this event\'s own files or ET\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.';
+var PICTURE_REFUSED = 'EventSphere can only use pictures from this event\'s own files or ETB2B\'s image servers. Use Insert → speakers or sponsors, or use Upload a picture.';
 var QR_LABEL = 'Scan to register';
 
 function httpErr(status, message, extra) { var e = new Error(message); e.status = status; e.body = Object.assign({ error: message }, extra || {}); return e; }

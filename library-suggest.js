@@ -72,7 +72,7 @@
           '<span class="lib-pic' + (kind === 'sponsors' ? ' logo' : '') + '">' + thumb + '</span>' +
           '<span class="lib-txt"><b>' + esc(it.name) + '</b>' + (line ? '<span>' + esc(line) + '</span>' : '') +
           (from.length ? '<em>' + esc(from[0]) + (from.length > 1 ? ' and ' + (from.length - 1) + ' more' : '') + '</em>' : '') + '</span></div>';
-      }).join('') + '<div class="lib-foot">From ET’s past events and EventSphere’s own. Check it is the same ' + (kind === 'sponsors' ? 'company' : 'person') + '.</div>';
+      }).join('') + '<div class="lib-foot">From ETB2B’s past events and EventSphere’s own. Check it is the same ' + (kind === 'sponsors' ? 'company' : 'person') + '.</div>';
       box.hidden = false;
       input.setAttribute('aria-expanded', 'true');
       /* on a phone the list opens below what the dialog shows: it is brought into view, the field with it */

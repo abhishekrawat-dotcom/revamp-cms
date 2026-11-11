@@ -12,7 +12,7 @@
    (buildPagesPrompt / PAGES_SCHEMA / sanitizePages): rewritten for this edition from the previous edition's
    own pages when there are any (its year and dates brought up to date, nothing copied as it stood — the
    owner's rule: a previous edition inspires, its records alone are taken over), else written from the brief
-   and what ET award sites say in general. All of it is the owner's to edit afterwards.
+   and what ETB2B award sites say in general. All of it is the owner's to edit afterwards.
 
      AWARD_SECTIONS                       [{ id, name, kind, prebuilt?, also, purpose }]
      awardSectionFor(id)                  the AWARD_SECTIONS entry an id stands for, or null
@@ -37,10 +37,10 @@ var AWARD_SECTIONS = [
     purpose: 'Why an organisation or a professional should enter: the recognition, credibility, visibility and business it brings.' },
   { id: 'award-categories', name: 'Award Categories', kind: 'custom', prebuilt: 'award-categories', also: /categor/ },
   { id: 'how-it-works', name: 'How Our Awards Work', kind: 'custom', prebuilt: 'award-process', also: /how[- ](our[- ])?awards?[- ]work|process|judging|evaluation|methodology/,
-    purpose: 'How entries are judged, as on every ET award: scrutiny by an expert tabulator, a thorough multi-stage review, then the grand jury — with the principles of fairness, integrity and confidentiality.' },
+    purpose: 'How entries are judged, as on every ETB2B award: scrutiny by an expert tabulator, a thorough multi-stage review, then the grand jury — with the principles of fairness, integrity and confidentiality.' },
   { id: 'award-jury', name: 'Jury', kind: 'custom', prebuilt: 'award-jury', also: /jury|judges/ },
   { id: 'recognition', name: 'The Recognition', kind: 'custom', prebuilt: 'award-recognition', also: /recognition|winners get|what you win|rewards/,
-    purpose: 'What the winners get: the trophy on stage, the certificate, the coverage across ET, the right to use the winner\'s logo.' },
+    purpose: 'What the winners get: the trophy on stage, the certificate, the coverage across ETB2B, the right to use the winner\'s logo.' },
   { id: 'awards-night', name: 'Awards Night', kind: 'custom', prebuilt: 'award-ceremony', also: /awards?[- ]night|ceremony|gala|evening/,
     purpose: 'The grand award ceremony: when and where it takes place, who gathers there, and how to be in the room.' },
   { id: 'who-should-enter', name: 'Who Should Enter', kind: 'custom', also: /who[- ](should|can)[- ](enter|nominate|apply)|eligib|who should attend/,
@@ -50,7 +50,7 @@ var AWARD_SECTIONS = [
   { id: 'faqs', name: 'FAQs', kind: 'faq', prebuilt: 'award-faqs', also: /faq|frequently asked|questions/ },
   { id: 'contact-us', name: 'Contact Us', kind: 'contact', also: /contact|get in touch|reach us|enquir/ },
   { id: 'about-vertical', name: 'About Vertical', kind: 'custom', also: /about (et|the economic times|us|the organi[sz]er|the vertical)|about et[a-z]+|organi[sz]ed by/,
-    purpose: 'About the ET vertical that runs these awards: its readership and standing in the industry.' }
+    purpose: 'About the ETB2B vertical that runs these awards: its readership and standing in the industry.' }
 ];
 
 function slug(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60); }
@@ -121,7 +121,8 @@ function buildPagesPrompt(o) {
     .map(function (x) { return x[0] + ': ' + (x[1] ? String(x[1]).slice(0, 10) : 'to be announced'); }).join('; ');
   var had = ['guidelines', 'judging', 'tnc'].filter(function (k) { return pageText(prev[k]); });
   var lines = [
-    'You are writing the internal pages of an ET (The Economic Times) award website: "' + clip(ev.name, 160) + '"' + (ev.edition ? ' (' + clip(ev.edition, 40) + ')' : '') + '.',
+    'You are writing the internal pages of an ETB2B (The Economic Times Business Verticals) award website: "' + clip(ev.name, 160) + '"' + (ev.edition ? ' (' + clip(ev.edition, 40) + ')' : '') + '.',
+    require('./name-rule').NAME_RULE,
     'Its dates — ' + dates + '.' + (ev.venue ? ' The awards night is at ' + clip(ev.venue, 160) + '.' : ''),
     ev.description ? 'What the awards are: ' + clip(ev.description, 1500) : '',
     o.brief ? 'The brief: ' + clip(JSON.stringify(o.brief), 4000) : '',
@@ -136,8 +137,8 @@ function buildPagesPrompt(o) {
       : '- "categories": an empty array (this edition\'s categories are on record).',
     '',
     had.length || (prev.faq || []).length
-      ? 'The PREVIOUS EDITION\'s own pages are below. Write this edition\'s pages from them — keep what still holds (its steps, criteria, rules and their substance), bring every year and date up to this edition\'s, and put it in your own words; never copy its sentences as they stood. Where a previous page is missing, write that page from what ET award sites say in general.'
-      : 'There is no previous edition to go on: write the pages from the brief and what ET award sites say in general.',
+      ? 'The PREVIOUS EDITION\'s own pages are below. Write this edition\'s pages from them — keep what still holds (its steps, criteria, rules and their substance), bring every year and date up to this edition\'s, and put it in your own words; never copy its sentences as they stood. Where a previous page is missing, write that page from what ETB2B award sites say in general.'
+      : 'There is no previous edition to go on: write the pages from the brief and what ETB2B award sites say in general.',
     had.indexOf('guidelines') !== -1 ? '\n=== Previous edition: Entry Guidelines ===\n' + pageText(prev.guidelines) : '',
     had.indexOf('judging') !== -1 ? '\n=== Previous edition: Judging Criteria ===\n' + pageText(prev.judging) : '',
     had.indexOf('tnc') !== -1 ? '\n=== Previous edition: Terms & Conditions ===\n' + pageText(prev.tnc) : '',

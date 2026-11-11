@@ -1,5 +1,5 @@
 // node functions/lib/portal-picker.test.js — portal-picker.js (window.RevampPortals), the one place Oneworld 2.0's pages
-// get ET's portal roster, the person's working portal and the "Set this event's portal" window (plan §4, §6c, K9; D.1–D.2):
+// get ETB2B's portal roster, the person's working portal and the "Set this event's portal" window (plan §4, §6c, K9; D.1–D.2):
 //   D.1 list() asks once and is shared, a failure is not kept; nameOf; optionsHtml escapes; chipHtml; working() and
 //       cachedWorking() (the server wins when it has a choice, this browser's cache otherwise; storage that throws only
 //       loses the cache; in a shared browser the next person signed in never gets the last one's portal, and becomes
@@ -428,7 +428,7 @@ async function main() {
 
   /* the notes */
   b.P.openSetPortal({ eventId: 'e4', hasGeneratedSite: true });
-  check('D.1 with an ETB2B AI-designed site: the "generated again" note', dlg(b).textContent.indexOf('Its site keeps the ET bar and footer it was made with. They change to this portal\'s only if the site is generated again, which replaces the site.') !== -1 &&
+  check('D.1 with an ETB2B AI-designed site: the "generated again" note', dlg(b).textContent.indexOf('Its site keeps the ETB2B bar and footer it was made with. They change to this portal\'s only if the site is generated again, which replaces the site.') !== -1 &&
     dlg(b).textContent.indexOf('published again') === -1);
   q(b, 'rvp-cancel').click();
   b.P.openSetPortal({ eventId: 'e4', published: true });

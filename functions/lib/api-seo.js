@@ -328,7 +328,7 @@ function handleSeoPrevious(req, res) {
     var qs = H.queryOf(req), eventId = H.eventIdOr400(res, qs.get('eventId'));
     if (!eventId) return;
     var portal = String(qs.get('portal') || '').trim(), id = String(qs.get('id') || '').trim();
-    if ((portal || id) && (!etEvents.isPortal(portal) || !/^[0-9]{1,12}$/.test(id))) return sendJson(res, 400, { error: 'Name the previous edition by its portal and its ET event id.', code: 'bad-pick' });
+    if ((portal || id) && (!etEvents.isPortal(portal) || !/^[0-9]{1,12}$/.test(id))) return sendJson(res, 400, { error: 'Name the previous edition by its portal and its ETB2B event id.', code: 'bad-pick' });
     H.loadLiveEvent(fb, eventId).then(function (data) {
       var named = portal ? Promise.resolve(null).then(function () {
         /* owner rule: a previous edition comes from the event's own portal, and is one of that portal's ET events */
@@ -336,9 +336,9 @@ function handleSeoPrevious(req, res) {
         var award = String(data.category || '') === 'awards';
         return (award ? etEvents.listAwards : etEvents.listIpEvents)(portal, H.etJson).then(function (list) {
           var ev = list.filter(function (e) { return String(e.id) === id; })[0];
-          if (!ev) throw H.httpError(400, 'That is not one of ' + H.portalNameOf(portal) + '’s ' + (award ? 'awards' : 'events') + ' on ET.', { code: 'not-on-portal' });
+          if (!ev) throw H.httpError(400, 'That is not one of ' + H.portalNameOf(portal) + '’s ' + (award ? 'awards' : 'events') + ' on ETB2B.', { code: 'not-on-portal' });
           return { from: 'picked', portal: portal, id: id, name: ev.title || '', link: ev.link || '' };
-        }, function () { throw H.httpError(502, 'ET’s event list could not be read right now. Please try again in a few minutes.', { code: 'et-down' }); });
+        }, function () { throw H.httpError(502, 'ETB2B’s event list could not be read right now. Please try again in a few minutes.', { code: 'et-down' }); });
       }) : recordedPrevious(fb, eventId, data);
       return named.then(function (pick) {
         if (!pick) return sendJson(res, 200, { previous: null, why: 'none-recorded' });

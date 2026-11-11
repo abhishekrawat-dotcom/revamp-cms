@@ -25,7 +25,7 @@
      handleEvidence(req, res), handleBackfill(req, res), wire(helpers)
 
    WHAT COUNTS (each must be a slug on lib/et-events.js PORTALS; anything else found is ignored):
-     1 et-record        a previous- or current-edition source's ET record: previous.portal, award.portal
+     1 et-record        a previous- or current-edition source's ETB2B record: previous.portal, award.portal
      2 et-link          the same sources' address (url, previous.url), through lib/et-previous.js portalOf
      3 design-reference designPlan.reference, when it is a previous or current edition (it survives a clone)
      4 logo-unit-page   designPlan.design.logoUnitFrom, when it is a *.economictimes.indiatimes.com page
@@ -41,14 +41,14 @@
                and every source is that same one, and nothing blocks it. portal is then that slug (else ''), and
                from is the first kind that found it.
      evidence  everything found, in KINDS order; `where` is said in words, for the owner ("its previous edition's
-               ET record") and for the activity line.
+               ETB2B record") and for the activity line.
      conflict  two or more different slugs: the event gets no portal.
      disagrees for an event that already has a portal (never changed here): the slugs found that are not it.
      blockers  name-mentions:<slug> — the event's name names another portal (the name is never evidence FOR a
                portal, but it is evidence against one); site-only — only kinds 5-6 say so. Looked for only when
                exactly one slug was found (two are a conflict already), so an event is blocked or in conflict,
                never both.
-     hints     shown on the review page, never deciding anything: link-only (only a typed ET link says so),
+     hints     shown on the review page, never deciding anything: link-only (only a typed ETB2B link says so),
                design-only (only the design it was copied from says so).
 
    REPORT = { generatedAt, canFill, approvers, counts: { live, withPortal, certain, blocked, conflict, none },
@@ -80,14 +80,14 @@ var LIST_FIELDS = ['name', 'published', 'portal', 'portalFrom', 'createdAt', 'de
 var EVENT_MASK = ['designPlan.reference', 'designPlan.design.logoUnitFrom', 'generatedSections'];
 var SOURCE_FIELDS = ['type', 'url', 'previous.portal', 'previous.url', 'award.portal'];
 
-/* the words each kind is said in. A current-edition source is this edition's own ET page, not a previous one. */
+/* the words each kind is said in. A current-edition source is this edition's own ETB2B page, not a previous one. */
 var WORDS = {
-  'et-record': { previousEdition: 'its previous edition\'s ET record', currentEdition: 'this edition\'s own ET record' },
-  'et-link': { previousEdition: 'the ET link of its previous edition', currentEdition: 'the ET link of this edition\'s own ET page' },
-  'design-reference': 'the ET page its design was modelled on',
-  'logo-unit-page': 'the ET page its logo unit came from',
-  'site-bar': 'the ET bar its site was generated with',
-  'site-footer': 'the ET footer its site was generated with'
+  'et-record': { previousEdition: 'its previous edition\'s ETB2B record', currentEdition: 'this edition\'s own ETB2B record' },
+  'et-link': { previousEdition: 'the ETB2B link of its previous edition', currentEdition: 'the ETB2B link of this edition\'s own ETB2B page' },
+  'design-reference': 'the ETB2B page its design was modelled on',
+  'logo-unit-page': 'the ETB2B page its logo unit came from',
+  'site-bar': 'the ETB2B bar its site was generated with',
+  'site-footer': 'the ETB2B footer its site was generated with'
 };
 var NO_PORTAL = 'No portal';
 
@@ -125,7 +125,7 @@ function gather(ev, sources) {
   var plan = obj(ev.designPlan) || {}, ref = obj(plan.reference), design = obj(plan.design);
   /* a competitor's page (or "none") is what the design was set against, never what the event is */
   if (ref && isOwnEdition(ref.type)) add('design-reference', portalOfUrl(ref.url), WORDS['design-reference']);
-  /* often a storage.googleapis.com copy, which says nothing: portalOf answers only for an ET page */
+  /* often a storage.googleapis.com copy, which says nothing: portalOf answers only for an ETB2B page */
   add('logo-unit-page', portalOfUrl(design && design.logoUnitFrom), WORDS['logo-unit-page']);
   (Array.isArray(ev.generatedSections) ? ev.generatedSections : []).forEach(function (sec) {
     sec = obj(sec);

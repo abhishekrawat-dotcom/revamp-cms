@@ -141,5 +141,37 @@ check('a preview\'s tab starts "Preview · ", so the two tabs differ; its link p
   /<meta property="og:title" content="QA Summit"/.test(prev), (/<title>[^<]*<\/title>/.exec(prev) || [''])[0]);
 check('both name the ET square as their icon when the event has no logo', live.indexOf('href="/assets/favicon.svg"') !== -1 && prev.indexOf('href="/assets/favicon.svg"') !== -1);
 
+/* ---------- never "ET" on its own in what a person reads (the owner, 11 Nov 2026: "Wherever you are writing ET,
+   please don't it will be ETB2B or The Economic Times Business Verticals") ----------
+   Every served page and browser script, and every message the server's own modules send, outside comments: a
+   portal's own name (ET BrandEquity, ETCIO…) and a code name are not this. */
+function codeOnly(src) {
+  var out = '', i = 0, n = src.length, state = 'code';
+  while (i < n) {
+    if (state === 'code') {
+      if (src.substr(i, 2) === '/*') { state = 'block'; i += 2; continue; }
+      if (src.substr(i, 4) === '<!--') { state = 'html'; i += 4; continue; }
+      if (src.substr(i, 2) === '//' && (i === 0 || ' \t\n;{}(),'.indexOf(src.charAt(i - 1)) !== -1)) { state = 'line'; i += 2; continue; }
+      out += src.charAt(i); i++; continue;
+    }
+    if (state === 'block') { if (src.substr(i, 2) === '*/') { state = 'code'; i += 2; } else i++; continue; }
+    if (state === 'html') { if (src.substr(i, 3) === '-->') { state = 'code'; i += 3; } else i++; continue; }
+    if (src.charAt(i) === '\n') { state = 'code'; out += '\n'; }
+    i++;
+  }
+  return out;
+}
+var BARE = /\bET(?:\\'s|’s|\\u2019s|'s)?\s+(?:portal|portals|bar|footer|sections|record|link|page|login|templates|team|logo and menu)\b|\bET(?:\\'|’|\\u2019|')s\b|\bon ET\.|alt="ET(?: Oneworld)?"/;
+var where = [];
+fs.readdirSync(ROOT).filter(function (f) { return /\.(html|js)$/.test(f) && !/bundle|backup|dummy|server\.js$/.test(f); }).forEach(function (f) {
+  codeOnly(read(f)).split('\n').forEach(function (l, k) { if (BARE.test(l) && !/oneworld-logo\.svg/.test(l)) where.push(f + ':' + (k + 1) + ' ' + l.trim().slice(0, 90)); });
+});
+['forms.js', 'site-advisory.js', 'api-seo.js', 'seo-fields.js', 'award-sections.js', 'prev-sections.js', 'promo.js', 'promo-social.js', 'people-page.js', 'event-portal.js'].forEach(function (f) {
+  codeOnly(read('functions/lib/' + f)).split('\n').forEach(function (l, k) { if (BARE.test(l)) where.push(f + ':' + (k + 1) + ' ' + l.trim().slice(0, 90)); });
+});
+check('no page, browser script or server message says "ET" on its own (ETB2B; The Economic Times Business Verticals)', where.length === 0, where.slice(0, 8));
+check('the models that write what a person reads are told so (lib/name-rule.js)', ['api.js', 'dash-bot.js', 'seo-ai.js', 'event-description.js', 'award-site.js'].every(function (f) { return /NAME_RULE/.test(read('functions/lib/' + f)); }) &&
+  /never write "ET" on its own/.test(require('./name-rule').NAME_RULE));
+
 console.log('product-name: ' + passed + ' passed, ' + failed + ' failed');
 process.exit(failed ? 1 : 0);

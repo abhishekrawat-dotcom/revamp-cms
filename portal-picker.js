@@ -274,9 +274,9 @@
 
   var NOTE_EVENT = 'The event moves to this portal\'s list on the dashboard. Its registration forms link to this portal\'s ' +
     'privacy, cookie and terms pages, and its mailers and posts carry its name and wordmark.';
-  var NOTE_DRAFT = 'The previous editions you can pick, the ET bar and footer of its site, and the branding of its mailers and ' +
+  var NOTE_DRAFT = 'The previous editions you can pick, the ETB2B bar and footer of its site, and the branding of its mailers and ' +
     'posts come from this portal.';
-  var NOTE_SITE = 'Its site keeps the ET bar and footer it was made with. They change to this portal\'s only if the site is ' +
+  var NOTE_SITE = 'Its site keeps the ETB2B bar and footer it was made with. They change to this portal\'s only if the site is ' +
     'generated again, which replaces the site.';
   var NOTE_PUBLISHED = 'Its live registration form keeps the privacy links it was published with until it is published again.';
 

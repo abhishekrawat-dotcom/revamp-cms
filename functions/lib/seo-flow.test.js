@@ -190,7 +190,7 @@ function served() { hooks.forgetCachedPage(ID); return call('GET', '/e/' + ID); 
   r = await call('POST', '/api/event/seo/write', { token: 'owner', body: { eventId: ID, fields: ['title', 'description', 'keywords', 'h1', 'schemaTitle', 'schemaDescription'] } });
   ok(r.status === 200, 'ETB2B AI answers', r.status + ' ' + r.text.slice(0, 300));
   var P = ASKED[0] && ASKED[0].prompt;
-  ok(P && /NEVER INVENT A FACT/.test(P) && /Event name: ET Nextech 2027/.test(P) && /Dates: 18–19 February 2027/.test(P) && /Venue: The Leela Ambience, Gurugram/.test(P) && /Portal \(the ET publication that runs it\): ETHRWorld/.test(P),
+  ok(P && /NEVER INVENT A FACT/.test(P) && /Event name: ET Nextech 2027/.test(P) && /Dates: 18–19 February 2027/.test(P) && /Venue: The Leela Ambience, Gurugram/.test(P) && /Portal \(the ETB2B publication that runs it\): ETHRWorld/.test(P),
     'it is given the event\'s real details', P && P.slice(0, 600));
   ok(P && /The site's headings: Speakers · Asha Rao · FAQs · Voices/.test(P) && /Where HR meets technology/.test(P), 'and the site\'s own words', P && P.slice(P.indexOf('The site'), P.indexOf('The site') + 300));
   ok(P && /PREVIOUS EDITION'S SEARCH TEXT/.test(P) && /Never copy it/.test(P) && /HR Summit 2026/.test(P), 'and the previous edition\'s SEO from ET, as a reference only');

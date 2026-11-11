@@ -7,7 +7,7 @@
 //               real records (create-event-editions.js); its button is secondary and absent on a design with no such block;
 //   UX-045      the address is checked with the server as it is typed, a taken one offers the free one ("Use …"), and a
 //               taken address at the hand-off leads back to the address box instead of a Retry that cannot work;
-//   UX-047      the brief's previous edition can always be given by its link, which opens by itself when ET's list fails;
+//   UX-047      the brief's previous edition can always be given by its link, which opens by itself when ETB2B's list fails;
 //   UX-048      drafts are saved to the person's account as typed (the header says where they are), several at once; ?new=1
 //               keeps an unfinished one in the account instead of discarding it; Resume (?draft=) opens one on any computer
 //               with its pictures; a save from another computer is never overwritten unseen; the dashboard lists them;
@@ -240,8 +240,8 @@ async function main() {
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "cio"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');
   await tick();
-  check('UX-047 ET\'s list failing opens the link box by itself, with the reason', p.$('gb-prev-link').hidden === false && p.$('gb-et-pickers').hidden === true && p.$('gb-et-paste').hidden === true &&
-    p.$('gb-et-status').textContent === 'ET’s list of ETCIO’s events is not available just now. Paste the link to last year’s site instead.', p.$('gb-et-status').textContent);
+  check('UX-047 ETB2B\'s list failing opens the link box by itself, with the reason', p.$('gb-prev-link').hidden === false && p.$('gb-et-pickers').hidden === true && p.$('gb-et-paste').hidden === true &&
+    p.$('gb-et-status').textContent === 'ETB2B’s list of ETCIO’s events is not available just now. Paste the link to last year’s site instead.', p.$('gb-et-status').textContent);
   p.ce('S.brief.previous = "https://example.com/client-summit-2025"');
   p.fire(p.$('gb-previous'), 'change');
   check('UX-047 a whole link is then shown as the chosen edition', p.$('gb-prev-link').hidden === true && p.$('gb-et-chip').hidden === false &&
@@ -252,7 +252,7 @@ async function main() {
   await p.ce('loadPortalRoster()');
   p.ce('S.basics.portal = "cio"; S.basics.category = "IP"; S.creationMethod = "brief"; wireEtPicker()');
   await tick();
-  check('UX-047 with ET\'s list there, "Paste the link instead" is always offered', p.$('gb-et-paste').hidden === false && p.$('gb-prev-link').hidden === true);
+  check('UX-047 with ETB2B\'s list there, "Paste the link instead" is always offered', p.$('gb-et-paste').hidden === false && p.$('gb-prev-link').hidden === true);
   p.$('gb-et-paste').onclick();
   check('UX-047 …and opens the box with the keyboard in it', p.$('gb-prev-link').hidden === false && p.doc.activeElement === p.$('gb-previous'));
   p.ce('S.brief.previous = "not a link"');

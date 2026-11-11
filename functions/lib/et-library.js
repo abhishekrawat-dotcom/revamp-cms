@@ -498,7 +498,7 @@ function handleBuild(req, res) {
         H.sendJson(res, 200, out);
       }).catch(function (err) {
         console.error('library: build failed — ' + (err && err.stack || err));
-        H.sendJson(res, 500, { error: 'ET’s records could not be read just now. The library keeps what it has.' });
+        H.sendJson(res, 500, { error: 'ETB2B’s records could not be read just now. The library keeps what it has.' });
       });
     }, 16 * 1024);
   });
