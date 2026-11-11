@@ -12059,6 +12059,17 @@ function seoHelpers() {
   return { withAdmin, withAdminBody, BODY_LIMITS, eventIdOr400, eventDocRef, loadLiveEvent, siteVersionOf, sitePath, readObject, queryOf,
     publishTransform, TOKEN_KIT, approvalsConfig, publicBaseFor, publicPathOf, portalNameOf, etJson, httpError, sendFailure, sendAiFailure, aiUsageRecorder };
 }
+/* speakers' photos found in a brochure's pages (lib/speaker-photos.js) */
+function photosRoute(handlerName) {
+  return function (req, res) {
+    var mod = null;
+    try { mod = require('./speaker-photos'); mod.wire({ withAdminBody: withAdminBody, eventIdOr400: eventIdOr400, loadLiveEvent: loadLiveEvent,
+      aiUsageRecorder: aiUsageRecorder, sendAiFailure: sendAiFailure, sendFailure: sendFailure }); }
+    catch (err) { mod = null; console.error('api: could not load lib/speaker-photos.js — ' + (err && err.stack || err)); }
+    if (mod && typeof mod[handlerName] === 'function') return mod[handlerName](req, res);
+    return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+  };
+}
 function seoRoute(handlerName) {
   return function (req, res) {
     var mod = null;
@@ -12512,6 +12523,7 @@ var ROUTES = {
   /* Settings › URL & SEO (lib/api-seo.js): the section, ETB2B AI's SEO text and FAQs, the previous edition's */
   'GET /api/event/seo': seoRoute('handleSeoGet'),
   'POST /api/event/seo/write': seoRoute('handleSeoWrite'),
+  'POST /api/event/speaker-photos/find': photosRoute('handleFind'),
   'GET /api/event/seo/previous': seoRoute('handleSeoPrevious'),
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,

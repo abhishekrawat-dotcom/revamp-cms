@@ -119,6 +119,7 @@
 <!-- Settings › URL & SEO: every search and sharing setting in one section -->
 <script src="edit-event-seo.js"></script>
 <script src="library-suggest.js"></script>
+<script src="edit-event-speaker-tools.js"></script>
 <script src="sidebar.js"></script>
 <script src="edit-event-site-check.js"></script>
 <!-- the registration forms builder; the form runtime draws its preview (it does nothing else on this page) -->
@@ -2934,7 +2935,8 @@
       return vhead(W.title, W.lead) + siteCallout(notes, false) +
         emptyState(IC.users, W.none, W.who,
           emptySiteLine(notes) +
-          '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' + svg(IC.plus, 13) + ' Add ' + W.many + '</button>');
+          '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' + svg(IC.plus, 13) + ' Add ' + W.many + '</button>' +
+          ' <button class="btn btn-secondary btn-sm" type="button" id="spk-paste">Paste a list</button>');
     }
 
     /* a record with no status counts as confirmed, here as on the site */
@@ -2947,6 +2949,9 @@
         : 'The site shows the confirmed ones under their group headings, in the order set here.');
 
     return vhead(W.title, sub,
+        /* many at once: rows from a sheet, a folder of photos or a brochure (edit-event-speaker-tools.js) */
+        '<button class="btn btn-secondary btn-sm" type="button" id="spk-paste">Paste a list</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="spk-photos">' + svg(IC.image, 13) + ' Add photos</button>' +
         '<button class="btn btn-secondary btn-sm" type="button" id="spk-addgroup">' +
           svg(IC.plus, 13) + ' Add group</button>' +
         '<button class="btn btn-primary btn-sm" type="button" id="spk-add">' +
@@ -3003,6 +3008,9 @@
     var G = GROUPED.speakers;
     var add = $('spk-add');
     if (add) add.onclick = function(){ spkDialog(null); };
+    var paste = $('spk-paste'), photos = $('spk-photos'), T = window.EditEventSpeakerTools;
+    if (paste) paste.onclick = function(){ if (T) T.paste(); };
+    if (photos) photos.onclick = function(){ if (T) T.photos(); };
 
     var addg = $('spk-addgroup');
     if (addg) addg.onclick = function(){ addGroupDialog(G); };
@@ -6504,6 +6512,12 @@
   };
   CTX.log = { when: histWhen, who: whoLabel, action: actionLabel };
   /* what Settings › URL & SEO (edit-event-seo.js) uses of the console's own */
+  /* Speakers' Paste a list and Add photos (edit-event-speaker-tools.js) use the console's own */
+  if (window.EditEventSpeakerTools) window.EditEventSpeakerTools.init({
+    C: C, ev: function(){ return EV; }, speakers: function(){ return spkAll(); }, groups: function(){ return spkGroups(); },
+    words: function(){ return spkWords(); }, reload: function(){ reloadSub('speakers'); }, nextOrder: function(){ return nextOrder(spkAll()); },
+    notify: notify, notifyError: notifyError, openModal: openModal, closeBtn: closeBtn, svg: svg, IC: IC, imgTag: imgTag, errText: errText, AV: AV
+  });
   CTX.seo = {
     sharePictureField: sharePictureField, wireSharePicture: wireSharePicture, imgTag: imgTag,
     openModal: openModal, closeBtn: closeBtn, showFieldErrors: showFieldErrors, clearFieldError: clearFieldError,

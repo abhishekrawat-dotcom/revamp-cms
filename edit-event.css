@@ -1783,3 +1783,29 @@ a.ev-chip:hover{ border-color: currentColor; }
 .lib-foot{ border-top:0; background: var(--surface-2); }
 .lib-note{ color: var(--accent-strong) !important; font-weight:600; }
 @media (max-width: 640px){ .lib-opt{ min-height:44px; } }
+
+/* ============ Speakers: Paste a list and Add photos (edit-event-speaker-tools.js) ============ */
+.st-body{ display:flex; flex-direction:column; gap:10px; }
+.st-src{ display:flex; flex-wrap:wrap; gap:8px; }
+.st-status{ margin:0; font-size:13px; font-weight:600; color: var(--text-muted); }
+.st-status:empty{ display:none; }
+.st-list{ list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:8px; }
+.st-row{ display:flex; gap:10px; align-items:center; padding:8px; border:1px solid var(--border); border-radius:10px; background: var(--surface); min-width:0; }
+.st-pic{ width:56px; height:56px; flex-shrink:0; border-radius:10px; overflow:hidden; background: var(--surface-2); display:grid; place-items:center; }
+.st-pic img{ width:100%; height:100%; object-fit:cover; display:block; }
+.st-txt{ display:flex; flex-direction:column; min-width:0; flex:1; font-size:13px; line-height:1.35; }
+.st-txt span{ color: var(--text-muted); font-size:12px; overflow-wrap:anywhere; }
+.st-who{ height:34px; font-size:12.5px; }
+.st-use{ display:flex; gap:6px; align-items:center; font-size:12px; white-space:nowrap; }
+.st-use input{ width:16px; height:16px; accent-color: var(--accent); }
+.st-none{ grid-column:1 / -1; font-size:12.5px; color: var(--text-muted); padding:4px 2px; }
+.st-table{ overflow-x:auto; }
+.st-table table{ width:100%; border-collapse:collapse; font-size:13px; }
+.st-table th{ text-align:left; font-size:11.5px; font-weight:800; color: var(--text-muted); padding:6px 8px; border-bottom:1px solid var(--border); }
+.st-table td{ padding:6px 8px; border-bottom:1px solid var(--border); vertical-align:middle; overflow-wrap:anywhere; }
+.st-table td.st-pic{ width:40px; height:40px; padding:4px; border-radius:50%; }
+.st-table td.st-pic img{ width:36px; height:36px; border-radius:50%; object-fit:cover; }
+.st-table .st-g{ display:block; font-size:11.5px; color: var(--text-muted); }
+.st-table .st-tag{ font-size:11.5px; color: var(--accent-strong); font-weight:600; white-space:nowrap; }
+.st-table tr.st-skip td{ color: var(--text-faint); }
+@media (max-width: 640px){ .st-list{ grid-template-columns:1fr; } .st-src .btn{ flex:1 1 auto; justify-content:center; min-height:40px; } .st-table .st-tag{ white-space:normal; } }

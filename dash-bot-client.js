@@ -722,7 +722,7 @@
     if (eventId !== str(ctx.place && ctx.place.eventId)) return refuseOther(ctx, bubble);
     if (!C || !isFn(C.fetchSub) || !isFn(C.createSub) || !isFn(C.deleteSub)) return failed(bubble, ctx, TEXT.recordsMissing);
     started(ctx);
-    var made = { items: [], groups: [] }, added = [], skipped = [], failure = null, filled = [];
+    var made = { items: [], groups: [] }, added = [], skipped = [], failure = null, filled = [], noPhoto = [];
     Promise.all([C.fetchSub(R.groups, eventId), C.fetchSub(R.items, eventId)]).then(function (got) {
       var groups = (isArr(got[0]) ? got[0] : []).slice().sort(function (a, b) { return orderOf(a) - orderOf(b); });
       var items = isArr(got[1]) ? got[1] : [];
@@ -771,6 +771,7 @@
             return inTurns(jobs, RECORDS_AT_ONCE, function (data, i) {
               return fromLibrary(R, data, eventId, filled).then(function () { return C.createSub(R.items, eventId, data); }).then(function (r) {
                 made.items.push(r.id);
+                if (R.items === 'speakers' && !data.photoUrl) noPhoto.push(data.name);
                 done[i] = { name: data.name, heading: heading };
               }, function (err) { failure = failure || err || new Error(''); });
             }, function () { return !!failure; }).then(function () {
@@ -804,6 +805,13 @@
       }
       var href = str(action.href);
       if (NAV_OK.test(href) && urlEvent(href) === eventId) { try { bubble.link(href, R.open); } catch (e) { /* the note says it */ } }
+      /* the brochure they came from can give the photos the library did not (edit-event-speaker-tools.js, on the
+         console's pages): every photo is shown there before it is saved */
+      var brochure = (isArr(ctx.recs) ? ctx.recs : []).filter(function (r) { return r && r.kind === 'pdf' && typeof r.data === 'string' && r.data; })[0];
+      var T = root.EditEventSpeakerTools;
+      if (brochure && noPhoto.length && T && isFn(T.photos) && isFn(bubble.button)) {
+        try { bubble.button(noPhoto.length === 1 ? 'Take the photo from the brochure' : 'Take their photos from the brochure', function () { T.photos({ pdfData: brochure.data, names: noPhoto.slice() }); }); } catch (e) { /* the tab has Add photos */ }
+      }
       report(ctx.turnId, added.length ? 'done' : 'failed', added.length ? 'added ' + recordsLine(R, added.length) + (failure ? '; the rest failed: ' + reason : '') + (skipped.length ? '; ' + skipped.length + ' already there' : '')
         : (failure ? reason : 'all already there'));
     });

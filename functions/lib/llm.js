@@ -82,6 +82,9 @@ var PROFILES = {
   /* Settings › URL & SEO (lib/api-seo.js, seo-ai.js): six short fields, or five FAQs, from a fact sheet — short copy, as
      promo-write is. The schema is small enough for strict mode. */
   'seo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
+  /* where each speaker's photo is on a brochure's pages (lib/speaker-photos.js): marking places on a picture is what
+     Gemini is trained for, so it is asked first and Claude after it (prefer) */
+  'photo-find': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 70000, maxOutputTokens: 6000, prefer: 'gemini' },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 
@@ -122,6 +125,20 @@ function callJson(prompt, schema, opts) {
 
   var profile = profileFor(opts.route);
   var deadlineAt = opts.deadlineAt > 0 ? opts.deadlineAt : Date.now() + LIMITS.budgetMs;
+  /* a route Gemini answers better (profile.prefer): Gemini first, Claude when it cannot */
+  if (profile.prefer === 'gemini') {
+    return callGeminiJson(prompt, schema, Object.assign({}, opts, { deadlineAt: deadlineAt })).then(function (first) {
+      report(opts, first);
+      if (!first.code || deadlineAt - Date.now() < LIMITS.fallbackNeedsMs) return first;
+      return callClaudeJson(prompt, schema, { model: profile.model, effort: profile.effort, timeoutMs: profile.timeoutMs, maxOutputTokens: profile.maxOutputTokens,
+        inlineFile: opts.inlineFile, inlineFiles: opts.inlineFiles, images: opts.images, deadlineAt: deadlineAt, route: opts.route, eventId: opts.eventId, user: opts.user, plain: profile.plain === true
+      }).then(function (second) {
+        report(opts, second);
+        console.log(JSON.stringify({ at: 'llm', route: opts.route || '', eventId: opts.eventId || '', provider: 'claude', fellBack: true, firstCode: first.code, code: second.code || 'ok' }));
+        return Object.assign(second, { fellBack: true, firstCode: first.code });
+      });
+    });
+  }
   return callClaudeJson(prompt, schema, {
     model: profile.model, effort: profile.effort, timeoutMs: profile.timeoutMs, maxOutputTokens: profile.maxOutputTokens,
     inlineFile: opts.inlineFile, inlineFiles: opts.inlineFiles, images: opts.images, deadlineAt: deadlineAt,

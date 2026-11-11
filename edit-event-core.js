@@ -567,6 +567,9 @@ window.RevampCore = (function(){
       (eventId ? '&eventId=' + encodeURIComponent(eventId) : ''));
   }
   function buildLibrary(eventId){ return api('POST', '/api/library/build', { eventId: String(eventId || '') }); }
+  /* where each named speaker's photo is on a brochure's pages (functions/lib/speaker-photos.js): pages [{ data (JPEG
+     base64), w, h }], six at most -> { found: [{ name, page, box: { x0, y0, x1, y1 } }], dropped } */
+  function findSpeakerPhotos(eventId, names, pages){ return api('POST', '/api/event/speaker-photos/find', { eventId: String(eventId || ''), names: names || [], pages: pages || [] }); }
   /* Settings › Access (functions/lib/api-access.js): who may use EventSphere, as what, in which portals */
   function fetchAccess(){ return api('GET', '/api/access'); }
   function saveAccessMember(m){ return api('POST', '/api/access/member', m || {}); }
@@ -1544,7 +1547,7 @@ window.RevampCore = (function(){
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchSeo: fetchSeo, writeSeo: writeSeo, draftFaqs: draftFaqs, fetchSeoPrevious: fetchSeoPrevious, fetchEtEvents: fetchEtEvents,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
-    searchLibrary: searchLibrary, buildLibrary: buildLibrary,
+    searchLibrary: searchLibrary, buildLibrary: buildLibrary, findSpeakerPhotos: findSpeakerPhotos,
     fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
