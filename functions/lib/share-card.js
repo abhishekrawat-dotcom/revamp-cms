@@ -8,7 +8,14 @@
    1 MB. Its background is the banner's: the banner video's still when the hero plays a video, else the hero's own
    picture, cover-cropped the way the hero crops it (its background-position, else the centre), under the same
    darkening or tint the hero puts over it when that can be read from the page for certain (overlayLayers), else
-   none. On it, the LOGO UNIT the hero itself shows (img.rv-lu-img, its copy for a dark ground when the hero shows
+   none. A banner that plays a video with NO still and has no picture of its own (Brand World Summit) gets one from
+   ETB2B AI (share-still.js; the owner, 7 Nov 2026: "For video headers you have to generate a banner at your own"):
+   one picture of the event's field and place, by the hero picture's rules (no people, no words, no logos, 16:9,
+   checked), made once and kept on the event (events/<id>.shareStill), for the card only — the site keeps its video.
+   planOf hands back what that card needs (plan.still) until the picture is there, and plans the card on it, under
+   the hero's veil, once it is (background.made 'ai'); stillThenCard makes the picture, then the card, at a publish
+   (inside the same bounded wait) and on a live page's visit (in the background), as for any card.
+   On it, the LOGO UNIT the hero itself shows (img.rv-lu-img, its copy for a dark ground when the hero shows
    that one), centred, as large as fits in 64 % of the width and 52 % of the height, its proportions kept. Centred
    also survives WhatsApp's square crop of a link preview. Nothing else: no words, no date, no venue.
 
@@ -107,7 +114,14 @@ var OVERLAY_CLASSES = ['hero-veil', 'hero-overlay', 'overlay-lyr'];
 /* rasterise(svgText, o) and embeddedYearFont(svgText): api.js's own SVG drawing (resvg, with the year font a
    lock-up carries), so a unit is drawn here exactly as the logo-unit code draws it everywhere else */
 var H = {};
-function wire(helpers) { H = helpers || {}; }
+function wire(helpers) { H = helpers || {}; if (stillModule) stillModule.wire(H); }
+/* share-still.js (ETB2B AI's picture for a video banner), loaded on first use: the page pass that reads plans runs on
+   every page served, and needs none of the AI modules behind it */
+var stillModule = null;
+function still() {
+  if (!stillModule) { stillModule = require('./share-still'); stillModule.wire(H); }
+  return stillModule;
+}
 
 function allowed(eventId) {
   return process.env.QA_SHARE_ONLY_QA !== '1' || /^qa-[a-z0-9-]+$/.test(String(eventId || ''));
@@ -470,7 +484,7 @@ function planUnsafe(tokens, out, kit, ctx) {
   var vars = [heroVars, bodyVars];
 
   /* what the hero holds */
-  var posters = [], videoNoStill = false, bannerPic = '', bigPics = [], units = [], bannerLogo = '', overlayEl = null, typeUnit = false;
+  var posters = [], videoNoStill = false, bannerPic = '', bigPics = [], units = [], bannerLogo = '', overlayEl = null, typeUnit = false, unitTone = '';
   for (i = hero + 1; i < heroEnd; i++) {
     t = tokens[i];
     if (t.t !== 'open' || out[i] === '') continue;
@@ -485,6 +499,8 @@ function planUnsafe(tokens, out, kit, ctx) {
       if (src && (w >= 600 || cls.some(function (c) { return /^(object-cover|h-full|w-full|cover|bg-image|hero-bg|background)$/.test(c); }))) bigPics.push(src);
     }
     if (cls.indexOf('rv-lu-name') !== -1) typeUnit = true;
+    /* the ground the logo unit is drawn for (gen-design.js logoUnitHtml: rv-lu-on-light / rv-lu-on-dark) */
+    if (!unitTone && cls.indexOf('rv-lu') !== -1) unitTone = cls.indexOf('rv-lu-on-dark') !== -1 ? 'dark' : cls.indexOf('rv-lu-on-light') !== -1 ? 'light' : '';
     if (!overlayEl && cls.some(function (c) { return OVERLAY_CLASSES.indexOf(c) !== -1; })) overlayEl = elementOf(t, kit);
   }
 
@@ -502,7 +518,7 @@ function planUnsafe(tokens, out, kit, ctx) {
   if (logo) logo.url = absolute(logo.url);
 
   /* ---- the background the hero shows ---- */
-  var bg = null, overlay = [], unreadable = false;
+  var bg = null, overlay = [], unreadable = false, stillWanted = false, groundHex = '#ffffff';
   var hv = heroVideoCore.clean(event.heroVideo);
   var look = hv && hv.posterUrl ? heroVideoCore.looksAt(ctx.html || '') : null;
   if (look && look.host !== 'none') {
@@ -547,21 +563,41 @@ function planUnsafe(tokens, out, kit, ctx) {
       var pos = parsePosition(resolveVars(cssPos || 'center', vars) || '');
       bg = { url: cssPic, x: pos ? pos[0] : 0.5, y: pos ? pos[1] : 0.5 };
     } else if (ctx.imported && bigPics.length) bg = { url: bigPics[0], x: 0.5, y: 0.5 };
-    if (bg && !ctx.imported) {
+    /* A banner that plays a video with no still of its own (BWS): the picture ETB2B AI made for its share card
+       (share-still.js), once there is one, under the veil the hero puts over its video — exactly as a banner
+       picture of its own would be. Until then, what that card will need (stillWanted, returned below). */
+    stillWanted = !bg && videoNoStill && !ctx.imported;
+    var aiStill = stillWanted ? stillOf(event) : '';
+    if (aiStill) { bg = { url: aiStill, x: 0.5, y: 0.5, made: 'ai' }; stillWanted = false; }
+    if ((bg || stillWanted) && !ctx.imported) {
       /* what tints the picture, top first: the overlay element, then the hero's own layers above the picture */
       var ovLayers = overlayLayers(overlayEl, rules, heroEl, vars, template, darkTurn);
       if (ovLayers === null || unreadable) overlay = [];
-      else overlay = ovLayers.concat(bg.url === cssPic ? heroBgLayers : []);
+      else overlay = ovLayers.concat(bg && bg.url === cssPic ? heroBgLayers : []);
     }
-    if (bg) {
+    if (bg || stillWanted) {
       var ground = parseColour(resolveVars(darkTurn ? 'var(--rv-bg)' : (groundText || 'var(--rv-bg)'), vars) || '') ||
         parseColour(resolveVars(bodyVars['background-color'] || '', [bodyVars]) || '');
-      bg.ground = ground && ground[3] >= 0.995 ? hexOf(ground) : '#ffffff';
+      groundHex = ground && ground[3] >= 0.995 ? hexOf(ground) : '#ffffff';
+      if (bg) bg.ground = groundHex;
     }
   }
   if (bg) { bg.url = absolute(bg.url); if (!bg.url || /\.svg(\?|#|$)/i.test(bg.url)) bg = null; }
   if (bg && !bg.ground) bg.ground = '#ffffff';
 
+  /* nothing to draw the card's background from but a video: ETB2B AI makes a picture for it first (share-still.js),
+     when there is a logo unit to put on it — what is handed back is everything that card needs but that picture */
+  if (!bg && stillWanted && logo && logo.url) {
+    var colourOf = function (name) { var c = parseColour(resolveVars('var(' + name + ')', vars) || ''); return c && c[3] >= 0.995 ? hexOf(c) : ''; };
+    var want = { v: CARD_VERSION, still: true, overlay: overlay, ground: groundHex, logo: { url: logo.url, from: logo.from } };
+    return { needed: false, reason: 'video-no-still', still: {
+      fingerprint: fingerprintOf(want), overlay: overlay, ground: groundHex, logo: want.logo,
+      /* the picture is light or dark as the logo unit on it is drawn for, in the site's own colours */
+      tone: darkTurn ? 'dark' : unitTone || (heroOnLight ? 'light' : body.attrs['data-rv-mode'] === 'dark' ? 'dark' : 'light'),
+      colours: { theme: colourOf('--theme-color'), accent: colourOf('--accent-color') }
+    } };
+  }
+  if (!bg && stillWanted) return { needed: false, reason: typeUnit ? 'logo-unit-in-type' : 'no-logo-unit' };
   if (!bg) return { needed: false, reason: videoNoStill ? 'video-no-still' : 'no-picture' };
   if (!logo || !logo.url) return { needed: false, reason: typeUnit ? 'logo-unit-in-type' : 'no-logo-unit' };
 
@@ -571,6 +607,7 @@ function planUnsafe(tokens, out, kit, ctx) {
     overlay: overlay,
     logo: { url: logo.url, from: logo.from }
   };
+  if (bg.made) inputs.background.made = bg.made;
   var fingerprint = fingerprintOf(inputs);
   var rec = event.shareCard && typeof event.shareCard === 'object' ? event.shareCard : null;
   var fresh = !!(rec && rec.state === 'ready' && rec.fingerprint === fingerprint && /^https:\/\/[^\s"'<>]+$/.test(String(rec.url || '')));
@@ -580,6 +617,20 @@ function planUnsafe(tokens, out, kit, ctx) {
   };
 }
 function round4(n) { return Math.round(n * 10000) / 10000; }
+/* the picture ETB2B AI made for a video banner's share card (share-still.js), as the event records it — or as the
+   card made from it records it, for the page written again right after a publish, before the event is read again */
+var HTTPS_URL = /^https:\/\/[^\s"'<>]+$/;
+function stillOf(event) {
+  var s = event && event.shareStill, c = event && event.shareCard;
+  if (s && typeof s === 'object' && s.state === 'ready' && HTTPS_URL.test(String(s.url || ''))) return s.url;
+  if (c && typeof c === 'object' && c.state === 'ready' && HTTPS_URL.test(String(c.still || ''))) return c.still;
+  return '';
+}
+/* the card's plan once that picture is there: the very inputs planOf reads off the page then (same fingerprint) */
+function planWithStill(want, url) {
+  var inputs = { v: CARD_VERSION, background: { url: url, x: 0.5, y: 0.5, ground: want.ground, made: 'ai' }, overlay: want.overlay || [], logo: { url: want.logo.url, from: want.logo.from } };
+  return { needed: true, fingerprint: fingerprintOf(inputs), inputs: inputs, fresh: false, card: null };
+}
 
 /* the first <section> outside the top bar and the footer (an imported design's banner) */
 function firstSection(tokens, out, kit) {
@@ -954,6 +1005,9 @@ function make(fb, eventId, plan, opts) {
         return file.makePublic().catch(function (err) { return file.delete().catch(function () {}).then(function () { throw err; }); });
       }).then(function () {
         var row = { state: 'ready', reason: '', fingerprint: fp, url: url, path: path, width: card.width, height: card.height, bytes: card.bytes, at: new Date(at).toISOString(), v: CARD_VERSION };
+        /* made on ETB2B AI's picture for a video banner: said, so the console can say so, and so the page written
+           again right after a publish finds that picture (stillOf) */
+        if (plan.inputs.background.made === 'ai') row.still = plan.inputs.background.url;
         return record(fb, eventId, row).then(function (how) {
           if (how === 'gone') return file.delete().catch(function () {}).then(function () { return null; });
           if (how === 'kept') return null;
@@ -996,6 +1050,63 @@ function note(fb, eventId, event, reason) {
     });
 }
 
+/* A video banner's card (planOf's plan.still): ETB2B AI's picture for it first (share-still.js: made once, kept on
+   the event), then the card on it, exactly as on a banner's own picture. The logo unit is checked before any picture
+   is made: a unit that can never be put on a card (not transparent, boxed, lettering in a font it does not carry)
+   costs no picture, and its record says why, as any card's does. -> Promise<card record | null>, never rejects. */
+var STILL_INFLIGHT = new Map();
+function stillThenCard(fb, eventId, event, plan, onStored) {
+  /* one at a time per event on this server: visits that arrive together share it */
+  var mine = STILL_INFLIGHT.get(eventId);
+  if (mine) return mine;
+  var p = stillThenCardOnce(fb, eventId, event, plan, onStored).then(function (rec) {
+    if (STILL_INFLIGHT.get(eventId) === p) STILL_INFLIGHT.delete(eventId);
+    return rec;
+  });
+  STILL_INFLIGHT.set(eventId, p);
+  return p;
+}
+function stillThenCardOnce(fb, eventId, event, plan, onStored) {
+  try {
+    var want = plan && plan.still;
+    if (!want || !want.logo || !want.logo.url) return Promise.resolve(null);
+    if (!allowed(eventId)) { guardNote(eventId); return Promise.resolve(null); }
+    if (!fb || !fb.db || !fb.bucket) return Promise.resolve(null);
+    var S = still(), now = Date.now();
+    var known = event && event.shareCard && typeof event.shareCard === 'object' ? event.shareCard : null;
+    if (known && known.state === 'failed' && known.fingerprint === want.fingerprint && now - Date.parse(known.at) < RETRY_MS[LASTING[known.reason] ? 'lasting' : 'passing']) return Promise.resolve(null);
+    var stillRec = event && event.shareStill && typeof event.shareStill === 'object' ? event.shareStill : null;
+    /* a busy page is served many times a minute: while the record says the picture is being made, or may not be
+       made again yet, nothing is fetched and nothing is asked of the database */
+    if (stillRec && stillRec.state !== 'ready' && !S.mayMake(stillRec, now)) return Promise.resolve(null);
+    return logoProblem(fb, want.logo).then(function (why) {
+      if (why === 'unavailable') return null;
+      if (why) {
+        return record(fb, eventId, { state: 'failed', reason: why, fingerprint: want.fingerprint, at: new Date().toISOString(), v: CARD_VERSION }).then(function () { return null; });
+      }
+      return S.ensure(fb, eventId, event, want, { known: stillRec });
+    }).then(function (rec) {
+      if (!rec || rec.state !== 'ready' || !rec.url) return null;
+      return make(fb, eventId, planWithStill(want, rec.url), { onStored: onStored });
+    }).then(null, function (err) {
+      console.error('share-card: the card of ' + eventId + ' on ETB2B AI\'s picture could not be made — ' + (err && err.stack || err));
+      return null;
+    });
+  } catch (e) {
+    console.error('share-card: ' + eventId + ' — ' + (e && e.stack || e));
+    return Promise.resolve(null);
+  }
+}
+/* '' when the logo unit can be put on a card; else the reason it cannot ('unavailable' when it could not be read
+   just now: tried again later). The same reading and checks the card itself makes (logoPicture). */
+function logoProblem(fb, logo) {
+  var sharp = loadSharp();
+  if (!sharp) return Promise.resolve('unavailable');
+  return serially(function () {
+    return bytesOf(fb, logo.url, LOGO_MAX_BYTES).then(function (buf) { return logoPicture(sharp, buf, logo); });
+  }).then(function () { return ''; }, function (e) { return e && e.reason && REASONS[e.reason] ? e.reason : 'unavailable'; });
+}
+
 /* ---------- when (lib/api.js) ---------- */
 /* Going live: the card for the page about to be written, waited for at most PUBLISH_WAIT_MS.
    -> Promise<record | null>: a record when the page should be written again with its card. Never rejects; a card
@@ -1006,16 +1117,20 @@ function atPublish(fb, eventId, event, plan, onStored) {
 }
 function atPublishUnsafe(fb, eventId, event, plan, onStored) {
   if (!plan) return Promise.resolve(null);
-  if (!plan.needed) { if (!plan.own) note(fb, eventId, event, plan.reason); return Promise.resolve(null); }
+  if (!plan.needed && !plan.still) { if (!plan.own) note(fb, eventId, event, plan.reason); return Promise.resolve(null); }
   if (plan.fresh) return Promise.resolve(null);
   var timer;
   var wait = new Promise(function (resolve) { timer = setTimeout(function () { resolve(null); }, PUBLISH_WAIT_MS); });
-  return Promise.race([make(fb, eventId, plan, { onStored: onStored }), wait]).then(function (rec) { clearTimeout(timer); return rec || null; });
+  /* a video banner's card waits for ETB2B AI's picture first, inside the same wait (it is rarely ready within it:
+     the page then goes live with the picture it had, and the card reaches it once made, as below) */
+  var job = plan.needed ? make(fb, eventId, plan, { onStored: onStored }) : stillThenCard(fb, eventId, event, plan, onStored);
+  return Promise.race([job, wait]).then(function (rec) { clearTimeout(timer); return rec || null; });
 }
 /* Serving a live page: what its card needs, started in the background. Returns at once. */
 function afterServe(fb, eventId, event, plan, onStored) {
   try {
     if (!plan || plan.own || plan.fresh) return;
+    if (!plan.needed && plan.still) { stillThenCard(fb, eventId, event, plan, onStored); return; }
     if (!plan.needed) { note(fb, eventId, event, plan.reason); return; }
     make(fb, eventId, plan, { onStored: onStored, known: event && event.shareCard });
   } catch (e) { console.error('share-card: ' + eventId + ' — ' + (e && e.stack || e)); }
@@ -1023,6 +1138,7 @@ function afterServe(fb, eventId, event, plan, onStored) {
 
 module.exports = {
   wire: wire, planOf: planOf, fingerprintOf: fingerprintOf, compose: compose, make: make, note: note, atPublish: atPublish, afterServe: afterServe,
+  stillThenCard: stillThenCard, planWithStill: planWithStill,
   CARD_VERSION: CARD_VERSION, WIDTH: WIDTH, HEIGHT: HEIGHT, REASONS: REASONS, FOLDER: FOLDER
 };
 module.exports._test = {

@@ -242,6 +242,28 @@ ok(own.own === true && !own.needed, 'the owner\'s own share picture: nothing to 
 var dataLogo = planFor(genPage('qa-x', { logo: 'data:image/png;base64,AAAA' })).plan;
 ok(!dataLogo.needed && dataLogo.reason === 'no-logo-unit', 'a unit picture written into the page as data is not fetched');
 
+/* ===================== 2b. a video banner: ETB2B AI's picture for its card (share-still.js) ===================== */
+var VIDEO = '<video class="hero-video" loop muted data-rv-src="https://et/v.mp4" data-rv-bg-video></video>';
+var STILL_URL = STORE + 'events/qa-x/share-card/still-abc.png';
+ok(bws.still && bws.still.logo.url === STORE + 'events/qa-x/generated/logo-unit.png' && bws.still.ground === '#0c0c10' && bws.still.overlay.length === 2 && bws.still.overlay[1].t === 'linear' &&
+  /^[0-9a-f]{64}$/.test(bws.still.fingerprint), 'a video with no still: what its card needs but the picture (the logo unit, the veil over the video, the ground)', bws.still);
+ok(bws.still.tone === 'dark' && bws.still.colours.theme === '#186bf9' && bws.still.colours.accent === '#ffb020', 'the picture asked for in the tone the logo unit is drawn for, in the site\'s own colours', bws.still);
+var bwsLight = planFor(genPage('qa-x', { heroBg: 'background:none', video: VIDEO, heroClass: 'hero-on-dark',
+  unit: '<div class="rv-lu rv-lu-pic rv-lu-on-light" data-rv-logo-unit=""><img class="rv-lu-img" src="' + STORE + 'events/qa-x/generated/logo-unit.svg" alt="L" width="571" height="192"></div>', veil: 'rgba(255,255,255,0.6)' })).plan;
+ok(bwsLight.still && bwsLight.still.tone === 'light' && bwsLight.still.overlay.length === 1 && bwsLight.still.overlay[0].c.join() === '255,255,255,0.6',
+  'Brand World Summit\'s own hero (a unit drawn for a light ground on a white veil, the hero marked on-dark): a light picture under its white veil', bwsLight.still);
+var withStill = planFor(genPage('qa-x', { heroBg: 'background:none', video: VIDEO }), { name: 'V', shareStill: { state: 'ready', url: STILL_URL } }).plan;
+ok(withStill.needed && withStill.inputs.background.url === STILL_URL && withStill.inputs.background.made === 'ai' && withStill.inputs.background.ground === '#0c0c10' &&
+  withStill.inputs.overlay.length === 2 && withStill.inputs.logo.url === bws.still.logo.url, 'once the picture is there: the card is planned on it, under the same veil, exactly as on a banner picture', withStill.inputs);
+ok(card.planWithStill(bws.still, STILL_URL).fingerprint === withStill.fingerprint, 'the card made right after the picture is the very card the page asks for (the same fingerprint)');
+var fromCard = planFor(genPage('qa-x', { heroBg: 'background:none', video: VIDEO }), { name: 'V', shareCard: { state: 'ready', url: STORE + 'events/qa-x/share-card/c.jpg', fingerprint: withStill.fingerprint, still: STILL_URL } }).plan;
+ok(fromCard.needed && fromCard.fresh && fromCard.card.url === STORE + 'events/qa-x/share-card/c.jpg', 'the page written again right after a publish knows the picture from the card\'s record: it carries the card');
+ok(!planFor(genPage('qa-x', { heroBg: 'background:none', video: VIDEO }), { name: 'V', shareStill: { state: 'held', why: 'twice' } }).plan.needed, 'a picture not used (held) is not drawn on');
+var videoNoUnit = planFor(genPage('qa-x', { heroBg: 'background:none', video: VIDEO, unit: '' })).plan;
+ok(!videoNoUnit.needed && !videoNoUnit.still && videoNoUnit.reason === 'no-logo-unit', 'a video banner with no logo unit picture: no picture is made (there would be nothing to put on it), and why', videoNoUnit);
+ok(!planFor(genPage('qa-x', { heroBg: 'background:none', video: VIDEO, ownImage: 'https://x/owner.jpg' })).plan.still, 'the owner\'s own share picture still wins: nothing is made');
+ok(!posterVideo.still && !g.still, 'a hero with a picture or a video still of its own: no AI picture');
+
 /* ===================== 3. the fingerprint ===================== */
 var published = hooks.publishTransform(genPage('qa-x'), { eventId: 'qa-x', event: { name: 'Agentic' }, mode: 'live', templateId: 'gen-qa-x', publicBase: 'https://sites.example', report: {} });
 var pubReport = {};
@@ -542,7 +564,7 @@ function reasonOf(p) { return p.then(function () { return 'made'; }, function (e
   var main = (page.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); }).filter(function (s) { return s.indexOf('function wireBasics') !== -1; })[0] || '';
   function fnSrc(name) { var m = new RegExp('\\n  function ' + name + '\\([^)]*\\)\\{[\\s\\S]*?\\n  \\}\\n').exec(main); return m ? m[0] : ''; }
   function varSrc(name) { var b = new RegExp('\\n  var ' + name + ' = \\{\\n[\\s\\S]*?\\n  \\};\\n').exec(main); if (b) return b[0]; var m = new RegExp('\\n  var ' + name + '\\b[^\\n]*\\n').exec(main); return m ? m[0] : ''; }
-  var src = ['SHARE_AUTO', 'SHARE_OWN', 'SHARE_LATER', 'SHARE_WHY'].map(varSrc).join('') + ['shareUrlOf', 'shareAutoState', 'sharePictureField'].map(fnSrc).join('');
+  var src = ['SHARE_AUTO', 'SHARE_OWN', 'SHARE_LATER', 'SHARE_WHY', 'SHARE_VIDEO'].map(varSrc).join('') + ['shareUrlOf', 'shareHeldText', 'shareAutoState', 'sharePictureField'].map(fnSrc).join('');
   var sb = { esc: function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }, imgTag: function (u) { return u ? '<img src="' + u + '" alt="">' : ''; }, svg: function () { return '<svg/>'; }, IC: {} };
   vm.runInNewContext(src, sb);
   var ready = sb.sharePictureField({ published: true, shareCard: { state: 'ready', url: 'https://storage.googleapis.com/b/events/x/share-card/a.jpg' } });
@@ -567,8 +589,98 @@ function reasonOf(p) { return p.then(function () { return 'made'; }, function (e
   ok(/var own = shareUrlOf\(EV\), pic = own \|\| shareAutoState\(EV\)\.url;/.test(og) && /'<div class="img pic">' \+ imgTag\(pic\)/.test(og) && /a stand-in until the site’s own is made/.test(og), 'the Social preview shows the real picture (or says its drawing is a stand-in)');
   var css = fs.readFileSync(path.join(__dirname, '..', '..', 'edit-event.css'), 'utf8');
   ok(/\.mock-og \.img\.pic img\{[^}]*object-fit:cover/.test(css), 'and fills its frame with it');
-  ok(require('./api-events')._shared && fs.readFileSync(path.join(__dirname, 'api-events.js'), 'utf8').indexOf("'shareCard'];") !== -1 && /NOT_CLONED_FOLDERS = \[[^\]]*'share-card'\]/.test(fs.readFileSync(path.join(__dirname, 'api-events.js'), 'utf8')),
-    'a new edition copies neither the card nor its record (its own is made from its own banner)');
+  ok(require('./api-events')._shared && fs.readFileSync(path.join(__dirname, 'api-events.js'), 'utf8').indexOf("'shareCard', 'shareStill'];") !== -1 && /NOT_CLONED_FOLDERS = \[[^\]]*'share-card'\]/.test(fs.readFileSync(path.join(__dirname, 'api-events.js'), 'utf8')),
+    'a new edition copies neither the card nor its record, nor ETB2B AI\'s picture for a video banner (its own is made from its own banner)');
+
+  /* ===================== 10. a video banner, end to end (share-still.js with a stubbed picture model) ===================== */
+  var stillLib = require('./share-still');
+  var asked10 = [], looks10 = [];
+  stillLib._test.setModels({
+    image: function (prompt, opts) { asked10.push({ prompt: prompt, opts: opts }); return Promise.resolve({ base64: BG.toString('base64'), mimeType: 'image/png' }); },
+    check: function () { return Promise.resolve(looks10.length ? looks10.shift() : { people: false, text: false, logos: false }); }
+  });
+  function videoEvent(id, extra) {
+    FB.docs['events/' + id] = Object.assign({ name: 'QA Video Summit', portal: 'brandequity', venue: 'Taj Wellington Mews', city: 'Chennai', category: 'ip', createdAt: '2026-11-01T00:00:00.000Z',
+      site: { version: 1, templateId: 'gen-' + id } }, extra || {});
+    FB.files['events/' + id + '/site/versions/1/page.html'] = Buffer.from(genPage(id, { heroBg: 'background:none', video: VIDEO }));
+    FB.files['events/' + id + '/generated/logo-unit.png'] = LOGO;
+  }
+  var VID = 'qa-sc-video';
+  videoEvent(VID);
+  T.setPublishWait(3000);
+  await hooks.publishVersion(FB, REQ, VID, 1, 'qa-agent@timesinternet.in', '', {}, {});
+  var st10 = FB.docs['events/' + VID].shareStill, rec10 = FB.docs['events/' + VID].shareCard, live10 = FB.files['events/' + VID + '/published/index.html'].toString('utf8');
+  ok(asked10.length === 1 && asked10[0].opts.aspectRatio === '16:9' && /KEY VISUAL/.test(asked10[0].prompt) && asked10[0].prompt.indexOf('QA Video Summit') === -1,
+    'going live with a video banner: ETB2B AI makes ONE picture, by the hero picture\'s rules (never the event\'s name)', asked10.map(function (a) { return a.prompt.slice(0, 120); }));
+  ok(st10 && st10.state === 'ready' && FB.files[st10.path] && !FB.publics[st10.path] && /\/share-card\/still-/.test(st10.path), 'the picture is kept on the event (stored privately: only the server draws from it)', st10);
+  ok(rec10 && rec10.state === 'ready' && rec10.still === st10.url && FB.publics[rec10.path] && live10.indexOf('<meta property="og:image" content="' + rec10.url + '" data-rv-seo>') !== -1,
+    'the card is made on it, and the page goes live carrying it', (live10.match(/<meta property="og:image[^>]*>/g) || []).join(' '));
+  ok(/<video class="hero-video"/.test(live10) && live10.indexOf(st10.url) === -1, 'the site keeps its video: the picture is the share card\'s only');
+  var c10 = await sharp(FB.files[rec10.path]).raw().toBuffer({ resolveWithObject: true });
+  ok(c10.info.width === 1200 && c10.info.height === 630 && near(pixel(c10.data, c10.info, 600, 315), [255, 0, 255], 40), 'the card: 1200 × 630, the logo unit at its centre, as drawn');
+  /* served afterwards: nothing is made again */
+  FB.docs['events/' + VID].published = true; FB.docs['events/' + VID].publishedVersion = 1; FB.docs['events/' + VID].publishedAt = '2026-11-02T00:00:00.000Z';
+  var v10 = await route('/e/' + VID); await sleep(100);
+  ok(v10.status === 200 && v10.body.indexOf(rec10.url) !== -1 && asked10.length === 1, 'served afterwards: the card, and no new picture (it is made once)');
+  /* a site live before this: the picture and the card in the background on its first visit */
+  var OLDV = 'qa-sc-video-live';
+  videoEvent(OLDV, { published: true, publishedVersion: 1, publishedAt: '2026-11-02T00:00:00.000Z', shareCard: { state: 'none', reason: 'video-no-still', at: '2026-11-11T00:00:00.000Z' } });
+  FB.files['events/' + OLDV + '/published/index.html'] = Buffer.from(hooks.publishTransform(genPage(OLDV, { heroBg: 'background:none', video: VIDEO }),
+    { eventId: OLDV, event: { name: 'QA Video Summit' }, mode: 'live', templateId: 'gen-' + OLDV, publicBase: 'https://sites.example' }));
+  var n10 = asked10.length;
+  var w1 = await route('/e/' + OLDV);
+  ok(w1.status === 200 && w1.body.indexOf('share-card') === -1, 'a live video site\'s first visit: answered at once with the picture it had');
+  for (var w10 = 0; w10 < 80 && !(FB.docs['events/' + OLDV].shareCard && FB.docs['events/' + OLDV].shareCard.state === 'ready'); w10++) await sleep(50);
+  var oldRec = FB.docs['events/' + OLDV].shareCard;
+  ok(asked10.length === n10 + 1 && FB.docs['events/' + OLDV].shareStill.state === 'ready' && oldRec.state === 'ready' && oldRec.still === FB.docs['events/' + OLDV].shareStill.url,
+    'meanwhile its picture and card are made in the background', { asked: asked10.length - n10, still: FB.docs['events/' + OLDV].shareStill, card: oldRec });
+  var w2 = await route('/e/' + OLDV);
+  ok(w2.body.indexOf('<meta property="og:image" content="' + oldRec.url + '" data-rv-seo>') !== -1, 'and its next visit carries the card (no publish needed)');
+  /* a logo unit that can never be put on a card costs no picture */
+  var BOXV = 'qa-sc-video-boxed';
+  videoEvent(BOXV);
+  FB.files['events/' + BOXV + '/generated/logo-unit.png'] = BOXED;
+  var n10b = asked10.length;
+  await quietly(function () { return hooks.publishVersion(FB, REQ, BOXV, 1, 'qa-agent@timesinternet.in', '', {}, {}); });
+  ok(asked10.length === n10b && !FB.docs['events/' + BOXV].shareStill && FB.docs['events/' + BOXV].shareCard.state === 'failed' && FB.docs['events/' + BOXV].shareCard.reason === 'logo-boxed',
+    'a boxed logo unit: no picture is made for a card that could not be made, and the record says why', FB.docs['events/' + BOXV].shareCard);
+  /* a picture the check refuses twice: none is used, the page keeps the picture it had */
+  var HELDV = 'qa-sc-video-held';
+  videoEvent(HELDV);
+  looks10 = [{ people: true, text: false, logos: false }, { people: false, text: true, logos: false }];
+  var n10c = asked10.length;
+  await quietly(function () { return hooks.publishVersion(FB, REQ, HELDV, 1, 'qa-agent@timesinternet.in', '', {}, {}); });
+  var live10h = FB.files['events/' + HELDV + '/published/index.html'].toString('utf8');
+  ok(asked10.length === n10c + 2 && FB.docs['events/' + HELDV].shareStill.state === 'held' && !(FB.docs['events/' + HELDV].shareCard && FB.docs['events/' + HELDV].shareCard.state === 'ready') && live10h.indexOf('share-card') === -1 && FB.docs['events/' + HELDV].published === true,
+    'a picture with a person, then one with words: neither is used, and the site goes live with the picture it had', FB.docs['events/' + HELDV].shareStill);
+  /* the QA guard: nothing for a real event */
+  process.env.QA_SHARE_ONLY_QA = '1';
+  var REALV = 'real-video-event';
+  videoEvent(REALV, { published: true, publishedVersion: 1, publishedAt: '2026-11-02T00:00:00.000Z' });
+  FB.files['events/' + REALV + '/published/index.html'] = Buffer.from(genPage(REALV, { heroBg: 'background:none', video: VIDEO }));
+  var n10d = asked10.length;
+  await quietly(function () { return route('/e/' + REALV); }); await sleep(200);
+  ok(asked10.length === n10d && !FB.docs['events/' + REALV].shareStill && !FB.docs['events/' + REALV].shareCard, 'QA_SHARE_ONLY_QA=1: no picture is made for a real event\'s video banner');
+  delete process.env.QA_SHARE_ONLY_QA;
+  T.setPublishWait(8000);
+  /* the console says what became of it */
+  var vReady = sb.shareAutoState({ published: true, shareCard: { state: 'ready', url: 'https://x/card.jpg', still: 'https://x/still.png' }, shareStill: { state: 'ready' } });
+  ok(vReady.url === 'https://x/card.jpg' && /the banner plays a video, so ETB2B AI made a picture for it \(the event’s field and place, with no people or words\) and put the logo unit on it\. Only shared links show this picture: the site keeps its video\./.test(vReady.text),
+    'the console: the card on ETB2B AI\'s picture, said in plain words', vReady.text);
+  var vMaking = sb.shareAutoState({ published: true, shareCard: { state: 'none', reason: 'video-no-still' } });
+  ok(/ETB2B AI makes a picture for it/.test(vMaking.text) && !/has no still picture/.test(vMaking.text) && vMaking.url === '', 'before it is made: what ETB2B AI will make, and when (never "the banner plays a video that has no still picture")', vMaking.text);
+  var vHeld = sb.shareAutoState({ published: true, shareStill: { state: 'held', why: 'twice', found: ['people', 'text'], rounds: 1, last: false } });
+  ok(/had people and words or letters in it, so it is not used\. ETB2B AI tries once more a day later/.test(vHeld.text), 'a picture not used: what it had, and that it is tried once more', vHeld.text);
+  var vDone = sb.shareAutoState({ published: true, shareStill: { state: 'held', why: 'unchecked', found: [], rounds: 2, last: true } });
+  ok(/could not be checked, so it is not used\. ETB2B AI does not try again\./.test(vDone.text) && !/tries once more/.test(vDone.text) && /upload a picture/.test(vDone.text), 'after its last try: no promise of another, and the way to choose one', vDone.text);
+  var vFailedLast = sb.shareAutoState({ published: true, shareStill: { state: 'failed', reason: 'ai-unavailable', claims: 5, last: true } });
+  var vFailedNow = sb.shareAutoState({ published: true, shareStill: { state: 'failed', reason: 'ai-unavailable', claims: 1, last: false } });
+  ok(/ETB2B AI could not make a picture for it\. ETB2B AI does not try again\./.test(vFailedLast.text) && /ETB2B AI makes a picture for it/.test(vFailedNow.text),
+    'a model that failed: tried again (said as being made) until its last try, then said plainly', [vFailedLast.text, vFailedNow.text]);
+  var vBoxed = sb.shareAutoState({ published: true, shareCard: { state: 'failed', reason: 'logo-boxed' } });
+  ok(/the logo unit picture has a box drawn round it/.test(vBoxed.text), 'a logo unit that cannot go on a card: why, as for any card');
+  var vImported = sb.shareAutoState({ published: true, templateId: 'imported-imp-1', shareCard: { state: 'none', reason: 'video-no-still' } });
+  ok(/an imported design keeps its own pictures/.test(vImported.text), 'an imported design\'s video banner: none is made for it, and that is said');
 
   if (failures.length) {
     console.error('share-card: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - '));

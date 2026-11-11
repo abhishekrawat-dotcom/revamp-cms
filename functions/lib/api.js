@@ -307,7 +307,9 @@ const sitePages = require('./site-pages');
 /* the picture a link to a site shows: its banner's background with the logo unit on it (share-card.js). It draws
    an SVG unit with this file's own rasterise and the year font the unit carries, as the logo-unit code does */
 const shareCard = require('./share-card');
-shareCard.wire({ rasterise: rasterise, embeddedYearFont: embeddedYearFont });
+/* and, for a banner that plays a video with no still, ETB2B AI's picture behind its card (share-still.js), whose
+   model calls are added to the event's AI usage like every other */
+shareCard.wire({ rasterise: rasterise, embeddedYearFont: embeddedYearFont, aiUsageRecorder: aiUsageRecorder });
 /* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
 const siteChecks = require('./site-checks');
 /* the check before Publish: what is good to put right, advisory (owner decision #11, part 3.2) */

@@ -236,9 +236,11 @@ function designOf(ev) {
    the picture, which are the scene with the event's name taken out (ownScene); otherwise, or when nothing of
    theirs is left, the scene is the event's field at its place (sceneOf). Neither the event's name nor its portal's
    name is ever in the prompt. */
-function promptFor(ev, subject, own) {
+function promptFor(ev, subject, own, design) {
   var city = plainPlace(cityOf(ev), 60), words = own ? ownScene(subject, ev) : '';
-  var prompt = genDesign.imagePrompt(words || sceneOf(ev), designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
+  /* design: the tone and colours to make it in, when the caller knows them better than the event's theme does
+     (share-still.js: the live site's own colours, light or dark as its logo unit stands) */
+  var prompt = genDesign.imagePrompt(words || sceneOf(ev), design || designOf(ev), { hero: true, about: aboutOf(ev), place: city ? { city: city } : null });
   /* nobody in any form, said as the editor says it for its banner, after the STRICT rules: the check refuses the
      same (a silhouette, a human icon, a figure however small) */
   return PEOPLE_RULE === 'none' ? prompt + ' ' + chatPicture.NO_FIGURES : prompt;
@@ -441,7 +443,9 @@ function make(fb, decoded, eventId, eventRef, dayRef, ev, subject, own, started,
   }
 }
 
-module.exports = { wire: wire, handleHero: handleHero };
+module.exports = { wire: wire, handleHero: handleHero,
+  /* the same picture rules for the share card's banner picture of a site whose banner is a video (share-still.js) */
+  picturePrompt: promptFor, subjectOf: subjectOf, designOf: designOf, PEOPLE_RULE: PEOPLE_RULE };
 module.exports._test = { CAPS: CAPS, MSG: MSG, clock: clock, dayKey: dayKey, subjectOf: subjectOf, aboutOf: aboutOf, cityOf: cityOf, designOf: designOf,
   promptFor: promptFor, templateColour: templateColour, uidKeyOf: uidKeyOf, sceneOf: sceneOf, plainPlace: plainPlace, ownScene: ownScene, portalOf: portalOf,
   placeOf: placeOf, galleryDesign: galleryDesign, heldSentence: heldSentence, PEOPLE_RULE: PEOPLE_RULE };

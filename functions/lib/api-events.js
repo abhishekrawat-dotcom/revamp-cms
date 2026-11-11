@@ -550,8 +550,9 @@ var NOT_CLONED_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedVe
   'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'detailsUpdatedAt', 'site', 'siteLock', 'cloningFrom', 'clonedFrom',
   'eventId', 'id', 'slug', 'name', 'status',
   /* the record of the published page's share card (share-card.js): the copy is not published, and its own card is
-     made from its own banner when it goes live */
-  'shareCard'];
+     made from its own banner when it goes live; nor ETB2B AI's picture behind a video banner's card (share-still.js,
+     stored in the share-card folder, which is not copied either): the new edition's place may not be this one's */
+  'shareCard', 'shareStill'];
 
 /* Storage folders under events/<id>/ that are not carried over: the live page and the old preview page
    (a copy starts unpublished), the documents uploaded for AI generation (inputs, like drafts), and the

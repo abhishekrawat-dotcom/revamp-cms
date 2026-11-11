@@ -466,7 +466,8 @@ function loud() { console.error = realError; }
   check('H.x cityOf: its own, else the last part of "Venue & city"', HT.cityOf({ city: 'Pune' }) === 'Pune' && HT.cityOf({ venue: 'Jio World Centre, Mumbai' }) === 'Mumbai' && HT.cityOf({ venue: 'Jio World Centre' }) === '');
   check('H.x the design colour is read only from a template id, never a path', HT.templateColour('../../etc') === '' && HT.templateColour('nope-template') === '' && HT.templateColour('tech500') === '#d8151e');
   var loaded = require('child_process').execFileSync(process.execPath, ['-e', "var m = require('./ai-hero.js'); process.stdout.write(Object.keys(m).join(','));"], { cwd: __dirname, env: { PATH: process.env.PATH }, timeout: 20000 }).toString();
-  check('H.x loads with no environment and no side effects', loaded === 'wire,handleHero,_test', loaded);
+  /* and the picture rules it lends share-still.js (the share card's picture for a video banner) */
+  check('H.x loads with no environment and no side effects', loaded === 'wire,handleHero,picturePrompt,subjectOf,designOf,PEOPLE_RULE,_test', loaded);
   var refused = false;
   try { hero.wire({ withAdminBody: function () {} }); } catch (e) { refused = /needs/.test(e.message); }
   check('H.x wire() refuses helpers with parts missing', refused);
