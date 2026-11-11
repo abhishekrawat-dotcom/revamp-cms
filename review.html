@@ -210,7 +210,9 @@
   /* a phone or a narrow window: one page at a time, at the screen's own width (UX-106) */
   function narrow(){ return !!(window.matchMedia && matchMedia('(max-width: 900px)').matches); }
   var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design',
-    'record-added':'Added', 'record-removed':'Removed', 'record-changed':'Changed', 'record-order':'New order' };
+    'record-added':'Added', 'record-removed':'Removed', 'record-changed':'Changed', 'record-order':'New order',
+    /* a change in Settings › URL & SEO (the search and sharing settings that go live with this version) */
+    seo:'Search & sharing' };
   /* the class that colours a change's badge */
   var TONE = { added:'added', removed:'removed', 'record-added':'added', 'record-removed':'removed' };
   /* a request's state in words, for its badge and the list of earlier requests */
@@ -448,7 +450,8 @@
     badge.className = 'badge ' + (data.stale ? 'superseded' : r.status);
     badge.textContent = data.stale ? 'Out of date' : (STATUS[r.status] || r.status);
     document.getElementById('sub').textContent = 'Requested by ' + whoText(r.requestedBy) + ' · ' + when(r.requestedAt) + ' · ' +
-      (r.firstPublish ? 'First time live (version ' + r.toVersion + ')' : 'version ' + r.fromVersion + ' → ' + r.toVersion);
+      (r.seoOnly ? 'search and sharing settings only; the site stays at version ' + r.toVersion
+        : r.firstPublish ? 'First time live (version ' + r.toVersion + ')' : 'version ' + r.fromVersion + ' → ' + r.toVersion);
 
     var people = (r.contributors || []).length ? r.contributors.map(who).join(', ') : who(r.requestedBy);
     var words = paneWords(r), lv = liveVersion();

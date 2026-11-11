@@ -48,7 +48,8 @@
     'banner-video-changed': 'Banner video changed', 'file-uploaded': 'File uploaded', 'brief-updated': 'Brief updated',
     'source-added': 'Source added', 'site-designed': 'Site designed by AI', 'site-generated': 'Site written by AI',
     'repaired': 'Platform repair', 'ai-chat': 'ETB2B AI', 'portal-set': 'Portal set',
-    'preview-link-shared': 'Preview link shared', 'preview-link-stopped': 'Preview link stopped'
+    'preview-link-shared': 'Preview link shared', 'preview-link-stopped': 'Preview link stopped',
+    'seo-written': 'Search & sharing by ETB2B AI'
   };
   /* Promotions records with the general verbs (created / updated / deleted, area 'promotions'), which are not an
      event being created or deleted, and two parts of it share them: its mailers (lib/promo-mailer.js) and its social

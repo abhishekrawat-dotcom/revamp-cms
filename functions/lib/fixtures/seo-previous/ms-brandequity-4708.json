@@ -1,0 +1,106 @@
+{
+ "status": true,
+ "status_code": 200,
+ "data": {
+  "company_id": 4708,
+  "company_name": "Brand World Summit South 2026",
+  "branding_url": "https://brandequity.economictimes.indiatimes.com/brand-world-summit-south",
+  "url_text": "brand-world-summit-south",
+  "event_venue": "Taj Wellington, Chennai",
+  "event_start_date": "2026-11-26 09:00:00",
+  "event_end_date": "2026-11-26 23:59:00",
+  "page_title": "Brand World Summit | Marketing Event and Conference Chennai | BWS Chennai |",
+  "page_description": "BWS Chennai 2026 - Marketing Events & Conferences Chennai: Discover Brand World Summit from ET Brand Equity, the ultimate hub for networking, insights, and trends in digital marketing. Stay ahead with industry leaders! Register now.",
+  "page_keywords": "Brand World Summit$#$Brand World Summit South 2026$#$ET BWS Chennai$#$BWS Chennai$#$Marketing Event and Conference Chennai$#$Marketing Events South$#$Marketing Events Chennai$#$CMO Events$#$Marketing Conferences South",
+  "portal": "brandequity",
+  "faq": [
+   {
+    "id": 2584,
+    "question": "What is ETBWS - Brand World Summit South from ET Brandequity?",
+    "answer": "Brand World Summit – South Edition 2026 brings together top CMOs, marketers, and brand leaders to decode the ?50,000 crore South India advertising opportunity. With its cultural depth, linguistic diversity, and rapid digital adoption, the southern market has become a powerhouse no brand can ignore. This summit explores the strategies, platforms, and consumer behaviors shaping the next chapter of marketing in South India.",
+    "status": 1
+   },
+   {
+    "id": 2585,
+    "question": "What is the purpose/agenda of the Marketing Event?",
+    "answer": "The theme for the First edition of BWS south is the Biggest Congregation of Marketers in South India in a technology-driven marketing landscape, our agenda aims to explore how brands, whether traditional or digital-first, brick-and-mortar or omnichannel, product-centric or customer-centric, are challenging norms to drive growth. The discussions at the marketing summit will guide the industry and pave the way for sustainable growth.",
+    "status": 1
+   },
+   {
+    "id": 2586,
+    "question": "What to expect from this CMO Summit?",
+    "answer": "BWS 2026 serves as a platform for knowledge-sharing and networking among leaders in marketing, advertising, and media. In its sixth edition, the CMO conference offers two tracks, a startup zone, an exhibition area, and a networking zone. The CMO event will debut exclusive industry reports and host over 50 thought leaders from advertising, marketing, and media domains. The day-long conference will be followed by the Shark Awards ‘25 - A Marketing award from the Economic Times, recognizing excellence in marketing, advertising, and media.",
+    "status": 1
+   },
+   {
+    "id": 2587,
+    "question": "Who should attend this CMO Event & Conference?",
+    "answer": "The Marketing event is relevant for brand custodians including entrepreneurs, CEOs, CMOs, chief technology officers, chief product officers, chief information officers, chief digital officers, chief customer experience officers, brand/marketing heads, media planners, brand designers, creative heads, product heads, publishers, media houses, and agencies.",
+    "status": 1
+   },
+   {
+    "id": 2588,
+    "question": "Are there networking opportunities available at this Marketing Events & Conference?",
+    "answer": "ETBWS offers extensive networking opportunities, including a digital Networking Tool allowing delegates to browse the agenda, submit questions, and book meetings via smartphone. Networking breaks are strategically scheduled throughout the summit, providing delegates a chance to connect. The entrepreneurs an opportunity to showcase products to a jury of founders, VCs, and angel investors, potentially securing additional funding. The CMO conference concludes with the Shark Awards ‘25 followed by cocktails and dinner.",
+    "status": 1
+   }
+  ],
+  "seo": {
+   "id": 3651,
+   "entity_id": 4708,
+   "activity_id": 1,
+   "is_indexed": 0,
+   "title": "Brand World Summit | Marketing Event and Conference Chennai | BWS Chennai |",
+   "keywords": "[\"Brand World Summit\",\"Brand World Summit South 2026\",\"ET BWS Chennai\",\"BWS Chennai\",\"Marketing Event and Conference Chennai\",\"Marketing Events South\",\"Marketing Events Chennai\",\"CMO Events\",\"Marketing Conferences South\"]",
+   "description": "BWS Chennai 2026 - Marketing Events & Conferences Chennai: Discover Brand World Summit from ET Brand Equity, the ultimate hub for networking, insights, and trends in digital marketing. Stay ahead with industry leaders! Register now.",
+   "schema_title": "Marketing Event and Conference Chennai | Brand World Summit | BWS Chennai |",
+   "schema_description": "BWS Chennai 2026 - Marketing Events & Conferences Chennai: Discover ETBWS, the Marketing Events & Conferences from ET Brand Equity, the ultimate hub for networking, insights, and trends in digital marketing. Stay ahead with industry leaders! Register now.",
+   "meta_title": "",
+   "meta_keywords": "",
+   "meta_description": "",
+   "city": "Chennai",
+   "country": "India",
+   "state": "Tamil Nadu",
+   "zip": "600113",
+   "latitude": "",
+   "longitude": "",
+   "speaker_ids": null,
+   "is_basic_schema": 1,
+   "is_advanced_schema": 0,
+   "attendance_mode": "Offline",
+   "status": 1,
+   "added_on": "2026-08-21 11:43:06",
+   "updated_on": "2026-10-23 14:17:28",
+   "event_start_date": "2026-11-26 09:00:00",
+   "event_end_date": "2026-11-26 23:59:00",
+   "venue": "Taj Wellington, Chennai",
+   "address": "TRIL Infopark Limited, Rajiv Gandhi IT Expy, near Ramanujan Intellion Park, Tharamani, Chennai",
+   "seo_mobile_image": "",
+   "seo_banner_image": "data_file_1787311466134_81344.jpg",
+   "logo": "",
+   "h1_tag": "",
+   "canonical_url": "",
+   "portal_name": "",
+   "page_title": "Brand World Summit | Marketing Event and Conference Chennai | BWS Chennai |",
+   "page_description": "BWS Chennai 2026 - Marketing Events & Conferences Chennai: Discover Brand World Summit from ET Brand Equity, the ultimate hub for networking, insights, and trends in digital marketing. Stay ahead with industry leaders! Register now.",
+   "page_keywords": "Brand World Summit$#$Brand World Summit South 2026$#$ET BWS Chennai$#$BWS Chennai$#$Marketing Event and Conference Chennai$#$Marketing Events South$#$Marketing Events Chennai$#$CMO Events$#$Marketing Conferences South",
+   "keywords_list": [
+    "Brand World Summit",
+    "Brand World Summit South 2026",
+    "ET BWS Chennai",
+    "BWS Chennai",
+    "Marketing Event and Conference Chennai",
+    "Marketing Events South",
+    "Marketing Events Chennai",
+    "CMO Events",
+    "Marketing Conferences South"
+   ],
+   "index_status": 0,
+   "event_venue": "Taj Wellington, Chennai",
+   "start_date": "2026-11-26 09:00:00",
+   "end_date": "2026-11-26 23:59:00",
+   "schema_ready": true
+  },
+  "short_url": "etbrandequity.com/s/YZ8VYvh"
+ }
+}

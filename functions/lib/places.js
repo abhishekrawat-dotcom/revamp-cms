@@ -136,6 +136,38 @@ function lookup(text) {
   return i === undefined ? null : partsOf(D.rows[i]);
 }
 
+/* The place a city's name stands for, for an event's address (seo-fields.js placeOf): the name typed in full —
+   the place's own name, else a name it is also known by ("Gurgaon" is Gurugram, "Bangalore" Bengaluru) — never a
+   name it only starts with ("Pun" is not Pune). A place's own name beats another place's other name ("New Delhi"
+   is New Delhi, not Delhi). opts.country: the visitor's country, whose places count 20 times their size, as in
+   search; opts.abroadMin: a place in another country is taken only when it has at least this many people (a
+   village in the list must not stand for a city abroad, nor a small town abroad for an Indian state such as Goa);
+   opts.minPeople: only places of at least this many people, anywhere (seo-ai.js asks whether a word is a big city).
+   Rows are largest first. -> parts (as search) | null */
+function cityOf(name, opts) {
+  opts = opts || {};
+  const key = fold(name);
+  if (!key) return null;
+  load();
+  const home = /^[A-Z]{2}$/.test(String(opts.country || '')) ? opts.country : '';
+  const abroadMin = +opts.abroadMin || 0, minPeople = +opts.minPeople || 0;
+  function best(test) {
+    let pick = -1, score = -1;
+    for (let i = 0; i < D.rows.length; i++) {
+      const row = D.rows[i];
+      if (!test(row)) continue;
+      const mine = !home || row[1] === home;
+      if ((!mine && (row[3] || 0) < abroadMin) || (row[3] || 0) < minPeople) continue;
+      const s = Math.max(1, row[3] || 0) * (mine && home ? HOME_WEIGHT : 1);
+      if (s > score) { score = s; pick = i; }
+    }
+    return pick;
+  }
+  let i = best(function (row) { return fold(row[0]) === key; });
+  if (i === -1) i = best(function (row) { return !!row[4] && row[4].split('|').some(function (a) { return fold(a) === key; }); });
+  return i === -1 ? null : partsOf(D.rows[i]);
+}
+
 function stats() { load(); return { places: D.rows.length, keys: D.keys.length, bytes: fs.statSync(FILE).size }; }
 
-module.exports = { search, lookup, fold, stats };
+module.exports = { search, lookup, cityOf, fold, stats };

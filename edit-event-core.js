@@ -511,6 +511,30 @@ window.RevampCore = (function(){
     return need(eventId, 'decideApproval: eventId') ||
       api('POST', '/api/event/approval/decide', { eventId: String(eventId).trim(), id: id, decision: decision, note: note || '', origin: location.origin });
   }
+  /* ---- Settings › URL & SEO (functions/lib/api-seo.js) ----
+     fetchSeo(eventId)              -> the section: the draft, what is live, what the next publish writes, the checklist
+     writeSeo(eventId, fields)      -> { values, before, aiWritten, aiWrittenBefore, dropped, updatedAt }: ETB2B AI writes
+                                       and SAVES those fields (Undo saves `before` back through updateEvent)
+     draftFaqs(eventId)             -> { faqs: [{ question, answer }], dropped }: nothing saved
+     fetchSeoPrevious(eventId, pick)-> { previous, sameVenue, venueNow, venueThen }: pick { portal, id } or none (the
+                                       one the event records) */
+  function fetchSeo(eventId){
+    return need(eventId, 'fetchSeo: eventId') || api('GET', '/api/event/seo?eventId=' + q(eventId));
+  }
+  function writeSeo(eventId, fields){
+    return need(eventId, 'writeSeo: eventId') || api('POST', '/api/event/seo/write', { eventId: String(eventId).trim(), fields: fields || [] });
+  }
+  function draftFaqs(eventId){
+    return need(eventId, 'draftFaqs: eventId') || api('POST', '/api/event/seo/write', { eventId: String(eventId).trim(), faqs: true });
+  }
+  function fetchSeoPrevious(eventId, pick){
+    return need(eventId, 'fetchSeoPrevious: eventId') ||
+      api('GET', '/api/event/seo/previous?eventId=' + q(eventId) + (pick && pick.portal ? '&portal=' + q(pick.portal) + '&id=' + q(pick.id) : ''));
+  }
+  /* one ET portal's own events (or, kind 'award', its awards) from ET's listing — a previous edition is picked from these */
+  function fetchEtEvents(portal, kind){
+    return need(portal, 'fetchEtEvents: portal') || api('GET', '/api/et/events?portal=' + q(portal) + (kind === 'award' ? '&kind=award' : ''));
+  }
   function fetchHistory(eventId){
     return need(eventId, 'fetchHistory: eventId') ||
       api('GET', '/api/event/history?eventId=' + q(eventId)).then(function(data){ return (data && data.items) || []; });
@@ -1511,6 +1535,7 @@ window.RevampCore = (function(){
     slugAvailable: slugAvailable, deleteEvent: deleteEvent, discardEvent: discardEvent, restoreEvent: restoreEvent, cloneEvent: cloneEvent,
     fetchSite: fetchSite, fetchSiteOutline: fetchSiteOutline, saveSite: saveSite, stageSiteContent: stageSiteContent, publishEvent: publishEvent, unpublishEvent: unpublishEvent, restoreVersion: restoreVersion,
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
+    fetchSeo: fetchSeo, writeSeo: writeSeo, draftFaqs: draftFaqs, fetchSeoPrevious: fetchSeoPrevious, fetchEtEvents: fetchEtEvents,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,

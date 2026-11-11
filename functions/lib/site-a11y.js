@@ -349,6 +349,10 @@ var shareCard = require('./share-card');
 var etFooter = require('./et-footer');
 var etNav = require('./et-nav');
 var heroVideoCore = require('../../templates/_shared/rv-hero-video-core.js');
+/* the SEO section's values as this page has them (the published copy on a live page) and the structured data built
+   from them, holding only what the page shows (seo-fields.js, seo-schema.js) */
+var seoFields = require('./seo-fields');
+var seoSchema = require('./seo-schema');
 
 /* the skip link, hidden until it has the keyboard's focus, and the visually hidden h1 (data-rv-a11y) */
 var A11Y_CSS = '.rv-skip{position:fixed;left:12px;top:-200px;z-index:2147483647;padding:10px 16px;border-radius:8px;background:#ffffff;color:#14161b;' +
@@ -426,8 +430,10 @@ function pagePassUnsafe(html, opts, kit) {
     }
   }
 
-  /* where a page with no h1 gets one: the top of its hero (the event's name, visually hidden) */
-  var h1Name = !imported && opts.event && typeof opts.event.name === 'string' ? opts.event.name.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+  /* where a page with no h1 gets one: the top of its hero, visually hidden — the H1 heading of Settings › URL & SEO
+     when the team set one (the published copy on a live page), else the event's name */
+  var seoNow = seoFields.seoFor(opts.event, opts.mode === 'live' ? 'live' : 'draft');
+  var h1Name = imported || !opts.event ? '' : seoFields.line(seoNow.h1) || (typeof opts.event.name === 'string' ? opts.event.name.replace(/\s+/g, ' ').trim().slice(0, 200) : '');
   var h1At = h1Name ? hiddenH1Place(tokens, out, kit) : -1;
 
   /* ---- 3. pictures without alt text; 4. the outline of headings ---- */
@@ -575,12 +581,23 @@ function pagePassUnsafe(html, opts, kit) {
   var footerSlug = '';
   tokens.some(function (x) { if (x.t === 'open' && x.name === 'footer' && A(x, 'data-rv-et-footer')) { footerSlug = A(x, 'data-rv-et-footer'); return true; } return false; });
   var portal = footerSlug && footerSlug !== 'et' && etFooter.isKnown && etFooter.isKnown(footerSlug) ? etFooter.info(footerSlug) : null;
-  var ld = siteSeo.eventJsonLd(event, {
-    name: decode(title) || event.name, description: decode(description), url: decode(canonical),
+  /* The structured data (seo-schema.js): the Event — with the schema title and description, the full address, the
+     attendance mode, the speakers and testimonials the page shows — and a FAQPage of the FAQs it shows, from the SEO
+     values this page has (the published copy on a live page, with the records published with it; a preview has
+     the draft and no records). The organiser is the page's portal (its footer's, else the event's), with its logo. */
+  if (!portal && event.portal && event.portal !== 'et' && etFooter.isKnown && etFooter.isKnown(event.portal)) portal = etFooter.info(event.portal);
+  var portalLogo = portal && portal.logo ? absolute(portal.logo.onLight) : '';
+  var sd = seoSchema.structuredData({
+    event: event, seo: seoNow, records: opts.mode === 'live' ? seoFields.recordsFor(event) : { speakers: [], faqs: [] },
+    evidence: seoSchema.pageEvidence(tokens, out, kit),
+    name: decode(title), description: decode(description), url: decode(canonical),
     images: ogImage ? [absolute(ogImage)].concat(pictures).filter(function (u, n, a) { return u && a.indexOf(u) === n; }) : pictures,
-    organizer: portal ? { name: portal.site, url: portal.home } : null
+    organizer: portal ? { name: portal.site, url: portal.home, logo: portalLogo } : null,
+    logo: share.logos[0] || ''
   });
-  if (ld) head.push('<script type="application/ld+json" data-rv-seo>' + siteSeo.scriptJson(ld) + '</script>');
+  if (opts.report && typeof opts.report === 'object') opts.report.seo = sd.report;
+  if (sd.event) head.push('<script type="application/ld+json" data-rv-seo>' + siteSeo.scriptJson(sd.event) + '</script>');
+  if (sd.faq) head.push('<script type="application/ld+json" data-rv-seo>' + siteSeo.scriptJson(sd.faq) + '</script>');
   if (opts.mode === 'live') head.push('<meta name="robots" content="index, follow, max-image-preview:large" data-rv-seo>');
 
   /* ---- 7. "About Vertical" in the ET top bar says whose ---- */
