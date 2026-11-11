@@ -76,6 +76,9 @@ var PROFILES = {
   /* the site check's repair of a repeated heading (lib/api.js writeSectionHeadings): a few words per section, from
      that section's own words, in the page's voice */
   'site-heading': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 3000 },
+  /* Settings › URL & SEO (lib/api-seo.js, seo-ai.js): six short fields, or five FAQs, from a fact sheet — short copy, as
+     promo-write is. The schema is small enough for strict mode. */
+  'seo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 

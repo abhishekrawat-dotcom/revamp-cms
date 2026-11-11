@@ -553,6 +553,9 @@ var NOT_CLONED_FOLDERS = ['published', 'staging', 'briefs', 'promo-art', 'promo-
 var SITE_FOLDER = 'site';
 var CLONE_CONCURRENCY = 12;
 var BATCH_SIZE = 400;          // Firestore allows 500 writes per batch
+/* the SEO values a live page carries (publishedSeo, lib/api.js withPublishedSeo): a copy is not published, so it has
+   none until its own first publish (its draft settings.seo are copied like the rest of its settings) */
+NOT_CLONED_FIELDS.push('publishedSeo');
 
 function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 

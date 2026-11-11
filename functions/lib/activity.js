@@ -9,7 +9,7 @@ const ACTIONS = ['created', 'updated', 'status-changed', 'settings-changed', 'si
   'leads-imported', 'leads-updated', 'leads-deleted', 'approval-requested', 'approved', 'rejected',
   'content-added', 'content-changed', 'content-removed', 'form-created', 'form-updated', 'form-deleted', 'form-default',
   'forms-reordered', 'theme-changed', 'logo-changed', 'banner-video-changed', 'file-uploaded', 'brief-updated', 'source-added',
-  'site-designed', 'site-generated', 'repaired', 'ai-chat', 'portal-set', 'preview-link-shared', 'preview-link-stopped'];
+  'site-designed', 'site-generated', 'repaired', 'ai-chat', 'portal-set', 'preview-link-shared', 'preview-link-stopped', 'seo-written'];
 
 /* Where a line belongs, for the activity log's "area" column and filter. A new entry carries `area`; an
    older one (written before areas existed) is placed by its action through AREA_OF — readers do the same. */
@@ -31,7 +31,9 @@ const AREA_OF = {
      owner's fill-in of existing events): it decides where the event is listed, so it is the event's own */
   'portal-set': 'event',
   /* a shareable preview link made or stopped (functions/lib/share-preview.js): who was shown the site before it went live */
-  'preview-link-shared': 'publishing', 'preview-link-stopped': 'publishing'
+  'preview-link-shared': 'publishing', 'preview-link-stopped': 'publishing',
+  /* ETB2B AI wrote search and sharing text in Settings › URL & SEO, or drafted FAQs there (functions/lib/api-seo.js) */
+  'seo-written': 'settings'
 };
 /* an entry's area: its own when it has a known one, else its action's */
 function areaOf(entry) {

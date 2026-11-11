@@ -240,8 +240,14 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   check('nothing about the event is kept in this browser: no "published" flag, no checklist', !/S\.published/.test(page) && !/S\.checklist/.test(page) && !/localStorage\.setItem\(KEY/.test(page) && /localStorage\.removeItem\('revamp-edit-event-' \+ eventSlug\)/.test(page));
   check('the fake Archive is gone', page.indexOf('Archive requested') === -1 && page.indexOf('Archive event') === -1);
   check('no fake settings remain (GST, corporate social accounts, toggles that toast)', ['Collect GST', 'linkedin.com/company/et-oneworld', 'x.com/ETOneworld', 'Setting enabled', 'wireReminders', 'Social links saved', 'social-card.png', 'Sitemap submitted', 'Make it live', 'Make private', 'Private draft'].every(function (s) { return page.indexOf(s) === -1; }));
+  /* Settings › URL & SEO is a section of its own now (edit-event-seo.js, 6 Nov 2026): every SEO field, saved through
+     settings.seo; what it says of the site comes from the server (GET /api/event/seo), never a made-up address */
   var seoFn = (/function viewSEO\(\)\{[\s\S]*?\n  \}\n/.exec(page) || [''])[0];
-  check('URL & SEO reads the live page and shows no made-up address', /C\.readSiteHead\(html\)/.test(page) && /fetch\(location\.origin \+ '\/e\/' \+ encodeURIComponent\(EV\.id\)/.test(page) && seoFn && seoFn.indexOf('etoneworld') === -1 && seoFn.indexOf('<input') === -1 && seoFn.indexOf('<textarea') === -1, seoFn.slice(0, 200));
+  var seoJs = read('edit-event-seo.js');
+  check('URL & SEO is the SEO section (edit-event-seo.js), loaded by the console, with no made-up address',
+    /window\.EditEventSEO\.view\(CTX\)/.test(seoFn) && /<script src="edit-event-seo\.js"><\/script>/.test(page) && /C\.fetchSeo\(ev\.id\)/.test(seoJs) &&
+    /C\.updateEvent\(ev\.id, \{ settings: \{ seo: patch \} \}\)/.test(seoJs) && seoJs.indexOf('etoneworld') === -1, seoFn.slice(0, 200));
+  es5('the SEO section', seoJs);
   check('Visibility: Publish is the header\'s, taking offline is the real unpublish', /pub\.onclick = doPublish/.test(page) && /off\.onclick = takeOffline/.test(page) && /C\.unpublishEvent\(EV\.id\)/.test(page) && /C\.mayTakeOffline\(APPROVAL\)/.test(page));
   /* the release re-check of 5 Nov: a team member who is not an approver saw "Take the site offline…" for 2-9 s, until
      who approves had been read; now it is drawn only once that is known (or could not be read: the server decides) */

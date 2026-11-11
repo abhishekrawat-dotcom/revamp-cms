@@ -1,0 +1,207 @@
+{
+ "status": true,
+ "status_code": 200,
+ "data": {
+  "company_id": 3543,
+  "company_name": "ET Nextech Human Capital India Summit 2026",
+  "branding_url": "https://hr.economictimes.indiatimes.com/nextech2026",
+  "url_text": "nextech2026",
+  "event_venue": "The Leela Ambience Gurugram",
+  "event_start_date": "2026-02-18 08:00:00",
+  "event_end_date": "2026-02-19 23:59:00",
+  "page_title": "Nextech 2026 | HR Tech Events and Conferences India - Human Capital Summit",
+  "page_description": "HR Tech Events and Conferences - Discover cutting-edge HR technologies and solutions at HR NexTech. Stay updated on trends, innovations, and best practices in the HR tech space. Register now.",
+  "page_keywords": "HR Events$#$HR Events\t2026$#$HR Conferences$#$HR Conferences 2026$#$HR Summit$#$HR Summit 2026$#$HR events in India$#$HR Tech Summit",
+  "portal": "hr",
+  "faq": [
+   {
+    "id": 1660,
+    "question": "What are the opportunities for senior leaders at the NexTech HR Event & Conference?",
+    "answer": "Senior leaders attending NexTech 2026 can gain valuable insights into practical strategies such as Leveraging AI to drive strategic decision-making and innovation, Building a future-ready workforce equipped with AI skills, fostering a culture of continuous learning and adaptability, and Integrating AI ethically and responsibly into HR processes. These insights will be directly applicable to your organization's growth and success.",
+    "status": 1
+   },
+   {
+    "id": 1661,
+    "question": "What is the Agenda for NexTech 2026 - Human Capital India Summit?",
+    "answer": "NexTech 2026 - Best HR Event Conference India offers a comprehensive agenda focused on the intersection minds and machines for shaping the future of work. Beyond the keynotes, mega panels & masterclasses, it hosts focused networking, brainstorming, and learning sessions via closed-door masterclasses, roundtables, and Leaders Leagues.",
+    "status": 1
+   },
+   {
+    "id": 1662,
+    "question": "Who should attend NexTech - HR Tech Events & Conference?",
+    "answer": "NexTech 2026 - HR Tech Summit & Conclave will uncover insights into cutting-edge AI applications in work and talent tech for all C-suite Executives (CEOs, CHROs, CIOs, CLOs & other top-tier leaders), Promoters, Founders, Entrepreneurs & Investors, HR Analysts, Strategists, Consultants & Advisors, HR-Tech Solutions Providers & Partners and all who aim to stay ahead in the ever-evolving tech landscape and network with tech innovators, and corner office leaders to explore how they reshape business models for an AI-centric business world.",
+    "status": 1
+   },
+   {
+    "id": 1663,
+    "question": "Who will be speaking at the Nextech summit?",
+    "answer": "NexTech India Human Capital Summit 2026 will witness the active participation of HR & Digital Transformation global leaders, Government Leaders, CEOs, CHROs, & CIOs from leading organisations.",
+    "status": 1
+   },
+   {
+    "id": 1664,
+    "question": "Why is the NexTech summit important for the HR community?",
+    "answer": "ET NexTech Human Capital Summit 2026 will spotlight critical trends in HR & technology ensuring organizations stay ahead in the competitive curve. The summit will feature a robust mix of presentations from industry experts, including international HR analysts and decision-makers such as CEOs, CHRO & CIOs who will speak in panel discussions and fireside chats and present case studies to reveal how to integrate best-in-class sustainability & inclusivity charters that champion environmental stewardship and social responsibility.",
+    "status": 1
+   }
+  ],
+  "rating_schema": {
+   "@context": "https://schema.org/",
+   "@type": "product",
+   "name": "ET Nextech Human Capital India Summit 2026",
+   "URL": "https://hr.economictimes.indiatimes.com/nextech2026",
+   "image": "https://img.etb2bimg.com//files//data_file_17710562386564_98496.jpg",
+   "description": "HR Tech Events and Conferences - Discover cutting-edge HR technologies and solutions at HR NexTech. Stay updated on trends, innovations, and best practices in the HR tech space. Register now.",
+   "brand": {
+    "@type": "Brand",
+    "name": "ETHRWorld"
+   },
+   "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "4.8",
+    "bestRating": 5,
+    "worstRating": 1,
+    "ratingCount": 225,
+    "reviewCount": 225
+   },
+   "review": [
+    {
+     "@type": "Review",
+     "name": "Vishal Sharma, CEO",
+     "reviewBody": "The ETHR World Nextech 2024 was my first one…and a very interesting event. I felt the program was curated with a lot of thought, to be useful for all the audience members, from senior HR leaders to budding professionals. I look forward to this forum growing and being even more successful ahead!",
+     "reviewRating": {
+      "@type": "Rating",
+      "ratingValue": 5
+     },
+     "author": {
+      "@type": "Person",
+      "name": "Vishal Sharma, CEO"
+     },
+     "publisher": {
+      "@type": "Organization",
+      "name": "ETHRWorld"
+     }
+    },
+    {
+     "@type": "Review",
+     "name": "Pramod Bhasin, Founder",
+     "reviewBody": "I thoroughly enjoyed my time at Nextech. The panel discussion I was part of focused on the intersection of employee and customer experiences as the workplace turns more and more digital. It was a pleasure to share my thoughts on such a highly relevant topic.",
+     "reviewRating": {
+      "@type": "Rating",
+      "ratingValue": 5
+     },
+     "author": {
+      "@type": "Person",
+      "name": "Pramod Bhasin, Founder"
+     },
+     "publisher": {
+      "@type": "Organization",
+      "name": "ETHRWorld"
+     }
+    },
+    {
+     "@type": "Review",
+     "name": "Atma Godara, VP",
+     "reviewBody": "Attending the ET Nextech 2024 event was a truly pleasant experience. I had the opportunity to participate in a panel discussion on next-gen talent and the transformative impact of technology on the workforce. What stood out to me was the focused and thoughtfully curated sessions, each addressing specific challenges and opportunities with precision. It was a valuable platform for insightful conversations, and I eagerly look forward to the next edition",
+     "reviewRating": {
+      "@type": "Rating",
+      "ratingValue": 5
+     },
+     "author": {
+      "@type": "Person",
+      "name": "Atma Godara, VP"
+     },
+     "publisher": {
+      "@type": "Organization",
+      "name": "ETHRWorld"
+     }
+    }
+   ]
+  },
+  "offers_schema": [
+   {
+    "@type": "Offer",
+    "availability": "http://schema.org/InStock",
+    "name": "Conference Pass",
+    "price": 8999,
+    "priceCurrency": "INR",
+    "validFrom": "2025-10-01T00:00:00+05:30",
+    "url": "https://hr.economictimes.indiatimes.com/nextech2026"
+   },
+   {
+    "@type": "Offer",
+    "availability": "http://schema.org/InStock",
+    "name": "Masterclass Pass",
+    "price": 34999,
+    "priceCurrency": "INR",
+    "validFrom": "2025-10-01T00:00:00+05:30",
+    "url": "https://hr.economictimes.indiatimes.com/nextech2026"
+   },
+   {
+    "@type": "Offer",
+    "availability": "http://schema.org/InStock",
+    "name": "Masterclass + Conference Pass",
+    "price": 37499,
+    "priceCurrency": "INR",
+    "validFrom": "2025-10-01T00:00:00+05:30",
+    "url": "https://hr.economictimes.indiatimes.com/nextech2026"
+   }
+  ],
+  "seo": {
+   "id": 2334,
+   "entity_id": 3543,
+   "activity_id": 1,
+   "is_indexed": 0,
+   "title": "Nextech 2026 | HR Tech Events and Conferences India - Human Capital Summit",
+   "keywords": "[\"HR Events\",\"HR Events\\t2026\",\"HR Conferences\",\"HR Conferences 2026\",\"HR Summit\",\"HR Summit 2026\",\"HR events in India\",\"HR Tech Summit\"]",
+   "description": "HR Tech Events and Conferences - Discover cutting-edge HR technologies and solutions at HR NexTech. Stay updated on trends, innovations, and best practices in the HR tech space. Register now.",
+   "schema_title": "HR Tech Events and Conferences - NexTech Human Capital Summit",
+   "schema_description": "HR Tech Events and Conferences - Discover cutting-edge HR technologies and solutions at HR NexTech. Stay updated on trends, innovations, and best practices in the HR tech space. Register now.",
+   "meta_title": "",
+   "meta_keywords": "",
+   "meta_description": "",
+   "city": "Gurugram",
+   "country": "India",
+   "state": "Haryana",
+   "zip": "122010",
+   "latitude": "",
+   "longitude": "",
+   "speaker_ids": "86996,86995,86704,86703,86700,86697,86696,86695,86694,86693,86692",
+   "is_basic_schema": 1,
+   "is_advanced_schema": 1,
+   "attendance_mode": "Offline",
+   "status": 1,
+   "added_on": "2025-06-16 16:51:45",
+   "updated_on": "2026-01-08 11:35:55",
+   "event_start_date": "2026-02-18 08:00:00",
+   "event_end_date": "2026-02-19 23:59:00",
+   "venue": "The Leela Ambience Gurugram",
+   "address": "National Highway 8, Ambience Island, DLF Phase 3, Sector 24,",
+   "seo_mobile_image": "",
+   "seo_banner_image": "data_file_17664914045822_32439.jpg",
+   "logo": "",
+   "h1_tag": "HR Tech Events and Conferences - Nextech",
+   "canonical_url": "",
+   "portal_name": "",
+   "page_title": "Nextech 2026 | HR Tech Events and Conferences India - Human Capital Summit",
+   "page_description": "HR Tech Events and Conferences - Discover cutting-edge HR technologies and solutions at HR NexTech. Stay updated on trends, innovations, and best practices in the HR tech space. Register now.",
+   "page_keywords": "HR Events$#$HR Events\t2026$#$HR Conferences$#$HR Conferences 2026$#$HR Summit$#$HR Summit 2026$#$HR events in India$#$HR Tech Summit",
+   "keywords_list": [
+    "HR Events",
+    "HR Events\t2026",
+    "HR Conferences",
+    "HR Conferences 2026",
+    "HR Summit",
+    "HR Summit 2026",
+    "HR events in India",
+    "HR Tech Summit"
+   ],
+   "index_status": 0,
+   "event_venue": "The Leela Ambience Gurugram",
+   "start_date": "2026-02-18 08:00:00",
+   "end_date": "2026-02-19 23:59:00",
+   "schema_ready": true
+  },
+  "short_url": "ethrworld.com/s/6g3W6XX"
+ }
+}

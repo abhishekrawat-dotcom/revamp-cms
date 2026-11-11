@@ -120,7 +120,8 @@
 
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]; }); }
   function when(iso){ var d = new Date(iso || ''); return isNaN(d) ? '—' : d.toLocaleString(undefined, { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }); }
-  var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design' };
+  /* seo: a change in Settings › URL & SEO (the search and sharing settings that go live with this version) */
+  var KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Added', removed:'Removed', moved:'Moved', hidden:'Hidden', shown:'Shown again', design:'Site design', seo:'Search & sharing' };
   var LEVEL = { block:'Holds it back', warn:'Check', info:'Good to know' };
 
   /* What the site check found on the proposed version: listed before the changes, so the approver sees what would
@@ -200,7 +201,8 @@
     }
     badge.hidden = false; badge.className = 'badge ' + r.status; badge.textContent = r.status === 'pending' ? 'Waiting for approval' : r.status;
     document.getElementById('sub').textContent = 'Requested by ' + r.requestedBy + ' · ' + when(r.requestedAt) + ' · ' +
-      (r.firstPublish ? 'first publication, version ' + r.toVersion : 'version ' + r.fromVersion + ' → ' + r.toVersion);
+      (r.seoOnly ? 'search and sharing settings only; the site stays at version ' + r.toVersion
+        : r.firstPublish ? 'first publication, version ' + r.toVersion : 'version ' + r.fromVersion + ' → ' + r.toVersion);
 
     var people = (r.contributors || []).join(', ') || r.requestedBy;
     var side =

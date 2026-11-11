@@ -77,6 +77,8 @@
 <!-- ET's portals and the Set portal dialog (window.RevampPortals) -->
 <script src="portal-picker.js"></script>
 <script src="edit-event-dashboard.js"></script>
+<!-- Settings › URL & SEO: every search and sharing setting in one section -->
+<script src="edit-event-seo.js"></script>
 <script src="sidebar.js"></script>
 <script src="edit-event-site-check.js"></script>
 <!-- the registration forms builder; the form runtime draws its preview (it does nothing else on this page) -->
@@ -1128,10 +1130,10 @@
     /* the banner video (hero-video-ui.js, mounted by mountHeroVideo): saved on its own, as it is changed —
        it is not part of this form's Save */
     if (window.RevampHeroVideoUI) form += panel('Banner video', 'A silent loop behind the top of the site', '<div id="b-herovideo"></div>');
-    /* the picture a shared link of the site shows (settings.seo.shareImageUrl): the owner's own, else the one the
-       published page picks by itself (functions/lib/site-a11y.js shareCandidates). Saved as it is chosen, like the
-       logo; it reaches the live site with the next publish, which is written into the page */
-    form += panel('Share picture', 'What a link to the site shows on WhatsApp, LinkedIn and X', sharePictureField(e));
+    /* the picture a shared link of the site shows is in Settings › URL & SEO now, with every other search and sharing
+       setting (the owner, 6 Nov 2026: everything SEO in one section): Basics says where it went */
+    form += '<p class="seo-moved" id="b-share-moved">' + svg(IC.image, 14) + '<span>The share picture, the search title and description and the rest of search and sharing are in ' +
+      '<a href="#settings/seo" data-goto="settings/seo">Settings › URL &amp; SEO</a>.</span></p>';
 
     var side =
       '<div class="pvc">' +
@@ -1171,7 +1173,7 @@
   /* The banner video's settings. An upload keeps going when the owner moves to another tab (the component it
      started in saves it and says so); the settings shown when they come back are then brought up to date. */
   var HERO_VIDEO_UI = null;
-  /* ---------- the share picture (Basics) ---------- */
+  /* ---------- the share picture (Settings › URL & SEO, edit-event-seo.js: drawn and wired from there) ---------- */
   var SHARE_AUTO = 'Automatic: the banner’s picture, else the first picture of the site.';
   var SHARE_OWN = 'Shared links of the site show this picture.';
   function shareUrlOf(e){ return (e && e.settings && e.settings.seo && typeof e.settings.seo.shareImageUrl === 'string') ? e.settings.seo.shareImageUrl : ''; }
@@ -1479,7 +1481,6 @@
        on the server and put into an AI-designed site's hero (POST /api/event/logo-unit). A site already
        saved is the owner's page: the editor offers the new logo there, and puts it in itself where the hero
        still shows the unit that was made automatically. */
-    wireSharePicture();
     var logoBtn = $('b-logo-btn'), logoBusy = false;
     function logoState(text){ var el = $('b-logo-state'); if (el) el.textContent = text; }
     if (logoBtn) logoBtn.addEventListener('click', function(){
@@ -4743,107 +4744,16 @@
   /* ============================================================
      VIEW : URL & SEO
 
-     What search engines and link previews really read: the live page's own tags, fetched from its public
-     address and read by RevampCore.readSiteHead — never fields that save nothing, an address on a domain that
-     does not exist, or ticks that are always on. Each value says where it comes from, because it is not
-     edited here: the title and description are Basics', the picture is the site's banner picture. A site
-     that is not live has no page to read, and is told so.
+     Every SEO field of ET's own event platform, in one section (edit-event-seo.js, window.EditEventSEO; the
+     server's side is functions/lib/api-seo.js). The console hands it what it needs through CTX.seo: the share
+     picture panel (sharePictureField / wireSharePicture, unchanged), its dialogs and field errors, the leave guard,
+     the header's Publish (doPublish: send for approval where that is required) and the Content tab cache.
      ============================================================ */
-  var SEO = { id: '', at: 0, loading: false, head: null, error: '' };
-  function loadSeo(){
-    var mine = SEO = { id: EV.id, at: 0, loading: true, head: null, error: '' };
-    /* the page exactly as a visitor (or a crawler) is given it: same server, no sign-in */
-    fetch(location.origin + '/e/' + encodeURIComponent(EV.id), { credentials: 'omit', cache: 'no-store' }).then(function(res){
-      if (!res.ok) throw new Error(res.status === 404 ? 'The live page did not answer: it may have just been taken offline.' : 'The live page answered with an error (' + res.status + ').');
-      return res.text();
-    }).then(function(html){
-      mine.head = C.readSiteHead(html);
-    }, function(err){
-      mine.error = (err && err.message) || 'The live page could not be read.';
-    }).then(function(){
-      mine.loading = false; mine.at = Date.now();
-      if (SEO === mine && routeId() === 'settings/seo') render();
-    });
-  }
-
-  function wireSeo(){
-    document.querySelectorAll('[data-seo="refresh"]').forEach(function(b){
-      b.onclick = function(){ if (SEO.loading) return; loadSeo(); render(); };
-    });
-  }
-
-  function seoRow(label, value, from){
-    return '<div class="kv-row"><span class="k">' + esc(label) + '</span><span class="v">' + value +
-      (from ? '<span class="seo-from">' + esc(from) + '</span>' : '') + '</span></div>';
-  }
-  function seoCheck(ok, label, text){
-    return '<div class="seo-check"><span class="dash-dot dash-dot-' + (ok ? 'ok' : 'warn') + '" aria-hidden="true"></span>' +
-      '<span><b>' + esc(label) + '</b><span>' + esc(text) + '</span></span></div>';
-  }
-
   function viewSEO(){
-    var url = C.publicUrl(EV);
-    var head = vhead('URL & SEO', 'What search engines and link previews read from the live site, and where each part comes from.');
-    var sources = '<div class="kv">' +
-        seoRow('Title', 'The event name', 'Basics › Event name') +
-        seoRow('Description', 'The short description', 'Basics › Short description') +
-        seoRow('Address', '<span class="num">' + esc(url) + '</span>', 'The event’s public address') +
-        seoRow('Picture in link previews', 'The site’s banner picture', 'Set in the site editor') +
-      '</div>';
-
-    if (EV.published !== true){
-      return head + panel('Not live yet', '',
-        '<p class="seo-lead">Search engines and link previews read the live page. Once the site is published, this shows the title, description, address and picture it carries, read from the page itself. Nothing is listed while it is not live.</p>' +
-        sources);
-    }
-
-    /* read once a minute at most; the answer draws this view again (loadSeo) */
-    if (SEO.id !== EV.id || (!SEO.loading && Date.now() - SEO.at > 60000)) loadSeo();
-    var h = SEO.head;
-    var refresh = '<button class="btn btn-secondary btn-sm" type="button" data-seo="refresh"' + (SEO.loading ? ' disabled' : '') + '>' +
-      (SEO.loading ? 'Reading…' : 'Read it again') + '</button>';
-    if (!h){
-      return head + panel('The live page', '', SEO.error
-        ? '<div class="callout" role="alert">' + svg(IC.info, 15) + '<span>' + esc(SEO.error) + '</span></div><p style="margin:12px 0 0">' + refresh + '</p>'
-        : '<p class="seo-lead" aria-busy="true">Reading the live page…</p>');
-    }
-
-    var n = h.description.length;
-    var shown = n > 155 ? h.description.slice(0, 155).replace(/\s+\S*$/, '') + ' …' : h.description;
-    var where = h.canonical.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › ');
-    var picture = h.image
-      ? '<span class="seo-pic">' + imgTag(h.image) + '</span>'
-      : '<span class="seo-none">None: a shared link shows the title and description only.</span>';
-
-    return head +
-      '<div class="split">' +
-        '<div>' +
-          panel('What the live page carries', 'Read just now from ' + url, '<div class="kv">' +
-              seoRow('Title', h.title ? esc(h.title) : '<span class="seo-none">None</span>', 'Basics › Event name') +
-              seoRow('Description', h.description ? esc(h.description) + ' <span class="seo-n">(' + n + ' characters)</span>' : '<span class="seo-none">None</span>', 'Basics › Short description') +
-              seoRow('Address', h.canonical ? '<a href="' + esc(h.canonical) + '" target="_blank" rel="noopener">' + esc(h.canonical) + '</a>' : '<span class="seo-none">None given</span>', '') +
-              seoRow('Picture in link previews', picture, h.image ? '' : 'The site has no banner picture') +
-            '</div>' +
-            '<p class="seo-foot">A change in Basics reaches these the next time the site is published. ' + refresh + '</p>') +
-        '</div>' +
-        '<div>' +
-          panel('Search preview', 'Roughly how a search result shows it',
-            '<div class="mock mock-serp">' +
-              '<div class="u">' + esc(where || url) + '</div>' +
-              '<div class="t">' + esc(h.title || EV.name || '') + '</div>' +
-              '<div class="d">' + esc(shown || '') + '</div>' +
-            '</div>') +
-          panel('Checks', 'Worked out from the page',
-            seoCheck(!!h.title, 'Title', h.title ? 'Given' : 'Missing: give the event a name in Basics') +
-            seoCheck(n > 0 && n <= 160, 'Description', !n ? 'Missing: add a short description in Basics'
-              : (n > 160 ? n + ' characters: a search result shows about the first 155' : n + ' characters')) +
-            seoCheck(!!h.image, 'Picture for link previews', h.image ? 'Given' : 'None: put a banner picture on the site') +
-            seoCheck(h.eventLd, 'Event details for search results', h.eventLd ? 'Date, place and organiser are given'
-              : 'Not given: the event needs an exact start date in Basics') +
-            seoCheck(!h.noindex, 'Search engines may list it', h.noindex ? 'No: the page asks search engines not to list it' : 'Yes')) +
-        '</div>' +
-      '</div>';
+    if (!window.EditEventSEO) return vhead('URL & SEO', '') + panel('Search and sharing', '', '<p class="seo-lead">This part of the console could not be loaded. Reload the page.</p>');
+    return window.EditEventSEO.view(CTX);
   }
+  function wireSeo(){ if (window.EditEventSEO) window.EditEventSEO.wire(CTX); }
 
   /* ============================================================
      VIEW : ACTIVITY LOG  (#activity; #settings/history leads here)
@@ -4870,7 +4780,7 @@
     'form-created':'Form created', 'form-updated':'Form edited', 'form-deleted':'Form deleted', 'form-default':'Default form changed',
     'forms-reordered':'Forms reordered', 'leads-updated':'Leads changed', 'banner-video-changed':'Banner video changed', 'file-uploaded':'File uploaded',
     'brief-updated':'Brief updated', 'source-added':'Source added', 'site-designed':'Site designed by AI', 'site-generated':'Site written by AI', 'repaired':'Platform repair', 'ai-chat':'ETB2B AI',
-    'portal-set':'Portal set'
+    'portal-set':'Portal set', 'seo-written':'Search & sharing by ETB2B AI'
   };
   var HIST_KIND = { text:'Text', look:'Look', pictures:'Pictures', added:'Section added', removed:'Section removed', moved:'Section moved', hidden:'Section hidden', shown:'Section shown again', design:'Site design' };
   function actionLabel(a){
@@ -5114,7 +5024,7 @@
     'extract-brief': 'Reading the brief', 'ingest-source': 'Reading reference pages', 'plan-structure': 'Designing the site',
     'generate-content': 'Writing the sections', 'pictures': 'Pictures', 'logo-unit': 'Reading the logo unit',
     'redesign-section': 'Redesign with AI', 'chat-edit': 'ETB2B AI chat', 'suggest-design': 'Design suggestions',
-    'promo-write': 'Promotions copy'
+    'promo-write': 'Promotions copy', 'seo-write': 'Search & sharing (SEO)'
   };
   function money(v){ v = +v || 0; return '$' + (v >= 1 ? v.toFixed(2) : v.toFixed(3)); }
   function usagePanel(){
@@ -6090,6 +6000,15 @@
     });
   };
   CTX.log = { when: histWhen, who: whoLabel, action: actionLabel };
+  /* what Settings › URL & SEO (edit-event-seo.js) uses of the console's own */
+  CTX.seo = {
+    sharePictureField: sharePictureField, wireSharePicture: wireSharePicture, imgTag: imgTag,
+    openModal: openModal, closeBtn: closeBtn, showFieldErrors: showFieldErrors, clearFieldError: clearFieldError,
+    setLeave: function(guard){ LEAVE = guard; },
+    publish: function(){ doPublish(); },
+    /* a Content tab this section changed (FAQs drafted into Content › FAQ) is read again when it is next opened */
+    forgetTab: function(key){ if (SUB.hasOwnProperty(key) && !SUB_BUSY[key]) SUB[key] = false; }
+  };
 
   var VIEWS = {
     'dashboard':            function(){ return DASH.view(CTX); },

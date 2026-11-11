@@ -41,6 +41,7 @@
 'use strict';
 
 var etFooter = require('./et-footer');
+var seoFields = require('./seo-fields');
 var forms = require('./forms');
 
 /* ---------- the words a button says ---------- */
@@ -390,8 +391,11 @@ function looksLikeTest(event) {
   var name = clean(event && event.name || '');
   return !!name && (TEST_LABEL.test(name) || TEST_SAID.test(name));
 }
+/* 'owner' when the team keeps the site out of search: the published copy of Settings › URL & SEO says so (seo-fields.js
+   seoFor — turning it on or off reaches the live site with the next publish or approval, like every SEO value), or,
+   for a site published before that copy existed, its settings do, as they always did */
 function noindexReason(event, html, kit) {
-  var seo = event && event.settings && event.settings.seo;
+  var seo = seoFields.seoFor(event, 'live');
   if (seo && seo.noindex === true) return 'owner';
   if (looksLikeTest(event)) return 'test';
   if (html && placeholderHits(html, kit).some(function (h) { return h.strong; })) return 'template';

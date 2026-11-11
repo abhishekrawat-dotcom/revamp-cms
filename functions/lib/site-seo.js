@@ -3,7 +3,16 @@
 
      eventJsonLd(event, o)   -> the schema.org Event for the page (JSON-LD), or null when the event has no exact
                                 start date (a "date to be announced" event is not an Event a search engine can list)
-        o = { name, description, url, images: [absolute urls], organizer: { name, url } | null }
+        o = { name, description, url, images: [absolute urls], organizer: { name, url, logo } | null,
+              and from the console's Settings › URL & SEO (seo-schema.js structuredData; each optional):
+              attendance: 'offline' | 'online' | 'mixed' | '' (none said) — left out, in person when there is a place,
+              address: { street, locality, region, postalCode, country } (a full PostalAddress),
+              geo: { latitude, longitude }, performers: [{ name, role, company, photo }],
+              reviews: [{ name, title, text, rating 1-5 | null }] — and aggregateRating, worked out here from the
+              ratings of those reviews alone, never given }
+     faqPageJsonLd(faqs)     -> the schema.org FAQPage of [{ question, answer }], or null for none
+     checkJsonLd(ld)         -> [problem] what a validator would say: a type's required properties missing, a wrong
+                                type, an empty value (seo-schema.test.js; the console's Schema ready list)
      robotsTxt(base)         -> /robots.txt: published sites (/e/) and what they load may be crawled; previews, the
                                 API and the CMS itself may not; the sitemap is named
      sitemapXml(entries)     -> /sitemap.xml of published sites. entries: [{ loc, lastmod }]
@@ -63,21 +72,125 @@ function eventJsonLd(event, o) {
   if (end) ld.endDate = end;
   ld.eventStatus = 'https://schema.org/EventScheduled';
   var venue = str(event.venue), city = str(event.city), where = str(event.location);
-  if (venue || city || where) {
-    ld.eventAttendanceMode = 'https://schema.org/OfflineEventAttendanceMode';
-    var place = { '@type': 'Place', name: venue || where || city };
-    if (city || where) place.address = city ? { '@type': 'PostalAddress', addressLocality: city } : where;
+  var url = /^https?:\/\/[^\s"'<>]+$/i.test(String(o.url || '')) ? o.url : '';
+  /* the place: its name, and its address as full as it is known (the street and postcode the team typed, the city's
+     state and country from the place list); the attendance mode the team chose, else in person when there is one */
+  var a = o.address || {}, place = null;
+  var street = str(a.street), locality = str(a.locality) || city, region = str(a.region), postal = str(a.postalCode), country = str(a.country);
+  if (venue || city || where || street) {
+    place = { '@type': 'Place', name: venue || where || locality || street };
+    if (street || locality || region || postal || country) {
+      var address = { '@type': 'PostalAddress' };
+      if (street) address.streetAddress = street;
+      if (locality) address.addressLocality = locality;
+      if (region && region !== locality) address.addressRegion = region;
+      if (postal) address.postalCode = postal;
+      if (country) address.addressCountry = country;
+      place.address = address;
+    } else if (where) place.address = where;
+    var g = o.geo;
+    if (g && typeof g.latitude === 'number' && typeof g.longitude === 'number' && isFinite(g.latitude) && isFinite(g.longitude)) {
+      place.geo = { '@type': 'GeoCoordinates', latitude: g.latitude, longitude: g.longitude };
+    }
+  }
+  var mode = o.attendance != null ? str(o.attendance) : (place ? 'offline' : '');
+  var online = url ? { '@type': 'VirtualLocation', url: url } : null;
+  /* an online event is at its own page (a VirtualLocation needs that address: a preview has none, and says no place) */
+  if (mode === 'online') {
+    ld.eventAttendanceMode = 'https://schema.org/OnlineEventAttendanceMode';
+    if (online) ld.location = online;
+  } else if (mode === 'mixed') {
+    ld.eventAttendanceMode = 'https://schema.org/MixedEventAttendanceMode';
+    if (place || online) ld.location = place && online ? [place, online] : (place || online);
+  } else if (place) {
+    if (mode === 'offline') ld.eventAttendanceMode = 'https://schema.org/OfflineEventAttendanceMode';
     ld.location = place;
   }
   var description = shareDescription(o.description, 500);
   if (description) ld.description = description;
   var images = (o.images || []).filter(function (u) { return /^https?:\/\/[^\s"'<>]+$/i.test(String(u || '')); });
   if (images.length) ld.image = images;
-  if (/^https?:\/\/[^\s"'<>]+$/i.test(String(o.url || ''))) ld.url = o.url;
+  if (url) ld.url = url;
   var org = o.organizer && str(o.organizer.name) ? o.organizer : ET;
   ld.organizer = { '@type': 'Organization', name: str(org.name) };
   if (/^https:\/\/[^\s"'<>]+$/i.test(String(org.url || ''))) ld.organizer.url = org.url;
+  if (/^https:\/\/[^\s"'<>]+$/i.test(String(org.logo || ''))) ld.organizer.logo = org.logo;
+  /* the people the page shows as its speakers */
+  var performers = (o.performers || []).filter(function (p) { return p && str(p.name); }).map(function (p) {
+    var person = { '@type': 'Person', name: str(p.name) };
+    if (str(p.role)) person.jobTitle = str(p.role);
+    if (str(p.company)) person.worksFor = { '@type': 'Organization', name: str(p.company) };
+    if (/^https:\/\/[^\s"'<>]+$/i.test(String(p.photo || ''))) person.image = p.photo;
+    return person;
+  });
+  if (performers.length) ld.performer = performers;
+  /* what people who were there said, as the page shows it; the rating is worked out from these ratings alone */
+  var rated = [], reviews = (o.reviews || []).filter(function (r) { return r && str(r.name) && str(r.text); }).map(function (r) {
+    var review = { '@type': 'Review', author: { '@type': 'Person', name: str(r.name) }, reviewBody: str(r.text) };
+    if (str(r.title)) review.name = str(r.title);
+    if (typeof r.rating === 'number' && r.rating >= 1 && r.rating <= 5) {
+      review.reviewRating = { '@type': 'Rating', ratingValue: r.rating, bestRating: 5, worstRating: 1 };
+      rated.push(r.rating);
+    }
+    return review;
+  });
+  if (reviews.length) ld.review = reviews;
+  var rating = aggregateRating(rated);
+  if (rating) ld.aggregateRating = rating;
   return ld;
+}
+
+/* The average of the ratings given, to one decimal, and how many there are; null for none. Only ever made from the
+   ratings of the reviews the page shows, so the stars can never say more than the page backs. */
+function aggregateRating(ratings) {
+  var list = (ratings || []).filter(function (n) { return typeof n === 'number' && n >= 1 && n <= 5; });
+  if (!list.length) return null;
+  var sum = list.reduce(function (a, b) { return a + b; }, 0);
+  return { '@type': 'AggregateRating', ratingValue: Math.round(sum / list.length * 10) / 10, ratingCount: list.length, bestRating: 5, worstRating: 1 };
+}
+
+function faqPageJsonLd(faqs) {
+  var items = (faqs || []).filter(function (f) { return f && str(f.question) && str(f.answer); }).map(function (f) {
+    return { '@type': 'Question', name: str(f.question), acceptedAnswer: { '@type': 'Answer', text: str(f.answer) } };
+  });
+  if (!items.length) return null;
+  return { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: items };
+}
+
+/* What a structured-data validator would say about one block, as sentences ([] when nothing): each type's required
+   properties (Google's rich results: an Event's name, startDate and location; a FAQPage's questions and answers; a
+   Review's author and body; a rating's value), the types of what is nested, and no empty value anywhere. */
+var REQUIRED = {
+  Event: ['name', 'startDate', 'location'], Place: ['name'], VirtualLocation: ['url'], PostalAddress: [], GeoCoordinates: ['latitude', 'longitude'],
+  Organization: ['name'], Person: ['name'], Review: ['author', 'reviewBody'], Rating: ['ratingValue'],
+  AggregateRating: ['ratingValue', 'ratingCount'], FAQPage: ['mainEntity'], Question: ['name', 'acceptedAnswer'], Answer: ['text']
+};
+var TYPES_OF = { location: ['Place', 'VirtualLocation'], address: ['PostalAddress'], geo: ['GeoCoordinates'], organizer: ['Organization', 'Person'],
+  performer: ['Person', 'Organization'], worksFor: ['Organization'], review: ['Review'], author: ['Person', 'Organization'], reviewRating: ['Rating'],
+  aggregateRating: ['AggregateRating'], mainEntity: ['Question'], acceptedAnswer: ['Answer'] };
+function checkJsonLd(ld) {
+  var problems = [];
+  if (!ld || typeof ld !== 'object') return ['not a JSON-LD object'];
+  if (ld['@context'] !== 'https://schema.org') problems.push('@context is not https://schema.org');
+  (function walk(node, where) {
+    if (Array.isArray(node)) { if (!node.length) problems.push(where + ' is an empty list'); node.forEach(function (n, i) { walk(n, where + '[' + i + ']'); }); return; }
+    if (node == null || node === '') { problems.push(where + ' is empty'); return; }
+    if (typeof node === 'number') { if (!isFinite(node)) problems.push(where + ' is not a number'); return; }
+    if (typeof node !== 'object') { if (typeof node === 'string' && !node.trim()) problems.push(where + ' is empty'); return; }
+    var type = node['@type'];
+    if (where !== '' && typeof type !== 'string') problems.push(where + ' has no @type');
+    (REQUIRED[type] || []).forEach(function (k) { if (node[k] == null || node[k] === '' || (Array.isArray(node[k]) && !node[k].length)) problems.push((where || type) + ' needs ' + k); });
+    Object.keys(node).forEach(function (k) {
+      if (k === '@context' || k === '@type') return;
+      var v = node[k], want = TYPES_OF[k];
+      if (want) (Array.isArray(v) ? v : [v]).forEach(function (x) { if (!x || typeof x !== 'object' || want.indexOf(x['@type']) === -1) problems.push((where ? where + '.' : '') + k + ' must be ' + want.join(' or ')); });
+      if ((k === 'startDate' || k === 'endDate') && !/^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2})?$/.test(String(v))) problems.push(k + ' is not an ISO date');
+      if ((k === 'url' || k === 'logo') && !/^https?:\/\//.test(String(v))) problems.push((where ? where + '.' : '') + k + ' is not a web address');
+      if (k === 'ratingValue' && !(typeof v === 'number' && v >= 1 && v <= 5)) problems.push((where ? where + '.' : '') + 'ratingValue is not 1 to 5');
+      walk(v, (where ? where + '.' : '') + k);
+    });
+  })(ld, '');
+  return problems;
 }
 
 /* JSON inside <script>: "<" never appears (a "</script" in a name would end the block), nor U+2028/2029 */
@@ -188,5 +301,5 @@ function calendarIcs(event, o) {
   return lines.map(icsFold).join('\r\n') + '\r\n';
 }
 
-module.exports = { eventJsonLd: eventJsonLd, robotsTxt: robotsTxt, sitemapXml: sitemapXml, scriptJson: scriptJson, isoDate: isoDate, chosenTime: chosenTime,
+module.exports = { eventJsonLd: eventJsonLd, faqPageJsonLd: faqPageJsonLd, aggregateRating: aggregateRating, checkJsonLd: checkJsonLd, robotsTxt: robotsTxt, sitemapXml: sitemapXml, scriptJson: scriptJson, isoDate: isoDate, chosenTime: chosenTime,
   shareDescription: shareDescription, DESCRIPTION_MAX: DESCRIPTION_MAX, calendarIcs: calendarIcs, EVENT_TZ: EVENT_TZ, ET: ET };

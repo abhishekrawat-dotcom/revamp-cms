@@ -173,6 +173,10 @@ const ownerBrief = require('./owner-brief');
 const eventDescription = require('./event-description');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
+/* Settings › URL & SEO: its fields and their published copy (seo-fields.js); the structured data built from them,
+   holding only what a page shows (seo-schema.js) */
+const seoFields = require('./seo-fields');
+const seoSchema = require('./seo-schema');
 const googleFonts = require('./google-fonts');
 const sectionPictures = require('./section-pictures');
 const etAwards = require('./et-awards');
@@ -8171,23 +8175,12 @@ function cleanSettings(v) {
     out.registration = reg;
   }
 
+  /* Settings › URL & SEO (seo-fields.js cleanSeo: every field, with its limits; anything else refused by name). The
+     site stays live for anyone with its address when noindex is on, but search engines are asked not to list it. */
   if (has(v, 'seo')) {
-    var s = v.seo;
-    if (!isPlainObject(s)) return { error: '"settings.seo" must be an object.' };
-    if ((e = unknown(s, ['canonicalUrl', 'description', 'shareImageUrl', 'noindex'], 'settings.seo'))) return { error: e };
-    var seo = {};
-    /* the site stays live for anyone with its address, but search engines are asked not to list it (its robots
-       meta and header say noindex, and the sitemap leaves it out) */
-    if (has(s, 'noindex')) { if (typeof s.noindex !== 'boolean') return { error: '"settings.seo.noindex" must be true or false.' }; seo.noindex = s.noindex; }
-    if (has(s, 'canonicalUrl')) { if ((e = checkHttpUrl('The canonical address', s.canonicalUrl, 500))) return { error: e }; seo.canonicalUrl = (s.canonicalUrl || '').trim(); }
-    if (has(s, 'description')) { if ((e = checkText('The search description', s.description, 320, false))) return { error: e }; seo.description = s.description || ''; }
-    if (has(s, 'shareImageUrl')) {
-      if ((e = checkUrl('The share image', s.shareImageUrl))) return { error: e };
-      var img = (s.shareImageUrl || '').trim();
-      if (img && !/^(https?:\/\/|\/(?!\/))/i.test(img)) return { error: 'The share image must be the address of an uploaded image.' };
-      seo.shareImageUrl = img;
-    }
-    out.seo = seo;
+    var seo = seoFields.cleanSeo(v.seo);
+    if (seo.error) return { error: seo.error, field: seo.field };
+    out.seo = seo.value;
   }
 
   if (has(v, 'social')) {
@@ -8283,7 +8276,7 @@ function suggestFreeEventId(fb, wanted) {
    theme, structurePlan, …), which the wizard runs BEFORE it creates the event. */
 var SHELL_STATE_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedVersion', 'publishedPath', 'publishedUrl',
   'unpublishedAt', 'unpublishedBy', 'stagingUrl', 'site', 'siteLock', 'deletedAt', 'deletedBy', 'counters', 'settings',
-  'sections', 'nav', 'checklist', 'paletteTheme', 'cloningFrom', 'clonedFrom'];
+  'sections', 'nav', 'checklist', 'paletteTheme', 'cloningFrom', 'clonedFrom', 'publishedSeo'];
 
 /* POST /api/event. 200 { ok, eventId, createdAt, updatedAt }; 409 { error, code: 'slug-taken', suggestion }
    when the address belongs to an event (live or deleted); 400 { code: 'slug-reserved', suggestion } for an
@@ -8425,7 +8418,14 @@ function handleEventUpdate(req, res) {
         }
         if (clean.settings) {
           write.settings = mergeSettings(stored.settings, clean.settings);
-          settingsDiff = fieldChanges(stored.settings || {}, pick(write.settings, Object.keys(clean.settings)));
+          /* the SEO rules that need the event itself (an Indian postcode has 6 digits: the city decides) */
+          var seoWhy = clean.settings.seo ? seoFields.checkWithEvent(write.settings.seo, Object.assign({}, stored, data)) : '';
+          if (seoWhy) throw httpError(400, seoWhy, { field: 'settings.seo.postalCode' });
+          settingsDiff = fieldChanges(stored.settings || {}, pick(write.settings, Object.keys(clean.settings).filter(function (k) { return k !== 'seo'; })));
+          /* the SEO section's changes field by field, by the names the section gives them, not as one block of JSON */
+          if (clean.settings.seo) settingsDiff = settingsDiff.concat(seoFields.changes(write.settings.seo, (stored.settings || {}).seo).map(function (c) {
+            return { field: 'SEO › ' + c.label, before: c.before, after: c.after };
+          }));
         }
         diff = fieldChanges(stored, data, ['status', 'portal']);
         statusChange = has(data, 'status') && data.status != null && data.status !== stored.status
@@ -9327,7 +9327,7 @@ function publishTransform(html, opts) {
     if (inHead(i)) {
       var metaName = (attrValue(t, 'name') || '').toLowerCase(), metaProp = (attrValue(t, 'property') || '').toLowerCase();
       var rel = (attrValue(t, 'rel') || '').toLowerCase().split(/\s+/);
-      if ((t.name === 'meta' && (metaName === 'description' || /^twitter:/.test(metaName) || /^og:/.test(metaProp))) ||
+      if ((t.name === 'meta' && (metaName === 'description' || metaName === 'keywords' || /^twitter:/.test(metaName) || /^og:/.test(metaProp))) ||
           (t.name === 'link' && (rel.indexOf('canonical') !== -1 || rel.indexOf('icon') !== -1))) { i = removeElement(i, false); continue; }
     }
 
@@ -9377,9 +9377,14 @@ function publishTransform(html, opts) {
     }
   }
 
-  /* ---- 3. title, description, sharing tags, canonical link, favicon ---- */
-  var seo = (event.settings && event.settings.seo) || {};
+  /* ---- 3. title, description, keywords, sharing tags, canonical link, favicon ----
+     From Settings › URL & SEO as this page has it (seo-fields.js seoFor): a live page reads the copy that was
+     published with it — a change in the console reaches the live site with the next publish or approval, never
+     before — and a preview reads the draft. The SEO title is the page's title and its share title (the event's
+     name when there is none); the meta description is its description and its share description. */
+  var seo = seoFields.seoFor(event, mode === 'live' ? 'live' : 'draft');
   var name = typeof event.name === 'string' ? event.name.trim() : '';
+  var seoTitle = seoFields.line(seo.title);
   /* the description's headings are the owner's brief, not a summary to show (owner-brief.js): their free
      text, else what the owner said sets the event apart */
   var ownerUsp = event.designPlan && event.designPlan.owner && event.designPlan.owner.usp;
@@ -9394,22 +9399,26 @@ function publishTransform(html, opts) {
   var shareImage = String(seo.shareImageUrl || '').trim();
   if (shareImage.charAt(0) === '/' && opts.publicBase) shareImage = opts.publicBase + shareImage;
 
-  var head = [], titleDone = !name;
-  if (name) {
+  var pageTitle = seoTitle || name;
+  var head = [], titleDone = !pageTitle;
+  if (pageTitle) {
     for (i = 0; i < tokens.length && !titleDone; i++) {
       if (!(inHead(i) || (bodyOpen !== -1 && i < bodyOpen))) continue;
       if (tokens[i].t !== 'open' || tokens[i].name !== 'title' || out[i] === '') continue;
-      if (tokens[i + 1] && tokens[i + 1].t === 'raw') out[i + 1] = escHtmlText(name);
-      else out[i] += escHtmlText(name);
+      if (tokens[i + 1] && tokens[i + 1].t === 'raw') out[i + 1] = escHtmlText(pageTitle);
+      else out[i] += escHtmlText(pageTitle);
       titleDone = true;
     }
-    if (!titleDone) head.push('<title data-rv-head>' + escHtmlText(name) + '</title>');
+    if (!titleDone) head.push('<title data-rv-head>' + escHtmlText(pageTitle) + '</title>');
   }
   function meta(attr, key, value) { if (value) head.push('<meta ' + attr + '="' + key + '" content="' + escHtmlAttr(value) + '" data-rv-head>'); }
   meta('name', 'description', description);
+  /* the team's keywords, when there are any (search engines give them little weight, but ET's sites carry them) */
+  var keywords = Array.isArray(seo.keywords) ? seo.keywords.map(seoFields.line).filter(Boolean) : [];
+  if (keywords.length) meta('name', 'keywords', keywords.join(', '));
   if (pageUrl) head.push('<link rel="canonical" href="' + escHtmlAttr(pageUrl) + '" data-rv-head>');
   meta('property', 'og:type', 'website');
-  meta('property', 'og:title', name);
+  meta('property', 'og:title', pageTitle);
   meta('property', 'og:description', description);
   meta('property', 'og:url', pageUrl);
   meta('property', 'og:image', shareImage);
@@ -9639,6 +9648,8 @@ function handleEventPublish(req, res) {
           return text;
         });
       }
+      /* the SEO section's values go live with the page, as they are now (no approval to have seen them) */
+      page = withPublishedSeo(fb, eventId, data, page, 'draft', actor);
 
       return Promise.all([page, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
         var pageHtml = got[0], livePath = publishedObjectPath(eventId);
@@ -9661,7 +9672,8 @@ function handleEventPublish(req, res) {
       }).then(function () {
         return commitSiteLock(fb, eventId, token, Object.assign(changes, {
           published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
-          publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages
+          publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages,
+          publishedSeo: data.publishedSeo
         }));
       }).then(function () {
         forgetCachedPage(eventId);
@@ -9760,14 +9772,20 @@ function handleApprovalRequest(req, res) {
       var version = siteVersionOf(data);
       if (!version) throw httpError(409, 'Save the site first: there is nothing to send for approval yet.', { code: 'site-not-saved' });
       var liveVersion = data.published === true ? (+data.publishedVersion || 0) : 0;
-      if (data.published === true && liveVersion === version) throw httpError(409, 'The saved site is already live: there is nothing new to publish.', { code: 'nothing-to-publish' });
+      /* the version that is live, going out again with new search and sharing settings (Settings › URL & SEO): a
+         request of its own, listing those changes alone */
+      var seoOnly = data.published === true && liveVersion === version;
       return Promise.all([
         liveVersion ? readObject(fb, versionPath(eventId, liveVersion)) : Promise.resolve(null),
         readObject(fb, versionPath(eventId, version)).then(function (t) { return t != null ? t : readObject(fb, sitePath(eventId, 'page.html')); }),
-        ref.collection('changes').where('version', '>', liveVersion).orderBy('version').limit(60).get()
+        ref.collection('changes').where('version', '>', liveVersion).orderBy('version').limit(60).get(),
+        seoChangeItems(fb, eventId, data)
       ]).then(function (r) {
         var before = r[0], after = r[1];
+        if (seoOnly && !r[3].length) throw httpError(409, 'The saved site and its search and sharing settings are already live: there is nothing new to publish.', { code: 'nothing-to-publish' });
         if (after == null) throw httpError(409, 'The saved site could not be found. Save it again, then send it for approval.', { code: 'site-not-saved' });
+        /* the live version again: what it shows is live already, so nothing about it can hold it back */
+        if (seoOnly) return r;
         var logoNote = unansweredLogoNote(after);
         if (logoNote) throw logoNoteError(logoNote, 'owner');
         /* what would hold the version back at approval is said now, to the person asking (siteCheckGate) */
@@ -9778,16 +9796,22 @@ function handleApprovalRequest(req, res) {
           .filter(function (c) { return c.version <= version; });
         /* what the reviewer is shown: live against proposed when the live version's page was kept, else the
            saves one after another */
-        var items = [];
+        var items = [], seoItems = r[3] || [];
         /* a first publication has no "before": the whole site is new, and listing every section as added says nothing */
-        if (before != null) { try { items = diffPages(before, after); } catch (e) { items = []; } }
-        if (liveVersion && before == null) saves.forEach(function (c) { items = items.concat(c.items); });
+        if (before != null && !seoOnly) { try { items = diffPages(before, after); } catch (e) { items = []; } }
+        if (liveVersion && before == null && !seoOnly) saves.forEach(function (c) { items = items.concat(c.items); });
+        var siteSummary = !liveVersion ? 'first publication of the site' : summarise(items);
+        var seoSummary = seoItems.length ? 'search and sharing: ' + seoItems.length + (seoItems.length === 1 ? ' change' : ' changes') : '';
+        items = items.slice(0, 80 - Math.min(40, seoItems.length)).concat(seoItems.slice(0, 40));
         var people = [];
         saves.forEach(function (c) { if (c.by && people.indexOf(c.by) === -1) people.push(c.by); });
         var pendingId = data.approval && data.approval.id;
         var doc = {
           status: 'pending', eventId: eventId, updatedAt: now, fromVersion: liveVersion, toVersion: version,
-          firstPublish: !liveVersion, note: note, items: items.slice(0, 80), summary: !liveVersion ? 'first publication of the site' : summarise(items),
+          firstPublish: !liveVersion, note: note, items: items.slice(0, 80),
+          summary: seoOnly ? seoSummary : !seoSummary ? siteSummary : siteSummary === 'no visible change' ? seoSummary : siteSummary + '; ' + seoSummary,
+          /* the SEO section as it was when this was asked for: what the approver sees, and what approving puts live */
+          seoOnly: seoOnly, seo: JSON.parse(JSON.stringify((data.settings && data.settings.seo) || {})),
           contributors: people,
           saves: saves.map(function (c) { return { id: c.id, at: c.at, by: c.by, version: c.version, summary: c.summary, note: c.note }; })
         };
@@ -9814,7 +9838,8 @@ function approvalView(id, d) {
     id: id, status: d.status, requestedBy: d.requestedBy || '', requestedAt: d.requestedAt || null, updatedAt: d.updatedAt || null,
     fromVersion: d.fromVersion || 0, toVersion: d.toVersion || 0, firstPublish: d.firstPublish === true, note: d.note || '',
     summary: d.summary || '', items: d.items || [], saves: d.saves || [], contributors: d.contributors || [],
-    decidedBy: d.decidedBy || '', decidedAt: d.decidedAt || null, decisionNote: d.decisionNote || ''
+    decidedBy: d.decidedBy || '', decidedAt: d.decidedAt || null, decisionNote: d.decisionNote || '',
+    seoOnly: d.seoOnly === true
   };
 }
 
@@ -9875,6 +9900,50 @@ function handleApprovalGet(req, res) {
   });
 }
 
+/* ---------- Settings › URL & SEO going live ----------
+   A live page shows the SEO values as they were published, never the draft (owner rule: nothing in the console
+   changes a live site without a publish or an approval). Every publish and approval writes the copy that goes live
+   on the event (publishedSeo, seo-fields.js snapshot), and sets it on `data` first, so that the transform writes the
+   page from it; /e/<id>'s page pass reads the same copy on every serve (site-a11y.js, seoFor 'live').
+   source: an object — the settings.seo an approval request was made with (what the approver saw); 'keep' — the copy
+   that is live already (a site published before the copy existed keeps the four settings it had then); anything
+   else — the draft as it is now (a direct publish, where approval is switched off). The records that count for
+   search (the speakers and FAQs the site shows, less those the team took out) are read now. It never holds a
+   publish up: records that cannot be read go live as none, which the console's SEO section then shows.
+   -> Promise<the page text>, passed through */
+function seoRecordsNow(fb, eventId, fields) {
+  var ref = eventDocRef(fb, eventId);
+  return Promise.all([ref.collection('speakers').get(), ref.collection('faqs').get()]).then(function (r) {
+    function rows(snap) { return snap.docs.map(function (d) { return Object.assign({}, d.data(), { id: d.id }); }); }
+    return seoFields.pickRecords(fields, rows(r[0]), rows(r[1]));
+  });
+}
+function withPublishedSeo(fb, eventId, data, page, source, actor) {
+  var keep = source === 'keep';
+  var fields = source && typeof source === 'object' ? source
+    : keep ? (isPlainObject(data.publishedSeo) && isPlainObject(data.publishedSeo.fields) ? data.publishedSeo.fields : seoFields.seoFor(data, 'live'))
+    : ((data.settings && data.settings.seo) || {});
+  var records = keep ? Promise.resolve(seoFields.recordsFor(data)) : seoRecordsNow(fb, eventId, fields).then(null, function (err) {
+    console.error('api: the speakers and FAQs of ' + eventId + ' could not be read for search, published as none — ' + (err && err.message));
+    return { speakers: [], faqs: [] };
+  });
+  return Promise.all([page, records]).then(function (r) {
+    data.publishedSeo = seoFields.snapshot(fields, r[1], actor);
+    return r[0];
+  });
+}
+/* What the next publish changes in search and sharing, as the approver's list has changes: the SEO values against the
+   copy that is live, and the speakers and FAQs that count against those published with it.
+   -> Promise<[{ type: 'seo', section, name, before, after }]>, never rejecting */
+function seoChangeItems(fb, eventId, data) {
+  var draft = (data.settings && data.settings.seo) || {};
+  function item(c) { return { type: 'seo', section: 'Search & sharing', name: c.label, before: c.before, after: c.after }; }
+  var fieldItems = seoFields.changes(draft, seoFields.seoFor(data, 'live')).map(item);
+  return seoRecordsNow(fb, eventId, draft).then(function (records) {
+    return fieldItems.concat(seoFields.recordChanges(records, seoFields.recordsFor(data)).map(item));
+  }, function () { return fieldItems; });
+}
+
 /* The internal pages of a page going live, recorded on the event (publishedPages) for the sitemap: [{ slug, title }],
    or a delete of the field for a one-page site (most of them: nothing is written that was not there). */
 function publishedPagesOf(html) {
@@ -9895,6 +9964,9 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
       if (text != null) return text;
       return siteVersionOf(data) === version ? readObject(fb, sitePath(eventId, 'page.html')) : null;
     });
+    /* the SEO values that go live: an approval's, as its request carried them (what the approver saw); otherwise the
+       copy already live is kept (tools/republish-current.js puts live what is live, as it is) */
+    text = withPublishedSeo(fb, eventId, data, text, opts && opts.seo !== undefined ? opts.seo : 'keep', actor);
     return Promise.all([text, publicFormsFor(fb, eventId, data)]).then(withPictures(fb)).then(function (got) {
       var pageHtml = got[0];
       if (pageHtml == null) throw httpError(409, 'Version ' + version + ' of this site is no longer stored. Save the site again and send a new request.', { code: 'version-missing' });
@@ -9916,7 +9988,8 @@ function publishVersion(fb, req, eventId, version, actor, origin, extra, opts) {
     }).then(function () {
       return commitSiteLock(fb, eventId, token, Object.assign({
         published: true, publishedAt: now, publishedBy: actor, publishedVersion: version,
-        publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages
+        publishedPath: publicPathOf(eventId), publishedUrl: fieldDelete(), updatedAt: now, publishedPages: livePages,
+        publishedSeo: data.publishedSeo
       }, extra || {}));
     }).then(function () {
       forgetCachedPage(eventId);
@@ -9955,7 +10028,7 @@ function handleApprovalDecide(req, res) {
       }
       return publishVersion(fb, req, eventId, request.toVersion, actor, body.origin, {
         approval: fieldDelete(), lastApproval: { id: id, by: actor, at: now, requestedBy: request.requestedBy, version: request.toVersion }
-      }, { logoGate: true }).then(function (out) {
+      }, { logoGate: true, seo: isPlainObject(request.seo) ? request.seo : undefined }).then(function (out) {
         return reqRef.update(Object.assign({ status: 'approved' }, closed)).then(function () {
           logActivity(fb, eventId, decoded, 'approved', 'version ' + request.toVersion + ' — ' + (request.summary || '') + (note ? ' — “' + note + '”' : ''), { approvalId: id, version: request.toVersion, requestedBy: request.requestedBy });
           logActivity(fb, eventId, decoded, 'published', 'version ' + request.toVersion + ', requested by ' + request.requestedBy + ', approved by ' + actor, { approvalId: id, version: request.toVersion });
@@ -11167,6 +11240,20 @@ function handlePreviewPage(req, res, eventId, slug) {
    one logs req.url, and an /s/ address is a working link to an unreleased site, so this one logs it without
    the token (shareToken.redactUrl). When the module cannot be loaded a shared link gets a plain HTML page, not
    inModule()'s JSON. */
+/* Settings › URL & SEO (lib/api-seo.js): its routes get this file's helpers on every call, as share-preview.js does */
+function seoHelpers() {
+  return { withAdmin, withAdminBody, BODY_LIMITS, eventIdOr400, eventDocRef, loadLiveEvent, siteVersionOf, sitePath, readObject, queryOf,
+    publishTransform, TOKEN_KIT, approvalsConfig, publicBaseFor, publicPathOf, portalNameOf, etJson, httpError, sendFailure, sendAiFailure, aiUsageRecorder };
+}
+function seoRoute(handlerName) {
+  return function (req, res) {
+    var mod = null;
+    try { mod = require('./api-seo'); mod.wire(seoHelpers()); }
+    catch (err) { mod = null; console.error('api: could not load lib/api-seo.js for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err)); }
+    if (mod && typeof mod[handlerName] === 'function') return mod[handlerName](req, res);
+    return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+  };
+}
 function shareHelpers() {
   return { withAdmin, withAdminBody, BODY_LIMITS, eventIdOr400, eventDocRef, eventStateOf, siteVersionOf, sitePath, readObject,
     publicFormsFor, preparePictures: function (fb, html) { return pictures.prepare(fb, html); }, publishTransform, withHeroVideo,
@@ -11265,7 +11352,7 @@ function handlePublicCalendar(req, res) {
   if (fb.error) return sendText(req, res, 503, plain, 'The calendar file is not available right now. Please try again in a few minutes.\n', 'no-store');
   liveEventSnap(fb, eventId).then(function (snap) {
     if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendText(req, res, 404, plain, 'There is no event at this address.\n', 'no-store');
-    var data = snap.data(), seo = (data.settings && data.settings.seo) || {};
+    var data = snap.data(), seo = seoFields.seoFor(data, 'live');
     var ics = siteSeo.calendarIcs(data, { id: eventId, url: cleanCanonical(seo.canonicalUrl) || publicBaseFor(req, '') + publicPathOf(eventId) });
     if (!ics) return sendText(req, res, 404, plain, 'This event has no date yet.\n', 'no-store');
     res.writeHead(200, calendarHeaders(eventId, ics));
@@ -11282,13 +11369,14 @@ function handleSitemapXml(req, res) {
   }
   var fb = getFirebase();
   if (fb.error) return sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
-  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'publishedVersion', 'settings', 'publishedPages', 'name').get().then(function (snap) {
+  fb.db.collection('events').where('published', '==', true).select('createdAt', 'deletedAt', 'publishedAt', 'publishedVersion', 'settings', 'publishedSeo', 'publishedPages', 'name').get().then(function (snap) {
     var listed = snap.docs.filter(function (d) {
       var e = d.data() || {};
       if (eventStateOf(d) !== 'live' || !isEventId(d.id)) return false;
       /* the QA harness's short-lived test copies (always "qa-…", deleted after each run) are no site to list */
       if (/^qa-/.test(d.id)) return false;
-      if (cleanCanonical(e.settings && e.settings.seo && e.settings.seo.canonicalUrl)) return false;
+      /* a site whose live page names another address as its own (the published copy of URL & SEO) is listed there */
+      if (cleanCanonical(seoFields.seoFor(e, 'live').canonicalUrl)) return false;
       /* kept out of search by its owner, or a test */
       return !siteChecks.noindexReason(Object.assign({ id: d.id }, e), null, TOKEN_KIT);
     });
@@ -11563,6 +11651,10 @@ var ROUTES = {
   'POST /api/event/logo-unit': handleEventLogoUnit,
   'POST /api/event/logo-unit-dark': handleEventLogoUnitDark,
   'POST /api/event/approval/decide': handleApprovalDecide,
+  /* Settings › URL & SEO (lib/api-seo.js): the section, ETB2B AI's SEO text and FAQs, the previous edition's */
+  'GET /api/event/seo': seoRoute('handleSeoGet'),
+  'POST /api/event/seo/write': seoRoute('handleSeoWrite'),
+  'GET /api/event/seo/previous': seoRoute('handleSeoPrevious'),
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,
   'GET /api/settings/approvals': handleApprovalSettingsGet,
@@ -11721,5 +11813,7 @@ module.exports._testHooks = {
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, chatResponseSchema, buildChatPrompt, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, rasterise, yearCutColour, yearFont,
   /* published pages' UX (published-page-ux.test.js) */
-  noSuchPageHtml: noSuchPageHtml, messagePage: messagePage, routeApi: routeApi, repeatedHeadingIds: repeatedHeadingIds, takenHeadings: takenHeadings, headingWords: headingWords, calendarHeaders: calendarHeaders
+  noSuchPageHtml: noSuchPageHtml, messagePage: messagePage, routeApi: routeApi, repeatedHeadingIds: repeatedHeadingIds, takenHeadings: takenHeadings, headingWords: headingWords, calendarHeaders: calendarHeaders,
+  /* Settings › URL & SEO going live (seo-flow.test.js) */
+  withPublishedSeo: withPublishedSeo, seoChangeItems: seoChangeItems, forgetCachedPage: forgetCachedPage
 };

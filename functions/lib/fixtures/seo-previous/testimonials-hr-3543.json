@@ -1,0 +1,66 @@
+{
+ "status": true,
+ "status_code": 200,
+ "message": "success",
+ "data": {
+  "is_last_page": true,
+  "cur_page": 1,
+  "cur_page_cnt": 3,
+  "total_cnt": 3,
+  "total_pages": 1,
+  "per_page": 50,
+  "items": [
+   {
+    "id": 265,
+    "activity_id": 1,
+    "entity_id": 3543,
+    "title": "Event was a truly pleasant experience",
+    "description": "Attending the ET Nextech 2024 event was a truly pleasant experience. I had the opportunity to participate in a panel discussion on next-gen talent and the transformative impact of technology on the workforce. What stood out to me was the focused and thoughtfully curated sessions, each addressing specific challenges and opportunities with precision. It was a valuable platform for insightful conversations, and I eagerly look forward to the next edition",
+    "user_name": "Atma Godara, VP",
+    "company": "ACME Group",
+    "img": "",
+    "rating": 5,
+    "status": 1,
+    "created_at": "2025-10-27 14:50:24",
+    "updated_at": "2025-10-27 14:50:24",
+    "portal": "hr",
+    "tag_id": 0,
+    "tag_status": 0
+   },
+   {
+    "id": 264,
+    "activity_id": 1,
+    "entity_id": 3543,
+    "title": "I thoroughly enjoyed my time at Nextech",
+    "description": "I thoroughly enjoyed my time at Nextech. The panel discussion I was part of focused on the intersection of employee and customer experiences as the workplace turns more and more digital. It was a pleasure to share my thoughts on such a highly relevant topic.",
+    "user_name": "Pramod Bhasin, Founder",
+    "company": "Genpact",
+    "img": "",
+    "rating": 5,
+    "status": 1,
+    "created_at": "2025-10-27 14:49:03",
+    "updated_at": "2025-10-27 14:49:03",
+    "portal": "hr",
+    "tag_id": 0,
+    "tag_status": 0
+   },
+   {
+    "id": 263,
+    "activity_id": 1,
+    "entity_id": 3543,
+    "title": "The ETHR World Nextech 2024 was my first one",
+    "description": "The ETHR World Nextech 2024 was my first one…and a very interesting event. I felt the program was curated with a lot of thought, to be useful for all the audience members, from senior HR leaders to budding professionals. I look forward to this forum growing and being even more successful ahead!",
+    "user_name": "Vishal Sharma, CEO",
+    "company": "Godrej Industries",
+    "img": "",
+    "rating": 5,
+    "status": 1,
+    "created_at": "2025-10-27 14:47:36",
+    "updated_at": "2025-10-27 14:47:36",
+    "portal": "hr",
+    "tag_id": 0,
+    "tag_status": 0
+   }
+  ]
+ }
+}
