@@ -1601,6 +1601,8 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo-ai-one{ white-space:nowrap; }
 .seo-dropped{ color: var(--warn); }
 .seo-rows{ display:flex; flex-direction:column; margin-top:14px; border-top:1px solid var(--border); }
+/* rows that open a panel (Social sharing) sit under the panel's own heading line: no second line, no gap */
+.panel-body > .seo-rows:first-child{ margin-top:-6px; border-top:0; }
 .seo-row{ display:grid; grid-template-columns: 190px minmax(0,1fr); gap:6px 16px; padding:11px 0; border-bottom:1px solid var(--border); font-size:13px; }
 .seo-row:last-child{ border-bottom:0; }
 .seo-k{ font-weight:700; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }

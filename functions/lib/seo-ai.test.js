@@ -42,7 +42,15 @@ ok(!('description' in applied.values) && applied.dropped.some(function (d) { ret
 ok(JSON.stringify(applied.values.keywords) === '["HR Tech Summit","Nextech 2027","HR events Gurugram"]' && applied.dropped.some(function (d) { return d.field === 'keywords' && /2026/.test(d.why); }), 'keywords: once each, one with a stray year left out, the rest kept', JSON.stringify(applied));
 ok(applied.dropped.some(function (d) { return d.field === 'h1' && /nothing usable/.test(d.why); }), 'an empty answer is said too');
 ok(A.apply({ keywords: ['a', 'bb'] }, ['keywords'], facts).dropped[0].field === 'keywords', 'too few usable keywords: left out');
-ok(A.clean('description', 'x '.repeat(200)).length <= 170 && A.clean('schemaDescription', 'Short') === '', 'every field to its limit; too short is nothing');
+ok(A.clean('description', 'x '.repeat(200)).length <= 160 && A.clean('schemaDescription', 'Short') === '', 'every field to its limit; too short is nothing');
+/* the lengths the console counts against (edit-event-seo.js IDEAL): a field the AI wrote is never shown as over its length */
+var LIM = { title: 60, description: 160, h1: 70, schemaTitle: 90, schemaDescription: 300 };
+ok(Object.keys(LIM).every(function (k) { return A.clean(k, 'Word '.repeat(120)).length <= LIM[k]; }), 'every AI field within the length the console shows');
+var sd = 'QA Summit 2026 is an ET BrandEquity conference at Taj Wellington Mews, Chennai, from 5–7 December 2026. It is built for CEOs, CMOs, brand, creative and media leaders shaping how India markets. Expect two days of keynotes, case studies and candid panels on regional brands, e.g. retail media and OTT advertising.';
+var sdc = A.clean('schemaDescription', sd);
+ok(sd.length > 300 && sdc.length <= 300 && /leaders shaping how India markets\.$/.test(sdc), 'a schema description over 300 ends at its last whole sentence, not mid-sentence', sdc.length + ' ' + sdc);
+var oneLong = A.clean('description', 'A two day summit for brand leaders ' + 'and media planners '.repeat(10) + 'in Chennai.');
+ok(oneLong.length <= 160 && !/\s(and|for|in)$/.test(oneLong), 'one long sentence: cut at a word, no small word left hanging', oneLong);
 var fq = A.applyFaqs({ faqs: [{ question: 'Who should attend', answer: 'HR leaders who run people and technology.' }, { question: 'Is it free?', answer: 'Yes, entry is free for 500 delegates.' }, { question: 'x', answer: 'y' }] }, facts);
 ok(fq.faqs.length === 1 && fq.faqs[0].question === 'Who should attend?' && fq.dropped.length === 1 && /500/.test(fq.dropped[0].why), 'FAQs: a made-up number left out, a question mark added, nonsense dropped', JSON.stringify(fq));
 

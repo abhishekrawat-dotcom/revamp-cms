@@ -331,7 +331,7 @@
   /* the rating as it would be given: the included testimonials whose words the site shows (as last saved), with a rating */
   function ratingNow() {
     var d = ST.data, list = ST.F.testimonials.filter(function (t) { return !t.off && t.rating && d.testimonials[t.id] && d.testimonials[t.id].shown; });
-    if (!list.length) return { text: '<span class="seo-none">None</span> <span class="seo-n">No testimonial with a rating is shown on the site.</span>' };
+    if (!list.length) return { text: '<span class="seo-none">None.</span> <span class="seo-n">No testimonial with a rating is shown on the site.</span>' };
     var sum = list.reduce(function (a, t) { return a + t.rating; }, 0), avg = Math.round(sum / list.length * 10) / 10;
     return { text: '<b>' + avg + '</b> from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + ' ' + stars(Math.round(avg)) };
   }

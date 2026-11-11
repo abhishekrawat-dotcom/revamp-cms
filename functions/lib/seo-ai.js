@@ -150,8 +150,22 @@ function fit(t, n) {
   do { was = cut; cut = cut.replace(HANGING, ''); } while (cut !== was);
   return cut;
 }
+/* a text of whole sentences cut to at most n characters: up to the last sentence end that still fits, when that
+   keeps at least half of n (a description that stops mid-sentence reads as broken); else at a word, as fit does.
+   A sentence end is . ! or ? followed by a capital (so "e.g. the" is not one) or by the end of the text. */
+function fitSentences(t, n) {
+  t = line(t).replace(/^["“”'‘’]+|["“”'‘’]+$/g, '').trim();
+  if (t.length <= n) return t;
+  var head = t.slice(0, n + 1), end = -1, re = /[.!?](?=\s+["“‘']?[A-Z0-9]|$)/g, m;
+  while ((m = re.exec(head))) if (m.index < n) end = m.index;
+  if (end + 1 >= n / 2) return head.slice(0, end + 1);
+  return fit(t, n);
+}
 var MAX = { title: 70, description: 320, h1: 120, schemaTitle: 120, schemaDescription: 500 };
-var IDEAL = { title: 65, description: 170, h1: 90, schemaTitle: 100, schemaDescription: 320 };
+/* what ETB2B AI's text is cut to: the lengths the prompt asks for and the console counts against (edit-event-seo.js
+   IDEAL), so a field the AI wrote never shows as over its length the moment it is written */
+var IDEAL = { title: 60, description: 160, h1: 70, schemaTitle: 90, schemaDescription: 300 };
+var PROSE = { description: 1, schemaDescription: 1 };
 function clean(field, value) {
   if (field === 'keywords') {
     var list = Array.isArray(value) ? value : String(value || '').split(/[,;\n]/);
@@ -164,7 +178,7 @@ function clean(field, value) {
     return out.length >= 3 ? out : [];
   }
   if (!MAX[field]) return '';
-  var t = fit(value, IDEAL[field]);
+  var t = PROSE[field] ? fitSentences(value, IDEAL[field]) : fit(value, IDEAL[field]);
   return t.length >= 10 ? t : '';
 }
 
