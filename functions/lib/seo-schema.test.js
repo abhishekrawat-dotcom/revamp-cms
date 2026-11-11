@@ -111,7 +111,7 @@ var EL = typeOf(legacyLive, 'Event');
 ok(EL && EL.name === 'ET Nextech 2027' && !EL.performer && !EL.review && !EL.location.address.streetAddress && EL.location.address.addressRegion === 'Haryana' && !typeOf(legacyLive, 'FAQPage'),
   'a site published before the copy existed: none of the new settings until its next publish (the place list still fills the state)', JSON.stringify(EL));
 var prev = hooks.publishTransform(PAGE, { eventId: 'qa-seo-x', event: Object.assign({}, EVENT, { settings: { seo: SEO } }), mode: 'preview', templateId: 'gen-qa-seo' });
-ok(/<title>ET Nextech 2027 \| HR Tech Summit, Gurugram<\/title>/.test(prev) && /data-rv-a11y>ET Nextech 2027: HR Tech Summit</.test(prev), 'a preview shows the draft');
+ok(/<title>Preview \u00b7 ET Nextech 2027 \| HR Tech Summit, Gurugram<\/title>/.test(prev) && /data-rv-a11y>ET Nextech 2027: HR Tech Summit</.test(prev), 'a preview shows the draft');
 
 /* ---------- the evidence, alone ---------- */
 var kit = hooks.TOKEN_KIT || null;

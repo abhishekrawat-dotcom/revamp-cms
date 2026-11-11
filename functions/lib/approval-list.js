@@ -33,8 +33,11 @@ function listApproval(eventId, d) {
   /* a request whose version (or a newer one) is live already waits for nothing: approving it would be refused as
      overtaken (api.js staleRequestWhy, the same reading). The server now closes such a request when it is overtaken,
      but one left from before that, or one a failed close left behind, must not be offered as waiting (UX-108). */
-  var live = d.published === true ? +d.publishedVersion || 0 : 0;
-  if (live && live >= (+a.toVersion || 0)) return null;
+  var live = d.published === true ? +d.publishedVersion || 0 : 0, v = +a.toVersion || 0;
+  /* …except a request for search and sharing settings alone, which is for the live version: it waits until the site
+     goes live again after it was sent */
+  var seoWaits = a.seoOnly === true && live === v && !(text(d.publishedAt) > (text(a.updatedAt) || text(a.requestedAt)));
+  if (live && live >= v && !seoWaits) return null;
   return {
     id: a.id,
     toVersion: +a.toVersion || 0,

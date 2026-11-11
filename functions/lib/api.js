@@ -9728,8 +9728,9 @@ function publishTransform(html, opts) {
   var pageTitle = seoTitle || name;
   var head = [], titleDone = !pageTitle;
   /* a preview's tab says it is one ("Preview · <event>"), so it cannot be taken for the live site's tab beside it
-     (UX-003); a shared link still unfurls under the page's own title (og:title) */
-  var tabTitle = mode === 'preview' ? 'Preview \u00b7 ' + (name || pageTitle) : pageTitle;
+     (UX-003), with the SEO title the page will go live with; a shared link still unfurls under the page's own title
+     (og:title) */
+  var tabTitle = mode === 'preview' ? 'Preview \u00b7 ' + pageTitle : pageTitle;
   if (pageTitle) {
     for (i = 0; i < tokens.length && !titleDone; i++) {
       if (!(inHead(i) || (bodyOpen !== -1 && i < bodyOpen))) continue;
@@ -10283,7 +10284,9 @@ function handleApprovalRequest(req, res) {
         /* the search and sharing changes (Settings › URL & SEO) come after the site's, at most 40, and the summary says
            both */
         var siteSummary = !liveVersion ? 'the whole site, going live for the first time' : summarise(items);
-        var seoSummary = seoItems.length ? 'search and sharing: ' + seoItems.length + (seoItems.length === 1 ? ' change' : ' changes') : '';
+        var seoCount = seoItems.filter(function (i) { return !i.record; }).length;
+        var seoSummary = seoCount ? 'search and sharing: ' + seoCount + (seoCount === 1 ? ' change' : ' changes') : '';
+        if (seoOnly && !seoSummary) seoSummary = 'search and sharing: the speakers and FAQs given to search engines';
         items = items.concat(seoItems.slice(0, 40));
         /* who changed it: the people who saved, not the site editor's own updates */
         var people = [];
@@ -10304,7 +10307,7 @@ function handleApprovalRequest(req, res) {
           if (!open) { target = ref.collection('approvals').doc(); doc.requestedBy = actor; doc.requestedAt = now; }
           else { doc.requestedBy = snap.data().requestedBy; doc.requestedAt = snap.data().requestedAt; doc.resubmittedBy = actor; }
           return target.set(doc, { merge: true }).then(function () {
-            return ref.update({ approval: { id: target.id, toVersion: version, requestedBy: doc.requestedBy, requestedAt: doc.requestedAt, updatedAt: now } });
+            return ref.update({ approval: { id: target.id, toVersion: version, requestedBy: doc.requestedBy, requestedAt: doc.requestedAt, updatedAt: now, seoOnly: !!doc.seoOnly } });
           }).then(function () {
             logActivity(fb, eventId, decoded, 'approval-requested', 'version ' + version + ' — ' + doc.summary + (open ? ' (request updated)' : ''), { approvalId: target.id, version: version });
             var reviewPath = reviewPathOf(eventId, target.id);
@@ -10450,7 +10453,9 @@ function seoChangeItems(fb, eventId, data) {
   function item(c) { return { type: 'seo', section: 'Search & sharing', name: c.label, before: c.before, after: c.after }; }
   var fieldItems = seoFields.changes(draft, seoFields.seoFor(data, 'live')).map(item);
   return seoRecordsNow(fb, eventId, draft).then(function (records) {
-    return fieldItems.concat(seoFields.recordChanges(records, seoFields.recordsFor(data)).map(item));
+    /* which speakers and FAQs search engines are given follows Content: listed for the approver, but a change in Content
+       is already counted as the site's own, so these are not counted again (record: true) */
+    return fieldItems.concat(seoFields.recordChanges(records, seoFields.recordsFor(data)).map(function (c) { return Object.assign(item(c), { record: true }); }));
   }, function () { return fieldItems; });
 }
 
@@ -10512,6 +10517,12 @@ function staleRequestWhy(request, data) {
   if (!request || request.status !== 'pending' || data.published !== true) return '';
   var live = +data.publishedVersion || 0, v = +request.toVersion || 0;
   if (!live || live < v) return '';
+  /* A request for search and sharing settings alone (Settings › URL & SEO) is for the version that is live: approving it
+     puts those settings live. It is overtaken only when the site went live again after it was sent. */
+  if (request.seoOnly && live === v) {
+    var sent = String(request.updatedAt || request.requestedAt || ''), went = isoOf(data.publishedAt) || '';
+    return sent && went && went > sent ? 'The site went live again after this request was sent, with the search and sharing settings it had then. Send it for approval again if these still need to go live.' : '';
+  }
   return live === v ? 'Version ' + v + ' is already live, so there is nothing left to approve in this request.'
     : 'Version ' + live + ' is live now, which is newer than this request (version ' + v + '): approving it would put an older version back. Send the site for approval again if it still needs to go live.';
 }

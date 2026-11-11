@@ -171,7 +171,7 @@ function served() { hooks.forgetCachedPage(ID); return call('GET', '/e/' + ID); 
   ok(r.status === 200 && S.head && S.head.title === 'ET Nextech 2027 | HR Tech Summit' && S.head.keywords === 'HR Tech Summit, HR events in India', 'the section: the title and keywords the next publish writes', r.status + ' ' + JSON.stringify(S.head));
   ok(S.auto && S.auto.place && S.auto.place.label === 'Gurugram, Haryana, India' && S.auto.organizer.name === 'ETHRWorld.com' && S.auto.logo && S.auto.logo.url === 'https://x/logo-unit.png' && S.auto.dates.exact === true,
     'what is worked out: the place, the organiser, the logo unit, the dates', JSON.stringify(S.auto).slice(0, 500));
-  ok(S.auto.canonical === 'http://localhost/e/' + ID && S.auto.indexing.reason === 'not-live', 'the canonical address; not listed until it is live', JSON.stringify(S.auto.indexing));
+  ok(S.auto.canonical === require('./public-base').publicSiteBase() + '/e/' + ID && S.auto.indexing.reason === 'not-live', 'the canonical address (the one public address setting); not listed until it is live', JSON.stringify(S.auto.indexing));
   var sp = (S.speakers || []).reduce(function (a, s) { a[s.id] = s; return a; }, {});
   ok(sp.sp1 && sp.sp1.shown === true && sp.sp2 && sp.sp2.shown === false && S.faqs[0].shown === true, 'which speakers and FAQs the site shows', JSON.stringify(S.speakers));
   ok(S.testimonials.t1.shown === true && S.testimonials.t2.shown === false, 'which testimonials the site shows');

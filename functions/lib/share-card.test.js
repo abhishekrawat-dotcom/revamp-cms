@@ -558,9 +558,11 @@ function reasonOf(p) { return p.then(function () { return 'made'; }, function (e
   ok(/Shared links of the site show this picture\./.test(ownField) && ownField.indexOf('own.jpg') !== -1 && ownField.indexOf('card.jpg') === -1 && /id="b-share-btn">Replace</.test(ownField) && !/id="b-share-auto" hidden/.test(ownField),
     'the owner\'s own picture: shown, with Replace and Use automatic as before');
   ok(Object.keys(card.REASONS).every(function (k) { return sb.SHARE_WHY[k]; }), 'the console has words for every reason the server records', Object.keys(card.REASONS).filter(function (k) { return !sb.SHARE_WHY[k]; }));
-  var seo = (/function viewSEO\(\)\{[\s\S]*?\n  \}\n/.exec(main) || [''])[0];
-  ok(/\/share-card\\\/\[\^\\\/\?#\]\+\\\.jpg/.test(seo) && seo.indexOf('Automatic: the banner’s picture with the logo unit on it') !== -1 && /seoRow\('Picture in link previews', picture, pictureFrom\)/.test(seo),
-    'URL & SEO: the live page\'s picture says it is the card when it is, else why not');
+  /* Settings › URL & SEO (edit-event-seo.js) draws the share picture with the console's own field above, so it says
+     the same: the card when it is made, else when it will be or why it cannot be */
+  var seoJs = fs.readFileSync(path.join(__dirname, '..', '..', 'edit-event-seo.js'), 'utf8');
+  ok(/ST\.ctx\.seo\.sharePictureField\(ST\.ctx\.EV\)/.test(seoJs) && /sharePictureField: sharePictureField, wireSharePicture: wireSharePicture/.test(main) && /ctx\.seo\.wireSharePicture\(\)/.test(seoJs),
+    'URL & SEO: the share picture says it is the card when it is, else when it is made or why not');
   var og = main.slice(main.indexOf("} else if (mode === 'og'){"), main.indexOf("} else if (mode === 'og'){") + 1200);
   ok(/var own = shareUrlOf\(EV\), pic = own \|\| shareAutoState\(EV\)\.url;/.test(og) && /'<div class="img pic">' \+ imgTag\(pic\)/.test(og) && /a stand-in until the site’s own is made/.test(og), 'the Social preview shows the real picture (or says its drawing is a stand-in)');
   var css = fs.readFileSync(path.join(__dirname, '..', '..', 'edit-event.css'), 'utf8');
