@@ -118,6 +118,7 @@
 <script src="edit-event-dashboard.js"></script>
 <!-- Settings › URL & SEO: every search and sharing setting in one section -->
 <script src="edit-event-seo.js"></script>
+<script src="library-suggest.js"></script>
 <script src="sidebar.js"></script>
 <script src="edit-event-site-check.js"></script>
 <!-- the registration forms builder; the form runtime draws its preview (it does nothing else on this page) -->
@@ -951,8 +952,17 @@
     return null;
   }
 
+  /* Content's tabs that have an item of their own in the rail (sidebar.js): still content/<tab> here, so every address
+     that leads to them works, but the rail shows them as their own place and Content's strip leaves them out */
+  var OWN_ITEM = { speakers: 1, agenda: 1, sponsors: 1 };
+  function ownItem(){ return cur.sec === 'content' && OWN_ITEM[cur.tab] ? cur.tab : ''; }
   function renderRail(){
-    renderEventRail('rail', { activeSection: cur.sec, eventId: EV.id });
+    renderEventRail('rail', { activeSection: ownItem() || cur.sec, eventId: EV.id });
+    /* on a phone the rail is one row that scrolls sideways: the open item is brought into it */
+    var on = document.querySelector('#rail .rail-item.active');
+    if (on && on.scrollIntoView && window.matchMedia && matchMedia('(max-width: 640px)').matches){
+      try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (err) { /* an old browser */ }
+    }
   }
 
   /* a tab's name: an award's Speakers are its jury (isAwardEvent) */
@@ -960,8 +970,9 @@
 
   function tabsHTML(){
     var s = secById(cur.sec);
-    if (!s || !s.tabs.length) return '';
-    return '<div class="subtabs" role="tablist" aria-label="' + esc(s.label) + '">' + s.tabs.map(function(t){
+    if (!s || !s.tabs.length || ownItem()) return '';
+    var tabs = cur.sec === 'content' ? s.tabs.filter(function(t){ return !OWN_ITEM[t.id]; }) : s.tabs;
+    return '<div class="subtabs" role="tablist" aria-label="' + esc(s.label) + '">' + tabs.map(function(t){
       var n = tabCount(s.id, t.id);
       var inner = esc(tabLabel(t)) + '<span class="cnt"' + (n != null ? '>' + comma(n) : ' hidden>') + '</span>';
       return '<button type="button" role="tab" data-tab="' + esc(t.id) + '" aria-selected="' + (cur.tab === t.id) + '"' +
@@ -1126,7 +1137,7 @@
       var m = s.tabs.filter(function(x){ return x.id === cur.tab; })[0];
       if (m) t = tabLabel(m);
     }
-    var crumb = (t && t !== s.label) ? s.label + ' › ' + t : s.label;
+    var crumb = ownItem() ? t : (t && t !== s.label) ? s.label + ' › ' + t : s.label;
     return '<div class="vhead"><div class="vhead-row">' +
         '<div class="grow">' +
           '<div class="crumb">' + esc(crumb) + '</div>' +
@@ -2835,7 +2846,25 @@
   }
   function nSpk(n){ var w = spkWords(); return n + ' ' + (n === 1 ? w.one : w.many); }
 
+  /* The speaker and sponsor library is kept from ET's records in EventSphere's own database (functions/lib/et-library.js):
+     what is missing or a day old is read again in the background, a few rounds at most, once a page — never in the
+     way of the tab (a Viewer changes nothing, so does not start it) */
+  var LIB_WARM = false;
+  function libraryWarm(){
+    if (LIB_WARM || !C.buildLibrary || !EV) return;
+    LIB_WARM = true;
+    if (document.documentElement.getAttribute('data-rv-role') === 'viewer') return;
+    var rounds = 0;
+    (function round(){
+      rounds++;
+      C.buildLibrary(EV.id).then(function(r){
+        if (r && r.left && !r.busy && rounds < 4) setTimeout(round, 1500);
+      }, function(err){ console.warn('The speaker library could not be refreshed now:', err && err.message); });
+    })();
+  }
+
   function viewSpeakers(){
+    libraryWarm();
     var groups = spkGroups(), all = spkAll(), W = spkWords();
 
     /* loose: the card for speakers that are in no group — it has no name to edit and nothing
@@ -3330,7 +3359,9 @@
         '</div>' +
 
         '<div class="frow" style="margin-top:18px">' +
-          field('sp-name', 'Full name', e.name, 'e.g. Rajesh Uppal', true) +
+          /* the name field suggests speakers from the library (library-suggest.js); a pick says where it came from */
+          field('sp-name', 'Full name', e.name, 'Type a name: the library fills in the rest', true).replace(/<\/div>$/,
+            (e.libFrom ? '<p class="hint lib-note">Filled in from ' + esc(e.libFrom) + '. Check it is the same person.</p>' : '') + '</div>') +
           field('sp-desig', 'Designation', e.desig, 'e.g. Chief Information Officer') +
           field('sp-comp', 'Company', e.comp, 'e.g. Maruti Suzuki') +
 
@@ -3398,6 +3429,7 @@
       ['sp-name','sp-desig','sp-comp'].forEach(function(id){
         $(id).addEventListener('input', function(){ readForm(); paintQueue(); });
       });
+      if (window.RevampLibrary) RevampLibrary.attach($('sp-name'), { kind: 'speakers', eventId: EV.id, search: C.searchLibrary, onPick: fromLibrary });
 
       /* paintForm() rebuilds every field from the queue entry, so the form is read into it first */
       $('sp-logobtn').onclick = function(){ pickFile(function(file){
@@ -3418,6 +3450,23 @@
       inp.type = 'file'; inp.accept = 'image/*';
       inp.onchange = function(){ if (inp.files && inp.files[0]) cb(inp.files[0]); };
       inp.click();
+    }
+
+    /* A speaker picked from the library (library-suggest.js: ET's records of its past events and EventSphere's own):
+       the entry is filled in from it — when adding, over what was typed (picking a person means that person); when
+       editing, only what is still empty. A photo dropped in by hand is never replaced. */
+    function fromLibrary(it){
+      readForm();
+      var e = Q[qi];
+      function fill(k, v){ if (v && (!editing || !e[k])) e[k] = v; }
+      e.name = it.name || e.name;
+      fill('desig', it.designation); fill('comp', it.company); fill('li', it.linkedin); fill('bio', it.bio);
+      if (it.photo && !e.img && (!editing || !e.photo)) e.photo = it.photo;
+      if (it.logo && !e.logo) e.logo = it.logo;
+      e.libFrom = (it.from && it.from[0] && it.from[0].label) || 'the library';
+      if (e.li || e.bio) accOpen[e.key] = true;
+      paintForm(); paintQueue();
+      modal.focus('#sp-desig');
     }
 
     /* ---- the square cropper ---- */
@@ -4486,6 +4535,7 @@
 
   /* ---------------- the page ---------------- */
   function viewSponsors(){
+    libraryWarm();
     var tiers = ptTiers(), all = ptAll();
     var noLogo = all.filter(function(p){ return !p.logo; }).length;
 
@@ -4923,7 +4973,8 @@
             '<div class="frow" style="margin-top:14px">' +
               '<div class="field c12"><div class="flabel-row">' +
                 '<label for="pt-name">Company name <span class="pill-req">Required</span></label></div>' +
-                '<input class="inp" id="pt-name" value="' + esc(e.name) + '" placeholder="e.g. Tata Capital"></div>' +
+                '<input class="inp" id="pt-name" value="' + esc(e.name) + '" placeholder="Type a name: the library fills in the rest">' +
+                (e.libFrom ? '<p class="hint lib-note">Filled in from ' + esc(e.libFrom) + '. Check it is the same company.</p>' : '') + '</div>' +
               '<div class="field c12"><label for="pt-url">Website</label>' +
                 '<div class="inp-grp"><span class="pre">https://</span>' +
                   '<input class="inp" id="pt-url" value="' + esc(e.url) + '" ' +
@@ -5003,6 +5054,24 @@
       };
 
       $('pt-name').addEventListener('input', function(){ readForm(); paintQueue(); });
+      if (window.RevampLibrary) RevampLibrary.attach($('pt-name'), { kind: 'sponsors', eventId: EV.id, search: C.searchLibrary, onPick: fromLibrary });
+    }
+
+    /* A sponsor picked from the library: its name, logo and website — when adding, over what was typed; when editing,
+       only what is empty — and its tier when this event already has a tier of that name ("Gold Partner(s)") */
+    function fromLibrary(it){
+      readForm();
+      var e = Q[qi];
+      e.name = it.name || e.name;
+      if (it.logo && (!editing || !e.logo)) e.logo = it.logo;
+      var site = String(it.url || '').replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+      if (site && (!editing || !e.url)) e.url = site;
+      var want = String(it.tier || '').toLowerCase().replace(/s\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+      var tier = want ? ptTiers().filter(function(t){ return String(t.name || '').toLowerCase().replace(/s\b/g, '').replace(/[^a-z0-9]+/g, ' ').trim() === want; })[0] : null;
+      if (tier && !editing){ e.tid = tier.id; e.newGroup = null; }
+      e.libFrom = (it.from && it.from[0] && it.from[0].label) || 'the library';
+      paintForm(); paintQueue();
+      modal.focus('#pt-url');
     }
 
     function pickFile(cb){

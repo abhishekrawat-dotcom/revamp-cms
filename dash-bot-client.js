@@ -684,6 +684,25 @@
     try { doc.dispatchEvent(new root.CustomEvent('rv:records-changed', { detail: { eventId: eventId, tab: tab } })); } catch (e) { /* no console here */ }
   }
   function recordsLine(R, n) { return n + ' ' + (n === 1 ? R.one : R.many); }
+  /* The speaker and sponsor library (functions/lib/et-library.js, through RevampCore.searchLibrary): what the source
+     did not give — a photo, a designation, a company, a LinkedIn link; a logo, a website — is taken from the one entry
+     whose name is the same, word for word (and, for a speaker the source gave a company for, the same company).
+     Two such entries, or none, and nothing is taken. Never in the way: a library that cannot answer adds nothing. */
+  function sameName(a, b) { return nameKey(a) !== '' && nameKey(a) === nameKey(b); }
+  function fromLibrary(R, data, eventId, filled) {
+    var C = root.RevampCore;
+    if (!C || !isFn(C.searchLibrary)) return Promise.resolve();
+    return C.searchLibrary(R.items === 'speakers' ? 'speakers' : 'sponsors', data.name, eventId).then(function (r) {
+      var hits = (r && isArr(r.items) ? r.items : []).filter(function (it) { return it && sameName(it.name, data.name); });
+      if (R.items === 'speakers' && data.comp) hits = hits.filter(function (it) { return !it.company || sameName(it.company, data.comp); });
+      if (hits.length !== 1) return;
+      var it = hits[0], took = false;
+      function take(k, v) { if (v && !data[k]) { data[k] = v; took = true; } }
+      if (R.items === 'speakers') { take('desig', str(it.designation)); take('comp', str(it.company)); take('photoUrl', str(it.photo)); take('li', str(it.linkedin)); }
+      else { take('logoUrl', str(it.logo)); take('url', str(it.url).replace(/^https?:\/\//i, '').replace(/\/+$/, '')); }
+      if (took) filled.push(data.name);
+    }, function () { /* the library is a help, never the reason a record is not added */ });
+  }
   /* fn(item, i) for every item, at most n at a time; once stop() says so, no further one is started */
   var RECORDS_AT_ONCE = 4;
   function inTurns(list, n, fn, stop) {
@@ -703,7 +722,7 @@
     if (eventId !== str(ctx.place && ctx.place.eventId)) return refuseOther(ctx, bubble);
     if (!C || !isFn(C.fetchSub) || !isFn(C.createSub) || !isFn(C.deleteSub)) return failed(bubble, ctx, TEXT.recordsMissing);
     started(ctx);
-    var made = { items: [], groups: [] }, added = [], skipped = [], failure = null;
+    var made = { items: [], groups: [] }, added = [], skipped = [], failure = null, filled = [];
     Promise.all([C.fetchSub(R.groups, eventId), C.fetchSub(R.items, eventId)]).then(function (got) {
       var groups = (isArr(got[0]) ? got[0] : []).slice().sort(function (a, b) { return orderOf(a) - orderOf(b); });
       var items = isArr(got[1]) ? got[1] : [];
@@ -750,7 +769,7 @@
               return data;
             });
             return inTurns(jobs, RECORDS_AT_ONCE, function (data, i) {
-              return C.createSub(R.items, eventId, data).then(function (r) {
+              return fromLibrary(R, data, eventId, filled).then(function () { return C.createSub(R.items, eventId, data); }).then(function (r) {
                 made.items.push(r.id);
                 done[i] = { name: data.name, heading: heading };
               }, function (err) { failure = failure || err || new Error(''); });
@@ -775,6 +794,7 @@
       }
       if (skipped.length) bubble.note('Already on this event, so not added again: ' + skipped.join(', ') + '.');
       if (failure) bubble.note((added.length ? 'The rest could not be added: ' : TEXT.couldNot) + reason);
+      if (filled.length) bubble.note('Photos and details filled in from the library (ET’s past events and EventSphere’s own) for ' + filled.join(', ') + ': check they are the same ' + (R.items === 'speakers' ? 'people' : 'companies') + '.');
       if (added.length && action.fromDocument) bubble.note(TEXT.recordsCheck);
       if (added.length) bubble.note(TEXT.recordsNoPhotos);
       if (made.items.length || made.groups.length) {

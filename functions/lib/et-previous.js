@@ -219,6 +219,19 @@ function speakerSessions(agenda) {
 }
 
 function byWeight(a, b) { return (a.w || 0) - (b.w || 0); }
+/* One speaker, or one sponsor, as ET's list gives it — read as the previous edition's are, for EventSphere's own copy
+   of ET's records (et-library.js). null for one the edition's page does not show (status 0) or with no name. */
+function speakerOf(s) {
+  if (!s || !text(s.speaker_name) || str(s.status) === '0') return null;
+  return { name: text(s.speaker_name), designation: text(s.speaker_desig), company: text(s.speaker_company),
+    photo: picture(s.speaker_picture), bio: bioOf(s.speaker_info), linkedin: profileLink(s.linkedin_url, LINKEDIN_HOST),
+    logo: companyLogo(s.company_logo), group: s.group && s.group.group_name ? text(s.group.group_name) : '' };
+}
+function sponsorOf(s) {
+  if (!s || !(s.sponsor_logo || s.sponsor_log_png) || !text(s.sponsor_title) || str(s.status) === '0') return null;
+  return { name: text(s.sponsor_title), logo: picture(s.sponsor_logo || s.sponsor_log_png, true),
+    tier: s.group && s.group.group_name ? text(s.group.group_name) : '', url: /^https?:\/\//i.test(str(s.url)) ? str(s.url) : '' };
+}
 function normalise(raw) {
   raw = raw || {};
   var d = raw.details || {};
@@ -320,4 +333,4 @@ function readPrevious(url, html, o) {
   }).then(null, function () { return null; });
 }
 
-module.exports = { portalOf, slugOf, seriesOf, candidatesIn, idsIn, relationOf, glimpsesIn, photosOf, normalise, readPrevious, profileLink, API };
+module.exports = { portalOf, slugOf, seriesOf, candidatesIn, idsIn, relationOf, glimpsesIn, photosOf, normalise, readPrevious, profileLink, speakerOf, sponsorOf, allItems, API };

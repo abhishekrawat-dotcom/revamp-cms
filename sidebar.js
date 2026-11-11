@@ -84,6 +84,12 @@
   var RAIL_SECTIONS = [
     { id:'dashboard', label:'Dashboard', icon:'<path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15.5 3.5A9 9 0 0 1 20.5 8.5H15.5z"/>' },
     { id:'content', label:'Content', icon:'<path d="M12 2.5l9.5 5-9.5 5-9.5-5z"/><path d="M2.5 12.5l9.5 5 9.5-5"/><path d="M2.5 17l9.5 5 9.5-5"/>' },
+    /* the three a team updates every day have their own items (the owner, 11 Nov 2026: "Speaker, Agenda, Sponsor are our
+       frequently usable section … pull out from the content section as independent navigation item"); they are still
+       the console's content/<tab> views, so every address that leads to them keeps working */
+    { id:'speakers', label:'Speakers', icon:'<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/><path d="M8.5 21h7"/>' },
+    { id:'agenda', label:'Agenda', icon:'<rect x="3" y="4.5" width="18" height="16.5" rx="2.4"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/><path d="M7.5 13.5h4M7.5 17h7"/>' },
+    { id:'sponsors', label:'Sponsors', icon:'<circle cx="12" cy="9" r="6"/><path d="M8.5 13.9L7 21.5l5-2.7 5 2.7-1.5-7.6"/>' },
     { id:'design', label:'Design', icon:'<path d="M12 2l7 7-9 9H3v-7z"/><path d="M15 5l4 4"/>' },
     { id:'payment', label:'Payment', soon:'Not available yet', icon:'<rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/><path d="M6 15h4"/>' },
     { id:'marketing', label:'Promotions', icon:'<path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18.5 5a9 9 0 0 1 0 14"/>' },
@@ -96,6 +102,7 @@
     var ev = encodeURIComponent(String(eventId == null ? '' : eventId));
     if (section === 'dashboard') return '/edit-event.html?event=' + ev + '#dashboard';
     if (section === 'content')   return '/edit-event.html?event=' + ev + '#content/basics';
+    if (section === 'speakers' || section === 'agenda' || section === 'sponsors') return '/edit-event.html?event=' + ev + '#content/' + section;
     /* straight to the site editor, which finds the event's site itself: through the console the event was
        loaded twice before the site could start opening (UX-077) */
     if (section === 'design')    return '/custom_editor.html?event=' + ev;

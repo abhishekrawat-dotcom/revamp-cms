@@ -1335,6 +1335,36 @@ var LIST = {
   check('R.6 the history says what was added, with Undo where this tab still holds it, and Open Speakers', !!hb && hb.buttons.some(function (bt) { return bt.undo; }) &&
     hb.links.some(function (l) { return l.label === 'Open Speakers'; }), Prh.chat() && Prh.chat().bubbles.map(function (b) { return b.notes; }));
 
+  /* R.7 the library fills what the brochure did not give: one entry of the very same name, never two, never a guess */
+  var libCore = fakeCore([], []);
+  libCore.searchLibrary = function (kind, q) {
+    var lib = { 'naven singh': [{ name: 'Naven Singh', designation: 'Group CISO', company: 'Acme Bank', photo: 'https://img.etb2bimg.com/files/cp/naven.jpg', linkedin: 'https://linkedin.com/in/naven' }],
+      'robin uthappa': [{ name: 'Robin Uthappa', designation: 'Cricketer', company: '', photo: 'https://img.etb2bimg.com/files/cp/r1.jpg' }, { name: 'Robin Uthappa', designation: 'Commentator', company: 'Star', photo: 'https://img.etb2bimg.com/files/cp/r2.jpg' }],
+      'jaya kishori': [{ name: 'Jaya Kishori Devi', designation: 'Speaker', company: '', photo: 'https://img.etb2bimg.com/files/cp/j.jpg' }] };
+    return Promise.resolve({ items: lib[String(q).toLowerCase()] || [] });
+  };
+  var Prl = withCore(await conPage({ answers: [recordsAnswer('TurnRecords007', null, [{ name: 'Guest Speakers', entries: [{ name: 'Naven Singh', role: '', company: '' },
+    { name: 'Robin Uthappa', role: '', company: '' }, { name: 'Jaya Kishori', role: '', company: '' }, { name: 'Bruce Schneier', role: 'Security Technologist', company: '' }] }])] }), libCore);
+  await Prl.say('add the speakers from this brochure');
+  await settle();
+  var lmade = {};
+  libCore.created.filter(function (c) { return c.res === 'speakers'; }).forEach(function (c) { lmade[c.data.name] = c.data; });
+  check('R.7 the one entry of the same name fills the photo, designation, company and LinkedIn link', lmade['Naven Singh'] && lmade['Naven Singh'].photoUrl === 'https://img.etb2bimg.com/files/cp/naven.jpg' &&
+    lmade['Naven Singh'].desig === 'Group CISO' && lmade['Naven Singh'].comp === 'Acme Bank' && lmade['Naven Singh'].li === 'https://linkedin.com/in/naven', lmade['Naven Singh']);
+  check('R.7 two entries of that name, or a longer name: nothing is taken', lmade['Robin Uthappa'] && !lmade['Robin Uthappa'].photoUrl && lmade['Jaya Kishori'] && !lmade['Jaya Kishori'].photoUrl, [lmade['Robin Uthappa'], lmade['Jaya Kishori']]);
+  check('R.7 what the brochure gave is kept; no library entry, nothing added', lmade['Bruce Schneier'] && lmade['Bruce Schneier'].desig === 'Security Technologist' && !lmade['Bruce Schneier'].photoUrl);
+  check('R.7 the card says whose details came from the library', Prl.last().notes.some(function (n) { return /filled in from the library .* for Naven Singh: check they are the same people\./.test(n); }), Prl.last().notes);
+
+  /* R.8 the console: Speakers, Agenda and Sponsors as their own rail items, the library in both forms */
+  var RAIL = fs.readFileSync(path.join(ROOT, 'sidebar.js'), 'utf8'), CON2 = fs.readFileSync(path.join(ROOT, 'edit-event.html'), 'utf8');
+  check('R.8 the rail has Speakers, Agenda and Sponsors after Content, leading to their console views', /id:'content'[\s\S]{0,900}id:'speakers'[\s\S]{0,400}id:'agenda'[\s\S]{0,400}id:'sponsors'/.test(RAIL) &&
+    /section === 'speakers' \|\| section === 'agenda' \|\| section === 'sponsors'\) return '\/edit-event\.html\?event=' \+ ev \+ '#content\/' \+ section;/.test(RAIL));
+  check('R.8 the console shows them as their own place: the rail item lit, no Content strip, their own heading', /var OWN_ITEM = \{ speakers: 1, agenda: 1, sponsors: 1 \};/.test(CON2) &&
+    /activeSection: ownItem\(\) \|\| cur\.sec/.test(CON2) && /if \(!s \|\| !s\.tabs\.length \|\| ownItem\(\)\) return '';/.test(CON2) && /var crumb = ownItem\(\) \? t :/.test(CON2));
+  check('R.8 both forms search the library by name, and the library is kept fresh from Speakers and Sponsors',
+    /RevampLibrary\.attach\(\$\('sp-name'\), \{ kind: 'speakers'/.test(CON2) && /RevampLibrary\.attach\(\$\('pt-name'\), \{ kind: 'sponsors'/.test(CON2) &&
+    /<script src="library-suggest\.js"><\/script>/.test(CON2) && (CON2.match(/libraryWarm\(\);/g) || []).length === 2);
+
   if (failed) { console.error('dash-bot-client: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('dash-bot-client: all ' + passed + ' checks passed');
 })().catch(function (e) { console.error('FAIL the test itself threw: ' + (e && e.stack)); process.exit(1); });

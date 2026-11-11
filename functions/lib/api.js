@@ -12515,6 +12515,10 @@ var ROUTES = {
   'GET /api/event/seo/previous': seoRoute('handleSeoPrevious'),
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,
+  /* the speaker and sponsor library: ET's records kept here, and EventSphere's own, searched by name (lib/et-library.js) */
+  'GET /api/library/speakers': inModule('et-library', 'handleSpeakers'),
+  'GET /api/library/sponsors': inModule('et-library', 'handleSponsors'),
+  'POST /api/library/build': inModule('et-library', 'handleBuild'),
   /* Settings › Access: who may use EventSphere, as what, and in which portals (lib/api-access.js) */
   'GET /api/access/me': inModule('api-access', 'handleMe'),
   'GET /api/access': inModule('api-access', 'handleGet'),

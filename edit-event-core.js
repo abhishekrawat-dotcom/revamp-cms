@@ -560,6 +560,13 @@ window.RevampCore = (function(){
   }
   function fetchApprovalSettings(){ return api('GET', '/api/settings/approvals'); }
   function saveApprovalSettings(settings){ return api('PUT', '/api/settings/approvals', settings || {}); }
+  /* the speaker and sponsor library (functions/lib/et-library.js): ET's records and EventSphere's own, by name.
+     kind: 'speakers' | 'sponsors'. -> { items, coverage }. buildLibrary reads from ET what is missing or a day old. */
+  function searchLibrary(kind, q, eventId){
+    return api('GET', '/api/library/' + (kind === 'sponsors' ? 'sponsors' : 'speakers') + '?q=' + encodeURIComponent(String(q || '').slice(0, 80)) +
+      (eventId ? '&eventId=' + encodeURIComponent(eventId) : ''));
+  }
+  function buildLibrary(eventId){ return api('POST', '/api/library/build', { eventId: String(eventId || '') }); }
   /* Settings › Access (functions/lib/api-access.js): who may use EventSphere, as what, in which portals */
   function fetchAccess(){ return api('GET', '/api/access'); }
   function saveAccessMember(m){ return api('POST', '/api/access/member', m || {}); }
@@ -1537,6 +1544,7 @@ window.RevampCore = (function(){
     previewDraft: previewDraft, requestApproval: requestApproval, fetchApproval: fetchApproval, decideApproval: decideApproval,
     fetchSeo: fetchSeo, writeSeo: writeSeo, draftFaqs: draftFaqs, fetchSeoPrevious: fetchSeoPrevious, fetchEtEvents: fetchEtEvents,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
+    searchLibrary: searchLibrary, buildLibrary: buildLibrary,
     fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,

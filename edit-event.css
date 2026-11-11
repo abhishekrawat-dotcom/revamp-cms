@@ -1762,3 +1762,24 @@ a.ev-chip:hover{ border-color: currentColor; }
   .topbar .ev-tag{ min-height:40px; margin:-10px 0; }
   .topbar .pv-more{ min-width:40px; }
 }
+
+/* ============ the speaker and sponsor library under a name field (library-suggest.js) ============
+   In the flow of the form, under the field, so a dialog's own scrolling never cuts it off on a phone. */
+.lib-sugg{ margin-top:6px; border:1px solid var(--border); border-radius:10px; background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0,0,0,.10); max-height:340px; overflow-y:auto; }
+.lib-sugg[hidden]{ display:none; }
+.lib-opt{ display:flex; gap:10px; align-items:center; padding:8px 10px; cursor:pointer; border-bottom:1px solid var(--border); }
+.lib-opt:hover, .lib-opt[aria-selected="true"]{ background: var(--surface-2); }
+.lib-pic{ width:38px; height:38px; flex-shrink:0; border-radius:50%; overflow:hidden; display:grid; place-items:center; background: var(--surface-3); }
+.lib-pic img{ width:100%; height:100%; object-fit:cover; display:block; }
+.lib-pic.logo{ border-radius:8px; background:#fff; border:1px solid var(--border); }
+.lib-pic.logo img{ object-fit:contain; padding:3px; box-sizing:border-box; }
+.lib-ini{ font-size:12px; font-weight:800; color: var(--text-muted); }
+.lib-txt{ display:flex; flex-direction:column; min-width:0; line-height:1.35; font-size:13px; }
+.lib-txt b{ font-weight:700; }
+.lib-txt span{ color: var(--text-muted); overflow-wrap:anywhere; }
+.lib-txt em{ font-style:normal; font-size:11.5px; color: var(--text-faint); overflow-wrap:anywhere; }
+.lib-none, .lib-foot{ padding:9px 11px; font-size:12px; color: var(--text-muted); }
+.lib-foot{ border-top:0; background: var(--surface-2); }
+.lib-note{ color: var(--accent-strong) !important; font-weight:600; }
+@media (max-width: 640px){ .lib-opt{ min-height:44px; } }
