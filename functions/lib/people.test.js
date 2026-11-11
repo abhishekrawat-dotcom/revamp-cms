@@ -176,14 +176,16 @@ function page(url) {
 
   /* 4. the pages, from a stand-in library and EventSphere's own events */
   FB.docs['etLibrary/ciso'] = { portal: 'ciso', portalName: 'ETCISO', builtAt: new Date().toISOString(),
-    events: [{ id: '900', title: 'ETCISO Annual Conclave 2026', year: '2026', start: '2026-03-10', link: 'https://ciso.economictimes.indiatimes.com/conclave' }, { id: '800', title: 'ETCISO Decrypt 2025', year: '2025', start: '2025-08-01', link: 'https://ciso.economictimes.indiatimes.com/decrypt' }],
-    speakers: [{ n: 'Naven Singh', d: 'Group CISO', c: 'Acme Bank', p: 'https://img.etb2bimg.com/files/cp/naven.jpg', l: 'https://linkedin.com/in/naven', b: 'Security leader.', e: [0, 1] },
+    events: [{ id: '900', title: 'ETCISO Annual Conclave 2026', year: '2026', start: '2026-03-10', link: 'https://ciso.economictimes.indiatimes.com/conclave' }, { id: '800', title: 'ETCISO Decrypt 2025', year: '2025', start: '2025-08-01', link: 'https://ciso.economictimes.indiatimes.com/decrypt' },
+      { id: '5000', kind: 'award', title: 'ETCISO Awards 2024', year: '2024', start: '2024-11-01', link: 'https://ciso.economictimes.indiatimes.com/awards' }],
+    speakers: [{ n: 'Naven Singh', d: 'Group CISO', c: 'Acme Bank', p: 'https://img.etb2bimg.com/files/cp/naven.jpg', l: 'https://linkedin.com/in/naven', b: 'Security leader.', e: [0, 1, 2], rs: ['Keynote Address', '', 'Grand Jury'] },
       { n: 'Naven Singh', d: 'CISO', c: 'Globex', p: '', e: [1] }],
     sponsors: [{ n: 'SailPoint', g: 'https://img.etb2bimg.com/files/cp/sailpoint.png', u: 'https://sailpoint.com', t: 'Gold Partners', e: [0, 1], ts: ['Gold Partners', 'Platinum Partner'] }], counts: { events: 2, speakers: 2, sponsors: 1 } };
   FB.docs['etLibrary/cio'] = { portal: 'cio', portalName: 'ETCIO', builtAt: new Date().toISOString(),
     events: [{ id: '700', title: 'ETCIO Annual 2025', year: '2025', start: '2025-12-01', link: 'https://cio.economictimes.indiatimes.com/annual' }],
     speakers: [{ n: 'Naven Singh', d: 'CISO & CTO', c: 'Acme Bank Ltd', p: 'https://img.etb2bimg.com/files/cp/naven-cio.jpg', e: [0] }], sponsors: [{ n: 'SailPoint Technologies', g: 'https://img.etb2bimg.com/files/cp/sp2.png', e: [0] }], counts: { events: 1, speakers: 1, sponsors: 1 } };
-  FB.docs['etLibraryAgenda/ciso'] = { portal: 'ciso', events: [{ i: 0, id: '900', s: [{ t: 'Zero trust in BFSI', a: '2026-03-10 11:30:00', z: '', k: ['naven singh|acme bank'] }, { t: 'Someone else’s talk', a: '2026-03-10 12:00:00', k: ['x|y'] }] }] };
+  FB.docs['etLibraryAgenda/ciso'] = { portal: 'ciso', events: [{ i: 0, id: '900', s: [{ t: 'Zero trust in BFSI', a: '2026-03-10 11:30:00', z: '', d: 'How banks verify every request.', k: ['naven singh|acme bank', 'naven singh|globex'] }, { t: 'Someone else’s talk', a: '2026-03-10 12:00:00', k: ['x|y'] }] }],
+    bios: { 'naven singh|acme bank': 'Security leader. ' + Array(40).join('He has led security programmes at three banks. ') } };
   FB.docs['events/ciso-secufest-summit-2027'] = { name: 'CISO Secufest Summit 2027', portal: 'ciso', category: 'ip', createdAt: '2026-10-01T00:00:00Z', start: '2027-03-11T09:00', published: true };
   FB.docs['events/ciso-secufest-summit-2027/speakers/s1'] = { name: 'Naven Singh', desig: 'Group CISO & DPO', comp: 'Acme Bank', status: 'confirmed', email: 'naven.private@acme.test', phone: '+91 99999 00000' };
   FB.docs['events/ciso-secufest-summit-2027/sessions/x1'] = { title: 'Keynote: Cyber resilience', start: '10:30', speakerIds: ['s1'] };
@@ -209,7 +211,11 @@ function page(url) {
   check('4 …the way back to the event, the canonical address, the person\'s structured data, no script but that',
     /<a class="back" href="\/e\/ciso-secufest-summit-2027">/.test(html) && /<link rel="canonical" href="https:\/\/sites\.test\/speakers\/naven-singh">/.test(html) && /"@type":"ProfilePage"/.test(html) && /"@type":"Person"/.test(html) &&
     (html.match(/<script/g) || []).length === 1 && /<script type="application\/ld\+json">/.test(html));
-  check('4 …counts: events, sessions, the first year, the portals', /<b>4<\/b>ET events/.test(html) && /<b>2<\/b>sessions/.test(html) && /<b>2025<\/b>first with ET/.test(html), (html.match(/<ul class="stats"[\s\S]*?<\/ul>/) || [''])[0]);
+  check('4 …counts: events, sessions, award juries, the first year, the portals', /<b>4<\/b>ETB2B events/.test(html) && /<b>2<\/b>sessions/.test(html) && /<b>1<\/b>award jury/.test(html) && /<b>2024<\/b>first with ETB2B/.test(html), (html.match(/<ul class="stats"[\s\S]*?<\/ul>/) || [''])[0]);
+  check('4 …their role at each edition, the award they judged, a session\'s description, who shared it (a link to their page), the whole bio',
+    /<span class="tier">Keynote Address<\/span>/.test(html) && /ETCISO Awards 2024/.test(html) && /<span class="tier">Grand Jury<\/span>/.test(html) && /How banks verify every request\./.test(html) &&
+    /With <a href="\/speakers\/naven-singh-globex">Naven Singh<\/a>/.test(html) && /three banks\. He has led/.test(html), (html.match(/Journey with[\s\S]{0,1600}/) || [''])[0]);
+  check('4 …never a bare "ET" in what a visitor reads (ETB2B, The Economic Times Business Verticals)', !/\bET\b/.test(html.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<[^>]+>/g, ' ')) && /The Economic Times Business Verticals/.test(html));
   r = await page('/speakers/naven-singh?from=draft-x');
   check('4 …no way back to an event that is not live', r.status === 200 && !/class="back"/.test(r.text));
   r = await page('/speakers/priya-nair');
@@ -218,7 +224,7 @@ function page(url) {
   check('4 an address that is no one: 404', r.status === 404);
   r = await page('/sponsors/sailpoint');
   check('4 GET /sponsors/<slug>: the tier at each edition, the live event\'s tier, the website, no email', r.status === 200 && /Gold Partners/.test(r.text) && /Platinum Partner/.test(r.text) && /Associate Partner/.test(r.text) &&
-    /https:\/\/sailpoint\.com/.test(r.text) && /Partnerships with ET/.test(r.text) && !/deals@/.test(r.text) && /"@type":"Organization"/.test(r.text), r.text.slice(0, 300));
+    /https:\/\/sailpoint\.com/.test(r.text) && /Partnerships with ETB2B/.test(r.text) && !/deals@/.test(r.text) && /"@type":"Organization"/.test(r.text), r.text.slice(0, 300));
 
   /* 5. from an event site */
   r = await page('/speakers/go?e=ciso-secufest-summit-2027&r=s1&n=Naven%20Singh&c=Acme%20Bank');
@@ -277,6 +283,55 @@ function page(url) {
   var odd = PAGE.render({ kind: 'speakers', slug: 'x', name: '<img src=x onerror=alert(1)>', designation: '"quote"', company: '', photo: 'javascript:alert(1)', linkedin: 'javascript:alert(1)', journey: [{ key: 'et:1', title: '<b>T</b>', link: 'javascript:x', year: '2025', sessions: [] }], stats: { events: 1 }, sections: [], links: [{ label: 'x', url: 'javascript:y' }] }, { base: 'https://sites.test', today: '2026-11-11' });
   check('8 everything escaped; a link or a picture that is not http(s) is dropped', !/<img src=x/.test(odd) && !/javascript:/.test(odd) && /&lt;b&gt;T&lt;\/b&gt;/.test(odd));
   check('8 dates and times read as people say them', PAGE._test.dayLabel('2025-11-20') === '20 Nov 2025' && PAGE._test.timeLabel('2025-11-20T14:05:00') === '2:05 pm' && PAGE._test.timeLabel('10:30') === '10:30 am' && PAGE._test.timeLabel('2025-11-20 00:00:00') === '');
+
+  /* 9. ETB2B AI writes the About: a draft from the page's facts, never saved by it */
+  var llm = require('./llm'), realCall = llm.callJson, asked = null;
+  llm.callJson = function (prompt, schema, opts) { asked = { prompt: prompt, opts: opts }; return Promise.resolve({ parsed: { about: '"Naven Singh is Group CISO at Acme Bank. He has spoken at ET events and ET\'s awards since 2024; he speaks with ETCISO often."' }, provider: 'claude' }); };
+  var before9 = JSON.stringify(FB.docs['speakerPages/naven-singh'] || null);
+  var ab = await call(P.handleAbout, 'POST', '/api/people/speakers/about', 'ciso', { slug: 'naven-singh', note: 'stress the jury work' });
+  check('9 the About: written from the page\'s facts (events, roles, sessions), the rules and the team\'s note; "ET" alone never (ETCISO kept); nothing saved',
+    ab.status === 200 && /Group CISO at Acme Bank/.test(ab.body.about) && /ETB2B events and ETB2B's awards/.test(ab.body.about) && /ETCISO/.test(ab.body.about) && !/^"/.test(ab.body.about) &&
+    asked.opts.route === 'people-about' && /"role":"Grand Jury"/.test(asked.prompt) && /Zero trust in BFSI/.test(asked.prompt) && /stress the jury work/.test(asked.prompt) &&
+    /never "ET" on its own/.test(asked.prompt) && /Never add an achievement/.test(asked.prompt) && JSON.stringify(FB.docs['speakerPages/naven-singh'] || null) === before9, [ab.status, ab.body, asked && asked.prompt.slice(0, 300)]);
+  check('9 …never an email or a phone in what the model is given', !/naven\.private|99999/.test(asked.prompt));
+  var ab2 = await call(P.handleAbout, 'POST', '/api/people/speakers/about', 'hr', { slug: 'naven-singh' });
+  check('9 …only someone who may change the page asks for it', ab2.status === 403);
+  llm.callJson = realCall;
+
+  /* 10. Wikipedia: only when it names their company */
+  var W = require('./people-wiki');
+  function wikiFetch(url) {
+    if (/wbsearchentities/.test(url)) return Promise.resolve({ search: [{ id: 'Q1', label: 'Naven Singh', description: 'Indian banker' }, { id: 'Q2', label: 'Naven Singh', description: 'Indian cricketer' }, { id: 'Q3', label: 'Navendra Singh' }] });
+    if (/wbgetentities/.test(url) && /ids=Q1%7CQ2/.test(url)) return Promise.resolve({ entities: {
+      Q1: { labels: { en: { value: 'Naven Singh' } }, descriptions: { en: { value: 'Indian banker' } }, sitelinks: { enwiki: { title: 'Naven Singh (banker)' } }, claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'Q5' } } } }], P108: [{ mainsnak: { datavalue: { value: { id: 'Q900' } } } }] } },
+      Q2: { labels: { en: { value: 'Naven Singh' } }, descriptions: { en: { value: 'Indian cricketer' } }, sitelinks: { enwiki: { title: 'Naven Singh (cricketer)' } }, claims: { P31: [{ mainsnak: { datavalue: { value: { id: 'Q5' } } } }] } } } });
+    if (/wbgetentities/.test(url)) return Promise.resolve({ entities: { Q900: { labels: { en: { value: 'Acme Bank Limited' } } } } });
+    if (/page\/summary\/Naven_Singh_\(banker\)/.test(url)) return Promise.resolve({ title: 'Naven Singh (banker)', extract: 'Naven Singh is an Indian banker who leads security at Acme Bank.', content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Naven_Singh_(banker)' } },
+      thumbnail: { source: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Naven.jpg/320px-Naven.jpg' }, originalimage: { source: 'https://upload.wikimedia.org/wikipedia/commons/a/ab/Naven.jpg' } });
+    return Promise.resolve(null);
+  }
+  var found = await W.find({ kind: 'speakers', name: 'Naven Singh', companies: ['Acme Bank'] }, { fetchJson: wikiFetch });
+  check('10 two entries of the name: the one whose employer is their company is them; the namesake is not; another name is not asked', found.match && found.match.qid === 'Q1' && /employer: Acme Bank Limited/.test(found.match.why) &&
+    found.candidates.length === 2 && !found.candidates[1].match, found);
+  var none = await W.find({ kind: 'speakers', name: 'Naven Singh', companies: ['Globex'] }, { fetchJson: wikiFetch });
+  check('10 …a person of another company: no match at all', !none.match && none.candidates.every(function (c) { return !c.match; }));
+  var ix10 = await T.readIndex(FB, 'speakers', true);
+  var person10 = await T.personOf(FB, 'speakers', 'naven-singh', ix10.people['naven-singh'], null, { idx: ix10 });
+  var looked = await P.wikiLookup(FB, 'speakers', 'naven-singh', person10, 'asha@timesinternet.in', { fetchJson: wikiFetch });
+  r = await page('/speakers/naven-singh');
+  check('10 a match is shown on the page: the summary, a link, the licence\'s credit, and in the structured data', looked.status === 'matched' && /From Wikipedia/.test(r.text) && /leads security at Acme Bank/.test(r.text) &&
+    /CC BY-SA 4\.0/.test(r.text) && /https:\/\/en\.wikipedia\.org\/wiki\/Naven_Singh_\(banker\)/.test(r.text) && /"sameAs":\[[^\]]*wikipedia/.test(r.text), r.text.slice(0, 200));
+  check('10 …its picture is not used where the page has a photo', !/upload\.wikimedia\.org/.test((r.text.match(/<figure class="ph">[\s\S]*?<\/figure>/) || [''])[0]));
+  var off = await call(P.handleWiki, 'POST', '/api/people/speakers/wiki', 'ciso', { slug: 'naven-singh', action: 'off' });
+  r = await page('/speakers/naven-singh');
+  check('10 the team turns it off: gone from the page', off.status === 200 && off.body.person.wiki === null && !/From Wikipedia/.test(r.text));
+  var spf = await W.find({ kind: 'sponsors', name: 'SailPoint', website: 'https://www.sailpoint.com' }, { fetchJson: function (url) {
+    if (/wbsearchentities/.test(url)) return Promise.resolve({ search: [{ id: 'Q7', label: 'SailPoint' }] });
+    if (/wbgetentities/.test(url)) return Promise.resolve({ entities: { Q7: { labels: { en: { value: 'SailPoint' } }, sitelinks: { enwiki: { title: 'SailPoint' } }, claims: { P856: [{ mainsnak: { datavalue: { value: 'https://sailpoint.com/' } } }] } } } });
+    return Promise.resolve(null);
+  } });
+  check('10 a sponsor: the entry whose website is theirs', spf.match && spf.match.qid === 'Q7' && /website: sailpoint\.com/.test(spf.match.why), spf);
+  check('10 what is kept of Wikipedia: https on its own hosts only', W.clean({ url: 'https://evil.test/x', extract: 'x' }) === null && W.clean({ url: 'https://en.wikipedia.org/wiki/X', extract: 'Y', image: 'https://evil.test/a.jpg', imagePage: 'https://commons.wikimedia.org/wiki/File:a.jpg' }).image === '');
 
   process.stdout.write('people: ' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);

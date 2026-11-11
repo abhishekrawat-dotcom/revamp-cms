@@ -581,6 +581,10 @@ window.RevampCore = (function(){
   function mergePeople(kind, slug, other){ return api('POST', '/api/people/' + peopleKind(kind) + '/merge', { slug: String(slug || ''), other: String(other || '') }); }
   function splitPerson(kind, slug, rows){ return api('POST', '/api/people/' + peopleKind(kind) + '/split', { slug: String(slug || ''), rows: rows || [] }); }
   function undoPerson(kind, slug){ return api('POST', '/api/people/' + peopleKind(kind) + '/undo', { slug: String(slug || '') }); }
+  /* ETB2B AI's draft of a page's About, from its facts (never saved by it): -> { about } */
+  /* Wikipedia on a page: action 'find' | 'use' (with qid) | 'off' | 'on' -> the page's view again */
+  function personWiki(kind, slug, action, qid){ return api('POST', '/api/people/' + peopleKind(kind) + '/wiki', { slug: String(slug || ''), action: String(action || ''), qid: String(qid || '') }); }
+  function writePersonAbout(kind, slug, note){ return api('POST', '/api/people/' + peopleKind(kind) + '/about', { slug: String(slug || ''), note: String(note || '').slice(0, 300) }); }
   /* Settings › Access (functions/lib/api-access.js): who may use EventSphere, as what, in which portals */
   function fetchAccess(){ return api('GET', '/api/access'); }
   function saveAccessMember(m){ return api('POST', '/api/access/member', m || {}); }
@@ -1559,7 +1563,7 @@ window.RevampCore = (function(){
     fetchSeo: fetchSeo, writeSeo: writeSeo, draftFaqs: draftFaqs, fetchSeoPrevious: fetchSeoPrevious, fetchEtEvents: fetchEtEvents,
     fetchHistory: fetchHistory, fetchHistoryAndUsage: fetchHistoryAndUsage, fetchActivityLog: fetchActivityLog, fetchApprovalSettings: fetchApprovalSettings, saveApprovalSettings: saveApprovalSettings,
     searchLibrary: searchLibrary, buildLibrary: buildLibrary, findSpeakerPhotos: findSpeakerPhotos,
-    listPeople: listPeople, fetchPerson: fetchPerson, savePerson: savePerson, mergePeople: mergePeople, splitPerson: splitPerson, undoPerson: undoPerson,
+    listPeople: listPeople, fetchPerson: fetchPerson, savePerson: savePerson, mergePeople: mergePeople, splitPerson: splitPerson, undoPerson: undoPerson, writePersonAbout: writePersonAbout, personWiki: personWiki,
     fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,

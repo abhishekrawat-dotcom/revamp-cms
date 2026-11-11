@@ -23,24 +23,32 @@ var EVENTS = {
   cio: [{ id: '700', title: 'ETCIO Annual 2025', start: '2025-12-01T09:00:00', link: 'https://cio.economictimes.indiatimes.com/annual', speakers: 1, past: true, upcoming: false }]
 };
 var LISTS = {
-  'speaker/900': [{ speaker_name: 'Naven Singh', speaker_desig: 'Group CISO', speaker_company: 'Acme Bank', speaker_picture: 'cp/naven-2026.jpg', linkedin_url: 'linkedin.com/in/naven' },
-    { speaker_name: 'Bruce Schneier', speaker_desig: 'Security Technologist', speaker_company: '', speaker_picture: 'cp/bruce.jpg' },
+  'speaker/900': [{ id: 11, speaker_name: 'Naven Singh', speaker_desig: 'Group CISO', speaker_company: 'Acme Bank', speaker_picture: 'cp/naven-2026.jpg', linkedin_url: 'linkedin.com/in/naven', group: { group_name: 'Keynote Address' },
+      speaker_info: '<p>' + Array(60).join('Naven has led security at three banks. ') + '</p>' },
+    { id: 12, speaker_name: 'Bruce Schneier', speaker_desig: 'Security Technologist', speaker_company: '', speaker_picture: 'cp/bruce.jpg', group: { group_name: 'Speakers' } },
     { speaker_name: 'Hidden Person', status: '0' }],
   'speaker/800': [{ speaker_name: 'Naven  Singh', speaker_desig: 'CISO', speaker_company: 'Acme Bank', speaker_picture: 'cp/naven-2025.jpg', speaker_info: '<p>Security leader.</p>' },
     { speaker_name: 'Naven Singh', speaker_desig: 'CISO', speaker_company: 'Globex', speaker_picture: 'cp/naven-globex.jpg' }],
   'sponsor/900': [{ sponsor_title: 'SailPoint', sponsor_logo: 'sailpoint.png', group: { group_name: 'Gold Partners' }, url: 'https://sailpoint.com' }],
   'sponsor/800': [{ sponsor_title: 'SailPoint', sponsor_logo: 'sailpoint-old.png', group: { group_name: 'Platinum Partner' } }, { sponsor_title: 'Thales', sponsor_logo: 'thales.png' }],
   'speaker/700': [{ speaker_name: 'Shweta Singh', speaker_desig: 'SVP AI', speaker_company: 'Bharti AXA', speaker_picture: 'cp/shweta.jpg' }],
-  'sponsor/700': []
+  'sponsor/700': [],
+  'agenda/900': [{ agenda_title: 'Panel: Zero trust in BFSI', agenda_start_datetime: '2026-03-10 11:30:00', agenda_end_datetime: '2026-03-10 12:10:00', agenda_description: '<p>How banks&nbsp;verify every request.</p>',
+    status: 1, speakers: [{ id: 11, speaker_name: 'Naven Singh' }, { id: 12, speaker_name: 'Bruce Schneier' }] }],
+  /* an award: its speaker list is its jury, its sponsor list its partners */
+  'speaker/5000': [{ speaker_name: 'Naven Singh', speaker_desig: 'Group CISO', speaker_company: 'Acme Bank', group: { group_name: 'Grand Jury' } }],
+  'sponsor/5000': [{ sponsor_title: 'SailPoint', sponsor_logo: 'sailpoint.png', group: { group_name: 'Knowledge Partner' } }]
 };
+var AWARDS = { ciso: [{ id: '5000', kind: 'award', awardId: '77', title: 'ETCISO Awards 2025', start: '2025-11-01 19:00:00', link: 'https://ciso.economictimes.indiatimes.com/awards', past: true, upcoming: false, speakers: 0 }] };
 var asked = [];
 function fetchJson(url) {
   asked.push(url);
-  var m = /\/v1\/activity\/(speaker|sponsor)\/list\?entity_id=(\d+)/.exec(url);
+  var m = /\/v1\/activity\/(speaker|sponsor|agenda)\/list\?entity_id=(\d+)/.exec(url);
   var items = m ? LISTS[m[1] + '/' + m[2]] || [] : [];
   return Promise.resolve({ status: true, data: { items: items, is_last_page: true, total_pages: 1 } });
 }
 etEvents.listIpEvents = function (portal) { return Promise.resolve(EVENTS[portal] || []); };
+etEvents.listAwards = function (portal) { return Promise.resolve(AWARDS[portal] || []); };
 
 /* ---------- Firestore ---------- */
 function clone(v) { return v == null ? v : JSON.parse(JSON.stringify(v)); }
@@ -96,16 +104,29 @@ function call(handler, method, url, token, body) {
 
   /* 2. one portal read from ET */
   var doc = await T.buildPortal('ciso', fetchJson);
-  check('2 only events that took place, newest first; the one to come is not read', JSON.stringify(doc.events.map(function (e) { return e.id + ':' + e.year; })) === '["900:2026","800:2025"]' &&
+  check('2 only events (and awards) that took place, newest first; the one to come is not read', JSON.stringify(doc.events.map(function (e) { return e.id + ':' + e.year; })) === '["900:2026","5000:2025","800:2025"]' &&
     !asked.some(function (u) { return /entity_id=950/.test(u); }), doc.events);
   var naven = doc.speakers.filter(function (s) { return s.n === 'Naven Singh' && s.c === 'Acme Bank'; });
-  check('2 a person at two editions with the same company is one entry, the newest designation and photo, both events', naven.length === 1 && naven[0].d === 'Group CISO' &&
-    /naven-2026\.jpg$/.test(naven[0].p) && JSON.stringify(naven[0].e) === '[0,1]' && naven[0].b === 'Security leader.' && naven[0].l === 'https://linkedin.com/in/naven', naven);
+  check('2 a person at several editions with the same company is one entry, the newest designation, photo and bio, every edition', naven.length === 1 && naven[0].d === 'Group CISO' &&
+    /naven-2026\.jpg$/.test(naven[0].p) && JSON.stringify(naven[0].e) === '[0,1,2]' && /^Naven has led security/.test(naven[0].b) && naven[0].l === 'https://linkedin.com/in/naven', naven);
   check('2 the same name at another company is another entry', doc.speakers.some(function (s) { return s.c === 'Globex'; }));
   check('2 a speaker the edition does not show is left out', !doc.speakers.some(function (s) { return /Hidden/.test(s.n); }));
   var sail = doc.sponsors.filter(function (s) { return s.n === 'SailPoint'; });
-  check('2 a sponsor at two editions is one entry with the newest logo and tier', sail.length === 1 && /sailpoint\.png$/.test(sail[0].g) && sail[0].t === 'Gold Partners' && sail[0].u === 'https://sailpoint.com' && sail[0].e.length === 2, sail);
-  check('2 the counts', doc.counts.events === 2 && doc.counts.speakers === 3 && doc.counts.sponsors === 2, doc.counts);
+  check('2 a sponsor at several editions is one entry with the newest logo and tier', sail.length === 1 && /sailpoint\.png$/.test(sail[0].g) && sail[0].t === 'Gold Partners' && sail[0].u === 'https://sailpoint.com' && sail[0].e.length === 3, sail);
+  check('2 the counts (the award is an edition too)', doc.counts.events === 3 && doc.counts.speakers === 3 && doc.counts.sponsors === 2, doc.counts);
+  var award = doc.events.filter(function (e) { return e.kind === 'award'; });
+  var nv = doc.speakers.filter(function (x) { return x.n === 'Naven Singh' && x.c === 'Acme Bank'; })[0];
+  check('2 an award that took place is read: its jury joins the person, with the jury as their role; a role at each edition, "Speakers" none',
+    award.length === 1 && award[0].title === 'ETCISO Awards 2025' && nv.e.length === 3 && nv.rs.indexOf('Grand Jury') !== -1 && nv.rs.indexOf('Keynote Address') !== -1 &&
+    !doc.speakers.some(function (x) { return x.n === 'Bruce Schneier' && x.rs; }), { award: award, nv: nv });
+  var sail2 = doc.sponsors.filter(function (x) { return x.n === 'SailPoint'; })[0];
+  check('2 …the award\'s partners are its sponsors, with their tier there', sail2.e.length === 3 && sail2.ts.indexOf('Knowledge Partner') !== -1, sail2);
+  var ag = {};
+  await T.buildPortal('ciso', fetchJson, { agenda: ag });
+  var sess = ((ag.events || [])[0] || { s: [] }).s[0] || {};
+  check('2 the sessions: each with its description (as text) and every person who spoke in it', sess.t === 'Panel: Zero trust in BFSI' && sess.d === 'How banks verify every request.' &&
+    sess.k.join() === 'naven singh|acme bank,bruce schneier|', ag);
+  check('2 …and a bio longer than the entry keeps, whole, for the person\'s page', ag.bios && ag.bios['naven singh|acme bank'] && ag.bios['naven singh|acme bank'].length > nv.b.length && nv.b.length <= 400, Object.keys(ag.bios || {}));
 
   /* 3. searching */
   var cio = await T.buildPortal('cio', fetchJson);

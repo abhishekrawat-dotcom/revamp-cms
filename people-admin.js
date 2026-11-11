@@ -55,10 +55,10 @@
   }
   function renderList() {
     var L = state.list;
-    var html = '<div class="vhead"><div class="crumb">Every ET portal</div><h2 id="pp-h" tabindex="-1">' + WORDS.Many + '</h2>' +
+    var html = '<div class="vhead"><div class="crumb">Every ETB2B portal</div><h2 id="pp-h" tabindex="-1">' + WORDS.Many + '</h2>' +
       '<div class="sub">' + (SP
-        ? 'One page for each speaker, whichever portals they spoke on: the ET events they spoke at and their sessions, and what the team adds. Event sites open it from a speaker’s card.'
-        : 'One page for each sponsor: the ET events they partnered, at which tier, and what the team adds. Event sites open it from a sponsor’s logo.') + '</div></div>' + tabs() +
+        ? 'One page for each speaker, whichever portals they spoke on: the ETB2B events they spoke at and their sessions, and what the team adds. Event sites open it from a speaker’s card.'
+        : 'One page for each sponsor: the ETB2B events they partnered, at which tier, and what the team adds. Event sites open it from a sponsor’s logo.') + '</div></div>' + tabs() +
       '<div class="pp-bar"><label class="search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>' +
       '<input id="pp-q" type="search" autocomplete="off" placeholder="Search ' + WORDS.many + ' by name" aria-label="Search ' + WORDS.many + ' by name" value="' + esc(state.typed) + '"></label>' +
       '<div class="pp-filters" role="group" aria-label="Show">' + FILTERS.map(function (f) {
@@ -71,7 +71,7 @@
       var what = state.filter === 'edited' ? 'changed by the team' : state.filter === 'hidden' ? 'hidden' : state.filter === 'same-name' ? 'that share a name with another page: check whether they are one person' : '';
       html += '<p class="pp-count" aria-live="polite">' + (state.q || state.filter !== 'all'
         ? comma(L.total) + ' ' + (L.total === 1 ? WORDS.one : WORDS.many) + (state.q ? ' named “' + esc(state.q) + '”' : '') + (what ? ' ' + what : '') + (L.total > L.items.length ? '; the first ' + L.items.length + ' are shown' : '') + '.'
-        : comma(L.count) + ' ' + WORDS.many + ' across every ET portal, each once. The ' + L.items.length + ' most recent are shown; search for anyone.') + '</p>';
+        : comma(L.count) + ' ' + WORDS.many + ' across every ETB2B portal, each once. The ' + L.items.length + ' most recent are shown; search for anyone.') + '</p>';
       if (L.items.length) {
         html += '<ul class="pp-list">' + L.items.map(function (it) {
           var line = [it.company, (it.portals || []).slice(0, 3).join(', ') + ((it.portals || []).length > 3 ? '…' : ''), it.editions ? it.editions + (it.editions === 1 ? ' edition' : ' editions') : '', it.year].filter(Boolean).join(' · ');
@@ -114,8 +114,50 @@
     var input = o.area
       ? '<textarea class="inp" id="' + id + '" rows="' + (o.rows || 5) + '" maxlength="' + (o.max || 4000) + '" placeholder="' + esc(auto || o.placeholder || '') + '">' + esc(value) + '</textarea>'
       : '<input class="inp" id="' + id + '" type="' + (o.type || 'text') + '" maxlength="' + (o.max || 200) + '" value="' + esc(value) + '" placeholder="' + esc(auto || o.placeholder || '') + '"' + (o.type === 'url' ? ' inputmode="url"' : '') + '>';
-    var hint = auto ? (SP ? 'Left empty, ET’s records say: ' : 'Left empty: ') + '“' + String(auto).slice(0, 140) + (String(auto).length > 140 ? '…' : '') + '”' : (o.hint || '');
+    var hint = auto ? (SP ? 'Left empty, ETB2B’s records say: ' : 'Left empty: ') + '“' + String(auto).slice(0, 140) + (String(auto).length > 140 ? '…' : '') + '”' : (o.hint || '');
     return '<div class="field ' + (o.c || 'c6') + '"><label for="' + id + '">' + label + '</label>' + input + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '') + '</div>';
+  }
+  /* About: written by hand, or by ETB2B AI from what this page shows (a draft to read and change, then Save) */
+  function aboutField(p, d, ro) {
+    var ai = state.aboutMode === 'ai';
+    var dis = ro || state.aiBusy ? ' disabled' : '';
+    var auto = SP ? (p.auto.bio || '') : '';
+    return '<div class="field c12"><div class="pp-about-head"><label for="pp-about">About</label>' +
+      '<div class="pp-mode" role="group" aria-label="How to write the About">' +
+      '<button type="button" data-mode="me" aria-pressed="' + !ai + '"' + (ro ? ' disabled' : '') + '>Edit myself</button>' +
+      '<button type="button" data-mode="ai" aria-pressed="' + ai + '"' + (ro ? ' disabled' : '') + '>Edit with ETB2B AI</button></div></div>' +
+      (ai ? '<div class="pp-ai"><input class="inp" id="pp-ai-note" maxlength="300" placeholder="Anything to stress? (optional), e.g. their work on cloud security" value="' + esc(state.aiNoteText || '') + '"' + dis + '>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="pp-ai-go"' + dis + '>' + (state.aiBusy ? 'Writing\u2026' : (d.about ? 'Write it again' : 'Write it')) + '</button></div>' +
+        '<p class="hint">ETB2B AI writes only from what this page shows: its events, roles and sessions, and what the team added. It puts a draft in the box below; nothing is saved until you Save.</p>' : '') +
+      (state.aiDone ? '<p class="hint pp-ai-done" role="status">' + esc(state.aiDone) + '</p>' : '') +
+      '<textarea class="inp" id="pp-about" rows="6" maxlength="4000" placeholder="' + esc(auto || (SP ? 'A few lines about them, for the page.' : 'A few lines about the company, for the page.')) + '">' + esc(d.about || '') + '</textarea>' +
+      (auto ? '<p class="hint">' + esc('Left empty, ETB2B\u2019s records say: \u201c' + auto.slice(0, 140) + (auto.length > 140 ? '\u2026' : '') + '\u201d') + '</p>' : '') + '</div>';
+  }
+  function wikiPanel(p, ro) {
+    var w = p.wiki, st = p.wikiState || null, dis = ro || state.wikiBusy ? ' disabled' : '';
+    var html = '<section class="panel"><div class="panel-head"><h3>Wikipedia</h3><span class="sub">' + (SP
+      ? 'Shown only when Wikipedia names their company as their employer, or the team confirms it is them, with its credit line.'
+      : 'Shown only when Wikipedia gives the sponsor\u2019s own website, or the team confirms it, with its credit line.') + '</span></div><div class="panel-body">';
+    if (state.wikiBusy) html += '<p class="pa-msg">Looking on Wikipedia\u2026</p>';
+    else if (w) {
+      html += '<p class="pp-txt"><b><a href="' + esc(w.url) + '" target="_blank" rel="noopener">' + esc(w.title) + '</a></b><span>' + esc((st && st.why) || w.matchedOn || '') + '</span></p>' +
+        '<p class="hint" style="margin:8px 0 10px">' + esc(String(w.extract || '').slice(0, 260) + (String(w.extract || '').length > 260 ? '\u2026' : '')) + '</p>' +
+        '<div class="pp-acts"><button class="btn btn-secondary btn-sm" type="button" data-wiki="off"' + dis + '>Don\u2019t show it on the page</button>' +
+        '<button class="btn btn-ghost btn-sm" type="button" data-wiki="find"' + dis + '>Look again</button></div>';
+    } else if (st && st.status === 'off') {
+      html += '<p class="pa-msg">Not shown on the page: the team turned it off.</p><div class="pp-acts" style="margin-top:8px"><button class="btn btn-secondary btn-sm" type="button" data-wiki="on"' + dis + '>Show it again</button></div>';
+    } else {
+      if (st && st.status === 'none') {
+        var c = (st.candidates || []).filter(function (x) { return x.title; });
+        html += '<p class="pa-msg">Not shown: ' + (c.length ? 'Wikipedia has ' + (c.length === 1 ? 'a page' : 'pages') + ' of that name, but none names ' + (SP ? 'their company' : 'their website') + '.' : 'Wikipedia has no page for them.') + '</p>';
+        if (c.length) html += '<ul class="pp-j" style="margin-top:8px">' + c.map(function (x) {
+          return '<li><span class="pp-txt"><b>' + esc(x.label) + '</b><span>' + esc([x.description, x.why].filter(Boolean).join(' \u00b7 ')) + '</span></span>' +
+            '<button class="btn btn-secondary btn-sm" type="button" data-wiki="use" data-qid="' + esc(x.qid) + '"' + dis + '>It is them: use it</button></li>';
+        }).join('') + '</ul>';
+      }
+      html += '<div class="pp-acts" style="margin-top:8px"><button class="btn btn-secondary btn-sm" type="button" data-wiki="find"' + dis + '>' + (st ? 'Look again' : 'Look for them on Wikipedia') + '</button></div>';
+    }
+    return html + '</div></section>';
   }
   function journeyLine(j) {
     var bits = [j.date ? C.fmtDate(j.date) : j.year, j.portalName, SP && j.company ? 'as ' + j.company : '', !SP && j.tier ? j.tier : ''].filter(Boolean).join(' · ');
@@ -137,20 +179,20 @@
     if (state.err) html += '<p class="pp-note err" role="alert">' + esc(state.err) + '</p>';
     if (!v.canChange) html += '<p class="pp-note">' + esc(v.whyNot || 'You can read this page but not change it.') + '</p>';
     if (v.hidden) html += '<p class="pp-note err">This page is hidden: its address answers “not available”, and event sites do not lead to it.</p>';
-    else if (!p.hasPage) html += '<p class="pp-note">This page has nothing public to show yet (no ET edition, and no live event), so its address answers “not available”.</p>';
+    else if (!p.hasPage) html += '<p class="pp-note">This page has nothing public to show yet (no ETB2B edition, and no live event), so its address answers “not available”.</p>';
 
     /* what the page says */
-    html += '<section class="panel"><div class="panel-head"><h3>On the page</h3><span class="sub">Anything left empty is what ET’s records say.</span></div><div class="panel-body">' +
+    html += '<section class="panel"><div class="panel-head"><h3>On the page</h3><span class="sub">Anything left empty is what ETB2B’s records say.</span></div><div class="panel-body">' +
       '<div class="field" style="margin-bottom:14px"><span class="flabel">' + (SP ? 'Photo' : 'Logo') + '</span><div class="pp-pic">' + pic(picNow, p.name, !SP) +
       '<div class="pp-acts"><label class="btn btn-secondary"' + (ro ? ' aria-disabled="true"' : '') + '>Upload a ' + WORDS.pic + '<input type="file" id="pp-file" accept="image/jpeg,image/png,image/webp" hidden' + dis + '></label>' +
-      (set[SP ? 'photo' : 'logo'] ? '<button class="btn btn-ghost" type="button" id="pp-pic-auto"' + dis + '>Use ET’s ' + WORDS.pic + '</button>' : '') + '</div></div>' +
-      '<p class="hint">' + (set[SP ? 'photo' : 'logo'] ? 'The team’s ' + WORDS.pic + ' is shown.' : p.auto[SP ? 'photo' : 'logo'] ? 'ET’s ' + WORDS.pic + ' is shown.' : 'No ' + WORDS.pic + ' yet: ' + (SP ? 'initials are shown.' : 'the name is shown.')) + '</p></div>' +
+      (set[SP ? 'photo' : 'logo'] ? '<button class="btn btn-ghost" type="button" id="pp-pic-auto"' + dis + '>Use ETB2B’s ' + WORDS.pic + '</button>' : '') + '</div></div>' +
+      '<p class="hint">' + (set[SP ? 'photo' : 'logo'] ? 'The team’s ' + WORDS.pic + ' is shown.' : p.auto[SP ? 'photo' : 'logo'] ? 'ETB2B’s ' + WORDS.pic + ' is shown.' : 'No ' + WORDS.pic + ' yet: ' + (SP ? 'initials are shown.' : 'the name is shown.')) + '</p></div>' +
       '<div class="frow">' + field('pp-name', 'Name', set.name || '', p.auto.name, { max: 120, c: SP ? 'c12' : 'c6' }) +
       (SP ? field('pp-desig', 'Designation', set.designation || '', p.auto.designation, { max: 200 }) + field('pp-co', 'Company', set.company || '', p.auto.company, { max: 160 }) +
         field('pp-li', 'LinkedIn', set.linkedin || '', p.auto.linkedin, { type: 'url', max: 500, placeholder: 'https://www.linkedin.com/in/…' }) +
         field('pp-x', 'X', set.x || '', '', { type: 'url', max: 500, placeholder: 'https://x.com/…', hint: 'Their profile on X, if they have one.' })
         : field('pp-web', 'Website', set.website || '', p.auto.website, { type: 'url', max: 500, placeholder: 'https://…' })) +
-      field('pp-about', 'About', d.about || '', SP ? (p.auto.bio || '') : '', { area: true, rows: 6, c: 'c12', max: 4000, placeholder: SP ? 'A few lines about them, for the page.' : 'A few lines about the company, for the page.' }) + '</div></div></section>';
+      aboutField(p, d, ro) + '</div></div></section>';
 
     /* the team's sections and links */
     html += '<section class="panel"><div class="panel-head"><h3>More on the page</h3><span class="sub">Anything else worth saying: awards, books, a quote, a talk to watch.</span></div><div class="panel-body">' +
@@ -169,13 +211,16 @@
       }).join('') +
       ((d.links || []).length < 10 ? '<button class="btn btn-secondary btn-sm" type="button" id="pp-add-link"' + dis + '>Add a link</button>' : '') + '</div></section>';
 
+    /* Wikipedia, for the well-known: used only when it names their company (or the team confirms it is them) */
+    html += wikiPanel(p, ro);
+
     /* the journey */
     var j = p.journey || [];
-    html += '<section class="panel"><div class="panel-head"><h3>' + (SP ? 'Journey with ET' : 'Partnerships with ET') + '</h3><span class="sub">Untick an event to leave it off the page.</span></div><div class="panel-body">' +
+    html += '<section class="panel"><div class="panel-head"><h3>' + (SP ? 'Journey with ETB2B' : 'Partnerships with ETB2B') + '</h3><span class="sub">Untick an event to leave it off the page.</span></div><div class="panel-body">' +
       (j.length ? '<ul class="pp-j">' + j.map(function (x) {
         var off = !!x.why;
         return '<li><input type="checkbox" id="pp-ev-' + esc(x.key) + '" data-ev="' + esc(x.key) + '"' + (!off && d.hideEvents.indexOf(x.key) === -1 ? ' checked' : '') + (off || ro ? ' disabled' : '') + '>' +
-          '<label class="pp-txt" for="pp-ev-' + esc(x.key) + '"><b>' + esc(x.title) + '</b><span>' + esc(journeyLine(x)) + (x.src === 'own' ? ' · EventSphere' : ' · ET’s records') + '</span>' +
+          '<label class="pp-txt" for="pp-ev-' + esc(x.key) + '"><b>' + esc(x.title) + '</b><span>' + esc(journeyLine(x)) + (x.src === 'own' ? ' · EventSphere' : ' · ETB2B’s records') + '</span>' +
           (off ? '<span class="why">Not on the page: ' + esc(x.why) + '</span>' : '') +
           (x.sessions && x.sessions.length ? '<ul>' + x.sessions.map(function (s) { return '<li>' + esc(s.title) + '</li>'; }).join('') + '</ul>' : '') + '</label></li>';
       }).join('') + '</ul>' : '<p class="pa-msg">No events yet.</p>') + '</div></section>';
@@ -189,7 +234,7 @@
     html += '<section class="panel" style="margin-top:18px"><div class="panel-head"><h3>Who this is</h3><span class="sub">The records this page is made of: ' + (SP ? 'the same name and company on every portal.' : 'the same name on every portal.') + '</span></div><div class="panel-body">' +
       '<ul class="pp-j">' + rows.map(function (r) {
         return '<li><input type="checkbox" data-row="' + esc(r.key) + '" id="pp-row-' + esc(r.key) + '"' + (ro || rows.length < 2 ? ' disabled' : '') + '>' +
-          '<label class="pp-txt" for="pp-row-' + esc(r.key) + '"><b>' + esc(r.label) + '</b><span>' + esc([r.company, r.at ? String(r.at).slice(0, 4) : '', r.src === 'own' ? 'EventSphere' : 'ET’s records'].filter(Boolean).join(' · ')) + '</span>' +
+          '<label class="pp-txt" for="pp-row-' + esc(r.key) + '"><b>' + esc(r.label) + '</b><span>' + esc([r.company, r.at ? String(r.at).slice(0, 4) : '', r.src === 'own' ? 'EventSphere' : 'ETB2B’s records'].filter(Boolean).join(' · ')) + '</span>' +
           (r.why ? '<span class="why">Not on the page: ' + esc(r.why) + '</span>' : '') + '</label></li>';
       }).join('') + '</ul>' +
       (rows.length > 1 ? '<div class="pp-acts" style="margin-top:10px"><button class="btn btn-secondary btn-sm" type="button" id="pp-split" disabled>The ticked ones are another ' + (SP ? 'person' : 'company') + '</button></div>' : '') +
@@ -285,7 +330,10 @@
       renderOne();
     });
   }
-  function setView(v) { state.view = v; state.draft = clone(v.page); if (!state.draft.hideEvents) state.draft.hideEvents = []; }
+  function setView(v) {
+    if (!state.view || state.view.slug !== v.slug) { state.aboutMode = 'me'; state.aiDone = ''; state.aiNoteText = ''; }
+    state.view = v; state.draft = clone(v.page); if (!state.draft.hideEvents) state.draft.hideEvents = [];
+  }
   function wireOne() {
     var v = state.view, d = state.draft;
     document.getElementById('pp-tolist').addEventListener('click', function (e) { e.preventDefault(); location.hash = ''; });
@@ -305,6 +353,42 @@
     });
     var auto = document.getElementById('pp-pic-auto');
     if (auto) auto.addEventListener('click', function () { readInputs(); delete d.set[SP ? 'photo' : 'logo']; renderOne(); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-mode]'), function (b) {
+      b.addEventListener('click', function () { readInputs(); state.aboutMode = b.getAttribute('data-mode'); state.aiDone = ''; renderOne(); var n = document.getElementById(state.aboutMode === 'ai' ? 'pp-ai-note' : 'pp-about'); if (n) n.focus(); });
+    });
+    var aiGo = document.getElementById('pp-ai-go');
+    if (aiGo) aiGo.addEventListener('click', function () {
+      readInputs();
+      var noteEl = document.getElementById('pp-ai-note');
+      state.aiNoteText = noteEl ? noteEl.value : '';
+      state.aiBusy = true; state.aiDone = ''; state.err = '';
+      renderOne();
+      C.writePersonAbout(KIND, v.slug, state.aiNoteText).then(function (r) {
+        state.aiBusy = false;
+        d.about = r.about;
+        state.aiDone = 'Written by ETB2B AI from this page\u2019s records. Read it, change anything, then Save.';
+        renderOne();
+        var t = document.getElementById('pp-about'); if (t) t.focus();
+      }, function (e) { state.aiBusy = false; state.err = errText(e); renderOne(); });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-wiki]'), function (b) {
+      b.addEventListener('click', function () {
+        readInputs();
+        var action = b.getAttribute('data-wiki'), qid = b.getAttribute('data-qid') || '';
+        var keep = clone(state.draft), was = dirty();
+        state.wikiBusy = true; state.err = ''; state.note = '';
+        renderOne();
+        C.personWiki(KIND, v.slug, action, qid).then(function (r) {
+          state.wikiBusy = false;
+          var draft = was ? keep : null;
+          setView(r);
+          if (draft) state.draft = draft;   /* what the person was typing stays */
+          state.note = action === 'find' ? (r.person.wiki ? 'Found on Wikipedia, and shown on the page.' : 'Not shown: no Wikipedia page that is surely them.') :
+            action === 'use' ? 'Their Wikipedia summary is on the page now.' : action === 'off' ? 'Wikipedia is not shown on the page now.' : 'Wikipedia is shown again.';
+          renderOne();
+        }, function (e) { state.wikiBusy = false; state.err = errText(e); renderOne(); });
+      });
+    });
     var addSec = document.getElementById('pp-add-sec');
     if (addSec) addSec.addEventListener('click', function () { readInputs(); d.sections.push({ heading: '', text: '' }); renderOne(); var n = document.getElementById('pp-sh-' + (d.sections.length - 1)); if (n) n.focus(); });
     var addLink = document.getElementById('pp-add-link');

@@ -110,7 +110,14 @@ var CSS = [
   '.ss li{display:flex;gap:8px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:15px}',
   '.ss li svg{flex:0 0 auto;color:var(--red);position:relative;top:2px}',
   '.ss time{flex:0 0 auto;font-size:13px;font-weight:700;color:var(--muted);min-width:64px}',
+  '.ss .st{display:block}',
+  '.ss .sa{display:block;margin-top:2px;font-size:14px;color:var(--muted)}',
+  '.ss .sw{display:block;margin-top:3px;font-size:13.5px;color:var(--muted)}',
+  '.ss .sw a{font-weight:600}',
+  '.tier+.tier{margin-left:6px}',
   '.soon{background:var(--soft);border-color:#f3cfd1}',
+  '.credit{margin:12px 0 0;font-size:13px;color:var(--muted)}',
+  '.credit.pc{margin:-14px 0 0;padding:0 4px}',
   '.links{list-style:none;margin:0;padding:0}',
   '.links li{padding:8px 0;border-top:1px solid var(--line)}.links li:first-child{border-top:0}',
   '.links a{font-weight:600;overflow-wrap:anywhere}',
@@ -157,10 +164,18 @@ function journeyHtml(person, o) {
     if (!sponsor && j.company && person.company && j.company.toLowerCase() !== person.company.toLowerCase()) meta += (meta ? ' · ' : '') + 'as ' + j.company;
     var out = '<li><h3>' + title + '</h3>' + (meta ? '<p class="meta">' + esc(meta) + '</p>' : '');
     if (sponsor && j.tier) out += '<span class="tier">' + esc(j.tier) + '</span>';
+    /* their role there: the group ET put them in ("Keynote Address", "Grand Jury"); an award's people are its jury */
+    var role = !sponsor ? (j.role || (j.award ? 'Jury' : '')) : '';
+    if (role) out += '<span class="tier">' + esc(role) + '</span>';
     if (!sponsor && j.sessions && j.sessions.length) {
       out += '<ul class="ss" aria-label="Sessions">' + j.sessions.map(function (s) {
         var t = timeLabel(s.start);
-        return '<li>' + ICON.mic + (t ? '<time>' + esc(t) + '</time>' : '') + '<span>' + esc(s.title) + '</span></li>';
+        var who = (s.with || []).filter(function (w) { return w && w.name; });
+        return '<li>' + ICON.mic + (t ? '<time>' + esc(t) + '</time>' : '') + '<span><span class="st">' + esc(s.title) + '</span>' +
+          (s.about ? '<span class="sa">' + esc(s.about) + '</span>' : '') +
+          (who.length ? '<span class="sw">With ' + who.map(function (w) {
+            return w.slug ? '<a href="/speakers/' + esc(w.slug) + '">' + esc(w.name) + '</a>' : esc(w.name);
+          }).join(', ') + '</span>' : '') + '</span></li>';
       }).join('') + '</ul>';
     }
     return out + '</li>';
@@ -175,7 +190,7 @@ function journeyHtml(person, o) {
   if (past.length) {
     var years = [], byYear = {};
     past.forEach(function (j) { var y = str(j.year) || 'Earlier'; if (!byYear[y]) { byYear[y] = []; years.push(y); } byYear[y].push(j); });
-    html += '<section class="card" aria-labelledby="h-journey"><h2 id="h-journey">' + (sponsor ? 'Partnerships with ET' : 'Journey with ET') + '</h2>' +
+    html += '<section class="card" aria-labelledby="h-journey"><h2 id="h-journey">' + (sponsor ? 'Partnerships with ETB2B' : 'Journey with ETB2B') + '</h2>' +
       years.map(function (y) { return '<h3 class="yr">' + esc(y) + '</h3><ul class="ev">' + byYear[y].map(item).join('') + '</ul>'; }).join('') + '</section>';
   }
   return html;
@@ -187,6 +202,14 @@ function extrasHtml(person) {
     html += '<section class="card"' + (s.heading ? ' aria-labelledby="h-x' + i + '"' : '') + '>' + (s.heading ? '<h2 id="h-x' + i + '">' + esc(s.heading) + '</h2>' : '') + paras(s.text) + '</section>';
   });
   return html;
+}
+/* Wikipedia, for the well-known (lib/people-wiki.js): its summary with the credit its licence asks for */
+function wikiHtml(person) {
+  var w = person.wiki;
+  if (!w || !w.extract || !/^https:\/\/[^\s"'<>]+$/.test(str(w.url))) return '';
+  return '<section class="card" aria-labelledby="h-wiki"><h2 id="h-wiki">From Wikipedia</h2>' + paras(w.extract) +
+    '<p class="credit"><a href="' + esc(w.url) + '" target="_blank" rel="noopener">Read more on Wikipedia<span class="sr"> (opens in a new tab)</span></a> \u00b7 ' +
+    'Text from Wikipedia, under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener license">CC BY-SA 4.0</a></p></section>';
 }
 function linksHtml(person) {
   var list = (person.links || []).filter(function (l) { return l && link(l.url) && /^https?:/i.test(l.url); });
@@ -202,9 +225,10 @@ function renderSpeaker(p, o) {
   var st = p.stats || {};
   var firstEvent = ((p.journey || []).filter(function (j) { return !j.hidden && !j.why; })[0] || {}).title || '';
   var title = p.name + (role ? ', ' + role : '') + ' | ETB2B Events';
-  var description = cut(p.about || p.bio || (p.name + (role ? ' (' + role + ')' : '') + (st.events ? ' has spoken at ' + plural(st.events, 'ET event', 'ET events') + (st.since ? ' since ' + st.since : '') + (firstEvent ? ', most recently ' + firstEvent : '') : '') + '.'), 160);
+  var did = [st.events ? 'has spoken at ' + plural(st.events, 'ETB2B event', 'ETB2B events') : '', st.awards ? (st.events ? 'sat on ' : 'has sat on ') + plural(st.awards, 'ETB2B award jury', 'ETB2B award juries') : ''].filter(Boolean).join(' and ');
+  var description = cut(p.about || p.bio || (p.wiki && p.wiki.extract) || (p.name + (role ? ' (' + role + ')' : '') + (did ? ' ' + did + (st.since ? ' since ' + st.since : '') + (firstEvent ? ', most recently ' + firstEvent : '') : '') + '.'), 160);
   var photo = picture(p.photo), share = /^https:/.test(photo) ? photo : '';
-  var sameAs = [p.linkedin, p.x].filter(function (u) { return /^https:\/\//.test(str(u)); });
+  var sameAs = [p.linkedin, p.x, p.wiki && p.wiki.url].filter(function (u) { return /^https:\/\//.test(str(u)); });
   var person = { '@type': 'Person', name: p.name };
   if (p.designation) person.jobTitle = p.designation;
   if (p.company) person.worksFor = { '@type': 'Organization', name: p.company };
@@ -217,9 +241,10 @@ function renderSpeaker(p, o) {
   if (/^https:\/\//.test(str(p.linkedin))) acts.push('<a class="btn" href="' + esc(p.linkedin) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on LinkedIn (opens in a new tab)">LinkedIn ' + ICON.out + '</a>');
   if (/^https:\/\//.test(str(p.x))) acts.push('<a class="btn" href="' + esc(p.x) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on X (opens in a new tab)">X ' + ICON.out + '</a>');
   var stats = [];
-  if (st.events) stats.push('<li><b>' + st.events + '</b>' + (st.events === 1 ? 'ET event' : 'ET events') + '</li>');
+  if (st.events) stats.push('<li><b>' + st.events + '</b>' + (st.events === 1 ? 'ETB2B event' : 'ETB2B events') + '</li>');
   if (st.sessions) stats.push('<li><b>' + st.sessions + '</b>' + (st.sessions === 1 ? 'session' : 'sessions') + '</li>');
-  if (st.since) stats.push('<li><b>' + esc(st.since) + '</b>first with ET</li>');
+  if (st.awards) stats.push('<li><b>' + st.awards + '</b>' + (st.awards === 1 ? 'award jury' : 'award juries') + '</li>');
+  if (st.since) stats.push('<li><b>' + esc(st.since) + '</b>first with ETB2B</li>');
   if (st.portals && st.portals.length) stats.push('<li><b>' + st.portals.length + '</b>' + esc(st.portals.slice(0, 4).join(' · ') + (st.portals.length > 4 ? ' …' : '')) + '</li>');
   var logo = picture(p.logo);
   var hero = '<section class="hero" aria-labelledby="h-name">' +
@@ -228,20 +253,22 @@ function renderSpeaker(p, o) {
     (p.designation ? '<p class="role">' + esc(p.designation) + '</p>' : '') +
     (p.company ? '<p class="co">' + (logo ? '<img src="' + esc(logo) + '" alt="">' : '') + '<span>' + esc(p.company) + '</span></p>' : '') +
     (acts.length ? '<div class="acts">' + acts.join('') + '</div>' : '') +
-    (stats.length ? '<ul class="stats" aria-label="With ET">' + stats.join('') + '</ul>' : '') + '</div></section>';
+    (stats.length ? '<ul class="stats" aria-label="With ETB2B">' + stats.join('') + '</ul>' : '') + '</div></section>';
   var about = p.about || p.bio;
-  var body = '<div class="grid">' + (about ? '<section class="card" aria-labelledby="h-about"><h2 id="h-about">About</h2>' + paras(about) + '</section>' : '') +
-    extrasHtml(p) + journeyHtml(p, o) + linksHtml(p) + '</div>';
+  var credit = p.photoCredit && /^https:\/\//.test(str(p.photoCredit.href)) && photo === p.photo
+    ? '<p class="credit pc">Photo: <a href="' + esc(p.photoCredit.href) + '" target="_blank" rel="noopener">' + esc(p.photoCredit.label || 'Wikimedia Commons') + '</a></p>' : '';
+  var body = '<div class="grid">' + credit + (about ? '<section class="card" aria-labelledby="h-about"><h2 id="h-about">About</h2>' + paras(about) + '</section>' : '') +
+    wikiHtml(p) + extrasHtml(p) + journeyHtml(p, o) + linksHtml(p) + '</div>';
   return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'profile', ld: ld }) +
     '<body>' + topBar(o.back) + '<main>' + hero + body + '</main>' +
-    '<footer>ETB2B Events \u00b7 The Economic Times</footer></body></html>\n';
+    '<footer>ETB2B \u00b7 The Economic Times Business Verticals</footer></body></html>\n';
 }
 
 function renderSponsor(p, o) {
   var base = str(o.base).replace(/\/+$/, ''), canonical = base ? base + '/sponsors/' + p.slug : '';
   var st = p.stats || {};
   var title = p.name + ' | ETB2B Events partner';
-  var description = cut(p.about || (p.name + (st.events ? ' has partnered ' + plural(st.events, 'ET event', 'ET events') + (st.since ? ' since ' + st.since : '') : ' partners ET events') + '.'), 160);
+  var description = cut(p.about || (p.name + (st.events ? ' has partnered ' + plural(st.events, 'ETB2B event', 'ETB2B events') + (st.since ? ' since ' + st.since : '') : ' partners ETB2B events') + '.'), 160);
   var logo = picture(p.logo), share = /^https:/.test(logo) ? logo : '';
   var org = { '@type': 'Organization', name: p.name };
   if (/^https?:\/\//.test(str(p.website))) org.url = p.website;
@@ -250,19 +277,19 @@ function renderSponsor(p, o) {
   var ld = { '@context': 'https://schema.org', '@type': 'AboutPage', mainEntity: org };
   if (canonical) ld.url = canonical;
   var stats = [];
-  if (st.events) stats.push('<li><b>' + st.events + '</b>' + (st.events === 1 ? 'ET event' : 'ET events') + '</li>');
-  if (st.since) stats.push('<li><b>' + esc(st.since) + '</b>first with ET</li>');
+  if (st.events) stats.push('<li><b>' + st.events + '</b>' + (st.events === 1 ? 'ETB2B event' : 'ETB2B events') + '</li>');
+  if (st.since) stats.push('<li><b>' + esc(st.since) + '</b>first with ETB2B</li>');
   if (st.portals && st.portals.length) stats.push('<li><b>' + st.portals.length + '</b>' + esc(st.portals.slice(0, 4).join(' · ') + (st.portals.length > 4 ? ' …' : '')) + '</li>');
   var site = /^https?:\/\//.test(str(p.website)) ? '<div class="acts"><a class="btn" href="' + esc(p.website) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + '\u2019s website (opens in a new tab)">Website ' + ICON.out + '</a></div>' : '';
   var hero = '<section class="hero" aria-labelledby="h-name">' +
     '<figure class="ph logo">' + (logo ? '<img src="' + esc(logo) + '" alt="' + esc(p.name) + ' logo" width="160" height="160">' : '<span aria-hidden="true">' + esc(initials(p.name)) + '</span>') + '</figure>' +
     '<div><p class="eyebrow">Partner</p><h1 id="h-name">' + esc(p.name) + '</h1>' + site +
-    (stats.length ? '<ul class="stats" aria-label="With ET">' + stats.join('') + '</ul>' : '') + '</div></section>';
+    (stats.length ? '<ul class="stats" aria-label="With ETB2B">' + stats.join('') + '</ul>' : '') + '</div></section>';
   var body = '<div class="grid">' + (p.about ? '<section class="card" aria-labelledby="h-about"><h2 id="h-about">About</h2>' + paras(p.about) + '</section>' : '') +
-    extrasHtml(p) + journeyHtml(p, o) + linksHtml(p) + '</div>';
+    wikiHtml(p) + extrasHtml(p) + journeyHtml(p, o) + linksHtml(p) + '</div>';
   return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'website', ld: ld }) +
     '<body>' + topBar(o.back) + '<main>' + hero + body + '</main>' +
-    '<footer>ETB2B Events \u00b7 The Economic Times</footer></body></html>\n';
+    '<footer>ETB2B \u00b7 The Economic Times Business Verticals</footer></body></html>\n';
 }
 
 function render(person, o) { return person.kind === 'sponsors' ? renderSponsor(person, o || {}) : renderSpeaker(person, o || {}); }

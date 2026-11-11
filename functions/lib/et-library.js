@@ -64,8 +64,10 @@ var LOCK_MS = 90 * 1000;
 var BUDGET_MS = 40 * 1000;
 var PEOPLE_MS = 20 * 1000;   /* what keeping the speaker and sponsor pages in step may take of a build */
 var PORTALS_AT_ONCE = 3, EVENTS_AT_ONCE = 4;
-var CAPS = { eventsPerPortal: 60, bio: 400, results: 12, query: 80, docBytes: 900 * 1024, ownMs: 2 * 60 * 1000, etMs: 10 * 60 * 1000,
-  inlinePhoto: 160 * 1024, sessionTitle: 240, sessionsPerEvent: 150 };
+var CAPS = { eventsPerPortal: 80, bio: 400, results: 12, query: 80, docBytes: 900 * 1024, ownMs: 2 * 60 * 1000, etMs: 10 * 60 * 1000,
+  inlinePhoto: 160 * 1024, sessionTitle: 240, sessionsPerEvent: 150, sessionAbout: 320, fullBio: 1200 };
+/* a group that says only that they spoke: no role to show */
+var GENERIC_ROLE = /^(?:speakers?|our speakers|panell?ists?|session speakers?|delegates?|participants?)$/i;
 
 function str(v) { return typeof v === 'string' ? v : v == null ? '' : String(v); }
 function normal(s) { return str(s).normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').trim(); }
@@ -96,7 +98,7 @@ function buildPortal(portal, fetchJson, o) {
   o = o || {};
   var now = o.now || Date.now();
   var agendaOut = o.agenda && typeof o.agenda === 'object' ? o.agenda : null;
-  var sessionsByEvent = [];
+  var sessionsByEvent = [], fullBios = {};
   /* an edition's sessions, each with the people who spoke in it: ET's agenda names them by the id its speaker list
      gives them (or by name, where it gives no id), and a person is kept by the key their entry has here */
   function sessionsOfEvent(rawSpeakers, rawAgenda, idx) {
@@ -119,24 +121,37 @@ function buildPortal(portal, fetchJson, o) {
         if (k && keys.indexOf(k) === -1) keys.push(k);
       });
       if (!keys.length) return;
-      list.push({ t: title.slice(0, CAPS.sessionTitle), a: str(a.agenda_start_datetime).slice(0, 16), z: str(a.agenda_end_datetime).slice(0, 16), k: keys });
+      var item = { t: title.slice(0, CAPS.sessionTitle), a: str(a.agenda_start_datetime).slice(0, 16), z: str(a.agenda_end_datetime).slice(0, 16), k: keys };
+      var about = str(a.agenda_description).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+      if (about) item.d = about.slice(0, CAPS.sessionAbout);
+      list.push(item);
     });
     list.sort(function (x, y) { return x.a < y.a ? -1 : x.a > y.a ? 1 : 0; });
     if (list.length) sessionsByEvent.push({ i: idx, s: list.slice(0, CAPS.sessionsPerEvent) });
   }
-  return etEvents.listIpEvents(portal, fetchJson).then(function (events) {
+  /* the portal's awards too (their jury and partners; the owner, 11 Nov 2026: "ET Awards: jury"): an award's
+     speaker list is its jury and guests, its sponsor list its partners. A portal whose awards cannot be read is
+     read without them. */
+  var awardsRead = typeof etEvents.listAwards === 'function' ? etEvents.listAwards(portal, fetchJson).then(null, function () { return []; }) : Promise.resolve([]);
+  return Promise.all([etEvents.listIpEvents(portal, fetchJson), awardsRead]).then(function (lists) {
+    var events = (lists[0] || []).concat((lists[1] || []).filter(function (a) { return a && a.kind === 'award'; }));
     /* ET writes a start as "2025-11-20T09:30:00" (or nothing): taken place, newest first */
-    var past = (events || []).filter(function (e) { return e && e.past && !e.upcoming && (!e.start || !(Date.parse(e.start) > now)); })
+    var past = events.filter(function (e) { return e && e.past && !e.upcoming && (!e.start || !(Date.parse(String(e.start).replace(' ', 'T')) > now)); })
       .sort(function (a, b) { return str(b.start) < str(a.start) ? -1 : str(b.start) > str(a.start) ? 1 : 0; }).slice(0, CAPS.eventsPerPortal);
     var doc = { portal: portal, portalName: etEvents.PORTALS[portal] || portal, builtAt: new Date(now).toISOString(),
-      events: past.map(function (e) { return { id: e.id, title: str(e.title).slice(0, 200), year: /^\d{4}/.test(str(e.start)) ? str(e.start).slice(0, 4) : '',
-        start: /^\d{4}-\d{2}-\d{2}/.test(str(e.start)) ? str(e.start).slice(0, 10) : '', link: str(e.link) }; }),
+      events: past.map(function (e) {
+        var ev = { id: e.id, title: str(e.title).slice(0, 200), year: /^\d{4}/.test(str(e.start)) ? str(e.start).slice(0, 4) : '',
+          start: /^\d{4}-\d{2}-\d{2}/.test(str(e.start)) ? str(e.start).slice(0, 10) : '', link: str(e.link) };
+        if (e.kind === 'award') ev.kind = 'award';
+        return ev;
+      }),
       speakers: [], sponsors: [], counts: { events: past.length, speakers: 0, sponsors: 0 }, partial: false };
     var byPerson = {}, bySponsor = {};
     return inTurns(past, EVENTS_AT_ONCE, function (e, idx) {
-      var lists = [e.speakers > 0 ? etPrevious.allItems(fetchJson, '/v1/activity/speaker/list', e.id, portal) : Promise.resolve([]),
+      var award = e.kind === 'award';
+      var lists = [e.speakers > 0 || award ? etPrevious.allItems(fetchJson, '/v1/activity/speaker/list', e.id, portal) : Promise.resolve([]),
         etPrevious.allItems(fetchJson, '/v1/activity/sponsor/list', e.id, portal),
-        e.speakers > 0 && agendaOut ? etPrevious.allItems(fetchJson, '/v1/activity/agenda/list', e.id, portal) : Promise.resolve([])];
+        e.speakers > 0 && !award && agendaOut ? etPrevious.allItems(fetchJson, '/v1/activity/agenda/list', e.id, portal) : Promise.resolve([])];
       return Promise.all(lists).then(function (r) {
         if (agendaOut) sessionsOfEvent(r[0], r[2], idx);
         /* newest edition first, so the first seen of a person is their latest designation and photo */
@@ -145,8 +160,11 @@ function buildPortal(portal, fetchJson, o) {
           if (!s) return;
           var key = normal(s.name) + '|' + normal(s.company);
           var have = byPerson[key];
+          /* the full text, for the person's page (the entry keeps the first CAPS.bio for the library's search) */
+          if (agendaOut && s.bio.length > CAPS.bio && !fullBios[key]) fullBios[key] = s.bio.slice(0, CAPS.fullBio);
           if (!have) {
-            byPerson[key] = { n: s.name, d: s.designation, c: s.company, p: s.photo, l: s.linkedin, b: s.bio.slice(0, CAPS.bio), g: s.logo, e: [idx] };
+            byPerson[key] = { n: s.name, d: s.designation, c: s.company, p: s.photo, l: s.linkedin, b: s.bio.slice(0, CAPS.bio), g: s.logo, e: [idx], rs: {} };
+            have = null;
           } else {
             if (have.e.indexOf(idx) === -1) have.e.push(idx);
             if (!have.p) have.p = s.photo;
@@ -154,6 +172,9 @@ function buildPortal(portal, fetchJson, o) {
             if (!have.b) have.b = s.bio.slice(0, CAPS.bio);
             if (!have.g) have.g = s.logo;
           }
+          /* the group ET put them in at this edition: "Keynote Address", "Grand Jury", "Eminent Leaders" */
+          var role = str(s.group).trim();
+          if (role && !GENERIC_ROLE.test(role) && !byPerson[key].rs[idx]) byPerson[key].rs[idx] = role.slice(0, 80);
         });
         r[1].forEach(function (raw) {
           var s = etPrevious.sponsorOf(raw);
@@ -167,7 +188,14 @@ function buildPortal(portal, fetchJson, o) {
       });
     }).then(function () {
       /* events were read side by side: each entry's events newest first again */
-      Object.keys(byPerson).forEach(function (k) { byPerson[k].e.sort(function (a, b) { return a - b; }); doc.speakers.push(byPerson[k]); });
+      Object.keys(byPerson).forEach(function (k) {
+        var x = byPerson[k];
+        x.e.sort(function (a, b) { return a - b; });
+        /* rs: the role at each of e's editions, in e's order ('' where none, or only "Speakers") */
+        x.rs = x.e.map(function (i) { return x.rs[i] || ''; });
+        if (!x.rs.some(Boolean)) delete x.rs;
+        doc.speakers.push(x);
+      });
       Object.keys(bySponsor).forEach(function (k) {
         var x = bySponsor[k];
         x.e.sort(function (a, b) { return a - b; });
@@ -189,7 +217,9 @@ function buildPortal(portal, fetchJson, o) {
         /* AGENDA = { portal, builtAt, events: [{ i: index in the portal's events, id, s: [{ t: title, a: start, z: end,
            k: [the key of each speaker's entry] }] }] }, newest edition first; the oldest go first past 1 MiB */
         sessionsByEvent.sort(function (x, y) { return x.i - y.i; });
-        var agenda = { portal: portal, builtAt: doc.builtAt, events: sessionsByEvent.map(function (x) { return { i: x.i, id: (doc.events[x.i] || {}).id || '', s: x.s }; }) };
+        var agenda = { portal: portal, builtAt: doc.builtAt, events: sessionsByEvent.map(function (x) { return { i: x.i, id: (doc.events[x.i] || {}).id || '', s: x.s }; }), bios: fullBios };
+        /* past 1 MiB: the full bios go first (the entries keep their beginning), then the oldest editions' sessions */
+        if (Buffer.byteLength(JSON.stringify(agenda)) > CAPS.docBytes) agenda.bios = {};
         while (agenda.events.length && Buffer.byteLength(JSON.stringify(agenda)) > CAPS.docBytes) agenda.events.pop();
         Object.keys(agenda).forEach(function (k) { agendaOut[k] = agenda[k]; });
       }

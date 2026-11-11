@@ -53,6 +53,13 @@ function nameKey(name) {
   return n || normal(name);
 }
 
+/* the name as written, without its titles ("Dr. Kiran Bedi" -> "Kiran Bedi"): what another record calls them */
+var TITLE_WORD = /^(?:dr|mr|mrs|ms|miss|mx|prof|professor|shri|sri|smt|kumari|capt|captain|col|colonel|lt|gen|general|maj|major|brig|adm|admiral|cmde|hon|honble|justice|adv|advocate|er|ca|cs|cma|sir|dame)\.?\s+/i;
+function withoutTitle(name) {
+  var n = str(name).replace(/\s+/g, ' ').trim(), before;
+  for (var i = 0; i < 4; i++) { before = n; n = n.replace(TITLE_WORD, ''); if (n === before) break; }
+  return n || str(name).trim();
+}
 var DROP = { pvt: 1, private: 1, ltd: 1, limited: 1, llp: 1, llc: 1, inc: 1, incorporated: 1, corp: 1, corporation: 1, plc: 1, co: 1,
   company: 1, gmbh: 1, the: 1, and: 1, pte: 1 };
 var SMALL = { of: 1, and: 1, the: 1, for: 1, in: 1, at: 1 };
@@ -198,7 +205,7 @@ function slugify(text) {
 }
 
 module.exports = {
-  nameKey: nameKey, companyForm: companyForm, sameCompany: sameCompany, groupPeople: groupPeople, peopleOf: peopleOf,
+  nameKey: nameKey, withoutTitle: withoutTitle, companyForm: companyForm, sameCompany: sameCompany, groupPeople: groupPeople, peopleOf: peopleOf,
   sponsorKey: sponsorKey, sponsorsOf: sponsorsOf, newestFirst: newestFirst, slugify: slugify, normal: normal,
   _test: { tokensOf: tokensOf, mainPart: mainPart, initials: initials, names: names }
 };

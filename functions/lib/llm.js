@@ -85,6 +85,7 @@ var PROFILES = {
   /* where each speaker's photo is on a brochure's pages (lib/speaker-photos.js): marking places on a picture is what
      Gemini is trained for, so it is asked first and Claude after it (prefer) */
   'photo-find': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 70000, maxOutputTokens: 6000, prefer: 'gemini' },
+  'people-about': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 3000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 
