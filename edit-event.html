@@ -6544,6 +6544,8 @@
         }
         paintHeader();
         if (routeId() === 'dashboard' || routeId() === 'settings/visibility') render();
+        /* Settings › URL & SEO says what is live and what waits for approval: read again */
+        if (routeId() === 'settings/seo' && window.EditEventSEO) window.EditEventSEO.reload();
         paintSiteBar();
         /* the server's own reading, so the header and the decision line are exact */
         refreshState();

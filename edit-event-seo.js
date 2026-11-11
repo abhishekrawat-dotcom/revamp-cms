@@ -512,13 +512,15 @@
   function undo() {
     var u = ST.undo, ev = ST.ctx.EV;
     if (!u || !u.before || !u.fields.length) { ST.undo = null; redraw(); return; }
+    /* a field that was empty before has no value in `before`: it is sent back as empty ("" or no keywords), since a
+       missing value would leave ETB2B AI's text where it is */
     var patch = {};
-    u.fields.forEach(function (k) { patch[k] = clone(u.before[k]); });
-    patch.aiWritten = u.aiWrittenBefore;
+    u.fields.forEach(function (k) { var v = u.before[k]; patch[k] = v == null ? (k === 'keywords' ? [] : '') : clone(v); });
+    patch.aiWritten = u.aiWrittenBefore || [];
     ST.aiBusy = 'Putting back what was there…'; redraw();
     C.updateEvent(ev.id, { settings: { seo: patch } }).then(function () {
       ST.aiBusy = ''; ST.undo = null; ST.dropped = [];
-      u.fields.forEach(function (k) { ST.F[k] = clone(u.before[k]); ST.B[k] = clone(u.before[k]); });
+      u.fields.forEach(function (k) { ST.F[k] = clone(patch[k]); ST.B[k] = clone(patch[k]); });
       ST.B.aiWritten = u.aiWrittenBefore; ST.F.aiWritten = u.aiWrittenBefore;
       ev.settings.seo = Object.assign({}, ev.settings.seo || {}, patch);
       ST.ctx.toast('Undone: the fields are as they were.');
@@ -778,6 +780,14 @@
       if (b.id === 'seo-basicSchema') { if (!ST.data.auto.dates.exact) return; ST.F.basicSchema = !ST.F.basicSchema; redraw(); focusAgain('seo-basicSchema'); return; }
       if (b.id === 'seo-advancedSchema') { ST.F.advancedSchema = !ST.F.advancedSchema; redraw(); focusAgain('seo-advancedSchema'); return; }
       if (!what) return;
+      act(what);
+    });
+    /* the two actions in the view's heading (Write with ETB2B AI, Bring in from the previous edition) are drawn above
+       #seo-root, so they are wired here themselves */
+    Array.prototype.forEach.call(document.querySelectorAll('.vhead [data-seo="ai-all"], .vhead [data-seo="prev"]'), function (b) {
+      b.onclick = function () { act(b.getAttribute('data-seo')); };
+    });
+    function act(what) {
       if (what === 'ai-all') askThenWrite(AI_FIELDS.slice(), true);
       else if (what === 'undo') { if (ST.undo && ST.undo.faqs) undoFaqs(); else undo(); }
       else if (what === 'kw-add') addKeyword();
@@ -789,10 +799,25 @@
       else if (what === 'tm-add') testimonialDialog(null);
       else if (what === 'faq-draft') draftFaqs();
       else if (what === 'publish') ctx.seo.publish();
-    });
+    }
     wireSaveBar();
   }
   function focusAgain(id) { setTimeout(function () { var el = $(id); if (el) el.focus(); }, 0); }
+
+  /* Back to this tab — an approver may have put the site live meanwhile, from the review page: what is live and what
+     waits is read again (keeping anything typed), at most every 20 seconds, and never while a field has the cursor */
+  var lastBack = 0;
+  function onBack() {
+    if (document.visibilityState === 'hidden' || !ST.ctx || !ST.data || ST.loading || ST.saving || ST.aiBusy || !onScreen()) return;
+    var a = document.activeElement;
+    if (a && a.closest && a.closest('#seo-root') && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+    var now = Date.now();
+    if (now - lastBack < 20000) return;
+    lastBack = now;
+    load(true);
+  }
+  document.addEventListener('visibilitychange', onBack);
+  global.addEventListener('focus', onBack);
 
   global.EditEventSEO = { view: view, wire: wire, reload: function () { if (ST.ctx) load(true); }, _state: ST, _formOf: formOf };
 })(window);
