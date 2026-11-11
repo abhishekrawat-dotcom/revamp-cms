@@ -121,7 +121,8 @@ http.createServer(function(req, res){
 function serve(req, res){
   const url = req.url.split('?')[0];
   if (/^\/(api|e|preview|t)\//.test(url) || url.indexOf('/s/') === 0) return handleApi(req, res);   // /s/: a shared preview link
-  if (url === '/robots.txt' || url === '/sitemap.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js)
+  if (url === '/robots.txt' || url === '/sitemap.xml' || url === '/sitemap-people.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js, lib/people.js)
+  if (/^\/(speakers|sponsors)\//.test(url)) return handleApi(req, res);   // a speaker's or a sponsor's page across ET (lib/people.js)
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
   if (url === '/favicon.ico'){
     return fs.readFile(FAVICON.path, function(err, buf){

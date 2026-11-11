@@ -7786,6 +7786,7 @@ function subcollectionRoutes(name, spec) {
         .then(function (ref) {
           sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now });
           logActivity(fb, eventId, decoded, 'content-added', label + ' “' + maskEmail(recordTitle(data)) + '”', { area: logArea, fields: fieldChanges(null, data, RECORD_META) });
+          if (spec.onWrite) spec.onWrite(fb);
         })
         .catch(function (err) { sendFailure(res, name + ' create', err, 'Could not save the ' + label + '. Please try again.'); });
     });
@@ -7822,6 +7823,7 @@ function subcollectionRoutes(name, spec) {
       }).then(function () {
         sendJson(res, 200, { ok: true, updatedAt: now });
         if (diff.length) logActivity(fb, eventId, decoded, 'content-changed', label + ' “' + maskEmail(title) + '” — ' + diff.map(function (f) { return f.field; }).join(', '), { area: logArea, fields: diff });
+        if (diff.length && spec.onWrite) spec.onWrite(fb);
       })
         .catch(function (err) { sendFailure(res, name + ' update', err, 'Could not save the ' + label + '. Please try again.'); });
     });
@@ -7842,6 +7844,7 @@ function subcollectionRoutes(name, spec) {
         sendJson(res, 200, Object.assign({ ok: true }, spec.onRemove ? extra : null));
         var gone = fieldChanges(null, was, RECORD_META).map(function (f) { return { field: f.field, before: f.after, after: '(deleted)' }; });
         logActivity(fb, eventId, decoded, 'content-removed', label + ' “' + maskEmail(recordTitle(was)) + '”', { area: logArea, fields: gone });
+        if (spec.onWrite) spec.onWrite(fb);
       })
         .catch(function (err) { sendFailure(res, name + ' delete', err, 'Could not delete the ' + label + '. Please try again.'); });
     });
@@ -7870,7 +7873,7 @@ function removeSpeaker(fb, eventId, id, ref) {
 // Field shapes taken directly from edit-event.html's own in-memory objects (S.speakers[] / S.sessions[] /
 // S.partners[] etc.); the Firestore collection name is the first argument, the URL segment is the key.
 var RESOURCES = {
-  'speakers': subcollectionRoutes('speakers', { label: 'speaker', required: ['name'], onRemove: removeSpeaker, fields: {
+  'speakers': subcollectionRoutes('speakers', { label: 'speaker', required: ['name'], onRemove: removeSpeaker, onWrite: peopleSoon('speakers'), fields: {
     name: 'text', desig: 'text', comp: 'text', photoUrl: 'url', logoUrl: 'url', colour: 'colour', weight: 'rank',
     status: 'status', email: 'email', phone: 'phone', li: 'url', bio: 'long', groupId: 'ref', order: 'num' } }),
   'speaker-groups': subcollectionRoutes('speakerGroups', { label: 'speaker group', required: ['name'], fields: { name: 'text', order: 'num' } }),
@@ -7878,7 +7881,7 @@ var RESOURCES = {
     title: 'text', start: 'text', end: 'text', kind: 'text', speakerIds: 'refs', desc: 'long', room: 'text',
     weight: 'rank', groupId: 'ref', order: 'num' } }),
   'agenda-groups': subcollectionRoutes('agendaGroups', { label: 'agenda day', required: ['name'], fields: { name: 'text', date: 'text', order: 'num' } }),
-  'partners': subcollectionRoutes('partners', { label: 'partner', required: ['name'], fields: {
+  'partners': subcollectionRoutes('partners', { label: 'partner', required: ['name'], onWrite: peopleSoon('sponsors'), fields: {
     name: 'text', url: 'url', logoUrl: 'url', weight: 'rank', status: 'status', email: 'email', phone: 'phone',
     contact: 'text', note: 'long', tierId: 'ref', order: 'num' } }),
   'partner-tiers': subcollectionRoutes('partnerTiers', { label: 'partner tier', required: ['name'], fields: { name: 'text', weight: 'rank', order: 'num' } }),
@@ -9680,6 +9683,13 @@ function publishTransform(html, opts) {
     /* the page reports visits and registrations under THIS event, whatever the template or the event it
        was copied from wrote there */
     if (t.name === 'body' && opts.eventId && attrValue(t, 'data-rv-event-id') !== opts.eventId) { setAttr(t, 'data-rv-event-id', opts.eventId); changed = true; }
+    /* an awards site: its people are the jury, whose cards keep their profile pop-up; an event site's speakers and
+       sponsors open their pages across ET (templates/_shared/rv-popups.js, lib/people.js) */
+    if (t.name === 'body') {
+      var awards = event.category === 'awards';
+      if (awards && !attrOf(t, 'data-rv-awards')) { setAttr(t, 'data-rv-awards', ''); changed = true; }
+      else if (!awards && attrOf(t, 'data-rv-awards')) { dropAttr(t, 'data-rv-awards'); changed = true; }
+    }
     if (changed) out[i] = writeTag(t);
   }
 
@@ -12060,6 +12070,26 @@ function seoHelpers() {
     publishTransform, TOKEN_KIT, approvalsConfig, publicBaseFor, publicPathOf, portalNameOf, etJson, httpError, sendFailure, sendAiFailure, aiUsageRecorder };
 }
 /* speakers' photos found in a brochure's pages (lib/speaker-photos.js) */
+/* speaker and sponsor pages (lib/people.js): the public pages and the console's Speakers and Sponsors */
+function peopleModule() {
+  var mod = null;
+  try {
+    mod = require('./people');
+    mod.wire({ firebase: getFirebase, isEventId: isEventId, sendHtml: sendHtml, messagePage: messagePage, sendText: sendText, sendJson: sendJson,
+      publicBaseFor: publicBaseFor, requireAdmin: requireAdmin, withAdminBody: withAdminBody, looksLikeTest: siteChecks.looksLikeTest });
+  } catch (err) { mod = null; console.error('api: could not load lib/people.js — ' + (err && err.stack || err)); }
+  return mod;
+}
+function peopleRoute(handlerName) {
+  return function (req, res) {
+    var mod = peopleModule();
+    if (mod && typeof mod[handlerName] === 'function') return mod[handlerName](req, res);
+    return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+  };
+}
+function peopleSoon(kind) {
+  return function (fb) { var mod = peopleModule(); if (mod) mod.soon(fb, kind); };
+}
 function photosRoute(handlerName) {
   return function (req, res) {
     var mod = null;
@@ -12524,6 +12554,18 @@ var ROUTES = {
   'GET /api/event/seo': seoRoute('handleSeoGet'),
   'POST /api/event/seo/write': seoRoute('handleSeoWrite'),
   'POST /api/event/speaker-photos/find': photosRoute('handleFind'),
+  'GET /api/people/speakers': peopleRoute('handleList'),        // the console's Speakers and Sponsors (lib/people.js)
+  'GET /api/people/sponsors': peopleRoute('handleList'),
+  'GET /api/people/speakers/one': peopleRoute('handleOne'),
+  'GET /api/people/sponsors/one': peopleRoute('handleOne'),
+  'PUT /api/people/speakers/one': peopleRoute('handleOne'),
+  'PUT /api/people/sponsors/one': peopleRoute('handleOne'),
+  'POST /api/people/speakers/merge': peopleRoute('handleMerge'),
+  'POST /api/people/sponsors/merge': peopleRoute('handleMerge'),
+  'POST /api/people/speakers/split': peopleRoute('handleSplit'),
+  'POST /api/people/sponsors/split': peopleRoute('handleSplit'),
+  'POST /api/people/speakers/undo': peopleRoute('handleUndo'),
+  'POST /api/people/sponsors/undo': peopleRoute('handleUndo'),
   'GET /api/event/seo/previous': seoRoute('handleSeoPrevious'),
   'GET /api/event/approval': handleApprovalGet,
   'GET /api/event/history': handleEventHistory,
@@ -12643,6 +12685,21 @@ function routeApi(req, res) {
     var badSlug = slug && !sitePages.SLUG_RE.test(slug);
     if (!page || !isEventId(eventId) || (badSlug && (page[1] !== 'e' || slug.length > 120))) return sendNotAvailable(req, res);
     return page[1] === 'e' ? handlePublicPage(req, res, eventId, slug) : handlePreviewPage(req, res, eventId, slug);
+  }
+
+  /* /speakers/<slug>, /sponsors/<slug> and their /go: one page per person and sponsor across ET (lib/people.js) — public */
+  var person = /^\/(speakers|sponsors)\/([^\/]{1,120})\/?$/.exec(urlPath);
+  if (person || /^\/(speakers|sponsors)(\/|$)/.test(urlPath)) {
+    if (!person) return sendHtml(req, res, 404, messagePage('This page is not available', 'The address may be mistyped.'), 'no-store');
+    var pm = peopleModule();
+    if (!pm) return sendHtml(req, res, 503, messagePage('Please try again in a moment', 'This page could not be loaded just now.'), 'no-store');
+    return pm.routePublic(req, res, person[1], person[2]);
+  }
+  if (urlPath === '/sitemap-people.xml') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' }); return res.end(); }
+    var pm2 = peopleModule();
+    if (!pm2) return sendText(req, res, 503, 'text/plain; charset=utf-8', 'The sitemap is temporarily unavailable.\n', 'no-store');
+    return pm2.handleSitemap(req, res);
   }
 
   /* /t/o/<id>.gif, /t/c/<id>: a mailer's open pixel and click redirect (lib/promo-track.js) — public */

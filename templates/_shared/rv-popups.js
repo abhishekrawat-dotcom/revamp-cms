@@ -1,4 +1,16 @@
-/* Pop-ups of a published or previewed site: a speaker's profile, and a gallery's photos one by one, large.
+/* Pop-ups of a published or previewed site: a gallery's photos one by one, large, and a juror's profile on an awards
+   site — and, on an event site, the way from a speaker's card and a sponsor's logo to their page across ET.
+
+   Speaker and sponsor pages (lib/people.js; the owner, 11 Nov 2026: "currently the speaker's profile is being open in
+   a pop-up. I want a dedicated page for each speakers … Same for the sponsor"): on an event site (<body> without
+   data-rv-awards), every speaker's card — the event's own Content › Speakers ([data-rv-repeat-template="speakers"]
+   [data-rv-filled]), the previous edition's ([data-rv-profiles] cards, prev-sections.js), any card holding
+   <template data-rv-profile> — gets a real link, "View profile", to /speakers/go?e=<event>&r=<record>&n=<name>
+   &c=<company>, which sends the visitor to the person's page (and from it, back here); a click anywhere on the card
+   follows it. A sponsor's logo — Content › Sponsors ([data-rv-repeat-template="partners"][data-rv-filled]) or the
+   previous edition's ([data-rv-section="previous-sponsors"]) — leads to /sponsors/go?… the same way: its link to
+   the sponsor's website now goes to the sponsor's page, which links to the website. The speaker pop-up is not used
+   on an event site any more. On an awards site the people are the jury: their cards open their profile as before.
 
    Loaded by the page's runtime block (functions/lib/api.js publishTransform), so only on /preview/… and the
    live page — never in the editor, where a click picks an element to edit. A page that still has
@@ -83,6 +95,12 @@
     '.rv-profile-cue svg{width:14px;height:14px}',
     '[data-rv-profile-ready]:hover .rv-profile-cue,[data-rv-profile-ready]:focus-visible .rv-profile-cue{gap:7px;text-decoration:underline;text-underline-offset:3px}',
     '[data-rv-lightbox-photo]{cursor:zoom-in}',
+    '[data-rv-person-ready]{cursor:pointer}',
+    '[data-rv-person-ready]:hover .rv-profile-cue,[data-rv-person-ready] .rv-profile-cue:focus-visible{gap:7px;text-decoration:underline;text-underline-offset:3px}',
+    'a.rv-profile-cue{text-decoration:none}',
+    'a.rv-profile-cue:focus-visible,a.rv-person-sr:focus-visible{outline:3px solid var(--theme-color,#186bf9);outline-offset:3px;border-radius:4px}',
+    'a.rv-person-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}',
+    'a.rv-person-sr:focus{position:static;width:auto;height:auto;clip:auto;display:inline-block;margin-top:6px;font-size:.8125rem;font-weight:700;color:var(--theme-color,#186bf9)}',
     'html[data-rv-modal],html[data-rv-modal] body{overflow:hidden!important}',
     '.rv-pop{position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(10,12,16,.62);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);opacity:0;transition:opacity .2s ease;--rv-keep:1}',
     '.rv-pop.rv-open{opacity:1}',
@@ -344,6 +362,8 @@
     each(scope.querySelectorAll('template[data-rv-profile]'), function (tpl) {
       var card = tpl.parentElement;
       if (!card || card.hasAttribute('data-rv-profile-ready') || card === doc.body) return;
+      /* an event site's speaker has their page instead (markSpeakers) */
+      if (card.hasAttribute('data-rv-person-ready')) return;
       // a card that is itself a link keeps doing what it does
       if (card.tagName === 'A' || card.tagName === 'BUTTON') return;
       var p = profileOf(card);
@@ -361,13 +381,107 @@
     });
   }
 
+  /* ---------- a speaker's and a sponsor's page across ET (see the top) ---------- */
+  function eventId() { return doc.body ? String(doc.body.getAttribute('data-rv-event-id') || '') : ''; }
+  function awardsSite() { return !!(doc.body && doc.body.hasAttribute('data-rv-awards')); }
+  function inJury(n) { return !!(n.closest && n.closest('[data-rv-section-id^="award-"], [data-rv-page^="award-"], section[id^="award-"]')); }
+  function goHref(kind, o) {
+    var q = [], e = eventId();
+    if (e) q.push('e=' + encodeURIComponent(e));
+    if (o.r) q.push('r=' + encodeURIComponent(o.r));
+    if (o.n) q.push('n=' + encodeURIComponent(o.n.slice(0, 120)));
+    if (o.c) q.push('c=' + encodeURIComponent(o.c.slice(0, 160)));
+    return '/' + kind + '/go?' + q.join('&');
+  }
+  function outside(n) { return !n || n === doc.body || !!(n.closest && n.closest('template, header, nav, footer, [data-rv-popup]')); }
+  /* the cards of the speakers a page shows, once each */
+  function speakerCards(scope) {
+    var out = [];
+    function take(card) { if (card && out.indexOf(card) === -1 && !outside(card)) out.push(card); }
+    each(scope.querySelectorAll('[data-rv-repeat-template="speakers"][data-rv-filled]'), take);
+    each(scope.querySelectorAll('[data-rv-profiles] [data-rv-profile-name]'), function (n) { take(n.parentElement); });
+    each(scope.querySelectorAll('template[data-rv-profile]'), function (t) { take(t.parentElement); });
+    return out;
+  }
+  function personOfCard(card) {
+    var nameEl = first(card, ['[data-rv-profile-name]', '[data-rv-field="n"]', 'h2', 'h3', 'h4', 'h5']);
+    var img = card.querySelector('img');
+    var name = textOf(nameEl) || (img && img.alt) || '';
+    var tpl = card.querySelector('template[data-rv-profile]'), t = tpl && tpl.content;
+    var owner = t && t.querySelector('[data-rv-profile-for]');
+    /* a card copied and renamed in the editor keeps the record it was copied from: the name it shows is asked for */
+    var record = card.hasAttribute('data-rv-filled') && !(owner && sameName(textOf(owner)) !== sameName(name)) ? String(card.getAttribute('data-rv-id') || '') : '';
+    return { n: name, c: textOf(first(card, ['[data-rv-profile-co]', '[data-rv-field="c"]'])), r: record };
+  }
+  function markSpeakers(scope) {
+    if (awardsSite()) return;
+    speakerCards(scope).forEach(function (card) {
+      if (card.hasAttribute('data-rv-person-ready') || card.tagName === 'A' || card.tagName === 'BUTTON' || inJury(card) || card.closest('a[href]')) return;
+      var p = personOfCard(card);
+      if (!p.n) return;
+      var a = el('a', 'rv-profile-cue', 'View profile');
+      a.href = goHref('speakers', p);
+      a.setAttribute('data-rv-person-link', '');
+      a.setAttribute('aria-label', 'View profile: ' + p.n);
+      a.appendChild(svg(ICON.next, 14));
+      card.appendChild(a);
+      card.setAttribute('data-rv-person-ready', '');
+    });
+  }
+  function sponsorTiles(scope) {
+    var out = [];
+    function take(n) { if (n && out.indexOf(n) === -1 && !outside(n)) out.push(n); }
+    each(scope.querySelectorAll('[data-rv-repeat-template="partners"][data-rv-filled]'), take);
+    each(scope.querySelectorAll('[data-rv-section="previous-sponsors"] .pe-spn-tile'), take);
+    return out;
+  }
+  function markSponsors(scope) {
+    sponsorTiles(scope).forEach(function (tile) {
+      if (tile.hasAttribute('data-rv-person-ready')) return;
+      var img = tile.querySelector('img');
+      var name = textOf(first(tile, ['[data-rv-field="name"]', '.pe-spn-logo span'])) || (img && img.alt) || '';
+      name = name.replace(/\s+logo$/i, '');
+      if (!name) return;
+      var href = goHref('sponsors', { n: name, r: tile.hasAttribute('data-rv-filled') ? String(tile.getAttribute('data-rv-id') || '') : '' });
+      var links = tile.querySelectorAll('a[href]');
+      if (links.length) {
+        each(links, function (l) {
+          if (l.hasAttribute('data-rv-person-link')) return;
+          l.setAttribute('data-rv-website', l.getAttribute('href') || '');
+          l.setAttribute('href', href);
+          l.removeAttribute('target');
+          l.setAttribute('data-rv-person-link', '');
+          if (!l.getAttribute('aria-label')) l.setAttribute('aria-label', name + ': partner page');
+        });
+      } else {
+        var a = el('a', 'rv-person-sr', name + ': partner page');
+        a.href = href;
+        a.setAttribute('data-rv-person-link', '');
+        tile.appendChild(a);
+      }
+      tile.setAttribute('data-rv-person-ready', '');
+    });
+  }
+  /* a click on the card, not on another control in it, goes where its link goes (a new tab with Ctrl / Cmd) */
+  function followPerson(e) {
+    var t = e.target, card = t && t.closest && t.closest('[data-rv-person-ready]');
+    if (!card || editing()) return false;
+    if (interactive(t, card)) return false;
+    var link = card.querySelector('a[data-rv-person-link]');
+    if (!link) return false;
+    e.preventDefault();
+    if (e.metaKey || e.ctrlKey) window.open(link.href, '_blank', 'noopener');
+    else location.assign(link.href);
+    return true;
+  }
+
   /* ---------- the gallery ---------- */
   var NAMED_GALLERY = /glimps|galler|moments|photos?\b|snapshots/i;
   var NOT_GALLERY = /speaker|sponsor|partner|logo|video|award|jury|testimonial|hero|banner|nav|footer|team|people/i;
   var lb = null;
 
   function isPhoto(img) {
-    if (img.closest('template, [data-rv-profile-ready], [data-rv-popup], header, nav')) return false;
+    if (img.closest('template, [data-rv-profile-ready], [data-rv-person-ready], [data-rv-popup], header, nav')) return false;
     var link = img.closest('a[href]');
     if (link && !/\.(?:jpe?g|png|webp|avif|gif)(?:[?#].*)?$/i.test(link.getAttribute('href') || '')) return false;
     var r = img.getBoundingClientRect();
@@ -508,7 +622,9 @@
 
   /* ---------- clicks and keys on the page ---------- */
   doc.addEventListener('click', function (e) {
-    if (open || editing() || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (open || editing() || e.defaultPrevented || e.button !== 0 || e.shiftKey || e.altKey) return;
+    if (followPerson(e)) return;
+    if (e.metaKey || e.ctrlKey) return;
     var t = e.target;
     if (!t || !t.closest) return;
     var photo = t.closest('[data-rv-lightbox-photo]'), link = t.closest('a[href]');
@@ -529,6 +645,8 @@
   function start() {
     if (editing() || !doc.body) return;
     addCss();
+    markSpeakers(doc);
+    markSponsors(doc);
     markCards(doc);
     markGalleries();
   }

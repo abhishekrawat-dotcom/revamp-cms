@@ -654,7 +654,8 @@ var MP = 'qa-share-multi';           // a site with an internal page
   check('15 tools/serve.js hands /s/ to the API', routesS(serveSrc));
   check('15 server.js logs a failed request\'s address through redactUrl', /console\.error\('request failed: ' \+ req\.method \+ ' ' \+ redactUrl\(req\.url\)/.test(serverSrc) && !/'request failed: ' \+ req\.method \+ ' ' \+ req\.url/.test(serverSrc));
   var robots = siteSeo.robotsTxt('https://cms.example');
-  check('15 robots.txt: Disallow: /s/, and still Disallow: /preview/ and /', /^Disallow: \/s\/$/m.test(robots) && /^Disallow: \/preview\/$/m.test(robots) && /^Disallow: \/$/m.test(robots) && !/^Allow: \/s/m.test(robots), robots);
+  /* (Allow: /speakers/ and /sponsors/ are the speaker and sponsor pages, lib/people.js — never /s/ itself) */
+  check('15 robots.txt: Disallow: /s/, and still Disallow: /preview/ and /', /^Disallow: \/s\/$/m.test(robots) && /^Disallow: \/preview\/$/m.test(robots) && /^Disallow: \/$/m.test(robots) && !/^Allow: \/s(\/|$)/m.test(robots), robots);
   var robotsRoute = await call('GET', '/robots.txt');
   check('15 GET /robots.txt carries it', robotsRoute.status === 200 && robotsRoute.text.indexOf('Disallow: /s/') !== -1);
   check('15 History knows both actions, both under Publishing', activity.ACTIONS.indexOf('preview-link-shared') !== -1 && activity.ACTIONS.indexOf('preview-link-stopped') !== -1 &&

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Speakers &mdash; EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<!-- Speakers and Sponsors across ET (the owner, 11 Nov 2026: "a global speaker section can be added in the backend to
+     manage that page … Same for the sponsor"): one page for each speaker and each sponsor of every ET portal
+     (functions/lib/people.js), found by name, and what the team adds to it: people-admin.js. ?kind=sponsors for
+     sponsors; #<slug> opens one. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
+<link rel="stylesheet" href="edit-event.css">
+<script>try{var t=localStorage.getItem("revamp-theme");document.documentElement.setAttribute("data-theme",t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches)?"dark":"light");}catch(e){}</script>
+<link rel="stylesheet" href="settings.css">
+<link rel="stylesheet" href="people.css">
+</head>
+<body>
+<header class="topbar">
+  <a class="back-btn" id="pp-back" href="/Event_Listing.html"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>Back to events</span></a>
+  <span class="ev-title"><h1 id="pp-title">Speakers</h1><span class="meta">Every ET portal</span></span>
+  <span class="topbar-acts">
+    <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+    <span data-rv-account></span>
+  </span>
+</header>
+<main class="pa-main pp-main" id="pp-root">
+  <p class="pa-msg">Loading…</p>
+</main>
+<script src="theme-toggle.js"></script>
+<script src="edit-event-core.js"></script>
+<script src="auth.js"></script>
+<script src="people-admin.js"></script>
+</body>
+</html>

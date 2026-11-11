@@ -241,8 +241,11 @@ async function main() {
     S.menu('live-summit').every(function (x) { return x[2] === false; }) && /Delete event/.test(S.$('rowmenu-row-live-summit').innerHTML) &&
     / danger"/.test(S.$('rowmenu-row-live-summit').innerHTML), S.menu('live-summit'));
   check('UX-022 the "Updated" button says when the list was read', /^Updated \d/.test(S.$('sync-label').textContent), S.$('sync-label').textContent);
-  check('UX-022 the top bar has Events only', S.$('main-nav-links').querySelectorAll('a').length === 1 && S.$('main-nav-links').textContent.trim() === 'Events' &&
-    S.$('main-nav-links').querySelector('a').getAttribute('aria-current') === 'page');
+  /* Events, and the speakers and sponsors of every portal (people.html, 11 Nov 2026): real pages only, no link that goes nowhere */
+  var navLinks = S.$('main-nav-links').querySelectorAll('a');
+  check('UX-022 the top bar: Events (this page), Speakers and Sponsors — real pages only', navLinks.length === 3 && navLinks[0].textContent.trim() === 'Events' &&
+    navLinks[0].getAttribute('aria-current') === 'page' && navLinks[1].getAttribute('href') === 'people.html?kind=speakers' && navLinks[2].getAttribute('href') === 'people.html?kind=sponsors',
+    Array.prototype.map.call(navLinks, function (a) { return a.getAttribute('href') + ' ' + a.textContent.trim(); }));
   /* B10 (UX-018): Drafts is a tab with its count, no longer in the ⋯ menu */
   check('UX-034 the ⋯ menu: Deleted Events with its count, no Cancelled (nothing is cancelled); Drafts is a tab', JSON.stringify(S.more()) === JSON.stringify({ deleted: '1' }) && S.tabs().draft === '1', [S.more(), S.tabs()]);
   check('UX-025 the table has no Payment column, five columns on All portals with the Portal one', S.$('table-wrap').querySelectorAll('th').length === 6 &&

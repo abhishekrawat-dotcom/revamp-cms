@@ -203,6 +203,9 @@ function robotsTxt(base) {
     '# ETB2B EventSphere: published event sites are public; previews, the API and the CMS itself are not.',
     'User-agent: *',
     'Allow: /e/',
+    /* a speaker's and a sponsor's page across ET (lib/people.js), which every event site links to */
+    'Allow: /speakers/',
+    'Allow: /sponsors/',
     /* what a published site loads, so a crawler that draws the page sees it as a visitor does */
     'Allow: /templates/',
     'Allow: /assets/',
@@ -215,7 +218,7 @@ function robotsTxt(base) {
     'Disallow: /api/',
     'Disallow: /'
   ];
-  if (/^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/.test(String(base || ''))) lines.push('', 'Sitemap: ' + base + '/sitemap.xml');
+  if (/^https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?$/.test(String(base || ''))) lines.push('', 'Sitemap: ' + base + '/sitemap.xml', 'Sitemap: ' + base + '/sitemap-people.xml');
   return lines.join('\n') + '\n';
 }
 

@@ -29,7 +29,7 @@ const ALLOWED_DOMAIN = String(process.env.ALLOWED_EMAIL_DOMAIN || 'timesinternet
 const PROJECT_ID = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || 'revamp-cms';
 const SESSION_COOKIE = '__session';   // the one cookie name every Firebase hosting product passes through
 // /robots.txt and /sitemap.xml: for search engines, about the published sites only (lib/site-seo.js)
-const PUBLIC_PATHS = new Set(['/', '/index.html', '/auth.js', '/favicon.ico', '/robots.txt', '/sitemap.xml']);
+const PUBLIC_PATHS = new Set(['/', '/index.html', '/auth.js', '/favicon.ico', '/robots.txt', '/sitemap.xml', '/sitemap-people.xml']);
 
 /* a Google sign-in (not email/password) with a verified address on the company domain — the rule before the
    access list, kept for when that list cannot be read at all (no database: a local server without credentials) */
@@ -129,6 +129,8 @@ function isPublic(req, urlPath) {
   const p = canonicalPath(urlPath);
   if (p === null) return false;
   if (p.indexOf('/e/') === 0 || isPublicApi(p)) return true;      // OPTIONS (a browser's preflight) included
+  /* a speaker's or a sponsor's page across ET (lib/people.js): public, as the event sites that link to it */
+  if (p.indexOf('/speakers/') === 0 || p.indexOf('/sponsors/') === 0) return true;
   if (/^\/t\/[oc]\/[^/]+$/.test(p)) return true;                  // a mailer's open pixel and click links
   /* a shared preview link: the unguessable link is the permission (lib/share-preview.js) */
   if (p.indexOf('/s/') === 0) return true;
