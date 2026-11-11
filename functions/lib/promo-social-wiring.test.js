@@ -451,8 +451,9 @@ var events_src = fs.readFileSync(path.join(__dirname, 'api-events.js'), 'utf8');
   /* ---------- 3. a new edition copies none of it ---------- */
   var m1 = /var NOT_CLONED_FOLDERS = (\[[^\]]*\]);/.exec(events_src);
   var folders = m1 ? JSON.parse(m1[1].replace(/'/g, '"')) : null;
+  /* (and since 6 Nov 2026 the live page's share card, lib/share-card.js: made again from the copy's own banner) */
   check('NOT_CLONED_FOLDERS holds promo-art, promo-layouts and promo-banner, and still the three it had',
-    !!folders && ['published', 'staging', 'briefs', 'promo-art', 'promo-layouts', 'promo-banner'].every(function (x) { return folders.indexOf(x) !== -1; }) && folders.length === 6, folders);
+    !!folders && ['published', 'staging', 'briefs', 'promo-art', 'promo-layouts', 'promo-banner', 'share-card'].every(function (x) { return folders.indexOf(x) !== -1; }) && folders.length === 7, folders);
   var m2 = /var CLONED_COLLECTIONS = ([^;]+);/.exec(events_src);
   check('CLONED_COLLECTIONS is still the content lists, the promotion templates and the forms', !!m2 && m2[1] === 'CONTENT_COLLECTIONS.concat([PROMO_TEMPLATES, FORMS])', m2 && m2[1]);
   var shared = require('./api-events')._shared;

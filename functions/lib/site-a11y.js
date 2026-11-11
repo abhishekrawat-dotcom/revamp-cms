@@ -312,7 +312,8 @@ function headingLevels(headings) {
    THE PAGE PASS — pagePass(html, opts, kit) -> html
    Run by lib/api.js on every page publishTransform writes (live and preview), and on a page published before
    this pass existed when /e/<id> serves it (handlePublicPage), so no owner has to publish again for it.
-     opts = { mode: 'live' | 'preview', event: the event document, templateId }
+     opts = { mode: 'live' | 'preview', event: the event document, templateId,
+              report: an object the pass fills in ({ shareCard: share-card.js planOf's answer }), optional }
      kit  = the transform's tokenizer: { tokenizeHtml, attrOf, attrValue, classListOf, writeTag, setAttr, dropAttr,
             elementEnd } (lib/api.js) — the same rules: whole tags it has matched, text it writes itself.
    In order:
@@ -329,8 +330,11 @@ function headingLevels(headings) {
         changed: the link goes to its id, or to a place of ours just before it; a page with no h1 (the event's name only in its logo picture) gets one, visually hidden,
         at the top of its hero — never an imported page;
      6. search and sharing: the schema.org Event (site-seo.js), a picture for link previews when the owner set
-        none (shareCandidates: the banner video's still, the hero's picture, a picture of the page's own, the
-        logo unit, the portal's logo), a description that ends at a word (site-seo.js shareDescription — a page
+        none — the share card made for this very page (share-card.js: the banner's background with the logo unit
+        on it, its size and alt text given, first in the Event's pictures) once the event's record holds it, else
+        shareCandidates: the banner video's still, the hero's picture, a picture of the page's own, the
+        logo unit, the portal's logo; opts.report.shareCard says what the card needs (share-card.js planOf),
+        so that lib/api.js can have it made — a description that ends at a word (site-seo.js shareDescription — a page
         published before is cut the same way), and on a live page robots "max-image-preview:large". Each tag
         carries data-rv-seo and is written afresh every run;
      7. the words of the ET top bar a visitor cannot read: "About Vertical" names the portal (et-nav.js aboutLabel)
@@ -341,6 +345,7 @@ function headingLevels(headings) {
    data-rv-a11y and is written afresh every run; what 8 does in the page is seen on the next run and kept.
    Any failure leaves the page exactly as it came: a page is never lost to this pass. */
 var siteSeo = require('./site-seo');
+var shareCard = require('./share-card');
 var etFooter = require('./et-footer');
 var etNav = require('./et-nav');
 var heroVideoCore = require('../../templates/_shared/rv-hero-video-core.js');
@@ -542,13 +547,31 @@ function pagePassUnsafe(html, opts, kit) {
   var portalSlug = portalOfPage(tokens, kit);
   var share = shareCandidates(tokens, out, kit, event, portalSlug);
   var pictures = share.pictures.map(absolute).filter(Boolean);
-  var shareImage = pictures[0] || share.logos.map(absolute).filter(Boolean)[0] || '';
+  /* The share card (share-card.js): the banner's background with the logo unit centred on it, made on the server
+     from what this page shows. When the record on the event holds the card for exactly this page, it is the link
+     preview; until then (or when there is nothing to make one from) the picture chosen as before. The owner's own
+     share picture (ogImage, written by publishTransform) always wins. What the plan found is handed back in
+     opts.report, so lib/api.js can have a missing card made. */
+  var card = shareCard.planOf(tokens, out, kit, { event: event, imported: imported, absolute: absolute, own: !!ogImage, html: html });
+  if (opts.report && typeof opts.report === 'object') opts.report.shareCard = card;
+  var useCard = !ogImage && card.fresh && card.card;
+  var shareImage = useCard ? card.card.url : pictures[0] || share.logos.map(absolute).filter(Boolean)[0] || '';
   if (!ogImage && shareImage) {
     head.push('<meta property="og:image" content="' + escAttr(shareImage) + '" data-rv-seo>');
+    if (useCard) {
+      /* its size and words, so a preview lays it out before it has loaded it, and a screen reader can say it */
+      var alt = decode(title) || (typeof event.name === 'string' ? event.name.replace(/\s+/g, ' ').trim() : '');
+      head.push('<meta property="og:image:type" content="image/jpeg" data-rv-seo>');
+      head.push('<meta property="og:image:width" content="' + card.card.width + '" data-rv-seo>');
+      head.push('<meta property="og:image:height" content="' + card.card.height + '" data-rv-seo>');
+      if (alt) head.push('<meta property="og:image:alt" content="' + escAttr(alt) + '" data-rv-seo>');
+    }
     head.push('<meta name="twitter:image" content="' + escAttr(shareImage) + '" data-rv-seo>');
+    if (useCard && alt) head.push('<meta name="twitter:image:alt" content="' + escAttr(alt) + '" data-rv-seo>');
     /* a picture fills the large card; a logo (a wordmark, a lock-up) is shown small, never cropped across it */
-    if (pictures.length && twitterCard !== -1 && A(tokens[twitterCard], 'content') !== 'summary_large_image') { kit.setAttr(tokens[twitterCard], 'content', 'summary_large_image'); rewrite(twitterCard); }
+    if ((useCard || pictures.length) && twitterCard !== -1 && A(tokens[twitterCard], 'content') !== 'summary_large_image') { kit.setAttr(tokens[twitterCard], 'content', 'summary_large_image'); rewrite(twitterCard); }
   }
+  if (useCard) pictures = [card.card.url].concat(pictures);
   var footerSlug = '';
   tokens.some(function (x) { if (x.t === 'open' && x.name === 'footer' && A(x, 'data-rv-et-footer')) { footerSlug = A(x, 'data-rv-et-footer'); return true; } return false; });
   var portal = footerSlug && footerSlug !== 'et' && etFooter.isKnown && etFooter.isKnown(footerSlug) ? etFooter.info(footerSlug) : null;

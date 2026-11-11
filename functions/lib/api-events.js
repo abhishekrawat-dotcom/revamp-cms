@@ -548,16 +548,20 @@ var PEOPLE_COLLECTIONS = ['registrations', 'leads', 'promoAudiences'];
 var NOT_CLONED_FIELDS = ['published', 'publishedAt', 'publishedBy', 'publishedVersion', 'publishedPath',
   'publishedUrl', 'unpublishedAt', 'unpublishedBy', 'stagingUrl', 'deletedAt', 'deletedBy', 'counters', 'aiUsage',
   'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'detailsUpdatedAt', 'site', 'siteLock', 'cloningFrom', 'clonedFrom',
-  'eventId', 'id', 'slug', 'name', 'status'];
+  'eventId', 'id', 'slug', 'name', 'status',
+  /* the record of the published page's share card (share-card.js): the copy is not published, and its own card is
+     made from its own banner when it goes live */
+  'shareCard'];
 
 /* Storage folders under events/<id>/ that are not carried over: the live page and the old preview page
    (a copy starts unpublished), the documents uploaded for AI generation (inputs, like drafts), and the
    Promotions pictures made for this edition: the social posts' art and uploaded pictures (promo-art), their
-   saved layouts (promo-layouts) and the mailers' composed top banner (promo-banner). A new edition takes
+   saved layouts (promo-layouts), the mailers' composed top banner (promo-banner) and the live page's share card
+   (share-card, lib/share-card.js: made again from the copy's own banner when it is published). A new edition takes
    inspiration from the last one but never copies it: its banner is drawn again from its own site, and its
    posts start from its own art. Their records (promoSocial, promoSocialLayouts, promoBanner) are not in
    CLONED_COLLECTIONS either. */
-var NOT_CLONED_FOLDERS = ['published', 'staging', 'briefs', 'promo-art', 'promo-layouts', 'promo-banner'];
+var NOT_CLONED_FOLDERS = ['published', 'staging', 'briefs', 'promo-art', 'promo-layouts', 'promo-banner', 'share-card'];
 var SITE_FOLDER = 'site';
 var CLONE_CONCURRENCY = 12;
 var BATCH_SIZE = 400;          // Firestore allows 500 writes per batch
