@@ -1016,6 +1016,12 @@ function wikiLookup(fb, kind, slug, person, by, o) {
     var candidates = (found.candidates || []).map(function (c) { return { qid: c.qid, label: c.label, description: str(c.description).slice(0, 200), title: c.title, match: c.match, why: c.why }; });
     if (!found.match) return wikiRef(fb, kind, slug).set({ status: 'none', candidates: candidates, at: now, by: str(by) }).then(function () { return { status: 'none', candidates: candidates }; });
     return W.summary(found.match.title, { fetchJson: fetchJson }).then(function (sum) {
+      /* the article must be about them: a person's entry can lead to their company's article (Uday Narang's to
+         "Omega Seiki Mobility"), whose summary is not theirs */
+      if (sum && !W.aboutThem(kind, sum.title, person.name)) {
+        candidates.forEach(function (c) { if (c.qid === found.match.qid) { c.match = false; c.why = 'its Wikipedia article is "' + str(sum.title).slice(0, 80) + '", not about them'; } });
+        sum = null;
+      }
       var w = sum && W.clean(Object.assign({}, sum, { qid: found.match.qid, matchedOn: found.match.why, by: 'match', at: now }));
       if (!w) return wikiRef(fb, kind, slug).set({ status: 'none', candidates: candidates, at: now, by: str(by) }).then(function () { return { status: 'none', candidates: candidates }; });
       return wikiRef(fb, kind, slug).set(Object.assign({ status: 'matched', candidates: candidates }, w)).then(function () { return { status: 'matched', wiki: w }; });

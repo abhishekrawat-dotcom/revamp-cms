@@ -349,6 +349,14 @@ function page(url) {
     return Promise.resolve(null);
   } });
   check('10 a sponsor: the entry whose website is theirs', spf.match && spf.match.qid === 'Q7' && /website: sailpoint\.com/.test(spf.match.why), spf);
+  check('10 an article about them only: their name (a bracket aside), never their company\'s article', W.aboutThem('speakers', 'Naven Singh (banker)', 'Dr. Naven Singh') &&
+    !W.aboutThem('speakers', 'Omega Seiki Mobility', 'Uday Narang') && W.aboutThem('sponsors', 'SailPoint Technologies', 'SailPoint') && !W.aboutThem('sponsors', 'Google Cloud', 'Google'));
+  var redirectFetch = function (url) {
+    if (/page\/summary\//.test(url)) return Promise.resolve({ title: 'Acme Bank', extract: 'Acme Bank is an Indian bank.', content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Acme_Bank' } } });
+    return wikiFetch(url);
+  };
+  var notHim = await P.wikiLookup(FB, 'speakers', 'naven-singh', person10, 'asha@timesinternet.in', { fetchJson: redirectFetch });
+  check('10 …a person whose entry leads to their company\'s article: not used, and said why', notHim.status === 'none' && notHim.candidates.some(function (c) { return /not about them/.test(c.why); }), notHim);
   check('10 what is kept of Wikipedia: https on its own hosts only', W.clean({ url: 'https://evil.test/x', extract: 'x' }) === null && W.clean({ url: 'https://en.wikipedia.org/wiki/X', extract: 'Y', image: 'https://evil.test/a.jpg', imagePage: 'https://commons.wikimedia.org/wiki/File:a.jpg' }).image === '');
 
   process.stdout.write('people: ' + passed + ' passed, ' + failed + ' failed\n');

@@ -115,6 +115,13 @@ function summary(title, o) {
   });
 }
 
+/* an article titled with their own name (a disambiguation in brackets aside: "Naven Singh (banker)"); a sponsor's
+   with its own name, a kind word or two aside */
+function aboutThem(kind, title, name) {
+  var t = str(title).replace(/\s*\([^)]*\)\s*$/, '');
+  if (kind === 'sponsors') return PM.sponsorKey(t) === PM.sponsorKey(name) || PM.sameCompany(PM.companyForm(t), PM.companyForm(name), true);
+  return sameName(t, PM.withoutTitle(name)) || sameName(t, name);
+}
 function httpsOnly(u, host) {
   u = str(u).trim();
   if (!/^https:\/\/[^\s"'<>]+$/i.test(u)) return '';
@@ -138,4 +145,4 @@ function clean(w) {
   return out;
 }
 
-module.exports = { find: find, summary: summary, clean: clean, UA: UA, _test: { describes: describes, domainOf: domainOf, sameName: sameName } };
+module.exports = { find: find, summary: summary, clean: clean, aboutThem: aboutThem, UA: UA, _test: { describes: describes, domainOf: domainOf, sameName: sameName } };
