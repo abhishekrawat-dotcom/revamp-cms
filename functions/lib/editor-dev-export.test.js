@@ -66,6 +66,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2.5 the font families a text names (quoted, in variables too)', show(T.familiesUsed('h1{font-family:"Fraunces", Arial, serif}--heading-font-family:"Work Sans", sans-serif;')) === show(['fraunces', 'arial', 'serif', 'work sans', 'sans-serif']), T.familiesUsed('h1{font-family:"Fraunces", Arial, serif}--heading-font-family:"Work Sans", sans-serif;'));
   check('2.5a …and in a variable whose name only has "font" in it (a template\'s --heading-font-family-v2)', T.familiesUsed('--heading-font-family-v2:"Fraunces", serif;').indexOf('fraunces') !== -1, T.familiesUsed('--heading-font-family-v2:"Fraunces", serif;'));
   check('2.6 the families a Google Fonts address loads', show(T.fontFamiliesOfUrl('https://fonts.googleapis.com/css2?family=Fraunces:wght@300;400&family=Work+Sans:wght@400&display=swap')) === show(['fraunces', 'work sans']));
+  check('2.8 every selector begins with the wrapper\'s id and the weight of three ids more (ETB2B\'s pages use up to three)', /var WEIGHT = ':not\(#_#_#_\)';/.test(SRC) && /scope: '#' \+ scopeId\(id\) \+ WEIGHT,/.test(SRC));
   check('2.7 the wrapper\'s id is a safe one', T.scopeId('previous-speakers') === 'rv-embed-previous-speakers' && T.scopeId('a b"c') === 'rv-embed-a-b-c' && T.scopeId('') === 'rv-embed-section');
 })();
 
@@ -105,7 +106,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('3.5a the day tabs are put inside their row', /bar\.className = 'rv-day-tabs';[\s\S]{0,900}b\.className = 'rv-day-tab';[\s\S]{0,600}bar\.appendChild\(b\);/.test(RUNTIME));
   var missing = inSections.filter(function (c) { return !covered(c) && !(inside[c] && covered(inside[c])); });
   check('3.5 every element et-runtime.js and rv-popups.js add to a section is left out of the reset (the list is in step)', inSections.length >= 8 && missing.length === 0, { missing: missing, seen: inSections });
-  check('3.6 …and the runtimes\' own rules are given the wrapper\'s weight by the script (4.x), not lost under the reset', /weigh\(\)/.test(SRC) && /:is\(\[data-rv-embed\], #rv-embed-weight\)/.test(SRC));
+  check('3.6 …and the runtimes\' own rules are given the wrapper\'s weight by the script (4.x), not lost under the reset', /weigh\(\)/.test(SRC) && /:is\(\[data-rv-embed\], #rv-embed-weight#_#_#_\)/.test(SRC));
 })();
 
 /* ======================= 4 the script ======================= */

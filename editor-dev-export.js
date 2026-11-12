@@ -56,7 +56,12 @@
   'use strict';
 
   var EMBED = 'data-rv-embed';
-  /* the wrapper's id: what every selector begins with */
+  /* What every selector begins with: the wrapper's id, and the weight of three ids more (:not(#_#_#_) holds for any
+     element). ETB2B's own pages style their content through ids — up to three in one selector (the microsite
+     bundle, a page's custom CSS) — and a rule of the page's that reaches the section must not win over the
+     section's own. The same for every selector, so they still win over one another as on the event's page. */
+  var WEIGHT = ':not(#_#_#_)';
+  /* the wrapper's id */
   function scopeId(id) { return 'rv-embed-' + (String(id || 'section').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'section'); }
 
   /* ---------- reading selectors ---------- */
@@ -651,7 +656,7 @@
       '    Array.prototype.forEach.call(rules, function (r) {',
       '      if (r.selectorText) {',
       '        var sels = split(r.selectorText).map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^(html|:root|body)\\b/i.test(x); });',
-      '        if (sels.length) out.push(sels.map(function (x) { return \':is([data-rv-embed], #rv-embed-weight) \' + x; }).join(\', \') + \' { \' + r.style.cssText + \' }\');',
+      '        if (sels.length) out.push(sels.map(function (x) { return \':is([data-rv-embed], #rv-embed-weight#_#_#_) \' + x; }).join(\', \') + \' { \' + r.style.cssText + \' }\');',
       '      } else if (r.cssRules && r.media) {',
       '        var inner = [];',
       '        lift(r.cssRules, inner);',
@@ -747,7 +752,7 @@
       Array.prototype.forEach.call(n.classList, function (c) { classes[c] = 1; });
     });
     var ctx = {
-      scope: '#' + scopeId(id),
+      scope: '#' + scopeId(id) + WEIGHT,
       page: pageModel(doc, sec, copy), embed: embedModel(doc, copy, id),
       knownClass: function (c) { return !!classes[c]; },
       links: [], fontFaces: [], keyframes: [], props: []
