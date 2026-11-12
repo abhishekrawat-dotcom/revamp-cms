@@ -282,6 +282,9 @@ function page(url) {
   /* 8. the page, on its own */
   var odd = PAGE.render({ kind: 'speakers', slug: 'x', name: '<img src=x onerror=alert(1)>', designation: '"quote"', company: '', photo: 'javascript:alert(1)', linkedin: 'javascript:alert(1)', journey: [{ key: 'et:1', title: '<b>T</b>', link: 'javascript:x', year: '2025', sessions: [] }], stats: { events: 1 }, sections: [], links: [{ label: 'x', url: 'javascript:y' }] }, { base: 'https://sites.test', today: '2026-11-11' });
   check('8 everything escaped; a link or a picture that is not http(s) is dropped', !/<img src=x/.test(odd) && !/javascript:/.test(odd) && /&lt;b&gt;T&lt;\/b&gt;/.test(odd));
+  var RL = PAGE._test.roleLabel;
+  check('8 a role typed in capitals reads in sentence case; a short word and a mixed-case role stay as typed', RL('GUEST OF HONOUR') === 'Guest of Honour' && RL('GRAND JURY') === 'Grand Jury' &&
+    RL('CXO PANEL') === 'CXO Panel' && RL('Keynote Address') === 'Keynote Address' && RL('CEO OF THE YEAR JURY') === 'CEO of the Year Jury' && RL('NEXT-GEN LEADERS') === 'Next-Gen Leaders', [RL('GUEST OF HONOUR'), RL('CXO PANEL'), RL('CEO OF THE YEAR JURY'), RL('NEXT-GEN LEADERS')]);
   check('8 dates and times read as people say them', PAGE._test.dayLabel('2025-11-20') === '20 Nov 2025' && PAGE._test.timeLabel('2025-11-20T14:05:00') === '2:05 pm' && PAGE._test.timeLabel('10:30') === '10:30 am' && PAGE._test.timeLabel('2025-11-20 00:00:00') === '');
 
   /* 9. ETB2B AI writes the About: a draft from the page's facts, never saved by it */

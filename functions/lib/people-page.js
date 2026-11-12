@@ -48,6 +48,19 @@ function cut(text, max) {
   var at = text.lastIndexOf(' ', max - 1);
   return text.slice(0, at > max * 0.6 ? at : max - 1).replace(/[\s,;:.-]+$/, '') + '…';
 }
+/* a role as ETB2B's teams sometimes type it, in capitals ("GUEST OF HONOUR"), in the case a page reads: "Guest of
+   Honour"; a short word stays as it is (CXO, AI, HR), and a role typed in mixed case is left as it was */
+var SMALL_WORDS = { of: 1, and: 1, the: 1, for: 1, in: 1, at: 1, to: 1, on: 1, a: 1, an: 1, by: 1, with: 1 };
+function roleLabel(role) {
+  role = str(role).replace(/\s+/g, ' ').trim();
+  if (!role || role !== role.toUpperCase() || !/[A-Z]{2}/.test(role)) return role;
+  return role.split(' ').map(function (w, i) {
+    var lw = w.toLowerCase();
+    if (i > 0 && SMALL_WORDS[lw]) return lw;
+    if (/^[A-Z0-9&]{2,3}$/.test(w) && !SMALL_WORDS[lw]) return w;
+    return lw.replace(/(^|[-/(])([a-z])/g, function (m, a, b) { return a + b.toUpperCase(); });
+  }).join(' ');
+}
 function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
 function jsonLd(obj) { return JSON.stringify(obj).replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026'); }
 
@@ -163,9 +176,9 @@ function journeyHtml(person, o) {
     var meta = [when, j.portalName].filter(Boolean).join(' · ');
     if (!sponsor && j.company && person.company && j.company.toLowerCase() !== person.company.toLowerCase()) meta += (meta ? ' · ' : '') + 'as ' + j.company;
     var out = '<li><h3>' + title + '</h3>' + (meta ? '<p class="meta">' + esc(meta) + '</p>' : '');
-    if (sponsor && j.tier) out += '<span class="tier">' + esc(j.tier) + '</span>';
+    if (sponsor && j.tier) out += '<span class="tier">' + esc(roleLabel(j.tier)) + '</span>';
     /* their role there: the group ET put them in ("Keynote Address", "Grand Jury"); an award's people are its jury */
-    var role = !sponsor ? (j.role || (j.award ? 'Jury' : '')) : '';
+    var role = !sponsor ? (roleLabel(j.role) || (j.award ? 'Jury' : '')) : '';
     if (role) out += '<span class="tier">' + esc(role) + '</span>';
     if (!sponsor && j.sessions && j.sessions.length) {
       out += '<ul class="ss" aria-label="Sessions">' + j.sessions.map(function (s) {
@@ -294,4 +307,4 @@ function renderSponsor(p, o) {
 
 function render(person, o) { return person.kind === 'sponsors' ? renderSponsor(person, o || {}) : renderSpeaker(person, o || {}); }
 
-module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link } };
+module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel } };
