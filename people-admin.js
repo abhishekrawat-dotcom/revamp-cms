@@ -51,19 +51,25 @@
      designation, portal, what the page lacks, an award jury, sessions. What is chosen is kept in the address, so Back
      and a link bring the same list. */
   var FILTERS = [['all', 'All'], ['edited', 'Changed by the team'], ['hidden', 'Hidden'], ['same-name', 'Same name']];
-  var SORTS = [['events', 'Most events first'], ['recent', 'Most recent first'], ['name', 'Name, A to Z']];
-  var PROFILES = SP
-    ? [['any', 'Any profile'], ['complete', 'Complete'], ['no-photo', 'No photo'], ['no-designation', 'No designation'], ['no-company', 'No company'], ['no-bio', 'No bio'], ['no-linkedin', 'No LinkedIn']]
-    : [['any', 'Any profile'], ['complete', 'Complete'], ['no-logo', 'No logo'], ['no-website', 'No website'], ['no-about', 'No About']];
-  var LIST_KEYS = ['q', 'filter', 'sort', 'page', 'company', 'designation', 'portal', 'profile', 'jury', 'sessions'];
+  var SORTS = [['events', 'Most events first'], ['recent', 'Most recent first'], ['name', 'Name, A to Z'], ['complete-asc', 'Least complete first'], ['complete-desc', 'Most complete first']];
+  var COMPLETES = [['', 'Any completeness'], ['100', '100% complete'], ['80', '80% or more'], ['60', '60% or more'], ['lt50', 'Below 50%']];
+  /* the fields a profile is made of (functions/lib/people.js FIELDS): each may be asked for, or asked to be missing */
+  var FIELDS = SP ? [['photo', 'Photo'], ['designation', 'Designation'], ['company', 'Company'], ['bio', 'Bio'], ['linkedin', 'LinkedIn']]
+    : [['logo', 'Logo'], ['website', 'Website'], ['about', 'About']];
+  function fieldOk(f) { return FIELDS.some(function (x) { return x[0] === f; }); }
   (function readListState() {
     state.list = null;
-    state.filter = 'all'; state.sort = 'events'; state.page = 1; state.company = ''; state.designation = ''; state.portal = ''; state.profile = 'any'; state.jury = false; state.sessions = false;
+    state.filter = 'all'; state.sort = 'events'; state.page = 1; state.company = ''; state.designation = ''; state.portal = ''; state.has = []; state.lacks = []; state.complete = ''; state.jury = false; state.sessions = false;
     var u = new URLSearchParams(location.search);
     if (u.get('q')) { state.q = u.get('q'); state.typed = state.q; }
     if (FILTERS.some(function (f) { return f[0] === u.get('filter'); })) state.filter = u.get('filter');
     if (SORTS.some(function (f) { return f[0] === u.get('sort'); })) state.sort = u.get('sort');
-    if (PROFILES.some(function (f) { return f[0] === u.get('profile'); })) state.profile = u.get('profile');
+    state.has = String(u.get('has') || '').split(',').filter(fieldOk);
+    state.lacks = String(u.get('lacks') || '').split(',').filter(fieldOk);
+    if (COMPLETES.some(function (f) { return f[0] && f[0] === u.get('complete'); })) state.complete = u.get('complete');
+    /* an address from before: profile=complete | no-<field> */
+    var old = String(u.get('profile') || '');
+    if (old === 'complete') state.complete = '100'; else if (/^no-/.test(old) && fieldOk(old.slice(3)) && state.lacks.indexOf(old.slice(3)) === -1) state.lacks.push(old.slice(3));
     state.page = Math.max(1, parseInt(u.get('page'), 10) || 1);
     state.company = u.get('company') || ''; state.designation = u.get('designation') || ''; state.portal = u.get('portal') || '';
     state.jury = u.get('jury') === '1'; state.sessions = u.get('sessions') === '1';
@@ -76,12 +82,30 @@
     if (state.sort !== 'events') u.set('sort', state.sort);
     if (state.page > 1) u.set('page', String(state.page));
     ['company', 'designation', 'portal'].forEach(function (k) { if (state[k]) u.set(k, state[k]); });
-    if (state.profile !== 'any') u.set('profile', state.profile);
+    if (state.has.length) u.set('has', state.has.join(','));
+    if (state.lacks.length) u.set('lacks', state.lacks.join(','));
+    if (state.complete) u.set('complete', state.complete);
     if (state.jury) u.set('jury', '1');
     if (state.sessions) u.set('sessions', '1');
     try { history.replaceState(null, '', location.pathname + '?' + u.toString() + location.hash); } catch (e) { /* an old browser: the list still works */ }
   }
-  function narrowed() { return !!(state.q || state.company || state.designation || state.portal || state.profile !== 'any' || state.jury || state.sessions || state.filter !== 'all'); }
+  function narrowed() { return !!(state.q || state.company || state.designation || state.portal || state.has.length || state.lacks.length || state.complete || state.jury || state.sessions || state.filter !== 'all'); }
+  /* how complete a page is, as a short bar and its percentage */
+  function meter(pct, big) {
+    pct = Math.max(0, Math.min(100, +pct || 0));
+    var tone = pct === 100 ? 'full' : pct >= 60 ? 'mid' : 'low';
+    return '<span class="pp-pct ' + tone + (big ? ' big' : '') + '"><span class="bar" aria-hidden="true"><i style="width:' + pct + '%"></i></span>' + pct + '%</span>';
+  }
+  function fieldsPanel() {
+    var set = state.has.length + state.lacks.length;
+    return '<details class="pp-fields"' + (set ? ' open' : '') + '><summary>Profile fields' + (set ? ' (' + set + ')' : '') + '</summary><div class="pp-fgrid">' +
+      FIELDS.map(function (f) {
+        var v = state.has.indexOf(f[0]) !== -1 ? 'with' : state.lacks.indexOf(f[0]) !== -1 ? 'without' : '';
+        return '<label class="pp-fld"><span>' + f[1] + '</span><select class="inp" data-field="' + f[0] + '" aria-label="' + f[1] + '">' +
+          '<option value=""' + (!v ? ' selected' : '') + '>Any</option><option value="with"' + (v === 'with' ? ' selected' : '') + '>With ' + (f[0] === 'linkedin' ? 'LinkedIn' : f[1] === 'About' ? 'About' : f[1].toLowerCase()) + '</option>' +
+          '<option value="without"' + (v === 'without' ? ' selected' : '') + '>Without ' + (f[0] === 'linkedin' ? 'LinkedIn' : f[1] === 'About' ? 'About' : f[1].toLowerCase()) + '</option></select></label>';
+      }).join('') + '</div></details>';
+  }
   function tabs() {
     return '<nav class="pp-tabs" aria-label="Speakers or sponsors">' +
       '<a href="/people.html?kind=speakers"' + (SP ? ' aria-current="page"' : '') + '>Speakers</a>' +
@@ -98,6 +122,7 @@
       '<span class="pp-pg">Page <b>' + comma(L.page) + '</b> of ' + comma(L.pages) + '</span>' +
       b('Next ›', L.page + 1, 'Next page', L.page >= L.pages) + b('Last »', L.pages, 'Last page', L.page >= L.pages) + '</nav>';
   }
+  var EYE = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
   var MISSING_WORDS = { photo: 'photo', designation: 'designation', company: 'company', bio: 'bio', linkedin: 'LinkedIn', logo: 'logo', website: 'website', about: 'About' };
   function renderList() {
     var L = state.list;
@@ -112,10 +137,10 @@
       (SP ? '<input class="inp pp-f" id="pp-company" type="search" autocomplete="off" placeholder="Company" aria-label="Company" value="' + esc(state.company) + '">' +
         '<input class="inp pp-f" id="pp-designation" type="search" autocomplete="off" placeholder="Designation, e.g. CISO" aria-label="Designation" value="' + esc(state.designation) + '">' : '') +
       select('pp-portal', 'Portal', [['', 'Every portal']].concat(((L && L.portals) || []).map(function (p) { return [p.slug, p.name + ' (' + comma(p.count) + ')']; })).concat(state.portal && !(L && (L.portals || []).some(function (p) { return p.slug === state.portal; })) ? [[state.portal, state.portal]] : []), state.portal) +
-      select('pp-profile', 'Profile', PROFILES, state.profile) +
+      select('pp-complete', 'Completeness', COMPLETES, state.complete) +
       (SP ? '<label class="pp-chk"><input type="checkbox" id="pp-jury"' + (state.jury ? ' checked' : '') + '><span>Award jury</span></label>' +
         '<label class="pp-chk"><input type="checkbox" id="pp-sessions"' + (state.sessions ? ' checked' : '') + '><span>Has sessions</span></label>' : '') +
-      (narrowed() ? '<button type="button" class="btn btn-ghost btn-sm" id="pp-clear">Clear filters</button>' : '') + '</div>' +
+      (narrowed() ? '<button type="button" class="btn btn-ghost btn-sm" id="pp-clear">Clear filters</button>' : '') + '</div>' + fieldsPanel() +
       '<div class="pp-filters" role="group" aria-label="Show">' + FILTERS.map(function (f) {
         return '<button type="button" data-filter="' + f[0] + '" aria-pressed="' + (state.filter === f[0]) + '">' + f[1] + '</button>';
       }).join('') + '</div>';
@@ -133,11 +158,16 @@
           var facts = [it.editions ? it.editions + (it.editions === 1 ? ' event' : ' events') : '', it.sessions ? it.sessions + (it.sessions === 1 ? ' session' : ' sessions') : '',
             it.juries ? it.juries + (it.juries === 1 ? ' award jury' : ' award juries') : '', it.year ? 'last ' + it.year : ''].filter(Boolean).join(' · ');
           var miss = (it.missing || []).map(function (m) { return MISSING_WORDS[m] || m; });
-          return '<li><a class="pp-row" href="#' + encodeURIComponent(it.slug) + '">' + pic(it.photo, it.name, !SP) +
+          var preview = it.hidden
+            ? '<span class="pp-prev off" title="Hidden: this page has no public view">' + EYE + '<span class="sr">' + esc(it.name) + '\u2019s page is hidden</span></span>'
+            : '<a class="pp-prev" href="' + esc(publicHref('/' + KIND + '/' + encodeURIComponent(it.slug))) + '" target="_blank" rel="noopener" title="Preview the page">' + EYE +
+              '<span class="sr">Preview ' + esc(it.name) + '\u2019s page (opens in a new tab)</span></a>';
+          return '<li class="pp-li"><a class="pp-row" href="#' + encodeURIComponent(it.slug) + '">' + pic(it.photo, it.name, !SP) +
             '<span class="pp-txt"><b>' + esc(it.name) + '</b><span>' + esc(line) + '</span><span class="pp-facts">' + esc(facts) +
-            (miss.length ? ' <i class="pp-miss">No ' + esc(miss.join(', ')) + '</i>' : ' <i class="pp-ok">Complete</i>') + '</span></span>' +
+            (miss.length ? ' <i class="pp-miss">No ' + esc(miss.join(', ')) + '</i>' : '') + '</span></span>' +
+            meter(it.complete) +
             '<span class="pp-ev" aria-hidden="true"><b>' + comma(it.editions || 0) + '</b>events</span>' +
-            (it.hidden ? '<span class="pp-tag warn">Hidden</span>' : '') + (it.edited ? '<span class="pp-tag">Changed</span>' : '') + '</a></li>';
+            (it.hidden ? '<span class="pp-tag warn">Hidden</span>' : '') + (it.edited ? '<span class="pp-tag">Changed</span>' : '') + '</a>' + preview + '</li>';
         }).join('') + '</ul>' + pager(L);
       }
     }
@@ -160,7 +190,17 @@
         searchTimer = setTimeout(function () { state[k] = n.value.trim(); state.page = 1; writeListState(); loadList(false, 'pp-' + k); }, 320);
       });
     });
-    [['pp-sort', 'sort'], ['pp-portal', 'portal'], ['pp-profile', 'profile']].forEach(function (x) {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-field]'), function (n) {
+      n.addEventListener('change', function () {
+        var f = n.getAttribute('data-field');
+        state.has = state.has.filter(function (x) { return x !== f; });
+        state.lacks = state.lacks.filter(function (x) { return x !== f; });
+        if (n.value === 'with') state.has.push(f);
+        if (n.value === 'without') state.lacks.push(f);
+        again(true);
+      });
+    });
+    [['pp-sort', 'sort'], ['pp-portal', 'portal'], ['pp-complete', 'complete']].forEach(function (x) {
       var n = document.getElementById(x[0]);
       n.addEventListener('change', function () { state[x[1]] = n.value; again(true); });
     });
@@ -170,7 +210,7 @@
     });
     var clear = document.getElementById('pp-clear');
     if (clear) clear.addEventListener('click', function () {
-      state.q = ''; state.typed = ''; state.company = ''; state.designation = ''; state.portal = ''; state.profile = 'any'; state.jury = false; state.sessions = false; state.filter = 'all';
+      state.q = ''; state.typed = ''; state.company = ''; state.designation = ''; state.portal = ''; state.has = []; state.lacks = []; state.complete = ''; state.jury = false; state.sessions = false; state.filter = 'all';
       again(true);
     });
     Array.prototype.forEach.call(root.querySelectorAll('[data-filter]'), function (b) {
@@ -188,7 +228,7 @@
     var my = ++listSeq;
     state.err = '';
     return C.listPeople(KIND, { q: state.q, filter: state.filter, sort: state.sort, page: state.page, per: 50, company: state.company, designation: state.designation,
-      portal: state.portal, profile: state.profile === 'any' ? '' : state.profile, jury: state.jury, sessions: state.sessions }).then(function (d) {
+      portal: state.portal, has: state.has.join(','), lacks: state.lacks.join(','), complete: state.complete, jury: state.jury, sessions: state.sessions }).then(function (d) {
       if (my !== listSeq || slugNow()) return;
       state.list = d;
       state.page = d.page || 1;
@@ -267,7 +307,8 @@
     var html = '<p style="margin:0 0 12px"><a href="#" id="pp-tolist" class="btn btn-ghost btn-sm">← All ' + WORDS.many + '</a></p>' +
       '<div class="pp-head">' + pic(picNow, p.name, !SP) + '<div class="grow"><h2 id="pp-h" tabindex="-1">' + esc(set.name || p.name) + '</h2>' +
       '<p class="sub">' + esc([SP ? (set.designation || p.auto.designation) : '', SP ? (set.company || p.auto.company) : ''].filter(Boolean).join(', ')) + '</p>' +
-      '<p class="sub">' + esc(shown.length + (shown.length === 1 ? ' event' : ' events') + ' on the page' + (p.stats && p.stats.sessions ? ', ' + p.stats.sessions + (p.stats.sessions === 1 ? ' session' : ' sessions') : '') + (v.hidden ? ' · hidden' : '')) + '</p></div>' +
+      '<p class="sub">' + esc(shown.length + (shown.length === 1 ? ' event' : ' events') + ' on the page' + (p.stats && p.stats.sessions ? ', ' + p.stats.sessions + (p.stats.sessions === 1 ? ' session' : ' sessions') : '') + (v.hidden ? ' · hidden' : '')) + '</p>' +
+      '<p class="sub pp-comp">Profile ' + meter(v.complete, true) + ' complete' + ((v.missing || []).length ? '. Missing: ' + esc((v.missing || []).map(function (m) { return MISSING_WORDS[m] || m; }).join(', ')) + '.' : '.') + '</p></div>' +
       '<div class="pp-acts">' + (v.hidden || !p.hasPage ? '' : '<a class="btn btn-secondary" href="' + esc(publicHref(v.path)) + '" target="_blank" rel="noopener">Open the page</a>') +
       '<button class="btn btn-ghost" type="button" id="pp-copy"' + (v.hidden ? ' disabled' : '') + '>Copy its link</button></div></div>';
     if (state.note) html += '<p class="pp-note" role="status">' + state.note + '</p>';

@@ -254,9 +254,23 @@ function page(url) {
     L4.body.items.every(function (x) { return x.missing.indexOf('photo') !== -1; }) && L4.body.items.some(function (x) { return x.slug === 'naven-singh-globex'; }) && !L4.body.items.some(function (x) { return x.slug === 'naven-singh'; }) &&
     L5.body.items.length === 1 && L5.body.items[0].slug === 'naven-singh' && L6.body.page === 1 && L6.body.items[0].name <= L6.body.items[L6.body.items.length - 1].name,
     [L2.body.total, L3.body.total, L4.body.items.map(function (x) { return x.slug; }), L5.body.items.map(function (x) { return x.slug; }), L6.body.page]);
+  var C1 = await call(P.handleList, 'GET', '/api/people/speakers?has=linkedin,photo', 'viewer');
+  var C2 = await call(P.handleList, 'GET', '/api/people/speakers?has=company&lacks=photo,linkedin', 'viewer');
+  var C3 = await call(P.handleList, 'GET', '/api/people/speakers?complete=100', 'viewer');
+  var C4 = await call(P.handleList, 'GET', '/api/people/speakers?sort=complete-asc', 'viewer');
+  var C5 = await call(P.handleList, 'GET', '/api/people/speakers?profile=no-photo', 'viewer');
+  check('6 fields combined: with LinkedIn and a photo; with a company but no photo and no LinkedIn; 100% complete; least complete first; an older address still works',
+    C1.body.items.every(function (x) { return x.missing.indexOf('linkedin') === -1 && x.missing.indexOf('photo') === -1; }) && C1.body.items.some(function (x) { return x.slug === 'naven-singh'; }) &&
+    C2.body.items.length >= 1 && C2.body.items.every(function (x) { return x.missing.indexOf('photo') !== -1 && x.missing.indexOf('linkedin') !== -1 && x.missing.indexOf('company') === -1; }) &&
+    C3.body.items.every(function (x) { return x.complete === 100; }) &&
+    C4.body.items.every(function (x, i, a) { return i === 0 || a[i - 1].complete <= x.complete; }) && C4.body.items.length === C5.body.items.length + (C4.body.items.length - C5.body.items.length) &&
+    C5.body.items.every(function (x) { return x.missing.indexOf('photo') !== -1; }),
+    [C1.body.items.map(function (x) { return x.slug + ':' + x.complete; }), C2.body.items.map(function (x) { return x.slug; }), C3.body.items.length, C4.body.items.map(function (x) { return x.complete; })]);
+  check('6 …each row and each page says how complete it is (20% a field: photo, designation, company, bio, LinkedIn)', C1.body.items.every(function (x) { return x.complete === 100 - 20 * x.missing.length; }));
   L = await call(P.handleList, 'GET', '/api/people/speakers?filter=same-name', 'viewer');
   check('6 …Same name: the pages to look at', L.status === 200 && L.body.items.map(function (x) { return x.slug; }).sort().join() === 'naven-singh,naven-singh-globex', L.body.items);
   var one = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'viewer');
+  check('6 one page says how complete it is, and what it lacks', typeof one.body.complete === 'number' && Array.isArray(one.body.missing) && one.body.complete === 100 - 20 * one.body.missing.length && one.body.fields.length === 5, [one.body.complete, one.body.missing]);
   check('6 one page: what it is made of, what is not shown and why, the other page of that name; a viewer only reads', one.status === 200 && one.body.canChange === false &&
     one.body.person.rows.length === 4 && one.body.person.journey.some(function (j) { return j.why === 'a dummy event'; }) && one.body.sameName.length === 1 && one.body.sameName[0].slug === 'naven-singh-globex', one.body);
   var put = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'hr', { slug: 'naven-singh', base: 0, page: { about: 'x' } });

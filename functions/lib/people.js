@@ -814,19 +814,23 @@ function routePublic(req, res, kind, rest) {
 function kindFromUrl(req) { var m = /^\/api\/people\/(speakers|sponsors)(?:\/|$)/.exec(String(req.url || '').split('?')[0]); return m ? m[1] : ''; }
 function scoreOf(q, name) { return LIB()._test.scoreOf(q, name); }
 /* a row of the console's list: the team's name, company and picture over the index's (an uploaded picture is not
-   sent with a list: it is the page's own, shown when the page is opened), and what the page lacks */
+   sent with a list: it is the page's own, shown when the page is opened), what the page lacks, and how complete it
+   is: a speaker's photo, designation, company, bio and LinkedIn (20% each), a sponsor's logo, website and About */
+var FIELDS = { speakers: ['photo', 'designation', 'company', 'bio', 'linkedin'], sponsors: ['logo', 'website', 'about'] };
+function completeOf(kind, missing) { var n = FIELDS[kind].length; return Math.round(100 * (n - missing.length) / n); }
 function missingOf(kind, e, page) {
   var set = (page && page.set) || {}, f = (page && page.flags) || {}, miss = [];
+  var about = !!(f.about || str(page && page.about).trim());
   if (kind === 'speakers') {
-    if (!e.ph && !f.photo) miss.push('photo');
+    if (!e.ph && !f.photo && !set.photo) miss.push('photo');
     if (!e.d && !set.designation) miss.push('designation');
     if (!e.c && !set.company) miss.push('company');
-    if (!e.b && !f.about) miss.push('bio');
+    if (!e.b && !about) miss.push('bio');
     if (!e.l && !set.linkedin) miss.push('linkedin');
   } else {
-    if (!e.ph && !f.logo) miss.push('logo');
+    if (!e.ph && !f.logo && !set.logo) miss.push('logo');
     if (!e.w && !set.website) miss.push('website');
-    if (!f.about) miss.push('about');
+    if (!about) miss.push('about');
   }
   return miss;
 }
@@ -836,14 +840,17 @@ function rowFor(kind, slug, e, page) {
   var row = { slug: slug, name: set.name || e.n, company: kind === 'speakers' ? (set.company || e.c || '') : '', portals: (e.p || []).map(function (p) { return etEvents.PORTALS[p] || p; }),
     editions: e.ev || 0, year: str(e.y).slice(0, 4), hidden: page && typeof page.hidden === 'boolean' ? page.hidden : !!e.h, edited: !!page,
     photo: /^https:/.test(mine) ? mine : photoUrl(e.ph), missing: missingOf(kind, e, page) };
+  row.complete = completeOf(kind, row.missing);
   if (kind === 'speakers') { row.designation = set.designation || e.d || ''; row.sessions = e.s || 0; row.juries = e.j || 0; }
   return row;
 }
-/* GET /api/people/<kind>?q=&filter=&sort=&page=&per=&company=&designation=&portal=&profile=&jury=&sessions=
+/* GET /api/people/<kind>?q=&filter=&sort=&page=&per=&company=&designation=&portal=&has=&lacks=&complete=&jury=&sessions=
      filter    all | edited (changed by the team) | hidden | same-name (pages that may be one person)
-     sort      events (most first; the default) | recent | name
-     profile   any | complete | no-photo | no-designation | no-company | no-bio | no-linkedin (a sponsor: no-logo,
-               no-website, no-about) — what ETB2B's records give, and what the team added
+     sort      events (most first; the default) | recent | name | complete-asc (least complete first) | complete-desc
+     has, lacks  fields the page must have, and must lack, together (comma-separated: photo, designation, company,
+               bio, linkedin; a sponsor: logo, website, about) — what ETB2B's records give, and what the team added
+     complete  100 | 80 | 60 (at least that much complete) | lt50 (below half)
+     profile   (older addresses) complete, or no-<field>
      jury=1    sat on an award jury; sessions=1  spoke in a session on record
    -> { items, total, page, per, pages, count, portals: [{ slug, name, count }], ready } */
 var LIST_PER = [25, 50, 100];
@@ -854,7 +861,12 @@ function handleList(req, res) {
     var q = oneLine(qs.get('q'), CAPS.query), filter = str(qs.get('filter')) || 'all', sort = str(qs.get('sort')) || 'events';
     var per = LIST_PER.indexOf(+qs.get('per')) !== -1 ? +qs.get('per') : 50, page = Math.max(1, Math.min(100000, parseInt(qs.get('page'), 10) || 1));
     var company = PM.normal(oneLine(qs.get('company'), 80)), desig = PM.normal(oneLine(qs.get('designation'), 80)), portal = str(qs.get('portal')).slice(0, 40);
-    var profile = str(qs.get('profile')) || 'any', jury = qs.get('jury') === '1', withSessions = qs.get('sessions') === '1';
+    var jury = qs.get('jury') === '1', withSessions = qs.get('sessions') === '1';
+    function fieldList(v) { return str(v).split(',').map(function (x) { return x.trim(); }).filter(function (x) { return FIELDS[kind].indexOf(x) !== -1; }); }
+    var has = fieldList(qs.get('has')), lacks = fieldList(qs.get('lacks')), complete = str(qs.get('complete'));
+    var profile = str(qs.get('profile'));
+    if (profile === 'complete') complete = '100';
+    else if (/^no-/.test(profile)) lacks = lacks.concat(fieldList(profile.slice(3)));
     Promise.all([readIndex(fb, kind), fb.db.collection(KINDS[kind].pages).select('set.name', 'set.designation', 'set.company', 'set.linkedin', 'set.website', 'flags', 'hidden', 'updatedAt').get().then(function (s) { return s.docs; }, function () { return []; })]).then(function (r) {
       var idx = r[0], pages = {};
       r[1].forEach(function (d) { pages[d.id] = d.data() || {}; });
@@ -887,15 +899,22 @@ function handleList(req, res) {
       });
       if (kind === 'speakers' && jury) slugs = slugs.filter(function (sl) { return (idx.people[sl].j || 0) > 0; });
       if (kind === 'speakers' && withSessions) slugs = slugs.filter(function (sl) { return (idx.people[sl].s || 0) > 0; });
-      if (profile !== 'any') slugs = slugs.filter(function (sl) {
+      var pctOf = {};
+      function pct(sl) { if (!(sl in pctOf)) pctOf[sl] = completeOf(kind, missingOf(kind, idx.people[sl], pages[sl])); return pctOf[sl]; }
+      if (has.length || lacks.length) slugs = slugs.filter(function (sl) {
         var miss = missingOf(kind, idx.people[sl], pages[sl]);
-        return profile === 'complete' ? !miss.length : miss.indexOf(profile.replace(/^no-/, '')) !== -1;
+        return has.every(function (f) { return miss.indexOf(f) === -1; }) && lacks.every(function (f) { return miss.indexOf(f) !== -1; });
       });
+      if (/^(100|80|60)$/.test(complete)) slugs = slugs.filter(function (sl) { return pct(sl) >= +complete; });
+      else if (complete === 'lt50') slugs = slugs.filter(function (sl) { return pct(sl) < 50; });
       /* the order: most events first (then the newest, then the name), the newest first, or by name */
       function byName(a, b) { var x = PM.nameKey(idx.people[a].n), y = PM.nameKey(idx.people[b].n); return x < y ? -1 : x > y ? 1 : 0; }
       function byRecent(a, b) { var x = str(idx.people[a].y), y = str(idx.people[b].y); return x < y ? 1 : x > y ? -1 : 0; }
       function byEvents(a, b) { return (idx.people[b].ev || 0) - (idx.people[a].ev || 0); }
-      var order = sort === 'name' ? [byName] : sort === 'recent' ? [byRecent, byEvents, byName] : [byEvents, byRecent, byName];
+      function byComplete(a, b) { return pct(a) - pct(b); }
+      function byCompleteDesc(a, b) { return pct(b) - pct(a); }
+      var order = sort === 'name' ? [byName] : sort === 'recent' ? [byRecent, byEvents, byName] :
+        sort === 'complete-asc' ? [byComplete, byEvents, byName] : sort === 'complete-desc' ? [byCompleteDesc, byEvents, byName] : [byEvents, byRecent, byName];
       if (filter === 'same-name' && sort === 'events') order = [byName, byEvents];
       slugs.sort(function (a, b) { for (var i = 0; i < order.length; i++) { var c = order[i](a, b); if (c) return c; } return 0; });
       var total = slugs.length, pages_ = Math.max(1, Math.ceil(total / per));
@@ -927,7 +946,8 @@ function viewOf(fb, kind, slug, idx, access) {
       var nk = kind === 'sponsors' ? PM.sponsorKey(entry.n).replace(/ /g, '') : PM.nameKey(entry.n);
       var same = (idx.byName[nk] || []).filter(function (s) { return s !== slug && idx.people[s] && (idx.people[s].k || []).length; }).slice(0, CAPS.sameName)
         .map(function (s) { return rowFor(kind, s, idx.people[s], null); });
-      return { kind: kind, slug: slug, person: person, page: pageFields(page), version: (page && page.version) || 0, updatedAt: page && page.updatedAt || null, updatedBy: page && page.updatedBy || '',
+      var missing = missingOf(kind, entry, page);
+      return { kind: kind, slug: slug, person: person, page: pageFields(page), version: (page && page.version) || 0, missing: missing, complete: completeOf(kind, missing), fields: FIELDS[kind], updatedAt: page && page.updatedAt || null, updatedBy: page && page.updatedBy || '',
         hidden: page && typeof page.hidden === 'boolean' ? page.hidden : !!entry.h, sameName: same, log: r[1], canChange: mayChange(access, entry), whyNot: mayChange(access, entry) ? '' : changeRefusal(access),
         path: '/' + kind + '/' + slug };
     });
@@ -1310,5 +1330,5 @@ module.exports = {
   handleList: handleList, handleOne: handleOne, handleMerge: handleMerge, handleSplit: handleSplit, handleUndo: handleUndo, handleAbout: handleAbout, handleWiki: handleWiki, wikiLookup: wikiLookup, personOf: personOf, readIndex: readIndex,
   _test: { place: place, newSlug: newSlug, summarise: summarise, joinInto: joinInto, finalSlug: finalSlug, withLookups: withLookups, cleanPage: cleanPage,
     personOf: personOf, whyNotPublic: whyNotPublic, findSlug: findSlug, mayChange: mayChange, shardOf: shardOf, readIndex: readIndex, forget: forget,
-    sitemapEntries: sitemapEntries, rowsOf: rowsOf, groupsOf: groupsOf, DUMMY_EVENTS: DUMMY_EVENTS, KINDS: KINDS, CAPS: CAPS, factsOf: factsOf, aboutPrompt: aboutPrompt, cleanAbout: cleanAbout }
+    sitemapEntries: sitemapEntries, rowsOf: rowsOf, groupsOf: groupsOf, completeOf: completeOf, missingOf: missingOf, FIELDS: FIELDS, DUMMY_EVENTS: DUMMY_EVENTS, KINDS: KINDS, CAPS: CAPS, factsOf: factsOf, aboutPrompt: aboutPrompt, cleanAbout: cleanAbout }
 };
