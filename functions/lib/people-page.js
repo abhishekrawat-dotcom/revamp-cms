@@ -280,8 +280,10 @@ function eventItem(j, person, sponsor) {
   var role = sponsor ? tierLabel(j.tier) : shownRole(j);
   if (role) tags.push('<span class="tier">' + esc(role) + '</span>');
   if (tags.length) out += '<div class="tags">' + tags.join('') + '</div>';
-  /* the company they came from then, when it was another (not the same company spelt another way) */
-  if (!sponsor && j.company && person.company && !PM.sameCompany(PM.companyForm(j.company), PM.companyForm(person.company))) out += '<p class="was">Then at ' + esc(j.company) + '</p>';
+  /* who they were then, when it was another company (not the same one spelt another way): their journey */
+  if (!sponsor && j.company && person.company && !PM.sameCompany(PM.companyForm(j.company), PM.companyForm(person.company))) {
+    out += '<p class="was">Then ' + (j.designation ? esc(j.designation) + ' at ' : 'at ') + esc(j.company) + '</p>';
+  }
   if (!sponsor && j.sessions && j.sessions.length) {
     out += '<ul class="ss" aria-label="Sessions">' + j.sessions.map(function (s) {
       var t = timeLabel(s.start);

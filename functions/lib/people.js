@@ -20,7 +20,8 @@
        ENTRY = { n: name, c: company (speakers), cs: [its other companies], k: [rowKey], p: [portal],
                  y: newest edition 'YYYY-MM-DD' | 'YYYY', ev: editions, ph: the newest https photo (a sponsor: logo;
                  ET's own picture host written as "ET:<path>"), d: the newest designation, b: 1 when a bio is on
-                 record, l: 1 with a LinkedIn (a sponsor: w: 1 with a website), s: sessions, j: award juries,
+                 record, li: their LinkedIn handle (one surely theirs: people-match.js linkTrust) and l: 1 with it
+                 (a sponsor: w: 1 with a website), s: sessions, j: award juries,
                  h: true when hidden,
                  m: true once the team joined or split it by hand (the matching then never joins it again) }
      speakerPages/<slug>, sponsorPages/<slug>   what the team added: PAGE (cleanPage below), with `log` under it:
@@ -110,7 +111,7 @@ function rowsOf(kind, docs, own) {
   });
   return rows;
 }
-function groupsOf(kind, rows) { return kind === 'sponsors' ? PM.sponsorsOf(rows) : PM.peopleOf(rows); }
+function groupsOf(kind, rows, trust) { return kind === 'sponsors' ? PM.sponsorsOf(rows) : PM.peopleOf(rows, { trust: trust }); }
 
 /* ---------- the index ---------- */
 function emptyIndex() { return { people: {}, alias: {} }; }
@@ -233,7 +234,7 @@ function newSlug(kind, idx, rows) {
   return base + '-' + crypto.randomBytes(4).toString('hex');
 }
 /* ENTRY's summary from its rows, newest first */
-function summarise(kind, entry, rows, sessionsOf) {
+function summarise(kind, entry, rows, sessionsOf, trust) {
   rows = rows.slice().sort(PM.newestFirst);
   if (!rows.length) { entry.ev = 0; return entry; }
   /* what the console's list filters on, without reading a page: designation, a bio, LinkedIn or a website, sessions,
@@ -244,7 +245,11 @@ function summarise(kind, entry, rows, sessionsOf) {
     for (var di = 0; di < rows.length && !desig; di++) desig = str(rows[di].designation).replace(/\s+/g, ' ').trim();
     flag('d', desig.slice(0, 80));
     flag('b', rows.some(function (r) { return !!str(r.bio).trim(); }) ? 1 : 0);
-    flag('l', rows.some(function (r) { return /^https:\/\//.test(str(r.linkedin)); }) ? 1 : 0);
+    /* their LinkedIn: the newest that is surely theirs (never one pasted from someone else's record) */
+    var li = '';
+    for (var lj = 0; lj < rows.length && !li; lj++) li = trust ? PM.linkOf(rows[lj], trust) : PM.linkedinHandle(rows[lj].linkedin);
+    flag('li', li);
+    flag('l', li ? 1 : 0);
     var sessions = 0, juries = 0;
     rows.forEach(function (r) {
       if (sessionsOf && r.key) sessions += sessionsOf[r.key] || 0;
@@ -331,7 +336,7 @@ function place(kind, idx, groups, o) {
   });
   Object.keys(idx.people).forEach(function (s) {
     var e = idx.people[s];
-    summarise(kind, e, e.k.map(function (k) { return rowByKey[k]; }).filter(Boolean), o.sessions);
+    summarise(kind, e, e.k.map(function (k) { return rowByKey[k]; }).filter(Boolean), o.sessions, o.trust);
   });
   return stats;
 }
@@ -363,8 +368,10 @@ function reconcile(fb, kind, o) {
     var docs = r[0], rows = rowsOf(kind, docs, r[1].list), portals = {};
     var sessions = Object.assign({}, r[2], r[3]);
     docs.forEach(function (d) { if (d.portal) portals[d.portal] = true; });
-    var groups = groupsOf(kind, rows);
-    return withIndex(fb, kind, function (idx) { return place(kind, idx, groups, { portals: portals, own: r[1].ok, sessions: sessions }); }).then(function (stats) {
+    /* whose LinkedIn is whose, over every row (lib/people-match.js linkTrust) */
+    var trust = kind === 'speakers' ? PM.linkTrust(rows) : null;
+    var groups = groupsOf(kind, rows, trust);
+    return withIndex(fb, kind, function (idx) { return place(kind, idx, groups, { portals: portals, own: r[1].ok, sessions: sessions, trust: trust }); }).then(function (stats) {
       stats.people = groups.length;
       console.log('people: ' + kind + ' index kept in step — ' + JSON.stringify(stats));
       return stats;
@@ -524,7 +531,7 @@ function personOf(fb, kind, slug, entry, page, o) {
           });
         }
         add({ key: 'et:' + str(ev.id || ev.title), title: str(ev.title), date: str(ev.start), year: str(ev.year) || str(ev.start).slice(0, 4), upcoming: false,
-          award: ev.kind === 'award', role: kind === 'speakers' ? str((x.rs || [])[j]) : '',
+          award: ev.kind === 'award', role: kind === 'speakers' ? str((x.rs || [])[j]) : '', designation: kind === 'speakers' ? str(x.d) : '',
           link: /^https:\/\//.test(str(ev.link)) ? str(ev.link) : '', portal: k.portal, portalName: str(doc.portalName), company: kind === 'speakers' ? str(x.c) : '',
           tier: kind === 'sponsors' ? str((x.ts || [])[j] || (j === 0 ? x.t : '')) : '', sessions: sessions, src: 'et' });
       });
@@ -543,7 +550,7 @@ function personOf(fb, kind, slug, entry, page, o) {
       rows.push({ key: o2.k.key, src: 'own', portal: ev.portal || '', eventId: o2.k.eventId, label: label, at: date, company: kind === 'speakers' ? str(v.comp) : '', public: !o2.why, why: o2.why });
       if (!o2.v) return;
       var item = { key: 'own:' + o2.k.eventId, title: str(ev.name).trim(), date: date, year: date.slice(0, 4), upcoming: !!date && date > now, award: ev.category === 'awards', role: '',
-        link: o2.why ? '' : '/e/' + o2.k.eventId, portal: ev.portal || '', portalName: etEvents.PORTALS[ev.portal] || '', company: kind === 'speakers' ? str(v.comp) : '',
+        link: o2.why ? '' : '/e/' + o2.k.eventId, portal: ev.portal || '', portalName: etEvents.PORTALS[ev.portal] || '', company: kind === 'speakers' ? str(v.comp) : '', designation: kind === 'speakers' ? str(v.desig) : '',
         tier: kind === 'sponsors' ? str(((o2.more || [])[0] || {}).name) : '', src: 'own', why: o2.why,
         sessions: kind === 'speakers' ? (o2.more || []).filter(function (s) { return str(s.title).trim(); }).map(function (s) {
           return { title: str(s.title).trim().slice(0, 240), start: str(s.start), end: str(s.end), about: str(s.desc).replace(/\s+/g, ' ').trim().slice(0, 320),
@@ -573,6 +580,9 @@ function personOf(fb, kind, slug, entry, page, o) {
     var fields = kind === 'speakers' ? ['name', 'designation', 'company', 'photo', 'linkedin', 'bio', 'logo'] : ['name', 'logo', 'website'];
     var person = { kind: kind, slug: slug, journey: journey, rows: rows, hidden: !!entry.h, joinedByHand: !!entry.m };
     fields.forEach(function (f) { person[f] = ''; for (var i = 0; i < details.length; i++) if (str(details[i][f])) { person[f] = str(details[i][f]); break; } });
+    /* their LinkedIn: the one the index found surely theirs (a link pasted from someone else's record is not shown) */
+    if (kind === 'speakers' && entry.li) person.linkedin = 'https://www.linkedin.com/in/' + encodeURIComponent(entry.li);
+    else if (kind === 'speakers' && !entry.l) person.linkedin = '';   /* (an index from before li keeps l: the rows' link stands until it is made again) */
     if (kind === 'speakers' && details[0]) { person.designation = str(details[0].designation) || person.designation; person.company = str(details[0].company) || person.company; }
     if (!person.name) person.name = str(entry.n);
     person.auto = {};

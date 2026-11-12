@@ -135,6 +135,33 @@ function page(url) {
   var sp = PM.sponsorsOf([{ name: 'Google', at: '2026' }, { name: 'Google Cloud', at: '2025' }, { name: 'Sandoz India Pvt Ltd', at: '2024' }, { name: 'Sandoz', at: '2023' }, { name: 'Tata Consultancy Services (TCS)', at: '2022' }, { name: 'TCS', at: '2021' }]);
   check('1 sponsors: the same name, a short form in brackets; one name continuing another is not enough', sp.length === 4 && sp.some(function (x) { return x.length === 2 && /Sandoz/.test(x[0].name); }) &&
     sp.some(function (x) { return x.length === 2 && /TCS/.test(x[0].name + x[1].name); }), sp.map(function (x) { return x.map(function (r) { return r.name; }); }));
+  /* one person by a LinkedIn that is surely theirs (the owner, 12 Nov 2026) */
+  check('1 a LinkedIn profile\'s handle, and never a company page, a bare address or "me"', PM.linkedinHandle('https://www.linkedin.com/in/Vinod-Bhat-1a2b/') === 'vinod-bhat-1a2b' &&
+    PM.linkedinHandle('in.linkedin.com/pub/x-y/1/2') === 'x-y' && PM.linkedinHandle('https://www.linkedin.com/company/acme') === '' && PM.linkedinHandle('https://linkedin.com') === '' && PM.linkedinHandle('linkedin.com/in/me') === '');
+  var LR = [{ name: 'Vinkesh Gulati', company: 'A', linkedin: 'linkedin.com/in/vinkesh-gulati-b3024824' }, { name: 'Mudit Dobhal', company: 'B', linkedin: 'https://www.linkedin.com/in/vinkesh-gulati-b3024824' },
+    { name: 'Arun Subramanian', linkedin: 'linkedin.com/in/arunsubra' }, { name: 'Manoj Jain', linkedin: 'linkedin.com/in/arunsubra' }, { name: 'Rahul Ghosh', linkedin: 'linkedin.com/in/arunsubra' },
+    { name: 'Krishnan Sadagopan', company: 'Ashok Leyland', designation: 'Head of R&D', linkedin: 'https://www.linkedin.com/in/krishnan-sadagopan-123', at: '2024' },
+    { name: 'Krishnan Sadagopan', company: 'Indian Oil Corporation', designation: 'Independent Director', linkedin: 'https://in.linkedin.com/in/krishnan-sadagopan-123/', at: '2026' },
+    { name: 'S K', company: 'X', linkedin: 'linkedin.com/in/abc123' }, { name: 'S K', company: 'Y', linkedin: 'linkedin.com/in/abc123' },
+    { name: 'Asha Rao', company: 'P', linkedin: 'linkedin.com/in/zz-other-person' }, { name: 'Bina Shah', company: 'Q', linkedin: 'linkedin.com/in/zz-other-person' }];
+  var LT = PM.linkTrust(LR);
+  check('1 a link on several people is theirs only whose name is in it; on no one, when none\'s or more than one\'s is',
+    PM.linkOf(LR[0], LT) === 'vinkesh-gulati-b3024824' && PM.linkOf(LR[1], LT) === '' && PM.linkOf(LR[2], LT) === 'arunsubra' && PM.linkOf(LR[3], LT) === '' && PM.linkOf(LR[4], LT) === '' &&
+    PM.linkOf(LR[9], LT) === '' && PM.linkOf(LR[10], LT) === '', LT);
+  check('1 …a link only one person has, without their name in it: shown as theirs, never a reason to join', PM.linkOf(LR[7], LT) === 'abc123' && !LT.join.abc123 && PM.peopleOf(LR.slice(7, 9), { trust: LT }).length === 2);
+  check('1 the same name and a LinkedIn surely theirs: one person, whatever the company (newest first); without it, two',
+    PM.peopleOf(LR.slice(5, 7), { trust: LT }).length === 1 && PM.peopleOf(LR.slice(5, 7), { trust: LT })[0][0].company === 'Indian Oil Corporation' && PM.peopleOf(LR.slice(5, 7)).length === 2);
+  check('1 …and a team-typed link no record has is theirs; one pasted on others is no one\'s', PM.linkOf({ name: 'New Person', src: 'own', linkedin: 'linkedin.com/in/new-person-9' }, LT) === 'new-person-9' &&
+    PM.linkOf({ name: 'Manoj Jain', src: 'own', linkedin: 'linkedin.com/in/arunsubra' }, LT) === '');
+  var idxL = { people: { 'krishnan-sadagopan': { n: 'Krishnan Sadagopan', k: ['e~auto~a'] }, 'krishnan-sadagopan-indian-oil': { n: 'Krishnan Sadagopan', k: ['e~energy~b'] } }, alias: {} };
+  var rowsL = [Object.assign({ key: 'e~auto~a', portal: 'auto', src: 'et', x: { e: [0] } }, LR[5]), Object.assign({ key: 'e~energy~b', portal: 'energy', src: 'et', x: { e: [0] } }, LR[6])];
+  T.place('speakers', idxL, PM.peopleOf(rowsL, { trust: LT }), { portals: { auto: true, energy: true }, own: true, trust: LT });
+  check('1 two pages the LinkedIn shows are one: joined, the other address leads there; its LinkedIn kept', Object.keys(idxL.people).length === 1 && Object.keys(idxL.alias).length === 1 &&
+    idxL.people[Object.keys(idxL.people)[0]].li === 'krishnan-sadagopan-123' && idxL.people[Object.keys(idxL.people)[0]].l === 1, idxL);
+  var KP = PAGE.render({ kind: 'speakers', slug: 'krishnan-sadagopan', name: 'Krishnan Sadagopan', designation: 'Independent Director', company: 'Indian Oil Corporation',
+    journey: [{ key: 'et:1', title: 'ETAuto Tech 2024', year: '2024', date: '2024-03-01', company: 'Ashok Leyland', designation: 'Head of R&D', sessions: [] }, { key: 'et:2', title: 'ETEnergy Summit 2026', year: '2026', date: '2026-02-01', company: 'Indian Oil Corporation', designation: 'Independent Director', sessions: [] }],
+    stats: { events: 2 }, sections: [], links: [] }, { base: 'https://sites.test', today: '2026-11-12' });
+  check('1 …the page tells the journey: who they were at each edition with another company', /Then Head of R&amp;D at Ashok Leyland/.test(KP) && (KP.match(/class="was"/g) || []).length === 1);
   check('1 a slug', PM.slugify('Dr. Kiran Bedi') === 'dr-kiran-bedi' && PM.slugify('  ') === '' && PM.slugify('L&T Finance') === 'l-and-t-finance');
 
   /* 2. the index: slugs that never change */

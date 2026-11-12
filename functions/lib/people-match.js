@@ -30,7 +30,8 @@
      groupPeople(rows)            -> [[row]] rows of ONE nameKey grouped into people, each newest first, the people in
                                      the order of their newest row. row: { company, designation, at } (at: a date
                                      'YYYY-MM-DD' or a year 'YYYY'; '' when unknown)
-     peopleOf(rows)               -> [[row]] any rows, grouped by name, then into people
+     peopleOf(rows, o)            -> [[row]] any rows, grouped by name, then into people (o.trust: linkTrust's, so a
+                                     LinkedIn that is surely theirs makes one person of two companies)
      sponsorKey(name)             -> the comparison form of a sponsor's name
      sponsorsOf(rows)             -> [[row]] rows ({ name, at }) grouped into sponsors, each newest first
      newestFirst(a, b)            -> a sort for rows by at
@@ -133,7 +134,7 @@ function newestFirst(a, b) {
   return (str(b.company) ? 1 : 0) - (str(a.company) ? 1 : 0);
 }
 
-function groupPeople(rows) {
+function groupPeople(rows, o) {
   var list = (rows || []).slice().sort(newestFirst), groups = [];
   list.forEach(function (r) {
     r._co = r._co || companyForm(r.company);
@@ -153,6 +154,23 @@ function groupPeople(rows) {
     if (!unknown) { unknown = { rows: [], forms: [] }; groups.push(unknown); }
     unknown.rows.push(r);
   });
+  /* two of them with one LinkedIn that is surely theirs are one person, whatever their companies were */
+  var join = o && o.trust && o.trust.join;
+  if (join && groups.length > 1) {
+    var byHandle = {};
+    groups.forEach(function (g, i) {
+      g.rows.forEach(function (r) {
+        var h = linkedinHandle(r.linkedin);
+        if (h && join[h] && join[h] === nameKey(r.name)) (byHandle[h] || (byHandle[h] = [])).push(i);
+      });
+    });
+    var parent = groups.map(function (g, i) { return i; });
+    function find(i) { while (parent[i] !== i) { parent[i] = parent[parent[i]]; i = parent[i]; } return i; }
+    Object.keys(byHandle).forEach(function (h) { var l = byHandle[h]; for (var i = 1; i < l.length; i++) { var a = find(l[0]), b = find(l[i]); if (a !== b) parent[b] = a; } });
+    var merged = {};
+    groups.forEach(function (g, i) { var r = find(i); if (!merged[r]) merged[r] = { rows: [], forms: [] }; merged[r].rows = merged[r].rows.concat(g.rows); });
+    groups = Object.keys(merged).map(function (k) { return merged[k]; });
+  }
   return groups.map(function (g) {
     g.rows.sort(newestFirst);
     g.rows.forEach(function (r) { delete r._co; });
@@ -160,7 +178,7 @@ function groupPeople(rows) {
   }).sort(function (a, b) { return newestFirst(a[0], b[0]); });
 }
 
-function peopleOf(rows) {
+function peopleOf(rows, o) {
   var byName = {}, order = [];
   (rows || []).forEach(function (r) {
     var k = nameKey(r.name);
@@ -169,8 +187,63 @@ function peopleOf(rows) {
     byName[k].push(r);
   });
   var out = [];
-  order.forEach(function (k) { groupPeople(byName[k]).forEach(function (g) { out.push(g); }); });
+  order.forEach(function (k) { groupPeople(byName[k], o).forEach(function (g) { out.push(g); }); });
   return out;
+}
+
+/* ---------- one person by their LinkedIn (the owner, 12 Nov 2026: "we can merge the duplicate speakers like who
+   have same name and same linkedin link, if the company or designation is changed then we can show that as their
+   journey. but this should be done only if the linkedin link shared is actual") ----------
+   LinkedIn itself is never read (its terms forbid reading other people's profiles), so a link is taken as theirs
+   only when the records say so:
+     - it is a person's profile: linkedin.com/in/<handle> (or /pub/), not a company's page, a search or a post;
+     - no one else's records carry it — or, where a link was pasted on several people (one link is on eight people's
+       rows in ETB2B's records), it is the one whose name is in the handle;
+   and two records of one name are one person by it only when their name is in the handle too ("vinod-bhat-1a2b").
+   A link that is someone else's is not shown on a page, nor filled in from the library.
+     linkedinHandle(url)   -> 'vinod-bhat-1a2b' | ''
+     linkTrust(rows)       -> { show: { handle: nameKey }, join: { handle: nameKey } } over every row there is
+     linkOf(row, trust)    -> the row's handle when it may be shown as theirs, else '' */
+var NOT_A_HANDLE = { in: 1, me: 1, profile: 1, feed: 1, login: 1, signup: 1, company: 1, school: 1, jobs: 1, posts: 1, pulse: 1 };
+function linkedinHandle(url) {
+  var m = /^(?:https?:\/\/)?(?:[a-z]{2,3}\.)?linkedin\.com\/(?:in|pub)\/([^\/?#\s]+)/i.exec(str(url).trim());
+  if (!m) return '';
+  var h = m[1];
+  try { h = decodeURIComponent(h); } catch (e) { /* as written */ }
+  h = h.toLowerCase().replace(/\/+$/, '');
+  return h.length >= 3 && h.length <= 100 && !NOT_A_HANDLE[h] && !/[\s<>"']/.test(h) ? h : '';
+}
+/* their name in a handle: a word of it, three letters or more ("bhat", "vinod") */
+function handleNames(handle, name) {
+  var flat = handle.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '');
+  return nameKey(name).split(' ').some(function (t) { return t.length >= 3 && flat.indexOf(t) !== -1; });
+}
+function linkTrust(rows) {
+  var names = {};
+  (rows || []).forEach(function (r) {
+    var h = linkedinHandle(r.linkedin), k = nameKey(r.name);
+    if (!h || !k) return;
+    (names[h] || (names[h] = {}))[k] = r.name;
+  });
+  var show = {}, join = {}, seen = {};
+  Object.keys(names).forEach(function (h) {
+    seen[h] = true;
+    var keys = Object.keys(names[h]);
+    var mine = keys.filter(function (k) { return handleNames(h, names[h][k]); });
+    if (keys.length === 1) { show[h] = keys[0]; if (mine.length === 1) join[h] = keys[0]; }
+    else if (mine.length === 1) { show[h] = mine[0]; join[h] = mine[0]; }
+  });
+  return { show: show, join: join, seen: seen };
+}
+function linkOf(row, trust) {
+  var h = linkedinHandle(row && row.linkedin);
+  if (!h) return '';
+  if (!trust) return h;
+  var owner = trust.show[h];
+  if (owner !== undefined) return owner === nameKey(row.name) ? h : '';
+  /* a link the rows the trust was made of never had (the team typed it on an EventSphere record): theirs; one they
+     had on several people, none surely its owner: no one's */
+  return !(trust.seen && trust.seen[h]) ? h : '';
 }
 
 function sponsorKey(name) { return sponsorTokens(name).join(' '); }
@@ -207,5 +280,6 @@ function slugify(text) {
 module.exports = {
   nameKey: nameKey, withoutTitle: withoutTitle, companyForm: companyForm, sameCompany: sameCompany, groupPeople: groupPeople, peopleOf: peopleOf,
   sponsorKey: sponsorKey, sponsorsOf: sponsorsOf, newestFirst: newestFirst, slugify: slugify, normal: normal,
+  linkedinHandle: linkedinHandle, linkTrust: linkTrust, linkOf: linkOf,
   _test: { tokensOf: tokensOf, mainPart: mainPart, initials: initials, names: names }
 };

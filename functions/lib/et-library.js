@@ -374,10 +374,10 @@ function etCatalog(kind, docs) {
       if (!k) return;
       (byName[k] || (byName[k] = [])).push(r);
     });
-    var count = 0;
+    var count = 0, trust = kind === 'sponsors' ? null : PM.linkTrust(rows);
     if (kind === 'sponsors') count = PM.sponsorsOf(rows).length;
-    else Object.keys(byName).forEach(function (k) { count += PM.groupPeople(byName[k]).length; });
-    catalogCache[kind] = { byName: byName, names: Object.keys(byName), count: count };
+    else Object.keys(byName).forEach(function (k) { count += PM.groupPeople(byName[k], { trust: trust }).length; });
+    catalogCache[kind] = { byName: byName, names: Object.keys(byName), count: count, trust: trust };
   }
   return catalogCache[kind];
 }
@@ -389,11 +389,15 @@ function fromOf(row) {
   return { kind: 'et', label: str(row.doc.portalName) + (ev.title ? ' · ' + ev.title : '') + (ev.year && str(ev.title).indexOf(ev.year) === -1 ? ' ' + ev.year : ''), link: str(ev.link) };
 }
 /* one person's (or sponsor's) entry from their rows, newest first */
-function itemOf(kind, rows) {
+function itemOf(kind, rows, trust) {
   var fields = kind === 'sponsors' ? ['name', 'logo', 'url', 'tier'] : ['name', 'designation', 'company', 'photo', 'linkedin', 'bio', 'logo'];
   var it = {};
   fields.forEach(function (f) {
-    for (var i = 0; i < rows.length; i++) { if (str(rows[i][f])) { it[f] = str(rows[i][f]); break; } }
+    for (var i = 0; i < rows.length; i++) {
+      /* a LinkedIn is filled in only when it is surely theirs, never one pasted from someone else's record */
+      if (f === 'linkedin' && trust && !PM.linkOf(rows[i], trust)) continue;
+      if (str(rows[i][f])) { it[f] = str(rows[i][f]); break; }
+    }
     if (!it[f]) it[f] = '';
   });
   /* the newest row's company and designation go together: an older row's company is not put under a new title */
@@ -436,14 +440,14 @@ function search(kind, q, sources, o) {
   var items = [];
   order.forEach(function (k) {
     var h = hit[k];
-    var groups = kind === 'sponsors' ? PM.sponsorsOf(h.rows) : PM.groupPeople(h.rows);
+    var groups = kind === 'sponsors' ? PM.sponsorsOf(h.rows) : PM.groupPeople(h.rows, { trust: cat.trust });
     groups.forEach(function (rows) {
       var mine = rows.some(function (r) { return r.src === 'own'; });
       var portalBonus = o.portal && rows.some(function (r) { return r.portal === o.portal; }) ? 4 : 0;
       var best = 0;
       rows.forEach(function (r) { var sc = scoreOf(q, r.name); if (sc > best) best = sc; });
       if (!best) return;
-      var it = itemOf(kind, rows);
+      var it = itemOf(kind, rows, cat.trust);
       it.score = best + (mine ? 3 : 0) + portalBonus;
       items.push(it);
     });

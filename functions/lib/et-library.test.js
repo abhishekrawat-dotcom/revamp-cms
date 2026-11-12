@@ -145,6 +145,19 @@ function call(handler, method, url, token, body) {
   var bonus = T.search('speakers', 'singh', { et: [cio, doc] }, { portal: 'cio' });
   check('3 the event\'s own portal ranks first among equals', bonus[0].name === 'Shweta Singh', bonus.map(function (h) { return h.name; }));
 
+  /* 3b. one person by a LinkedIn that is surely theirs; a link pasted from someone else's record is not filled in */
+  var LA = { portal: 'auto', portalName: 'ETAuto', events: [{ id: '1', title: 'ETAuto Tech 2024', year: '2024', start: '2024-03-01' }],
+    speakers: [{ n: 'Krishnan Sadagopan', d: 'Head of R&D', c: 'Ashok Leyland', l: 'https://www.linkedin.com/in/krishnan-sadagopan-123', e: [0] },
+      { n: 'Mudit Dobhal', d: 'CTO', c: 'Beta', l: 'https://www.linkedin.com/in/vinkesh-gulati-b3024824', e: [0] }, { n: 'Vinkesh Gulati', d: 'CIO', c: 'Gamma', l: 'https://www.linkedin.com/in/vinkesh-gulati-b3024824', e: [0] }] };
+  var LE = { portal: 'energy', portalName: 'ETEnergyWorld', events: [{ id: '2', title: 'ETEnergy Summit 2026', year: '2026', start: '2026-02-01' }],
+    speakers: [{ n: 'Krishnan Sadagopan', d: 'Independent Director', c: 'Indian Oil Corporation', l: 'https://in.linkedin.com/in/krishnan-sadagopan-123/', e: [0] }] };
+  T.forget();
+  var ks = T.search('speakers', 'krishnan sadagopan', { et: [LA, LE] }, {});
+  var md = T.search('speakers', 'mudit dobhal', { et: [LA, LE] }, {});
+  check('3 one LinkedIn surely theirs: one suggestion across two companies, the newest; a link pasted from someone else\'s record is not filled in',
+    ks.length === 1 && ks[0].company === 'Indian Oil Corporation' && ks[0].from.length === 2 && md.length === 1 && md[0].linkedin === '', [ks.map(function (x) { return x.company; }), md[0] && md[0].linkedin]);
+  T.forget();
+
   /* 4. building into the database */
   var built = await T.build(FB, { fetchJson: fetchJson, first: 'cio' });
   check('4 every portal read and stored, the event\'s own among the first read (three at a time)', built.built.slice(0, 3).indexOf('cio') !== -1 && !!FB.docs['etLibrary/ciso'] && !!FB.docs['etLibrary/cio'] && built.left === 0 && built.busy === false, built.built.slice(0, 4));
