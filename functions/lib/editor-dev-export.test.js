@@ -89,6 +89,15 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2b.4 build reads it when the browser hands back empty longhands', /if \(\/:\\s\*;\/\.test\(body\)\) \{ var words = rawBody\(rule, ctx\); if \(words\) body = words; \}/.test(SRC));
 })();
 
+/* ======================= 2e only what the other website uses ======================= */
+(function () {
+  check('2e.1 a speaker\'s pop-up text goes on an event site (its card leads to the speaker\'s page), stays on an awards site (jury cards)', /if \(!opt\.awards\) each\('template\[data-rv-profile\]', function \(n\) \{ n\.remove\(\); \}\);/.test(SRC) && /awards: !!\(doc\.body && doc\.body\.hasAttribute\('data-rv-awards'\)\)/.test(SRC));
+  var unused = /var UNUSED_ATTRS = \[([^\]]*)\]/.exec(SRC)[1];
+  var read = ['data-rv-section', 'data-rv-embed', 'data-rv-reveal', 'data-rv-carousel', 'data-rv-field', 'data-rv-id', 'data-rv-filled', 'data-rv-item', 'data-rv-repeat-template', 'data-rv-profile-name', 'data-rv-auto', 'data-rv-section-id', 'data-rv-event-id', 'data-rv-awards'];
+  check('2e.2 the marks nothing on the other website reads go; none the scripts read (et-runtime.js, rv-popups.js, rv-award-cta.js)', read.every(function (a) { return unused.indexOf("'" + a + "'") === -1; }) &&
+    ['data-rv-key', 'data-rv-template-id', 'data-rv-mode', 'data-rv-pristine'].every(function (a) { return unused.indexOf("'" + a + "'") !== -1 && RUNTIME.indexOf(a) === -1 && POPUPS.indexOf(a) === -1; }), unused);
+})();
+
 /* ======================= 2d inherit on the section itself ======================= */
 (function () {
   var cs = { fontSize: '16px', lineHeight: '22.857px', fontStyle: 'normal', fontVariant: 'normal', fontWeight: '400', fontStretch: '100%', fontFamily: 'Inter, Arial, sans-serif', getPropertyValue: function (n) { return n === 'color' ? 'rgb(0, 0, 0)' : ''; } };
@@ -100,7 +109,9 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
 /* ======================= 2c HTML the CMS keeps whole ======================= */
 (function () {
   check('2c.1 the HTML is written without a double quote in any attribute (ETB2B\'s CMS turns &quot; back into ")', /function htmlOf\(node\)/.test(SRC) && /var html = htmlOf\(copy\);/.test(SRC) && /else if \(v\.indexOf\("'"\) === -1\) out \+= ' ' \+ a\.name \+ "='" \+ v \+ "'";/.test(SRC));
-  check('2c.2 an inline style uses single quotes inside (font names, url())', /if \(st\.indexOf\("'"\) === -1\) st = st\.replace\(\/"\/g, "'"\);/.test(SRC));
+  var hero = 'background-image: url("https://x/a.jpg") !important; background-image: image-set(url(\'https://x/a.webp\') type(\'image/webp\'), url("https://x/a.jpg")) !important; font-family: "Bob\'s Sans", serif';
+  var one = T.singleQuoted(hero);
+  check('2c.2 an inline style has no double quote at all, though it held both kinds (the hero\'s picture: url("…") beside image-set(url(\'…\')))', one.indexOf('"') === -1 && /url\('https:\/\/x\/a\.jpg'\)/.test(one) && /'Bob\\'s Sans'/.test(one) && /el\.setAttribute\('style', singleQuoted\(st\)\);/.test(SRC), one);
 })();
 
 /* ======================= 3 the reset ======================= */

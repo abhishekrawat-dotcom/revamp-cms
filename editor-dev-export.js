@@ -242,6 +242,13 @@
     return out.length ? out.join('; ') + ';' : '';
   }
 
+  /* a CSS text with every "…" string written as '…' (a ' inside escaped): no double quote is left in it */
+  function singleQuoted(css) {
+    return String(css || '').replace(/"((?:[^"\\]|\\.)*)"/g, function (m, inner) {
+      return "'" + inner.replace(/\\"/g, '"').replace(/'/g, "\\'") + "'";
+    }).replace(/"/g, "'");
+  }
+
   /* the custom properties a text uses: var(--name … */
   function varsUsed(text) {
     var out = [], re = /var\(\s*(--[A-Za-z0-9_-]+)/g, m;
@@ -321,7 +328,7 @@
     sec.classList.add('rv-embed', scopeId(id));
     sec.setAttribute(EMBED, id);
     var body = doc.body;
-    ['data-rv-event-id', 'data-rv-awards', 'data-rv-template-id', 'data-rv-mode'].forEach(function (a) {
+    ['data-rv-event-id', 'data-rv-awards'].forEach(function (a) {
       if (body.hasAttribute(a) && !sec.hasAttribute(a)) sec.setAttribute(a, body.getAttribute(a));
     });
     var lang = doc.documentElement.getAttribute('lang');
@@ -550,6 +557,7 @@
      section's own <style> and JS holder (their rules and code travel in the CSS and the JS). */
   var HIDDEN_LIVE = '[data-rv-empty], [data-rv-hidden-empty], [data-rv-bind-empty], [data-rv-nav-empty]';
   var EDITOR_NOTES = '[data-rv-empty-state], [data-rv-bind-hint], [data-rv-editor], [data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark], .ai-prov-badge, .ai-skip-badge, .ai-media-skip-badge';
+  var UNUSED_ATTRS = ['data-rv-key', 'data-rv-bind', 'data-rv-unbound', 'data-rv-bound', 'data-rv-pristine', 'data-rv-list', 'data-rv-list-at', 'data-rv-template-id', 'data-rv-mode'];
   var URL_ATTRS = ['src', 'href', 'poster', 'action', 'data-src', 'data-rv-src', 'data-bg', 'data-background', 'data-href', 'xlink:href'];
   var FORM_LINK = /^#(register|rv-form-[\w-]+)$/;
 
@@ -560,6 +568,13 @@
     if (copy.matches(HIDDEN_LIVE)) { info.hidden = true; copy.style.setProperty('display', 'none', 'important'); }
     each(EDITOR_NOTES, function (n) { n.remove(); });
     each(HIDDEN_LIVE, function (n) { n.remove(); });
+    /* Only what the other website uses. A speaker's pop-up text (<template data-rv-profile>) opens on an awards site's
+       jury cards only — on an event site a card leads to the speaker's page — and the marks the editor and the
+       records' drawing keep for themselves, which nothing there reads. */
+    if (!opt.awards) each('template[data-rv-profile]', function (n) { n.remove(); });
+    [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('[' + UNUSED_ATTRS.join('], [') + ']'))).forEach(function (el) {
+      UNUSED_ATTRS.forEach(function (a) { el.removeAttribute(a); });
+    });
     var holder = copy.querySelector('script[data-rv-js]');
     if (holder) { info.js = holder.textContent; holder.remove(); }
     each('style', function (n) { n.remove(); });
@@ -602,9 +617,9 @@
       });
       if (el.hasAttribute('style')) {
         var st = important(remToPx(absoluteUrls(el.getAttribute('style'), opt.base), opt.remPx));
-        // no double quote in it (htmlOf): ETB2B's CMS turns &quot; back into ", which would end the attribute
-        if (st.indexOf("'") === -1) st = st.replace(/"/g, "'");
-        el.setAttribute('style', st);
+        // no double quote in it at all: ETB2B's CMS turns &quot; back into ", which ends the attribute there (the
+        // hero's picture, url("…") beside image-set(url('…')), was cut off). Every CSS string in single quotes.
+        el.setAttribute('style', singleQuoted(st));
       }
     });
     // a form drawn in the section works on the event's website: the copy links to it there
@@ -936,7 +951,7 @@
   function prepare(doc, sec, o, base, remPx) {
     var id = sec.getAttribute('data-rv-section') || sec.id || 'section';
     var copy = sec.cloneNode(true);
-    var info = finishHtml(copy, { pageUrl: o.pageUrl, base: base, remPx: remPx });
+    var info = finishHtml(copy, { pageUrl: o.pageUrl, base: base, remPx: remPx, awards: !!(doc.body && doc.body.hasAttribute('data-rv-awards')) });
     rootAttrs(doc, copy, id);
     return { id: id, sec: sec, copy: copy, info: info, page: pageModel(doc, sec, copy), embed: embedModel(doc, copy) };
   }
@@ -1080,6 +1095,6 @@
     loadPage: loadPage,
     _test: { splitTop: splitTop, compoundsOf: compoundsOf, joinCompounds: joinCompounds, simplesOf: simplesOf, testable: testable,
       absolute: absolute, absoluteUrls: absoluteUrls, remToPx: remToPx, varsUsed: varsUsed, familiesUsed: familiesUsed,
-      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE }
+      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, singleQuoted: singleQuoted, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE }
   };
 })(typeof window !== 'undefined' ? window : this);
