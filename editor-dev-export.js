@@ -13,33 +13,37 @@
    switched off — so the copy has what publishing adds (the theme's readable colours, the colours made to read,
    the phone-width fixes, the heading scale) and nothing a script changed.
 
-     HTML  the section as a visitor sees it — the event's records drawn (speakers, partners, sessions…), every
-           picture and link with its full web address, nothing the live page hides (a list with no records). It
-           stands in ONE <div id="rv-embed-<section id>" data-rv-embed="<section id>"> that carries what the
-           page's <body> gave it: its classes and data-… attributes, the CSS variables the section uses (the
-           theme's colours, fonts, radius…, resolved to their values), every inherited text property (font,
-           size, line height, colour, alignment, case…) and the page's background. A link to another part of the event's page, and a button that opens one of the
-           event's forms, goes to the event's own website (…/e/<event>#register opens the form there); a form
-           drawn in the section is a link to it. Google Fonts are <link> tags at the top (a stylesheet link may
-           stand in <body>).
-     CSS   first a reset: the other website's own rules for plain elements (h2, p, img, section, a…) stop at the
-           wrapper — every element of the section is put back to the browser's defaults (all: revert), so only
-           the rules below style it. Then every rule of the page that reaches the section or anything in it — the
-           section's own, the site's shared rules (gen-base.css, et-platform.css, a template's CSS), inside their
-           @media / @supports / @container / @layer — with the @keyframes, @font-face and @property they use.
-           Every selector begins with the wrapper's id, so nothing here can restyle the other website, and what a
-           selector said about the page around the section (body.rv-generated …, #content > …) is said about the
-           wrapper instead, with the same weight: each selector gains exactly one id's worth of specificity, so
-           the rules still win over one another as they did on the event's page, and over the other website's.
-           rem becomes px (the other website's root font size need not be 16px); url(…) becomes a full address.
-           Rules for states that scripts or the visitor set (.rv-in, :hover, :focus…) are kept. Elements the
-           runtimes add to a section (a carousel's buttons, "View profile", day tabs…) are left out of the reset:
-           their rules come with the runtime.
-     JS    one script, put after the HTML: it loads this site's runtime from EventSphere (et-runtime.js: carousels,
-           easing in, accordions, day tabs…), the section's widget scripts and, where the section has speakers' or
-           sponsors' cards or photos, rv-popups.js (their pages on EventSphere, photos large) — each once, however
-           many sections a page takes — and then runs what was written under JS for the section, with `section`
-           as its element. It waits for the HTML when the other website adds it later.
+   The copy is written as ETB2B's own CMS writes a section (the owner, 12 Nov 2026, with one of its sections: "I want
+   this type of output for each sections … so that it can be easily adapt on ETB2B CMS"): each box holds its code as
+   it goes on the page.
+
+     HTML  one <section> — the section as a visitor sees it: the event's records drawn (speakers, partners,
+           sessions…), every picture and link with its full web address, its inline styles !important, nothing the
+           live page hides (a list with no records). It keeps its own id and classes and carries class "rv-embed"
+           (every rule of the CSS begins with it), data-rv-embed="<section id>" (the common script finds it by it)
+           and what the page's <body> gave its scripts: data-rv-event-id, data-rv-awards. A link to another part of
+           the event's page, and a button that opens one of the event's forms, goes to the event's own site
+           (…/e/<event>#register opens the form there).
+     CSS   <style>…</style>: the section's own rules (its stylesheet, its copies', its developer-zone CSS).
+     JS    <script>…</script> with the section's own script (Developer zone › JS), handed to the common script —
+           or nothing, when it has none.
+     Common CSS & JS, once per page (ETB2B's CMS has a global section for it), for every section copied from the site:
+           CSS   the Google Fonts (@import), a reset — the page's own rules for plain elements (h2, p, img, a…) stop
+                 at the sections: every element is put back to the browser's defaults (all: revert) — the event
+                 page's look on .rv-embed (the theme's variables resolved, the inherited text: font, size, line
+                 height, colour…), and every rule of the sheets the page shares (gen-base.css, et-platform.css, a
+                 template's CSS) that reaches a section, with the @keyframes, @font-face and @property they use.
+           JS    loads the event site's scripts from EventSphere once (et-runtime.js: carousels, easing in, day tabs,
+                 accordions…; rv-popups.js, rv-award-cta.js where needed), starts every copied section on the page —
+                 one put in later too — runs their own scripts, gives the runtimes' rules the sections' weight, and
+                 sends form buttons to the event's site (embedLoader).
+     Every selector begins with .rv-embed and the weight of four ids (:not(#_#_#_#_)); what it said about the page
+     around the section (body.rv-generated …, #content > …) is left out and its weight kept; every declaration is
+     !important. ETB2B's pages style content through up to three ids and set plain elements with !important: the
+     copy's rules still outweigh them, and still win over one another as on the event's page. rem becomes px;
+     url(…) a full address. Rules for states that scripts or the visitor set (.rv-in, :hover…) are kept.
+     For a website that takes one HTML field, and the test page: "all" — the common part this section needs, the
+     section's CSS, its HTML and the scripts, in one block.
 
    RevampDevExport.loadPage(url) -> Promise<iframe>
      the page at url, out of sight in this window, its scripts off, once its fonts are in. The caller removes it.
@@ -47,21 +51,20 @@
      doc, win   that page's document and window (the section's styles and theme are read from them)
      section    the section's element in it
      pageUrl    the event's public page (RevampCore.publicUrl)
-   -> { id, html, css, js, all, page, records, hidden, forms, ownJs, notes: [text] }
-     all    the three as one block (fonts, <style>, the HTML, <script>), for a website that takes one HTML field
-     page   a whole test page holding that block, to open in a browser
+   -> { id, html, css, js, common: { css, js }, all, page, records, hidden, forms, ownJs, notes: [text] }
+     page   a whole test page holding "all", to open in a browser
+   RevampDevExport.buildCommon({ doc, win, sections, pageUrl, eventName }) -> { css, js, sections } | { error }
 
    RevampDevExport._test holds the pure helpers (functions/lib/editor-dev-export.test.js). */
 (function (root) {
   'use strict';
 
   var EMBED = 'data-rv-embed';
-  /* What every selector begins with: the wrapper's id, and the weight of three ids more (:not(#_#_#_) holds for any
-     element). ETB2B's own pages style their content through ids — up to three in one selector (the microsite
+  /* The weight of four ids (:not(#_#_#_#_) holds for any element), which every selector carries after .rv-embed. ETB2B's own pages style their content through ids — up to three in one selector (the microsite
      bundle, a page's custom CSS) — and a rule of the page's that reaches the section must not win over the
      section's own. The same for every selector, so they still win over one another as on the event's page. */
-  var WEIGHT = ':not(#_#_#_)';
-  /* the wrapper's id */
+  var WEIGHT = ':not(#_#_#_#_)';
+  /* the class the section carries for it (ETB2B's CMS takes a section as it is: it keeps its own id and classes) */
   function scopeId(id) { return 'rv-embed-' + (String(id || 'section').replace(/[^A-Za-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'section'); }
 
   /* ---------- reading selectors ---------- */
@@ -213,6 +216,32 @@
       return pre + v + 'px';
     });
   }
+  /* Every declaration made !important — as ETB2B's own CMS sections are written: ETB2B's page CSS sets plain elements
+     with !important (strong, p, li, a… — hundreds of rules), which outweighs any rule that is not, however specific.
+     The copy's rules then still win over one another by their weight and order, as on the event's page, and over the
+     page's important rules by the weight of their four ids. Comments go; a declaration already important is left. */
+  function important(body) {
+    var out = [], cur = '', depth = 0, quote = '', i, c;
+    body = String(body || '').replace(/\/\*[\s\S]*?\*\//g, '');
+    function flush() {
+      var d = cur.trim();
+      cur = '';
+      if (!d) return;
+      if (d.indexOf(':') === -1 || /!\s*important\s*$/i.test(d)) { out.push(d); return; }
+      out.push(d + ' !important');
+    }
+    for (i = 0; i < body.length; i++) {
+      c = body.charAt(i);
+      if (quote) { cur += c; if (c === '\\' && i + 1 < body.length) cur += body.charAt(++i); else if (c === quote) quote = ''; continue; }
+      if (c === '"' || c === "'") { quote = c; cur += c; continue; }
+      if (c === '(') depth++; else if (c === ')') depth--;
+      if (c === ';' && !depth) { flush(); continue; }
+      cur += c;
+    }
+    flush();
+    return out.length ? out.join('; ') + ';' : '';
+  }
+
   /* the custom properties a text uses: var(--name … */
   function varsUsed(text) {
     var out = [], re = /var\(\s*(--[A-Za-z0-9_-]+)/g, m;
@@ -276,33 +305,29 @@
     at.appendChild(s);
     return { doc: d, html: d.documentElement, body: d.body, kin: kin, section: s };
   }
-  /* The same section as the other website will have it: in its wrapper, which carries <body>'s classes and data-…
-     attributes, under an <html> the runtime has marked rv-motion. Rewritten selectors are checked on this. */
-  function embedModel(doc, copy, id) {
+  /* The same section as the other website will have it: on its own, straight in that page's <body>, under an
+     <html> the runtime has marked rv-motion. Rewritten selectors are checked on this. */
+  function embedModel(doc, copy) {
     var d = freshDoc();
     d.documentElement.classList.add('rv-motion');
-    var w = d.createElement('div');
-    wrapperAttrs(doc, w, id);
-    d.body.appendChild(w);
     var s = d.importNode(copy, true);
-    w.appendChild(s);
-    return { doc: d, html: d.documentElement, body: d.body, wrap: w, section: s };
+    d.body.appendChild(s);
+    return { doc: d, html: d.documentElement, body: d.body, section: s };
   }
-  function wrapperAttrs(doc, w, id) {
-    w.id = scopeId(id);
-    w.setAttribute(EMBED, id);
+  /* The section is the copy's one element (ETB2B's CMS takes the HTML box as a <section>): it carries what the
+     page's <body> gave it that its scripts read — the event, whether it is an awards site, the language — and the
+     class every rule of the CSS begins with. */
+  function rootAttrs(doc, sec, id) {
+    sec.classList.add('rv-embed', scopeId(id));
+    sec.setAttribute(EMBED, id);
     var body = doc.body;
-    if (body.getAttribute('class')) {
-      var cls = body.getAttribute('class').split(/\s+/).filter(function (c) { return c && EDITOR_CLASSES.indexOf(c) === -1; });
-      if (cls.length) w.setAttribute('class', cls.join(' '));
-    }
-    Array.prototype.forEach.call(body.attributes, function (a) {
-      if (/^data-/.test(a.name) && a.name !== 'data-rv-editing') w.setAttribute(a.name, a.value);
+    ['data-rv-event-id', 'data-rv-awards', 'data-rv-template-id', 'data-rv-mode'].forEach(function (a) {
+      if (body.hasAttribute(a) && !sec.hasAttribute(a)) sec.setAttribute(a, body.getAttribute(a));
     });
     var lang = doc.documentElement.getAttribute('lang');
-    if (lang) w.setAttribute('lang', lang);
+    if (lang && !sec.hasAttribute('lang')) sec.setAttribute('lang', lang);
     var dir = doc.documentElement.getAttribute('dir') || body.getAttribute('dir');
-    if (dir) w.setAttribute('dir', dir);
+    if (dir && !sec.hasAttribute('dir')) sec.setAttribute('dir', dir);
   }
 
   function within(model, sel) {
@@ -315,44 +340,64 @@
   /* What an <html> compound may keep: what the runtime sets on the other website's own <html> too */
   var RUNTIME_HTML = /^(html|:root|\.rv-motion|\[data-rv-modal(=""|='')?\]|\[data-rv-motion-ready(=""|='')?\]|:not\(\[data-rv-editing\]\)|:not\(\[data-rv-editor-mode\]\))$/;
 
-  /* One selector of a rule that reaches the section, for the other website: begins with the wrapper, and what it
-     said about the page around the section is said about the wrapper, by the same weight. null: it reaches the
-     section only through something the copy does not have (it is kept as it was, under the wrapper). */
-  function rewrite(sel, ctx) {
-    var c = compoundsOf(sel), n = c.parts.length, k = 0;
-    var outerEls = [ctx.page.html, ctx.page.body].concat(ctx.page.kin);
+  /* One selector of a rule that reaches the section, for the other website -> the selectors to write (one or two).
+     Each begins with the section (ctx.scope: its class and the weight of four ids): "<scope> <rest>" for what is
+     inside it, and, where the selector's first compound is the section itself, that compound with the scope in it.
+     What the selector said about the page around the section (body.rv-generated …, #content > …) held here — it
+     reached the section — so it is left out, and its weight kept (:is(<it>, *)). An <html> compound keeps what the
+     runtime sets on the other website's <html> too (.rv-motion …). Inside :where() / :is(), the page around the
+     section is left out the same way. */
+  function rewrite(sel, ctx, m) {
+    var outerEls = [m.page.html, m.page.body].concat(m.page.kin);
     function isOuter(part) {
       var t = testable(part, ctx.knownClass);
-      if (within(ctx.page, t) !== false) return false;          // it is something in the section (or cannot be told)
+      if (within(m.page, t) !== false) return false;            // it is something in the section (or cannot be told)
       return outerEls.some(function (el) { return matchesEl(el, t); });
     }
+    function inner(list) {
+      return splitTop(list, ',').map(function (one) {
+        var c1 = compoundsOf(one), j = 0;
+        while (j < c1.parts.length - 1 && isOuter(c1.parts[j])) j++;
+        return joinCompounds(c1.parts.slice(j), c1.combs.slice(j));
+      }).join(', ');
+    }
+    var c = compoundsOf(sel);
+    c.parts = c.parts.map(function (part) {
+      return simplesOf(part).map(function (tok) {
+        var m = /^:(where|is)\((.*)\)$/.exec(tok);
+        return m ? ':' + m[1] + '(' + inner(m[2]) + ')' : tok;
+      }).join('');
+    });
+    var n = c.parts.length, k = 0;
     while (k < n - 1 && isOuter(c.parts[k])) k++;
-    var rest = joinCompounds(c.parts.slice(k), c.combs.slice(k));
-    if (k === 0) return ctx.scope + ' ' + sel;
-    var htmlTokens = [], carried = [], pads = [], bodyType = false;
+    var htmlTokens = [], pads = [];
     for (var i = 0; i < k; i++) {
-      var part = c.parts[i], t = testable(part, ctx.knownClass), tokens = simplesOf(part), left = [];
-      var onHtml = matchesEl(ctx.page.html, t) && !matchesEl(ctx.page.body, t) && !ctx.page.kin.some(function (el) { return matchesEl(el, t); });
-      var onBody = matchesEl(ctx.page.body, t);
-      tokens.forEach(function (tok) {
-        if (onHtml && RUNTIME_HTML.test(tok)) { htmlTokens.push(tok); return; }
-        if (onBody && /^body$/i.test(tok)) { bodyType = true; return; }
-        if (onBody && !PSEUDO_ELEMENT.test(tok) && matchesEl(ctx.embed.wrap, tok)) { carried.push(tok); return; }
-        left.push(tok);
+      var part = c.parts[i], t = testable(part, ctx.knownClass), left = [];
+      var onHtml = matchesEl(m.page.html, t) && !matchesEl(m.page.body, t) && !m.page.kin.some(function (el) { return matchesEl(el, t); });
+      simplesOf(part).forEach(function (tok) {
+        if (onHtml && RUNTIME_HTML.test(tok)) htmlTokens.push(tok); else left.push(tok);
       });
       if (left.length) pads.push(':is(' + left.join('') + ', *)');
     }
-    var head = '';
-    if (htmlTokens.length) head = (/^(html|:root)$/i.test(htmlTokens[0]) ? '' : 'html') + htmlTokens.join('') + ' ';
-    var wrap = (bodyType ? 'div' : '') + ctx.scope + carried.join('') + pads.join('');
-    var comb = c.combs[k - 1];
-    if (comb === '+' || comb === '~') comb = ' ';
-    var out = head + wrap + (comb === '>' ? ' > ' : ' ') + rest;
-    // the rewritten selector must reach the section on the other website as it did here
-    if (within(ctx.embed, testable(out, ctx.knownClass))) return out;
-    var plain = head + ctx.scope + ' ' + rest;
-    if (within(ctx.embed, testable(plain, ctx.knownClass))) return plain;
-    return out;
+    var head = htmlTokens.length ? (/^(html|:root)$/i.test(htmlTokens[0]) ? '' : 'html') + htmlTokens.join('') + ' ' : '';
+    var scope = ctx.scope + pads.join('');
+    var parts = c.parts.slice(k), combs = c.combs.slice(k);
+    var comb = k ? c.combs[k - 1] : ' ';
+    var out = [];
+    // the section itself as the first compound: the scope goes into it (before a pseudo-element)
+    if (matchesEl(m.page.section, testable(parts[0], ctx.knownClass))) {
+      var toks = simplesOf(parts[0]), at = toks.length;
+      for (var q = 0; q < toks.length; q++) if (PSEUDO_ELEMENT.test(toks[q])) { at = q; break; }
+      var first = toks.slice(0, at).join('') + scope + toks.slice(at).join('');
+      out.push(head + joinCompounds([first].concat(parts.slice(1)), combs));
+      out.rootAt = out.length - 1;            // this one styles the section itself (styleRule: inherit)
+    }
+    // something inside the section
+    out.push(head + scope + (comb === '>' ? ' > ' : ' ') + joinCompounds(parts, combs));
+    var hits = out.filter(function (o) { return within(m.embed, testable(o, ctx.knownClass)); });
+    var res = hits.length ? hits : out;
+    res.root = out.rootAt != null && res.indexOf(out[out.rootAt]) !== -1 ? out[out.rootAt] : null;
+    return res;
   }
 
   /* ---------- the rules ---------- */
@@ -382,8 +427,13 @@
       if (rule.cssRules && typeof rule.selectorText === 'undefined') {   // @media, @supports, @container, @layer {…}, @scope…
         var head = header(rule);
         if (!head || /^@(page|font-feature-values|counter-style)/i.test(head)) return;
-        var inner = [];
+        var inner = [], layer = /^@layer\b/i.test(head);
+        /* a layer's rules keep their own words: an !important declaration in a layer outweighs every unlayered
+           !important one (the cascade turns round for important declarations), so a page's low default — @layer
+           rv-pictures { :where(img[data-rv-sized]) { height: auto } } — would beat the section's own rules */
+        if (layer) ctx.inLayer = (ctx.inLayer || 0) + 1;
         walk(rule.cssRules, base, inner, ctx);
+        if (layer) ctx.inLayer--;
         if (inner.length) out.push(head + ' {\n' + inner.join('\n') + '\n}');
       }
     });
@@ -417,35 +467,65 @@
     return hit ? hit.body : '';
   }
   function styleRule(rule, base, out, ctx) {
-    var kept = [];
+    var kept = [], roots = [], rootModel = null;
     // which of the sheet's rules with this selector this is (rawBody)
     if (ctx.raw) { var sk = selKey(rule.selectorText); ctx.raw.order = ctx.raw.order || {}; var nth = ctx.raw.order[sk] || 0; ctx.raw.order[sk] = nth + 1; ctx.raw.seen = {}; ctx.raw.seen[sk] = nth; }
     splitTop(rule.selectorText, ',').forEach(function (sel) {
-      var hit = within(ctx.page, testable(sel, ctx.knownClass));
-      if (hit === null) hit = guess(sel, ctx);
-      if (!hit) return;
-      var w = rewrite(sel, ctx);
-      if (w && kept.indexOf(w) === -1) kept.push(w);
+      var t = testable(sel, ctx.knownClass);
+      ctx.models.forEach(function (m) {
+        var hit = within(m.page, t);
+        if (hit === null) hit = guess(sel, m);
+        if (!hit) return;
+        var forms = rewrite(sel, ctx, m);
+        forms.forEach(function (w) { if (kept.indexOf(w) === -1) kept.push(w); });
+        if (forms.root && roots.indexOf(forms.root) === -1) { roots.push(forms.root); rootModel = rootModel || m; }
+      });
     });
     if (!kept.length) return;
     var body = rule.style ? rule.style.cssText : '';
     if (/:\s*;/.test(body)) { var words = rawBody(rule, ctx); if (words) body = words; }
     if (rule.cssRules && rule.cssRules.length) body += ' ' + Array.prototype.map.call(rule.cssRules, function (r) { return r.cssText; }).join(' ');
     if (!body.trim()) return;
-    out.push(kept.join(', ') + ' { ' + absoluteUrls(body, base) + ' }');
+    function written(b) { return ctx.inLayer ? absoluteUrls(b, base) : important(absoluteUrls(b, base)); }
+    /* A rule that tells the section itself to inherit (ETB2B's classic reset: section, div… { font: inherit }) means
+       the page around it — on another website that would be that page's own font and colour. For the section
+       itself it is written with the event page's values instead. */
+    if (roots.length && /:\s*inherit\b/i.test(body) && ctx.win) {
+      var inner = kept.filter(function (k) { return roots.indexOf(k) === -1; });
+      if (inner.length) out.push(inner.join(', ') + ' { ' + written(body) + ' }');
+      out.push(roots.join(', ') + ' { ' + written(inheritFrom(body, ctx.win.getComputedStyle(rootModel.sec.parentElement || rootModel.sec))) + ' }');
+      return;
+    }
+    out.push(kept.join(', ') + ' { ' + written(body) + ' }');
+  }
+  /* "inherit" in a rule's declarations as the values the page around the section has (cs: its parent's computed style) */
+  function inheritFrom(body, cs) {
+    var fs = parseFloat(cs.fontSize) || 16, lh = parseFloat(cs.lineHeight);
+    var ratio = isFinite(lh) && lh > 0 ? String(Math.round(lh / fs * 1e6) / 1e6) : 'normal';
+    return String(body).replace(/(^|;)\s*([\w-]+)\s*:\s*inherit\s*(!\s*important)?\s*(?=;|$)/gi, function (m, pre, name, imp) {
+      var low = name.toLowerCase(), tail = imp ? ' !important' : '';
+      if (low.indexOf('--') === 0) return m;
+      if (low === 'font') {
+        return pre + ' font-style: ' + cs.fontStyle + tail + '; font-variant: ' + cs.fontVariant + tail + '; font-weight: ' + cs.fontWeight + tail + '; font-stretch: ' + cs.fontStretch + tail +
+          '; font-size: ' + cs.fontSize + tail + '; line-height: ' + ratio + tail + '; font-family: ' + cs.fontFamily + tail;
+      }
+      if (low === 'line-height') return pre + ' line-height: ' + ratio + tail;
+      var v = String(cs.getPropertyValue(low) || '').trim();
+      return v ? pre + ' ' + name + ': ' + v + tail : m;
+    });
   }
   /* a selector this browser cannot try (a pseudo-class of another browser's): kept when it names a class the
      section has */
-  function guess(sel, ctx) {
-    var re = /\.((?:\\.|[\w-])+)/g, m;
+  function guess(sel, model) {
+    var re = /\.((?:\\.|[\w-])+)/g, m, s = model.page.section;
     while ((m = re.exec(sel))) {
-      try { if (ctx.page.section.matches('.' + m[1]) || ctx.page.section.querySelector('.' + m[1])) return true; } catch (e) { /* not a class */ }
+      try { if (s.matches('.' + m[1]) || s.querySelector('.' + m[1])) return true; } catch (e) { /* not a class */ }
     }
     return false;
   }
 
   /* ---------- the reset ----------
-     The other website's rules for plain elements stop at the wrapper. Left out: SVG (its look is in attributes a
+     The other website's rules for plain elements stop at the copied sections. Left out: SVG (its look is in attributes a
      reset would undo), pictures, video, frames, form fields and tables (their width / height attributes are
      too; they get the box properties back instead), and what the runtimes add to a section, whose rules come
      with the runtime (et-runtime.js: rv-carousel-btn, rv-menu, rv-day-tabs, rv-etnav-…; rv-popups.js:
@@ -477,7 +557,7 @@
     var info = { hidden: false, forms: 0, js: '' };
     var each = function (sel, fn) { Array.prototype.slice.call(copy.querySelectorAll(sel)).forEach(fn); };
     // a section the live page hides (nothing to show): hidden in the copy too, not its sample item
-    if (copy.matches(HIDDEN_LIVE)) { info.hidden = true; copy.style.setProperty('display', 'none'); }
+    if (copy.matches(HIDDEN_LIVE)) { info.hidden = true; copy.style.setProperty('display', 'none', 'important'); }
     each(EDITOR_NOTES, function (n) { n.remove(); });
     each(HIDDEN_LIVE, function (n) { n.remove(); });
     var holder = copy.querySelector('script[data-rv-js]');
@@ -520,7 +600,12 @@
           return bits.join(' ');
         }).join(', '));
       });
-      if (el.hasAttribute('style')) el.setAttribute('style', remToPx(absoluteUrls(el.getAttribute('style'), opt.base), opt.remPx));
+      if (el.hasAttribute('style')) {
+        var st = important(remToPx(absoluteUrls(el.getAttribute('style'), opt.base), opt.remPx));
+        // no double quote in it (htmlOf): ETB2B's CMS turns &quot; back into ", which would end the attribute
+        if (st.indexOf("'") === -1) st = st.replace(/"/g, "'");
+        el.setAttribute('style', st);
+      }
     });
     // a form drawn in the section works on the event's website: the copy links to it there
     each('[data-rv-form-embed]', function (box) {
@@ -535,7 +620,7 @@
     return info;
   }
 
-  /* ---------- the wrapper's look: what the section inherits from the page ---------- */
+  /* ---------- the page's look on the sections: what a section inherits from the page ---------- */
 
   var INHERITED = ['font-family', 'font-size', 'font-weight', 'font-style', 'font-variant', 'font-stretch', 'font-kerning', 'line-height',
     'letter-spacing', 'word-spacing', 'color', 'text-align', 'text-transform', 'text-indent', 'text-shadow', 'white-space', 'word-break',
@@ -549,7 +634,7 @@
       if (v) out.push([name, v]);
     });
     var fs = parseFloat(cs.fontSize) || 16, lh = parseFloat(cs.lineHeight);
-    /* every inherited text property, whatever its value: the reset gives the wrapper the other website's own
+    /* every inherited text property, whatever its value: the reset would give the section the other website's own
        (its body's alignment, case, weight…) otherwise */
     INHERITED.forEach(function (name) {
       var v = String(cs.getPropertyValue(name) || '').trim();
@@ -563,19 +648,23 @@
     return out;
   }
 
-  /* ---------- the script ---------- */
+  /* ---------- the scripts ---------- */
 
-  /* the site's scripts the section needs on another website, in the order the page has them */
+  /* the site's scripts the sections need on another website, in the order the page has them */
   var NOT_FOR_EMBED = /\/(rv-forms|rv-data|rv-pages|rv-live|rv-blend|rv-preview-edit|rv-theme-switcher|rv-theme|rv-type|template-loader|rv-records)\.js/;
-  function scriptsFor(doc, sec, copy, base) {
-    var id = sec.getAttribute('data-rv-section'), list = [], seen = {};
-    var origin = new URL(base).origin;
+  function scriptsFor(doc, pairs, base) {
+    var list = [], seen = {}, origin = new URL(base).origin;
+    var ids = pairs.map(function (p) { return p.sec.getAttribute('data-rv-section'); });
+    function some(fn) { return pairs.some(fn); }
     // speakers' and sponsors' cards lead to their pages, photos open large (rv-popups.js)
-    var people = !!copy.querySelector('template[data-rv-profile], [data-rv-profiles], [data-rv-repeat-template="speakers"], [data-rv-repeat-template="partners"], [data-rv-repeat-template="glimpses"], [data-rv-lightbox], .pe-spn-tile') ||
-      /^(previous-sponsors|previous-glimpses|previous-speakers)$/.test(id) || (copy.querySelectorAll('img').length >= 3 && /glimps|gallery|moments|photos/i.test(id));
-    var video = !!copy.querySelector('video[data-rv-bg-video]');
+    var people = some(function (p) {
+      var id = p.sec.getAttribute('data-rv-section');
+      return !!p.copy.querySelector('template[data-rv-profile], [data-rv-profiles], [data-rv-repeat-template="speakers"], [data-rv-repeat-template="partners"], [data-rv-repeat-template="glimpses"], [data-rv-lightbox], .pe-spn-tile') ||
+        /^(previous-sponsors|previous-glimpses|previous-speakers)$/.test(id) || (p.copy.querySelectorAll('img').length >= 3 && /glimps|gallery|moments|photos/i.test(id));
+    });
+    var video = some(function (p) { return !!p.copy.querySelector('video[data-rv-bg-video]'); });
     // an award site's main button says what the award's dates make it today (rv-award-cta.js)
-    var award = !!copy.querySelector('[data-rv-award-cta]');
+    var award = some(function (p) { return !!p.copy.querySelector('[data-rv-award-cta]'); });
     function add(src, more) {
       if (seen[src]) return;
       seen[src] = 1;
@@ -586,7 +675,7 @@
     Array.prototype.forEach.call(doc.querySelectorAll('script[src]'), function (s) {
       if (s.hasAttribute('data-rv-editor') || s.closest('[data-rv-editor]')) return;
       var src = absolute(s.getAttribute('src'), base), forSec = s.getAttribute('data-rv-script'), at;
-      if (forSec && forSec !== id) return;
+      if (forSec && ids.indexOf(forSec) === -1) return;
       if (NOT_FOR_EMBED.test(src)) return;
       try { at = new URL(src); } catch (e) { return; }
       // this site's own files: only what the published site runs (templates/…), never the editor's
@@ -605,159 +694,193 @@
 
   function jsString(s) { return JSON.stringify(String(s)).replace(/<\/(script)/gi, '<\\/$1').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029'); }
 
-  function buildJs(o) {
-    var own = String(o.ownJs || '').trim();
-    var lines = [
-      '/* ' + o.title + ' — from ETB2B EventSphere.',
-      '   Put this after the section’s HTML. It loads the event site’s scripts from EventSphere (each once, however many',
-      '   sections the page has), then runs the section’s own script with `section` as its element. */',
-      '(function () {',
-      '  \'use strict\';',
-      '  var ID = ' + jsString(o.id) + ';',
-      '  var SCRIPTS = ' + JSON.stringify(o.scripts.map(function (s) { var x = { src: s.src }; if (s.global) x.global = s.global; if (s.section) x.section = s.section; return x; })) + ';',
-      '  var PAGE = ' + jsString(o.pageUrl || '') + ';'
-    ];
-    if (own) {
-      lines.push('  /* the section’s own script (Developer zone › JS) */');
-      lines.push('  function own(section) {');
-      own.split('\n').forEach(function (l) { lines.push('    ' + l); });
-      lines.push('  }');
+  /* The common script, written into the copy as its own text (commonJs: embedLoader.toString()) and run on the
+     other website — so it uses nothing from this file. Once per page however often it is pasted (a second copy only
+     adds the scripts it names). It loads the event site's scripts from EventSphere, each once; starts every copied
+     section on the page (<section data-rv-embed>) — and one the page puts in later — through the runtime
+     (RevampSections.init: carousels, easing in, day tabs, accordions…); runs each section's own script, which a
+     section's JS box hands it (window.RevampEmbedQ.push([id, fn]), before or after this has run); gives the runtimes'
+     own rules the sections' weight, which the reset in the common CSS would otherwise outweigh; and sends a click on
+     a button that opens one of the event's forms, or a link to another part of the event's page, to the event's own
+     site, where it works (…/e/<event>#rv-form-<form> opens that form there). */
+  function embedLoader(CONFIG) {
+    'use strict';
+    var w = window, d = document;
+    if (w.RevampEmbed && w.RevampEmbed.need) { w.RevampEmbed.need(CONFIG); return; }
+    var all = w.__rvEmbedScripts = w.__rvEmbedScripts || {};
+    var queue = w.RevampEmbedQ = w.RevampEmbedQ || [];
+    var owns = {}, pending = 0, waiting = [], page = CONFIG.page || '', scope = CONFIG.scope;
+    function each(list, fn) { Array.prototype.forEach.call(list, fn); }
+    function load(list, done) {
+      var i = 0;
+      (function next() {
+        if (i >= list.length) return done();
+        var s = list[i++], key = s.src + (s.section ? '#' + s.section : ''), got = all[key];
+        if (got && got.done) return next();
+        if (got) { got.wait.push(next); return; }
+        if (s.global && w[s.global] && !w[s.global].q) { all[key] = { done: true, wait: [] }; return next(); }
+        got = all[key] = { done: false, wait: [] };
+        var el = d.createElement('script');
+        el.src = s.src;
+        if (s.section) el.setAttribute('data-rv-script', s.section);
+        el.onload = el.onerror = function () { got.done = true; next(); got.wait.splice(0).forEach(function (f) { f(); }); };
+        (d.head || d.documentElement).appendChild(el);
+      })();
     }
-    lines.push(
-      '  function load(i, done) {',
-      '    var all = window.__rvEmbedScripts = window.__rvEmbedScripts || {};',
-      '    if (i >= SCRIPTS.length) return done();',
-      '    var s = SCRIPTS[i], key = s.src + (s.section ? \'#\' + s.section : \'\'), got = all[key];',
-      '    function next() { load(i + 1, done); }',
-      '    if (got && got.done) return next();',
-      '    if (got) { got.wait.push(next); return; }',
-      '    if (s.global && window[s.global] && !window[s.global].q) { all[key] = { done: true, wait: [] }; return next(); }',
-      '    got = all[key] = { done: false, wait: [] };',
-      '    var el = document.createElement(\'script\');',
-      '    el.src = s.src;',
-      '    if (s.section) el.setAttribute(\'data-rv-script\', s.section);',
-      '    el.onload = el.onerror = function () { got.done = true; next(); got.wait.splice(0).forEach(function (f) { f(); }); };',
-      '    (document.head || document.documentElement).appendChild(el);',
-      '  }',
-      '  /* The runtimes\u2019 own rules (a carousel\u2019s, the pop-ups\u2019\u2026) style the section\u2019s elements too, and the',
-      '     reset at the top of the section\u2019s CSS would outweigh them: inside a copied section they are given the',
-      '     wrapper\u2019s weight as well \u2014 written again whenever a section has started. */',
-      '  function split(text) {',
-      '    var out = [], cur = \'\', depth = 0;',
-      '    for (var i = 0; i < text.length; i++) {',
-      '      var c = text.charAt(i);',
-      '      if (c === \'(\' || c === \'[\') depth++; else if (c === \')\' || c === \']\') depth--;',
-      '      if (c === \',\' && !depth) { out.push(cur); cur = \'\'; } else cur += c;',
-      '    }',
-      '    out.push(cur);',
-      '    return out;',
-      '  }',
-      '  function lift(rules, out) {',
-      '    Array.prototype.forEach.call(rules, function (r) {',
-      '      if (r.selectorText) {',
-      '        var sels = split(r.selectorText).map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^(html|:root|body)\\b/i.test(x); });',
-      '        if (sels.length) out.push(sels.map(function (x) { return \':is([data-rv-embed], #rv-embed-weight#_#_#_) \' + x; }).join(\', \') + \' { \' + r.style.cssText + \' }\');',
-      '      } else if (r.cssRules && r.media) {',
-      '        var inner = [];',
-      '        lift(r.cssRules, inner);',
-      '        if (inner.length) out.push(\'@media \' + r.media.mediaText + \' { \' + inner.join(\' \') + \' }\');',
-      '      }',
-      '    });',
-      '  }',
-      '  function weigh() {',
-      '    var out = [];',
-      '    Array.prototype.forEach.call(document.querySelectorAll(\'style\'), function (st) {',
-      '      var ours = Array.prototype.some.call(st.attributes, function (a) { return /^data-rv-/.test(a.name) && a.name !== \'data-rv-embed-weight\'; });',
-      '      if (!ours || !st.sheet) return;',
-      '      try { lift(st.sheet.cssRules, out); } catch (e) { /* a sheet that cannot be read */ }',
-      '    });',
-      '    var mine = document.querySelector(\'style[data-rv-embed-weight]\');',
-      '    /* first in <head>: where one of them and a rule of the section\u2019s own weigh the same, the section\u2019s wins, as on the event\u2019s page */',
-      '    if (!mine) { mine = document.createElement(\'style\'); mine.setAttribute(\'data-rv-embed-weight\', \'\'); var at = document.head || document.documentElement; at.insertBefore(mine, at.firstChild); }',
-      '    mine.textContent = out.join(\'\\n\');',
-      '  }',
-      '  /* A button that opens one of the event\u2019s forms (Register, Nominate Now, Express Interest — the award button',
-      '     sets its own when the dates move on) or a link to another part of the event\u2019s page goes to the event\u2019s',
-      '     own site, where it works: …/e/<event>#rv-form-<form> opens that form there. */',
-      '  function away(e) {',
-      '    if (!PAGE || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;',
-      '    var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);',
-      '    var a = t && t.closest ? t.closest(\'a[href^="#"], [data-rv-form], [data-register-cta]\') : null;',
-      '    var wrap = a && a.closest(\'[data-rv-embed]\');',
-      '    if (!wrap || a.getAttribute(\'aria-disabled\') === \'true\') return;',
-      '    var form = a.getAttribute(\'data-rv-form\'), href = a.getAttribute(\'href\') || \'\', hash = \'\';',
-      '    if (form != null) hash = form ? \'#rv-form-\' + form : \'#register\';',
-      '    else if (a.hasAttribute(\'data-register-cta\')) hash = \'#register\';',
-      '    else if (href.length > 1) {',
-      '      var id = decodeURIComponent(href.slice(1));',
-      '      if (wrap.querySelector(\'[id="\' + id.replace(/"/g, \'\') + \'"], [data-rv-section="\' + id.replace(/"/g, \'\') + \'"]\')) return;',
-      '      hash = href;',
-      '    } else return;',
-      '    e.preventDefault();',
-      '    e.stopPropagation();',
-      '    window.location.href = PAGE + hash;',
-      '  }',
-      '  if (!window.__rvEmbedAway) { window.__rvEmbedAway = true; document.addEventListener(\'click\', away, true); }',
-      '  function find() { return document.querySelector(\'[data-rv-embed="\' + ID + \'"] > [data-rv-section]\'); }',
-      '  function go(section) {',
-      '    if (section.__rvEmbed) return;',
-      '    section.__rvEmbed = true;',
-      '    load(0, function () {',
-      '      if (window.RevampSections && window.RevampSections.init) window.RevampSections.init(section);',
-      '      if (window.RevampPopups && window.RevampPopups.refresh) window.RevampPopups.refresh();',
-      '      weigh();'
-    );
-    if (own) {
-      lines.push(
-        '      try { own.call(section, section); }',
-        '      catch (err) { if (window.console) console.error(\'[EventSphere] the section’s script failed:\', ID, err); }'
-      );
+    function ready(fn) { if (!pending) fn(); else waiting.push(fn); }
+    function need(conf) {
+      if (conf.page && !page) page = conf.page;
+      pending++;
+      load(conf.scripts || [], function () {
+        pending--;
+        if (!pending) waiting.splice(0).forEach(function (f) { f(); });
+        startAll();
+      });
     }
-    lines.push(
-      '    });',
-      '  }',
-      '  function start() {',
-      '    var section = find();',
-      '    if (section) return go(section);',
-      '    /* a page that puts the HTML in later: the section is waited for, up to 30 seconds */',
-      '    if (!window.MutationObserver) return;',
-      '    var watch = new MutationObserver(function () { var s = find(); if (s) { watch.disconnect(); go(s); } });',
-      '    watch.observe(document.documentElement, { childList: true, subtree: true });',
-      '    setTimeout(function () { watch.disconnect(); }, 30000);',
-      '  }',
-      '  if (document.readyState === \'loading\') document.addEventListener(\'DOMContentLoaded\', start);',
-      '  else start();',
-      '})();'
-    );
-    return lines.join('\n');
+    function split(text) {
+      var out = [], cur = '', depth = 0;
+      for (var i = 0; i < text.length; i++) {
+        var c = text.charAt(i);
+        if (c === '(' || c === '[') depth++; else if (c === ')' || c === ']') depth--;
+        if (c === ',' && !depth) { out.push(cur); cur = ''; } else cur += c;
+      }
+      out.push(cur);
+      return out;
+    }
+    function lift(rules, out) {
+      each(rules, function (r) {
+        if (r.selectorText) {
+          var sels = split(r.selectorText).map(function (x) { return x.trim(); }).filter(function (x) { return x && !/^(html|:root|body)\b/i.test(x); });
+          if (!sels.length) return;
+          var decl = [];
+          for (var k = 0; k < r.style.length; k++) { var name = r.style[k]; decl.push(name + ': ' + r.style.getPropertyValue(name) + ' !important'); }
+          out.push(sels.map(function (x) { return scope + ' ' + x; }).join(', ') + ' { ' + decl.join('; ') + ' }');
+        } else if (r.cssRules && r.media) {
+          var inner = [];
+          lift(r.cssRules, inner);
+          if (inner.length) out.push('@media ' + r.media.mediaText + ' { ' + inner.join(' ') + ' }');
+        }
+      });
+    }
+    function weigh() {
+      var out = [];
+      each(d.querySelectorAll('style'), function (st) {
+        var ours = Array.prototype.some.call(st.attributes, function (a) { return /^data-rv-/.test(a.name) && a.name !== 'data-rv-embed-weight'; });
+        if (!ours || !st.sheet) return;
+        try { lift(st.sheet.cssRules, out); } catch (e) { /* a sheet that cannot be read */ }
+      });
+      var mine = d.querySelector('style[data-rv-embed-weight]');
+      // first in <head>: where one of these and a rule of a section's own weigh the same, the section's wins, as on the event's page
+      if (!mine) { mine = d.createElement('style'); mine.setAttribute('data-rv-embed-weight', ''); var at = d.head || d.documentElement; at.insertBefore(mine, at.firstChild); }
+      var text = out.join('\n');
+      if (mine.textContent !== text) mine.textContent = text;
+    }
+    function away(e) {
+      if (!page || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+      var a = t && t.closest ? t.closest('a[href^="#"], [data-rv-form], [data-register-cta]') : null;
+      var sec = a && a.closest('[data-rv-embed]');
+      if (!sec || a.getAttribute('aria-disabled') === 'true') return;
+      var form = a.getAttribute('data-rv-form'), href = a.getAttribute('href') || '', hash = '';
+      if (form != null) hash = form ? '#rv-form-' + form : '#register';
+      else if (a.hasAttribute('data-register-cta')) hash = '#register';
+      else if (href.length > 1) {
+        var id = decodeURIComponent(href.slice(1)).replace(/"/g, '');
+        if (sec.id === id || sec.querySelector('[id="' + id + '"], [data-rv-section="' + id + '"]')) return;
+        hash = href;
+      } else return;
+      e.preventDefault();
+      e.stopPropagation();
+      w.location.href = page + hash;
+    }
+    function runOwn(sec) {
+      var id = sec.getAttribute('data-rv-embed'), fn = owns[id];
+      if (!fn || sec.__rvOwnRan || !sec.__rvStarted) return;
+      sec.__rvOwnRan = true;
+      try { fn.call(sec, sec); } catch (err) { if (w.console) console.error('[EventSphere] the script of section "' + id + '" failed:', err); }
+    }
+    function start(sec) {
+      if (sec.__rvEmbed) return;
+      sec.__rvEmbed = true;
+      ready(function () {
+        if (w.RevampSections && w.RevampSections.init) w.RevampSections.init(sec);
+        sec.__rvStarted = true;
+        if (w.RevampPopups && w.RevampPopups.refresh) w.RevampPopups.refresh();
+        weigh();
+        runOwn(sec);
+      });
+    }
+    function startAll() { each(d.querySelectorAll('[data-rv-embed]'), start); }
+    function take(item) {
+      if (!item || !item[0]) return;
+      owns[item[0]] = item[1];
+      each(d.querySelectorAll('[data-rv-embed="' + String(item[0]).replace(/"/g, '') + '"]'), runOwn);
+    }
+    queue.forEach(take);
+    queue.push = function (item) { take(item); return queue.length; };
+    w.RevampEmbed = { need: need, start: startAll };
+    if (!w.__rvEmbedAway) { w.__rvEmbedAway = true; d.addEventListener('click', away, true); }
+    need(CONFIG);
+    /* a page that puts sections in later: they are started as they come (for a minute) */
+    function watch() {
+      startAll();
+      if (!w.MutationObserver) return;
+      var timer = null, seen = new w.MutationObserver(function () {
+        if (timer) return;
+        timer = setTimeout(function () { timer = null; startAll(); }, 60);
+      });
+      seen.observe(d.documentElement, { childList: true, subtree: true });
+      setTimeout(function () { seen.disconnect(); }, 60000);
+    }
+    if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', watch); else watch();
   }
 
-  /* ---------- the whole copy ---------- */
+  /* the common script: the loader above, with the event's page, the scripts and the sections' weight */
+  function commonJs(o) {
+    var conf = { page: String(o.pageUrl || '').replace(/#.*$/, ''), scope: SCOPE, scripts: o.scripts.map(function (s) { var x = { src: s.src }; if (s.global) x.global = s.global; if (s.section) x.section = s.section; return x; }) };
+    return [
+      '/* ' + o.title + ' — the common script of the sections copied from ETB2B EventSphere.',
+      '   Put it once on the page (the CMS’s global section). It loads the event site’s scripts from EventSphere,',
+      '   starts every copied section on the page and runs their own scripts. */',
+      '(' + embedLoader.toString() + ')(' + JSON.stringify(conf).replace(/<\/(script)/gi, '<\\/$1') + ');'
+    ].join('\n');
+  }
+  /* a section's own script (Developer zone › JS), handed to the common script: '' when it has none */
+  function sectionJs(o) {
+    var own = String(o.ownJs || '').trim();
+    if (!own) return '';
+    return [
+      '/* ' + o.title + ' — the section’s own script. The common script (Copy for another website › Common CSS & JS) runs it,',
+      '   with `section` (and this) as the section; it can come before or after this. */',
+      '(window.RevampEmbedQ = window.RevampEmbedQ || []).push([' + jsString(o.id) + ', function (section) {',
+      own.split('\n').map(function (l) { return '  ' + l; }).join('\n'),
+      '}]);'
+    ].join('\n');
+  }
 
-  function build(o) {
-    var doc = o.doc, win = o.win, sec = o.section;
-    var id = sec.getAttribute('data-rv-section') || sec.id || 'section';
-    var base = doc.baseURI || (win && win.location && win.location.href) || location.href;
-    var remPx = parseFloat(win.getComputedStyle(doc.documentElement).fontSize) || 16;
-    var copy = o.copy || sec.cloneNode(true);
-    var info = finishHtml(copy, { pageUrl: o.pageUrl, base: base, remPx: remPx });
-    var title = (o.sectionName || id) + (o.eventName ? ' — ' + o.eventName : '');
+  /* ---------- the CSS ---------- */
 
-    // the classes anything on the page has: one a script adds later is a state (testable)
-    var classes = {};
-    Array.prototype.forEach.call(doc.querySelectorAll('[class]'), function (n) {
-      Array.prototype.forEach.call(n.classList, function (c) { classes[c] = 1; });
-    });
-    Array.prototype.forEach.call(copy.querySelectorAll('[class]'), function (n) {
-      Array.prototype.forEach.call(n.classList, function (c) { classes[c] = 1; });
-    });
-    var ctx = {
-      scope: '#' + scopeId(id) + WEIGHT,
-      page: pageModel(doc, sec, copy), embed: embedModel(doc, copy, id),
-      knownClass: function (c) { return !!classes[c]; },
-      links: [], fontFaces: [], keyframes: [], props: []
-    };
+  /* what every selector begins with: the class every copied section carries, and the weight of four ids more */
+  var SCOPE = '.rv-embed' + WEIGHT;
 
+  /* which section a stylesheet is the own sheet of: { type } (style[data-rv-style]), { key } (a copy's renamed ids,
+     style[data-rv-copy-for]) or { el } (a sheet inside a section: its developer-zone CSS); null for a sheet the page
+     shares (gen-base.css, et-platform.css, a template's CSS…) */
+  function sheetOwner(sheet) {
+    var o = sheet.ownerNode;
+    if (!o || !o.getAttribute) return null;
+    if (o.hasAttribute('data-rv-style')) return { type: o.getAttribute('data-rv-style') };
+    if (o.hasAttribute('data-rv-copy-for')) return { key: o.getAttribute('data-rv-copy-for') };
+    var inSec = o.closest && o.closest('[data-rv-section]');
+    return inSec ? { el: inSec } : null;
+  }
+  function belongsTo(own, sec) {
+    if (own.el) return own.el === sec;
+    if (own.type) return own.type === sec.getAttribute('data-rv-section');
+    return own.key === sec.getAttribute('data-rv-key') || own.key === sec.id;
+  }
+  /* the rules of the sheets `pick` takes that reach one of the models' sections, for the other website */
+  function collect(doc, base, pick, ctx) {
     var rules = [];
     Array.prototype.forEach.call(doc.styleSheets, function (sheet) {
       var owner = sheet.ownerNode;
@@ -766,7 +889,7 @@
       // and which internal page shows): about the event's page, not a section on another website
       if (owner && owner.hasAttribute && owner.hasAttribute('data-rv-runtime')) return;
       if (owner && owner.closest && owner.closest('.is-hidden-sec')) return;         // a hidden section's
-      if (sheet.disabled) return;
+      if (sheet.disabled || !pick(sheetOwner(sheet))) return;
       var list = null;
       try { list = sheet.cssRules; } catch (e) { list = null; }
       if (!list) { if (sheet.href) ctx.links.push(absolute(sheet.href, base)); return; }   // another site's: linked as it is
@@ -778,62 +901,149 @@
         if (inner.length) rules.push('@media ' + sheet.media.mediaText + ' {\n' + inner.join('\n') + '\n}');
       } else walk(list, sheetBase, rules, ctx);
     });
-
-    var body = rules.join('\n');
-    var style = wrapperStyle(win, sec, varsUsed(body + ' ' + copy.outerHTML));
-    var styleText = style.map(function (p) { return p[0] + ':' + p[1]; }).join(';');
-    // what the rules use: @keyframes by name, @font-face by family, @property by name
-    var used = body + ' ' + styleText;
+    return rules;
+  }
+  /* what rules use: @keyframes by name, @font-face by family, @property by name */
+  function extrasFor(text, ctx, families) {
     var extra = [];
-    ctx.props.forEach(function (p) { if (used.indexOf(p.name) !== -1) extra.push(p.text); });
-    var families = familiesUsed(used);
+    ctx.props.forEach(function (p) { if (text.indexOf(p.name) !== -1 && extra.indexOf(p.text) === -1) extra.push(p.text); });
     ctx.fontFaces.forEach(function (f) { if (f.family && families.indexOf(f.family) !== -1 && extra.indexOf(f.text) === -1) extra.push(f.text); });
-    var animated = (used.match(/animation(?:-name)?\s*:[^;}]*/gi) || []).join(' ');
+    var animated = (text.match(/animation(?:-name)?\s*:[^;}]*/gi) || []).join(' ');
     ctx.keyframes.forEach(function (k) {
       if (new RegExp('(^|[\\s,:])' + String(k.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[\\s,;])').test(animated) && extra.indexOf(k.text) === -1) extra.push(k.text);
     });
-    var css = resetCss(ctx.scope) + '\n' + remToPx(extra.concat(rules).join('\n'), remPx);
-
-    // fonts: the Google Fonts the page loads for families the copy uses, and any other site's stylesheet the page links
+    return extra;
+  }
+  /* the Google Fonts (and any other site's stylesheets) the page loads for the families in use */
+  function fontLinks(doc, base, ctx, families) {
     var links = [];
-    Array.prototype.forEach.call(doc.querySelectorAll('link[rel~="stylesheet"][href]'), function (l) {
-      if (l.closest('[data-rv-editor]')) return;
-      var href = absolute(l.getAttribute('href'), base);
-      if (/fonts\.googleapis\.com/.test(href)) {
-        var fam = fontFamiliesOfUrl(href);
-        if (fam.length && !fam.some(function (f) { return families.indexOf(f) !== -1; })) return;
-      } else if (ctx.links.indexOf(href) === -1) return;               // our own sheets: their rules are in the CSS
-      if (links.indexOf(href) === -1) links.push(href);
-    });
-    ctx.links.forEach(function (href) {
+    function take(href) {
       if (/fonts\.googleapis\.com/.test(href)) {
         var fam = fontFamiliesOfUrl(href);
         if (fam.length && !fam.some(function (f) { return families.indexOf(f) !== -1; })) return;
       }
       if (links.indexOf(href) === -1) links.push(href);
+    }
+    Array.prototype.forEach.call(doc.querySelectorAll('link[rel~="stylesheet"][href]'), function (l) {
+      if (l.closest('[data-rv-editor]')) return;
+      var href = absolute(l.getAttribute('href'), base);
+      if (/fonts\.googleapis\.com/.test(href) || ctx.links.indexOf(href) !== -1) take(href);   // our own sheets: their rules are in the CSS
     });
+    ctx.links.forEach(take);
+    return links;
+  }
+  /* the section as the copy has it, and the copy of the page its selectors are tried on */
+  function prepare(doc, sec, o, base, remPx) {
+    var id = sec.getAttribute('data-rv-section') || sec.id || 'section';
+    var copy = sec.cloneNode(true);
+    var info = finishHtml(copy, { pageUrl: o.pageUrl, base: base, remPx: remPx });
+    rootAttrs(doc, copy, id);
+    return { id: id, sec: sec, copy: copy, info: info, page: pageModel(doc, sec, copy), embed: embedModel(doc, copy) };
+  }
+  function newCtx(doc, models) {
+    // the classes anything on the page has: one a script adds later is a state (testable)
+    var classes = {};
+    function note(n) { Array.prototype.forEach.call(n.classList, function (c) { classes[c] = 1; }); }
+    Array.prototype.forEach.call(doc.querySelectorAll('[class]'), note);
+    models.forEach(function (m) { Array.prototype.forEach.call(m.copy.querySelectorAll('[class]'), note); });
+    return { scope: SCOPE, models: models, win: doc.defaultView, knownClass: function (c) { return !!classes[c]; }, links: [], fontFaces: [], keyframes: [], props: [] };
+  }
+  /* The CSS every copied section needs, for the sections given: the fonts, the reset, the page's look on the
+     sections (the theme's variables and the inherited text, on .rv-embed — a section's own rules outweigh it) and
+     the rules of the sheets the page shares that reach them. */
+  function commonCss(doc, win, models, base, remPx, ctx, ownText) {
+    var shared = collect(doc, base, function (own) { return !own; }, ctx);
+    var text = shared.join('\n');
+    var names = varsUsed(text + ' ' + ownText + ' ' + models.map(function (m) { return m.copy.outerHTML; }).join(' '));
+    var look = wrapperStyle(win, models[0].sec, names).filter(function (p) { return p[0] !== 'background-color'; });
+    var lookText = look.map(function (p) { return p[0] + ': ' + p[1]; }).join('; ');
+    var families = familiesUsed(text + ' ' + ownText + ' ' + lookText);
+    var extra = extrasFor(text + ' ' + lookText, ctx, families);
+    var imports = fontLinks(doc, base, ctx, families).map(function (h) { return '@import url("' + h.replace(/"/g, '%22') + '");'; });
+    return (imports.length ? imports.join('\n') + '\n' : '') + resetCss(SCOPE) + '\n' +
+      '/* the event page’s look on every copied section: its theme and its text; a section’s own rules outweigh it */\n' +
+      SCOPE + ' { ' + important(lookText) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx);
+  }
 
-    // the wrapper and the section, as one element
-    var holderDoc = freshDoc(), w = holderDoc.createElement('div');
-    wrapperAttrs(doc, w, id);
-    style.forEach(function (p) { try { w.style.setProperty(p[0], p[1]); } catch (e) { /* a value this browser will not take */ } });
-    w.appendChild(holderDoc.importNode(copy, true));
-    var linkTags = links.map(function (h) { return '<link rel="stylesheet" href="' + h.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '">'; });
-    var html = (linkTags.length ? linkTags.join('\n') + '\n' : '') + w.outerHTML;
+  /* ---------- the copies ---------- */
 
-    var records = !!copy.querySelector('[data-rv-filled], [data-rv-item], [data-rv-id]');
-    var js = buildJs({ id: id, title: title, scripts: scriptsFor(doc, sec, copy, base), ownJs: info.js, pageUrl: String(o.pageUrl || '').replace(/#.*$/, '') });
-    // one block: fonts and styles first (no unstyled moment), the section, then its script
-    var all = '<!-- ' + title.replace(/--/g, '–') + ' — from ETB2B EventSphere -->\n' + (linkTags.length ? linkTags.join('\n') + '\n' : '') +
-      '<style>\n' + css.replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n' + w.outerHTML + '\n<script>\n' + js.replace(/<\/(script)/gi, '<\\/$1') + '\n</script>';
+  /* The HTML of an element, written so that no attribute value holds a double quote: ETB2B's CMS turns &quot; back
+     into " when it saves a section, which ended the attribute there (a font name in style="…" broke the rest of it).
+     A value with a " is written between single quotes instead (only one with both kinds keeps &quot;). Comments go. */
+  var VOID_TAGS = /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/i;
+  function htmlOf(node) {
+    if (node.nodeType === 3) return String(node.nodeValue).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\u00a0/g, '&nbsp;');
+    if (node.nodeType !== 1) return '';
+    var name = node.localName || node.tagName.toLowerCase(), out = '<' + name;
+    Array.prototype.forEach.call(node.attributes, function (a) {
+      var v = String(a.value).replace(/&/g, '&amp;');
+      if (v.indexOf('"') === -1) out += ' ' + a.name + '="' + v + '"';
+      else if (v.indexOf("'") === -1) out += ' ' + a.name + "='" + v + "'";
+      else out += ' ' + a.name + '="' + v.replace(/"/g, '&quot;') + '"';
+    });
+    out += '>';
+    if (VOID_TAGS.test(name) && !node.namespaceURI || VOID_TAGS.test(name) && /xhtml/.test(node.namespaceURI)) return out;
+    var kids = name === 'template' && node.content ? node.content.childNodes : node.childNodes;
+    if (/^(script|style)$/.test(name)) out += node.textContent;
+    else Array.prototype.forEach.call(kids, function (k) { out += htmlOf(k); });
+    return out + '</' + name + '>';
+  }
+
+  /* each box as ETB2B's CMS takes it — its code as it is put on the page, with its own tags ('' stays '') */
+  function styleBox(css) { return css ? '<style>\n' + String(css).replace(/<\/(style)/gi, '<\\/$1') + '\n</style>' : ''; }
+  function scriptBox(js) { return js ? '<script>\n' + String(js).replace(/<\/(script)/gi, '<\\/$1') + '\n</script>' : ''; }
+
+  /* One section: its HTML (one <section>), its own CSS and JS, and — for a website that takes one HTML field, and
+     the test page — the whole of it with the common CSS and JS it needs. */
+  function build(o) {
+    var doc = o.doc, win = o.win, sec = o.section;
+    var base = doc.baseURI || (win && win.location && win.location.href) || location.href;
+    var remPx = parseFloat(win.getComputedStyle(doc.documentElement).fontSize) || 16;
+    var m = prepare(doc, sec, o, base, remPx), id = m.id, copy = m.copy, info = m.info;
+    var title = (o.sectionName || id) + (o.eventName ? ' — ' + o.eventName : '');
+    var ctx = newCtx(doc, [m]);
+    var own = collect(doc, base, function (o2) { return !!o2 && belongsTo(o2, sec); }, ctx);
+    var ownText = own.join('\n');
+    var families = familiesUsed(ownText);
+    var ground = wrapperStyle(win, sec, []).filter(function (p) { return p[0] === 'background-color'; })[0];
+    var groundRule = ground ? '/* the event page\u2019s ground behind this section */\n.' + scopeId(id) + WEIGHT + ' { background-color: ' + ground[1] + ' !important; }\n' : '';
+    var css = groundRule + remToPx(extrasFor(ownText, ctx, families).concat(own).join('\n'), remPx);
+    var common = commonCss(doc, win, [m], base, remPx, ctx, ownText);
+    var html = htmlOf(copy);
+    var js = sectionJs({ id: id, title: title, ownJs: info.js });
+    var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, [m], base) });
+    var allJs = jsCommon + (js ? '\n' + js : '');
+    // one block: the styles first (no unstyled moment), the section, then the script
+    var all = '<!-- ' + title.replace(/--/g, '–') + ' — from ETB2B EventSphere -->\n<style>\n' + (common + '\n' + css).replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n' +
+      html + '\n<script>\n' + allJs.replace(/<\/(script)/gi, '<\\/$1') + '\n</script>';
     var page = '<!DOCTYPE html>\n<html lang="' + (doc.documentElement.getAttribute('lang') || 'en') + '">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' +
       title.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</title>\n</head>\n<body style="margin:0">\n' + all + '\n</body>\n</html>\n';
-
+    var records = !!copy.querySelector('[data-rv-filled], [data-rv-item], [data-rv-id]');
     var notes = [];
     if (info.hidden) notes.push('The event’s site does not show this section now (it has nothing to show), so the copy shows nothing either.');
     if (records) notes.push('The event’s records are in the copy as they are now: copy it again after changing them in Content.');
     if (info.forms) notes.push('Forms open on the event’s own website: the buttons here lead there.');
-    return { id: id, html: html, css: css, js: js, all: all, page: page, records: records, hidden: info.hidden, forms: info.forms, ownJs: !!String(info.js).trim(), notes: notes };
+    return { id: id, html: html, css: styleBox(css), js: scriptBox(js), common: { css: styleBox(common), js: scriptBox(jsCommon) }, all: all, page: page, records: records, hidden: info.hidden, forms: info.forms, ownJs: !!js, notes: notes };
+  }
+
+  /* The common CSS and JS for every section of the page given (those on view): pasted once — ETB2B's CMS has a global
+     section for it — they serve every section copied from this site. */
+  function buildCommon(o) {
+    var doc = o.doc, win = o.win;
+    var base = doc.baseURI || (win && win.location && win.location.href) || location.href;
+    var remPx = parseFloat(win.getComputedStyle(doc.documentElement).fontSize) || 16;
+    var models = o.sections.map(function (sec) { return prepare(doc, sec, o, base, remPx); });
+    if (!models.length) return { error: 'There is no section on the page to copy.' };
+    var ctx = newCtx(doc, models);
+    // the sections' own sheets: only for the variables and fonts they use (their rules go with each section)
+    var ownText = '';
+    Array.prototype.forEach.call(doc.styleSheets, function (sheet) {
+      var own = sheetOwner(sheet), node = sheet.ownerNode;
+      if (own && node && node.textContent) ownText += ' ' + node.textContent;
+    });
+    var css = commonCss(doc, win, models, base, remPx, ctx, ownText);
+    var title = o.eventName || 'This event';
+    return { css: styleBox(css), js: scriptBox(commonJs({ title: title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, models, base) })), sections: models.length };
   }
 
   /* the page at url, out of sight, its scripts off (sandbox without allow-scripts), once its fonts are in */
@@ -866,9 +1076,10 @@
 
   root.RevampDevExport = {
     build: build,
+    buildCommon: buildCommon,
     loadPage: loadPage,
     _test: { splitTop: splitTop, compoundsOf: compoundsOf, joinCompounds: joinCompounds, simplesOf: simplesOf, testable: testable,
       absolute: absolute, absoluteUrls: absoluteUrls, remToPx: remToPx, varsUsed: varsUsed, familiesUsed: familiesUsed,
-      fontFamiliesOfUrl: fontFamiliesOfUrl, buildJs: buildJs, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE }
+      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE }
   };
 })(typeof window !== 'undefined' ? window : this);

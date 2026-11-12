@@ -2518,10 +2518,13 @@
         else { boxes[k].setAttribute('wrap', on ? 'soft' : 'off'); boxes[k].style.whiteSpace = on ? 'pre-wrap' : 'pre'; }
       });
     });
+    /* the copy view: one section, or the common CSS & JS every copied section needs (once per site — ETB2B's CMS
+       has a global section for it) */
+    var common = false;
     var COPY_NOTES = {
-      html: function () { return 'The section as visitors see it, in a wrapper that carries the page’s colours and fonts. Put it where the section goes.'; },
-      css: function () { return 'Every rule the section uses, each kept to it ([data-rv-embed="' + sec.getAttribute('data-rv-section') + '"] …), so it cannot restyle the rest of the other website.'; },
-      js: function () { return 'Put it after the HTML. It loads the event site’s scripts from EventSphere, then runs the section’s own.'; }
+      html: function () { return common ? 'No HTML: the common part is CSS and JS only.' : 'One <section>, as visitors see it. Paste it into the section’s HTML box.'; },
+      css: function () { return common ? 'The fonts, a reset that keeps the page’s own rules off the sections, the event’s colours and text, and the site’s shared rules — for every copied section.' : 'This section’s own rules. Each begins with .rv-embed, the class the section carries, so it cannot restyle the rest of the page.'; },
+      js: function () { return common ? 'Loads the event site’s scripts from EventSphere once and starts every copied section on the page.' : (exported && exported.js ? 'The section’s own script: the common script runs it.' : 'Nothing: this section has no script of its own. Leave its JS box empty.'); }
     };
     var NOTES = {
       html: function () { return 'One root element.' + (src.records ? ' Lists of the event’s records show the one item they are drawn from; the records come back after Apply.' : ''); },
@@ -2607,19 +2610,47 @@
         return { error: 'The copy could not be made from this section (' + ((err && err.message) || 'unknown error') + ').' };
       }
     }
+    /* the common CSS & JS, for every section on view */
+    function exportCommon(frame) {
+      var d = frame.contentDocument;
+      var there = secs.filter(function (s) { return !s.classList.contains('is-hidden-sec'); }).map(function (s) { return d && stagedSection(d, s); }).filter(Boolean);
+      try {
+        var c = RevampDevExport.buildCommon({
+          doc: d, win: frame.contentWindow, sections: there,
+          pageUrl: window.RevampCore && RevampCore.publicUrl ? RevampCore.publicUrl(currentEvent || eventId) : '',
+          eventName: (currentEvent && currentEvent.name) || ''
+        });
+        if (c.error) return c;
+        return { isCommon: true, html: '', css: c.css, js: c.js, all: '<style>\n' + c.css.replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n<script>\n' + c.js.replace(/<\/(script)/gi, '<\\/$1') + '\n</script>', count: c.sections };
+      } catch (err) {
+        if (window.console) console.error('[RevampTemplateUI] developer zone common copy:', err);
+        return { error: 'The common CSS & JS could not be made (' + ((err && err.message) || 'unknown error') + ').' };
+      }
+    }
     function showCopy() {
       var box = $('rv-dev-copy-notes'), mine = ++copySeq;
-      function buttons(on) { ['rv-dev-copy', 'rv-dev-copy-all', 'rv-dev-download'].forEach(function (b) { $(b).disabled = !on; }); }
+      function buttons(on) {
+        ['rv-dev-copy', 'rv-dev-copy-all', 'rv-dev-download'].forEach(function (b) { $(b).disabled = !on; });
+        if (common) $('rv-dev-download').disabled = true;           // the test page is a section's
+      }
       function draw() {
         if (exported.error) {
           ['html', 'css', 'js'].forEach(function (k) { setVal(k, ''); });
           box.textContent = exported.error;
           buttons(false);
+        } else if (exported.isCommon) {
+          setVal('html', '');
+          setVal('css', exported.css);
+          setVal('js', exported.js);
+          box.textContent = 'Paste this CSS and JS once on the page — into the CMS’s global section, which applies to every section. Every section copied from this site uses it (' + exported.count + ' on this page). There is no HTML.';
+          buttons(true);
+          if (tab === 'html') tab = 'css';
         } else {
           setVal('html', prettyHtml(exported.html));
           setVal('css', exported.css);
           setVal('js', exported.js);
-          var lines = ['Paste the HTML where the section goes, the CSS with the page’s styles and the JS after the HTML — or, for a website that takes one HTML field, “Copy all as one block”.'];
+          var lines = ['Paste the HTML (one <section>) into the section’s HTML box, the CSS into its CSS box' + (exported.js ? ' and the JS into its JS box.' : '; its JS box stays empty.') +
+            ' The common CSS & JS (first in the Section list) goes once into the CMS’s global section. For a website that takes one HTML field: “Copy all as one block” holds everything.'];
           if (dirty()) lines.push('What you changed under “Edit this section” is not applied yet: this is the section as it is on the page.');
           box.textContent = lines.concat(exported.notes || []).join(' ');
           buttons(true);
@@ -2631,10 +2662,10 @@
       box.textContent = 'Making the copy from the page as visitors see it…';
       buttons(false);
       show(tab);
-      var target = sec;
+      var target = sec, wanted = common;
       stagePage().then(function (frame) {
-        if (mine !== copySeq || mode !== 'copy' || sec !== target || !document.contains(scrim)) return;
-        exported = exportFrom(frame, target);
+        if (mine !== copySeq || mode !== 'copy' || sec !== target || common !== wanted || !document.contains(scrim)) return;
+        exported = common ? exportCommon(frame) : exportFrom(frame, target);
         draw();
       }, function (err) {
         if (mine !== copySeq || mode !== 'copy' || !document.contains(scrim) || (err && err.message === 'cancelled')) return;
@@ -2658,7 +2689,17 @@
       $('rv-dev-apply').hidden = copying;
       ['rv-dev-copy', 'rv-dev-copy-all', 'rv-dev-download'].forEach(function (b) { $(b).hidden = !copying; });
       problem.hidden = true;
-      if (copying) { exported = null; showCopy(); return; }
+      if (copying) {
+        var o = document.createElement('option');
+        o.value = 'common';
+        o.textContent = 'Common CSS & JS — once per site';
+        pick.insertBefore(o, pick.firstChild);
+        exported = null; showCopy(); return;
+      }
+      var entry = pick.querySelector('option[value="common"]');
+      if (entry) entry.remove();
+      common = false;
+      pick.value = String(secs.indexOf(sec));
       dropStaged();
       var back = edits || loaded;
       edits = null;
@@ -2720,6 +2761,8 @@
     });
     pick.value = String(secs.indexOf(sec));
     pick.addEventListener('change', function () {
+      if (pick.value === 'common') { common = true; exported = null; showCopy(); return; }
+      if (common) { common = false; exported = null; }
       var to = +pick.value;
       if (!dirty()) { load(secs[to]); return; }
       // the picker shows the section being edited until the answer is in
@@ -2733,14 +2776,14 @@
     Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-mode]'), function (b) { b.addEventListener('click', function () { setMode(b.getAttribute('data-dev-mode')); }); });
     $('rv-dev-copy').addEventListener('click', function () {
       if (!exported || exported.error) return;
-      copyText(val(tab), tab.toUpperCase() + ' copied');
+      copyText(val(tab), (common ? 'Common ' : '') + tab.toUpperCase() + ' copied');
     });
     $('rv-dev-copy-all').addEventListener('click', function () {
       if (!exported || exported.error) return;
-      copyText(exported.all, 'HTML, CSS and JS copied as one block');
+      copyText(exported.all, common ? 'Common CSS and JS copied as one block' : 'HTML, CSS and JS copied as one block');
     });
     $('rv-dev-download').addEventListener('click', function () {
-      if (!exported || exported.error) return;
+      if (!exported || exported.error || exported.isCommon) return;
       var name = String(((currentEvent && (currentEvent.slug || currentEvent.id)) || eventId || 'event') + '-' + exported.id).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') + '.html';
       var url = URL.createObjectURL(new Blob([exported.page], { type: 'text/html;charset=utf-8' }));
       var a = document.createElement('a');
