@@ -383,8 +383,38 @@
       }
     });
   }
+  /* A shorthand that holds var() and is then partly overridden in the same rule (border: 1px solid var(--x);
+     border-top: …) comes back from the browser as empty longhands ("border-left-color: ;"), which would drop it. The
+     rule's own words are then read from its stylesheet's text: its blocks in order, by selector. */
+  function selKey(sel) { return String(sel || '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/["']/g, '').replace(/::(before|after)/g, ':$1').replace(/\s+/g, ''); }
+  function rawBlocks(text) {
+    var out = [], i = 0, start = 0, depth = 0, prelude = [], c, q;
+    text = String(text || '');
+    for (; i < text.length; i++) {
+      c = text.charAt(i);
+      if (c === '/' && text.charAt(i + 1) === '*') { var end = text.indexOf('*/', i + 2); i = end === -1 ? text.length : end + 1; continue; }
+      if (c === '"' || c === "'") { q = c; for (i++; i < text.length && text.charAt(i) !== q; i++) if (text.charAt(i) === '\\') i++; continue; }
+      if (c === '{') { prelude.push(text.slice(start, i)); start = i + 1; depth++; }
+      else if (c === '}') {
+        var head = prelude.pop();
+        if (head != null && text.slice(start, i).indexOf('{') === -1 && !/^\s*@/.test(head)) out.push({ key: selKey(head), body: text.slice(start, i).trim() });
+        start = i + 1; depth--;
+      } else if (c === ';' && !depth) start = i + 1;
+    }
+    return out;
+  }
+  function rawBody(rule, ctx) {
+    var raw = ctx.raw;
+    if (!raw) return '';
+    var key = selKey(rule.selectorText), n = raw.seen[key] || 0, hit = null;
+    if (!raw.blocks) raw.blocks = rawBlocks(raw.text);
+    raw.blocks.some(function (b) { if (b.key === key) { if (!n) { hit = b; return true; } n--; } return false; });
+    return hit ? hit.body : '';
+  }
   function styleRule(rule, base, out, ctx) {
     var kept = [];
+    // which of the sheet's rules with this selector this is (rawBody)
+    if (ctx.raw) { var sk = selKey(rule.selectorText); ctx.raw.order = ctx.raw.order || {}; var nth = ctx.raw.order[sk] || 0; ctx.raw.order[sk] = nth + 1; ctx.raw.seen = {}; ctx.raw.seen[sk] = nth; }
     splitTop(rule.selectorText, ',').forEach(function (sel) {
       var hit = within(ctx.page, testable(sel, ctx.knownClass));
       if (hit === null) hit = guess(sel, ctx);
@@ -394,6 +424,7 @@
     });
     if (!kept.length) return;
     var body = rule.style ? rule.style.cssText : '';
+    if (/:\s*;/.test(body)) { var words = rawBody(rule, ctx); if (words) body = words; }
     if (rule.cssRules && rule.cssRules.length) body += ' ' + Array.prototype.map.call(rule.cssRules, function (r) { return r.cssText; }).join(' ');
     if (!body.trim()) return;
     out.push(kept.join(', ') + ' { ' + absoluteUrls(body, base) + ' }');
@@ -460,6 +491,7 @@
         var v = (el.getAttribute(name) || '').trim();
         if (name === 'href' && el.tagName === 'A' || name === 'href' && el.tagName === 'AREA') {
           var form = FORM_LINK.exec(v);
+          if (el.hasAttribute('data-rv-award-cta')) return;          // its script sets it by the dates; a click goes to the event's site (the JS)
           if (el.hasAttribute('data-register-cta') || el.hasAttribute('data-rv-form') || form) {
             var formId = el.getAttribute('data-rv-form');
             if (page) el.setAttribute('href', page + (formId ? '#rv-form-' + formId : form ? v : '#register'));
@@ -529,7 +561,7 @@
   /* ---------- the script ---------- */
 
   /* the site's scripts the section needs on another website, in the order the page has them */
-  var NOT_FOR_EMBED = /\/(rv-forms|rv-data|rv-pages|rv-live|rv-blend|rv-preview-edit|rv-theme-switcher|rv-theme|rv-type|template-loader|rv-award-cta|rv-records)\.js/;
+  var NOT_FOR_EMBED = /\/(rv-forms|rv-data|rv-pages|rv-live|rv-blend|rv-preview-edit|rv-theme-switcher|rv-theme|rv-type|template-loader|rv-records)\.js/;
   function scriptsFor(doc, sec, copy, base) {
     var id = sec.getAttribute('data-rv-section'), list = [], seen = {};
     var origin = new URL(base).origin;
@@ -537,6 +569,8 @@
     var people = !!copy.querySelector('template[data-rv-profile], [data-rv-profiles], [data-rv-repeat-template="speakers"], [data-rv-repeat-template="partners"], [data-rv-repeat-template="glimpses"], [data-rv-lightbox], .pe-spn-tile') ||
       /^(previous-sponsors|previous-glimpses|previous-speakers)$/.test(id) || (copy.querySelectorAll('img').length >= 3 && /glimps|gallery|moments|photos/i.test(id));
     var video = !!copy.querySelector('video[data-rv-bg-video]');
+    // an award site's main button says what the award's dates make it today (rv-award-cta.js)
+    var award = !!copy.querySelector('[data-rv-award-cta]');
     function add(src, more) {
       if (seen[src]) return;
       seen[src] = 1;
@@ -555,10 +589,12 @@
       if (/\/et-runtime\.js$/.test(at.pathname)) add(src, { global: 'RevampSections' });
       else if (/\/rv-popups\.js$/.test(at.pathname)) { if (people) add(src, { global: 'RevampPopups' }); }
       else if (/\/rv-hero-video(-core)?\.js$/.test(at.pathname)) { if (video) add(src); }
+      else if (/\/rv-award-cta\.js$/.test(at.pathname)) { if (award) add(src, { global: 'RevampAwardCta' }); }
       else add(src, forSec ? { section: forSec } : null);
     });
     if (!list.some(function (s) { return s.global === 'RevampSections'; })) list.unshift({ src: origin + '/templates/_shared/et-runtime.js', global: 'RevampSections' });
     if (people && !list.some(function (s) { return s.global === 'RevampPopups'; })) list.push({ src: origin + '/templates/_shared/rv-popups.js', global: 'RevampPopups' });
+    if (award && !list.some(function (s) { return s.global === 'RevampAwardCta'; })) list.push({ src: origin + '/templates/_shared/rv-award-cta.js', global: 'RevampAwardCta' });
     return list;
   }
 
@@ -573,7 +609,8 @@
       '(function () {',
       '  \'use strict\';',
       '  var ID = ' + jsString(o.id) + ';',
-      '  var SCRIPTS = ' + JSON.stringify(o.scripts.map(function (s) { var x = { src: s.src }; if (s.global) x.global = s.global; if (s.section) x.section = s.section; return x; })) + ';'
+      '  var SCRIPTS = ' + JSON.stringify(o.scripts.map(function (s) { var x = { src: s.src }; if (s.global) x.global = s.global; if (s.section) x.section = s.section; return x; })) + ';',
+      '  var PAGE = ' + jsString(o.pageUrl || '') + ';'
     ];
     if (own) {
       lines.push('  /* the section’s own script (Developer zone › JS) */');
@@ -634,6 +671,28 @@
       '    if (!mine) { mine = document.createElement(\'style\'); mine.setAttribute(\'data-rv-embed-weight\', \'\'); var at = document.head || document.documentElement; at.insertBefore(mine, at.firstChild); }',
       '    mine.textContent = out.join(\'\\n\');',
       '  }',
+      '  /* A button that opens one of the event\u2019s forms (Register, Nominate Now, Express Interest — the award button',
+      '     sets its own when the dates move on) or a link to another part of the event\u2019s page goes to the event\u2019s',
+      '     own site, where it works: …/e/<event>#rv-form-<form> opens that form there. */',
+      '  function away(e) {',
+      '    if (!PAGE || e.defaultPrevented || e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;',
+      '    var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);',
+      '    var a = t && t.closest ? t.closest(\'a[href^="#"], [data-rv-form], [data-register-cta]\') : null;',
+      '    var wrap = a && a.closest(\'[data-rv-embed]\');',
+      '    if (!wrap || a.getAttribute(\'aria-disabled\') === \'true\') return;',
+      '    var form = a.getAttribute(\'data-rv-form\'), href = a.getAttribute(\'href\') || \'\', hash = \'\';',
+      '    if (form != null) hash = form ? \'#rv-form-\' + form : \'#register\';',
+      '    else if (a.hasAttribute(\'data-register-cta\')) hash = \'#register\';',
+      '    else if (href.length > 1) {',
+      '      var id = decodeURIComponent(href.slice(1));',
+      '      if (wrap.querySelector(\'[id="\' + id.replace(/"/g, \'\') + \'"], [data-rv-section="\' + id.replace(/"/g, \'\') + \'"]\')) return;',
+      '      hash = href;',
+      '    } else return;',
+      '    e.preventDefault();',
+      '    e.stopPropagation();',
+      '    window.location.href = PAGE + hash;',
+      '  }',
+      '  if (!window.__rvEmbedAway) { window.__rvEmbedAway = true; document.addEventListener(\'click\', away, true); }',
       '  function find() { return document.querySelector(\'[data-rv-embed="\' + ID + \'"] > [data-rv-section]\'); }',
       '  function go(section) {',
       '    if (section.__rvEmbed) return;',
@@ -707,6 +766,7 @@
       try { list = sheet.cssRules; } catch (e) { list = null; }
       if (!list) { if (sheet.href) ctx.links.push(absolute(sheet.href, base)); return; }   // another site's: linked as it is
       var sheetBase = sheet.href || base;
+      ctx.raw = owner && owner.tagName === 'STYLE' ? { text: owner.textContent } : null;
       if (sheet.media && sheet.media.mediaText && !/^(all|screen)?$/i.test(sheet.media.mediaText)) {
         var inner = [];
         walk(list, sheetBase, inner, ctx);
@@ -757,7 +817,7 @@
     var html = (linkTags.length ? linkTags.join('\n') + '\n' : '') + w.outerHTML;
 
     var records = !!copy.querySelector('[data-rv-filled], [data-rv-item], [data-rv-id]');
-    var js = buildJs({ id: id, title: title, scripts: scriptsFor(doc, sec, copy, base), ownJs: info.js });
+    var js = buildJs({ id: id, title: title, scripts: scriptsFor(doc, sec, copy, base), ownJs: info.js, pageUrl: String(o.pageUrl || '').replace(/#.*$/, '') });
     // one block: fonts and styles first (no unstyled moment), the section, then its script
     var all = '<!-- ' + title.replace(/--/g, '–') + ' — from ETB2B EventSphere -->\n' + (linkTags.length ? linkTags.join('\n') + '\n' : '') +
       '<style>\n' + css.replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n' + w.outerHTML + '\n<script>\n' + js.replace(/<\/(script)/gi, '<\\/$1') + '\n</script>';

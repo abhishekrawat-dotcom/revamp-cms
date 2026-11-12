@@ -69,6 +69,21 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2.7 the wrapper\'s id is a safe one', T.scopeId('previous-speakers') === 'rv-embed-previous-speakers' && T.scopeId('a b"c') === 'rv-embed-a-b-c' && T.scopeId('') === 'rv-embed-section');
 })();
 
+/* ======================= 2b a rule the browser cannot give back ======================= */
+(function () {
+  // run in a context where build's helpers are reachable: rawBlocks and selKey are internal, so they are tried through the module's text
+  var ctxWin = {};
+  vm.runInNewContext(SRC.replace("root.RevampDevExport = {", "root.__raw = { rawBlocks: rawBlocks, selKey: selKey, rawBody: rawBody };\n  root.RevampDevExport = {"), { window: ctxWin, URL: URL });
+  var R = ctxWin.__raw;
+  var text = '/* a */ .a{color:red} @media (max-width:600px){ [data-x="1"] .b { border:1px solid var(--q); border-top:2px solid red } } .a{padding:1px}';
+  var blocks = R.rawBlocks(text);
+  check('2b.1 a stylesheet\'s rule blocks in order, @media ones too, by selector', blocks.length === 3 && blocks[1].key === '[data-x=1].b' && /border:1px solid var\(--q\)/.test(blocks[1].body), blocks);
+  var raw = { text: text, seen: { '.a': 1 } };
+  check('2b.2 the second ".a" rule\'s own words', R.rawBody({ selectorText: '.a' }, { raw: raw }) === 'padding:1px');
+  check('2b.3 a selector written with quotes and spaces is the same one', R.selKey('[data-x="1"]  >  .b::before') === R.selKey("[data-x=1]>.b:before"));
+  check('2b.4 build reads it when the browser hands back empty longhands', /if \(\/:\\s\*;\/\.test\(body\)\) \{ var words = rawBody\(rule, ctx\); if \(words\) body = words; \}/.test(SRC));
+})();
+
 /* ======================= 3 the reset ======================= */
 (function () {
   var r = T.resetCss('#rv-embed-x');
@@ -98,7 +113,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   var js = T.buildJs({ id: 'speakers', title: 'Speakers — QA Summit', scripts: [
     { src: 'https://cms.example/templates/_shared/et-runtime.js?v=1', global: 'RevampSections' },
     { src: 'https://cms.example/templates/_shared/widgets/x/script.js', section: 'speakers' },
-    { src: 'https://cms.example/templates/_shared/rv-popups.js', global: 'RevampPopups' }], ownJs: "section.setAttribute('data-own', String((+section.getAttribute('data-own') || 0) + 1));\nif (this !== section) throw new Error('this');" });
+    { src: 'https://cms.example/templates/_shared/rv-popups.js', global: 'RevampPopups' }], pageUrl: 'https://cms.example/e/qa-awards', ownJs: "section.setAttribute('data-own', String((+section.getAttribute('data-own') || 0) + 1));\nif (this !== section) throw new Error('this');" });
   var parses = (function () { try { new Function(js); return true; } catch (e) { return e.message; } })();
   check('4.1 the script parses', parses === true, parses);
   check('4.2 it says what it is and where to put it', /^\/\* Speakers — QA Summit — from ETB2B EventSphere\.\n   Put this after the section’s HTML\./.test(js), js.slice(0, 160));
@@ -120,7 +135,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
       n.onload();
     }, 5); } };
     var sections = { speakers: el('section'), partners: el('section') };
-    var doc = { readyState: 'complete', head: head, documentElement: head, createElement: el,
+    var doc = { readyState: 'complete', head: head, documentElement: head, createElement: el, clicks: [], addEventListener: function (type, fn, capture) { if (type === 'click') this.clicks.push({ fn: fn, capture: capture }); },
       querySelector: function (sel) { var m = /data-rv-embed="([^"]+)"/.exec(sel); if (m) return sections[m[1]] || null; if (/data-rv-embed-weight/.test(sel)) return styles[0] || null; return null; },
       querySelectorAll: function () { return []; } };
     var sandbox = { document: doc, window: {}, console: console, setTimeout: setTimeout, MutationObserver: undefined };
@@ -140,6 +155,18 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
     check('4.7 both sections started once by the runtime', p.sections.speakers.inits === 1 && p.sections.partners.inits === 1, [p.sections.speakers.inits, p.sections.partners.inits]);
     check('4.8 the section\'s own script ran once, with `section` and this as the section', p.sections.speakers.getAttribute('data-own') === '1' && p.sections.partners.getAttribute('data-own') === null, p.sections.speakers.attrs);
     check('4.9 the runtimes\' rules are weighed in a style first in <head>', p.styles.length === 1 && p.styles[0].getAttribute('data-rv-embed-weight') === '', p.styles.length);
+    // a click on a button that opens one of the event's forms goes to the event's own site, which opens it there
+    var doc = p.sandbox.document, wrapEl = { querySelector: function () { return null; } };
+    function link(attrs) { return { nodeType: 1, attrs: attrs, getAttribute: function (k) { return k in attrs ? attrs[k] : null; }, hasAttribute: function (k) { return k in attrs; },
+      closest: function (q) { return /data-rv-embed/.test(q) ? wrapEl : this; } }; }
+    function click(a) { var e = { target: a, button: 0, prevented: false, preventDefault: function () { this.prevented = true; }, stopPropagation: function () {} }; p.sandbox.location = { href: '' }; p.sandbox.window.location = p.sandbox.location; doc.clicks[0].fn(e); return { prevented: e.prevented, to: p.sandbox.location.href }; }
+    check('4.10 one click handler for the page, however many sections (capture)', doc.clicks.length === 1 && doc.clicks[0].capture === true, doc.clicks.length);
+    var n = click(link({ href: '#rv-form-nom1', 'data-rv-form': 'nom1', 'data-rv-award-cta': '' }));
+    check('4.11 "Nominate Now" (the award button\'s form) opens on the event\'s site', n.prevented && n.to === 'https://cms.example/e/qa-awards#rv-form-nom1', n);
+    var r = click(link({ href: '#register', 'data-register-cta': '' }));
+    check('4.12 a Register button opens the event\'s form there', r.prevented && r.to === 'https://cms.example/e/qa-awards#register', r);
+    var soon = click(link({ 'data-rv-award-cta': '', 'aria-disabled': 'true', href: '#x' }));
+    check('4.13 "Winners will be announced soon" stays a status: a click goes nowhere', !soon.prevented && soon.to === '', soon);
     finish();
   }, 300);
 })();

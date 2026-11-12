@@ -195,6 +195,10 @@
   }
   function show(layer, opener, onKey, focusFirst) {
     if (open) hide(true);
+    /* a section copied onto another website: the pop-up stands on that page's <body>, so the event's colours and
+       fonts — the variables its wrapper carries (editor-dev-export.js) — are given to it */
+    var wrap = HOME && opener && opener.closest ? opener.closest('[data-rv-embed]') : null;
+    if (wrap) for (var v = 0; v < wrap.style.length; v++) { var name = wrap.style[v]; if (name.indexOf('--') === 0) layer.style.setProperty(name, wrap.style.getPropertyValue(name)); }
     var inerted = [];
     each(doc.body.children, function (n) {
       if (n === layer || n.tagName === 'SCRIPT' || n.tagName === 'STYLE' || n.hasAttribute('inert')) return;
