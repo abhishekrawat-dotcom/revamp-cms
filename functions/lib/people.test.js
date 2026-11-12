@@ -164,7 +164,7 @@ function page(url) {
   check('2 a row no longer there leaves its page only when its source was read this time', idx.people['shweta-singh'].k.length === 1 && idx.people['naven-singh'].k.indexOf('o~ev-a~s1') !== -1);
   T.place('speakers', idx, PM.peopleOf(rowsA.slice(0, 3)), { portals: { ciso: true, cio: true, hr: true }, own: true });
   check('2 …and goes when it was; its person keeps the slug', idx.people['shweta-singh'] && idx.people['shweta-singh'].k.length === 0 && idx.people['naven-singh'].k.indexOf('o~ev-a~s1') === -1);
-  check('2 a shard per slug, always the same', T.shardOf('speakers', 'naven-singh') === T.shardOf('speakers', 'naven-singh') && T.shardOf('speakers', 'naven-singh') < 8);
+  check('2 a shard per slug, always the same', T.shardOf('speakers', 'naven-singh') === T.shardOf('speakers', 'naven-singh') && T.shardOf('speakers', 'naven-singh') < 16);
 
   /* 3. what the team adds */
   var c = T.cleanPage('speakers', { set: { name: '  Naven  Singh ', linkedin: 'linkedin.com/in/naven', photo: 'data:image/jpeg;base64,AAAA', x: '' }, about: 'Line one.\r\n\r\n\r\n\r\nLine two.', sections: [{ heading: 'Awards', text: 'CISO of the year' }, { heading: '', text: '' }],
@@ -239,6 +239,21 @@ function page(url) {
   /* 6. the console */
   var L = await call(P.handleList, 'GET', '/api/people/speakers?q=naven', 'viewer');
   check('6 the list: found by name, one per person', L.status === 200 && L.body.items.length === 2 && L.body.items[0].slug === 'naven-singh' && L.body.count === 3, L.body);
+  L = await call(P.handleList, 'GET', '/api/people/speakers?per=25&page=1', 'viewer');
+  check('6 the list: everyone, most events first, a page at a time, with the total and the portals to filter by', L.status === 200 && L.body.total === 3 && L.body.pages === 1 && L.body.per === 25 &&
+    L.body.items[0].slug === 'naven-singh' && L.body.items[0].editions >= L.body.items[1].editions && L.body.portals.some(function (x) { return x.slug === 'ciso' && x.count >= 2; }), L.body);
+  check('6 …each row says its designation, sessions, juries and what the page lacks', L.body.items[0].designation && L.body.items[0].sessions >= 1 && L.body.items[0].juries === 1 &&
+    Array.isArray(L.body.items[0].missing), L.body.items[0]);
+  var L2 = await call(P.handleList, 'GET', '/api/people/speakers?per=25&company=globex', 'viewer');
+  var L3 = await call(P.handleList, 'GET', '/api/people/speakers?designation=group%20ciso&jury=1', 'viewer');
+  var L4 = await call(P.handleList, 'GET', '/api/people/speakers?profile=no-photo', 'viewer');
+  var L5 = await call(P.handleList, 'GET', '/api/people/speakers?portal=cio', 'viewer');
+  var L6 = await call(P.handleList, 'GET', '/api/people/speakers?sort=name&per=25&page=9', 'viewer');
+  check('6 …filters: company, designation and jury, a profile lacking a photo, a portal; a page past the last is the last',
+    L2.body.total === 1 && L2.body.items[0].slug === 'naven-singh-globex' && L3.body.total === 1 && L3.body.items[0].slug === 'naven-singh' &&
+    L4.body.items.every(function (x) { return x.missing.indexOf('photo') !== -1; }) && L4.body.items.some(function (x) { return x.slug === 'naven-singh-globex'; }) && !L4.body.items.some(function (x) { return x.slug === 'naven-singh'; }) &&
+    L5.body.items.length === 1 && L5.body.items[0].slug === 'naven-singh' && L6.body.page === 1 && L6.body.items[0].name <= L6.body.items[L6.body.items.length - 1].name,
+    [L2.body.total, L3.body.total, L4.body.items.map(function (x) { return x.slug; }), L5.body.items.map(function (x) { return x.slug; }), L6.body.page]);
   L = await call(P.handleList, 'GET', '/api/people/speakers?filter=same-name', 'viewer');
   check('6 …Same name: the pages to look at', L.status === 200 && L.body.items.map(function (x) { return x.slug; }).sort().join() === 'naven-singh,naven-singh-globex', L.body.items);
   var one = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'viewer');

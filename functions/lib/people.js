@@ -12,13 +12,16 @@
              'o~<eventId>~<recordId>'                 an EventSphere speaker or partner record
 
    STORED (Firestore, written by this server only):
-     peopleIndex/<kind>-<n>   the index, in shards (speakers 8, sponsors 2; a slug's shard is a hash of it):
+     peopleIndex/<kind>-<n>   the index, in shards (speakers 16, sponsors 4; a slug's shard is a hash of it; a change of
+                              the count moves every entry to its new shard at the next reconcile, which reads them all):
                               { kind, at, data: JSON of { people: { <slug>: ENTRY }, alias: { <old slug>: <slug> } } }
                               (one text field: Firestore indexes every field of a map, and a shard's thousands of
                               people would pass its 40,000 index entries a document)
        ENTRY = { n: name, c: company (speakers), cs: [its other companies], k: [rowKey], p: [portal],
                  y: newest edition 'YYYY-MM-DD' | 'YYYY', ev: editions, ph: the newest https photo (a sponsor: logo;
-                 ET's own picture host written as "ET:<path>"), h: true when hidden,
+                 ET's own picture host written as "ET:<path>"), d: the newest designation, b: 1 when a bio is on
+                 record, l: 1 with a LinkedIn (a sponsor: w: 1 with a website), s: sessions, j: award juries,
+                 h: true when hidden,
                  m: true once the team joined or split it by hand (the matching then never joins it again) }
      speakerPages/<slug>, sponsorPages/<slug>   what the team added: PAGE (cleanPage below), with `log` under it:
                               { at, by, action: edit|hide|show|merge|split|undo, before, after, undone }
@@ -68,7 +71,7 @@ function colName(base) {
   return /^[a-z]{1,10}$/.test(p) ? p + base.charAt(0).toUpperCase() + base.slice(1) : base;
 }
 function qaCounts() { return process.env.PEOPLE_INCLUDE_QA === '1'; }
-var KINDS = { speakers: { shards: 8, pages: colName('speakerPages'), records: 'speakers', one: 'speaker' }, sponsors: { shards: 2, pages: colName('sponsorPages'), records: 'partners', one: 'sponsor' } };
+var KINDS = { speakers: { shards: 16, pages: colName('speakerPages'), records: 'speakers', one: 'speaker' }, sponsors: { shards: 4, pages: colName('sponsorPages'), records: 'partners', one: 'sponsor' } };
 var INDEX_COL = colName('peopleIndex');
 var INDEX_MS = 60 * 1000, EVENT_MS = 5 * 60 * 1000, AGENDA_MS = 10 * 60 * 1000;
 var RESERVED = { go: 1, index: 1, search: 1, sitemap: 1, new: 1, edit: 1 };
@@ -230,9 +233,26 @@ function newSlug(kind, idx, rows) {
   return base + '-' + crypto.randomBytes(4).toString('hex');
 }
 /* ENTRY's summary from its rows, newest first */
-function summarise(kind, entry, rows) {
+function summarise(kind, entry, rows, sessionsOf) {
   rows = rows.slice().sort(PM.newestFirst);
   if (!rows.length) { entry.ev = 0; return entry; }
+  /* what the console's list filters on, without reading a page: designation, a bio, LinkedIn or a website, sessions,
+     award juries (0 and '' are left out, to keep the shards small) */
+  function flag(name, on) { if (on) entry[name] = on; else delete entry[name]; }
+  if (kind === 'speakers') {
+    var desig = '';
+    for (var di = 0; di < rows.length && !desig; di++) desig = str(rows[di].designation).replace(/\s+/g, ' ').trim();
+    flag('d', desig.slice(0, 80));
+    flag('b', rows.some(function (r) { return !!str(r.bio).trim(); }) ? 1 : 0);
+    flag('l', rows.some(function (r) { return /^https:\/\//.test(str(r.linkedin)); }) ? 1 : 0);
+    var sessions = 0, juries = 0;
+    rows.forEach(function (r) {
+      if (sessionsOf && r.key) sessions += sessionsOf[r.key] || 0;
+      if (r.src === 'et' && r.x && r.doc) (r.x.e || []).forEach(function (i) { if (((r.doc.events || [])[i] || {}).kind === 'award') juries++; });
+    });
+    flag('s', sessions);
+    flag('j', juries);
+  } else flag('w', rows.some(function (r) { return /^https?:\/\//.test(str(r.url)); }) ? 1 : 0);
   entry.n = str(rows[0].name).slice(0, CAPS.name);
   if (kind === 'speakers') {
     var co = '';
@@ -308,21 +328,40 @@ function place(kind, idx, groups, o) {
   });
   Object.keys(idx.people).forEach(function (s) {
     var e = idx.people[s];
-    summarise(kind, e, e.k.map(function (k) { return rowByKey[k]; }).filter(Boolean));
+    summarise(kind, e, e.k.map(function (k) { return rowByKey[k]; }).filter(Boolean), o.sessions);
   });
   return stats;
 }
 function reconcile(fb, kind, o) {
   o = o || {};
   var L = LIB();
+  /* the sessions of each ET row (agendas, every portal) and of each EventSphere record */
+  var agendas = kind === 'speakers' ? fb.db.collection(L.AGENDA_COL).get().then(function (snap) {
+    var count = {};
+    snap.docs.forEach(function (d) {
+      var a = d.data() || {}, portal = str(a.portal || d.id);
+      (a.events || []).forEach(function (ev) { (ev.s || []).forEach(function (x) { (x.k || []).forEach(function (k) { var key = 'e~' + portal + '~' + k; count[key] = (count[key] || 0) + 1; }); }); });
+    });
+    return count;
+  }, function () { return {}; }) : Promise.resolve({});
+  var ownSessions = kind === 'speakers' ? fb.db.collectionGroup('sessions').select('speakerIds').get().then(function (snap) {
+    var count = {};
+    snap.docs.forEach(function (d) {
+      var ev = d.ref.parent && d.ref.parent.parent, evId = ev && ev.id;
+      if (!evId) return;
+      ((d.data() || {}).speakerIds || []).forEach(function (id) { var key = 'o~' + evId + '~' + str(id); count[key] = (count[key] || 0) + 1; });
+    });
+    return count;
+  }, function () { return {}; }) : Promise.resolve({});
   return Promise.all([L.storedDocs(fb, !!o.fresh), L.ownRecords(fb, kind, { fresh: true }).then(function (l) { return { ok: true, list: l }; }, function (err) {
     console.error('people: ' + kind + ' — EventSphere\'s records could not be read — ' + (err && err.message));
     return { ok: false, list: [] };
-  })]).then(function (r) {
+  }), agendas, ownSessions]).then(function (r) {
     var docs = r[0], rows = rowsOf(kind, docs, r[1].list), portals = {};
+    var sessions = Object.assign({}, r[2], r[3]);
     docs.forEach(function (d) { if (d.portal) portals[d.portal] = true; });
     var groups = groupsOf(kind, rows);
-    return withIndex(fb, kind, function (idx) { return place(kind, idx, groups, { portals: portals, own: r[1].ok }); }).then(function (stats) {
+    return withIndex(fb, kind, function (idx) { return place(kind, idx, groups, { portals: portals, own: r[1].ok, sessions: sessions }); }).then(function (stats) {
       stats.people = groups.length;
       console.log('people: ' + kind + ' index kept in step — ' + JSON.stringify(stats));
       return stats;
@@ -771,42 +810,99 @@ function routePublic(req, res, kind, rest) {
 function kindFromUrl(req) { var m = /^\/api\/people\/(speakers|sponsors)(?:\/|$)/.exec(String(req.url || '').split('?')[0]); return m ? m[1] : ''; }
 function scoreOf(q, name) { return LIB()._test.scoreOf(q, name); }
 /* a row of the console's list: the team's name, company and picture over the index's (an uploaded picture is not
-   sent with a list: it is the page's own, shown when the page is opened) */
+   sent with a list: it is the page's own, shown when the page is opened), and what the page lacks */
+function missingOf(kind, e, page) {
+  var set = (page && page.set) || {}, f = (page && page.flags) || {}, miss = [];
+  if (kind === 'speakers') {
+    if (!e.ph && !f.photo) miss.push('photo');
+    if (!e.d && !set.designation) miss.push('designation');
+    if (!e.c && !set.company) miss.push('company');
+    if (!e.b && !f.about) miss.push('bio');
+    if (!e.l && !set.linkedin) miss.push('linkedin');
+  } else {
+    if (!e.ph && !f.logo) miss.push('logo');
+    if (!e.w && !set.website) miss.push('website');
+    if (!f.about) miss.push('about');
+  }
+  return miss;
+}
 function rowFor(kind, slug, e, page) {
   var set = (page && page.set) || {};
   var mine = str(kind === 'speakers' ? set.photo : set.logo);
-  return { slug: slug, name: set.name || e.n, company: kind === 'speakers' ? (set.company || e.c || '') : '', portals: (e.p || []).map(function (p) { return etEvents.PORTALS[p] || p; }),
-    editions: e.ev || 0, year: str(e.y).slice(0, 4), hidden: !!e.h, edited: !!page, photo: /^https:/.test(mine) ? mine : photoUrl(e.ph) };
+  var row = { slug: slug, name: set.name || e.n, company: kind === 'speakers' ? (set.company || e.c || '') : '', portals: (e.p || []).map(function (p) { return etEvents.PORTALS[p] || p; }),
+    editions: e.ev || 0, year: str(e.y).slice(0, 4), hidden: page && typeof page.hidden === 'boolean' ? page.hidden : !!e.h, edited: !!page,
+    photo: /^https:/.test(mine) ? mine : photoUrl(e.ph), missing: missingOf(kind, e, page) };
+  if (kind === 'speakers') { row.designation = set.designation || e.d || ''; row.sessions = e.s || 0; row.juries = e.j || 0; }
+  return row;
 }
+/* GET /api/people/<kind>?q=&filter=&sort=&page=&per=&company=&designation=&portal=&profile=&jury=&sessions=
+     filter    all | edited (changed by the team) | hidden | same-name (pages that may be one person)
+     sort      events (most first; the default) | recent | name
+     profile   any | complete | no-photo | no-designation | no-company | no-bio | no-linkedin (a sponsor: no-logo,
+               no-website, no-about) — what ETB2B's records give, and what the team added
+     jury=1    sat on an award jury; sessions=1  spoke in a session on record
+   -> { items, total, page, per, pages, count, portals: [{ slug, name, count }], ready } */
+var LIST_PER = [25, 50, 100];
 function handleList(req, res) {
   var kind = kindFromUrl(req);
   H.requireAdmin(req, res, function (fb) {
     var qs = new URLSearchParams(String(req.url || '').split('?')[1] || '');
-    var q = oneLine(qs.get('q'), CAPS.query), filter = str(qs.get('filter')) || 'all';
-    Promise.all([readIndex(fb, kind), fb.db.collection(KINDS[kind].pages).orderBy('updatedAt', 'desc').limit(filter === 'edited' ? CAPS.list : 300).get().then(function (s) { return s.docs; }, function () { return []; })]).then(function (r) {
+    var q = oneLine(qs.get('q'), CAPS.query), filter = str(qs.get('filter')) || 'all', sort = str(qs.get('sort')) || 'events';
+    var per = LIST_PER.indexOf(+qs.get('per')) !== -1 ? +qs.get('per') : 50, page = Math.max(1, Math.min(100000, parseInt(qs.get('page'), 10) || 1));
+    var company = PM.normal(oneLine(qs.get('company'), 80)), desig = PM.normal(oneLine(qs.get('designation'), 80)), portal = str(qs.get('portal')).slice(0, 40);
+    var profile = str(qs.get('profile')) || 'any', jury = qs.get('jury') === '1', withSessions = qs.get('sessions') === '1';
+    Promise.all([readIndex(fb, kind), fb.db.collection(KINDS[kind].pages).select('set.name', 'set.designation', 'set.company', 'set.linkedin', 'set.website', 'flags', 'hidden', 'updatedAt').get().then(function (s) { return s.docs; }, function () { return []; })]).then(function (r) {
       var idx = r[0], pages = {};
       r[1].forEach(function (d) { pages[d.id] = d.data() || {}; });
+      var live = function (sl) { return !!idx.people[sl] && (idx.people[sl].k || []).length > 0; };
       var slugs;
-      if (filter === 'edited') slugs = r[1].map(function (d) { return d.id; }).filter(function (s) { return idx.people[s]; });
-      else if (filter === 'hidden') slugs = Object.keys(idx.people).filter(function (s) { return idx.people[s].h; });
+      if (filter === 'edited') slugs = Object.keys(pages).filter(live);
+      else if (filter === 'hidden') slugs = Object.keys(idx.people).filter(function (sl) { var pg = pages[sl]; return live(sl) && (pg && typeof pg.hidden === 'boolean' ? pg.hidden : !!idx.people[sl].h); });
       else if (filter === 'same-name') {
         slugs = [];
-        Object.keys(idx.byName).forEach(function (k) { var l = idx.byName[k].filter(function (s) { return idx.people[s] && (idx.people[s].k || []).length; }); if (l.length > 1) slugs = slugs.concat(l); });
-      } else slugs = Object.keys(idx.people).filter(function (s) { return (idx.people[s].k || []).length; });
+        Object.keys(idx.byName).forEach(function (k) { var l = idx.byName[k].filter(live); if (l.length > 1) slugs = slugs.concat(l); });
+      } else slugs = Object.keys(idx.people).filter(live);
+      /* the filters */
+      var scores = {};
       if (q && q.replace(/\s/g, '').length >= 2) {
-        var scored = slugs.map(function (s) { var e = idx.people[s], p = pages[s]; return { s: s, sc: Math.max(scoreOf(q, e.n), p && p.set && p.set.name ? scoreOf(q, p.set.name) : 0, scoreOf(q, s.replace(/-/g, ' '))) }; })
-          .filter(function (x) { return x.sc > 0; });
-        scored.sort(function (a, b) { return (b.sc - a.sc) || ((idx.people[b.s].ev || 0) - (idx.people[a.s].ev || 0)); });
-        slugs = scored.map(function (x) { return x.s; });
-      } else if (filter === 'all') {
-        slugs.sort(function (a, b) { var x = str(idx.people[a].y), y = str(idx.people[b].y); return x < y ? 1 : x > y ? -1 : (idx.people[b].ev || 0) - (idx.people[a].ev || 0); });
-      } else if (filter === 'same-name') {
-        slugs.sort(function (a, b) { var x = PM.nameKey(idx.people[a].n), y = PM.nameKey(idx.people[b].n); return x < y ? -1 : x > y ? 1 : 0; });
+        slugs = slugs.filter(function (sl) {
+          var e = idx.people[sl], pg = pages[sl];
+          var sc = Math.max(scoreOf(q, e.n), pg && pg.set && pg.set.name ? scoreOf(q, pg.set.name) : 0, scoreOf(q, sl.replace(/-/g, ' ')));
+          if (sc) scores[sl] = sc;
+          return sc > 0;
+        });
       }
-      var total = slugs.length;
-      var items = slugs.slice(0, CAPS.list).map(function (s) { return rowFor(kind, s, idx.people[s], pages[s]); });
-      var count = Object.keys(idx.people).filter(function (s) { return (idx.people[s].k || []).length; }).length;
-      H.sendJson(res, 200, { kind: kind, items: items, total: total, count: count, ready: !!idx.ready });
+      if (portal) slugs = slugs.filter(function (sl) { return (idx.people[sl].p || []).indexOf(portal) !== -1; });
+      if (kind === 'speakers' && company) slugs = slugs.filter(function (sl) {
+        var e = idx.people[sl], pg = pages[sl];
+        return [e.c].concat(e.cs || [], [pg && pg.set && pg.set.company]).some(function (c) { return c && PM.normal(c).indexOf(company) !== -1; });
+      });
+      if (kind === 'speakers' && desig) slugs = slugs.filter(function (sl) {
+        var e = idx.people[sl], pg = pages[sl];
+        return [e.d, pg && pg.set && pg.set.designation].some(function (d) { return d && PM.normal(d).indexOf(desig) !== -1; });
+      });
+      if (kind === 'speakers' && jury) slugs = slugs.filter(function (sl) { return (idx.people[sl].j || 0) > 0; });
+      if (kind === 'speakers' && withSessions) slugs = slugs.filter(function (sl) { return (idx.people[sl].s || 0) > 0; });
+      if (profile !== 'any') slugs = slugs.filter(function (sl) {
+        var miss = missingOf(kind, idx.people[sl], pages[sl]);
+        return profile === 'complete' ? !miss.length : miss.indexOf(profile.replace(/^no-/, '')) !== -1;
+      });
+      /* the order: most events first (then the newest, then the name), the newest first, or by name */
+      function byName(a, b) { var x = PM.nameKey(idx.people[a].n), y = PM.nameKey(idx.people[b].n); return x < y ? -1 : x > y ? 1 : 0; }
+      function byRecent(a, b) { var x = str(idx.people[a].y), y = str(idx.people[b].y); return x < y ? 1 : x > y ? -1 : 0; }
+      function byEvents(a, b) { return (idx.people[b].ev || 0) - (idx.people[a].ev || 0); }
+      var order = sort === 'name' ? [byName] : sort === 'recent' ? [byRecent, byEvents, byName] : [byEvents, byRecent, byName];
+      if (filter === 'same-name' && sort === 'events') order = [byName, byEvents];
+      slugs.sort(function (a, b) { for (var i = 0; i < order.length; i++) { var c = order[i](a, b); if (c) return c; } return 0; });
+      var total = slugs.length, pages_ = Math.max(1, Math.ceil(total / per));
+      if (page > pages_) page = pages_;
+      var items = slugs.slice((page - 1) * per, page * per).map(function (sl) { return rowFor(kind, sl, idx.people[sl], pages[sl]); });
+      /* the portals people are found in, for the portal filter */
+      var byPortal = {};
+      Object.keys(idx.people).forEach(function (sl) { if (!live(sl)) return; (idx.people[sl].p || []).forEach(function (p2) { byPortal[p2] = (byPortal[p2] || 0) + 1; }); });
+      var portals = Object.keys(byPortal).map(function (p2) { return { slug: p2, name: etEvents.PORTALS[p2] || p2, count: byPortal[p2] }; }).sort(function (a, b) { return a.name < b.name ? -1 : 1; });
+      var count = Object.keys(idx.people).filter(live).length;
+      H.sendJson(res, 200, { kind: kind, items: items, total: total, page: page, per: per, pages: pages_, count: count, portals: portals, ready: !!idx.ready });
     }).catch(function (err) {
       console.error('people: list ' + kind + ' failed — ' + (err && err.stack || err));
       H.sendJson(res, 500, { error: 'The list could not be read just now. Please try again.' });
@@ -870,6 +966,7 @@ function handleOne(req, res) {
           /* hidden or not: the page's own word (written with every hide and show), else the index's */
           if (typeof was.hidden === 'boolean') hiddenNow = was.hidden;
           if (clean && !samePage(was, clean.page)) { Object.assign(next, clean.page); actions.push('edit'); }
+          next.flags = { photo: !!(next.set && next.set.photo), logo: !!(next.set && next.set.logo), about: !!str(next.about).trim() };
           if (wantHidden !== null && wantHidden !== hiddenNow) { next.hidden = wantHidden; actions.push(wantHidden ? 'hide' : 'show'); }
           if (!actions.length) return { unchanged: true };
           next.version = version + 1; next.updatedAt = now; next.updatedBy = by;

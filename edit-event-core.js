@@ -572,8 +572,16 @@ window.RevampCore = (function(){
   function findSpeakerPhotos(eventId, names, pages){ return api('POST', '/api/event/speaker-photos/find', { eventId: String(eventId || ''), names: names || [], pages: pages || [] }); }
   /* Speakers and Sponsors across ET (functions/lib/people.js; people.html): kind 'speakers' | 'sponsors' */
   function peopleKind(kind){ return kind === 'sponsors' ? 'sponsors' : 'speakers'; }
+  /* params: { q, filter, sort, page, per, company, designation, portal, profile, jury, sessions } — or (kind, q, filter) */
   function listPeople(kind, q, filter){
-    return api('GET', '/api/people/' + peopleKind(kind) + '?q=' + encodeURIComponent(String(q || '').slice(0, 80)) + '&filter=' + encodeURIComponent(String(filter || 'all')));
+    var p = q && typeof q === 'object' ? q : { q: q, filter: filter };
+    var parts = [];
+    ['q', 'filter', 'sort', 'page', 'per', 'company', 'designation', 'portal', 'profile', 'jury', 'sessions'].forEach(function(k){
+      var v = p[k];
+      if (v === undefined || v === null || v === '' || v === false) return;
+      parts.push(k + '=' + encodeURIComponent(v === true ? '1' : String(v).slice(0, 80)));
+    });
+    return api('GET', '/api/people/' + peopleKind(kind) + (parts.length ? '?' + parts.join('&') : ''));
   }
   function fetchPerson(kind, slug){ return api('GET', '/api/people/' + peopleKind(kind) + '/one?slug=' + encodeURIComponent(String(slug || ''))); }
   /* body: { slug, base (the version read), page, hidden } */

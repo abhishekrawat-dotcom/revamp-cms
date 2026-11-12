@@ -71,3 +71,23 @@
 .pp-ai{ display:flex; gap:8px; margin:0 0 4px; flex-wrap:wrap; }
 .pp-ai .inp{ flex:1 1 240px; }
 .pp-ai-done{ color:var(--accent-strong); font-weight:600; }
+
+.pp-sel{ display:inline-flex; }
+.pp-sel select{ min-height:42px; min-width:170px; }
+.pp-f{ flex:1 1 180px; min-height:42px; max-width:260px; }
+.pp-chk{ display:inline-flex; align-items:center; gap:7px; min-height:42px; padding:0 4px; font-size:13px; font-weight:600; cursor:pointer; }
+.pp-chk input{ width:17px; height:17px; accent-color:var(--accent); }
+.pp-more-f{ margin-top:-2px; }
+.pp-facts{ font-size:12px !important; }
+.pp-miss{ font-style:normal; color:var(--accent-strong); font-weight:600; }
+.pp-ok{ font-style:normal; color:var(--text-muted); }
+.pp-ev{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; min-width:52px; font-size:11px; color:var(--text-muted); }
+.pp-ev b{ font-size:17px; line-height:1.1; color:var(--text); }
+.pp-pager{ display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px; margin:14px 0 4px; }
+.pp-pager .btn{ min-height:38px; }
+.pp-pg{ font-size:13px; color:var(--text-muted); padding:0 6px; }
+.sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+@media (max-width:760px){
+  .pp-f, .pp-sel, .pp-sel select{ flex:1 1 100%; max-width:none; width:100%; }
+  .pp-ev{ display:none; }
+}
