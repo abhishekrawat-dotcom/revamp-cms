@@ -248,7 +248,10 @@ function summarise(kind, entry, rows, sessionsOf) {
     var sessions = 0, juries = 0;
     rows.forEach(function (r) {
       if (sessionsOf && r.key) sessions += sessionsOf[r.key] || 0;
-      if (r.src === 'et' && r.x && r.doc) (r.x.e || []).forEach(function (i) { if (((r.doc.events || [])[i] || {}).kind === 'award') juries++; });
+      if (r.src === 'et' && r.x && r.doc) (r.x.e || []).forEach(function (i, n) {
+        var role = str((r.x.rs || [])[n]);
+        if (((r.doc.events || [])[i] || {}).kind === 'award' && (!role || /jur|judg/i.test(role))) juries++;
+      });
     });
     flag('s', sessions);
     flag('j', juries);
@@ -588,7 +591,8 @@ function personOf(fb, kind, slug, entry, page, o) {
     var sessions = 0, years = [];
     shown.forEach(function (j) { sessions += j.sessions.length; if (j.year) years.push(j.year); });
     years.sort();
-    var awards = shown.filter(function (j) { return j.award; }).length;
+    /* an award they judged (a jury role, or an award with no role named); a guest at an award is an appearance */
+    var awards = shown.filter(function (j) { return j.award && (!j.role || /jur|judg/i.test(j.role)); }).length;
     person.stats = { events: shown.length - awards, awards: awards, sessions: sessions, since: years[0] || '', portals: shown.reduce(function (a, j) { if (j.portalName && a.indexOf(j.portalName) === -1) a.push(j.portalName); return a; }, []) };
     person.hasPage = shown.length > 0 || !!person.about || person.sections.length > 0 || !!person.wiki;
     return person;
@@ -668,7 +672,7 @@ function backOf(fb, eventId) {
   }, function () { return null; });
 }
 function sendPage(req, res, status, html, cache) {
-  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src https: data:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
+  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' https: data:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   H.sendHtml(req, res, status, html, cache);
 }

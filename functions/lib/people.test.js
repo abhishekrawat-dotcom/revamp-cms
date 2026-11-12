@@ -223,7 +223,7 @@ function page(url) {
   r = await page('/speakers/no-such-person');
   check('4 an address that is no one: 404', r.status === 404);
   r = await page('/sponsors/sailpoint');
-  check('4 GET /sponsors/<slug>: the tier at each edition, the live event\'s tier, the website, no email', r.status === 200 && /Gold Partners/.test(r.text) && /Platinum Partner/.test(r.text) && /Associate Partner/.test(r.text) &&
+  check('4 GET /sponsors/<slug>: the tier at each edition, the live event\'s tier, the website, no email', r.status === 200 && /Gold Partner\b/.test(r.text) && /Platinum Partner/.test(r.text) && /Associate Partner/.test(r.text) &&
     /https:\/\/sailpoint\.com/.test(r.text) && /Partnerships with ETB2B/.test(r.text) && !/deals@/.test(r.text) && /"@type":"Organization"/.test(r.text), r.text.slice(0, 300));
 
   /* 5. from an event site */
