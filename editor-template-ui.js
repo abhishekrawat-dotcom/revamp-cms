@@ -2364,7 +2364,12 @@
               [data-rv-section="<id>"]). On a site built from a template, whose CSS belongs to the template,
               the rules written here are added to the section and win over the template's where they meet.
        JS     runs on the published and previewed site, once, with `section` as this section's element
-              (et-runtime.js). It never runs inside the editor. */
+              (et-runtime.js). It never runs inside the editor.
+     "Copy for another website" shows the same section as code that works on its own elsewhere (the owner,
+     12 Nov 2026: "the html, css & js of this sections are not working properly in our another backend"): every
+     record drawn, the page's colours and fonts and every shared rule it uses, kept to the section, and a script
+     that brings the site's runtime from here (editor-dev-export.js). Read-only; what is typed under "Edit this
+     section" waits there, unapplied, until it is applied or thrown away. */
   var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-filled', 'data-rv-ai-busy'];
   function devSource(sec) {
     var copy = sec.cloneNode(true);
@@ -2455,19 +2460,33 @@
     scrim.innerHTML =
       '<div class="modal dev-zone" role="dialog" aria-modal="true" aria-labelledby="rv-dev-title">' +
         '<div class="dev-head"><h3 id="rv-dev-title">Developer zone</h3>' +
+          '<div class="dev-mode" role="group" aria-label="What the code is for">' +
+            '<button type="button" data-dev-mode="edit" class="active" aria-pressed="true">Edit this section</button>' +
+            '<button type="button" data-dev-mode="copy" aria-pressed="false">Copy for another website</button></div>' +
           '<label class="dev-pick">Section <select id="rv-dev-section"></select></label>' +
           '<button class="icon-btn" id="rv-dev-close" title="Close" aria-label="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>' +
         '<div class="dev-tabs" role="tablist"><button data-dev-tab="html" class="active">HTML</button><button data-dev-tab="css">CSS</button><button data-dev-tab="js">JS</button>' +
           '<label class="dev-wrap"><input type="checkbox" id="rv-dev-wrap" checked> Word wrap</label><span class="dev-keys">Find: Ctrl/⌘ + F</span>' +
           '<span class="dev-note" id="rv-dev-note"></span></div>' +
+        '<div class="dev-copy-notes" id="rv-dev-copy-notes" hidden></div>' +
         '<div class="dev-body"><textarea id="rv-dev-html" spellcheck="false" wrap="soft"></textarea><textarea id="rv-dev-css" spellcheck="false" wrap="soft" hidden></textarea><textarea id="rv-dev-js" spellcheck="false" wrap="soft" hidden></textarea></div>' +
-        '<div class="dev-foot"><span class="dev-error" id="rv-dev-error" role="alert" hidden></span><button class="btn btn-secondary" id="rv-dev-cancel">Close</button><button class="btn btn-primary" id="rv-dev-apply">Apply to the page</button></div>' +
+        '<div class="dev-foot"><span class="dev-error" id="rv-dev-error" role="alert" hidden></span><button class="btn btn-secondary" id="rv-dev-cancel">Close</button>' +
+          '<button class="btn btn-secondary" id="rv-dev-download" hidden>Download a test page</button>' +
+          '<button class="btn btn-secondary" id="rv-dev-copy-all" hidden>Copy all as one block</button>' +
+          '<button class="btn btn-primary" id="rv-dev-copy" hidden>Copy HTML</button>' +
+          '<button class="btn btn-primary" id="rv-dev-apply">Apply to the page</button></div>' +
       '</div>';
     document.body.appendChild(scrim);
     function $(id) { return document.getElementById(id); }
     var pick = $('rv-dev-section'), boxes = { html: $('rv-dev-html'), css: $('rv-dev-css'), js: $('rv-dev-js') };
     var note = $('rv-dev-note'), problem = $('rv-dev-error');
     var tab = 'html', src = null, loaded = null;
+    /* mode "edit": the boxes hold the code to apply; "copy": the copy for another website (read-only), while what
+       was typed under "Edit this section" waits in edits */
+    var mode = 'edit', edits = null, exported = null;
+    /* the page as visitors get it, for the copy: staged as it is now (unsaved changes too, as Preview does) and
+       opened out of sight with its scripts off (RevampDevExport.loadPage) — once per visit to the copy view */
+    var staged = null, copySeq = 0;
     /* The three boxes become code editors (CodeMirror, kept with the app under assets/codemirror): syntax
        colours, line numbers, word wrap, the matching tag and bracket shown, tags and brackets closed as
        they are typed, find and replace. Until it has loaded — or if it cannot — they are plain text boxes
@@ -2485,7 +2504,7 @@
         editors[k] = CM.fromTextArea(boxes[k], {
           mode: MODES[k], theme: 'rvdark', lineNumbers: true, lineWrapping: wrap, tabSize: 2, indentUnit: 2, indentWithTabs: false,
           autoCloseTags: k === 'html', autoCloseBrackets: true, matchBrackets: true, matchTags: k === 'html' ? { bothTags: true } : false,
-          styleActiveLine: true,
+          styleActiveLine: true, readOnly: mode === 'copy',
           extraKeys: { Tab: function (cm) { if (cm.somethingSelected()) cm.indentSelection('add'); else cm.replaceSelection('  ', 'end'); }, 'Shift-Tab': 'indentLess' }
         });
         editors[k].getWrapperElement().hidden = was;
@@ -2499,6 +2518,11 @@
         else { boxes[k].setAttribute('wrap', on ? 'soft' : 'off'); boxes[k].style.whiteSpace = on ? 'pre-wrap' : 'pre'; }
       });
     });
+    var COPY_NOTES = {
+      html: function () { return 'The section as visitors see it, in a wrapper that carries the page’s colours and fonts. Put it where the section goes.'; },
+      css: function () { return 'Every rule the section uses, each kept to it ([data-rv-embed="' + sec.getAttribute('data-rv-section') + '"] …), so it cannot restyle the rest of the other website.'; },
+      js: function () { return 'Put it after the HTML. It loads the event site’s scripts from EventSphere, then runs the section’s own.'; }
+    };
     var NOTES = {
       html: function () { return 'One root element.' + (src.records ? ' Lists of the event’s records show the one item they are drawn from; the records come back after Apply.' : ''); },
       css: function () { return src.cssIsOwn ? 'This section’s own stylesheet. Keep each rule starting with [data-rv-section="' + sec.getAttribute('data-rv-section') + '"].' : 'Added to this section, on top of the template’s CSS. Start rules with [data-rv-section="' + sec.getAttribute('data-rv-section') + '"] to keep them to it.'; },
@@ -2510,21 +2534,154 @@
         if (editors[k]) editors[k].getWrapperElement().hidden = k !== name; else boxes[k].hidden = k !== name;
       });
       Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-tab]'), function (b) { b.classList.toggle('active', b.getAttribute('data-dev-tab') === name); });
-      note.textContent = NOTES[name]();
+      note.textContent = (mode === 'copy' ? COPY_NOTES : NOTES)[name]();
+      if (mode === 'copy') $('rv-dev-copy').textContent = 'Copy ' + name.toUpperCase();
       if (editors[name]) { editors[name].refresh(); editors[name].focus(); } else boxes[name].focus();
     }
     function load(target) {
       sec = target;
       src = devSource(sec);
-      setVal('html', prettyHtml(src.html));
-      setVal('css', prettyCss(src.css));
-      setVal('js', src.js);
-      loaded = { html: val('html'), css: val('css'), js: val('js') };
+      loaded = { html: prettyHtml(src.html), css: prettyCss(src.css), js: src.js };
+      edits = null;
+      exported = null;
       problem.hidden = true;
+      if (mode === 'copy') { showCopy(); return; }
+      setVal('html', loaded.html);
+      setVal('css', loaded.css);
+      setVal('js', loaded.js);
       show(tab);
     }
-    function dirty() { return loaded && (val('html') !== loaded.html || val('css') !== loaded.css || val('js') !== loaded.js); }
-    function close() { scrim.remove(); document.removeEventListener('keydown', onKey, true); }
+    function current() { return mode === 'copy' ? (edits || loaded) : { html: val('html'), css: val('css'), js: val('js') }; }
+    function dirty() { var c = loaded && current(); return !!c && (c.html !== loaded.html || c.css !== loaded.css || c.js !== loaded.js); }
+    /* the copy for another website, made from the page exactly as a visitor gets it */
+    function stagePage() {
+      if (staged) return staged.ready;
+      if (!eventId || !window.RevampCore || !RevampCore.previewDraft) return Promise.reject(new Error('open the site from its event to copy a section'));
+      if (!window.RevampDevExport) return Promise.reject(new Error('reload the editor and try again'));
+      var pageShown = currentPage;
+      var mine = staged = { frame: null };
+      mine.ready = RevampCore.previewDraft(eventId, canvas.serialize()).then(function (result) {
+        var url = result && result.stagingUrl;
+        if (typeof url !== 'string' || !url) throw new Error('the page could not be staged');
+        // the page shown in the editor: its own address, as Preview opens it
+        if (pageShown !== 'home') url = url.replace(/^([^?#]*?)\/?(?=[?#]|$)/, '$1/' + encodeURIComponent(pageShown));
+        return RevampDevExport.loadPage(url);
+      }).then(function (frame) {
+        if (staged !== mine) { frame.remove(); throw new Error('cancelled'); }
+        mine.frame = frame;
+        return frame;
+      }, function (err) {
+        if (staged === mine) staged = null;
+        throw err;
+      });
+      return mine.ready;
+    }
+    function dropStaged() {
+      if (staged && staged.frame) staged.frame.remove();
+      staged = null;
+      copySeq++;
+    }
+    /* this section in the staged page: by its key, else by its place among the sections of its kind */
+    function stagedSection(d, target) {
+      var key = target.getAttribute('data-rv-key'), type = target.getAttribute('data-rv-section') || '';
+      var esc = window.CSS && CSS.escape ? CSS.escape : function (v) { return String(v).replace(/["\\]/g, '\\$&'); };
+      var hit = key ? d.querySelector('[data-rv-section][data-rv-key="' + esc(key) + '"]') : null;
+      if (hit) return hit;
+      var mine = Array.prototype.filter.call(canvas.doc.querySelectorAll('[data-rv-section="' + esc(type) + '"]'), function (n) { return !n.classList.contains('is-hidden-sec'); });
+      var theirs = d.querySelectorAll('[data-rv-section="' + esc(type) + '"]');
+      return theirs[mine.indexOf(target)] || null;
+    }
+    function exportFrom(frame, target) {
+      if (target.classList.contains('is-hidden-sec')) return { error: 'This section is hidden, so it is not on the site. Show it first to copy it.' };
+      var d = frame.contentDocument, there = d && stagedSection(d, target);
+      if (!there) return { error: 'This section is not on the page visitors see, so there is nothing to copy.' };
+      try {
+        return RevampDevExport.build({
+          doc: d, win: frame.contentWindow, section: there,
+          pageUrl: window.RevampCore && RevampCore.publicUrl ? RevampCore.publicUrl(currentEvent || eventId) : '',
+          sectionName: target.getAttribute('data-sec-name') || target.getAttribute('data-rv-section') || 'Section',
+          eventName: (currentEvent && currentEvent.name) || ''
+        });
+      } catch (err) {
+        if (window.console) console.error('[RevampTemplateUI] developer zone copy:', err);
+        return { error: 'The copy could not be made from this section (' + ((err && err.message) || 'unknown error') + ').' };
+      }
+    }
+    function showCopy() {
+      var box = $('rv-dev-copy-notes'), mine = ++copySeq;
+      function buttons(on) { ['rv-dev-copy', 'rv-dev-copy-all', 'rv-dev-download'].forEach(function (b) { $(b).disabled = !on; }); }
+      function draw() {
+        if (exported.error) {
+          ['html', 'css', 'js'].forEach(function (k) { setVal(k, ''); });
+          box.textContent = exported.error;
+          buttons(false);
+        } else {
+          setVal('html', prettyHtml(exported.html));
+          setVal('css', exported.css);
+          setVal('js', exported.js);
+          var lines = ['Paste the HTML where the section goes, the CSS with the page’s styles and the JS after the HTML — or, for a website that takes one HTML field, “Copy all as one block”.'];
+          if (dirty()) lines.push('What you changed under “Edit this section” is not applied yet: this is the section as it is on the page.');
+          box.textContent = lines.concat(exported.notes || []).join(' ');
+          buttons(true);
+        }
+        show(tab);
+      }
+      if (exported) { draw(); return; }
+      ['html', 'css', 'js'].forEach(function (k) { setVal(k, ''); });
+      box.textContent = 'Making the copy from the page as visitors see it…';
+      buttons(false);
+      show(tab);
+      var target = sec;
+      stagePage().then(function (frame) {
+        if (mine !== copySeq || mode !== 'copy' || sec !== target || !document.contains(scrim)) return;
+        exported = exportFrom(frame, target);
+        draw();
+      }, function (err) {
+        if (mine !== copySeq || mode !== 'copy' || !document.contains(scrim) || (err && err.message === 'cancelled')) return;
+        exported = { error: 'The copy could not be made: ' + ((err && err.message) || 'the page could not be loaded') + '. Switch to “Edit this section” and back to try again.' };
+        draw();
+        exported = null;                      // the next visit tries again
+      });
+    }
+    function setMode(next) {
+      if (next === mode) return;
+      if (next === 'copy') edits = { html: val('html'), css: val('css'), js: val('js') };
+      mode = next;
+      Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-mode]'), function (b) {
+        var on = b.getAttribute('data-dev-mode') === mode;
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      var copying = mode === 'copy';
+      Object.keys(boxes).forEach(function (k) { boxes[k].readOnly = copying; if (editors[k]) editors[k].setOption('readOnly', copying); });
+      $('rv-dev-copy-notes').hidden = !copying;
+      $('rv-dev-apply').hidden = copying;
+      ['rv-dev-copy', 'rv-dev-copy-all', 'rv-dev-download'].forEach(function (b) { $(b).hidden = !copying; });
+      problem.hidden = true;
+      if (copying) { exported = null; showCopy(); return; }
+      dropStaged();
+      var back = edits || loaded;
+      edits = null;
+      setVal('html', back.html);
+      setVal('css', back.css);
+      setVal('js', back.js);
+      show(tab);
+    }
+    function copyText(text, said) {
+      function fallback() {
+        var t = document.createElement('textarea');
+        t.value = text; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+        scrim.appendChild(t); t.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        t.remove();
+        if (ok) showToast(said);
+        else { problem.textContent = 'This browser did not let the page copy. Select the code (Ctrl/⌘ + A in the box) and copy it yourself.'; problem.hidden = false; }
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { showToast(said); }, fallback);
+      else fallback();
+    }
+    function close() { dropStaged(); scrim.remove(); document.removeEventListener('keydown', onKey, true); }
     /* Code changed here and not applied is asked about in the editor's own dialog, over this one, with "Keep editing"
        focused and the way that throws it away in red — not the browser's grey box (UX-079). One question at a time:
        the Escape that closes the question is not also taken for another "Close". */
@@ -2573,7 +2730,27 @@
     Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-tab]'), function (b) { b.addEventListener('click', function () { show(b.getAttribute('data-dev-tab')); }); });
     $('rv-dev-close').addEventListener('click', askClose);
     $('rv-dev-cancel').addEventListener('click', askClose);
+    Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-mode]'), function (b) { b.addEventListener('click', function () { setMode(b.getAttribute('data-dev-mode')); }); });
+    $('rv-dev-copy').addEventListener('click', function () {
+      if (!exported || exported.error) return;
+      copyText(val(tab), tab.toUpperCase() + ' copied');
+    });
+    $('rv-dev-copy-all').addEventListener('click', function () {
+      if (!exported || exported.error) return;
+      copyText(exported.all, 'HTML, CSS and JS copied as one block');
+    });
+    $('rv-dev-download').addEventListener('click', function () {
+      if (!exported || exported.error) return;
+      var name = String(((currentEvent && (currentEvent.slug || currentEvent.id)) || eventId || 'event') + '-' + exported.id).toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') + '.html';
+      var url = URL.createObjectURL(new Blob([exported.page], { type: 'text/html;charset=utf-8' }));
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+      showToast('Test page saved as ' + name + ': open it in a browser to see the section working on its own');
+    });
     $('rv-dev-apply').addEventListener('click', function () {
+      if (mode !== 'edit') return;
       problem.hidden = true;
       function fail(text, where) { problem.textContent = text; problem.hidden = false; if (where) show(where); }
       // ETB2B AI began applying a change while this was open: the code waits here, to be applied as a step of its own

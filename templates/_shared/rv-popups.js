@@ -51,6 +51,17 @@
   var doc = document, html = doc.documentElement;
   if (window.__rvPopups) return;
   window.__rvPopups = true;
+  /* A section copied onto another website (the site editor's Developer zone › Copy for another website,
+     editor-dev-export.js) loads this file from EventSphere: a speaker's or a sponsor's page is then EventSphere's,
+     at the address this file came from. On our own pages it is the page's own host, as before. The event and
+     whether it is an awards site are read from the section's wrapper there (<div data-rv-embed> carries what
+     <body> has here). */
+  var HOME = (function () {
+    var me = doc.currentScript;
+    if (!me || !me.src) return '';
+    try { var at = new URL(me.src, location.href); return at.origin === location.origin ? '' : at.origin; } catch (e) { return ''; }
+  })();
+  function pageOf(n) { return (n && n.closest && n.closest('[data-rv-event-id]')) || doc.body; }
 
   function editing() { return html.hasAttribute('data-rv-editing'); }
   function each(list, fn) { Array.prototype.forEach.call(list || [], fn); }
@@ -170,7 +181,8 @@
     if (doc.querySelector('style[data-rv-popups-css]') || !doc.head) return;
     var st = el('style');
     st.setAttribute('data-rv-popups-css', '');
-    st.textContent = CSS;
+    /* on another website the root font size is not ours: sizes in px there (16px to the rem, as here) */
+    st.textContent = HOME ? CSS.replace(/(^|[^\w.-])(\d*\.?\d+)rem\b/g, function (m, pre, n) { return pre + Math.round(parseFloat(n) * 16000) / 1000 + 'px'; }) : CSS;
     doc.head.appendChild(st);
   }
 
@@ -382,16 +394,16 @@
   }
 
   /* ---------- a speaker's and a sponsor's page across ET (see the top) ---------- */
-  function eventId() { return doc.body ? String(doc.body.getAttribute('data-rv-event-id') || '') : ''; }
-  function awardsSite() { return !!(doc.body && doc.body.hasAttribute('data-rv-awards')); }
+  function eventId(n) { var p = pageOf(n); return p ? String(p.getAttribute('data-rv-event-id') || '') : ''; }
+  function awardsSite(n) { var p = pageOf(n); return !!(p && p.hasAttribute('data-rv-awards')); }
   function inJury(n) { return !!(n.closest && n.closest('[data-rv-section-id^="award-"], [data-rv-page^="award-"], section[id^="award-"]')); }
-  function goHref(kind, o) {
-    var q = [], e = eventId();
+  function goHref(kind, o, n) {
+    var q = [], e = eventId(n);
     if (e) q.push('e=' + encodeURIComponent(e));
     if (o.r) q.push('r=' + encodeURIComponent(o.r));
     if (o.n) q.push('n=' + encodeURIComponent(o.n.slice(0, 120)));
     if (o.c) q.push('c=' + encodeURIComponent(o.c.slice(0, 160)));
-    return '/' + kind + '/go?' + q.join('&');
+    return HOME + '/' + kind + '/go?' + q.join('&');
   }
   function outside(n) { return !n || n === doc.body || !!(n.closest && n.closest('template, header, nav, footer, [data-rv-popup]')); }
   /* the cards of the speakers a page shows, once each */
@@ -414,13 +426,13 @@
     return { n: name, c: textOf(first(card, ['[data-rv-profile-co]', '[data-rv-field="c"]'])), r: record };
   }
   function markSpeakers(scope) {
-    if (awardsSite()) return;
     speakerCards(scope).forEach(function (card) {
+      if (awardsSite(card)) return;
       if (card.hasAttribute('data-rv-person-ready') || card.tagName === 'A' || card.tagName === 'BUTTON' || inJury(card) || card.closest('a[href]')) return;
       var p = personOfCard(card);
       if (!p.n) return;
       var a = el('a', 'rv-profile-cue', 'View profile');
-      a.href = goHref('speakers', p);
+      a.href = goHref('speakers', p, card);
       a.setAttribute('data-rv-person-link', '');
       a.setAttribute('aria-label', 'View profile: ' + p.n);
       a.appendChild(svg(ICON.next, 14));
@@ -442,7 +454,7 @@
       var name = textOf(first(tile, ['[data-rv-field="name"]', '.pe-spn-logo span'])) || (img && img.alt) || '';
       name = name.replace(/\s+logo$/i, '');
       if (!name) return;
-      var href = goHref('sponsors', { n: name, r: tile.hasAttribute('data-rv-filled') ? String(tile.getAttribute('data-rv-id') || '') : '' });
+      var href = goHref('sponsors', { n: name, r: tile.hasAttribute('data-rv-filled') ? String(tile.getAttribute('data-rv-id') || '') : '' }, tile);
       var links = tile.querySelectorAll('a[href]');
       if (links.length) {
         each(links, function (l) {

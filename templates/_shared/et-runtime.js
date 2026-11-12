@@ -551,6 +551,7 @@
   function tabSets(root) {
     if (editing() || root.__rvTabs) return;
     root.__rvTabs = true;
+    each(root.querySelectorAll('[data-rv-tab]'), function (t) { t.__rvTabbed = true; });   // init() wires only tabs no set has
     var sets = {};
     each(root.querySelectorAll('[data-rv-tab]'), function (t) {
       var g = tabKey(t.getAttribute('data-rv-tab')).g;
@@ -1683,7 +1684,12 @@
       easeIn(el);
       carousels(el);
       etNavs(el);
-      if (el.matches('.rv-imported') || el.querySelector('.rv-imported')) settleImported();
+      if (el.matches('.rv-imported') || el.querySelector('.rv-imported')) { settleImported(); return; }
+      /* a section that comes after the page has started (one copied onto another website and put in later — the
+         site editor's Developer zone › Copy for another website): its agenda by day and its tab sets, as start()
+         gives the page's own. Both are no-ops while editing, and for what start() already did. */
+      sessionDays();
+      if (Array.prototype.some.call(el.querySelectorAll('[data-rv-tab]'), function (t) { return !t.__rvTabbed; })) tabSets(el);
     },
     reveal: reveal,
     editing: editing,
