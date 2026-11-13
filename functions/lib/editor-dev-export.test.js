@@ -286,7 +286,93 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   var links = [img({ 'data-rv-page-link': 'award-category', href: 'https://cms.example/preview/award-category' }), img({ 'data-rv-page-link': 'home', href: '/preview/x' }), img({ 'data-rv-page-link': 'award faq', href: '/preview/x/award-faq' })];
   P.pageLinks({ querySelectorAll: function (q) { return /a\[data-rv-page-link\]/.test(q) ? links : []; } }, 'https://cms.example/e/qa-awards/#overview');
   check('2i.10 a link to another page of the event goes to that page on the event\'s public site, never to the preview (EventSphere\'s sign-in for a visitor)', links[0].attrs.href === 'https://cms.example/e/qa-awards/award-category' && links[1].attrs.href === 'https://cms.example/e/qa-awards' && links[2].attrs.href === 'https://cms.example/e/qa-awards/award%20faq', links.map(function (l) { return l.attrs.href; }));
-  check('2i.11 build measures the pictures on a phone and sets the page links before it writes the HTML', /bannerMark\(sec, copy, id, css\);\n\s*phoneSizes\(win, sec, copy\);\n\s*pageLinks\(copy, o\.pageUrl\);\n\s*css \+= phoneBanner\(sec, copy, id\);\n\s*var html = htmlOf\(copy\);/.test(SRC));
+  check('2i.11 build measures the pictures on a phone and sets the page links before it writes the HTML', /bannerMark\(sec, copy, id, css\);\n\s*phoneSizes\(win, sec, copy\);\n\s*pageLinks\(copy, o\.pageUrl\);\n\s*css \+= phoneBanner\(sec, copy, id\);\n\s*(importedRoot\(sec, copy\);\n\s*)?var html = htmlOf\(copy\);/.test(SRC));
+})();
+
+/* ======================= 2j a page imported from Lovable =======================
+   Measured on ETB2B's page with every section of Trendies Award EP2 (13 Nov 2026): no recorded motion played, no
+   row opened, and its Tailwind layers lost to the reset and to ETB2B's CSS. */
+(function () {
+  var I = T.imported;
+  function stand(cls, attrs, kids) {
+    var e = { classes: (cls || '').split(' ').filter(Boolean), attrs: attrs || {}, kids: kids || [] };
+    e.classList = { add: function (c) { if (e.classes.indexOf(c) === -1) e.classes.push(c); } };
+    e.getAttribute = function (k) { return k in e.attrs ? e.attrs[k] : null; };
+    e.hasAttribute = function (k) { return k in e.attrs; };
+    e.querySelector = function (q) { return /data-rv-motion\^='\{"on":'/.test(q) ? e.kids.filter(function (k) { return /^\{"on":/.test(k.attrs['data-rv-motion'] || ''); })[0] || null : null; };
+    return e;
+  }
+  var inImported = { closest: function (q) { return q === '.rv-imported' ? {} : null; } }, ours = { closest: function () { return null; } };
+  var c1 = stand('rv-embed'), c2 = stand('rv-embed');
+  I.root(inImported, c1); I.root(ours, c2);
+  check('2j.1 a section of an imported page carries rv-imported (what et-runtime.js keys an imported page on); a section of ours does not', c1.classes.indexOf('rv-imported') !== -1 && c2.classes.indexOf('rv-imported') === -1, [c1.classes, c2.classes]);
+  check('2j.1a …added after the CSS is written (no rule of the copy names it), before the HTML', /importedRoot\(sec, copy\);\n\s*var html = htmlOf\(copy\);/.test(SRC) && SRC.indexOf('importedRoot(sec, copy)') > SRC.indexOf('var common = commonCss('));
+  check('2j.2 the imported page\'s own sheets are told apart by data-rv-imported-css', I.sheet({ hasAttribute: function (a) { return a === 'data-rv-imported-css'; } }) === true && I.sheet({ hasAttribute: function () { return false; } }) === false && I.sheet(null) === false);
+  // the rules: Tailwind's layers, as walk() reads them, on a stand-in section that holds .flex and .hid
+  function rule(sel, css) { return { type: 1, selectorText: sel, style: { cssText: css } }; }
+  var no = { matches: function () { return false; }, querySelector: function () { return null; } };
+  var holds = function (q) { return /\.(flex|hid)$/.test(String(q).trim()) ? {} : null; };
+  var model = { page: { html: no, body: no, kin: [], section: { matches: function () { return false; }, querySelector: holds } }, embed: { section: { matches: function () { return false; }, querySelector: holds } } };
+  var sheetRules = [
+    { cssText: '@layer theme, base, utilities;', nameList: ['theme', 'base', 'utilities'] },
+    { cssText: '@layer base { .hid { display: none !important; } }', cssRules: [rule('.hid', 'display: none !important;')] },
+    { cssText: '@layer utilities { .flex { display: flex; } }', cssRules: [rule('.flex', 'display: flex;')] }];
+  function walked(flat) {
+    var out = [], ctx = { scope: '.rv-embed:not(#_#_#_#_)', models: [model], knownClass: function () { return true; }, flat: flat };
+    I.walk(sheetRules, 'https://h.example/', out, ctx);
+    return out.join('\n');
+  }
+  var flat = walked(true), kept = walked(false);
+  check('2j.3 an imported page\'s layers: their rules where they stand, as every other rule (important, the sections\' weight) — no @layer left',
+    !/@layer/.test(flat) && /^\.rv-embed:not\(#_#_#_#_\):not\(#_\) \.hid \{ display: none !important;? \}$/m.test(flat) && /^\.rv-embed:not\(#_#_#_#_\) \.flex \{ display: flex !important;? \}$/m.test(flat) && flat.indexOf('.hid') < flat.indexOf('.flex'), flat);
+  check('2j.3a …one the page made important in a layer gets one id more (it outweighed every rule there)', I.heavier('.rv-embed:not(#_#_#_#_) [hidden], .x.rv-embed:not(#_#_#_#_)') === '.rv-embed:not(#_#_#_#_):not(#_) [hidden], .x.rv-embed:not(#_#_#_#_):not(#_)');
+  check('2j.3b …and a layer of any other sheet keeps its words and its layer (rv-pictures)', /^@layer theme, base, utilities;$/m.test(kept) && /@layer utilities \{\n\.rv-embed:not\(#_#_#_#_\) \.flex \{ display: flex;? \}\n\}/.test(kept), kept);
+  // the hold until the runtime has the motion
+  var moving = { copy: stand('rv-embed', {}, [stand('', { 'data-rv-motion': '{"on":"view","a":[]}' })]) }, rootMoves = { copy: stand('rv-embed', { 'data-rv-motion': '{"on":"load"}' }) },
+    tiedOnly = { copy: stand('rv-embed', {}, [stand('', { 'data-rv-motion': '{"s":{}}' })]) }, plain = { copy: stand('rv-embed') };
+  var hold = I.hold([plain, moving]);
+  check('2j.4 what moves in is held out of sight until the runtime has it (as the event\'s page: MOTION_HOLD), 3 s at most, never for a visitor who asked for no motion',
+    /@media \(prefers-reduced-motion: no-preference\) \{/.test(hold) && /@keyframes rv-motion-hold \{ from, to \{ opacity: 0; \} \}/.test(hold) &&
+    hold.indexOf("html:not([data-rv-motion-ready]) .rv-embed:not(#_#_#_#_)[data-rv-motion^='{\"on\":'], html:not([data-rv-motion-ready]) .rv-embed:not(#_#_#_#_) [data-rv-motion^='{\"on\":'] { animation: rv-motion-hold 3s linear !important; }") !== -1, hold);
+  check('2j.4a …a section that is itself moving counts; one with only scroll-tied motion, or none, adds nothing', I.hold([rootMoves]) === hold && I.hold([tiedOnly, plain]) === '' && /\+ importedHold\(models\);/.test(SRC));
+  // the runtime
+  check('2j.5 et-runtime.js plays the root\'s own motion too (a copied section is its own root); a page of ours is one wrapper with none',
+    /var els = Array\.prototype\.slice\.call\(root\.querySelectorAll\('\[data-rv-motion\]'\)\);\n\s*if \(root\.hasAttribute\('data-rv-motion'\)\) els\.unshift\(root\);\n\s*each\(els, function \(el\) \{/.test(RUNTIME));
+  check('2j.6 …starts each imported part once, as it comes (a section put in later), and marks the page ready once',
+    /return !r\.__rvMotion && !\(r\.parentElement && r\.parentElement\.closest\('\.rv-imported'\)\);/.test(RUNTIME) && /if \(motionStarted\) return;\n\s*motionStarted = true;/.test(RUNTIME));
+  // what the browser run on ETB2B's page found next (13 Nov): group-hover left out, the theme's rem sizes at ETB2B's root size
+  var gh = T.testable('.group-hover\\:translate-x-2:is(:where(.group):hover *)', function () { return true; });
+  check('2j.8 a state inside :is() / :where() is left out to try a selector too (Tailwind\'s group-hover reached nothing with nothing hovered)', gh === '.group-hover\\:translate-x-2:is(:where(.group) *)' &&
+    T.testable('.a:has(> .b:hover)', null) === '.a:has(> .b:hover)' && T.testable('.a:where(.b:focus-visible, .c)', null) === '.a:where(.b, .c)', [gh, T.testable('.a:has(> .b:hover)', null), T.testable('.a:where(.b:focus-visible, .c)', null)]);
+  check('2j.9 the page\'s look on the sections (its theme variables: Tailwind\'s --spacing: .25rem, --container-7xl: 80rem) in px, as every other rule: ETB2B\'s root is 10px', /SCOPE \+ ' \{ ' \+ important\(remToPx\(lookText, remPx\)\) \+ ' \}\\n'/.test(SRC) && T.remToPx('--spacing: .25rem; --container-7xl: 80rem', 16) === '--spacing: 4px; --container-7xl: 1280px');
+  var marks = (RUNTIME.match(/settle\((el|c|w), 'rv-(shown|gone|open|bar)'\)/g) || []).length;
+  check('2j.7 …and what it shows, lifts, opens or reveals takes its rule\'s values where the element\'s own style says !important (every style of a copy is): never the class alone',
+    marks === 7 && !/classList\.add\('rv-(shown|gone|open|bar)'\)/.test(RUNTIME) && /if \(v && el\.style\.getPropertyPriority\(p\) === 'important'\) el\.style\.setProperty\(p, v\);/.test(RUNTIME), marks);
+})();
+
+/* ======================= 2k the runtime's rules on a section copied from an imported page ======================= */
+(function () {
+  var weighed = null, styleEl = null, section = { attrs: { 'data-rv-embed': 'hero' }, getAttribute: function (k) { return this.attrs[k] || null; } };
+  function decl(pairs) { var s = { length: pairs.length }; pairs.forEach(function (p, i) { s[i] = p[0]; }); s.getPropertyValue = function (n) { return pairs.filter(function (p) { return p[0] === n; })[0][1]; }; return s; }
+  var settled = { attributes: [{ name: 'data-rv-settled', value: '' }], sheet: { cssRules: [
+    { selectorText: '.rv-imported .rv-shown, .rv-imported-x .y', style: decl([['opacity', '1']]) },
+    { selectorText: 'html[data-rv-editing]', style: decl([['scroll-behavior', 'auto']]) },
+    { selectorText: '.rv-carousel-btn', style: decl([['top', '0']]) }] } };
+  var sandbox = { console: console, setTimeout: setTimeout };
+  function el(tag) { return { tagName: tag.toUpperCase(), attrs: {}, setAttribute: function (k, v) { this.attrs[k] = String(v); }, getAttribute: function (k) { return this.attrs[k]; }, hasAttribute: function (k) { return k in this.attrs; } }; }
+  var head = { firstChild: null, insertBefore: function (n) { styleEl = n; }, appendChild: function (n) { setTimeout(function () { sandbox.RevampSections = { init: function () {} }; n.onload(); }, 2); } };
+  sandbox.document = { readyState: 'complete', head: head, documentElement: head, createElement: el, addEventListener: function () {},
+    querySelector: function (sel) { return /data-rv-embed-weight/.test(sel) ? styleEl : null; },
+    querySelectorAll: function (sel) { return sel === 'style' ? [settled] : sel === '[data-rv-embed]' ? [section] : []; } };
+  sandbox.window = sandbox;
+  vm.runInContext(T.commonJs({ title: 'QA', pageUrl: 'https://cms.example/e/qa', scripts: [{ src: 'https://cms.example/templates/_shared/et-runtime.js', global: 'RevampSections' }] }), vm.createContext(sandbox));
+  // read before section 4 ends the run (its 300 ms)
+  setTimeout(function () {
+    weighed = styleEl && styleEl.textContent;
+    check('2k.1 a rule of the runtime that begins with .rv-imported reaches inside the copied section, which is itself that part (and outweighs the section\'s own rules)',
+      !!weighed && weighed.indexOf('.rv-embed:not(#_#_#_#_).rv-imported .rv-shown, .rv-embed:not(#_#_#_#_) .rv-imported-x .y { opacity: 1 !important }') !== -1, weighed);
+    check('2k.2 …the others as before: inside the section, important; the page\'s <html> left out', !!weighed && weighed.indexOf('.rv-embed:not(#_#_#_#_) .rv-carousel-btn { top: 0 !important }') !== -1 && !/scroll-behavior/.test(weighed), weighed);
+  }, 150);
 })();
 
 /* ======================= 2e only what the other website uses ======================= */

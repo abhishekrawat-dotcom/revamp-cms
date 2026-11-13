@@ -181,6 +181,11 @@
         if (PSEUDO_ELEMENT.test(t)) return false;
         if (t.charAt(0) === ':' && STATE_PSEUDO.test(t.replace(/\(.*$/, ''))) return false;
         return true;
+      }).map(function (t) {
+        /* the same inside :is() / :where() / :has(): Tailwind's group-hover is .x:is(:where(.group):hover *), which
+           reached nothing with nothing hovered and was left out (the arrow that slides on hovering its button) */
+        var m = /^:(is|where|has)\((.*)\)$/i.exec(t);
+        return m ? ':' + m[1] + '(' + splitTop(m[2], ',').map(function (x) { return /^[>+~]/.test(x) ? x : testable(x, knownClass); }).join(', ') + ')' : t;
       });
       if (knownClass) {
         var strong = kept.filter(function (t) {
@@ -433,7 +438,7 @@
         return;
       }
       if (type === 7) { ctx.keyframes.push(motionKeyframes(rule)); return; }
-      if (typeof rule.nameList !== 'undefined' && !rule.cssRules) { out.push(rule.cssText); return; }   // @layer a, b;
+      if (typeof rule.nameList !== 'undefined' && !rule.cssRules) { if (!ctx.flat) out.push(rule.cssText); return; }   // @layer a, b;
       if (typeof rule.syntax === 'string' && typeof rule.inherits === 'boolean') {        // @property --name {…}
         ctx.props.push({ name: rule.name, text: rule.cssText });
         return;
@@ -442,6 +447,8 @@
         var head = header(rule);
         if (!head || /^@(page|font-feature-values|counter-style)/i.test(head)) return;
         var inner = [], layer = /^@layer\b/i.test(head);
+        // an imported page's layers: their rules where they stand, written as every other rule (importedSheet)
+        if (layer && ctx.flat) { ctx.flatLayer = (ctx.flatLayer || 0) + 1; walk(rule.cssRules, base, out, ctx); ctx.flatLayer--; return; }
         /* a layer's rules keep their own words: an !important declaration in a layer outweighs every unlayered
            !important one (the cascade turns round for important declarations), so a page's low default — @layer
            rv-pictures { :where(img[data-rv-sized]) { height: auto } } — would beat the section's own rules */
@@ -500,6 +507,7 @@
     if (/:\s*;/.test(body)) { var words = rawBody(rule, ctx); if (words) body = words; }
     if (rule.cssRules && rule.cssRules.length) body += ' ' + Array.prototype.map.call(rule.cssRules, function (r) { return r.cssText; }).join(' ');
     if (!body.trim()) return;
+    if (ctx.flatLayer && /!\s*important/i.test(body)) { kept = kept.map(importedHeavier); roots = roots.map(importedHeavier); }
     var soft = motionSoft(rule, ctx);
     function written(b) { b = motionNames(absoluteUrls(b, base), ctx.motion); return ctx.inLayer ? b : important(b, soft); }
     /* A rule that tells the section itself to inherit (ETB2B's classic reset: section, div… { font: inherit }) means
@@ -778,7 +786,12 @@
           if (!sels.length) return;
           var decl = [];
           for (var k = 0; k < r.style.length; k++) { var name = r.style[k]; decl.push(name + ': ' + r.style.getPropertyValue(name) + ' !important'); }
-          out.push(sels.map(function (x) { return scope + ' ' + x; }).join(', ') + ' { ' + decl.join('; ') + ' }');
+          /* a section copied from an imported page is itself the .rv-imported part the runtime's rules begin with */
+          out.push(sels.map(function (x) {
+            var own = /^\.rv-imported(?![\w-])(.*)$/.exec(x);
+            if (own) return scope + '.rv-imported' + own[1];
+            return scope + ' ' + x;
+          }).join(', ') + ' { ' + decl.join('; ') + ' }');
         } else if (r.cssRules && r.media) {
           var inner = [];
           lift(r.cssRules, inner);
@@ -982,11 +995,13 @@
       if (!list) { if (sheet.href) ctx.links.push(absolute(sheet.href, base)); return; }   // another site's: linked as it is
       var sheetBase = sheet.href || base;
       ctx.raw = owner && owner.tagName === 'STYLE' ? { text: owner.textContent } : null;
+      ctx.flat = importedSheet(owner);
       if (sheet.media && sheet.media.mediaText && !/^(all|screen)?$/i.test(sheet.media.mediaText)) {
         var inner = [];
         walk(list, sheetBase, inner, ctx);
         if (inner.length) rules.push('@media ' + sheet.media.mediaText + ' {\n' + inner.join('\n') + '\n}');
       } else walk(list, sheetBase, rules, ctx);
+      ctx.flat = false;
     });
     return rules;
   }
@@ -1137,7 +1152,7 @@
     extra = fonts.extra;
     return (imports.length ? imports.join('\n') + '\n' : '') + resetCss(SCOPE) + '\n' +
       '/* the event page’s look on every copied section: its theme and its text; a section’s own rules outweigh it */\n' +
-      SCOPE + ' { ' + important(lookText) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx);
+      SCOPE + ' { ' + important(remToPx(lookText, remPx)) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx) + importedHold(models);
   }
 
   /* The event site's banner fills most of the screen and keeps generous room above its content; on another website
@@ -1476,6 +1491,7 @@
     phoneSizes(win, sec, copy);
     pageLinks(copy, o.pageUrl);
     css += phoneBanner(sec, copy, id);
+    importedRoot(sec, copy);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
     var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: withEdges(scriptsFor(doc, [m], base), o.edges, base), edges: o.edges });
@@ -1666,6 +1682,37 @@
     });
   }
 
+  /* ---------- a page imported from Lovable: its motion, its rows, its layers ----------
+     Measured on ETB2B's page with every section of Trendies Award EP2 (its import records the original's motion,
+     data-rv-motion), 13 Nov 2026: none of its 128 entrances, 16 scroll-tied motions, 2 marquees or 15 hovers moved,
+     its FAQ rows did not open, and the sections did not look like the event's page (one 24,000px tall).
+       · et-runtime.js keys everything an imported page needs — playing the recorded motion, the rows, the tabs,
+         the menu, what its scripts left hidden — on .rv-imported, which on the event's page is the wrapper around
+         all the sections. The copy is one section, so the section carries it (importedRoot), added once the CSS is
+         written (no rule of the copy names it); the common script gives the runtime's rules that begin with it the
+         section's weight (embedLoader: lift), and the runtime plays the section's own motion too (playMotion).
+       · What moves in is held out of sight from the first paint until the runtime has it, as the event's page holds
+         it (lib/api.js MOTION_HOLD), 3 s at most (importedHold): without it the banner showed finished, then
+         jumped back to play.
+       · The page's own CSS (Tailwind v4) is in cascade layers. Kept in layers, every rule lost to the copy's reset
+         and to ETB2B's own CSS (unlayered rules outweigh layered ones whatever their weight): no marquee, no hover,
+         Bootstrap's .hidden over md:block. Its layers' rules are written where they stand, as every other rule
+         (importedSheet, walk); one the page made important in a layer — which outweighs everything there, such as
+         [hidden] { display: none !important } over a utility's display — gets the weight of one id more
+         (importedHeavier). Our own layers (rv-pictures) are kept as they are. */
+  function importedRoot(sec, copy) {
+    if (sec.closest && sec.closest('.rv-imported')) copy.classList.add('rv-imported');
+  }
+  function importedSheet(owner) { return !!(owner && owner.hasAttribute && owner.hasAttribute('data-rv-imported-css')); }
+  function importedHeavier(sel) { return String(sel).split(SCOPE).join(SCOPE + ':not(#_)'); }
+  var MOTION_ON = '[data-rv-motion^=\'{"on":\']';
+  function importedHold(models) {
+    var any = models.some(function (m) { return !!m.copy && (/^\{"on":/.test(m.copy.getAttribute('data-rv-motion') || '') || !!m.copy.querySelector(MOTION_ON)); });
+    if (!any) return '';
+    return '\n@media (prefers-reduced-motion: no-preference) {\n@keyframes rv-motion-hold { from, to { opacity: 0; } }\n' +
+      'html:not([data-rv-motion-ready]) ' + SCOPE + MOTION_ON + ', html:not([data-rv-motion-ready]) ' + SCOPE + ' ' + MOTION_ON + ' { animation: rv-motion-hold 3s linear !important; }\n}';
+  }
+
   /* the page at url, out of sight, its scripts off (sandbox without allow-scripts), once its fonts are in */
   function loadPage(url, timeoutMs) {
     return new Promise(function (resolve, reject) {
@@ -1708,4 +1755,6 @@
   // the motion helpers, for functions/lib/editor-dev-export.test.js (section 2h)
   root.RevampDevExport._test.motion = { name: motionName, names: motionNames, keyframes: motionKeyframes, softens: motionSoftens, pseudo: motionPseudo,
     plan: motionPlan, soft: motionSoft, unimportant: motionUnimportant, inline: motionInline };
+  // an imported page's, for the same (section 2j)
+  root.RevampDevExport._test.imported = { root: importedRoot, sheet: importedSheet, heavier: importedHeavier, hold: importedHold, walk: walk };
 })(typeof window !== 'undefined' ? window : this);
