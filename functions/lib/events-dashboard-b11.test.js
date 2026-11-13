@@ -407,10 +407,12 @@ async function main() {
   S.$('qr-continue').click();
   S.$('qr-sec-website').click();
   var img = S.$('qr-img');
-  check('UX-032 the code is drawn in the page, an SVG of the event\'s real address (no api.qrserver.com)', img.getAttribute('data-qr-text') === 'http://localhost/e/live-summit' && /^data:image\/svg\+xml;charset=utf-8,/.test(img.src) &&
+  check('UX-032 the code is drawn in the page, an SVG of the event\'s real address through the scan counter (no api.qrserver.com)', img.getAttribute('data-qr-text') === 'http://localhost/e/live-summit?qr=1' && /^data:image\/svg\+xml;charset=utf-8,/.test(img.src) &&
     decodeURIComponent(img.src).indexOf('<path d="M') !== -1 && CODE.indexOf('qrserver') === -1 && PAGE.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').indexOf('qrserver') === -1 && S.$('qr-fail').hidden === true, [img.getAttribute('data-qr-text'), String(img.src).slice(0, 60)]);
+  check('LST-038 the dialog says how often the event\'s codes were scanned, and promises nothing it does not do', /^No scans of this event’s QR codes yet\./.test(S.$('qr-scans').textContent) &&
+    PAGE.indexOf('AG Code') === -1 && PAGE.indexOf('to track where a scan came from') === -1, S.$('qr-scans').textContent);
   S.type(S.$('qr-ag-code'), 'Mailer Nov');
-  check('UX-032 an AG code goes into the link and the code at once', S.$('qr-link-text').textContent === 'http://localhost/e/live-summit?ag=Mailer%20Nov' && S.$('qr-img').getAttribute('data-qr-text') === 'http://localhost/e/live-summit?ag=Mailer%20Nov');
+  check('LST-038 a source tag goes into the link and the code at once, as ?qr=<tag> (counted, then sent on as utm_source)', S.$('qr-link-text').textContent === 'http://localhost/e/live-summit?qr=mailer-nov' && S.$('qr-img').getAttribute('data-qr-text') === 'http://localhost/e/live-summit?qr=mailer-nov');
   S.$('qr-dl-svg').click();
   S.$('qr-dl-png').click();
   check('UX-032 Download SVG and Download PNG save the code, named for the event, the code and the AG code', same(S.anchors, [{ href: 'blob:qa', download: 'live-summit-website-mailer-nov-qr.svg' }, { href: 'data:image/png;base64,QA', download: 'live-summit-website-mailer-nov-qr.png' }]), S.anchors);

@@ -49,14 +49,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Puppeteer downloads its Chrome during `npm install` into its cache folder, which is the installing user's home
+# by default (/root/.cache) -- where the non-root user below could not find it. It is put inside /app instead,
+# and the same variable tells Puppeteer where to look when the service runs.
+ENV PUPPETEER_CACHE_DIR=/app/.cache/puppeteer
+
 # Installed before copying server.js so this layer (the slow one -- it downloads a real Chrome build) is
 # cached across rebuilds that only change server.js.
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
-COPY server.js ./
+# public-address.js: the address rules, an identical copy of ../functions/lib/public-address.js (a test checks)
+COPY server.js public-address.js ./
 
 ENV PORT=8080
 EXPOSE 8080
+
+# Chrome and this server run as the image's unprivileged "node" user, never as root (BE-047). Chrome's own
+# sandbox stays off (--no-sandbox in server.js): it needs kernel features Cloud Run does not give a container.
+USER node
 
 CMD ["node", "server.js"]

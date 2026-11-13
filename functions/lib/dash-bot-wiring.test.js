@@ -121,6 +121,8 @@ function withPortalFields(list) {
     var out = {};
     /* and, since B06 (UX-102), the request waiting for approval right after them: null, as none of them has one */
     Object.keys(it).forEach(function (k) { out[k] = it[k]; if (k === 'hasGeneratedSite') { out.portal = ''; out.portalName = ''; out.approval = null; } });
+    /* and, since LST-038 (13 Nov 2026), how often the event's QR codes were scanned, beside its page views */
+    if (out.counters) out.counters = { registrations: out.counters.registrations, views: out.counters.views, qrScans: 0 };
     return out;
   }) };
 }

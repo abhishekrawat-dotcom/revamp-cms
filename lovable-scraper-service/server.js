@@ -7,27 +7,43 @@
 // backend (functions/lib/api.js's scrapeLovableUrl()) calls this service over plain HTTP instead of
 // launching Chrome itself. See README.md in this directory for the full picture and deploy instructions.
 //
-// Endpoint: POST /scrape  body {url}  ->  200 {html}  |  4xx/5xx {error}
+// Endpoints:
+//   POST /scrape  body {url}  ->  200 {html}  |  4xx/5xx {error, code}      (codes: see ERRORS below)
+//   GET  /health              ->  200 {ok: true}  (no secret; says nothing else. /healthz answers the same, but Cloud
+//                                 Run's front end keeps that path for itself, so use /health from outside)
 //
-// Auth: every request must carry the shared secret configured on BOTH this service (env SCRAPER_SECRET)
-// and the main backend (env LOVABLE_SCRAPER_SECRET) in the X-Scraper-Secret header. This is a simple
-// shared secret, not GCP IAM auth -- wiring real service-to-service IAM auth from Firebase App Hosting
-// would need more plumbing than this one feature justifies. It exists purely to stop this service's own
-// public Cloud Run URL being abused as an open "render any URL through headless Chrome" proxy by anyone
-// who finds it.
-//
-// SSRF guard: this service is the thing that actually fetches an attacker-reachable URL, so it
-// re-implements the exact same validateImportUrl()/isPrivateOrLoopbackIp() logic functions/lib/api.js
-// already applies on the main backend before a request ever reaches here (scheme allow-list + a real
-// DNS-resolved rejection of loopback/private/link-local/cloud-metadata addresses -- see that file for the
-// original). This matters doubly here: this container has its own 169.254.169.254 metadata endpoint that
-// must stay unreachable from a URL this service is asked to render.
+// HOW IT IS KEPT FROM BEING USED AGAINST US (BE-047). This service opens, in a real browser, an address someone
+// typed, on a public Cloud Run URL, inside a container that has the cloud's metadata service at 169.254.169.254:
+//   - Who may call it: every POST carries the shared secret set on BOTH this service (env SCRAPER_SECRET) and the
+//     main backend (env LOVABLE_SCRAPER_SECRET) in the X-Scraper-Secret header, compared in constant time
+//     (secretMatches). Deploying with IAM-only invocation (--no-allow-unauthenticated) is the stronger option; the
+//     README says what it needs.
+//   - What a call may ask: a body of at most 4 KB (413 beyond), JSON {url}; the url http(s), on the standard
+//     port, with no user name or password, whose host is a public address (checkUrl, with the same address rules
+//     as the main backend: public-address.js is an identical copy of functions/lib/public-address.js).
+//   - What the page may reach: EVERY connection the browser makes — the page, its redirects, its pictures,
+//     scripts, fetches, workers and web sockets — goes through a small proxy inside this process (startGuard),
+//     which resolves each host once, refuses any that is not a public address (or on another port), and then
+//     connects to exactly the address it checked, so a name cannot be pointed somewhere else between the check
+//     and the connection. It also caps what one render may download. WebRTC is kept off the network, downloads
+//     are refused and service workers are bypassed.
+//   - How much at once: one render at a time per instance, at most MAX_WAITING more waiting their turn, each
+//     only as long as it can still finish inside the caller's own time limit; beyond that 429 {code:'busy'}.
+//     Each render has a hard time limit, and a browser that will not close is killed.
+//   - What comes back: only a page that is one (BE-048): an address that answers an HTTP error, cannot be
+//     reached, shows nothing, or shows a host's "no site here" page is answered as such, with a code, never as
+//     a capture; markup over MAX_HTML_BYTES is refused.
+//   - The container runs as a non-root user (Dockerfile USER node).
 
 var http = require('http');
+var net = require('net');
 var dns = require('dns');
+var crypto = require('crypto');
+var addressRules = require('./public-address');
+var isPublicAddress = addressRules.isPublicAddress;
+var isInternalHostname = addressRules.isInternalHostname;
 
 var PORT = process.env.PORT || 8080;
-var SECRET = process.env.SCRAPER_SECRET || '';
 
 // Same two timeouts and reasoning as the (now-removed) in-process version of this logic in
 // functions/lib/api.js: NAV_TIMEOUT_MS is page.goto()'s own ceiling for reaching network-idle,
@@ -36,36 +52,245 @@ var SECRET = process.env.SCRAPER_SECRET || '';
 var NAV_TIMEOUT_MS = 30000;
 var TOTAL_TIMEOUT_MS = 105000;   // the page is walked through before capture (carousels, accordions): see settlePage
 
-// ---------- SSRF guard (ported from functions/lib/api.js's isPrivateOrLoopbackIp/validateImportUrl) ----------
+var MAX_BODY_BYTES = 4 * 1024;                  // a request is {url}: nothing bigger is one
+var MAX_HTML_BYTES = 6 * 1024 * 1024;           // the captured markup handed back
+var MAX_RENDER_BYTES = 80 * 1024 * 1024;        // everything one render may download, through the guard
+var REQUEST_BUDGET_MS = 110000;                 // a whole call, waiting included: under the caller's 115 s (api.js)
+var MIN_RENDER_MS = 45000;                      // a render that would get less than this is not started (busy)
+var MAX_WAITING = 3;                            // calls waiting for the one render running
+var CLOSE_TIMEOUT_MS = 10000;                   // a browser that has not closed by then is killed
+var TUNNEL_IDLE_MS = 30000;                     // a connection through the guard with nothing on it for this long ends
 
-function isPrivateOrLoopbackIp(ip) {
-  if (/^127\./.test(ip)) return true;                                    // IPv4 loopback
-  if (/^10\./.test(ip)) return true;                                     // RFC1918
-  if (/^192\.168\./.test(ip)) return true;                               // RFC1918
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;                // RFC1918
-  if (/^169\.254\./.test(ip)) return true;                               // link-local / cloud metadata
-  if (ip === '0.0.0.0') return true;
-  if (ip === '::1') return true;                                         // IPv6 loopback
-  if (/^f[cd][0-9a-f]{2}:/i.test(ip)) return true;                       // IPv6 unique-local (fc00::/7)
-  if (/^fe80:/i.test(ip)) return true;                                   // IPv6 link-local
-  return false;
+/* What a call can be answered, by code: the HTTP status and the words. The main backend (functions/lib/
+   import-check.js) words each code for the person importing; these are for the log and for a direct caller. */
+var ERRORS = {
+  'not-found': [404, 'Not found.'],
+  'not-configured': [503, 'This service has no SCRAPER_SECRET configured yet.'],
+  'unauthorized': [401, 'Missing or incorrect X-Scraper-Secret header.'],
+  'too-large': [413, 'The request is too large.'],
+  'bad-request': [400, 'The body must be JSON: {"url": "..."}.'],
+  'bad-url': [400, 'That is not an address that can be opened.'],
+  'blocked-address': [400, 'That address is not a public one, so it is not opened.'],
+  'busy': [429, 'A page is being rendered already. Try again in a minute.'],
+  'unreachable': [422, 'That address could not be reached.'],
+  'source-http-error': [422, 'That address answered with an error.'],
+  'empty-page': [422, 'That page shows nothing to import.'],
+  'not-a-site': [422, 'That address shows an error page, not a site.'],
+  'capture-too-large': [422, 'That page is too large to import.'],
+  'timeout': [504, 'Rendering this page took too long.'],
+  'render-failed': [500, 'The page could not be rendered.']
+};
+function captureError(code, extra) {
+  var e = new Error((ERRORS[code] || ERRORS['render-failed'])[1]);
+  e.code = ERRORS[code] ? code : 'render-failed';
+  e.status = (ERRORS[e.code])[0];
+  return Object.assign(e, extra || {});
 }
 
-function validateUrl(rawUrl) {
+// ---------- which addresses may be opened ----------
+
+/* The checks that need no lookup: -> { host, port } or { code, reason }. */
+function parseTarget(rawUrl) {
   var u;
-  try { u = new URL(rawUrl); } catch (e) { return Promise.resolve('That doesn\'t look like a valid URL.'); }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return Promise.resolve('Only http:// and https:// URLs are allowed.');
-  var host = u.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || isPrivateOrLoopbackIp(host)) {
-    return Promise.resolve('That host isn\'t allowed.');
+  try { u = new URL(String(rawUrl == null ? '' : rawUrl).trim()); } catch (e) { return { code: 'bad-url', reason: 'That doesn\'t look like a valid URL.' }; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return { code: 'bad-url', reason: 'Only http:// and https:// URLs are allowed.' };
+  if (u.username || u.password) return { code: 'bad-url', reason: 'An address with a user name or password in it is not opened.' };
+  if (u.port && !((u.protocol === 'http:' && u.port === '80') || (u.protocol === 'https:' && u.port === '443'))) {
+    return { code: 'bad-url', reason: 'Only addresses on the standard web ports are opened.' };
   }
+  var host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  if (!host) return { code: 'bad-url', reason: 'That doesn\'t look like a valid URL.' };
+  if (net.isIP(host) ? !isPublicAddress(host) : isInternalHostname(host)) return { code: 'blocked-address', reason: 'That host isn\'t allowed.' };
+  return { host: host, port: u.protocol === 'https:' ? 443 : 80 };
+}
+
+/* -> Promise<null | { code, reason }>: null when the address may be opened. Every answer the name resolves to must
+   be public (one private answer is enough to refuse). `lookup` is dns.lookup unless a test passes its own. */
+function checkUrl(rawUrl, lookup) {
+  var t = parseTarget(rawUrl);
+  if (t.code) return Promise.resolve(t);
+  if (net.isIP(t.host)) return Promise.resolve(null);
   return new Promise(function (resolve) {
-    dns.lookup(host, { all: true }, function (err, addrs) {
-      if (err) return resolve('Could not resolve that host.');
-      var bad = (addrs || []).some(function (a) { return isPrivateOrLoopbackIp(a.address); });
-      resolve(bad ? 'That host resolves to a private address and isn\'t allowed.' : null);
+    (lookup || dns.lookup)(t.host, { all: true, verbatim: true }, function (err, addrs) {
+      if (err || !addrs || !addrs.length) return resolve({ code: 'unreachable', reason: 'Could not resolve that host.' });
+      var list = addrs.map(function (a) { return typeof a === 'string' ? a : a.address; });
+      resolve(list.every(isPublicAddress) ? null : { code: 'blocked-address', reason: 'That host resolves to a private address and isn\'t allowed.' });
     });
   });
+}
+/* The same, as one sentence or null (what tools/reimport-lovable.js reads). */
+function validateUrl(rawUrl) {
+  return checkUrl(rawUrl).then(function (bad) { return bad ? bad.reason : null; });
+}
+
+/* ---------- the guard: every connection the browser makes goes through here ----------
+   An HTTP proxy on 127.0.0.1, one per render, that the browser is started with (--proxy-server, with loopback
+   NOT bypassed). HTTPS and web sockets arrive as CONNECT host:port, plain http as "GET http://host/path". Each
+   host is resolved once per render; if any answer is not a public address, or the port is not 80/443, the
+   connection is refused (403) and the host noted. Otherwise the connection is made to exactly the address that
+   was checked. Everything that comes back is counted; past maxBytes every connection is cut and no new one is
+   made.
+     opts: { maxBytes, lookup (tests), _connectTo(address, port) -> { host, port } (tests) }
+     -> Promise<{ port, close(), refusedHost(url) -> bool, stats() -> { bytes, refused: [host], over } }> */
+function startGuard(opts) {
+  opts = opts || {};
+  var lookup = opts.lookup || dns.lookup, maxBytes = opts.maxBytes > 0 ? opts.maxBytes : MAX_RENDER_BYTES;
+  var verdicts = new Map(), sockets = new Set(), refused = [], bytes = 0, over = false;
+
+  function track(s) { sockets.add(s); s.on('close', function () { sockets.delete(s); }); return s; }
+  function count(n) {
+    bytes += n;
+    if (bytes > maxBytes && !over) {
+      over = true;
+      console.error('scrape: the page asked for more than ' + Math.round(maxBytes / 1048576) + ' MB — its other downloads are cut');
+      sockets.forEach(function (s) { s.destroy(); });
+    }
+  }
+  function refuse(host) { if (refused.indexOf(host) === -1 && refused.length < 200) refused.push(host); return { ok: false }; }
+  /* -> Promise<{ ok, address }> */
+  function judge(host, port) {
+    host = String(host || '').replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
+    if (over) return Promise.resolve({ ok: false });
+    if (port !== 80 && port !== 443) return Promise.resolve(refuse(host + ':' + port));      // the name itself may be fine on its own port
+    if (net.isIP(host)) return Promise.resolve(isPublicAddress(host) ? { ok: true, address: host } : refuse(host));
+    if (!host || isInternalHostname(host)) return Promise.resolve(refuse(host));
+    if (!verdicts.has(host)) {
+      verdicts.set(host, new Promise(function (resolve) {
+        lookup(host, { all: true, verbatim: true }, function (err, addrs) {
+          if (err || !addrs || !addrs.length) return resolve({ ok: false });
+          var list = addrs.map(function (a) { return typeof a === 'string' ? a : a.address; });
+          resolve(list.every(isPublicAddress) ? { ok: true, address: list[0] } : refuse(host));
+        });
+      }));
+    }
+    return verdicts.get(host);
+  }
+  function target(address, port) { return opts._connectTo ? opts._connectTo(address, port) : { host: address, port: port }; }
+
+  var server = http.createServer();
+  server.on('connect', function (req, client, head) {
+    track(client);
+    client.on('error', function () { client.destroy(); });
+    var m = /^\[?([^\]]*?)\]?:(\d{1,5})$/.exec(String(req.url || ''));
+    var host = m ? m[1] : '', port = m ? +m[2] : 0;
+    judge(host, port).then(function (v) {
+      if (!v.ok || over || client.destroyed) { client.end('HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); return; }
+      var to = target(v.address, port);
+      var up = track(net.connect(to.port, to.host));
+      up.setTimeout(TUNNEL_IDLE_MS, function () { up.destroy(); });
+      up.on('connect', function () {
+        client.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+        if (head && head.length) up.write(head);
+        up.on('data', function (d) { count(d.length); });
+        up.pipe(client);
+        client.pipe(up);
+      });
+      up.on('error', function () { if (!client.destroyed) client.end('HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'); });
+      up.on('close', function () { client.destroy(); });
+      client.on('close', function () { up.destroy(); });
+    });
+  });
+  server.on('request', function (req, res) {
+    function no(status) { if (!res.headersSent) res.writeHead(status, { 'Content-Length': 0, Connection: 'close' }); res.end(); }
+    var u;
+    try { u = new URL(String(req.url || '')); } catch (e) { return no(400); }
+    if (u.protocol !== 'http:' || u.username || u.password) return no(403);
+    var port = u.port ? +u.port : 80;
+    judge(u.hostname, port).then(function (v) {
+      if (!v.ok || over) return no(403);
+      var headers = Object.assign({}, req.headers);
+      delete headers['proxy-connection']; delete headers['proxy-authorization'];
+      headers.host = u.host;
+      var to = target(v.address, port);
+      var up = http.request({ host: to.host, port: to.port, method: req.method, path: u.pathname + u.search, headers: headers, agent: false }, function (r) {
+        res.writeHead(r.statusCode || 502, r.headers);
+        r.on('data', function (d) { count(d.length); });
+        r.on('error', function () { res.destroy(); });
+        r.pipe(res);
+      });
+      up.setTimeout(TUNNEL_IDLE_MS, function () { up.destroy(); });
+      up.on('error', function () { no(502); });
+      req.pipe(up);
+    });
+  });
+  /* a web socket asked of the proxy in plain form (a browser tunnels it with CONNECT): not served */
+  server.on('upgrade', function (req, socket) { socket.destroy(); });
+  server.on('connection', function (s) { track(s); });
+
+  return new Promise(function (resolve, reject) {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', function () {
+      resolve({
+        port: server.address().port,
+        close: function () {
+          sockets.forEach(function (s) { s.destroy(); });
+          return new Promise(function (done) { server.close(function () { done(); }); });
+        },
+        refusedHost: function (url) {
+          var h = '';
+          try { h = new URL(url).hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase(); } catch (e) { return false; }
+          return refused.indexOf(h) !== -1;
+        },
+        stats: function () { return { bytes: bytes, refused: refused.slice(), over: over }; }
+      });
+    });
+  });
+}
+
+/* ---------- is the capture a site at all (BE-048) ----------
+   What the open page shows: its visible text, and how many things are on it besides text (pictures, headings,
+   paragraphs…). Nothing worth importing: under 200 characters and fewer than 3 such things. A host's own "there is
+   no site here" page (a Lovable address with no project behind it answers one): its words, on a page with little
+   else. functions/lib/import-check.js applies the same rule to the markup on the main backend's side.
+   -> '' | 'empty-page' | 'not-a-site' */
+var NOT_A_SITE = /no lovable project found|project not found|site not found|page not found|this site can.?t be reached|deployment (?:not found|has failed|failed)|404[\s:.—-]+not found|there.?s nothing here|domain is not configured/i;
+function captureVerdict(facts) {
+  facts = facts || {};
+  var text = +facts.text || 0, content = +facts.content || 0;
+  if (text < 600 && content < 12 && NOT_A_SITE.test(String(facts.sample || ''))) return 'not-a-site';
+  if (text < 200 && content < 3) return 'empty-page';
+  return '';
+}
+/* runs in the page */
+function pageFacts() {
+  var b = document.body, text = b ? String(b.innerText || '').replace(/\s+/g, ' ').trim() : '';
+  return { text: text.length, sample: text.slice(0, 600),
+    content: document.querySelectorAll('img, svg, video, picture, canvas, h1, h2, h3, h4, h5, h6, p, li').length };
+}
+
+/* ---------- one render at a time ----------
+   enter(maxWaitMs) -> Promise<release()>: at once when nothing runs and nobody waits; otherwise in turn, for at
+   most maxWaitMs; rejects 'busy' when MAX_WAITING already wait or the wait runs out. */
+function createGate(maxActive, maxWaiting) {
+  var active = 0, queue = [];
+  function release() {
+    var used = false;
+    return function () { if (used) return; used = true; active--; next(); };
+  }
+  function next() {
+    while (active < maxActive && queue.length) {
+      var w = queue.shift();
+      clearTimeout(w.timer);
+      active++;
+      w.resolve(release());
+    }
+  }
+  return {
+    enter: function (maxWaitMs) {
+      if (active < maxActive && !queue.length) { active++; return Promise.resolve(release()); }
+      if (queue.length >= maxWaiting || !(maxWaitMs > 0)) return Promise.reject(captureError('busy'));
+      return new Promise(function (resolve, reject) {
+        var w = { resolve: resolve };
+        w.timer = setTimeout(function () {
+          var i = queue.indexOf(w);
+          if (i !== -1) queue.splice(i, 1);
+          reject(captureError('busy'));
+        }, maxWaitMs);
+        queue.push(w);
+      });
+    },
+    stats: function () { return { active: active, waiting: queue.length }; }
+  };
 }
 
 // ---------- the actual render ----------
@@ -362,8 +587,10 @@ async function recordMotion(page) {
   }, SETTLE_MAX_LATE_REVEALS);
 }
 
-async function settlePage(page) {
-  var deadline = Date.now() + SETTLE_BUDGET_MS;
+/* opts.budgetMs: less than SETTLE_BUDGET_MS when the render as a whole has less time left (capturePage) */
+async function settlePage(page, opts) {
+  var budget = opts && opts.budgetMs > 0 ? Math.min(opts.budgetMs, SETTLE_BUDGET_MS) : SETTLE_BUDGET_MS;
+  var deadline = Date.now() + budget;
 
   /* which tab each tab list opens on, before anything moves (a set that moves on by itself has drifted by the
      time the page has been walked through) */
@@ -799,40 +1026,84 @@ function finishPage() {
   return document.documentElement.outerHTML;
 }
 
+function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
 // Renders `url` in an open tab and returns its markup as captured (settlePage, finishPage). Exported, with
 // those two, so the capture can be run from a script with a Chrome of its own (tools/reimport-lovable.js).
-async function capturePage(page, url) {
+// It refuses (rejects with .code, see ERRORS) what is not a site: an address that could not be reached or answered
+// an HTTP error (.httpStatus), a page with nothing on it or a host's "no site here" page, markup too large.
+//   opts: { deadlineAt: the time the whole render must be done by (the walk-through is shortened to fit),
+//           refused(url) -> true when the guard refused that address (it is then 'blocked-address') }
+async function capturePage(page, url, opts) {
+  opts = opts || {};
   await page.setViewport({ width: 1440, height: 900 });
+  /* a page's service worker could answer for the network; a download is never what is wanted */
+  try { await page.setBypassServiceWorker(true); } catch (e) { /* an older puppeteer: the guard still applies */ }
+  try { await (await page.createCDPSession()).send('Page.setDownloadBehavior', { behavior: 'deny' }); } catch (e) { /* not supported here */ }
   await page.evaluateOnNewDocument(motionRecorder);
+  /* the status of the page itself, after its redirects — kept even when goto() gives up waiting for the network
+     to go quiet (a site with continuous analytics pings never does) */
+  var main = { status: 0 };
+  page.on('response', function (r) {
+    try {
+      if (r.frame() !== page.mainFrame() || !r.request().isNavigationRequest()) return;
+      var s = r.status();
+      if (s >= 300 && s < 400) return;
+      main.status = s;
+    } catch (e) { /* a response of a frame already gone */ }
+  });
+  var response = null;
   try {
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
+    response = await page.goto(url, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT_MS });
   } catch (err) {
-    // A site with e.g. continuous analytics pings may never truly go network-idle -- don't fail the
-    // whole render over that; capture whatever has rendered by now instead.
-    console.error('scrape: navigation to "' + url + '" did not fully settle (' + err.message + ') -- capturing whatever rendered so far.');
+    // A site that never truly goes network-idle is still captured as it stands — but only when its page did come
+    // (main.status below): a name that does not resolve, a refused address or a dead host is not a capture.
+    console.error('scrape: navigation to "' + url + '" did not fully settle (' + err.message + ').');
   }
-  await new Promise(function (resolve) { setTimeout(resolve, 3500); }); // let an intro animation play out
-  try { await settlePage(page); } catch (err) {
+  if (response) { try { main.status = response.status() || main.status; } catch (e) { /* kept as seen */ } }
+  /* the page itself, or where it redirected, refused by the guard (a plain-http refusal comes back as the guard's
+     own 403, which must not be taken for the site's answer) */
+  var landed = '';
+  try { landed = page.url(); } catch (e) { landed = ''; }
+  if (opts.refused && (opts.refused(url) || (landed && opts.refused(landed)))) throw captureError('blocked-address');
+  if (!main.status) throw captureError('unreachable');
+  if (main.status >= 400) throw captureError('source-http-error', { httpStatus: main.status });
+  await sleep(3500); // let an intro animation play out
+  var verdict = captureVerdict(await page.evaluate(pageFacts));
+  if (verdict) throw captureError(verdict);
+  var left = opts.deadlineAt ? opts.deadlineAt - Date.now() - 8000 : 0;
+  try { await settlePage(page, { budgetMs: left > 0 ? left : 0 }); } catch (err) {
     // best effort: a page this cannot walk through is still captured as it stands
     console.error('scrape: could not settle "' + url + '" before capture (' + err.message + ').');
   }
-  return page.evaluate(finishPage);
+  var html = await page.evaluate(finishPage);
+  if (Buffer.byteLength(String(html || ''), 'utf8') > MAX_HTML_BYTES) throw captureError('capture-too-large');
+  return html;
 }
 
-// Launches headless Chrome, navigates to `url`, waits briefly for any late mount/animation, and returns
-// the final rendered outerHTML. Closes the browser on every path -- success, navigation timeout, launch
-// failure, or the overall TOTAL_TIMEOUT_MS firing -- so a failed/slow request never leaks a Chrome
-// process. If the hard timeout fires before Chrome has even finished launching, this waits for that
-// launch attempt to actually settle (success or failure) before trying to close it, so a browser that
-// finishes launching just after the timeout still gets closed instead of orphaned.
-async function scrapeUrl(url) {
+// Launches headless Chrome behind the guard (startGuard), renders `url` and returns the captured markup.
+// Closes the browser on every path — success, a refusal, launch failure, the time limit, the caller leaving — and
+// kills it if it will not close; the guard is closed with it. If the time limit fires before Chrome has even
+// finished launching, this waits for that launch attempt to settle before closing it, so a browser that finishes
+// launching just after the limit is still closed instead of orphaned.
+//   opts: { deadlineAt, aborted: a Promise that rejects when the caller has gone, lookup (tests) }
+async function scrapeUrl(url, opts) {
+  opts = opts || {};
+  var limitMs = Math.max(1000, Math.min(TOTAL_TIMEOUT_MS, opts.deadlineAt ? opts.deadlineAt - Date.now() : TOTAL_TIMEOUT_MS));
+  var deadlineAt = Date.now() + limitMs;
+  var guard = await startGuard({ maxBytes: MAX_RENDER_BYTES, lookup: opts.lookup });
   var browser = null;
 
   async function closeBrowser() {
     if (!browser) return;
-    var b = browser;
+    var b = browser, proc = null;
     browser = null;
-    try { await b.close(); } catch (e) { console.error('scrape: error closing headless Chrome: ' + e.message); }
+    try { proc = b.process(); } catch (e) { proc = null; }
+    var closed = await Promise.race([b.close().then(function () { return true; }, function (e) {
+      console.error('scrape: error closing headless Chrome: ' + e.message);
+      return false;
+    }), sleep(CLOSE_TIMEOUT_MS).then(function () { return false; })]);
+    if (!closed && proc && !proc.killed) { try { proc.kill('SIGKILL'); } catch (e) { /* already gone */ } }
   }
 
   var work = (async function () {
@@ -841,85 +1112,139 @@ async function scrapeUrl(url) {
       // --disable-dev-shm-usage: Cloud Run's default /dev/shm is tiny; without this, Chrome can crash
       // outright on real pages. --no-sandbox/--disable-setuid-sandbox: Chrome's own sandbox needs kernel
       // privileges this container doesn't grant -- the standard, well-documented flags for running
-      // headless Chrome inside a Docker container (see README.md).
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+      // headless Chrome inside a Docker container (see README.md); the process runs as a non-root user.
+      // --proxy-server / --proxy-bypass-list=<-loopback>: every connection, loopback included, goes through the
+      // guard. WebRTC may not use UDP outside the proxy.
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage',
+        '--proxy-server=http://127.0.0.1:' + guard.port, '--proxy-bypass-list=<-loopback>',
+        '--force-webrtc-ip-handling-policy=disable_non_proxied_udp', '--no-first-run']
     });
     var page = await browser.newPage();
-    return capturePage(page, url);
+    return capturePage(page, url, { deadlineAt: deadlineAt, refused: guard.refusedHost });
   })();
 
   var timer;
   var timeoutPromise = new Promise(function (_resolve, reject) {
-    timer = setTimeout(function () {
-      reject(Object.assign(new Error('Rendering this page took too long (over ' + Math.round(TOTAL_TIMEOUT_MS / 1000) + 's).'), { status: 504 }));
-    }, TOTAL_TIMEOUT_MS);
+    timer = setTimeout(function () { reject(captureError('timeout')); }, limitMs);
   });
+  var racers = [work, timeoutPromise];
+  if (opts.aborted) racers.push(opts.aborted);
 
   try {
-    var html = await Promise.race([work, timeoutPromise]);
+    return await Promise.race(racers);
+  } finally {
     clearTimeout(timer);
+    await Promise.race([work.catch(function () {}), sleep(CLOSE_TIMEOUT_MS)]); // let a still-in-flight launch settle so `browser` is set
     await closeBrowser();
-    return html;
-  } catch (err) {
-    clearTimeout(timer);
-    await work.catch(function () {}); // let a still-in-flight launch/goto settle so `browser` is really set
-    await closeBrowser();
-    throw err;
+    var st = guard.stats();
+    if (st.refused.length) console.error('scrape: refused for "' + url + '": ' + st.refused.slice(0, 20).join(', '));
+    await guard.close();
   }
 }
 
 // ---------- plain HTTP plumbing ----------
 
 function sendJson(res, status, obj) {
+  if (res.headersSent) { try { res.end(); } catch (e) { /* gone */ } return; }
   var body = JSON.stringify(obj);
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
   res.end(body);
 }
+function sendError(res, err) {
+  var code = err && ERRORS[err.code] ? err.code : 'render-failed';
+  var out = { error: ERRORS[code][1], code: code };
+  if (err && err.httpStatus) out.httpStatus = err.httpStatus;
+  sendJson(res, ERRORS[code][0], out);
+}
 
-function readBody(req, cb) {
-  var chunks = [];
-  req.on('data', function (c) { chunks.push(c); });
-  req.on('end', function () { cb(Buffer.concat(chunks).toString('utf8')); });
-  req.on('error', function () { cb(''); });
+/* The secret, in constant time: both sides are hashed first, so neither its length nor where it differs shows. */
+function secretMatches(provided, secret) {
+  if (typeof provided !== 'string' || !provided || !secret) return false;
+  var a = crypto.createHash('sha256').update(provided, 'utf8').digest();
+  var b = crypto.createHash('sha256').update(String(secret), 'utf8').digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
+/* cb(text) or cb(null) once more than max bytes have arrived (the rest is not read) */
+function readBody(req, max, cb) {
+  var chunks = [], size = 0, done = false;
+  function finish(v) { if (!done) { done = true; cb(v); } }
+  if (+req.headers['content-length'] > max) { req.resume(); return finish(null); }
+  req.on('data', function (c) {
+    if (done) return;
+    size += c.length;
+    if (size > max) { req.resume(); return finish(null); }
+    chunks.push(c);
+  });
+  req.on('end', function () { finish(Buffer.concat(chunks).toString('utf8')); });
+  req.on('error', function () { finish(''); });
+}
+
+/* The service. opts (tests): { secret, render(url, { deadlineAt, aborted }), check(url) -> Promise<null|{code}>,
+   maxWaiting, requestBudgetMs, minRenderMs } */
+function createService(opts) {
+  opts = opts || {};
+  var secret = opts.secret != null ? opts.secret : (process.env.SCRAPER_SECRET || '');
+  var render = opts.render || scrapeUrl;
+  var check = opts.check || checkUrl;
+  var budgetMs = opts.requestBudgetMs || REQUEST_BUDGET_MS, minRenderMs = opts.minRenderMs || MIN_RENDER_MS;
+  var gate = createGate(1, opts.maxWaiting != null ? opts.maxWaiting : MAX_WAITING);
+
+  var server = http.createServer(function (req, res) {
+    var started = Date.now(), path = String(req.url || '').split('?')[0];
+    if ((req.method === 'GET' || req.method === 'HEAD') && (path === '/health' || path === '/healthz')) return sendJson(res, 200, { ok: true });
+    if (req.method !== 'POST' || path !== '/scrape') return sendError(res, { code: 'not-found' });
+    if (!secret) {
+      console.error('scrape: SCRAPER_SECRET is not set on this service -- refusing all requests until it is.');
+      return sendError(res, { code: 'not-configured' });
+    }
+    if (!secretMatches(req.headers['x-scraper-secret'], secret)) { req.resume(); return sendError(res, { code: 'unauthorized' }); }
+
+    readBody(req, MAX_BODY_BYTES, function (raw) {
+      if (raw === null) return sendError(res, { code: 'too-large' });
+      var body;
+      try { body = JSON.parse(raw || '{}'); } catch (e) { return sendError(res, { code: 'bad-request' }); }
+      var url = body && typeof body.url === 'string' ? body.url.trim() : '';
+      if (!url || url.length > 2048) return sendError(res, { code: 'bad-request' });
+
+      /* the caller gone (it gave up waiting): the render stops */
+      var leave, aborted = new Promise(function (_r, reject) { leave = reject; });
+      aborted.catch(function () {});
+      res.on('close', function () { if (!res.writableFinished) leave(captureError('render-failed')); });
+
+      var release = null;
+      Promise.resolve(check(url)).then(function (bad) {
+        if (bad) throw captureError(bad.code || 'blocked-address');
+        return gate.enter(budgetMs - minRenderMs - (Date.now() - started));
+      }).then(function (rel) {
+        release = rel;
+        if (res.destroyed) throw captureError('render-failed');
+        return render(url, { deadlineAt: started + budgetMs, aborted: aborted });
+      }).then(function (html) {
+        sendJson(res, 200, { html: html });
+      }).catch(function (err) {
+        if (!err || !err.code || !ERRORS[err.code] || err.code === 'render-failed') console.error('scrape: failed to render "' + url + '": ' + (err && (err.stack || err.message)));
+        else console.error('scrape: "' + url + '" — ' + err.code + (err.httpStatus ? ' ' + err.httpStatus : ''));
+        sendError(res, err);
+      }).then(function () { if (release) release(); });
+    });
+  });
+  server.gate = gate;
+  return server;
 }
 
 function serve() {
-var server = http.createServer(function (req, res) {
-  if (req.method === 'GET' && req.url === '/healthz') return sendJson(res, 200, { ok: true });
-
-  if (req.method !== 'POST' || req.url !== '/scrape') {
-    return sendJson(res, 404, { error: 'Not found. POST /scrape with {url}.' });
-  }
-
-  if (!SECRET) {
-    console.error('scrape: SCRAPER_SECRET is not set on this service -- refusing all requests until it is.');
-    return sendJson(res, 500, { error: 'This service has no SCRAPER_SECRET configured yet.' });
-  }
-  var provided = req.headers['x-scraper-secret'];
-  if (!provided || provided !== SECRET) {
-    return sendJson(res, 401, { error: 'Missing or incorrect X-Scraper-Secret header.' });
-  }
-
-  readBody(req, function (raw) {
-    var body;
-    try { body = JSON.parse(raw || '{}'); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
-    var url = body && body.url ? String(body.url).trim() : '';
-    if (!url) return sendJson(res, 400, { error: 'url is required.' });
-
-    validateUrl(url).then(function (badReason) {
-      if (badReason) return sendJson(res, 400, { error: badReason });
-      return scrapeUrl(url).then(function (html) {
-        sendJson(res, 200, { html: html });
-      }).catch(function (err) {
-        console.error('scrape: failed to render "' + url + '": ' + err.message);
-        sendJson(res, err.status || 500, { error: err.message || 'Failed to render that URL.' });
-      });
-    });
-  });
-});
-
-server.listen(PORT, function () { console.log('lovable-scraper-service listening on :' + PORT); });
+  var server = createService();
+  /* a request that sends nothing for a long time ends; a render's own limit is kept by scrapeUrl */
+  server.headersTimeout = 20000;
+  server.requestTimeout = REQUEST_BUDGET_MS + 10000;
+  server.listen(PORT, function () { console.log('lovable-scraper-service listening on :' + PORT); });
 }
 
-module.exports = { capturePage: capturePage, settlePage: settlePage, finishPage: finishPage, motionRecorder: motionRecorder, validateUrl: validateUrl };
+module.exports = {
+  capturePage: capturePage, settlePage: settlePage, finishPage: finishPage, motionRecorder: motionRecorder, validateUrl: validateUrl,
+  /* for the tests (functions/lib/scraper-service.test.js) */
+  checkUrl: checkUrl, startGuard: startGuard, captureVerdict: captureVerdict, createGate: createGate, createService: createService,
+  secretMatches: secretMatches, ERRORS: ERRORS, LIMITS: { MAX_BODY_BYTES: MAX_BODY_BYTES, MAX_HTML_BYTES: MAX_HTML_BYTES, MAX_RENDER_BYTES: MAX_RENDER_BYTES }
+};
 if (require.main === module) serve();

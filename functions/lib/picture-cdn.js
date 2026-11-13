@@ -59,6 +59,12 @@ var NOT_FOUND_CACHE = 'public, max-age=60';
 var PICTURE_EXT = /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i;
 var TYPE_OF_EXT = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', avif: 'image/avif',
   svg: 'image/svg+xml', ico: 'image/x-icon' };
+/* The one exception to "only a picture": an imported site's own font files, as the import stored them
+   (lib/import-media.js: events/import-<id>/assets/<16 hex>.woff2 …). A page's CSS may use a font only from the
+   page's own address (or with CORS headers the bucket does not send), so the import names them here (/img/…);
+   they are sent as font/* only. */
+var IMPORT_FONT = /^events\/import-[a-z0-9][a-z0-9-]{0,59}\/assets\/[0-9a-f]{16}\.(woff2|woff|ttf|otf)$/;
+var FONT_TYPE_OF_EXT = { woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
 var VARIANT_NAME = /\.rv-[0-9a-f]{8}\.\d{1,5}x\d{1,5}\.w\d{1,5}\.webp$/;
 var RUN_STAMPED = /^events\/[^/]+\/generated\/\d{14}-[^/]+$/;
 var CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:; sandbox";
@@ -98,7 +104,7 @@ function nameOf(raw) {
     out.push(s);
   }
   var name = out.join('/');
-  return PICTURE_EXT.test(name) ? name : '';
+  return PICTURE_EXT.test(name) || IMPORT_FONT.test(name) ? name : '';
 }
 /* "/img/events/x/a.png?v=1" -> "events/x/a.png" ('' when the path is not one this route answers) */
 function objectPathOf(urlPath) {
@@ -135,6 +141,8 @@ function cacheControlFor(name, objectCc) {
    without one — '' for anything else (it is not sent) */
 function pictureType(name, contentType) {
   var t = String(contentType || '').trim();
+  var font = IMPORT_FONT.exec(String(name || ''));
+  if (font) return /^font\/[a-z0-9.+-]+(\s*;.*)?$/i.test(t) || !t || /^(application|binary)\/octet-stream\b/i.test(t) ? FONT_TYPE_OF_EXT[font[1]] : '';
   if (/^image\/[a-z0-9.+-]+(\s*;.*)?$/i.test(t)) return t;
   if (!t || /^(application|binary)\/octet-stream\b/i.test(t)) {
     var m = PICTURE_EXT.exec(name);
