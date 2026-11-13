@@ -68,9 +68,22 @@ function acceptedEncoding(req){
   return ok('br') ? 'br' : ok('gzip') ? 'gzip' : '';
 }
 
+/* The app's own pages (every one of them signed-in, and the sign-in page) may be shown in a frame only by the app
+   itself — the site editor's canvas, the review page's panes, Promotions inside the console — never by another site,
+   which could otherwise lay its own page over Publish or Delete (clickjacking, BE-057). X-Frame-Options says the same
+   to an older browser. Referrer-Policy: a request a page makes to another site carries this origin only, never the
+   page's address. The published sites (/e/, /s/, the speaker and sponsor pages) are not answered here: they come
+   from functions/lib/api.js with their own headers. Mirrored in tools/serve.js. */
+const APP_PAGE_HEADERS = {
+  'Content-Security-Policy': "frame-ancestors 'self'",
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+
 /* packKey: a key naming this exact body (path + mtime + size) when it may be kept compressed */
 function send(req, res, status, headers, body, packKey){
   const type = headers['Content-Type'] || '';
+  if (/^text\/html/i.test(type)) Object.keys(APP_PAGE_HEADERS).forEach(function(k){ headers[k] = APP_PAGE_HEADERS[k]; });
   const encoding = body.length > 1024 && COMPRESSIBLE.test(type) ? acceptedEncoding(req) : '';
   if (encoding){
     body = packKey ? packedBody(packKey, body, encoding) : (encoding === 'br' ? zlib.brotliCompressSync(body) : zlib.gzipSync(body));

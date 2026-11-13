@@ -49,7 +49,11 @@
 //   Every model call above goes through lib/gemini.js. When one fails the route answers
 //   { error, code, retryable } — code is ai-quota (429) | ai-config (503) | ai-rejected | ai-unavailable |
 //   ai-bad-output (502) | ai-timeout (504, with timeoutMs) | ai-blocked (422) — and error is a sentence
-//   that can be shown as it is.
+//   that can be shown as it is. Before any model call (BE-018, BE-021, BE-026): a person's paid steps are limited per
+//   route (429 rate-limited, lib/http.js AI_RATE); suggest-design without the event's name or its template answers
+//   400 need-event-details, plan-structure with nothing to work from 400 need-input; ingest-source reads a public
+//   web page only (400 bad-url, 415 not-a-page, 413 too-large, 502/504 unreachable-url) and refuses a page with too
+//   little text to read (422 unreadable).
 //
 //   -- Event console, the saved site and the public site. Every route here except the public ones needs a
 //      verified Firebase ID token for a company account (requireAdmin in lib/http.js). An "event" is a
@@ -569,10 +573,23 @@ function aiUsageRecorder(fb, eventId, route) {
   };
 }
 
+/* What a redesign needs before the model is asked (BE-021): the event's name, and the template being redesigned
+   (Create Event sends both once its details form is filled). -> '' or the sentence to answer 400 with. */
+function suggestDesignMissing(payload) {
+  var ev = isPlainObject(payload.event) ? payload.event : {};
+  if (!String(ev.name == null ? '' : ev.name).trim()) return 'Fill in the event’s details first, then ask for a redesign.';
+  var tpl = isPlainObject(payload.currentTemplate) ? payload.currentTemplate : {};
+  if (!String(tpl.id == null ? '' : tpl.id).trim()) return 'Choose a template first, then ask for a redesign.';
+  return '';
+}
+
 function handleSuggestDesign(req, res) {
   readBody(req, res, function (raw) {
     var payload;
     try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    /* nothing to design from: answered before anything is paid for */
+    var missing = suggestDesignMissing(payload);
+    if (missing) return sendJson(res, 400, { error: missing, code: 'need-event-details' });
 
     llm.callJson(buildPrompt(payload), responseSchemaFor(payload), { route: 'suggest-design', maxOutputTokens: AI_OUTPUT_TOKENS.small, onUsage: aiUsageRecorder(null, payload.eventId, 'suggest-design') }).then(function (r) {
       if (r.error) return sendAiFailure(res, r);
@@ -1682,11 +1699,11 @@ function handleExtractBrief(req, res) {
             /* the event's facts as the form gave them, checked above — never its description: what the owner typed
                is the brief (kept with the brief below), and the description is written from it at design time
                (event-description.js). update(), not a merge: it never makes a document that is not there. */
-            return watch.update(Object.assign({}, facts.value, { updatedAt: now }));
+            return watch.update(Object.assign({}, facts.value, { updatedAt: now, updatedBy: actorOf(req.user) }));
           })
           .then(function () { return briefRef.set({
             sourceFileName: shownName, mimeType: mimeType, storagePath: storagePath,
-            extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now
+            extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now, createdBy: actorOf(req.user)
           }); })
           .then(function () {
             sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted });
@@ -2205,21 +2222,23 @@ function handleIngestSource(req, res) {
     var type = Object.prototype.hasOwnProperty.call(SOURCE_TYPE_LABELS, payload.type) ? payload.type : 'previousEdition';
     if (!eventId || !url) return sendJson(res, 400, { error: 'eventId and url are required.' });
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
-    if (!/^https?:\/\//i.test(url)) return sendJson(res, 400, { error: 'url must start with http:// or https://.' });
+    if (!/^https?:\/\//i.test(url) || url.length > 2000) return sendJson(res, 400, { error: 'Use the page’s full web address, starting with http:// or https://.', code: 'bad-url' });
     var etPick = etPickOf(payload.etEvent);
     if (etPick === false) return sendJson(res, 400, { error: 'etEvent must name a known portal and a numeric event id.' });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
 
-    var controller = new AbortController();
-    var timedOut = false;
-    /* the page's 20s start when it is fetched: the portal check before it may first read ET's list of editions */
-    var timer = null;
     /* reading a page that had to be rendered can take two minutes: the model works in what is left */
     var deadlineAt = Date.now() + 270000;
+    /* a previous edition on ETB2B's own platform is read from ETB2B's event API beside its page (readEtPrevious): its
+       records are the material even when the page itself carries little text */
+    var etEdition = type === 'previousEdition' && !!(etPick || etPrevious.portalOf(url));
 
     var watch = null;
+    /* BE-020 / BE-026: the page is read through safeFetch (readSourcePage): an address on the public internet only —
+       not this server, the network it runs in or the cloud's metadata service — checked before it is connected to and
+       again at every redirect, the connection made to exactly the address that was checked (400 bad-url) */
     watchEvent(fb, eventId)
       .then(function (w) {
         watch = w;
@@ -2228,22 +2247,9 @@ function handleIngestSource(req, res) {
       })
       .then(function (other) {
         if (other) throw otherPortalError(watch.portal, other);
-        timer = setTimeout(function () { timedOut = true; controller.abort(); }, 20000);
-        return fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' } });
-      })
-      .then(function (r) {
-        if (r.ok) return r.text();
-        /* Some sites (several ET verticals among them) turn away anything that is not a browser. The page
-           is then read the way an imported one is: by the rendering service, in a real browser. */
-        if ([401, 403, 406, 429, 503].indexOf(r.status) === -1 || !process.env.LOVABLE_SCRAPER_URL) throw new Error('page returned HTTP ' + r.status);
-        clearTimeout(timer);
-        return validateImportUrl(url).then(function (problem) {
-          if (problem) throw new Error('page returned HTTP ' + r.status);
-          return scrapeLovableUrl(url).then(function (rendered) { return stripAllScriptTags(rendered); });
-        });
+        return readSourcePage(url, etEdition);
       })
       .then(function (html) {
-        clearTimeout(timer);
         return fetchSourceCss(url, html).then(function (css) { return { html: html, css: css }; });
       })
       .then(function (page) {
@@ -2306,8 +2312,9 @@ function handleIngestSource(req, res) {
           var now = new Date().toISOString();
           var sourcesRef = fb.db.collection('events').doc(eventId).collection('sources');
           var record = {
+            /* createdBy: who had the page read (BE-058: every write names who made it) */
             type: type, url: url, extractedSections: sections, colorSignals: colorSignals, fontSignals: fontSignals,
-            design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
+            design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now, createdBy: actorOf(req.user),
             previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds, award: award
           };
           /* the same page read again (generating the site again) replaces its earlier reading: two readings of
@@ -2336,11 +2343,69 @@ function handleIngestSource(req, res) {
         });
       })
       .catch(function (err) {
-        clearTimeout(timer);
-        if (timedOut) return sendJson(res, 504, { error: 'Fetching ' + url + ' took too long (over 20s).' });
-        sendStepFailure(res, err, 502, 'Could not ingest ' + url + ': ' + err.message);
+        /* a refusal made on purpose says why; anything else is logged here and answered in one fixed sentence */
+        if (!(err && err.status && err.body)) console.error('ingest-source: ' + url.split(/[?#]/)[0].slice(0, 200) + ' failed — ' + (err && err.stack || err));
+        sendStepFailure(res, err, 502, 'That page could not be read. Please try again, or skip it.');
       });
   }, BODY_LIMITS.small);
+}
+
+/* ---------- reading the page itself (BE-026) ----------
+   Through safeFetch: a public address only, checked again at every redirect, the connection made to the address
+   that was checked, 20 s in all, at most 2 MB, and only a web page (an HTML answer — or one that names no type).
+   A site that turns away anything but a browser (several ETB2B verticals do) is read the way an import is: by the
+   rendering service, in a real browser. So is a page that builds itself in the browser, whose plain answer is an
+   empty shell (a lone <div id="root"> and its scripts): a page with less than SOURCE_MIN_TEXT_CHARS of visible text
+   is rendered, and when it still has too little — or the service is not there — it is refused with 422
+   'unreadable', before any model call: the model is not paid to "read" a title, and nothing is stored as if the
+   page had been read. thinOk: a previous edition on ETB2B's own platform, whose records come from ETB2B's event API.
+   -> Promise<html> or a rejection made with httpError (bad-url 400, not-a-page 415, too-large 413,
+   unreachable-url 502/504, unreadable 422). */
+var SOURCE_PAGE_MAX_BYTES = 2 * 1024 * 1024;
+var SOURCE_PAGE_TIMEOUT_MS = 20000;
+var SOURCE_MIN_TEXT_CHARS = 400;
+var SOURCE_PAGE_TYPES = [/^(?:text\/html|application\/xhtml\+xml)?$/];
+var SOURCE_RENDERED_STATUSES = [401, 403, 406, 429, 503];
+function visibleTextLength(html) { return stripToText(String(html || '')).replace(/\s+/g, ' ').trim().length; }
+function sourceFetchError(err) {
+  var code = err && err.code;
+  if (code === 'bad-url' || code === 'blocked-address') return httpError(400, err.message, { code: 'bad-url' });
+  if (code === 'bad-type') return httpError(415, 'That link is not a web page. Paste the address of a page, or skip it.', { code: 'not-a-page' });
+  if (code === 'too-large') return httpError(413, 'That page is too large to read (over 2 MB). Skip it, or paste its text into the description.', { code: 'too-large' });
+  if (code === 'timeout') return httpError(504, 'That site took too long to answer (over 20 seconds). Try again, or skip it.', { code: 'unreachable-url' });
+  return httpError(502, 'That site could not be reached. Check the address, or skip it.', { code: 'unreachable-url' });
+}
+function renderSourcePage(url) {
+  return scrapeLovableUrl(url).then(function (rendered) {
+    return { html: stripAllScriptTags(rendered), rendered: true };
+  }, function (err) {
+    console.error('ingest-source: the rendering service could not read ' + url.split(/[?#]/)[0].slice(0, 200) + ' — ' + (err && err.message));
+    throw httpError(502, 'That page could not be read. Check the address, or skip it.', { code: 'unreachable-url' });
+  });
+}
+function readSourcePage(url, thinOk) {
+  var scraper = !!process.env.LOVABLE_SCRAPER_URL;
+  /* the User-Agent this step always sent: some sites answer only a client that says "Mozilla" */
+  return safeFetch(url, { timeoutMs: SOURCE_PAGE_TIMEOUT_MS, maxBytes: SOURCE_PAGE_MAX_BYTES, maxRedirects: 5, accept: SOURCE_PAGE_TYPES,
+    userAgent: 'Mozilla/5.0 (compatible; RevampCMS-Pilot/1.0)' })
+    .then(function (r) {
+      if (r.status >= 200 && r.status < 300) return { html: r.body.toString('utf8'), rendered: false };
+      if (SOURCE_RENDERED_STATUSES.indexOf(r.status) !== -1 && scraper) return renderSourcePage(url);
+      throw httpError(502, 'That page answered with an error (HTTP ' + r.status + '). Check the address, or skip it.', { code: 'unreachable-url', httpStatus: r.status });
+    }, function (err) { throw sourceFetchError(err); })
+    .then(function (page) {
+      if (page.rendered || !scraper || visibleTextLength(page.html) >= SOURCE_MIN_TEXT_CHARS) return page;
+      /* an empty shell: the page as a browser shows it, when the service can render it (else the shell, refused below) */
+      return renderSourcePage(url).then(function (seen) {
+        return visibleTextLength(seen.html) > visibleTextLength(page.html) ? seen : page;
+      }, function () { return page; });
+    })
+    .then(function (page) {
+      if (!thinOk && visibleTextLength(page.html) < SOURCE_MIN_TEXT_CHARS) {
+        throw httpError(422, 'Too little of this page could be read (it may build itself in the browser). Skip it, or paste its text into the description.', { code: 'unreadable' });
+      }
+      return page.html;
+    });
 }
 
 /* ---------- GENERATED TEMPLATES — theme extraction, hero image ----------
@@ -5037,6 +5102,12 @@ function handlePlanStructure(req, res) {
       if (!eventMeta.description) delete eventMeta.description;
       var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
       var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
+      /* Nothing to design from (BE-021): no name, no description, no brief, no reference page and no notes. Answered
+         before anything is paid for — the plan, the logo unit's readings and the photos' are all model calls. An event
+         with a name alone is designed from it, as a thin run. */
+      if (!String(eventMeta.name || stored.name || '').trim() && !eventMeta.description && !brief && !sourceDocs.length && !ownerNotes) {
+        throw httpError(400, 'Add a description, a document or a reference link first.', { code: 'need-input' });
+      }
       /* an awards event is built as ET's award sites are (award-site.js), whatever structure was asked for */
       if (String(stored.category || '').toLowerCase() === 'awards' || payload.siteMode === 'award') siteMode = 'award';
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections, sectionPictures: v.type === 'previousEdition' ? v.sectionPictures || [] : [] }; });
@@ -5201,7 +5272,8 @@ function handlePlanStructure(req, res) {
           else if (wantsDark) design.logoUnitNote = [design.logoUnitNote, darkCopyNote(dark && dark.why, design.mode === 'dark')].filter(Boolean).join(' ');
 
           var designPlan = {
-            sections: sections, design: design, generatedAt: now, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
+            /* generatedBy: who asked for this design (BE-058: every write names who made it) */
+            sections: sections, design: design, generatedAt: now, generatedBy: actorOf(req.user), themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
             owner: owner,
             reference: reference.basis
               ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
@@ -5417,7 +5489,7 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
       var positioningNotes = String(r.parsed.positioningNotes || '').trim().slice(0, 500);
       var now = new Date().toISOString();
       return watch.stillThere()
-        .then(function () { return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: r.model || GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: skippedLibraries }); })
+        .then(function () { return draftRef.collection('drafts').add({ templateId: templateId, sourceEventId: sourceEventId, library: library, positioningNotes: positioningNotes, model: r.model || GEMINI_TEXT_MODEL, generatedAt: now, generatedBy: actorOf(by), skippedLibraries: skippedLibraries }); })
         .then(function (docRef) {
           sendJson(res, 200, { eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes, library: library });
           if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI content written for the site (' + Object.keys(library).length + ' parts) — opened in the editor next', { area: 'site' });
@@ -6216,7 +6288,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var now = new Date().toISOString();
 
       /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
-      var merged = { generatedSections: sections, generatedPages: sitePages, generatedAt: now };
+      /* generatedBy: who asked for it (BE-058: every write names who made it) */
+      var merged = { generatedSections: sections, generatedPages: sitePages, generatedAt: now, generatedBy: actorOf(by) };
       /* the overview's picture, made here (fillSparseOverview), is kept with the plan as every section's is */
       if (overviewPictured) merged.designPlan = { sections: designPlan.sections };
       /* an award site's internal pages' words, kept until the site can have pages (SITE_PAGES) */
@@ -6230,7 +6303,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         .then(function () {
           return draftRef.collection('drafts').add({
             templateId: templateId, sourceEventId: sourceEventId, library: {},
-            positioningNotes: positioningNotes, model: (answers[0] && answers[0].model) || GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: []
+            positioningNotes: positioningNotes, model: (answers[0] && answers[0].model) || GEMINI_TEXT_MODEL, generatedAt: now, generatedBy: actorOf(by), skippedLibraries: []
           });
         })
         .then(function (docRef) {
@@ -12159,6 +12232,13 @@ function nothingToPreviewPage(data, eventId) {
 }
 
 function handlePreviewPage(req, res, eventId, slug) {
+  /* a site that is not released, shown to the signed-in team: in a frame of the app's own pages only (the review
+     page's panes), never in another site's — as server.js sends the app's pages (BE-057). Not the published site's
+     rule (/e/), which the owner has not set. */
+  if (typeof res.setHeader === 'function' && !res.headersSent) {
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  }
   /* who is asking and the event document are read at the same time (they were one after the other);
      nothing about the event is sent before the sign-in has been checked */
   var fb = getFirebase();
