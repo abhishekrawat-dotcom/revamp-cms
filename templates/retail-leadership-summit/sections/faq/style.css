@@ -49,7 +49,7 @@
 }
 /* the heading clips what sticks out of it, so the focus ring is drawn inside the button */
 #faq-5 .accordion-btn:focus-visible {
-  outline: 2px solid #FF927A;
+  outline: 2px solid var(--theme-color, #FF927A);
   outline-offset: -2px;
   border-radius: 4px;
 }

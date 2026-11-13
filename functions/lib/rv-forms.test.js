@@ -345,5 +345,37 @@ var condForm = { fields: [KIND, DESIG] };
 check('the page draws the word count under the box', SRC.indexOf("' / ' + limit + ' words'") !== -1 && /'\.rv-form \.rv-form-count\{/.test(SRC));
 check('a field required only sometimes shows its star while it is', /function syncConditions\(/.test(SRC) && /syncConditions\(\);\n\s*if \(pv\) return;/.test(SRC));
 
+/* ---------- where the visitor came from (TPL-038): the landing address's tags, kept for the visit ---------- */
+(function () {
+  function memory() { var m = {}; return { getItem: function (k) { return k in m ? m[k] : null; }, setItem: function (k, v) { m[k] = String(v); }, all: m }; }
+  function visit(search, store) { return { location: { search: search }, sessionStorage: store }; }
+  var store = memory();
+  var landed = RF.keepLanding(visit('?utm_source=newsletter&utm_medium=email&utm_campaign=nov%20launch', store), 'ev-1');
+  check('utm: the landing address\'s tags are read', landed.source === 'newsletter' && landed.medium === 'email' && landed.campaign === 'nov launch', JSON.stringify(landed));
+  check('utm: they are kept for the visit, per event (rv.utm.<event id>)', JSON.parse(store.all['rv.utm.ev-1']).source === 'newsletter', JSON.stringify(store.all));
+  var later = RF.utmOf(visit('', store), 'ev-1');
+  check('utm: a registration on another page (no query) still says where the visitor came from', later.source === 'newsletter' && later.medium === 'email' && later.campaign === 'nov launch', JSON.stringify(later));
+  check('utm: another event\'s page keeps nothing of it', RF.utmOf(visit('', store), 'ev-2').source === '');
+  var own = RF.utmOf(visit('?utm_source=linkedin', store), 'ev-1');
+  check('utm: an address with tags of its own is what counts', own.source === 'linkedin' && own.medium === '' && own.campaign === '', JSON.stringify(own));
+  check('utm: src is the source when utm_source is missing', RF.utmOf(visit('?src=qr-stand', memory()), 'ev-3').source === 'qr-stand' &&
+    RF.utmOf(visit('?src=qr&utm_source=mailer', memory()), 'ev-3').source === 'mailer');
+  var none = memory();
+  RF.keepLanding(visit('?page=2', none), 'ev-1');
+  check('utm: an address without tags keeps nothing (and does not wipe what was kept)', Object.keys(none.all).length === 0 &&
+    (RF.keepLanding(visit('', store), 'ev-1'), JSON.parse(store.all['rv.utm.ev-1']).source === 'newsletter'));
+  var blocked = { location: { search: '' } };
+  Object.defineProperty(blocked, 'sessionStorage', { get: function () { throw new Error('SecurityError'); } });
+  check('utm: a browser that refuses storage still registers, without the kept tags', RF.utmOf(blocked, 'ev-1').source === '' &&
+    RF.keepLanding({ location: { search: '?utm_source=x' }, get sessionStorage() { throw new Error('denied'); } }, 'ev-1').source === 'x');
+  var junk = memory(); junk.setItem('rv.utm.ev-1', '{not json');
+  check('utm: a kept value that cannot be read is ignored', RF.utmOf(visit('', junk), 'ev-1').source === '');
+  var long = memory(); long.setItem('rv.utm.ev-1', JSON.stringify({ source: new Array(200).join('s'), medium: 7, campaign: null }));
+  var cut = RF.utmOf(visit('', long), 'ev-1');
+  check('utm: a kept value is cut to the server\'s lengths', cut.source.length === 80 && cut.medium === '7' && cut.campaign === '', JSON.stringify(cut));
+  check('utm: the registration sends them, and the page keeps them as it starts (live or preview only)',
+    /utm: utmOf\(win, str\(opts\.eventId\)\)/.test(SRC) && /if \(page\.mode === 'live' \|\| page\.mode === 'preview'\) keepLanding\(window, page\.eventId\);/.test(SRC));
+})();
+
 if (failed) { console.error('rv-forms: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
 console.log('rv-forms: all ' + passed + ' checks passed');

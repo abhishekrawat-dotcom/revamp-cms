@@ -5,58 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1">
 <title>Template preview &mdash; EventSphere</title>
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
-<!-- Standalone view of one template: preview.html?t=tech500 (a ported template — shows its own real
-     captured markup as-is, no fill applied) or preview.html?t=gen-<eventId> (a GENERATED template). An
-     AI-designed site carries its content in its own sections and is shown as it is. One built from the
-     section library is generic placeholder text until that event's latest /api/generate-content draft is
-     applied, so when the event has such a draft it is filled through the same RevampCanvas + RevampFill
-     pipeline the real editor uses, just without any editing wired up — read-only, but the real content.
-     Needs the repo served over http — fetch() is blocked on file://. -->
+<!-- One real template on its own, as the template loader assembles it: preview.html?t=tech500 (also
+     retail-leadership-summit, cx-leaders-forum, making-ai-work) — its own markup, no event's content. Any other id
+     says "This template could not be found."; an AI-designed site's old address (?t=gen-<event id>) goes to that
+     event's own preview, /preview/<event id>, which shows its saved site. Served to signed-in staff; needs http
+     (the sections are fetched). -->
 <script src="_shared/template-loader.js"></script>
-<script src="../editor-canvas.js"></script>
-<script src="../editor-fill.js"></script>
 <style>html,body{margin:0;height:100%}</style>
 </head>
 <body>
 <script>
-  var id = new URLSearchParams(location.search).get('t') || 'tech500';
+  (function () {
+    var REAL = ['tech500', 'retail-leadership-summit', 'cx-leaders-forum', 'making-ai-work'];
+    var id = new URLSearchParams(location.search).get('t') || 'tech500';
 
-  function showError(err) {
-    document.body.style.font = '14px/1.5 system-ui, sans-serif';
-    document.body.style.padding = '24px';
-    document.body.textContent = 'Could not load template "' + id + '": ' + err.message +
-      (location.protocol === 'file:' ? ' — open this page over http (e.g. node tools/serve.js from the repo root).' : '');
-  }
+    function notFound() {
+      document.title = 'Template not found — EventSphere';
+      document.body.style.cssText = 'margin:0;padding:24px;font:15px/1.5 system-ui, sans-serif;color:#191b1f;background:#fff';
+      document.body.textContent = 'This template could not be found.';
+    }
 
-  if (!/^gen-/.test(id)) {
-    // ported template — unchanged: the real captured markup already has real content, no fill needed
+    var gen = /^gen-([a-z0-9][a-z0-9-]{0,79})$/.exec(id);
+    if (gen) { location.replace('/preview/' + encodeURIComponent(gen[1])); return; }
+    if (REAL.indexOf(id) === -1) { notFound(); return; }
     RevampTemplates.build(id).then(function (html) {
       document.open();
       document.write(html);
       document.close();
-    }).catch(showError);
-  } else {
-    // generated template — mount via RevampCanvas (same as the real editor) so RevampFill has a real
-    // canvas to fill, then apply that event's latest draft to it. Read-only: nothing here saves/edits.
-    var eventId = id.slice(4);
-    document.body.style.cssText = 'margin:0;height:100vh;';
-    var host = document.createElement('div');
-    host.style.cssText = 'width:100%;height:100%;';
-    document.body.appendChild(host);
-
-    RevampCanvas.mount(host, id, {}).then(function (canvas) {
-      return fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
-        .then(function (res) {
-          if (res.status === 404) return null;        // no draft: an AI-designed site, complete as mounted
-          return res.json().then(function (b) { if (!res.ok) throw new Error(b.error || 'The draft for this site could not be loaded.'); return b; });
-        })
-        .then(function (draftResp) {
-          if (!draftResp) return;
-          var ctx = RevampFill.fromHandoff(draftResp.handoff, null);
-          RevampFill.apply(canvas, ctx);
-        });
-    }).catch(showError);
-  }
+    }).catch(function (err) {
+      if (window.console) console.error('[template preview] ' + id + ' could not be built:', err);
+      notFound();
+    });
+  })();
 </script>
 </body>
 </html>

@@ -2,7 +2,7 @@
   background: linear-gradient(180deg, #71000A 10.61%, #400101 102.94%);
 }
 #overview .page_hdng4 h2 {
-  color: #FF927A;
+  color: var(--theme-color, #FF927A);
 }
 #overview .page_hdng4 h2 span {
   color: #FFF;

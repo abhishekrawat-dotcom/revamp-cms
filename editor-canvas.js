@@ -452,6 +452,10 @@
         body.style.setProperty('--theme-color', hex);
         html.style.setProperty('--theme-color', rgbTriplet(hex));      // ET also keeps an "r, g, b" copy on :root
         html.style.setProperty('--theme-color-hex', hex);
+        /* one of ET's own designs (a real template, <body class="microsite">) draws a second brand colour of its
+           own — cx-leaders-forum's pink — as var(--accent-color, <that colour>): a theme colour picked here recolours
+           it too, so the event's brand changes everywhere it shows (TPL-057) */
+        if (!generated && body.classList.contains('microsite')) body.style.setProperty('--accent-color', hex);
         /* a page that carries the reading colours of its brand colour (an AI-designed site: rv-theme.js derivedVars —
            a brand button's ground and words, the brand colour as small text) gets them for the new one, so what the
            editor shows is what publishing makes readable */

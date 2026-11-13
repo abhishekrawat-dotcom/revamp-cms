@@ -364,3 +364,36 @@
 #power-chain .power-chain-icon [fill="#D8151E" i] {
   fill: var(--theme-color, #D8151E);
 }
+
+/* Tablet and phone (below the width where the roles fit one row): every role in view, in rows — three to a row,
+   two on a phone, an odd last row centred — instead of a strip scrolled sideways with most roles off-screen. The
+   line and the dots that join the roles into one chain only read in one row, so they go. */
+@media (max-width: 991px) {
+  #power-chain .power-chain-journey {
+    overflow: visible;
+    margin-right: 0;
+    padding-right: 0;
+    padding-bottom: 40px;
+    scroll-snap-type: none;
+  }
+  #power-chain .power-chain-track {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 28px 12px;
+    min-width: 0;
+    padding: 0;
+  }
+  #power-chain .power-chain-item {
+    flex: 0 0 calc((100% - 24px) / 3);
+  }
+  #power-chain .power-chain-track::before,
+  #power-chain .power-chain-item:not(:last-child)::after {
+    display: none;
+  }
+}
+@media (max-width: 599px) {
+  #power-chain .power-chain-item {
+    flex-basis: calc((100% - 12px) / 2);
+  }
+}

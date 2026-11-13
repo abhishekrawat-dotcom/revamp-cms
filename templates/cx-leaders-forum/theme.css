@@ -28,7 +28,7 @@ section.mb-medium {
 .mb-medium:before {
   position: absolute;
   content: '';
-  background: linear-gradient(90deg, rgba(222, 61, 97, 0) 0.04%, #071912 51.03%, rgba(222, 61, 97, 0) 100.04%);
+  background: linear-gradient(90deg, transparent 0.04%, var(--theme-color, #071912) 51.03%, transparent 100.04%);
   height: 1px;
   width: 1170px;
   max-width: 100%;
@@ -104,7 +104,7 @@ body { background-color: rgba(255, 240, 230, 1); }
 body h1 h2 h3 { font-size: 24px; }
 body h4 h5 h6 { font-size: 16px; }
 body p { font-size: 14px; }
-#header_bg_color header { background-color: rgba(7, 25, 18, 1); }
+#header_bg_color header { background-color: var(--theme-color, #071912); }
 #banner_color banner { color: rgba(0, 0, 0, 1); }
 #button_color button { background-color: rgba(255, 0, 0, 1); }
 #button_font button { color: rgba(0, 0, 0, 1); }

@@ -21,7 +21,7 @@
 
 #stats-3 .stat-box + .stat-box {
   border-left: 1px solid;
-  border-image: linear-gradient(to bottom, rgba(222, 61, 97, 0) 0%, rgb(222 61 97 / 55%) 48%, rgba(222, 61, 97, 0) 100%);
+  border-image: linear-gradient(to bottom, transparent 0%, color-mix(in srgb, var(--accent-color, #DE3D61) 55%, transparent) 48%, transparent 100%);
   border-image-slice: 1;
 }
 
@@ -49,6 +49,11 @@
 }
 
 @media screen and (max-width: 767px) {
+  /* two to a row: an odd last one sits in the middle of its row, not alone at the left */
+  #stats-3 .row {
+    justify-content: center;
+  }
+
   #stats-3 .stat-box h3 {
     min-height: 105px;
   }
@@ -56,5 +61,10 @@
   #stats-3 .stat-box {
     width: 50%;
     margin-bottom: 10px;
+  }
+
+  /* the divider is between two stats of a row: none before the first of each row */
+  #stats-3 .stat-box:nth-child(2n+1) {
+    border-left: 0;
   }
 }

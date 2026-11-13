@@ -3283,7 +3283,8 @@
     if (!item) return null;
     if (item === el) return item;
     var cfg = repeatConfigFor(el.closest('[data-rv-section]'));
-    return cfg.label && item.querySelector(cfg.label) === el ? item : null;
+    // ":self": the item is its own label (a button), already answered above
+    return cfg.label && cfg.label !== ':self' && item.querySelector(cfg.label) === el ? item : null;
   }
 
   function deleteElement(el) {
@@ -4432,7 +4433,7 @@
 
   /* ---------- repeat items (template.json -> sections[].repeat) ----------
      repeat: { item, label } — the selector of one repeated item (a card, a tile, a question) inside the section,
-     and of the element in it that names it. The item selectors of some templates start from an id inside the
+     and of the element in it that names it (":self" when the item names itself, a button). The item selectors of some templates start from an id inside the
      section ("#stats-4 .stats-box > section"); a copy of the section has that id renamed, and inside one section
      the id says nothing the rest of the selector does not, so it is read as "any element". */
   function repeatConfigFor(sec) {
@@ -4530,7 +4531,7 @@
   function selectNewItem(item) {
     if (!item) return;
     var cfg = repeatConfigFor(item.closest('[data-rv-section]')) || {};
-    var label = cfg.label && (item.matches(cfg.label) ? item : item.querySelector(cfg.label));
+    var label = cfg.label && (cfg.label === ':self' || item.matches(cfg.label) ? item : item.querySelector(cfg.label));
     var pick = label && label.hasAttribute('data-editable') ? label
       : item.hasAttribute('data-editable') ? item : item.querySelector('[data-editable]');
     if (!pick) return;

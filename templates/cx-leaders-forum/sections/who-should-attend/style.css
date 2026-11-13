@@ -27,6 +27,12 @@
   flex: none;
 }
 
+/* the bullet's ring is drawn in the event's accent (stroke="#E81F3D" in the markup): a CSS stroke beats the
+   attribute, so a theme colour picked in the editor recolours it too */
+#who-should-attend .circul_point [stroke="#E81F3D" i] {
+  stroke: var(--accent-color, #E81F3D);
+}
+
 @media screen and (max-width: 640px) {
   #who-should-attend .attend-list {
     grid-template-columns: 1fr;

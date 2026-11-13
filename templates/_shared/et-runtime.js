@@ -21,6 +21,12 @@
      its .animated children get .go — et-animate.css keeps them at opacity 0 until then. Without .animateOnce they
      reset when scrolled away again, as ET's does. ET's delay-1s/delay-2s classes have no CSS behind them, so they
      are ignored here as well.
+     That hidden start only holds under <html class="rv-anim">, which this script sets as it runs (never while
+     editing): a page whose script did not load or run shows all its content, still. The served page's stand-in
+     (functions/lib/delivery.js RUNTIME_STUB) sets it already in <head>, so nothing shows and then hides while this
+     file loads, and takes it off again if this file never arrives; a section copied onto another website gets it
+     from its common script (editor-dev-export.js embedLoader). For visitors who asked for no motion
+     (prefers-reduced-motion) et-animate.css shows every block at once, still.
 
    Section links
      RevampSections.resolveHash(name) -> the element a link to "#<name>" means, or null: the element with that id,
@@ -141,6 +147,9 @@
     el.__rvInit = true;
     try { fn(el); } catch (err) { console.error('[revamp] section init failed:', el.getAttribute('data-rv-section'), err); }
   }
+
+  /* the scroll reveal's hidden start holds from here on (see "Scroll reveal" above) */
+  if (!editing()) document.documentElement.classList.add('rv-anim');
 
   function setGo(parent, on) {
     each(parent.querySelectorAll('.animated'), function (a) { a.classList.toggle('go', on); });

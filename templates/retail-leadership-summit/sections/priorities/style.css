@@ -39,7 +39,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding-right: 45px;
 }
 #agenda-highlights .category-tag {
   display: inline-flex;
@@ -68,22 +67,13 @@
   font-weight: 300;
   line-height: 24px;
 }
-#agenda-highlights .action-icon {
-  position: absolute;
-  top: 24px;
-  right: 24px;
-  width: 40px;
-  height: 40px;
-  background: url(https://img.etb2bimg.com/files/retail_files/file_17599212185587_Icon_1_.png) no-repeat center center;
-  border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.05);
-}
+/* The live page drew an arrow in a circle at each card's corner, as if the card led somewhere; it leads nowhere, so
+   there is none. A page saved with the arrows still in its markup does not show them. */
+#agenda-highlights .action-icon { display: none; }
 @media (max-width: 768px) {
   #agenda-highlights .cards-grid { grid-template-columns: 1fr; gap: 16px; }
   #agenda-highlights .card { padding: 16px; min-height: 120px; gap: 12px; }
-  #agenda-highlights .card-content { padding-right: 0px; }
   #agenda-highlights .card-icon { width: 50px; height: 50px; align-self: center; }
-  #agenda-highlights .action-icon { display: none; }
   #agenda-highlights .card-title { font-size: 15px; line-height: 21px; }
 }
 /* fewer than four discussion points (Create Event's Key Discussion Points, Layout items adds or removes) */

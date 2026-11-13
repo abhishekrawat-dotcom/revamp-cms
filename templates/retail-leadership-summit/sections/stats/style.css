@@ -33,7 +33,7 @@
 }
 #stats-4 section h3 strong {
   display: block;
-  color: #FF927A;
+  color: var(--theme-color, #FF927A);
   text-align: center;
   font-variant-numeric: lining-nums proportional-nums;
   font-size: 40px;
