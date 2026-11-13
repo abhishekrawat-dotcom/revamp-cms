@@ -9,7 +9,12 @@
                                 (route is the console's address fragment: /edit-event.html?event=<id>#<route>)
      SOURCES[kind]              the console resources (GET /api/event/<resource>) its list is made from, its own first
      translate[kind](lists…)    the records, one argument per SOURCES entry, as list items -> [item] | null
-                                (null when the kind has no records: the caller decides what an empty list shows)
+                                (null when the kind has nothing to show — no records, or no speaker or sponsor on
+                                the site: the caller decides what an empty list shows)
+     isOnSite(record)           whether a speaker or a sponsor is on the site (below): THE rule, asked by every place
+                                that shows them — the console's "Not on the site" and "N on site", this file's lists,
+                                the editor, the public site data, search, and the speaker and sponsor pages
+     onSite(kind, rows)         the rows of a kind that the site shows (speakers and sponsors: isOnSite; others: all)
      isImageField(field), isLinkField(kind, field)    how an item's field is shown (a picture; a link's address)
      EMPTY_PLACE_CHARS          an empty list takes its section off the page when the rest of the section has at most
                                 this many characters of text (a heading and a line or two)
@@ -49,6 +54,22 @@
   };
   var EMPTY_PLACE_CHARS = 600;
   var LABEL_LINE_CHARS = 30;
+
+  /* A speaker or a sponsor is on the site only when it is Confirmed. One with no status at all (made before the
+     field existed; an award's jury as it is first filled in) counts as Confirmed. Invited and Tentative ones are
+     the organiser's working list: the console tags them "Not on the site", and nothing that draws a site — the
+     server (site-records.js), the site editor, a session's speaker names, a juror's card, the public site data,
+     search, the speaker and sponsor pages — shows them. (The console stores only '', confirmed, invited or
+     tentative: functions/lib/http.js CONTENT_STATUSES.) */
+  function isOnSite(r) {
+    var s = r && r.status;
+    return s == null || s === '' || s === 'confirmed';
+  }
+  var STATUS_KINDS = { speakers: 1, partners: 1 };
+  function onSite(kind, rows) {
+    if (!rows || !rows.length) return rows || [];
+    return STATUS_KINDS[kind] ? rows.filter(isOnSite) : rows;
+  }
 
   function isImageField(field) { return field === 'photo' || field === 'logo' || field === 'imageUrl'; }
   function isLinkField(kind, field) { return (kind === 'partners' && field === 'url') || (kind === 'speakers' && field === 'li'); }
@@ -99,9 +120,11 @@
   }
 
   /* A speaker's card and the profile a visitor opens from it (templates/_shared/rv-popups.js): their text,
-     LinkedIn and sessions. Never the speaker's e-mail or phone. */
+     LinkedIn and sessions. Never the speaker's e-mail or phone. Only the speakers on the site (isOnSite): null
+     when there are none, as when there are no records at all. */
   function speakers(items, sessions, days) {
-    if (!items || !items.length) return null;
+    items = onSite('speakers', items);
+    if (!items.length) return null;
     var talks = speakerSessionsOf(sessions, days);
     return items.map(function (p) {
       var li = /^https:\/\/[^\s"'<>\\]+$/i.test(String(p.li || '').trim()) ? String(p.li).trim() : '';
@@ -121,16 +144,20 @@
     if (!items || !items.length) return null;
     return items.map(function (c) { return { id: idOf(c), label: c.label || '', name: c.name || '', email: c.email || '', phone: c.phone || '' }; });
   }
-  /* no tier grouping in a flat list: one item per partner, in the flat display order */
+  /* no tier grouping in a flat list: one item per partner, in the flat display order; only the sponsors on the
+     site (isOnSite) */
   function partners(items) {
-    if (!items || !items.length) return null;
+    items = onSite('partners', items);
+    if (!items.length) return null;
     return items.slice().sort(byOrder).map(function (p) { return { id: idOf(p), name: p.name || '', url: p.url || '', logo: p.logoUrl || '' }; });
   }
+  /* every session; its speakers named only when they are on the site (an Invited speaker of a session is not
+     named on it) */
   function sessions(items, days, people) {
     if (!items || !items.length) return null;
     var dayAt = {}, nameOf = {}, dayOf = {};
     (days || []).slice().sort(byOrder).forEach(function (d, i) { dayAt[d.id] = i; dayOf[d.id] = d; });
-    (people || []).forEach(function (s) { nameOf[s.id] = s.name || ''; });
+    onSite('speakers', people).forEach(function (s) { nameOf[s.id] = s.name || ''; });
     return items.slice().sort(sessionOrder(dayAt)).map(function (s) {
       var time = [clockLabel(s.start), clockLabel(s.end)].filter(Boolean).join(' – ');
       var day = dayOf[s.groupId] || null;
@@ -143,7 +170,7 @@
 
   return {
     KINDS: KINDS, TABS: TABS, SOURCES: SOURCES, EMPTY_PLACE_CHARS: EMPTY_PLACE_CHARS, LABEL_LINE_CHARS: LABEL_LINE_CHARS,
-    isImageField: isImageField, isLinkField: isLinkField, clockLabel: clockLabel,
+    isOnSite: isOnSite, onSite: onSite, isImageField: isImageField, isLinkField: isLinkField, clockLabel: clockLabel,
     translate: { speakers: speakers, sessions: sessions, partners: partners, glimpses: glimpses, faq: faq, contact: contact }
   };
 });

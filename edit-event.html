@@ -126,6 +126,8 @@
 <script>window.RV_FORMS_NO_AUTO = true;</script>
 <script src="templates/_shared/rv-forms.js"></script>
 <script src="forms-builder.js"></script>
+<!-- which speakers and sponsors are on the site: the one rule the site, the editor and the server use -->
+<script src="templates/_shared/rv-records.js"></script>
 <!-- the banner video: its rules (shared with the server) and its settings (shared with the site editor) -->
 <script src="templates/_shared/rv-hero-video-core.js"></script>
 <script src="hero-video-ui.js"></script>
@@ -2188,8 +2190,10 @@
     return STATUSES[0];
   }
   /* The site lists a speaker or a sponsor only when it is confirmed; a record that has no status
-     at all (made before the field existed) counts as confirmed, as it does on the site. */
-  function isConfirmed(r){ return !r.status || r.status === 'confirmed'; }
+     at all (made before the field existed) counts as confirmed, as it does on the site. The rule is
+     the site's own (templates/_shared/rv-records.js isOnSite), which draws the site and the editor's
+     canvas, so what this page says is on the site is what is drawn there. */
+  function isConfirmed(r){ return RevampRecords.isOnSite(r); }
   var OFF_SITE = '<span class="offsite" title="Only confirmed ones are shown on the site">Not on the site</span>';
 
   /* ---- a pill that opens a short menu (priority, status) ----
@@ -3828,7 +3832,8 @@
                 '<span>' + esc(durText(s.start, s.end) || 'no end time') + '</span>'
               : '<b>Time not set</b><span>open it to add one</span>') + '</span>' +
             '<span class="ses-title"><b>' + esc(s.title) + '</b>' +
-              '<span class="sd">' + esc(people.map(function(p){ return p.name; }).join(', ') ||
+              /* an Invited or Tentative speaker is the organiser's plan: the site does not name them on the session */
+              '<span class="sd">' + esc(people.map(function(p){ return p.name + (isConfirmed(p) ? '' : ' (not on the site)'); }).join(', ') ||
                 s.desc || (s.room ? s.room : k.label)) + '</span></span>' +
             faces +
             '<span class="ses-meta">' +

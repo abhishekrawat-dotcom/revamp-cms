@@ -294,8 +294,8 @@ function startTag(el) {
   }).join('') + '>';
 }
 
-/* the items of the kinds whose records were read: [] for a kind with none; a kind whose records were not read is
-   left out */
+/* the items of the kinds whose records were read: [] for a kind with none to show (an Invited or Tentative speaker
+   or sponsor is not on the site: rv-records.js isOnSite); a kind whose records were not read is left out */
 function itemsByKind(rows) {
   var out = {};
   RR.KINDS.forEach(function (kind) {
@@ -360,4 +360,4 @@ function renderRecords(html, rows) {
   return report;
 }
 
-module.exports = { renderRecords: renderRecords, itemsByKind: itemsByKind };
+module.exports = { renderRecords: renderRecords, itemsByKind: itemsByKind, SOURCES: RR.SOURCES };

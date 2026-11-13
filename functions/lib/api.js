@@ -10183,7 +10183,10 @@ function editorDrawnKinds(templateId, rows) {
   var map = contentMapFor(templateId) || [], items = siteRecords.itemsByKind(rows), out = [];
   map.forEach(function (m) {
     var kind = MAP_KIND[m && m.from];
-    if (kind && items[kind] && items[kind].length && out.indexOf(kind) === -1) out.push(kind);
+    /* records of the kind, on the site or not: a speaker or sponsor moved to Invited or Tentative leaves a card
+       for the editor to take away (it draws only the confirmed ones, an empty list when there are none) */
+    var own = kind && rows ? rows[siteRecords.SOURCES[kind][0]] : null;
+    if (kind && items[kind] && (items[kind].length || (Array.isArray(own) && own.length)) && out.indexOf(kind) === -1) out.push(kind);
   });
   return out;
 }

@@ -40,6 +40,7 @@ const seoSchema = require('./seo-schema');
 const seoAi = require('./seo-ai');
 const seoPrevious = require('./seo-previous');
 const genDesign = require('./gen-design');
+const RR = require('../../templates/_shared/rv-records.js');
 
 var H = null;
 function wire(helpers) { H = helpers; }
@@ -210,7 +211,7 @@ function section(req, eventId, data, x) {
   };
   var spOff = draft.speakersOff || [], fqOff = draft.faqsOff || [];
   var speakers = x.speakers.slice().sort(function (a, b) { return (+a.order || 0) - (+b.order || 0); }).map(function (s) {
-    var confirmed = s.status == null || s.status === '' || s.status === 'confirmed';
+    var confirmed = RR.isOnSite(s);
     return { id: s.id, name: str(s.name), role: str(s.desig), company: str(s.comp), photo: str(s.photoUrl), confirmed: confirmed,
       off: spOff.indexOf(s.id) !== -1, counts: confirmed && spOff.indexOf(s.id) === -1 && !!str(s.name).trim(), shown: seoSchema.showsSpeaker(ev, { id: s.id, name: s.name }) };
   });

@@ -907,9 +907,12 @@
      the card is managed in Content, and the approval page can name the record that was added, changed or removed */
   function recId(r) { return r && r.id != null ? String(r.id) : ''; }
 
+  /* Speakers and sponsors: only those on the site (RevampRecords.isOnSite — Confirmed, or no status), as the
+     console says ("Not on the site"). With records but none of them on the site, an empty list: the cards an
+     earlier open drew (an Invited speaker's, from before this rule) go, by the list's own "empty":"hide". */
   function translateSpeakers(items) {
     if (!items || !items.length) return null;
-    return { items: items.map(function (p) { return { id: recId(p), n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; }) };
+    return { items: RevampRecords.onSite('speakers', items).map(function (p) { return { id: recId(p), n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; }) };
   }
   function translateFaqs(items) {
     if (!items || !items.length) return null;
@@ -946,12 +949,12 @@
     var fallback = { t: '', logos: [] };
     // each sponsor's logo and link as well as its name: the partners' fill rules show the logo ({logo}) and link it
     // ({url}), and drawing the Content's sponsors without them put names where their logos had been
-    partners.slice().sort(byOrder).forEach(function (p) {
+    RevampRecords.onSite('partners', partners).slice().sort(byOrder).forEach(function (p) {
       (slots[p.tierId] || fallback).logos.push({ id: recId(p), n: p.name || '', logo: p.logoUrl || '', url: p.url || '' });
     });
     if (fallback.logos.length) ordered.push(fallback);
     var tiersOut = ordered.filter(function (t) { return t.logos.length; });
-    return tiersOut.length ? { tiers: tiersOut } : null;
+    return { tiers: tiersOut };
   }
 
   var SUBCOLLECTION_SOURCES = {
@@ -1130,13 +1133,19 @@
   /* The notice says it in the owner's words, at a size that reads on the scaled-down canvas (16px there is about
      13px on screen), with the place to add them as a link: a click on it opens that Content tab in a new tab, a
      click anywhere else on the notice selects it and the toolbar says the same (recordOf). */
+  /* With speakers or sponsors in Content but none of them Confirmed (data-rv-empty-waiting: how many), it says so:
+     only Confirmed ones are on the site (RevampRecords.isOnSite), as the console's "Not on the site" says. */
   function fillEmptyNote(note, kind, whole) {
-    var tab = RevampRecords.TABS[kind];
-    note.textContent = (tab ? 'No ' + tab.many + ' yet' : 'Nothing to show yet') + ': visitors do not see this ' + (whole ? 'section' : 'list') + ' until there are some. ';
+    var tab = RevampRecords.TABS[kind], waiting = +note.getAttribute('data-rv-empty-waiting') || 0;
+    var what = whole ? 'section' : 'list';
+    note.textContent = tab && waiting
+      ? 'No confirmed ' + tab.many + ' yet: only Confirmed ' + tab.many + ' are on the site, and the ' + (waiting === 1 ? tab.one : waiting + ' ' + tab.many) +
+        ' in ' + tab.label + (waiting === 1 ? ' is' : ' are') + ' Invited or Tentative. Visitors do not see this ' + what + ' until one is confirmed. '
+      : (tab ? 'No ' + tab.many + ' yet' : 'Nothing to show yet') + ': visitors do not see this ' + what + ' until there are some. ';
     if (!tab) return;
     var link = note.ownerDocument.createElement('span');
     link.setAttribute('data-rv-content-link', '');
-    link.textContent = 'Add ' + tab.many + ' in ' + tab.label + ' ↗';
+    link.textContent = (waiting ? 'Confirm ' : 'Add ') + tab.many + ' in ' + tab.label + ' ↗';
     note.appendChild(link);
   }
   function emptyPlaceOf(listParent) {
@@ -1146,13 +1155,21 @@
     var listWords = (listParent.innerText || listParent.textContent || '').replace(/\s+/g, ' ').trim().length;
     return words - listWords <= 600 ? sec : listParent;
   }
-  function markEmpty(doc, kind) {
+  /* waiting: records of the kind that are not on the site (Invited or Tentative speakers or sponsors), for the notice */
+  function markEmpty(doc, kind, waiting) {
     /* a button that opens a form (Register, or any other form) is never hidden with an empty section (pages
        saved before this rule may carry the mark) */
     Array.prototype.forEach.call(doc.querySelectorAll('a[data-register-cta][data-rv-nav-empty], a[data-rv-form][data-rv-nav-empty]'), function (a) { a.removeAttribute('data-rv-nav-empty'); });
     Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
       var parent = el.parentNode;
-      if (!parent || parent.querySelector(':scope > [data-rv-empty-state]')) return;
+      if (!parent) return;
+      var had = parent.querySelector(':scope > [data-rv-empty-state]');
+      if (had) {
+        // the notice already there says it again, with today's count
+        if (waiting) had.setAttribute('data-rv-empty-waiting', String(waiting)); else had.removeAttribute('data-rv-empty-waiting');
+        fillEmptyNote(had, kind, !parent.hasAttribute('data-rv-empty'));
+        return;
+      }
       var place = emptyPlaceOf(parent);
       // a section with a form in it, or a button that opens one, is never hidden as empty: only the empty list is
       if (place !== parent && holdsForm(place)) place = parent;
@@ -1162,6 +1179,7 @@
       note.setAttribute('data-rv-editor', '');
       note.setAttribute('data-ed', 'none');
       note.setAttribute('style', 'margin:12px 0;padding:12px 16px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;font:500 16px/1.5 Inter,Arial,sans-serif;color:inherit;opacity:.9;cursor:pointer');
+      if (waiting) note.setAttribute('data-rv-empty-waiting', String(waiting));
       fillEmptyNote(note, kind, place !== parent);
       parent.insertBefore(note, parent.firstChild);
       /* marked as a whole now: a mark the list itself had from an earlier rule is not needed */
@@ -1220,7 +1238,7 @@
 
   function applyGenericRepeat(canvas, kind, items) {
     if (!canvas || !canvas.doc || !items) return;
-    if (!items.length) { markEmpty(canvas.doc, kind); return; }
+    if (!items.length) { markEmpty(canvas.doc, kind, items.waiting || 0); return; }
     markFilled(canvas.doc, kind);
     var lists = [];
     Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-repeat-template="' + kind + '"]'), function (el) {
@@ -1322,7 +1340,8 @@
     var wanted = AUTO_KINDS.filter(function (kind) { return !kindPlaced(kind); });
     if (!wanted.length) return Promise.resolve([]);
     return Promise.all(wanted.map(function (kind) {
-      return RevampCore.fetchSub(AUTO_SECTIONS[kind].resource, eventId).then(function (rows) { return rows && rows.length ? kind : ''; }, function () { return ''; });
+      // only records the site shows bring a section: not a speaker or sponsor who is Invited or Tentative
+      return RevampCore.fetchSub(AUTO_SECTIONS[kind].resource, eventId).then(function (rows) { return rows && RevampRecords.onSite(kind, rows).length ? kind : ''; }, function () { return ''; });
     })).then(function (found) {
       var added = [];
       // each goes after the one before it, so they come in AUTO_KINDS order
@@ -1364,8 +1383,11 @@
         if (inputs[0] == null) return;   // the kind's own records could not be fetched — leave it untouched
         /* confirmed empty (the fetch worked and there are none): the list's sample item is not this event's */
         if (Array.isArray(inputs[0]) && !inputs[0].length) { overlay[kind] = []; return; }
+        /* records, none of them on the site (every speaker or sponsor Invited or Tentative): empty, as on the
+           site (functions/lib/site-records.js), and the notice says how many are waiting to be confirmed */
         var items = cfg.translate.apply(null, inputs);
-        if (items) overlay[kind] = items;
+        if (!items) { items = []; items.waiting = inputs[0].length - RevampRecords.onSite(kind, inputs[0]).length; }
+        overlay[kind] = items;
       });
       return Object.keys(overlay).length ? overlay : null;
     });
@@ -2044,11 +2066,13 @@
   function recordPill(rec) {
     var t = rec.tab, href = contentHref(rec.kind);
     var hidden = rec.state === 'empty' || !!rec.el.closest('[data-rv-empty]');
-    var words = rec.state === 'record' ? 'From ' + t.label : 'No ' + t.many + ' yet' + (hidden ? ' · hidden on the live site' : '');
+    // speakers or sponsors in Content, none of them Confirmed (fillEmptyNote)
+    var waiting = rec.state === 'empty' && rec.el.hasAttribute('data-rv-empty-waiting');
+    var words = rec.state === 'record' ? 'From ' + t.label : 'No ' + (waiting ? 'confirmed ' : '') + t.many + ' yet' + (hidden ? ' · hidden on the live site' : '');
     return '<span class="tpl-tb-text">' + escHtml(words) + '</span>' +
       (href ? '<a class="tpl-tb-link" href="' + escHtml(href) + '" target="_blank" rel="noopener" title="Opens ' + escHtml(t.label) +
         ' in a new tab. The site’s staged copy shows a change made there at once; this editor shows it the next time it opens.">' +
-        (rec.state === 'record' ? 'Edit in Content' : 'Add ' + escHtml(t.many) + ' in Content') + ' ↗</a>' : '');
+        (rec.state === 'record' ? 'Edit in Content' : (waiting ? 'Confirm ' : 'Add ') + escHtml(t.many) + ' in Content') + ' ↗</a>' : '');
   }
 
   /* the usual align and copy pictures, in place of the arrow and square glyphs (⇤ ↔ ⇥ ⧉) that said nothing without

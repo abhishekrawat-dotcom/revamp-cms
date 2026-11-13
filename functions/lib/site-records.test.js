@@ -450,6 +450,30 @@ function addFaq(id, fid, q, a) { FB.docs['events/' + id + '/faqs/' + fid] = { qu
   addFaq('cr-tech', 't1', 'Q?', 'A.');
   r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-tech' } });
   check('2.24 a real template draws FAQs in the site editor: the console is told to open it', r.status === 200 && r.body.needsEditor.indexOf('faq') !== -1 && r.body.staged === false, r.text);
+  /* CON-036: a real template's speakers, every one of them now Invited: the card drawn earlier is the editor's to take
+     away, so the console is still told to open it; no section is asked for */
+  FB.docs['events/cr-cx'] = { name: 'Real template, invited', createdAt: NOW, templateId: 'cx-leaders-forum', site: { version: 1, templateId: 'cx-leaders-forum' } };
+  await save('events/cr-cx/site/page.html', '<!DOCTYPE html><html><body><section data-rv-section="speakers"><div class="speaker-card" data-rv-item="speakers" data-rv-id="i1"><h5>Meera Iyer</h5></div></section></body></html>');
+  FB.docs['events/cr-cx/speakers/i1'] = { name: 'Meera Iyer', status: 'invited', createdAt: NOW, order: 0 };
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-cx' } });
+  check('2.24b a real template whose speakers are all Invited: the console is told to open the editor, no section asked for',
+    r.status === 200 && r.body.needsEditor.indexOf('speakers') !== -1 && r.body.unplaced.indexOf('speakers') === -1 && r.body.staged === false, r.text);
+  /* …and an AI-designed site that showed an Invited speaker and a Tentative sponsor (drawn before the rule): the next
+     Content change stages a copy without them, which is what the preview and, once approved, the live page show */
+  FB.docs['events/cr-inv'] = { name: 'Invited on the page', createdAt: NOW, templateId: 'gen-cr-inv', published: true, publishedVersion: 1, site: { version: 1, snapshotVersion: 1, templateId: 'gen-cr-inv' } };
+  var drawnBefore = SR.renderRecords(sitePage({ speakers: SPEAKER_MODEL }), rows({ speakers: [{ id: 'c1', name: 'Asha Rao' }, { id: 'i2', name: 'Meera Iyer' }],
+    partners: [{ id: 'p1', name: 'Acme' }, { id: 'p2', name: 'Hooli' }] })).html;
+  await save('events/cr-inv/site/page.html', drawnBefore);
+  await save('events/cr-inv/site/versions/1/page.html', drawnBefore);
+  FB.docs['events/cr-inv/speakers/c1'] = { name: 'Asha Rao', status: 'confirmed', createdAt: NOW, order: 0 };
+  FB.docs['events/cr-inv/speakers/i2'] = { name: 'Meera Iyer', status: 'invited', createdAt: NOW, order: 1 };
+  FB.docs['events/cr-inv/partners/p1'] = { name: 'Acme', createdAt: NOW, order: 0 };
+  FB.docs['events/cr-inv/partners/p2'] = { name: 'Hooli', status: 'tentative', createdAt: NOW, order: 1 };
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-inv' } });
+  var stagedInv = file('events/cr-inv/site/page.html');
+  check('2.24c a site that showed an Invited speaker and a Tentative sponsor: the staged copy no longer does, and the change is told as removals',
+    r.status === 200 && r.body.staged === true && r.body.version === 2 && /Asha Rao/.test(stagedInv) && /Acme/.test(stagedInv) && !/Meera Iyer|Hooli/.test(stagedInv) &&
+    /removed/.test(r.body.summary), { body: r.body, page: (stagedInv || '').slice(0, 200) });
   r = await call('POST', '/api/event/site/records', { body: { eventId: ID } });
   check('2.25 signed out: refused', r.status === 401, r.status);
 

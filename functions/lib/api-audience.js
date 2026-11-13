@@ -63,6 +63,7 @@ const { logActivity, listActivity, actorOf, maskEmail } = require('./activity');
 const forms = require('./forms');
 const phone = require('./phone');
 const pictures = require('./pictures');
+const RR = require('../../templates/_shared/rv-records.js');
 
 const FieldValue = admin.firestore.FieldValue;
 const FieldPath = admin.firestore.FieldPath;
@@ -507,7 +508,8 @@ function withAudienceCounters(fb, eventId, work) {
 var CONTENT = ['speakers', 'speakerGroups', 'sessions', 'agendaGroups', 'partners', 'partnerTiers', 'gallery', 'faqs', 'contacts'];
 var SOCIAL_KINDS = ['linkedin', 'x', 'facebook', 'instagram', 'youtube', 'website'];
 
-function isPublicStatus(s) { return s == null || s === '' || s === 'confirmed'; }
+/* the site's own rule (templates/_shared/rv-records.js isOnSite), which draws the published page and the editor */
+function isPublicStatus(s) { return RR.isOnSite({ status: s }); }
 function weightOf(v) { return typeof v === 'number' && isFinite(v) ? v : line(v, 40); }
 
 function buildSiteData(fb, eventId, ev) {

@@ -57,6 +57,7 @@ var etPrevious = require('./et-previous');
 var H = require('./http');
 var AC = require('./access-control');
 var PM = require('./people-match');
+var RR = require('../../templates/_shared/rv-records.js');
 
 var COL = 'etLibrary', LOCK = '_lock', AGENDA_COL = 'etLibraryAgenda';
 var FRESH_MS = 24 * 3600 * 1000;
@@ -311,7 +312,8 @@ function ownRecords(fb, kind, o) {
       var ev = d.ref.parent && d.ref.parent.parent, evId = ev && ev.id, v = d.data() || {};
       /* a test event is no one's record (a test server may count its own: PEOPLE_INCLUDE_QA=1, lib/people.js) */
       if (!evId || !events[evId] || !str(v.name).trim() || (/^qa-/.test(evId) && process.env.PEOPLE_INCLUDE_QA !== '1')) return;
-      if (v.status && v.status !== 'confirmed') return;
+      /* only a speaker or sponsor the event's site shows (Confirmed, or no status): rv-records.js isOnSite */
+      if (!RR.isOnSite(v)) return;
       list.push({ eventId: evId, id: d.id, event: events[evId], v: v });
     });
     ownCache[kind] = { db: fb.db, at: Date.now(), list: list };
