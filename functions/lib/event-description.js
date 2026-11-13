@@ -18,8 +18,10 @@
                                           a heading or a list in it); one over MAX_LENGTH is cut at its last
                                           full sentence that fits, or at a word with "…"
      IDEAL_LENGTH, MAX_LENGTH           160 and 220 characters
-     storedFacts(eventMeta)            -> the event's facts a brief step may store on the event: everything but
-                                          the description
+     BRIEF_FACT_FIELDS                 the event's facts a brief step may store on it: name, start, end, venue, city
+     storedFacts(eventMeta)            -> those of them eventMeta carries (never the description, nor anything
+                                          else a request may send: lib/api.js briefFacts checks each one as
+                                          PATCH /api/event does before it is stored)
      patch(parsedDescription, stored, briefText) -> { description } | null   what plan-structure writes
      buildPrompt(o)                    -> the prompt of a description-only call (the repair tool):
                                           o = { event, brief, previous, previousSummary }
@@ -72,9 +74,13 @@ function clean(text) {
   return t;
 }
 
+var BRIEF_FACT_FIELDS = ['name', 'start', 'end', 'venue', 'city'];
+
 function storedFacts(eventMeta) {
-  var out = Object.assign({}, eventMeta || {});
-  delete out.description;
+  var src = eventMeta && typeof eventMeta === 'object' ? eventMeta : {}, out = {};
+  BRIEF_FACT_FIELDS.forEach(function (f) {
+    if (Object.prototype.hasOwnProperty.call(src, f) && src[f] !== undefined) out[f] = src[f];
+  });
   return out;
 }
 
@@ -140,4 +146,4 @@ function buildPrompt(o) {
   return lines.join('\n');
 }
 
-module.exports = { IDEAL_LENGTH, MAX_LENGTH, RULE, SCHEMA, ACTIVITY_DETAIL, isRawBrief, replaceable, clean, storedFacts, patch, buildPrompt, dateText };
+module.exports = { IDEAL_LENGTH, MAX_LENGTH, RULE, SCHEMA, ACTIVITY_DETAIL, BRIEF_FACT_FIELDS, isRawBrief, replaceable, clean, storedFacts, patch, buildPrompt, dateText };

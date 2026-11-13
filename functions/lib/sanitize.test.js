@@ -206,6 +206,53 @@ BENIGN.forEach(function (row) {
   ok(sanitizeStyleAttribute('color:red} body{display:none') === '', 'style attribute: a value that opens another rule is refused', sanitizeStyleAttribute('color:red} body{display:none'));
 })();
 
+/* What real saved sites carry (checked over brand-world-summit-2026, entreprenuer-awards-2027, agentic-ai-summit-2027 and
+   28 more, and 8 Lovable imports, 13 Nov 2026): kept in both profiles. */
+(function () {
+  var REAL = '<a class="hero-btn" data-rv-award-cta data-nominate-form="nomination" data-interest-form="express-interest" data-winners-href="/e/x/winners" href="#hero">Nominate</a>' +
+    '<button data-rv-tab="previous-agenda:0">Day 1</button><div data-rv-tabpanel="previous-agenda:0">x</div>' +
+    '<div data-rv-logo-note="The year in your logo was changed from 2026 to 2027: check it.">l</div><img src="/a.png" data-src="https://cdn.example.com/b.png" alt="">' +
+    '<div data-theme="dark" data-carousel-layer="1" data-rv-motion="{&quot;on&quot;:&quot;view&quot;}">m</div>';
+  ['generated', 'imported'].forEach(function (profile) {
+    var r = sanitizeHtml(REAL, { profile: profile });
+    ['data-rv-award-cta', 'data-nominate-form="nomination"', 'data-interest-form="express-interest"', 'data-winners-href="/e/x/winners"', 'data-rv-tab="previous-agenda:0"',
+      'data-rv-tabpanel="previous-agenda:0"', 'data-rv-logo-note="The year in your logo was changed from 2026 to 2027: check it."', 'data-src="https://cdn.example.com/b.png"',
+      'data-theme="dark"', 'data-carousel-layer="1"', 'data-rv-motion="{&quot;on&quot;:&quot;view&quot;}"'].forEach(function (needle) {
+      ok(r.html.indexOf(needle) !== -1, profile + ': a data-* the site\'s scripts read stays — ' + needle, r.html);
+    });
+    ok(!r.removed.length, profile + ': nothing reported removed from real markup', JSON.stringify(r.removed));
+    var bad = sanitizeHtml('<div data-href="javascript:alert(1)" data-src="data:text/html,x" data-x="vbscript:y" data-ok="data:image/png;base64,AAAA">x</div>', { profile: profile });
+    ok(!/javascript|vbscript|text\/html/.test(bad.html) && /data-ok="data:image\/png;base64,AAAA"/.test(bad.html), profile + ': a data-* that is a runnable address goes', bad.html);
+  });
+  var imp = sanitizeHtml('<img src="/a.png" fetchpriority="high" alt=""><hr size="1px" noshade><br clear="all"><input type="email" required autocomplete="email" maxlength="80">', { profile: 'imported' });
+  ok(/fetchpriority="high"/.test(imp.html) && /size="1px"/.test(imp.html) && / noshade/.test(imp.html) && /clear="all"/.test(imp.html) && / required/.test(imp.html) && /autocomplete="email"/.test(imp.html) && !imp.removed.length,
+    'imported: the inert attributes real imports carry stay', imp.html + ' ' + JSON.stringify(imp.removed));
+})();
+
+/* CSS a browser still reads, and CSS that cannot make a tag anywhere */
+(function () {
+  var tail = sanitizeCss(".a{color:red}@media (max-width:820px){.b{gap:36px}}'auto'");
+  ok(/\.a\{color:red\}/.test(tail) && /@media \(max-width:820px\)\{\.b\{gap:36px\}\}/.test(tail) && !/auto/.test(tail), 'css: a stray word after the last rule (a real section ends so) loses only itself', tail);
+  ok(sanitizeCss('.a{color:red} junk <b') === '', 'css: a sheet that does not parse and has a "<" in it is refused whole');
+  var open = sanitizeCss('.a{color:red}.b{color:blue');
+  ok(/\.a\{color:red\}/.test(open) && /\.b\{color:blue\}?/.test(open), 'css: a last rule left open is closed, as a browser does', open);
+  var str = sanitizeCss('.a{content:"<img src=x onerror=alert(1)>"}.b::after{content:"</p>"}');
+  ok(!/<[A-Za-z\/!?]/.test(str) && /\\3c img src=x/.test(str), 'css: no "<" that could start a tag is left, even inside a string (an <svg>\'s <style> reads its text as markup)', str);
+  var range = sanitizeCss('@media (400px < width < 900px){.a{padding:1rem}}');
+  ok(/@media \(400px < width < 900px\)/.test(range), 'css: a media query\'s own "<" stays', range);
+  ok(sanitizeCss(str) === str, 'css: escaped output is stable', sanitizeCss(str));
+})();
+
+/* <style> elements: read by the parser, moved out of the markup, their rules kept */
+(function () {
+  var blocks = require('./sanitize').styleBlocks('<style data-rv-imported-css="/a.css">.a{color:red}</style><svg><style>.s{fill:red}</style></svg><p title="<style>.no{}</style>">x</p>');
+  ok(blocks.length === 2 && blocks[0].attrs['data-rv-imported-css'] === '/a.css' && blocks[0].css === '.a{color:red}' && blocks[1].css === '.s{fill:red}',
+    'styleBlocks: every real <style> element with its attributes, and nothing that only looks like one inside an attribute', JSON.stringify(blocks));
+  var sec = require('./sanitize').sanitizeSection('<section><style>.t{color:red}</style><svg><style>.u{content:"<img src=x onerror=alert(1)>"}</style></svg><h2>x</h2></section>', '.r{padding:1rem}', { profile: 'generated' });
+  ok(!/<style/.test(sec.html) && /<h2>x<\/h2>/.test(sec.html), 'sanitizeSection: no <style> left in the markup', sec.html);
+  ok(/\.r\{padding:1rem\}[\s\S]*\.t\{color:red\}[\s\S]*\.u\{content:"\\3c img/.test(sec.css) && !/<img/.test(sec.css), 'sanitizeSection: the CSS given first, then the markup\'s own rules, each made safe', sec.css);
+})();
+
 if (failures.length) {
   console.error(failures.length + ' of ' + checks + ' checks FAILED:\n');
   failures.forEach(function (f) { console.error('  - ' + f + '\n'); });

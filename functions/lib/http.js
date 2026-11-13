@@ -79,6 +79,20 @@ function sessionCookieToken(req) {
 function requireAdmin(req, res, cb) {
   var token = bearerToken(req);
   if (!token) return sendJson(res, 401, { error: 'Sign in required — missing Authorization: Bearer <token> header.' });
+  checkCaller(req, res, token, cb);
+}
+
+/* requireAdmin's rules — the access list, the role the request needs, the caller's portals — for a route a page
+   also calls with its sign-in cookie alone (Create Event's AI steps, the site loader where auth.js is missing):
+   the Bearer header, else the __session cookie the app's sign-in keeps (SameSite=Lax, so another site cannot
+   send it with a request of its own). cb(fb, decoded), as requireAdmin. */
+function requireMember(req, res, cb) {
+  var token = bearerToken(req) || sessionCookieToken(req);
+  if (!token) return sendJson(res, 401, { error: 'Sign in required — please sign in again.' });
+  checkCaller(req, res, token, cb);
+}
+
+function checkCaller(req, res, token, cb) {
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
   fb.auth.verifyIdToken(token).then(function (decoded) {
@@ -273,7 +287,7 @@ function isEmail(v) { return typeof v === 'string' && v.length <= 200 && EMAIL_R
 function str(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 300); }
 
 module.exports = {
-  sendJson, readBody, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin,
+  sendJson, readBody, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin, requireMember,
   adminFromRequest, CORS_HEADERS, sendPublicJson, sendPublicNoContent, clientIp, rateLimit, isEventId,
   isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str
 };
