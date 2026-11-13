@@ -10,7 +10,7 @@
    THE RECORD (one entry per AI turn of every brain). Written by the SERVER where the turn is answered, never taken
    from a browser: lib/dash-bot.js (the dash brain, on every page), lib/api.js handleChatEdit (the site editor's
    brain), and later the Promotions editors' brain (B18-ai) through the same one function, recordTurn(fb, turn).
-   An entry says who asked (uid, name), where (event, page, tab), the request in a normalised form (a short intent
+   An entry says who asked (uid, name), where (event, its kind: ip, client or awards, page, tab), the request in a normalised form (a short intent
    label from the brain's own structured output, never an extra AI call, and the person's words with e-mails,
    phones, links and every event's name and id stripped), what the AI did (the action's kind and target, never its
    words) and the outcome: answered, done, partly, undone (and how soon), stopped, refused (and which rule), could
@@ -175,6 +175,23 @@ function strip(text, o) {
   });
   return line(s, o.max || CAPS.wordsChars);
 }
+/* Only the events' names and ids in a person's words, nothing else (a shortcut keeps the person's own words, for
+   them alone: lib/ai-habits.js): this event's become "this event", so the request runs on whichever event it is
+   run on; any other event's become "another event", and `other` says so. o: { known, hereId }
+   -> { text, other } */
+function nameEvents(text, o) {
+  o = o || {};
+  var s = str(text), lower = s.toLowerCase(), hereId = str(o.hereId), other = false;
+  namePatterns(o.known).forEach(function (p) {
+    if (lower.indexOf(p.first) === -1) return;
+    s = s.replace(p.re, function (m, before) {
+      if (p.id !== hereId) other = true;
+      return before + (p.id === hereId ? 'this event' : 'another event');
+    });
+    lower = s.toLowerCase();
+  });
+  return { text: s, other: other };
+}
 /* e-mails and phones masked again when a report reads an entry or a note: kept text from before a rule changed, or
    a name that is an address, never shows one */
 function maskContact(text) {
@@ -310,6 +327,9 @@ function cleanScreen(v) {
 function cleanPage(v) { return PAGES.indexOf(str(v)) !== -1 ? str(v) : ''; }
 function cleanTab(v) { var t = str(v).trim().toLowerCase(); return TAB_RE.test(t) ? t : ''; }
 function cleanEventId(v) { var id = str(v).trim(); return EVENT_ID_RE.test(id) ? id : ''; }
+/* the kind of event (Create Event's categories, the console's Category): ip, client or awards; '' for none */
+var KINDS = { ip: 1, client: 1, awards: 1 };
+function cleanKind(v) { var k = str(v).trim().toLowerCase(); return KINDS[k] ? k : ''; }
 
 /* ================================================================ the record */
 
@@ -341,7 +361,8 @@ function entryOf(t, nowMs) {
   var turnId = TURN_ID_RE.test(str(t.turnId)) ? str(t.turnId) : '';
   var entry = {
     brain: brain, uid: uid, name: nameOf(decoded), test: isTestOf(eventId, decoded),
-    eventId: eventId, eventName: eventId ? line(t.eventName, 120) : '', page: cleanPage(t.page), tab: cleanTab(t.tab),
+    eventId: eventId, eventName: eventId ? line(t.eventName, 120) : '', eventKind: eventId ? cleanKind(t.eventKind) : '',
+    page: cleanPage(t.page), tab: cleanTab(t.tab),
     intent: intent, words: strip(t.words, o),
     did: { kind: line(did.kind, 24), target: line(did.target, 80) },
     outcome: outcome, rule: line(t.rule, CAPS.ruleChars),
@@ -366,8 +387,9 @@ function writeEntry(fb, entry) {
   });
 }
 
-/* The names and ids of every event, for stripping the words of a brain that has no list of its own (the site
-   editor's): one small read, kept for ten minutes in this process, and read only after the answer has gone. */
+/* The names, ids and kinds of every event, for stripping the words of a brain that has no list of its own (the site
+   editor's) and for the kind of event an older entry was about (lib/ai-habits.js): one small read, kept for ten
+   minutes in this process, and read only after the answer has gone. -> [{ id, name, category }] */
 var namesCache = { at: 0, list: null, pending: null };
 function knownEvents(fb) {
   var now = clock.now();
@@ -375,8 +397,8 @@ function knownEvents(fb) {
   if (namesCache.pending) return namesCache.pending;
   var p;
   try {
-    p = fb.db.collection('events').select('name').get().then(function (snap) {
-      var list = snap.docs.map(function (d) { return { id: d.id, name: str((d.data() || {}).name) }; });
+    p = fb.db.collection('events').select('name', 'category').get().then(function (snap) {
+      var list = snap.docs.map(function (d) { var x = d.data() || {}; return { id: d.id, name: str(x.name), category: cleanKind(x.category) }; });
       namesCache = { at: clock.now(), list: list, pending: null };
       return list;
     });
@@ -389,8 +411,18 @@ function knownEvents(fb) {
   return namesCache.pending;
 }
 
+/* Who else in this process reads the record as it is written (lib/ai-habits.js keeps its digest of recent entries
+   fresh with it, so a person's own new request counts for their suggestions at once): fn({ type: 'entry', id, entry })
+   after an entry is written, fn({ type: 'outcome', id, turnKey, patch }) after a page's report changed one. A
+   listener that throws is logged and forgotten; it never touches the write. */
+var listeners = [];
+function onRecord(fn) { if (typeof fn === 'function' && listeners.indexOf(fn) === -1) listeners.push(fn); }
+function tell(ev) {
+  listeners.forEach(function (fn) { try { fn(ev); } catch (e) { warn('listener', 'a reader of the record failed — ' + (e && e.message)); } });
+}
+
 /* THE ONE FUNCTION a brain calls for each AI turn it answered (after the answer has been sent):
-     recordTurn(fb, { brain: 'dash'|'edit'|'promo', decoded, eventId, eventName, page, tab, intent, fallback, words,
+     recordTurn(fb, { brain: 'dash'|'edit'|'promo', decoded, eventId, eventName, eventKind, page, tab, intent, fallback, words,
                       did: { kind, target }, outcome, rule, turnId, known?: [{ id, name }], handedFrom?,
                       ua?, screen? })
    known: every event the person can see, when the brain has read them (the dash brain); without it the names are
@@ -406,7 +438,8 @@ function recordTurn(fb, t) {
   var known = Array.isArray(t.known) ? Promise.resolve(t.known) : knownEvents(fb);
   var done = known.then(function (list) {
     var entry = entryOf(Object.assign({}, t, { known: list }), nowMs);
-    return writeEntry(fb, entry).then(function () {
+    return writeEntry(fb, entry).then(function (id) {
+      tell({ type: 'entry', id: str(id), entry: entry });
       if (!entry.complaint) return entry;
       return writeNote(fb, noteOf('complaint', {
         decoded: t.decoded, brain: entry.brain, eventId: entry.eventId, eventName: entry.eventName, page: entry.page, tab: entry.tab,
@@ -461,6 +494,7 @@ function recordOutcome(fb, o) {
         tx.update(doc.ref, patch);
       });
     }).then(function () {
+      if (patch) tell({ type: 'outcome', id: str(doc.id), turnKey: key, patch: patch });
       if (!patch || outcome !== 'undone' || e.outcome === 'undone') return null;
       return writeNote(fb, noteOf('undo', {
         decoded: o.decoded, brain: e.brain, eventId: e.eventId, eventName: e.eventName, page: e.page, tab: e.tab, intent: e.intent,
@@ -844,12 +878,17 @@ function handleNote(req, res) {
 
 module.exports = {
   wire: wire, recordTurn: recordTurn, recordOutcome: recordOutcome, dashFacts: dashFacts, editFacts: editFacts, promoFacts: promoFacts,
-  handleReport: handleReport, handleResolve: handleResolve, handleNote: handleNote, CAPS: CAPS
+  handleReport: handleReport, handleResolve: handleResolve, handleNote: handleNote, CAPS: CAPS,
+  /* for lib/ai-habits.js, which reads the record for suggestions, examples and shortcuts */
+  onRecord: onRecord, knownEvents: knownEvents, nameEvents: nameEvents, strip: strip, cleanKind: cleanKind, cleanPage: cleanPage,
+  cleanEventId: cleanEventId, personKey: personKey, uidOf: uidOf, nameOf: nameOf, isTestOf: isTestOf, maskContact: maskContact,
+  RECORD: RECORD, PAGES: PAGES, GAPS: GAPS, CHANGES: CHANGES, clock: clock
 };
 module.exports._test = {
   strip: strip, cleanIntent: cleanIntent, entryOf: entryOf, noteOf: noteOf, groupOf: groupOf, noteGate: noteGate, resetGate: resetGate,
   buildReport: buildReport, rangeOf: rangeOf, outcomeOf: outcomeOf, isComplaint: isComplaint, browserOf: browserOf, cleanScreen: cleanScreen,
   phoneLike: phoneLike, nameVariants: nameVariants, whyNot: whyNot, maskContact: maskContact, whereOf: whereOf, normError: normError,
   writeEntry: writeEntry, ringKeyOf: ringKeyOf, gateSize: function () { return Object.keys(gate.seen).length; }, knownEvents: knownEvents, sweep: sweep, clock: clock, PAGES: PAGES,
-  resetCaches: function () { namesCache = { at: 0, list: null, pending: null }; compiled = { key: '', items: [] }; lastSweep = 0; warned = {}; resetGate(); }
+  resetCaches: function () { namesCache = { at: 0, list: null, pending: null }; compiled = { key: '', items: [] }; lastSweep = 0; warned = {}; resetGate(); },
+  listeners: function () { return listeners; }
 };

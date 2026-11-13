@@ -353,8 +353,10 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
   check('C.2 four suggestions', byClass(T, 'rvc-suggestion').length === 4);
   check('C.2 without attach: no attach button, no file input, no drop overlay', !m.$('attach') && !m.$('file') && byClass(P, 'rvc-drop').length === 0 && !byClass(P, 'rvc-compose')[0].classList.contains('has-attach'));
   check('C.2 without scope: the scope line is hidden (and there is no dot beside the status any more)', m.$('scope').hidden === true && byClass(P, 'rvc-scope-sep').length === 0);
-  check('C.2 order in the panel: head, thread, busy, context, tray, note, compose, quick ideas, foot note',
-    P.children.map(function (c) { return c.className.split(' ')[0]; }).join() === 'rvc-head,rvc-thread,rvc-busy,rvc-context,rvc-tray,rvc-attach-note,rvc-compose,rvc-quick,rvc-footnote',
+  /* the one-click row (setChips, etb2b-ai-habits.js) sits right above the box, hidden until a page sets it */
+  check('C.2 order in the panel: head, thread, busy, context, tray, note, one-click row, compose, quick ideas, foot note',
+    P.children.map(function (c) { return c.className.split(' ')[0]; }).join() === 'rvc-head,rvc-thread,rvc-busy,rvc-context,rvc-tray,rvc-attach-note,rvc-chiprow,rvc-compose,rvc-quick,rvc-footnote' &&
+      byClass(P, 'rvc-chiprow')[0].hidden === true,
     P.children.map(function (c) { return c.className; }));
   var FACE = /var FACE_SVG = ((?:'[^']*'\s*\+?\s*)+);/.exec(SRC)[1];
   check('C.2 the face has no id, gradient or url(#…) (no duplicate ids)', FACE.indexOf('id=') === -1 && FACE.indexOf('url(#') === -1 && FACE.indexOf('Gradient') === -1);

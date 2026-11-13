@@ -306,6 +306,15 @@ function stateLines(st, r) {
 var PROMO_DOCS_USE = 'In this editor, use what the documents say where the person asks: write the post\'s or mail\'s words, its subject line, preview text or caption from them. ' +
   'A number or a date may be used only when the FACT SHEET, the people list or a PowerPoint deck\'s own words above have it: one read only in a PDF is left out by the editor, so leave it out yourself and say in `summary` which ones the person should add to the event\'s details first. ' +
   'A document\'s pictures are never used.';
+/* the team's examples for a prompt (lib/ai-habits.js), or '' with none or without that module */
+function examplesText(list) {
+  if (!arr(list).length) return '';
+  try { return require('./ai-habits').examplesBlock(list); } catch (e) { return ''; }
+}
+function teamExamples(fb, editor) {
+  try { return require('./ai-habits').examplesFor(fb, { brain: 'promo', page: 'promotions', promo: editor }).then(null, function () { return []; }); }
+  catch (e) { return Promise.resolve([]); }
+}
 function buildPrompt(ctx) {
   var st = ctx.state, post = st.editor === 'post', noun = EDITORS[st.editor], ev = (ctx.kit && ctx.kit.event) || {};
   var history = memoryText(ctx.turns);
@@ -318,6 +327,8 @@ function buildPrompt(ctx) {
     'FACT SHEET (this event\'s real details — the only facts you may use):\n' + ctx.facts,
     rosterLines(ctx.roster),
     stateLines(st, ctx.roster),
+    /* the team's past requests in this editor that worked (lib/ai-habits.js): the kind of request, never another event's facts */
+    examplesText(ctx.examples),
     'YOUR ANSWER (every field is required; use "" or [] or false for "no change"):',
     '- kind: "edit" when the message asks for a change to this ' + noun + '; "undo" when it asks to take back your last change ("undo that", "put it back") — it is put back exactly as it was, at no cost, so never re-create the old words yourself; "reply" for a question, thanks, or a request too vague to do well (then ask ONE short question offering two or three concrete choices); "handoff" when the message is not about this ' + noun + ' at all — another page, registrations or other numbers, other events, a new event, portals, the website itself — and then leave everything else empty.',
     '- intent: two to five plain words naming what was asked, for the team\'s list of common requests: e.g. "shorten title", "rewrite words", "swap speaker", ' + (post ? '"write caption", "new background", "post per speaker"' : '"write subject", "write preview text", "choose speakers"') + ', "question". Never a name or a number.',
@@ -540,7 +551,8 @@ function handleEdit(req, res) {
       return Promise.all([
         promo.buildKit(fb, eventId, req, { brand: false }),
         turnsOf(userRef),
-        state.editor === 'post' ? chatPicture.readLeft(fb.db, uid, Date.now()) : Promise.resolve(null)
+        state.editor === 'post' ? chatPicture.readLeft(fb.db, uid, Date.now()) : Promise.resolve(null),
+        teamExamples(fb, state.editor)
       ]).then(function (got) {
         var kit = got[0], turns = got[1];
         var roster = rosterOf(kit);
@@ -548,7 +560,7 @@ function handleEdit(req, res) {
         var spoken = turns.filter(function (t) { return t && t.brain === 'promo'; }).slice(-2).map(function (t) { return str(t.question); }).concat([message]).join('\n');
         var ctx = {
           state: state, kit: kit, roster: roster, facts: facts, turns: turns, message: message, logoRule: H.ET_LOGO_COLOUR_RULE,
-          otherNames: otherNamesOf(docs, eventId), eventData: mine.data || {},
+          otherNames: otherNamesOf(docs, eventId), eventData: mine.data || {}, examples: got[3],
           docList: files.list, docMarker: 'DOC-' + require('crypto').randomBytes(6).toString('hex'),
           /* what a number may come from: the event's details, its people, the post's own words, the person's words */
           sources: [facts, rosterLines(roster), state.words.map(function (w) { return w.text; }).join('\n'), state.caption ? state.caption.text : '',
@@ -601,6 +613,7 @@ function recordPromoTurn(fb, req, decoded, body, eventId, docs, a, turnId) {
     var facts = isObj(a) && a.code ? { did: { kind: 'error', target: '' }, outcome: 'error', rule: a.code, fallback: 'question' } : L.promoFacts(a);
     var tab = TABS[str(place.tab)] ? str(place.tab) : body.editor === 'mail' ? 'mailers' : 'posts';
     L.recordTurn(fb, { brain: 'promo', decoded: decoded, eventId: mine ? eventId : '', eventName: mine && isObj(mine.data) ? str(mine.data.name) : '',
+      eventKind: mine && isObj(mine.data) ? str(mine.data.category) : '',
       page: 'promotions', tab: tab, intent: isObj(a) ? a.intent : '', fallback: facts.fallback, words: str(body.message), did: facts.did,
       outcome: facts.outcome, rule: facts.rule, turnId: turnId || '', known: knownOf(docs),
       ua: req && req.headers ? req.headers['user-agent'] : '', screen: str(body.screen) });

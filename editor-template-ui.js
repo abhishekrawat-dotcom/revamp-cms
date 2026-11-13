@@ -59,6 +59,7 @@
      stop()              Stop: while waiting, the answer is not used; while applying, no further step is started
      busy()              a message is being answered or a change applied
      undoLast() -> Promise<{ ok, why }>   the newest change of ETB2B AI that is still on the page
+     undoHandle(turnId) -> fn | null   that turn's change's own Undo handler, while it is on the page (a shortcut's steps)
      focus() -> { sectionId, name, element?, slot? } | null   what is selected and goes with the next message;
      onFocusChange(fn); clearFocus() — the "Selected" chip's ×: sent without it until something else is selected
      attach(files) -> Promise<number>   pictures uploaded the editor's own way (RevampCore.uploadImage, 'media')
@@ -8147,6 +8148,13 @@
       stop: chatStop,
       busy: function () { return !!(aiWorking || sending); },
       undoLast: chatUndoLast,
+      /* the Undo of one turn's change that is still on the page (null for none): the change's own handler, the one
+         the folded bar's Undo is (t.peekFn), so every Undo of it says "Undone" together */
+      undoHandle: function (turnId) {
+        var t = aiTurns.filter(function (x) { return x.turnId && x.turnId === turnId && !x.replayed; })[0];
+        if (!t || (t.status !== 'applied' && t.status !== 'partly') || !(t.pageChanged || (t.formIds || []).length)) return null;
+        return t.peekFn || null;
+      },
       focus: function () { return canvas && !remounting ? chatFocus() : null; },
       onFocusChange: function (fn) { if (typeof fn === 'function') focusListeners.push(fn); },
       clearFocus: clearFocus,

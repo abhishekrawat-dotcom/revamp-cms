@@ -214,7 +214,7 @@ function fakeBrain(name, script) {
   /* and the one it writes to is a page error's QA note (owner decision 11, lib/ai-learn.js) */
   check('S.1 the only routes it calls itself are an event\'s conversation (GET) and a page error\'s QA note, and it never deletes, publishes, approves or sends',
     (SRC.match(/'\/api\/[^']*'/g) || []).every(function (u) { return u === '\'/api/chat/history?eventId=\'' || u === '\'/api/ai-qa/note\''; }) && !/'DELETE'|\/publish|unpublish|\/approve|\/payment/i.test(SRC), SRC.match(/'\/api\/[^']*'/g));
-  check('S.1 the scripts it may load on demand are this site\'s own three (the document reader, owner decision 14)', (SRC.match(/loadScript\('([^']+)'/g) || []).sort().join() === "loadScript('/ai-docs-client.js',loadScript('/editor-store.js',loadScript('/portal-picker.js'");
+  check('S.1 the scripts it may load on demand are this site\'s own four (the document reader, owner decision 14; the suggestions and shortcuts, owner decision 11)', (SRC.match(/loadScript\('([^']+)'/g) || []).sort().join() === "loadScript('/ai-docs-client.js',loadScript('/editor-store.js',loadScript('/etb2b-ai-habits.js',loadScript('/portal-picker.js'");
   ['ai-docs-client.js', 'editor-store.js', 'portal-picker.js'].forEach(function (f) { check('S.1 …and ' + f + ' is served', require('./access').isServableFile(f) === true); });
   check('S.1 every sentence it says is in one TEXT table (the rename batch changes one place), and none says Revamp',
     !/Revamp CMS|\bRevamp\b(?![A-Z])/.test(SRC.replace(/Revamp[A-Z][A-Za-z]+/g, '')));

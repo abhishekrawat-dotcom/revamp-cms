@@ -126,6 +126,9 @@
 //                          dashBotHelpers() for what it is handed.
 //     lib/ai-learn.js      the record of what people ask ETB2B AI (both chats write it), GET /api/ai-report and
 //                          POST /api/ai-report/resolve (the approvers' report), POST /api/ai-qa/note (a page error).
+//     lib/ai-habits.js     what the record makes faster: GET /api/ai-habits (the panel's one-click suggestions and the
+//                          person's shortcuts), POST /api/ai-habits/shortcuts (save, rename, delete one), and the
+//                          team's examples every ETB2B AI prompt gets (examplesFor).
 //     lib/ai-hero.js       POST /api/event/ai-hero: the first hero picture of an event started from the dashboard's
 //                          ETB2B AI, made once Create Event has created the event (one per event, a small daily
 //                          allowance per person) — see aiHeroHelpers() for what it is handed.
@@ -746,6 +749,8 @@ function buildChatPrompt(payload) {
         'To place a picture on the page, the owner\'s words say what it is for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
       : '') + (canPics ? chatPictureLines(payload) : ''),
     chatDocsLines(payload),
+    /* the team's past requests here that worked, with the tools that did them (lib/ai-habits.js): data, not orders */
+    (Array.isArray(payload.teamExamples) && payload.teamExamples.length ? teamExamplesBlock(payload.teamExamples) + '\n' : ''),
     ET_LOGO_COLOUR_RULE,
     NAME_RULE,
     '',
@@ -1002,13 +1007,22 @@ function chatRateOk(uid, now) {
   return true;
 }
 function chatLine(text, max) { return String(text || '').replace(/\s+/g, ' ').trim().slice(0, max || 120); }
+/* The team's past requests on this page that worked (lib/ai-habits.js examplesFor), for a prompt: [] when that
+   module cannot be loaded, and never a rejection, so a prompt is never held up or failed by it. */
+function teamExamples(fb, o) {
+  try { return require('./ai-habits').examplesFor(fb, o).then(null, function () { return []; }); } catch (e) { return Promise.resolve([]); }
+}
+function teamExamplesBlock(list) {
+  try { return require('./ai-habits').examplesBlock(list); } catch (e) { return ''; }
+}
 /* The record of what people ask ETB2B AI (lib/ai-learn.js, owner decision 11): one entry for each answer the model gave
    here, written after the answer has gone, so it never changes or holds up an answer. o: { answer, parsed, turnId,
    pictureRefused } or { code } for an answer that failed. */
 function learnEdit(req, fb, decoded, payload, eventId, eventData, o) {
   try {
     var L = require('./ai-learn'), f = o.answer ? L.editFacts(o.answer, o) : { did: { kind: 'error', target: '' }, outcome: 'error', rule: o.code || 'error', fallback: 'question' };
-    L.recordTurn(fb, { brain: 'edit', decoded: decoded, eventId: eventId, eventName: eventData && eventData.name, page: 'editor', intent: o.parsed && o.parsed.intent,
+    L.recordTurn(fb, { brain: 'edit', decoded: decoded, eventId: eventId, eventName: eventData && eventData.name, eventKind: eventData && eventData.category,
+      page: 'editor', intent: o.parsed && o.parsed.intent,
       fallback: f.fallback, words: payload.instruction, did: f.did, outcome: f.outcome, rule: f.rule, turnId: o.turnId, handedFrom: payload.handedFrom,
       ua: req.headers['user-agent'], screen: payload.screen });
   } catch (err) { console.error('chat-edit: the turn was not recorded — ' + (err && err.message)); }
@@ -1064,10 +1078,14 @@ function handleChatEdit(req, res) {
         return got[0];
       });
     });
+    /* the team's past requests here that worked (lib/ai-habits.js), as examples in the prompt; at most a short wait */
+    var examples = teamExamples(fb, { brain: 'edit', page: 'editor' });
     ready.then(function (turns) {
       if (turns && turns.length) payload.turns = turns;
-      return chatPictures(eventId, payload.attachments);
-    }).then(function (seen) {
+      return Promise.all([chatPictures(eventId, payload.attachments), examples]);
+    }).then(function (both) {
+      var seen = both[0];
+      payload.teamExamples = both[1];
       payload.seenPictures = seen.images.length;
       payload.seenNumbers = seen.numbers;
       payload.unseenNote = seen.skipped.length ? seen.skipped.join(' ') + ' Tell the owner so if it matters for the answer.' : '';
@@ -12489,6 +12507,16 @@ function aiLearnRoute(handler) {
   };
 }
 
+/* lib/ai-habits.js (the panel's suggestions from the record, and each person's shortcuts) is handed this file's
+   helpers on each call, as lib/ai-learn.js is; a module that fails to load costs only its own routes the 503. */
+function aiHabitsRoute(handler) {
+  var run = inModule('ai-habits', handler);
+  return function (req, res) {
+    try { require('./ai-habits').wire({ withAdmin, withAdminBody, sendJson, sendFailure, BODY_LIMITS, chatName }); } catch (e) { /* inModule() logs it and answers 503 */ }
+    return run(req, res);
+  };
+}
+
 /* the same 42 bytes as lib/promo-track.js PIXEL (a test checks): a mail must never show a broken image, even
    when that module is missing from a deployment */
 var TRACK_PIXEL = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -12527,6 +12555,8 @@ var ROUTES = {
   'GET /api/ai-report': aiLearnRoute('handleReport'),         // what people ask ETB2B AI, for the approvers (lib/ai-learn.js)
   'POST /api/ai-report/resolve': aiLearnRoute('handleResolve'),
   'POST /api/ai-qa/note': aiLearnRoute('handleNote'),
+  'GET /api/ai-habits': aiHabitsRoute('handleHabits'),        // the panel's one-click suggestions and shortcuts (lib/ai-habits.js)
+  'POST /api/ai-habits/shortcuts': aiHabitsRoute('handleShortcuts'),
   'POST /api/extract-brief': handleExtractBrief,
   'POST /api/ingest-source': handleIngestSource,
   'GET /api/et/portals': handleEtPortals,

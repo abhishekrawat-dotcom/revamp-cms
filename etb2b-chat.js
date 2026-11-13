@@ -56,7 +56,26 @@
          markUndone(onUndo), setScope(text), setContext({label, title, prefix?, onClear}|null),
          addAttachment(rec) -> bool, attachments() -> [rec], clearAttachments(), thread() -> element,
          reveal(node) -> bool, setDock(bool), isDocked(), setPhoneSheet('full'|'half'),
-         setQuickIdeas([{label, text}]), setWelcome({heading?, text?, suggestions?}|null), relayout() -> lift in px, lift()
+         setQuickIdeas([{label, text}]), setWelcome({heading?, text?, suggestions?}|null), relayout() -> lift in px, lift(),
+         setChips({label, hint, items:[{label, title, onClick}], more:{label, title, onClick}}|null),
+         ask(text) -> Promise<{ok:true, result} | {ok:false, error} | {stopped:true} | {busy:true}>,
+         currentAnswer() -> Bubble|null, isBusy() -> bool, isLeaving() -> bool, leaveCount() -> {went, stayed}, undoBind(button, fn),
+         undoRun(fn) -> Promise<bool>,
+         undoState(fn) -> 'none'|'ready'|'pending'|'done'
+         setChips   the one-click row above the box (etb2b-ai-habits.js: what the person asks most often here, and
+                  their shortcuts): unlike suggestions and quick ideas, a chip SENDS (its onClick asks through
+                  ask()), so the row is locked while an answer is awaited, and it stands in for the quick ideas
+                  while it shows. Arrow keys move along it. null takes it away.
+         ask        sends the text as if typed and Enter pressed (the person's bubble, busy, the answer), and says
+                  how it ended: the adapter's send result, its failure, Stop, or that a message was already being
+                  answered (nothing sent).
+         currentAnswer  while a message is being answered, the newest answer drawn for it (where "Save as
+                  shortcut" goes); null otherwise.
+         isLeaving  a page is about to open (an "Opening …" countdown is running); leaveCount how many countdowns
+                  ran out (that page opens) and how many were stayed, so a shortcut's run knows which.
+         undoBind / undoRun / undoState  an Undo of the page's own (a step of a shortcut that was run) tied to the
+                  same change as the brain's own Undo: either one says "Undone" for both; undoRun is a click on it
+                  (Undo all), resolving true once it is undone, or was already.
          close() and fold() stop a page that is about to open (as Stay here does), since its Stay here would be
          out of sight; a countdown that starts while the panel is shut shows in the folded bar, with Stay here.
          setBusy(true, text, {onStop}) shows Stop in the busy strip: Stop calls onStop, unlocks the box and marks
@@ -207,7 +226,9 @@
     stillAdding: 'An attachment is still being added. Send again in a moment.',
     selected: 'Selected: ',
     clearContext: function (l) { return 'Remove “' + l + '” from the message'; },
-    contextMark: '↳ '
+    contextMark: '↳ ',
+    oftenAsked: 'Often asked',
+    shortcuts: 'Shortcuts'
   };
 
   function str(v) { return v == null ? '' : String(v); }
@@ -402,11 +423,14 @@
     var historyAnchor = null;                 /* the first new message drawn while the replay was still loading */
     var lastFail = null;                      /* {text, node, bubble}: Enter on the same text is Try again */
     var running = [];                         /* countdowns still running, newest last (Esc stops the newest) */
+    var leaves = { went: 0, stayed: 0 };      /* countdowns that ran out (the page opens) and that were stayed (leaveCount) */
     var undoSets = [];                        /* [{fn, els[], done, pending}] */
     var peekUndoFn = null;
     var peekCd = null;                        /* the countdown the folded bar shows, while the panel is shut */
     var mq = null, dockMq = null;
     var hasTurn = false;                      /* quick ideas show once the conversation has begun */
+    var chipSpec = null;                      /* the one-click row's {label, hint, items, more}, or null */
+    var chipBtns = [];
     var items = [];                           /* attachments in the tray: {state, name, rec, chip, …} */
     var ctxSpec = null;                       /* the context chip: {label, title, prefix, onClear} */
     var dockOn = !!dockOpt, docked = false;
@@ -549,6 +573,14 @@
     noteEl.id = idOf('note');
     noteEl.hidden = true;
 
+    /* the one-click row (setChips): a label, the chips and the shortcuts button; a chip sends at once */
+    var chipRow = el('div', 'rvc-chiprow');
+    chipRow.id = idOf('chips');
+    chipRow.setAttribute('role', 'group');
+    chipRow.hidden = true;
+    var chipHint = el('span', 'rvc-sr');
+    chipHint.id = idOf('chips-hint');
+
     var compose = el('div', 'rvc-compose');
     var inputLabel = el('label', 'rvc-sr', TEXT.message(title));
     inputLabel.setAttribute('for', idOf('input'));
@@ -607,6 +639,7 @@
     panel.appendChild(ctxRow);
     panel.appendChild(tray);
     panel.appendChild(noteEl);
+    panel.appendChild(chipRow);
     panel.appendChild(compose);
     panel.appendChild(quick);
     if (trim(opts.footNote)) panel.appendChild(el('p', 'rvc-footnote', trim(opts.footNote)));
@@ -694,7 +727,63 @@
       }
       syncQuick();
     }
-    function syncQuick() { quick.hidden = !(hasTurn && quickIdeas.length); }
+    function syncQuick() { quick.hidden = !(hasTurn && quickIdeas.length) || !chipRow.hidden; }
+
+    /* ---------- the one-click row: chips that send, and the shortcuts button ---------- */
+    function lockChips() {
+      for (var i = 0; i < chipBtns.length; i++) {
+        if (busy) lockBtn(chipBtns[i]); else chipBtns[i].removeAttribute('aria-disabled');
+      }
+    }
+    function drawChips() {
+      chipRow.textContent = '';
+      chipBtns = [];
+      var spec = chipSpec, items = spec && isArray(spec.items) ? spec.items : [];
+      var more = spec && isObj(spec.more) && isFn(spec.more.onClick) ? spec.more : null;
+      var any = false;
+      if (spec && (items.length || more)) {
+        chipRow.setAttribute('aria-label', trim(spec.label) || (items.length ? TEXT.oftenAsked : TEXT.shortcuts));
+        chipHint.textContent = trim(spec.hint);
+        chipRow.appendChild(chipHint);
+        var drawn = 0;
+        for (var i = 0; i < items.length && drawn < 6; i++) {
+          (function (c) {
+            if (!c || !trim(c.label) || !isFn(c.onClick)) return;
+            if (!drawn && trim(spec.label)) chipRow.appendChild(el('span', 'rvc-chiprow-label', trim(spec.label)));
+            var b = button('rvc-chip-btn', trim(c.label));
+            if (trim(c.title)) b.setAttribute('title', trim(c.title));
+            if (trim(spec.hint)) b.setAttribute('aria-describedby', chipHint.id);
+            on(b, 'click', function (e) { if (!isLocked(b) && !busy) safe(c.onClick, e); });
+            chipBtns.push(b);
+            chipRow.appendChild(b);
+            drawn++;
+            any = true;
+          })(items[i]);
+        }
+        if (more) {
+          var m = button('rvc-chip-more', trim(more.label) || TEXT.shortcuts);
+          if (trim(more.title)) m.setAttribute('title', trim(more.title));
+          on(m, 'click', function (e) { safe(more.onClick, e); });
+          chipRow.appendChild(m);
+          any = true;
+        }
+      }
+      chipRow.hidden = !any;
+      lockChips();
+      syncQuick();
+      scheduleLift();
+    }
+    /* arrow keys move along the row (Tab still reaches every button in it) */
+    on(chipRow, 'keydown', function (e) {
+      if (!e || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End')) return;
+      var all = [];
+      for (var i = 0; i < chipRow.childNodes.length; i++) { var c = chipRow.childNodes[i]; if (c && c.tagName === 'BUTTON') all.push(c); }
+      var at = all.indexOf(doc.activeElement);
+      if (at === -1 || !all.length) return;
+      var to = e.key === 'Home' ? 0 : e.key === 'End' ? all.length - 1 : (at + (e.key === 'ArrowRight' ? 1 : -1) + all.length) % all.length;
+      e.preventDefault();
+      focusEl(all[to]);
+    });
     function turnDrawn() { if (!hasTurn) { hasTurn = true; syncQuick(); } }
     drawQuick();
 
@@ -1077,20 +1166,28 @@
       paintEntry(e, 'done');
       if (folded) announce(TEXT.undoneSaid);
     }
+    /* -> Promise<boolean>: true once the change is undone (or was already), false when it was not */
     function runUndo(e) {
-      if (!e || e.done || e.pending) return;
+      if (!e) return Promise.resolve(false);
+      if (e.done) return Promise.resolve(true);
+      if (e.pending) return e.waiting || Promise.resolve(false);
       var r;
-      try { r = e.fn(); } catch (err) { report(err); return; }
-      if (r === false) return;
+      try { r = e.fn(); } catch (err) { report(err); return Promise.resolve(false); }
+      if (r === false) return Promise.resolve(e.done);
       if (r && isFn(r.then)) {
         e.pending = true;
         paintEntry(e, 'pending');
-        r.then(function (v) {
-          if (v === false) { e.pending = false; paintEntry(e, 'ready'); } else finishUndo(e);
-        }, function (err) { report(err); e.pending = false; paintEntry(e, 'ready'); });
-        return;
+        e.waiting = r.then(function (v) {
+          e.pending = false;
+          e.waiting = null;
+          if (v === false && !e.done) { paintEntry(e, 'ready'); return false; }
+          finishUndo(e);
+          return true;
+        }, function (err) { report(err); e.pending = false; e.waiting = null; paintEntry(e, e.done ? 'done' : 'ready'); return e.done; });
+        return e.waiting;
       }
       finishUndo(e);
+      return Promise.resolve(true);
     }
     function markUndone(fn) {
       if (!isFn(fn)) return;
@@ -1119,6 +1216,7 @@
           input.readOnly = true;
           input.setAttribute('aria-disabled', 'true');
           sendBtn.disabled = true;
+          lockChips();
           busyTimer = root.setTimeout(function () {
             busyTimer = null;
             if (!busy) return;
@@ -1147,6 +1245,7 @@
         input.readOnly = false;
         input.removeAttribute('aria-disabled');
         sendBtn.disabled = false;
+        lockChips();
         if (stopHadFocus) focusInput();
       }
     }
@@ -1160,6 +1259,7 @@
       var fn = stopFn, run = current;
       current = null;
       if (run) run.stopped = true;
+      if (run && isFn(run.onStop)) run.onStop();
       var left = safe(fn);
       setBusy(false);
       if (run && left === 'partly') {
@@ -1303,21 +1403,25 @@
         /* the replay is late: whatever of it is still to come goes in above this message */
         if (historyPending && !historyAnchor) historyAnchor = node;
         var run = { text: t, node: node, recs: recs, stopped: false };
+        /* Stop says how this message ended at once (ask()), however late the adapter's send then settles */
+        var stoppedNow = new Promise(function (r) { run.onStop = function () { r({ stopped: true }); }; });
         current = run;
         var p;
         try { p = opts.send(t, { attachments: recs.slice(), context: ctxLabel }); } catch (e) { p = Promise.reject(e); }
-        return Promise.resolve(p).then(function () {
-          if (run.stopped) return;
+        return Promise.race([stoppedNow, Promise.resolve(p).then(function (v) {
+          if (run.stopped) return { stopped: true };
           current = null;
           setBusy(false);
           if (isOpenNow && mayTakeFocus()) focusInput();
+          return { ok: true, result: v };
         }, function (err) {
-          if (run.stopped) return;
+          if (run.stopped) return { stopped: true };
           current = null;
           setBusy(false);
           failed(t, node, err, recs);
           if (isOpenNow && mayTakeFocus()) focusInput();
-        });
+          return { ok: false, error: err };
+        })]);
       });
     }
 
@@ -1775,7 +1879,10 @@
       turnDrawn();
       /* a replayed turn is not a new reply */
       if (!isOpenNow && !(toReplay && historyPending)) markNew();
-      return bubble(turn, textBox, extra, foot, !!o.plain);
+      var made = bubble(turn, textBox, extra, foot, !!o.plain);
+      /* the newest answer to the message being answered (currentAnswer: where "Save as shortcut" goes) */
+      if (current && !toReplay && !o.error) current.answer = made;
+      return made;
     }
 
     /* an adapter's own node as a whole turn: the editor's change card, a picture it made */
@@ -1793,7 +1900,10 @@
         turnDrawn();
         return turn;
       }
+      /* a page's own card (a shortcuts list) is not the answer to the message being answered */
+      var had = current ? current.answer || null : null;
       var b = ai('', o, toReplay);
+      if (current) current.answer = had;
       b.node.classList.add('rvc-custom');
       if (node) b.slot().appendChild(node);
       return b;
@@ -1928,6 +2038,7 @@
           var timer = root.setTimeout(function () {
             if (state !== 'run') return;
             state = 'done';
+            leaves.went++;
             dropRun();
             lockBtn(stay);
             card.classList.add('is-done');
@@ -1937,6 +2048,7 @@
           function cancel(o2) {
             if (state !== 'run') return false;
             state = 'cancelled';
+            leaves.stayed++;
             root.clearTimeout(timer);
             dropRun();
             var hadFocus = doc.activeElement === stay;
@@ -2138,6 +2250,31 @@
       isDocked: function () { return docked; },
       setPhoneSheet: function (kind) { half = kind === 'half'; syncMode(); },
       setQuickIdeas: function (list) { quickIdeas = cleanIdeas(list); drawQuick(); },
+      setChips: function (spec) { chipSpec = isObj(spec) ? spec : null; drawChips(); },
+      ask: function (text) {
+        if (busy) return Promise.resolve({ busy: true });
+        if (!isOpenNow) open();
+        var r = submit(str(text));
+        return r && isFn(r.then) ? r : Promise.resolve({ ok: false, error: null, nothing: true });
+      },
+      currentAnswer: function () { return current && current.answer ? current.answer : null; },
+      isLeaving: function () { return running.length > 0; },
+      isBusy: function () { return busy; },
+      leaveCount: function () { return { went: leaves.went, stayed: leaves.stayed }; },
+      undoBind: function (b, fn) {
+        if (!b || !isFn(fn)) return b;
+        bindUndo(fn, b);
+        on(b, 'click', function () { if (!isLocked(b)) runUndo(entryOfEl(b)); });
+        return b;
+      },
+      undoRun: function (fn) { return isFn(fn) ? runUndo(entryFor(fn)) : Promise.resolve(false); },
+      undoState: function (fn) {
+        if (!isFn(fn)) return 'none';
+        for (var i = 0; i < undoSets.length; i++) {
+          if (undoSets[i].fn === fn) return undoSets[i].done ? 'done' : undoSets[i].pending ? 'pending' : 'ready';
+        }
+        return 'none';
+      },
       setWelcome: setWelcome,
       relayout: relayout,
       lift: function () { return liftNow; }
