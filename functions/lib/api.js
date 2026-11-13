@@ -126,6 +126,8 @@
 //     lib/ai-hero.js       POST /api/event/ai-hero: the first hero picture of an event started from the dashboard's
 //                          ETB2B AI, made once Create Event has created the event (one per event, a small daily
 //                          allowance per person) — see aiHeroHelpers() for what it is handed.
+//     lib/phone-banner.js  POST /api/event/phone-banner: the banner's own picture for phones, laid out by ETB2B AI from
+//                          the banner the site has now (the editor's Phone banner) — see phoneBannerHelpers().
 //
 //   -- Lovable import pipeline — EITHER a captured-site ZIP (from the browser console exporter the user runs
 //      on a live Lovable.app site, not part of this repo) OR, now, just the live site's own URL (rendered
@@ -12452,6 +12454,27 @@ function aiHeroRoute(handler) {
   };
 }
 
+/* lib/phone-banner.js (the banner's own picture for phones, made by ETB2B AI from the banner the site has now) is
+   handed this file's helpers the same way as lib/ai-hero.js, with the History line's writer and the ET logos' rule,
+   which every picture prompt that may meet one of those logos carries. */
+function phoneBannerHelpers() {
+  return { withAdminBody, sendJson, sendFailure, sendAiFailure, BODY_LIMITS, chatUid, isEventId, aiUsageRecorder, logActivity, ET_LOGO_COLOUR_RULE };
+}
+function phoneBannerRoute(handler) {
+  var run = inModule('phone-banner', handler);
+  return function (req, res) {
+    var mod;
+    try { mod = require('./phone-banner'); }
+    catch (e) { return run(req, res); /* inModule() logs a module that cannot be loaded and answers 503 */ }
+    try { mod.wire(phoneBannerHelpers()); }
+    catch (err) {
+      console.error('api: lib/phone-banner.js could not be wired for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+      return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+    }
+    return run(req, res);
+  };
+}
+
 /* lib/ai-learn.js (the approvers' report "What people ask ETB2B AI", marking its QA notes resolved, and the page
    errors the assistant's pages send) is handed this file's helpers on each call, like the modules above; a module
    that fails to load costs only its own routes inModule()'s 503. */
@@ -12538,6 +12561,7 @@ var ROUTES = {
   'GET /api/event/hero-video': heroVideo('handleHeroVideoGet'),
   'PUT /api/event/hero-video': heroVideo('handleHeroVideoSave'),
   'POST /api/event/ai-hero': aiHeroRoute('handleHero'),       // ETB2B AI's first hero picture for an event it started (lib/ai-hero.js)
+  'POST /api/event/phone-banner': phoneBannerRoute('handle'),   // the banner's own picture for phones, by ETB2B AI (lib/phone-banner.js)
   'DELETE /api/event/hero-video': heroVideo('handleHeroVideoRemove'),
   'POST /api/event/hero-video/upload': heroVideo('handleHeroVideoUpload'),
   'POST /api/event/hero-video/check': heroVideo('handleHeroVideoCheck'),

@@ -1061,6 +1061,11 @@
     /* the new picture takes the old one's place; whatever is layered over it (a gradient veil that keeps the
        text readable) stays */
     function setBackgroundPicture(el, url) {
+      /* the banner's own picture for phones was laid out from the picture being replaced: it goes with it, and phones
+         show the new one (editor-phone-banner.js) — before the picture is read, which a phone-width canvas reads as the
+         phone's */
+      var phone = typeof window !== 'undefined' ? window.RevampPhoneBanner : null;
+      if (phone) phone.drop(el);
       var now = win.getComputedStyle(el).backgroundImage || '';
       var next = 'url("' + String(url).replace(/"/g, '%22') + '")';
       el.style.backgroundImage = /url\(/.test(now) ? now.replace(/url\(\s*(["']?).*?\1\s*\)/, next) : next;
