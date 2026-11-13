@@ -12,6 +12,8 @@
 //   /api/public/*       the data a published site shows (speakers, agenda, …)
 //   /api/register       a visitor's registration
 //   /api/track          one count per page view
+//   /img/<path>         a picture of the storage bucket that is already public there (lib/picture-cdn.js: the
+//                       same pictures, from our own address so the hosting's CDN keeps them)
 // and what a mailer sent from Promotions needs from a recipient's mail (lib/promo-track.js):
 //   /t/o/<id>.gif       a mailer's open pixel
 //   /t/c/<id>           a mailer's signed click redirect
@@ -132,6 +134,8 @@ function isPublic(req, urlPath) {
   /* a speaker's or a sponsor's page across ET (lib/people.js): public, as the event sites that link to it */
   if (p.indexOf('/speakers/') === 0 || p.indexOf('/sponsors/') === 0) return true;
   if (/^\/t\/[oc]\/[^/]+$/.test(p)) return true;                  // a mailer's open pixel and click links
+  /* a picture of the bucket: the route itself answers only what storage.googleapis.com already gives anybody */
+  if (p.indexOf('/img/') === 0) return true;
   /* a shared preview link: the unguessable link is the permission (lib/share-preview.js) */
   if (p.indexOf('/s/') === 0) return true;
   if (p.indexOf('/api/') === 0 || p.indexOf('/preview/') === 0) return false;

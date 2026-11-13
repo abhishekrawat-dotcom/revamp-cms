@@ -47,6 +47,7 @@ function serve(req, res) {
   if (/^\/(api|e|preview|t)\//.test(url) || url.indexOf('/s/') === 0) return handleApi(req, res);   // /s/: a shared preview link
   if (url === '/robots.txt' || url === '/sitemap.xml' || url === '/sitemap-people.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js, lib/people.js)
   if (/^\/(speakers|sponsors)\//.test(url)) return handleApi(req, res);   // a speaker's or a sponsor's page across ET (lib/people.js)
+  if (url.indexOf('/img/') === 0) return handleApi(req, res);   // a picture of the storage bucket, from our own address for the CDN (lib/picture-cdn.js)
   if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
 
   // a path that does not decode ("%E0%A4%A") or carries a NUL would throw below, and an exception nobody

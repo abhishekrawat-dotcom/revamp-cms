@@ -34,12 +34,19 @@
         so a visitor never keeps an old copy, and a returning one downloads nothing again.
      6. A <video>/<audio>/<source> that points at a path of this host which cannot exist (an imported
         page's own builder paths, /__l5e/…) loses that src/poster: it only ever produced an error and,
-        before the sign-in gate answered such paths with 404, a downloaded sign-in page. */
+        before the sign-in gate answered such paths with 404, a downloaded sign-in page.
+     7. Last, once nothing else needs to read them: every picture of our storage bucket the page names
+        (storage.googleapis.com/<bucket>/…, in an <img>, a srcset, a preload, a CSS url() or image-set) is
+        named on this server's own address instead, /img/<path> (lib/picture-cdn.js), which the hosting's CDN
+        keeps at an edge near the visitor; a <meta> tag's and the structured data's get the full address. The
+        stored page keeps its storage addresses, so PICTURE_CDN=off puts every page back as it was. */
 'use strict';
 var fs = require('fs');
 var path = require('path');
 var crypto = require('crypto');
 var cssPurge = require('./css-purge');
+/* step 7: our pictures from our own address, through the hosting's CDN */
+var pictureCdn = require('./picture-cdn');
 
 var ROOT = path.join(__dirname, '..', '..');
 var PURGE_OVER_BYTES = 32 * 1024;       // a stylesheet bigger than this is cut down to what the page uses
@@ -210,7 +217,7 @@ var pageCache = new Map(), PAGE_CACHE_MAX = 60, PAGE_CACHE_TTL_MS = 10 * 60 * 10
    opts: { tools: lib/api.js's HTML tokenizer helpers } -> the page as it is sent */
 function deliverPage(html, opts) {
   html = String(html == null ? '' : html);
-  var key = crypto.createHash('sha1').update(html).digest('hex') + ':' + remoteGeneration;
+  var key = crypto.createHash('sha1').update(html).digest('hex') + ':' + remoteGeneration + ':' + pictureCdn.signature();
   var hit = pageCache.get(key);
   if (hit && Date.now() - hit.at < PAGE_CACHE_TTL_MS) return hit.html;
   var result;
@@ -220,6 +227,9 @@ function deliverPage(html, opts) {
     console.error('delivery: page left as it was — ' + (err && err.stack || err));
     result = html;
   }
+  /* ---- 7. our pictures, named on our own address (after every step that reads their addresses) ---- */
+  try { result = pictureCdn.rewriteHtml(result); }
+  catch (err) { console.error('delivery: pictures left on storage.googleapis.com — ' + (err && err.stack || err)); }
   if (pageCache.size >= PAGE_CACHE_MAX) pageCache.delete(pageCache.keys().next().value);
   pageCache.set(key, { at: Date.now(), html: result });
   return result;
@@ -431,7 +441,7 @@ function restLength(css, imports) {
 function deadLocalPath(u) {
   if (!/^\/(?!\/)/.test(u)) return false;
   var p = pathOnly(u);
-  if (/^\/(api|e|preview)\//.test(p)) return false;
+  if (/^\/(api|e|preview)\//.test(p) || pictureCdn.isRoutePath(p)) return false;
   if (!/\.[A-Za-z0-9]{2,5}$/.test(p)) return false;
   return !localFile(p);
 }

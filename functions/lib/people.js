@@ -682,6 +682,9 @@ function backOf(fb, eventId) {
   }, function () { return null; });
 }
 function sendPage(req, res, status, html, cache) {
+  /* the photo and the logos from our own address, which the hosting's CDN keeps (lib/picture-cdn.js; its link preview
+     picture as a full address) — as an event's page is sent */
+  html = require('./picture-cdn').rewriteHtml(html);
   res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' https: data:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   H.sendHtml(req, res, status, html, cache);

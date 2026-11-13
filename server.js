@@ -1,7 +1,8 @@
 // Production server for Firebase App Hosting (backend "revamp-cms", built from GitHub on every push to main).
 // App Hosting runs `npm start` and sends traffic to process.env.PORT. It serves the static pages and hands
-// /api/*, /e/* (published event sites), /preview/*, /t/* (a mailer's open pixel and click links) and /s/*
-// (a shareable preview link) to functions/lib/api.js — the same handler the local dev server (tools/serve.js)
+// /api/*, /e/* (published event sites), /preview/*, /t/* (a mailer's open pixel and click links), /s/*
+// (a shareable preview link) and /img/* (a picture of the storage bucket, from our own address so the hosting's
+// CDN keeps it) to functions/lib/api.js — the same handler the local dev server (tools/serve.js)
 // uses, so the endpoints behave identically everywhere. Env vars come from apphosting.yaml (FIREBASE_STORAGE_BUCKET, GEMINI_API_KEY,
 // MAILER_TRACK_BASE, …); credentials are App Hosting's own service identity.
 // Local: `npm install`, then `npm start` → http://localhost:8080 (tools/serve.js stays the dev server).
@@ -123,6 +124,7 @@ function serve(req, res){
   if (/^\/(api|e|preview|t)\//.test(url) || url.indexOf('/s/') === 0) return handleApi(req, res);   // /s/: a shared preview link
   if (url === '/robots.txt' || url === '/sitemap.xml' || url === '/sitemap-people.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js, lib/people.js)
   if (/^\/(speakers|sponsors)\//.test(url)) return handleApi(req, res);   // a speaker's or a sponsor's page across ET (lib/people.js)
+  if (url.indexOf('/img/') === 0) return handleApi(req, res);   // a picture of the storage bucket, from our own address for the CDN (lib/picture-cdn.js)
   if (req.method !== 'GET' && req.method !== 'HEAD'){ res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
   if (url === '/favicon.ico'){
     return fs.readFile(FAVICON.path, function(err, buf){

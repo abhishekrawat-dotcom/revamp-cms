@@ -80,6 +80,9 @@
 //                                           preview transform, answered, never stored.
 //   GET   /e/<eventId>                      PUBLIC — the published site, served from private Storage.
 //   GET   /preview/<eventId>                signed-in — what would be published right now.
+//   GET   /img/<object path>                PUBLIC — a picture of the storage bucket that is public there, from our own
+//                                           address so the hosting's CDN keeps it near the visitor (lib/picture-cdn.js;
+//                                           the pages a visitor gets name their pictures there: lib/delivery.js step 7).
 //   GET   /s/<token>[/<slug>]               PUBLIC — a shareable preview link: the site as last saved, for people
 //                                           without an ET account, for 7 days or until stopped. With
 //                                           GET/POST /api/event/share-preview and POST /api/event/share-preview/stop
@@ -12702,8 +12705,23 @@ function isPublicApiPath(urlPath) {
   return urlPath === '/api/register' || urlPath === '/api/track' || urlPath.indexOf('/api/public/') === 0;
 }
 
+/* /img/<object path> (lib/picture-cdn.js), loaded on its first request like the other route modules; a module that
+   cannot be loaded costs only its pictures a plain 503 (they are pictures: no JSON) */
+function pictureRoute(req, res) {
+  var mod;
+  try { mod = require('./picture-cdn'); }
+  catch (err) {
+    console.error('api: could not load lib/picture-cdn.js for ' + req.method + ' ' + req.url + ' — ' + (err && err.stack || err));
+    return sendText(req, res, 503, 'text/plain; charset=utf-8', 'This picture is not available right now. Please try again shortly.\n', 'no-store');
+  }
+  return mod.handle(req, res);
+}
+
 function routeApi(req, res) {
   var urlPath = String(req.url || '').split('?')[0];
+
+  /* /img/<object path>: one of the bucket's public pictures, from our own address (lib/picture-cdn.js) — public */
+  if (urlPath.indexOf('/img/') === 0) return pictureRoute(req, res);
 
   /* /s/<token>[/<slug>]: a shareable preview link (lib/share-preview.js) — public; it answers every method itself */
   if (urlPath === '/s' || urlPath.indexOf('/s/') === 0) return shareRoute('handleSharedPage')(req, res);
