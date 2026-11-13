@@ -323,7 +323,7 @@ ok(hooks.repeatedHeadingIds([{ parsed: { sections: [{ id: 'overview', html: '<h2
   var ov = tf('making-ai-work/sections/overview/index.html'), st = tf('making-ai-work/sections/overview-stats/index.html'), ct = tf('making-ai-work/sections/contact-us/index.html');
   ok(ov.indexOf('custom_section_img_17912743388829') === -1 && ct.indexOf('5443c52a18ecaf0d0d3d') === -1 && !/<img[^>]*cntnd-hdng/.test(ct),
     'OCT-1: making-ai-work shows no picture of text: the four figures and the "Contact Us" heading are words');
-  ok((st.match(/<li class="ovr-stat[^"]*"><span class="ovr-stat-num">[^<]+<\/span><span class="ovr-stat-label">[^<]+<\/span><\/li>/g) || []).length === 4 && /DAY TO QUESTION/i.test(st.replace(/<[^>]+>/g, ' ')),
+  ok((st.match(/<li class="ovr-stat[^"]*"(?: data-rv-sample)?><span class="ovr-stat-num">[^<]+<\/span><span class="ovr-stat-label">[^<]+<\/span><\/li>/g) || []).length === 4 && /DAY TO QUESTION/i.test(st.replace(/<[^>]+>/g, ' ')),
     'OCT-1: the figures are their own section, four cards of a figure and its label');
   var statsMap = maw.content.map.filter(function (m) { return m.from === 'stats'; })[0], contactMap = maw.content.map.filter(function (m) { return m.from === 'contact'; })[0];
   ok(statsMap && statsMap.section === 'overview-stats' && statsMap.fill[0].list === '.ovr-stats > .ovr-stat' && statsMap.fill[0].items === 'stats.items' &&

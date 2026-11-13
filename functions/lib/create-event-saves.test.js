@@ -809,6 +809,7 @@ async function main() {
       'function localGet() { return Promise.resolve(undefined); } function localPut() { return Promise.resolve(true); }' +
       'function renderAiProvenanceBadges() {} function showToast() {} function showNotice() {} function applyAiDesignToCanvas() {} function restoreOpts() { return {}; }' +
       'function fetchServerDraft() { return Promise.resolve(null); }' +
+      'function markTemplateSamples() { return 0; }' +
       'function saveToStaging() { L.saves++; return Promise.resolve({ version: 1 }); }' +
       ['fromCreate', 'handoffFor', 'readHandoffDraft', 'forgetHandoff', 'applyHandoffDraft', 'seedSnapshot', 'localRecord', 'aiHeroFromEvent',
         'resolveFromBrowser', 'saveFirstVersion'].map(function (n) { return topFn(ED, n); }).join('\n'), C);

@@ -59,8 +59,8 @@ async function main() {
   check('UX-050 the gallery list is every section of the design, in its order, under its own names (pinned ones too)',
     rows.length === 11 && rows[0].title === 'Banner' && rows[4].title === 'Summit spotlight' && rows[10].title === 'About ETCIO',
     rows.map(function (r) { return r.title; }));
-  check('UX-050 …"Summit spotlight" is the Key numbers form, "Beyond sponsorship" has no form here',
-    rows[4].kind === 'Key numbers' && rows[4].fillable && !rows[7].fillable && rows[7].title === 'Beyond sponsorship', [rows[4], rows[7]]);
+  check('UX-050 …"Summit spotlight" is the Key numbers form, "Beyond sponsorship" the Closing call to action form (TPL-046)',
+    rows[4].kind === 'Key numbers' && rows[4].fillable && rows[7].fillable && rows[7].kind === 'Closing call to action' && rows[7].title === 'Beyond sponsorship', [rows[4], rows[7]]);
   check('UX-050 on an ETRetail event "About ETCIO" (ETCIO\'s own text) starts switched off, and can be switched',
     rows[10].foreignAbout === true && rows[10].on === false && rows[10].locked === false, rows[10]);
   check('UX-050 …so the count is 10 of 11', p.ce('designCountText(designCount("tech500", capsOf("tech500")))') === '10 of 11 sections on your site');
@@ -102,17 +102,17 @@ async function main() {
   var titles = (list.match(/<span class="nm">[^<]*/g) || []).map(function (m) { return m.replace('<span class="nm">', ''); });
   check('UX-050 the form lists the same 11 sections under the same names, in the page\'s order',
     JSON.stringify(titles) === JSON.stringify(TECH500.sections.map(function (s) { return s.name; })), titles);
-  check('UX-050 …numbers only the 9 rows with a form here', JSON.stringify((list.match(/<span class="idx">(\d+)</g) || []).map(function (m) { return +m.replace(/\D/g, ''); })) === '[1,2,3,4,5,6,7,8,9]');
+  check('UX-050 …numbers only the 10 rows with a form here', JSON.stringify((list.match(/<span class="idx">(\d+)</g) || []).map(function (m) { return +m.replace(/\D/g, ''); })) === '[1,2,3,4,5,6,7,8,9,10]');
   check('UX-050 …a row whose design name is not the form\'s says which form it is ("Summit spotlight" · Key numbers)',
     /Summit spotlight<small class="sub">Key numbers<\/small>/.test(list) && /What is Tech500<small class="sub">Overview<\/small>/.test(list), list.slice(0, 300));
   check('UX-050 …and says nothing where both names are the same ("Banner" / Top banner, "Frequently asked questions" / FAQs)',
     /<span class="nm">Banner<\/span>/.test(list) && /<span class="nm">Frequently asked questions<\/span>/.test(list));
-  check('UX-050 …"Beyond sponsorship" sits in its place, edited in the site editor; no separate "Also on this design" group',
-    /Beyond sponsorship<small class="sub">Edited in the site editor/.test(list) && list.indexOf('Also on this design') === -1);
+  check('UX-050 …"Beyond sponsorship" sits in its place with its form (TPL-046); no separate "Also on this design" group',
+    /Beyond sponsorship<small class="sub">Closing call to action/.test(list) && list.indexOf('Also on this design') === -1, list);
   check('UX-050 …ETCIO\'s About says why it is off, with its switch', /About ETCIO<small class="sub">ETCIO’s own text, so it starts off for ETRetail\./.test(list) &&
     /data-sec-toggle="about-us" aria-pressed="false"/.test(list), list.slice(-700));
   check('UX-050 …and the form says the gallery\'s count', /<span class="sec-count" id="sec-count">10 of 11 sections on your site<\/span>/.test(p.$('step1-build-host').innerHTML) &&
-    /0\/9 filled/.test(p.$('step1-build-host').innerHTML));
+    /0\/10 filled/.test(p.$('step1-build-host').innerHTML));
   var spot = p.ce('sectionByLib("stats")');
   check('UX-050 the section\'s own heading is the design\'s name too', p.ce('secTitle(sectionByLib("stats"))') === 'Summit spotlight' && p.ce('secKind(sectionByLib("stats"))') === 'Key numbers' && !!spot);
   var pay = p.ce('buildEditorPayload()');
