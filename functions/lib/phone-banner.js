@@ -75,7 +75,8 @@ var CAPS = {
   sourceTimeoutMs: 20000,
   timeoutMs: 90000,                        // one picture call (chat-picture.js TIMEOUT_MS)
   deadlineMs: chatPicture.DEADLINE_MS,     // two pictures and their checks, inside the function's time
-  variantsBudgetMs: 15000
+  variantsBudgetMs: 15000,
+  lockMs: 5 * 60 * 1000                    // longer than a request can live: one older than this never finished
 };
 var TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 var EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' };
@@ -193,7 +194,7 @@ function giveBack(fb, decoded, held, code) {
 
 /* ---------- the route ---------- */
 
-var making = {};            // eventId -> true while a phone banner is being made for it on this server
+var making = {};            // eventId -> when a phone banner began to be made for it on this server (ms)
 
 function live(ev) { return !!ev && !!ev.createdAt && !ev.deletedAt && !ev.discardingAt; }
 function safe(record) {
@@ -210,8 +211,9 @@ function handle(req, res) {
     if (!H.isEventId(eventId)) return H.sendJson(res, 400, { error: MSG.badEvent, code: 'bad-event' });
     var source = line(body.source, 2100);
     if (!usableSource(source)) return H.sendJson(res, 400, { error: MSG.badSource, code: 'bad-source' });
-    if (making[eventId]) return H.sendJson(res, 409, { error: MSG.busy, code: 'phone-banner-busy', retryable: true });
-    making[eventId] = true;
+    /* one older than a request can live (its deadline, then storing) was left by one that never finished */
+    if (making[eventId] && clock.now() - making[eventId] < CAPS.lockMs) return H.sendJson(res, 409, { error: MSG.busy, code: 'phone-banner-busy', retryable: true });
+    making[eventId] = clock.now();
     /* the event is free again before the answer goes, so a request that follows it at once is never told it is busy */
     var done = function () { delete making[eventId]; };
     function send(status, body) { done(); H.sendJson(res, status, body); }

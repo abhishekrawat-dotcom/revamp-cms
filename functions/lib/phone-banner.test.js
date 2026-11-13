@@ -253,6 +253,14 @@ function loud() { console.error = realError; }
   hold = null;
   r = await call({ eventId: EV, source: OWN });
   check('P.5 once it is done, the next one may start', r.status === 200 && Object.keys(T.making).length === 0, r);
+  reset();
+  T.making[EV] = NOW - T.CAPS.lockMs - 1;
+  r = await call({ eventId: EV, source: OWN });
+  check('P.5 a mark left by a request that never finished (older than any request lives) does not block the event for good', r.status === 200 && Object.keys(T.making).length === 0, r);
+  T.making[EV] = NOW - 1000;
+  r = await call({ eventId: EV, source: OWN });
+  delete T.making[EV];
+  check('P.5 a recent one still does', r.status === 409, r);
 
   /* ===== the wiring ===== */
   var src = require('fs').readFileSync(require('path').join(__dirname, 'api.js'), 'utf8');
