@@ -322,6 +322,8 @@ const shareCard = require('./share-card');
 shareCard.wire({ rasterise: rasterise, embeddedYearFont: embeddedYearFont, aiUsageRecorder: aiUsageRecorder });
 /* what would be wrong to put live, and the repairs every live page gets on its way out (site-checks.js) */
 const siteChecks = require('./site-checks');
+/* what ETB2B AI wrote that nothing the event supplied supports (BE-043) */
+const inventedFacts = require('./invented-facts');
 /* the check before Publish: what is good to put right, advisory (owner decision #11, part 3.2) */
 const siteAdvisory = require('./site-advisory');
 /* what the site shows of the console's Content tabs, read off its page (site-outline.js) */
@@ -6129,6 +6131,21 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         if (sec.id === 'nav') sec.html = genDesign.ensureEtLogo(sec.html, design.mode, sec.id);
         if (sec.id === 'nav') sec.html = genDesign.capNavLinks(sec.html);
       });
+      /* BE-043: what the model wrote that nothing this event supplied supports (lib/invented-facts.js) — an e-mail or a
+         phone number becomes the placeholder the check before publishing holds back; figures, claims, partners,
+         addresses and web addresses are logged here and listed by the console's site check while they are on the page.
+         The banner, and every section built below from the event's records, are the server's own. */
+      /* never a reason to lose a whole site: a check that fails leaves the sections as written, and says so */
+      try {
+        var facts = inventedFacts.checkSections(sections, inventedFacts.groundOf(eventMeta, stored.description, brief,
+          sources.filter(function (x) { return x.type !== 'competitor'; }), designPlan.ownerNotes, designPlan.owner,
+          sourcesSnap.docs.map(function (d) { var v = d.data() || {}; return v.type === 'previousEdition' ? inventedFacts.previousFacts(v.previous) : []; })), TOKEN_KIT, { fix: true });
+        sections = facts.sections;
+        if (facts.removed.length || facts.flagged.length) {
+          console.warn('generate-content: ' + eventId + ' — facts nothing supplied: ' + inventedFacts.summary(facts) + ' ' +
+            JSON.stringify(facts.removed.concat(facts.flagged).slice(0, 30)));
+        }
+      } catch (factsErr) { console.error('generate-content: the facts check of ' + eventId + ' failed — ' + (factsErr && factsErr.message)); }
       /* the previous edition's sections, built here from its real records (prev-sections.js), each in its
          planned place */
       var prevDoc = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.previous; })[0];
@@ -6407,6 +6424,14 @@ function handleRedesignSection(req, res) {
         newCss = cssUrlQuotes(genDesign.restorePictures(newCss, pictures, found[0] || ''));
         /* a change that was not about the background keeps the section's own background picture */
         if (mode === 'edit') newHtml = keepRootBackground(origHtml, newHtml, newCss, String(payload.instruction || ''));
+        /* BE-043: an e-mail or phone number that neither the section as it stood, the owner's words nor the event's
+           record has becomes the placeholder (lib/invented-facts.js) */
+        try {
+          var facts = inventedFacts.check(newHtml, inventedFacts.groundOf(origHtml, payload.instruction, eventFacts(data, null),
+            data.designPlan && data.designPlan.owner), TOKEN_KIT, { fix: true, skipSections: [] });
+          if (facts.removed.length) console.warn('redesign-section: ' + eventId + '/' + sectionId + ' — ' + inventedFacts.summary(facts));
+          newHtml = facts.html;
+        } catch (factsErr) { console.error('redesign-section: the facts check of ' + eventId + '/' + sectionId + ' failed — ' + (factsErr && factsErr.message)); }
         /* the safety step (BE-025), once the pictures are addresses again: nothing the model wrote reaches the page
            unless sanitize.js lets it */
         var safe = safeGeneratedSection(newHtml, newCss);
@@ -10892,7 +10917,7 @@ function handleApprovalSettingsPut(req, res) {
    version back. (UX-144: the national-data-center-symposium repair was refused for the "Sponsor 1" the live
    page already showed, so its broken picture stayed live.)
      placeholders  template text a visitor would read ("Event name goes here", "Sponsor 1")        block
-     samples       a real template's samples of its design (data-rv-sample: another event's quotes) block
+     samples       a real template's samples of its design (data-rv-sample: another event's copy, figures, quotes) block
      pictures      a picture whose address cannot be shown (a mistyped bucket, or no such picture) block
      logo-year     the header or footer logo showing another year than this edition's            block
      et-chrome     an AI-designed site built before ET's header and footer (its logo boxed, no phone
@@ -11119,10 +11144,10 @@ function logoProblems(fb, data, logos) {
 }
 
 /* A real template's samples of its design (data-rv-sample in the index.html of each of its sections: another event's
-   quotes, people and logos), read from disk once per file version. -> { texts, srcs } */
+   quotes, people, logos, figures and copy — TPL-051), read from disk once per file version. -> { texts, srcs, wholes } */
 var TEMPLATE_SAMPLES = {};
 function templateSamples(templateId) {
-  var none = { texts: [], srcs: [] };
+  var none = { texts: [], srcs: [], wholes: [] };
   if (typeof templateId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,80}$/.test(templateId) || /^(gen|imported)-/.test(templateId)) return none;
   try {
     var dir = path.join(TEMPLATES_DIR, templateId, 'sections');
@@ -11130,13 +11155,14 @@ function templateSamples(templateId) {
     var stamp = files.map(function (f) { return f + ':' + fs.statSync(f).mtimeMs; }).join('|');
     var hit = TEMPLATE_SAMPLES[templateId];
     if (hit && hit.stamp === stamp) return hit.samples;
-    var samples = { texts: [], srcs: [] };
+    var samples = { texts: [], srcs: [], wholes: [] };
     files.forEach(function (f) {
       var text = fs.readFileSync(f, 'utf8');
       if (text.indexOf('data-rv-sample') === -1) return;
       var got = siteChecks.samplesOf(text, TOKEN_KIT);
       samples.texts = samples.texts.concat(got.texts);
       samples.srcs = samples.srcs.concat(got.srcs);
+      samples.wholes = samples.wholes.concat(got.wholes);
     });
     TEMPLATE_SAMPLES[templateId] = { stamp: stamp, samples: samples };
     return samples;
@@ -11163,6 +11189,35 @@ function contentNames(fb, eventId) {
     return null;
   });
 }
+/* What an event supplied, for the facts on its AI-designed site (BE-043, lib/invented-facts.js): its record as the
+   owner keeps it, its latest brief, its own sources (never a competitor's) and its Content records.
+   -> Promise<ground | null> (null: could not be read; nothing is said) */
+var FACT_RECORD_FIELDS = { speakers: ['name', 'desig', 'comp', 'bio'], partners: ['name', 'url'], faqs: ['question', 'answer'],
+  sessions: ['title', 'desc'], contacts: ['label', 'name', 'email', 'phone'] };
+function factGroundOf(fb, eventId, data) {
+  var ref = eventDocRef(fb, eventId), kinds = Object.keys(FACT_RECORD_FIELDS), plan = (data && data.designPlan) || {};
+  return Promise.all([ref.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(), ref.collection('sources').get()].concat(kinds.map(function (k) {
+    var q = ref.collection(k);
+    return (typeof q.select === 'function' ? q.select.apply(q, FACT_RECORD_FIELDS[k]) : q).limit(300).get();
+  }))).then(function (snaps) {
+    var brief = snaps[0].empty ? null : snaps[0].docs[0].data().extracted;
+    var sources = snaps[1].docs.map(function (d) { return d.data() || {}; }).filter(function (v) { return v.type !== 'competitor'; })
+      .map(function (v) { return [{ url: v.url, extractedSections: v.extractedSections }, inventedFacts.previousFacts(v.previous)]; });
+    var records = kinds.map(function (k, i) { return snaps[i + 2].docs.map(function (d) { return d.data() || {}; }); });
+    return inventedFacts.groundOf(eventFacts(data, null), data && data.description, plan.ownerNotes, plan.owner,
+      data && data.settings && data.settings.seo, brief, sources, records);
+  }, function (err) {
+    console.error('api: the site check could not read what ' + eventId + ' supplied — ' + (err && err.message));
+    return null;
+  });
+}
+/* the sections of an AI-designed site the server built from the event's record and ET's own details: the banner, the
+   top bar, the footer, the previous edition's sections, and an award site's (from ETB2B's award records) */
+function factSkips(data) {
+  var ids = ['hero', 'nav', 'footer', 'award-*'];
+  (((data && data.designPlan) || {}).sections || []).forEach(function (x) { if (x && x.prebuilt && x.id) ids.push(String(x.id)); });
+  return ids;
+}
 function siteCheckOf(fb, eventId, data, html, opts) {
   opts = opts || {};
   data = data || {};
@@ -11171,6 +11226,13 @@ function siteCheckOf(fb, eventId, data, html, opts) {
   var fixed = siteChecks.repair(page, TOKEN_KIT, { eventId: eventId, homeHref: publicPathOf(eventId), portal: data.portal, forms: opts.forms });
   var after = siteChecks.inspect(fixed.html, TOKEN_KIT);
   var records = opts.records ? contentNames(fb, eventId) : Promise.resolve(null);
+  /* an AI-designed site: what its words state that nothing the event supplied supports (BE-043) */
+  var facts = ins.generated ? Promise.resolve().then(function () { return factGroundOf(fb, eventId, data); }).then(function (g) {
+    return g ? inventedFacts.findings(page, g, TOKEN_KIT, { skipSections: factSkips(data) }) : [];
+  }).then(null, function (err) {
+    console.error('api: the facts check of ' + eventId + ' failed — ' + (err && err.message));
+    return [];
+  }) : Promise.resolve([]);
 
   var samples = siteChecks.sampleHits(page, TOKEN_KIT, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
   var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
@@ -11189,7 +11251,7 @@ function siteCheckOf(fb, eventId, data, html, opts) {
   /* the places to put right what the check finds (the site editor at a section, the console at a tab) */
   function inEditor(places) { return siteAdvisory.sectionFixes(eventId, data, places || []); }
   function placesOf(list) { var out = []; (list || []).forEach(function (h) { out = out.concat(h.places || []); }); return out; }
-  return Promise.all([pictureProblems(fb, page, opts.probe), logoProblems(fb, data, ins.logos), records, adv]).then(function (got) {
+  return Promise.all([pictureProblems(fb, page, opts.probe), logoProblems(fb, data, ins.logos), records, adv, facts]).then(function (got) {
     var pics = got[0], logos = got[1], siteData = got[2], advice = got[3], items = [];
     /* each kind that holds a version back, split in two when the live page has some of it already (onLive) */
     blockUnlessLive(items, 'placeholders', ins.placeholders, onLive.placeholder, function (list) {
@@ -11197,11 +11259,11 @@ function siteCheckOf(fb, eventId, data, html, opts) {
         lines: capLines(list.map(function (h) { return quoteText(h.text) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
         hint: 'Write the event’s own words in the site editor, or take the section out, then save.', fix: inEditor(placesOf(list)) };
     });
-    /* another event's quotes, people or logos the template shows as samples of its design */
+    /* another event's quotes, people, logos, figures or copy the template shows as samples of its design (TPL-051) */
     blockUnlessLive(items, 'samples', samples, onLive.sample, function (list) {
       return { title: 'Samples from the template are still on the page',
         lines: capLines(list.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
-        hint: 'They belong to another event (its quotes, people or logos). Put this event’s own in, or take them out, in the site editor, then save.', fix: inEditor(placesOf(list)) };
+        hint: 'They belong to another event: its words, figures, quotes, people or logos, shown until this event’s own are entered. Put this event’s own in, or take them out, in the site editor (they have a dashed amber outline there), then save.', fix: inEditor(placesOf(list)) };
     });
     blockUnlessLive(items, 'pictures', pics, onLive.picture, function (list) {
       var fixable = list.filter(function (p) { return p.fixUrl; }).length;
@@ -11233,6 +11295,14 @@ function siteCheckOf(fb, eventId, data, html, opts) {
         lines: sample.map(function (r) { return r.label + ': ' + r.items.slice(0, 5).map(function (t) { return quoteText(t, 50); }).join(', ') + (r.items.length > 5 ? ' …' : ''); }),
         hint: 'Rename or delete them there. The page shows Content’s entries as they were when the site was last saved in the editor.',
         fix: sample.slice(0, 4).map(function (r) { return siteAdvisory.consoleFix(eventId, RECORD_TABS[r.kind] || 'content/basics', r.label); }) });
+    }
+    /* BE-043: never a block — the owner may have written them in since, from what they know */
+    var unsupported = got[4] || [];
+    if (unsupported.length) {
+      items.push({ code: 'facts', level: 'warn', title: unsupported.length === 1 ? 'A fact to check: nothing this event supplied says it' : unsupported.length + ' facts to check: nothing this event supplied says them',
+        lines: capLines(unsupported.map(function (f) { return quoteText(f.text, 60) + ' (' + f.label + ')' + (f.count > 1 ? ' ×' + f.count : '') + ' — ' + f.sections.join(', '); })),
+        hint: 'The event’s details, brief, previous edition and Content do not mention them, so ETB2B AI may have made them up. Make sure each is true for this event, or take it out in the site editor, then save.',
+        fix: inEditor(placesOf(unsupported)) });
     }
     var reps = repeatedPageHeadings(page);
     if (reps.length) {

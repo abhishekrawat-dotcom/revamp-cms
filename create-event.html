@@ -2480,6 +2480,9 @@
     { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.' },
     { id:'attend',    name:'Who should attend',      shape:'chips',   core:true, helper:'The roles this event is for — each with a line on why they should be there. These also power delegate targeting later.' },
     { id:'insights',  name:'Key insights / Testimonials', shape:'quotes', helper:'Quotes from past attendees with their name, role and company.' },
+    /* TPL-046 / TPL-049: places in TECH500 and Making AI Work that showed the source event's own copy with no field to change it */
+    { id:'closing',   name:'Closing call to action', shape:'rich', limit:400, helper:'A last heading and a line or two that ask visitors to take part or partner, with the button they press.' },
+    { id:'manifesto', name:'Manifesto',              shape:'rich', limit:1500, toggle:true, helper:'What the event stands for, in the organiser’s own words — a heading and a few paragraphs.' },
     { id:'glimpses',  name:'Previous glimpses',      shape:'gallery', toggle:true, helper:'Photo gallery from the last edition. Six to twelve images works best.' },
     { id:'contact',   name:'Contact us',             shape:'contacts',helper:'Speaking, delegate and partnership contacts — who a visitor should write to.' }
   ];
@@ -7860,7 +7863,8 @@
      from, that slot stayed TECH500's own stock pitch copy on every single event, with no way to change it.
      Pinning heading/body (+ cta for whyjoin, whose real section has a button) makes them always-editable,
      matching what the real template's content.map already expects to receive. */
-  var INTRO_PINNED = { about: ['body'], priorities: ['subheading', 'heading', 'body'], whyjoin: ['subheading', 'heading', 'body', 'cta'], attend: ['subheading', 'heading', 'body'] };
+  var INTRO_PINNED = { about: ['body'], priorities: ['subheading', 'heading', 'body'], whyjoin: ['subheading', 'heading', 'body', 'cta'], attend: ['subheading', 'heading', 'body'],
+    closing: ['heading', 'body', 'cta'], manifesto: ['heading', 'body'] };
   var INTRO_OFF = { hero: 1, line: 1, heading: 1, custom: 1 };           // shapes that are their own text
   var INTRO_LABELS = { subheading: 'Sub heading', heading: 'Heading', body: 'Paragraph', points: 'Pointers', media: 'Image or video', cta: 'Button' };
   /* does the chosen design have a place for this block of this section */

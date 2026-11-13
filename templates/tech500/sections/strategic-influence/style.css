@@ -22,9 +22,10 @@
   max-width: 760px;
   padding-bottom: 8px;
 }
+/* the copy used to open with a <br>: that empty line (one line-height) is margin now, so the owner's words keep it */
 #strategicInfluence .strategic-influence-copy {
   max-width: 670px;
-  margin: 52px 0 0;
+  margin: calc(52px + 24.38px) 0 0;
   color: rgba(0, 0, 0, 0.75);
   font-size: 15px;
   font-style: normal;
@@ -158,7 +159,7 @@
     max-width: 45%;
   }
   #strategicInfluence .strategic-influence-copy {
-    margin-top: 34px;
+    margin-top: calc(34px + 24.38px);
     font-size: 15px;
   }
   #strategicInfluence .strategic-influence-meta {

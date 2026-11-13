@@ -106,7 +106,30 @@ slots:
 ```
 
 Anything a design has no slot for simply isn't shown by that template; the demo site shows all of it. `fill` runs
-before `intro`, so a template can set a default (e.g. "About {event.name}") that the user's text replaces.
+before `intro`, so a template can set a default (e.g. "About {event.name}") that the user's text replaces. A design
+that shows the pointers as cards of its own gives `points` as a list instead of a selector —
+`"points": { "list": ".power-chain-insight", "fill": [ { "text": ".power-chain-insight-text", "value": "{.}" } ] }` —
+one card per pointer (`{.}` the pointer, `{##}` its number), none when there are none. A body selector that names
+two elements (`".why-now-insight > p, .why-now-insight > blockquote"`) puts the paragraph's first line in the first
+and its second line in the second.
+
+**No copy of the source event without a field.** Everything a section shows is either the event's (a slot the wizard
+fills, a record, Basics) or a neutral model, and nothing names the event the design was taken from. Where a design has
+something no existing Create Event section covers, it gets a library section of its own (TECH500's partner pitch is
+`closing`; Making AI Work's Manifesto is `manifesto`), not a static leftover. The wizard has one form per section
+(UX-050), so a second kind of content inside one section rides on that section's own form (TECH500's Power Chain
+insights are its pointers) or stays a marked sample the site editor changes (its three research figures).
+
+**Samples (`data-rv-sample`).** What a template still shows until an event's own is entered — another event's
+figures, cards, quotes, theme lines, and the neutral models of its paragraphs — carries `data-rv-sample` on the element
+that holds it (a card, a figure with its label, a paragraph, a heading). It is known by its words: the whole element's
+text (matched against an element of the same tag and first class) when it has no quote of 30 characters or more,
+else by that quote; and by its photos (a picture in a `<figure>`, never an icon the cards repeat). `functions/lib/site-checks.js` finds those still on a page and the check before publishing holds the
+site back ("Samples from the template are still on the page", with a link to each section); the editor outlines them
+on a page that opens fresh (`markTemplateSamples`) and asks before publishing while they are there. A card the wizard
+or the event's records built (`data-rv-item` with a value) is never a sample, whatever it says; one the owner changed
+in any part is theirs. Never mark a record's model (speakers, FAQs, contacts, gallery), the banner or a generic label
+("Contact Us", "Frequently Asked Questions").
 
 - Card lists grow or shrink to match the data. Extra cards are copies of the template's own cards, cycling through
   them, so icons vary.

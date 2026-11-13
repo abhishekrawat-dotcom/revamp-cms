@@ -29,9 +29,10 @@
      repair(html, kit, opts)            -> { html, changes: [{ what, label, section, how }] }
         opts = { eventId, homeHref ('/e/<id>'; false leaves a home link alone), portal (an et-footer slug or ''),
                  forms (the public forms payload, when known), imported (true for a page's body at import) }
-     samplesOf(html, kit)               -> { texts, srcs }   what a template marks as a sample of its design (data-rv-sample:
-                                          another event's quotes, people, logos), its quotes and its pictures (never a
-                                          role or a company, which the owner's own cards can share)
+     samplesOf(html, kit)               -> { texts, srcs, wholes }   what a template marks as a sample of its design
+                                          (data-rv-sample: another event's quotes, people, logos, figures, copy), its
+                                          quotes and its pictures (never a role or a company, which the owner's own cards
+                                          can share), and each marked element's words all together
      sampleHits(html, kit, samples)     -> [{ text, picture, count, sections, places }]   those still shown on a page, by content: a
                                           card the owner rewrote no longer counts
      storageRefs(html)                  -> [{ url, bucket, path }]   every picture of storage.googleapis.com
@@ -320,33 +321,62 @@ function placeholderHits(html, kit) {
 
 /* ---------- a template's samples of its design (data-rv-sample) ----------
    What a sample is known by: its quote (the words of a <p>, <blockquote> or <q> of it, outside the caption that
-   names the person) and its picture. Never the person's role or company: "Chief Marketing Officer", "Executive
+   names the person) and its photo (a picture in a <figure> of it; never an icon the design repeats on every card,
+   which the owner's own cards keep). Never the person's role or company: "Chief Marketing Officer", "Executive
    Director" or "Tata AIA Life Insurance" are as likely on the owner's own cards, which the wizard fills from the
    event's insights, and a real CMO's quote held a whole site back (3 Nov 2026). Nor the name alone: the same person
-   can speak again, with new words. */
+   can speak again, with new words.
+   And, when it has no such quote, by its whole text (TPL-051): all of its words together — a figure with its label
+   ("100+ CX Decision Makers"), a role, an industry, a theme line, a heading — matched against an element of the same
+   tag (and first class) on the page, so a short figure is never taken for one in a sentence, and a card the owner
+   changed in any part is theirs. A card the wizard or the event's records built (data-rv-item with a value) is never
+   one by its whole text: its words are the event's.
+   -> wholes: [{ tag, cls, text }] */
 var SAMPLE_WORDS_MIN = 30;
+/* the words of an element, as a visitor reads them (text only: never a label or an alt) */
+function wordsOf(s, i, kit) {
+  var parts = [], skipTo = -1;
+  for (var k = i + 1; k < s.ends[i]; k++) {
+    if (k <= skipTo) continue;
+    var x = s.tokens[k];
+    if (x.t === 'open' && (SKIP[x.name] || isHiddenTag(x, kit))) { skipTo = s.ends[k]; continue; }
+    if (x.t === 'text') parts.push(s.html.slice(x.s, x.e));
+  }
+  return clean(parts.join(' '));
+}
+function firstClass(t, kit) { return kit.classListOf(t)[0] || ''; }
+function builtFromData(t, kit) { return !!String(kit.attrValue(t, 'data-rv-item') || '').trim(); }
 function samplesOf(html, kit) {
-  var s = typeof html === 'string' ? scan(html, kit) : html, texts = [], srcs = [];
+  var s = typeof html === 'string' ? scan(html, kit) : html, texts = [], srcs = [], wholes = [];
   for (var i = 0; i < s.tokens.length; i++) {
     var t = s.tokens[i];
     if (t.t !== 'open' || !kit.attrOf(t, 'data-rv-sample')) continue;
+    var quoted = false, figureEnd = -1;
     for (var k = i; k <= s.ends[i]; k++) {
       var x = s.tokens[k];
       if (x.t === 'open' && (x.name === 'figcaption' || x.name === 'cite')) { k = s.ends[k]; continue; }
+      if (x.t === 'open' && x.name === 'figure') figureEnd = Math.max(figureEnd, s.ends[k]);
       if (x.t === 'open' && /^(?:p|blockquote|q)$/.test(x.name)) {
         var words = labelOf(s, k, kit);
-        if (words.length >= SAMPLE_WORDS_MIN && texts.indexOf(words) === -1) texts.push(words);
+        if (words.length >= SAMPLE_WORDS_MIN) { quoted = true; if (texts.indexOf(words) === -1) texts.push(words); }
         k = s.ends[k];
         continue;
       }
-      if (x.t === 'open' && x.name === 'img') { var src = decode(kit.attrValue(x, 'src') || '').trim(); if (src && srcs.indexOf(src) === -1) srcs.push(src); }
+      /* a photo (in a <figure>, as a quote card's person), never an icon the design repeats on every card */
+      if (x.t === 'open' && x.name === 'img' && (k === i || k <= figureEnd)) { var src = decode(kit.attrValue(x, 'src') || '').trim(); if (src && srcs.indexOf(src) === -1) srcs.push(src); }
     }
+    /* one with words of its own (a quote, a card's copy) is known by them, as before; the rest by all their words */
+    var whole = quoted ? '' : wordsOf(s, i, kit), cls = firstClass(t, kit);
+    if (whole && !wholes.some(function (w) { return w.tag === t.name && w.cls === cls && w.text === whole; })) wholes.push({ tag: t.name, cls: cls, text: whole });
     i = s.ends[i];
   }
-  return { texts: texts, srcs: srcs };
+  return { texts: texts, srcs: srcs, wholes: wholes };
 }
 function sampleHits(html, kit, samples) {
-  if (!samples || (!samples.texts.length && !samples.srcs.length)) return [];
+  var wholes = (samples && samples.wholes) || [];
+  if (!samples || (!samples.texts.length && !samples.srcs.length && !wholes.length)) return [];
+  var byTag = {};
+  wholes.forEach(function (w) { (byTag[w.tag] || (byTag[w.tag] = [])).push(w); });
   var s = typeof html === 'string' ? scan(html, kit) : html, found = {}, order = [];
   function add(key, text, section, picture, sectionKey) {
     if (!found[key]) { found[key] = { text: text, picture: !!picture, count: 0, sections: [], places: [] }; order.push(key); }
@@ -358,6 +388,15 @@ function sampleHits(html, kit, samples) {
   for (var i = 0; i < s.tokens.length; i++) {
     var t = s.tokens[i], c = s.ctx[i];
     if (c.skip || c.hidden) continue;
+    /* a marked element, all of its words still as the template had them: one hit, and nothing inside it again */
+    if (t.t === 'open' && byTag[t.name] && !builtFromData(t, kit)) {
+      var cls = kit.classListOf(t), whole = null;
+      var like = byTag[t.name].filter(function (w) { return !w.cls || cls.indexOf(w.cls) !== -1; });
+      if (like.length) {
+        whole = wordsOf(s, i, kit);
+        if (whole && like.some(function (w) { return w.text === whole; })) { add('w:' + whole, whole, c.section, false, c.key); i = s.ends[i]; continue; }
+      }
+    }
     /* a quote, read whole as samplesOf reads it */
     if (t.t === 'open' && /^(?:p|blockquote|q)$/.test(t.name)) {
       var words = labelOf(s, i, kit);

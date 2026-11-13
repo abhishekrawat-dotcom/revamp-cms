@@ -1735,6 +1735,8 @@
 
   // resolves true when the page as first opened is kept in this browser
   function seedSnapshot(draft) {
+    // the template's own samples still on the page are marked before its first step (TPL-051)
+    markTemplateSamples();
     var snap = canvas.snapshot();
     undoStack = [snap]; undoPtr = 0;
     // what Create Event handed over is the person's own work, not saved yet; a page as it mounted is not
@@ -3884,6 +3886,47 @@
       if (kind === 'image' ? canvas.pictureOf(el) : !/\S/.test(el.textContent)) return;
       el.setAttribute('data-rv-placeholder', kind === 'image' ? '' : el.textContent.replace(/\s+/g, ' ').trim());
       n++;
+    });
+    return n;
+  }
+  /* A real template's samples (TPL-051): what its section files mark data-rv-sample — another event's copy, figures,
+     cards and quotes, shown until this event's own are entered — is marked the same way on a page that opens fresh
+     (seedSnapshot: the bare template, or the template as Create Event filled it), while it still reads as the
+     template wrote it: each quote in it (a card's copy, a paragraph), or, with none, the whole marked element (the same
+     two ways functions/lib/site-checks.js knows a sample before publishing). A card filled from the event's own
+     content (data-rv-item with a value) is never one by its whole text. A page saved before is left as saved: the
+     check before publishing still names what is left on it.
+     -> how many were marked */
+  function markTemplateSamples() {
+    if (!canvas || !canvas.library || /^(gen|imported)-/.test(templateId || '')) return 0;
+    var squash = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); };
+    var QUOTES = 'p, blockquote, q';
+    var quoteOf = function (el) { return el.closest('figcaption, cite') ? '' : squash(el.textContent); };
+    var wholes = {}, quotes = {}, any = false;
+    canvas.library().forEach(function (s) {
+      if (String(s.html).indexOf('data-rv-sample') === -1) return;
+      var box = canvas.doc.createElement('template');
+      box.innerHTML = s.html;
+      Array.prototype.forEach.call(box.content.querySelectorAll('[data-rv-sample]'), function (unit) {
+        var qs = unit.matches(QUOTES) ? [unit] : Array.prototype.slice.call(unit.querySelectorAll(QUOTES)), quoted = false;
+        qs.forEach(function (q) { var w = quoteOf(q); if (w.length >= 30) { quotes[w] = 1; quoted = any = true; } });
+        /* one with words of its own (a quote, a card's copy) is known by them; the rest by all their words */
+        var whole = quoted ? '' : squash(unit.textContent);
+        if (whole) { wholes[whole] = 1; any = true; }
+      });
+    });
+    if (!any) return 0;
+    var n = 0;
+    function mark(el) {
+      if (el.hasAttribute('data-rv-placeholder')) return;
+      el.setAttribute('data-rv-placeholder', squash(el.textContent));
+      n++;
+    }
+    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-sample]'), function (unit) {
+      var built = !!String(unit.getAttribute('data-rv-item') || '').trim();
+      if (!built && wholes[squash(unit.textContent)]) mark(unit);
+      var qs = unit.matches(QUOTES) ? [unit] : Array.prototype.slice.call(unit.querySelectorAll(QUOTES));
+      qs.forEach(function (q) { if (quotes[quoteOf(q)]) mark(q); });
     });
     return n;
   }
@@ -7647,7 +7690,8 @@
         .replace(/\bthe hero\b/g, 'the banner');
     }
 
-    /* A placeholder is marked with what it said when it came (data-rv-placeholder); it stops being one once its
+    /* A placeholder is marked with what it said when it came (data-rv-placeholder) — with a section or block the owner
+       added, or with the design itself (a real template's samples, markTemplateSamples); it stops being one once its
        words are different by any road (typed, ETB2B AI, a paste), or, for a picture box, once it shows a picture.
        Emptied, it is not a placeholder either: nothing of it would go live. */
     function placeholderLeft(kind, original, text, hasPicture) {
@@ -7665,7 +7709,7 @@
       if (sample.length > 60) sample = sample.slice(0, 57).replace(/\s+\S*$/, '') + '…';
       return {
         title: parts.join(' and ') + (one ? ' is' : ' are') + ' still on the page',
-        text: (one ? 'It came' : 'They came') + ' with a section or block you added' + (sample ? ', such as “' + sample + '”' : '') +
+        text: (one ? 'It came' : 'They came') + ' with the design, or with a section or block you added' + (sample ? ', such as “' + sample + '”' : '') +
           ', and would go live as ' + (one ? 'it is' : 'they are') + '. Write this event’s own words in, or delete what the site does not need. ' +
           (one ? 'It has' : 'They have') + ' a dashed amber outline on the page.',
         show: one ? 'Show it' : 'Show them',

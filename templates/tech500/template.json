@@ -48,7 +48,7 @@
   },
 
   "content": {
-    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). intro = where this design puts the section text every Create Event section carries (sub heading, heading, paragraph, pointers, image/video, button) — only the slots TECH500's design has; the rest isn't shown here. from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so. Every list rule uses empty:hide, so a list with nothing in it shows no cards rather than TECH500’s own; the section heading stays so there is still a visible slot to fill. FAQs and contacts are the event's records (Content › FAQ, Content › Contact): each section file holds one neutral model item, and with no records the section is not on the live site. about-us (About ETCIO) has no entry and keeps its own copy deliberately — it is ET CIO’s publisher boilerplate, the same on every ET CIO microsite, not event content a wizard field should own. The banner names the event in words (its headline, or its name) with the tagline under it; an event with a logo shows the logo instead and keeps the words for search engines and screen readers. The banner has one picture, img.banner-bg-image: the event's own banner (an uploaded image, or the flattened image of an uploaded PSD — the PSD's text and button layers do not carry over, this banner has fixed text slots) replaces it, and a video plays over it only when the event supplies a video file of its own. The overview heading reads 'What is <event name>' until the owner writes a heading.",
+    "notes": "How Create Event's content fills this template (editor-fill.js has the rule reference). intro = where this design puts the section text every Create Event section carries (sub heading, heading, paragraph, pointers, image/video, button) — only the slots TECH500's design has; the rest isn't shown here. from = a Create Event library id (step 3) or event (step 1). Create Event sections with no entry here (speakers, agenda, partners, …) are left out and the editor says so. Every list rule uses empty:hide, so a list with nothing in it shows no cards rather than TECH500’s own; the section heading stays so there is still a visible slot to fill. FAQs and contacts are the event's records (Content › FAQ, Content › Contact): each section file holds one neutral model item, and with no records the section is not on the live site. about-us (About ETCIO) has no entry and keeps its own copy deliberately — it is ET CIO’s publisher boilerplate, the same on every ET CIO microsite, not event content a wizard field should own. The banner names the event in words (its headline, or its name) with the tagline under it; an event with a logo shows the logo instead and keeps the words for search engines and screen readers. The banner has one picture, img.banner-bg-image: the event's own banner (an uploaded image, or the flattened image of an uploaded PSD — the PSD's text and button layers do not carry over, this banner has fixed text slots) replaces it, and a video plays over it only when the event supplies a video file of its own. The overview heading reads 'What is <event name>' until the owner writes a heading. Nothing of the source event's own copy is left without a field (TPL-046): the overview's and Be in the room's paragraphs and the partner pitch are neutral models; Beyond sponsorship (strategic-influence) takes its sub heading, heading, paragraph and main button from Create Event's 'Closing call to action'; the Power Chain's numbered insights are the pointers of 'Who should attend' (its three research figures stay a marked sample, changed or taken out in the site editor: a second Create Event form on one section would break the wizard's one list of sections, UX-050); the line beside Be in the room's button is the pointers of 'Why join us'; Why now's highlighted quote is the second line of its paragraph. The insights strip with no pointers is not shown. Every piece of the source event's copy, figures and cards that stays until the owner's own replaces it carries data-rv-sample (TPL-051): outlined in the editor, and the check before publishing holds it back while it is still as the template wrote it.",
     "bindNotes": "Elements that show one of the event's own details (Content › Basics) and follow it on every visit (rv-data.js, data-rv-bind). The section files carry the attribute themselves; this list is for pages saved before they did.",
     "bind": [
       { "section": "banner", "sel": "img.logo", "bind": "event.logo" },
@@ -73,6 +73,10 @@
         { "text": ".btn-wrapper .book-btn:not(.btn-outline)", "value": "{hero.cta1}", "empty": "keep" },
         { "text": ".btn-wrapper .book-btn.btn-outline", "value": "{hero.cta2}", "empty": "remove" }
       ] },
+      { "from": "closing", "section": "strategic-influence",
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".strategic-influence-copy",
+                   "cta": { "label": ".strategic-influence-btn.is-primary", "link": ".strategic-influence-btn.is-primary" } },
+        "fill": [] },
       { "from": "event", "section": "strategic-influence", "fill": [
         { "drop": ".strategic-influence-divider", "unless": "{event.dateLabel|event.date}" },
         { "drop": ".strategic-influence-divider", "unless": "{event.location}" },
@@ -87,7 +91,7 @@
         { "text": "h2", "skip": "span", "value": "What is {event.name}" }
       ] },
       { "from": "priorities", "section": "why-now",
-        "intro": { "subheading": ".why-now-kicker strong", "heading": ".why-now-main .page_hdng4 h2", "body": ".why-now-insight > p" },
+        "intro": { "subheading": ".why-now-kicker strong", "heading": ".why-now-main .page_hdng4 h2", "body": ".why-now-insight > p, .why-now-insight > blockquote" },
         "fill": [
         { "list": ".why-now-card", "items": "priorities.items", "require": "{t}{d}", "empty": "hide", "fill": [
           { "text": ".why-now-card__number", "value": "{##}" },
@@ -106,6 +110,7 @@
       ] },
       { "from": "whyjoin", "section": "why-attend",
         "intro": { "subheading": ".col-md-7 .page_hdng4 h2 > span", "heading": { "sel": ".col-md-7 .page_hdng4 h2", "skip": "span" }, "body": ".col-md-5 .page_hdng4 > p",
+                   "points": { "list": ".agenda-footer > .agenda-note", "fill": [ { "text": ":self", "value": "{.}" } ] },
                    "cta": { "label": "a.agenda-cta > span:first-child", "link": "a.agenda-cta" } },
         "fill": [
         { "list": ".agenda-card", "items": "whyjoin.items", "require": "{t}{d}", "empty": "hide", "fill": [
@@ -116,8 +121,12 @@
         ] }
       ] },
       { "from": "attend", "section": "power-chain",
-        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".page_hdng4 > p" },
+        "intro": { "subheading": "h2 > span", "heading": { "sel": "h2", "skip": "span" }, "body": ".page_hdng4 > p",
+                   "points": { "list": ".power-chain-insight", "fill": [
+                     { "text": ".power-chain-insight-index", "value": "{##}" },
+                     { "text": ".power-chain-insight-text", "value": "{.}" } ] } },
         "fill": [
+        { "show": ".power-chain-insights", "if": "{attend.points.0|attend.points.1|attend.points.2}" },
         { "list": ".power-chain-item", "items": "attend.items", "require": "{t|.}", "empty": "hide", "fill": [
           { "text": ".power-chain-role", "value": "{t|.}" },
           { "text": ".power-chain-domain", "value": "{d}" }

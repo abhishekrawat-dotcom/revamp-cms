@@ -59,7 +59,9 @@
      subheading · heading · body · points[] · media { kind: image|video, url, side } · cta { label, url }
    "intro" says where this template's design puts each one — only the slots the design has:
      { "subheading": sel, "heading": sel | { "sel": sel, "skip": sel }, "body": sel (its <p>s),
-       "points": sel (a list is added inside), "media": { "sel": sel, "wrap": "<classes>" }, "cta": sel | { "label": sel, "link": sel } }
+       "points": sel (a list is added inside) | { "list": sel, "fill": [ rules ] } (one of the design's own cards per
+                 pointer: a list rule over <from>.points, {.} the pointer, {##} its number; no cards with none),
+       "media": { "sel": sel, "wrap": "<classes>" }, "cta": sel | { "label": sel, "link": sel } }
    It runs after "fill", so fill can set a template's defaults (e.g. "About {event.name}") that the text replaces
    when the user wrote one. Anything a design has no slot for isn't shown by that template.
    A section whose library id the user switched off is hidden (not deleted, so it can be shown again); one the draft
@@ -511,7 +513,13 @@
       if (slots[k]) { var a = o(slots[k]); r.push({ text: a.sel, skip: a.skip, value: '{' + from + '.' + k + '}', empty: 'keep' }); }
     });
     if (slots.body) r.push({ paragraphs: o(slots.body).sel, value: '{' + from + '.body}' });
-    if (slots.points) r.push({ bullets: o(slots.points).sel, items: from + '.points' });
+    if (slots.points) {
+      var pt = o(slots.points);
+      /* a design that shows the pointers as its own cards (TECH500's power-chain insights): one card per pointer,
+         drawn from the design's cards like any list, none when there are none */
+      if (pt.list) r.push({ list: pt.list, items: from + '.points', require: '{.}', empty: 'hide', fill: pt.fill || [{ text: ':self', value: '{.}' }] });
+      else r.push({ bullets: pt.sel, items: from + '.points' });
+    }
     if (slots.media) { var m = o(slots.media); r.push({ media: from + '.media', sel: m.sel, wrap: m.wrap }); }
     if (slots.cta) {
       var c = o(slots.cta);
