@@ -5885,7 +5885,9 @@
     });
   }
   /* true when the section holds something the owner entered — anything beyond what a new one starts with */
-  function sectionHasContent(s){ return dataDiffers(s.data, seed(s.shape), null); }
+  /* text that differs from the starting words, or an item only a picture fills (a photo or logo chosen in the wizard
+     is a file reference, `slot`, with no text): either is something the owner would lose */
+  function sectionHasContent(s){ return dataDiffers(s.data, seed(s.shape), null) || sectionFilled(s); }
   /* any text in v that is not what `base` starts with; a key named in `skip` is not looked at */
   function dataDiffers(v, base, skip){
     if (typeof v === 'string') return !!v.trim() && v !== base;
@@ -11224,8 +11226,7 @@
       category: (b.category || 'ip').toLowerCase(),
       venue: b.venue, city: b.city,
       start: (exact && b.start) ? b.start : null,
-      end: (exact && b.end) ? b.end : null,
-      payment: { type: 'free' }
+      end: (exact && b.end) ? b.end : null
     };
     /* A month, a quarter or "to be announced" reaches the event (WZ-054): the kind of date, its parts and the words
        shown for it (CON-051: Basics shows and changes them). An exact date clears the words an earlier choice left. */
