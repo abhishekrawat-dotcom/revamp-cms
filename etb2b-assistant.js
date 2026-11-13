@@ -60,6 +60,14 @@
      carry(eventId, recs, text)      keeps pictures (and the words) for that event's site editor (IndexedDB + a pointer)
      takeCarry(eventId)              -> Promise<{ text, files, expected } | null>   the editor's side, read once
 
+   FASTER WITH USE (owner decision 11, part 1). Once the panel is up, this shell loads etb2b-ai-habits.js (once, from
+   this site) and hands it a hub: the chat, where the person is, the open Promotions editor and each brain's Undo of a
+   turn (undoHandle). That file draws the one-click suggestions above the box (what this person asks most often here,
+   or the team's for this kind of event), "Save as shortcut" under an answer that did what was asked, and the person's
+   shortcuts (run, rename, delete; Undo per step and Undo all). Every one of its requests is sent through this shell's
+   send(), like a typed message, so the brains and their lock to the event decide everything; after each message the
+   shell tells it which brain answered and how (habits.turn). Without that file the panel works as before.
+
    QA NOTES (owner decision 11). On a page that carries the assistant, for a signed-in team member, a script error
    (window "error") or a promise nobody handled ("unhandledrejection") is sent once to POST /api/ai-qa/note with the
    page, the event, the window's size and, within two minutes of one, the last message to ETB2B AI and what kind of
@@ -953,6 +961,7 @@
   function callBrain(name, text, o, handedFrom) {
     var b = brains[name];
     activeBrain = b;
+    turnBrain = name;
     var opts = { attachments: o.attachments || [], context: o.context || null, place: place() };
     if (handedFrom) opts.handedFrom = handedFrom;
     var p;
@@ -973,7 +982,23 @@
     try { return isFn(b.active) ? !!b.active() : false; } catch (e) { return false; }
   }
   function usable(name) { return name === 'dash' ? !!brains.dash : name === 'promo' ? promoOn() : canEdit(); }
+  /* the brain that answered the message being answered (the last one asked: after a handoff, the other) */
+  var turnBrain = '';
+  /* One message: answered (dispatch), then etb2b-ai-habits.js is told which brain answered and how, for "Save as
+     shortcut", a shortcut's run and fresher suggestions. That never changes the answer or its failure. */
   function send(text, o) {
+    turnBrain = '';
+    var got;
+    try { got = dispatch(text, o); } catch (e) { got = Promise.reject(e); }
+    return Promise.resolve(got).then(function (r) {
+      tellHabits(text, turnBrain, r, null);
+      return r;
+    }, function (err) {
+      tellHabits(text, turnBrain, null, err || {});
+      throw err;
+    });
+  }
+  function dispatch(text, o) {
     o = o || {};
     var p = place();
     qaAsked(text);
@@ -1200,7 +1225,42 @@
     pendingSay = [];
     said.forEach(say);
     settleReady(chatRef);
+    startHabits();
     return chatRef;
+  }
+
+  /* ---------- what the panel learns (etb2b-ai-habits.js, owner decision 11): loaded once the panel is up ---------- */
+  var habits = null, habitsLoading = false;
+  function habitsHub() {
+    return {
+      chat: function () { return chatRef; },
+      place: place,
+      /* 'post' | 'mail' while one is open in "Edit with AI" on Promotions, else '' */
+      promoKind: function () {
+        var b = brains.promo;
+        if (!promoOn()) return '';
+        try { return isFn(b.editorKind) ? str(b.editorKind()) : ''; } catch (e) { return ''; }
+      },
+      /* that brain's own Undo of one of its turns, still standing in this tab, or null */
+      undoHandle: function (name, turnId) {
+        var b = own(brains, name) ? brains[name] : null;
+        try { return b && isFn(b.undoHandle) ? b.undoHandle(turnId) || null : null; } catch (e) { return null; }
+      },
+      onOpenChange: function (fn) { if (isFn(fn)) openListeners.push(fn); }
+    };
+  }
+  function startHabits() {
+    if (habits || habitsLoading || !chatRef) return;
+    habitsLoading = true;
+    loadScript('/etb2b-ai-habits.js', function () { return !!(root.RevampAiHabits && isFn(root.RevampAiHabits.attach)); }).then(function (ok) {
+      habitsLoading = false;
+      if (!ok || !chatRef || habits) return;
+      try { habits = root.RevampAiHabits.attach(habitsHub()) || null; } catch (e) { warn('the suggestions could not start: ' + (e && e.message)); }
+    });
+  }
+  function tellHabits(text, name, r, err) {
+    if (!habits || !isFn(habits.turn)) return;
+    try { habits.turn({ text: str(text), brain: str(name), result: r || null, error: err || null }); } catch (e) { /* a nicety */ }
   }
 
   /* ---------- QA notes: page errors (owner decision 11) ---------- */

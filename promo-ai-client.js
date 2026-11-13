@@ -349,6 +349,13 @@
     return null;
   }
   function changedAt() { var c = newestOpen(); return c ? c.at : 0; }
+  /* the Undo of the change one turn made, still standing, or null: the handler its own Undo is bound to
+     (etb2b-ai-habits.js: a shortcut's Undo per step and Undo all) */
+  function undoHandle(turnId) {
+    if (!TURN_ID.test(str(turnId))) return null;
+    for (var i = changes.length - 1; i >= 0; i--) if (changes[i].turnId === turnId && !changes[i].undone && changes[i].onUndo) return changes[i].onUndo;
+    return null;
+  }
   /* "undo that", sent here by the shell with no AI call */
   function undoLocal() {
     var c = newestOpen();
@@ -407,7 +414,10 @@
     stop: function () { if (stopNow) stopNow(); },
     changedAt: changedAt,
     undoLocal: undoLocal,
+    undoHandle: undoHandle,
     active: function () { return !!openStudio(); },
+    /* 'post' | 'mail' while one is open in "Edit with AI", else '' (etb2b-ai-habits.js: that editor's suggestions) */
+    editorKind: function () { var s = openStudio(); try { return s ? (s.ai.kind() === 'mail' ? 'mail' : 'post') : ''; } catch (e) { return ''; } },
     onMount: function (c) {
       chat = c || null;
       modeChanged();

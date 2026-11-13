@@ -132,6 +132,7 @@
 .rvc .rvc-send:focus-visible, .rvc .rvc-attach:focus-visible{ border-radius:10px; }
 .rvc .rvc-btn:focus-visible, .rvc .rvc-close:focus-visible, .rvc .rvc-head-help:focus-visible{ border-radius:var(--rvc-r-sm); }
 .rvc .rvc-suggestion:focus-visible, .rvc .rvc-choice:focus-visible, .rvc .rvc-quick-btn:focus-visible{ border-radius:10px; }
+.rvc .rvc-chip-btn:focus-visible, .rvc .rvc-chip-more:focus-visible{ border-radius:100px; }
 .rvc .rvc-achip-rm:focus-visible, .rvc .rvc-context-rm:focus-visible{ border-radius:50%; }
 /* a phone's full-screen sheet keeps the page behind it still */
 html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
@@ -372,6 +373,36 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc-quick-btn{ min-height:28px; max-width:100%; margin:0; padding:4px 10px; border:1px solid var(--rvc-border); border-radius:100px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12px; font-weight:600; line-height:1.3; text-align:left; overflow-wrap:anywhere; cursor:pointer; }
 .rvc-quick-btn:hover{ border-color:var(--rvc-accent); background:var(--rvc-surface-2); }
 .rvc-footnote{ flex-shrink:0; margin:-5px 14px 11px; font-size:12px; line-height:1.4; color:var(--rvc-text-muted); }
+/* the one-click row (setChips), above the box: a chip SENDS, so it reads as an action (filled), not as an idea that
+   fills the box (outlined, the quick ideas it stands in for); Shortcuts sits at its end */
+.rvc-chiprow{ flex-shrink:0; display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 12px 8px; }
+.rvc-chiprow-label{ flex-basis:100%; margin:0 0 -1px; font-size:11.5px; font-weight:600; line-height:1.3; color:var(--rvc-text-muted); }
+.rvc-chip-btn{ min-height:30px; max-width:100%; margin:0; padding:4px 11px; border:1px solid var(--rvc-accent-soft); border-radius:100px; background:var(--rvc-accent-soft); color:var(--rvc-text); font-size:12px; font-weight:700; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:border-color .15s ease; }
+.rvc-chip-btn:hover{ border-color:var(--rvc-accent); }
+.rvc-chip-btn[aria-disabled="true"]{ opacity:.6; cursor:progress; }
+.rvc-chip-btn[aria-disabled="true"]:hover{ border-color:var(--rvc-accent-soft); }
+.rvc-chip-more{ min-height:30px; margin:0 0 0 auto; padding:4px 11px; border:1px solid var(--rvc-border-strong); border-radius:100px; background:var(--rvc-surface); color:var(--rvc-text); font-size:12px; font-weight:700; line-height:1.3; white-space:nowrap; cursor:pointer; }
+.rvc-chip-more:hover{ background:var(--rvc-surface-2); }
+.rvc-chip-more[aria-expanded="true"]{ border-color:var(--rvc-accent); }
+/* what etb2b-ai-habits.js puts in an answer: "Save as shortcut", the shortcuts list, a shortcut's run */
+.rvc-hb{ margin-top:8px; padding:10px 12px; border:1px solid var(--rvc-border); border-radius:var(--rvc-r-md); background:var(--rvc-surface); }
+.rvc-hb-h{ margin:0 0 6px; font-size:12.5px; font-weight:800; line-height:1.35; color:var(--rvc-text); }
+.rvc-hb-p{ margin:0 0 8px; font-size:12px; line-height:1.45; color:var(--rvc-text-muted); }
+.rvc-hb-label{ display:block; margin:0 0 4px; font-size:12px; font-weight:700; line-height:1.35; color:var(--rvc-text); }
+.rvc-hb-input, .rvc-hb-select{ display:block; width:100%; min-height:34px; margin:0 0 8px; padding:6px 10px; border:1px solid var(--rvc-border-strong); border-radius:var(--rvc-r-sm); background:var(--rvc-surface); color:var(--rvc-text); font:inherit; font-size:13px; line-height:1.35; }
+.rvc-hb-input:focus, .rvc-hb-select:focus{ outline:none; border-color:var(--rvc-accent); box-shadow:0 0 0 3px var(--rvc-accent-soft); }
+.rvc-hb-row{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.rvc-hb-err{ margin:0 0 8px; font-size:12px; font-weight:600; line-height:1.4; color:var(--rvc-crit); }
+.rvc-hb-list{ margin:0; padding:0; list-style:none; }
+.rvc-hb-item{ display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:8px 0; border-top:1px solid var(--rvc-border); }
+.rvc-hb-item:first-child{ border-top:0; padding-top:0; }
+.rvc-hb-name{ flex:1 1 140px; min-width:0; font-size:13px; font-weight:700; line-height:1.35; color:var(--rvc-text); overflow-wrap:anywhere; }
+.rvc-hb-meta{ display:block; font-size:11.5px; font-weight:500; color:var(--rvc-text-muted); }
+.rvc-hb-steps{ margin:0; padding:0; list-style:none; counter-reset:rvc-hb; }
+.rvc-hb-step{ display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; padding:6px 0; border-top:1px solid var(--rvc-border); font-size:12.5px; line-height:1.4; color:var(--rvc-text); }
+.rvc-hb-step:first-child{ border-top:0; padding-top:0; }
+.rvc-hb-step-text{ flex:1 1 160px; min-width:0; overflow-wrap:anywhere; }
+.rvc-hb-step-state{ font-size:11.5px; font-weight:700; color:var(--rvc-text-muted); }
 /* "Drop to attach", over the whole panel while a file is dragged onto it */
 .rvc-drop{ position:absolute; inset:0; z-index:2; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:24px; pointer-events:none; border:2px dashed var(--rvc-accent); border-radius:inherit; background:var(--rvc-accent-soft); color:var(--rvc-text); text-align:center; }
 .rvc-drop-h{ margin:0; font-size:15px; font-weight:800; }
@@ -445,6 +476,11 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc.rvc-phone .rvc-send, .rvc.rvc-phone .rvc-attach{ width:44px; height:44px; }
 .rvc.rvc-phone .rvc-btn, .rvc.rvc-phone .rvc-choice, .rvc.rvc-phone .rvc-suggestion{ min-height:44px; }
 .rvc.rvc-phone .rvc-quick-btn, .rvc.rvc-phone .rvc-stop{ min-height:36px; }
+/* short at a phone's width (390 px): two chips a line at most, each cut with … (its whole request is its title) */
+.rvc.rvc-phone .rvc-chiprow{ margin:0 10px 8px; }
+.rvc.rvc-phone .rvc-chip-btn{ min-height:36px; max-width:calc(50% - 3px); }
+.rvc.rvc-phone .rvc-chip-more{ min-height:36px; }
+.rvc.rvc-phone .rvc-hb-input, .rvc.rvc-phone .rvc-hb-select{ min-height:44px; font-size:16px; }
 .rvc.rvc-phone .rvc-achip-rm, .rvc.rvc-phone .rvc-context-rm{ width:36px; height:36px; }
 .rvc.rvc-phone .rvc-footnote{ margin:-4px 12px 8px; }
 .rvc.rvc-phone .rvc-peek{ left:16px; right:16px; width:auto; max-width:none; min-height:56px; bottom:calc(80px + env(safe-area-inset-bottom, 0px) + var(--rvc-lift)); }
@@ -463,7 +499,7 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 @keyframes rvc-fill{ from{ width:0; } to{ width:100%; } }
 @media (prefers-reduced-motion: reduce){
   .rvc-panel, .rvc-peek, .rvc-turn, .rvc-launcher-label, .rvc-status i, .rvc-spin, .rvc-cd-bar i{ animation:none !important; }
-  .rvc-launcher, .rvc-panel, .rvc-peek, .rvc-btn, .rvc-suggestion, .rvc-compose{ transition:none !important; }
+  .rvc-launcher, .rvc-panel, .rvc-peek, .rvc-btn, .rvc-suggestion, .rvc-compose, .rvc-chip-btn{ transition:none !important; }
   /* the countdown's bar stands still, full, and the words say what will happen */
   .rvc-cd-bar i{ width:100%; }
 }

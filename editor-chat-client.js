@@ -467,6 +467,12 @@
         return r;
       });
     },
+    /* the Undo of one turn's change still on the page, or null: the editor's own handler for it (etb2b-ai-habits.js:
+       a shortcut's Undo per step and Undo all; the change's card and the folded bar say "Undone" with it) */
+    undoHandle: function (turnId) {
+      var U = ui();
+      return U && isFn(U.chat.undoHandle) ? U.chat.undoHandle(turnId) : null;
+    },
     /* the event's conversation, both brains' turns in order: the editor's own come back with their Undo */
     loadHistory: function (w) {
       var U = ui();

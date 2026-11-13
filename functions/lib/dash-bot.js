@@ -111,7 +111,9 @@
    what people ask ETB2B AI: its `intent` (a few words the model gives for the kind of request, part of the same one
    answer), the person's words with e-mails, phones, links and every event's name and id taken out, what was done
    and how it ended; /turn adds what the page did with it (an undo is also a QA note). It is written after the answer
-   has gone and never changes one.
+   has gone and never changes one. The prompt gets a few of the team's past requests on this page that worked and were
+   kept, with the kind of answer that did them (lib/ai-habits.js examplesFor: words that name no event or person),
+   read beside the conversation and waited for at most 400 ms.
 
    COST. The editor chat's rate bucket is shared (chatRateOk: 60 messages in 10 minutes per person), and each
    person has CAPS.dayTurns messages and US$CAPS.dayUsd a day (India days), claimed in a transaction before the
@@ -1067,6 +1069,9 @@ function buildScopedPrompt(ctx) {
     mayHandOff ? '- "handoff": the message is about this site\'s page itself: its words, design, colours, fonts, pictures, sections, buttons or forms, or a change to any of them ("make the hero darker", "what does the overview say?", "use this picture on the banner"). The site editor\'s own ETB2B AI answers those, not you. Answer kind "handoff" with text "" and nothing else. Questions about this event\'s numbers, its other pages and its promotions are yours.' : null,
     '- Return at most one action, always about this event: put its id in `events`.',
     '',
+    /* 3b. the team's past requests on this page that worked (lib/ai-habits.js) */
+    examplesLines(ctx),
+    examplesLines(ctx) ? '' : null,
     /* 4. what you never do */
     'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. Adding this event\'s speakers or sponsors ("records") is the one change you make to the event, and only when asked. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.' + (mayHandOff ? ' A change to this site\'s page is not refused here: it is a "handoff".' : ''),
     'Here you also never answer about, open, list or change any OTHER event, never list or count events, never start a new event, never switch the portal and never filter the dashboard\'s list. For any of those, answer kind "refuse" with refuse.action "other-event": the product says where to do it.',
@@ -1120,6 +1125,20 @@ function buildScopedPrompt(ctx) {
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
 }
 
+/* The team's past requests on this page that worked, with the kind of answer that did them (lib/ai-habits.js
+   examplesFor, read in handleChat into ctx.examples): the words name no event and nothing else, so an example is never
+   another event's content. null when there are none, or that module is not there. */
+function examplesLines(ctx) {
+  if (!ctx || !arr(ctx.examples).length) return null;
+  try { return require('./ai-habits').examplesBlock(ctx.examples) || null; } catch (e) { return null; }
+}
+function teamExamples(fb, place) {
+  try {
+    var p = isObj(place) ? place : {};
+    return require('./ai-habits').examplesFor(fb, { brain: 'dash', page: text(p.page) || 'dashboard' }).then(null, function () { return []; });
+  } catch (e) { return Promise.resolve([]); }
+}
+
 function buildPrompt(ctx) {
   /* a page of one event has its own prompt: that event only (owner decision 10) */
   if (ctx.place && ctx.place.eventId) return buildScopedPrompt(ctx);
@@ -1162,6 +1181,9 @@ function buildPrompt(ctx) {
       : '- `list` answers in this chat: "show …", "which …", "list …" and "how many …" are a list here.',
     '- A portal named with a filter or a list ("ETHRWorld\'s drafts", "events on ETCIO this month") goes in `filter.portal` or `list.portal` as its slug; "all portals" is "all"; "events with no portal" is "none". Without one, leave it "": the list stays on the portal the person is looking at.',
     '',
+    /* 3b. the team's past requests on this page that worked (lib/ai-habits.js) */
+    examplesLines(ctx),
+    examplesLines(ctx) ? '' : null,
     /* 4. what you never do */
     'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.' + (mayHandOff ? ' A change to this site\'s page is not refused here: it is a "handoff".' : ''),
     '',
@@ -2901,7 +2923,7 @@ function recordDashTurn(fb, ctx, req, body, o) {
   try {
     var here = ctx.place || {}, ev = here.eventId ? ctx.byId[here.eventId] : null;
     var facts = o.answer ? L.dashFacts(o.answer) : { did: { kind: 'error', target: '' }, outcome: 'error', rule: o.code || 'error', fallback: 'question' };
-    L.recordTurn(fb, { brain: 'dash', decoded: ctx.decoded, eventId: ev ? ev.id : '', eventName: ev ? ev.name : '', page: here.page, tab: here.tab,
+    L.recordTurn(fb, { brain: 'dash', decoded: ctx.decoded, eventId: ev ? ev.id : '', eventName: ev ? ev.name : '', eventKind: ev ? ev.category : '', page: here.page, tab: here.tab,
       intent: isObj(o.parsed) ? o.parsed.intent : '', fallback: facts.fallback, words: ctx.message, did: facts.did, outcome: facts.outcome,
       rule: facts.rule, turnId: o.turnId || '', known: o.known, handedFrom: ctx.handedFrom,
       ua: req && req.headers ? req.headers['user-agent'] : '', screen: isObj(body) ? body.screen : '' });
@@ -2969,7 +2991,10 @@ function handleChat(req, res) {
         var eventId = ctx.place.eventId;
         /* the event's conversation was read for an event the list does not have: the person's own is read instead */
         var turnsRead = eventId === askedId ? Promise.resolve(got[1]) : readTurns(conversationRef(fb, decoded, eventId));
-        return turnsRead.then(function (turns) {
+        /* the team's past requests on this page that worked, as examples: at most a short wait (lib/ai-habits.js) */
+        return Promise.all([turnsRead, teamExamples(fb, ctx.place)]).then(function (both) {
+          var turns = both[0];
+          ctx.examples = both[1];
           setTurns(ctx, turns);
           var convRef = conversationRef(fb, decoded, eventId), turnRef = convRef.collection('turns').doc();
           ctx.turnId = turnRef.id;

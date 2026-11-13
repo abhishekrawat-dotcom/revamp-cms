@@ -162,12 +162,13 @@ function deniedSentence(why) {
 
 /* ---------- what a request needs ----------
    A request that reads (GET, HEAD) needs Viewer; one that changes something needs Editor — except these, which
-   store nothing anyone else sees (ETB2B AI on the dashboard keeps the person's own chat; the working portal is
-   the person's own; the mailer and post renders only draw what is saved) — and the access list's own changes
+   store nothing anyone else sees (ETB2B AI on the dashboard keeps the person's own chat, and their own shortcuts;
+   the working portal is the person's own; the mailer and post renders only draw what is saved) — and the access
+   list's own changes
    need Admin. Who approves, deletes and takes sites offline is checked where that happens (the approvers are
    the Approvers and Admins here, lib/api.js approvalsConfig). */
 var VIEWER_WRITES = {
-  'POST /api/dash-bot': 1, 'POST /api/dash-bot/turn': 1, 'PUT /api/me/working-portal': 1,
+  'POST /api/dash-bot': 1, 'POST /api/dash-bot/turn': 1, 'POST /api/ai-habits/shortcuts': 1, 'PUT /api/me/working-portal': 1,
   'POST /api/promo/mailer/doc': 1, 'POST /api/promo/mailer/render': 1, 'POST /api/promo/mailer/download': 1,
   'POST /api/promo/mailer/previews': 1, 'POST /api/promo/social/html': 1
 };

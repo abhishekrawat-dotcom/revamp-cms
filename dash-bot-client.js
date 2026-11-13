@@ -394,7 +394,10 @@
       if (!r.ok || !r.body || typeof r.body !== 'object' || r.body.error) { rejectOuter(answerError(r)); return; }
       if (r.body.kind === 'handoff' && !handedFrom) { resolveOuter({ handoff: true, kind: 'handoff' }); return; }
       /* a message handed here is answered here, whatever the model said: draw() says it plainly, once */
-      var result = { kind: r.body.kind === 'handoff' ? 'reply' : str(r.body.kind), turnId: str(r.body.turnId) };
+      /* notes: what the server says of the answer ("not-found": an event it could not find), so the shell can tell an
+         answer that did what was asked from one that could not (etb2b-ai-habits.js offers "Save as shortcut" only then) */
+      var result = { kind: r.body.kind === 'handoff' ? 'reply' : str(r.body.kind), turnId: str(r.body.turnId),
+        notes: Array.isArray(r.body.notes) ? r.body.notes.filter(function (n) { return typeof n === 'string'; }).slice(0, 20) : [] };
       try { draw(r.body, { recs: recs, place: here, message: message, handedFrom: handedFrom }); } catch (e) {
         /* the server answered (and kept the turn): say so rather than put the question back as if it had not */
         if (root.console && root.console.warn) root.console.warn('[ETB2B AI] could not show an answer: ' + (e && e.message));
@@ -652,6 +655,17 @@
       if (chat) chat.ai(ok ? (portal ? TEXT.portalUndone : rec ? TEXT.recordsUndone : TEXT.undone) : (portal ? TEXT.portalMissing : rec ? TEXT.recordsNotAllUndone : TEXT.notUndone), {});
       return { ok: ok, kind: c.kind };
     });
+  }
+  /* The Undo of the change one turn of this brain made, still standing in this tab, or null: the very handler its
+     own Undo is bound to (etb2b-ai-habits.js puts a shortcut's steps in one list with Undo per step and Undo all, and
+     the kit says "Undone" on both together). A page it opened has no Undo: Back is that. */
+  function undoHandle(turnId) {
+    if (!turnId || !TURN_ID.test(str(turnId))) return null;
+    for (var i = changes.length - 1; i >= 0; i--) {
+      var c = changes[i];
+      if (c.turnId === turnId && !c.undone && c.fresh) return c.handler;
+    }
+    return null;
   }
   /* -> false, or what was put back ('list' | 'portal') */
   function undoNewest() {
@@ -1337,6 +1351,7 @@
     help: help,
     changedAt: changedAt,
     undoLocal: undoLocal,
+    undoHandle: undoHandle,
     onMount: function (c) { chat = c || null; }
   };
 
