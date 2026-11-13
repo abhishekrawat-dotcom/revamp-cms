@@ -177,6 +177,19 @@
   ].join('\n');
   var MEDIA = 'img, picture, video, svg, canvas, iframe';
 
+  /* An element marked with one of the classes above (cls), and what that class's rule sets given back to the rule
+     where the element's own style says !important — as a section copied onto another website writes every style
+     (editor-dev-export.js), where it would otherwise keep a picture at its own opacity: 0 for good. On a page of
+     ours an element's own style is never important, so nothing but the class changes there. */
+  var MARKED = { 'rv-shown': ['opacity', 'transform', 'filter', 'visibility', 'animation'], 'rv-gone': ['display'], 'rv-open': ['clip-path'], 'rv-bar': ['opacity', 'visibility', 'pointer-events'] };
+  function settle(el, cls) {
+    el.classList.add(cls);
+    (MARKED[cls] || []).forEach(function (p) {
+      var v = el.style.getPropertyValue(p);
+      if (v && el.style.getPropertyPriority(p) === 'important') el.style.setProperty(p, v);
+    });
+  }
+
   /* The rules a site keeps for visitors who asked for no motion, where they undo a hidden starting state.
      Rules that only stop an animation are left where they are: a ticker or a glow goes on running. */
   function endStates(rules, inReduced, out) {
@@ -306,7 +319,7 @@
         });
         if (others) return;
       }
-      el.classList.add('rv-open');
+      settle(el, 'rv-open');
     });
   }
 
@@ -319,7 +332,7 @@
       if (cs.position !== 'fixed' || cs.display === 'none' || cs.visibility !== 'visible' || parseFloat(cs.opacity) < 0.5) return;
       if (alpha(cs.backgroundColor) < 0.9 || !(parseInt(cs.zIndex, 10) > 0) || !fillsWindow(el)) return;
       if ((el.textContent || '').trim() || el.querySelector(MEDIA + ', a, button, input, form')) return;
-      el.classList.add('rv-gone');
+      settle(el, 'rv-gone');
     });
   }
 
@@ -750,7 +763,7 @@
          which the heading's own label reads out but the eye still needs */
       if (c.getAttribute('aria-hidden') === 'true') {
         if (!parentHidden) each([c].concat(Array.prototype.slice.call(c.children)), function (w) {
-          if (!w.hasAttribute('data-rv-motion') && slidOut(w, getComputedStyle(w))) w.classList.add('rv-shown');
+          if (!w.hasAttribute('data-rv-motion') && slidOut(w, getComputedStyle(w))) settle(w, 'rv-shown');
         });
         return;
       }
@@ -761,12 +774,12 @@
       if (c.hasAttribute('data-rv-motion')) { showStuck(c, hidden); return; }
       if (cs.opacity === '0' || (hidden && !parentHidden)) {
         if (cs.position === 'absolute' || cs.position === 'fixed') {
-          if (topBar(c, cs)) c.classList.add('rv-bar');
-          else if (backdrop(c, cs)) c.classList.add('rv-shown');
+          if (topBar(c, cs)) settle(c, 'rv-bar');
+          else if (backdrop(c, cs)) settle(c, 'rv-shown');
           else return;
           hidden = false;
-        } else if (hasContent(c) && !shownOnHover(c) && !moving(c)) { c.classList.add('rv-shown'); hidden = false; }
-      } else if (slidOut(c, cs)) c.classList.add('rv-shown');
+        } else if (hasContent(c) && !shownOnHover(c) && !moving(c)) { settle(c, 'rv-shown'); hidden = false; }
+      } else if (slidOut(c, cs)) settle(c, 'rv-shown');
       showStuck(c, hidden);
     });
   }
@@ -867,7 +880,11 @@
   function playMotion(root, runs) {
     var tied = [], waiting = [];
     var watch = 'IntersectionObserver' in window;
-    each(root.querySelectorAll('[data-rv-motion]'), function (el) {
+    /* the root's own motion too: a section copied onto another website is its own root (editor-dev-export.js) —
+       a page of ours is one wrapper that has none */
+    var els = Array.prototype.slice.call(root.querySelectorAll('[data-rv-motion]'));
+    if (root.hasAttribute('data-rv-motion')) els.unshift(root);
+    each(els, function (el) {
       var m;
       try { m = JSON.parse(el.getAttribute('data-rv-motion')); } catch (err) { return; }
       if (!m || typeof m !== 'object') return;
@@ -916,22 +933,30 @@
     draw();
   }
 
-  /* Plays the motion of every imported page here, once. Never while editing: the editor shows each element as
-     its motion ends, and does not mark the page as started (that mark would be saved with it). */
+  /* Plays the motion of every imported page here, once for each. Never while editing: the editor shows each element
+     as its motion ends, and does not mark the page as started (that mark would be saved with it). A page of ours has
+     one imported part; another website with sections copied from one has a part per section, and may put one in
+     after the rest (editor-dev-export.js): each plays when it comes. */
+  var motionRuns = [];
   function startMotion() {
-    if (motionStarted || editing()) return;
-    var roots = document.querySelectorAll('.rv-imported');
+    if (editing()) return;
+    var roots = Array.prototype.filter.call(document.querySelectorAll('.rv-imported'), function (r) {
+      return !r.__rvMotion && !(r.parentElement && r.parentElement.closest('.rv-imported'));
+    });
     if (!roots.length) return;
-    motionStarted = true;
+    each(roots, function (r) { r.__rvMotion = true; });
     var allowed = !!Element.prototype.animate && !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
     var runs = [];
     if (allowed) each(roots, function (root) { playMotion(root, runs); });
+    /* a printed page shows everything as it ends */
+    if (runs.length && !motionRuns.length) window.addEventListener('beforeprint', function () {
+      motionRuns.forEach(function (a) { try { if (a.playState !== 'idle') a.finish(); } catch (err) { /* already done */ } });
+    });
+    motionRuns.push.apply(motionRuns, runs);
+    if (motionStarted) return;
+    motionStarted = true;
     /* the hold the page was served with (api.js MOTION_HOLD) ends in the same step as the motion's own begins */
     document.documentElement.setAttribute('data-rv-motion-ready', '');
-    /* a printed page shows everything as it ends */
-    if (runs.length) window.addEventListener('beforeprint', function () {
-      runs.forEach(function (a) { try { if (a.playState !== 'idle') a.finish(); } catch (err) { /* already done */ } });
-    });
   }
 
   function settleImported() {
