@@ -124,6 +124,9 @@
                                                CSV (UTF-8, a column per answer), for a download
      .updateRegistration(eventId, id, patch)  PATCH  /api/event/registrations ({status, checkedIn, notes, tags})
                                                -> {ok, registration}
+     .setRegistrationsStatus(eventId, ids, status)  POST /api/event/registrations/status: one status for up to 500
+                                               at once -> {ok, updated: [registration], unchanged, missing, skipped}; a
+                                               failure part-way rejects with the same lists on the Error and err.notDone
      .deleteRegistration(eventId, id)         DELETE /api/event/registrations
      .fetchStats(eventId, days)   GET    /api/event/dashboard-stats (days defaults to 30). conversion is a
                                    percentage (registrations per 100 page views); byDay has every day of
@@ -1063,6 +1066,10 @@ window.RevampCore = (function(){
     body.eventId = String(eventId).trim(); body.id = String(id).trim();
     return api('PATCH', '/api/event/registrations', body);
   }
+  function setRegistrationsStatus(eventId, ids, status){
+    return need(eventId, 'setRegistrationsStatus: eventId') ||
+      api('POST', '/api/event/registrations/status', { eventId: String(eventId).trim(), ids: ids || [], status: status });
+  }
   function deleteRegistration(eventId, id){
     return need(eventId, 'deleteRegistration: eventId') || need(id, 'deleteRegistration: id') ||
       api('DELETE', '/api/event/registrations?eventId=' + q(eventId) + '&id=' + q(id));
@@ -1597,7 +1604,8 @@ window.RevampCore = (function(){
     uploadImage: uploadImage, storePicture: storePicture, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
-    fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, deleteRegistration: deleteRegistration,
+    fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, setRegistrationsStatus: setRegistrationsStatus,
+    deleteRegistration: deleteRegistration,
     exportRegistrations: exportRegistrations,
     fetchForms: fetchForms, createForm: createForm, updateForm: updateForm, deleteForm: deleteForm,
     setDefaultForm: setDefaultForm, reorderForms: reorderForms,

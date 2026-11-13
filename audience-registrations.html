@@ -12,7 +12,9 @@
   <style>
     body{ background:var(--bg); overflow-x:hidden; }
     .reg-page{ display:flex; min-height:calc(100vh - var(--topbar-h)); }
-    .reg-main{ flex:1; min-width:0; max-width:100%; overflow-x:hidden; padding:0 26px 70px; }
+    /* clip, not hidden, where the browser has it: hidden would make this a scroll box of its own, and the bulk bar
+       could not stay in sight while the page scrolls */
+    .reg-main{ flex:1; min-width:0; max-width:100%; overflow-x:hidden; overflow-x:clip; padding:0 26px 70px; }
 
     .rep-head{ padding:22px 0 14px; }
     .rep-head h2{ font-size:20px; }
@@ -55,6 +57,37 @@
     .rep-empty{ padding:48px 20px; text-align:center; color:var(--text-muted); }
     .rep-empty b{ display:block; color:var(--text); font-size:15px; margin-bottom:6px; }
     .rep-empty .btn{ margin-top:12px; }
+    .rep-empty a.btn, .rep-by a{ text-decoration:none; }
+
+    /* Refresh, and when the list was last read (REG-016) */
+    .rep-stamp{ align-self:center; font-size:11.5px; color:var(--text-faint); white-space:nowrap; }
+    .rep-stamp.bad{ color:var(--warn); white-space:normal; }
+    .toolbar .acts{ align-items:center; flex-wrap:wrap; }
+
+    /* the Dashboard's "Who registered" lead here filtered to one company, city… (REG-025) */
+    .rep-by{ display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; padding:9px 16px; border-bottom:1px solid var(--border);
+      background:var(--surface-2); font-size:12.5px; color:var(--text-muted); }
+    .rep-by b{ color:var(--text); overflow-wrap:anywhere; }
+
+    /* choosing responses, and one status for all of them (REG-019) */
+    .rep-tbl th.sel, .rep-tbl td.sel{ width:40px; padding-right:0; }
+    .rep-tbl td.sel{ cursor:default; }
+    .rep-tbl .sel input{ width:16px; height:16px; margin:0; cursor:pointer; accent-color:var(--accent); vertical-align:middle; }
+    .rep-tbl tbody tr.picked{ background:var(--accent-soft); }
+    /* the bar stays in sight under the top bar while the list is scrolled to choose more (the panel clips its corners
+       with overflow:clip, which, unlike hidden, leaves the page as what it sticks to) */
+    .panel{ overflow:clip; }
+    .bulkbar{ display:flex; align-items:center; gap:8px 12px; flex-wrap:wrap; padding:10px 16px; border-bottom:1px solid var(--border); background:var(--surface-2); font-size:13px;
+      position:sticky; top:var(--topbar-h); z-index:20; box-shadow:0 6px 12px -10px rgba(0,0,0,.35); }
+    .bulkbar[hidden]{ display:none; }
+    /* a phone: under the top bar and the row of sections below it */
+    @media (max-width: 640px){ .bulkbar{ top:calc(var(--topbar-h) + 62px); } }
+    .bulkbar .bn{ font-weight:800; }
+    .bulkbar select{ height:32px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--text); padding:0 8px; font:inherit; font-size:13px; max-width:100%; }
+    .bulkbar .bl{ display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700; color:var(--text-muted); }
+    .bulkbar .bsep{ width:1px; align-self:stretch; background:var(--border); }
+    .bulkbar .bnote{ flex-basis:100%; margin:0; font-size:12px; color:var(--text-muted); }
+    .linkbtn{ border:0; background:none; padding:0; font:inherit; font-weight:700; color:var(--accent-strong); text-decoration:underline; cursor:pointer; }
 
     /* a narrow window: each response is a card */
     @media (max-width: 720px){
@@ -64,6 +97,8 @@
       .rep-tbl td{ border:0; padding:3px 0; display:flex; gap:10px; justify-content:space-between; align-items:baseline; }
       .rep-tbl td::before{ content:attr(data-label); font-size:11.5px; font-weight:700; color:var(--text-muted); flex-shrink:0; }
       .rep-tbl td.nm::before{ content:none; }
+      .rep-tbl td.sel{ width:100%; padding-right:0; }
+      .bulkbar .bsep{ display:none; }
       .rep-tbl td .clip{ max-width:62vw; text-align:right; }
       .toolbar .tf-form select{ min-width:0; max-width:none; }
       .toolbar .tf{ flex:1 1 140px; }
@@ -94,6 +129,7 @@
     .dmsg{ font-size:12.5px; font-weight:600; color:var(--accent-strong); margin:0; }
     .dmsg:empty{ display:none; }
     .dnote{ font-size:12px; color:var(--text-muted); margin:-2px 0 12px; }
+    .dact + .dquiet{ margin:8px 0 0; }
     /* A message never covers the drawer's buttons (UX-070: "Checked in" sat on its Close button for 3 s): while a
        response is open the messages sit beside the drawer, or above its foot where the drawer takes the width. */
     body:has(.drawer) .rv-toasts{ left:calc((100% - 460px) / 2); }
@@ -154,7 +190,12 @@
    registrations (GET /api/event/registrations, page by page) and the event's forms (GET /api/event/forms).
    A form's name, the status in words, the answers under their labels; filters by form, status and words;
    one response at a time opened beside the list to approve, decline, change, check in, note, tag or delete
-   (PATCH / DELETE /api/event/registrations); and the CSV the server builds (…/registrations/export).
+   (PATCH / DELETE /api/event/registrations); several chosen in the list and given one status at once
+   (POST /api/event/registrations/status, REG-019); and the CSV the server builds (…/registrations/export).
+   Changing a status changes the status only: nobody is e-mailed or messaged, and the page says so beside every
+   status control. Refresh (and coming back to the tab after a minute away) reads the list again without losing the
+   filters, the choice or an open response (REG-016). The Dashboard's "Who registered" lists lead here filtered to
+   one company, designation, city, source or device (?by=&value=, REG-025).
    Nothing here is stored in the browser.
    =========================================================================== */
 (function(){
@@ -168,6 +209,10 @@
   var page = $('page'), layer = $('layer');
 
   var PAGE = 2000, MAX_ROWS = 20000, SHOW_STEP = 200;
+  /* the list is read again when the tab is shown after this long away (REG-016) */
+  var AWAY_MS = 60000;
+  /* how many responses one request of a bulk status change sends (the server takes up to 500) */
+  var BULK_CHUNK = 200;
   /* the questions whose answers are a response's own columns (functions/lib/forms.js MAPPED_FIELDS) */
   var MAPPED = ['name', 'first_name', 'last_name', 'email', 'phone', 'company', 'designation', 'city', 'location', 'consent'];
   /* the consent box the visitor ticked (every response since 21 Oct 2026): "Yes · 21 Oct 2026, 2:05 pm" (IST); a response
@@ -230,14 +275,43 @@
     { v: 'rejected', label: 'Declined' },
     { v: 'cancelled', label: 'Cancelled' }
   ];
+  /* Said beside every status control (the drawer's Approve / Decline and Status, the bulk bar, the bulk question):
+     e-mail and WhatsApp are not part of this launch, so a change of status reaches nobody (REG-019). */
+  var QUIET = 'This changes the status only. Nobody is notified.';
+
+  /* The Dashboard's "Who registered" lists (REG-025) lead here with ?by=<list>&value=<what>: the registrations counted
+     under that value, matched as the server counts them (functions/lib/api-audience.js aggValues): registrations only
+     (a form that counts), the text with its spaces run together, cut at 60 characters (a device at 20), case ignored;
+     a city is the City answer, else the city of the Location answer; a source is the campaign's utm_source, else the
+     source, else "website". */
+  var BY = { company: 'Company', designation: 'Designation', city: 'City', source: 'Source', device: 'Device' };
+  function aggText(v, max){
+    if (typeof v === 'number' && isFinite(v)) v = String(v);
+    if (typeof v !== 'string') return '';
+    return v.replace(/[\u0000-\u001F\u007F]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max).toLowerCase();
+  }
+  function byValueOf(r, by){
+    var utm = r.utm || {};
+    if (by === 'city') return aggText(r.city, 60) || aggText(r.locationParts && r.locationParts.city, 60);
+    if (by === 'source') return aggText(utm.source, 60) || aggText(r.source, 60) || 'website';
+    if (by === 'device') return aggText(r.device, 20);
+    return aggText(r[by], 60);
+  }
 
   var S = {
     ev: null, forms: [], defaultFormId: '', formsError: '',
     items: [], total: 0, loading: false, done: false, capped: false, partial: false, error: null,
-    filter: { form: String(qs.get('form') || ''), status: String(qs.get('status') || ''), q: '' },
-    sort: 'new', shown: SHOW_STEP, exporting: false, openId: null
+    filter: { form: String(qs.get('form') || ''), status: String(qs.get('status') || ''), q: '',
+      by: String(qs.get('by') || ''), value: String(qs.get('value') || '').slice(0, 200) },
+    sort: 'new', shown: SHOW_STEP, exporting: false, openId: null,
+    /* the responses chosen for a bulk status change (id -> true), and that change while it is being sent */
+    sel: {}, bulk: null,
+    /* when the list was last read in full; a quiet read again in progress; and what this page changed or deleted
+       meanwhile (id -> when), which is newer than what that read brought back */
+    loadedAt: 0, refreshing: false, refreshErr: '', touched: {}, gone: {}
   };
   if (!STATUSES.some(function(s){ return s.v === S.filter.status; })) S.filter.status = '';
+  if (!BY.hasOwnProperty(S.filter.by) || !aggText(S.filter.value, 60)){ S.filter.by = ''; S.filter.value = ''; }
 
   /* ---------- words ---------- */
   function counts(r){ return r.counts !== false; }
@@ -295,9 +369,11 @@
   function confirmedCount(){ return S.items.filter(function(r){ return counts(r) && r.status === 'confirmed'; }).length; }
 
   /* ---------- filtering ---------- */
+  function byWanted(){ return aggText(S.filter.value, S.filter.by === 'device' ? 20 : 60); }
   function matches(r){
     if (S.filter.form && formIdOf(r) !== S.filter.form) return false;
     if (S.filter.status && r.status !== S.filter.status) return false;
+    if (S.filter.by && !(counts(r) && byValueOf(r, S.filter.by) === byWanted())) return false;
     var q = S.filter.q.trim().toLowerCase();
     if (q && [r.name, r.email, r.company, r.phone, phoneOf(r), r.location].join(' ').toLowerCase().indexOf(q) === -1) return false;
     return true;
@@ -308,7 +384,7 @@
     else rows.sort(function(a, b){ return String(b.createdAt || '').localeCompare(String(a.createdAt || '')); });
     return rows;
   }
-  function anyFilter(){ return !!(S.filter.form || S.filter.status || S.filter.q.trim()); }
+  function anyFilter(){ return !!(S.filter.form || S.filter.status || S.filter.q.trim() || S.filter.by); }
 
   /* ---------- drawing ---------- */
   function paintHeader(){
@@ -344,8 +420,12 @@
           '<label class="tf">Status<select id="f-status">' + STATUSES.map(function(s){ return '<option value="' + s.v + '"' + (s.v === S.filter.status ? ' selected' : '') + '>' + esc(s.label) + '</option>'; }).join('') + '</select></label>' +
           '<label class="tf tf-q">Search<input type="search" id="f-q" placeholder="Name, email, company or phone" value="' + esc(S.filter.q) + '"></label>' +
           '<label class="tf">Sort by<select id="f-sort"><option value="new"' + (S.sort === 'new' ? ' selected' : '') + '>Submitted (newest first)</option><option value="name"' + (S.sort === 'name' ? ' selected' : '') + '>Name</option></select></label>' +
-          '<span class="acts"><button class="btn btn-secondary btn-sm" type="button" id="btn-export">' + C.svg(C.IC.download || '<path d="M12 4v12M6 11l6 6 6-6"/><path d="M4 20h16"/>', 13) + ' <span>Export CSV</span></button></span>' +
+          '<span class="acts"><span class="rep-stamp" id="rep-stamp" aria-live="polite"></span>' +
+            '<button class="btn btn-secondary btn-sm" type="button" id="btn-refresh">' + C.svg('<path d="M20 11a8 8 0 1 0-2.4 5.7"/><path d="M20 4.5V11h-6.5"/>', 13) + ' <span>Refresh</span></button>' +
+            '<button class="btn btn-secondary btn-sm" type="button" id="btn-export">' + C.svg(C.IC.download || '<path d="M12 4v12M6 11l6 6 6-6"/><path d="M4 20h16"/>', 13) + ' <span>Export CSV</span></button></span>' +
         '</div>' +
+        (S.filter.by ? '<div class="rep-by" id="rep-by">' + byLine() + '</div>' : '') +
+        '<div class="bulkbar" id="rep-bulk" role="region" aria-label="Change the chosen responses" hidden></div>' +
         '<div id="rep-results"></div>' +
       '</section>';
     $('f-form').onchange = function(){ S.filter.form = this.value; S.shown = SHOW_STEP; syncUrl(); drawResults(); drawTotals(); };
@@ -353,7 +433,32 @@
     $('f-q').oninput = function(){ S.filter.q = this.value; S.shown = SHOW_STEP; drawResults(); };
     $('f-sort').onchange = function(){ S.sort = this.value; drawResults(); };
     $('btn-export').onclick = doExport;
-    drawFormSelect(); drawTotals(); drawProgress(); drawResults(); drawExport();
+    $('btn-refresh').onclick = function(){ refresh(false); };
+    if ($('rep-by-x')) $('rep-by-x').onclick = function(){
+      S.filter.by = ''; S.filter.value = ''; S.shown = SHOW_STEP;
+      syncUrl(); render();
+      var f = $('f-form'); if (f) f.focus();
+    };
+    drawFormSelect(); drawTotals(); drawProgress(); drawResults(); drawExport(); drawStamp();
+  }
+
+  /* "Company: “Tata Motors” — registrations only, as the Dashboard counts them" with the way back to every response */
+  function byLine(){
+    var label = BY[S.filter.by], v = String(S.filter.value).replace(/\s+/g, ' ').trim();
+    return '<span>' + esc(label) + ': <b>“' + esc(v) + '”</b> · registrations only, as the Dashboard’s “Who registered” counts them' +
+      (S.filter.by === 'source' && byWanted() === 'website' ? ' (“website”: no campaign source)' : '') + '</span>' +
+      '<button class="btn btn-ghost btn-sm" type="button" id="rep-by-x">Show all responses</button>';
+  }
+
+  /* "Updated 6:01 pm" beside Refresh, or "Refreshing…", or why the last try did not work */
+  function drawStamp(){
+    var box = $('rep-stamp'), b = $('btn-refresh');
+    if (b){ b.disabled = S.refreshing || S.loading || !S.done; b.setAttribute('aria-busy', S.refreshing ? 'true' : 'false'); }
+    if (!box) return;
+    box.className = 'rep-stamp' + (S.refreshErr && !S.refreshing ? ' bad' : '');
+    box.textContent = S.refreshing ? 'Refreshing…'
+      : S.refreshErr ? 'Not refreshed: ' + S.refreshErr
+      : S.loadedAt ? 'Updated ' + C.fmtTime(new Date(S.loadedAt)) : '';
   }
 
   function drawFormSelect(){
@@ -432,27 +537,49 @@
     return keys.slice(0, 4);
   }
 
+  /* No responses at all: what that means for this event, and the way on (REG-003) — the live site to check its
+     forms, or, while the site is not live, the event, where it is published. */
+  function emptyHTML(){
+    var st = C.siteState(S.ev || {}), url = st.live && C.publicUrl ? C.publicUrl(S.ev) : '';
+    if (st.live) return '<div class="rep-empty"><b>No responses yet</b>Responses from the live site’s forms appear here as soon as someone sends one.' +
+      (url ? '<div><a class="btn btn-secondary btn-sm" href="' + esc(url) + '" target="_blank" rel="noopener">' + C.svg(C.IC.ext, 13) + ' Open the live site</a></div>' : '') + '</div>';
+    var home = window.RevampRail && RevampRail.href ? RevampRail.href('dashboard', eventId) : '/edit-event.html?event=' + encodeURIComponent(eventId) + '#dashboard';
+    return '<div class="rep-empty"><b>No responses yet</b>' +
+      (st.offline ? 'The site has been taken offline, so nobody can register on it now.' : 'The site is not published yet, so nobody can register on it.') +
+      ' Responses appear here once it is live.' +
+      '<div><a class="btn btn-secondary btn-sm" href="' + esc(home) + '">Go to the event</a></div></div>';
+  }
+
   function drawResults(){
     var box = $('rep-results');
     if (!box) return;
+    /* the row or box that had the keyboard is given it back once the list is drawn again (a Refresh, a change) */
+    var act = document.activeElement, keep = null;
+    if (act && box.contains(act)) keep = act.getAttribute('data-sel') ? '[data-sel="' + act.getAttribute('data-sel') + '"]'
+      : act.getAttribute('data-id') ? 'tr[data-id="' + act.getAttribute('data-id') + '"]' : act.id ? '#' + act.id : null;
     if (!S.items.length){
-      box.innerHTML = S.loading ? '<div class="rep-empty">Loading responses…</div>'
-        : '<div class="rep-empty"><b>No responses yet</b>No responses yet. Responses from your site’s forms appear here.</div>';
+      box.innerHTML = S.loading ? '<div class="rep-empty">Loading responses…</div>' : emptyHTML();
+      drawBulk();
       return;
     }
     var rows = filtered();
     if (!rows.length){
       box.innerHTML = '<div class="rep-empty"><b>Nothing to show</b>No responses match these filters.<div><button class="btn btn-secondary btn-sm" type="button" id="rep-clear">Clear filters</button></div></div>';
       $('rep-clear').onclick = clearFilters;
+      drawBulk();
       return;
     }
     var extra = extraColumns();
     var cols = [['Name'], ['Email'], ['Phone'], ['Company'], ['Designation'], ['Location'], ['Form'], ['Status'], ['Submitted (IST)'], ['Checked in'], ['Consent']]
       .concat(extra.map(function(x){ return [x.label]; }));
     var shown = rows.slice(0, S.shown);
-    box.innerHTML = '<div class="rep-wrap"><table class="rep-tbl"><thead><tr>' + cols.map(function(c){ return '<th scope="col">' + esc(c[0]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+    box.innerHTML = '<div class="rep-wrap"><table class="rep-tbl"><thead><tr>' +
+        '<th scope="col" class="sel"><input type="checkbox" id="sel-all" aria-label="Choose every response shown"></th>' +
+        cols.map(function(c){ return '<th scope="col">' + esc(c[0]) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       shown.map(function(r){
-        return '<tr tabindex="0" data-id="' + esc(r.id) + '" aria-label="' + esc((r.name || r.email) + ', ' + statusLabel(r)) + '">' +
+        var picked = !!S.sel[r.id];
+        return '<tr tabindex="0" data-id="' + esc(r.id) + '"' + (picked ? ' class="picked"' : '') + ' aria-label="' + esc((r.name || r.email) + ', ' + statusLabel(r)) + '">' +
+          '<td class="sel" data-label="Choose"><input type="checkbox" data-sel="' + esc(r.id) + '"' + (picked ? ' checked' : '') + ' aria-label="Choose ' + esc(r.name || r.email || 'this response') + '"></td>' +
           '<td class="nm" data-label="Name"><b>' + esc(r.name || '—') + '</b></td>' +
           '<td data-label="Email"><span class="clip">' + esc(r.email) + '</span></td>' +
           '<td data-label="Phone" style="white-space:nowrap">' + esc(phoneOf(r) || '—') + '</td>' +
@@ -471,13 +598,193 @@
     var more = $('rep-more');
     if (more) more.onclick = function(){ S.shown += SHOW_STEP; drawResults(); };
     Array.prototype.forEach.call(box.querySelectorAll('tbody tr'), function(tr){
-      tr.onclick = function(){ openDrawer(tr.getAttribute('data-id')); };
-      tr.onkeydown = function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openDrawer(tr.getAttribute('data-id')); } };
+      /* the box (and the cell around it) chooses the response; anywhere else on the row opens it */
+      tr.onclick = function(e){
+        if (e.target.closest('td.sel')){ if (e.target.tagName !== 'INPUT') toggleSel(tr.getAttribute('data-id')); return; }
+        openDrawer(tr.getAttribute('data-id'));
+      };
+      tr.onkeydown = function(e){ if (e.target !== tr) return; if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openDrawer(tr.getAttribute('data-id')); } };
+    });
+    Array.prototype.forEach.call(box.querySelectorAll('input[data-sel]'), function(cb){
+      cb.onchange = function(){ setSel([cb.getAttribute('data-sel')], cb.checked); };
+    });
+    $('sel-all').onchange = function(){ setSel(shown.map(function(r){ return r.id; }), this.checked); };
+    paintSel();
+    drawBulk();
+    if (keep){ var back = box.querySelector(keep); if (back) back.focus(); }
+  }
+
+  /* ---------- choosing several responses, and one status for all of them (REG-019) ---------- */
+  function indexById(){
+    var byId = {};
+    S.items.forEach(function(r){ byId[r.id] = r; });
+    return byId;
+  }
+  /* the chosen responses that the filters show: a change never reaches one the filters hide (it stays chosen, and is
+     counted again once the filters show it) */
+  function chosenIds(){
+    var byId = indexById();
+    return Object.keys(S.sel).filter(function(id){ return S.sel[id] && byId[id] && matches(byId[id]); });
+  }
+  function setSel(ids, on){
+    ids.forEach(function(id){ if (on) S.sel[id] = true; else delete S.sel[id]; });
+    paintSel(); drawBulk();
+  }
+  function toggleSel(id){ setSel([id], !S.sel[id]); }
+  /* the boxes and rows as chosen, and the box above them: ticked when every response shown is chosen, half when some are */
+  function paintSel(){
+    var box = $('rep-results');
+    if (!box) return;
+    var all = box.querySelectorAll('input[data-sel]'), n = 0;
+    Array.prototype.forEach.call(all, function(cb){
+      var on = !!S.sel[cb.getAttribute('data-sel')];
+      cb.checked = on;
+      if (on) n++;
+      var tr = cb.closest('tr');
+      if (tr) tr.classList.toggle('picked', on);
+    });
+    var head = $('sel-all');
+    if (head){ head.checked = all.length > 0 && n === all.length; head.indeterminate = n > 0 && n < all.length; }
+  }
+
+  var STATUS_WORDS = { confirmed: 'Confirmed or Received', waitlist: 'Waitlist', pending: 'Awaiting approval', rejected: 'Declined', cancelled: 'Cancelled' };
+  function drawBulk(){
+    var bar = $('rep-bulk');
+    if (!bar) return;
+    var ids = chosenIds();
+    /* drawn again while it is in use (a box ticked, a Refresh): the status picked and the focus stay */
+    var had = document.activeElement && bar.contains(document.activeElement) ? document.activeElement.id : '';
+    var picked = $('bulk-status') ? $('bulk-status').value : '';
+    if (!ids.length && !S.bulk){
+      bar.hidden = true; bar.innerHTML = '';
+      if (had){ var h = $('sel-all'); if (h) h.focus(); }
+      return;
+    }
+    bar.hidden = false;
+    if (S.bulk){
+      bar.innerHTML = '<span class="bn" role="status">Saving ' + comma(S.bulk.done) + ' of ' + comma(S.bulk.total) + '…</span>' +
+        '<p class="bnote">' + QUIET + '</p>';
+      return;
+    }
+    var pending = pendingOf(ids).length;
+    /* every response the filters show, beyond the rows drawn so far too (a phone's cards have no box above them) */
+    var matching = filtered();
+    var offerAll = matching.length > ids.length;
+    bar.innerHTML =
+      '<span class="bn">' + comma(ids.length) + ' chosen</span>' +
+      (offerAll ? '<button class="linkbtn" type="button" id="bulk-all">Choose all ' + comma(matching.length) + ' that match</button>' : '') +
+      '<span class="bsep" aria-hidden="true"></span>' +
+      '<label class="bl">Set status<select id="bulk-status" aria-describedby="bulk-note"><option value="">Choose…</option>' +
+        ['confirmed', 'waitlist', 'pending', 'rejected', 'cancelled'].map(function(v){ return '<option value="' + v + '">' + esc(STATUS_WORDS[v]) + '</option>'; }).join('') +
+      '</select></label>' +
+      '<button class="btn btn-secondary btn-sm" type="button" id="bulk-apply" disabled>Apply</button>' +
+      (pending ? '<span class="bsep" aria-hidden="true"></span>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="bulk-approve" aria-describedby="bulk-note">Approve ' + comma(pending) + '</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" id="bulk-decline" aria-describedby="bulk-note">Decline ' + comma(pending) + '</button>' : '') +
+      '<span class="bsep" aria-hidden="true"></span>' +
+      '<button class="btn btn-ghost btn-sm" type="button" id="bulk-clear">Clear choice</button>' +
+      '<p class="bnote" id="bulk-note">' + QUIET +
+        (pending ? ' Approve and Decline change only the ' + comma(pending) + ' awaiting approval.' : '') + '</p>';
+    var sel = $('bulk-status'), apply = $('bulk-apply');
+    if (picked){ sel.value = picked; apply.disabled = !sel.value; }
+    if (had && $(had)) $(had).focus();
+    sel.onchange = function(){ apply.disabled = !sel.value; };
+    apply.onclick = function(){ if (sel.value) askBulk(sel.value, chosenIds(), false); };
+    if ($('bulk-approve')) $('bulk-approve').onclick = function(){ askBulk('confirmed', pendingOf(chosenIds()), true); };
+    if ($('bulk-decline')) $('bulk-decline').onclick = function(){ askBulk('rejected', pendingOf(chosenIds()), true); };
+    $('bulk-clear').onclick = function(){ S.sel = {}; paintSel(); drawBulk(); var h = $('sel-all'); if (h) h.focus(); };
+    if ($('bulk-all')) $('bulk-all').onclick = function(){ setSel(matching.map(function(r){ return r.id; }), true); var a = $('bulk-status'); if (a) a.focus(); };
+  }
+  function pendingOf(ids){
+    var byId = indexById();
+    return ids.filter(function(id){ return byId[id] && byId[id].status === 'pending'; });
+  }
+
+  /* What a bulk change will do, asked first (Cancel has the focus): how many change, which stay as they are and why,
+     and a capacity that confirming them would pass. */
+  function plural(n, one, many){ return n === 1 ? one : many; }
+  function askBulk(status, ids, decision){
+    if (S.bulk) return;
+    var byId = indexById();
+    var rows = ids.map(function(id){ return byId[id]; }).filter(Boolean);
+    var same = rows.filter(function(r){ return r.status === status; });
+    var noWait = status === 'waitlist' ? rows.filter(function(r){ return r.status !== status && !counts(r); }) : [];
+    var change = rows.filter(function(r){ return r.status !== status && noWait.indexOf(r) === -1; });
+    var word = STATUS_WORDS[status];
+    if (!change.length){
+      C.toast(noWait.length && !same.length ? 'Nothing was changed: only forms that count as registrations have a waitlist.'
+        : 'Nothing was changed: ' + plural(rows.length, 'that response is', 'they are all') + ' already “' + word + '”' +
+          (noWait.length ? ', or on a form without a waitlist' : '') + '.', { kind: 'info' });
+      return;
+    }
+    var n = change.length, cap = capacity();
+    var newly = status === 'confirmed' ? change.filter(counts).length : 0, have = confirmedCount();
+    var notes = [];
+    if (cap && newly && have + newly > cap){
+      notes.push('Capacity is ' + comma(cap) + plural(cap, ' place', ' places') + ' and ' + comma(have) + plural(have, ' is', ' are') +
+        ' confirmed: this confirms ' + comma(newly) + ' more, ' + comma(have + newly - cap) + ' over capacity.');
+    }
+    if (same.length) notes.push(comma(same.length) + plural(same.length, ' is', ' are') + ' already “' + word + '” and ' + plural(same.length, 'stays as it is.', 'stay as they are.'));
+    if (noWait.length) notes.push(comma(noWait.length) + plural(noWait.length, ' is a response', ' are responses') + ' to a form without a waitlist and ' + plural(noWait.length, 'stays as it is.', 'stay as they are.'));
+    notes.push(QUIET);
+    var many = n === 1 ? '1 response' : comma(n) + ' responses';
+    var title = decision ? (status === 'confirmed' ? 'Approve ' : 'Decline ') + many + '?' : 'Set ' + many + ' to “' + word + '”?';
+    var ok = decision ? (status === 'confirmed' ? 'Approve ' : 'Decline ') + comma(n) : 'Set status';
+    ask(title, notes.join(' '), ok, status === 'rejected' || status === 'cancelled').then(function(yes){
+      if (yes) runBulk(status, change.map(function(r){ return r.id; }));
     });
   }
 
+  /* Sends the change in requests of BULK_CHUNK, one after another (after any change still being saved from the
+     drawer), and keeps the list as the server answers: the rows it changed, the ones it no longer has. A failure
+     part-way says how many were changed; the rest stay chosen, so trying again is one click. */
+  function runBulk(status, ids){
+    S.bulk = { done: 0, total: ids.length };
+    drawBulk();
+    var changed = 0, gone = 0, kept = 0, i = 0;
+    function take(out){
+      var fresh = {}, missing = {};
+      (out.updated || []).forEach(function(reg){ fresh[reg.id] = reg; S.touched[reg.id] = Date.now(); delete S.sel[reg.id]; changed++; });
+      (out.missing || []).forEach(function(id){ missing[id] = 1; S.gone[id] = Date.now(); delete S.sel[id]; gone++; });
+      (out.unchanged || []).forEach(function(id){ delete S.sel[id]; });
+      kept += (out.skipped || []).length;
+      S.items = S.items.filter(function(r){ return !missing[r.id]; })
+        .map(function(r){ return fresh[r.id] ? Object.assign({}, r, fresh[r.id]) : r; });
+    }
+    function next(){
+      if (i >= ids.length) return Promise.resolve();
+      var chunk = ids.slice(i, i + BULK_CHUNK);
+      return C.setRegistrationsStatus(eventId, chunk, status).then(function(out){
+        i += chunk.length;
+        take(out || {});
+        S.bulk.done = i; drawBulk();
+        return next();
+      });
+    }
+    function after(){
+      S.bulk = null;
+      drawFormSelect(); drawTotals(); drawResults();
+      /* the bar the keyboard was in is gone with the choice: the list's own box takes the focus */
+      var a = document.activeElement;
+      if (!a || a === document.body){ var h = $('bulk-status') || $('sel-all'); if (h) h.focus(); }
+    }
+    SAVING = SAVING.then(function(){
+      return next().then(function(){
+        after();
+        C.toast(plural(changed, '1 response', comma(changed) + ' responses') + ' set to “' + STATUS_WORDS[status] + '”' +
+          (gone ? '; ' + comma(gone) + plural(gone, ' had', ' had') + ' been deleted meanwhile' : '') + (kept ? '; ' + comma(kept) + ' left as they were' : '') + '.');
+      }, function(err){
+        if (err && Array.isArray(err.updated)) take(err);         // part of the last request was saved before it failed
+        after();
+        C.toast((changed ? comma(changed) + ' changed. ' : '') + 'The other ' + comma(ids.length - changed) + ' were not: ' + C.errText(err) +
+          ' They are still chosen, so you can try again.', { kind: 'error' });
+      });
+    });
+    return SAVING;
+  }
+
   function clearFilters(){
-    S.filter = { form: '', status: '', q: '' };
+    S.filter = { form: '', status: '', q: '', by: '', value: '' };
     S.shown = SHOW_STEP;
     syncUrl();
     render();
@@ -487,6 +794,8 @@
     u.searchParams.set('event', eventId);
     if (S.filter.form) u.searchParams.set('form', S.filter.form); else u.searchParams.delete('form');
     if (S.filter.status) u.searchParams.set('status', S.filter.status); else u.searchParams.delete('status');
+    if (S.filter.by){ u.searchParams.set('by', S.filter.by); u.searchParams.set('value', S.filter.value); }
+    else { u.searchParams.delete('by'); u.searchParams.delete('value'); }
     try { history.replaceState(null, '', u.pathname + u.search); } catch (e) { /* the address stays */ }
   }
 
@@ -525,11 +834,21 @@
         '<div class="acts"><button class="btn btn-secondary btn-sm" type="button" data-v="0">Cancel</button><button class="btn ' + (danger ? 'btn-danger' : 'btn-primary') + ' btn-sm" type="button" data-v="1">' + esc(okLabel) + '</button></div></div>';
       document.body.appendChild(box);
       var opener = document.activeElement;
+      var stops = Array.prototype.slice.call(box.querySelectorAll('button[data-v]'));
       function done(v){ document.removeEventListener('keydown', key, true); box.remove(); if (opener && opener.focus && document.contains(opener)) opener.focus(); resolve(v); }
-      function key(e){ if (e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); done(false); } }
+      /* Escape is Cancel; Tab and Shift+Tab stay on the confirmation's own buttons until it is answered (REG-027) */
+      function key(e){
+        if (e.key === 'Escape'){ e.preventDefault(); e.stopPropagation(); done(false); return; }
+        if (e.key !== 'Tab') return;
+        e.preventDefault(); e.stopPropagation();
+        var at = stops.indexOf(document.activeElement);
+        stops[at === -1 ? 0 : (at + (e.shiftKey ? stops.length - 1 : 1)) % stops.length].focus();
+      }
       document.addEventListener('keydown', key, true);
       box.onclick = function(e){ var b = e.target.closest('button[data-v]'); if (b) done(b.getAttribute('data-v') === '1'); else if (e.target === box) done(false); };
-      box.querySelector('button[data-v="1"]').focus();
+      /* Cancel has the focus, so an Enter pressed straight after "Delete this response" (or a change to many responses)
+         never does it (REG-027) */
+      box.querySelector('button[data-v="0"]').focus();
     });
   }
 
@@ -555,7 +874,8 @@
           (r.status === 'pending' ?
             '<div class="dsec"><h4>Awaiting your decision</h4>' +
               (full ? '<p class="dwarn">Capacity is full — approving will exceed it.</p>' : '') +
-              '<div class="dact"><button class="btn btn-primary btn-sm" type="button" id="dr-approve">Approve</button><button class="btn btn-secondary btn-sm" type="button" id="dr-decline">Decline</button></div></div>' : '') +
+              '<div class="dact"><button class="btn btn-primary btn-sm" type="button" id="dr-approve" aria-describedby="dr-quiet-1">Approve</button><button class="btn btn-secondary btn-sm" type="button" id="dr-decline" aria-describedby="dr-quiet-1">Decline</button></div>' +
+              '<p class="dnote dquiet" id="dr-quiet-1">' + QUIET + '</p></div>' : '') +
           '<div class="dsec"><h4>Contact</h4>' +
             row('Name', r.name) + row('First name', r.firstName) + row('Last name', r.lastName) + row('Email', r.email) + row('Phone', phoneOf(r)) +
             row('Company', r.company) + row('Designation', r.designation) + row('Location', placeOf(r)) + row('City', r.city) +
@@ -570,10 +890,11 @@
           '</div>' +
           '<div class="dsec"><h4>Manage</h4>' +
             '<p class="dnote">Every change here is saved as you make it; notes and tags when you leave their box.</p>' +
-            '<label class="dfield">Status<select id="dr-status">' + statusOpts.map(function(o){
+            '<label class="dfield" style="margin-bottom:4px">Status<select id="dr-status" aria-describedby="dr-quiet-2">' + statusOpts.map(function(o){
               var no = o[0] === 'waitlist' && !counts(r);
               return '<option value="' + o[0] + '"' + (o[0] === r.status ? ' selected' : '') + (no ? ' disabled' : '') + '>' + esc(o[1]) + (no ? ' (only for forms that count as registrations)' : '') + '</option>';
             }).join('') + '</select></label>' +
+            '<p class="dnote dquiet" id="dr-quiet-2">' + QUIET + '</p>' +
             (counts(r) ? '<label class="dfield" style="flex-direction:row;align-items:center;gap:8px"><input type="checkbox" id="dr-checkin"' + (r.checkedInAt ? ' checked' : '') + (r.status === 'cancelled' ? ' disabled' : '') + '> Checked in<span id="dr-checkin-at">' + (r.checkedInAt ? ' (' + esc(ist(r.checkedInAt)) + ')' : '') + '</span></label>' : '') +
             '<label class="dfield">Notes<textarea id="dr-notes" maxlength="2000">' + esc(r.notes || '') + '</textarea></label>' +
             '<label class="dfield">Tags (separated by commas)<input id="dr-tags" type="text" maxlength="900" value="' + esc((r.tags || []).join(', ')) + '"></label>' +
@@ -618,6 +939,7 @@
       ask('Delete this response?', 'The response from ' + (r.name || r.email) + ' is removed for good, and the totals go down by one. This cannot be undone.', 'Delete', true).then(function(ok){
         if (!ok) return;
         C.deleteRegistration(eventId, r.id).then(function(){
+          S.gone[r.id] = Date.now(); delete S.sel[r.id];
           S.items = S.items.filter(function(x){ return x.id !== r.id; });
           closeDrawer();
           C.toast('Response deleted');
@@ -644,6 +966,7 @@
         var fresh = Object.assign({}, now, (res && res.registration) || body);
         if (body.checkedIn !== undefined && !(res && res.registration)) fresh.checkedInAt = body.checkedIn ? new Date().toISOString() : null;
         S.items = S.items.map(function(x){ return x.id === id ? fresh : x; });
+        S.touched[id] = Date.now();
         C.toast(okText);
         drawTotals(); drawResults();
         if (S.openId !== id) return true;
@@ -692,8 +1015,53 @@
       if (p.nextCursor && p.items.length) return loadPages(p.nextCursor);
     });
   }
+  /* Reads the list again without starting over (REG-016): the event (its capacity, whether it is live) and every
+     response, page by page, put in place in one go once all are here — the filters, the sort, the rows shown, the
+     choice and an open response stay as they are. A change this page made (or a response it deleted) while the read
+     was under way is newer than what the read brought back, so it is kept. A failure keeps the list as it was and
+     says so beside Refresh. quiet: started by coming back to the tab, not by the button. */
+  function refresh(quiet){
+    if (!S.ev || !S.done || S.loading || S.refreshing) return;
+    S.refreshing = true; S.refreshErr = '';
+    drawStamp();
+    var began = Date.now(), items = [], total = 0, partial = false, capped = false;
+    function pageFrom(cursor){
+      return C.fetchRegistrations(eventId, { limit: PAGE, cursor: cursor }).then(function(p){
+        total = p.total;
+        if (p.partial) partial = true;
+        var room = MAX_ROWS - items.length;
+        items = items.concat(p.items.slice(0, room));
+        if (p.items.length > room || (p.nextCursor && items.length >= MAX_ROWS)) { capped = true; return; }
+        if (p.nextCursor && p.items.length) return pageFrom(p.nextCursor);
+      });
+    }
+    Promise.all([C.fetchEvent(eventId).catch(function(){ return null; }), pageFrom(null)]).then(function(got){
+      var mine = {};
+      S.items.forEach(function(r){ mine[r.id] = r; });
+      S.items = items.filter(function(r){ return !(S.gone[r.id] >= began); })
+        .map(function(r){ return S.touched[r.id] >= began && mine[r.id] ? mine[r.id] : r; });
+      if (got[0]) S.ev = got[0];
+      S.total = total; S.partial = partial; S.capped = capped; S.error = null;
+      S.loadedAt = Date.now(); S.refreshing = false;
+      paintHeader(); drawFormSelect(); drawTotals(); drawProgress(); drawResults(); drawStamp();
+    }, function(err){
+      S.refreshing = false;
+      S.refreshErr = C.errText(err || { status: 0 });
+      drawStamp();
+      if (!quiet) C.toast('The list could not be refreshed: ' + S.refreshErr, { kind: 'error' });
+    });
+  }
+  /* back on the tab after a minute or more away: the list is read again, quietly (REG-016) */
+  var hiddenAt = 0;
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'hidden'){ hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt >= AWAY_MS) refresh(true);
+    hiddenAt = 0;
+  });
+
   function start(){
     S.error = null; S.loadErr = null; S.ev = null; S.items = []; S.done = false; S.capped = false; S.partial = false;
+    S.sel = {}; S.refreshErr = '';
     /* a second try puts back what a failed one put away */
     $('rail').hidden = false;
     if (eventId) $('btn-preview').hidden = false;
@@ -710,8 +1078,8 @@
       render();
       return loadPages(null);
     }).then(function(){
-      S.loading = false; S.done = true;
-      drawFormSelect(); drawTotals(); drawProgress(); drawResults();
+      S.loading = false; S.done = true; S.loadedAt = Date.now();
+      drawFormSelect(); drawTotals(); drawProgress(); drawResults(); drawStamp();
     }, function(err){
       S.loading = false; S.done = true;
       if (err && err.status === 401 && window.RevampAuth && RevampAuth.redirectToSignIn) { RevampAuth.redirectToSignIn(); return; }

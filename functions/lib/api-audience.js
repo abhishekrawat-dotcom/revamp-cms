@@ -5,6 +5,7 @@
 //   POST   /api/register                handleRegister            public — the one route the internet writes through
 //   GET    /api/event/registrations     handleRegistrationsList   admin
 //   PATCH  /api/event/registrations     handleRegistrationUpdate  admin
+//   POST   /api/event/registrations/status  handleRegistrationsStatus  admin — one status for several at once
 //   DELETE /api/event/registrations     handleRegistrationDelete  admin
 //   GET    /api/event/registrations/export  handleRegistrationsExport  admin — CSV
 //   POST   /api/track                   handleTrack               public — one page view
@@ -1482,6 +1483,103 @@ function handleRegistrationUpdate(req, res) {
   });
 }
 
+/* POST /api/event/registrations/status { eventId, ids: [id, …] (1 to BULK_MAX), status } — Reporting's "Set status"
+   for several responses at once (REG-019): the same change PATCH makes to one, for every id, in transactions of
+   BULK_TX responses, so the totals move with the responses exactly as they do one at a time. Moving a response out
+   of "pending" is approving or declining it and records who did it and when; a response to a form that does not
+   count as a registration is not put on a waitlist (skipped, with the reason). It changes the status only: nobody is
+   e-mailed or messaged. One line in the Activity log for the request.
+   -> 200 { ok, status, updated: [registration as it now is], unchanged: [id], missing: [id], skipped: [{ id, reason }] }.
+   When a later batch fails after an earlier one was saved, the answer is the failure's status with the same lists for
+   what was done and `notDone: [id]`, so the page can say exactly which were changed. */
+var BULK_MAX = 500, BULK_TX = 100;
+var NO_WAITLIST = 'Only forms that count as registrations have a waitlist.';
+
+function bulkWord(oldStatus, status) {
+  return oldStatus === 'pending' && status === 'confirmed' ? 'approved' : status === 'rejected' ? 'declined' : 'marked ' + status;
+}
+
+function handleRegistrationsStatus(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    guard(res, sendJson, 'change these registrations', function () {
+      parseJsonBody(req, res, function (body) {
+        guard(res, sendJson, 'change these registrations', function () {
+          var eventId = bodyId(body.eventId), status = body.status;
+          if (!validEventId(eventId)) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+          if (REG_STATUSES.indexOf(status) === -1) return sendJson(res, 400, { error: 'Status must be one of: ' + REG_STATUSES.join(', ') + '.' });
+          if (!Array.isArray(body.ids) || !body.ids.length) return sendJson(res, 400, { error: 'Choose at least one registration.' });
+          if (body.ids.length > BULK_MAX) return sendJson(res, 400, { error: 'At most ' + BULK_MAX + ' registrations can be changed at once.' });
+          var ids = [], seen = {};
+          for (var i = 0; i < body.ids.length; i++) {
+            var id = typeof body.ids[i] === 'string' ? body.ids[i].trim() : '';
+            if (!isDocId(id)) return sendJson(res, 400, { error: 'A valid registration id is required.' });
+            if (!seen[id]) { seen[id] = 1; ids.push(id); }
+          }
+
+          var refs = audienceRefs(fb, eventId), actor = actorOf(decoded), nowIso = new Date().toISOString();
+          var out = { updated: [], unchanged: [], missing: [], skipped: [] }, words = {}, attempted = 0;
+          function batch(chunk) {
+            return withAudienceCounters(fb, eventId, function () {
+              return fb.db.runTransaction(function (tx) {
+                // a transaction may run more than once: what it found is kept only from the run that was saved
+                var got = { updated: [], unchanged: [], missing: [], skipped: [], words: {} };
+                return Promise.all([tx.get(refs.event)].concat(chunk.map(function (rid) { return tx.get(refs.regs.doc(rid)); }))).then(function (r) {
+                  var ev = liveEvent(r[0]);
+                  if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
+                  if (!hasAudienceCounters(ev)) throw NEEDS_COUNTERS;
+                  var delta = { forms: {} };
+                  chunk.forEach(function (rid, k) {
+                    var snap = r[k + 1];
+                    if (!snap.exists) { got.missing.push(rid); return; }
+                    var old = snap.data() || {}, oldStatus = normStatus(old.status);
+                    if (oldStatus === status) { got.unchanged.push(rid); return; }
+                    if (status === 'waitlist' && old.counts === false) { got.skipped.push({ id: rid, reason: NO_WAITLIST }); return; }
+                    var patch = { status: status, updatedAt: nowIso, updatedBy: actor };
+                    if (oldStatus === 'pending') { patch.decidedAt = nowIso; patch.decidedBy = actor; }
+                    tx.update(refs.regs.doc(rid), patch);
+                    var now = Object.assign({}, old, patch);
+                    addDelta(delta, contribution(old), -1);
+                    addDelta(delta, contribution(now), 1);
+                    var w = bulkWord(oldStatus, status);
+                    got.words[w] = (got.words[w] || 0) + 1;
+                    got.updated.push(publicRegistration(rid, now));
+                  });
+                  applyCounters(tx, refs.event, pruneDelta(delta));
+                  return got;
+                });
+              });
+            }).then(function (got) {
+              attempted += chunk.length;
+              ['updated', 'unchanged', 'missing', 'skipped'].forEach(function (k) { out[k] = out[k].concat(got[k]); });
+              Object.keys(got.words).forEach(function (w) { words[w] = (words[w] || 0) + got.words[w]; });
+            });
+          }
+          function logged() {
+            var n = out.updated.length;
+            if (!n) return Promise.resolve();
+            var detail = n + (n === 1 ? ' registration' : ' registrations') + ' at once — ' +
+              Object.keys(words).map(function (w) { return words[w] + ' ' + w; }).join(', ');
+            return logActivity(fb, eventId, decoded, 'registration-updated', detail, { area: 'registrations' });
+          }
+
+          var run = Promise.resolve();
+          for (var c = 0; c < ids.length; c += BULK_TX) run = run.then(batch.bind(null, ids.slice(c, c + BULK_TX)));
+          run.then(function () {
+            return logged().then(function () { sendJson(res, 200, Object.assign({ ok: true, status: status }, out)); });
+          }).catch(function (err) {
+            if (!out.updated.length) return answerError(res, sendJson, err, 'change these registrations');
+            if (!(err && err.expose)) console.error('audience: a bulk status change for ' + eventId + ' stopped part-way — ' + ((err && err.stack) || err));
+            var said = err && err.expose ? err.message : 'We could not change all of them just now. Please try again.';
+            return logged().then(function () {
+              sendJson(res, err && err.expose ? err.status : 500, Object.assign({ error: said, status: status, notDone: ids.slice(attempted) }, out));
+            });
+          }).catch(function (err) { answerError(res, sendJson, err, 'change these registrations'); });
+        });
+      }, 96 * 1024);   // BULK_MAX ids of up to 120 characters
+    });
+  });
+}
+
 function handleRegistrationDelete(req, res) {
   requireAdmin(req, res, function (fb, decoded) {
     guard(res, sendJson, 'delete this registration', function () {
@@ -1821,8 +1919,13 @@ function countQrScan(req, eventId) {
    figure is 0 because nothing is counted, not because nobody came, and the Dashboard says so instead of
    showing the zeros. Counting began with that release (TPL-039, 13 Nov 2026): earlier visits are not in any
    figure. `qrScans`: the event's QR codes scanned, all-time (countQrScan).
+   So dashboard-stats says from which India day page views are counted (`visitsSince`, null while they are not
+   counted at all), and a day of `byDay` before it has `views: null` — not known, never a zero nobody measured
+   (the Dashboard's "Over time" chart draws such days as "not counted", REG-024). There are no unique visitors:
+   rv-visit.js sends no identifier, so `uniques` stays 0 and nothing shows it.
    ===================================================================================================== */
 var VISITS_COUNTED = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-visit.js'));
+var VISITS_SINCE = '2026-11-13';
 
 var REF_CLASSES = [['direct', 'Direct'], ['search', 'Search'], ['social', 'Social'], ['email', 'Email'], ['referral', 'Other sites']];
 
@@ -1877,10 +1980,12 @@ function handleDashboardStats(req, res) {
         if (!ev) throw httpError(404, 'No event found for "' + eventId + '".');
         return Promise.all([audienceTotals(fb, eventId, ev, true), readDays(fb, eventId, days)]).then(function (r) {
           var a = r[0], daily = r[1], settings = registrationSettings(ev), refTotals = {};
+          var since = VISITS_COUNTED ? VISITS_SINCE : null;
           var byDay = days.map(function (day) {
             var d = daily[day] || {};
             if (isObj(d.ref)) Object.keys(d.ref).forEach(function (k) { refTotals[k] = (refTotals[k] || 0) + num(d.ref[k]); });
-            return { date: day, views: num(d.views), uniques: num(d.uniques),
+            var counted = !!since && day >= since;
+            return { date: day, views: counted ? num(d.views) : null, uniques: num(d.uniques),
               registrations: a.legacyDays ? num(a.legacyDays[day]) : num(d.registrations) };
           });
           var list = function (pairs, counts) {
@@ -1893,7 +1998,8 @@ function handleDashboardStats(req, res) {
             cancelled: a.totals.cancelled, checkedIn: a.totals.checkedIn,
             // every form's responses, and those waiting for an organiser's approval (counted forms / all forms)
             submissions: a.totals.submissions, pending: a.totals.pending, awaitingApproval: a.totals.awaitingApproval,
-            visitors: a.visits.visitors, uniques: a.visits.uniques, visitsCounted: VISITS_COUNTED, qrScans: a.visits.qrScans || 0,
+            visitors: a.visits.visitors, uniques: a.visits.uniques, visitsCounted: VISITS_COUNTED, visitsSince: since,
+            qrScans: a.visits.qrScans || 0,
             conversion: conversionOf(a.totals.registrations, a.visits.visitors),
             capacity: settings.capacity, target: settings.target,
             byDay: byDay,
@@ -2057,7 +2163,7 @@ function handleActivity(req, res) {
 }
 
 module.exports = {
-  handlePublicSiteData, handleSeed, handleRegister, handleRegistrationsList, handleRegistrationUpdate,
+  handlePublicSiteData, handleSeed, handleRegister, handleRegistrationsList, handleRegistrationUpdate, handleRegistrationsStatus,
   handleRegistrationDelete, handleRegistrationsExport, handleTrack, countQrScan, handleDashboardStats, handleInsights, handleActivity,
   handlePublicOptions, publicSiteData, seedContent,
   /* for tools/migrate-forms.js and the tests */
@@ -2071,7 +2177,9 @@ module.exports = {
   /* the window of GET /api/insights, for its tests */
   insightsWindow, eventWindow,
   /* who is not counted as a visitor (visit-count.test.js) */
-  isRobot, isPrefetch, VISITS_COUNTED,
+  isRobot, isPrefetch, VISITS_COUNTED, VISITS_SINCE,
+  /* what each "Who registered" list counts a registration under (reg-reporting.test.js: Reporting's filter matches it) */
+  aggValues, aggKeyOf,
   /* what Create Event's content becomes before it is stored (site-notes.test.js: a sponsor starts at Normal priority) */
   readSeedPayload
 };
