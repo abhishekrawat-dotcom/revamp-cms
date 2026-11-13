@@ -1,27 +1,26 @@
-// Local static server for the repo — templates load their section files with fetch(), which browsers block on file://.
-//   node tools/serve.js [port]      then open http://localhost:8080/templates/preview.html?t=tech500
+// The local development server: production's own serving code on this computer, so what QA sees is what users get.
+//   node tools/serve.js [port]      (npm run dev)   then open http://localhost:8080/
 //
-// The /api/*, /e/*, /preview/*, /t/* and /s/* routes themselves live in functions/lib/api.js, so the EXACT same code runs
-// here (for local dev) and in production (server.js on App Hosting). This file only adds static file serving
-// and loading tools/.env.local for local secrets (GEMINI_API_KEY, the Firebase service account —
-// functions/lib/firebase.js reads the same variable names either way, see its header comment).
-//
-// It listens on 127.0.0.1 only and serves only what production serves (isServableFile in
-// functions/lib/access.js). It used to listen on every interface and send any file under the repository to
-// anyone who asked — including tools/.env.local, with the real keys in it, to the whole office network.
+// Everything a request meets is functions/lib/web-server.js, exactly as server.js runs it on App Hosting: the
+// /api/*, /e/*, /preview/*, /t/*, /s/*, /img/* routes and the speaker and sponsor pages (functions/lib/api.js),
+// which files are served at all (isServableFile in functions/lib/access.js), their caching, compression, ?v=
+// stamping and the app pages' headers. This file adds only what is local:
+//   - it listens on 127.0.0.1 only (it used to listen on every interface and send any file under the repository
+//     to anyone who asked — including tools/.env.local, with the real keys in it, to the whole office network);
+//   - it loads tools/.env.local for local secrets (GEMINI_API_KEY, the Firebase service account —
+//     functions/lib/firebase.js reads the same variable names either way, see its header comment);
+//   - REVAMP_AUTH_DISABLED=1 (in tools/.env.local or the shell) lets the PAGES open without a sign-in, for layout
+//     work offline. The API is not opened by it: every /api/ route that is not public checks the caller itself
+//     (lib/http.js requireAdmin / requireMember), so a page that reads or changes data still needs a real sign-in.
+//     It says which at start-up.
 const http = require('http'), fs = require('fs'), path = require('path');
 const { handleApi } = require('../functions/lib/api');
-const { gate, isServableFile } = require('../functions/lib/access');
+const { gate } = require('../functions/lib/access');
+const web = require('../functions/lib/web-server');
+const { SERVER_REQUEST_TIMEOUT_MS } = require('../functions/lib/http');
 
 const root = path.resolve(__dirname, '..');
 const port = +process.argv[2] || 8080;
-const types = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.woff2': 'font/woff2',
-  '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf', '.ico': 'image/x-icon',
-  '.mp4': 'video/mp4', '.webm': 'video/webm', '.pdf': 'application/pdf', '.txt': 'text/plain; charset=utf-8'
-};
 
 // A minimal KEY=VALUE loader for tools/.env.local, so `node tools/serve.js` keeps working unchanged whether the
 // key is set in the shell or dropped in that (gitignored) file.
@@ -35,52 +34,19 @@ function loadEnvFile() {
 }
 loadEnvFile();
 
-// Same @timesinternet.in sign-in gate as server.js (functions/lib/access.js); REVAMP_AUTH_DISABLED=1 in
-// tools/.env.local turns it off for local work without a network or a company Google account.
+// The same sign-in gate as server.js (functions/lib/access.js), unless REVAMP_AUTH_DISABLED=1 opens the pages.
+const authDisabled = process.env.REVAMP_AUTH_DISABLED === '1';
 const passThrough = (req, res, next) => next();
-const guard = process.env.REVAMP_AUTH_DISABLED === '1' ? passThrough : gate;
+const guard = authDisabled ? passThrough : gate;
 
-function notFound(res) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }); res.end('Not found'); }
+// One bad request must not end the dev server (web-server.js fail() and keepServing(), as in production).
+web.keepServing();
 
-// The app's own pages may be framed only by the app itself, as server.js sends them (APP_PAGE_HEADERS there, BE-057)
-const APP_PAGE_HEADERS = {
-  'Content-Security-Policy': "frame-ancestors 'self'",
-  'X-Frame-Options': 'SAMEORIGIN',
-  'Referrer-Policy': 'strict-origin-when-cross-origin'
-};
-
-function serve(req, res) {
-  const url = req.url.split('?')[0];
-  if (/^\/(api|e|preview|t)\//.test(url) || url.indexOf('/s/') === 0) return handleApi(req, res);   // /s/: a shared preview link
-  if (url === '/robots.txt' || url === '/sitemap.xml' || url === '/sitemap-people.xml') return handleApi(req, res);   // for search engines (lib/site-seo.js, lib/people.js)
-  if (/^\/(speakers|sponsors)\//.test(url)) return handleApi(req, res);   // a speaker's or a sponsor's page across ET (lib/people.js)
-  if (url.indexOf('/img/') === 0) return handleApi(req, res);   // a picture of the storage bucket, from our own address for the CDN (lib/picture-cdn.js)
-  if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { Allow: 'GET, HEAD' }); return res.end(); }
-
-  // a path that does not decode ("%E0%A4%A") or carries a NUL would throw below, and an exception nobody
-  // catches ends this process; both are simply not files
-  let rel;
-  try { rel = decodeURIComponent(url); } catch (e) { return notFound(res); }
-  if (rel.indexOf('\0') !== -1) return notFound(res);
-  if (rel.endsWith('/')) rel += 'index.html';
-  let file = path.join(root, rel);
-  if (!file.startsWith(root + path.sep)) return notFound(res);
-  if (rel === '/favicon.ico') file = path.join(root, 'assets', 'favicon.svg');     // the red ET square, as server.js answers it
-  else if (!isServableFile(path.relative(root, file).split(path.sep).join('/'))) return notFound(res);
-  fs.readFile(file, (err, buf) => {
-    if (err) return notFound(res);
-    const headers = { 'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
-    if (path.extname(file).toLowerCase() === '.html') Object.assign(headers, APP_PAGE_HEADERS);
-    res.writeHead(200, headers);
-    res.end(req.method === 'HEAD' ? undefined : buf);
-  });
-}
-
-// One bad request must not end the dev server (see server.js for the full reasoning).
-process.on('uncaughtException', err => console.error('uncaughtException (still serving): ' + (err && err.stack || err)));
-process.on('unhandledRejection', err => console.error('unhandledRejection (still serving): ' + (err && err.stack || err)));
-
-http.createServer((req, res) => {
-  try { guard(req, res, () => { try { serve(req, res); } catch (err) { console.error(err); if (!res.headersSent) { res.writeHead(500); } res.end(); } }); }
-  catch (err) { console.error(err); if (!res.headersSent) { res.writeHead(500); } res.end(); }
-}).listen(port, '127.0.0.1', () => console.log(`Serving ${root}\n  http://localhost:${port}/templates/preview.html?t=tech500`));
+const server = http.createServer(web.handler({ root: root, guard: guard, handleApi: handleApi }));
+server.requestTimeout = SERVER_REQUEST_TIMEOUT_MS;
+server.listen(port, '127.0.0.1', () => {
+  console.log(`Serving ${root}\n  http://localhost:${port}/`);
+  console.log(authDisabled
+    ? 'REVAMP_AUTH_DISABLED=1: pages open here without a sign-in, but every API route that is not public still checks the caller — anything that reads or changes event data needs a real sign-in.'
+    : 'Sign-in required, as in production (REVAMP_AUTH_DISABLED=1 would open the pages without one, never the API).');
+});

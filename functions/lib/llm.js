@@ -14,10 +14,10 @@
    to Gemini untouched; Claude gets the route's PROFILE instead, because the two models take different
    times and count tokens differently. The file, the pictures, deadlineAt and the log labels go to both.
 
-   ONE DEADLINE FOR BOTH. The function that runs a route is stopped at 240 s (functions/index.js), and a
-   request stopped there never gets its failure sentence. So a call that names no deadlineAt is given one
-   here — LIMITS.budgetMs from the moment it starts — and both providers work inside it: Claude's timeout
-   and Gemini's are each cut to what is left. The budget is counted from the start of THIS call; a route
+   ONE DEADLINE FOR BOTH. The platform ends a request at PLATFORM_REQUEST_LIMIT_MS (lib/http.js: App Hosting's
+   Cloud Run limit, 300 s), and a request ended there never gets its failure sentence. So a call that names no
+   deadlineAt is given one here — LIMITS.budgetMs from the moment it starts — and both providers work inside it:
+   Claude's timeout and Gemini's are each cut to what is left. The budget is counted from the start of THIS call; a route
    that works for long before it, or asks more than once in a row, must pass its own deadlineAt.
 
    When Claude fails, the same request goes to Gemini, and what Gemini says (an answer or its own failure)
@@ -33,9 +33,11 @@
 const { callGeminiJson, GEMINI_TEXT_MODEL, DEFAULT_TIMEOUT_MS: GEMINI_DEFAULT_TIMEOUT_MS } = require('./gemini');
 const { callClaudeJson, claudeConfigured, CLAUDE_OPUS, CLAUDE_SONNET, CLAUDE_HAIKU } = require('./claude');
 
-/* budgetMs: 15 s under the function's 240 s, for what the route does before and after. An object, so a
-   test can shorten it (as with PROFILES). */
-var LIMITS = { budgetMs: 225000, fallbackNeedsMs: 5000 };
+/* budgetMs: three quarters of the platform's request limit (lib/http.js PLATFORM_REQUEST_LIMIT_MS: 225 s of 300 s),
+   the rest for what the route does before and after the call — reading the event, storing the answer. An object,
+   so a test can shorten it (as with PROFILES). */
+var PLATFORM_REQUEST_LIMIT_MS = require('./http').PLATFORM_REQUEST_LIMIT_MS;
+var LIMITS = { budgetMs: Math.round(PLATFORM_REQUEST_LIMIT_MS * 0.75), fallbackNeedsMs: 5000 };
 
 var PROFILES = {
 /* The times leave room for Gemini's own timeout inside the budget (plan 60 s, section code 100 s, redesign

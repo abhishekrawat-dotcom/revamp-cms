@@ -1,7 +1,29 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // Same as firestore.rules — only the Cloud Functions backend (Admin SDK) ever touches Storage.
+    // As firestore.rules: only the app's own server — server.js on Firebase App Hosting, through the Admin SDK
+    // (functions/lib/firebase.js) — reads and writes the bucket, and the Admin SDK is not bound by these rules.
+    // No browser ever gets in through the Firebase SDK, so they stay deny-all.
+    //
+    // Some objects are public all the same: public by an object ACL the server sets when it writes them
+    // (file.makePublic()), never by these rules. A visitor's browser loads them from storage.googleapis.com, or
+    // through /img/<path> on our own address (functions/lib/picture-cdn.js). By prefix:
+    //   events/<id>/speakers|partners|gallery|logo|banner|media|brief/   uploaded pictures and their WebP copies
+    //                                     (lib/api-events.js storeImageFile; also what Create Event uploads)
+    //   events/<id>/generated/            pictures ETB2B AI made: hero backgrounds, section pictures, the chat's and
+    //                                     the phone banner's (lib/api.js, ai-hero.js, chat-picture.js, phone-banner.js)
+    //   events/<id>/media/                banner videos (lib/api-hero-video.js)
+    //   events/<id>/promo-art/, promo-layouts/, promo-mail/, promo-banner/   Promotions' pictures
+    //   events/<id>/share-card/           the share picture of a published page (lib/share-card.js)
+    //   events/import-<id>/assets/        a Lovable import's pictures; today also its index.html and section.html
+    //                                     (launch check BE-050)
+    //   promo-icons/<key>/                the mailer studio's icons (lib/promo-mailer.js)
+    //   people/<kind>/<slug>/             the speaker and sponsor pages' pictures (lib/people.js)
+    // Everything else is private and reaches a browser only through the server: the saved site and its versions
+    // (events/<id>/site/), the published page (events/<id>/published/, served at /e/<id>), the staged copy and the
+    // editor's previews, uploaded briefs, Create Event's unfinished drafts.
+    //
+    // Deployed only by hand, with firestore.rules (see there).
     match /{allPaths=**} {
       allow read, write: if false;
     }

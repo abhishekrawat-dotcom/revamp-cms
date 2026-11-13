@@ -641,8 +641,10 @@ var MP = 'qa-share-multi';           // a site with an internal page
   check('14 the gate lets a signed-out /s/ request through', gateNext === true);
 
   /* ============ 15. wiring ============ */
-  var serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-  var serveSrc = fs.readFileSync(path.join(ROOT, 'tools', 'serve.js'), 'utf8');
+  /* both servers route through functions/lib/web-server.js (BE-063) */
+  var serverSrc = fs.readFileSync(path.join(ROOT, 'functions', 'lib', 'web-server.js'), 'utf8');
+  var serveSrc = /require\('\.\.\/functions\/lib\/web-server'\)/.test(fs.readFileSync(path.join(ROOT, 'tools', 'serve.js'), 'utf8')) &&
+    /require\('\.\/functions\/lib\/web-server'\)/.test(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8')) ? serverSrc : '';
   function routesS(src) {
     var line = src.split('\n').filter(function (l) { return /return handleApi\(req, res\)/.test(l) && /\(api\|e\|preview\|t/.test(l); })[0] || '';
     var m = /if \((.*)\) return handleApi\(req, res\);/.exec(line);

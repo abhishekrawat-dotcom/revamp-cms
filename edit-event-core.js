@@ -72,6 +72,7 @@
      .unpublishEvent(eventId)     POST   /api/event/unpublish
      .restoreVersion(eventId, n)  POST   /api/event/restore-version: version n, live before, live again (approvers)
      .previewUrl(eventId)         -> absolute URL of /preview/<id> (a string, not a promise)
+     .previewDraft(eventId, html) POST   /api/event/stage { draft: true } — the editor's Preview -> {stagingUrl, previewPath}
      .publicUrl(event)            -> absolute URL of the event's public page, the public base + /e/<id>
                                    (a string, not a promise; '' when the event has no id)
      .publicBase()                -> the public base the server named (X-Public-Base), else this origin
@@ -83,7 +84,6 @@
      .readSiteHead(html)          -> what a page tells search engines and link previews (title, description,
                                    canonical, image, robots / noindex, eventLd), read from its own tags
      .DESC                        {min, ideal, max}: the short description's lengths (Basics' counter and rule)
-     .stageEvent(eventId, html)   POST   /api/event/stage — the older Preview; kept for cached editors
      .fetchSiteData(eventId)      GET    /api/public/site-data -> what the site shows (section 5 shape)
      Content
      .uploadImage(eventId, kind, file)
@@ -481,14 +481,6 @@ window.RevampCore = (function(){
       api('POST', '/api/event/restore-version', { eventId: String(eventId).trim(), version: +version || 0, origin: location.origin });
   }
 
-  /* The older Preview (a page stored at a storage URL). New code opens previewUrl(eventId) instead;
-     this stays for editor scripts already cached in browsers. */
-  function stageEvent(eventId, html){
-    eventId = String(eventId || '').trim();
-    if (!eventId) return Promise.reject(apiError('stageEvent: eventId is required.', 400));
-    if (!html) return Promise.reject(apiError('stageEvent: html is required.', 400));
-    return api('POST', '/api/event/stage', { eventId: eventId, html: html });   // -> {stagingUrl}
-  }
   /* The editor's Preview: the page as it is in this person's editor, saved or not. Theirs alone — staging
      itself changes only on Save (saveSite). */
   function previewDraft(eventId, html){
@@ -1600,7 +1592,7 @@ window.RevampCore = (function(){
     searchLibrary: searchLibrary, buildLibrary: buildLibrary, findSpeakerPhotos: findSpeakerPhotos,
     listPeople: listPeople, fetchPerson: fetchPerson, savePerson: savePerson, mergePeople: mergePeople, splitPerson: splitPerson, undoPerson: undoPerson, writePersonAbout: writePersonAbout, personWiki: personWiki,
     fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
-    stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
+    previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
     uploadImage: uploadImage, storePicture: storePicture, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,

@@ -1,8 +1,22 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Only the Cloud Functions backend (functions/lib/firebase.js, via the Admin SDK) ever touches Firestore —
-    // the Admin SDK bypasses these rules entirely, and the browser never gets a Firebase client SDK config.
+    // Nobody reaches Firestore from a browser. Its only reader and writer is the app's own server — server.js on
+    // Firebase App Hosting (tools/serve.js locally) — through the Firebase Admin SDK (functions/lib/firebase.js),
+    // which runs as the backend's own service identity and is not bound by these rules at all. The pages do load
+    // the Firebase client SDK, for one thing only: signing in (auth.js), to get the ID token every /api/ call
+    // carries. They never open Firestore themselves, so the rules stay deny-all: a direct read or write from any
+    // browser or REST client is refused.
+    //
+    // Indexes: firestore.indexes.json holds the composite ones the server's queries need — registrations by formId,
+    // newest first; the History by person, newest first, for one event and across events — and the activity `at`
+    // field for queries across events. Every other query is served by Firestore's automatic single-field indexes.
+    // Checked 13 Nov 2026 (BE-062): every query in functions/lib was read, and each list, stats, leads, history and
+    // search query shape was run once, read-only, against production — all 34 accepted. (The emulator could not be
+    // run here, and it does not enforce indexes anyway.)
+    //
+    // Deployed only by hand: `firebase deploy --only firestore,storage --project revamp-cms` (tools/release-check.js,
+    // step 4). An App Hosting rollout does not deploy rules or indexes.
     match /{document=**} {
       allow read, write: if false;
     }

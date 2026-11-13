@@ -3,7 +3,9 @@
    the records' routes through the real router (lib/api.js handleApi) against an in-memory Firestore and Storage;
    POST /api/event/upload after its storing moved into storeImageFile (lib/api-events.js); the speaker and sponsor
    pages' own picture (lib/people.js handleOne); the console's RevampCore.storePicture (edit-event-core.js); and the
-   migration tool's dry run and --apply (tools/migrate-inline-pictures.js). No network, no real project.
+   migration tool's dry run and --apply (tools/migrate-inline-pictures.js, an event's own logo too), PATCH /api/event
+   refusing image text (CON-056) and POST /api/event/stage taking the editor's own Preview only (BE-071). No network,
+   no real project.
    Exits 1 on any failure. */
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
@@ -347,6 +349,31 @@ function pathOf(url) { return decodeURIComponent(String(url).slice(STORE.length)
   ok(moved.length === 2 && umMoved.url && um.set.logo === umMoved.url && pathOf(um.set.logo).indexOf('qa-people/sponsors/umbrella/') === 0 && um.version === 3, '8 a page\'s picture: a file in the pages\' folder, its version moved on', um);
   var again = await TOOL.scan(FB, { eventId: 'real-event-2026' });
   ok(again.hits.length === 0, '8 run again: what was moved is not found again (the changed record holds an address now)', again.hits.map(function (h) { return h.id; }));
+
+  /* the event's own logo and banner (BE-070): PATCH /api/event used to take a small picture as image text */
+  FB.docs['events/logo-event-2026'] = { name: 'Logo Event 2026', createdAt: now, logoUrl: PNG_URL, bannerUrl: 'https://x.test/b.jpg' };
+  var evScan = await TOOL.scan(FB, { eventId: 'logo-event-2026' });
+  ok(evScan.hits.length === 1 && evScan.hits[0].area === 'eventDoc' && evScan.hits[0].field === 'logoUrl' && evScan.hits[0].what === 'event logo',
+    '8 an event\'s own inline logo is found (not its banner, which is an address)', evScan.hits.map(function (h) { return h.area + ':' + h.field; }));
+  var evMoved = await TOOL.apply(FB, evScan.hits, {});
+  var le = FB.docs['events/logo-event-2026'];
+  ok(evMoved.length === 1 && evMoved[0].url && le.logoUrl === evMoved[0].url && pathOf(le.logoUrl).indexOf('events/logo-event-2026/logo/') === 0 &&
+    le.bannerUrl === 'https://x.test/b.jpg' && !('updatedAt' in le), '8 --apply: it becomes a file in the event\'s logo folder; nothing else on the event changes', le);
+  r = await call('PATCH', '/api/event', { eventId: 'logo-event-2026', bannerUrl: PNG_URL });
+  ok(r.status === 400 && /uploaded as a file first/.test((r.body || {}).error) && FB.docs['events/logo-event-2026'].bannerUrl === 'https://x.test/b.jpg',
+    '8 PATCH /api/event refuses a picture sent as image text now (CON-056): nothing new is stored inline', [r.status, r.body]);
+
+  /* ---------- 9. BE-071: the previous editor's Preview can no longer overwrite the staged copy ---------- */
+  FB.files['events/logo-event-2026/staging/index.html'] = Buffer.from('<p>SAVED</p>');
+  r = await call('POST', '/api/event/stage', { eventId: 'logo-event-2026', html: '<p>UNSAVED</p>' });
+  ok(r.status === 400 && r.body && r.body.code === 'reload-editor' && /Reload the page/.test(r.body.error) &&
+    String(FB.files['events/logo-event-2026/staging/index.html']) === '<p>SAVED</p>', '9 a stage without draft: true answers 400 reload-editor and leaves the staged copy alone', [r.status, r.body]);
+  r = await call('POST', '/api/event/stage', { eventId: 'logo-event-2026', html: '<p>MINE</p>', draft: true, origin: 'http://localhost' });
+  var drafts = Object.keys(FB.files).filter(function (k) { return k.indexOf('events/logo-event-2026/site/drafts/') === 0; });
+  ok(r.status === 200 && r.body.previewPath === '/preview/logo-event-2026?draft=1' && drafts.length === 1 && /MINE/.test(String(FB.files[drafts[0]])) &&
+    String(FB.files['events/logo-event-2026/staging/index.html']) === '<p>SAVED</p>', '9 the editor\'s Preview (draft: true) is that person\'s own preview, never the staged copy', [r.status, r.body, drafts]);
+  var CORE = fs.readFileSync(path.join(__dirname, '..', '..', 'edit-event-core.js'), 'utf8');
+  ok(!/stageEvent/.test(CORE) && /function previewDraft\(eventId, html\)\{[\s\S]{0,200}draft: true/.test(CORE), '9 RevampCore.stageEvent is gone; previewDraft is the one Preview');
 
   console.error = realError;
   if (failures.length) { process.stdout.write('inline-pictures: ' + (checks - failures.length) + ' passed, ' + failures.length + ' failed\n  ' + failures.join('\n  ') + '\n'); process.exit(1); }

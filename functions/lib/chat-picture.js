@@ -62,7 +62,8 @@ var genDesign = require('./gen-design');
 var PER_DAY = 20;
 var TIMEOUT_MS = 90000;               // one picture call; Gemini's picture model answers in 10-40 s
 /* the picture calls (gemini.js's one retry included), the checks and a second picture when the first is refused,
-   all inside the function's 240 s with room left to store the picture and its WebP copies */
+   all inside the platform's request limit (lib/http.js PLATFORM_REQUEST_LIMIT_MS, 300 s) with room left to store the
+   picture and its WebP copies */
 var DEADLINE_MS = 180000;
 var CHECK_TIMEOUT_MS = 30000;         // one look at a made picture (Gemini's fallback; Claude's is llm.js's profile)
 var CHECK_MAX_BYTES = 3700000;        // a picture larger than this is not sent to the check (5 MB of base64 at most)

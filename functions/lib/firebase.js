@@ -1,103 +1,52 @@
-// Firebase Admin SDK wiring for the AI site-generation pipeline (brief ingestion, previous-edition/competitor
-// source snapshots, AI drafts) — the first real persistence layer in this repo; everything else is localStorage.
+// The Firebase Admin SDK, set up once: Firestore, the Storage bucket and Firebase Auth for every backend module.
 //
-// Runs in two places with the SAME code: locally under tools/serve.js, and deployed as the Cloud Function in
-// this folder. The only thing that differs between them is where credentials come from:
-//   - Local dev: an explicit service account key, via tools/.env.local —
+// WHERE IT RUNS. The same code in two places; only the credentials differ:
+//   - production: server.js on Firebase App Hosting (backend "revamp-cms"). No key: the backend runs as its own
+//     service identity, which admin.initializeApp() picks up by itself (Application Default Credentials).
+//     FIREBASE_STORAGE_BUCKET comes from apphosting.yaml.
+//   - local: tools/serve.js, the QA harness and the one-off scripts in tools/. A service account key from
+//     tools/.env.local (never committed, never printed):
 //       FIREBASE_SERVICE_ACCOUNT_JSON   the key file's JSON, as a single-line string, OR
-//       FIREBASE_SERVICE_ACCOUNT_PATH   a path to the key .json file on disk (easier to paste than JSON-in-JSON)
-//   - Deployed: no key needed at all — the Function runs as its own Firebase/GCP service identity, and
-//     admin.initializeApp() with no credential picks that up automatically (Application Default Credentials).
-// FIREBASE_STORAGE_BUCKET is required either way — tools/.env.local locally, functions/.env when deployed
-// (Firebase Functions v2 loads that file into the runtime's environment automatically).
+//       FIREBASE_SERVICE_ACCOUNT_PATH   a path to the key .json file on disk
+//     and FIREBASE_STORAGE_BUCKET.
 //
-// Firestore schema (all under one Google Cloud project, same one Gemini billing can live in):
-//   events/{eventId}                             — the canonical Event (see lib/api.js's EVENT_FIELDS)
-//     { name, slug, category, status, start, end, venue, city, description,
-//       payment: { type, amount, currency }, sections: [{id, on}], nav: [{t, on}],
-//       templateId, checklist: {...}, published, createdAt, updatedAt, createdBy,
-//       structurePlan,    // GENERATED TEMPLATES only (lib/api.js's /api/plan-structure) — a FIELD on this
-//                         // same doc, not a subcollection, latest plan wins:
-//                         // { sections: [string, ...], generatedAt }  (nav/hero/footer always first/
-//                         // present/last; the rest is Gemini's pick from the 7 "middle" library types)
-//       theme             // { themeColor, headingFont, bodyFont,       // previousEdition sources ONLY —
-//                         //   usedFallback: {color, font, noPreviousEditionSource},  // see lib/api.js's
-//                         //   extractThemeFromPreviousEditionSources for the fallback this triggers
-//                         //   heroImageUrl, heroImageStoragePath, heroImageError, generatedAt }
-//       designPlan,       // an AI-designed site's plan (the pipeline since October 2026)
-//       generatedSite,    // { runId, at, sections: [{ id, kind, page? }] } — which sections it has; their markup is
-//                         // in events/{eventId}/generations/{runId}/sections (lib/generated-site.js). A site
-//                         // generated before 13 Nov 2026 keeps it in the field generatedSections instead.
-//       generationRun     // { runId, at, done? } — the event's newest generation (only it may switch the site)
-//     }
-//   events/{eventId}/generations/{runId}          — one press of Create Event's "Generate my site" (lib/generated-site.js)
-//     { runId, status: 'planned'|'stopped'|'done', designPlan, described, by, plannedAt, writtenAt, doneAt }
-//     /sections/{sectionId}                       — { id, kind, page?, html, css, order }
-//   events/{eventId}/briefs/{briefId}            — one per uploaded overview doc
-//     { sourceFileName, mimeType, storagePath,    // the uploaded file, in Storage (see below)
-//       extracted: { theme, audience, tone, tracks: [string], speakerHints: [string],
-//                    sponsorHints: [string], keyMessages: [string], inferredCategory },
-//       model, createdAt, runId }                 // runId: the generation that read it
-//   events/{eventId}/sources/{sourceId}          — one per previous-edition/current-edition/competitor URL
-//     { type: 'previousEdition' | 'currentEdition' | 'competitor', url, extractedSections: [{heading, body}],
-//       colorSignals: [string], fontSignals: [string], fetchedAt, runId }
-//   events/{eventId}/drafts/{draftId}            — AI-generated output, kept separate from the user's own
-//                                                   edits (those still live in editor-store.js's IndexedDB)
-//     { templateId, sourceEventId, library: {...}, positioningNotes, model, generatedAt, skippedLibraries }
-//   events/{eventId}/speakers/{id}        — name, desig, comp, photoUrl, logoUrl, colour, weight, status,
-//                                            email, phone, li, bio, groupId, order, createdAt/updatedAt/By
-//   events/{eventId}/speakerGroups/{id}   — name, order
-//   events/{eventId}/sessions/{id}        — title, start, end, kind, speakerIds: [id], desc, room, weight,
-//                                            groupId, order
-//   events/{eventId}/agendaGroups/{id}    — name, date, order
-//   events/{eventId}/partners/{id}        — name, url, logoUrl, weight, status, email, phone, contact, note,
-//                                            tierId, order
-//   events/{eventId}/partnerTiers/{id}    — name, weight, order
-//   events/{eventId}/gallery/{id}         — imageUrl, caption, order
-//   events/{eventId}/faqs/{id}            — question, answer, order
-//   events/{eventId}/contacts/{id}        — label, name, email, phone, order
-//   events/{eventId}/registrations/{id}   — written by the PUBLIC POST /api/register (no auth — this is the
-//                                            one write path the published microsite itself calls):
-//     { name, email, phone, company, designation, city, source, status: 'confirmed'|'waitlist'|'cancelled',
-//       payment: { required, status: 'n/a'|'pending'|'paid'|'failed', amount, txnId },
-//       createdAt, checkedInAt }
-//   imports/{importId}                    — LOVABLE IMPORT PIPELINE only (lib/api.js's POST /api/import-lovable;
-//                                            lib/import-store.js has the record's fields). Its id is made by the
-//                                            server and the record created once. Read back by GET
-//                                            /api/imported-template and GET /api/imported-section. (Until
-//                                            13 Nov 2026 these were events/import-{importId} documents;
-//                                            ops-migrate-imports.js moves the old ones here.)
+// getFirebase() -> { db, bucket, auth } | { error }: never throws, so a route can answer 503 with the sentence.
 //
-// Storage layout:
-//   events/{eventId}/briefs/{fileName}       the uploaded overview doc, as-is
-//   events/{eventId}/generated/{fileName}    any generated/selected imagery (banners, etc.)
-//   events/{eventId}/published/index.html    the fully serialized, published page (lib/api.js's
-//                                             POST /api/event/publish — canvas.serialize()'s own output,
-//                                             made public; events/{eventId}.publishedUrl points here)
-//   events/{eventId}/staging/index.html      same mechanism, for the Preview button (POST /api/event/
-//                                             stage) — one stable URL per event, re-uploaded on every
-//                                             Preview click; never touches published/publishedUrl
-//   events/{eventId}/speakers/{fileName}, /partners/{fileName}, /gallery/{fileName}
-//                                             speaker/sponsor photos and gallery images, uploaded as base64
-//                                             in the request body (same pattern as handleExtractBrief's
-//                                             docBase64) and stored here as real files — never inline as a
-//                                             data: URI in Firestore (a single doc is capped at 1MiB; see
-//                                             buildHeroImage's own comment on the bug this caused once already)
-//   events/import-{importId}/section.html    LOVABLE IMPORT PIPELINE — the page as one section (CSS inlined), and
-//   events/import-{importId}/sections.json   the page cut into its sections: both private, read only through
-//                                             GET /api/imported-section (no index.html is written any more).
-//   events/import-{importId}/assets/{hash}.{ext}   every picture, font and film the page uses, copied here
-//                                             (lib/import-media.js), public: the editor and published pages show them.
+// RULES. firestore.rules and storage.rules deny every direct client access; this Admin SDK is not bound by them,
+// and every read and write goes through the server's routes (functions/lib/api.js and the modules it routes to).
+// The pages use the Firebase client SDK only to sign in (auth.js): the ID token they send is verified here
+// (lib/access.js verifySession), never used to give a browser Firestore or Storage. Pictures a visitor's browser
+// loads are public by an object ACL the server sets when it writes them — storage.rules lists them by prefix.
 //
-// Firestore/Storage security rules (firestore.rules, storage.rules, repo root) deny all direct client
-// access — only this Admin SDK code (which bypasses rules) ever touches either; every read/write of this
-// data goes through the /api/* endpoints in this folder. Admin write endpoints (creating/editing an event's
-// own content) additionally require a verified Firebase Auth ID token — see requireAdmin() in lib/api.js —
-// which IS a real client-side Firebase SDK concept: the browser holds a Firebase Web App config (apiKey/
-// authDomain/appId, registered in the Firebase Console, not a secret — Firebase Auth is designed for public
-// client use) purely to sign in and obtain that ID token. It never gets Firestore/Storage access directly;
-// Firestore/Storage stay Admin-SDK-only exactly as before, the ID token is only ever verified here
-// (admin.auth().verifyIdToken()), never used to grant the browser a live Firestore/Storage connection.
+// WHERE THINGS LIVE (the module named owns the shape; read it there rather than here):
+//   Firestore
+//     events/{eventId}                      the event: the fields a person sets (lib/api.js EVENT_FIELD_CHECKS) and
+//                                           the server's own — createdAt (an event exists only with it: eventStateOf),
+//                                           deletedAt, portal, site, published*, counters, settings, designPlan,
+//                                           generatedSite (lib/generated-site.js), approvals' state …
+//       speakers, speakerGroups, sessions, agendaGroups, partners, partnerTiers, gallery, faqs, contacts
+//                                           the Content records (lib/api.js RESOURCES; pictures are addresses of
+//                                           files, never the picture itself: lib/inline-pictures.js)
+//       registrations, forms, stats         visitors' registrations, the registration forms, daily visits
+//                                           (lib/api-audience.js, lib/api-forms.js)
+//       leads, promoTemplates, promoAudiences, …   Promotions (lib/api.js RESOURCES, lib/promo*.js)
+//       briefs, sources, drafts, generations/{runId}/sections   what Create Event's AI steps read and wrote
+//       changes, approvals, publishes, activity   the site's versions, approvals, publishes and the History
+//     imports/{importId}                    a Lovable import's record (lib/import-store.js: the server makes the id and
+//                                           creates it once). Records made before 13 Nov 2026 are still read at
+//                                           events/import-{importId} while lib/http.js LEGACY_IMPORT_DOCS is true
+//                                           (lib/ops-migrate-imports.js moves them)
+//     config/…                              team settings: access (lib/access-control.js), approvals
+//     sharePreviews, dashChats, aiChats, promoIcons, aiQuota, the speaker and sponsor pages, …   each in its module
+//   Storage (private unless storage.rules lists the prefix as public by ACL)
+//     events/{eventId}/site/                the saved site: snapshot.json, page.html, versions/, drafts/ (previews)
+//     events/{eventId}/published/index.html the page /e/{eventId} serves
+//     events/{eventId}/staging/index.html   the staged copy: the page as last saved (/preview/{eventId}?staged=1)
+//     events/{eventId}/briefs/              documents read by Create Event's brief step
+//     events/{eventId}/<kind>/, generated/, media/, promo-*/, share-card/   pictures and videos (public by ACL)
+//     events/import-{importId}/             a Lovable import's page and sections (section.html, sections.json:
+//                                           private, read through /api/imported-section) and assets/ (public)
+//     people/<kind>/<slug>/, promo-icons/   the speaker and sponsor pages' pictures, the mailer icons
 const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');
@@ -113,7 +62,7 @@ function loadServiceAccount() {
     const p = path.resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH);
     return JSON.parse(fs.readFileSync(p, 'utf8'));
   }
-  return null; // deployed: no key file — the Function's own identity is used instead, see below
+  return null; // App Hosting: no key file — the backend's own service identity is used instead, see below
 }
 
 // Lazy singleton: cheap to call repeatedly from every request handler, only initializes once. Returns
@@ -124,7 +73,7 @@ function getFirebase() {
 
   const bucketName = process.env.FIREBASE_STORAGE_BUCKET;
   if (!bucketName) {
-    initError = 'FIREBASE_STORAGE_BUCKET is not set (tools/.env.local locally, functions/.env when deployed).';
+    initError = 'FIREBASE_STORAGE_BUCKET is not set (apphosting.yaml when deployed, tools/.env.local locally).';
     return { error: initError };
   }
 
@@ -138,7 +87,7 @@ function getFirebase() {
 
   app = serviceAccount
     ? admin.initializeApp({ credential: admin.credential.cert(serviceAccount), storageBucket: bucketName })
-    : admin.initializeApp({ storageBucket: bucketName }); // deployed: Application Default Credentials
+    : admin.initializeApp({ storageBucket: bucketName }); // App Hosting: Application Default Credentials
   return { db: admin.firestore(), bucket: admin.storage().bucket(), auth: admin.auth() };
 }
 

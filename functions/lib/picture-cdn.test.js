@@ -344,9 +344,11 @@ function useChecks(withCopies) {
   ok(/img-src 'self'/.test(peopleSrc), '5.8 …and their Content-Security-Policy lets this site\'s own pictures in');
 
   /* both servers and the gate */
-  var serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8'), serveSrc = fs.readFileSync(path.join(ROOT, 'tools', 'serve.js'), 'utf8');
+  /* both run functions/lib/web-server.js (BE-063): its routing is theirs */
+  var serverSrc = fs.readFileSync(path.join(ROOT, 'functions', 'lib', 'web-server.js'), 'utf8');
+  var bothUseIt = [path.join(ROOT, 'server.js'), path.join(ROOT, 'tools', 'serve.js')].every(function (f) { return /require\('\.\.?\/functions\/lib\/web-server'\)/.test(fs.readFileSync(f, 'utf8')); });
   var LINE = "if (url.indexOf('/img/') === 0) return handleApi(req, res);";
-  ok(serverSrc.indexOf(LINE) !== -1 && serveSrc.indexOf(LINE) !== -1, '5.9 server.js and tools/serve.js hand /img/ to the API');
+  ok(serverSrc.indexOf(LINE) !== -1 && bothUseIt, '5.9 server.js and tools/serve.js (web-server.js) hand /img/ to the API');
   ok(serverSrc.indexOf(LINE) < serverSrc.indexOf("if (req.method !== 'GET' && req.method !== 'HEAD'){"), '5.10 …before the static files (it is not one)');
   ok(access.isPublic({ method: 'GET' }, '/img/events/e1/a.png') && access.isPublic({ method: 'HEAD' }, '/img/events/e1/a.svg') &&
     !access.isPublic({ method: 'GET' }, '/img/events/../a.png') && !access.isPublic({ method: 'GET' }, '/imgx/a.png'), '5.11 the gate: /img/ is public; a path not in its simplest form is not');

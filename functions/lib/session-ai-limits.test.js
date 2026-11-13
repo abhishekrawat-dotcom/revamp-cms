@@ -442,7 +442,7 @@ step(function () {
     check('BE-057: server.js: a script is not given page headers', r[2].status === 200 && !r[2].headers['content-security-policy'], [r[2].status, r[2].headers]);
     check('BE-058: server.js: a page with a too-old sign-in goes to sign in again', r[3].status === 302 && /^\/\?reauth=1&next=/.test(r[3].headers.location), [r[3].status, r[3].headers]);
     var serve = require('fs').readFileSync(path.join(__dirname, '..', '..', 'tools', 'serve.js'), 'utf8');
-    check('BE-057: tools/serve.js sends its pages with the same headers', /'Content-Security-Policy': "frame-ancestors 'self'"/.test(serve) && /'X-Frame-Options': 'SAMEORIGIN'/.test(serve) && /extname\(file\)\.toLowerCase\(\) === '\.html'\) Object\.assign\(headers, APP_PAGE_HEADERS\)/.test(serve));
+    check('BE-057: tools/serve.js sends its pages with the same headers (it runs server.js\'s own web-server.js)', /web\.handler\(\{ root: root, guard: guard, handleApi: handleApi \}\)/.test(serve) && /require\('\.\.\/functions\/lib\/web-server'\)/.test(serve));
     var signIn = require('fs').readFileSync(path.join(__dirname, '..', '..', 'index.html'), 'utf8');
     check('BE-058: the sign-in page signs the browser out on ?reauth=1 and says why', /params\.get\('reauth'\) === '1'/.test(signIn) && /Your sign-in has expired\. Please sign in again\./.test(signIn));
   });

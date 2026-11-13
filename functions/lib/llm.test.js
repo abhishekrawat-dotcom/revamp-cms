@@ -174,7 +174,8 @@ async function run() {
   ok(r.code === 'ai-timeout' && r.provider === 'claude' && claude.seen.length === 0 && gemini.seen.length === 0, 'deadline passed: no request to either', JSON.stringify(r));
 
   /* the whole call is bounded even when the caller names no deadline: the function that runs it is stopped at 240 s */
-  ok(LIMITS.budgetMs === 225000 && LIMITS.fallbackNeedsMs === 5000, 'the call\'s own budget is 225 s, under the function\'s 240 s', JSON.stringify(LIMITS));
+  ok(LIMITS.budgetMs === 225000 && LIMITS.fallbackNeedsMs === 5000 && LIMITS.budgetMs === require('./http').PLATFORM_REQUEST_LIMIT_MS * 0.75,
+    'the call\'s own budget is 225 s: three quarters of the platform\'s 300 s request limit (lib/http.js)', JSON.stringify(LIMITS));
   ok(Object.keys(PROFILES).every(function (route) { return PROFILES[route].timeoutMs < LIMITS.budgetMs; }), 'every profile\'s timeout is inside the budget');
   async function bounded(limits, claudeTimeoutMs, claudeSteps, geminiSteps, opts) {
     var real = { budgetMs: LIMITS.budgetMs, fallbackNeedsMs: LIMITS.fallbackNeedsMs, timeoutMs: PROFILES['chat-edit'].timeoutMs };
