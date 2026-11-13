@@ -28,7 +28,7 @@
      JS    <script>…</script> with the section's own script (Developer zone › JS), handed to the common script —
            or nothing, when it has none.
      Common CSS & JS, once per page (ETB2B's CMS has a global section for it), for every section copied from the site:
-           CSS   the Google Fonts (@import), a reset — the page's own rules for plain elements (h2, p, img, a…) stop
+           CSS   the Google Fonts (their @font-face rules; an @import where they could not be fetched), a reset — the page's own rules for plain elements (h2, p, img, a…) stop
                  at the sections: every element is put back to the browser's defaults (all: revert) — the event
                  page's look on .rv-embed (the theme's variables resolved, the inherited text: font, size, line
                  height, colour…), and every rule of the sheets the page shares (gen-base.css, et-platform.css, a
@@ -814,18 +814,28 @@
       sec.__rvOwnRan = true;
       try { fn.call(sec, sec); } catch (err) { if (w.console) console.error('[EventSphere] the script of section "' + id + '" failed:', err); }
     }
+    /* the sections not started yet, started together: the runtime starts each, then the page's people and photos
+       are marked and the runtimes' rules weighed once for all of them, then their own scripts run. Once per section,
+       each of those read the whole page's layout: fourteen sections were fourteen full style-and-layout passes in
+       one task on a phone (the owner, 13 Nov 2026: "the mobile score is very low"). */
+    var toStart = [];
+    function startBatch() {
+      var list = toStart.splice(0);
+      if (!list.length) return;
+      each(list, function (sec) {
+        try { if (w.RevampSections && w.RevampSections.init) w.RevampSections.init(sec); } catch (err) { if (w.console) console.error('[EventSphere] section "' + sec.getAttribute('data-rv-embed') + '" could not be started:', err); }
+        sec.__rvStarted = true;
+      });
+      if (w.RevampPopups && w.RevampPopups.refresh) w.RevampPopups.refresh();
+      weigh();
+      each(list, runOwn);
+    }
     function start(sec) {
       if (sec.__rvEmbed) return;
       sec.__rvEmbed = true;
-      ready(function () {
-        if (w.RevampSections && w.RevampSections.init) w.RevampSections.init(sec);
-        sec.__rvStarted = true;
-        if (w.RevampPopups && w.RevampPopups.refresh) w.RevampPopups.refresh();
-        weigh();
-        runOwn(sec);
-      });
+      toStart.push(sec);
     }
-    function startAll() { each(d.querySelectorAll('[data-rv-embed]'), start); }
+    function startAll() { each(d.querySelectorAll('[data-rv-embed]'), start); if (toStart.length) ready(startBatch); }
     function take(item) {
       if (!item || !item[0]) return;
       owns[item[0]] = item[1];
@@ -991,7 +1001,8 @@
     var lookText = look.map(function (p) { return p[0] + ': ' + p[1]; }).join('; ');
     var families = familiesUsed(text + ' ' + ownText + ' ' + lookText);
     var extra = extrasFor(text + ' ' + lookText, ctx, families);
-    var imports = fontLinks(doc, base, ctx, families).map(function (h) { return '@import url("' + h.replace(/"/g, '%22') + '");'; });
+    var fonts = fontsCss(fontLinks(doc, base, ctx, families), extra, win), imports = fonts.imports;
+    extra = fonts.extra;
     return (imports.length ? imports.join('\n') + '\n' : '') + resetCss(SCOPE) + '\n' +
       '/* the event page’s look on every copied section: its theme and its text; a section’s own rules outweigh it */\n' +
       SCOPE + ' { ' + important(lookText) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx);
@@ -1110,6 +1121,137 @@
     else if (el.localName !== 'link' && copy.firstElementChild && !VOID_TAGS.test(copy.firstElementChild.localName)) copy.firstElementChild.appendChild(el);
   }
 
+  /* ---------- on a phone (the owner, 13 Nov 2026: "The desktop report is coming fine now, but the mobile score is
+     very low") ---------- */
+
+  /* A picture further down the page (loading="lazy") carries every WebP copy the server keeps as a "w" candidate,
+     with sizes saying "as wide as a phone's screen": the server does not know how wide it is shown. On the test
+     phone (412px wide, 1.75x) the overview's picture is 364px wide and loaded its 1024px copy (58 KB) where the
+     640px one (31 KB) covers it. The copy is made from the page itself, so it is laid out at a phone's width for a
+     moment and each such picture measured there; its sizes then begins with that width ("(max-width: 480px)
+     88.4vw, " and the rest as it was). A picture not shown there (0 wide), or as wide as the screen, keeps its
+     sizes. The page is put back at its own width before anything else is read from it. */
+  var PHONE_W = 412;
+  var PHONE_SIZES = '(max-width: 480px) ';
+  function phoneSizes(win, sec, copy) {
+    var live = sec.querySelectorAll('img'), mine = copy.querySelectorAll('img');
+    if (!live.length || live.length !== mine.length) return;
+    var want = [];
+    Array.prototype.forEach.call(mine, function (img, i) {
+      var sizes = img.getAttribute('sizes');
+      if (sizes && sizes.indexOf(PHONE_SIZES) !== 0 && !/\bauto\b/i.test(sizes) && /\s\d+w(\s*,|\s*$)/.test(img.getAttribute('srcset') || '')) want.push(i);
+    });
+    var frame = win && win.frameElement;
+    if (!want.length || !frame || !frame.style) return;
+    var was = frame.style.width, widths = [];
+    frame.style.width = PHONE_W + 'px';
+    try {
+      void win.document.documentElement.offsetWidth;
+      widths = want.map(function (i) { return live[i].getBoundingClientRect().width; });
+    } finally {
+      frame.style.width = was;
+      void win.document.documentElement.offsetWidth;
+    }
+    want.forEach(function (i, k) {
+      var vw = phoneVw(widths[k]);
+      if (vw) mine[i].setAttribute('sizes', PHONE_SIZES + vw + 'vw, ' + mine[i].getAttribute('sizes'));
+    });
+  }
+  /* a width measured on the phone as a share of its screen, rounded up to a tenth (364px is 88.4vw: a whole 89vw would
+     ask a 1.75x phone for 642px, just past the 640px copy), or 0 where sizes needs nothing more */
+  function phoneVw(w) {
+    if (!(w > 0) || w >= PHONE_W - 1) return 0;
+    return Math.min(100, Math.ceil(w / PHONE_W * 1000) / 10);
+  }
+
+  /* A link to another page of the event's site (data-rv-page-link: "View Categories", "All FAQs") goes to that page
+     on the event's public site, as the copy's form buttons go to the event's page. The page the copy is made from is
+     a staged preview, whose links are its own (…/preview/…): on another website they led a visitor, and a search
+     engine, to EventSphere's sign-in. */
+  function pageLinks(copy, pageUrl) {
+    var page = String(pageUrl || '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+    if (!page) return;
+    Array.prototype.forEach.call(copy.querySelectorAll('a[data-rv-page-link]'), function (a) {
+      var slug = String(a.getAttribute('data-rv-page-link') || '').trim();
+      a.setAttribute('href', !slug || slug === 'home' ? page : page + '/' + encodeURIComponent(slug));
+    });
+  }
+
+  /* The Google Fonts in the common CSS as their own @font-face rules, not @import: an @import in a <style> holds up
+     the next <script> on the page (a script waits for the stylesheets above it), and the common script follows the
+     common CSS, so nothing after it — every copied section — was read until fonts.googleapis.com had answered
+     (about half a second later on a phone, the banner's picture already there). loadPage fetches the stylesheet
+     each font address gives (fontsOf); here its rules are written in, and the weights of one variable font file
+     (Google lists the same file once per weight) as one rule with their range. Where it could not be fetched, the
+     @import stays. */
+  var FONT_CSS = /^https:\/\/fonts\.googleapis\.com\/css2?\?/;
+  function fontFaces(text) {
+    var groups = [], byKey = {}, re = /@font-face\s*\{([^{}]*)\}/g, m;
+    while ((m = re.exec(String(text || '')))) {
+      var d = {};
+      m[1].split(';').forEach(function (part) {
+        var at = part.indexOf(':');
+        if (at > 0) d[part.slice(0, at).trim().toLowerCase()] = part.slice(at + 1).trim();
+      });
+      if (!d['font-family'] || !/url\(\s*['"]?https:\/\/fonts\.gstatic\.com\//.test(d.src || '')) return '';
+      // the same file however it is written (Google's text, or a browser's: url("…"), U+0-FF for U+0000-00FF)
+      var key = [d['font-family'].replace(/['"]/g, '').toLowerCase(), d['font-style'], d['font-stretch'], d['font-display'], d.src.replace(/['"\s]/g, ''),
+        String(d['unicode-range'] || '').replace(/[0-9a-f]+/gi, function (h) { return parseInt(h, 16).toString(16); }).replace(/\s/g, '').toLowerCase()].join('|');
+      var w = String(d['font-weight'] || '400').split(/\s+/).map(Number).filter(function (n) { return n > 0; });
+      var g = byKey[key];
+      if (!g) { g = byKey[key] = { d: d, lo: Infinity, hi: 0 }; groups.push(g); }
+      w.forEach(function (n) { g.lo = Math.min(g.lo, n); g.hi = Math.max(g.hi, n); });
+    }
+    return groups.map(function (g) {
+      var d = g.d, weight = g.lo === Infinity ? '' : g.lo === g.hi ? String(g.lo) : g.lo + ' ' + g.hi;
+      return '@font-face { font-family: ' + d['font-family'] + (d['font-style'] ? '; font-style: ' + d['font-style'] : '') + (weight ? '; font-weight: ' + weight : '') +
+        (d['font-stretch'] ? '; font-stretch: ' + d['font-stretch'] : '') + (d['font-display'] ? '; font-display: ' + d['font-display'] : '') + '; src: ' + d.src +
+        (d['unicode-range'] ? '; unicode-range: ' + d['unicode-range'] : '') + '; }';
+    }).join('\n');
+  }
+  /* the font addresses of a page: its stylesheet links and the @import rules of its own sheets */
+  function fontHrefs(doc) {
+    var out = [], base = doc.baseURI;
+    function take(h) { h = absolute(h, base); if (FONT_CSS.test(h) && out.indexOf(h) === -1) out.push(h); }
+    Array.prototype.forEach.call(doc.querySelectorAll('link[rel~="stylesheet"][href]'), function (l) { take(l.getAttribute('href')); });
+    Array.prototype.forEach.call(doc.styleSheets, function (s) {
+      var list = null;
+      try { list = s.cssRules; } catch (e) { list = null; }
+      Array.prototype.forEach.call(list || [], function (r) { if (r.type === 3 && r.href) take(r.href); });
+    });
+    return out;
+  }
+  /* each font address's stylesheet, fetched (Google Fonts answers any website) — { href: css }, what came within 4s */
+  function fontsOf(doc) {
+    var got = {}, hrefs = fontHrefs(doc);
+    if (!hrefs.length || typeof fetch !== 'function') return Promise.resolve(got);
+    return Promise.race([
+      Promise.all(hrefs.map(function (h) {
+        return fetch(h, { mode: 'cors', credentials: 'omit' }).then(function (r) { return r.ok ? r.text() : ''; })
+          .then(function (t) { if (/@font-face/.test(t)) got[h] = t; }, function () { /* the @import stays */ });
+      })),
+      new Promise(function (r) { setTimeout(r, 4000); })
+    ]).then(function () { return got; });
+  }
+  /* a font address for the common CSS: its stylesheet as fetched, or the @import where it was not */
+  function fontRule(win, href) {
+    var css = win && win.__rvFontCss && win.__rvFontCss[href];
+    return css && fontFaces(css) ? { faces: css } : { imp: '@import url("' + href.replace(/"/g, '%22') + '");' };
+  }
+  /* The common CSS's fonts: the @imports left (first), and Google's font rules — from a stylesheet of the page's
+     that could be read (its @font-face rules come with the rules that use them: extrasFor) or as fetched — merged,
+     one rule per file (the same page's sheet was readable in one copy and not in the next: 54 rules, or 2 @imports). */
+  function isGoogleFace(t) { return /^@font-face\b/i.test(t) && /url\(\s*['"]?https:\/\/fonts\.gstatic\.com\//.test(t); }
+  function fontsCss(hrefs, extra, win) {
+    var fonts = hrefs.map(function (h) { return FONT_CSS.test(h) ? fontRule(win, h) : { imp: '@import url("' + h.replace(/"/g, '%22') + '");' }; });
+    var google = extra.filter(isGoogleFace).concat(fonts.filter(function (f) { return f.faces; }).map(function (f) { return f.faces; }));
+    var faces = google.length ? fontFaces(google.join('\n')) : '';
+    return {
+      imports: fonts.filter(function (f) { return f.imp; }).map(function (f) { return f.imp; }),
+      extra: (faces ? [faces] : google).concat(extra.filter(function (t) { return !isGoogleFace(t); }))
+    };
+  }
+
   /* ---------- the copies ---------- */
 
   /* The HTML of an element, written so that no attribute value holds a double quote: ETB2B's CMS turns &quot; back
@@ -1156,6 +1298,8 @@
     var common = commonCss(doc, win, [m], base, remPx, ctx, ownText);
     pictures(win, sec, copy, id, css);
     bannerMark(sec, copy, id, css);
+    phoneSizes(win, sec, copy);
+    pageLinks(copy, o.pageUrl);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
     var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, [m], base) });
@@ -1214,7 +1358,10 @@
         try { d = f.contentDocument; } catch (e) { d = null; }
         if (!d || !d.body || !d.querySelector('[data-rv-section]')) return finish(new Error('the page could not be read'));
         var fonts = d.fonts && d.fonts.ready ? d.fonts.ready : Promise.resolve();
-        Promise.race([fonts, new Promise(function (r) { setTimeout(r, 5000); })]).then(function () { finish(null); }, function () { finish(null); });
+        var ready = Promise.race([fonts, new Promise(function (r) { setTimeout(r, 5000); })]).then(null, function () {});
+        // the Google Fonts' own rules for the common CSS (fontRule), alongside
+        var faces = fontsOf(d).then(function (got) { try { f.contentWindow.__rvFontCss = got; } catch (e) { /* the @import stays */ } }, function () {});
+        Promise.all([ready, faces]).then(function () { finish(null); }, function () { finish(null); });
       };
       f.src = url;
       document.body.appendChild(f);

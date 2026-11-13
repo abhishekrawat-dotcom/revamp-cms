@@ -145,6 +145,52 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2g.3 every picture below the banner loads as it comes into view; the hidden dark-theme logo too; a picture gets its size', /if \(!img\.hasAttribute\('loading'\)\) img\.setAttribute\('loading', 'lazy'\);/.test(SRC) && /classList\.contains\('rv-lu-dark'\)\) img\.setAttribute\('loading', 'lazy'\)/.test(SRC) && /function sizePictures\(sec, copy\)/.test(SRC));
 })();
 
+/* ======================= 2h on a phone (the owner, 13 Nov 2026: "the mobile score is very low") ======================= */
+(function () {
+  var ctxWin = {};
+  vm.runInNewContext(SRC.replace("root.RevampDevExport = {", "root.__phone = { fontFaces: fontFaces, fontRule: fontRule, fontsCss: fontsCss, phoneVw: phoneVw, phoneSizes: phoneSizes, pageLinks: pageLinks };\n  root.RevampDevExport = {"), { window: ctxWin, URL: URL });
+  var P = ctxWin.__phone;
+  // the fonts: Google lists a variable font's one file once per weight and subset
+  var G = 'https://fonts.gstatic.com/s/fraunces/v38/';
+  function face(w, file, range) { return '/* latin */\n@font-face {\n  font-family: \'Fraunces\';\n  font-style: normal;\n  font-weight: ' + w + ';\n  font-display: swap;\n  src: url(' + G + file + ') format(\'woff2\');\n  unicode-range: ' + range + ';\n}\n'; }
+  var google = [300, 400, 700].map(function (w) { return face(w, 'ext.woff2', 'U+0100-02BA'); }).join('') + [300, 400, 700].map(function (w) { return face(w, 'latin.woff2', 'U+0000-00FF'); }).join('');
+  var merged = P.fontFaces(google);
+  check('2h.1 a variable font\'s weights as one rule per subset (300 700), its display, file and range kept', merged.split('@font-face').length - 1 === 2 && /font-family: 'Fraunces'; font-style: normal; font-weight: 300 700; font-display: swap; src: url\(https:\/\/fonts\.gstatic\.com\/s\/fraunces\/v38\/latin\.woff2\) format\('woff2'\); unicode-range: U\+0000-00FF; \}/.test(merged), merged);
+  var statics = P.fontFaces(face(400, 'a400.woff2', 'U+0000-00FF') + face(700, 'a700.woff2', 'U+0000-00FF'));
+  check('2h.2 …a font with a file per weight keeps a rule per weight', statics.split('@font-face').length - 1 === 2 && /font-weight: 400;/.test(statics) && /font-weight: 700;/.test(statics), statics);
+  check('2h.3 …and a stylesheet that is not Google\'s font files is not written in', P.fontFaces(face(400, 'x.woff2', 'U+0000-00FF').replace(G, 'https://evil.example/')) === '' && P.fontFaces('') === '');
+  var href = 'https://fonts.googleapis.com/css2?family=Fraunces:wght@300;400;700&display=swap', fetched = {}; fetched[href] = google;
+  var inl = P.fontRule({ __rvFontCss: fetched }, href), imp = P.fontRule({}, href);
+  check('2h.4 a Google Fonts address: its stylesheet where loadPage fetched it, the @import where it could not', !inl.imp && inl.faces === google && imp.imp === '@import url("' + href + '");' && !imp.faces, [inl, imp]);
+  // the same page's sheet was readable in one copy (its rules came as the browser writes them) and not in the next
+  var browserWrites = '@font-face { font-family: Fraunces; font-style: normal; font-weight: 800; font-display: swap; src: url("' + G + 'latin.woff2") format("woff2"); unicode-range: U+0-FF; }';
+  var f = P.fontsCss([href, 'https://other.example/fonts.css'], [browserWrites, '@keyframes spin { to { transform: rotate(1turn) } }'], { __rvFontCss: fetched });
+  var fj = f.extra.join('\n');
+  check('2h.5 the common CSS: the @imports left first; Google\'s font rules from either source merged, one per file (the browser\'s url("…") and U+0-FF are the same file as Google\'s); the rest kept',
+    show(f.imports) === show(['@import url("https://other.example/fonts.css");']) && fj.split('@font-face').length - 1 === 2 && /font-weight: 300 800; font-display: swap; src: url\("?https:\/\/fonts\.gstatic\.com\/s\/fraunces\/v38\/latin\.woff2"?\)/.test(fj) && /font-weight: 300 700;[^}]*ext\.woff2/.test(fj) && /@keyframes spin/.test(fj) && /var fonts = fontsCss\(fontLinks\(doc, base, ctx, families\), extra, win\), imports = fonts\.imports;\n\s*extra = fonts\.extra;/.test(SRC), f);
+  check('2h.5a every Google Fonts address of the page fetched by loadPage alongside its fonts, within 4s',
+    /var faces = fontsOf\(d\)\.then\(function \(got\) \{ try \{ f\.contentWindow\.__rvFontCss = got; \}/.test(SRC) && /Promise\.all\(\[ready, faces\]\)\.then\(function \(\) \{ finish\(null\); \}/.test(SRC) && /setTimeout\(r, 4000\)/.test(SRC));
+  // pictures on a phone: measured at 412px, the page put back at its own width
+  check('2h.6 a picture\'s share of a phone\'s screen, rounded up; nothing for one not shown or as wide as the screen', P.phoneVw(290) === 70.4 && P.phoneVw(364) === 88.4 && P.phoneVw(0) === 0 && P.phoneVw(412) === 0 && P.phoneVw(411.5) === 0 && P.phoneVw(100) === 24.3, [P.phoneVw(290), P.phoneVw(364), P.phoneVw(100)]);
+  function img(attrs) { return { attrs: attrs, getAttribute: function (k) { return k in this.attrs ? this.attrs[k] : null; }, setAttribute: function (k, v) { this.attrs[k] = v; } }; }
+  var frame = { style: { width: '1440px' } }, during = [];
+  var win = { frameElement: frame, document: { documentElement: { get offsetWidth() { during.push(frame.style.width); return 1; } } } };
+  function liveImg(phoneW) { return { getBoundingClientRect: function () { return { width: frame.style.width === '412px' ? phoneW : 600 }; } }; }
+  var lazySrcset = 'https://s/a.png.rv-1.1024x1024.w640.webp 640w, https://s/a.png.rv-1.1024x1024.w1024.webp 1024w', SZ = '(max-width: 767px) 100vw, (max-width: 1365px) 75vw, 1024px';
+  var mine = [img({ srcset: lazySrcset, sizes: SZ }), img({ srcset: 'https://s/b.webp 1x' }), img({ srcset: lazySrcset, sizes: SZ }), img({ srcset: lazySrcset, sizes: SZ })];
+  var live = [liveImg(290), liveImg(290), liveImg(0), liveImg(412)];
+  P.phoneSizes(win, { querySelectorAll: function () { return live; } }, { querySelectorAll: function () { return mine; } });
+  check('2h.7 a lazy picture\'s sizes begins with its width on a phone; one with x candidates, one not shown there, one as wide as the screen are left', mine[0].attrs.sizes === '(max-width: 480px) 70.4vw, ' + SZ && !('sizes' in mine[1].attrs) && mine[2].attrs.sizes === SZ && mine[3].attrs.sizes === SZ, mine.map(function (m) { return m.attrs.sizes; }));
+  check('2h.8 …measured with the page at a phone\'s width, then put back at its own before anything else reads it', show(during) === show(['412px', '1440px']) && frame.style.width === '1440px', during);
+  P.phoneSizes(win, { querySelectorAll: function () { return live; } }, { querySelectorAll: function () { return mine; } });
+  check('2h.9 …once (a copy made again does not add it twice)', mine[0].attrs.sizes === '(max-width: 480px) 70.4vw, ' + SZ, mine[0].attrs.sizes);
+  // links to the event's other pages
+  var links = [img({ 'data-rv-page-link': 'award-category', href: 'https://cms.example/preview/award-category' }), img({ 'data-rv-page-link': 'home', href: '/preview/x' }), img({ 'data-rv-page-link': 'award faq', href: '/preview/x/award-faq' })];
+  P.pageLinks({ querySelectorAll: function (q) { return /a\[data-rv-page-link\]/.test(q) ? links : []; } }, 'https://cms.example/e/qa-awards/#overview');
+  check('2h.10 a link to another page of the event goes to that page on the event\'s public site, never to the preview (EventSphere\'s sign-in for a visitor)', links[0].attrs.href === 'https://cms.example/e/qa-awards/award-category' && links[1].attrs.href === 'https://cms.example/e/qa-awards' && links[2].attrs.href === 'https://cms.example/e/qa-awards/award%20faq', links.map(function (l) { return l.attrs.href; }));
+  check('2h.11 build measures the pictures on a phone and sets the page links before it writes the HTML', /bannerMark\(sec, copy, id, css\);\n\s*phoneSizes\(win, sec, copy\);\n\s*pageLinks\(copy, o\.pageUrl\);\n\s*var html = htmlOf\(copy\);/.test(SRC));
+})();
+
 /* ======================= 2e only what the other website uses ======================= */
 (function () {
   check('2e.1 a speaker\'s pop-up text goes on an event site (its card leads to the speaker\'s page), stays on an awards site (jury cards)', /if \(!opt\.awards\) each\('template\[data-rv-profile\]', function \(n\) \{ n\.remove\(\); \}\);/.test(SRC) && /awards: !!\(doc\.body && doc\.body\.hasAttribute\('data-rv-awards'\)\)/.test(SRC));
@@ -248,6 +294,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
     check('4.8 every copied section on the page started once by the runtime', p.sections.speakers.inits === 1 && p.sections.partners.inits === 1, [p.sections.speakers.inits, p.sections.partners.inits]);
     check('4.9 the section\'s own script ran once, with `section` and this as the section, though it came before the common script', p.sections.speakers.getAttribute('data-own') === '1' && p.sections.partners.getAttribute('data-own') === null, p.sections.speakers.attrs);
     check('4.10 the runtimes\' rules are weighed in a style first in <head>', p.styles.length === 1 && p.styles[0].getAttribute('data-rv-embed-weight') === '', p.styles.length);
+    check('4.10a the sections are started together: the page\'s people and photos marked once for both, not once per section (each reads the whole page\'s layout)', p.sandbox.refreshed === 1, p.sandbox.refreshed);
     // a click on a button that opens one of the event's forms goes to the event's own site, which opens it there
     function link(attrs) { return { nodeType: 1, attrs: attrs, getAttribute: function (k) { return k in attrs ? attrs[k] : null; }, hasAttribute: function (k) { return k in attrs; },
       closest: function (q) { return /data-rv-embed/.test(q) ? { id: '', querySelector: function () { return null; } } : this; } }; }
