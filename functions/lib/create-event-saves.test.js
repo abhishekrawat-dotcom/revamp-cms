@@ -811,7 +811,7 @@ async function main() {
       'function fetchServerDraft() { return Promise.resolve(null); }' +
       'function markTemplateSamples() { return 0; }' +
       'function saveToStaging() { L.saves++; return Promise.resolve({ version: 1 }); }' +
-      ['fromCreate', 'handoffFor', 'readHandoffDraft', 'forgetHandoff', 'applyHandoffDraft', 'seedSnapshot', 'localRecord', 'aiHeroFromEvent',
+      ['fromCreate', 'handoffFor', 'readHandoffDraft', 'forgetHandoff', 'applyHandoffDraft', 'handoffLogoAddress', 'seedSnapshot', 'localRecord', 'aiHeroFromEvent',
         'resolveFromBrowser', 'saveFirstVersion'].map(function (n) { return topFn(ED, n); }).join('\n'), C);
     return C.resolveFromBrowser(undefined).then(function () {
       L.due = C.firstSaveDue;

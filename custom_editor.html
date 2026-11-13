@@ -1274,8 +1274,9 @@
            buttonState, the console's own (UX-105). -->
       <button class="btn btn-secondary" type="button" id="btn-save" title="Save (Ctrl/⌘ + S): keeps your changes on the server. Nothing goes live until it is published." hidden disabled>Save</button>
       <button class="btn btn-primary" type="button" id="btn-publish" disabled>Send for approval…</button>
-      <!-- the light/dark switch (theme-toggle.js), then the signed-in user's avatar and Sign out (auth.js) -->
-      <span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>
+      <!-- the light/dark switch (theme-toggle.js), named for what it changes: the editor, never the site (ED-067); then
+           the signed-in user's avatar and Sign out (auth.js) -->
+      <span data-theme-toggle-target data-theme-toggle-label="Editor appearance — does not change your site" style="display:inline-flex;align-items:center;"></span>
       <span data-rv-account></span>
     </span>
   </header>
@@ -1481,6 +1482,7 @@
        <div class="rail-fixed">
         <div class="device-toggle" role="group" aria-label="Device preview">
          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
+         <button data-device="tablet" title="Tablet"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
          <button data-device="mobile" title="Mobile"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
         </div>
         <div class="history-toggle" role="group" aria-label="Undo / redo" id="tpl-history-toggle">
@@ -1935,6 +1937,14 @@
     });
   }
 
+  /* The open menus and pop-overs (the tools row's menu, a section's menu in Layers, the Theme and style pop-over), each
+     by its own closer. A press on the site closes them all (ED-061): the canvas is a frame, so that press never reaches
+     this document, where each of them listens for a press outside it (editor-template-ui.js calls closeFloating). */
+  var floatingClosers = [];
+  function closeFloating(){
+    floatingClosers.forEach(function(close){ try { close(); } catch (e) { /* the others still close */ } });
+  }
+
   /* the tools row's "⋯ More": the developer zone lives here, out of the main path of event managers (UX-080).
      It opens on the section selected, else the first one. Escape or a click elsewhere closes the menu. */
   (function(){
@@ -1945,6 +1955,7 @@
       btn.setAttribute('aria-expanded', 'false');
       if (back) btn.focus();
     }
+    floatingClosers.push(function(){ close(false); });
     btn.addEventListener('click', function(e){
       e.stopPropagation();
       if (!menu.hidden){ close(false); return; }
@@ -2407,6 +2418,7 @@
     positionFloating(lyrCtxMenu, btn);
   }
   function closeLyrMenu(){ lyrCtxMenu.hidden = true; lyrCtxSec = null; }
+  floatingClosers.push(function(){ if (!lyrCtxMenu.hidden) closeLyrMenu(); });
   document.addEventListener('mousedown', function(e){
     if (lyrCtxMenu.hidden) return;
     if (lyrCtxMenu.contains(e.target) || e.target.closest('.lyr-menu-btn')) return;
@@ -3070,6 +3082,7 @@
     gtOpener = null;
     if (back && document.contains(back) && gtStylePop.contains(document.activeElement)) back.focus();
   }
+  floatingClosers.push(closeGtStylePop);
   function placeGtStylePop(anchor, beside){
     var rect = anchor.getBoundingClientRect();
     gtStylePop.hidden = false;
@@ -3169,14 +3182,15 @@
      A switch in the Layers panel (it was an icon in the top bar, UX-078), shown only when the just-opened site
      really has AI-provenance markers to show — window.RevampTemplateUI.hasAiProvenance() is only ever true for a
      Generate-from-Brief draft, never a normal hand-filled one. On the first time a freshly generated draft is opened,
-     remembered afterwards per browser and per draft (revamp.<thing>.<slug>, like initGenerateFromBriefNotice()). */
+     remembered afterwards per browser and per event (revamp.aiMarkersShown.<event id>). */
   function initAiProvenanceToggle(){
     var row = document.getElementById('lyr-ai-markers'), box = document.getElementById('ai-markers-toggle');
     if (!row || !box || !window.RevampTemplateUI.hasAiProvenance()) return;
-    var slug = new URLSearchParams(location.search).get('slug') || '';
-    var key = 'revamp.aiMarkersShown.' + slug;
+    /* kept per event, whichever way it was opened (?slug= from Create Event, ?event= from the console) — ED-062; with
+       no event there is nothing to keep it on */
+    var key = editorEventId ? 'revamp.aiMarkersShown.' + editorEventId : '';
     var stored = null;
-    try { stored = localStorage.getItem(key); } catch(e){}
+    try { if (key) stored = localStorage.getItem(key); } catch(e){}
     var show = stored === null ? true : stored === '1';
     row.hidden = false;
     box.checked = show;
@@ -3184,7 +3198,7 @@
     box.addEventListener('change', function(){
       show = box.checked;
       window.RevampTemplateUI.setAiMarkers(show);
-      try { localStorage.setItem(key, show ? '1' : '0'); } catch(e){}
+      try { if (key) localStorage.setItem(key, show ? '1' : '0'); } catch(e){}
     });
   }
   /* Design › Banner video: only for an event's site (a template opened on its own has no event to keep it on) */
@@ -3203,7 +3217,7 @@
     { escHtml: escHtml, showToast: showToast, showNotice: showNotice, clearNotice: clearNotice, openDialog: openDialog,
       onEvent: function(ev){ wireEventRail(ev); mountHeroVideo(); },
       genericCss: genericCss, pickSection: openSectionPicker, onSectionsChanged: rebuildLayersPanel,
-      onDesignChange: syncDesignPanel, onSelectionChange: onCanvasSelection, styleSelection: openSelectionStyle })
+      onDesignChange: syncDesignPanel, onSelectionChange: onCanvasSelection, styleSelection: openSelectionStyle, closeFloating: closeFloating })
     .then(function(ready){
       if (!ready) return;
       initAiProvenanceToggle();

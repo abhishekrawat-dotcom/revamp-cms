@@ -8,7 +8,7 @@
    RevampCanvas.mount(frameEl, templateId) -> Promise<canvas>
      canvas.iframe, .doc, .win      the canvas document
      canvas.template                the template's template.json
-     canvas.setDevice(name)         'desktop' (1440px) or 'mobile' (390px)
+     canvas.setDevice(name)         'desktop' (1440px), 'tablet' (768px) or 'mobile' (390px)
      canvas.fit()                   re-measure after the editor's layout changes
      canvas.screenRect(el)          an element's box in editor-window coordinates
      canvas.inView(el)              whether any of it is inside the visible canvas
@@ -69,7 +69,7 @@
 (function () {
   'use strict';
 
-  var DEVICES = { desktop: 1440, mobile: 390 };
+  var DEVICES = { desktop: 1440, tablet: 768, mobile: 390 };
   var EDITOR_CSS = new URL('editor-canvas.css', document.currentScript.src).href;
   /* an award site's lifecycle button (templates/_shared/rv-award-cta.js): in the canvas it only tags each such
      button with what visitors see today, from a stylesheet marked data-rv-editor; the script itself is marked
@@ -1264,6 +1264,8 @@
         iframe.style.width = w + 'px';
         iframe.style.height = (viewport.clientHeight / scale) + 'px';
         iframe.style.marginLeft = '';
+        // a Tablet page (ED-060) stands in the middle of a wider stage, as the phone does
+        if (device === 'tablet' && viewport.clientWidth > w * scale + 1) iframe.style.marginLeft = Math.floor((viewport.clientWidth - w * scale) / 2) + 'px';
         iframe.style.marginTop = '';
         ['--phone-left', '--phone-top', '--phone-width', '--phone-height'].forEach(function (k) { viewport.style.removeProperty(k); });
       }

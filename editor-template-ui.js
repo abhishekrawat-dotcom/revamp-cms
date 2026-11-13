@@ -16,7 +16,8 @@
             (custom_editor.html) — and onEvent(event), called once the event is known to exist;
             genericCss() — the CSS of the editor's generic section designs; pickSection(afterEl) — opens the
             section picker; onSectionsChanged() — called whenever the list of sections, or which one is
-            selected, may have changed.
+            selected, may have changed; closeFloating() — closes the page's open menus and pop-overs, called on a
+            press on the canvas.
      Resolves true once the site is on the canvas, false when a lasting message is shown in its place.
    Sections, for the page's side panels (every change is one undo step):
      listSections() -> [{ el, key, type, name, hidden, pinned, canMoveUp, canMoveDown, bound, current }] in page order
@@ -110,6 +111,18 @@
     return err && err.message ? err.message : 'please try again.';
   }
   function showNotice(id, opts) { if (host && host.showNotice) host.showNotice(id, opts); }
+  function clearNotice(id) { if (host && host.clearNotice) host.clearNotice(id); }
+  /* A read of /api while the site opens, through the shared signed-in fetch (ED-041): a fresh token, one retry on a
+     refused one, then the "signed out" box over the page — never a bare fetch that only has the cookie. Resolves the
+     Response; rejects when nobody is signed in. */
+  function apiGet(url) {
+    if (!window.RevampAuth || typeof RevampAuth.authedFetch !== 'function') {
+      var err = new Error('You are not signed in.');
+      err.status = 401;
+      return Promise.reject(err);
+    }
+    return Promise.resolve(RevampAuth.authedFetch(url));
+  }
   function escHtml(s) { return host && host.escHtml ? host.escHtml(s) : String(s == null ? '' : s); }
   function sectionsChanged() { notifyFocus(); if (host && host.onSectionsChanged) host.onSectionsChanged(); }
   function designChanged() { if (host && host.onDesignChange) host.onDesignChange(); }
@@ -623,13 +636,19 @@
        server-side, so there is no real logo to recover on a stateless reopen (a different browser, or this
        one after local state is gone) either way. Falling back to the shared key here would silently show
        this browser's most recently cached OTHER event's logo instead — worse than no logo at all. Missing
-       logoKey now correctly means "nothing to show", not "guess". */
-    var logoKey = draft.event && draft.event.logoKey;
+       logoKey now correctly means "nothing to show", not "guess".
+       The logo goes into the page by its address, never as the picture's data (ED-056): Create Event hands over the
+       uploaded logo's address (event.logoUrl), and only names this browser's copy (logoKey) when that upload did not
+       happen — that copy is uploaded here first, and left out when it cannot be (the person is told).
+       What a design has no place for is not reported here (ED-053): the event's records get their own sections
+       (ensureAutoSections), and the rest stays in the event. */
+    var logoKey = draft.event && !draft.event.logoUrl ? draft.event.logoKey : null;
     return localGet(logoKey).then(function (logoRec) {
-      var ctx = RevampFill.fromHandoff(draft, logoRec && logoRec.dataUrl);
-      var report = RevampFill.apply(canvas, ctx);
+      return handoffLogoAddress(logoRec);
+    }).then(function (logoUrl) {
+      var ctx = RevampFill.fromHandoff(draft, logoUrl);
+      RevampFill.apply(canvas, ctx);
       renderAiProvenanceBadges();
-      if (report.skipped.length) showToast('Not shown on this template: ' + report.skipped.join(', '));
       /* a design chosen in Create Event's "Let AI design it" (create-event.html's S.aiDesign) rides along
          in the hand-off payload — apply it before the first snapshot so it survives into the undo stack,
          reload and publish, instead of silently reverting to the template's static default. */
@@ -645,6 +664,22 @@
          resolveFromBrowser). A generated site ("gen-") is not: its page is made on the server, and Create Event's
          brief path never shows that screen. */
       if (fromCreate() && !/^gen-/.test(templateId || '')) firstSaveDue = true;
+    });
+  }
+  /* this browser's copy of the hand-off logo ({ name, dataUrl }), stored as a file of the event -> its address, ''
+     when there is none or it could not be stored */
+  function handoffLogoAddress(rec) {
+    var data = rec && typeof rec.dataUrl === 'string' ? rec.dataUrl : '';
+    if (!data) return Promise.resolve('');
+    if (!/^data:/i.test(data)) return Promise.resolve(/^https:\/\//i.test(data) ? data : '');
+    if (!eventId || !window.RevampCore || typeof RevampCore.storePicture !== 'function') return Promise.resolve('');
+    return RevampCore.storePicture(eventId, 'logo', data, (rec.name ? String(rec.name).replace(/\.[a-z0-9]+$/i, '') + ' ' : '') + 'logo').then(function (url) {
+      return typeof url === 'string' && /^https?:\/\//i.test(url) ? url : '';
+    }, function (err) {
+      if (window.console) console.warn('[RevampTemplateUI] The logo from Create Event could not be uploaded:', err && err.status, err && err.message);
+      showNotice('handoff-logo', { kind: 'warn', dismissible: true,
+        text: 'Your logo could not be uploaded, so the page does not show it yet. Select the logo\'s place on the page and choose the file again.' });
+      return '';
     });
   }
   var pendingAiHero = null;
@@ -741,7 +776,7 @@
   var draftFetch = null;         // asked once per opening: the server-first check and the rules below share it
   function fetchServerDraft() {
     if (draftFetch) return draftFetch;
-    draftFetch = fetch('/api/draft?eventId=' + encodeURIComponent(eventId))
+    draftFetch = apiGet('/api/draft?eventId=' + encodeURIComponent(eventId))
       .then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
       .then(function (res) { return res.ok ? res.body : null; })
       .catch(function () { return null; });
@@ -1355,8 +1390,8 @@
      resolves null for it with zero extra fetches; a `gen-` template's empty content.map means the OTHER
      function's `from` scan finds nothing for it — the two detection paths are complementary, never
      competing for the same template. Same "couldn't fetch" vs "confirmed empty" handling as
-     fetchMapContent(). */
-  function fetchGenericRepeatOverlay() {
+     fetchMapContent(). unread: what could not be read is added to it, when given. */
+  function fetchGenericRepeatOverlay(unread) {
     if (!canvas || !eventId) return Promise.resolve(null);
     var kinds = findRepeatKindsInDom(canvas);
     if (!kinds.length) return Promise.resolve(null);
@@ -1365,7 +1400,7 @@
       GENERIC_REPEAT_SOURCES[kind].resources.forEach(function (r) { if (resourceNames.indexOf(r) === -1) resourceNames.push(r); });
     });
     return Promise.all(resourceNames.map(function (r) {
-      return RevampCore.fetchSub(r, eventId).catch(function () { return null; });
+      return RevampCore.fetchSub(r, eventId).catch(function (err) { noteUnread(unread, r, err); return null; });
     })).then(function (results) {
       var byResource = {};
       resourceNames.forEach(function (name, i) { byResource[name] = results[i]; });
@@ -1391,8 +1426,8 @@
      -> Promise<content | null>. Content's records are what the page shows: a kind confirmed empty — read, and none
      to show — is an empty list, which takes the template's model card and earlier records' cards off the page
      (TPL-007, TPL-008). A kind whose records could not be read (not signed in, offline, a failed request) is left
-     exactly as it is: "could not tell" is never "none". */
-  function fetchMapContent() {
+     exactly as it is: "could not tell" is never "none" — and added to `unread`, when given. */
+  function fetchMapContent(unread) {
     if (!canvas || !eventId || !window.RevampDraw) return Promise.resolve(null);
     var entries = RevampDraw.mapEntries((canvas.template.content || {}).map);
     if (!entries.length) return Promise.resolve(null);
@@ -1401,7 +1436,8 @@
       RevampDraw.MAP_SOURCES[m.kind].forEach(function (r) { if (resources.indexOf(r) === -1) resources.push(r); });
     });
     return Promise.all(resources.map(function (r) {
-      return RevampCore.fetchSub(r, eventId).catch(function () { return null; });   // null: could not be read, not "none"
+      // null: could not be read, not "none"
+      return RevampCore.fetchSub(r, eventId).catch(function (err) { noteUnread(unread, r, err); return null; });
     })).then(function (results) {
       var rows = {};
       resources.forEach(function (name, i) { if (Array.isArray(results[i])) rows[name] = results[i]; });
@@ -1470,7 +1506,7 @@
     var sec = doc && /^gen-/.test(String(id || '')) ? doc.querySelector('[data-rv-section="previous-speakers"]') : null;
     if (!sec || sec.hasAttribute('data-rv-profiles') || sec.querySelector('[data-rv-profiles]') || !sec.querySelector('.pe-spk-card') || sec.querySelector('template[data-rv-profile]')) return Promise.resolve(false);
     function key(n) { return String((n && n.textContent) || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
-    return fetch('/api/generated-section?eventId=' + encodeURIComponent(String(id).slice(4)) + '&id=previous-speakers')
+    return apiGet('/api/generated-section?eventId=' + encodeURIComponent(String(id).slice(4)) + '&id=previous-speakers')
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (res) {
         var built = res && typeof res.html === 'string' ? res.html : '';
@@ -1510,12 +1546,13 @@
      touched. -> Promise<true when anything was drawn>; rejected when the records could not be read or drawn.
      drawRecords is this and then the page's baseline; a change in progress uses it on its own (the check that a
      records section reworked around a new picture kept its records, in runAiTurn), since baking the baseline in
-     the middle of a change would make its Undo step lose what came before it. */
-  function fillRecords(sectionsAdded) {
+     the middle of a change would make its Undo step lose what came before it. unread: the lists that could not be
+     read are added to it, when given (their sections are left as they were). */
+  function fillRecords(sectionsAdded, unread) {
     // Both detection paths run together — content.map `from` (ported templates) and the DOM
     // data-rv-repeat-template convention (AI-bespoke `gen-` templates) — and contribute additively to
     // one merged apply pass; see fetchGenericRepeatOverlay()'s own comment on why they never compete.
-    return Promise.all([fetchMapContent(), fetchGenericRepeatOverlay(), refreshPreviousProfiles()]).then(function (results) {
+    return Promise.all([fetchMapContent(unread), fetchGenericRepeatOverlay(unread), refreshPreviousProfiles()]).then(function (results) {
       var content = results[0], repeatOverlay = results[1];
       var changed = !!sectionsAdded || results[2] === true;
       if (content) {
@@ -1538,7 +1575,9 @@
     /* whether the page stands as the version it was saved as (Save has nothing to do), and what a visitor sees on it */
     var asSaved = !!(canvas && savedMark && savedMark.hash && savedMark.hash === snapHash(undoStack[undoPtr]));
     var seen = asSaved ? pageSeen(canvas.doc && canvas.doc.body) : '';
-    return fillRecords(sectionsAdded).then(function (changed) {
+    var unread = [];
+    return fillRecords(sectionsAdded, unread).then(function (changed) {
+      tellRecordsRead(unread, null);
       if (!changed) return;
       // bakes the overlay into THIS session's baseline, same as any other edit — so Ctrl+Z doesn't revert
       // past it, and it rides along in the snapshot persist() already saves for every other reason.
@@ -1549,11 +1588,32 @@
          has nothing to do, and leaving asks nothing (UX-076). What a visitor would see is an update, told as one. */
       if (asSaved && pageSeen(canvas.doc && canvas.doc.body) === seen) writeMark({ version: savedMark.version, hash: snapHash(snap) });
       return persist(snap);
-    }).catch(function (err) {
+    }, function (err) {
       // Never blocks the editor loading over this — same fail-soft posture as every other RevampCore
       // admin call in this app (not signed in yet, offline, a transient 500, …): the canvas still has
       // whatever resolveInitialContent() already gave it, which is strictly better than failing to load.
-      if (window.console) console.warn('[RevampTemplateUI] Could not load real Content-tab data:', err);
+      // The owner is told (TPL-010).
+      tellRecordsRead(unread, err || new Error('The records could not be drawn.'));
+    }).catch(function (err) {
+      if (window.console) console.warn('[RevampTemplateUI] The records drawn could not be kept in this browser:', err);
+    });
+  }
+  /* Content's lists that could not be read are left on the page as it was saved, and the owner is told so in a notice
+     that stays above the canvas (TPL-010) — never only in the console. A later read that works (Try again, the next
+     opening, a records change) takes it away. */
+  function noteUnread(unread, resource, err) {
+    if (unread && unread.indexOf(resource) === -1) unread.push(resource);
+    if (window.console) console.warn('[RevampTemplateUI] Could not read ' + resource + ' from Content:', err && err.status, err && err.message);
+  }
+  function tellRecordsRead(unread, err) {
+    if (!unread.length && !err) { clearNotice('records-unread'); return; }
+    if (err && window.console) console.warn('[RevampTemplateUI] Could not load real Content-tab data:', err);
+    showNotice('records-unread', {
+      kind: 'warn',
+      text: 'Content could not be loaded — what you see may be out of date.',
+      details: 'The speakers, sponsors, sessions and other lists kept in Content could not be read just now, so the page shows them as they were when it was last saved. Try again, or reload the editor.',
+      actions: [{ label: 'Try again', onClick: function () { drawRecords(false); } }],
+      dismissible: true
     });
   }
 
@@ -4503,6 +4563,9 @@
      canvas.openItem) or follows a link. Placing the caret in a text is done on mousedown, so typing is not
      affected. */
   function wireCanvasEvents() {
+    /* a press on the site closes the editor's open menus and pop-overs (ED-061): the canvas is a frame, so the press
+       never reaches the editor's own document, where each of them listens for a press outside it */
+    canvas.doc.addEventListener('mousedown', function () { if (host && host.closeFloating) host.closeFloating(); }, true);
     canvas.doc.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -8191,6 +8254,73 @@
     });
   }
 
+  /* ---------- pictures held inside the page (ED-056) ----------
+     A picture that reached the page as data (data:image/…;base64 — a picture pasted into a text, a page made before
+     every picture was uploaded) would be saved inside the site itself: its whole file as text in every version and on
+     every published page. Before a Save each one is stored as a file of the event (RevampCore.storePicture, kind
+     'media') and the page names its address instead; one upload per picture for the editor's session. A picture that
+     cannot be stored stays as it is, the save goes on, and the person is told. The editor's own notes on the page
+     ([data-rv-editor], never saved) are not looked at. */
+  var INLINE_PICTURE = /data:image\/(?:png|jpe?g|webp|gif|svg\+xml);base64,[A-Za-z0-9+\/=]+/gi;
+  var PICTURE_ATTRS = ['src', 'srcset', 'poster', 'href', 'xlink:href', 'style'];
+  var storedPictures = {};      // data: address -> the address of the file it was stored as, for this session
+  function pictureHolders(doc) {
+    if (!doc || !doc.documentElement) return [];
+    return [doc.documentElement].concat(Array.prototype.slice.call(doc.documentElement.querySelectorAll('*'))).filter(function (el) {
+      return !(el.closest && el.closest('[data-rv-editor]'));
+    });
+  }
+  // -> [{ data, name }] each picture held as data once, named after what it is (a logo keeps a logo's sharp copies)
+  function inlinePictures(doc) {
+    var out = [], seen = {};
+    pictureHolders(doc).forEach(function (el) {
+      PICTURE_ATTRS.forEach(function (a) {
+        var v = el.getAttribute(a);
+        if (!v || v.indexOf('data:image/') === -1) return;
+        (v.match(INLINE_PICTURE) || []).forEach(function (data) {
+          if (seen[data]) return;
+          seen[data] = true;
+          var said = [el.getAttribute('alt'), el.getAttribute('class'), el.getAttribute('data-rv-bind'), el.parentNode && el.parentNode.getAttribute && el.parentNode.getAttribute('class')].join(' ');
+          out.push({ data: data, name: /logo/i.test(said) ? 'site logo' : 'site picture' });
+        });
+      });
+    });
+    return out;
+  }
+  // every picture of `stored` (data -> address) named by its address in the page -> how many attributes changed
+  function swapInlinePictures(doc, stored) {
+    var changed = 0;
+    pictureHolders(doc).forEach(function (el) {
+      PICTURE_ATTRS.forEach(function (a) {
+        var v = el.getAttribute(a);
+        if (!v || v.indexOf('data:image/') === -1) return;
+        var next = v.replace(INLINE_PICTURE, function (data) { return stored[data] || data; });
+        if (next !== v) { el.setAttribute(a, next); changed++; }
+      });
+    });
+    return changed;
+  }
+  function storeInlinePictures() {
+    var doc = canvas.doc, found = inlinePictures(doc), failed = 0;
+    return Promise.all(found.map(function (p) {
+      if (storedPictures[p.data]) return null;
+      return RevampCore.storePicture(eventId, 'media', p.data, p.name).then(function (url) {
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) storedPictures[p.data] = url; else failed++;
+      }, function (err) {
+        failed++;
+        if (window.console) console.warn('[RevampTemplateUI] A picture in the page could not be stored as a file:', err && err.status, err && err.message);
+      });
+    })).then(function () {
+      if (!canvas || canvas.doc !== doc) return;
+      /* the page with the addresses is the newest step as it is (not a step of its own: Undo has nothing to show),
+         and an older step that still holds the data is given the same addresses when it is saved again */
+      if (!canvas.sameSnapshot(canvas.snapshot(undoStack[undoPtr]), undoStack[undoPtr])) commitNow();
+      if (swapInlinePictures(doc, storedPictures)) undoStack[undoPtr] = canvas.snapshot(undoStack[undoPtr]);
+      if (failed) showToast(failed === 1 ? 'A picture in the page could not be uploaded, so it is saved inside the page for now. Save again to try once more.'
+        : failed + ' pictures in the page could not be uploaded, so they are saved inside the page for now. Save again to try once more.', { kind: 'error' });
+    });
+  }
+
   /* -> a promise of the save's answer; rejects when it was not saved (the reason has been shown) */
   function saveToStaging(opts) {
     opts = opts || {};
@@ -8201,6 +8331,18 @@
     if (busy) { showToast(busy + '.'); return Promise.reject(cancelled()); }
     deselect();
     flush();
+    /* a picture held in the page as data is stored as a file first, and the page names its address (ED-056) */
+    if (!opts.picturesStored && inlinePictures(canvas.doc).length) {
+      saving = true; renderSiteState();
+      savingNow = storeInlinePictures().then(function () {
+        saving = false; savingNow = null;
+        return saveToStaging(Object.assign({}, opts, { picturesStored: true }));
+      }, function (err) {
+        saving = false; savingNow = null; renderSiteState();
+        throw err;
+      });
+      return savingNow;
+    }
     /* The page and the snapshot sent are one and the same: the page as it stands is recorded first if it differs
        from the newest step, so what is saved is never a page the editor would not reopen. */
     if (!canvas.sameSnapshot(canvas.snapshot(undoStack[undoPtr]), undoStack[undoPtr])) commitNow();
