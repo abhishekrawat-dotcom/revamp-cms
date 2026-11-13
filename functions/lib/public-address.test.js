@@ -60,7 +60,8 @@ function route(url) {
   });
 }
 
-var SRC = read('functions/lib/api.js');
+/* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+var SRC = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return read('functions/lib/' + f); }).join('\n');
 check('the stage answer (a preview link) and an approval request\'s review link use the CMS address',
   /stagingUrl: cmsOriginFor\(req, body\.origin\)/.test(SRC) && /reviewUrl: cmsOriginFor\(req, body\.origin\)/.test(SRC));
 check('no route builds a public address from PUBLIC_BASE_URL on its own (only lib/public-base.js reads it)',

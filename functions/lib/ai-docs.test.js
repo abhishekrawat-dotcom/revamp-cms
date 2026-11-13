@@ -94,7 +94,8 @@ var PDF64 = PDF.toString('base64');
   } finally { global.fetch = realFetch; }
 
   /* 4. every route that reads documents checks them with this file, and keeps none of their contents */
-  var API = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8'), BOT = fs.readFileSync(path.join(__dirname, 'dash-bot.js'), 'utf8'), PROMO = fs.readFileSync(path.join(__dirname, 'promo-ai.js'), 'utf8');
+  /* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+  var API = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n'), BOT = fs.readFileSync(path.join(__dirname, 'dash-bot.js'), 'utf8'), PROMO = fs.readFileSync(path.join(__dirname, 'promo-ai.js'), 'utf8');
   check('4 the site editor\'s route: cleaned before anything is spent, taken off the payload, read by the model',
     /var docs = aiDocs\.cleanDocs\(payload\.documents\);\s*delete payload\.documents;\s*if \(docs\.error\) return sendJson\(res, 400/.test(API) && /inlineFiles: docs\.files\.length \? docs\.files : undefined/.test(API) &&
     /withAdminBody\(req, res, BODY_LIMITS\.aiDocs, function \(fb, decoded, payload\) \{\s*\/\* the second step of a new picture/.test(API));

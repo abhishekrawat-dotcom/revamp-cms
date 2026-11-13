@@ -40,7 +40,8 @@ check('…so the safety step keeps the background whole, and moves the <style> r
   safe.html === '<section style="background-image:url(&quot;' + URL1 + '&quot;)"><p>x</p></section>' && safe.css === '.a{background:url("' + URL1 + '")}', safe);
 check('read without the quote fix first, the attribute would have ended at url( — the order matters',
   H.safeGeneratedSection(MODEL, '').html.indexOf(URL1) === -1);
-var API = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+/* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+var API = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
 check('the section rework uses both, on the original section (before its pictures became tokens)',
   /var pictures = \{\}, origHtml = html;/.test(API) && /newCss = cssUrlQuotes\(genDesign\.restorePictures\(newCss, pictures, found\[0\] \|\| ''\)\);/.test(API) &&
   /if \(mode === 'edit'\) newHtml = keepRootBackground\(origHtml, newHtml, newCss, String\(payload\.instruction \|\| ''\)\);/.test(API));

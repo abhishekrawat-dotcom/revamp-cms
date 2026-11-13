@@ -32,7 +32,8 @@ ok(ed.storedFacts(null) && !Object.keys(ed.storedFacts(null)).length, 'storedFac
 var hostile = ed.storedFacts({ name: 'X', city: 'Pune', deletedAt: '2026-11-13', published: true, portal: 'etcio', createdBy: 'a@b.c', designPlan: {}, settings: {}, counters: {}, __proto__: { x: 1 } });
 ok(JSON.stringify(Object.keys(hostile).sort()) === JSON.stringify(['city', 'name']), 'storedFacts keeps name/start/end/venue/city only', Object.keys(hostile).join(','));
 ok(JSON.stringify(ed.BRIEF_FACT_FIELDS) === JSON.stringify(['name', 'start', 'end', 'venue', 'city']), 'the brief facts are named in one place');
-var api = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+/* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+var api = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
 ok(/var facts = briefFacts\(eventMeta\);/.test(api) && /return watch\.update\(Object\.assign\(\{\}, facts\.value, \{ updatedAt: now(?:, updatedBy: actorOf\(req\.user\))? \}\)\);/.test(api), 'extract-brief writes the checked facts with update(), not eventMeta itself');
 ok(/function briefFacts\(eventMeta\) \{\n  var picked = eventDescription\.storedFacts\(eventMeta\)/.test(api) && /EVENT_FIELD_CHECKS\[f\]\(v\)/.test(api), 'briefFacts checks each fact by EVENT_FIELD_CHECKS');
 ok(!/watch\.merge\(Object\.assign\(\{\}, eventMeta,/.test(api) && !/storedFacts\(eventMeta\), \{ updatedAt/.test(api), 'no route merges the raw eventMeta (with its description) into the event');

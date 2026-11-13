@@ -107,7 +107,8 @@ var aw = F.findings(awardPage, g, kit, { skipSections: ['hero', 'nav', 'footer',
 ok(aw.length === 1 && aw[0].kind === 'award' && aw[0].sections.join() === 'Overview', '5b "award-*" leaves every award section out; the model\'s own overview is still read', aw);
 
 /* ---------- 6. how lib/api.js uses it ---------- */
-var SRC = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+/* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+var SRC = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
 function fnBody(name) { var i = SRC.indexOf('function ' + name + '('); return i === -1 ? '' : SRC.slice(i, SRC.indexOf('\n}\n', i)); }
 var gen = fnBody('runGenerateDesignedContent');
 ok(/inventedFacts\.checkSections\(sections, inventedFacts\.groundOf\(eventMeta, stored\.description, brief,\s*sources\.filter\(function \(x\) \{ return x\.type !== 'competitor'; \}\)/.test(gen) && /\{ fix: true \}/.test(gen),

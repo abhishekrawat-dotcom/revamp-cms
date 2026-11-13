@@ -831,9 +831,10 @@ async function main() {
   check('6. a TechMonk page reads "a TechMonk page"', p.ce('currentLinkIssue')('https://techmonk.economictimes.indiatimes.com/x').indexOf('This is a TechMonk page,') === 0);
   check('6. an ET host that is not a roster portal gives nothing (the server decides)', p.ce('currentLinkIssue')('https://zzz.economictimes.indiatimes.com/x') === '');
   /* ET runs one site under two names (startup.* is ET Entrepreneur's site): the page's rule is the server's
-     own siteOfPortal (api.js), read from its source and run over the same et-footer / et-previous / et-events */
-  var siteSrc = /function siteOfPortal\(slug\) \{[\s\S]*?\n\}/.exec(read('functions/lib/api.js'));
-  check('6. api.js has its siteOfPortal', !!siteSrc);
+     own siteOfPortal (api-generate.js, moved out of api.js as it was: BE-017), read from its source and run over the same
+     et-footer / et-previous / et-events */
+  var siteSrc = /function siteOfPortal\(slug\) \{[\s\S]*?\n\}/.exec(read('functions/lib/api-generate.js'));
+  check('6. api-generate.js has its siteOfPortal', !!siteSrc);
   var serverSiteOf = vm.runInNewContext('(' + (siteSrc ? siteSrc[0] : 'function(s){ return s; }') + ')',
     { etFooter: require('./et-footer'), etPrevious: require('./et-previous'), etEvents: etEvents });
   check('6. (the server serves startup as entrepreneur)', serverSiteOf('startup') === 'entrepreneur' && serverSiteOf('entrepreneur') === 'entrepreneur');

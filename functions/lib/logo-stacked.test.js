@@ -212,7 +212,8 @@ var NOTE = /^The previous edition's logo could not be used: .+\. Upload this yea
   check('ETCISO: a long list of partners is cut at a word in the note, never inside one', /^“chrome enterprise Presents .* …” belonged to the previous edition and was cropped out/.test(ciso.unit.note) && !/ W”/.test(ciso.unit.note), ciso.unit.note);
 
   /* ---- plan-structure starts it while the plan is written ---- */
-  var api = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+  /* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+  var api = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
   var plan = api.slice(api.indexOf('var logoFound = foundLogoUnit('), api.indexOf('var unitJob = logoUnitInTime('));
   check('plan-structure: the logo unit is looked for before the plan is asked for, and the plan\'s run is given it', plan.indexOf('llm.callJson(prompt, DESIGN_PLAN_SCHEMA') !== -1 && /found: logoFound/.test(api.slice(api.indexOf('var unitJob = logoUnitInTime('), api.indexOf('var unitJob = logoUnitInTime(') + 200)));
   finish();

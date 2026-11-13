@@ -272,7 +272,8 @@ step(function () {
 });
 step(function () {
   /* the generation writes its sections through the same step, last, after their pictures are addresses again */
-  var src = require('fs').readFileSync(require('path').join(__dirname, 'api.js'), 'utf8');
+  /* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+  var src = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return require('fs').readFileSync(require('path').join(__dirname, f), 'utf8'); }).join('\n');
   /* stored in the run's own documents since BE-032 (generated-site.js writeSections) */
   var at = src.indexOf('genDesign.motionBudget(sections);'), safeAt = src.indexOf('var safe = safeGeneratedSection(s.html, s.css);', at), mergeAt = src.indexOf('generatedSite.writeSections(fb, eventId, commitRunId, sections', at);
   check('BE-025: generate-content makes every section safe after it is assembled and before it is stored', at !== -1 && safeAt > at && mergeAt > safeAt, [at, safeAt, mergeAt]);

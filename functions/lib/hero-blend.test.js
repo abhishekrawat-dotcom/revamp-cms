@@ -27,7 +27,8 @@ var w = 40, h = 50, data = Buffer.alloc(w * h * 4);
 for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) { var o = (y * w + x) * 4; var low = y >= 47; data[o] = low ? 40 : 250; data[o + 1] = low ? 90 : 250; data[o + 2] = low ? 50 : 250; data[o + 3] = 255; }
 var bytes = png.encode({ width: w, height: h, data: data });
 check('the bottom edge\'s colour is read from a PNG; a JPEG is left alone', JSON.stringify(H.bottomColour(bytes, 'image/png')) === '[40,90,50]' && H.bottomColour(bytes, 'image/jpeg') === null, H.bottomColour(bytes, 'image/png'));
-var API = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+/* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+var API = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
 check('a new site\'s page and cards take the banner\'s colour', /var runOn = heroImage\.heroBottom \? genDesign\.pageColoursFrom\(heroImage\.heroBottom, design\.mode, design\.textColor\) : null;/.test(API) &&
   /if \(runOn\) \{ design\.backgroundColor = runOn\.backgroundColor; design\.surfaceColor = runOn\.surfaceColor; design\.pageFromHero = true; \}/.test(API));
 

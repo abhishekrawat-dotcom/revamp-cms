@@ -429,7 +429,8 @@ function seed(id, data) { DOCS['events/' + id] = Object.assign({ name: id, creat
   check('ET\'s list not answering: refused (an unconfirmed pick never lets another portal\'s address through), 0 fetches', r.status === 400 && r.json.code === 'other-portal' && r.json.pagePortal === 'cio' && FETCHES.length === 7, r.json);
   ET_DOWN = false;
   check('… and the model was never asked', MODEL_CALLS === 0, MODEL_CALLS);
-  var apiSrc = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8'), ingAt = apiSrc.indexOf('function handleIngestSource(');
+  /* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+  var apiSrc = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n'), ingAt = apiSrc.indexOf('function handleIngestSource(');
   var ingSrc = apiSrc.slice(ingAt, apiSrc.indexOf('\nfunction ', ingAt + 10));
   /* BE-026 (13 Nov 2026): the page is read by readSourcePage, whose safeFetch carries the 20 s */
   check('the page\'s 20s timer starts after the portal check (a slow ET list read never eats it)', ingSrc.indexOf('return otherPortalOf(') !== -1 && ingSrc.indexOf('return readSourcePage(') > ingSrc.indexOf('return otherPortalOf(') &&
@@ -443,14 +444,15 @@ function seed(id, data) { DOCS['events/' + id] = Object.assign({ name: id, creat
   check('sitePortalOf: an off-roster or inherited name gives none', hooks.sitePortalOf({ portal: 'hrworld' }, []).portal === '' && hooks.sitePortalOf({ portal: '__proto__' }, []).portal === '' &&
     hooks.sitePortalOf({ portal: 'toString' }, null).portal === '' && JSON.stringify(hooks.sitePortalOf(null, null)) === JSON.stringify({ portal: '', series: '' }));
   check('sitePortal itself is unchanged (it still reads the sources)', hooks.sitePortal(SOUTH).portal === 'brandequity');
-  var SRC = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+  var SRC = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
   var gen = SRC.slice(SRC.indexOf('function runGenerateDesignedContent('), SRC.indexOf('\nfunction ', SRC.indexOf('function runGenerateDesignedContent(') + 10));
   check('generate-content\'s footer is sitePortalOf the event being generated (its own document, through watchEvent)', /var footerOf = sitePortalOf\(\{ portal: watch\.portal \}/.test(gen) && !/[^O]sitePortal\(/.test(gen.replace(/sitePortalOf\(/g, 'SPO(')), gen.length);
   check('… the nav is given that portal (navFor.portal = footerOf.portal)', /navFor\.portal = footerOf\.portal;/.test(gen));
   var calls = gen.match(/etNav\.sectionFor\([^;]*\);/g) || [];
   check('… and both sectionFor calls pass it (the main one and the fallback)', calls.length === 2 && /, navFor\);$/.test(calls[0]) && /portal: navFor\.portal \}\);$/.test(calls[1]), calls);
   check('… the footer is built with that portal', /siteFooter\(\{ portal: footerOf\.portal, series: footerOf\.series/.test(gen));
-  check('watchEvent gives the stored roster portal, or ""', /portal: etEvents\.isPortal\(stored\.portal\) \? stored\.portal : ''/.test(SRC.slice(SRC.indexOf('function watchEvent('), SRC.indexOf('function sendStepFailure('))));
+  /* watchEvent's own body (api-generate.js; sendStepFailure, which followed it, stayed in api.js: BE-017) */
+  check('watchEvent gives the stored roster portal, or ""', /portal: etEvents\.isPortal\(stored\.portal\) \? stored\.portal : ''/.test(SRC.slice(SRC.indexOf('function watchEvent('), SRC.indexOf('\n}\n', SRC.indexOf('function watchEvent(')))));
 
   /* ---------- 7. the activity action ---------- */
   check('activity.ACTIONS has portal-set', activity.ACTIONS.indexOf('portal-set') !== -1);

@@ -584,8 +584,8 @@ function entry(sectionId, placement, extra) {
   check(cp.istDay(Date.UTC(2026, 10, 3, 18, 29)) === '2026-11-03' && cp.istDay(Date.UTC(2026, 10, 3, 18, 31)) === '2026-11-04', '18:29 and 18:31 UTC fall on different India days',
     cp.istDay(Date.UTC(2026, 10, 3, 18, 29)) + ' / ' + cp.istDay(Date.UTC(2026, 10, 3, 18, 31)));
   check(cp.PER_DAY === 20 && cp.TIMEOUT_MS === 90000 && cp.STALE_MS === 300000 && cp.MAX_PEOPLE_PICTURES === 2, 'the limits: 20 a day, 90 s a picture, 5 minutes until a lost one is stale, two people pictures');
-  var apiSource = require('fs').readFileSync(require('path').join(__dirname, 'api.js'), 'utf8');
-  check(/var MAX_PEOPLE_PICTURES = 2;/.test(apiSource), 'the people cap is the same as site generation\'s (api.js MAX_PEOPLE_PICTURES)');
+  var apiSource = require('fs').readFileSync(require('path').join(__dirname, 'api-generate.js'), 'utf8');   // site generation, moved out of api.js (BE-017)
+  check(/var MAX_PEOPLE_PICTURES = 2;/.test(apiSource), 'the people cap is the same as site generation\'s (api-generate.js MAX_PEOPLE_PICTURES)');
 
   /* ---------- phase 2: make() ---------- */
   var FB = fakeFb(), seq = 0, recorded = [], activity = [];

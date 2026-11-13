@@ -4,7 +4,8 @@
    this much long CTA text"). Plain node. */
 'use strict';
 var fs = require('fs'), path = require('path');
-var API = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
+/* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
+var API = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
 var OB = require('./owner-brief');
 var passed = 0, failed = 0;
 function check(name, ok, info) { if (ok) passed++; else { failed++; console.log('FAIL ' + name + (info !== undefined ? ' — ' + JSON.stringify(info).slice(0, 300) : '')); } }

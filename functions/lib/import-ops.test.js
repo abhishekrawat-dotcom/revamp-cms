@@ -195,8 +195,9 @@ var CAPTURE = '<!DOCTYPE html><html lang="en-IN" class="dark scroll-smooth" data
   ok(zip.status === 400 && zip.body.code === 'zip-not-supported', 'BE-054 a ZIP upload: 400 zip-not-supported', zip);
   var none = await call('POST', '/api/import-lovable', 'owner', { importId: 'qa-x' });
   ok(none.status === 400 && none.body.code === 'url-required', 'no address: 400', none);
-  var API_SRC = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
-  ok(!/require\('jszip'\)|JSZip|runImportLovableFromZip|stripZipExportScripts|importZip/.test(API_SRC), 'BE-054 the ZIP path and JSZip are gone from api.js');
+  /* the import's routes were moved out of api.js as they were, into api-import.js (BE-017): both are read */
+  var API_SRC = ['api.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
+  ok(!/require\('jszip'\)|JSZip|runImportLovableFromZip|stripZipExportScripts|importZip/.test(API_SRC), 'BE-054 the ZIP path and JSZip are gone from api.js and api-import.js');
   /* a stand-in capture service: the route makes the id, whatever the request says */
   var asked = [];
   var service = http.createServer(function (req, res) {
