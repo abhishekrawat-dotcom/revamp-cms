@@ -109,7 +109,7 @@ function fileName(url) {
 /* markup with everything that differs from save to save without being a change taken out */
 function shapeOf(node) {
   return render([node])
-    .replace(/\s(?:data-editable|contenteditable|data-text-original|data-rv-cur-item|data-rv-open|data-rv-aria|data-ai-generated|data-ai-skipped|data-rv-filled|data-rv-empty|data-rv-empty-display|data-rv-nav-empty|data-rv-bound)(?:="[^"]*")?/g, '')
+    .replace(/\s(?:data-editable|contenteditable|data-text-original|data-rv-cur-item|data-rv-open|data-rv-aria|data-ai-generated|data-ai-skipped|data-rv-filled|data-rv-empty|data-rv-empty-display|data-rv-nav-empty|data-rv-bound|data-rv-list|data-rv-list-at|data-rv-bind|data-rv-bind-style|data-rv-bind-empty|data-rv-unbound)(?:="[^"]*")?(?=[\s>/]|$)/g, '')
     .replace(/\sclass="([^"]*)"/g, function (all, cls) {
       var kept = cls.split(/\s+/).filter(function (c) { return c && !/^(ed-selected|sec-active|rv-in|rv-shown|is-hidden-sec)$/.test(c); }).join(' ');
       return kept ? ' class="' + kept + '"' : '';
@@ -167,6 +167,8 @@ function readPage(html) {
     /* the layout without the records' items (the model or the cards drawn from records): a list that gained or
        lost a record has the same layout */
     domutils.findAll(function (e) { return isItem(e) && !insideItem(e); }, [el]).forEach(function (item) { domutils.removeElement(item); });
+    /* …nor the models a list keeps aside to draw its records from (never shown) */
+    domutils.findAll(function (e) { return e.name === 'template' && !!e.attribs && 'data-rv-pristine' in e.attribs; }, [el]).forEach(function (t) { domutils.removeElement(t); });
     sections.push({
       key: key,
       name: attr(el, 'data-sec-name') || sectionWords(attr(el, 'data-rv-key') || attr(el, 'data-rv-section')),

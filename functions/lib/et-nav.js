@@ -214,8 +214,9 @@ function build(o) {
       '<a class="' + c + '-logo" href="' + esc(logo.href) + '"' + (/^https:/.test(logo.href) ? ' target="_blank" rel="noopener"' : '') + '>' +
         '<img data-rv-et-logo data-rv-on-light="' + esc(logo.onLight) + '" data-rv-on-dark="' + esc(logo.onDark) + '" src="' + esc(logo.src) + '" alt="' + esc(logo.alt) + '" width="' + logo.width + '" height="' + logo.height + '" style="--rv-logo-h:' + logo.px + 'px"></a>' +
       '<div class="' + c + '-event">' +
-        '<a class="' + c + '-name" href="#hero">' + esc(name) + '</a>' +
-        (date || place ? '<p class="' + c + '-sub">' + (date ? '<span class="' + c + '-date">' + esc(date) + '</span>' : '') + (place ? '<span class="' + c + '-place">' + esc(place) + '</span>' : '') + '</p>' : '') +
+        /* the event's name, date and place follow its Basics from then on (data-rv-bind, templates/_shared/rv-draw.js) */
+        '<a class="' + c + '-name" href="#hero"' + (clean(o.name) ? ' data-rv-bind="event.name"' : '') + '>' + esc(name) + '</a>' +
+        (date || place ? '<p class="' + c + '-sub">' + (date ? '<span class="' + c + '-date" data-rv-bind="event.date" data-rv-bind-style="short">' + esc(date) + '</span>' : '') + (place ? '<span class="' + c + '-place" data-rv-bind="event.venue">' + esc(place) + '</span>' : '') + '</p>' : '') +
       '</div>' +
       (tabs.length ? '<ul class="' + c + '-tabs">' + tabs.map(function (t) {
         var href = t.page ? t.page : safeHref(t.href);

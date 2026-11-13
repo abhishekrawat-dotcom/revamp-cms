@@ -440,16 +440,14 @@
     if (dated) fields.push('dates');
     else if (saysDate(pb)) notUsed('dates');
 
-    /* the form has one "Venue & city" box, so the city goes in it after the venue (unless the venue already names it) */
+    /* the venue and the city, each in its own field */
     var place = pb.venue || '';
-    var withCity = !!pb.city && place.toLowerCase().indexOf(String(pb.city).toLowerCase()) === -1;
-    if (withCity) place = place ? place + ', ' + pb.city : pb.city;
-    if (place && C.venue !== false) {
-      b.venue = place;
-      if (pb.venue) fields.push('venue');
-      if (withCity) fields.push('city');
+    var withCity = !!pb.city;
+    if ((place || withCity) && C.venue !== false) {
+      if (place) { b.venue = place; fields.push('venue'); }
+      if (withCity) { b.city = pb.city; fields.push('city'); }
     }
-    else if (place) {
+    else if (place || withCity) {
       if (pb.venue) notUsed('venue');
       if (withCity) notUsed('city');
     }
@@ -470,14 +468,19 @@
       fields.push('hero');
     }
 
-    /* the values themselves, for the note over step 1: the screen it opens on does not show them yet */
+    /* the values themselves, for the note over step 1: the screen it opens on does not show them yet (the place as one
+       line: the venue, then the city unless the venue names it) */
+    function placeText(venue, city) {
+      venue = String(venue || '').trim(); city = String(city || '').trim();
+      return venue && city && venue.toLowerCase().indexOf(city.toLowerCase()) !== -1 ? venue : [venue, city].filter(Boolean).join(', ');
+    }
     function has(k) { return fields.indexOf(k) !== -1; }
     var links = (has('current') ? 1 : 0) + (has('previous') ? 1 : 0);
     var portalName = '';
     if (has('portal') && typeof opts.portalName === 'function') { try { portalName = line(String(opts.portalName(b.portal) || ''), 60); } catch (e) { portalName = ''; } }
     var values = {
       kind: has('category') ? (KIND_WORDS[b.category] || '') : '', portal: portalName, name: has('name') ? b.name : '', slug: has('slug') ? b.slug : '',
-      when: has('dates') ? whenText(b) : '', place: has('venue') || has('city') ? b.venue : '', client: has('client') ? b.client : '',
+      when: has('dates') ? whenText(b) : '', place: has('venue') || has('city') ? placeText(b.venue, b.city) : '', client: has('client') ? b.client : '',
       brief: has('brief'), links: links
     };
 

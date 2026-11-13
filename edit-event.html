@@ -1247,6 +1247,14 @@
         '<input class="inp" id="b-end" type="datetime-local" value="' + esc(String(e.end || '').slice(0,16)) + '" aria-describedby="b-end-words">' +
         '<p class="hint" id="b-end-words" aria-live="polite"></p></div>' +
 
+      /* a date that is not fixed yet ("March 2027", "Q2 2027", "Date to be announced", as Create Event keeps it in
+         dateLabel): seen and changed here, and what the site, the events list and this page show while Starts is
+         empty (CON-051). Hidden once there is a start: the site then shows the dates themselves. */
+      '<div class="field c12" id="b-datelabel-f"' + (e.start ? ' hidden' : '') + '><div class="flabel-row"><label for="b-datelabel">Date shown on the site</label>' +
+          '<span class="pill-opt">Until the dates are fixed</span></div>' +
+        '<input class="inp" id="b-datelabel" maxlength="120" value="' + esc(e.dateLabel || '') + '" placeholder="e.g. March 2027, Q2 2027 or Date to be announced" aria-describedby="b-datelabel-hint">' +
+        '<p class="hint" id="b-datelabel-hint">For a date that is not fixed yet. The site, the events list and this page show these words until you set when it starts.</p></div>' +
+
       '<div class="field c6"><label for="b-venue">Venue</label>' +
         '<div class="inp-ico">' + svg(IC.globe, 15) +
           '<input class="inp" id="b-venue" value="' + esc(e.venue || '') + '" placeholder="e.g. Grand Hyatt"></div></div>' +
@@ -1531,13 +1539,17 @@
     var f = {
       name:  $('b-name'),  cat:   $('b-cat'),   portal: $('b-portal'), start: $('b-start'),
       end:   $('b-end'),   venue: $('b-venue'), city:  $('b-city'), desc: $('b-desc'),
+      datelabel: $('b-datelabel'),
       audience: $('b-audience'), topics: $('b-topics'), numbers: $('b-numbers')
     };
     if (!f.name) return;
 
     /* form field -> the event field it is stored in */
     var STORED = { name:'name', cat:'category', portal:'portal', start:'start', end:'end', venue:'venue', city:'city', desc:'description',
-      audience:'whoShouldAttend', topics:'keyTopics', numbers:'headlineNumbers' };
+      datelabel:'dateLabel', audience:'whoShouldAttend', topics:'keyTopics', numbers:'headlineNumbers' };
+    /* what the event's site shows of Basics (the banner, the top bar): a change to one of them is drawn into the site's
+       staged copy at once, as a change in Content is (TPL-009, TPL-026, BE-040) */
+    var ON_SITE = { name: 1, start: 1, end: 1, venue: 1, city: 1, datelabel: 1 };
     /* the fields saved as lists (UX-130): compared and sent as what they hold, not as the text typed */
     var LISTS = { audience: 1, topics: 1, numbers: 1 };
     var KEYS = Object.keys(STORED);
@@ -1593,8 +1605,11 @@
       if ($('b-start-words')) $('b-start-words').textContent = s.a ? fmtDate(localIso(s.a), { time: true, day: true }) : '';
       if ($('b-end-words')) $('b-end-words').textContent = s.b ? fmtDate(localIso(s.b), { time: true, day: true }) : '';
 
+      /* the date field for a date not fixed yet, while there is no start */
+      if ($('b-datelabel-f')) $('b-datelabel-f').hidden = !!s.a;
       if (!s.a){
-        out.push({ cls:'bad', ico:IC.clock, txt:'No start date yet' });
+        out.push(trimmed('datelabel') ? { cls:'', ico:IC.clock, txt:'<b>' + esc(trimmed('datelabel')) + '</b> · not fixed yet' }
+          : { cls:'bad', ico:IC.clock, txt:'No start date yet' });
       } else {
         if (s.b && s.b > s.a){
           var d = dayCount(s.a, s.b);
@@ -1648,7 +1663,7 @@
       var title = trimmed('name') || 'Untitled event';
       var d = trimmed('desc') || 'Add a short description and it will appear here.';
       var venue = place() || 'Venue to be confirmed';
-      var when = s.a ? fmtDT(localIso(s.a)) : 'Date to be announced';
+      var when = s.a ? fmtDT(localIso(s.a)) : (trimmed('datelabel') || 'Date to be announced');
       var path = ($('b-slug') && $('b-slug').getAttribute('data-path')) || EV.id || 'your-event';
       /* the portal chosen in the list, as the site names it; with none, the name the site shows instead */
       return { title:title, d:d, venue:venue, when:when, path:path, portal: portalName(v('portal')) || NO_PORTAL_SITE_NAME };
@@ -2108,6 +2123,9 @@
         paint();
         paintHeader();
         notify(said, said === 'Basics saved' ? 0 : 9000);
+        /* the name, dates or place the site shows: drawn into its staged copy now, as a change in Content is (the bar
+           above says where it is) */
+        if (changed.some(function(k){ return ON_SITE[k]; })) contentChanged();
       }, function(err){
         saving = false;
         console.error('Basics save failed:', err);
@@ -6623,7 +6641,7 @@
     /* the view that is about to be replaced has been left; the new one registers itself if it
        has a form to guard */
     LEAVE = NOT_DIRTY;
-    $('view').innerHTML = tabsHTML() + (SUB_ROUTE_KEY[r] ? siteBarHTML() : '') + fn();
+    $('view').innerHTML = tabsHTML() + (SUB_ROUTE_KEY[r] || r === 'content/basics' ? siteBarHTML() : '') + fn();
     wireSiteBar();
 
     /* [data-tab] and [data-goto] are handled by the one listener boot() puts on #view, so they also work on
@@ -6798,14 +6816,12 @@
       return { tone: 'wait', text: (b.staged ? 'Version ' + v + what + ' is on the staged copy. ' : 'The staged copy (version ' + v + ') has changes the live site does not show yet. ') +
         (b.approvalRequired === false ? 'Publish it to put it live.' : 'The live site shows it once it is approved.'), acts: send + staged };
     }
+    /* every kind of site but an imported one is drawn by the server: a real template's own lists too (site-records.js) */
+    var here = cur.tab === 'basics' ? 'Changes to the name, dates and place here go' : 'Changes here go';
     if (!live) {
-      if (!b.staged && !/^gen-/.test(tpl)) return null;
-      return { tone: '', text: (b.staged ? 'On the site’s staged copy as version ' + v + what + '. ' : 'Changes here go onto the site’s staged copy at once. ') + 'The site shows them once it is published.', acts: b.staged ? staged : '' };
+      return { tone: '', text: (b.staged ? 'On the site’s staged copy as version ' + v + what + '. ' : here + ' onto the site’s staged copy at once. ') + 'The site shows them once it is published.', acts: b.staged ? staged : '' };
     }
-    /* a real template draws some kinds of record only in the site editor (the server says which after a change),
-       so nothing is promised about it before then */
-    if (!/^gen-/.test(tpl)) return null;
-    return { tone: '', text: 'Changes here go onto the site’s staged copy at once, and reach the live site once they are approved.', acts: '' };
+    return { tone: '', text: here + ' onto the site’s staged copy at once, and reach the live site once they are approved.', acts: '' };
   }
   function paintSiteBar(){
     var el = $('site-bar');
@@ -6914,7 +6930,8 @@
     var name = String(EV.name || '').trim() || 'Untitled event';
     var portalName = String(EV.portalName || '').trim();
     $('ev-name').textContent = name + (portalName ? ' | ' + portalName : '');
-    var metaBits = [fmtDT(EV.start)];
+    /* a date not fixed yet reads as Create Event or Basics wrote it ("March 2027"), not "Date to be announced" (CON-051) */
+    var metaBits = [EV.start ? fmtDT(EV.start) : (String(EV.dateLabel || '').trim() || fmtDT(EV.start))];
     if (EV.eventNo) metaBits.push(EV.eventNo);
     var catLabel = TYPES[EV.category] || EV.category;
     if (catLabel) metaBits.push(catLabel);

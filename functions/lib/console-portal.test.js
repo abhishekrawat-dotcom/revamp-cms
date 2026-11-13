@@ -322,7 +322,9 @@ check('4 the Activity log\'s word for portal-set is "Portal set"', HIST['portal-
 var storedSrc = (/\n    var STORED = (\{[^}]*\});/.exec(CONSOLE_FNS.wireBasics) || [])[1];
 var STORED = storedSrc ? vm.runInNewContext('(' + storedSrc + ')') : {};
 check('4 STORED.portal is \'portal\' (the other fields as they were, and UX-130\'s three details for posts and mailers)', STORED.portal === 'portal' && STORED.cat === 'category' && STORED.desc === 'description' &&
-  STORED.audience === 'whoShouldAttend' && STORED.topics === 'keyTopics' && STORED.numbers === 'headlineNumbers' && Object.keys(STORED).length === 11, STORED);
+  STORED.audience === 'whoShouldAttend' && STORED.topics === 'keyTopics' && STORED.numbers === 'headlineNumbers' &&
+  /* CON-051: the words for a date not fixed yet */
+  STORED.datelabel === 'dateLabel' && Object.keys(STORED).length === 12, STORED);
 
 /* ---- Basics, in the vm ---- */
 function ready(c) { var m = c.$('b-rdy').innerHTML; return m; }

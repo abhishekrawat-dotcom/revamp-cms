@@ -3,11 +3,18 @@
    record added in Content showed on the site only after someone opened the site editor and saved, and the live
    site never showed it until then.
 
-     renderRecords(html, rows) -> { html, changed, filled: [kind], emptied: [kind], unplaced: [kind] }
+     renderRecords(html, rows, opts) -> { html, changed, filled: [kind], emptied: [kind], unplaced: [kind], facts }
        html   a saved page (site/page.html), as the editor serialised it
        rows   the event's records by console resource, as GET /api/event/<resource> lists them (each with its id,
-              in the console's order): { speakers, sessions, 'agenda-groups', faqs, partners, contacts, gallery }.
-              A resource left out means "not read": the kinds that need it are left as they are.
+              in the console's order): { speakers, sessions, 'agenda-groups', faqs, partners, 'partner-tiers',
+              contacts, gallery }. A resource left out means "not read": the kinds that need it are left as they are.
+       opts   { templateId, event } — with them, also what templates/_shared/rv-draw.js draws (drawOwn below): a
+              real template's own record lists (template.json content.map, through editor-fill.js's own rules, run
+              here on functions/lib/mini-dom.js) — a kind with no record to show leaves the page, its model card
+              with it — and the event's name, date and place from Basics in every element that follows them
+              (data-rv-bind; an AI-designed site's banner and top bar are marked on a page built before they
+              were). An imported site shows its own copy: nothing of this is drawn on it.
+       facts  how many of the event's details (Basics) were written
        filled    kinds whose lists now show their records
        emptied   kinds with no records: their place is marked data-rv-empty (the live page hides it, and the menu
                  links to it)
@@ -16,8 +23,8 @@
 
    Only the editor's own list convention is drawn here — an element with data-rv-repeat-template="<kind>" is the
    model of one item, its data-rv-field descendants the item's values — which is what every AI-designed site and
-   every section the editor adds for records use. A real template's own lists (template.json content.map, drawn by
-   editor-fill.js) are not: the caller says so. This is the server's copy of editor-template-ui.js's
+   every section the editor adds for records use (a real template's own lists are drawn by the template's own rules,
+   with opts: drawOwn). This is the server's copy of editor-template-ui.js's
    applyGenericRepeat, setGenericRepeatField, markEmpty and markFilled, rule for rule; the values come from the same
    translators (templates/_shared/rv-records.js), so a record looks the same whoever drew it.
 
@@ -32,7 +39,12 @@ const domutils = require('domutils');
    dependency, not one this app declares, so requiring it here could break on an install that lays it out
    differently (the deploy installs from the root package.json alone). */
 const Text = parseDocument('x').children[0].constructor;
+const fs = require('fs');
+const path = require('path');
+const vm = require('vm');
 const RR = require('../../templates/_shared/rv-records.js');
+const RD = require('../../templates/_shared/rv-draw.js');
+const miniDom = require('./mini-dom');
 
 function isEl(n) { return !!n && domutils.isTag(n); }
 function has(el, name) { return isEl(el) && Object.prototype.hasOwnProperty.call(el.attribs, name); }
@@ -306,7 +318,7 @@ function itemsByKind(rows) {
   return out;
 }
 
-function renderRecords(html, rows) {
+function drawLists(html, rows) {
   html = String(html || '');
   var report = { html: html, changed: false, filled: [], emptied: [], unplaced: [] };
   /* names kept as written: a saved page is the browser's own serialisation (lower-case HTML, SVG's viewBox as is) */
@@ -360,4 +372,96 @@ function renderRecords(html, rows) {
   return report;
 }
 
-module.exports = { renderRecords: renderRecords, itemsByKind: itemsByKind, SOURCES: RR.SOURCES };
+/* ---------- what a page shows of the event itself: a real template's own lists, and Basics ---------- */
+var ROOT = path.join(__dirname, '..', '..');
+/* editor-fill.js, the rules the editor fills a real template with, run as it is: read once, in a context of its own
+   (it is a browser script: window.RevampFill) */
+var fillEngine = null;
+function revampFill() {
+  if (fillEngine) return fillEngine;
+  var context = { window: { console: console } };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(ROOT, 'editor-fill.js'), 'utf8'), context, { filename: 'editor-fill.js' });
+  fillEngine = context.window.RevampFill;
+  return fillEngine;
+}
+/* a real template's template.json -> content ({ map, bind }); null for an AI-designed or imported site, an id that is
+   not a real template, or a file that is missing or does not parse. Read again when the file changes. */
+var contentCache = {};
+function templateContent(templateId) {
+  if (typeof templateId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,80}$/.test(templateId) || /^(gen|imported)-/.test(templateId)) return null;
+  try {
+    var file = path.join(ROOT, 'templates', templateId, 'template.json');
+    var mtime = fs.statSync(file).mtimeMs, hit = contentCache[templateId];
+    if (hit && hit.mtime === mtime) return hit.content;
+    var json = JSON.parse(fs.readFileSync(file, 'utf8'));
+    var content = json && json.content && typeof json.content === 'object' ? json.content : null;
+    contentCache[templateId] = { mtime: mtime, content: content };
+    return content;
+  } catch (e) { return null; }
+}
+/* the neutral picture of a speaker without a photo, from the site root (the editor writes it on its own host, which a
+   save makes root-relative) */
+var AVATAR = '/templates/_shared/img/rv-avatar.svg';
+
+/* -> { html, changed, filled, emptied, placed, facts }, or null when there is nothing to draw — or it failed: the page
+   is then kept as it was, and the failure logged. The page is parsed once more and only the sections whose markup
+   changed are written back; every other byte stays. */
+function drawOwn(html, rows, opts) {
+  var templateId = String(opts.templateId || '');
+  if (/^imported-/.test(templateId)) return null;
+  var content = templateContent(templateId);
+  var map = content && Array.isArray(content.map) ? content.map : null;
+  var lists = !!(map && rows && RD.mapEntries(map).length);
+  var facts = !!(opts.event && typeof opts.event === 'object');
+  if (!lists && !facts) return null;
+  var raw = parseDocument(html, { withStartIndices: true, withEndIndices: true, lowerCaseTags: false, lowerCaseAttributeNames: false });
+  /* the sections the drawing can touch: a listed kind's, the top bar and footer (the links to an emptied section),
+     the banner, the ones content.bind names, and any holding an element that follows Basics */
+  var touched = Object.create(null);
+  touched.nav = touched.footer = touched.hero = 1;
+  if (lists) RD.mapEntries(map).forEach(function (m) { touched[m.section] = 1; });
+  (content && Array.isArray(content.bind) ? content.bind : []).forEach(function (b) { if (b && b.section) touched[b.section] = 1; });
+  var tops = findAll(raw, function (e) { return has(e, 'data-rv-section') && !closest(e.parent, function (p) { return has(p, 'data-rv-section'); }) && !inTemplate(e); })
+    .filter(function (e) { return touched[attr(e, 'data-rv-section')] || (facts && !!findOne(e, function (x) { return has(x, 'data-rv-bind'); })); });
+  var before = tops.map(function (n) { return miniDom.render(n); });
+  var doc = miniDom.wrapDocument(raw), out = { filled: [], emptied: [], placed: [], facts: 0 };
+  try {
+    if (lists) {
+      var drawn = RD.drawMapLists(doc, map, RD.mapContent(rows), { fill: revampFill(), avatar: AVATAR });
+      out.filled = drawn.filled; out.emptied = drawn.emptied; out.placed = drawn.placed;
+    }
+    if (facts) out.facts = RD.drawFacts(doc, opts.event, { fill: revampFill(), binds: content && content.bind, generated: /^gen-/.test(templateId), hint: 'keep' }).written;
+  } catch (err) {
+    console.error('site-records: the page of event "' + String((opts.event && opts.event.name) || '') + '" (' + templateId + ') could not be drawn from its records and Basics, so it is kept as it was: ' + ((err && err.stack) || err));
+    return null;
+  }
+  var edits = [];
+  tops.forEach(function (n, i) {
+    var after = miniDom.render(n);
+    if (after !== before[i]) edits.push({ start: n.startIndex, end: n.endIndex + 1, text: after });
+  });
+  edits.sort(function (a, b) { return b.start - a.start; });
+  var text = html;
+  edits.forEach(function (e) { text = text.slice(0, e.start) + e.text + text.slice(e.end); });
+  out.html = text;
+  out.changed = text !== html;
+  return out;
+}
+
+function renderRecords(html, rows, opts) {
+  var report = drawLists(html, rows);
+  report.facts = 0;
+  if (!opts) return report;
+  var own = drawOwn(report.html, rows, opts);
+  if (!own) return report;
+  /* a kind a real template lists in a section of its own is placed: the editor adds no section for it */
+  report.unplaced = report.unplaced.filter(function (kind) { return own.placed.indexOf(kind) === -1; });
+  own.filled.forEach(function (k) { if (report.filled.indexOf(k) === -1) report.filled.push(k); });
+  own.emptied.forEach(function (k) { if (report.emptied.indexOf(k) === -1) report.emptied.push(k); });
+  report.facts = own.facts;
+  if (own.changed) { report.html = own.html; report.changed = report.html !== String(html || ''); }
+  return report;
+}
+
+module.exports = { renderRecords: renderRecords, itemsByKind: itemsByKind, SOURCES: RR.SOURCES, templateContent: templateContent };

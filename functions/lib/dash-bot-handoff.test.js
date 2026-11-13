@@ -363,12 +363,12 @@ function takeOne(p, id, now) {
 
   var a = run(cleaned());
   check('E.1 apply: category + nothing else chosen → the method screen', a.r.phase === 'method' && a.S.step1Phase === 'method' && a.S.creationMethod === null && a.S.catReturnPhase === null, a.r);
-  check('E.1 apply: the category, name and place are filled', a.S.basics.category === 'IP' && a.S.basics.name === 'Retail Leadership Summit' && a.S.basics.venue === 'Jio World Centre, Mumbai', a.S.basics);
+  check('E.1 apply: the category, name and place are filled', a.S.basics.category === 'IP' && a.S.basics.name === 'Retail Leadership Summit' && a.S.basics.venue === 'Jio World Centre' && a.S.basics.city === 'Mumbai', a.S.basics);
   check('E.1 apply: the address follows the name, as when typed (slugTouched stays false)', a.S.basics.slug === 'retail-leadership-summit' && a.S.basics.slugTouched === false, a.S.basics);
   check('E.1 apply: the logo is never touched', a.S.basics.logo === false && a.S.basics.logoName === '');
   check('E.1 apply: an exact date fits the page\'s datetime boxes (9:00 am to 6:00 pm that day)', a.S.basics.dateMode === 'exact' && a.S.basics.start === '2027-02-12T09:00' && a.S.basics.end === '2027-02-12T18:00', a.S.basics);
   check('E.1 apply: … and that is said (times and end assumed)', a.r.notes.indexOf('times-assumed') !== -1 && a.r.notes.indexOf('end-assumed') !== -1, a.r.notes);
-  check('E.1 apply: the city goes in the one "Venue & city" box; the hidden city field stays empty', a.S.basics.city === '', a.S.basics.city);
+  check('E.1 apply: the city goes in its own field (WZ-054: the details form has Venue and City)', a.S.basics.city === 'Mumbai' && a.S.basics.venue === 'Jio World Centre', [a.S.basics.venue, a.S.basics.city]);
   check('E.1 apply: fields name what was filled', JSON.stringify(a.r.fields) === JSON.stringify(['category', 'name', 'slug', 'dates', 'venue', 'city']), a.r.fields);
   check('E.1 apply: no client for an IP event', a.S.basics.client === '');
   check('E.1 apply: category + no brief → thenDetails false, nothing unused', a.r.thenDetails === false && JSON.stringify(a.r.unused) === '[]', a.r);
@@ -386,7 +386,7 @@ function takeOne(p, id, now) {
   check('E.1 apply: the brief and its link are filled', a.S.brief.text === 'A one-day forum.' && a.S.brief.current === 'https://x.example.com/2027' && a.S.brief.previous === '', a.S.brief);
   check('E.1 apply: no client on the brief form, where it is hidden', a.S.basics.client === '' && a.r.fields.indexOf('client') === -1);
   check('E.1 apply: … and that client is named as not used', JSON.stringify(a.r.unused) === '["client"]' && /Not used from your message: client\.$/.test(Prefill.summary(a.r)), [a.r.unused, Prefill.summary(a.r)]);
-  check('E.1 apply: a city alone fills the place box', a.S.basics.venue === 'Bengaluru' && a.r.fields.indexOf('city') !== -1 && a.r.fields.indexOf('venue') === -1, a.r.fields);
+  check('E.1 apply: a city alone fills the city field', a.S.basics.venue === '' && a.S.basics.city === 'Bengaluru' && a.r.fields.indexOf('city') !== -1 && a.r.fields.indexOf('venue') === -1, a.r.fields);
 
   a = run(cleaned({ category: 'Client', method: 'template', basics: { client: 'Acme' } }));
   check('E.1 apply: a Client event on the template path takes its client', a.S.basics.client === 'Acme' && a.r.fields.indexOf('client') !== -1 && a.r.phase === 'method');
@@ -417,7 +417,7 @@ function takeOne(p, id, now) {
   a = run(cleaned({ category: 'IP', basics: { dateMode: 'exact', start: '' } }));
   check('E.1 apply: an exact format with no date is not "filled"', a.r.fields.indexOf('dates') === -1 && a.S.basics.start === '');
   a = run(cleaned({ basics: { venue: 'Jio World Centre, Mumbai', city: 'mumbai' } }));
-  check('E.1 apply: a city the venue already names is not added twice', a.S.basics.venue === 'Jio World Centre, Mumbai' && a.r.fields.indexOf('city') === -1, a.S.basics.venue);
+  check('E.1 apply: a city the venue already names is not added to it again (it is the city field\'s)', a.S.basics.venue === 'Jio World Centre, Mumbai' && a.S.basics.city === 'mumbai', [a.S.basics.venue, a.S.basics.city]);
   /* the page's draft has a portal box since the portals change (S.basics.portal); a draft without one is kept below,
      with the box taken out, so the rule for it stays held */
   a = run(cleaned({ portal: 'etretail' }), function (S) { delete S.basics.portal; });
@@ -838,7 +838,7 @@ function withPicker(P) {
   P = page({ search: '?new=1&prefill=' + ID, store: storeWith(briefP) });
   P.ctx.init(); await wait();
   check('E.2 a brief → the brief details form, filled, and Generate is left to the person', P.ctx.S.step1Phase === 'details' && P.ctx.S.creationMethod === 'brief' &&
-    P.ctx.S.basics.dateMode === 'month' && P.ctx.S.basics.month === '2027-03' && P.ctx.S.basics.venue === 'Bengaluru' && P.ctx.S.brief.text.indexOf('a one-day forum') !== -1, P.ctx.S.basics);
+    P.ctx.S.basics.dateMode === 'month' && P.ctx.S.basics.month === '2027-03' && P.ctx.S.basics.city === 'Bengaluru' && P.ctx.S.brief.text.indexOf('a one-day forum') !== -1, P.ctx.S.basics);
 
   /* ---- a brief with no type: the type picker is a first choice, then the brief form ---- */
   var LINK = 'Https://retail.economictimes.indiatimes.com/summit-2026';

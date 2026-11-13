@@ -952,107 +952,14 @@
     });
   }
 
-  /* ---------- real Content-tab data (speakers/partners/faq/contacts/glimpses) ----------
-     edit-event.html's Content tab writes real, persistent per-event Firestore subcollections
-     (functions/lib/api.js's RESOURCES — speakers, partners, faqs, contacts, gallery, + their
-     speaker-groups/partner-tiers side tables) that, until now, nothing ever read back into a mounted
-     template: editing a speaker there had zero effect on what this editor (or a publish) showed, because
-     the content.map-driven sections above are wired only to the one-time wizard/Generate-from-Brief
-     hand-off snapshot (resolveInitialContent()/applyHandoffDraft() above), never to the real subcollections.
-
-     SUBCOLLECTION_SOURCES is the explicit `from` -> resource bridge — content.map's own `from` strings
-     don't all match the subcollection's resource name (e.g. "faq" vs "faqs"), so this can't be derived
-     automatically. One entry per `from` a REAL ported template actually maps to one of these resources
-     today (confirmed by reading every template.json under templates/ and its own content.map):
-       speakers -> speakers            {n,r,c,photo} items   (cx-leaders-forum, making-ai-work)
-       faq      -> faqs                {t,d} items           (cx-leaders-forum, retail-leadership-summit, tech500)
-       partners -> partners+partner-tiers  {t, logos:[{n}]} tiers  (retail-leadership-summit)
-       contact  -> contacts            {t, people:[{n,e,p}]} blocks (cx-leaders-forum, making-ai-work,
-                                        retail-leadership-summit, tech500 — same shape editor-fill.js's
-                                        own fromHandoff() already special-cases for the OLDER per-category
-                                        hand-off shape)
-       glimpses -> gallery             {url} items — "glimpses" is create-event.html's own library id for
-                                        this (shape:'gallery', GENERATION_EXCLUDED_LIBRARIES — real photos,
-                                        never AI-written); the subcollection's own `caption` field has no
-                                        content.map consumer anywhere yet, so it's read but not used.
-     Deliberately NOT covered: sessions/agenda. No ported template's content.map has a `from` for it at all
-     (grepped every template.json under templates/ — none exists), so there is no existing fill-rule SHAPE to
-     translate into; inventing one here would mean designing that convention from scratch, which is a
-     bigger, separate decision than bridging an existing one. Left for a future task once a template
-     actually wires an agenda section into content.map.
-
-     translate() turns GET /api/event/<resource>'s raw items (the real subcollection field names) into the
-     exact shape that `from`'s own content.map fill rules already expect — same values RevampFill.apply()
-     already knows how to render, just sourced for real instead of from the one-time hand-off. Returns null
-     for "nothing real yet" (so the caller never confuses an empty subcollection with real-but-empty
-     content — see fetchSubcollectionOverlay()'s own comment on why that distinction matters). Lists come
-     back from the server already sorted by their own `order` field (subcollectionRoutes()'s list handler),
-     including speakers/partners' own flat, cross-group display order (edit-event.html's persistSpeakerOrder/
-     the partner equivalent re-numbers `order` across the whole flat list, not per-group) — so no extra
-     client-side sort is needed for the plain lists; translatePartners still groups by tier explicitly,
-     since that structure (tiers -> logos) doesn't exist on the flat `partners` list itself. */
-  function byOrder(a, b) { return (a.order || 0) - (b.order || 0); }
-  /* every card drawn from a record carries the record's id (RevampFill writes it as data-rv-id): the editor knows
-     the card is managed in Content, and the approval page can name the record that was added, changed or removed */
-  function recId(r) { return r && r.id != null ? String(r.id) : ''; }
-
-  /* Speakers and sponsors: only those on the site (RevampRecords.isOnSite — Confirmed, or no status), as the
-     console says ("Not on the site"). With records but none of them on the site, an empty list: the cards an
-     earlier open drew (an Invited speaker's, from before this rule) go, by the list's own "empty":"hide". */
-  function translateSpeakers(items) {
-    if (!items || !items.length) return null;
-    return { items: RevampRecords.onSite('speakers', items).map(function (p) { return { id: recId(p), n: p.name || '', r: p.desig || '', c: p.comp || '', photo: p.photoUrl || '' }; }) };
-  }
-  function translateFaqs(items) {
-    if (!items || !items.length) return null;
-    return { items: items.map(function (f) { return { id: recId(f), t: f.question || '', d: f.answer || '' }; }) };
-  }
-  /* the caption too: the glimpses' fill rules print it ({caption}), and a glimpse that came with one keeps it */
-  function translateGallery(items) {
-    if (!items || !items.length) return null;
-    return { items: items.map(function (g) { return { id: recId(g), url: g.imageUrl || '', caption: g.caption || '' }; }) };
-  }
-  function translateContacts(items) {
-    if (!items || !items.length) return null;
-    // one row per contact (label + one person) — several rows can share the same label (several people
-    // under one "purpose"), same shape editor-fill.js's own fromHandoff() already builds for the older
-    // per-category hand-off (one block per label, each with a people[] list).
-    var blocks = [], byLabel = {};
-    items.forEach(function (c) {
-      var label = c.label || '';
-      if (!byLabel[label]) { byLabel[label] = { t: label, people: [] }; blocks.push(byLabel[label]); }
-      byLabel[label].people.push({ id: recId(c), n: c.name || '', e: c.email || '', p: c.phone || '' });
-    });
-    return blocks.length ? { blocks: blocks } : null;
-  }
-  function translatePartners(partners, tiers) {
-    if (!partners || !partners.length) return null;
-    var slots = {}, ordered = [];
-    (tiers || []).slice().sort(byOrder).forEach(function (t) {
-      var slot = { t: t.name || '', logos: [] };
-      slots[t.id] = slot;
-      ordered.push(slot);
-    });
-    // a partner with no tier (or no tiers set up at all) still needs to show somewhere — real data from
-    // the Content tab is never silently dropped just because Tiers haven't been configured.
-    var fallback = { t: '', logos: [] };
-    // each sponsor's logo and link as well as its name: the partners' fill rules show the logo ({logo}) and link it
-    // ({url}), and drawing the Content's sponsors without them put names where their logos had been
-    RevampRecords.onSite('partners', partners).slice().sort(byOrder).forEach(function (p) {
-      (slots[p.tierId] || fallback).logos.push({ id: recId(p), n: p.name || '', logo: p.logoUrl || '', url: p.url || '' });
-    });
-    if (fallback.logos.length) ordered.push(fallback);
-    var tiersOut = ordered.filter(function (t) { return t.logos.length; });
-    return { tiers: tiersOut };
-  }
-
-  var SUBCOLLECTION_SOURCES = {
-    speakers: { resources: ['speakers'], translate: translateSpeakers },
-    faq: { resources: ['faqs'], translate: translateFaqs },
-    partners: { resources: ['partners', 'partner-tiers'], translate: translatePartners },
-    contact: { resources: ['contacts'], translate: translateContacts },
-    glimpses: { resources: ['gallery'], translate: translateGallery }
-  };
+  /* ---------- the event's records in a real template's own lists (template.json content.map) ----------
+     Content's speakers, FAQs, sponsors, contacts and gallery, in the words the four real templates' list rules read
+     (templates/_shared/rv-draw.js mapTranslate: only Confirmed speakers and sponsors, rv-records.js isOnSite) and
+     drawn through those rules in data mode (RevampDraw.drawMapLists, editor-fill.js): one card per record, the
+     template's neutral model kept aside, and no card at all for a kind with none — its section is then marked
+     data-rv-empty (the live page hides it, with the menu's link to it) and says so here (noteMapEmpty). The server
+     draws the same lists the same way whenever Content changes or the site is saved (functions/lib/site-records.js),
+     so the staged copy, the preview and the live page never wait for this editor (TPL-007, TPL-008, TPL-034). */
 
   /* ---------- generic data-rv-repeat-template convention (AI-bespoke `gen-` sections) ----------
      The content.map-driven mechanism just above exists for PORTED templates (real templates/<id>/
@@ -1067,13 +974,8 @@
      SIMPLE FLAT list shape that convention needs, and fills the DOM directly (no RevampFill.apply() —
      that function only knows about content.map rules, which these templates don't have).
 
-     Named *Flat and kept entirely separate from translateSpeakers/translateFaqs/translateGallery/
-     translatePartners/translateContacts above even where the shape ends up nearly identical (speakers/
-     faq/glimpses) — those existing ones are documented as serving ONLY the content.map mechanism;
-     sharing them here would be an accidental coupling waiting to break either path if the other is
-     edited for its own reasons later. Same "confirmed empty -> null, don't override" discipline as the
-     existing translators: null tells the caller to leave Gemini's own placeholder example item alone
-     rather than wiping it. The rules themselves are templates/_shared/rv-records.js (RevampRecords), the
+     Kept apart from the content.map translators above (RevampDraw.mapTranslate) even where the shape ends up
+     nearly identical (speakers/faq/glimpses): those serve ONLY the content.map mechanism. The rules themselves are templates/_shared/rv-records.js (RevampRecords), the
      same ones the server draws a saved site's lists with when Content changes (functions/lib/site-records.js),
      so a record looks the same whichever of the two drew it. */
   /* A speaker's profile, for the pop-up a visitor opens from the card on the published page (templates/_shared/
@@ -1172,7 +1074,9 @@
     fieldEl.removeAttribute('hidden');
     var hiddenLine = fieldEl.parentElement && fieldEl.parentElement.closest('[data-rv-empty-line]');
     if (hiddenLine) { hiddenLine.removeAttribute('hidden'); hiddenLine.removeAttribute('data-rv-empty-line'); }
-    if ('value' in fieldEl) fieldEl.value = value;
+    /* a form control takes the value (never saved: the server leaves one as it is); anything else — a <button>, an
+       <li>, which have a "value" of their own — shows the words, as the server writes them (site-records.js setField) */
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(fieldEl.tagName)) fieldEl.value = value;
     else fieldEl.textContent = value;
   }
   /* The element holding an empty field when it holds nothing else of a record's — no other field, no picture —
@@ -1444,14 +1348,14 @@
     });
   }
 
-  /* Mirrors fetchSubcollectionOverlay() below, one layer over: detection is findRepeatKindsInDom()
+  /* Mirrors fetchMapContent() below, one layer over: detection is findRepeatKindsInDom()
      (scans the mounted DOM for data-rv-repeat-template) instead of a content.map `from` scan, and
      translation goes through GENERIC_REPEAT_SOURCES (the *Flat translators) instead of
-     SUBCOLLECTION_SOURCES. A ported template never has data-rv-repeat-template elements, so this
+     RevampDraw.MAP_SOURCES. A ported template never has data-rv-repeat-template elements, so this
      resolves null for it with zero extra fetches; a `gen-` template's empty content.map means the OTHER
      function's `from` scan finds nothing for it — the two detection paths are complementary, never
-     competing for the same template. Same "couldn't fetch" vs "confirmed empty" null handling as
-     fetchSubcollectionOverlay(). */
+     competing for the same template. Same "couldn't fetch" vs "confirmed empty" handling as
+     fetchMapContent(). */
   function fetchGenericRepeatOverlay() {
     if (!canvas || !eventId) return Promise.resolve(null);
     var kinds = findRepeatKindsInDom(canvas);
@@ -1482,60 +1386,76 @@
     });
   }
 
-  /* Fetches whichever of the resources above this MOUNTED template's own content.map actually uses (never
-     more — a template with no speaker/partner/faq/contact/glimpses section makes zero extra calls) and
-     builds the merged content object, or resolves null when there's nothing real to overlay (no matching
-     content.map entry at all, no real event context, or every matching resource came back empty/failed).
-
-     Real subcollection rows are AUTHORITATIVE for their own `from` when they exist: a user who adds
-     structured data via the Content tab almost certainly wants that to be what the page shows, not a
-     stale wizard/Generate-from-Brief snapshot from whenever the draft was first generated — overriding,
-     not merging field-by-field, is the one unambiguous reading of "the real data now wins". An EMPTY
-     subcollection (nobody has touched the Content tab yet, or a resource's own fetch genuinely failed —
-     not signed in, offline, etc.) must NOT override anything — scrubbing a real event's existing
-     wizard-snapshot speakers down to nothing just because the Content tab is still empty would be a real
-     regression, not an improvement. translate() returning null is exactly that "leave it alone" signal;
-     a failed fetch (rejected promise, caught below as null in byResource — not the same null as an empty
-     array) is treated the same way for the same reason: "couldn't tell" must never look like "confirmed
-     empty". */
-  function fetchSubcollectionOverlay() {
-    if (!canvas || !eventId) return Promise.resolve(null);
-    var spec = (canvas.template.content || {}).map || [];
-    var froms = Object.keys(SUBCOLLECTION_SOURCES).filter(function (from) {
-      return spec.some(function (m) { return m.from === from; });
+  /* The records of the kinds this MOUNTED template's own content.map lists (never more: a template with no speaker,
+     sponsor, FAQ, contact or gallery section asks for nothing), in the words its rules read (RevampDraw.mapContent)
+     -> Promise<content | null>. Content's records are what the page shows: a kind confirmed empty — read, and none
+     to show — is an empty list, which takes the template's model card and earlier records' cards off the page
+     (TPL-007, TPL-008). A kind whose records could not be read (not signed in, offline, a failed request) is left
+     exactly as it is: "could not tell" is never "none". */
+  function fetchMapContent() {
+    if (!canvas || !eventId || !window.RevampDraw) return Promise.resolve(null);
+    var entries = RevampDraw.mapEntries((canvas.template.content || {}).map);
+    if (!entries.length) return Promise.resolve(null);
+    var resources = [];
+    entries.forEach(function (m) {
+      RevampDraw.MAP_SOURCES[m.kind].forEach(function (r) { if (resources.indexOf(r) === -1) resources.push(r); });
     });
-    if (!froms.length) return Promise.resolve(null);
-    var resourceNames = [];
-    froms.forEach(function (from) {
-      SUBCOLLECTION_SOURCES[from].resources.forEach(function (r) { if (resourceNames.indexOf(r) === -1) resourceNames.push(r); });
-    });
-    return Promise.all(resourceNames.map(function (r) {
-      return RevampCore.fetchSub(r, eventId).catch(function () { return null; });   // null: couldn't fetch, not "empty"
+    return Promise.all(resources.map(function (r) {
+      return RevampCore.fetchSub(r, eventId).catch(function () { return null; });   // null: could not be read, not "none"
     })).then(function (results) {
-      var byResource = {};
-      resourceNames.forEach(function (name, i) { byResource[name] = results[i]; });
-      var content = {};
-      froms.forEach(function (from) {
-        var cfg = SUBCOLLECTION_SOURCES[from];
-        var inputs = cfg.resources.map(function (r) { return byResource[r]; });
-        if (inputs.indexOf(null) !== -1) return;   // a needed fetch failed — leave this `from` untouched
-        var value = cfg.translate.apply(null, inputs);
-        if (value) content[from] = value;
+      var rows = {};
+      resources.forEach(function (name, i) { if (Array.isArray(results[i])) rows[name] = results[i]; });
+      // a kind is drawn only when every list it is made from was read
+      entries.forEach(function (m) {
+        var from = RevampDraw.MAP_SOURCES[m.kind];
+        if (from.some(function (r) { return !rows[r]; })) delete rows[from[0]];
       });
+      var content = RevampDraw.mapContent(rows);
       return Object.keys(content).length ? content : null;
     });
+  }
+  /* A real template's section with no record to show (RevampDraw.drawMapLists marks it data-rv-empty: the live page
+     hides it) says so here, at the top of its list, in the words an AI-designed page's empty list uses (markEmpty,
+     fillEmptyNote) — with how many speakers or sponsors are waiting to be confirmed. Editor-only (data-rv-editor). */
+  function noteMapEmpty(place, list, kind, waiting) {
+    var note = list.querySelector(':scope > [data-rv-empty-state="' + kind + '"]');
+    if (!note) {
+      note = list.ownerDocument.createElement('div');
+      note.setAttribute('data-rv-empty-state', kind);
+      note.setAttribute('data-rv-editor', '');
+      note.setAttribute('data-ed', 'none');
+      note.setAttribute('style', 'box-sizing:border-box;margin:12px 0;padding:12px 16px;border:1px dashed rgba(128,128,128,.6);border-radius:8px;font:500 16px/1.5 Inter,Arial,sans-serif;color:inherit;opacity:.9;cursor:pointer;grid-column:1/-1;flex:1 1 100%;width:100%;text-align:left;list-style:none');
+      list.insertBefore(note, list.firstChild);
+    }
+    if (waiting) note.setAttribute('data-rv-empty-waiting', String(waiting)); else note.removeAttribute('data-rv-empty-waiting');
+    fillEmptyNote(note, kind, true);
+  }
+  /* the neutral picture of a speaker without a photo, on the page's own host like every asset the loader links (a
+     save makes it root-relative) */
+  function avatarAddress() {
+    try { return new URL('/templates/_shared/img/rv-avatar.svg', canvas.doc.baseURI).href; } catch (e) { return '/templates/_shared/img/rv-avatar.svg'; }
+  }
+  /* The event's name, date and place as Basics hold them, in every element of the page that follows them
+     (RevampDraw.drawFacts: data-rv-bind; a real template's content.bind and an AI-designed site's banner and top bar
+     marked on a page made before they carried it). An element with nothing to show says where to add it. The server
+     draws the same on every save and every change in Content or Basics (functions/lib/site-records.js): TPL-009,
+     TPL-026, BE-040. An imported site shows its own copy. -> true when the page changed */
+  function drawEventFacts() {
+    var tpl = String(templateId || '');
+    if (!canvas || !canvas.doc || !currentEvent || !window.RevampDraw || /^imported-/.test(tpl)) return false;
+    var report = RevampDraw.drawFacts(canvas.doc, currentEvent, {
+      fill: RevampFill, binds: (canvas.template.content || {}).bind, generated: /^gen-/.test(tpl), hint: true, retag: canvas.retag
+    });
+    return report.sections.length > 0;
   }
 
   /* Runs once per boot(), right after resolveInitialContent() has settled the canvas into whatever base
      state it was going to have (a restored local snapshot, a freshly-applied hand-off, or the template's
      own blank sample content) — see boot()'s own call site. Scoped deliberately to "the editor just
-     (re)opened", not live sync: a Content-tab edit shows up the NEXT time this page loads, not instantly in
-     an already-open tab elsewhere (see the task's own point on this). Reuses RevampFill.apply() completely
-     unchanged — ctx.content here only ever has the few `from` keys fetchSubcollectionOverlay() actually
-     resolved, so every OTHER content.map entry's `if (!(m.from in ctx.content)) return;` guard skips it,
-     leaving the rest of the canvas exactly as resolveInitialContent() left it. ctx.excluded is deliberately
-     [] (never hides/shows a section — that's the user's own Hide toggle's business, not this overlay's),
-     and ctx.generatedFromBrief is false (no AI-provenance badge should ever appear just because this ran). */
+     (re)opened", not live sync: a Content-tab or Basics edit shows up here the NEXT time this page loads (the
+     staged copy has it at once: the server draws it). Only the record lists and the event's own details are
+     drawn: nothing else of the page changes, no section is hidden or shown by it, and no AI-provenance badge
+     appears because it ran. */
   function applySubcollectionOverlay() {
     return ensureAutoSections().then(function (added) { return drawRecords(added.length > 0); });
   }
@@ -1595,12 +1515,14 @@
     // Both detection paths run together — content.map `from` (ported templates) and the DOM
     // data-rv-repeat-template convention (AI-bespoke `gen-` templates) — and contribute additively to
     // one merged apply pass; see fetchGenericRepeatOverlay()'s own comment on why they never compete.
-    return Promise.all([fetchSubcollectionOverlay(), fetchGenericRepeatOverlay(), refreshPreviousProfiles()]).then(function (results) {
+    return Promise.all([fetchMapContent(), fetchGenericRepeatOverlay(), refreshPreviousProfiles()]).then(function (results) {
       var content = results[0], repeatOverlay = results[1];
       var changed = !!sectionsAdded || results[2] === true;
       if (content) {
-        var report = RevampFill.apply(canvas, { content: content, names: {}, excluded: [], generatedFromBrief: false, aiSkippedLibraries: [] });
-        if (report.filled.length) changed = true;
+        var drawn = RevampDraw.drawMapLists(canvas.doc, (canvas.template.content || {}).map, content, {
+          fill: RevampFill, avatar: avatarAddress(), retag: canvas.retag, notice: noteMapEmpty
+        });
+        if (drawn.sections.length) changed = true;
       }
       if (repeatOverlay) {
         Object.keys(repeatOverlay).forEach(function (kind) {
@@ -1608,6 +1530,7 @@
           changed = true;
         });
       }
+      if (drawEventFacts()) changed = true;
       return changed;
     });
   }
@@ -3626,20 +3549,35 @@
   function enterEdit(el) {
     if (editingEl) exitEdit(editingEl);
     el.setAttribute('contenteditable', 'true');
+    // "Add the date in Basics" is said, not typed into
+    Array.prototype.forEach.call(el.querySelectorAll('[data-rv-bind-hint]'), function (h) { h.setAttribute('contenteditable', 'false'); });
     editingEl = el;
     editingBeforeText = el.textContent;
     el.focus({ preventScroll: true });
   }
 
+  /* One of the event's own details (data-rv-bind: the banner's date, say) rewritten here by hand is the owner's from
+     now on: it stops following Basics (data-rv-unbound), as RevampData.detach has it, and the hint that said where to
+     add it goes. Neither this editor nor the server writes Basics over it again. */
+  function detachFact(el) {
+    var bound = el.closest ? el.closest('[data-rv-bind]') : null;
+    if (!bound || bound.getAttribute('data-rv-bind') === 'event.logo') return;
+    Array.prototype.forEach.call(bound.querySelectorAll('[data-rv-bind-hint]'), function (n) { n.remove(); });
+    bound.setAttribute('data-rv-unbound', bound.getAttribute('data-rv-bind'));
+    bound.removeAttribute('data-rv-bind');
+    bound.removeAttribute('data-rv-bind-empty');
+  }
+
   function exitEdit(el) {
     el.removeAttribute('contenteditable');
+    Array.prototype.forEach.call(el.querySelectorAll('[data-rv-bind-hint]'), function (h) { h.removeAttribute('contenteditable'); });
     editingEl = null;
     var sel = canvas.win.getSelection();
     if (sel.rangeCount && el.contains(sel.anchorNode)) sel.removeAllRanges();
     clearTimeout(typingTimer); typingTimer = null;
     var changed = editingBeforeText !== null && el.textContent !== editingBeforeText;
     editingBeforeText = null;
-    if (changed) clearAiGenerated(el);
+    if (changed) { clearAiGenerated(el); detachFact(el); }
     commitTyping();
     typingPtr = -1;       // the next text edited starts its own undo step
   }
@@ -4106,7 +4044,7 @@
      each one goes the same way as its button on the section pill. */
   function boundSource(type, html) {
     var map = (canvas.template.content || {}).map || [];
-    if (map.some(function (m) { return m.section === type && SUBCOLLECTION_SOURCES[m.from]; })) return true;
+    if (map.some(function (m) { return m.section === type && window.RevampDraw && RevampDraw.MAP_SOURCES[m.from]; })) return true;
     var m = /data-rv-repeat-template="([^"]+)"/.exec(html || '');
     return !!(m && GENERIC_REPEAT_SOURCES[m[1]]);
   }

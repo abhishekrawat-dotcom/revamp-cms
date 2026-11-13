@@ -445,19 +445,56 @@ function addFaq(id, fid, q, a) { FB.docs['events/' + id + '/faqs/' + fid] = { qu
   addFaq('cr-nofaq', 'z1', 'Q?', 'A.');
   r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-nofaq' } });
   check('2.23 FAQs with no FAQ list on the page: unplaced (the editor adds a section when it opens)', r.status === 200 && r.body.unplaced.indexOf('faq') !== -1 && r.body.staged === false, r.text);
+  /* TPL-034: a real template's own lists are drawn by the server too (site-records.js drawOwn): the FAQ is on the staged
+     copy at once, and the console is never sent to the site editor for it */
   FB.docs['events/cr-tech'] = { name: 'Real template', createdAt: NOW, templateId: 'tech500', site: { version: 1, templateId: 'tech500' } };
-  await save('events/cr-tech/site/page.html', '<!DOCTYPE html><html><body><section data-rv-section="faq"><div class="faq-item">Q</div></section></body></html>');
-  addFaq('cr-tech', 't1', 'Q?', 'A.');
+  var TECH_FAQ = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'templates', 'tech500', 'sections', 'faq', 'index.html'), 'utf8')
+    .replace('<section ', '<section data-rv-section="faq" ');
+  await save('events/cr-tech/site/page.html', '<!DOCTYPE html><html><body><header data-rv-section="nav"><a href="#frequently-asked-questions">FAQ</a></header>' + TECH_FAQ + '</body></html>');
+  addFaq('cr-tech', 't1', 'Is there parking?', 'Yes.');
   r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-tech' } });
-  check('2.24 a real template draws FAQs in the site editor: the console is told to open it', r.status === 200 && r.body.needsEditor.indexOf('faq') !== -1 && r.body.staged === false, r.text);
-  /* CON-036: a real template's speakers, every one of them now Invited: the card drawn earlier is the editor's to take
-     away, so the console is still told to open it; no section is asked for */
+  var techPage = file('events/cr-tech/site/page.html');
+  check('2.24 a real template: the FAQ is drawn into the staged copy by its own rules, and the console is not sent to the editor',
+    r.status === 200 && r.body.staged === true && r.body.needsEditor.length === 0 && r.body.unplaced.length === 0 && r.body.summary === 'Content: 1 FAQ added' &&
+    /<div class="faq-item" data-rv-item="faq" data-rv-id="t1">/.test(techPage) && /<span class="faq-question-text">Is there parking\?<\/span>/.test(techPage) &&
+    /<template data-rv-pristine=".faq-item">/.test(techPage), { body: r.body, page: techPage && techPage.slice(0, 400) });
+  /* TPL-007: the last FAQ deleted in Content — its card leaves the staged copy, and the section (with the menu's link) goes */
+  delete FB.docs['events/cr-tech/faqs/t1'];
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-tech' } });
+  techPage = file('events/cr-tech/site/page.html');
+  var techShown = (techPage || '').replace(/<template[\s\S]*?<\/template>/g, '');
+  check('2.24d the last FAQ deleted: no card is left on the staged copy, the section is marked empty and the menu\'s link with it, told as a removal',
+    r.status === 200 && r.body.staged === true && r.body.summary === 'Content: 1 FAQ removed' && !/Is there parking/.test(techShown) && !/data-rv-item="faq"/.test(techShown) &&
+    /data-rv-section="faq"[^>]*data-rv-empty="faq"/.test(techPage) && /<a href="#frequently-asked-questions" data-rv-nav-empty="">FAQ<\/a>/.test(techPage), { body: r.body, page: techShown.slice(0, 600) });
+  /* CON-036: a real template's speakers, every one of them now Invited: the server takes the card drawn earlier away
+     (a removal on the staged copy); no section is asked for */
   FB.docs['events/cr-cx'] = { name: 'Real template, invited', createdAt: NOW, templateId: 'cx-leaders-forum', site: { version: 1, templateId: 'cx-leaders-forum' } };
-  await save('events/cr-cx/site/page.html', '<!DOCTYPE html><html><body><section data-rv-section="speakers"><div class="speaker-card" data-rv-item="speakers" data-rv-id="i1"><h5>Meera Iyer</h5></div></section></body></html>');
+  await save('events/cr-cx/site/page.html', '<!DOCTYPE html><html><body><section data-rv-section="speakers"><div class="speaker-grid"><article class="speaker-card" data-rv-item="speakers" data-rv-id="i1"><img src="/templates/_shared/img/rv-avatar.svg" alt="Meera Iyer"><div class="caption"><h5>Meera Iyer</h5><span>CTO</span></div></article></div></section></body></html>');
   FB.docs['events/cr-cx/speakers/i1'] = { name: 'Meera Iyer', status: 'invited', createdAt: NOW, order: 0 };
   r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-cx' } });
-  check('2.24b a real template whose speakers are all Invited: the console is told to open the editor, no section asked for',
-    r.status === 200 && r.body.needsEditor.indexOf('speakers') !== -1 && r.body.unplaced.indexOf('speakers') === -1 && r.body.staged === false, r.text);
+  var cxShown = (file('events/cr-cx/site/page.html') || '').replace(/<template[\s\S]*?<\/template>/g, '');
+  check('2.24b a real template whose speakers are all Invited: the staged copy no longer shows them, and no section is asked for',
+    r.status === 200 && r.body.staged === true && r.body.needsEditor.length === 0 && r.body.unplaced.indexOf('speakers') === -1 && !/Meera Iyer/.test(cxShown) &&
+    /data-rv-section="speakers" data-rv-empty="speakers"/.test(cxShown), { body: r.body, page: cxShown.slice(0, 400) });
+  /* TPL-009 / TPL-026: a change in Basics (the console stages the site after it, as after a Content change) reaches the
+     banner on the staged copy, in the banner's own words */
+  FB.docs['events/cr-basics'] = { name: 'Basics Summit', createdAt: NOW, templateId: 'tech500', start: '2027-03-14T09:00', end: '', venue: 'Grand Hyatt', city: 'Mumbai',
+    site: { version: 1, templateId: 'tech500' } };
+  var TECH_BANNER = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'templates', 'tech500', 'sections', 'banner', 'index.html'), 'utf8')
+    .replace('<section ', '<section data-rv-section="banner" ');
+  await save('events/cr-basics/site/page.html', '<!DOCTYPE html><html><body>' + TECH_BANNER + '</body></html>');
+  r = await call('PATCH', '/api/event', { token: 'editor', body: { eventId: 'cr-basics', venue: 'Jio World Centre', dateLabel: '' } });
+  var patched = r.status === 200;
+  r = await call('POST', '/api/event/site/records', { token: 'editor', body: { eventId: 'cr-basics' } });
+  var basicsPage = file('events/cr-basics/site/page.html') || '';
+  check('2.24e a change in Basics is drawn into the banner on the staged copy: name, date and place as Basics hold them',
+    patched && r.status === 200 && r.body.staged === true && />Basics Summit<\/h1>/.test(basicsPage) && /<\/i> 14th March, 2027<\/div>/.test(basicsPage) &&
+    /<\/i> Jio World Centre, Mumbai<\/div>/.test(basicsPage), { body: r.body, page: basicsPage.slice(0, 1200) });
+  /* …and a save from the editor keeps today's Basics on the page it stores, whatever the editor had */
+  r = await call('PUT', '/api/event/site', { token: 'editor', body: { eventId: 'cr-basics', templateId: 'tech500', baseVersion: 2, snapshot: { nodes: [] },
+    html: basicsPage.replace('Jio World Centre, Mumbai', 'Old Hall, Mumbai') } });
+  check('2.24f a save keeps today\'s Basics on the stored page', r.status === 200 && /Jio World Centre, Mumbai/.test(file('events/cr-basics/site/page.html') || '') &&
+    !/Old Hall/.test(file('events/cr-basics/site/page.html') || ''), r.text);
   /* …and an AI-designed site that showed an Invited speaker and a Tentative sponsor (drawn before the rule): the next
      Content change stages a copy without them, which is what the preview and, once approved, the live page show */
   FB.docs['events/cr-inv'] = { name: 'Invited on the page', createdAt: NOW, templateId: 'gen-cr-inv', published: true, publishedVersion: 1, site: { version: 1, snapshotVersion: 1, templateId: 'gen-cr-inv' } };
