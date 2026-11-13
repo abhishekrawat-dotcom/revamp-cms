@@ -417,7 +417,9 @@
     if (n) n.textContent = dirty() ? 'Changes not saved yet.' : 'No changes.';
     ['pp-save', 'pp-reset'].forEach(function (id) { var b = document.getElementById(id); if (b) b.disabled = !on; });
   }
-  /* an uploaded picture: a photo square (320 px, the top of a portrait kept), a logo whole (at most 480 px) */
+  /* an uploaded picture: a photo square (320 px, the top of a portrait kept), a logo whole (at most 480 px). It is held
+     as image text in the draft only, to show it: on Save the server stores it as a file and the page keeps the
+     file's address (functions/lib/people.js storePagePicture). */
   function readPicture(file) {
     return new Promise(function (resolve, reject) {
       if (!file || !/^image\/(jpeg|png|webp)$/.test(file.type)) return reject(new Error('Choose a JPEG, PNG or WebP picture.'));

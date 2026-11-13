@@ -664,6 +664,27 @@ function cleanPage(kind, input) {
   (Array.isArray(input.hideEvents) ? input.hideEvents : []).slice(0, CAPS.hideEvents).forEach(function (k) { k = oneLine(k, 200); if (/^(et|own):/.test(k) && out.hideEvents.indexOf(k) === -1) out.hideEvents.push(k); });
   return { page: out };
 }
+/* A photo or logo the team adds arrives as image text (people-admin.js draws the chosen file smaller on a canvas): it
+   is stored as a file in the pages' own folder — people/<kind>/<slug>/, qa-people/… for a test server's copy — and
+   the page keeps its address (lib/inline-pictures.js), as an event's speakers and sponsors do. The picture the page
+   already holds, sent back as it is, is left alone: a page saved before this keeps its picture until the owner moves
+   it (tools/migrate-inline-pictures.js). Resolves once page.set holds an address; rejects (status, body) for a
+   picture that is not one, and (code 'conflict') for a save made on an older version than the page's. */
+function picturesFolder(kind, slug) {
+  var p = String(process.env.PEOPLE_COL_PREFIX || '');
+  return (/^[a-z]{1,10}$/.test(p) ? p + '-' : '') + 'people/' + kind + '/' + slug;
+}
+function storePagePicture(fb, kind, slug, ref, page, by, base) {
+  var IP = require('./inline-pictures'), set = (page && page.set) || {}, field = kind === 'speakers' ? 'photo' : 'logo';
+  if (!IP.isInline(set[field])) return Promise.resolve();
+  return ref.get().then(function (snap) {
+    var stored = (snap.exists && snap.data()) || {}, was = stored.set || {}, folders = {};
+    /* a save that will be refused as made on an older version stores nothing (handleOne's own check, made early) */
+    if (base != null && +base !== (stored.version || 0)) { var c = new Error('changed'); c.code = 'conflict'; throw c; }
+    folders[field] = picturesFolder(kind, slug);
+    return IP.storeFields(fb, set, folders, was, { labels: { photo: 'The photo', logo: 'The logo' }, actor: by });
+  });
+}
 function pageFields(p) { p = p || {}; return { set: p.set || {}, about: p.about || '', sections: p.sections || [], links: p.links || [], hideEvents: p.hideEvents || [] }; }
 function samePage(a, b) { return JSON.stringify(pageFields(a)) === JSON.stringify(pageFields(b)); }
 
@@ -997,7 +1018,7 @@ function handleOne(req, res) {
       if (clean && clean.error) return H.sendJson(res, 400, { error: clean.error, code: 'bad-input' });
       var wantHidden = typeof body.hidden === 'boolean' ? body.hidden : null;
       var ref = pageRef(fb, kind, slug);
-      return fb.db.runTransaction(function (tx) {
+      return (clean ? storePagePicture(fb, kind, slug, ref, clean.page, by, body.base) : Promise.resolve()).then(function () { return fb.db.runTransaction(function (tx) {
         return tx.get(ref).then(function (snap) {
           var was = snap.exists ? snap.data() || {} : {};
           var version = was.version || 0;
@@ -1015,7 +1036,7 @@ function handleOne(req, res) {
           tx.set(ref.collection('log').doc(), { at: now, version: next.version, by: by, action: actions.join('+'), before: pageFields(was), after: pageFields(next), hiddenBefore: hiddenNow, hiddenAfter: wantHidden === null ? hiddenNow : wantHidden });
           return { actions: actions };
         });
-      }).then(function (out) {
+      }); }).then(function (out) {
         if (out.unchanged || out.actions.indexOf('hide') === -1 && out.actions.indexOf('show') === -1) return out;
         return withIndex(fb, kind, function (ix) { var e = ix.people[slug]; if (!e) return; if (wantHidden) e.h = true; else delete e.h; }, [slug]).then(function () { sitemapCache = null; return out; });
       }).then(function () {
@@ -1023,6 +1044,7 @@ function handleOne(req, res) {
       });
     }).catch(function (err) {
       if (err && err.code === 'conflict') return H.sendJson(res, 409, { error: 'Someone else changed this page just now. It has been read again: check it and make your change once more.', code: 'conflict' });
+      if (err && err.status && err.body) return H.sendJson(res, err.status, err.body);     // a picture that is not one (lib/inline-pictures.js)
       console.error('people: save ' + kind + '/' + slug + ' failed — ' + (err && err.stack || err));
       H.sendJson(res, 500, { error: 'The change could not be saved just now. Please try again.' });
     });
@@ -1345,6 +1367,7 @@ function handleUndo(req, res) {
 module.exports = {
   wire: wire, reconcile: reconcile, reconcileAll: reconcileAll, soon: soon, routePublic: routePublic, handleSitemap: handleSitemap,
   handleList: handleList, handleOne: handleOne, handleMerge: handleMerge, handleSplit: handleSplit, handleUndo: handleUndo, handleAbout: handleAbout, handleWiki: handleWiki, wikiLookup: wikiLookup, personOf: personOf, readIndex: readIndex,
+  picturesFolder: picturesFolder,
   _test: { place: place, newSlug: newSlug, summarise: summarise, joinInto: joinInto, finalSlug: finalSlug, withLookups: withLookups, cleanPage: cleanPage,
     personOf: personOf, whyNotPublic: whyNotPublic, findSlug: findSlug, mayChange: mayChange, shardOf: shardOf, readIndex: readIndex, forget: forget,
     sitemapEntries: sitemapEntries, rowsOf: rowsOf, groupsOf: groupsOf, completeOf: completeOf, missingOf: missingOf, FIELDS: FIELDS, DUMMY_EVENTS: DUMMY_EVENTS, KINDS: KINDS, CAPS: CAPS, factsOf: factsOf, aboutPrompt: aboutPrompt, cleanAbout: cleanAbout }

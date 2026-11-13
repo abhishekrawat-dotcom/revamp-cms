@@ -7715,10 +7715,11 @@ var INLINE_IMAGE_MAX_CHARS = 700000;   // ~520 KB of image as base64; a Firestor
 function checkUrl(label, v, max) {
   if (v == null || v === '') return '';
   if (typeof v !== 'string') return label + ' must be a web address.';
-  /* Until the console and the wizard upload every picture first, they still send small ones inline, and
-     refusing those would stop a speaker photo, a sponsor logo or a gallery picture being saved at all.
-     An inline image is therefore still accepted while it is small enough to fit a Firestore document
-     beside the record's other fields; anything larger gets the instruction that actually helps. */
+  /* A speaker's photo and company logo, a partner's logo and a gallery picture are no longer judged here:
+     they are 'picture:' fields (checkPicture), stored as files (lib/inline-pictures.js). What still comes
+     here inline (an event's own logo or banner on PATCH /api/event, a promotion's picture) is accepted
+     while it is small enough to fit a Firestore document beside the record's other fields; anything
+     larger gets the instruction that actually helps. */
   if (/^\s*data:/i.test(v)) {
     if (/^\s*data:image\/(png|jpe?g|webp|gif);base64,/i.test(v) && v.length <= INLINE_IMAGE_MAX_CHARS) return '';
     return label + ' is too large to be saved with the record — use a smaller picture (under about 500 KB).';
@@ -7762,6 +7763,10 @@ function checkDate(label, v) {
      'text' short text (300)   'long' long text (5000)   'long20k' a message body (20,000)
      'text:<n>'  short text of at most n characters
      'url'    an address — http(s), a path on this host, or a bare "company.com/…"; never a data: URL
+     'picture:<folder>'  the address of a picture's file (a speaker's photo and company logo, a partner's logo, a
+              gallery picture). A NEW picture sent as image text (a data: URL) is stored as a file first, in
+              events/<eventId>/<folder>/ as POST /api/event/upload stores one, and the record keeps its address
+              (lib/inline-pictures.js; create / update below); one sent back exactly as stored is left as it is
      'email'  '' or an e-mail address          'phone'  '' or digits with + ( ) . - and spaces
      'colour' '' or #rgb / #rrggbb             'status' '' or one of CONTENT_STATUSES
      'enum:a|b|c'  one of the listed values ('' only when it is listed: 'enum:|hot|cold')
@@ -7780,8 +7785,16 @@ function checkDate(label, v) {
 var FIELD_LIMITS = { text: 300, long: 5000, long20k: 20000 };
 var PERSON_KEY = /^[rl]:[A-Za-z0-9_-]{1,120}$/;
 
+/* A picture field (type 'picture:<folder>'): the address of a file. Image text never gets here to be saved: a new
+   data: picture is stored as a file before the record is judged (subcollectionRoutes), and one sent back exactly as
+   it is stored is not judged again (sanitize) — so a data: URL that is left is refused, never written. */
+function checkPicture(label, v) {
+  if (typeof v === 'string' && /^\s*data:/i.test(v)) return label + ' must be uploaded as a file first. Add the picture again.';
+  return checkUrl(label, v);
+}
 function checkRecordField(label, type, v) {
   if (typeof type === 'function') return type(label, v);
+  if (type.indexOf('picture:') === 0) return checkPicture(label, v);
   if (type === 'text' || type === 'long' || type === 'long20k') return checkText(label, v, FIELD_LIMITS[type], false);
   if (type.indexOf('text:') === 0) return checkText(label, v, +type.slice(5), false);
   if (type === 'url') return checkUrl(label, v);
@@ -7879,6 +7892,10 @@ function recordTitle(d) {
   return String(v || 'untitled').replace(/\s+/g, ' ').trim().slice(0, 80);
 }
 
+/* how a picture field is named in a sentence about it ("The photo is not an image we can use …") */
+var PICTURE_LABELS = { photoUrl: 'The photo', logoUrl: 'The logo', imageUrl: 'The picture' };
+function inlinePictures() { return require('./inline-pictures'); }
+
 function subcollectionRoutes(name, spec) {
   var fields = spec.fields, label = spec.label;
   /* the activity log's area for this kind of record */
@@ -7919,6 +7936,26 @@ function subcollectionRoutes(name, spec) {
   function col(fb, eventId) { return eventDocRef(fb, eventId).collection(name); }
   function gone() { return httpError(404, 'That ' + label + ' no longer exists — it may have been deleted.', { code: 'record-not-found' }); }
 
+  /* PICTURES (fields of type 'picture:<folder>'). A new picture that arrives as image text is stored as a file
+     and the record keeps its address (lib/inline-pictures.js). The record is judged first, with each such
+     picture standing in as an address, so that a record that is refused leaves no file behind. */
+  var pictureFolder = {};
+  Object.keys(fields).forEach(function (f) { if (typeof fields[f] === 'string' && fields[f].indexOf('picture:') === 0) pictureFolder[f] = fields[f].slice(8); });
+  var hasPictures = Object.keys(pictureFolder).length > 0;
+  function newInlinePictures(body, stored) { return hasPictures ? inlinePictures().changedInline(body, pictureFolder, stored) : []; }
+  function asSaved(body, inline) {
+    if (!inline.length) return body;
+    var b = Object.assign({}, body);
+    inline.forEach(function (f) { b[f] = 'https://storage.googleapis.com/picture-to-be-stored.png'; });
+    return b;
+  }
+  function storeInlinePictures(fb, eventId, body, inline, decoded) {
+    if (!inline.length) return Promise.resolve([]);
+    var folders = {};
+    inline.forEach(function (f) { folders[f] = 'events/' + eventId + '/' + pictureFolder[f]; });
+    return inlinePictures().storeFields(fb, body, folders, null, { labels: PICTURE_LABELS, actor: actorOf(decoded) });
+  }
+
   function list(req, res) {
     withAdmin(req, res, function (fb) {
       var eventId = eventIdOr400(res, queryOf(req).get('eventId'));
@@ -7943,12 +7980,21 @@ function subcollectionRoutes(name, spec) {
     withAdminBody(req, res, spec.maxBody || BODY_LIMITS.record, function (fb, decoded, body) {
       var eventId = eventIdOr400(res, body.eventId);
       if (!eventId) return;
-      var clean = sanitize(body, true, null);
+      var inline = newInlinePictures(body, null);
+      var clean = sanitize(asSaved(body, inline), true, null);
       if (clean.error) return sendJson(res, 400, { error: clean.error, field: clean.field });
       var data = clean.data, now = new Date().toISOString();
-      data.createdAt = now; data.updatedAt = now; data.createdBy = actorOf(decoded); data.updatedBy = data.createdBy;
       loadLiveEvent(fb, eventId)
-        .then(function () { return col(fb, eventId).add(data); })
+        .then(function () { return storeInlinePictures(fb, eventId, body, inline, decoded); })
+        .then(function () {
+          if (inline.length) {
+            var stored = sanitize(body, true, null);
+            if (stored.error) throw httpError(400, stored.error, { field: stored.field });
+            data = stored.data;
+          }
+          data.createdAt = now; data.updatedAt = now; data.createdBy = actorOf(decoded); data.updatedBy = data.createdBy;
+          return col(fb, eventId).add(data);
+        })
         .then(function (ref) {
           sendJson(res, 200, { id: ref.id, createdAt: now, updatedAt: now });
           logActivity(fb, eventId, decoded, 'content-added', label + ' “' + maskEmail(recordTitle(data)) + '”', { area: logArea, fields: fieldChanges(null, data, RECORD_META) });
@@ -7969,9 +8015,20 @@ function subcollectionRoutes(name, spec) {
       var bad = checkIfUpdatedAt(body);
       if (bad) return sendJson(res, 400, { error: bad, field: 'ifUpdatedAt' });
       var ref = col(fb, eventId).doc(body.id), now = new Date().toISOString(), diff = [], title = '';
+      /* a new picture sent as image text is stored as a file first (see PICTURES above): judged against the record
+         as it is now, and not stored for a save that would be refused as stale */
+      var pictures = newInlinePictures(body, null).length ? loadLiveEvent(fb, eventId).then(function () { return ref.get(); }).then(function (snap) {
+        if (!snap.exists) throw gone();
+        var stored = snap.data() || {};
+        if (body.ifUpdatedAt != null && body.ifUpdatedAt !== stored.updatedAt) throw staleError(label, stored);
+        var inline = newInlinePictures(body, stored);
+        var probe = sanitize(asSaved(body, inline), false, stored);
+        if (probe.error) throw httpError(400, probe.error, { field: probe.field });
+        return storeInlinePictures(fb, eventId, body, inline, decoded);
+      }) : Promise.resolve();
       /* the event is read outside the transaction: every registration writes to that document, and a
          content save must not queue behind them */
-      loadLiveEvent(fb, eventId).then(function () {
+      pictures.then(function () { return loadLiveEvent(fb, eventId); }).then(function () {
         return fb.db.runTransaction(function (tx) {
           return tx.get(ref).then(function (snap) {
             if (!snap.exists) throw gone();
@@ -8040,7 +8097,7 @@ function removeSpeaker(fb, eventId, id, ref) {
 // S.partners[] etc.); the Firestore collection name is the first argument, the URL segment is the key.
 var RESOURCES = {
   'speakers': subcollectionRoutes('speakers', { label: 'speaker', required: ['name'], onRemove: removeSpeaker, onWrite: peopleSoon('speakers'), fields: {
-    name: 'text', desig: 'text', comp: 'text', photoUrl: 'url', logoUrl: 'url', colour: 'colour', weight: 'rank',
+    name: 'text', desig: 'text', comp: 'text', photoUrl: 'picture:speakers', logoUrl: 'picture:speakers', colour: 'colour', weight: 'rank',
     status: 'status', email: 'email', phone: 'phone', li: 'url', bio: 'long', groupId: 'ref', order: 'num' } }),
   'speaker-groups': subcollectionRoutes('speakerGroups', { label: 'speaker group', required: ['name'], fields: { name: 'text', order: 'num' } }),
   'sessions': subcollectionRoutes('sessions', { label: 'session', required: ['title'], fields: {
@@ -8048,10 +8105,10 @@ var RESOURCES = {
     weight: 'rank', groupId: 'ref', order: 'num' } }),
   'agenda-groups': subcollectionRoutes('agendaGroups', { label: 'agenda day', required: ['name'], fields: { name: 'text', date: 'text', order: 'num' } }),
   'partners': subcollectionRoutes('partners', { label: 'partner', required: ['name'], onWrite: peopleSoon('sponsors'), fields: {
-    name: 'text', url: 'url', logoUrl: 'url', weight: 'rank', status: 'status', email: 'email', phone: 'phone',
+    name: 'text', url: 'url', logoUrl: 'picture:partners', weight: 'rank', status: 'status', email: 'email', phone: 'phone',
     contact: 'text', note: 'long', tierId: 'ref', order: 'num' } }),
   'partner-tiers': subcollectionRoutes('partnerTiers', { label: 'partner tier', required: ['name'], fields: { name: 'text', weight: 'rank', order: 'num' } }),
-  'gallery': subcollectionRoutes('gallery', { label: 'gallery image', required: ['imageUrl'], fields: { imageUrl: 'url', caption: 'text', order: 'num' } }),
+  'gallery': subcollectionRoutes('gallery', { label: 'gallery image', required: ['imageUrl'], fields: { imageUrl: 'picture:gallery', caption: 'text', order: 'num' } }),
   'faqs': subcollectionRoutes('faqs', { label: 'FAQ', required: ['question'], fields: { question: 'text', answer: 'long', order: 'num' } }),
   'contacts': subcollectionRoutes('contacts', { label: 'contact', anyOf: ['label', 'name'], fields: {
     label: 'text', name: 'text', email: 'email', phone: 'phone', order: 'num' } })

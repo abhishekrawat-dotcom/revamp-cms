@@ -90,6 +90,9 @@
                                   POST   /api/event/upload -> {url, path}. file is a File or Blob; kind is
                                    speakers | partners | gallery | logo | banner | media | brief. Refuses a
                                    non-image or anything over 8 MB before sending.
+     .storePicture(eventId, kind, value, name)
+                                  -> a picture held as image text (a data: URL) uploaded as above, resolved as
+                                   its address; any other value resolved as it is (see the function)
      .refreshLogoUnit(eventId)    POST   /api/event/logo-unit -> {aiDesigned, unit, heroUpdated, savedSite}: the
                                    event's uploaded logo examined (its year brought to this edition's) and
                                    made the AI-designed site's hero logo; a saved site is left to the editor
@@ -913,6 +916,30 @@ window.RevampCore = (function(){
     });
   }
 
+  /* A picture the console holds as image text — a photo cropped or a logo drawn smaller on a canvas, a library
+     entry's picture kept inline in an older record — stored as a file before a record names it: uploaded with
+     uploadImage (kind speakers | partners | …) and resolved as its address. Anything else (an address already,
+     '', null) is resolved as it is, so a record's pictures can all be passed through. name: what the file is
+     named after ("Naven Singh photo"; a name with "logo" in it keeps a logo's WebP copies lossless).
+     -> Promise<url | value> */
+  var DATA_TYPE_EXT = { 'image/jpeg':'jpg', 'image/png':'png', 'image/webp':'webp', 'image/gif':'gif', 'image/svg+xml':'svg' };
+  function storePicture(eventId, kind, value, name){
+    var s = typeof value === 'string' ? value.trim() : '';
+    if (!/^data:/i.test(s)) return Promise.resolve(value);
+    var comma = s.indexOf(','), head = comma === -1 ? '' : s.slice(5, comma).toLowerCase();
+    var type = head.split(';')[0].trim(), bin = null;
+    if (/;\s*base64\s*$/.test(head) && DATA_TYPE_EXT[type]){
+      try { bin = atob(s.slice(comma + 1).replace(/\s+/g, '')); } catch (e) { bin = null; }
+    }
+    if (!bin) return Promise.reject(apiError('That picture could not be read. Add it again.', 400));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    var fileName = (String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'picture') + '.' + DATA_TYPE_EXT[type];
+    var file;
+    try { file = new File([bytes], fileName, { type: type }); } catch (e) { file = new Blob([bytes], { type: type }); }
+    return uploadImage(eventId, kind, file).then(function(up){ return up.url; });
+  }
+
   /* ---------- the banner video (functions/lib/api-hero-video.js; the settings UI is hero-video-ui.js) ----------
      fetchHeroVideo(eventId) -> { heroVideo | null, site: { host, tone, scrim }, auto, limits, types }
      uploadHeroVideo(eventId, file, { onProgress(fraction), onXhr(xhr) }) -> the video as the server read it
@@ -1575,7 +1602,7 @@ window.RevampCore = (function(){
     fetchAccess: fetchAccess, saveAccessMember: saveAccessMember, removeAccessMember: removeAccessMember, saveAccessDefault: saveAccessDefault,
     stageEvent: stageEvent, previewUrl: previewUrl, publicUrl: publicUrl, publicBase: publicBase, notePublicBase: notePublicBase, fetchSiteData: fetchSiteData, fetchBriefDetails: fetchBriefDetails,
     siteState: siteState, mayTakeOffline: mayTakeOffline, basicsGaps: basicsGaps, DESC: DESC, readSiteHead: readSiteHead,
-    uploadImage: uploadImage, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
+    uploadImage: uploadImage, storePicture: storePicture, refreshLogoUnit: refreshLogoUnit, logoUnitDark: logoUnitDark, seedContent: seedContent,
     fetchHeroVideo: fetchHeroVideo, uploadHeroVideo: uploadHeroVideo, saveHeroVideo: saveHeroVideo, removeHeroVideo: removeHeroVideo,
     fetchSub: fetchSub, createSub: createSub, updateSub: updateSub, deleteSub: deleteSub,
     fetchRegistrations: fetchRegistrations, updateRegistration: updateRegistration, deleteRegistration: deleteRegistration,

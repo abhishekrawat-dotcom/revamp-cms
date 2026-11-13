@@ -2643,6 +2643,26 @@
     }));
   }
 
+  /* A record's pictures as files (CON-052/054/055). The dialogs keep a new photo or logo as image text while it is
+     being cropped or drawn smaller, to show it; on Save each one is uploaded first (RevampCore.storePicture, kind
+     speakers / partners) and the record names the file's address — never the picture itself. A library entry's
+     picture still held inline in an older record is uploaded the same way. A picture the record already had is
+     sent back as it is (`was`: the record as loaded), so a record saved before this keeps its picture until the
+     owner moves it. The entry `e` keeps the address too, so a retry after a refused save uploads nothing again.
+     -> Promise, rejected with a sentence that says which picture was not uploaded and why */
+  function storeRecordPictures(G, e, rec, was){
+    var keys = ['photo', 'logo'].filter(function(k){ return typeof rec[k] === 'string' && /^data:/i.test(rec[k]) && !(was && was[k] === rec[k]); });
+    return Promise.all(keys.map(function(k){
+      var what = k === 'photo' ? 'photo' : 'logo';
+      var name = (k === 'logo' && G.itemRes === 'speakers' && rec.comp ? rec.comp : rec.name || G.one) + ' ' + what;
+      return C.storePicture(EV.id, G.itemRes, rec[k], name).then(function(url){ rec[k] = url; e[k] = url; }, function(err){
+        var e2 = new Error('The ' + what + ' could not be uploaded. ' + errText(err));
+        e2.status = 400;
+        throw e2;
+      });
+    }));
+  }
+
   /* ---- saving an add / edit dialog ----
      The dialog stays open, busy, until the server has answered. Each record of an add is sent
      and settled by itself: the ones that were stored go onto the page with their real ids and
@@ -2664,7 +2684,9 @@
       if (cfg.editing){
         if (Q[0].err) throw Q[0].err;
         var rec = cfg.record(Q[0]);
-        return updateSub(G.itemRes, cfg.editing.id, cfg.body(rec)).then(function(){
+        return storeRecordPictures(G, Q[0], rec, cfg.editing).then(function(){
+          return updateSub(G.itemRes, cfg.editing.id, cfg.body(rec));
+        }).then(function(){
           rec.id = cfg.editing.id;
           rec.order = cfg.editing.order;
           S[G.items] = itemsOf(G).map(function(x){ return x.id === rec.id ? rec : x; });
@@ -2673,9 +2695,12 @@
       var order0 = nextOrder(itemsOf(G)), slots = [];
       return Promise.all(Q.map(function(e, i){
         if (e.err) return null;
-        var rec = cfg.record(e), body = cfg.body(rec);
-        body.order = order0 + i;
-        return C.createSub(G.itemRes, EV.id, body).then(function(res){
+        var rec = cfg.record(e), body;
+        return storeRecordPictures(G, e, rec, null).then(function(){
+          body = cfg.body(rec);
+          body.order = order0 + i;
+          return C.createSub(G.itemRes, EV.id, body);
+        }).then(function(res){
           rec.id = res.id;
           rec.order = body.order;
           slots[i] = rec;
@@ -2801,7 +2826,9 @@
 
   /* ---------------- photo helpers ---------------- */
   /* Everything that leaves the dialog is already square and already
-     small — the console never hands a 6 MB camera file to the page. */
+     small — the console never hands a 6 MB camera file to the page.
+     What these draw is held as image text only while the dialog is open, to show it: on Save it is uploaded
+     as a file and the record keeps the file's address (storeRecordPictures). */
   function cropToSquare(img, tx, ty, zoom, view, out){
     var cover = Math.max(view / img.naturalWidth, view / img.naturalHeight);
     var s = cover * zoom;
@@ -2820,17 +2847,19 @@
     cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
     return cv.toDataURL('image/png');
   }
+  var PICTURE_KINDS = 'Choose a PNG, JPG, WebP, GIF or SVG file.';
   function readImage(file, cb){
-    if (!file || !/^image\//.test(file.type)){ cb(null, 'That file is not an image.'); return; }
-    if (file.size > 12 * 1024 * 1024){ cb(null, 'That image is over 12 MB. Try a smaller one.'); return; }
+    var shown = file && file.name ? '“' + String(file.name).slice(0, 80) + '”' : 'That file';
+    if (!file || !/^image\//.test(file.type)){ cb(null, shown + ' is not a picture. ' + PICTURE_KINDS); return; }
+    if (file.size > 12 * 1024 * 1024){ cb(null, shown + ' is ' + (file.size / 1048576).toFixed(1) + ' MB. Pictures can be up to 12 MB: choose a smaller one.'); return; }
     var fr = new FileReader();
     fr.onload = function(){
       var im = new Image();
       im.onload = function(){ cb(im, null); };
-      im.onerror = function(){ cb(null, 'That image could not be read.'); };
+      im.onerror = function(){ cb(null, shown + ' could not be opened as a picture. ' + PICTURE_KINDS); };
       im.src = fr.result;
     };
-    fr.onerror = function(){ cb(null, 'That file could not be read.'); };
+    fr.onerror = function(){ cb(null, shown + ' could not be read from your computer. Choose it again.'); };
     fr.readAsDataURL(file);
   }
 

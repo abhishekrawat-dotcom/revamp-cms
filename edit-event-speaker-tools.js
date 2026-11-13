@@ -16,7 +16,8 @@
    speaker (twelve at most, six to a request), and ETB2B AI marks where each named speaker's own photo is
    (POST /api/event/speaker-photos/find); each photo is cut out of the full-size page here. Every photo is shown
    before anything is saved: the person ticks what to keep. A speaker who already has a photo keeps it unless the
-   person ticks "Replace". Photos are saved square, 320 px, as the console saves one.
+   person ticks "Replace". Photos are saved square, 320 px, as the console saves one: uploaded as a file first
+   (RevampCore.storePicture), the speaker keeping its address — never the picture inside the record.
 
      EditEventSpeakerTools.init(ctx)        the console's helpers (edit-event.html CTX.speakerTools)
      EditEventSpeakerTools.paste()          the Paste a list window
@@ -263,17 +264,25 @@
         f.arrayBuffer().then(function (buf) { fromPdf(new Uint8Array(buf), null); });
       });
     };
+    /* each photo is uploaded as a file first (RevampCore.storePicture: kind speakers) and the speaker gets its address,
+       never the picture itself; a photo uploaded before a failed save keeps its address, so Save again uploads nothing twice */
     $('ph-save').onclick = function () {
-      var todo = cands.filter(function (c) { return c.use && c.speakerId; }), done = 0, failed = [];
+      var todo = cands.filter(function (c) { return c.use && c.speakerId; }), done = 0, failed = [], why = '';
       m.busy(true, $('ph-save'));
       inTurns(todo, AT_ONCE, function (c) {
-        return X.C.updateSub('speakers', X.ev().id, c.speakerId, { photoUrl: c.data }).then(function () { done++; }, function () { var s = byId(c.speakerId); failed.push(s ? s.name : '?'); });
+        var s = byId(c.speakerId), ev = X.ev().id;
+        return X.C.storePicture(ev, 'speakers', c.data, (s ? s.name : 'speaker') + ' photo').then(function (url) {
+          c.data = url;
+          return X.C.updateSub('speakers', ev, c.speakerId, { photoUrl: url });
+        }).then(function () { done++; c.done = true; }, function (err) { failed.push(s ? s.name : '?'); why = why || X.errText(err); });
       }).then(function () {
         X.reload();
         if (done) X.notify(done + (done === 1 ? ' photo saved' : ' photos saved'));
         if (!failed.length) { m.close(); return; }
         m.busy(false, $('ph-save'));
-        $('ph-err').textContent = 'Not saved for ' + failed.join(', ') + '. Try again.';
+        cands = cands.filter(function (c) { return !c.done; });     // what is saved leaves the list; what is not stays ticked
+        paint();
+        $('ph-err').textContent = 'Not saved for ' + failed.join(', ') + '. ' + (why ? why + ' ' : '') + 'Try again.';
       });
     };
     if (o.pdfData) fromPdf(bytesOf(o.pdfData), o.names);
@@ -374,7 +383,7 @@
       var chosen = gs ? gs.value : '', newName = gs ? str($('pl-newname').value).trim() : str($('pl-newgroup').value).trim() || W.title;
       if (chosen === '__new' && !newName) { $('pl-err').textContent = 'Give the new group a name.'; $('pl-newname').focus(); return; }
       m.busy(true, $('pl-save'));
-      var ev = X.ev().id, made = {}, order = X.nextOrder(), added = 0, failed = [];
+      var ev = X.ev().id, made = {}, order = X.nextOrder(), added = 0, failed = [], why = '';
       X.groups().forEach(function (g) { made[key(g.name)] = g.id; });
       function groupId(name) {
         var k = key(name);
@@ -391,9 +400,12 @@
           return inTurns(jobs, AT_ONCE, function (j) {
             var r = j.r, body = { name: r.name, desig: r.designation, comp: r.company, status: 'confirmed', weight: 'featured', order: j.order,
               groupId: r.group ? made[key(r.group)] : defId, colour: X.AV[Math.floor(Math.random() * X.AV.length)] };
-            if (r.photo) body.photoUrl = r.photo;
             if (r.linkedin) body.li = r.linkedin;
-            return X.C.createSub('speakers', ev, body).then(function () { added++; r.there = true; }, function () { failed.push(r.name); });
+            /* a library photo kept inline in an older record is uploaded as a file first; an address is used as it is */
+            return X.C.storePicture(ev, 'speakers', r.photo || '', r.name + ' photo').then(function (url) {
+              if (url) { body.photoUrl = url; r.photo = url; }
+              return X.C.createSub('speakers', ev, body);
+            }).then(function () { added++; r.there = true; }, function (err) { failed.push(r.name); why = why || X.errText(err); });
           });
         });
       }).then(function () {
@@ -402,7 +414,7 @@
         if (!failed.length) { m.close(); return; }
         m.busy(false, $('pl-save'));
         preview();
-        $('pl-err').textContent = 'Not added: ' + failed.join(', ') + '. Try again.';
+        $('pl-err').textContent = 'Not added: ' + failed.join(', ') + '. ' + (why ? why + ' ' : '') + 'Try again.';
       }, function (err) { m.busy(false, $('pl-save')); $('pl-err').textContent = X.errText(err); });
     };
     return m;

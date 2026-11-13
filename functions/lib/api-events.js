@@ -262,6 +262,54 @@ function publicUrl(fb, storagePath) {
     storagePath.split('/').map(encodeURIComponent).join('/');
 }
 
+/* What is wrong with these bytes as a picture this product keeps, or null: empty, over 8 MB, none of the five
+   formats (by the bytes, never the name), or an SVG that could run something. `shown` names the file in the
+   sentence ("\"logo.png\""). -> null | { status, error } */
+function imageProblem(buffer, shown) {
+  if (!buffer || !buffer.length) return { status: 400, error: 'The file is empty — choose an image and try again.' };
+  if (buffer.length > MAX_IMAGE_BYTES) return { status: 413, error: shown + ' is ' + (buffer.length / 1048576).toFixed(1) + ' MB. Images can be up to 8 MB.' };
+  var contentType = sniffImage(buffer);
+  if (!contentType) return { status: 415, error: shown + NOT_AN_IMAGE };
+  if (contentType === 'image/svg+xml' && svgIsActive(buffer.toString('utf8'))) {
+    return { status: 415, error: shown + ' contains scripts or embedded content, which is not allowed in an SVG. Export it as a plain SVG, or use a PNG.' };
+  }
+  return null;
+}
+
+/* A picture's bytes (already checked: imageProblem) stored as a public file in `folder` ("events/<id>/<kind>", or
+   the speaker and sponsor pages' own folder): the one way a picture becomes a file in this product — an upload
+   (handleUpload), and a picture that reached a record as image text (lib/inline-pictures.js).
+   The name is unique for ever (storedName), so the object never changes: browsers and Google's edge may keep it
+   for a year without asking again (replacing a picture means a new file and a new address). WebP copies at a few
+   widths are stored next to it (lib/pictures.js), which the page a visitor sees loads; a picture that gets none
+   (an SVG, a GIF, a failure, too slow) is shown as it is. opts.variants false: none (a brief document).
+   -> Promise<{ url, path, contentType, size, width?, height? }> */
+function storeImageFile(fb, folder, buffer, contentType, fileName, actor, opts) {
+  opts = opts || {};
+  var storagePath = String(folder).replace(/\/+$/, '') + '/' + storedName(fileName, IMAGE_TYPES[contentType]);
+  var file = fb.bucket.file(storagePath);
+  return file.save(buffer, {
+    resumable: false,
+    gzip: pictures.gzipWorthIt(contentType, buffer),     // an SVG is stored gzipped: sent compressed (pictures.js)
+    metadata: {
+      contentType: contentType,
+      cacheControl: 'public, max-age=31536000, immutable',
+      metadata: { uploadedBy: String(actor || ''), originalName: String(fileName || '').replace(/[^\x20-\x7E]/g, '_').slice(0, 120) }
+    }
+  }).then(function () {
+    return file.makePublic().catch(function (err) {
+      // an object nobody can load must not be left behind looking like a successful upload
+      return file.delete().catch(function () { /* best effort */ }).then(function () { throw err; });
+    });
+  }).then(function () {
+    return opts.variants === false ? null : pictures.storeVariants(fb, storagePath, buffer, { budgetMs: 20000 });
+  }).then(function (made) {
+    var answer = { url: publicUrl(fb, storagePath), path: storagePath, contentType: contentType, size: buffer.length };
+    if (made) { answer.width = made.width; answer.height = made.height; }
+    return answer;
+  });
+}
+
 function handleUpload(req, res) {
   requireAdmin(req, res, function (fb, decoded) {
     parseJsonBody(req, res, function (body) {
@@ -284,45 +332,16 @@ function handleUpload(req, res) {
         var b64 = body.dataBase64.replace(/^data:[^,]*,/, '').replace(/\s+/g, '');
         if (!/^[A-Za-z0-9+\/]*={0,2}$/.test(b64)) return sendJson(res, 400, { error: 'The file did not arrive intact. Please try again.' });
         var buffer = Buffer.from(b64, 'base64');
-        if (!buffer.length) return sendJson(res, 400, { error: 'The file is empty — choose an image and try again.' });
-        if (buffer.length > MAX_IMAGE_BYTES) {
-          return sendJson(res, 413, { error: shown + ' is ' + (buffer.length / 1048576).toFixed(1) + ' MB. Images can be up to 8 MB.' });
-        }
-
+        var problem = imageProblem(buffer, shown);
+        if (problem) return sendJson(res, problem.status, { error: problem.error });
         var contentType = sniffImage(buffer);
-        if (!contentType) return sendJson(res, 415, { error: shown + NOT_AN_IMAGE });
-        if (contentType === 'image/svg+xml' && svgIsActive(buffer.toString('utf8'))) {
-          return sendJson(res, 415, { error: shown + ' contains scripts or embedded content, which is not allowed in an SVG. Export it as a plain SVG, or use a PNG.' });
-        }
 
-        var storagePath = 'events/' + eventId + '/' + kind + '/' + storedName(fileName, IMAGE_TYPES[contentType]);
-        var file = fb.bucket.file(storagePath), live = false;
+        var live = false;
         eventRef(fb, eventId).get().then(function (snap) {
           if (snap.exists && (snap.data() || {}).deletedAt) throw reject(404, 'This event has been deleted. Restore it before adding images.');
           live = snap.exists && !!(snap.data() || {}).createdAt;   // the wizard uploads before the event exists: not logged then
-          /* The name is unique for ever, so the object never changes: browsers and Google's edge may keep
-             it for a year without asking again. (Replacing a picture means a new upload and a new URL.) */
-          return file.save(buffer, {
-            resumable: false,
-            gzip: pictures.gzipWorthIt(contentType, buffer),     // an SVG is stored gzipped: sent compressed (pictures.js)
-            metadata: {
-              contentType: contentType,
-              cacheControl: 'public, max-age=31536000, immutable',
-              metadata: { uploadedBy: actorOf(decoded), originalName: fileName.replace(/[^\x20-\x7E]/g, '_').slice(0, 120) }
-            }
-          });
-        }).then(function () {
-          return file.makePublic().catch(function (err) {
-            // an object nobody can load must not be left behind looking like a successful upload
-            return file.delete().catch(function () { /* best effort */ }).then(function () { throw err; });
-          });
-        }).then(function () {
-          /* WebP copies at a few widths, next to the original (lib/pictures.js): the page a visitor sees
-             loads those. A picture that gets none (an SVG, a GIF, a failure, too slow) is shown as it is. */
-          return kind === 'brief' ? null : pictures.storeVariants(fb, storagePath, buffer, { budgetMs: 20000 });
-        }).then(function (made) {
-          var answer = { url: publicUrl(fb, storagePath), path: storagePath, contentType: contentType, size: buffer.length };
-          if (made) { answer.width = made.width; answer.height = made.height; }
+          return storeImageFile(fb, 'events/' + eventId + '/' + kind, buffer, contentType, fileName, actorOf(decoded), { variants: kind !== 'brief' });
+        }).then(function (answer) {
           sendJson(res, 200, answer);
           if (live) logActivity(fb, eventId, decoded, 'file-uploaded', (UPLOAD_LABELS[kind] || kind) + ' uploaded: ' + fileName.slice(0, 120),
             { area: kind === 'logo' || kind === 'banner' ? 'design' : 'content' });
@@ -847,4 +866,4 @@ module.exports = { handleUpload, handleSlugAvailable, handleEventDelete, handleE
 // Exported for tests and for the other backend modules to share ONE definition of each (the address rule,
 // "this event exists", what an image is, which SVG is unsafe; lib/create-drafts.js keeps a draft's pictures by them)
 // instead of growing a second copy. Routing uses only the five above.
-module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, svgIsActive, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };
+module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, svgIsActive, imageProblem, storeImageFile, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };
