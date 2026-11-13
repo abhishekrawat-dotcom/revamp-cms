@@ -7390,12 +7390,6 @@
     check();
   }
 
-  // importId needs no relation to the real event's own slug (the details form comes after this point in
-  // the wizard) — just a short, throwaway session id.
-  function lovableImportId(){
-    return 'imp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
-  }
-
   /* An imported design is one finished page: it becomes the draft's design as it is, and none of the
      wizard's section content belongs on it. A look or section order chosen for a gallery template goes,
      since it means nothing here; the sections themselves and everything typed in them stay in the draft
@@ -7428,7 +7422,6 @@
     function send(){
       failed = false;
       run.note = 'Importing your design — this can take up to a minute.';
-      var importId = lovableImportId();
       host.innerHTML =
         '<div class="step-head"><span class="eyebrow">Importing</span><h1>Importing your design&hellip;</h1>' +
           '<p class="desc">Rendering your site and re-hosting its images — this can take up to a minute for a larger design.</p></div>' +
@@ -7446,15 +7439,17 @@
           return fetch('/api/import-lovable', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ importId: importId, url: url }),
+            /* the import's id is the server's to make (BE-049): only the address is sent */
+            body: JSON.stringify({ url: url }),
             signal: runSignal(run)
           });
         });
       })().then(readJson).then(function(body){
         if (!isCurrent(run)) return;      // cancelled, or the owner has moved on: a late answer changes nothing
+        if (!/^imported-[a-z0-9][a-z0-9-]*$/.test(String(body.templateId || ''))) throw new Error('no design came back');
         endBusy(run);
         lastImportAddress = '';
-        applyImportedTemplate(body.templateId || ('imported-' + importId));
+        applyImportedTemplate(body.templateId);
         showStep2View('landing');
         advanceToDetails('imported');
         toast(importReport(body.repairs), { type: 'success', sticky: !!(body.repairs && body.repairs.length) });

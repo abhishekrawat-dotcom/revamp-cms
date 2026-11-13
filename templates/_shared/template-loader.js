@@ -237,10 +237,9 @@
           return;
         }
         if (imported) {
-          // the page as HTML, or as JSON { html }
-          jobs.push(sectionPart(get('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))).then(function (body) {
-            if (!/^\s*\{/.test(body)) return body;
-            try { return String(JSON.parse(body).html || ''); } catch (e) { return body; }
+          // the page as JSON { html } — the server never answers it as an HTML document (BE-050, BE-071)
+          jobs.push(sectionPart(json('/api/imported-section?eventId=' + encodeURIComponent(id.slice(9))).then(function (r) {
+            return String((r && r.html) || '');
           })), Promise.resolve(''), Promise.resolve(''));
           return;
         }

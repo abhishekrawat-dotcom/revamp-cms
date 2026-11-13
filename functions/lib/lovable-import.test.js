@@ -147,7 +147,7 @@ function shown(message) { sandbox.e = { said: message }; return vm.runInContext(
     function () { refusal = 'css fetched'; return Promise.resolve(''); }, function () { refusal = 'media fetched'; return Promise.resolve(null); }, null, { sourceUrl: 'https://blank.lovable.app/' }); }
   catch (e) { refusal = refusal || e; }
   ok(refusal && refusal.code === 'empty-page' && refusal.status === 422, 'a blank capture is refused (422 empty-page), before its stylesheets or media are fetched', refusal && (refusal.code || refusal));
-  ok(!filesUnder('events/import-imp-blank/').length && !FB.docs['events/import-imp-blank'], 'and nothing is written for it');
+  ok(!filesUnder('events/import-imp-blank/').length && !FB.docs['imports/imp-blank'], 'and nothing is written for it');
 
   /* a stand-in capture service */
   var answers = {
@@ -172,11 +172,11 @@ function shown(message) { sandbox.e = { said: message }; return vm.runInContext(
 
   var gone = await run(function (res) { H.runImportLovableFromUrl(FB, res, 'imp-gone', 'https://gone.lovable.app/'); });
   ok(gone.status === 422 && gone.body.code === 'source-http-error' && /404/.test(gone.body.error) && shown(gone.body.error) === gone.body.error, 'an address with no site: 422, "answered 404 (not found)"', gone);
-  var rec = FB.docs['events/import-imp-gone'] || {};
+  var rec = FB.docs['imports/imp-gone'] || {};
   ok(rec.importStatus === 'failed' && rec.importFailure && rec.importFailure.code === 'source-http-error' && rec.importFailure.reason === gone.body.error && rec.sourceUrl === 'https://gone.lovable.app/' &&
     !rec.sectionHtmlPath && !filesUnder('events/import-imp-gone/').length, 'recorded as a failed import, with why — and nothing else written', rec);
   var old = await run(function (res) { H.runImportLovableFromUrl(FB, res, 'imp-old', 'https://old.lovable.app/'); });
-  ok(old.status === 422 && old.body.code === 'not-a-site' && (FB.docs['events/import-imp-old'] || {}).importStatus === 'failed', 'an older capture service that hands back Lovable\'s "no project" page: refused here too', old);
+  ok(old.status === 422 && old.body.code === 'not-a-site' && (FB.docs['imports/imp-old'] || {}).importStatus === 'failed', 'an older capture service that hands back Lovable\'s "no project" page: refused here too', old);
   var busy = await run(function (res) { H.runImportLovableFromUrl(FB, res, 'imp-busy', 'https://busy.lovable.app/'); });
   var sec = await run(function (res) { H.runImportLovableFromUrl(FB, res, 'imp-sec', 'https://secret.lovable.app/'); });
   var odd = await run(function (res) { H.runImportLovableFromUrl(FB, res, 'imp-odd', 'https://odd.lovable.app/'); });
@@ -197,9 +197,9 @@ function shown(message) { sandbox.e = { said: message }; return vm.runInContext(
   ok(tpl.status === 422 && tpl.body.code === 'import-failed' && /^This design was not imported: That address answered 404/.test(tpl.body.error) && sct.status === 422,
     'GET /api/imported-template and -section of a failed import: 422, with why', [tpl.status, tpl.body, sct.status]);
   /* a failure never overwrites an import that worked */
-  FB.docs['events/import-imp-good'] = { importStatus: 'imported', sectionHtmlPath: 'events/import-imp-good/section.html' };
+  FB.docs['imports/imp-good'] = { importStatus: 'imported', sectionHtmlPath: 'events/import-imp-good/section.html' };
   await H.recordImportFailure(FB, 'imp-good', { url: 'https://x.lovable.app/' }, check.failure('busy'));
-  ok(FB.docs['events/import-imp-good'].importStatus === 'imported', 'a failure recorded for an id that already worked leaves it as it is');
+  ok(FB.docs['imports/imp-good'].importStatus === 'imported', 'a failure recorded for an id that already worked leaves it as it is');
 
   /* ================= BE-052: a real page's media ================= */
   var PAGE_URL = 'https://summit.lovable.app/';
@@ -233,7 +233,7 @@ function shown(message) { sandbox.e = { said: message }; return vm.runInContext(
   var result = await H.processLovableImport(FB, 'imp-media', page, function (href) { return Promise.resolve(href === '/assets/css/site.css' ? CSS : null); }, getAsset, null, { sourceUrl: PAGE_URL });
   var stored = filesUnder('events/import-imp-media/assets/');
   var section = String(FB.files['events/import-imp-media/section.html'] || '');
-  var doc = FB.docs['events/import-imp-media'] || {};
+  var doc = FB.docs['imports/imp-media'] || {};
   function storedFor(url, ext) { return 'events/import-imp-media/assets/' + media.nameFor(url, ext); }
   var A = storedFor('https://summit.lovable.app/team/a/photo.jpg', 'jpg'), B = storedFor('https://summit.lovable.app/team/b/photo.jpg', 'jpg');
   ok(result.templateId === 'imported-imp-media' && doc.importStatus === 'imported', 'the import worked', [result.templateId, doc.importStatus]);

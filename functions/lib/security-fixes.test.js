@@ -32,7 +32,8 @@ function fakeFb() {
       collection: function (n) { return colRef(p + '/' + n); },
       get: function () { return Promise.resolve(snap(p)); },
       set: function (data, o) { var merge = !!(o && o.merge); if (!merge || !docs[p]) docs[p] = merge && docs[p] ? docs[p] : {}; write(docs[p], data, merge); return Promise.resolve(); },
-      update: function (data) { if (!docs[p]) return Promise.reject(new Error('NOT_FOUND')); write(docs[p], data, false); return Promise.resolve(); } };
+      update: function (data) { if (!docs[p]) return Promise.reject(new Error('NOT_FOUND')); write(docs[p], data, false); return Promise.resolve(); },
+      create: function (data) { if (docs[p]) return Promise.reject(Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 })); docs[p] = {}; write(docs[p], data, false); return Promise.resolve(); } };
   }
   function colRef(p, order, lim) {
     return { path: p,
@@ -371,14 +372,14 @@ var IMPORT_BODY = '<div id="root"><div class="app min-h-screen"><header class="t
 step(function () {
   var page = '<html><head><link rel="stylesheet" href="/a.css"></head><body>' + IMPORT_BODY + '</body></html>';
   return H.processLovableImport(FB, 'imp-sec', page, function () { return Promise.resolve(IMPORT_CSS); }, function () { return Promise.resolve(null); }, null, { sourceUrl: 'https://example.lovable.app/' }).then(function (r) {
-    var section = String(FB.files['events/import-imp-sec/section.html'] || ''), full = String(FB.files['events/import-imp-sec/index.html'] || '');
+    var section = String(FB.files['events/import-imp-sec/section.html'] || '');
     var cut = JSON.parse(String(FB.files['events/import-imp-sec/sections.json'] || '{}'));
-    var pieces = [section, full.replace('<meta charset="utf-8">', ''), (cut.frameOpen || '') + (cut.frameClose || '')].concat((cut.sections || []).map(function (x) { return x.html; }));
+    var pieces = [section, (cut.frameOpen || '') + (cut.frameClose || '')].concat((cut.sections || []).map(function (x) { return x.html; }));
     var all = pieces.join('\n');
-    check('BE-050: the import is stored', r.templateId === 'imported-imp-sec' && section.length > 200 && full.length > 200, r);
-    check('BE-050: nothing unsafe is stored — the page, the debug copy, the cut sections', pieces.every(function (x) { return !unsafeIn(x).length; }) && (cut.sections || []).length >= 2, pieces.map(unsafeIn).join(' | '));
+    check('BE-050: the import is stored (no debug copy, index.html, any more: BE-049)', r.templateId === 'imported-imp-sec' && section.length > 200 && !FB.files['events/import-imp-sec/index.html'], r);
+    check('BE-050: nothing unsafe is stored — the page, the cut sections', pieces.every(function (x) { return !unsafeIn(x).length; }) && (cut.sections || []).length >= 2, pieces.map(unsafeIn).join(' | '));
     check('BE-050: what the safety step took out is reported and kept', Array.isArray(r.removed) && r.removed.some(function (x) { return x.what === 'event handler attribute'; }) &&
-      Array.isArray(FB.docs['events/import-imp-sec'].importRemoved), r.removed);
+      Array.isArray(FB.docs['imports/imp-sec'].importRemoved), r.removed);
     check('BE-050: the page\'s motion, its own data-* and its stylesheet\'s marks stay', section.indexOf('data-rv-motion="{&quot;on&quot;:&quot;view&quot;') !== -1 && section.indexOf('data-state="open"') !== -1 &&
       /<style data-rv-imported-css="\/a\.css">/.test(section) && /\.hero\{color:#111/.test(section) && /@font-face/.test(section) && /@media \(400px < width < 900px\)/.test(section), section.slice(0, 600));
     check('BE-050: a <style> inside the page is kept as a stylesheet of its own, never where it was (in an <svg>)', /<style data-rv-imported-css="page">[\s\S]*\.s\{fill:red/.test(section) && !/<svg[^>]*>\s*<style/i.test(section), section);
