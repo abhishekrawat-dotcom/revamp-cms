@@ -57,8 +57,8 @@ function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
   (function () {
     var code = noComments(WIZ);
     var bare = code.match(/\bfetch\(\s*['"]\/api\/[^\n]*/g) || [];
-    check('1.1 no bare fetch to /api is left but the stop sent with keepalive as the page is left',
-      bare.length === 1 && /\/api\/generate-content', \{ method: 'POST', keepalive: true/.test(bare[0]), bare);
+    check('1.1 no bare fetch to /api is left but the stop sent with keepalive as the page is left (POST /api/generate/cancel, BE-033)',
+      bare.length === 1 && /\/api\/generate\/cancel', \{ method: 'POST', keepalive: true/.test(bare[0]), bare);
     check('1.2 the hand-rolled token block of the Lovable import is gone', code.indexOf('RevampAuth.getIdToken') === -1 && code.indexOf("'Authorization': 'Bearer '") === -1);
     check('1.3 one helper, RevampCore.authedFetch, refused (401) when it is not there',
       /function apiFetch\(url, opts\)\{\s*if \(window\.RevampCore && typeof RevampCore\.authedFetch === 'function'\) return RevampCore\.authedFetch\(url, opts \|\| \{\}\);/.test(code) && /err\.status = 401;/.test(body('apiFetch', code)));

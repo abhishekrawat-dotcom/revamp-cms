@@ -6831,7 +6831,7 @@
     /* BE-033: where this run is on the server, from its own record (GET /api/generate/status) */
     var STATUS_POLL_MS = 5000;
     function runStatus(){
-      return fetch('/api/generate/status?eventId=' + encodeURIComponent(eventId) + '&runId=' + encodeURIComponent(runId), { signal: runSignal(run) })
+      return apiFetch('/api/generate/status?eventId=' + encodeURIComponent(eventId) + '&runId=' + encodeURIComponent(runId), { signal: runSignal(run) })
         .then(readJson);
     }
     function pause(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); }
