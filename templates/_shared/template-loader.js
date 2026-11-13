@@ -1,6 +1,6 @@
 /* Builds one complete HTML document from a template folder (templates/<id>/template.json + its section files),
-   or, for a generated template (id = 'gen-' + eventId), from the backend's template.json plus the shared
-   section library at templates/_library/sections/ — see load()'s own comment below for that branch.
+   or, for an AI-designed site (id = 'gen-' + eventId) or an imported one ('imported-' + eventId), from the backend's
+   template.json and sections — see load()'s own comment below for those branches.
 
    RevampTemplates.build(id)        -> Promise<string>                the document
    RevampTemplates.load(id, opts)   -> Promise<{ template, html }>    the document plus template.json
@@ -92,7 +92,7 @@
     return Object.keys(map || {}).map(function (k) { return k + ':' + map[k]; }).join(';');
   }
 
-  /* The opening tag of a section file's root element. A library section opens with a documentation comment and an
+  /* The opening tag of a section file's root element. A section file may open with a documentation comment and an
      imported page with its inlined <style data-rv-imported-css> blocks: both are stepped over, so that the
      attributes land on the element the section's content hangs from. m[1] ends with the tag name, m[2] is the
      tag's own attributes. */
@@ -191,8 +191,8 @@
 
   /* A "generated" template (id === 'gen-' + eventId, from the generative site-building feature) has no
      templates/<id>/ folder on disk: its template.json comes from the backend's /api/generated-template
-     endpoint instead of a static file, and its sections resolve against the shared component library
-     (templates/_library/sections/<sectionId>/) instead of a per-template sections/ folder. Everything past
+     endpoint instead of a static file, and each of its sections from /api/generated-section (the section ETB2B AI
+     wrote, stored with the event) instead of a per-template sections/ folder. Everything past
      that point — header/footer, shared/fonts/theme head assembly, section HTML assembly, the final document
      build — is identical to a ported template, so this only branches the two things that actually differ.
 
@@ -200,7 +200,7 @@
      see functions/lib/api.js's LOVABLE IMPORT PIPELINE block) is the same idea, a third and final branch,
      additive only: its template.json comes from /api/imported-template instead of a static file, and it
      has exactly one section whose real markup comes from /api/imported-section instead of EITHER a
-     per-template sections/ folder OR the generated library — that endpoint already returns the section's
+     per-template sections/ folder OR /api/generated-section — that endpoint already returns the section's
      CSS inlined into the same HTML response (see that pipeline's own CSS inline-vs-linked judgment call),
      so the "style.css" slot every other branch fetches over the network is simply never used here. */
   function load(id, opts) {

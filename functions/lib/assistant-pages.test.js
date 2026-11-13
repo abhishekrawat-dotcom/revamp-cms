@@ -307,7 +307,8 @@ OTHERS.forEach(function (f) {
 ['templates/', 'payment/', 'import-figma-design/'].forEach(function (d) {
   check('the scan read the HTML under ' + d, OTHERS.some(function (f) { return f.indexOf(d) === 0; }), d);
 });
-check('the scan read at least 80 other HTML files', OTHERS.length >= 80, OTHERS.length);
+/* (74 on 13 Nov 2026, once templates/tech500-check and the retired section library templates/_library were deleted) */
+check('the scan read at least 60 other HTML files', OTHERS.length >= 60, OTHERS.length);
 /* the three redirect stubs only send people on (to the console or the dashboard, which carry the assistant) */
 ['settings.html', 'dashboard.html', 'edit-event-dashboard.html'].forEach(function (f) {
   check(f + ' is a redirect stub', read(f).indexOf('location.replace(') !== -1 && read(f).length < 4000);

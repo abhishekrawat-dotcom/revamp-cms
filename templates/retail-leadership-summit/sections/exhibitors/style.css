@@ -57,7 +57,7 @@ section#faq-4 {
   appearance: none;
 }
 #faq-4 .accordion-btn:focus-visible {
-  outline: 2px solid #FF927A;
+  outline: 2px solid var(--theme-color, #FF927A);
   outline-offset: 4px;
   border-radius: 4px;
 }
@@ -77,7 +77,7 @@ section#faq-4 {
 }
 #faq-4 .accordion-wrapper .accordion-bx {
   border-radius: 20px;
-  border: 1px solid rgba(255, 146, 122, 0.38);
+  border: 1px solid color-mix(in srgb, var(--theme-color, #FF927A) 38%, transparent);
   background: rgba(0, 0, 0, 0.30);
   padding: 20px;
 }

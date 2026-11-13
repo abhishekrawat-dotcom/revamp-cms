@@ -201,13 +201,19 @@ function remoteCss(url) {
 }
 
 /* The stand-in for RevampSections until et-runtime.js (deferred) arrives. A widget's section is read from
-   the <script data-rv-script> calling it, so it is read here, while that script is the current one. */
-var RUNTIME_STUB = '<script data-rv-delivery>(function(w,d){if(w.RevampSections)return;var q=[],s={q:q,' +
+   the <script data-rv-script> calling it, so it is read here, while that script is the current one.
+   It also sets <html class="rv-anim"> at once, under which ET's scroll reveal holds its blocks hidden until they
+   are scrolled to (et-animate.css; the runtime sets it too): set here, in <head>, nothing is shown and then hidden
+   again while the runtime loads. Should the runtime never arrive, the class goes once the page has loaded, and
+   everything shows. */
+var RUNTIME_STUB = '<script data-rv-delivery>(function(w,d){if(w.RevampSections)return;' +
+  'var h=d.documentElement,a=h&&h.classList;if(a)a.add("rv-anim");var q=[],s={q:q,' +
   'register:function(t,f){q.push([t,f])},' +
   'widget:function(n,f){var c=d.currentScript,t=c&&c.getAttribute("data-rv-script");' +
   'if(t)q.push([t,f]);else console.error(\'[revamp] widget "\'+n+\'" was loaded without a section to run on.\')}};' +
   'w.RevampSections=s;d.addEventListener("DOMContentLoaded",function(){var r=w.RevampSections;' +
-  'if(r===s||!r||!r.register||!q.length)return;var l=q.splice(0);for(var i=0;i<l.length;i++)r.register(l[i][0],l[i][1])})' +
+  'if(r===s||!r||!r.register||!q.length)return;var l=q.splice(0);for(var i=0;i<l.length;i++)r.register(l[i][0],l[i][1])});' +
+  'if(a&&w.addEventListener)w.addEventListener("load",function(){if(w.RevampSections===s)a.remove("rv-anim")})' +
   '})(window,document)</script>';
 
 /* ---------- the page ---------- */

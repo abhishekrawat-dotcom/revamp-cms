@@ -37,3 +37,15 @@ body{
   .contact-point > .row{ margin-left:0; margin-right:0; }
   .contact-point > .row > [class*="col-"]{ padding-left:0; padding-right:0; }
 }
+
+/* Keyboard focus shows (WCAG 2.4.7): ET's bundle takes every outline away (:focus{outline:0}, a:focus{outline:0}),
+   so Tab through a page showed nowhere where it was. A ring in the element's own text colour, only for keyboard
+   focus. It weighs no more than ET's a:focus (which it follows), so a section's or a runtime's own focus style still
+   wins; never while editing (the editor draws its own selection). */
+:where(html:not([data-rv-editing])) a:focus-visible,
+:where(html:not([data-rv-editing])) button:focus-visible,
+:where(html:not([data-rv-editing])) summary:focus-visible,
+:where(html:not([data-rv-editing])) :where([tabindex]:not([tabindex="-1"])):focus-visible{
+	outline:2px solid currentColor;
+	outline-offset:2px;
+}

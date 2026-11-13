@@ -1,6 +1,6 @@
 .contacts.design-style1 .contact-point div.line-1 {
   font-family: var(--heading-font-family, var(--body-font-family));
-  color: #FF927A;
+  color: var(--theme-color, #FF927A);
   font-size: 15px;
   font-weight: 700;
   margin-bottom: 14px;
@@ -24,6 +24,6 @@
   width: 25px;
   margin: 10px auto 0;
   height: 4px;
-  background: #FF927A;
+  background: var(--theme-color, #FF927A);
   border-radius: 9px;
 }

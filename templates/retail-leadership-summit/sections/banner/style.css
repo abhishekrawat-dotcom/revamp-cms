@@ -12,4 +12,4 @@
 
 /* the second button sits on a photograph: it carries its own dark ground instead of relying on the picture */
 #banner a.book-btn.btn-outline{background:rgba(0, 0, 0, 0.35);color:#fff;border-color:#fff}
-#banner a.book-btn.btn-outline:hover{background:#FF927A;color:#71000A;border-color:#FF927A}
+#banner a.book-btn.btn-outline:hover{background:var(--theme-color, #FF927A);color:#71000A;border-color:var(--theme-color, #FF927A)}

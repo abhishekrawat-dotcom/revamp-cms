@@ -19,7 +19,7 @@
   line-height: 140%;
   transition: all 0.3s ease;
   border-radius: 10px;
-  border: 1px solid rgba(255, 146, 122, 0.38);
+  border: 1px solid color-mix(in srgb, var(--theme-color, #FF927A) 38%, transparent);
 }
 #who-enter .display-style8 li:hover {
   transform: translateY(-3px);

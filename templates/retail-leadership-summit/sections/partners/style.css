@@ -29,7 +29,7 @@ section#brands-bnr {
   text-align: center;
   padding: 18px 20px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 146, 122, 0.38);
+  border: 1px solid color-mix(in srgb, var(--theme-color, #FF927A) 38%, transparent);
   background: rgba(255, 255, 255, 0.06);
   color: #fff;
   font-size: 14px;
@@ -38,7 +38,7 @@ section#brands-bnr {
 }
 #brands-bnr a.brand-logo[href]:hover,
 #brands-bnr a.brand-logo[href]:focus-visible {
-  border-color: #FF927A;
+  border-color: var(--theme-color, #FF927A);
   color: #fff;
 }
 /* a logo is drawn for a light page: its tile is white, whatever the section's colour */

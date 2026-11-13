@@ -75,12 +75,12 @@
 
 #faqs .faq-item:hover .faq-question,
 #faqs .faq-item.active .faq-question {
-  color: #DE3D61;
+  color: var(--accent-color, #DE3D61);
 }
 
 #faqs .faq-item:hover .faq-icon,
 #faqs .faq-item.active .faq-icon {
-  background: #DE3D61;
+  background: var(--accent-color, #DE3D61);
 }
 
 #faqs .faq-item.active .faq-icon {

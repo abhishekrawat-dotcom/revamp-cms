@@ -42,3 +42,7 @@
   #events-wdgt .row.animated.fadeInLeft { row-gap: 16px; }
   #events-wdgt .events-wdgt-box section { padding: 28px 18px 24px; }
 }
+/* a phone: one card to a row (two side by side left each card too narrow for its heading) */
+@media (max-width: 600px) {
+  #events-wdgt .events-wdgt-box { width: 100%; }
+}

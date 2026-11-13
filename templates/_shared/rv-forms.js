@@ -79,6 +79,11 @@
      doneFacts(result) -> { line: 'date · place', calendar: '/api/public/calendar?eventId=…' | '' }
      modeFor(cfg, editorMode, editing, hasEvent) -> 'live'|'preview'|'shared'|'ai-view'|null   a page's mode (Modes above)
      sharedLivePath(cfg) -> '/e/<id>' | ''   on a shared link, the live site its forms point to ('' while not live)
+     utmOf(win, eventId) -> { source, medium, campaign }   what a registration says the visitor came by: the
+                                address's utm_* (src as the source when utm_source is missing), else the tags the
+                                visit landed with (keepLanding, sessionStorage "rv.utm.<event id>")
+     keepLanding(win, eventId)  keeps the address's tags for the rest of the visit (start() does it on a live or
+                                previewed page)
    The editor and the console set window.RV_FORMS_NO_AUTO = true before loading this file and use render and
    validate only. */
 (function () {
@@ -1032,17 +1037,45 @@
     s.setProperty('--rvf-focus', cssRgb(link));
   }
 
-  function utmOf(win) {
-    var out = { source: '', medium: '', campaign: '' }, q = '';
+  /* ---------- where the visitor came from ----------
+     A registration carries the tags of the address the visitor arrived by: utm_source / utm_medium / utm_campaign,
+     and src — a source tag on its own, taken as utm_source when that is not there. The address they landed with is
+     kept for the visit, per event (sessionStorage "rv.utm.<event id>"): another page of the site is reached without
+     the query (rv-pages.js), and a visitor who registers there still says where they came from. An address with
+     tags of its own is what counts, and is kept in their place. */
+  var UTM_KEY = 'rv.utm.';
+  function utmFromAddress(win) {
+    var out = { source: '', medium: '', campaign: '' }, src = '', q = '';
     try { q = String(win.location.search || ''); } catch (e) { q = ''; }
     q.replace(/^\?/, '').split('&').forEach(function (pair) {
       var i = pair.indexOf('='), k = i === -1 ? pair : pair.slice(0, i), v = i === -1 ? '' : pair.slice(i + 1);
       try { k = decodeURIComponent(k.replace(/\+/g, ' ')); v = decodeURIComponent(v.replace(/\+/g, ' ')); } catch (e) { return; }
+      v = v.trim();
       if (k === 'utm_source') out.source = v.slice(0, 80);
       else if (k === 'utm_medium') out.medium = v.slice(0, 80);
       else if (k === 'utm_campaign') out.campaign = v.slice(0, 120);
+      else if (k === 'src') src = v.slice(0, 80);
     });
+    if (!out.source && src) out.source = src;
     return out;
+  }
+  function hasUtm(u) { return !!(u && (u.source || u.medium || u.campaign)); }
+  // a browser that gives the page no storage (some private modes, blocked site data) only loses the memory of it
+  function visitStore(win) { try { return win.sessionStorage || null; } catch (e) { return null; } }
+  /* on arrival: the address's tags, kept for the rest of the visit when it has any */
+  function keepLanding(win, eventId) {
+    var here = utmFromAddress(win), store = eventId && hasUtm(here) ? visitStore(win) : null;
+    if (store) { try { store.setItem(UTM_KEY + eventId, JSON.stringify(here)); } catch (e) { /* storage full or refused */ } }
+    return here;
+  }
+  /* what a registration sends: this address's tags, else the ones the visit landed with */
+  function utmOf(win, eventId) {
+    var here = utmFromAddress(win);
+    if (hasUtm(here) || !eventId) return here;
+    var store = visitStore(win), kept = null;
+    if (store) { try { kept = JSON.parse(store.getItem(UTM_KEY + eventId) || 'null'); } catch (e) { kept = null; } }
+    if (!kept || typeof kept !== 'object') return here;
+    return { source: str(kept.source).slice(0, 80), medium: str(kept.medium).slice(0, 80), campaign: str(kept.campaign).slice(0, 120) };
   }
 
   /* ---------- render: one form, drawn into host ---------- */
@@ -1754,7 +1787,7 @@
     function send(answers, website) {
       var body = {
         eventId: str(opts.eventId), formId: str(form.id), answers: answers, website: website, consent: true,
-        source: line(str(opts.source), 60) || 'website', utm: utmOf(win), ref: str(doc.referrer), preview: mode === 'preview'
+        source: line(str(opts.source), 60) || 'website', utm: utmOf(win, str(opts.eventId)), ref: str(doc.referrer), preview: mode === 'preview'
       };
       if (consent.version) body.consentVersion = consent.version;
       setBusy(true);
@@ -2364,7 +2397,7 @@
     var el = ctaFor(e.target) || deadRegisterLink(e.target);
     if (!el) return;
     e.preventDefault();
-    /* a page saved long ago may still hold its own register pop-up (templates/_library footer): only one opens */
+    /* a page saved long ago may still hold its own register pop-up (the retired section library's footer): only one opens */
     if (doc.getElementById('revamp-register-modal')) e.stopPropagation();
     var id = formIdOf(el);
     if (!id && !page.payload) {
@@ -2461,6 +2494,8 @@
     if (!page.mode) return;
     page.livePath = page.mode === 'shared' ? sharedLivePath(readJson('rv-site-config')) : '';
     page.started = true;
+    // the tags the visitor arrived with, for a registration made later on another page (never in the editor's live view)
+    if (page.mode === 'live' || page.mode === 'preview') keepLanding(window, page.eventId);
     var inline = readJson('rv-forms');
     page.payload = validPayload(inline) ? inline : null;
     ensureStyles(doc);
@@ -2495,6 +2530,8 @@
     doneHeading: doneHeading,
     doneFacts: doneFacts,
     modeFor: modeFor,
-    sharedLivePath: sharedLivePath
+    sharedLivePath: sharedLivePath,
+    utmOf: utmOf,
+    keepLanding: keepLanding
   };
 })();

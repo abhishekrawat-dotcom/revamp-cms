@@ -1,1 +1,22 @@
-.animated,.slow,.slower{-webkit-animation-fill-mode:both}#animatecss,#animatejs{margin:0;padding:0}.animated,.slow{-webkit-animation-duration:1s;animation-duration:1s;animation-fill-mode:both}.slower{-webkit-animation-duration:2s;animation-duration:2s;animation-fill-mode:both}.slowest{-webkit-animation-duration:3s;animation-duration:3s;-webkit-animation-fill-mode:both;animation-fill-mode:both}.bounceInDown,.bounceInLeft,.bounceInRight,.bounceInUp,.lightSpeedInLeft,.lightSpeedInRight{opacity:0;-webkit-transform:translateX(400px);transform:translateX(400px)}.fadeInDown,.fadeInLeft,.fadeInRight,.fadeInUp,.flipInX,.flipInY,.rollIn,.rotateDownUpRight,.rotateIn,.rotateInDownLeft,.rotateInUpLeft,.rotateInUpRight{opacity:0}@keyframes fadeInUp{from{opacity:0;transform:translate3d(0,30%,0)}to{opacity:1;transform:none}}.fadeInUp.go{animation-name:fadeInUp;-webkit-animation-name:fadeInUp}@keyframes fadeInLeft{0%{opacity:0;transform:translateX(-200px)}50%{opacity:.3}100%{opacity:1;transform:translateX(0)}}.fadeInLeft{opacity:0;-webkit-transform:translateX(-200px);transform:translateX(-200px)}@keyframes fadeInRight{0%{opacity:0;transform:translateX(200px)}50%{opacity:.3}100%{opacity:1;transform:translateX(0)}}.fadeInRight{opacity:0;-webkit-transform:translateX(200px);transform:translateX(200px)}.fadeInLeft.go{-webkit-animation-name:fadeInLeft;animation-name:fadeInLeft}.fadeInRight.go{-webkit-animation-name:fadeInRight;animation-name:fadeInRight}
+/* ET's scroll-animation classes (.animated … .go), from its microsite bundle. et-runtime.js adds .go as a block
+   scrolls into view. The hidden start of a block (opacity 0, moved aside) only holds under <html class="rv-anim">,
+   which the runtime sets: a page whose script did not run shows everything, still. Visitors who asked for no
+   motion get every block at once, still (the rule at the end). */
+.animated,.slow,.slower{-webkit-animation-fill-mode:both}
+#animatecss,#animatejs{margin:0;padding:0}
+.animated,.slow{-webkit-animation-duration:1s;animation-duration:1s;animation-fill-mode:both}
+.slower{-webkit-animation-duration:2s;animation-duration:2s;animation-fill-mode:both}
+.slowest{-webkit-animation-duration:3s;animation-duration:3s;-webkit-animation-fill-mode:both;animation-fill-mode:both}
+html.rv-anim .bounceInDown,html.rv-anim .bounceInLeft,html.rv-anim .bounceInRight,html.rv-anim .bounceInUp,html.rv-anim .lightSpeedInLeft,html.rv-anim .lightSpeedInRight{opacity:0;-webkit-transform:translateX(400px);transform:translateX(400px)}
+html.rv-anim .fadeInDown,html.rv-anim .fadeInLeft,html.rv-anim .fadeInRight,html.rv-anim .fadeInUp,html.rv-anim .flipInX,html.rv-anim .flipInY,html.rv-anim .rollIn,html.rv-anim .rotateDownUpRight,html.rv-anim .rotateIn,html.rv-anim .rotateInDownLeft,html.rv-anim .rotateInUpLeft,html.rv-anim .rotateInUpRight{opacity:0}
+@keyframes fadeInUp{from{opacity:0;transform:translate3d(0,30%,0)}to{opacity:1;transform:none}}
+.fadeInUp.go{animation-name:fadeInUp;-webkit-animation-name:fadeInUp}
+@keyframes fadeInLeft{0%{opacity:0;transform:translateX(-200px)}50%{opacity:.3}100%{opacity:1;transform:translateX(0)}}
+html.rv-anim .fadeInLeft{opacity:0;-webkit-transform:translateX(-200px);transform:translateX(-200px)}
+@keyframes fadeInRight{0%{opacity:0;transform:translateX(200px)}50%{opacity:.3}100%{opacity:1;transform:translateX(0)}}
+html.rv-anim .fadeInRight{opacity:0;-webkit-transform:translateX(200px);transform:translateX(200px)}
+.fadeInLeft.go{-webkit-animation-name:fadeInLeft;animation-name:fadeInLeft}
+.fadeInRight.go{-webkit-animation-name:fadeInRight;animation-name:fadeInRight}
+/* no motion asked for: every block shown where it ends, at once (both forms, so this outweighs the hidden start
+   wherever a copy of these rules is given equal weight — a section copied onto another website) */
+@media (prefers-reduced-motion: reduce){.animated,html.rv-anim .animated{opacity:1!important;-webkit-transform:none!important;transform:none!important;-webkit-animation:none!important;animation:none!important}}

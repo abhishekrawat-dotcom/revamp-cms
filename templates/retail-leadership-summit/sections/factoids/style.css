@@ -12,7 +12,7 @@
 }
 #fact-marquee .news-card {
   border-radius: 21px;
-  border: 1px solid rgba(255, 146, 122, 0.38);
+  border: 1px solid color-mix(in srgb, var(--theme-color, #FF927A) 38%, transparent);
   background: rgba(94, 0, 7, 0.90);
   flex: 0 0 360px;
   overflow: hidden;
@@ -24,7 +24,7 @@
 }
 #fact-marquee .news-card .background { display: none; }
 #fact-marquee .factoid-title {
-  color: #FF927A;
+  color: var(--theme-color, #FF927A);
   font-size: 18px;
   font-weight: 700;
   line-height: 130%;

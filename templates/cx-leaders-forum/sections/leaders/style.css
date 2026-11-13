@@ -54,7 +54,7 @@
 #leaders .quote-card figcaption strong {
   display: block;
   font-size: 14px;
-  color: #071912;
+  color: var(--theme-color, #071912);
 }
 
 #leaders .quote-card figcaption span {

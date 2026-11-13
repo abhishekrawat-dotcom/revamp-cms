@@ -299,12 +299,12 @@
   function freshDoc() { return document.implementation.createHTMLDocument(''); }
 
   /* The page as a visitor has it, around the section: <html> and <body> with the site's attributes (and
-     html.rv-motion, which the runtime sets), the elements between <body> and the section, and the section —
-     the selectors are tried on this. */
+     html.rv-motion and html.rv-anim, which the runtime sets), the elements between <body> and the section, and the
+     section — the selectors are tried on this. */
   function pageModel(doc, sec, copy) {
     var d = freshDoc();
     copyAttrs(doc.documentElement, d.documentElement, EDITOR_HTML_ATTRS);
-    d.documentElement.classList.add('rv-motion');
+    d.documentElement.classList.add('rv-motion', 'rv-anim');
     copyAttrs(doc.body, d.body, ['data-rv-editing']);
     var chain = [], at = d.body, p;
     for (p = sec.parentElement; p && p !== doc.body && p !== doc.documentElement; p = p.parentElement) chain.unshift(p);
@@ -320,10 +320,10 @@
     return { doc: d, html: d.documentElement, body: d.body, kin: kin, section: s };
   }
   /* The same section as the other website will have it: on its own, straight in that page's <body>, under an
-     <html> the runtime has marked rv-motion. Rewritten selectors are checked on this. */
+     <html> the runtime has marked rv-motion and rv-anim. Rewritten selectors are checked on this. */
   function embedModel(doc, copy) {
     var d = freshDoc();
-    d.documentElement.classList.add('rv-motion');
+    d.documentElement.classList.add('rv-motion', 'rv-anim');
     var s = d.importNode(copy, true);
     d.body.appendChild(s);
     return { doc: d, html: d.documentElement, body: d.body, section: s };
@@ -352,7 +352,7 @@
   }
 
   /* What an <html> compound may keep: what the runtime sets on the other website's own <html> too */
-  var RUNTIME_HTML = /^(html|:root|\.rv-motion|\[data-rv-modal(=""|='')?\]|\[data-rv-motion-ready(=""|='')?\]|:not\(\[data-rv-editing\]\)|:not\(\[data-rv-editor-mode\]\))$/;
+  var RUNTIME_HTML = /^(html|:root|\.rv-motion|\.rv-anim|\[data-rv-modal(=""|='')?\]|\[data-rv-motion-ready(=""|='')?\]|:not\(\[data-rv-editing\]\)|:not\(\[data-rv-editor-mode\]\))$/;
 
   /* One selector of a rule that reaches the section, for the other website -> the selectors to write (one or two).
      Each begins with the section (ctx.scope: its class and the weight of four ids): "<scope> <rest>" for what is
@@ -742,6 +742,11 @@
     var queue = w.RevampEmbedQ = w.RevampEmbedQ || [];
     var owns = {}, pending = 0, waiting = [], page = CONFIG.page || '', scope = CONFIG.scope;
     if (CONFIG.edges) d.documentElement.setAttribute('data-rv-edges', CONFIG.edges);
+    /* ET's scroll reveal holds its blocks hidden only under <html class="rv-anim"> (et-animate.css), which the
+       runtime sets as it starts: set here at once, so a block does not show and then hide while the runtime loads;
+       taken off again when the runtime did not come, so the sections still show */
+    var root = d.documentElement, cls = root && root.classList;
+    if (cls) cls.add('rv-anim');
     function each(list, fn) { Array.prototype.forEach.call(list, fn); }
     function load(list, done) {
       var i = 0;
@@ -765,6 +770,7 @@
       pending++;
       load(conf.scripts || [], function () {
         pending--;
+        if (cls && !(w.RevampSections && w.RevampSections.init && !w.RevampSections.q)) cls.remove('rv-anim');
         if (!pending) waiting.splice(0).forEach(function (f) { f(); });
         startAll();
       });

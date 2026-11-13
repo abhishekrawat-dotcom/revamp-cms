@@ -181,7 +181,7 @@
     { "id": "summit-spotlight",    "name": "Summit spotlight",               "etId": "288850", "repeat": { "item": ".summit-spotlight-card", "label": ".summit-spotlight-label" } },
     { "id": "why-attend",          "name": "Be in the room",                 "etId": "288830", "repeat": { "item": ".agenda-card", "label": ".agenda-card-title" } },
     { "id": "industries",          "name": "Industries in the room",         "etId": "288832", "repeat": { "item": ".industry-card", "label": ".industry-name" } },
-    { "id": "strategic-influence", "name": "Beyond sponsorship",             "etId": "288858", "repeat": { "item": ".strategic-influence-btn", "label": ".strategic-influence-btn" } },
+    { "id": "strategic-influence", "name": "Beyond sponsorship",             "etId": "288858", "repeat": { "item": ".strategic-influence-btn", "label": ":self" } },
     { "id": "faq",                 "name": "Frequently asked questions",     "etId": "288835", "script": true, "repeat": { "item": ".faq-item", "label": ".faq-question-text" },
       "toggle": { "item": ".faq-item", "open": "active", "expanded": ".faq-question" } },
     { "id": "contact-us",          "name": "Contact us",                     "etId": null,     "repeat": { "item": ".flex-width-auto > .col-md-6", "label": ".line-1" } },

@@ -21,7 +21,7 @@
   line-height: 140%;
   transition: all 0.3s ease;
   border-radius: 20px;
-  border: 2px solid rgba(255, 146, 122, 0.50);
+  border: 2px solid color-mix(in srgb, var(--theme-color, #FF927A) 50%, transparent);
   background: linear-gradient(180deg, rgba(69, 0, 6, 0.00) 0%, #450006 49.04%), rgba(69, 0, 6, 0.50);
   background-blend-mode: normal, luminosity, normal;
   background-size: cover !important;

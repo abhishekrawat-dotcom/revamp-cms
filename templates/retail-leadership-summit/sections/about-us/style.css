@@ -2,5 +2,5 @@
   background: linear-gradient(180deg, #470103 0%, #71000A 100%);
 }
 #about_us_event .page_hdng4 h2 {
-  color: #FF927A;
+  color: var(--theme-color, #FF927A);
 }

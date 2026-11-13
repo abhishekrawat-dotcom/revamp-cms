@@ -59,8 +59,8 @@ a.book-btn {
   letter-spacing: 1.6px;
   text-transform: uppercase;
   padding: 15px 35px;
-  border: 1px solid #FF927A;
-  background: #FF927A;
+  border: 1px solid var(--theme-color, #FF927A);
+  background: var(--theme-color, #FF927A);
   border-radius: 6px;
   font-family: var(--heading-font-family);
   display: inline-block;
@@ -68,12 +68,12 @@ a.book-btn {
 
 a.book-btn.btn-outline {
   background: transparent;
-  color: #FF927A;
-  border: 1px solid #FF927A;
+  color: var(--theme-color, #FF927A);
+  border: 1px solid var(--theme-color, #FF927A);
 }
 a.book-btn.btn-outline:hover {
   color: #71000A;
-  background: #FF927A;
+  background: var(--theme-color, #FF927A);
 }
 
 @media screen and (max-width: 767px) {
@@ -115,9 +115,9 @@ body {background-color: rgba(113, 0, 10, 1);}
 body h1 h2 h3 { font-size: 50px ;}
 body h4 h5 h6 { font-size: 16px ;}
 body p { font-size: 14px ;}
-#header_bg_color header {background-color: rgba(255, 146, 122, 1);}
+#header_bg_color header {background-color: var(--theme-color, #FF927A);}
 #banner_color banner {color: rgba(0, 0, 0, 1);}
-#button_color button {background-color: rgba(255, 146, 122, 1);}
+#button_color button {background-color: var(--theme-color, #FF927A);}
 #button_font button {color: rgba(113, 0, 10, 1);}
 #footer_color footer {background-color: rgba(26, 0, 2, 1);}
 #button_links a {color: rgba(255, 255, 255, 1);}
