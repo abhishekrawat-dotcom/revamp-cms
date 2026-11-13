@@ -31,9 +31,15 @@ back = G.restorePictures('<div style="background: url(&quot;https://evil.test/x.
 check('a stand-in for an address that is not ours keeps the quotes the attribute had', back === '<div style="background: url(&quot;' + OTHER + '&quot;) center"></div><div style="background:url(&#39;' + OTHER + '&#39;)"></div>', back);
 back = G.restorePictures('.a{background:url(rvimg://p1)} .b{background:url("https://evil.test/z.png")}', MAP, OTHER);
 check('…and in a stylesheet too (bare, or in its own quotes)', back === '.a{background:url(' + URL1 + ')} .b{background:url("' + OTHER + '")}', back);
-var san = H.sanitizeGeneratedSectionHtml('<section style="background-image: url("' + URL1 + '");"><style>.a{background:url("' + URL1 + '")}</style><p>x</p></section>');
-check('a model\'s own url("…") inside an attribute is written with &quot;; its <style> blocks are left as they are',
+var MODEL = '<section style="background-image: url("' + URL1 + '");"><style>.a{background:url("' + URL1 + '")}</style><p>x</p></section>';
+var san = H.tidyGeneratedSectionHtml(MODEL);
+check('a model\'s own url("…") inside an attribute is written with &quot; before the markup is read; its <style> blocks are left as they are',
   san === '<section style="background-image: url(&quot;' + URL1 + '&quot;);"><style>.a{background:url("' + URL1 + '")}</style><p>x</p></section>', san);
+var safe = H.safeGeneratedSection(san, '');
+check('…so the safety step keeps the background whole, and moves the <style> rules into the section\'s CSS',
+  safe.html === '<section style="background-image:url(&quot;' + URL1 + '&quot;)"><p>x</p></section>' && safe.css === '.a{background:url("' + URL1 + '")}', safe);
+check('read without the quote fix first, the attribute would have ended at url( — the order matters',
+  H.safeGeneratedSection(MODEL, '').html.indexOf(URL1) === -1);
 var API = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
 check('the section rework uses both, on the original section (before its pictures became tokens)',
   /var pictures = \{\}, origHtml = html;/.test(API) && /newCss = cssUrlQuotes\(genDesign\.restorePictures\(newCss, pictures, found\[0\] \|\| ''\)\);/.test(API) &&

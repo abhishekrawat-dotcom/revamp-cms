@@ -366,7 +366,9 @@ function seed(id, data) { DOCS['events/' + id] = Object.assign({ name: id, creat
   check('an event with no portal yet: passes', r.status !== 400 && FETCHES.length === 6, [r.status, r.json]);
   check('… and reading it never sets the event\'s portal', !DOCS['events/pa-ing-none'].portal && writesTo('events/pa-ing-none') === noneN, DOCS['events/pa-ing-none']);
   r = await ingest({ eventId: 'pa-not-yet', url: 'https://cio.economictimes.indiatimes.com/x', type: 'currentEdition' });
-  check('an event that does not exist yet: passes', r.status !== 400 && FETCHES.length === 7 && !DOCS['events/pa-not-yet'], [r.status, r.json]);
+  /* BE-021 (13 Nov 2026): a step works only on an event that exists (Create Event makes it first) — refused before
+     anything is fetched, and no document is made */
+  check('an event that does not exist yet: 404, nothing fetched, nothing made', r.status === 404 && r.json.code === 'event-not-found' && FETCHES.length === 6 && !DOCS['events/pa-not-yet'], [r.status, r.json]);
   check('the model was never asked (every fetch here answers 404)', MODEL_CALLS === 0, MODEL_CALLS);
   r = await ingest({ eventId: 'pa-ing', url: 'https://cio.economictimes.indiatimes.com/x', type: 'previousEdition', etEvent: { portal: 'nowhere', id: '1' } });
   check('a pick off the roster is still refused as before (not a real pick)', r.status === 400 && /etEvent must name a known portal/.test(r.json.error), r.json);

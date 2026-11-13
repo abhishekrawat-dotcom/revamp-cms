@@ -29,11 +29,18 @@ check('a custom property is set to the stand-in, never to itself', /\.e\{--headi
 check('nothing Google left: the site\'s body font', /\.f\{font-family:var\(--body-font-family\)\}/.test(css), css);
 check('generic-only and keyword values are left alone', /\.g\{font:inherit\}/.test(css) && /\.h\{font-family:monospace\}/.test(css), css);
 
-/* the section sanitisers the generation runs */
-var html = api.sanitizeGeneratedSectionHtml('<link rel="stylesheet" href="https://use.typekit.net/abc.css"><style>.t{font-family:Gilroy}</style>' +
-  '<h2 style="font-family:\'Gotham\', sans-serif; color:red">Hi</h2><p style=\'font-family:"Avenir"\'>x</p>');
-check('a section\'s markup: no stylesheet link, its <style> and style="" fonts Google ones, the attribute still whole',
-  !/typekit|<link/.test(html) && /\.t\{font-family:"Plus Jakarta Sans"\}/.test(html) && /style="font-family:'Montserrat', sans-serif; color:red"/.test(html) && /style='font-family:"Nunito Sans"'/.test(html), html);
+/* the section steps the generation runs: tidied (fonts), then made safe (sanitize.js), the markup's own <style>
+   rules moved into its CSS */
+var RAW = '<link rel="stylesheet" href="https://use.typekit.net/abc.css"><style>.t{font-family:Gilroy}</style>' +
+  '<h2 style="font-family:\'Gotham\', sans-serif; color:red">Hi</h2><p style=\'font-family:"Avenir"\'>x</p>';
+var tidy = api.tidyGeneratedSectionHtml(RAW);
+check('a section\'s markup, tidied: its <style> and style="" fonts Google ones, the attribute still whole',
+  /\.t\{font-family:"Plus Jakarta Sans"\}/.test(tidy) && /style="font-family:'Montserrat', sans-serif; color:red"/.test(tidy) && /style='font-family:"Nunito Sans"'/.test(tidy), tidy);
+var safe = api.safeGeneratedSection(tidy, '');
+check('…then made safe: no stylesheet link, no <style> left in it, its rules in the CSS, the fonts kept',
+  !/typekit|<link|<style/.test(safe.html) && /\.t\{font-family:"Plus Jakarta Sans"\}/.test(safe.css) && /style="font-family:'Montserrat', sans-serif;color:red"/.test(safe.html) && /style="font-family:&quot;Nunito Sans&quot;"/.test(safe.html), safe);
+var html = api.sanitizeGeneratedSectionHtml(RAW);
+check('sanitizeGeneratedSectionHtml is both steps', html === safe.html, html);
 check('a section\'s CSS', api.sanitizeGeneratedSectionCss('h1{font-family:"Canela",serif}') === 'h1{font-family:"Fraunces", serif}', api.sanitizeGeneratedSectionCss('h1{font-family:"Canela",serif}'));
 
 /* the design's pair */

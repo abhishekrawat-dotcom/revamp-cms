@@ -39,9 +39,9 @@
 //                               templates/<id>/template.json file; each section's real markup/CSS (fully
 //                               Gemini's own per-event design, not a fixed library component) is resolved
 //                               via GET /api/generated-section right below.
-//   GET  /api/generated-section?eventId=<id>&id=<sectionId>   PUBLIC, no auth — one section's real,
-//                               Gemini-written {html, css}, read straight off events/{eventId}.
-//                               generatedSections. The 5 data-bound kinds (speakers/faq/partners/contact/
+//   GET  /api/generated-section?eventId=<id>&id=<sectionId>   signed in (routeApi's caller check) — one
+//                               section's real, model-written {html, css}, read off events/{eventId}.
+//                               generatedSections and sanitised again on the way out (sanitize.js). The 5 data-bound kinds (speakers/faq/partners/contact/
 //                               glimpses) carry a data-rv-repeat-template/data-rv-field convention in that
 //                               markup for a client-side mechanism (built separately) to fill with real
 //                               per-event Firestore records. The css is confined to its own section on
@@ -146,15 +146,14 @@
 //                               takes over the same DOM), re-hosts referenced images to Storage, inlines the
 //                               gathered CSS, stores the flattened result in Storage, and persists an
 //                               events/import-<importId> doc. Returns {templateId: 'imported-<importId>'}.
-//   GET  /api/imported-template?eventId=<importId>   PUBLIC, no auth (template-loader.js's load() runs in the
-//                               ordinary browser context, same as /api/generated-template) — the
+//   GET  /api/imported-template?eventId=<importId>   signed in (routeApi's caller check) — the
 //                               template.json-shaped object for an imported design: one opaque 'imported'
 //                               section, content.map has a single inert entry (no library/from id this app's
 //                               wizard ever writes to, so editor-fill.js's apply() always leaves the real
 //                               captured markup alone — see its own `if (!(m.from in ctx.content)) return;`).
-//   GET  /api/imported-section?eventId=<importId>    PUBLIC, no auth — the one section's real flattened
-//                               markup, CSS already inlined (this file's CSS inline-vs-linked call, see the
-//                               handler's own comment) — proxied through this server rather than the browser
+//   GET  /api/imported-section?eventId=<importId>    signed in (routeApi's caller check) — the page's
+//                               markup and CSS as JSON { html } (or ?all=1: its sections and frame), sanitised
+//                               when imported and again when served (sanitize.js, profile "imported") — proxied through this server rather than the browser
 //                               hitting the Storage URL directly, same reasoning as every other template
 //                               asset in this app.
 const fs = require('fs');
@@ -170,7 +169,7 @@ const { getFirebase } = require('./firebase');
 /* Request plumbing (JSON in/out, body size limits, who is calling) lives in ./http and is shared with
    lib/api-events.js and lib/api-audience.js, so the three modules cannot drift apart on what a too-large
    body, a non-object JSON body or an expired sign-in is answered with. */
-const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, adminFromRequest, isEventId, isReservedEventId,
+const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, requireMember, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
 const { logActivity, actorOf, maskEmail, sectionNames } = require('./activity');
 /* a shareable preview link's address, written into a log line without its token (lib/share-token.js) */
@@ -193,6 +192,9 @@ const promoDetails = require('./promo-details');
 const seoFields = require('./seo-fields');
 const seoSchema = require('./seo-schema');
 const googleFonts = require('./google-fonts');
+/* The one sanitiser for markup this server did not write itself (a model's sections, a page copied from another
+   site): an allow-list on a real parser, applied when such markup is stored and again when it is served. */
+const sanitize = require('./sanitize');
 const sectionPictures = require('./section-pictures');
 const etAwards = require('./et-awards');
 const awardSite = require('./award-site');
@@ -1591,23 +1593,40 @@ function handleExtractBrief(req, res) {
     try { buffer = Buffer.from(docBase64, 'base64'); } catch (e) { return sendJson(res, 400, { error: 'docBase64 is not valid base64.' }); }
     if (buffer.length === 0) return sendJson(res, 400, { error: 'The uploaded document is empty.' });
     if (buffer.length > MAX_BRIEF_BYTES) return sendJson(res, 413, { error: 'The uploaded document is larger than the 15MB pilot limit.' });
+    /* a PDF says so in its first bytes (a few may come before the mark) */
+    if (mimeType === 'application/pdf' && buffer.slice(0, 1024).indexOf('%PDF-') === -1) {
+      return sendJson(res, 415, { error: 'That file is not a PDF. Upload the brief as a PDF, or type the description instead.', code: 'unsupported-file' });
+    }
+
+    /* The event's facts this step may store (BE-022): name, dates, venue and city, each checked as PATCH
+       /api/event checks it — nothing else the request carries (the event's portal, its publishing, its deletion,
+       its design are each changed by their own route and rule). A fact that does not pass is refused here,
+       before anything is paid for or stored. */
+    var eventMeta = isPlainObject(payload.eventMeta) ? payload.eventMeta : {};
+    var facts = briefFacts(eventMeta);
+    if (facts.error) return sendJson(res, 400, { error: facts.error, field: facts.field });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
 
-    var eventMeta = payload.eventMeta || {};
-    var storagePath = 'events/' + eventId + '/briefs/' + fileName;
+    /* stored under a name this server chooses (the brief's own id): the name the file came with is only shown */
+    var shownName = fileName.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim().slice(0, 200) || 'brief';
+    var briefRef = fb.db.collection('events').doc(eventId).collection('briefs').doc();
+    var storagePath = 'events/' + eventId + '/briefs/' + briefRef.id + (mimeType === 'application/pdf' ? '.pdf' : '.txt');
+    var stored = false;
     /* what the owner typed in "Describe the event": the document itself when there is no other, else sent
        beside it (briefText). Its filled-in headings are the owner's brief (owner-brief.js). */
     var ownerText = String(payload.briefText || (mimeType === 'text/plain' ? buffer.toString('utf8') : '') || eventMeta.description || '').slice(0, 8000);
 
     var watch = null;
+    /* the event must exist (BE-021): watchEvent refuses one that does not with 404 before the model is asked */
     watchEvent(fb, eventId)
-      .then(function (w) { watch = w; return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } }); })
-      .then(function () {
+      .then(function (w) {
+        watch = w;
         return llm.callJson(buildExtractBriefPrompt(eventMeta, mimeType === 'application/pdf' ? ownerText : ''), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, onUsage: aiUsageRecorder(fb, eventId, 'extract-brief'), maxOutputTokens: AI_OUTPUT_TOKENS.small });
       })
       .then(function (r) {
+        /* nothing is stored for a brief that could not be read */
         if (r.error) return sendAiFailure(res, r);
         var extracted = {
           theme: String(r.parsed.theme || '').slice(0, 500),
@@ -1635,26 +1654,50 @@ function handleExtractBrief(req, res) {
         }
 
         var now = new Date().toISOString();
-        var eventRef = fb.db.collection('events').doc(eventId);
-        /* the event's facts as the form gave them — never its description: what the owner typed is the brief
-           (kept with the brief below), and the description is written from it at design time
-           (event-description.js) */
-        return watch.merge(Object.assign({}, eventDescription.storedFacts(eventMeta), { updatedAt: now }))
-          .then(function () { return eventRef.collection('briefs').add({
-            sourceFileName: fileName, mimeType: mimeType, storagePath: storagePath,
+        /* the document, once the model has read it */
+        return fb.bucket.file(storagePath).save(buffer, { metadata: { contentType: mimeType } })
+          .then(function () {
+            stored = true;
+            /* the event's facts as the form gave them, checked above — never its description: what the owner typed
+               is the brief (kept with the brief below), and the description is written from it at design time
+               (event-description.js). update(), not a merge: it never makes a document that is not there. */
+            return watch.update(Object.assign({}, facts.value, { updatedAt: now }));
+          })
+          .then(function () { return briefRef.set({
+            sourceFileName: shownName, mimeType: mimeType, storagePath: storagePath,
             extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now
           }); })
-          .then(function (briefRef) {
+          .then(function () {
             sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted });
-            if (watch.live) logActivity(fb, eventId, req.user, 'brief-updated', 'brief read from “' + fileName.slice(0, 120) + '”', { area: 'content' });
+            if (watch.live) logActivity(fb, eventId, req.user, 'brief-updated', 'brief read from “' + shownName.slice(0, 120) + '”', { area: 'content' });
           });
       })
       .catch(function (err) {
-        /* the document uploaded for an event that is no longer there must not be left behind */
-        if (err && err.body && err.body.code === 'event-gone') fb.bucket.file(storagePath).delete().catch(function () { /* already removed with the event */ });
+        /* a document stored for a brief that was then not kept (the event went meanwhile, or the brief could not be
+           written) must not be left behind */
+        if (stored) fb.bucket.file(storagePath).delete().catch(function () { /* already removed with the event */ });
         sendStepFailure(res, err, 500, 'extract-brief failed: ' + err.message);
       });
   }, BODY_LIMITS.brief);
+}
+
+/* The facts of an event a brief step may store on it, from the form's eventMeta: name, start, end, venue and city,
+   each one only when it is sent, checked by EVENT_FIELD_CHECKS (event-description.js BRIEF_FACT_FIELDS names
+   them). -> { value } or { error, field } */
+function briefFacts(eventMeta) {
+  var picked = eventDescription.storedFacts(eventMeta), value = {};
+  var fields = Object.keys(picked);
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i], v = picked[f];
+    if (v === undefined) continue;
+    /* an empty name is no name sent (the form always has one: the event was made with it) */
+    if (f === 'name' && (v == null || String(v).trim() === '')) continue;
+    var problem = EVENT_FIELD_CHECKS[f](v);
+    if (problem) return { error: problem, field: f };
+    value[f] = typeof v === 'string' ? v.trim() : v;
+  }
+  if (value.start && value.end && Date.parse(value.end) < Date.parse(value.start)) return { error: 'The end date is before the start date.', field: 'end' };
+  return { value: value };
 }
 
 /* ---------- POST /api/ingest-source — AI site-generation pipeline, step 2 ----------
@@ -5623,40 +5666,43 @@ function attrUrlQuotes(html) {
     return part.replace(/url\(\s*"([^"<>]*)"\s*\)/gi, 'url(&quot;$1&quot;)').replace(/url\(\s*'([^'<>]*)'\s*\)/gi, 'url(&#39;$1&#39;)');
   }).join('');
 }
-function sanitizeGeneratedSectionHtml(html) {
+/* What a model's section needs before it is read as markup: quotes a browser would misread, and Google fonts only
+   (in its <style> blocks and style="" attributes too; no stylesheet <link> of its own). Not a safety step — the
+   picture tokens ("rvimg://…") are still in it and are put back as addresses after it; safeGeneratedSection is the
+   safety step, and it runs last. */
+function tidyGeneratedSectionHtml(html) {
   try {
-    var out = String(html || '');
-    out = out.replace(/<script\b[\s\S]*?<\/script\s*>/gi, '');
-    out = out.replace(/<iframe\b[\s\S]*?<\/iframe\s*>/gi, '').replace(/<iframe\b[^>]*\/?>/gi, '');
-    out = out.replace(/<object\b[\s\S]*?<\/object\s*>/gi, '').replace(/<object\b[^>]*\/?>/gi, '');
-    out = out.replace(/<embed\b[^>]*\/?>/gi, '');
-    out = out.replace(/\son[a-z]+\s*=\s*"[^"]*"/gi, '').replace(/\son[a-z]+\s*=\s*'[^']*'/gi, '');
-    out = out.replace(/(href|src)\s*=\s*"\s*javascript:[^"]*"/gi, '$1="#"');
-    out = out.replace(/(href|src)\s*=\s*'\s*javascript:[^']*'/gi, "$1='#'");
-    out = attrUrlQuotes(out);
-    /* Google Fonts only, in its <style> blocks and style="" attributes too; no stylesheet <link> of its own */
-    out = googleFonts.googleOnlyHtml(out);
-    return out;
+    return googleFonts.googleOnlyHtml(attrUrlQuotes(String(html || '')));
   } catch (e) {
-    console.error('sanitizeGeneratedSectionHtml failed on malformed input, degrading to empty — ' + e.message);
+    console.error('tidyGeneratedSectionHtml failed on malformed input, degrading to empty — ' + e.message);
     return '';
   }
 }
-function sanitizeGeneratedSectionCss(css) {
+function tidyGeneratedSectionCss(css) {
   try {
-    var out = String(css || '');
-    out = out.replace(/@import\b[^;]*;?/gi, '');
     /* Google Fonts only: no face of its own, every family named a Google one */
-    out = googleFonts.googleOnlyCss(out);
-    out = out.replace(/url\(\s*["']?\s*javascript:[^)]*\)/gi, 'url()');
-    out = out.replace(/behavior\s*:[^;]*;?/gi, '');
-    out = out.replace(/-moz-binding\s*:[^;]*;?/gi, '');
-    return out;
+    return googleFonts.googleOnlyCss(String(css || '').replace(/@import\b[^;]*;?/gi, ''));
   } catch (e) {
-    console.error('sanitizeGeneratedSectionCss failed on malformed input, degrading to empty — ' + e.message);
+    console.error('tidyGeneratedSectionCss failed on malformed input, degrading to empty — ' + e.message);
     return '';
   }
 }
+/* THE safety step for a section of an AI-designed site (BE-025): sanitize.js's allow-list on a real parser (profile
+   "generated": no script, handler, frame, form, object or unsafe address survives, however it is written), the
+   markup's own <style> rules moved into its CSS, and the CSS through the same rules. Run on every section when the
+   site is written (generate-content), on every section the AI reworks (redesign-section, which the chat's
+   rework and new-section steps use too), and on every section served (generated-section). -> { html, css } */
+function safeGeneratedSection(html, css) {
+  try {
+    var out = sanitize.sanitizeSection(html, css, { profile: 'generated' });
+    return { html: out.html, css: out.css };
+  } catch (e) {
+    console.error('safeGeneratedSection failed, degrading to empty — ' + e.message);
+    return { html: '', css: '' };
+  }
+}
+function sanitizeGeneratedSectionHtml(html) { return safeGeneratedSection(tidyGeneratedSectionHtml(html), '').html; }
+function sanitizeGeneratedSectionCss(css) { return safeGeneratedSection('', tidyGeneratedSectionCss(css)).css; }
 
 /* A written section's styles shorter than this are none at all: its words would show as bare text */
 var UNSTYLED_CSS_CHARS = 80;
@@ -5751,10 +5797,11 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
       console.error('generate-content: planned section "' + p.id + '" is missing from Gemini\'s response, omitting it rather than failing the whole page.');
       return;
     }
-    var html = sanitizeGeneratedSectionHtml(String(found.html || ''));
+    /* tidied here; made safe (safeGeneratedSection) once its pictures are addresses again, before it is stored */
+    var html = tidyGeneratedSectionHtml(String(found.html || ''));
     /* no text below the smallest readable size, and no heading above the site's type scale, whatever was
        written (the hero keeps its own type) */
-    var css = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(found.css || '')));
+    var css = genDesign.clampFontSizes(tidyGeneratedSectionCss(String(found.css || '')));
     if (p.id !== 'hero') css = genDesign.capHeadingSizes(css, html);
     sections.push({ id: p.id, kind: p.kind, html: html, css: css });
   });
@@ -6139,6 +6186,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       sections.unshift(navSection);
       /* no more than two rows move on their own, never in neighbouring sections (genDesign.motionBudget) */
       genDesign.motionBudget(sections);
+      /* the safety step, last, over every section stored — the model's and the ones built here around its words */
+      sections = sections.map(function (s) {
+        var safe = safeGeneratedSection(s.html, s.css);
+        return Object.assign({}, s, { html: safe.html, css: safe.css });
+      });
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();
 
@@ -6325,18 +6377,26 @@ function handleRedesignSection(req, res) {
       });
       return llm.callJson(prompt, REDESIGN_SCHEMA, { timeoutMs: 90000, route: 'redesign-section', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(null, eventId, 'redesign-section') }).then(function (r) {
         if (r.error) return sendAiFailure(res, r);
-        var newHtml = genDesign.restorePictures(sanitizeGeneratedSectionHtml(String(r.parsed.html || '')).trim(), pictures, found[0] || '');
-        if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' });
-        var newCss = genDesign.clampFontSizes(sanitizeGeneratedSectionCss(String(r.parsed.css || '')));
+        var unusable = { error: 'The AI did not return a usable section. Nothing on the site changed — try again.', code: 'ai-unusable' };
+        var newHtml = genDesign.restorePictures(tidyGeneratedSectionHtml(String(r.parsed.html || '')).trim(), pictures, found[0] || '');
+        if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, unusable);
+        var newCss = genDesign.clampFontSizes(tidyGeneratedSectionCss(String(r.parsed.css || '')));
         /* no heading above the site's type scale, as when the site was made (the hero keeps its own type) */
         if (sectionId !== 'hero' && payload.generated !== false) newCss = genDesign.capHeadingSizes(newCss, newHtml);
         newCss = cssUrlQuotes(genDesign.restorePictures(newCss, pictures, found[0] || ''));
         /* a change that was not about the background keeps the section's own background picture */
         if (mode === 'edit') newHtml = keepRootBackground(origHtml, newHtml, newCss, String(payload.instruction || ''));
-        var scopedCss = scopeSectionCss(newCss, sectionId, sectionRootInfo(newHtml));
+        /* the safety step (BE-025), once the pictures are addresses again: nothing the model wrote reaches the page
+           unless sanitize.js lets it */
+        var safe = safeGeneratedSection(newHtml, newCss);
+        newHtml = safe.html.trim();
+        if (!/^<[a-zA-Z]/.test(newHtml)) return sendJson(res, 502, unusable);
+        var scopedCss = scopeSectionCss(safe.css, sectionId, sectionRootInfo(newHtml));
         /* an AI-designed site's section is held to a phone's width as soon as it is remade, as on the published
            page (gen-markup.js mobileSafeCss; idempotent); a fixed template's CSS is left as it was written */
         if (payload.generated !== false) scopedCss = mobileSafeCss(scopedCss);
+        /* …and the stylesheet read once more as it leaves, after it was scoped */
+        scopedCss = sanitize.sanitizeCss(scopedCss);
         sendJson(res, 200, {
           sectionId: sectionId, html: newHtml,
           css: scopedCss,
@@ -6363,31 +6423,41 @@ function handleGenerateContent(req, res) {
     if (!eventId || !templateId) return sendJson(res, 400, { error: 'eventId and templateId are required.' });
     if (!isEventId(eventId) || !isEventId(sourceEventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
     if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(templateId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
+    /* BE-020: a site is written onto the event it is for, from that event's own design and research. Another
+       event's brief and sources are read only for a future edition (its own past editions'), and only from an
+       event that exists (checked below, with the caller's portal checked for it by routeApi). */
+    if (sourceEventId !== eventId && !futureEdition) return sendJson(res, 400, { error: 'A site is written from its own event\'s brief and sources (sourceEventId must be the eventId).', code: 'other-event' });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
+    /* asked only once a branch below is taken: a refusal made before it leaves no promise unanswered */
+    function sourceOk() { return sourceEventId === eventId ? Promise.resolve() : loadLiveEvent(fb, sourceEventId); }
 
     // AI-DESIGNED GENERATED TEMPLATES: templateId:'gen-<eventId>' has no templates/<id>/template.json on
     // disk at all — Gemini designs/writes its own HTML+CSS per section (runGenerateDesignedContent, a
     // deliberately SEPARATE pipeline from the ported-template path below — see that function's own header
-    // comment for why), reading the designPlan /api/plan-structure already saved on events/{genEventId}.
+    // comment for why), reading the designPlan /api/plan-structure already saved on events/{eventId}.
     if (/^gen-/.test(templateId)) {
-      var genEventId = templateId.slice(4);
-      if (!isEventId(genEventId)) return sendJson(res, 400, { error: 'Invalid templateId.' });
-      return fb.db.collection('events').doc(genEventId).get().then(function (snap) {
+      /* the design is this event's own: 'gen-<another event>' would write that event's site onto this one */
+      if (templateId !== 'gen-' + eventId) return sendJson(res, 400, { error: 'An AI-designed site is written from its own event\'s design (templateId must be "gen-' + eventId + '").', code: 'other-event' });
+      return sourceOk().then(function () { return fb.db.collection('events').doc(eventId).get(); }).then(function (snap) {
         var data = snap.exists ? snap.data() : {};
         var designPlan = data.designPlan;
         if (!designPlan || !designPlan.design || !Array.isArray(designPlan.sections)) {
-          return sendJson(res, 400, { error: 'No design plan found for "' + genEventId + '" — run /api/plan-structure first.' });
+          return sendJson(res, 400, { error: 'No design plan found for "' + eventId + '" — run /api/plan-structure first.' });
         }
         runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, req.user);
-      }).catch(function (err) { sendJson(res, 500, { error: 'generate-content failed: ' + err.message }); });
+      }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
     }
 
     var templatePath = path.join(__dirname, '..', '..', 'templates', templateId, 'template.json');
     var templateJson;
     try { templateJson = JSON.parse(fs.readFileSync(templatePath, 'utf8')); }
-    catch (e) { return sendJson(res, 400, { error: 'Could not read template "' + templateId + '": ' + e.message }); }
+    catch (e) {
+      /* the reason stays in the server's log: it names the server's own folders */
+      console.error('generate-content: template "' + templateId + '" could not be read — ' + e.message);
+      return sendJson(res, 400, { error: 'There is no template "' + templateId + '".', code: 'unknown-template' });
+    }
 
     // A2/E2: create-event.html's own picker UI (TEMPLATES[].briefReady) already keeps templates with known
     // wrong-event bleed-through out of the "Generate from a brief" dropdown, but that's a client-side nicety
@@ -6410,7 +6480,9 @@ function handleGenerateContent(req, res) {
     // runGenerateContent, shared with the 'gen-' branch above.)
     var skippedLibraries = deliberatelySkippedLibraries((templateJson.content || {}).map);
 
-    runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null, req.user);
+    sourceOk().then(function () {
+      runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null, req.user);
+    }, function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
   }, BODY_LIMITS.ai);
 }
 
@@ -6614,9 +6686,9 @@ function handleGeneratedTemplate(req, res) {
 
 /* ---------- GET /api/generated-section?eventId=<id>&id=<sectionId> — AI-DESIGNED GENERATED TEMPLATES
    PIPELINE, step 4 ----------
-   PUBLIC, no auth (template-loader.js's load() runs in the ordinary browser context, same reasoning as
-   /api/imported-section) — one section's real, Gemini-written {html, css}, read straight off
-   events/{eventId}.generatedSections (POST /api/generate-content already wrote it there). */
+   Signed in, any role, an event of one of the caller's portals (routeApi's caller check) — one section's real,
+   model-written {html, css}, read off events/{eventId}.generatedSections (POST /api/generate-content wrote it
+   there) and made safe again on the way out (safeGeneratedSection), whatever was stored. */
 function handleGeneratedSection(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var eventId = String(qs.get('eventId') || '').trim();
@@ -6639,7 +6711,11 @@ function handleGeneratedSection(req, res) {
     /* the links of the top bar and the footer follow the page's order (a site made before that was enforced
        is served so too) */
     if ((sectionId === 'nav' || sectionId === 'footer') && data.designPlan && Array.isArray(data.designPlan.sections)) html = sectionOrder.orderNavLinks(html, generatedPageIds(data.designPlan, sections));
-    var css = genDesign.clampFontSizes(scopeSectionCss(found.css, sectionId, sectionRootInfo(html)));
+    /* made safe on the way out as well as when stored (BE-025): a section stored before the real sanitiser, or
+       written to the record by any other way, reaches the editor only through it. Its own <style> rules join its CSS. */
+    var css = [String(found.css || '')].concat(sanitize.styleTexts(html)).join('\n');
+    html = sanitize.sanitizeHtml(html, { profile: 'generated' }).html;
+    css = genDesign.clampFontSizes(scopeSectionCss(css, sectionId, sectionRootInfo(html)));
     /* no heading louder than the site's type scale — a section stored before the scale was calmed is served
        calm too (idempotent); the hero banner keeps its own type */
     if (sectionId !== 'hero') css = genDesign.capHeadingSizes(css, html);
@@ -6649,7 +6725,7 @@ function handleGeneratedSection(req, res) {
     /* held to a phone's width (gen-markup.js; idempotent), as on the published page — not the top bar and the
        footer, which the server builds for phones itself (et-nav.js, et-footer.js: their one-line texts stay one line) */
     if (sectionId !== 'nav' && sectionId !== 'footer') css = mobileSafeCss(css);
-    sendJson(res, 200, { html: html, css: css });
+    sendJson(res, 200, { html: html, css: sanitize.sanitizeCss(css) });
   }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
 }
 
@@ -6898,6 +6974,17 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
         cssResults = cssResults.map(function (r) { return { href: r.href, text: r.text.replace(re, u.url) }; });
       });
 
+      /* The safety step (BE-050), before anything is stored: the page is someone else's, and it is shown in the
+         editor and published on this app's own address. Its markup goes through sanitize.js (profile "imported":
+         no script, handler, unsafe address or frame other than a known video or map; a form kept as a plain
+         block), every stylesheet through sanitizeCss, and a <style> inside its body is kept as one more
+         stylesheet. GET /api/imported-section makes it safe again whenever it is served. */
+      var safeBody = sanitize.sanitizeHtml(bodyHtml, { profile: 'imported' });
+      var bodyStyles = sanitize.styleTexts(bodyHtml).map(sanitize.sanitizeCss).filter(Boolean);
+      bodyHtml = safeBody.html;
+      cssResults = cssResults.map(function (r) { return { href: r.href, text: sanitize.sanitizeCss(r.text) }; }).filter(function (r) { return r.text; });
+      if (bodyStyles.length) cssResults.push({ href: 'page', text: bodyStyles.join('\n') });
+
       var styleBlocks = cssResults.map(function (r) {
         return '<style data-rv-imported-css="' + escAttr(r.href) + '">\n' + r.text + '\n</style>';
       }).join('\n');
@@ -6948,11 +7035,13 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
               sectionsPath: sectionsDoc ? sectionsPath : null,
               sections: sectionsDoc ? sectionsDoc.sections.map(function (x) { return { id: x.id, name: x.name }; }) : null,
               /* what was put right or taken out at import, for the owner (site-checks.js repair) */
-              importRepairs: importRepairs.slice(0, 200) },
+              importRepairs: importRepairs.slice(0, 200),
+              /* what the safety step took out of the page's markup (sanitize.js), by kind */
+              importRemoved: safeBody.removed.slice(0, 100) },
             docFields || {}
           ), { merge: true });
         })
-        .then(function () { return { templateId: 'imported-' + importId, repairs: importRepairs }; });
+        .then(function () { return { templateId: 'imported-' + importId, repairs: importRepairs, removed: safeBody.removed }; });
     });
   });
 }
@@ -7272,15 +7361,56 @@ function handleImportedSection(req, res) {
       if (!data.sectionsPath) return sendJson(res, 404, { error: 'This import was not cut into sections.' });
       return fb.bucket.file(data.sectionsPath).download().then(function (contents) {
         var doc = JSON.parse(contents[0].toString('utf8')), byId = {};
-        (doc.sections || []).forEach(function (x) { byId[x.id] = x.html; });
-        sendJson(res, 200, { frameOpen: doc.frameOpen || '', frameClose: doc.frameClose || '', sections: byId });
+        (doc.sections || []).forEach(function (x) { if (x && typeof x.id === 'string') byId[x.id] = safeImportedMarkup(x.html); });
+        var frame = safeImportedFrame(doc.frameOpen, doc.frameClose);
+        sendJson(res, 200, { frameOpen: frame.open, frameClose: frame.close, sections: byId });
       });
     }
+    /* as JSON { html }, never as an HTML document of this app's own address (template-loader.js reads both) */
     return fb.bucket.file(data.sectionHtmlPath).download().then(function (contents) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-      res.end(contents[0]);
+      sendJson(res, 200, { html: safeImportedMarkup(contents[0].toString('utf8')) });
     });
   }).catch(function (err) { sendJson(res, 500, { error: 'imported-section failed: ' + err.message }); });
+}
+
+/* ---------- an imported page, made safe as it is served (BE-050) ----------
+   Whatever is stored — an import made before the safety step, or a file changed in Storage since — is read through
+   sanitize.js again before it reaches the editor. The page's stylesheets stay <style> elements with their marks
+   (data-rv-imported-css: et-runtime.js reads the page's own end states from them; data-rv-imported-frame: the frame's
+   layout), first, each through sanitizeCss; the markup goes through sanitizeHtml, which takes every <style> out of
+   it. A <style> found inside the markup is kept as one more stylesheet at the front, never where it was (inside an
+   <svg> a <style>'s text is read as markup). */
+function importedStyleTag(block) {
+  var css = sanitize.sanitizeCss(block && block.css);
+  if (!css) return '';
+  var a = (block && block.attrs) || {};
+  var mark = has(a, 'data-rv-imported-frame') ? ' data-rv-imported-frame' : ' data-rv-imported-css="' + escAttr(a['data-rv-imported-css'] || 'page') + '"';
+  return '<style' + mark + '>\n' + css + '\n</style>';
+}
+function safeImportedMarkup(html) {
+  try {
+    var styles = sanitize.styleBlocks(html).map(importedStyleTag).filter(Boolean).join('\n');
+    var body = sanitize.sanitizeHtml(html, { profile: 'imported' }).html;
+    return (styles ? styles + '\n' : '') + body;
+  } catch (e) {
+    console.error('imported-section: the markup could not be made safe, so none is served — ' + e.message);
+    return '';
+  }
+}
+/* The frame is the page's wrappers around its sections: an opening half and a closing half that are only whole
+   together. They are read as one, with a mark between them that only this request knows, and cut again at it. */
+function safeImportedFrame(open, close) {
+  try {
+    var mark = 'rvframe' + crypto.randomBytes(12).toString('hex');
+    var styles = sanitize.styleBlocks(open).map(importedStyleTag).filter(Boolean).join('\n');
+    var whole = sanitize.sanitizeHtml(String(open || '') + mark + String(close || ''), { profile: 'imported' }).html;
+    var at = whole.indexOf(mark);
+    if (at === -1 || whole.indexOf(mark, at + mark.length) !== -1) return { open: styles, close: '' };
+    return { open: (styles ? styles + '\n' : '') + whole.slice(0, at), close: whole.slice(at + mark.length) };
+  } catch (e) {
+    console.error('imported-section: the page frame could not be made safe, so none is served — ' + e.message);
+    return { open: '', close: '' };
+  }
 }
 
 /* =====================================================================================================
@@ -7453,11 +7583,11 @@ function loadLiveEvent(fb, eventId) {
    /api/event?discard=1) meanwhile. A late write would then bring the removed event back as a shell with
    a brief or a generated site under it. So each step looks at the event before it starts and again just
    before it stores anything:
-     - an event that has been deleted is refused at the start (404) — no model call is paid for;
+     - an event that does not exist — never made, only a shell, or deleted — is refused at the start (404
+       event-not-found / event-deleted) — no model call is paid for (BE-021);
      - an event that was there at the start and is gone, or deleted, at the end answers
        409 { code: 'event-gone' } and stores nothing.
-   An id with no event behind it at the start is left as it was: pages that run these steps before
-   creating the event still work. Resolves { live, portal, stillThere(), merge(data) }. */
+   Resolves { live, portal, stillThere(), merge(data), update(data) }. */
 function watchEvent(fb, eventId) {
   var ref = eventDocRef(fb, eventId);
   function check(snap, start) {
@@ -7468,20 +7598,28 @@ function watchEvent(fb, eventId) {
   }
   return ref.get().then(function (snap) {
     var start = eventStateOf(snap);
-    if (start === 'deleted') throw notLiveError('deleted', eventId);
-    var stored = start === 'live' ? (snap.data() || {}) : {};
+    /* BE-021: a step works only on an event that exists — Create Event makes the event first (its "create" row) —
+       so no step makes a nameless events/<id> shell, renames one or pays for a model call on an id nobody made */
+    if (start !== 'live') throw notLiveError(start, eventId);
+    var stored = snap.data() || {};
     return {
-      /* a real (created) event: only then does a step's result go into its activity log — the wizard runs
-         these steps before the event exists */
-      live: start === 'live',
+      /* a real (created) event: always, now (kept for the callers that ask) */
+      live: true,
       /* the ET portal it belongs to (a roster slug, else ''): what a step reads from ET is that portal's, and the
          site's bar and footer show it */
       portal: etEvents.isPortal(stored.portal) ? stored.portal : '',
       stillThere: function () { return ref.get().then(function (now) { check(now, start); }); },
-      /* merges `data` into the event document, in the same transaction as the check */
+      /* merges `data` into the event document, in the same transaction as the check (which refuses an event that
+         is gone, so the merge only ever writes into the live document it found) */
       merge: function (data) {
         return fb.db.runTransaction(function (tx) {
           return tx.get(ref).then(function (now) { check(now, start); tx.set(ref, data, { merge: true }); });
+        });
+      },
+      /* sets top-level fields of the event document with update(): never makes a document */
+      update: function (data) {
+        return fb.db.runTransaction(function (tx) {
+          return tx.get(ref).then(function (now) { check(now, start); tx.update(ref, data); });
         });
       }
     };
@@ -12513,6 +12651,18 @@ function trackHit(kind, req, res) {
 }
 
 /* "METHOD path" -> handler, for every route with a fixed path. */
+/* BE-018. The AI and site-generation steps, the generated draft, and the AI-designed and imported sites' markup:
+   their handlers do not check who is calling, and the hosting sign-in gate only knows "signed in and not blocked".
+   So routeApi checks the caller for them, as requireAdmin does for the rest — the access list, the role (a Viewer
+   may read them, only an Editor or above may start a step: they spend on the model and write the event) and, for
+   someone who works in chosen portals, an event of one of those (eventId, sourceEventId). The Bearer header or
+   the sign-in cookie: Create Event calls the steps with the cookie alone. */
+var CALLER_CHECKED = {
+  'POST /api/suggest-design': 1, 'POST /api/extract-brief': 1, 'POST /api/ingest-source': 1, 'POST /api/plan-structure': 1,
+  'POST /api/generate-content': 1, 'POST /api/redesign-section': 1,
+  'GET /api/draft': 1, 'GET /api/generated-template': 1, 'GET /api/generated-section': 1,
+  'GET /api/imported-template': 1, 'GET /api/imported-section': 1
+};
 var ROUTES = {
   'POST /api/suggest-design': handleSuggestDesign,
   'POST /api/chat-edit': handleChatEdit,
@@ -12755,6 +12905,13 @@ function routeApi(req, res) {
   if (urlPath.indexOf('/api/') === 0 && !res.headersSent) res.setHeader('X-Public-Base', publicBaseFor(req, ''));
 
   var handler = ROUTES[req.method + ' ' + urlPath];
+  /* the routes that used to lean on the hosting sign-in gate alone check the caller here (BE-018) */
+  if (handler && CALLER_CHECKED[req.method + ' ' + urlPath]) {
+    return requireMember(req, res, function (fb, decoded) {
+      req.user = decoded;
+      try { handler(req, res); } catch (err) { sendFailure(res, req.method + ' ' + urlPath, err); }
+    });
+  }
   if (handler) return handler(req, res);
 
   var resourceMatch = /^\/api\/event\/([a-z-]+)$/.exec(urlPath);
@@ -12806,3 +12963,15 @@ module.exports._testHooks.cssUrlQuotes = cssUrlQuotes;
 module.exports._testHooks.attrUrlQuotes = attrUrlQuotes;
 module.exports._testHooks.sanitizeGeneratedSectionHtml = sanitizeGeneratedSectionHtml;
 module.exports._testHooks.bottomColour = bottomColour;
+/* the safety steps for markup this server did not write, and the checks of the AI steps (security-fixes.test.js) */
+module.exports._testHooks.safeGeneratedSection = safeGeneratedSection;
+module.exports._testHooks.tidyGeneratedSectionHtml = tidyGeneratedSectionHtml;
+module.exports._testHooks.safeImportedMarkup = safeImportedMarkup;
+module.exports._testHooks.safeImportedFrame = safeImportedFrame;
+module.exports._testHooks.briefFacts = briefFacts;
+module.exports._testHooks.CALLER_CHECKED = CALLER_CHECKED;
+module.exports._testHooks.watchEvent = watchEvent;
+module.exports._testHooks.handleExtractBrief = handleExtractBrief;
+module.exports._testHooks.handleGenerateContent = handleGenerateContent;
+module.exports._testHooks.handleGeneratedSection = handleGeneratedSection;
+module.exports._testHooks.handleImportedSection = handleImportedSection;

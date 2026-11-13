@@ -28,9 +28,14 @@ var HAND = 'Our flagship gathering of CIOs in Goa, written by the events team.';
 var facts = ed.storedFacts({ name: 'ETCIO Annual Conclave 2027', venue: 'Goa', start: '2027-05-21T10:00', description: BRIEF });
 ok(!('description' in facts) && facts.name === 'ETCIO Annual Conclave 2027' && facts.venue === 'Goa', 'storedFacts keeps the facts and drops the description');
 ok(ed.storedFacts(null) && !Object.keys(ed.storedFacts(null)).length, 'storedFacts of nothing is an empty object');
+/* BE-022: only the five facts a brief may set — never the event's portal, its publishing, its deletion or its design */
+var hostile = ed.storedFacts({ name: 'X', city: 'Pune', deletedAt: '2026-11-13', published: true, portal: 'etcio', createdBy: 'a@b.c', designPlan: {}, settings: {}, counters: {}, __proto__: { x: 1 } });
+ok(JSON.stringify(Object.keys(hostile).sort()) === JSON.stringify(['city', 'name']), 'storedFacts keeps name/start/end/venue/city only', Object.keys(hostile).join(','));
+ok(JSON.stringify(ed.BRIEF_FACT_FIELDS) === JSON.stringify(['name', 'start', 'end', 'venue', 'city']), 'the brief facts are named in one place');
 var api = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8');
-ok(/watch\.merge\(Object\.assign\(\{\}, eventDescription\.storedFacts\(eventMeta\), \{ updatedAt: now \}\)\)/.test(api), 'extract-brief merges storedFacts(eventMeta), not eventMeta itself');
-ok(!/watch\.merge\(Object\.assign\(\{\}, eventMeta,/.test(api), 'no route merges the raw eventMeta (with its description) into the event');
+ok(/var facts = briefFacts\(eventMeta\);/.test(api) && /return watch\.update\(Object\.assign\(\{\}, facts\.value, \{ updatedAt: now \}\)\);/.test(api), 'extract-brief writes the checked facts with update(), not eventMeta itself');
+ok(/function briefFacts\(eventMeta\) \{\n  var picked = eventDescription\.storedFacts\(eventMeta\)/.test(api) && /EVENT_FIELD_CHECKS\[f\]\(v\)/.test(api), 'briefFacts checks each fact by EVENT_FIELD_CHECKS');
+ok(!/watch\.merge\(Object\.assign\(\{\}, eventMeta,/.test(api) && !/storedFacts\(eventMeta\), \{ updatedAt/.test(api), 'no route merges the raw eventMeta (with its description) into the event');
 
 /* ---- which stored descriptions the AI may write ---- */
 ok(ed.isRawBrief(BRIEF), 'the pasted brief is the raw brief');

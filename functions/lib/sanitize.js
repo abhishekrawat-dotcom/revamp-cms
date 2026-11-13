@@ -8,12 +8,24 @@
      sanitizeHtml(html, { profile })  ->  { html, removed: [ { what, count } ] }
      sanitizeCss(css)                 ->  string ("" when the stylesheet cannot be parsed)
      sanitizeStyleAttribute(value)    ->  string (the declarations that may stay in a style="" attribute)
+     styleBlocks(html)                ->  [{ attrs, css }]: every <style> element, its attributes and its text
+     styleTexts(html)                 ->  [css]: the text of every <style> element in the markup, as a parser
+                                          reads it (sanitizeHtml takes those elements out; a caller that wants
+                                          their rules runs them through sanitizeCss and puts them in a <style>
+                                          of its own, in the page's HTML — never back where they were, which may
+                                          be inside an <svg>, where a <style>'s text is read as markup)
+     sanitizeSection(html, css, { profile }) -> { html, css, removed }: one section's markup and its styles, the
+                                          markup's own <style> rules moved into its CSS (after the CSS given)
 
    `removed` says what was taken out, so a caller can tell the owner what an import lost.
    The output is always re-serialised from the parsed tree (lower-case names, quoted attributes, escaped
-   text), so anything that searches the markup for substrings must search the sanitised result. */
+   text), so anything that searches the markup for substrings must search the sanitised result.
+   data-* attributes stay in both profiles (the site's own scripts — et-runtime.js, rv-popups.js, rv-blend.js,
+   rv-award-cta.js, rv-data.js — read them, and a browser does nothing with them by itself); a value that is an
+   address a script could run (javascript:, vbscript:, data: other than a bitmap) is taken out. */
 
 const sanitizeHtmlLib = require('sanitize-html');
+const htmlparser2 = require('htmlparser2');
 const postcss = require('postcss');
 const valueParser = require('postcss-value-parser');
 
@@ -50,7 +62,9 @@ var DROPPED_WITH_CONTENT_GENERATED = DROPPED_WITH_CONTENT.concat(['iframe', 'tex
 var GLOBAL_ATTRS = ['class', 'id', 'style', 'title', 'role', 'hidden', 'lang', 'dir', 'tabindex'];
 var TAG_ATTRS = {
   a: ['href', 'target', 'rel'],
-  img: ['src', 'srcset', 'sizes', 'alt', 'width', 'height', 'loading', 'decoding'],
+  img: ['src', 'srcset', 'sizes', 'alt', 'width', 'height', 'loading', 'decoding', 'fetchpriority'],
+  /* old presentational attributes a copied page may still carry: inert */
+  hr: ['size', 'noshade', 'width'], br: ['clear'],
   source: ['src', 'srcset', 'sizes', 'type', 'media', 'width', 'height'],
   video: ['src', 'poster', 'width', 'height', 'controls', 'muted', 'loop', 'playsinline', 'autoplay', 'preload'],
   audio: ['src', 'controls', 'muted', 'loop', 'autoplay', 'preload'],
@@ -58,9 +72,9 @@ var TAG_ATTRS = {
   td: ['colspan', 'rowspan'], th: ['colspan', 'rowspan', 'scope'], col: ['span'], colgroup: ['span'],
   ol: ['start', 'reversed'], li: ['value'], time: ['datetime'], label: ['for'], details: ['open'],
   button: ['type', 'disabled'],
-  input: ['type', 'placeholder', 'value', 'checked', 'disabled', 'readonly', 'min', 'max', 'step'],
-  textarea: ['placeholder', 'rows', 'cols', 'disabled', 'readonly'],
-  select: ['disabled', 'multiple'], option: ['value', 'selected', 'disabled'], optgroup: ['label', 'disabled'],
+  input: ['type', 'placeholder', 'value', 'checked', 'disabled', 'readonly', 'min', 'max', 'step', 'required', 'autocomplete', 'maxlength', 'minlength'],
+  textarea: ['placeholder', 'rows', 'cols', 'disabled', 'readonly', 'required', 'maxlength', 'minlength'],
+  select: ['disabled', 'multiple', 'required'], option: ['value', 'selected', 'disabled'], optgroup: ['label', 'disabled'],
   iframe: ['src', 'width', 'height', 'title', 'allowfullscreen', 'frameborder', 'sandbox', 'loading']
 };
 var SVG_ATTRS = ['viewbox', 'xmlns', 'xmlns:xlink', 'preserveaspectratio', 'width', 'height', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
@@ -110,6 +124,17 @@ function urlAllowed(tag, attr, value) {
   return URL_SCHEMES.indexOf(scheme) !== -1;
 }
 
+/* A data-* value is read by the site's own scripts, mostly as words ("Day 1: Keynote", "previous-agenda:0",
+   a JSON record) and sometimes as an address (data-src, data-winners-href). So it is refused only when it is an
+   address a script could run: javascript:, vbscript:, livescript:, or data: that is not a bitmap. */
+var SCRIPT_SCHEMES = ['javascript', 'vbscript', 'livescript', 'mocha'];
+function dataValueAllowed(value) {
+  var scheme = schemeOf(value);
+  if (!scheme) return true;
+  if (scheme === 'data') return isDataImage(value);
+  return SCRIPT_SCHEMES.indexOf(scheme) === -1;
+}
+
 function iframeSourceAllowed(src) {
   var u;
   try { u = new URL(String(src || '').trim()); } catch (e) { return false; }
@@ -120,8 +145,7 @@ function iframeSourceAllowed(src) {
 function attrAllowed(profile, tag, attr) {
   if (/^on/.test(attr) || attr === 'srcdoc') return false;
   if (GLOBAL_ATTRS.indexOf(attr) !== -1 || /^aria-[a-z0-9-]+$/.test(attr)) return true;
-  if (attr === 'data-register-cta' || /^data-(?:rv|ai)-[a-z0-9-]+$/.test(attr)) return true;
-  if (profile === 'imported' && /^data-[a-z0-9_.:-]+$/.test(attr)) return true;
+  if (/^data-[a-z0-9_.:-]+$/.test(attr)) return true;
   if (has(TAG_ATTRS, tag) && TAG_ATTRS[tag].indexOf(attr) !== -1) return true;
   if (SVG_TAGS.indexOf(tag) !== -1 && SVG_ATTRS.indexOf(attr) !== -1) return true;
   return false;
@@ -186,17 +210,61 @@ function filterCssTree(root) {
 }
 
 /* A stylesheet is put inside a <style> element by whoever uses it: the text must never be able to end
-   that element or open an HTML comment. Inside a CSS string "<\/" still means "</". */
+   that element, open an HTML comment or — should the element ever stand inside an <svg>, where its text is read
+   as markup — start a tag. So no "<" is left before a letter, "/", "!" or "?": it is written as the CSS escape
+   "\3c ", which means the same "<" inside a CSS string (the only place it can stand before such a character in
+   real CSS); "a < b" in a media query keeps its own. */
 function styleElementSafe(css) {
-  var out = css.replace(/<\//g, '<\\/').replace(/<!--/g, '<\\!--').replace(/-->/g, '--\\>');
-  return (/<\/|<!--/.test(out)) ? '' : out;
+  var out = css.replace(/<(?=[A-Za-z\/!?])/g, '\\3c ').replace(/-->/g, '--\\>');
+  return (/<[A-Za-z\/!?]/.test(out)) ? '' : out;
+}
+
+/* A stylesheet a browser would still mostly read — a stray word after its last rule (a real generated
+   section ends in "'auto'") — is read as a browser does: rule by rule, the ones that cannot be parsed left
+   out. Only for a sheet with no markup in it: one with a "<" that does not parse is refused whole. */
+function topLevelChunks(text) {
+  var chunks = [], start = 0, depth = 0, quote = '', i = 0, n = text.length;
+  while (i < n) {
+    var c = text.charAt(i);
+    if (quote) {
+      if (c === '\\') { i += 2; continue; }
+      if (c === quote) quote = '';
+      i++; continue;
+    }
+    if (c === '/' && text.charAt(i + 1) === '*') { var end = text.indexOf('*/', i + 2); i = end === -1 ? n : end + 2; continue; }
+    if (c === '"' || c === "'") { quote = c; i++; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth <= 0) { depth = 0; chunks.push(text.slice(start, i + 1)); start = i + 1; }
+    } else if (c === ';' && depth === 0) { chunks.push(text.slice(start, i + 1)); start = i + 1; }
+    i++;
+  }
+  /* a last rule left open is closed, as a browser closes it at the end of the sheet */
+  if (text.slice(start).trim()) chunks.push(text.slice(start) + (depth > 0 && !quote ? new Array(depth + 1).join('}') : ''));
+  return chunks;
+}
+function parseCss(text) {
+  try { return postcss.parse(text); } catch (e) { /* read rule by rule below */ }
+  if (/</.test(text)) return null;
+  var root = postcss.root();
+  topLevelChunks(text).forEach(function (chunk) {
+    var part;
+    try { part = postcss.parse(chunk); } catch (e) { return; }
+    part.each(function (node) {
+      if (node.type === 'rule' && !String(node.selector || '').trim()) return;     // "{…}" with nothing it applies to
+      if (node.type === 'decl') return;                                            // a declaration outside any rule
+      root.append(node.clone());
+    });
+  });
+  return root.nodes.length ? root : null;
 }
 
 function sanitizeCss(css) {
   var text = String(css == null ? '' : css);
   if (!text.trim()) return '';
-  var root;
-  try { root = postcss.parse(text); } catch (e) { return ''; }
+  var root = parseCss(text);
+  if (!root) return '';
   try {
     filterCssTree(root);
     return styleElementSafe(root.toString());
@@ -275,9 +343,8 @@ function sanitizeHtml(html, opts) {
         if (filtered.style) out.style = filtered.style;
         return;
       }
-      if (URL_ATTRS.indexOf(attr) !== -1 || /^data-/.test(attr)) {
-        if (!urlAllowed(tag, attr, value)) { removed('unsafe address in ' + attr); return; }
-      }
+      if (URL_ATTRS.indexOf(attr) !== -1 && !urlAllowed(tag, attr, value)) { removed('unsafe address in ' + attr); return; }
+      if (/^data-/.test(attr) && !dataValueAllowed(value)) { removed('unsafe address in ' + attr); return; }
       if (tag === 'use' && (attr === 'href' || attr === 'xlink:href') && !/^\s*#/.test(value)) { removed('external <use> reference'); return; }
       if (attr === 'srcset' && /data\s*:/i.test(value)) { removed('unsafe address in srcset'); return; }
       out[attr] = value;
@@ -288,7 +355,7 @@ function sanitizeHtml(html, opts) {
     return { tagName: tag, attribs: out };
   }
 
-  var allowedAttributes = { '*': GLOBAL_ATTRS.concat(['aria-*', 'data-register-cta', 'data-rv-*', 'data-ai-*'], profile === 'imported' ? ['data-*'] : []) };
+  var allowedAttributes = { '*': GLOBAL_ATTRS.concat(['aria-*', 'data-*']) };
   Object.keys(TAG_ATTRS).forEach(function (tag) { allowedAttributes[tag] = TAG_ATTRS[tag].slice(); });
   SVG_TAGS.forEach(function (tag) { allowedAttributes[tag] = (allowedAttributes[tag] || []).concat(SVG_ATTRS); });
 
@@ -323,4 +390,27 @@ function sanitizeHtml(html, opts) {
   };
 }
 
-module.exports = { sanitizeHtml, sanitizeCss, sanitizeStyleAttribute };
+/* every <style> element, as the same parser sanitizeHtml uses reads the markup: [{ attrs, css }] */
+function styleBlocks(html) {
+  var found = [], depth = 0, text = '', attrs = {};
+  try {
+    var parser = new htmlparser2.Parser({
+      onopentag: function (name, a) { if (name === 'style') { if (!depth) { text = ''; attrs = a || {}; } depth++; } },
+      ontext: function (t) { if (depth) text += t; },
+      onclosetag: function (name) { if (name === 'style' && depth) { depth--; if (!depth && text.trim()) found.push({ attrs: attrs, css: text }); } }
+    }, { decodeEntities: false, lowerCaseTags: true, lowerCaseAttributeNames: true });
+    parser.write(String(html == null ? '' : html));
+    parser.end();
+  } catch (e) { return found; }
+  return found;
+}
+function styleTexts(html) { return styleBlocks(html).map(function (b) { return b.css; }); }
+
+function sanitizeSection(html, css, opts) {
+  var markup = sanitizeHtml(html, opts);
+  /* each sheet on its own: one that cannot be read does not take the others with it */
+  var sheets = [String(css == null ? '' : css)].concat(styleTexts(html)).map(sanitizeCss).filter(Boolean);
+  return { html: markup.html, css: sheets.join('\n'), removed: markup.removed };
+}
+
+module.exports = { sanitizeHtml, sanitizeCss, sanitizeStyleAttribute, styleBlocks, styleTexts, sanitizeSection };
