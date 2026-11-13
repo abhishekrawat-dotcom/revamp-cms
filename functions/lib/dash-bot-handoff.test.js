@@ -1439,6 +1439,8 @@ async function e6() {
       /* the pictures and records rows have their own test (create-event-saves.test.js): this draft has neither */
       'function pictureCount(){ return { all: 0 }; }', 'function recordKinds(){ return []; }',
       'function staleRecordSources(){ return []; }', 'function recordPlan(){ return []; }', 'function pendingAddress(){ return ""; }',
+      /* nor a previous edition to start from (create-event-portal.test.js tests that row) */
+      'function editionStep(){ return null; }',
       fnSrc(CE_INLINE, 'httpError'), fnSrc(CE_INLINE, 'readJson')
     ].concat(FNS.map(function (n) { return fnSrc(CE_INLINE, n); })).join('\n'), ctx, { filename: 'create-event.html (hero, extracted)' });
     ctx.S.basics.name = 'Retail Leadership Summit'; ctx.S.basics.venue = 'Jio World Centre, Mumbai'; ctx.S.basics.portal = 'retail';

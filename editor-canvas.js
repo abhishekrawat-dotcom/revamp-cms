@@ -1058,6 +1058,18 @@
       });
       return best;
     }
+    /* A banner whose picture is an <img> laid under its words — a real template's img.banner-bg-image, marked
+       data-rv-media="bg-image" — is not a CSS background, and no click reaches it either: the banner's .overlay-lyr
+       lies over it (templates/_shared/et-platform.css). It is changed from the section's menu as well, as its
+       "Background picture" (ED-058). -> that <img>, or null */
+    function backgroundImg(sec) {
+      if (!sec || !sec.querySelectorAll) return null;
+      var list = sec.querySelectorAll('img[data-rv-media="bg-image"], img.banner-bg-image');
+      for (var i = 0; i < list.length; i++) {
+        if (!list[i].closest('[data-rv-editor]') && list[i].closest('[data-rv-section]') === sec) return list[i];
+      }
+      return null;
+    }
     /* the new picture takes the old one's place; whatever is layered over it (a gradient veil that keeps the
        text readable) stays */
     function setBackgroundPicture(el, url) {
@@ -1525,6 +1537,7 @@
       sectionCss: sectionCss,
       replaceSection: replaceSection,
       backgroundHost: backgroundHost,                     // the element carrying a section's background picture, or null
+      backgroundImg: backgroundImg,                       // a banner's full-bleed <img> under its words (a real template's), or null
       backgroundOf: bgUrlOf,
       setBackgroundPicture: setBackgroundPicture,
       duplicateSection: function (sec, name) {

@@ -3033,6 +3033,34 @@
     });
   }
 
+  /* ---------- a real template's banner picture (ED-058) ----------
+     The four real templates lay their banner's picture as an <img> under its words (img.banner-bg-image, marked
+     data-rv-media="bg-image"), with a layer over it that takes every click — so it is not picked like other pictures,
+     and it is not a CSS background either. canvas.backgroundImg finds it, and the banner's menu offers it as
+     "Background picture", the same dialog AI-designed sites have: a file from the computer or a picture's address,
+     one step that Undo takes back. Only its src changes (canvas.setPicture: srcset and sizes, made for the old
+     picture, go); its class, fetchpriority="high" and loading="eager" stay, so it still loads first, and publishing
+     still gives it its WebP copy and its preload (functions/lib/pictures.js). With a banner video it is the video's
+     still, as before. */
+  function bannerImg(sec) { return canvas && canvas.backgroundImg ? canvas.backgroundImg(sec) : null; }
+  function replaceBannerPicture(img) {
+    if (!img || !img.isConnected) return;
+    openPictureDialog('Background picture', canvas.pictureOf(img), function (url) {
+      if (!img.isConnected) return false;
+      canvas.setPicture(img, url);
+      /* the "Template photo/video — replace manually" note: replaced, so the note about it goes */
+      img.removeAttribute('data-ai-media-skipped');
+      var sec = img.closest('[data-rv-section]');
+      if (sec && !sec.querySelector('[data-ai-media-skipped]')) {
+        Array.prototype.forEach.call(sec.querySelectorAll(':scope > .ai-media-skip-badge'), function (b) { b.remove(); });
+      }
+      clearAiGenerated(img);
+      commitNow();
+      repositionToolbars();
+      offerUndo('Banner picture replaced.');
+    }, false);
+  }
+
   /* A picture on the page replaced: from its toolbar (Replace image) and from the logo's notice (Replace logo). */
   function replacePicture(picEl, title) {
     if (!picEl || !picEl.isConnected) return;
@@ -3528,6 +3556,241 @@
     typingPtr = -1;       // the next text edited starts its own undo step
   }
 
+  /* ---------- what Enter, a paste and a drop put into a text being typed in (ED-059) ----------
+     A text on the page holds words, line breaks (<br>) and the formats its own toolbar gives. Left to itself, the
+     browser put in what it chose: Enter in a heading made a <div>, and words pasted from Word or Google Docs brought
+     their fonts, sizes, colours and spans into the saved and published page. Now, while a text is being typed in:
+       Enter    in a heading, or a button's or a link's label, ends the typing (the text stays selected, as a title
+                field does); Shift+Enter is a line break in a heading (headings keep theirs: "Decoding Opportunities
+                <br>for Next Decade"), and a label is one line. Anywhere else Enter is a line break.
+       a paste  its words, its line breaks (a label's on one line) and — where this text can hold a link (canLink, and
+                not inside a link already) — its links to web, mail and phone addresses. Nothing else of it.
+       a drop   nothing: words dragged in would bring their markup the same way.
+     pasteParts(html, text, o) is the pure part, run on its own by functions/lib/editor-typing.test.js. */
+  /* typingRules:begin */
+  /* -> [{ text } | { br: true } | { text, href }] for clipboard markup html (or, without it, the plain text).
+     o: { links: bool (links kept), oneLine: bool (a label: breaks become spaces), maxBreaks: n (breaks in a row, 2) } */
+  function pasteParts(html, text, o) {
+    o = o || {};
+    var maxBreaks = o.oneLine ? 0 : Math.max(1, +o.maxBreaks || 2);
+    var NAMED = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", rsquo: '\u2019', lsquo: '\u2018', rdquo: '\u201d', ldquo: '\u201c',
+      ndash: '\u2013', mdash: '\u2014', hellip: '\u2026', bull: '\u2022', middot: '\u00b7', copy: '\u00a9', reg: '\u00ae', trade: '\u2122',
+      euro: '\u20ac', pound: '\u00a3', times: '\u00d7', deg: '\u00b0', shy: '' };
+    function decode(s) {
+      return s.replace(/&(#x[0-9a-f]{1,6}|#[0-9]{1,7}|[a-z][a-z0-9]{1,15});/gi, function (all, name) {
+        if (name.charAt(0) === '#') {
+          var n = name.charAt(1).toLowerCase() === 'x' ? parseInt(name.slice(2), 16) : parseInt(name.slice(1), 10);
+          if (!(n > 0 && n < 0x110000) || (n >= 0xd800 && n <= 0xdfff)) return '';
+          if (n === 160) return ' ';
+          if (n <= 0xffff) return String.fromCharCode(n);
+          n -= 0x10000;
+          return String.fromCharCode(0xd800 + (n >> 10), 0xdc00 + (n & 0x3ff));
+        }
+        var k = name.toLowerCase();
+        return Object.prototype.hasOwnProperty.call(NAMED, k) ? NAMED[k] : all;
+      });
+    }
+    function safeHref(h) {
+      h = String(h || '').replace(/[\u0000-\u0020\u007f]+/g, '');
+      return /^(https?:\/\/[^\s"'<>]+|mailto:[^\s"'<>]+|tel:\+?[0-9().\-]{3,40})$/i.test(h) && h.length <= 2000 ? h : '';
+    }
+    var BLOCK = /^(p|div|li|ul|ol|h[1-6]|tr|table|tbody|thead|blockquote|pre|section|article|header|footer|dd|dt|dl|figure|figcaption|address|main|aside|nav|center)$/;
+    var toks = [];                 // { t: 'text', s, href } | { t: 'br' } | { t: 'blk' }
+    function push(tok) {
+      if (tok.t === 'blk') {
+        var last = toks[toks.length - 1], before = toks[toks.length - 2];
+        /* the line break a block ends with ("words<br></p>") shows nothing; one alone in a block ("<p><br></p>") is an empty line */
+        if (last && last.t === 'br' && before && before.t === 'text') toks.pop();
+      }
+      toks.push(tok);
+    }
+    if (html && /<[a-z!\/]/i.test(html)) {
+      var src = String(html);
+      var frag = /<!--\s*StartFragment\s*-->([\s\S]*?)<!--\s*EndFragment\s*-->/i.exec(src);
+      if (frag) src = frag[1];
+      src = src.replace(/<!--[\s\S]*?-->/g, '').replace(/<![^>]*>/g, '').replace(/<\?[\s\S]*?\?>/g, '')
+        .replace(/<(head|style|script|title|xml|template|noscript|svg|object|iframe)\b[\s\S]*?<\/\1\s*>/gi, '')
+        .replace(/<(head|style|script|title|xml|template|noscript|svg|object|iframe)\b[^>]*\/?>/gi, '');
+      /* a tag starts right after its "<" (as a browser reads it); any other "<" is a character of the words */
+      var re = /<(\/?)([a-z][a-z0-9:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>|([^<]+)|</gi, m, href = '', inLink = false;
+      while ((m = re.exec(src))) {
+        if (m[4] !== undefined || m[0] === '<') {
+          var s = decode(m[4] !== undefined ? m[4] : '<').replace(/[\s\u00a0]+/g, ' ');
+          if (s) push({ t: 'text', s: s, href: inLink ? href : '' });
+          continue;
+        }
+        var closing = !!m[1], tag = m[2].toLowerCase();
+        if (tag === 'br' && !closing) { push({ t: 'br' }); continue; }
+        if (tag === 'a') {
+          if (closing) { inLink = false; href = ''; continue; }
+          var hm = /\bhref\s*=\s*("([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(m[3] || '');
+          href = hm ? safeHref(decode(hm[2] !== undefined ? hm[2] : hm[3] !== undefined ? hm[3] : hm[4])) : '';
+          inLink = true;
+          continue;
+        }
+        if (BLOCK.test(tag)) { push({ t: 'blk' }); continue; }
+        if ((tag === 'td' || tag === 'th') && closing) push({ t: 'text', s: ' ', href: '' });
+      }
+    } else {
+      String(text || '').replace(/\r\n?/g, '\n').split('\n').forEach(function (line, i) {
+        if (i) push({ t: 'br' });
+        var s = line.replace(/[\s\u00a0]+/g, ' ');
+        if (s) push({ t: 'text', s: s, href: '' });
+      });
+    }
+    /* the breaks between two runs of words: each <br> one, the blocks around them one more; none before the first
+       words or after the last */
+    var out = [], hard = 0, soft = false, seen = false;
+    function brk() {
+      var n = hard + (soft ? 1 : 0);
+      hard = 0; soft = false;
+      if (!seen || !n) return;
+      if (!maxBreaks) { out.push({ text: ' ' }); return; }
+      for (var i = 0; i < Math.min(n, maxBreaks); i++) out.push({ br: true });
+    }
+    toks.forEach(function (tk) {
+      if (tk.t === 'br') { hard++; return; }
+      if (tk.t === 'blk') { soft = true; return; }
+      var s = tk.s;
+      var lastOut = out[out.length - 1];
+      if (hard || soft) {
+        s = s.replace(/^ /, '');
+        if (!s) return;
+        if (lastOut && !lastOut.br && lastOut.text) lastOut.text = lastOut.text.replace(/ $/, '');
+        brk();
+        lastOut = out[out.length - 1];
+      } else if (!seen) {
+        s = s.replace(/^ /, '');
+        if (!s) return;
+      }
+      var link = o.links && tk.href ? tk.href : '';
+      if (lastOut && !lastOut.br && (lastOut.href || '') === link) {
+        lastOut.text = (lastOut.text + s).replace(/  +/g, ' ');
+      } else {
+        if (lastOut && !lastOut.br && / $/.test(lastOut.text) && / /.test(s.charAt(0))) s = s.slice(1);
+        if (s) out.push(link ? { text: s, href: link } : { text: s });
+      }
+      seen = true;
+    });
+    var tail = out[out.length - 1];
+    if (tail && !tail.br) { tail.text = tail.text.replace(/ +$/, ''); if (!tail.text) out.pop(); }
+    /* a label on one line: what were breaks are single spaces now, so the runs join */
+    if (!maxBreaks) {
+      out = out.reduce(function (acc, p) {
+        var prev = acc[acc.length - 1];
+        if (prev && (prev.href || '') === (p.href || '')) prev.text = (prev.text + p.text).replace(/  +/g, ' ');
+        else acc.push(p);
+        return acc;
+      }, []);
+    }
+    return out;
+  }
+  /* typingRules:end */
+
+  /* the text being typed in, when the event happened inside it */
+  function editingAt(e) {
+    var t = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    return editingEl && t && editingEl.contains(t) ? editingEl : null;
+  }
+  /* a button's or a link's label: one line */
+  function oneLineText(el) { return el.getAttribute('data-editable') === 'button' || !!el.closest('a, button'); }
+  function headingText(el) { return !!el.closest('h1, h2, h3, h4, h5, h6, [role="heading"]'); }
+  /* Enter that ends the typing: the text stays selected with its tools, and the keyboard goes back to the page's stop */
+  function finishTyping(el) {
+    exitEdit(el);
+    var stop = canvasStop();
+    if (stop && typeof stop.focus === 'function') stop.focus({ preventScroll: true });
+    repositionToolbars();
+  }
+  /* the caret's range, when it is inside el */
+  function caretRange(el) {
+    var sel = canvas.win.getSelection();
+    if (!sel || !sel.rangeCount) return null;
+    var r = sel.getRangeAt(0);
+    return el.contains(r.commonAncestorContainer) ? r : null;
+  }
+  /* puts nodes where the caret is (over what is selected) and the caret after them */
+  function putAtCaret(el, nodes) {
+    var r = caretRange(el);
+    if (!r || !nodes.length) return false;
+    r.deleteContents();
+    var frag = canvas.doc.createDocumentFragment();
+    nodes.forEach(function (n) { frag.appendChild(n); });
+    var last = nodes[nodes.length - 1];
+    r.insertNode(frag);
+    /* a line break with nothing after it in the text shows no new line until something follows: a second one holds
+       the line open (what the browser's own Shift+Enter does) */
+    if (last.nodeName === 'BR') {
+      var next = last.nextSibling;
+      while (next && next.nodeType === 3 && !next.nodeValue.length) next = next.nextSibling;
+      if (!next && last.parentNode === el) el.appendChild(canvas.doc.createElement('br'));
+    }
+    var sel = canvas.win.getSelection(), after = canvas.doc.createRange();
+    after.setStartAfter(last); after.collapse(true);
+    sel.removeAllRanges(); sel.addRange(after);
+    return true;
+  }
+  /* the browser's own line break (a <br>, as Shift+Enter makes it: the line it opens at the end of the text is held
+     until it is typed in, and nothing is left behind) — or, where it has none, one put in here */
+  function lineBreakAtCaret(el) {
+    if (!caretRange(el)) return;
+    var done = false;
+    try { done = canvas.doc.execCommand('insertLineBreak'); } catch (e) { done = false; }
+    if (done) { onCanvasInput(); return; }
+    if (putAtCaret(el, [canvas.doc.createElement('br')])) onCanvasInput();
+  }
+  function onTypingKey(e) {
+    if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+    var el = editingAt(e);
+    if (!el) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (oneLineText(el) || (headingText(el) && !e.shiftKey)) finishTyping(el);
+    else lineBreakAtCaret(el);
+  }
+  /* what a phone's keyboard or an input method sends instead of a key: the same rules */
+  function onTypingInput(e) {
+    var el = editingAt(e);
+    if (!el) return;
+    var type = e.inputType || '';
+    if (type === 'insertFromDrop' || type === 'insertFromPasteAsQuotation') { e.preventDefault(); return; }
+    if (type !== 'insertParagraph' && !(type === 'insertLineBreak' && oneLineText(el))) return;
+    e.preventDefault();
+    if (oneLineText(el) || headingText(el)) finishTyping(el);
+    else lineBreakAtCaret(el);
+  }
+  function onTypingPaste(e) {
+    var el = editingAt(e);
+    if (!el) return;
+    e.preventDefault();
+    var data = e.clipboardData;
+    if (!data) return;
+    var r = caretRange(el);
+    var inLink = !!(r && r.startContainer && (r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement).closest('a'));
+    var parts = pasteParts(data.getData('text/html'), data.getData('text/plain'), {
+      links: canLink(el) && el.getAttribute('data-editable') === 'text' && !el.closest('a, button') && !inLink,
+      oneLine: oneLineText(el),
+      maxBreaks: headingText(el) ? 1 : 2
+    });
+    var linked = false;
+    var nodes = parts.map(function (p) {
+      if (p.br) return canvas.doc.createElement('br');
+      if (!p.href) return canvas.doc.createTextNode(p.text);
+      var a = canvas.doc.createElement('a');
+      a.setAttribute('href', p.href);
+      a.textContent = p.text;
+      linked = true;
+      return a;
+    });
+    if (!putAtCaret(el, nodes)) return;
+    if (linked) canvas.retag(el);      // a link in a text is picked on its own, as one linked from the toolbar is
+    onCanvasInput();
+  }
+  function onTypingDrop(e) {
+    var t = e.target && e.target.nodeType === 1 ? e.target : e.target && e.target.parentElement;
+    if (t && t.closest && t.closest('[contenteditable="true"]')) e.preventDefault();
+  }
+
   /* typed text is recorded while the caret is still in the element — waiting for it to leave loses whatever
      was typed last when the page is closed or reloaded */
   function onCanvasInput() {
@@ -3619,7 +3882,7 @@
       html += '<button data-action="add-section" title="Add a section below this one">+ Section</button>' +
         (repeatItems(sec).some(function (it) { return !recordOf(it); }) ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
         (canvas.canRedesign(sec) ? '<button data-action="redesign-section" title="Have the AI design this section again, keeping its content">&#10024; Redesign with AI</button>' : '') +
-        (canvas.backgroundHost(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
+        (canvas.backgroundHost(sec) || bannerImg(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
         (phoneBannerFor(sec) ? '<button data-action="phone-banner" title="A banner of its own for phones: made by ETB2B AI from this one, or uploaded">Phone banner</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
@@ -3688,6 +3951,8 @@
       selectNewItem(addRepeatItem(sec));
     } else if (action === 'redesign-section') {
       openRedesignDialog(sec);
+    } else if (action === 'section-background' && !canvas.backgroundHost(sec) && bannerImg(sec)) {
+      replaceBannerPicture(bannerImg(sec));
     } else if (action === 'section-background') {
       var bgEl = canvas.backgroundHost(sec);
       var PB = window.RevampPhoneBanner, hadPhone = !!(PB && PB.read(sec));
@@ -4218,6 +4483,11 @@
     canvas.doc.addEventListener('blur', function (e) {
       if (e.target === editingEl) exitEdit(e.target);
     }, true);
+    // what Enter, a paste and a drop put into a text being typed in (ED-059)
+    canvas.doc.addEventListener('keydown', onTypingKey, true);
+    canvas.doc.addEventListener('beforeinput', onTypingInput, true);
+    canvas.doc.addEventListener('paste', onTypingPaste, true);
+    canvas.doc.addEventListener('drop', onTypingDrop, true);
     canvas.doc.addEventListener('input', onCanvasInput, true);
     canvas.win.addEventListener('scroll', repositionToolbars, { passive: true });
     canvas.win.addEventListener('keydown', onGlobalKey);
