@@ -69,7 +69,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2.8 every selector begins with .rv-embed and the weight of four ids (ETB2B\'s pages use up to three)', /var WEIGHT = ':not\(#_#_#_#_\)';/.test(SRC) && /var SCOPE = '\.rv-embed' \+ WEIGHT;/.test(SRC));
   check('2.9 every declaration !important (as ETB2B\'s CMS sections are written), strings and brackets kept whole, comments gone', T.important('color: red; background: url("a;b.png") no-repeat; --x: calc(1px + 2px);margin:0 !important;/* c */ font: 12px/1.2 "A;B", serif') ===
     'color: red !important; background: url("a;b.png") no-repeat !important; --x: calc(1px + 2px) !important; margin:0 !important; font: 12px/1.2 "A;B", serif !important;', T.important('color: red; background: url("a;b.png") no-repeat;'));
-  check('2.9a …but not inside @layer: an important declaration in a layer would outweigh the section\'s own (the picture default, rv-pictures)', /function written\(b\) \{ return ctx\.inLayer \? absoluteUrls\(b, base\) : important\(absoluteUrls\(b, base\)\); \}/.test(SRC) && /var inner = \[\], layer = \/\^@layer\\b\/i\.test\(head\);/.test(SRC));
+  check('2.9a …but not inside @layer: an important declaration in a layer would outweigh the section\'s own (the picture default, rv-pictures)', /function written\(b\) \{ b = motionNames\(absoluteUrls\(b, base\), ctx\.motion\); return ctx\.inLayer \? b : important\(b, soft\); \}/.test(SRC) && /var inner = \[\], layer = \/\^@layer\\b\/i\.test\(head\);/.test(SRC));
   check('2.10 each box with its own tags, as the CMS puts it on the page; nothing stays nothing', T.styleBox('a{}') === '<style>\na{}\n</style>' && T.scriptBox('x()') === '<script>\nx()\n</script>' && T.scriptBox('') === '' && T.styleBox('a{content:"</style>"}').indexOf('</style>"') === -1);
   check('2.7 the wrapper\'s id is a safe one', T.scopeId('previous-speakers') === 'rv-embed-previous-speakers' && T.scopeId('a b"c') === 'rv-embed-a-b-c' && T.scopeId('') === 'rv-embed-section');
 })();
@@ -143,6 +143,100 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2g.1 the banner\'s picture is asked for first: a preload link (fetchpriority high, WebP where image-set has one), or fetchpriority on an <img> banner', /link\.setAttribute\('rel', 'preload'\);/.test(SRC) && /link\.setAttribute\('fetchpriority', 'high'\);/.test(SRC) && /if \(webp\) link\.setAttribute\('type', 'image\/webp'\);/.test(SRC) && /bigImg\.setAttribute\('fetchpriority', 'high'\);/.test(SRC));
   check('2g.2 …never where the section\'s CSS counts children', /placeQuiet\(copy, link, ownCss\);/.test(SRC) && /if \(!first\) copy\.insertBefore\(el, copy\.firstChild\);\n\s*else if \(!last\) copy\.appendChild\(el\);\n\s*else if \(el\.localName !== 'link'/.test(SRC));
   check('2g.3 every picture below the banner loads as it comes into view; the hidden dark-theme logo too; a picture gets its size', /if \(!img\.hasAttribute\('loading'\)\) img\.setAttribute\('loading', 'lazy'\);/.test(SRC) && /classList\.contains\('rv-lu-dark'\)\) img\.setAttribute\('loading', 'lazy'\)/.test(SRC) && /function sizePictures\(sec, copy\)/.test(SRC));
+})();
+
+/* ======================= 2h motion: what moves on the event's page moves in the copy =======================
+   The owner, 13 Nov 2026: "most of the animation work are dropped on the etb2b cms". An important declaration
+   outweighs an animation, so a property an animation moves is left without !important where it moves. */
+(function () {
+  var M = T.motion;
+  check('2h.0 the motion helpers are there', !!(M && M.plan && M.soft && M.names && M.keyframes && M.inline && M.softens && M.pseudo && M.unimportant));
+  if (!M) return;
+  var out = T.important('transform: translate(-50%, -50%); opacity: 0; top: 1px; animation: 50s linear infinite rv-a', { transform: 1, opacity: 1 });
+  check('2h.1 what an animation moves there is written as it is; everything else still !important', out === 'transform: translate(-50%, -50%); opacity: 0; top: 1px !important; animation: 50s linear infinite rv-a !important;', out);
+  out = T.important('background: red; inset: 0; margin: 0; opacity: .5 !important', { 'background-position': 1, top: 1, opacity: 1 });
+  check('2h.2 …a shorthand of what moves too (background for background-position, inset for top); one important on the event\'s page stays so', out === 'background: red; inset: 0; margin: 0 !important; opacity: .5 !important;', out);
+  out = T.important('--Angle: 0deg; --angle: 1; Opacity: 1', { '--Angle': 1, opacity: 1 });
+  check('2h.3 a custom property by its exact name (they tell case apart); a property whatever its case', out === '--Angle: 0deg; --angle: 1 !important; Opacity: 1;', out);
+  check('2h.4 a keyframes name that is not ours becomes rv-embed-<name>; ours (rv-…) stay', M.name('pulse') === 'rv-embed-pulse' && M.name('rv-recognition-aw-rec-spin') === 'rv-recognition-aw-rec-spin' && M.name('') === '');
+  var plan = { kf: { pulse: {}, spin: {}, 'rv-a': {} } };
+  out = M.names('animation: 1s cubic-bezier(.2,.7,.2,1) 0s infinite normal none running pulse !important; animation-name: spin, rv-a; transition: pulse 1s; color: red', plan);
+  check('2h.5 every animation naming a keyframes the copy carries follows the rename; keywords, timing functions, other properties and our own names are left', out === 'animation: 1s cubic-bezier(.2,.7,.2,1) 0s infinite normal none running rv-embed-pulse !important; animation-name: rv-embed-spin, rv-a; transition: pulse 1s; color: red', out);
+  check('2h.5a …and a name nothing defines is left', M.names('animation: 2s other', plan) === 'animation: 2s other' && M.names('animation: 2s pulse', null) === 'animation: 2s pulse');
+  var kf = M.keyframes({ name: 'pulse', cssText: '@keyframes pulse { \n  0% { opacity: 0; }\n}' });
+  var kf2 = M.keyframes({ name: 'rv-x-move', cssText: '@keyframes rv-x-move { 0% { transform: none; } }' });
+  var kf3 = M.keyframes({ name: 'spin', cssText: '@-webkit-keyframes spin { 0% { transform: none; } }' });
+  check('2h.6 the keyframes rule under its own name', kf.name === 'rv-embed-pulse' && /^@keyframes rv-embed-pulse \{/.test(kf.text) && kf2.name === 'rv-x-move' && kf2.text === '@keyframes rv-x-move { 0% { transform: none; } }' && /^@-webkit-keyframes rv-embed-spin \{/.test(kf3.text), [kf, kf2, kf3]);
+  check('2h.7 the pseudo-element a selector styles', M.pseudo('.a:hover::before') === '::before' && M.pseudo('.a:after') === '::after' && M.pseudo('.a::before .b') === '' && M.pseudo('.a .b') === '', [M.pseudo('.a:hover::before'), M.pseudo('.a:after')]);
+
+  /* the plan, on a page made of stand-ins: Recognition's rays (spin), sparks (twinkle), a lift that only has a hover
+     transition, ET's .fadeInUp that eases in once .go, a ::before that pulses, and an imported page's recorded motion */
+  function el(cls, attrs) {
+    var e = { cls: cls ? cls.split(' ') : [], attrs: attrs || {}, kids: [], parent: null };
+    e.matches = function (sel) {
+      return splitList(sel).some(function (one) { var m = /^\.([\w-]+)(?:\.([\w-]+))?$/.exec(one.trim()); return !!m && e.cls.indexOf(m[1]) !== -1 && (!m[2] || e.cls.indexOf(m[2]) !== -1); });
+    };
+    e.contains = function (o) { for (var p = o; p; p = p.parent) if (p === e) return true; return false; };
+    e.hasAttribute = function (k) { return k in e.attrs; };
+    e.getAttribute = function (k) { return k in e.attrs ? e.attrs[k] : null; };
+    e.setAttribute = function (k, v) { e.attrs[k] = String(v); };
+    e.add = function (k) { k.parent = e; e.kids.push(k); return e; };
+    e.all = function () { var o = []; e.kids.forEach(function (k) { o.push(k); o.push.apply(o, k.all()); }); return o; };
+    e.querySelectorAll = function (sel) {
+      if (sel === '*') return e.all();
+      if (sel === '[data-rv-motion]') return e.all().filter(function (k) { return k.hasAttribute('data-rv-motion'); });
+      return e.all().filter(function (k) { return k.matches(sel); });
+    };
+    return e;
+  }
+  function splitList(sel) { return String(sel).split(','); }
+  function styleRule(sel, cssText, names) { return { type: 1, selectorText: sel, style: { cssText: cssText, getPropertyValue: function (n) { return n === 'animation-name' ? names : ''; } } }; }
+  function keyframes(name, props) { return { type: 7, name: name, cssRules: [{ style: props }] }; }
+  function build() {
+    var sec = el('aw-rec'), rays = el('aw-rec-rays'), spark = el('aw-rec-spark'), lift = el('aw-rec-lift'), fade = el('fadeInUp animated'), dot = el('dot'),
+      rec = el('lov', { 'data-rv-motion': JSON.stringify({ on: 'view', a: [{ k: [{ opacity: 0, transform: 'translateY(20px)', offset: 0, easing: 'ease' }, { opacity: 1, transform: 'none' }], d: 600 }], s: { 'clip-path': [[0, 'inset(0)']] } }) }),
+      bad = el('lov2', { 'data-rv-motion': '{not json' });
+    sec.add(rays).add(spark).add(lift).add(fade).add(dot).add(rec).add(bad);
+    return { sec: sec, rays: rays, spark: spark, lift: lift, fade: fade, dot: dot, rec: rec, bad: bad };
+  }
+  var page = build();
+  var sheets = [{ ownerNode: null, cssRules: [
+    keyframes('rv-recognition-aw-rec-spin', ['transform']), keyframes('rv-recognition-aw-rec-twinkle', ['opacity', 'transform', 'animation-timing-function']),
+    keyframes('fadeInUp', ['opacity', 'transform']), keyframes('beat', ['transform']),
+    styleRule('.aw-rec-rays', 'transform: translate(-50%, -50%); opacity: 0.75; animation: 50s linear 0s infinite normal none running rv-recognition-aw-rec-spin;', 'rv-recognition-aw-rec-spin'),
+    styleRule('.aw-rec-spark', 'opacity: 0; animation-name: rv-recognition-aw-rec-twinkle; animation-delay: var(--d);', 'rv-recognition-aw-rec-twinkle'),
+    styleRule('.aw-rec-lift', 'transition: transform .6s;', ''),
+    styleRule('.fadeInUp.go', 'animation-name: fadeInUp;', 'fadeInUp'),
+    styleRule('.dot::before', 'animation: var(--beat-dur) beat infinite;', ''),
+    { type: 4, cssRules: [styleRule('.aw-rec-rays', 'animation: auto ease 0s 1 normal none running none;', 'none')] },
+    { type: 1, selectorText: '.aw-rec-halo', style: { cssText: 'animation-play-state: paused;', getPropertyValue: function () { return ''; } } }] },
+    { ownerNode: { closest: function (q) { return q === '[data-rv-editor]' ? {} : null; }, hasAttribute: function () { return false; } }, cssRules: [styleRule('.aw-rec-lift', 'animation: beat 1s', 'beat')] }];
+  var model = { page: { doc: { querySelectorAll: function (sel) { return [page.sec].concat(page.sec.querySelectorAll(sel)).filter(function (k) { return k.matches(sel); }); } }, section: page.sec }, copy: null };
+  var ctx = { knownClass: function (c) { return c !== 'go'; }, models: [model] };
+  var P = M.plan({ styleSheets: sheets }, ctx);
+  ctx.motion = P;
+  check('2h.8 the keyframes and what each moves (an animation\'s own timing in a keyframe is no property it moves)', P.kf['rv-recognition-aw-rec-spin'].transform === 1 && P.kf['rv-recognition-aw-rec-twinkle'].opacity === 1 && !P.kf['rv-recognition-aw-rec-twinkle']['animation-timing-function'], P.kf);
+  check('2h.9 the elements an animation runs on: the rays (transform), the sparks (opacity, transform), ET\'s .fadeInUp once .go, a ::before apart from its element',
+    page.rays.__rvMoves[''].transform === 1 && !page.rays.__rvMoves[''].opacity && page.spark.__rvMoves[''].opacity === 1 && page.fade.__rvMoves[''].opacity === 1 && page.dot.__rvMoves['::before'].transform === 1 && !page.dot.__rvMoves[''],
+    { rays: page.rays.__rvMoves, spark: page.spark.__rvMoves, fade: page.fade.__rvMoves, dot: page.dot.__rvMoves });
+  check('2h.10 …not one with a transition only, nor one an editor\'s sheet animates; "animation: none" and a paused state name nothing', !page.lift.__rvMoves && !page.sec.__rvMoves, page.lift.__rvMoves);
+  check('2h.11 an imported page\'s recorded motion: its keyframes\' properties and its scroll-tied ones (a record that is not JSON: nothing)',
+    page.rec.__rvMoves[''].opacity === 1 && page.rec.__rvMoves[''].transform === 1 && page.rec.__rvMoves['']['clip-path'] === 1 && !page.rec.__rvMoves[''].offset && !page.rec.__rvMoves[''].easing && !page.bad.__rvMoves, page.rec.__rvMoves);
+  var soft = M.soft({ selectorText: '.aw-rec-rays' }, ctx), none = M.soft({ selectorText: '.aw-rec-lift' }, ctx), fadeSoft = M.soft({ selectorText: '.fadeInUp' }, ctx), before = M.soft({ selectorText: '.dot::before' }, ctx), host = M.soft({ selectorText: '.dot' }, ctx);
+  check('2h.12 a rule that reaches a moving element: what moves there is left as it is (the rays\' place, ET\'s opacity 0 before .go); a rule reaching nothing that moves: nothing',
+    soft && soft.transform === 1 && !soft.opacity && none === null && fadeSoft && fadeSoft.opacity === 1 && before && before.transform === 1 && host === null, { soft: soft, none: none, fadeSoft: fadeSoft, before: before, host: host });
+  check('2h.12a the rays\' rule as the copy writes it: it spins again, and its opacity still holds', T.important('transform: translate(-50%, -50%); opacity: 0.75; animation: 50s linear 0s infinite normal none running rv-recognition-aw-rec-spin', soft) ===
+    'transform: translate(-50%, -50%); opacity: 0.75 !important; animation: 50s linear 0s infinite normal none running rv-recognition-aw-rec-spin !important;');
+  // an element's own style="…" in the copy
+  var copy = build();
+  copy.spark.setAttribute('style', 'opacity: 0 !important; left: 14% !important; animation: 1s fadeInUp !important');
+  copy.lift.setAttribute('style', 'opacity: 0 !important');
+  M.inline({ page: { section: page.sec }, copy: copy.sec }, ctx);
+  check('2h.13 the copy\'s style="…": what moves on that element not !important, keyframes under their own names; another element\'s left as it was',
+    copy.spark.getAttribute('style') === 'opacity: 0; left: 14% !important; animation: 1s rv-embed-fadeInUp !important;' && copy.lift.getAttribute('style') === 'opacity: 0 !important', [copy.spark.getAttribute('style'), copy.lift.getAttribute('style')]);
+  check('2h.14 build uses it: the plan with every copy\'s rules (newCtx), the keyframes renamed as they are read, each rule written with what moves where it reaches, the HTML\'s own styles',
+    /ctx\.motion = motionPlan\(doc, ctx\);/.test(SRC) && /if \(type === 7\) \{ ctx\.keyframes\.push\(motionKeyframes\(rule\)\); return; \}/.test(SRC) && /var soft = motionSoft\(rule, ctx\);/.test(SRC) && /var ctx = newCtx\(doc, \[m\]\);\n\s*motionInline\(m, ctx\);/.test(SRC) &&
+    /if \(soft && motionSoftens\(d, soft\)\) \{ out\.push\(d\); return; \}/.test(SRC));
 })();
 
 /* ======================= 2e only what the other website uses ======================= */

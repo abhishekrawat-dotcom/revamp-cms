@@ -219,8 +219,9 @@
   /* Every declaration made !important — as ETB2B's own CMS sections are written: ETB2B's page CSS sets plain elements
      with !important (strong, p, li, a… — hundreds of rules), which outweighs any rule that is not, however specific.
      The copy's rules then still win over one another by their weight and order, as on the event's page, and over the
-     page's important rules by the weight of their four ids. Comments go; a declaration already important is left. */
-  function important(body) {
+     page's important rules by the weight of their four ids. Comments go; a declaration already important is left.
+     soft (optional): the properties an animation moves where this rule reaches — left as they are (motionSoft). */
+  function important(body, soft) {
     var out = [], cur = '', depth = 0, quote = '', i, c;
     body = String(body || '').replace(/\/\*[\s\S]*?\*\//g, '');
     function flush() {
@@ -228,6 +229,7 @@
       cur = '';
       if (!d) return;
       if (d.indexOf(':') === -1 || /!\s*important\s*$/i.test(d)) { out.push(d); return; }
+      if (soft && motionSoftens(d, soft)) { out.push(d); return; }
       out.push(d + ' !important');
     }
     for (i = 0; i < body.length; i++) {
@@ -425,7 +427,7 @@
         return;
       }
       if (type === 5) { ctx.fontFaces.push({ family: String(rule.style.getPropertyValue('font-family') || '').replace(/['"]/g, '').trim().toLowerCase(), text: absoluteUrls(rule.cssText, base) }); return; }
-      if (type === 7) { ctx.keyframes.push({ name: rule.name, text: rule.cssText }); return; }
+      if (type === 7) { ctx.keyframes.push(motionKeyframes(rule)); return; }
       if (typeof rule.nameList !== 'undefined' && !rule.cssRules) { out.push(rule.cssText); return; }   // @layer a, b;
       if (typeof rule.syntax === 'string' && typeof rule.inherits === 'boolean') {        // @property --name {…}
         ctx.props.push({ name: rule.name, text: rule.cssText });
@@ -493,7 +495,8 @@
     if (/:\s*;/.test(body)) { var words = rawBody(rule, ctx); if (words) body = words; }
     if (rule.cssRules && rule.cssRules.length) body += ' ' + Array.prototype.map.call(rule.cssRules, function (r) { return r.cssText; }).join(' ');
     if (!body.trim()) return;
-    function written(b) { return ctx.inLayer ? absoluteUrls(b, base) : important(absoluteUrls(b, base)); }
+    var soft = motionSoft(rule, ctx);
+    function written(b) { b = motionNames(absoluteUrls(b, base), ctx.motion); return ctx.inLayer ? b : important(b, soft); }
     /* A rule that tells the section itself to inherit (ETB2B's classic reset: section, div… { font: inherit }) means
        the page around it — on another website that would be that page's own font and colour. For the section
        itself it is written with the event page's values instead. */
@@ -978,7 +981,9 @@
     function note(n) { Array.prototype.forEach.call(n.classList, function (c) { classes[c] = 1; }); }
     Array.prototype.forEach.call(doc.querySelectorAll('[class]'), note);
     models.forEach(function (m) { Array.prototype.forEach.call(m.copy.querySelectorAll('[class]'), note); });
-    return { scope: SCOPE, models: models, win: doc.defaultView, knownClass: function (c) { return !!classes[c]; }, links: [], fontFaces: [], keyframes: [], props: [] };
+    var ctx = { scope: SCOPE, models: models, win: doc.defaultView, knownClass: function (c) { return !!classes[c]; }, links: [], fontFaces: [], keyframes: [], props: [] };
+    ctx.motion = motionPlan(doc, ctx);
+    return ctx;
   }
   /* The CSS every copied section needs, for the sections given: the fonts, the reset, the page's look on the
      sections (the theme's variables and the inherited text, on .rv-embed — a section's own rules outweigh it) and
@@ -1147,6 +1152,7 @@
     var m = prepare(doc, sec, o, base, remPx), id = m.id, copy = m.copy, info = m.info;
     var title = (o.sectionName || id) + (o.eventName ? ' — ' + o.eventName : '');
     var ctx = newCtx(doc, [m]);
+    motionInline(m, ctx);
     var own = collect(doc, base, function (o2) { return !!o2 && belongsTo(o2, sec); }, ctx);
     var ownText = own.join('\n');
     var families = familiesUsed(ownText);
@@ -1193,6 +1199,159 @@
     return { css: styleBox(css), js: scriptBox(commonJs({ title: title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, models, base) })), sections: models.length };
   }
 
+  /* ---------- motion: what moves on the event's page moves in the copy ----------
+     The owner, 13 Nov 2026: "most of the animation work are dropped on the etb2b cms". Every declaration of the copy
+     is !important (as ETB2B's CMS sections are written), and an important declaration outweighs an animation: in the
+     cascade animations stand above normal declarations and below important ones (transitions stand above both, so
+     hovers and easing in were never stopped). On the event's page a section's own rules are normal ones, and its
+     keyframes move what they set; in the copy, the rule that places the Recognition card's rays (transform:
+     translate(-50%, -50%)) held them still, its sparks stayed at their opacity: 0 for good, and the halo only faded —
+     and a ported template's blocks that ease in (.fadeInUp.go: opacity 0 to 1) would have stayed invisible. So:
+       · what an animation moves on an element is written without !important in the rules that reach that element
+         (and in its own style="…"): the animation moves it again. Those rules still outweigh the other website's own
+         (four ids against its three; ETB2B's few important rules do not set what moves), and as they all lose
+         !important together, they still win over one another as on the event's page;
+       · what moves where: a rule naming keyframes (animation / animation-name, any state: :hover, .go…) and the
+         elements it reaches here (its ::before / ::after apart), and an imported page's recorded motion
+         (data-rv-motion: et-runtime.js plays it with el.animate and sets its scroll-tied properties);
+       · a keyframes name the copy carries is its own: one that is not ours (rv-…) becomes rv-embed-<name>, in every
+         animation naming it — ETB2B's pages have keyframes of their own (pulse, rotate, fa-spin…) and the ported
+         templates' have the same names, so neither would overwrite the other's.
+     ctx.motion = { kf: { name: { property: 1 } }, marked: [element of a page model] }, each marked element carrying
+     __rvMoves: { '' | '::before' | …: { property: 1 } }. */
+  var KEYFRAMES_PREFIX = 'rv-embed-';
+  function motionName(name) { name = String(name || ''); return !name || /^rv-/.test(name) ? name : KEYFRAMES_PREFIX + name; }
+  function motionHas(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
+  /* the pseudo-element a selector styles ('' for the element itself) */
+  function motionPseudo(sel) {
+    var parts = compoundsOf(sel).parts, last = simplesOf(parts[parts.length - 1] || ''), out = '';
+    last.forEach(function (t) { if (PSEUDO_ELEMENT.test(t)) out = '::' + t.replace(/^:+/, '').replace(/\(.*$/, '').toLowerCase(); });
+    return out;
+  }
+  /* the keyframes rule as the copy writes it: under its own name */
+  function motionKeyframes(rule) {
+    var name = motionName(rule.name), text = String(rule.cssText || '');
+    if (name !== rule.name) text = text.replace(/^(\s*@(?:-webkit-)?keyframes\s+)(["']?)[^\s{"']+\2/i, function (m, at) { return at + name; });
+    return { name: name, text: text };
+  }
+  /* declarations' text with the keyframes the plan knows renamed in animation / animation-name (keywords, timing
+     functions and names it does not know are left) */
+  function motionNames(text, plan) {
+    var known = plan && plan.kf;
+    if (!known) return text;
+    return String(text || '').replace(/((?:^|[;{\s])(?:-webkit-)?animation(?:-name)?\s*:)([^;{}]*)/gi, function (m, head, value) {
+      return head + value.replace(/(^|[\s,])([A-Za-z_-][\w-]*)(?=$|[\s,!])/g, function (t, pre, word) {
+        return motionHas(known, word) ? pre + motionName(word) : t;
+      });
+    });
+  }
+  /* a declaration that sets something `soft` holds — itself, or a shorthand of it (background for
+     background-position, inset for top…) */
+  var MOTION_INSET = { top: 1, right: 1, bottom: 1, left: 1 };
+  function motionSoftens(decl, soft) {
+    var name = String(decl).slice(0, String(decl).indexOf(':')).trim();
+    if (!name) return false;
+    if (name.indexOf('--') !== 0) name = name.toLowerCase();
+    if (motionHas(soft, name)) return true;
+    for (var p in soft) if (motionHas(soft, p) && (p.indexOf(name + '-') === 0 || name === 'inset' && MOTION_INSET[p])) return true;
+    return false;
+  }
+  function motionProp(k) { return k === 'cssFloat' ? 'float' : String(k).replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); }); }
+  function motionPlan(doc, ctx) {
+    var plan = { kf: {}, marked: [] }, naming = [];
+    function scan(rules) {
+      Array.prototype.forEach.call(rules || [], function (r) {
+        if (r.type === 7) {
+          var props = plan.kf[r.name] = plan.kf[r.name] || {};
+          Array.prototype.forEach.call(r.cssRules || [], function (k) {
+            for (var i = 0; k.style && i < k.style.length; i++) if (!/^animation-/.test(k.style[i])) props[k.style[i]] = 1;
+          });
+          return;
+        }
+        if (r.type === 3) { try { if (r.styleSheet) scan(r.styleSheet.cssRules); } catch (e) { /* another site's sheet */ } return; }
+        if (r.type === 1 && r.style && /animation/i.test(r.style.cssText || '')) naming.push(r);
+        if (r.cssRules && r.cssRules.length) scan(r.cssRules);       // @media, @supports, @layer… and nested rules
+      });
+    }
+    // the sheets the copy is made from (collect's own choice)
+    Array.prototype.forEach.call(doc.styleSheets || [], function (sheet) {
+      var o = sheet.ownerNode;
+      if (sheet.disabled || o && o.closest && (o.closest('[data-rv-editor]') || o.closest('.is-hidden-sec')) || o && o.hasAttribute && o.hasAttribute('data-rv-runtime')) return;
+      try { scan(sheet.cssRules); } catch (e) { /* another site's sheet */ }
+    });
+    function mark(el, pseudo, props) {
+      if (!el.__rvMoves) { el.__rvMoves = {}; plan.marked.push(el); }
+      var p = el.__rvMoves[pseudo] = el.__rvMoves[pseudo] || {};
+      for (var k in props) if (motionHas(props, k)) p[k] = 1;
+    }
+    function inSection(m, el) { return m.page.section === el || m.page.section.contains(el); }
+    naming.forEach(function (r) {
+      var names = [], re = /animation(?:-name)?\s*:([^;]*)/gi, d, w, words = /[A-Za-z_-][\w-]*/g;
+      String(r.style.getPropertyValue('animation-name') || '').split(',').forEach(function (n) { n = n.trim().replace(/^["']|["']$/g, ''); if (motionHas(plan.kf, n) && names.indexOf(n) === -1) names.push(n); });
+      while (!names.length && (d = re.exec(r.style.cssText))) while ((w = words.exec(d[1]))) if (motionHas(plan.kf, w[0]) && names.indexOf(w[0]) === -1) names.push(w[0]);
+      if (!names.length) return;
+      var props = {};
+      names.forEach(function (n) { for (var p in plan.kf[n]) if (motionHas(plan.kf[n], p)) props[p] = 1; });
+      splitTop(r.selectorText, ',').forEach(function (sel) {
+        var t = testable(sel, ctx.knownClass), pseudo = motionPseudo(sel);
+        ctx.models.forEach(function (m) {
+          var found = [];
+          try { found = m.page.doc.querySelectorAll(t); } catch (e) { return; }
+          Array.prototype.forEach.call(found, function (el) { if (inSection(m, el)) mark(el, pseudo, props); });
+        });
+      });
+    });
+    // an imported page's recorded motion: its entrances' and loops' keyframes, its scroll-tied properties
+    ctx.models.forEach(function (m) {
+      var s = m.page.section;
+      [s].concat(Array.prototype.slice.call(s.querySelectorAll('[data-rv-motion]'))).forEach(function (el) {
+        var rec = null, props = {}, any = false;
+        if (!el.hasAttribute('data-rv-motion')) return;
+        try { rec = JSON.parse(el.getAttribute('data-rv-motion')); } catch (e) { return; }
+        if (!rec || typeof rec !== 'object') return;
+        (rec.a || []).concat(rec.l || []).forEach(function (x) {
+          var ks = x && x.k ? (Array.isArray(x.k) ? x.k : [x.k]) : [];
+          ks.forEach(function (f) { for (var k in f) if (motionHas(f, k) && !/^(offset|easing|composite)$/.test(k)) { props[motionProp(k)] = 1; any = true; } });
+        });
+        if (rec.s && typeof rec.s === 'object') for (var k in rec.s) if (motionHas(rec.s, k)) { props[k] = 1; any = true; }
+        if (any) mark(el, '', props);
+      });
+    });
+    return plan;
+  }
+  /* what an animation moves where this rule reaches (null: nothing) */
+  function motionSoft(rule, ctx) {
+    var plan = ctx.motion, soft = null;
+    if (!plan || !plan.marked.length || !rule.selectorText) return null;
+    splitTop(rule.selectorText, ',').forEach(function (sel) {
+      var t = testable(sel, ctx.knownClass), pseudo = motionPseudo(sel);
+      plan.marked.forEach(function (el) {
+        var p = el.__rvMoves[pseudo];
+        if (!p || !matchesEl(el, t)) return;
+        for (var k in p) if (motionHas(p, k)) { soft = soft || {}; soft[k] = 1; }
+      });
+    });
+    return soft;
+  }
+  /* the copy's style="…": keyframes under their own names, and what moves on that element not !important */
+  function motionUnimportant(style, soft) {
+    return splitTop(style, ';').map(function (d) { return motionSoftens(d, soft) ? d.replace(/\s*!\s*important\s*$/i, '') : d; }).join('; ') + ';';
+  }
+  function motionInline(m, ctx) {
+    var plan = ctx.motion;
+    if (!plan) return;
+    var page = [m.page.section].concat(Array.prototype.slice.call(m.page.section.querySelectorAll('*')));
+    var mine = [m.copy].concat(Array.prototype.slice.call(m.copy.querySelectorAll('*')));
+    if (page.length !== mine.length) return;
+    mine.forEach(function (el, i) {
+      var st = el.getAttribute('style');
+      if (!st) return;
+      var moves = page[i].__rvMoves && page[i].__rvMoves[''], next = motionNames(st, plan);
+      if (moves) next = motionUnimportant(next, moves);
+      if (next !== st) el.setAttribute('style', next);
+    });
+  }
+
   /* the page at url, out of sight, its scripts off (sandbox without allow-scripts), once its fonts are in */
   function loadPage(url, timeoutMs) {
     return new Promise(function (resolve, reject) {
@@ -1229,4 +1388,7 @@
       absolute: absolute, absoluteUrls: absoluteUrls, remToPx: remToPx, varsUsed: varsUsed, familiesUsed: familiesUsed,
       fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, singleQuoted: singleQuoted, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE }
   };
+  // the motion helpers, for functions/lib/editor-dev-export.test.js (section 2h)
+  root.RevampDevExport._test.motion = { name: motionName, names: motionNames, keyframes: motionKeyframes, softens: motionSoftens, pseudo: motionPseudo,
+    plan: motionPlan, soft: motionSoft, unimportant: motionUnimportant, inline: motionInline };
 })(typeof window !== 'undefined' ? window : this);
