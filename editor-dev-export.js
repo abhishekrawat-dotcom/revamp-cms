@@ -951,6 +951,7 @@
   function prepare(doc, sec, o, base, remPx) {
     var id = sec.getAttribute('data-rv-section') || sec.id || 'section';
     var copy = sec.cloneNode(true);
+    sizePictures(sec, copy);
     var info = finishHtml(copy, { pageUrl: o.pageUrl, base: base, remPx: remPx, awards: !!(doc.body && doc.body.hasAttribute('data-rv-awards')) });
     rootAttrs(doc, copy, id);
     return { id: id, sec: sec, copy: copy, info: info, page: pageModel(doc, sec, copy), embed: embedModel(doc, copy) };
@@ -985,8 +986,77 @@
      padding issue?" — chose to tighten it in the copy). The copy's banner is as tall as its content, with the room
      below it above it too (scaled down on a phone, 32px at least). Only the page's banner — its hero (an AI-designed
      or awards site), its banner (a template), or the section holding its h1 — and only when it has that extra room. */
+  function isBanner(sec, id) { return /^(hero|banner)$/i.test(id) || !!sec.querySelector('h1'); }
+
+  /* ---------- pictures: the banner's first, the rest as they come into view ----------
+     The owner, 13 Nov 2026, with a Lighthouse report of the CMS page: "I need it 90+ there as well". Its largest
+     paint was the banner's picture — a CSS background, which the browser only finds once the page's styles are in
+     (1.46 s of its 2.9 s went before it was even asked for). So the copy names it early: a <link rel="preload"
+     as="image" fetchpriority="high"> in the banner (an <img> banner gets fetchpriority="high"), placed where the
+     section's own CSS does not count children (:first-child / :last-child…). Every picture below the banner waits
+     until it is near the view (loading="lazy"), and so does the banner's dark-theme logo, which is hidden. A picture
+     without width and height gets the size the page has it at, so nothing moves when it arrives. */
+  function sizePictures(sec, copy) {
+    var live = sec.querySelectorAll('img'), mine = copy.querySelectorAll('img');
+    if (live.length !== mine.length) return;
+    Array.prototype.forEach.call(mine, function (img, i) {
+      var l = live[i];
+      if (img.hasAttribute('width') || img.hasAttribute('height') || !(l.naturalWidth > 0 && l.naturalHeight > 0)) return;
+      img.setAttribute('width', String(l.naturalWidth));
+      img.setAttribute('height', String(l.naturalHeight));
+    });
+  }
+  function urlsIn(text) {
+    var out = [], re = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g, m;
+    while ((m = re.exec(String(text || '')))) out.push(m[2]);
+    return out;
+  }
+  function pictures(win, sec, copy, id, ownCss) {
+    var imgs = Array.prototype.slice.call(copy.querySelectorAll('img'));
+    if (!isBanner(sec, id)) {
+      imgs.forEach(function (img) {
+        if (!img.hasAttribute('loading')) img.setAttribute('loading', 'lazy');
+        if (!img.hasAttribute('decoding')) img.setAttribute('decoding', 'async');
+      });
+      return;
+    }
+    imgs.forEach(function (img) { if (img.classList.contains('rv-lu-dark')) img.setAttribute('loading', 'lazy'); });
+    // the banner's picture: the largest element in it (itself first) that has a background picture, else its largest <img>
+    var best = null, area = 0;
+    [sec].concat(Array.prototype.slice.call(sec.querySelectorAll('*'))).forEach(function (el) {
+      var bg = win.getComputedStyle(el).backgroundImage, r = el.getBoundingClientRect(), a = r.width * r.height;
+      if (bg && bg.indexOf('url(') !== -1 && a > area) { best = el; area = a; }
+    });
+    var bigImg = null, imgArea = 0;
+    Array.prototype.forEach.call(sec.querySelectorAll('img'), function (el, i) {
+      var r = el.getBoundingClientRect(), a = r.width * r.height;
+      if (a > imgArea && !el.classList.contains('rv-lu-dark')) { bigImg = imgs[i]; imgArea = a; }
+    });
+    if (bigImg && imgArea >= area) {
+      bigImg.setAttribute('fetchpriority', 'high');
+      bigImg.removeAttribute('loading');
+      return;
+    }
+    if (!best) return;
+    // the address the browser takes: a WebP in image-set() where there is one, else the first url()
+    var text = best.getAttribute('style') || win.getComputedStyle(best).backgroundImage;
+    var webp = /image-set\([^]*?url\(\s*['"]?([^'")]+)['"]?\s*\)\s*type\(\s*['"]image\/webp['"]\s*\)/i.exec(text);
+    var href = webp ? webp[1] : urlsIn(text)[0];
+    if (!href || /^data:/i.test(href)) return;
+    var link = copy.ownerDocument.createElement('link');
+    link.setAttribute('rel', 'preload');
+    link.setAttribute('as', 'image');
+    link.setAttribute('href', href);
+    link.setAttribute('fetchpriority', 'high');
+    if (webp) link.setAttribute('type', 'image/webp');
+    var counts = String(ownCss || '');
+    var first = /:(first-child|nth-child|first-of-type|only-child|only-of-type)/.test(counts), last = /:(last-child|nth-last-child|last-of-type|only-child|only-of-type)/.test(counts);
+    if (!first) copy.insertBefore(link, copy.firstChild);
+    else if (!last) copy.appendChild(link);
+  }
+
   function bannerRoom(win, sec, id) {
-    if (!(/^(hero|banner)$/i.test(id) || sec.querySelector('h1'))) return '';
+    if (!isBanner(sec, id)) return '';
     var cs = win.getComputedStyle(sec), vh = win.innerHeight || 900, vw = win.innerWidth || 1440;
     var pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0, mh = parseFloat(cs.minHeight) || 0;
     if (pt <= pb + 8 && mh < vh * 0.5) return '';
@@ -1040,6 +1110,7 @@
     var groundRule = ground ? '/* the event page\u2019s ground behind this section */\n.' + scopeId(id) + WEIGHT + ' { background-color: ' + ground[1] + ' !important; }\n' : '';
     var css = groundRule + remToPx(extrasFor(ownText, ctx, families).concat(own).join('\n'), remPx) + bannerRoom(win, sec, id);
     var common = commonCss(doc, win, [m], base, remPx, ctx, ownText);
+    pictures(win, sec, copy, id, css);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
     var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, [m], base) });

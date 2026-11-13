@@ -94,6 +94,13 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2f.1 the copy\'s banner is as tall as its content, with the room below it above it too (the owner chose to tighten it), only for the page\'s banner and only with extra room', /function bannerRoom\(win, sec, id\)/.test(SRC) && /if \(pt <= pb \+ 8 && mh < vh \* 0\.5\) return '';/.test(SRC) && /min-height: 0 !important; padding-top: clamp\(32px, /.test(SRC) && /\+ bannerRoom\(win, sec, id\);/.test(SRC));
 })();
 
+/* ======================= 2g pictures: the banner's first ======================= */
+(function () {
+  check('2g.1 the banner\'s picture is asked for first: a preload link (fetchpriority high, WebP where image-set has one), or fetchpriority on an <img> banner', /link\.setAttribute\('rel', 'preload'\);/.test(SRC) && /link\.setAttribute\('fetchpriority', 'high'\);/.test(SRC) && /if \(webp\) link\.setAttribute\('type', 'image\/webp'\);/.test(SRC) && /bigImg\.setAttribute\('fetchpriority', 'high'\);/.test(SRC));
+  check('2g.2 …never where the section\'s CSS counts children', /if \(!first\) copy\.insertBefore\(link, copy\.firstChild\);\n\s*else if \(!last\) copy\.appendChild\(link\);/.test(SRC));
+  check('2g.3 every picture below the banner loads as it comes into view; the hidden dark-theme logo too; a picture gets its size', /if \(!img\.hasAttribute\('loading'\)\) img\.setAttribute\('loading', 'lazy'\);/.test(SRC) && /classList\.contains\('rv-lu-dark'\)\) img\.setAttribute\('loading', 'lazy'\)/.test(SRC) && /function sizePictures\(sec, copy\)/.test(SRC));
+})();
+
 /* ======================= 2e only what the other website uses ======================= */
 (function () {
   check('2e.1 a speaker\'s pop-up text goes on an event site (its card leads to the speaker\'s page), stays on an awards site (jury cards)', /if \(!opt\.awards\) each\('template\[data-rv-profile\]', function \(n\) \{ n\.remove\(\); \}\);/.test(SRC) && /awards: !!\(doc\.body && doc\.body\.hasAttribute\('data-rv-awards'\)\)/.test(SRC));
