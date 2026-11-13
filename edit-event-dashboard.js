@@ -7,6 +7,11 @@
    Every number, line and tick on it is read from the server, or the place says it is not known:
      - the figures: GET /api/event/dashboard-stats (RevampCore.fetchStats) — the same totals as Reporting and
        the events list; page views only where the live site counts them (visitsCounted)
+     - Over time (REG-024): that answer's byDay, the last 90 India days, drawn 7, 30 or 90 at a time —
+       registrations by day, and page views by day from the day the live sites began counting them
+       (visitsSince); a day before that is "not counted", never a zero. There are no unique visitors.
+     - Who registered (REG-025): the same answer's top 10 companies, designations, cities, sources and
+       devices, each row a link to Reporting › Registrations filtered to it
      - Recent activity: the newest rows of the event's Activity log (RevampCore.fetchActivityLog)
      - where the site stands: RevampCore.siteState(EV, approval), the one reading the header chip and
        Settings › Visibility use too
@@ -47,6 +52,10 @@ window.EditEventDashboard = (function(){
      again when it is missing or older than STALE_MS, and draws the view once more when the answers are in. */
   var STALE_MS = 60000;
   var D = null, SEQ = 0;
+  /* Over time: the days fetched (the longest choice), the choices, and the one on screen — remembered in this browser
+     as a convenience only (REG-024) */
+  var STATS_DAYS = 90, RANGES = [7, 30, 90], RANGE = 30, RANGE_KEY = 'revamp-dash-range', FOCUS_RANGE = 0;
+  try { var keptRange = +window.localStorage.getItem(RANGE_KEY); if (RANGES.indexOf(keptRange) !== -1) RANGE = keptRange; } catch (e) { /* storage blocked: 30 days */ }
 
   function errMsg(err){ return (err && err.message) || 'It could not be loaded.'; }
 
@@ -67,7 +76,7 @@ window.EditEventDashboard = (function(){
       return Promise.resolve(p).then(ok, bad || function(){}).then(redraw);
     }
     var jobs = [
-      settle(C.fetchStats(id, 30), function(s){ mine.stats = s || null; }, function(e){ mine.statsErr = errMsg(e); }),
+      settle(C.fetchStats(id, STATS_DAYS), function(s){ mine.stats = s || null; }, function(e){ mine.statsErr = errMsg(e); }),
       settle(C.fetchActivityLog(id, { limit: 5 }), function(r){ mine.log = (r && r.items || []).slice(0, 5); },
         function(e){ mine.logErr = errMsg(e); }),
       settle(ctx.contentCounts ? ctx.contentCounts() : null, function(c){ mine.counts = c || null; }),
@@ -113,11 +122,11 @@ window.EditEventDashboard = (function(){
       ? { dir: reg >= target ? 'up' : 'flat', text: Math.min(100, Math.round(reg / target * 100)) + '% of the target of ' + comma(target) }
       : { dir: week ? 'up' : 'flat', text: comma(week) + ' in the last 7 days' };
 
+    /* page views only: the visit counter sends no identifier, so there are no unique visitors to show (REG-024) */
     var views = counted
       ? ctx.statTile(IC.eye, 'Page views', comma(+s.visitors || 0),
-          s.uniques ? { dir: 'flat', text: comma(+s.uniques) + ' unique visitors' }
-            /* the events list's QR codes, each scan counted on its way to the page (LST-038) */
-            : (+s.qrScans ? { dir: 'flat', text: comma(+s.qrScans) + (+s.qrScans === 1 ? ' QR code scan' : ' QR code scans') } : null), null)
+          /* the events list's QR codes, each scan counted on its way to the page (LST-038) */
+          +s.qrScans ? { dir: 'flat', text: comma(+s.qrScans) + (+s.qrScans === 1 ? ' QR code scan' : ' QR code scans') } : null, null)
       : ctx.statTile(IC.eye, 'Page views', 'Not counted', { dir: 'flat', text: 'Visits to the site are not counted yet' }, null);
 
     var third = counted
@@ -271,6 +280,173 @@ window.EditEventDashboard = (function(){
     };
   }
 
+  /* ------------------------------------------------- Over time (REG-024)
+     Two column charts one above the other — registrations by day, page views by day — on the same days, each on
+     its own scale (two measures of different size are two charts, never one chart with two axes). One hue, thin
+     columns with a rounded top, a hairline grid with three round ticks, the first, some middle and the last day
+     named under them. Hover or the arrow keys show one day's figure; "Show the numbers" lists every day. */
+  function dayShort(ctx, date){ return String(ctx.fmtDate(date)).replace(/ \d{4}$/, ''); }
+  function dayLong(ctx, date){ return C.fmtDate(date, { day: true }); }
+  function niceStep(x){
+    if (!(x > 1)) return 1;
+    var p = Math.pow(10, Math.floor(Math.log(x) / Math.LN10)), f = x / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+  /* the days of the window chosen, oldest first: { date, v } with v null for a day nobody counted */
+  function windowOf(byDay, n, key){
+    return (Array.isArray(byDay) ? byDay.slice(-n) : []).map(function(d){
+      var raw = d ? d[key] : null;
+      return { date: d && d.date, v: raw == null ? null : (+raw || 0) };
+    });
+  }
+  /* o: { id, title, days, sum: the line beside the title, gap: what the days not counted are labelled } */
+  function columns(ctx, o){
+    var esc = ctx.esc, days = o.days, n = days.length, top = 0;
+    days.forEach(function(d){ if (d.v != null && d.v > top) top = d.v; });
+    /* the top of the scale: the first round step at or above the busiest day (1 for a single registration, not 2) */
+    var step = niceStep(top / 2), max = Math.max(step, Math.ceil(top / step) * step), ticks = [];
+    for (var t = 0; t <= max; t += step) ticks.push(t);
+    var first = 0;
+    while (first < n && days[first].v == null) first++;
+    /* the last day, then every week (every four weeks over 90 days) back from it; a name at either end is set
+       against that end, so it never runs off the chart */
+    var labelStep = n <= 7 ? 1 : n <= 31 ? 7 : 28, labels = [];
+    for (var i = n - 1; i >= 0; i -= labelStep) labels.push(i);
+    function labelAt(k){
+      var mid = (k + 0.5) / n * 100;
+      return k === n - 1 ? 'right:0' : mid < 7 ? 'left:0' : 'left:' + mid + '%;transform:translateX(-50%)';
+    }
+    return '<figure class="dc" id="' + o.id + '">' +
+        '<figcaption class="dc-head"><b id="' + o.id + '-t">' + esc(o.title) + '</b><span>' + esc(o.sum) + '</span></figcaption>' +
+        '<div class="dc-plot" tabindex="0" role="group" aria-labelledby="' + o.id + '-t" aria-describedby="' + o.id + '-k" ' +
+          'data-chart="' + o.id + '" style="--n:' + n + ';--r:' + (n > 45 ? 2 : 4) + 'px">' +
+          ticks.map(function(t){ return '<span class="dc-gl" style="bottom:' + (t / max * 100) + '%"><i>' + esc(ctx.comma(t)) + '</i></span>'; }).join('') +
+          (first > 0 ? '<span class="dc-gap" style="width:' + (first / n * 100) + '%">' + (first / n >= 0.2 ? '<i>' + esc(o.gap) + '</i>' : '') + '</span>' : '') +
+          '<div class="dc-cols">' + days.map(function(d, k){
+            var h = d.v == null ? 0 : Math.round(d.v / max * 1000) / 10;
+            return '<span class="dc-day' + (d.v == null ? ' dc-none' : '') + '" data-i="' + k + '" data-v="' + (d.v == null ? '' : d.v) + '" ' +
+              'data-d="' + esc(dayLong(ctx, d.date)) + '"><i style="height:' + h + '%"></i></span>';
+          }).join('') + '</div>' +
+          '<span class="dc-tip" aria-hidden="true" hidden></span>' +
+        '</div>' +
+        '<div class="dc-x" aria-hidden="true">' + labels.map(function(k){
+          return '<span style="' + labelAt(k) + '">' + esc(dayShort(ctx, days[k].date)) + '</span>';
+        }).join('') + '</div>' +
+        '<span class="dc-sr" id="' + o.id + '-k" aria-live="polite">Use the left and right arrow keys to read one day at a time.</span>' +
+      '</figure>';
+  }
+  function overTime(ctx, s, live){
+    var comma = ctx.comma, esc = ctx.esc;
+    var right = '<div class="dc-range" role="group" aria-label="Days shown">' + RANGES.map(function(n){
+      return '<button type="button" class="btn btn-sm ' + (n === RANGE ? 'btn-primary' : 'btn-secondary') + '" data-range="' + n + '" aria-pressed="' + (n === RANGE) + '">' + n + ' days</button>';
+    }).join('') + '</div>';
+    if (!s) return ctx.panel('Over time', '', '<p class="dash-muted">' + (D && D.statsErr ? 'Not loaded.' : 'Loading…') + '</p>', right);
+    var regs = windowOf(s.byDay, RANGE, 'registrations'), views = windowOf(s.byDay, RANGE, 'views');
+    if (!regs.length) return ctx.panel('Over time', '', '<p class="dash-muted">No days to show yet.</p>', right);
+    var n = regs.length, regSum = 0, viewSum = 0, viewDays = 0;
+    regs.forEach(function(d){ regSum += d.v || 0; });
+    views.forEach(function(d){ if (d.v != null){ viewSum += d.v; viewDays++; } });
+    var since = s.visitsSince ? dayShort(ctx, s.visitsSince) : '';
+    var body = columns(ctx, { id: 'dc-reg', title: 'Registrations', days: regs,
+      sum: regSum ? comma(regSum) + ' in the last ' + n + ' days' : 'None in the last ' + n + ' days' });
+    if (s.visitsCounted !== true || !viewDays){
+      body += '<div class="dc dc-off"><div class="dc-head"><b>Page views</b></div><p class="dash-muted">' +
+        (s.visitsCounted !== true ? 'Visits to the site are not counted yet, so there is nothing to draw.'
+          : 'Page views are counted from ' + esc(since) + '; none of these days is counted yet.') + '</p></div>';
+    } else {
+      var part = viewDays < n;
+      body += columns(ctx, { id: 'dc-views', title: 'Page views', days: views,
+        gap: 'Not counted before ' + since,
+        sum: (viewSum ? comma(viewSum) : 'None') + (part ? ' since ' + since + ' (counted from then)' : ' in the last ' + n + ' days') +
+          (!live && !viewSum ? ' · only the live site is counted' : '') });
+    }
+    var rows = regs.map(function(d, k){
+      var v = views[k] ? views[k].v : null;
+      return '<tr><th scope="row">' + esc(dayLong(ctx, d.date)) + '</th><td>' + comma(d.v || 0) + '</td><td>' +
+        (s.visitsCounted !== true || v == null ? '<span class="dash-muted">Not counted</span>' : comma(v)) + '</td></tr>';
+    }).reverse().join('');
+    body += '<details class="dc-table"><summary>Show the numbers</summary><div class="dc-table-wrap"><table>' +
+      '<thead><tr><th scope="col">Day (India time)</th><th scope="col">Registrations</th><th scope="col">Page views</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div></details>';
+    return ctx.panel('Over time', 'Per day, India time', body, right);
+  }
+
+  /* --------------------------------------------- Who registered (REG-025)
+     The top 10 of each list the server keeps for the registrations (functions/lib/api-audience.js aggValues); each
+     row leads to Reporting › Registrations showing those registrations. Ranked bars in one hue. */
+  var WHO = [['company', 'Company', 'byCompany'], ['designation', 'Designation', 'byDesignation'], ['city', 'City', 'byCity'],
+    ['source', 'Source', 'bySource'], ['device', 'Device', 'byRegistrationDevice']];
+  function whoRegistered(ctx, s){
+    var esc = ctx.esc, comma = ctx.comma, id = ctx.EV.id || ctx.EV.eventId;
+    if (!s) return ctx.panel('Who registered', '', '<p class="dash-muted">' + (D && D.statsErr ? 'Not loaded.' : 'Loading…') + '</p>');
+    if (!(+s.registrations)) return ctx.panel('Who registered', '',
+      '<p class="dash-muted">No registrations yet. The companies, designations, cities, sources and devices of the people who register are listed here.</p>');
+    var cards = WHO.map(function(w){
+      var list = Array.isArray(s[w[2]]) ? s[w[2]].filter(function(x){ return x && x.label && +x.count > 0; }).slice(0, 10) : [];
+      var top = list.length ? +list[0].count : 0;
+      var inner = list.length ? '<ol class="dw-list">' + list.map(function(x){
+        var href = '/audience-registrations.html?event=' + encodeURIComponent(id) + '&by=' + w[0] + '&value=' + encodeURIComponent(x.label);
+        var count = +x.count;
+        return '<li><a class="dw-row" href="' + esc(href) + '" aria-label="' + esc(x.label + ': ' + comma(count) + (count === 1 ? ' registration' : ' registrations') + '. Show them') + '">' +
+            '<span class="dw-l">' + esc(x.label) + '</span><span class="dw-n">' + esc(comma(count)) + '</span>' +
+            '<span class="dw-bar" aria-hidden="true"><i style="width:' + Math.max(2, Math.round(count / top * 100)) + '%"></i></span></a></li>';
+      }).join('') + '</ol>'
+        : '<p class="dash-muted">' + (w[0] === 'device' || w[0] === 'source' ? 'None recorded yet.' : 'No answers yet: the forms may not ask for it.') + '</p>';
+      return '<section class="dw-card" aria-labelledby="dw-' + w[0] + '"><h4 id="dw-' + w[0] + '">' + esc(w[1]) + '</h4>' + inner + '</section>';
+    }).join('');
+    return ctx.panel('Who registered', 'The top 10 of each, from every registration so far. Choose one to see those registrations.',
+      '<div class="dw-grid">' + cards + '</div>');
+  }
+
+  /* hover, focus and the arrow keys on the Over time charts: one day's figure at a time, the same day marked on both */
+  function wireCharts(ctx){
+    var root = ctx.$('dash-over');
+    if (!root || !root.querySelectorAll) return;
+    var plots = Array.prototype.slice.call(root.querySelectorAll('.dc-plot[data-chart]'));
+    var words = { 'dc-reg': ['registration', 'registrations'], 'dc-views': ['page view', 'page views'] };
+    function mark(i){
+      plots.forEach(function(p){
+        Array.prototype.forEach.call(p.querySelectorAll('.dc-day'), function(c){ c.classList.toggle('on', +c.getAttribute('data-i') === i); });
+      });
+    }
+    function show(plot, i, said){
+      var cols = plot.querySelectorAll('.dc-day'), n = cols.length;
+      if (!n) return;
+      i = Math.max(0, Math.min(n - 1, i));
+      plot.setAttribute('data-at', i);
+      var col = cols[i], v = col.getAttribute('data-v'), w = words[plot.getAttribute('data-chart')] || ['', ''];
+      var value = v === '' ? 'Not counted' : ctx.comma(+v) + ' ' + (+v === 1 ? w[0] : w[1]);
+      var tip = plot.querySelector('.dc-tip');
+      if (tip){
+        tip.innerHTML = '';
+        var b = document.createElement('b'); b.textContent = value;
+        var d = document.createElement('span'); d.textContent = col.getAttribute('data-d');
+        tip.appendChild(b); tip.appendChild(d);
+        var at = (i + 0.5) / n * 100;
+        tip.style.left = at + '%';
+        tip.style.transform = 'translateX(' + (at < 15 ? '-10%' : at > 85 ? '-90%' : '-50%') + ')';
+        tip.hidden = false;
+      }
+      mark(i);
+      if (said){ var k = root.querySelector('#' + plot.getAttribute('data-chart') + '-k'); if (k) k.textContent = col.getAttribute('data-d') + ': ' + value; }
+    }
+    function hide(plot){ var tip = plot.querySelector('.dc-tip'); if (tip) tip.hidden = true; mark(-1); }
+    plots.forEach(function(plot){
+      /* a pointer over a day, or a finger on it (a tap moves no pointer) */
+      plot.onpointermove = plot.onpointerdown = function(e){ var c = e.target.closest && e.target.closest('.dc-day'); if (c) show(plot, +c.getAttribute('data-i'), false); };
+      plot.onpointerleave = function(){ if (document.activeElement !== plot) hide(plot); };
+      plot.onfocus = function(){ var at = plot.getAttribute('data-at'); show(plot, at == null ? plot.querySelectorAll('.dc-day').length - 1 : +at, true); };
+      plot.onblur = function(){ hide(plot); };
+      plot.onkeydown = function(e){
+        var n = plot.querySelectorAll('.dc-day').length, at = +(plot.getAttribute('data-at') || n - 1);
+        var to = e.key === 'ArrowLeft' ? at - 1 : e.key === 'ArrowRight' ? at + 1 : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : null;
+        if (to == null) return;
+        e.preventDefault();
+        show(plot, to, true);
+      };
+    });
+  }
+
   /* ---------------------------------------------------------------- view */
   function view(ctx){
     var e = ctx.EV;
@@ -311,6 +487,9 @@ window.EditEventDashboard = (function(){
           '</div></div>'
         : '') +
 
+      /* while the figures are read again the charts stay, dimmed, until the new ones are in */
+      '<div id="dash-over" class="dash-over-wrap' + (busy && s ? ' dash-dim' : '') + '">' + overTime(ctx, s, st.live) + '</div>' +
+
       '<div class="split">' +
         '<div>' +
           people(ctx, s) +
@@ -322,7 +501,10 @@ window.EditEventDashboard = (function(){
           ctx.panel('Jump back in', '', '<div class="check-list">' + quickActions(ctx, s) + '</div>') +
           ctx.panel('Ready to publish', ready.sub, ready.html) +
         '</div>' +
-      '</div></div>';
+      '</div>' +
+
+      whoRegistered(ctx, s) +
+      '</div>';
   }
 
   /* ---------------------------------------------------------------- wire */
@@ -334,7 +516,21 @@ window.EditEventDashboard = (function(){
       load(ctx);
       ctx.render();
     };
+    /* 7 / 30 / 90 days: drawn again from what is already here (90 days are fetched), the focus kept on the choice */
+    var over = ctx.$('dash-over');
+    if (over && over.querySelectorAll) Array.prototype.forEach.call(over.querySelectorAll('[data-range]'), function(b){
+      var n = +b.getAttribute('data-range');
+      b.onclick = function(){
+        if (n === RANGE) return;
+        RANGE = n; FOCUS_RANGE = n;
+        try { window.localStorage.setItem(RANGE_KEY, String(n)); } catch (e) { /* only a convenience */ }
+        ctx.render();
+      };
+      if (FOCUS_RANGE === n){ FOCUS_RANGE = 0; b.focus(); }
+    });
+    wireCharts(ctx);
   }
 
-  return { view: view, wire: wire, _test: { reset: function(){ D = null; SEQ++; }, lastDays: lastDays } };
+  return { view: view, wire: wire, _test: { reset: function(){ D = null; SEQ++; }, lastDays: lastDays, niceStep: niceStep,
+    range: function(n){ if (RANGES.indexOf(n) !== -1) RANGE = n; return RANGE; } } };
 })();

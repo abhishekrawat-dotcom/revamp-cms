@@ -101,7 +101,7 @@
 //                          POST /api/event/restore, POST /api/event/clone
 //     lib/api-audience.js  GET /api/public/site-data, POST /api/register, POST /api/track (all PUBLIC),
 //                          POST /api/event/seed, GET/PATCH/DELETE /api/event/registrations,
-//                          GET /api/event/registrations/export (CSV),
+//                          POST /api/event/registrations/status (one status for several), GET /api/event/registrations/export (CSV),
 //                          GET /api/event/dashboard-stats, GET /api/insights, GET /api/event/activity
 //     lib/api-forms.js     an event's registration forms: GET/POST/PUT/DELETE /api/event/forms,
 //                          POST /api/event/forms/default, POST /api/event/forms/order,
@@ -13249,6 +13249,7 @@ var ROUTES = {
   'POST /api/event/seed': audience('handleSeed'),
   'GET /api/event/registrations': audience('handleRegistrationsList'),
   'PATCH /api/event/registrations': audience('handleRegistrationUpdate'),
+  'POST /api/event/registrations/status': audience('handleRegistrationsStatus'),   // Reporting's bulk Set status (REG-019)
   'DELETE /api/event/registrations': audience('handleRegistrationDelete'),
   'GET /api/event/registrations/export': audience('handleRegistrationsExport'),
 
