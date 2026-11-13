@@ -289,8 +289,10 @@ function isEventId(v) { return typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,79
                           "gen-x" would be opened as "the AI-designed site of event x")
      all digits           the editor reads a number in ?event= as "no event"
      the words below      path segments of this host, or words pages treat as "nothing chosen yet"
-     import-…             the Lovable import pipeline keeps its staging records in the events collection
-                          under these ids. LEGACY_IMPORT_DOCS goes to false once they have been moved out.
+     import-…             the Lovable import pipeline kept its records in the events collection under these ids
+                          until 13 Nov 2026 (they are imports/<id> now: lib/import-store.js, which also reads an
+                          old one there while this is true). LEGACY_IMPORT_DOCS goes to false once the owner has run
+                          functions/lib/ops-migrate-imports.js --write, which moves them out.
      qa-…                 on a deployed instance (K_SERVICE set) only: the QA harness's events. A qa- address means
                           test data to the sitemap, to the team's Mailer performance view (left out), to a local or
                           QA server's mailer tracking (the only events it tracks, with links to itself) and to the
@@ -323,5 +325,5 @@ function str(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 
 module.exports = {
   sendJson, readBody, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin, requireMember,
   adminFromRequest, CORS_HEADERS, sendPublicJson, sendPublicNoContent, clientIp, rateLimit, isEventId,
-  isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str, AI_RATE
+  isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str, AI_RATE, LEGACY_IMPORT_DOCS
 };

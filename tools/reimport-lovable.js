@@ -7,7 +7,8 @@
    import loses nothing. An event with a saved or published site is refused — its page is the owner's work now.
      - the capture runs on this machine's Chrome (puppeteer-core: RV_PUPPETEER / CHROME_PATH, else the usual
        places), the same code the scraper service runs; --html uses a capture made already;
-     - the new import gets a new id (events/import-<new id>): the old one stays as it was, so putting the
+     - the new import gets a new id (imports/<new id>, its files under events/import-<new id>/): the old one stays
+       as it was, so putting the
        event back is one command (printed at the end), and the editor's copy in the owner's browser (kept per
        template) is not mistaken for the new one;
      - the owner's editor preview (site/drafts/…) is left alone: it shows the old page until the owner opens
@@ -43,6 +44,7 @@ if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(EVENT) || (SET_TEMPLATE && !/^imported-[a-
 const { getFirebase } = require('../functions/lib/firebase');
 const api = require('../functions/lib/api');
 const pictures = require('../functions/lib/pictures');
+const importStore = require('../functions/lib/import-store');
 const H = api._testHooks;
 
 function driver() {
@@ -81,36 +83,36 @@ async function main() {
   console.log(EVENT + ': template ' + oldTemplate + ', saved version ' + saved + ', saved page ' + (pageThere ? 'yes' : 'no') + ', published ' + (published ? 'yes' : 'no'));
 
   if (SET_TEMPLATE) {
-    const [doc] = await Promise.all([fb.db.collection('events').doc('import-' + SET_TEMPLATE.slice(9)).get()]);
-    if (!doc.exists) throw new Error('no import ' + SET_TEMPLATE);
+    const doc = await importStore.readRecord(fb, SET_TEMPLATE.slice(9));
+    if (!doc.data) throw new Error('no import ' + SET_TEMPLATE);
     console.log((DRY ? 'would set' : 'setting') + ' templateId ' + oldTemplate + ' -> ' + SET_TEMPLATE);
     if (!DRY) await ref.update({ templateId: SET_TEMPLATE, updatedAt: new Date().toISOString() });
     return;
   }
 
   if (saved || pageThere || published) throw new Error('"' + EVENT + '" has a saved or published site: its page is the owner\'s work, not the import — refusing');
-  const oldImport = await fb.db.collection('events').doc('import-' + oldTemplate.slice(9)).get();
-  const url = URL_ARG || (oldImport.exists && oldImport.data().sourceUrl) || '';
+  const oldImport = await importStore.readRecord(fb, oldTemplate.slice(9));
+  const url = URL_ARG || (oldImport.data && oldImport.data.sourceUrl) || '';
   if (!/^https?:\/\//.test(url)) throw new Error('no Lovable address: pass --url');
   console.log('capturing ' + url + (HTML_ARG ? ' (from ' + HTML_ARG + ')' : ' on this machine\'s Chrome') + '…');
   const raw = await capture(url);
   console.log('captured ' + raw.length + ' characters: ' + count(raw, /data-rv-tab="/g) + ' tabs, ' + count(raw, /data-rv-tabpanel="/g) + ' tab panels, ' +
     count(raw, /data-rv-scrolled-class=/g) + ' top-bar changes on scroll, ' + count(raw, /aria-expanded=/g) + ' rows that open');
 
-  const newId = 'imp-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+  const newId = importStore.newImportId();
   let target = fb, store = null;
   if (DRY) {
     store = {};
     target = {
       bucket: { name: fb.bucket.name, file: function (p) { return { save: async function (b) { store[p] = b; }, makePublic: async function () {}, exists: async function () { return [false]; } }; } },
-      db: { collection: function () { return { doc: function () { return { set: async function () {} }; } }; } }
+      db: { collection: function () { return { doc: function () { return { get: async function () { return { exists: false }; }, create: async function () {} }; } }; } }
     };
     pictures.storeVariants = async function () {};
   }
-  const result = await H.importRenderedPage(target, newId, url, raw);
+  const result = await H.importRenderedPage(target, newId, url, raw, 'tools/reimport-lovable.js');
   if (DRY) {
     const doc = JSON.parse(store['events/import-' + newId + '/sections.json'].toString('utf8'));
-    console.log('would write events/import-' + newId + '/ (' + Object.keys(store).length + ' files: index.html, section.html, sections.json and pictures) with ' +
+    console.log('would write imports/' + newId + ' and events/import-' + newId + '/ (' + Object.keys(store).length + ' files: section.html, sections.json and pictures) with ' +
       doc.sections.length + ' sections: ' + doc.sections.map(function (s) { return s.id; }).join(', '));
     console.log('would set ' + EVENT + ' templateId ' + oldTemplate + ' -> ' + result.templateId + ' (nothing written)');
     return;

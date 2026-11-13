@@ -14,10 +14,12 @@
            <main> <section>… </main>     - a <main> (or a plain <div>) that only holds sections is opened up,
            <footer>                     /  and each of its sections carries a copy of it as its own wrapper
 
-   splitImportedPage(bodyHtml) -> null when the page cannot be cut into at least two sections (the import then
+   splitImportedPage(bodyHtml, opts) -> null when the page cannot be cut into at least two sections (the import then
    stays one section, as before), else
      { frameOpen, frameClose, decor, sections: [ { id, name, html } ] }
    frameOpen + decor + <the sections, each exactly one root element> + frameClose is the page again.
+   opts.wrapper: the opening tag of the .rv-imported element the frame begins with (lib/import-page.js wrapperOf: it
+   carries the page's own <html> and <body> classes and theme); '<div class="rv-imported">' when not given.
    No network, no Firebase: see import-split.test.js. */
 
 const { parseDocument } = require('htmlparser2');
@@ -82,7 +84,7 @@ function headingOf(el) {
 }
 function titleCase(id) { return id.replace(/-/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }); }
 
-function splitImportedPage(bodyHtml) {
+function splitImportedPage(bodyHtml, opts) {
   var doc;
   try { doc = parseDocument(String(bodyHtml || ''), { decodeEntities: false }); } catch (e) { return null; }
 
@@ -186,7 +188,8 @@ function splitImportedPage(bodyHtml) {
   });
 
   return {
-    frameOpen: '<div class="rv-imported">' + chain.map(function (el) { return openTag(el); }).join(''),
+    frameOpen: (opts && typeof opts.wrapper === 'string' && /^<div class="rv-imported[ "]/.test(opts.wrapper) ? opts.wrapper : '<div class="rv-imported">') +
+      chain.map(function (el) { return openTag(el); }).join(''),
     frameClose: chain.slice().reverse().map(function (el) { return VOID.test(el.name) ? '' : '</' + el.name + '>'; }).join('') + '</div>',
     decor: html(decor),
     sections: sections

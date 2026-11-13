@@ -300,7 +300,7 @@ OTHERS.forEach(function (f) {
   check(f + ' carries no assistant', hit.length === 0, hit);
 });
 /* the scan is not empty by accident: the pages the plan names as "never" are all there and were all read */
-['index.html', 'preview-draft.html', 'promo-social-studio.html', 'promo-mailer-studio.html', 'edit-event-marketing.html', 'banner.html',
+['index.html', 'preview-draft.html', 'promo-social-studio.html', 'promo-mailer-studio.html', 'edit-event-marketing.html',
   'settings.html', 'dashboard.html', 'edit-event-dashboard.html'].forEach(function (f) {
   check('the scan read ' + f, OTHERS.indexOf(f) !== -1);
 });

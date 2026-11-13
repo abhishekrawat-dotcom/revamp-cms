@@ -9,7 +9,8 @@
      1. every served page (functions/lib/access.js isServableFile: the top level, the Figma import, the template
         preview) starts with the doctype, nothing before it, and has <html lang>, a utf-8 charset in its first 1024 bytes
         (where a browser looks for it) and a device-width viewport. Not pages: a template's section files (pieces put
-        into a page, never sent on their own) and the empty placeholders (banner.html, templates/_shared/none.html);
+        into a page, never sent on their own) and the empty placeholder templates/_shared/none.html (banner.html,
+        an empty page, was deleted: PAY-009);
      2. the three pages this change gave a head: their titles ("<Page> — EventSphere", the tab form), the browser-tab
         icon line, no byte-order mark and no old name before the doctype;
      3. the site editor on a phone (editor-ai-mode.js startMode): below 720 px it opens in Edit with AI unless the

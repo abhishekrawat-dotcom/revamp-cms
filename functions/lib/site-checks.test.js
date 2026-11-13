@@ -257,7 +257,8 @@ function fakeFb(objects, opts) {
       get: function () { return Promise.resolve(snapOf(path)); },
       collection: function (name) { return coll(path + '/' + name); },
       update: function (v) { docs[path] = Object.assign({}, docs[path], v); return Promise.resolve(); },
-      set: function (v) { docs[path] = v; return Promise.resolve(); }
+      set: function (v) { docs[path] = v; return Promise.resolve(); },
+      create: function (v) { if (docs[path]) return Promise.reject(Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 })); docs[path] = v; return Promise.resolve(); }
     };
   }
   return {
@@ -534,7 +535,7 @@ pending.push(hooks.processLovableImport(importFb, 'imp-t1', '<html><head></head>
   ok(r.templateId === 'imported-imp-t1' && r.repairs.length > 5 && r.repairs.some(function (c) { return c.what === 'widget'; }), 'an import answers with what it put right and took out', r.repairs && r.repairs.length);
   var saved = importFb.store['events/import-imp-t1/section.html'] || '';
   ok(saved.indexOf('data-rv-form-title="Start a nomination"') !== -1 && saved.indexOf('aria-label="Menu"') === -1, 'and the stored page carries the repairs');
-  ok((importFb.docs['events/import-imp-t1'] || {}).importRepairs.length === r.repairs.length, 'the list is kept with the import');
+  ok((importFb.docs['imports/imp-t1'] || {}).importRepairs.length === r.repairs.length, 'the list is kept with the import');
 }, function (err) { ok(false, 'the import ran', err && err.stack); }));
 
 /* ---------- 12. the console's panel: a repair saved and waiting for approval is not offered again ---------- */
