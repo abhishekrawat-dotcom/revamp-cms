@@ -2193,7 +2193,7 @@
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M6 6l12 12M18 6L6 18"/></svg>
                   </button>
                 </div>
-                <div class="logo-meta" id="logo-hint">PNG, WEBP or SVG &middot; 571&times;340 &middot; max 5&nbsp;MB</div>
+                <div class="logo-meta" id="logo-hint">PNG, WEBP or SVG, up to 5&nbsp;MB. Best at about 571&times;340.</div>
                 <input id="f-logo" type="file" accept="image/png,image/webp,image/svg+xml,.webp,.svg" hidden>
               </div>
             </div>
@@ -2807,7 +2807,7 @@
     if (slot === 'banner') d.psdBanner = null;
     else { d.banner = false; d.bannerName = ''; d.bannerPalette = null; }
     var sec = sectionByLib('hero');
-    if (sec && sec.data === d) sec.done = !!heroPicture(d, heroSlot(d));
+    if (sec && sec.data === d) sec.done = sectionFilled(sec);
   }
   /* the hero picture the site gets right now: an address this page can show, '' when there is none */
   function activeBannerUrl(){
@@ -3564,6 +3564,8 @@
         resumedExisting = true;
       }
       if (heroData()) cleanHeroData(heroData());
+      /* the ticks follow what each section holds, whatever an earlier version of this page saved (WZ-067) */
+      S.sections.forEach(function(sec){ sec.done = sectionFilled(sec); });
       /* a draft from before files were kept per draft: its logo moves to this draft's slot */
       if (S.logoSessionId){
         var oldLogoKey = 'create:logo:' + S.logoSessionId;
@@ -3618,6 +3620,15 @@
   }
   function isCurrent(run){ return !!run && busy === run; }
   function runSignal(run){ return run.controller ? run.controller.signal : undefined; }
+  /* Every call the wizard makes to /api goes through the shared signed-in fetch (WZ-053): a fresh token, one
+     retry on a refused token, then the "signed out" box over the page, so a lapsed session is said, never a
+     bare 401. A string body is sent as JSON; the run's signal still stops the request on Cancel. */
+  function apiFetch(url, opts){
+    if (window.RevampCore && typeof RevampCore.authedFetch === 'function') return RevampCore.authedFetch(url, opts || {});
+    var err = new Error('You need to be signed in to do this.');
+    err.status = 401;
+    return Promise.reject(err);
+  }
   function endBusy(run){
     if (busy !== run) return;
     busy = null;
@@ -5054,7 +5065,7 @@
       removeBtn.hidden = true;
       logoCta.textContent = 'Upload logo';
       logoHint.className = logoFailed ? 'logo-meta bad' : 'logo-meta';
-      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG, WEBP or SVG · 571×340 · max 5 MB';
+      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG, WEBP or SVG, up to 5 MB. Best at about 571×340.';
     }
 
     var openLogoPicker = function(){ logoInput.click(); };
@@ -5874,14 +5885,43 @@
     });
   }
   /* true when the section holds something the owner entered — anything beyond what a new one starts with */
-  function sectionHasContent(s){
-    function differs(v, base){
-      if (typeof v === 'string') return !!v.trim() && v !== base;
-      if (Array.isArray(v)) return v.some(function(x, i){ return differs(x, Array.isArray(base) ? base[i] : undefined); });
-      if (v && typeof v === 'object') return Object.keys(v).some(function(k){ return differs(v[k], base && typeof base === 'object' ? base[k] : undefined); });
-      return false;
+  function sectionHasContent(s){ return dataDiffers(s.data, seed(s.shape), null); }
+  /* any text in v that is not what `base` starts with; a key named in `skip` is not looked at */
+  function dataDiffers(v, base, skip){
+    if (typeof v === 'string') return !!v.trim() && v !== base;
+    if (Array.isArray(v)) return v.some(function(x, i){ return dataDiffers(x, Array.isArray(base) ? base[i] : undefined, skip); });
+    if (v && typeof v === 'object') return Object.keys(v).some(function(k){ return !(skip && skip[k]) && dataDiffers(v[k], base && typeof base === 'object' ? base[k] : undefined, skip); });
+    return false;
+  }
+  /* A section's tick, and the "n/m filled" count, say what the section holds right now (WZ-067): worked out from its
+     content each time it changes (markDone) and once for every section when a draft is resumed (restore), never a
+     flag a field hands in. How it looks (a layout, the banner kind, a picture's side) is not content. Where the
+     items are the point, an item that can be shown fills it: a stat with its number and its label, a speaker with a
+     name, a session with a title, a contact with an email or a phone, a partner or a photo; Overview needs a
+     paragraph of more than a few words. Reads only the draft: the pictures themselves need not have loaded. */
+  function sectionFilled(s){
+    var LOOK_ONLY = { layout: 1, bannerMode: 1, kind: 1, side: 1 };
+    var d = s && s.data;
+    if (!d || typeof d !== 'object') return false;
+    var items = Array.isArray(d.items) ? d.items : [];
+    var said = function(v){ return !isBlank(v); };
+    switch (s.shape){
+      case 'stats':    return items.some(function(it){ return !!it && said(it.v) && said(it.k); });
+      case 'people':   return items.some(function(p){ return !!p && said(p.n); });
+      case 'agenda':   return items.some(function(it){ return !!it && said(it.ti); });
+      case 'gallery':  return items.some(function(it){ return !!it && (it.slot != null || !!normalUrl(it.url)); });
+      case 'logos':    return (Array.isArray(d.tiers) ? d.tiers : []).some(function(t){
+                         return !!t && (Array.isArray(t.logos) ? t.logos : []).some(function(lg){ return !!lg && (said(lg.n) || lg.slot != null || !!pictureAddress(lg.logoUrl)); });
+                       });
+      case 'contacts': return (Array.isArray(d.blocks) ? d.blocks : []).some(function(b){
+                         return !!b && (Array.isArray(b.people) ? b.people : [b]).some(function(p){ return !!p && (said(p.e) || said(p.p)); });
+                       });
+      case 'custom':   return said(d.heading) || said(d.body);
+      /* the banner the site shows now (the other kind's picture, kept for going back to it, is not on the site), or its words */
+      case 'hero':     return !!heroPicture(d, heroSlot(d)) || dataDiffers(d, seed('hero'), { bannerMode: 1, psdBanner: 1, banner: 1, bannerName: 1, bannerPalette: 1 });
     }
-    return differs(s.data, seed(s.shape));
+    if (s.libId === 'about') return String(d.body || '').trim().length > 20;
+    return dataDiffers(d, seed(s.shape), LOOK_ONLY);
   }
 
   /* =========================================================
@@ -6291,7 +6331,7 @@
           designIntake: S.designIntake,
           priorDesigns: S.priorDesigns
         };
-        return fetch('/api/suggest-design', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: runSignal(run) })
+        return apiFetch('/api/suggest-design', { method: 'POST', body: JSON.stringify(payload), signal: runSignal(run) })
           .then(readJson)
           .then(function(body){
             if (!body.designs || !body.designs.length) throw new Error('The design service did not return any proposals.');
@@ -6472,7 +6512,7 @@
           sec.data[c.key] = JSON.parse(JSON.stringify(c.after));
           sec.aiFields = sec.aiFields || {};
           sec.aiFields[c.key] = JSON.stringify(c.after);
-          sec.done = true;
+          sec.done = sectionFilled(sec);
         });
         aiTextUndo = applied.length ? applied : null;
         S.aiDesign = designs[selectedIdx].design;
@@ -6512,7 +6552,7 @@
       var sec = sectionByLib(u.libId);
       if (!sec || !sec.data || JSON.stringify(sec.data[u.key]) !== u.after) return;
       sec.data[u.key] = u.before;
-      sec.done = u.done;
+      sec.done = sectionFilled(sec);
       if (sec.aiFields) delete sec.aiFields[u.key];
       restored++;
     });
@@ -6567,7 +6607,7 @@
   /* the failures any request can have, said the same way everywhere; '' when it is something else */
   function commonFailure(err){
     var status = err && err.status, msg = (err && err.message) || '';
-    if (status === 401) return 'Your sign-in has expired. Sign in again in another tab, then try again.';
+    if (status === 401) return 'Your sign-in has expired. Sign in again, then try again.';
     if (status === 403) return serverSentence(err) || 'Your account is not allowed to do this.';
     if (status === 429) return 'The AI service is busy or over its limit. Wait a minute, then try again.';
     if (status === 413) return 'That file is too large (' + Math.round(BRIEF_DOC_MAX_BYTES / 1048576) + ' MB maximum).';
@@ -6705,7 +6745,7 @@
     function postJson(url, body){
       body = Object.assign({ eventId: eventId, runId: runId, eventMeta: briefEventMeta(inputs.text), futureEdition: inputs.future }, body);
       if (replace) body.replace = true;
-      return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: runSignal(run) })
+      return apiFetch(url, { method: 'POST', body: JSON.stringify(body), signal: runSignal(run) })
         .then(readJson);
     }
 
@@ -6766,7 +6806,7 @@
        hand-off and only then leave. Each part is a server call that can fail, and none of them is a paid
        call, so a failure here is retried on its own without regenerating anything. */
     runners.open = function(){
-      return fetch('/api/draft?eventId=' + encodeURIComponent(eventId), { signal: runSignal(run) })
+      return apiFetch('/api/draft?eventId=' + encodeURIComponent(eventId), { signal: runSignal(run) })
         .then(readJson)
         .then(function(draftResp){
           var templateId = draftResp.templateId || ('gen-' + eventId);
@@ -7241,7 +7281,7 @@
       dropSectionImages(sec);
       sec.data = JSON.parse(JSON.stringify(c));
       setSecIncluded(sec, true);
-      sec.done = true;
+      sec.done = sectionFilled(sec);
       sec.source = 'edition';
       sec.editionName = pe.name;
       filled.push(libId);
@@ -7431,20 +7471,12 @@
       $('btn-import-cancel').onclick = requestCancelBusy;
       renderFoot();
 
-      (function(){
-        if (!window.RevampAuth || typeof RevampAuth.getIdToken !== 'function'){
-          return Promise.reject(new Error('You need to be signed in to import a design.'));
-        }
-        return RevampAuth.getIdToken().then(function(token){
-          return fetch('/api/import-lovable', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            /* the import's id is the server's to make (BE-049): only the address is sent */
-            body: JSON.stringify({ url: url }),
-            signal: runSignal(run)
-          });
-        });
-      })().then(readJson).then(function(body){
+      apiFetch('/api/import-lovable', {
+        method: 'POST',
+        /* the import's id is the server's to make (BE-049): only the address is sent */
+        body: JSON.stringify({ url: url }),
+        signal: runSignal(run)
+      }).then(readJson).then(function(body){
         if (!isCurrent(run)) return;      // cancelled, or the owner has moved on: a late answer changes nothing
         if (!/^imported-[a-z0-9][a-z0-9-]*$/.test(String(body.templateId || ''))) throw new Error('no design came back');
         endBusy(run);
@@ -7680,7 +7712,7 @@
       dropSectionImages(sec);
       sec.data = JSON.parse(JSON.stringify(content));
       setSecIncluded(sec, true);
-      sec.done = true;
+      sec.done = sectionFilled(sec);
       sec.source = 'edition';
       sec.editionName = pe.name;
     });
@@ -7707,7 +7739,7 @@
       var c = content && content[libId];
       if (!c || sectionHasContent(sec) || !secIncluded(sec)) return false;
       sec.data = JSON.parse(JSON.stringify(c));
-      sec.done = true;
+      sec.done = sectionFilled(sec);
       sec.source = 'edition';
       sec.editionName = pe.name;
       return true;
@@ -8049,9 +8081,10 @@
   }
   window.addEventListener('resize', fitPsdPreview);
 
-  function markDone(s, val){
+  /* after any change to section s: its tick follows what it now holds (sectionFilled), and the draft is saved */
+  function markDone(s){
     var was = s.done;
-    s.done = (val === undefined) ? true : val;
+    s.done = sectionFilled(s);
     if (was !== s.done){ renderSecList(); renderFoot(); refreshProgress(); }
     save();
   }
@@ -8222,7 +8255,7 @@
     var d = s.data;
     var focus = function(sel){ var el = document.querySelector('#editor-panel ' + sel); if (el){ el.focus(); if (el.select && el.value) el.select(); } };
     var grow = function(t){ t.style.height = 'auto'; t.style.height = Math.max(t.scrollHeight, 76) + 'px'; };
-    var bindVal = function(id, set){ var el = $(id); if (el) el.addEventListener('input', function(){ set(el.value); markDone(s, true); }); };
+    var bindVal = function(id, set){ var el = $(id); if (el) el.addEventListener('input', function(){ set(el.value); markDone(s); }); };
     bindVal('e-in-subheading', function(v){ d.subheading = v; });
     bindVal('e-in-heading', function(v){ d.heading = v; });
     var para = $('e-body');
@@ -8233,7 +8266,7 @@
         d.body = para.value;
         var cc = $('cc'), lim = introLimit(s);
         if (cc){ cc.textContent = countText(d.body.length, lim, 'characters'); cc.classList.toggle('over', d.body.length > lim); }
-        markDone(s, s.libId === 'about' ? d.body.trim().length > 20 : true);
+        markDone(s);
       });
     }
     bindVal('e-in-cta-label', function(v){ d.cta = d.cta || {}; d.cta.label = v; });
@@ -8246,7 +8279,7 @@
         else if (key === 'media') d.media = { kind: 'image', url: '', side: 'right' };
         else if (key === 'cta') d.cta = { label: '', url: '' };
         else d[key] = '';
-        save(); renderEditor();
+        markDone(s); renderEditor();
         focus({ points: '[data-ipt="0"]', media: '#e-in-media-url', cta: '#e-in-cta-label', body: '#e-body' }[key] || '#e-in-' + key);
       });
     });
@@ -8254,10 +8287,10 @@
       b.addEventListener('click', function(){
         var key = b.getAttribute('data-indel'), had = d[key];
         delete d[key];
-        save(); renderEditor();
+        markDone(s); renderEditor();
         offerUndo(INTRO_LABELS[key], function(){
           if (d[key] == null) d[key] = had;
-          save(); renderEditor();
+          markDone(s); renderEditor();
         });
       });
     });
@@ -8265,12 +8298,12 @@
     // pointers
     body.querySelectorAll('[data-ipt]').forEach(function(el){
       var j = +el.getAttribute('data-ipt');
-      el.addEventListener('input', function(){ d.points = d.points || ['']; d.points[j] = el.value; markDone(s, true); });
+      el.addEventListener('input', function(){ d.points = d.points || ['']; d.points[j] = el.value; markDone(s); });
       el.addEventListener('keydown', function(e){
         d.points = d.points || [''];
         if (e.key === 'Enter'){ e.preventDefault(); d.points.splice(j + 1, 0, ''); save(); renderEditor(); focus('[data-ipt="' + (j + 1) + '"]'); }
         else if (e.key === 'Backspace' && !el.value && d.points.length > 1){
-          e.preventDefault(); d.points.splice(j, 1); save(); renderEditor(); focus('[data-ipt="' + Math.max(0, j - 1) + '"]');
+          e.preventDefault(); d.points.splice(j, 1); markDone(s); renderEditor(); focus('[data-ipt="' + Math.max(0, j - 1) + '"]');
         }
       });
     });
@@ -8279,7 +8312,7 @@
         d.points = d.points || [];
         d.points.splice(+b.getAttribute('data-iptdel'), 1);
         if (!d.points.length && !introPinned(s, 'points')) delete d.points;      // the last one gone: the block goes too
-        save(); renderEditor();
+        markDone(s); renderEditor();
       });
     });
     var ptAdd = $('in-ptadd');
@@ -8295,7 +8328,7 @@
     if (murl) murl.addEventListener('input', function(){
       d.media = d.media || { kind: 'image', url: '', side: 'right' };
       d.media.url = murl.value.trim();
-      markDone(s, true);
+      markDone(s);
       clearTimeout(mediaTimer);
       mediaTimer = setTimeout(function(){ var p = $('in-mprev'); if (p) p.innerHTML = mediaPreview(d.media); }, 250);
     });
@@ -8349,7 +8382,6 @@
     });
     return d.blocks;
   }
-  function contactsFilled(d){ return normContacts(d).some(function(b){ return b.people.some(function(p){ return String(p.e || '').trim() || String(p.p || '').trim(); }); }); }
   /* Who should attend used to hold plain role names: each becomes a card with that heading */
   function normItems(d){
     if (!Array.isArray(d.items)) d.items = [];
@@ -9748,7 +9780,7 @@
 
     function on(id, ev, fn){ var el = $(id); if (el) el.addEventListener(ev, fn); }
     function bindText(id, key){
-      on(id, 'input', function(){ d[key] = $(id).value; markDone(s, !!String(d[key]).trim()); });
+      on(id, 'input', function(){ d[key] = $(id).value; markDone(s); });
     }
 
     if (s.shape === 'hero'){
@@ -9760,8 +9792,7 @@
             d.bannerMode = opt;
             bannerProblem = '';
             psdPick.on = false;
-            markDone(s, !!heroPicture(d, heroSlot(d)));
-            save();
+            markDone(s);
             renderEditor();
             toast(opt === 'psd' ? 'The banner is the picture you upload' : 'The banner is a background picture with your own text');
           });
@@ -9800,8 +9831,7 @@
             d.bannerName = file.name;
             bannerPaletteFor('banner-text', null, function(palette){
               d.bannerPalette = palette;
-              markDone(s, true);
-              save();
+              markDone(s);
               renderEditor();
               toast('Banner uploaded: ' + file.name);
             });
@@ -9823,8 +9853,7 @@
           psdPick.on = false;
           bannerPaletteFor('banner', banner.compositeCanvas, function(palette){
             banner.palette = palette;
-            markDone(s, true);
-            save();
+            markDone(s);
             renderEditor();
             var found = describeDetected(banner);
             toast('Banner imported (' + banner.width + '\u00D7' + banner.height + ')' + (found ? ' — found on it: ' + found : ''));
@@ -9938,7 +9967,6 @@
             takeBannerFile(file);
           });
         }
-        on('e-title','input', function(){ markDone(s, !!String(d.title||'').trim()); });
       }
     }
 
@@ -9946,12 +9974,11 @@
     if (s.shape === 'heading') bindText('e-head','text');
 
     /* what the editors below share */
-    var rerender = function(){ save(); renderEditor(); };
+    var rerender = function(){ markDone(s); renderEditor(); };      // every add, remove, undo and reorder: the tick follows (WZ-067)
     var focusSel = function(sel){ var el = document.querySelector('#editor-panel ' + sel); if (el) el.focus(); };
     var blank = function(v){ return !String(v == null ? '' : v).trim(); };
 
     if (s.shape === 'custom'){
-      var textDone = function(){ markDone(s, !blank(d.heading) || !blank(d.body)); };
       on('e-name', 'input', function(){
         s.name = $('e-name').value;
         var row = document.querySelector('#sec-list [data-sec="' + s.id + '"] .nm'), title = document.querySelector('#editor-panel .editor-head h2');
@@ -9959,8 +9986,8 @@
         if (title) title.textContent = s.name;
         save();
       });
-      on('e-heading', 'input', function(){ d.heading = $('e-heading').value; textDone(); });
-      on('e-body', 'input', function(){ d.body = $('e-body').value; textDone(); });
+      on('e-heading', 'input', function(){ d.heading = $('e-heading').value; markDone(s); });
+      on('e-body', 'input', function(){ d.body = $('e-body').value; markDone(s); });
       body.querySelectorAll('[data-lay]').forEach(function(b){
         b.addEventListener('click', function(){
           d.layout = b.getAttribute('data-lay');
@@ -9973,7 +10000,6 @@
     /* stats */
     if (s.shape === 'stats'){
       d.items = d.items || [];
-      var statsDone = function(){ markDone(s, d.items.some(function(it){ return !blank(it.v) && !blank(it.k); })); };
       body.querySelectorAll('[data-kv]').forEach(function(el){
         el.addEventListener('input', function(){
           var it = d.items[+el.getAttribute('data-i')];
@@ -9983,13 +10009,13 @@
           var card = el.closest('.kv-card'), flag = card.querySelector('.kv-flag'), off = isSuspect(it);
           card.classList.toggle('flagged', off);
           flag.hidden = !off;
-          statsDone();
+          markDone(s);
         });
       });
       body.querySelectorAll('[data-kvdel]').forEach(function(b){
         b.addEventListener('click', function(){
           var i = +b.getAttribute('data-kvdel');
-          removeWithUndo(function(){ return d.items; }, i, 'Stat ' + quoted([d.items[i].v, d.items[i].k].filter(function(x){ return !blank(x); }).join(' ')), function(){ statsDone(); rerender(); });
+          removeWithUndo(function(){ return d.items; }, i, 'Stat ' + quoted([d.items[i].v, d.items[i].k].filter(function(x){ return !blank(x); }).join(' ')), rerender);
         });
       });
       on('kv-add','click', function(){
@@ -10007,12 +10033,7 @@
         var k = at.split('.');
         return k[0] === 'logo' ? ((d.tiers || [])[+k[1]] || { logos: [] }).logos[+k[2]] : (d.items || [])[+k[1]];
       };
-      var sectionDone = function(){
-        if (s.shape === 'people') return d.items.some(function(p){ return !blank(p.n); });
-        if (s.shape === 'gallery') return d.items.some(function(it){ return it.slot != null || !!normalUrl(it.url); });
-        return d.tiers.some(function(t){ return (t.logos || []).some(function(lg){ return !blank(lg.n) || !!itemPicture(lg, 'logoUrl'); }); });
-      };
-      var settle = function(){ markDone(s, sectionDone()); rerender(); };
+      var settle = rerender;
       var refuse = function(at, message){ imgProblem = { at: at, message: message }; renderEditor(); };
       var takeImage = function(at, file){
         var it = holder(at), issue = imageFileIssue(file);
@@ -10105,7 +10126,7 @@
         el.addEventListener('input', function(){
           var p = el.getAttribute('data-logo').split('.');
           d.tiers[+p[0]].logos[+p[1]].n = el.value;
-          markDone(s, sectionDone());
+          markDone(s);
         });
       });
       body.querySelectorAll('[data-logourl]').forEach(function(el){
@@ -10130,7 +10151,7 @@
         el.addEventListener('input', function(){
           var i = +el.getAttribute('data-i');
           d.items[i][el.getAttribute('data-rep')] = el.value;
-          markDone(s, true);
+          markDone(s);
         });
       });
       body.querySelectorAll('[data-repdel]').forEach(function(b){
@@ -10163,7 +10184,7 @@
       });
       body.querySelectorAll('[data-pt]').forEach(function(el){
         var p = el.getAttribute('data-pt').split('.'), i = +p[0], j = +p[1];
-        el.addEventListener('input', function(){ d.items[i].points[j] = el.value; markDone(s, true); });
+        el.addEventListener('input', function(){ d.items[i].points[j] = el.value; markDone(s); });
         el.addEventListener('keydown', function(e){
           if (e.key === 'Enter'){                                   // the next pointer, straight away
             e.preventDefault();
@@ -10202,7 +10223,7 @@
         el.addEventListener('input', function(){
           var i = +el.getAttribute('data-i');
           d.items[i][el.getAttribute('data-q')] = el.value;
-          markDone(s, true);
+          markDone(s);
         });
       });
       body.querySelectorAll('[data-repdel]').forEach(function(b){
@@ -10229,7 +10250,7 @@
         el.addEventListener('input', function(){
           var i = +el.getAttribute('data-i');
           d.items[i][el.getAttribute('data-p')] = el.value;
-          markDone(s, sectionDone());
+          markDone(s);
         });
       });
       body.querySelectorAll('[data-pdel]').forEach(function(b){
@@ -10286,8 +10307,7 @@
         el.addEventListener('input', function(){
           var i = +el.getAttribute('data-glink');
           d.items[i].url = el.value.trim();
-          markDone(s, sectionDone());
-          save();
+          markDone(s);
           clearTimeout(linkTimer);
           linkTimer = setTimeout(function(){               // the tile shows the linked picture, or that it did not load
             var area = document.querySelector('#editor-panel [data-img="g.' + i + '"]'), src = d.items[i] ? normalUrl(d.items[i].url) : '';
@@ -10307,18 +10327,17 @@
     /* agenda */
     if (s.shape === 'agenda'){
       d.items = d.items || [];
-      var agendaDone = function(){ markDone(s, d.items.some(function(it){ return !blank(it.ti); })); };
       body.querySelectorAll('[data-ag]').forEach(function(el){
         el.addEventListener('input', function(){
           var i = +el.getAttribute('data-i');
           d.items[i][el.getAttribute('data-ag')] = el.value;
-          agendaDone();
+          markDone(s);
         });
       });
       body.querySelectorAll('[data-agdel]').forEach(function(b){
         b.addEventListener('click', function(){
           var i = +b.getAttribute('data-agdel');
-          removeWithUndo(function(){ return d.items; }, i, 'Session ' + quoted(d.items[i].ti), function(){ agendaDone(); rerender(); });
+          removeWithUndo(function(){ return d.items; }, i, 'Session ' + quoted(d.items[i].ti), rerender);
         });
       });
       on('ag-add', 'click', function(){
@@ -10335,10 +10354,10 @@
     /* contacts: categories and their people */
     if (s.shape === 'contacts'){
       normContacts(d);
-      var contactsChanged = function(){ markDone(s, contactsFilled(d)); rerender(); };
+      var contactsChanged = rerender;
       body.querySelectorAll('[data-ct]').forEach(function(el){
         var k = el.getAttribute('data-ct').split('.');
-        el.addEventListener('input', function(){ d.blocks[+k[0]].people[+k[1]][k[2]] = el.value; markDone(s, contactsFilled(d)); });
+        el.addEventListener('input', function(){ d.blocks[+k[0]].people[+k[1]][k[2]] = el.value; markDone(s); });
         el.addEventListener('keydown', function(e){               // Enter on a phone: the next person
           if (e.key === 'Enter' && k[2] === 'p'){
             e.preventDefault();

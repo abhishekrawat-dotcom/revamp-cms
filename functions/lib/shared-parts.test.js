@@ -334,8 +334,9 @@ check('UX-007 Registrations: an account menu to sign out, and no event switcher'
    light/dark switch and the account menu sit side by side, one of each, and end the bar: after the page's own
    actions (Preview, Share preview, Save, Publish). Only Create Event's close button comes after them, as the builder's
    way out. The site editor's switch was inside its account menu, and the console, Promotions and Registrations put
-   the pair before Preview: the editor, the events list and the logs put it last. */
-var PAIR = '<span data-theme-toggle-target style="display:inline-flex;align-items:center;"></span>\\s*(?:<!--[^>]*-->\\s*)?<span data-rv-account></span>';
+   the pair before Preview: the editor, the events list and the logs put it last. A page may name its switch
+   (data-theme-toggle-label: the site editor's says it changes the editor, not the site, ED-067). */
+var PAIR = '<span data-theme-toggle-target(?: data-theme-toggle-label="[^"<>]+")? style="display:inline-flex;align-items:center;"></span>\\s*(?:<!--[^>]*-->\\s*)?<span data-rv-account></span>';
 var HEADERS = { 'edit-event.html': CONSOLE, 'custom_editor.html': EDITOR, 'marketing.html': PROMO, 'audience-registrations.html': REG,
   'activity-log.html': ALOG, 'mailer-performance.html': MP, 'review.html': REVIEW, 'Event_Listing.html': LISTING, 'create-event.html': WIZ, 'portal-review.html': read('portal-review.html'),
   /* the approvers' report of what people ask ETB2B AI (owner decision 11) has the same bar */

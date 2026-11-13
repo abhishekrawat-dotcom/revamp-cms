@@ -20,10 +20,19 @@
     localStorage.setItem(STORE_KEY, theme);
     /* Update every mounted toggle on the page */
     document.querySelectorAll('[data-theme-toggle]').forEach(function (btn) {
-      var label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
+      var label = labelFor(btn, theme);
       btn.setAttribute('aria-label', label);
       btn.title = label;
     });
+  }
+
+  /* The switch's name says what pressing it does; a page can give it a name of its own instead
+     (data-theme-toggle-label on the place it is mounted in): the site editor's says that it changes the editor's look,
+     not the site's (ED-067). */
+  function labelFor(btn, theme) {
+    var own = btn && btn.getAttribute('data-theme-toggle-label');
+    if (own) return own;
+    return theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   }
 
   function toggle() {
@@ -64,15 +73,15 @@
   }
 
   /* ── 3. Build the button element ── */
-  function buildToggleBtn() {
+  function buildToggleBtn(ownLabel) {
     var theme = document.documentElement.getAttribute('data-theme') || 'light';
-    var isDark = theme === 'dark';
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.setAttribute('data-theme-toggle', '');
+    if (ownLabel) btn.setAttribute('data-theme-toggle-label', ownLabel);
     btn.className = 'theme-toggle-btn';
     /* its name says what pressing it does; it is not a pressed / not-pressed control as well */
-    btn.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+    btn.setAttribute('aria-label', labelFor(btn, theme));
     btn.title = btn.getAttribute('aria-label');
     btn.innerHTML =
       '<svg class="tgl-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -89,7 +98,7 @@
   /* ── 4. Mount into a container element ── */
   function mountThemeToggle(container) {
     if (!container) return;
-    container.appendChild(buildToggleBtn());
+    container.appendChild(buildToggleBtn(container.getAttribute ? container.getAttribute('data-theme-toggle-label') : ''));
   }
 
   /* ── 5. Auto-mount into [data-theme-toggle-target] elements ── */

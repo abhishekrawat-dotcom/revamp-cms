@@ -291,7 +291,7 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
     turn.indexOf('if (!same) putBack(aiPictureRules.RECORDS_CHANGED);') < turn.indexOf('changedEls.push(fresh);') && turn.indexOf('if (!same) putBack') < turn.indexOf('var picShown = withPic'));
   check('D.7 … and the picture made for it waits in the tray, said in the reply', /\}\)\.then\(null, function \(err\) \{[^]*var kept = withPic \? keepMadePicture\('The new picture'\) : '';[^]*said\.push\('“' \+ job\.label \+ '” was not ' \+ \(job\.edit \? 'changed' : 'added'\) \+ ': ' \+ why/.test(turn));
   check('D.7 fillRecords draws the records and leaves the undo history alone; drawRecords is it and then the baseline',
-    fill && !/undoStack|persist\(/.test(fill) && /return changed;/.test(fill) && /return fillRecords\(sectionsAdded\)\.then\(function \(changed\) \{/.test(draw) && /undoStack\[undoPtr\] = snap;/.test(draw));
+    fill && !/undoStack|persist\(/.test(fill) && /return changed;/.test(fill) && /return fillRecords\(sectionsAdded(?:, unread)?\)\.then\(function \(changed\) \{/.test(draw) && /undoStack\[undoPtr\] = snap;/.test(draw));
   check('D.7 the editor uses its picture part only when it can read records', /typeof P\.recordsState === 'function'/.test(loader));
   /* QA follow-up 2, F3: a rework put back to protect the records, with nothing else changed, ended on "Nothing on the
      page changed." alone, though the picture had gone to the tray. The card's last line now says where it is. */

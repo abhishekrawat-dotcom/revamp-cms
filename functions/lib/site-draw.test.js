@@ -256,7 +256,7 @@ Object.keys(TEMPLATES).forEach(function (tpl) {
   var hint = hintDoc.querySelector('[data-rv-bind="event.venue"] [data-rv-bind-hint]');
   check('5.4 a detail Basics do not have says where to add it, in the editor only', hint && hint.textContent === 'Add the venue in Basics' && hint.hasAttribute('data-rv-editor'));
   var fill = fnSrc('fillRecords'), exit = fnSrc('exitEdit'), detach = fnSrc('detachFact'), enter = fnSrc('enterEdit');
-  check('5.5 the editor draws them when it opens a site (its records step), the old one-shot copy is gone', /fetchMapContent\(\)/.test(fill) && /RevampDraw\.drawMapLists\(/.test(fill) && /drawEventFacts\(\)/.test(fill) &&
+  check('5.5 the editor draws them when it opens a site (its records step), the old one-shot copy is gone', /fetchMapContent\((?:unread)?\)/.test(fill) && /RevampDraw\.drawMapLists\(/.test(fill) && /drawEventFacts\(\)/.test(fill) &&
     !/fetchSubcollectionOverlay|translateSpeakers|SUBCOLLECTION_SOURCES/.test(ED));
   check('5.6 a detail rewritten by hand stops following Basics (data-rv-unbound); its hint is never typed into', /detachFact\(el\)/.test(exit) && /setAttribute\('data-rv-unbound', bound\.getAttribute\('data-rv-bind'\)\)/.test(detach) &&
     /\[data-rv-bind-hint\][\s\S]*contenteditable', 'false'/.test(enter));
