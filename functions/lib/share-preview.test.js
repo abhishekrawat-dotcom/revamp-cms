@@ -668,8 +668,8 @@ var MP = 'qa-share-multi';           // a site with an internal page
   formsRuntimeChecks();
 
   /* ============ 17. tripwire: no visit counted from a shared page ============ */
-  check('17 a shared page loads no visit counter (rv-live.js) and names no /api/track', pub.text.indexOf('rv-live.js') === -1 && pub.text.indexOf('/api/track') === -1 &&
-    mpAgenda.text.indexOf('rv-live.js') === -1 && mpAgenda.text.indexOf('/api/track') === -1);
+  check('17 a shared page loads no visit counter (rv-live.js, rv-visit.js) and names no /api/track', pub.text.indexOf('rv-live.js') === -1 && pub.text.indexOf('rv-visit.js') === -1 && pub.text.indexOf('/api/track') === -1 &&
+    mpAgenda.text.indexOf('rv-live.js') === -1 && mpAgenda.text.indexOf('rv-visit.js') === -1 && mpAgenda.text.indexOf('/api/track') === -1);
   check('17 none of the scripts a shared page loads posts to /api/track', (pub.text.match(/<script[^>]*src="([^"]+)"/g) || []).every(function (tag) {
     var src = /src="([^"?]+)/.exec(tag)[1];
     var file = path.join(ROOT, src.replace(/^\//, ''));

@@ -1034,6 +1034,8 @@
       status: window.RevampLifecycle.of(ev, Date.now()),
       start: ev.start || null, end: ev.end || null,
       registrations: Number(counters.registrations) || 0, visitors: Number(counters.views) || 0,
+      /* how often this event's QR codes have been scanned (GET /e/<id>?qr=… counts each scan: LST-038) */
+      qrScans: Number(counters.qrScans) || 0,
       /* no payment here: payments are not part of this release, so the list has no Payment column, revenue figure
          or Paid / Free filter (UX-025) */
       createdBy: ev.createdBy || '—',
@@ -3226,7 +3228,7 @@
       return cv.toDataURL('image/png');
     } catch (err) { return ''; }
   }
-  /* "brand-world-summit-2026-agenda-mailer-qr.png": the event, which code, the AG code when there is one */
+  /* "brand-world-summit-2026-agenda-mailer-qr.png": the event, which code, the source tag when there is one */
   function qrFileName(e, key, ag, ext){
     var tag = String(ag || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
     return String(e.id) + '-' + key + (tag ? '-' + tag : '') + '-qr.' + ext;
@@ -3310,26 +3312,35 @@
       mount('qr-sec-website');
     }
 
-    function urlWithAg(base, ag){
-      ag = (ag || '').trim();
-      if (!ag) return base;
-      return base + (base.indexOf('?') === -1 ? '?' : '&') + 'ag=' + encodeURIComponent(ag);
+    /* The code's address goes through the server's counter (LST-038): /e/<id>?qr=<tag> counts the scan, then sends the
+       visitor on to the page with the tag as utm_source, which a registration made there records as its source.
+       No tag: ?qr=1, still counted, recorded as "qr-code". (Codes made before carried ?ag=<tag>, which nothing read;
+       the server counts those too now.) */
+    function qrUrl(base, tag){
+      tag = String(tag || '').trim().toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+      return base + (base.indexOf('?') === -1 ? '?' : '&') + 'qr=' + encodeURIComponent(tag || '1');
+    }
+    function scansLine(e){
+      var n = Number(e.qrScans) || 0;
+      return n ? 'This event’s QR codes have been scanned ' + fmtNum(n) + (n === 1 ? ' time' : ' times') + ' so far.'
+        : 'No scans of this event’s QR codes yet. Each scan is counted as it happens.';
     }
 
     /* The code is drawn here, from the vendored qrcode-generator (assets/vendor/qrcode-generator.js), as Promotions
        draws its mailers' codes. It was a picture from api.qrserver.com, which sent every event link to an outside
        service and left no code at all whenever that service was down; and there was no way to save it but a
-       right-click. Download PNG and Download SVG save the code as shown, AG code included (UX-032). */
+       right-click. Download PNG and Download SVG save the code as shown, source tag included (UX-032). */
     function renderDetail(e, key){
       var sec = QR_SECTIONS.filter(function(s){ return s.key===key; })[0];
       var baseUrl = eventPublicUrl(e, key === 'website' ? null : key);
-      var url = baseUrl, ag = '';
+      var ag = '', url = qrUrl(baseUrl, ag);
       root.innerHTML = '<div class="modal-scrim" id="qr-scrim"><div class="modal-card fade-in">' +
         '<div class="modal-card-head"><div><h3 id="qr-title">' + sec.label + '</h3><p>' + esc(e.name) + '</p></div>' +
           '<button class="icon-btn" id="qr-close" aria-label="Close">' + IC.x + '</button></div>' +
         '<div class="modal-card-body">' +
-          '<div><label class="flabel" for="qr-ag-code">AG Code <span style="font-weight:400;color:var(--text-muted);">(optional — tag the link to track where a scan came from)</span></label>' +
-            '<input class="finput" id="qr-ag-code" type="text" placeholder="e.g. mailer" spellcheck="false" autocomplete="off"></div>' +
+          '<div><label class="flabel" for="qr-ag-code">Source tag <span style="font-weight:400;color:var(--text-muted);">(optional — registrations from this code show it as their source, e.g. mailer or standee)</span></label>' +
+            '<input class="finput" id="qr-ag-code" type="text" placeholder="e.g. mailer" spellcheck="false" autocomplete="off" maxlength="60"></div>' +
+          '<p class="qr-scans" id="qr-scans" style="font-size:12.5px;color:var(--text-muted);margin:8px 0 0;">' + esc(scansLine(e)) + '</p>' +
           '<div class="qr-img-wrap"><img class="qr-img" width="220" height="220" id="qr-img" alt="' + esc(sec.label + ' for ' + e.name) + '"></div>' +
           '<p class="qr-fail" id="qr-fail" role="alert" hidden>The QR code could not be drawn in this browser. Copy the link below and make the code from it, or reload the page and try again.</p>' +
           '<div class="qr-downloads"><button type="button" class="btn btn-secondary" id="qr-dl-png">' + IC.download + ' Download PNG</button>' +
@@ -3357,7 +3368,7 @@
       $('qr-done').addEventListener('click', close);
       $('qr-ag-code').addEventListener('input', function(){
         ag = this.value;
-        url = urlWithAg(baseUrl, ag);
+        url = qrUrl(baseUrl, ag);
         $('qr-link-text').textContent = url;
         draw();
       });

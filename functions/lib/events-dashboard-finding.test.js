@@ -450,8 +450,9 @@ async function main() {
   S.$('rowmenu-row-up-near').querySelector('[data-row-action="qr"]').click();
   check('UX-031 it opens on that event', /QR Codes/.test(S.$('qr-title').textContent) && /QA Search Upcoming Near/.test(S.$('sheet-root').textContent) && !!S.$('qr-sec-website'));
   S.$('qr-sec-website').click();
-  check('UX-031 its address is the real one, /e/<id> (owner decision #2), never a made-up domain', S.$('qr-link-text').textContent === 'http://localhost/e/up-near' &&
-    S.$('qr-img').getAttribute('data-qr-text') === 'http://localhost/e/up-near' && /^data:image\/svg\+xml/.test(S.$('qr-img').src || S.$('qr-img').getAttribute('src')), [S.$('qr-link-text').textContent, S.$('qr-img').getAttribute('data-qr-text'), String(S.$('qr-img').src).slice(0, 40), S.$('qr-fail').hidden]);
+  /* through the scan counter: /e/<id>?qr=1 (LST-038), which sends the visitor on to /e/<id> */
+  check('UX-031 its address is the real one, /e/<id> (owner decision #2), never a made-up domain', S.$('qr-link-text').textContent === 'http://localhost/e/up-near?qr=1' &&
+    S.$('qr-img').getAttribute('data-qr-text') === 'http://localhost/e/up-near?qr=1' && /^data:image\/svg\+xml/.test(S.$('qr-img').src || S.$('qr-img').getAttribute('src')), [S.$('qr-link-text').textContent, S.$('qr-img').getAttribute('data-qr-text'), String(S.$('qr-img').src).slice(0, 40), S.$('qr-fail').hidden]);
   S.$('qr-done').click();
   check('…closing it gives the focus back to the row\'s ⋯ button', S.doc.activeElement === mb);
 

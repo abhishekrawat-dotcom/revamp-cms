@@ -135,11 +135,11 @@ function activity(id, action) {
   r = await call('POST', '/api/event/unpublish', { body: { eventId: 'td-four' } });
   ok(r.status === 401 && FB.docs['events/td-four'].published === true, 'signed out: 401, still live', r.status);
 
-  /* the Dashboard's figures say whether page views are counted (they are only where rv-live.js ships) */
+  /* the Dashboard's figures say whether page views are counted (they are only where the visit counter rv-visit.js ships: TPL-039) */
   FB.docs['events/td-stats'] = { name: 'Stats', createdAt: NOW, counters: { audienceV: 2, registrations: 2, confirmed: 2, views: 0, uniques: 0 },
     settings: { registration: { capacity: 100, target: 50 } } };
   r = await call('GET', '/api/event/dashboard-stats?eventId=td-stats&days=30', { token: 'member' });
-  var counted = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-live.js'));
+  var counted = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-visit.js'));
   ok(r.status === 200 && r.body && r.body.visitsCounted === counted && r.body.registrations === 2 && r.body.capacity === 100 && r.body.target === 50 && Array.isArray(r.body.byDay) && r.body.byDay.length === 30,
     'dashboard-stats: real totals, the registration settings, and visitsCounted = ' + counted, r.status + ' ' + r.text.slice(0, 300));
 

@@ -115,7 +115,9 @@ window.EditEventDashboard = (function(){
 
     var views = counted
       ? ctx.statTile(IC.eye, 'Page views', comma(+s.visitors || 0),
-          s.uniques ? { dir: 'flat', text: comma(+s.uniques) + ' unique visitors' } : null, null)
+          s.uniques ? { dir: 'flat', text: comma(+s.uniques) + ' unique visitors' }
+            /* the events list's QR codes, each scan counted on its way to the page (LST-038) */
+            : (+s.qrScans ? { dir: 'flat', text: comma(+s.qrScans) + (+s.qrScans === 1 ? ' QR code scan' : ' QR code scans') } : null), null)
       : ctx.statTile(IC.eye, 'Page views', 'Not counted', { dir: 'flat', text: 'Visits to the site are not counted yet' }, null);
 
     var third = counted

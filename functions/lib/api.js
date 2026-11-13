@@ -302,12 +302,15 @@ function spreadOf(px, at) {
 const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-markup');
 const genDesign = require('./gen-design');
 const { splitImportedPage } = require('./import-split');
+/* a Lovable import that did not work, said so (BE-048); its pictures, fonts and films copied safely (BE-052) */
+const importCheck = require('./import-check');
+const importMedia = require('./import-media');
 const { diffPages, summarise, listed, changeCount } = require('./page-diff');
 /* the event's records drawn into a saved site on the server (Content reaches the staged copy at once) */
 const siteRecords = require('./site-records');
 /* the request waiting on each event of the list, and the AI-written sections nobody has checked (UX-102, UX-105) */
 const approvalList = require('./approval-list');
-const { safeFetch } = require('./safe-fetch');
+const { safeFetch, checkPublicUrl } = require('./safe-fetch');
 /* accessibility and search on every published page (site-a11y.js pagePass; site-seo.js robots.txt, sitemap.xml) */
 const siteA11y = require('./site-a11y');
 const siteSeo = require('./site-seo');
@@ -6802,17 +6805,7 @@ function handleGeneratedSection(req, res) {
 // MAX_BRIEF_BYTES/MAX_PUBLISHED_HTML_BYTES already are in this file.
 var MAX_IMPORT_ZIP_BYTES = 40 * 1024 * 1024;
 
-var IMPORT_IMAGE_CONTENT_TYPES = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif',
-  webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon', bmp: 'image/bmp', avif: 'image/avif'
-};
-function guessImageContentType(filename) {
-  var m = /\.([a-z0-9]+)$/i.exec(filename);
-  return (m && IMPORT_IMAGE_CONTENT_TYPES[m[1].toLowerCase()]) || 'application/octet-stream';
-}
-
 function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
-function escapeRegex(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 // Generic "<tag attr="val" attr2='val2'>" -> {attr: val, attr2: val2} (lowercased keys) — the same
 // regex-over-raw-markup style extractColorSignals/extractFontSignals already use in this file, kept generic
@@ -6886,49 +6879,6 @@ function extractBodyInner(html) {
   return m ? m[1] : html;
 }
 
-// Every "images/<name>.<ext>" token found anywhere in the given text (HTML body + gathered CSS combined),
-// however it's written (./images/x, ../images/x, images/x — inside url(...), src="...", a style attribute,
-// whatever) — a plain substring scan, same pragmatic regex-over-text approach as stripToText/
-// extractColorSignals elsewhere in this file, not a real CSS/HTML parse. This is the ZIP adapter's default
-// finder (processLovableImport's `findImageRefs` option) — scoped to the ZIP's own known images/ folder
-// convention, which a live-rendered page has no equivalent of (see findLiveImageRefs below for that case).
-function findImportImageRefs(text) {
-  var seen = {};
-  var re = /(?:\.{1,2}\/)?images\/[A-Za-z0-9_\-.]+\.[A-Za-z0-9]+/gi;
-  var m;
-  while ((m = re.exec(text))) { seen[m[0].replace(/^\.{1,2}\//, '')] = 1; }
-  return Object.keys(seen);
-}
-
-// The headless-render adapter's image finder — a live page's images can be absolute CDN URLs, root-relative
-// paths, or data: URIs, with no shared folder convention to anchor on the way the ZIP export's images/
-// folder lets findImportImageRefs above anchor. Matches an <img>/<source> src or srcset entry, and a CSS
-// url(...), ending in a real image extension. data: URIs are skipped (already inline, nothing to re-host).
-function findLiveImageRefs(text) {
-  var seen = {};
-  var re = /(?:\bsrc|\bsrcset)\s*=\s*["']([^"']+)["']|url\(\s*["']?([^"')]+)["']?\s*\)/gi;
-  var m;
-  while ((m = re.exec(text))) {
-    var raw = m[1] || m[2];
-    if (!raw) continue;
-    raw.split(',').forEach(function (part) {
-      var url = part.trim().split(/\s+/)[0];
-      if (!url || /^data:/i.test(url)) return;
-      if (!/\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)(\?|#|$)/i.test(url)) return;
-      seen[url] = 1;
-    });
-  }
-  return Object.keys(seen);
-}
-
-// Replaces every written form of a reference to one zip-relative path (./images/x, ../images/x, images/x)
-// with its final Storage URL, across one piece of text. (Works unchanged for the live-render adapter's
-// absolute/root-relative URL refs too — they have no "./"/"../" prefix to begin with, so that part of the
-// pattern just never matches, and the plain escaped-URL match still does.)
-function buildImportRefRegex(ref) {
-  return new RegExp('(?:\\.{1,2}\\/)?' + escapeRegex(ref), 'g');
-}
-
 /* The real work shared by BOTH import adapters (ZIP upload and live-URL render) — everything from "clean,
    script-stripped markup in hand" to "Storage artifacts + Firestore doc written". Pulled out so it's a
    plain (fb, importId, ...) function callable on its own by an integration test without needing a real
@@ -6942,58 +6892,68 @@ function buildImportRefRegex(ref) {
      getCss(href)    href is exactly the string written in that <link href="...">; -> Promise<string|null>
                                 (null for "couldn't fetch this one" — degrades, never fails the whole import,
                                 same discipline the old gatherImportCss used).
-     getImage(ref)   ref is exactly one token findImageRefs(text) returned; -> Promise<Buffer|null>.
-     findImageRefs(text)       optional; defaults to findImportImageRefs (the ZIP adapter's own convention).
+     getAsset(url, kind)       one picture, font or film by its full address (kind 'image' | 'font' | 'video');
+                                -> Promise<Buffer | { body, contentType } | null>. What is copied, where it is
+                                kept and how the page is pointed at it: lib/import-media.js (BE-052).
+     findImageRefs             no longer used (callers still pass it where they always did): import-media.js
+                                finds what the markup and each stylesheet name.
      docFields                 extra fields merged into the events/import-<id> Firestore doc (e.g.
                                 {sourceZipName} or {sourceUrl}) — whatever that adapter wants
-                                handleImportedTemplate's display-name lookup to see. */
-function processLovableImport(fb, importId, html, getCss, getImage, findImageRefs, docFields) {
-  findImageRefs = findImageRefs || findImportImageRefs;
+                                handleImportedTemplate's display-name lookup to see. sourceUrl is also the
+                                address the page's relative addresses are read against.
+   A capture with nothing worth importing on it (lib/import-check.js verdict: next to no text and nothing else,
+   or a host's "there is no site here" page) is refused BEFORE anything is fetched or written (BE-048): the
+   promise rejects with an Error whose .status, .code and sentence are what the person is told. */
+function processLovableImport(fb, importId, html, getCss, getAsset, findImageRefs, docFields) {
+  var pageUrl = (docFields && docFields.sourceUrl) || importMedia.ZIP_BASE;
   var linked = extractStylesheetLinks(html);
   var bodyHtml = stripBuilderBadge(extractBodyInner(linked.html));
-  /* What the original's own scripts made work, and this page cannot (site-checks.js repair): its addresses on
-     the original's host (/nominate, /about — on this host they reach the CMS's sign-in) lead to the form or the
-     part of the page they stand for, its "#" privacy, terms and social links to ET's, and a menu with no menu,
-     a film with no film and a chat launcher are taken out. Its home link is left for the live page (the event's
-     address is not known yet). Each change is listed for the owner (repairs). */
+  /* the page as it would be stored (made safe), measured: what a visitor would see of it */
+  var refusal = '';
+  try { refusal = importCheck.verdict(sanitize.sanitizeHtml(bodyHtml, { profile: 'imported' }).html); }
+  catch (e) { console.error('import-lovable: the page could not be measured — ' + e.message); }
+  if (refusal) return Promise.reject(importCheck.failure(refusal));
   var importRepairs = [];
-  try {
-    var fixedBody = siteChecks.repair(bodyHtml, TOKEN_KIT, { imported: true, homeHref: false });
-    bodyHtml = fixedBody.html;
-    importRepairs = fixedBody.changes;
-  } catch (e) { console.error('import-lovable: the page could not be put right — ' + e.message); }
+
+  /* one copy of a picture, font or film, public, kept for a year (its name is its address's hash: written once).
+     A raster picture also gets its WebP copies (pictures.js). A font is named on this host (/img/…, which
+     lib/picture-cdn.js serves for an import's fonts): a browser reads a font for a page's CSS only from the page's
+     own address, or with CORS headers the bucket does not send; pictures and films keep the bucket's address,
+     which every published page names on this host anyway (lib/delivery.js). */
+  var bucketPrefix = 'https://storage.googleapis.com/' + fb.bucket.name + '/';
+  function storeAsset(objectPath, buffer, kind) {
+    return fb.bucket.file(objectPath).save(buffer, {
+      resumable: false, predefinedAcl: 'publicRead', gzip: pictures.gzipWorthIt(kind.type, buffer),   // an SVG stored gzipped (pictures.js)
+      metadata: { contentType: kind.type, cacheControl: 'public, max-age=31536000' }
+    }).then(function () {
+      return kind.kind === 'image' ? pictures.storeVariants(fb, objectPath, buffer) : null;
+    }).then(function () {
+      return kind.kind === 'font' ? '/img/' + objectPath : bucketPrefix + objectPath;
+    });
+  }
 
   return Promise.all(linked.cssHrefs.map(function (href) {
     return getCss(href).then(function (text) { return (text == null) ? null : { href: href, text: text }; });
-  })).then(function (cssResults) {
-    cssResults = cssResults.filter(Boolean);
-    var combined = bodyHtml + '\n' + cssResults.map(function (r) { return r.text; }).join('\n');
-    var imageRefs = findImageRefs(combined);
-
-    return Promise.all(imageRefs.map(function (ref) {
-      return getImage(ref).then(function (imgBuffer) {
-        if (!imgBuffer) return null;
-        var basename = ref.split(/[\\/]/).pop().split('?')[0].split('#')[0] || 'image';
-        var sanitized = basename.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 120) || 'image';
-        var storagePath = 'events/import-' + importId + '/images/' + sanitized;
-        var file = fb.bucket.file(storagePath);
-        /* an import's folder is its own (import-<id>) and written once: cached for a year, with WebP copies
-           of each raster picture (pictures.js) — a Lovable export's pictures are often megabyte PNGs */
-        return file.save(imgBuffer, { metadata: { contentType: guessImageContentType(sanitized), cacheControl: 'public, max-age=31536000' },
-            gzip: pictures.gzipWorthIt(guessImageContentType(sanitized), imgBuffer) })   // an SVG stored gzipped (pictures.js)
-          .then(function () { return file.makePublic(); })
-          .then(function () { return pictures.storeVariants(fb, storagePath, imgBuffer); })
-          .then(function () { return { ref: ref, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath }; });
-      }).catch(function (err) {
-        console.error('import-lovable: failed to re-host image "' + ref + '": ' + err.message);
-        return null; // that one image stays unrewritten rather than failing the whole import
-      });
-    })).then(function (uploaded) {
-      uploaded.filter(Boolean).forEach(function (u) {
-        var re = buildImportRefRegex(u.ref);
-        bodyHtml = bodyHtml.replace(re, u.url);
-        cssResults = cssResults.map(function (r) { return { href: r.href, text: r.text.replace(re, u.url) }; });
-      });
+  })).then(function (fetched) {
+    return importMedia.copyMedia({
+      html: bodyHtml, sheets: fetched.filter(Boolean), pageUrl: pageUrl, kit: TOKEN_KIT,
+      load: typeof getAsset === 'function' ? getAsset : function () { return Promise.resolve(null); },
+      store: storeAsset, folder: 'events/import-' + importId + '/assets/', ownPrefix: bucketPrefix
+    });
+  }).then(function (media) {
+    bodyHtml = media.html;
+    var cssResults = media.sheets;
+    /* What the original's own scripts made work, and this page cannot (site-checks.js repair): its addresses on
+       the original's host (/nominate, /about — on this host they reach the CMS's sign-in) lead to the form or the
+       part of the page they stand for, its "#" privacy, terms and social links to ET's, and a menu with no menu,
+       a film with no film and a chat launcher are taken out. Its home link is left for the live page (the event's
+       address is not known yet). Each change is listed for the owner (repairs). After the media are copied: a film
+       whose file was brought over plays here, so it stays. */
+    try {
+      var fixedBody = siteChecks.repair(bodyHtml, TOKEN_KIT, { imported: true, homeHref: false });
+      bodyHtml = fixedBody.html;
+      importRepairs = fixedBody.changes;
+    } catch (e) { console.error('import-lovable: the page could not be put right — ' + e.message); }
 
       /* The safety step (BE-050), before anything is stored: the page is someone else's, and it is shown in the
          editor and published on this app's own address. Its markup goes through sanitize.js (profile "imported":
@@ -7052,19 +7012,58 @@ function processLovableImport(fb, importId, html, getCss, getImage, findImageRef
           var now = new Date().toISOString();
           return fb.db.collection('events').doc('import-' + importId).set(Object.assign(
             { importedAt: now, flattenedHtmlPath: flattenedHtmlPath, sectionHtmlPath: sectionHtmlPath,
+              /* it worked (a failed import is recorded as 'failed', with why: recordImportFailure) */
+              importStatus: 'imported',
               /* the list of sections, for the template; their markup is in Storage (sectionsPath) */
               sectionsPath: sectionsDoc ? sectionsPath : null,
               sections: sectionsDoc ? sectionsDoc.sections.map(function (x) { return { id: x.id, name: x.name }; }) : null,
               /* what was put right or taken out at import, for the owner (site-checks.js repair) */
               importRepairs: importRepairs.slice(0, 200),
               /* what the safety step took out of the page's markup (sanitize.js), by kind */
-              importRemoved: safeBody.removed.slice(0, 100) },
+              importRemoved: safeBody.removed.slice(0, 100),
+              /* the pictures, fonts and films copied, and what was not and why (import-media.js) */
+              importMedia: media.summary },
             docFields || {}
           ), { merge: true });
         })
-        .then(function () { return { templateId: 'imported-' + importId, repairs: importRepairs, removed: safeBody.removed }; });
-    });
+        .then(function () { return { templateId: 'imported-' + importId, repairs: importRepairs, removed: safeBody.removed, media: media.summary }; });
   });
+}
+
+/* A failed import, recorded as one (BE-048): events/import-<id> says importStatus 'failed' and why, and nothing else
+   is written for it — no markup, no copies. GET /api/imported-template and /api/imported-section then answer with
+   that reason instead of "not found". An import of that id that is already there (it worked) is left as it is.
+   Never rejects: the person is answered whether or not the record could be written. */
+function recordImportFailure(fb, importId, source, err) {
+  try {
+    if (!fb || !fb.db || !importId) return Promise.resolve();
+    var ref = fb.db.collection('events').doc('import-' + importId);
+    var doc = { importStatus: 'failed', failedAt: new Date().toISOString(),
+      importFailure: { code: (err && err.code) || 'failed', reason: String((err && err.message) || '').slice(0, 300) } };
+    if (source && source.url) doc.sourceUrl = String(source.url).slice(0, 2000);
+    if (source && source.zipName) doc.sourceZipName = String(source.zipName).slice(0, 200);
+    var write = typeof ref.create === 'function' ? ref.create(doc)
+      : ref.get().then(function (snap) { return snap.exists ? null : ref.set(doc); });
+    return Promise.resolve(write).then(function () {}, function (e) {
+      if (!(e && (e.code === 6 || /already exists/i.test(e.message || '')))) console.error('import-lovable: the failure of import-' + importId + ' was not recorded — ' + (e && e.message));
+    });
+  } catch (e) {
+    console.error('import-lovable: the failure of import-' + importId + ' was not recorded — ' + e.message);
+    return Promise.resolve();
+  }
+}
+/* what the person is told when an import fails: the sentence a refusal carries, or a plain one */
+function sendImportFailure(res, err) {
+  if (err && err.code && importCheck.WORDS[err.code]) return sendJson(res, err.status || 422, { error: err.message, code: err.code });
+  if (err && err.status && err.status < 500) return sendJson(res, err.status, { error: err.message, code: (err && err.code) || 'refused' });
+  console.error('import-lovable: failed — ' + (err && (err.stack || err.message)));
+  return sendJson(res, 500, { error: 'The design could not be imported. Try again in a minute.', code: 'import-failed' });
+}
+/* an import recorded as failed, for whoever opens it (the editor, the wizard) */
+function sendFailedImport(res, data) {
+  var why = data && data.importFailure && data.importFailure.reason ? String(data.importFailure.reason) : '';
+  return sendJson(res, 422, { error: 'This design was not imported' + (why ? ': ' + why : '.'), code: 'import-failed',
+    reason: (data && data.importFailure && data.importFailure.code) || 'failed' });
 }
 
 /* ---------- ZIP adapter — unchanged behavior, restructured to call into processLovableImport ---------- */
@@ -7092,16 +7091,27 @@ function runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName) {
           if (!file) { console.error('import-lovable: referenced CSS file not found in zip: ' + href); return Promise.resolve(null); }
           return file.async('string');
         };
-        var getImage = function (ref) {
-          var file = zip.file(ref);
+        /* one of the ZIP's own files, by the address import-media.js read it as (relative to ZIP_BASE) */
+        var getAsset = function (abs) {
+          var name = '';
+          try {
+            var u = new URL(abs);
+            if (u.origin + '/' !== importMedia.ZIP_BASE) return Promise.resolve(null);
+            name = decodeURIComponent(u.pathname.slice(1));
+          } catch (e) { return Promise.resolve(null); }
+          var file = name && zip.file(name);
           if (!file) return Promise.resolve(null);
           return file.async('nodebuffer');
         };
-        return processLovableImport(fb, importId, html, getCss, getImage, findImportImageRefs, { sourceZipName: sourceZipName });
+        return processLovableImport(fb, importId, html, getCss, getAsset, null, { sourceZipName: sourceZipName });
       });
     })
     .then(function (result) { sendJson(res, 200, { templateId: result.templateId, repairs: result.repairs || [] }); })
-    .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
+    .catch(function (err) {
+      if (err && err.code && importCheck.WORDS[err.code]) recordImportFailure(fb, importId, { zipName: sourceZipName }, err);
+      if (err && err.status && !err.code) return sendJson(res, err.status, { error: err.message });
+      sendImportFailure(res, err);
+    });
 }
 
 /* =====================================================================================================
@@ -7132,22 +7142,22 @@ function runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName) {
    same rendered-HTML string (or rejects with the same {status, message}-shaped error) it always did. */
 
 // How long this backend will wait for the scraper service to respond before giving up and treating the
-// render as failed. Set comfortably above that service's own internal 55s hard timeout (see
-// lovable-scraper-service/server.js) so ITS clean {error} response is what normally wins — this is just
-// the backstop for "the service didn't even respond" (e.g. it's down, or a network partition).
+// render as failed. Set above that service's own limit (it answers every call within 110 s, waiting for its
+// turn included: lovable-scraper-service/server.js REQUEST_BUDGET_MS) so ITS clean {error, code} response is what
+// normally wins — this is just the backstop for "the service didn't even respond" (it's down, a network partition).
 var SCRAPE_TOTAL_TIMEOUT_MS = 115000;
 
 // Calls the separate lovable-scraper-service over plain HTTP instead of launching headless Chrome in this
 // process (see the block comment above for why). LOVABLE_SCRAPER_URL/LOVABLE_SCRAPER_SECRET are read from
 // process.env on every call, not cached at module load, matching how every other env-var read in this file
 // behaves — see apphosting.yaml for how they're set in production and tools/.env.local for local dev.
+// A failure rejects with lib/import-check.js's Error (.status, .code, a sentence for the person): the service's
+// own words — and a mismatched secret — go to the log, never to the person importing (BE-048).
 function scrapeLovableUrl(url) {
   var scraperUrl = process.env.LOVABLE_SCRAPER_URL;
   if (!scraperUrl) {
-    return Promise.reject(Object.assign(
-      new Error('LOVABLE_SCRAPER_URL is not configured on this backend — see lovable-scraper-service/README.md.'),
-      { status: 503 }
-    ));
+    console.error('import-lovable: LOVABLE_SCRAPER_URL is not configured on this backend — see lovable-scraper-service/README.md');
+    return Promise.reject(importCheck.failure('not-configured'));
   }
   var scraperSecret = process.env.LOVABLE_SCRAPER_SECRET || '';
   var headers = { 'Content-Type': 'application/json' };
@@ -7165,68 +7175,36 @@ function scrapeLovableUrl(url) {
   return new Promise(function (resolve, reject) {
     timer = setTimeout(function () {
       if (controller) controller.abort();
-      reject(Object.assign(new Error('Rendering this page took too long (over ' + Math.round(SCRAPE_TOTAL_TIMEOUT_MS / 1000) + 's).'), { status: 504 }));
+      console.error('import-lovable: the capture service did not answer within ' + Math.round(SCRAPE_TOTAL_TIMEOUT_MS / 1000) + ' s');
+      reject(importCheck.failure('timeout'));
     }, SCRAPE_TOTAL_TIMEOUT_MS);
     fetchPromise.then(resolve, reject);
   })
     .then(function (r) {
       clearTimeout(timer);
       return r.json().catch(function () { return {}; }).then(function (body) {
-        if (!r.ok) {
-          // A 401 here means SCRAPER_SECRET/LOVABLE_SCRAPER_SECRET are out of sync between the two
-          // services — an ops misconfiguration, not something the end user did; surface it as a plain 500
-          // rather than an "unauthorized" the admin triggering this import had no part in.
-          var status = (r.status === 401) ? 500 : (r.status || 502);
-          throw Object.assign(new Error((body && body.error) || ('Rendering that page failed (scraper service returned ' + r.status + ').')), { status: status });
-        }
+        if (!r.ok) throw importCheck.fromScraper(r.status, body);
         if (!body || typeof body.html !== 'string') {
-          throw Object.assign(new Error('The scraper service returned an unexpected response.'), { status: 502 });
+          console.error('import-lovable: the capture service answered 200 without markup');
+          throw importCheck.failure('render-failed');
         }
         return body.html;
       });
     }, function (err) {
       clearTimeout(timer);
-      if (err && err.status) throw err;
-      throw Object.assign(new Error('Could not reach the rendering service: ' + err.message), { status: 502 });
+      if (err && err.code && importCheck.WORDS[err.code]) throw err;
+      throw importCheck.fromNetwork(err);
     });
 }
 
-// SSRF guard for the user-supplied url: only http(s), and not a host that resolves to this backend's own
-// network — a real security boundary (this fetches an arbitrary user-supplied URL server-side), not just a
-// correctness check. Rejects obviously-internal hostnames outright, then confirms via a real DNS lookup
-// that the host doesn't resolve to a loopback/private/link-local address either (catches "a public-looking
-// hostname that actually points at an internal IP" — a literal IP literal is caught by the same check since
-// dns.lookup() on an IP string just returns that IP). Does NOT re-validate every subresource URL
-// (stylesheet/image hrefs) discovered on the page afterward — those are fetched the same way a browser
-// fetches any page's own subresources, no more of a server-side-request-forgery risk than the main fetch
-// those requests are already covered by.
-function isPrivateOrLoopbackIp(ip) {
-  if (/^127\./.test(ip)) return true;                                    // IPv4 loopback
-  if (/^10\./.test(ip)) return true;                                     // RFC1918
-  if (/^192\.168\./.test(ip)) return true;                               // RFC1918
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;                // RFC1918
-  if (/^169\.254\./.test(ip)) return true;                               // link-local / cloud metadata
-  if (ip === '0.0.0.0') return true;
-  if (ip === '::1') return true;                                         // IPv6 loopback
-  if (/^f[cd][0-9a-f]{2}:/i.test(ip)) return true;                       // IPv6 unique-local (fc00::/7)
-  if (/^fe80:/i.test(ip)) return true;                                   // IPv6 link-local
-  return false;
-}
+// SSRF guard for the user-supplied url — the same rules every other address a user supplies is held to
+// (lib/safe-fetch.js checkPublicUrl, with lib/public-address.js): http(s) on the standard port, no user name or
+// password, not an internal name, and every address the name resolves to public. -> Promise<sentence | null>.
+// It used to be a regex copy of a shorter list (it let through 100.64/10, 0/8 beyond 0.0.0.0, IPv4-mapped IPv6…).
+// The import's own fetches of the page's stylesheets and media go through safeFetch itself (importRenderedPage),
+// which also checks every redirect and connects to exactly the address it checked.
 function validateImportUrl(rawUrl) {
-  var u;
-  try { u = new URL(rawUrl); } catch (e) { return Promise.resolve('That doesn\'t look like a valid URL.'); }
-  if (u.protocol !== 'http:' && u.protocol !== 'https:') return Promise.resolve('Only http:// and https:// URLs are allowed.');
-  var host = u.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || isPrivateOrLoopbackIp(host)) {
-    return Promise.resolve('That host isn\'t allowed.');
-  }
-  return new Promise(function (resolve) {
-    dns.lookup(host, { all: true }, function (err, addrs) {
-      if (err) return resolve('Could not resolve that host.');
-      var bad = (addrs || []).some(function (a) { return isPrivateOrLoopbackIp(a.address); });
-      resolve(bad ? 'That host resolves to a private address and isn\'t allowed.' : null);
-    });
-  });
+  return checkPublicUrl(rawUrl).then(function (r) { return r.ok ? null : r.reason; });
 }
 
 /* ---------- live-URL adapter — same processLovableImport() core as the ZIP adapter above ---------- */
@@ -7234,57 +7212,42 @@ function runImportLovableFromUrl(fb, res, importId, url) {
   scrapeLovableUrl(url)
     .then(function (rawHtml) { return importRenderedPage(fb, importId, url, rawHtml); })
     .then(function (result) { sendJson(res, 200, { templateId: result.templateId, repairs: result.repairs || [] }); })
-    .catch(function (err) { sendJson(res, err.status || 500, { error: err.status ? err.message : ('import-lovable failed: ' + err.message) }); });
+    .catch(function (err) {
+      /* a capture that is not a site, or a service that could not make one: recorded as a failed import, with
+         why, and the person told in one sentence (BE-048) */
+      var failure = err && err.code && importCheck.WORDS[err.code] ? err : null;
+      return (failure ? recordImportFailure(fb, importId, { url: url }, failure) : Promise.resolve()).then(function () { sendImportFailure(res, err); });
+    });
 }
 
-/* A page rendered and captured (lovable-scraper-service's capturePage) made into an import: its CSS and pictures
+/* A page rendered and captured (lovable-scraper-service's capturePage) made into an import: its CSS and media
    fetched from where the page has them, and everything written as processLovableImport does. Also called by
-   tools/reimport-lovable.js with a capture made on the operator's own Chrome. */
+   tools/reimport-lovable.js with a capture made on the operator's own Chrome.
+   Every stylesheet and every picture, font and film is fetched through safeFetch (lib/safe-fetch.js): the page
+   is someone else's, so each address in it is too, and must not reach this server's own network (the cloud's
+   metadata service at 169.254.169.254, say). safeFetch resolves each name once and connects to exactly the
+   address it checked, checks each redirect the same way, and stops at a time limit and a size cap (per kind of
+   file for media: lib/import-media.js LIMITS). A refused or failed file is left out, never the whole import. */
 function importRenderedPage(fb, importId, url, rawHtml) {
   return Promise.resolve().then(function () {
     var html = stripAllScriptTags(rawHtml);
-    /* Both getCss/getImage resolve the (possibly relative, possibly already-absolute) ref against the
-       page's own URL, then fetch it directly — a public Lovable preview site's own CSS/images are public,
-       ordinary GETs, same as a browser loading them; no cookie/session/Puppeteer-request-interception
-       plumbing needed (confirmed against the real test site: both its stylesheet and its images are
-       fetchable with a plain, unauthenticated fetch()).
-
-       Each resolved URL is re-run through validateImportUrl() before fetching — this is NOT redundant
-       with the top-level URL's own check above. The page being scraped is fully attacker-controlled
-       (anyone can publish a Lovable site), so every CSS href / image src found IN that page's own
-       rendered markup is attacker-controlled too. Without this, a malicious page could embed e.g.
-       <img src="http://169.254.169.254/latest/meta-data/iam/security-credentials/"> and this server
-       would dutifully fetch its own cloud metadata endpoint on the attacker's behalf — a classic
-       confused-deputy SSRF via page content, a completely different request path from the one the
-       top-level guard covers. A rejected subresource just degrades to "missing" (null), same as any
-       other fetch failure here — never worth failing the whole import over one bad asset reference. */
     var getCss = function (href) {
       /* The address is read out of markup, where "&" is written "&amp;": left like that, a fonts stylesheet
-         asked for several families answers with the first one only, and the page's other fonts are lost.
-         A browser's User-Agent gets the compact font files a browser would get. */
+         asked for several families answers with the first one only, and the page's other fonts are lost. */
       var abs; try { abs = new URL(String(href).replace(/&amp;/g, '&'), url).href; } catch (e) { return Promise.resolve(null); }
-      return validateImportUrl(abs).then(function (badReason) {
-        if (badReason) { console.error('import-lovable: refused to fetch CSS "' + abs + '": ' + badReason); return null; }
-        return fetch(abs, { headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36' } }).then(function (r) { return r.ok ? r.text() : null; }).catch(function (err) {
-          console.error('import-lovable: failed to fetch CSS "' + abs + '": ' + err.message);
+      return safeFetch(abs, { timeoutMs: 15000, maxBytes: 3 * 1024 * 1024, accept: /^text\/(?:css|plain)$/, headers: { Accept: 'text/css,*/*;q=0.1' } })
+        .then(function (r) { return r.status >= 200 && r.status < 300 ? r.body.toString('utf8') : null; })
+        .catch(function (err) {
+          console.error('import-lovable: stylesheet "' + abs + '" not fetched — ' + ((err && err.code) || (err && err.message)));
           return null;
         });
-      });
     };
-    var getImage = function (ref) {
-      var abs; try { abs = new URL(ref, url).href; } catch (e) { return Promise.resolve(null); }
-      return validateImportUrl(abs).then(function (badReason) {
-        if (badReason) { console.error('import-lovable: refused to fetch image "' + abs + '": ' + badReason); return null; }
-        return fetch(abs).then(function (r) {
-          if (!r.ok) return null;
-          return r.arrayBuffer().then(function (buf) { return Buffer.from(buf); });
-        }).catch(function (err) {
-          console.error('import-lovable: failed to fetch image "' + abs + '": ' + err.message);
-          return null;
-        });
-      });
+    var getAsset = function (abs, kind) {
+      var lim = importMedia.LIMITS[kind] || importMedia.LIMITS.image;
+      return safeFetch(abs, { timeoutMs: lim.timeoutMs, maxBytes: lim.maxBytes, accept: importMedia.ACCEPT[kind] || importMedia.ACCEPT.image })
+        .then(function (r) { return r.status >= 200 && r.status < 300 ? { body: r.body, contentType: r.headers['content-type'] } : null; });
     };
-    return processLovableImport(fb, importId, html, getCss, getImage, findLiveImageRefs, { sourceUrl: url });
+    return processLovableImport(fb, importId, html, getCss, getAsset, null, { sourceUrl: url });
   });
 }
 
@@ -7304,8 +7267,16 @@ function handleImportLovable(req, res) {
         return runImportLovableFromZip(fb, res, importId, zipBase64, sourceZipName);
       }
 
-      validateImportUrl(url).then(function (urlError) {
-        if (urlError) return sendJson(res, 400, { error: urlError });
+      /* this product's own address is not a site to import (its pages would come back as the sign-in page) */
+      if (importCheck.ownHost(url, [req.headers && req.headers.host, publicBase.publicSiteBase(), publicBase.HOSTED_ORIGIN])) {
+        var own = importCheck.failure('own-address');
+        return sendJson(res, own.status, { error: own.message, code: own.code });
+      }
+      checkPublicUrl(url).then(function (r) {
+        if (!r.ok) {
+          var refused = importCheck.failure(r.code === 'blocked-address' ? 'blocked-address' : r.code === 'unreachable' ? 'unreachable' : 'bad-url');
+          return sendJson(res, refused.status, { error: refused.message, code: refused.code });
+        }
         runImportLovableFromUrl(fb, res, importId, url);
       });
     }, BODY_LIMITS.importZip);
@@ -7324,6 +7295,8 @@ function handleImportedTemplate(req, res) {
   fb.db.collection('events').doc('import-' + importId).get().then(function (snap) {
     if (!snap.exists) return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
     var data = snap.data();
+    /* an import that did not work says so, and why (BE-048) */
+    if (data.importStatus === 'failed') return sendFailedImport(res, data);
     var name = data.sourceZipName || data.sourceUrl || importId;
     /* an import cut into sections: the page's frame around them comes with their markup (imported-section) */
     var cut = data.sectionsPath && Array.isArray(data.sections) && data.sections.length >= 2 ? data.sections : null;
@@ -7374,6 +7347,7 @@ function handleImportedSection(req, res) {
   var docRef = fb.db.collection('events').doc('import-' + importId);
   docRef.get().then(function (snap) {
     var data = snap.exists ? snap.data() : null;
+    if (data && data.importStatus === 'failed') return sendFailedImport(res, data);
     if (!data || !data.sectionHtmlPath) {
       return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
     }
@@ -7683,7 +7657,7 @@ function eventForClient(eventId, data) {
   out.publishedPath = out.published ? publicPathOf(eventId) : null;
   if (out.published) out.publishedUrl = out.publishedPath; else delete out.publishedUrl;
   var c = data.counters || {};
-  out.counters = { registrations: +c.registrations || 0, views: +c.views || 0 };
+  out.counters = { registrations: +c.registrations || 0, views: +c.views || 0, qrScans: +c.qrScans || 0 };
   /* Online payment is not available, so every event registers free — including the ones an earlier
      wizard stored as "paid" without ever being able to collect anything. */
   out.payment = { type: 'free' };
@@ -8899,7 +8873,7 @@ function eventListItem(id, d) {
     /* a deleted event's page is not served; `published` still says whether Restore brings it back */
     publishedPath: published && !deleted ? publicPathOf(id) : null,
     publishedVersion: +d.publishedVersion || 0,
-    counters: { registrations: +c.registrations || 0, views: +c.views || 0 },
+    counters: { registrations: +c.registrations || 0, views: +c.views || 0, qrScans: +c.qrScans || 0 },   // qrScans: the events list's QR codes (LST-038)
     site: site ? { version: +site.version || 0, templateId: site.templateId || null, updatedAt: site.updatedAt || null, updatedBy: site.updatedBy || null } : null,
     /* an AI-designed site exists from the moment it is generated, before the editor has saved anything */
     hasGeneratedSite: !!d.generatedAt,
@@ -11996,6 +11970,54 @@ function sectionAnchorFor(html, slug) {
 /* The document with one of its internal pages selected (site-pages.js): { html, found, page, pages } */
 function selectSitePage(html, slug) { return sitePages.selectPage(html, slug, TOKEN_KIT); }
 
+/* ---------- page views (TPL-039) ----------
+   The live page with its visit counter (templates/_shared/rv-visit.js): one POST /api/track per page a visitor
+   opens, counted per event per India day (api-audience.js handleTrack). It is put in as the page is served from
+   /e/, never stored, so every live site counts whenever it was published, and a preview, a shared link, the editor
+   and a review page never carry it. It counts in the visitor's browser because a live page is kept for a minute by
+   the CDN and by browsers: most visits never reach this server. Left out while the file is not in the release. */
+var VISIT_COUNTER_PRESENT = fs.existsSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'rv-visit.js'));
+function withVisitCounter(html, eventId) {
+  if (!VISIT_COUNTER_PRESENT || typeof html !== 'string' || !html || !eventId || html.indexOf('/templates/_shared/rv-visit.js') !== -1) return html;
+  var tag = '<script src="/templates/_shared/rv-visit.js" data-rv-visit="' + escHtmlAttr(eventId) + '" defer data-rv-runtime></script>';
+  var at = html.toLowerCase().lastIndexOf('</body');
+  return at === -1 ? html + '\n' + tag : html.slice(0, at) + tag + '\n' + html.slice(at);
+}
+
+/* ---------- QR codes (LST-038) ----------
+   The events list's QR codes name the live page with ?qr=<tag> (codes made before 13 Nov 2026 carry ?ag=<tag>).
+   Such a request is counted (api-audience.js countQrScan: a person's GET only, never a robot or a prefetch) and
+   sent on to the same page with the tag as utm_source and "qr" as utm_medium, which is what a registration made
+   there records as its source. The redirect is never kept by the CDN (no-store), so every scan reaches here.
+   -> { tag, params } for such a request, else null */
+function qrQueryOf(url) {
+  var q = String(url || '').split('#')[0].split('?')[1];
+  if (!q) return null;
+  var params = new URLSearchParams(q);
+  var raw = params.has('qr') ? params.get('qr') : params.has('ag') ? params.get('ag') : null;
+  if (raw === null) return null;
+  params.delete('qr'); params.delete('ag');
+  var tag = String(raw).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+  return { tag: tag === '1' ? '' : tag, params: params };
+}
+function qrRedirect(req, res, eventId, slug, qr) {
+  var params = qr.params;
+  if (!params.has('utm_source')) params.set('utm_source', qr.tag || 'qr-code');
+  if (!params.has('utm_medium')) params.set('utm_medium', 'qr');
+  var target = publicPathOf(eventId) + (slug ? '/' + encodeURIComponent(slug) : '') + '?' + params.toString();
+  var counted;
+  try { counted = require('./api-audience').countQrScan(req, eventId); }
+  catch (err) { console.error('api: a QR code scan of ' + eventId + ' was not counted — ' + (err && err.message)); counted = Promise.resolve(false); }
+  /* the count is written before the answer (an instance may be paused once it has answered), in at most 1.5 s */
+  var timer;
+  Promise.race([counted, new Promise(function (resolve) { timer = setTimeout(resolve, 1500); })]).then(function () {
+    clearTimeout(timer);
+    if (res.headersSent) return;
+    res.writeHead(302, { Location: target, 'Cache-Control': 'no-store' });
+    res.end();
+  });
+}
+
 /* GET /e/<eventId> — the published site. Public. Served only while the event is live and published;
    anything else is the same plain 404, which gives nothing away about what exists.
    GET /e/<eventId>/<slug> — one of its internal pages: the same published document with that page selected
@@ -12011,6 +12033,9 @@ function handlePublicPage(req, res, eventId, slug) {
   liveEventSnap(fb, eventId).then(function (snap) {
     if (eventStateOf(snap) !== 'live' || snap.data().published !== true) return sendNotAvailable(req, res);
     var data = snap.data();
+    /* a QR code from the events list (?qr=<tag>): the scan counted, the visitor sent on to the page (LST-038) */
+    var qr = qrQueryOf(req.url);
+    if (qr) return qrRedirect(req, res, eventId, slug, qr);
     /* the banner video is put on the page as it is served (applyHeroVideo): a change to it is a new page */
     var key = eventId + '|' + (data.publishedVersion || 0) + '|' + (data.publishedAt || '') + '|' + heroVideoStamp(data);
     var slugKey = slug ? key + '|page:' + slug : '';
@@ -12060,7 +12085,7 @@ function handlePublicPage(req, res, eventId, slug) {
             publicBase: publicBase.publicSiteBase(), report: report
           });
           return withHeroVideo(fb, html, data).then(function (page) {
-            send(cachePage(key, page));
+            send(cachePage(key, withVisitCounter(page, eventId)));
             afterSend();
           });
         });
@@ -12079,7 +12104,8 @@ function handlePublicPage(req, res, eventId, slug) {
         page = liveRepair(page, data, eventId, 'live', null);
         return withHeroVideo(fb, page, data);
       }).then(function (page) {
-        send(cachePage(key, page));
+        /* and the visit counter, on the live page only (withVisitCounter, TPL-039) */
+        send(cachePage(key, withVisitCounter(page, eventId)));
         afterSend();
       });
     });
@@ -12992,7 +13018,7 @@ module.exports._testHooks = {
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
   confirmEtPick: confirmEtPick, pageKey: pageKey, otherPortalOf: otherPortalOf, siteOfPortal: siteOfPortal, sitePortal: sitePortal, sitePortalOf: sitePortalOf, footerEvents: footerEvents, siteFooter: siteFooter,
   extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, aiUsageRecorder,
-  processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl,
+  processLovableImport, runImportLovableFromZip, runImportLovableFromUrl, importRenderedPage, validateImportUrl, scrapeLovableUrl, recordImportFailure, withVisitCounter,
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES: MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE, buildChatPrompt: buildChatPrompt, chatView: chatView, chatLastPicture: chatLastPicture, chatHistoryText: chatHistoryText, sparseOverviewText, SPARSE_OVERVIEW_CHARS: SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES: MAX_PEOPLE_PICTURES, buildDesignPlanPrompt: buildDesignPlanPrompt,
   buildExtractBriefPrompt, buildIngestSourcePrompt, buildDesignPlanPrompt, buildSectionCodePrompt, designReference,

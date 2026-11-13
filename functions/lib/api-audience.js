@@ -1711,13 +1711,28 @@ function writeViews(fb, eventId, views) {
   return batch.commit().then(function () { return views.map(function () { return { value: true }; }); });
 }
 
+/* A robot, not a person: a crawler, a link-preview fetcher, an automated or headless browser, or no user agent at
+   all. Its page views and QR scans are not counted (templates/_shared/rv-visit.js skips them too). */
+var ROBOT_UA = /bot[\/\-;)_]|\bbot\b|bot$|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|facebookexternalhit|embedly|google-inspectiontool|curl\/|wget\/|python-|node-fetch|axios\/|go-http-client|java\/|okhttp|libwww|httpclient|scrapy|phantomjs|puppeteer|playwright/i;
+/* WhatsApp's link preview names itself first ("WhatsApp/2.23.20.0 A"); a person opening the link in a browser does not */
+var PREVIEW_FIRST = /^(?:whatsapp|telegram|skype|discord|slack|viber|signal)/i;
+function isRobot(req) {
+  var ua = String((req.headers && req.headers['user-agent']) || '').trim();
+  return !ua || ROBOT_UA.test(ua) || PREVIEW_FIRST.test(ua);
+}
+/* a page fetched ahead in case it is opened (a browser's prefetch or prerender), not opened */
+function isPrefetch(req) {
+  var h = req.headers || {};
+  return /prefetch|prerender/i.test(String(h['sec-purpose'] || h.purpose || h['x-purpose'] || h['x-moz'] || ''));
+}
+
 function handleTrack(req, res) {
   var done = function () { sendPublicNoContent(res); };
   try {
     var allowed = rateLimit('track:' + clientIp(req), 120, 60000);
     readSmallBody(req, MAX_TRACK_BODY, function (raw) {
       try {
-        if (!allowed || raw == null) return done();
+        if (!allowed || raw == null || isRobot(req)) return done();
         var body;
         try { body = parseJsonObject(raw); } catch (e) { return done(); }
         var eventId = bodyId(body.eventId);
@@ -1749,6 +1764,44 @@ function handleTrack(req, res) {
 }
 
 /* =====================================================================================================
+   QR CODE SCANS (LST-038)
+   A QR code made on the events list names the live page with ?qr=<tag> (Event_Listing.html; codes made before
+   carry ?ag=<tag>). GET /e/<id>?qr=… counts the scan here, then lib/api.js sends the visitor on to the page itself
+   with the tag as utm_source — which a registration made there records (rv-forms.js) — so a scan is counted
+   once, and the page view after it is counted like any other (rv-visit.js).
+   Counted: a GET by a person (not a robot, not a prefetch), at most QR_LIMIT a minute from one address, for a
+   published event (the caller has checked). Kept: per India day (events/<id>/stats/<day>.qrScans) and in all
+   (events/<id>.counters.qrScans); the tag itself is not stored with the count — it travels with the visitor.
+   countQrScan(req, eventId) -> Promise<boolean>, never rejects.
+   ===================================================================================================== */
+var QR_LIMIT = 30, QR_WINDOW_MS = 60000;
+
+function writeQrScans(fb, eventId, scans) {
+  var day = dayKey(Date.now()), n = scans.length;
+  var batch = fb.db.batch();
+  batch.set(eventDoc(fb, eventId).collection('stats').doc(day), { date: day, qrScans: FieldValue.increment(n) }, { merge: true });
+  batch.update(eventDoc(fb, eventId), { 'counters.qrScans': FieldValue.increment(n) });
+  return batch.commit().then(function () { return scans.map(function () { return { value: true }; }); });
+}
+
+function countQrScan(req, eventId) {
+  try {
+    if (req.method !== 'GET' || isRobot(req) || isPrefetch(req) || !validEventId(eventId)) return Promise.resolve(false);
+    if (!rateLimit('qr:' + clientIp(req), QR_LIMIT, QR_WINDOW_MS)) return Promise.resolve(false);
+    var fb = getFirebase();
+    if (fb.error) return Promise.resolve(false);
+    return enqueue('qr:' + eventId, 1, 1000, function (scans) { return writeQrScans(fb, eventId, scans); })
+      .then(function () { return true; }, function (err) {
+        console.error('audience: a QR code scan of ' + eventId + ' was not counted — ' + (err && err.message));
+        return false;
+      });
+  } catch (err) {
+    console.error('audience: a QR code scan of ' + eventId + ' was not counted — ' + ((err && err.stack) || err));
+    return Promise.resolve(false);
+  }
+}
+
+/* =====================================================================================================
    STATS, INSIGHTS, ACTIVITY (admin)
    Real numbers only; zero where there is nothing. The headline totals (registrations, confirmed,
    waitlist, cancelled, checkedIn, visitors, uniques) are ALL-TIME and are the event's own counters — the
@@ -1761,11 +1814,13 @@ function handleTrack(req, res) {
    and gives each event its own figures in it (`window`: registrations, views, uniques and the newest day of
    each), which is what the events dashboard's "Latest activity" shows for the period picked there.
    `visitsCounted` says whether the live sites count their visits at all: only a page that carries the
-   counting script (templates/_shared/rv-live.js, added to every published page by lib/api.js when that
-   file is part of the release) sends POST /api/track. Without it every page-view figure is 0 because
-   nothing is counted, not because nobody came, and the Dashboard says so instead of showing the zeros.
+   counting script (templates/_shared/rv-visit.js, put on every live page as it is served by lib/api.js
+   withVisitCounter when that file is part of the release) sends POST /api/track. Without it every page-view
+   figure is 0 because nothing is counted, not because nobody came, and the Dashboard says so instead of
+   showing the zeros. Counting began with that release (TPL-039, 13 Nov 2026): earlier visits are not in any
+   figure. `qrScans`: the event's QR codes scanned, all-time (countQrScan).
    ===================================================================================================== */
-var VISITS_COUNTED = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-live.js'));
+var VISITS_COUNTED = require('fs').existsSync(require('path').join(__dirname, '..', '..', 'templates', '_shared', 'rv-visit.js'));
 
 var REF_CLASSES = [['direct', 'Direct'], ['search', 'Search'], ['social', 'Social'], ['email', 'Email'], ['referral', 'Other sites']];
 
@@ -1797,7 +1852,7 @@ function totalsOf(c) {
 }
 function audienceTotals(fb, eventId, ev, wantBreakdown) {
   var c = isObj(ev.counters) ? ev.counters : {};
-  var visits = { visitors: num(c.views), uniques: num(c.uniques), mobile: num(c.mobile), desktop: num(c.desktop) };
+  var visits = { visitors: num(c.views), uniques: num(c.uniques), mobile: num(c.mobile), desktop: num(c.desktop), qrScans: num(c.qrScans) };
   if (hasAudienceCounters(ev)) {
     var totals = totalsOf(c);
     var agg = wantBreakdown ? audienceRefs(fb, eventId).agg.get().then(function (s) { return s.exists ? (s.data() || {}) : {}; }) : Promise.resolve({});
@@ -1836,7 +1891,7 @@ function handleDashboardStats(req, res) {
             cancelled: a.totals.cancelled, checkedIn: a.totals.checkedIn,
             // every form's responses, and those waiting for an organiser's approval (counted forms / all forms)
             submissions: a.totals.submissions, pending: a.totals.pending, awaitingApproval: a.totals.awaitingApproval,
-            visitors: a.visits.visitors, uniques: a.visits.uniques, visitsCounted: VISITS_COUNTED,
+            visitors: a.visits.visitors, uniques: a.visits.uniques, visitsCounted: VISITS_COUNTED, qrScans: a.visits.qrScans || 0,
             conversion: conversionOf(a.totals.registrations, a.visits.visitors),
             capacity: settings.capacity, target: settings.target,
             byDay: byDay,
@@ -2001,7 +2056,7 @@ function handleActivity(req, res) {
 
 module.exports = {
   handlePublicSiteData, handleSeed, handleRegister, handleRegistrationsList, handleRegistrationUpdate,
-  handleRegistrationDelete, handleRegistrationsExport, handleTrack, handleDashboardStats, handleInsights, handleActivity,
+  handleRegistrationDelete, handleRegistrationsExport, handleTrack, countQrScan, handleDashboardStats, handleInsights, handleActivity,
   handlePublicOptions, publicSiteData, seedContent,
   /* for tools/migrate-forms.js and the tests */
   counterDelta, rebuildAudience, scanAudience, repairFormIds, hasAudienceCounters, AUDIENCE_V, REG_STATUSES,
@@ -2013,6 +2068,8 @@ module.exports = {
   insightTotals, conversionOf,
   /* the window of GET /api/insights, for its tests */
   insightsWindow, eventWindow,
+  /* who is not counted as a visitor (visit-count.test.js) */
+  isRobot, isPrefetch, VISITS_COUNTED,
   /* what Create Event's content becomes before it is stored (site-notes.test.js: a sponsor starts at Normal priority) */
   readSeedPayload
 };
