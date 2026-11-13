@@ -226,6 +226,8 @@
       if (host.onEvent) host.onEvent(ev);
       var tplId = (ev.site && ev.site.templateId) || ev.templateId || urlTemplateId;
       if (!tplId) { showLoadError(noSiteError()); return false; }
+      /* a site ETB2B AI's first pipeline made cannot be built here: said, with the way forward (BE-035) */
+      if (earlierAiSite(ev, tplId)) { showLoadError(earlierSiteSpec(ev)); return false; }
       if (tplId !== urlTemplateId) {
         /* the address names another site than the event's own, or none (the event rail's Design link carries only
            the event, so the console is not loaded first just to look it up — UX-077): the address is put right in
@@ -384,16 +386,22 @@
     document.body.classList.toggle('ed-no-event', !!spec.noEvent);
     var panel = document.createElement('div');
     panel.className = 'tpl-load-error';
-    panel.setAttribute('role', 'alert');
+    /* a step under way is a status, read out politely; a failure is an alert */
+    panel.setAttribute('role', spec.busy ? 'status' : 'alert');
+    if (spec.busy) panel.setAttribute('aria-busy', 'true');
     var h = document.createElement('h2'); h.textContent = spec.title; panel.appendChild(h);
     if (spec.text) { var p = document.createElement('p'); p.textContent = spec.text; panel.appendChild(p); }
+    if (spec.more) { var more = document.createElement('p'); more.textContent = spec.more; panel.appendChild(more); }
     var acts = document.createElement('div');
     acts.className = 'tpl-load-error-acts';
     (spec.actions || []).forEach(function (a, i) {
       var el = document.createElement(a.href ? 'a' : 'button');
       el.className = 'btn ' + (i === 0 ? 'btn-primary' : 'btn-secondary');
       el.textContent = a.label;
-      if (a.href) el.href = a.href; else { el.type = 'button'; el.addEventListener('click', a.onClick); }
+      if (a.href) {
+        el.href = a.href;
+        if (a.newTab) { el.target = '_blank'; el.rel = 'noopener'; }
+      } else { el.type = 'button'; el.addEventListener('click', a.onClick); }
       acts.appendChild(el);
     });
     if (acts.firstChild) panel.appendChild(acts);
@@ -450,6 +458,8 @@
     var status = statusOf(err);
     var back = eventId ? backToEvent() : BACK_TO_EVENTS;
     if (status === 401) return SIGNING_IN;
+    /* the server says the site is one ETB2B AI's first pipeline made (BE-035), when the event alone did not show it */
+    if (err && err.apiCode === 'earlier-ai-design' && eventId) return earlierSiteSpec(currentEvent);
     if (status === 404) {
       return {
         title: eventId ? 'This event’s site could not be found' : 'This design could not be found',
@@ -465,6 +475,84 @@
         : 'Check your connection and try again. Your work has not been changed.',
       actions: [RETRY, back]
     };
+  }
+
+  /* ---------- a site ETB2B AI's first pipeline made (BE-035) ----------
+     Four events of October 2026 (cio, live; enterprise-ai, next-billion, nexttech-summit) have a site made by the
+     first AI pipeline: a structure over a fixed library of sections, with no design plan and no written sections,
+     which this editor cannot build. Opening one changes nothing: the editor says what it is and offers the way
+     forward — make the site again, as Create Event's "Generate my site" makes one, from what the event already has
+     on record (its details, and the brief and links read for it then). That is the person's own step, with an
+     Editor's rights (the server refuses a Viewer), and it changes the event only once the new site is written
+     (generated-site.js); a live page stays as it is until a new site is published. */
+  function earlierAiSite(ev, tplId) {
+    return !!(ev && /^gen-/.test(tplId || '') && ev.structurePlan && Array.isArray(ev.structurePlan.sections) &&
+      !(ev.designPlan && ev.designPlan.design) && !(ev.generatedSite && ev.generatedSite.runId));
+  }
+  function earlierSiteSpec(ev, note) {
+    var live = !!(ev && ev.published);
+    return {
+      title: 'This site was made by an earlier version of ETB2B AI',
+      text: 'The site editor cannot open sites made that way, so there is nothing to edit here yet. Nothing about this event has been changed' +
+        (live ? ', and its live page stays online as it is.' : '.'),
+      more: note || ('To edit it, make the site again: ETB2B AI designs and writes a new site from this event\u2019s details and the brief and links it already has, in about 3 to 5 minutes. ' +
+        (live ? 'The live page changes only when the new site is published.' : 'Nothing goes live until it is published.')),
+      actions: [{ label: note ? 'Try again' : 'Make the site again', onClick: remakeEarlierSite }]
+        .concat(live && eventId ? [{ label: 'View the live page', href: '/e/' + encodeURIComponent(eventId), newTab: true }] : [])
+        .concat([backToEvent()])
+    };
+  }
+  var remaking = null;
+  function remakeEarlierSite() {
+    if (remaking || !eventId || !window.RevampAuth || !RevampAuth.authedFetch) return;
+    /* one generation, named as Create Event names one: its plan waits with it until its pages are written */
+    var runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    var run = remaking = { ctrl: window.AbortController ? new AbortController() : null, runId: runId };
+    function busy(line) {
+      showLoadError({ busy: true, title: 'Making the site again\u2026', text: line,
+        more: 'This takes about 3 to 5 minutes. Keep this tab open. Stopping changes nothing.',
+        actions: [{ label: 'Stop', onClick: function () { stopRemake('Stopped. Nothing was changed.', true); } }] });
+    }
+    function post(url, body) {
+      return RevampAuth.authedFetch(url, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: run.ctrl ? run.ctrl.signal : undefined,
+        /* useEventInputs: from what the event has on record, not from inputs given for this run */
+        body: JSON.stringify(Object.assign({ eventId: eventId, runId: runId, useEventInputs: true }, body))
+      }).then(function (r) {
+        return r.json().then(null, function () { return {}; }).then(function (j) {
+          if (r.ok) return j;
+          var e = new Error(j && j.error ? String(j.error) : 'ETB2B AI could not make the site just now.');
+          e.status = r.status;
+          throw e;
+        });
+      });
+    }
+    busy('Designing the site and making its pictures (step 1 of 2).');
+    post('/api/plan-structure', { themeMode: 'auto', siteMode: 'standard' }).then(function () {
+      if (remaking !== run) return null;
+      busy('Writing the pages (step 2 of 2). This is the longest step.');
+      return post('/api/generate-content', { templateId: 'gen-' + eventId }).then(function () {
+        if (remaking !== run) return;
+        remaking = null;
+        showToast('The new site is ready. Check what ETB2B AI wrote before you publish it.');
+        start();
+      });
+    }).catch(function (err) {
+      if (remaking !== run) return;
+      var said = err && err.name === 'AbortError' ? 'Stopped.' : (err && err.message) || 'ETB2B AI could not make the site just now.';
+      stopRemake(said.replace(/\s*$/, '') + (/nothing was (changed|saved)/i.test(said) ? '' : ' Nothing was changed.'));
+    });
+  }
+  function stopRemake(note, stopped) {
+    var run = remaking;
+    remaking = null;
+    if (run && run.ctrl) { try { run.ctrl.abort(); } catch (e) { /* already over */ } }
+    /* the person's Stop: the server is told, so a step still under way there never puts its site on the event */
+    if (run && stopped) {
+      RevampAuth.authedFetch('/api/generate-content', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: eventId, runId: run.runId, templateId: 'gen-' + eventId, stop: true }) }).then(null, function () {});
+    }
+    showLoadError(earlierSiteSpec(currentEvent, note));
   }
 
   /* ---------- top bar ----------

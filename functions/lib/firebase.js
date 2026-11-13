@@ -24,15 +24,23 @@
 //                         //   usedFallback: {color, font, noPreviousEditionSource},  // see lib/api.js's
 //                         //   extractThemeFromPreviousEditionSources for the fallback this triggers
 //                         //   heroImageUrl, heroImageStoragePath, heroImageError, generatedAt }
+//       designPlan,       // an AI-designed site's plan (the pipeline since October 2026)
+//       generatedSite,    // { runId, at, sections: [{ id, kind, page? }] } — which sections it has; their markup is
+//                         // in events/{eventId}/generations/{runId}/sections (lib/generated-site.js). A site
+//                         // generated before 13 Nov 2026 keeps it in the field generatedSections instead.
+//       generationRun     // { runId, at, done? } — the event's newest generation (only it may switch the site)
 //     }
+//   events/{eventId}/generations/{runId}          — one press of Create Event's "Generate my site" (lib/generated-site.js)
+//     { runId, status: 'planned'|'stopped'|'done', designPlan, described, by, plannedAt, writtenAt, doneAt }
+//     /sections/{sectionId}                       — { id, kind, page?, html, css, order }
 //   events/{eventId}/briefs/{briefId}            — one per uploaded overview doc
 //     { sourceFileName, mimeType, storagePath,    // the uploaded file, in Storage (see below)
 //       extracted: { theme, audience, tone, tracks: [string], speakerHints: [string],
 //                    sponsorHints: [string], keyMessages: [string], inferredCategory },
-//       model, createdAt }
+//       model, createdAt, runId }                 // runId: the generation that read it
 //   events/{eventId}/sources/{sourceId}          — one per previous-edition/current-edition/competitor URL
 //     { type: 'previousEdition' | 'currentEdition' | 'competitor', url, extractedSections: [{heading, body}],
-//       colorSignals: [string], fontSignals: [string], fetchedAt }
+//       colorSignals: [string], fontSignals: [string], fetchedAt, runId }
 //   events/{eventId}/drafts/{draftId}            — AI-generated output, kept separate from the user's own
 //                                                   edits (those still live in editor-store.js's IndexedDB)
 //     { templateId, sourceEventId, library: {...}, positioningNotes, model, generatedAt, skippedLibraries }

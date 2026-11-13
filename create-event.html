@@ -3625,21 +3625,24 @@
      take its view down — it must not navigate or announce anything itself. */
   function cancelBusy(viaNav){
     var run = busy;
-    if (!run) return;
+    if (!run) return null;
     busy = null;
     if (run.controller){ try { run.controller.abort(); } catch(e){} }
-    if (run.onCancel) run.onCancel(!!viaNav);
+    /* a generation's cancel may still be removing the event it created: what it returns says when that is over */
+    var after = run.onCancel ? run.onCancel(!!viaNav) : null;
     renderRail();
     renderFoot();
+    return after || null;
   }
   /* what the footer's Cancel and every in-panel Cancel button do. A generation has already spent paid
      work, so that one asks first. */
   function requestCancelBusy(){
     if (!busy) return;
     if (busy.kind !== 'brief'){ cancelBusy(); return; }
+    /* what stopping does to the event, said as it is (WZ-055): the run's own words (startGenerateFromBrief) */
     openModal({
       title: 'Stop generating?',
-      sub: 'Steps already done are discarded.',
+      sub: busy.stopWords ? busy.stopWords() : 'Nothing this run made is used.',
       confirm: 'Stop generating',
       cancelLabel: 'Keep going',
       onConfirm: function(){ if (busy && busy.kind === 'brief') cancelBusy(); }
@@ -6695,7 +6698,16 @@
        the browser's own copy is not something the server can read. A logo that cannot be stored stops the
        run here, before any paid step, with the reason. */
     function sendLogo(){ return uploadDraftLogo(eventId); }
-    var runners = { create: function(){ return Promise.resolve(createEventRecord()).then(function(out){ return sendLogo().then(function(){ return out; }); }); } };
+    var runners = { create: function(){
+      var had = !!S.createdEventId;
+      return Promise.resolve(createEventRecord()).then(function(out){
+        /* this run made the event (it did not exist before): stopping the run removes it again (WZ-055) */
+        if (!had && S.createdEventId === eventId) run.createdEvent = true;
+        /* stopped while the event was being made: it goes again, as it would have had it been there in time */
+        if (run.stopped){ removeCreatedEvent(); return out; }
+        return sendLogo().then(function(){ return out; });
+      });
+    } };
     /* The description always travels as text, also beside a document. Without a document it is also the
        document itself, which is what the route reads. */
     runners.brief = function(){
@@ -6925,14 +6937,57 @@
       });
     }, 1000);
 
-    /* Cancel puts the brief form back exactly as it was left (its inputs never left the page). The event
-       this run created stays, and the next run reuses it. */
+    /* WZ-055. Stopping leaves nothing behind that the owner did not ask to keep. The event THIS run created, while
+       nothing has been generated for it, is removed again and its address freed (RevampCore.discardEvent: only a
+       draft its creator made under a day ago that nobody worked on); an event that existed before the run keeps
+       everything it had: a run's plan and pages are put on an event only once the whole site is written
+       (functions/lib/generated-site.js), and a step whose caller has gone writes nothing. */
+    function removable(){ return !!run.createdEvent && S.createdEventId === eventId && S.generatedEventId !== eventId; }
+    run.stopWords = function(){
+      if (S.generatedEventId === eventId && steps[steps.length - 1].status !== 'pending')
+        return 'The site has been generated. Stopping only stops opening it: find the event in your events list.';
+      if (removable()) return 'The event this run created is removed and its address is free again. What you entered here stays.';
+      return (S.generatedEventId === eventId ? 'The event and the site it has now stay as they are.' : 'The event stays as it is.') + ' Nothing this run made is used.';
+    };
+    function removeCreatedEvent(){
+      if (!removable() || !window.RevampCore || typeof RevampCore.discardEvent !== 'function') return null;
+      var named = S.basics.name.trim() || eventId;
+      return RevampCore.discardEvent(eventId).then(function(){
+        if (S.createdEventId === eventId){ S.createdEventId = null; S.createdAt = null; S.portalSent = ''; }
+        /* what the server held for it went with it: its pages read (the portal is free again) and its uploads */
+        S.etPageRead = false;
+        if (S.uploads && S.uploads.eventId === eventId) S.uploads = null;
+        save();
+        renderEventExists();
+        return true;
+      }, function(err){
+        if (window.console) console.warn('[create-event] the event this run created was not removed:', err && err.status, err && err.message);
+        toast('Generation stopped. The unfinished event “' + named + '” is still in your events list: delete it there if you do not need it.');
+        return false;
+      });
+    }
+    /* A run whose event stays: the server is told the run was stopped, so a step of it still under way there (its plan,
+       its pages) is never put on the event (POST /api/generate-content { stop: true }; no model is asked). Sent with
+       keepalive: it still goes when the page is being left. */
+    function stopOnServer(){
+      if (S.createdEventId !== eventId || stepBy('generate').status === 'done') return;
+      try {
+        fetch('/api/generate-content', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: eventId, runId: runId, templateId: 'gen-' + eventId, stop: true }) }).catch(function(){});
+      } catch (e) { /* not sent: a step whose caller has gone still writes nothing (the server checks that too) */ }
+    }
+    /* Cancel puts the brief form back exactly as it was left (its inputs never left the page). */
     run.onCancel = function(viaNav){
+      run.stopped = true;
       clearInterval(ticker);
       showStep2View('landing');
-      if (viaNav) return;
+      var removing = removeCreatedEvent();
+      if (!removing) stopOnServer();
+      if (viaNav) return removing;
       setStep1Phase('details');
-      toast('Generation stopped');
+      if (!removing) toast('Generation stopped');
+      else removing.then(function(done){ if (done) toast('Generation stopped. The event it created was removed.'); });
+      return removing;
     };
 
     render();
@@ -12415,10 +12470,17 @@
       if (!busy || busy.kind !== 'brief') return false;
       openModal({
         title: 'Leave while your site is being generated?',
-        sub: 'A site is being generated. Leaving now stops it.',
+        sub: 'A site is being generated. Leaving now stops it. ' + (busy.stopWords ? busy.stopWords() : ''),
         confirm: 'Stop and leave',
         cancelLabel: 'Stay',
-        onConfirm: function(){ cancelBusy(true); exitToDashboard(); }
+        /* the event this run created is removed before the page goes (a few seconds at most) */
+        onConfirm: function(){
+          var removing = cancelBusy(true), left = false;
+          function leave(){ if (!left){ left = true; exitToDashboard(); } }
+          if (!removing) return leave();
+          removing.then(leave, leave);
+          setTimeout(leave, 8000);
+        }
       });
       return true;
     }

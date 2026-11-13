@@ -521,8 +521,10 @@ function handleEventRestore(req, res) {
 
    WHAT IS COPIED
      - the event document: details, settings, design and everything the AI pipeline saved on it
-       (designPlan, generatedSections, theme, structurePlan) — a deny-list rather than an allow-list, so a
-       field another part of the backend adds later is carried over without this file knowing about it
+       (designPlan, generatedSite, generatedSections, theme, structurePlan) — a deny-list rather than an allow-list,
+       so a field another part of the backend adds later is carried over without this file knowing about it
+     - an AI-designed site's sections, where a site generated since 13 Nov 2026 keeps them
+       (events/<id>/generations/<runId>/sections, lib/generated-site.js), under the same run
      - the nine content subcollections, with the SAME document ids, so that the links between them
        (a speaker's groupId, a session's speakerIds, a partner's tierId) still point at the right record
      - the Promotions message / post / banner templates, each reset to a draft that was never posted
@@ -537,8 +539,8 @@ function handleEventRestore(req, res) {
 
    A COPY OF AN AI-DESIGNED OR IMPORTED SITE MUST STILL OPEN IN THE EDITOR
      - AI-designed: templateId is 'gen-<eventId>', and lib/api.js builds that template on request from
-       the designPlan and generatedSections fields of events/<eventId> (generated-template,
-       generated-section). Both fields are copied, and the copy's templateId is rewritten to point at
+       the designPlan of events/<eventId> and the site's sections (generated-template, generated-section;
+       lib/generated-site.js). Both are copied, and the copy's templateId is rewritten to point at
        ITSELF ('gen-<newId>') — left alone it would keep loading the original's design, and would break
        the day the original is deleted or redesigned.
      - Imported: templateId is 'imported-<importId>', served from events/import-<importId> and its own
@@ -726,11 +728,45 @@ function copyContent(fb, src, dst, rewrite, actor, now) {
   }).then(function () { return counts; });
 }
 
+/* An AI-designed site's sections, where a site generated since 13 Nov 2026 keeps them (lib/generated-site.js:
+   events/<id>/generations/<runId>/sections): copied under the same run, so the copied event's generatedSite names
+   them. A site generated before keeps them on its document, which is copied with the rest. Resolves the count. */
+function copyGeneratedSite(fb, src, dst, source, rewrite) {
+  var run = source && source.generatedSite && source.generatedSite.runId;
+  if (typeof run !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(run)) return Promise.resolve(0);
+  var from = eventRef(fb, src).collection(GENERATIONS).doc(run), to = eventRef(fb, dst).collection(GENERATIONS).doc(run);
+  return from.collection('sections').get().then(function (snap) {
+    var writes = snap.docs.map(function (d) { return { ref: to.collection('sections').doc(d.id), data: mapStrings(d.data() || {}, rewrite) }; });
+    writes.push({ ref: to, data: { runId: run, status: 'done', clonedFrom: src } });
+    var chain = Promise.resolve();
+    for (var i = 0; i < writes.length; i += BATCH_SIZE) (function (group) {
+      chain = chain.then(function () {
+        var batch = fb.db.batch();
+        group.forEach(function (w) { batch.set(w.ref, w.data); });
+        return batch.commit();
+      });
+    })(writes.slice(i, i + BATCH_SIZE));
+    return chain.then(function () { return snap.size; });
+  });
+}
+var GENERATIONS = 'generations';
+
 /* Removes whatever a failed clone wrote. Best effort and never rejects: the caller is already answering
    with the real error, and a leftover is logged for a person to look at rather than hidden. */
 function undoClone(fb, dst, written) {
   var ref = eventRef(fb, dst);
-  return Promise.all(CLONED_COLLECTIONS.map(function (name) {
+  /* the copied site's sections (copyGeneratedSite), with the run they sit under */
+  var generated = ref.collection(GENERATIONS).get().then(function (runs) {
+    return Promise.all(runs.docs.map(function (r) {
+      return r.ref.collection('sections').get().then(function (snap) {
+        var batch = fb.db.batch();
+        snap.docs.forEach(function (d) { batch.delete(d.ref); });
+        batch.delete(r.ref);
+        return batch.commit();
+      });
+    }));
+  });
+  return Promise.all([generated].concat(CLONED_COLLECTIONS.map(function (name) {
     return ref.collection(name).get().then(function (snap) {
       var docs = snap.docs, chain = Promise.resolve();
       for (var i = 0; i < docs.length; i += BATCH_SIZE) (function (group) {
@@ -742,7 +778,7 @@ function undoClone(fb, dst, written) {
       })(docs.slice(i, i + BATCH_SIZE));
       return chain;
     });
-  }).concat([
+  })).concat([
     eachLimit(written, CLONE_CONCURRENCY, function (p) {
       return fb.bucket.file(p).delete().catch(function () { /* never written, or already gone */ });
     })
@@ -813,6 +849,8 @@ function handleEventClone(req, res) {
           return copyContent(fb, src, dst, rewrite, actor, now);
         }).then(function (c) {
           counts = c;
+          return copyGeneratedSite(fb, src, dst, source, rewrite);
+        }).then(function () {
           var data = {};
           Object.keys(source).forEach(function (k) {
             if (NOT_CLONED_FIELDS.indexOf(k) === -1) data[k] = mapStrings(source[k], rewrite);

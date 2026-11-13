@@ -113,6 +113,7 @@ function sentences(html) {
   const ev = snap.data();
   const plan = ev.designPlan;
   const sections = Array.isArray(ev.generatedSections) ? ev.generatedSections : [];
+  if (ev.generatedSite) throw new Error(ID + ' keeps its sections in documents of their own (events/<id>/generations/<runId>/sections, functions/lib/generated-site.js), which this script does not write: nothing was changed.');
   if (!plan || !plan.design || !sections.length) throw new Error(ID + ' is not an AI-designed site with generated sections.');
   const sourcesSnap = await ref.collection('sources').get();
   const prevDocSnap = sourcesSnap.docs.filter(function (d) { return d.data().type === 'previousEdition'; })[0];
