@@ -110,10 +110,22 @@ process.env.ACCESS_CONFIG_DOC = 'config/test-generation-access';
 var gemini = require('./gemini');
 gemini.callGeminiImage = function () { return Promise.resolve({ error: 'no pictures in this test' }); };
 /* the pages "read" (ingest-source): a plain page, never the network */
+/* (a page with less than 400 characters of words is refused as unreadable since BE-026, so each says enough) */
+var FILLER = '<p>' + new Array(12).join('The summit brings together leaders from across the industry for a day of talks. ') + '</p>';
 var PAGES = {
-  'https://new.example.com/': '<html><head><title>New page</title></head><body><h1>NEW LINK PAGE</h1><p>What the new link says.</p></body></html>',
-  'https://old.example.com/': '<html><head><title>Old page</title></head><body><h1>OLD LINK PAGE</h1></body></html>'
+  'https://new.example.com/': '<html><head><title>New page</title></head><body><h1>NEW LINK PAGE</h1><p>What the new link says.</p>' + FILLER + '</body></html>',
+  'https://old.example.com/': '<html><head><title>Old page</title></head><body><h1>OLD LINK PAGE</h1>' + FILLER + '</body></html>'
 };
+/* ingest-source reads a page through safeFetch (BE-026, 13 Nov 2026): the same pages, never the network */
+var SAFE_FETCH = require.resolve('./safe-fetch');
+require.cache[SAFE_FETCH] = { id: SAFE_FETCH, filename: SAFE_FETCH, loaded: true, children: [], paths: [],
+  exports: Object.assign({}, require('./safe-fetch'), {
+    safeFetch: function (url) {
+      var u = String(url);
+      if (PAGES[u]) return Promise.resolve({ status: 200, headers: { 'content-type': 'text/html' }, body: Buffer.from(PAGES[u]), finalUrl: u });
+      return Promise.reject(new Error('no network in this test: ' + u));
+    }
+  }) };
 global.fetch = function (url) {
   var u = String(url);
   if (PAGES[u]) return Promise.resolve({ ok: true, status: 200, text: function () { return Promise.resolve(PAGES[u]); }, headers: { get: function () { return 'text/html'; } } });
