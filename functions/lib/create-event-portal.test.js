@@ -645,7 +645,7 @@ async function main() {
      5. Clone design: this portal's and this type's events, whose design the wizard can start from
      ===================================================================================================== */
   var ITEMS = [
-    { id: 'hr-old', name: 'HR Old', portal: 'hr', category: 'ip', templateId: 'tech500', updatedAt: '2026-09-01T10:00:00.000Z' },
+    { id: 'hr-old', name: 'HR Old', portal: 'hr', category: 'ip', templateId: 'tech500', updatedAt: '2026-09-01T10:00:00.000Z', venue: 'Grand Hyatt', city: 'Mumbai' },
     { id: 'hr-new', name: 'HR New', portal: 'hr', category: 'editorial', templateId: 'retail-leadership-summit', updatedAt: '2026-10-12T10:00:00.000Z' },
     { id: 'hr-imp', name: 'HR Imported', portal: 'hr', category: 'ip', templateId: 'imported-imp-abc123', updatedAt: '2026-10-01T10:00:00.000Z' },
     { id: 'hr-gen', name: 'HR Generated', portal: 'hr', category: 'ip', templateId: 'gen-hr-gen', updatedAt: '2026-10-20T10:00:00.000Z' },
@@ -667,12 +667,26 @@ async function main() {
   check('5. another portal\'s list is its own', p.ce('cloneCandidates')(ITEMS, 'cio', 'IP', '').map(function (x) { return x.id; }).join() === 'cio-ip');
   check('5. no portal, or no list: nothing', p.ce('cloneCandidates')(ITEMS, '', 'IP', '').length === 0 && p.ce('cloneCandidates')(null, 'hr', 'IP', '').length === 0);
 
-  p = load({ events: ITEMS });
+  /* the previous editions' Content, read through RevampCore.fetchSub by create-event-editions.js (WZ-064) */
+  var SUBS = {
+    'hr-old': { speakers: [{ id: 'a', name: 'Asha Rao', status: 'confirmed' }, { id: 'b', name: 'Invited One', status: 'invited' }],
+      sessions: [{ id: 's', title: 'Opening', speakerIds: ['a'] }], gallery: [{ id: 'g', imageUrl: 'https://x.test/1.jpg' }] }
+  };
+  var subReads = [];
+  var withEditions = function (o) {
+    var q = load(Object.assign({ core: { fetchSub: function (res, id) { subReads.push(res + ':' + id); return Promise.resolve(((SUBS[id] || {})[res]) || []); } } }, o));
+    vm.runInContext(read('create-event-editions.js'), q.ctx, { filename: 'create-event-editions.js' });
+    return q;
+  };
+  p = withEditions({ events: ITEMS });
   await p.ce('loadPortalRoster()');
   p.ce('S.step = 1; S.step1Phase = "method"; S.basics.portal = "hr"; S.basics.category = "IP"; S.createdEventId = "mine"');
   p.ce('openCloneDesignModal()');
   var m = p.log.modals[0];
-  check('5. the dialog: its title and the portal in its sub', m && m.title === 'Clone design from a previous edition' && m.sub === 'Reuse the design of an earlier ETHRWorld event as your starting point.', m);
+  check('5. the dialog: its title, and in its sub the portal and what comes (WZ-064)', m && m.title === 'Start from a previous edition' &&
+    m.sub === 'Bring an earlier ETHRWorld event’s speakers, sponsors, agenda and glimpses into this one, on the template it used.', m);
+  check('5. the method screen\'s card says the same, and no longer promises its design', /<h3>Start from a previous edition<\/h3>\s*<p>Its speakers, sponsors, agenda and glimpses come into this event, on the template it used\. Its words and look are not copied\.<\/p>/.test(page) &&
+    page.indexOf('Start from a prior event\'s design and sections') === -1);
   check('5. while loading: "Loading ETHRWorld\'s events…", and Continue waits', p.$('clone-body').innerHTML.indexOf('Loading ETHRWorld’s events…') !== -1 && p.$('modal-ok').disabled === true);
   await tick();
   var opts = p.$('clone-body').innerHTML;
@@ -680,17 +694,100 @@ async function main() {
   check('5. each option reads "Name — Template name, updated 12 Oct 2026"', opts.indexOf('<option value="hr-new">HR New — Retail Leadership Summit, updated 12 Oct 2026</option>') !== -1 &&
     opts.indexOf('<option value="hr-imp">HR Imported — Imported design, updated 1 Oct 2026</option>') !== -1 && opts.indexOf('<option value="hr-old">HR Old — TECH500, updated 1 Sep 2026</option>') !== -1 &&
     count(opts, '<option ') === 3 && p.$('modal-ok').disabled === false, opts);
-  var used = [];
-  p.ce('useTemplate = function(id){ window.__log.used = id; }; applyImportedTemplate = function(id){ window.__log.imported = id; }; showStep2View = function(v){ window.__log.view = v; }; advanceToDetails = function(m){ window.__log.advanced = m; }');
+  p.ce('useTemplate = function(id, then){ window.__log.used = id; window.__log.then = then; }; applyImportedTemplate = function(id){ window.__log.imported = id; S.template = id; };' +
+    'showStep2View = function(v){ window.__log.view = v; }; advanceToDetails = function(m){ window.__log.advanced = m; S.creationMethod = m; }; renderBuildWorkspace = function(){}; renderFoot = function(){};');
   p.$('clone-event-select').value = 'hr-old';
   m.onConfirm();
+  await new Promise(function (r) { setTimeout(r, 5); }); await tick();
+  check('5. Continue reads its Content first (its seven lists), saying so; the design waits for the answer',
+    subReads.filter(function (x) { return /:hr-old$/.test(x); }).length === 7 && p.log.used === undefined &&
+    p.log.toasts.some(function (t) { return t.msg === 'Reading HR Old’s speakers, sponsors, agenda and glimpses…' && t.opts.sticky === true; }), subReads);
+  var q = p.log.modals[1];
+  check('5. …then asks: its template, what comes as new records (only what its site showed), its venue, and that nothing else is copied',
+    q && q.title === 'Start from “HR Old”?' && q.sub === 'The site starts on the TECH500 template it used. These come into this event as new records of its own — HR Old itself is not changed.' &&
+    q.body.indexOf('<span class="pill-opt">1 speaker</span><span class="pill-opt">1 glimpse</span><span class="pill-opt">1 agenda session</span>') !== -1 &&
+    q.body.indexOf('Venue: Grand Hyatt, Mumbai — the previous edition’s, as this edition has none yet. You can change it in the details.') !== -1 &&
+    q.body.indexOf('Nothing else of it is copied: its words, colours, banner and page changes stay with it.') !== -1 && q.confirm === 'Start from this edition' && q.cancelLabel === 'Back', q);
+  q.onConfirm();
+  check('5. Start: its gallery design as "Use this template" takes it, with the rest to do once it is the draft\'s', p.log.used === 'tech500' && typeof p.log.then === 'function' && p.log.imported === undefined);
+  p.ce('S.template = "tech500"; S.creationMethod = "template"');
+  p.log.then({ name: 'TECH500' });
+  var from = JSON.parse(JSON.stringify(p.ce('S.fromEdition')));
+  check('5. …the edition the event starts from is kept with what it has, on this portal', from && from.id === 'hr-old' && from.name === 'HR Old' && from.portal === 'hr' &&
+    JSON.stringify(from.counts) === JSON.stringify({ speakers: 1, partners: 0, glimpses: 1, agenda: 1 }) && from.carried === null &&
+    JSON.stringify(p.ce('S.pulledEdition')) === JSON.stringify({ id: 'hr-old', name: 'HR Old' }), from);
+  check('5. …venue: this edition had none, so the previous edition\'s', p.ce('S.basics.venue') === 'Grand Hyatt, Mumbai');
+  check('5. …what no section shows comes at the hand-off (the design not read here: all it has)', JSON.stringify(p.ce('carryingNow()')) === JSON.stringify(['speakers', 'glimpses', 'agenda']));
+  check('5. …and one line says it all', p.log.toasts.some(function (t) { return t.msg === 'Starting from “HR Old” on TECH500. Its speakers, glimpses and agenda come into this event when the editor opens. Venue: Grand Hyatt, Mumbai.' && t.opts.type === 'success'; }),
+    p.log.toasts.map(function (t) { return t.msg; }));
+  /* a design with a section for a kind: that section takes it, and it is not brought in again at the hand-off */
+  p.ce('tplInfo.tech500 = { state: "ready", caps: { byLib: { speakers: { sectionId: "sp" }, glimpses: { sectionId: "gl" } }, sections: [] } }');
+  check('5. a kind this design has a section for is that section\'s (switched off, it is left out)', JSON.stringify(p.ce('carryingNow()')) === JSON.stringify(['agenda']));
+  p.ce('S.basics.portal = "cio"');
+  check('5. another portal now: nothing of it comes', JSON.stringify(p.ce('carryingNow()')) === '[]');
+  p.ce('S.basics.portal = "hr"');
+  /* the hand-off: a row after the sections' records, and what it says when done */
+  var hsrc = p.ce('handoffSteps').toString();
+  check('5. the hand-off has its row, after the sections\' own records and before the editor opens', /recs\.run = function\(run\)\{ return writeRecords\(run, recs\); \};\s*steps\.push\(recs\);\s*\}[\s\S]*var ed = editionStep\(\);\s*if \(ed\) steps\.push\(ed\);\s*steps\.push\(\{ key: 'open'/.test(hsrc));
+  var st = p.ce('editionStep()');
+  check('5. …"Bringing in HR Old’s agenda", run by carryEdition', st && st.key === 'edition' && st.label === 'Bringing in HR Old’s agenda' && /carryEdition\(run, ed\)/.test(st.run.toString()), st);
+  p.ce('window.__carry = []; RevampEditions.carryOver = function(o){ window.__carry.push(o); return Promise.resolve({ copied: { agenda: 2 }, kept: ["speakers"] }); }');
+  var row = { key: 'edition', label: '' };
+  await p.ce('carryEdition')(null, row);
+  var args = p.ctx.__carry[0];
+  check('5. carryEdition: from the previous edition into this event, the kinds no section shows, its progress kept in the draft',
+    args && args.from === 'hr-old' && args.to === 'mine' && JSON.stringify(args.kinds) === '["agenda"]' && args.state === p.ce('S.fromEdition.carried') &&
+    args.state.to === 'mine' && typeof args.going === 'function' && args.going() === false, args);
+  check('5. …and its row says what came and what was kept', row.label === 'Brought in HR Old’s agenda as this event’s own (the speakers already in the event’s Content were kept)', row.label);
+  /* Leave them out, and Undo */
+  p.ce('leaveOutEditionCarry()');
+  var left = p.log.toasts[p.log.toasts.length - 1];
+  check('5. "Leave them out": nothing more comes, said with Undo', p.ce('S.fromEdition.leftOut') === true && JSON.stringify(p.ce('carryingNow()')) === '[]' &&
+    left.msg === 'HR Old’s agenda will not be brought in.' && left.opts.action && left.opts.action.label === 'Undo', left);
+  left.opts.action.onClick();
+  check('5. …Undo brings it back', p.ce('S.fromEdition.leftOut') === false && JSON.stringify(p.ce('carryingNow()')) === '["agenda"]');
+  check('5. a draft keeps it, cleaned', JSON.stringify(p.ce('cleanFromEdition')({ id: 'x', name: 'X', portal: 'hr', counts: { speakers: '3', agenda: -1 }, carried: { to: 'e', done: {}, made: {} }, leftOut: 1 })) ===
+    JSON.stringify({ id: 'x', name: 'X', portal: 'hr', counts: { speakers: 3, partners: 0, glimpses: 0, agenda: 0 }, carried: { to: 'e', done: {}, made: {} }, leftOut: false }) &&
+    p.ce('cleanFromEdition')({ id: 5 }) === null && p.ce('cleanFromEdition')(null) === null && p.ce('cleanFromEdition')({ id: 'x', name: 'X', carried: { to: 'e', made: [] } }).carried === null);
+  /* a venue this edition has is kept */
+  p = withEditions({ events: ITEMS });
+  await p.ce('loadPortalRoster()');
+  p.ce('S.step = 1; S.step1Phase = "method"; S.basics.portal = "hr"; S.basics.category = "IP"; S.basics.venue = "Taj Palace, Delhi"');
+  p.ce('confirmStartFromEdition')({ id: 'hr-old', name: 'HR Old', templateId: 'tech500', venue: 'Grand Hyatt', city: 'Mumbai' }, {});
+  check('5. this edition\'s own venue is kept, and a previous edition with nothing on its site gives only its template', p.log.modals[0].body.indexOf('Venue: this edition’s own, Taj Palace, Delhi, is kept.') !== -1 &&
+    p.log.modals[0].sub === 'The site starts on the TECH500 template it used. HR Old has no speakers, sponsors, agenda or glimpses on its site, so only its template is used.' &&
+    p.log.modals[0].body.indexOf('pill-opt') === -1, p.log.modals[0]);
+  check('5. …taking it changes nothing of it', p.ce('takeEditionVenue')({ venue: 'Grand Hyatt', city: 'Mumbai' }) === '' && p.ce('S.basics.venue') === 'Taj Palace, Delhi');
+  p.log.modals[0].onCancel();
   await new Promise(function (r) { setTimeout(r, 5); });
-  check('5. Continue on a gallery design runs useTemplate, as today', p.log.used === 'tech500' && p.log.imported === undefined);
+  check('5. Back goes back to the list', p.log.modals.length === 2 && p.log.modals[1].title === 'Start from a previous edition');
+  /* an imported design: the import's own steps, then the same */
+  p = withEditions({ events: ITEMS });
+  await p.ce('loadPortalRoster()');
+  p.ce('S.step = 1; S.step1Phase = "method"; S.basics.portal = "hr"; S.basics.category = "IP"; S.createdEventId = "mine"');
+  p.ce('useTemplate = function(id){ window.__log.used = id; }; applyImportedTemplate = function(id){ window.__log.imported = id; S.template = id; };' +
+    'showStep2View = function(v){ window.__log.view = v; }; advanceToDetails = function(m){ window.__log.advanced = m; S.creationMethod = m; }; renderBuildWorkspace = function(){}; renderFoot = function(){};');
+  p.ce('openCloneDesignModal()');
+  await tick();
   p.$('clone-event-select').value = 'hr-imp';
-  m.onConfirm();
-  await new Promise(function (r) { setTimeout(r, 5); });
+  p.log.modals[0].onConfirm();
+  await new Promise(function (r) { setTimeout(r, 5); }); await tick();
+  q = p.log.modals[1];
+  check('5. an imported design: asked the same way', q && q.sub === 'The site starts on the design it imported. HR Imported has no speakers, sponsors, agenda or glimpses on its site, so only its template is used.', q);
+  q.onConfirm();
   check('5. Continue on an imported design takes the import\'s own steps', p.log.imported === 'imported-imp-abc123' && p.log.view === 'landing' && p.log.advanced === 'imported' &&
-    p.log.toasts.some(function (t) { return t.msg === 'The design of “HR Imported” selected'; }));
+    p.log.used === undefined && p.ce('S.fromEdition.id') === 'hr-imp' &&
+    p.log.toasts.some(function (t) { return t.msg === 'Starting from “HR Imported”. Venue: Grand Hyatt, Mumbai.' || t.msg === 'Starting from “HR Imported”.'; }), p.log.toasts.map(function (t) { return t.msg; }));
+  /* its Content cannot be read: said, with Retry, and nothing changes */
+  p = load({ events: ITEMS, core: { fetchSub: function () { return Promise.reject(Object.assign(new Error('Could not reach the server. Check your connection and try again.'), { status: 0 })); } } });
+  vm.runInContext(read('create-event-editions.js'), p.ctx, { filename: 'create-event-editions.js' });
+  await p.ce('loadPortalRoster()');
+  p.ce('S.step = 1; S.step1Phase = "method"; S.basics.portal = "hr"; S.basics.category = "IP"');
+  p.ce('readEditionToStart')({ id: 'hr-old', name: 'HR Old', templateId: 'tech500' });
+  await tick();
+  var bad = p.log.toasts[p.log.toasts.length - 1];
+  check('5. its Content cannot be read: said, with Retry; nothing is asked and nothing changes', bad.msg === 'Could not read HR Old’s content: Could not reach the server. Check your connection and try again.' &&
+    bad.opts.type === 'error' && bad.opts.action && bad.opts.action.label === 'Retry' && p.log.modals.length === 0 && p.ce('S.fromEdition') === null && p.ce('S.template') === null, bad);
   p = load({ events: ITEMS });
   await p.ce('loadPortalRoster()');
   p.ce('S.step = 1; S.step1Phase = "method"; S.basics.portal = "gcc"; S.basics.category = "IP"');
@@ -719,7 +816,7 @@ async function main() {
   p.log.asks[0].onDone('hr', 'ETHRWorld');
   await tick(); await new Promise(function (r) { setTimeout(r, 5); }); await tick();
   check('5. …then opens the dialog on that portal', p.ce('S.basics.portal') === 'hr' && p.log.modals.length === 1 &&
-    p.log.modals[0].sub === 'Reuse the design of an earlier ETHRWorld event as your starting point.' && p.log.fetchedEvents === 1);
+    p.log.modals[0].sub === 'Bring an earlier ETHRWorld event’s speakers, sponsors, agenda and glimpses into this one, on the template it used.' && p.log.fetchedEvents === 1);
 
   /* =====================================================================================================
      6. This edition's own URL on another portal

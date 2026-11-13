@@ -2066,8 +2066,8 @@
               <span class="dc-ico">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
               </span>
-              <h3>Use a previous edition's layout</h3>
-              <p>Start from a prior event's design and sections instead of a blank template.</p>
+              <h3>Start from a previous edition</h3>
+              <p>Its speakers, sponsors, agenda and glimpses come into this event, on the template it used. Its words and look are not copied.</p>
               <button class="btn btn-secondary" type="button" id="btn-clone-design">Choose a previous edition</button>
             </div>
             <div class="design-choice-card">
@@ -2950,6 +2950,7 @@
     imgSeq: 0,                  // the last img slot number this draft handed out (addImageFile)
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
+    fromEdition: null,          // {id, name, portal, counts, carried} the previous edition chosen with "Start from a previous edition" (openCloneDesignModal): what it has that no section here shows comes into the event's Content at the hand-off (carryEdition); carried: what that has done so far ({ to, done, made })
     brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
@@ -3499,6 +3500,7 @@
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
       S.aiHero = cleanAiHero(S.aiHero);
+      S.fromEdition = cleanFromEdition(S.fromEdition);
       if (!S.excludedSections || typeof S.excludedSections !== 'object') S.excludedSections = {};
       /* an older draft lists the page header and footer as sections; they come with the design and are not a draft's to hold */
       S.sections = (S.sections || []).filter(function(sec){ return sec && (isTextSection(sec) || libBy(sec.libId)); });
@@ -5905,7 +5907,7 @@
   /* "Use this template" (the one way to choose a gallery design: the method screen has no footer Continue,
      UX-052): commit the design being looked at and open the details form. Asks first when the choice replaces something the owner chose or hides
      something they wrote, and says exactly what. */
-  function useTemplate(tplId){
+  function useTemplate(tplId, then){
     var tpl = templateById(tplId);
     if (!tpl || busy) return;
     loadTemplateInfo(tpl).then(function(caps){
@@ -5929,8 +5931,9 @@
       var go = function(){
         commitTemplate(tplId);
         advanceToDetails('template');
-        /* the count the gallery's list said and the details form's list says (designRows) */
-        toast(tpl.name + ' selected — ' + designCountText(designCount(tplId, caps)));
+        /* the count the gallery's list said and the details form's list says (designRows); a caller with more to do
+           (startFromEdition) says it all in one */
+        if (typeof then === 'function') then(tpl); else toast(tpl.name + ' selected — ' + designCountText(designCount(tplId, caps)));
       };
       if (!lines.length){ go(); return; }
       openModal({
@@ -7011,10 +7014,18 @@
     }
   }
 
-  /* ---------- clone design from a previous edition on this event's portal ----------
+  /* ---------- start from a previous edition on this event's portal (WZ-064) ----------
      The real events list (GET /api/events), narrowed to this draft's portal and type and to designs the
-     wizard can start from (cloneCandidates). A gallery template is taken as "Use this template" takes it;
-     an imported design the way a finished import is. */
+     wizard can start from (cloneCandidates). The owner's rule for a previous edition: only its speakers,
+     sponsors, agenda and glimpses are taken over, and venue is this edition's, else the previous edition's;
+     its words, colours, pictures and page changes are never copied. So the one chosen gives:
+       its template      a gallery template is taken as "Use this template" takes it, an imported design the way
+                         a finished import is — the template, not the previous edition's page made on it
+       its four lists    read from its Content (RevampEditions.recordsOf) and said in a question first. The ones this
+                         design has a section for fill those sections (fillEditionBlocks), to check and change here
+                         like any other; the rest come into the new event's Content as new records of its own at the
+                         hand-off (carryEdition, RevampEditions.carryOver). The previous edition is only read.
+       its venue         when this edition has none yet (takeEditionVenue) */
   function cloneOptionLabel(it){
     var tpl = templateById(String(it.templateId || '')), when = fmtD(it.updatedAt);
     return String(it.name || it.id) + ' — ' + (tpl ? tpl.name : 'Imported design') + (when ? ', updated ' + when : '');
@@ -7024,23 +7035,15 @@
     if (!isRosterPortal(portal)){ askDraftPortal(openCloneDesignModal); return; }
     var name = portalName(portal), cat = S.basics.category, list = [];
     openModal({
-      title: 'Clone design from a previous edition',
-      sub: 'Reuse the design of an earlier ' + name + ' event as your starting point.',
+      title: 'Start from a previous edition',
+      sub: 'Bring an earlier ' + name + ' event’s speakers, sponsors, agenda and glimpses into this one, on the template it used.',
       body: '<div id="clone-body"></div>',
       confirm: 'Continue',
       onConfirm: function(){
         var sel = $('clone-event-select'), pe = null;
         list.forEach(function(x){ if (sel && String(x.id) === sel.value) pe = x; });
         if (!pe) return;
-        var tplId = String(pe.templateId), from = String(pe.name || pe.id);
-        setTimeout(function(){
-          if (templateById(tplId)){ useTemplate(tplId); return; }
-          if (busy || S.step !== 1 || S.step1Phase !== 'method') return;
-          applyImportedTemplate(tplId);
-          showStep2View('landing');
-          advanceToDetails('imported');
-          toast('The design of “' + from + '” selected', { type: 'success' });
-        }, 0);
+        setTimeout(function(){ readEditionToStart(pe); }, 0);
       }
     });
     var ok = $('modal-ok');
@@ -7073,6 +7076,165 @@
       });
     }
     load();
+  }
+
+  /* the previous edition's lists (RevampEditions.recordsOf), then the question: what it brings, and what it does not */
+  function readEditionToStart(pe){
+    var from = String(pe.name || pe.id);
+    var closeReading = toast('Reading ' + from + '’s speakers, sponsors, agenda and glimpses…', { sticky: true });
+    var asking = window.RevampEditions && typeof RevampEditions.recordsOf === 'function'
+      ? RevampEditions.recordsOf(String(pe.id)) : Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
+    Promise.resolve(asking).then(function(records){
+      closeReading();
+      confirmStartFromEdition(pe, records);
+    }, function(err){
+      closeReading();
+      toast('Could not read ' + from + '’s content: ' + plainError(err), { type: 'error', action: { label: 'Retry', onClick: function(){ readEditionToStart(pe); } } });
+    });
+  }
+  /* RevampEditions' kinds, named as the wizard's own sections are */
+  var EDITION_KINDS = ['speakers', 'partners', 'glimpses', 'agenda'];
+  function editionKindWords(kinds){ return listWords(kinds.map(function(k){ return RevampEditions.KIND_WORDS[k]; })); }
+  /* "12 speakers", "1 sponsor"… for the kinds given (all four when none are) */
+  function editionCountWords(counts, kinds){
+    var one = { speakers: 'speaker', partners: 'sponsor', glimpses: 'glimpse', agenda: 'agenda session' };
+    return EDITION_KINDS.filter(function(k){ return (!kinds || kinds.indexOf(k) !== -1) && counts[k] > 0; }).map(function(k){
+      return counts[k] + ' ' + one[k] + (counts[k] === 1 ? '' : 's');
+    });
+  }
+  /* a previous edition's venue as the details form's one box holds it ("Venue, City") */
+  function editionVenue(pe){
+    var v = String(pe.venue || '').trim(), c = String(pe.city || '').trim();
+    return (v && c && v.toLowerCase().indexOf(c.toLowerCase()) === -1 ? v + ', ' + c : (v || c)).slice(0, 200);
+  }
+  function confirmStartFromEdition(pe, records){
+    var from = String(pe.name || pe.id), tpl = templateById(String(pe.templateId));
+    var have = editionCountWords(RevampEditions.carryCounts(records));
+    var b = S.basics, venueOn = !!(CATS[b.category] && CATS[b.category].venue), ownVenue = locLabel(b, false), theirs = editionVenue(pe);
+    var venueLine = !venueOn ? '' : ownVenue ? 'Venue: this edition’s own, ' + ownVenue + ', is kept.'
+      : theirs ? 'Venue: ' + theirs + ' — the previous edition’s, as this edition has none yet. You can change it in the details.' : '';
+    openModal({
+      title: 'Start from “' + from + '”?',
+      sub: (tpl ? 'The site starts on the ' + tpl.name + ' template it used. ' : 'The site starts on the design it imported. ') +
+        (have.length ? 'These come into this event as new records of its own — ' + from + ' itself is not changed.'
+          : from + ' has no speakers, sponsors, agenda or glimpses on its site, so only its template is used.'),
+      body: (have.length ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">' +
+          have.map(function(w){ return '<span class="pill-opt">' + esc(w) + '</span>'; }).join('') + '</div>' : '') +
+        (venueLine ? '<p class="hint" style="margin-top:12px">' + esc(venueLine) + '</p>' : '') +
+        '<p class="hint" style="margin-top:12px">Nothing else of it is copied: its words, colours, banner and page changes stay with it.</p>',
+      confirm: 'Start from this edition',
+      cancelLabel: 'Back',
+      onConfirm: function(){ startFromEdition(pe, records); },
+      onCancel: function(){ setTimeout(openCloneDesignModal, 0); }
+    });
+  }
+  /* its template becomes the draft's (as "Use this template" or a finished import makes it), then its lists and venue */
+  function startFromEdition(pe, records){
+    var tplId = String(pe.templateId), from = String(pe.name || pe.id);
+    var then = function(tpl){
+      var content = RevampEditions.toContent(records);
+      editionContent[String(pe.id)] = content;          // a section switched on later fills from it (applyEditionContentToBlock)
+      S.pulledEdition = { id: String(pe.id), name: from };
+      S.fromEdition = { id: String(pe.id), name: from, portal: S.basics.portal, counts: RevampEditions.carryCounts(records), carried: null };
+      var filled = fillEditionBlocks(S.pulledEdition, content);
+      var venue = takeEditionVenue(pe);
+      save();
+      var host = $('step1-build-host');
+      if (host) renderBuildWorkspace(host);
+      var venueEl = $('f-venue');
+      if (venueEl && venue) venueEl.value = venue;
+      renderFoot();
+      var later = carryingNow();
+      var verb = function(kinds, many, one){ return kinds.length === 1 && kinds[0] === 'agenda' ? one : many; };
+      toast('Starting from “' + from + '”' + (tpl ? ' on ' + tpl.name : '') + '.' +
+        (filled.length ? ' Its ' + editionKindWords(filled) + ' ' + verb(filled, 'are', 'is') + ' filled in below.' : '') +
+        (later.length ? ' Its ' + editionKindWords(later) + ' ' + verb(later, 'come', 'comes') + ' into this event when the editor opens.' : '') +
+        (venue ? ' Venue: ' + venue + '.' : ''), { type: 'success' });
+    };
+    if (templateById(tplId)){ useTemplate(tplId, then); return; }
+    if (busy || S.step !== 1 || S.step1Phase !== 'method') return;
+    applyImportedTemplate(tplId);
+    showStep2View('landing');
+    advanceToDetails('imported');
+    then(null);
+  }
+  /* the previous edition's lists into the sections of this design that show them — those with nothing typed in yet:
+     what was typed stays — switched on. -> the kinds filled */
+  function fillEditionBlocks(pe, content){
+    var filled = [];
+    editionBlocksHere().forEach(function(libId){
+      var c = content[libId];
+      if (!c) return;
+      var sec = sectionByLib(libId) || addSectionToRail(libId, 'edition');
+      if (sectionHasContent(sec)) return;
+      dropSectionImages(sec);
+      sec.data = JSON.parse(JSON.stringify(c));
+      setSecIncluded(sec, true);
+      sec.done = true;
+      sec.source = 'edition';
+      sec.editionName = pe.name;
+      filled.push(libId);
+    });
+    return filled;
+  }
+  /* venue: this edition's when it has one, else the previous edition's (the owner's rule). -> the venue taken, or '' */
+  function takeEditionVenue(pe){
+    var b = S.basics;
+    if (!CATS[b.category] || !CATS[b.category].venue || locLabel(b, false)) return '';
+    var v = editionVenue(pe);
+    if (v) b.venue = v;
+    return v;
+  }
+  function cleanFromEdition(f){
+    if (!f || typeof f !== 'object' || typeof f.id !== 'string' || !f.id || typeof f.name !== 'string') return null;
+    var counts = {};
+    EDITION_KINDS.forEach(function(k){ counts[k] = Math.max(0, Math.floor(+(f.counts && f.counts[k]) || 0)); });
+    var c = f.carried;
+    var carried = c && typeof c === 'object' && typeof c.to === 'string' && c.done && typeof c.done === 'object' &&
+      c.made && typeof c.made === 'object' && !Array.isArray(c.made) ? c : null;
+    return { id: f.id, name: f.name, portal: typeof f.portal === 'string' ? f.portal : '', counts: counts, carried: carried, leftOut: f.leftOut === true };
+  }
+  /* The previous edition's lists that come at the hand-off: those it has that no section of this design shows (a
+     section the design has decides for itself — switched off, it is left out). None when no edition was chosen to
+     start from, they were left out, or the edition is another portal's (the portal was changed since). */
+  function carryingNow(){
+    var f = S.fromEdition;
+    if (!f || f.leftOut || f.portal !== S.basics.portal || !window.RevampEditions || (S.creationMethod !== 'template' && S.creationMethod !== 'imported')) return [];
+    var caps = isImportedTemplate(S.template) ? null : draftCaps();
+    var done = f.carried && f.carried.to === S.createdEventId ? f.carried.done : {};
+    return EDITION_KINDS.filter(function(k){ return f.counts[k] > 0 && !(caps && caps.byLib[k]) && !done[k]; });
+  }
+  /* and those a hand-off began bringing in and did not finish: always finished, never left half in (RevampEditions) */
+  function carryUnfinished(){
+    var c = S.fromEdition && S.fromEdition.carried;
+    return c && c.to === S.createdEventId && window.RevampEditions ? RevampEditions.unfinished(c) : [];
+  }
+  /* over the sections of the details form: what comes in at the hand-off, with the way to leave it out */
+  function editionCarryNote(){
+    var f = S.fromEdition, kinds = carryingNow();
+    if (!kinds.length) return '';
+    return '<div class="callout plain" id="edition-carry-note" role="status" style="margin-bottom:14px">' + IC.info +
+      '<span><strong>Starting from ' + esc(f.name) + '</strong>' +
+      'Its ' + esc(listWords(editionCountWords(f.counts, kinds))) + ' come into this event’s Content as new records of its own when the editor opens, ' +
+      'and the editor puts them on the page: this design has no section for them here. ' + esc(f.name) + ' itself is not changed.' +
+      '<span class="callout-actions"><button class="btn btn-secondary btn-sm" type="button" id="edition-carry-off">Leave them out</button></span></span></div>';
+  }
+  function leaveOutEditionCarry(){
+    var f = S.fromEdition, kinds = carryingNow();
+    if (!f || !kinds.length) return;
+    f.leftOut = true;
+    save();
+    var host = $('step1-build-host');
+    if (host) renderBuildWorkspace(host);
+    renderFoot();
+    toast(f.name + '’s ' + editionKindWords(kinds) + ' will not be brought in.', { action: { label: 'Undo', onClick: function(){
+      if (S.fromEdition !== f) return;
+      f.leftOut = false;
+      save();
+      var again = $('step1-build-host');
+      if (again) renderBuildWorkspace(again);
+      renderFoot();
+    } } });
   }
 
   /* which of step 2's three views (landing / AI / manual gallery) is showing */
@@ -7457,6 +7619,9 @@
       sec.editionName = pe.name;
     });
     S.pulledEdition = { id: pe.id, name: pe.name };
+    /* another previous edition chosen here for the sections: the one the event started from brings nothing more in
+       (an event has one previous edition); what a hand-off already began of it is still finished (carryEdition) */
+    if (S.fromEdition && S.fromEdition.id !== String(pe.id)) S.fromEdition.leftOut = true;
     save();
     var host = $('step1-build-host'); if (host) renderBuildWorkspace(host);
     toast(targets.length ? 'Content brought in from ' + pe.name : pe.name + ' is the previous edition: switch a block on to fill it');
@@ -7619,7 +7784,7 @@
     var p = progressCounts();
     var on = designCount(tpl.id, info.caps);
 
-    host.innerHTML =
+    host.innerHTML = editionCarryNote() +
       '<div class="build-grid">' +
         '<div class="rail-panel">' +
           '<div class="rail-panel-head">' +
@@ -7639,6 +7804,8 @@
     renderTogglePanel();
     renderSecList();
     renderEditor();
+    var carryOff = $('edition-carry-off');
+    if (carryOff) carryOff.onclick = leaveOutEditionCarry;
     var addText = $('btn-add-custom');
     if (addText) addText.addEventListener('click', openTextSectionModal);
   }
@@ -11164,6 +11331,9 @@
       recs.run = function(run){ return writeRecords(run, recs); };
       steps.push(recs);
     }
+    /* after the sections' own records, so a session of the previous edition's agenda finds its speakers by name */
+    var ed = editionStep();
+    if (ed) steps.push(ed);
     steps.push({ key: 'open', label: 'Opening the editor', run: openInEditor });
     return steps;
   }
@@ -11490,6 +11660,36 @@
     }, function(err){
       if (err && err.message === 'stopped') return;
       throw new Error('The event’s Content could not be saved: ' + plainError(err));
+    });
+  }
+  /* "Start from a previous edition" (WZ-064): the previous edition's lists no section of this design shows, brought into
+     the event's Content as new records of its own (RevampEditions.carryOver), after the sections' own records. What was
+     made is kept in the draft (S.fromEdition.carried), so a retried hand-off carries on and never doubles a list; the
+     previous edition is only read. */
+  /* the hand-off's row for it, or null when nothing comes (nothing left, or nothing a run began left unfinished) */
+  function editionStep(){
+    var carry = carryingNow();
+    carryUnfinished().forEach(function(k){ if (carry.indexOf(k) === -1) carry.push(k); });
+    if (!carry.length) return null;
+    var ed = { key: 'edition', label: 'Bringing in ' + S.fromEdition.name + '’s ' + editionKindWords(carry) };
+    ed.run = function(run){ return carryEdition(run, ed); };
+    return ed;
+  }
+  function carryEdition(run, row){
+    var f = S.fromEdition, eventId = S.createdEventId;
+    if (!f || !eventId) return Promise.resolve();
+    if (!window.RevampEditions || typeof RevampEditions.carryOver !== 'function')
+      return Promise.reject(new Error('This page did not load completely. Reload it and try again.'));
+    if (!f.carried || f.carried.to !== eventId) f.carried = { to: eventId, done: {}, made: {} };
+    var asked = carryingNow();
+    return RevampEditions.carryOver({ from: f.id, to: eventId, kinds: asked, state: f.carried, save: save,
+      going: function(){ return isCurrent(run); } }).then(function(res){
+      var copied = EDITION_KINDS.filter(function(k){ return res.copied[k]; });
+      row.label = (copied.length ? 'Brought in ' + f.name + '’s ' + editionKindWords(copied) + ' as this event’s own' : 'Nothing more to bring in from ' + f.name) +
+        (res.kept.length ? ' (the ' + editionKindWords(res.kept) + ' already in the event’s Content ' + (res.kept.length === 1 && res.kept[0] === 'agenda' ? 'was' : 'were') + ' kept)' : '');
+    }, function(err){
+      if (err && err.message === 'stopped') return;
+      throw new Error(f.name + '’s ' + editionKindWords(asked.length ? asked : EDITION_KINDS) + ' could not be brought in: ' + plainError(err));
     });
   }
   /* What made the picture fail, in a sentence for the editor's note: the server's own when it says one. A picture
