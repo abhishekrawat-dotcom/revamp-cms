@@ -2469,6 +2469,11 @@
           '<label class="dev-wrap"><input type="checkbox" id="rv-dev-wrap" checked> Word wrap</label><span class="dev-keys">Find: Ctrl/⌘ + F</span>' +
           '<span class="dev-note" id="rv-dev-note"></span></div>' +
         '<div class="dev-copy-notes" id="rv-dev-copy-notes" hidden></div>' +
+        '<div class="dev-copy-opts" id="rv-dev-copy-opts" hidden>' +
+          '<div class="dev-opt" id="rv-dev-theme-opt" hidden><span class="dev-opt-label" id="rv-dev-theme-label">Theme</span><div class="dev-mode" role="group" aria-labelledby="rv-dev-theme-label" id="rv-dev-theme"></div></div>' +
+          '<div class="dev-opt" id="rv-dev-edges-opt" hidden><span class="dev-opt-label" id="rv-dev-edges-label">Section edges</span><div class="dev-mode" role="group" aria-labelledby="rv-dev-edges-label" id="rv-dev-edges">' +
+            '<button type="button" data-copy-edges="smooth" aria-pressed="false">Smooth</button><button type="button" data-copy-edges="sharp" aria-pressed="false">Sharp</button></div></div>' +
+        '</div>' +
         '<div class="dev-body"><textarea id="rv-dev-html" spellcheck="false" wrap="soft"></textarea><textarea id="rv-dev-css" spellcheck="false" wrap="soft" hidden></textarea><textarea id="rv-dev-js" spellcheck="false" wrap="soft" hidden></textarea></div>' +
         '<div class="dev-foot"><span class="dev-error" id="rv-dev-error" role="alert" hidden></span><button class="btn btn-secondary" id="rv-dev-cancel">Close</button>' +
           '<button class="btn btn-secondary" id="rv-dev-download" hidden>Download a test page</button>' +
@@ -2521,10 +2526,74 @@
     /* the copy view: one section, or the common CSS & JS every copied section needs (once per site — ETB2B's CMS
        has a global section for it) */
     var common = false;
+    /* The copy is made for one theme and one choice of section edges (the owner, 13 Nov 2026: "You can add toggle of
+       theme and Section edges in the copy for other cms section and whatever settings are applied only that code need
+       to be visible there"): another website has no theme switch, so the copy holds that theme's colours and its one
+       logo; "Smooth" edges put rv-blend.js in the common script, "Sharp" puts nothing. Both start as the site has them. */
+    var copyTheme = null, copyEdges = 'sharp';
+    function copyOptions() {
+      var ti = themesInfo(), ei = sectionEdgesInfo();
+      copyTheme = ti ? ti.current : null;
+      copyEdges = ei ? savedSectionEdges() : 'sharp';
+      var box = $('rv-dev-theme');
+      box.innerHTML = '';
+      if (ti) ti.themes.forEach(function (t) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.setAttribute('data-copy-theme', t.id); b.textContent = t.label || t.id;
+        if (t.blurb) b.title = t.blurb;
+        b.addEventListener('click', function () { if (copyTheme === t.id) return; copyTheme = t.id; markOptions(); exported = null; showCopy(); });
+        box.appendChild(b);
+      });
+      $('rv-dev-theme-opt').hidden = !ti || ti.themes.length < 2;
+      $('rv-dev-edges-opt').hidden = !ei;
+      markOptions();
+    }
+    function markOptions() {
+      Array.prototype.forEach.call(scrim.querySelectorAll('[data-copy-theme]'), function (b) { var on = b.getAttribute('data-copy-theme') === copyTheme; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+      Array.prototype.forEach.call(scrim.querySelectorAll('[data-copy-edges]'), function (b) { var on = b.getAttribute('data-copy-edges') === copyEdges; b.classList.toggle('active', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    }
+    /* the staged page in the theme chosen: as the editor applies one (applyTheme) — the colours a section wrote as
+       fixed values as the page's variables (not the hero's), the theme's variables on <body>, the ETB2B logos in the
+       version for their ground — then its fonts in */
+    function themeFrame(frame, id) {
+      var ti = themesInfo(), d = frame && frame.contentDocument, w = frame && frame.contentWindow;
+      if (!ti || !id || !d || !d.body || !window.RevampTheme) return Promise.resolve(frame);
+      var now = frame.__rvTheme || d.body.getAttribute('data-rv-theme') || ti.current;
+      if (now === id) return Promise.resolve(frame);
+      var t = ti.themes.filter(function (x) { return x.id === id; })[0];
+      if (!t) return Promise.resolve(frame);
+      var o = ti.themes[0].colours;
+      var base = { mode: ti.themes[0].mode, themeColor: o.theme, accentColor: o.accent, backgroundColor: o.bg, surfaceColor: o.surface, textColor: o.text, mutedColor: o.muted };
+      Array.prototype.forEach.call(d.querySelectorAll('style[data-rv-style]'), function (st) {
+        if (st.getAttribute('data-rv-style') === 'hero') return;
+        var css = window.RevampTheme.themableCss(st.textContent, base);
+        if (css !== st.textContent) st.textContent = css;
+      });
+      window.RevampTheme.apply(d, t);
+      frame.__rvTheme = id;
+      function ground(el) {
+        for (var e = el; e && e.nodeType === 1; e = e.parentElement) {
+          var c = w.getComputedStyle(e).backgroundColor, m = /rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(c || '');
+          if (m && (m[4] == null || +m[4] > 0.5)) return (0.2126 * m[1] + 0.7152 * m[2] + 0.0722 * m[3]) / 255;
+        }
+        return 1;
+      }
+      Array.prototype.forEach.call(d.querySelectorAll('img[data-rv-et-logo], img[data-rv-portal-logo]'), function (img) {
+        var dark = ground(img) < 0.45, own = img.getAttribute(dark ? 'data-rv-on-dark' : 'data-rv-on-light');
+        var want = own || (img.hasAttribute('data-rv-et-logo') ? ET_LOGO_FILES[dark ? 'dark' : 'light'] : '');
+        if (want && img.getAttribute('src') !== want) img.setAttribute('src', want);
+      });
+      return new Promise(function (resolve) {
+        var done = false;
+        function go() { if (!done) { done = true; resolve(frame); } }
+        setTimeout(function () { (d.fonts && d.fonts.ready ? d.fonts.ready : Promise.resolve()).then(go, go); }, 600);
+        setTimeout(go, 5000);
+      });
+    }
     var COPY_NOTES = {
       html: function () { return common ? 'No HTML: the common part is CSS and JS only.' : 'One <section>, as visitors see it. Paste it into the section’s HTML box.'; },
       css: function () { return common ? 'The fonts, a reset that keeps the page’s own rules off the sections, the event’s colours and text, and the site’s shared rules — for every copied section.' : 'This section’s own rules. Each begins with .rv-embed, the class the section carries, so it cannot restyle the rest of the page.'; },
-      js: function () { return common ? 'Loads the event site’s scripts from EventSphere once and starts every copied section on the page.' : (exported && exported.js ? 'The section’s own script: the common script runs it.' : 'Nothing: this section has no script of its own. Leave its JS box empty.'); }
+      js: function () { return common ? 'Loads the event site’s scripts from EventSphere once and starts every copied section on the page' + (copyEdges === 'smooth' ? ', and fades each section’s colour into the next (Smooth section edges).' : '.') : (exported && exported.js ? 'The section’s own script: the common script runs it.' : 'Nothing: this section has no script of its own. Leave its JS box empty.'); }
     };
     var NOTES = {
       html: function () { return 'One root element.' + (src.records ? ' Lists of the event’s records show the one item they are drawn from; the records come back after Apply.' : ''); },
@@ -2603,7 +2672,7 @@
           doc: d, win: frame.contentWindow, section: there,
           pageUrl: window.RevampCore && RevampCore.publicUrl ? RevampCore.publicUrl(currentEvent || eventId) : '',
           sectionName: target.getAttribute('data-sec-name') || target.getAttribute('data-rv-section') || 'Section',
-          eventName: (currentEvent && currentEvent.name) || ''
+          eventName: (currentEvent && currentEvent.name) || '', edges: copyEdges
         });
       } catch (err) {
         if (window.console) console.error('[RevampTemplateUI] developer zone copy:', err);
@@ -2618,10 +2687,11 @@
         var c = RevampDevExport.buildCommon({
           doc: d, win: frame.contentWindow, sections: there,
           pageUrl: window.RevampCore && RevampCore.publicUrl ? RevampCore.publicUrl(currentEvent || eventId) : '',
-          eventName: (currentEvent && currentEvent.name) || ''
+          eventName: (currentEvent && currentEvent.name) || '', edges: copyEdges
         });
         if (c.error) return c;
-        return { isCommon: true, html: '', css: c.css, js: c.js, all: '<style>\n' + c.css.replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n<script>\n' + c.js.replace(/<\/(script)/gi, '<\\/$1') + '\n</script>', count: c.sections };
+        // the boxes already hold their <style> / <script> tags
+        return { isCommon: true, html: '', css: c.css, js: c.js, all: c.css + (c.js ? '\n' + c.js : ''), count: c.sections };
       } catch (err) {
         if (window.console) console.error('[RevampTemplateUI] developer zone common copy:', err);
         return { error: 'The common CSS & JS could not be made (' + ((err && err.message) || 'unknown error') + ').' };
@@ -2642,7 +2712,7 @@
           setVal('html', '');
           setVal('css', exported.css);
           setVal('js', exported.js);
-          box.textContent = 'Paste this CSS and JS once on the page — into the CMS’s global section, which applies to every section. Every section copied from this site uses it (' + exported.count + ' on this page). There is no HTML.';
+          box.textContent = 'Paste this CSS and JS once on the page — into the CMS’s global section, which applies to every section. Every section copied from this site uses it (' + exported.count + ' on this page). There is no HTML. After changing the Theme or the Section edges, paste it again, with every section.';
           buttons(true);
           if (tab === 'html') tab = 'css';
         } else {
@@ -2662,9 +2732,9 @@
       box.textContent = 'Making the copy from the page as visitors see it…';
       buttons(false);
       show(tab);
-      var target = sec, wanted = common;
-      stagePage().then(function (frame) {
-        if (mine !== copySeq || mode !== 'copy' || sec !== target || common !== wanted || !document.contains(scrim)) return;
+      var target = sec, wanted = common, theme = copyTheme;
+      stagePage().then(function (frame) { return themeFrame(frame, theme); }).then(function (frame) {
+        if (mine !== copySeq || mode !== 'copy' || sec !== target || common !== wanted || theme !== copyTheme || !document.contains(scrim)) return;
         exported = common ? exportCommon(frame) : exportFrom(frame, target);
         draw();
       }, function (err) {
@@ -2686,6 +2756,8 @@
       var copying = mode === 'copy';
       Object.keys(boxes).forEach(function (k) { boxes[k].readOnly = copying; if (editors[k]) editors[k].setOption('readOnly', copying); });
       $('rv-dev-copy-notes').hidden = !copying;
+      $('rv-dev-copy-opts').hidden = !copying;
+      if (copying) copyOptions();
       $('rv-dev-apply').hidden = copying;
       ['rv-dev-copy', 'rv-dev-copy-all', 'rv-dev-download'].forEach(function (b) { $(b).hidden = !copying; });
       problem.hidden = true;
@@ -2774,6 +2846,9 @@
     $('rv-dev-close').addEventListener('click', askClose);
     $('rv-dev-cancel').addEventListener('click', askClose);
     Array.prototype.forEach.call(scrim.querySelectorAll('[data-dev-mode]'), function (b) { b.addEventListener('click', function () { setMode(b.getAttribute('data-dev-mode')); }); });
+    Array.prototype.forEach.call(scrim.querySelectorAll('[data-copy-edges]'), function (b) {
+      b.addEventListener('click', function () { var v = b.getAttribute('data-copy-edges'); if (v === copyEdges) return; copyEdges = v; markOptions(); exported = null; showCopy(); });
+    });
     $('rv-dev-copy').addEventListener('click', function () {
       if (!exported || exported.error) return;
       copyText(val(tab), (common ? 'Common ' : '') + tab.toUpperCase() + ' copied');

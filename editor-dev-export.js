@@ -424,7 +424,12 @@
         else ctx.links.push(href);
         return;
       }
-      if (type === 5) { ctx.fontFaces.push({ family: String(rule.style.getPropertyValue('font-family') || '').replace(/['"]/g, '').trim().toLowerCase(), text: absoluteUrls(rule.cssText, base) }); return; }
+      if (type === 5) {
+        var fs = rule.style, fd = function (n) { return String(fs.getPropertyValue(n) || '').trim(); };
+        ctx.fontFaces.push({ family: fd('font-family').replace(/['"]/g, '').trim().toLowerCase(), weight: fd('font-weight') || '400', style: fd('font-style') || 'normal',
+          range: fd('unicode-range'), src: fd('src'), text: absoluteUrls(rule.cssText, base) });
+        return;
+      }
       if (type === 7) { ctx.keyframes.push({ name: rule.name, text: rule.cssText }); return; }
       if (typeof rule.nameList !== 'undefined' && !rule.cssRules) { out.push(rule.cssText); return; }   // @layer a, b;
       if (typeof rule.syntax === 'string' && typeof rule.inherits === 'boolean') {        // @property --name {…}
@@ -537,7 +542,7 @@
      too; they get the box properties back instead), and what the runtimes add to a section, whose rules come
      with the runtime (et-runtime.js: rv-carousel-btn, rv-menu, rv-day-tabs, rv-etnav-…; rv-popups.js:
      rv-profile-cue, rv-person-sr — functions/lib/editor-dev-export.test.js keeps this list in step). */
-  var RUNTIME_MADE = ['.rv-carousel-btn', '.rv-menu', '.rv-day-tabs', '.rv-profile-cue', '.rv-person-sr', '[class^="rv-etnav-"]', '[class*=" rv-etnav-"]'];
+  var RUNTIME_MADE = ['.rv-carousel-btn', '.rv-menu', '.rv-day-tabs', '.rv-profile-cue', '.rv-person-sr', '[class^="rv-etnav-"]', '[class*=" rv-etnav-"]', '[data-rv-edge]'];
   var REPLACED = 'img, video, audio, canvas, iframe, embed, object, input, select, textarea, table, td, th';
   function resetCss(scope) {
     var made = RUNTIME_MADE.map(function (m) { return m + ', ' + m + ' *'; }).join(', ');
@@ -721,10 +726,11 @@
   function embedLoader(CONFIG) {
     'use strict';
     var w = window, d = document;
-    if (w.RevampEmbed && w.RevampEmbed.need) { w.RevampEmbed.need(CONFIG); return; }
+    if (w.RevampEmbed && w.RevampEmbed.need) { if (CONFIG.edges) d.documentElement.setAttribute('data-rv-edges', CONFIG.edges); w.RevampEmbed.need(CONFIG); return; }
     var all = w.__rvEmbedScripts = w.__rvEmbedScripts || {};
     var queue = w.RevampEmbedQ = w.RevampEmbedQ || [];
     var owns = {}, pending = 0, waiting = [], page = CONFIG.page || '', scope = CONFIG.scope;
+    if (CONFIG.edges) d.documentElement.setAttribute('data-rv-edges', CONFIG.edges);
     function each(list, fn) { Array.prototype.forEach.call(list, fn); }
     function load(list, done) {
       var i = 0;
@@ -867,22 +873,58 @@
   }
 
   /* the common script: the loader above, with the event's page, the scripts and the sections' weight */
+  /* Section edges (the owner, 13 Nov 2026: "The section merge is not there in the code, so all the sections are coming
+     with sharp ending. A toggle should be there"): with "Smooth", the common script marks the page
+     (<html data-rv-edges="smooth">) and loads rv-blend.js, which fades one section's colour into the next as on the
+     event's site (it measures the page, so it draws on the other website's page as it is); with "Sharp", neither. */
+  function withEdges(scripts, edges, base) {
+    if (edges !== 'smooth') return scripts;
+    return scripts.concat([{ src: new URL(base).origin + '/templates/_shared/rv-blend.js', global: 'RevampBlend' }]);
+  }
   function commonJs(o) {
     var conf = { page: String(o.pageUrl || '').replace(/#.*$/, ''), scope: SCOPE, scripts: o.scripts.map(function (s) { var x = { src: s.src }; if (s.global) x.global = s.global; if (s.section) x.section = s.section; return x; }) };
-    return [
-      '/* ' + o.title + ' — the common script of the sections copied from ETB2B EventSphere.',
-      '   Put it once on the page (the CMS’s global section). It loads the event site’s scripts from EventSphere,',
-      '   starts every copied section on the page and runs their own scripts. */',
-      '(' + embedLoader.toString() + ')(' + JSON.stringify(conf).replace(/<\/(script)/gi, '<\\/$1') + ');'
-    ].join('\n');
+    if (o.edges === 'smooth') conf.edges = 'smooth';
+    return '(' + bare(embedLoader.toString()) + ')(' + JSON.stringify(conf).replace(/<\/(script)/gi, '<\\/$1') + ');';
+  }
+  /* What is pasted is only code: the comments that explain this file stay here (the owner, 13 Nov 2026: "only the code
+     which are required should be visible"). bare(): a script's comments and blank lines out, strings and regular
+     expressions kept whole; bareCss(): a stylesheet's comments out, strings kept whole. */
+  function bare(js) {
+    var out = '', i = 0, n = js.length, c, q, prev = '';
+    while (i < n) {
+      c = js.charAt(i);
+      if (c === '"' || c === "'" || c === '`') {
+        q = c; var j = i + 1;
+        while (j < n && js.charAt(j) !== q) { if (js.charAt(j) === '\\') j++; j++; }
+        out += js.slice(i, j + 1); i = j + 1; prev = q; continue;
+      }
+      if (c === '/' && js.charAt(i + 1) === '*') { var e = js.indexOf('*/', i + 2); i = e === -1 ? n : e + 2; continue; }
+      if (c === '/' && js.charAt(i + 1) === '/') { while (i < n && js.charAt(i) !== '\n') i++; continue; }
+      if (c === '/' && /[(,=:[!&|?{};+\-*%<>~^]$|^$|\breturn$|\btypeof$/.test(out.replace(/\s+$/, '').slice(-7))) {
+        // a regular expression: up to its closing slash (a class [...] may hold one)
+        var k = i + 1, inClass = false;
+        while (k < n) { var ch = js.charAt(k); if (ch === '\\') { k += 2; continue; } if (ch === '[') inClass = true; else if (ch === ']') inClass = false; else if (ch === '/' && !inClass) break; else if (ch === '\n') break; k++; }
+        out += js.slice(i, k + 1); i = k + 1; continue;
+      }
+      out += c; i++;
+    }
+    return out.split('\n').map(function (l) { return l.replace(/\s+$/, ''); }).filter(function (l) { return /\S/.test(l); }).join('\n');
+  }
+  function bareCss(css) {
+    var out = '', i = 0, n = css.length, c, q;
+    while (i < n) {
+      c = css.charAt(i);
+      if (c === '"' || c === "'") { q = c; var j = i + 1; while (j < n && css.charAt(j) !== q) { if (css.charAt(j) === '\\') j++; j++; } out += css.slice(i, j + 1); i = j + 1; continue; }
+      if (c === '/' && css.charAt(i + 1) === '*') { var e = css.indexOf('*/', i + 2); i = e === -1 ? n : e + 2; continue; }
+      out += c; i++;
+    }
+    return out.split('\n').map(function (l) { return l.replace(/\s+$/, ''); }).filter(function (l) { return /\S/.test(l); }).join('\n');
   }
   /* a section's own script (Developer zone › JS), handed to the common script: '' when it has none */
   function sectionJs(o) {
     var own = String(o.ownJs || '').trim();
     if (!own) return '';
     return [
-      '/* ' + o.title + ' — the section’s own script. The common script (Copy for another website › Common CSS & JS) runs it,',
-      '   with `section` (and this) as the section; it can come before or after this. */',
       '(window.RevampEmbedQ = window.RevampEmbedQ || []).push([' + jsString(o.id) + ', function (section) {',
       own.split('\n').map(function (l) { return '  ' + l; }).join('\n'),
       '}]);'
@@ -938,13 +980,89 @@
   function extrasFor(text, ctx, families) {
     var extra = [];
     ctx.props.forEach(function (p) { if (text.indexOf(p.name) !== -1 && extra.indexOf(p.text) === -1) extra.push(p.text); });
-    ctx.fontFaces.forEach(function (f) { if (f.family && families.indexOf(f.family) !== -1 && extra.indexOf(f.text) === -1) extra.push(f.text); });
+    fontFacesFor(ctx, families).forEach(function (t) { if (extra.indexOf(t) === -1) extra.push(t); });
     var animated = (text.match(/animation(?:-name)?\s*:[^;}]*/gi) || []).join(' ');
     ctx.keyframes.forEach(function (k) {
       if (new RegExp('(^|[\\s,:])' + String(k.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '($|[\\s,;])').test(animated) && extra.indexOf(k.text) === -1) extra.push(k.text);
     });
     return extra;
   }
+  /* ---------- fonts: only the faces the copied sections use ----------
+     The owner, 13 Nov 2026: "too many unwanted code … only the code which are required should be visible". The page's
+     font stylesheet names every weight of each family and every alphabet (latin, latin-ext, vietnamese…): more than
+     half of the common CSS. The copy keeps, for each family the sections use, the weights their text is set in (and
+     400 and 700, for what the runtimes and the pop-ups show), its styles, and only the alphabets their letters are in;
+     the faces of one variable font (one file for every weight) become one face with its weights as a range. */
+  function fontUse(win, models, ctx) {
+    var use = {}, chars = {}, i;
+    for (i = 0x20; i < 0x7f; i++) chars[i] = 1;
+    if (!win) return;
+    models.forEach(function (m) {
+      var all = [m.sec].concat(Array.prototype.slice.call(m.sec.querySelectorAll('*')));
+      all.forEach(function (el) {
+        var text = '';
+        for (var n = el.firstChild; n; n = n.nextSibling) if (n.nodeType === 3) text += n.nodeValue;
+        if (!/\S/.test(text) && !/^(INPUT|TEXTAREA|SELECT|BUTTON)$/.test(el.tagName)) return;
+        for (var k = 0; k < text.length; k++) chars[text.charCodeAt(k)] = 1;
+        var cs = win.getComputedStyle(el), fam = String(cs.fontFamily || '').split(',')[0].replace(/['"]/g, '').trim().toLowerCase();
+        if (!fam) return;
+        var u = use[fam] = use[fam] || { weights: {}, styles: {} };
+        u.weights[parseInt(cs.fontWeight, 10) || 400] = 1;
+        u.styles[/italic|oblique/.test(cs.fontStyle) ? 'italic' : 'normal'] = 1;
+      });
+    });
+    ctx.fontUse = use;
+    ctx.chars = chars;
+  }
+  function faceWeights(w) { var m = String(w || '400').match(/\d+/g) || [400]; return [+m[0], +(m[1] || m[0])]; }
+  function rangeHits(range, chars) {
+    if (!range) return true;
+    return range.split(',').some(function (part) {
+      var m = /U\+([0-9a-f?]+)(?:-([0-9a-f]+))?/i.exec(part);
+      if (!m) return true;
+      var a = parseInt(m[1].replace(/\?/g, '0'), 16), b = m[2] ? parseInt(m[2], 16) : (m[1].indexOf('?') !== -1 ? parseInt(m[1].replace(/\?/g, 'f'), 16) : a);
+      for (var c in chars) if (+c >= a && +c <= b) return true;
+      return false;
+    });
+  }
+  function fontFacesFor(ctx, families) {
+    var faces = ctx.fontFaces.filter(function (f) { return f.family && families.indexOf(f.family) !== -1; });
+    if (!ctx.fontUse) return faces.map(function (f) { return f.text; });
+    var keep = [];
+    var byFam = {};
+    faces.forEach(function (f) { (byFam[f.family] = byFam[f.family] || []).push(f); });
+    Object.keys(byFam).forEach(function (fam) {
+      var u = ctx.fontUse[fam] || { weights: {}, styles: { normal: 1 } };
+      var want = Object.keys(u.weights).map(Number).concat([400, 700]);
+      var styles = Object.keys(u.styles).concat(['normal']);
+      var list = byFam[fam].filter(function (f) { return styles.indexOf(/italic|oblique/.test(f.style) ? 'italic' : 'normal') !== -1 && rangeHits(f.range, ctx.chars); });
+      want.forEach(function (w) {
+        var exact = list.filter(function (f) { var r = faceWeights(f.weight); return w >= r[0] && w <= r[1]; });
+        if (!exact.length) {
+          var best = null, d = Infinity;
+          list.forEach(function (f) { var r = faceWeights(f.weight), x = Math.min(Math.abs(r[0] - w), Math.abs(r[1] - w)); if (x < d) { d = x; best = r[0]; } });
+          exact = list.filter(function (f) { return faceWeights(f.weight)[0] === best; });
+        }
+        exact.forEach(function (f) { if (keep.indexOf(f) === -1) keep.push(f); });
+      });
+    });
+    // one variable font: the same file for each weight -> one face, its weights as a range
+    var groups = [], seen = {};
+    faces.forEach(function (f) {
+      if (keep.indexOf(f) === -1) return;
+      var key = f.family + '|' + f.style + '|' + f.src + '|' + f.range;
+      if (seen[key]) { seen[key].push(f); return; }
+      seen[key] = [f];
+      groups.push(seen[key]);
+    });
+    return groups.map(function (g) {
+      if (g.length === 1 || !g[0].src) return g[0].text;
+      var lo = Infinity, hi = -Infinity;
+      g.forEach(function (f) { var r = faceWeights(f.weight); lo = Math.min(lo, r[0]); hi = Math.max(hi, r[1]); });
+      return g[0].text.replace(/font-weight:\s*[^;}]+/, 'font-weight: ' + (lo === hi ? lo : lo + ' ' + hi));
+    });
+  }
+
   /* the Google Fonts (and any other site's stylesheets) the page loads for the families in use */
   function fontLinks(doc, base, ctx, families) {
     var links = [];
@@ -968,6 +1086,7 @@
     var id = sec.getAttribute('data-rv-section') || sec.id || 'section';
     var copy = sec.cloneNode(true);
     sizePictures(sec, copy);
+    oneLogo(sec, copy);
     var info = finishHtml(copy, { pageUrl: o.pageUrl, base: base, remPx: remPx, awards: !!(doc.body && doc.body.hasAttribute('data-rv-awards')) });
     rootAttrs(doc, copy, id);
     return { id: id, sec: sec, copy: copy, info: info, page: pageModel(doc, sec, copy), embed: embedModel(doc, copy) };
@@ -977,8 +1096,12 @@
     var classes = {};
     function note(n) { Array.prototype.forEach.call(n.classList, function (c) { classes[c] = 1; }); }
     Array.prototype.forEach.call(doc.querySelectorAll('[class]'), note);
-    models.forEach(function (m) { Array.prototype.forEach.call(m.copy.querySelectorAll('[class]'), note); });
-    return { scope: SCOPE, models: models, win: doc.defaultView, knownClass: function (c) { return !!classes[c]; }, links: [], fontFaces: [], keyframes: [], props: [] };
+    // the copy's own root too (rv-embed, rv-embed-<id>): a rule's form for a section inside a wrapper then reaches
+    // nothing and is left out — the copy is one <section>, so each rule is written once
+    models.forEach(function (m) { note(m.copy); Array.prototype.forEach.call(m.copy.querySelectorAll('[class]'), note); });
+    var ctx = { scope: SCOPE, models: models, win: doc.defaultView, knownClass: function (c) { return !!classes[c]; }, links: [], fontFaces: [], keyframes: [], props: [] };
+    fontUse(doc.defaultView, models, ctx);
+    return ctx;
   }
   /* The CSS every copied section needs, for the sections given: the fonts, the reset, the page's look on the
      sections (the theme's variables and the inherited text, on .rv-embed — a section's own rules outweigh it) and
@@ -1022,6 +1145,22 @@
       img.setAttribute('height', String(l.naturalHeight));
     });
   }
+  /* One logo (the owner, 13 Nov 2026: "two version of logo is being rendered in the hero section. ideally it should be
+     one, because the theme switch dosen't work there"): a light hero carries its logo for a dark ground beside its own
+     (.rv-lu-dark), shown only in a dark theme. The copy is made for one theme (the copy view's Theme), so the logo
+     unit keeps only the picture that theme shows; the other one is left out (with its rules, which then reach nothing). */
+  function oneLogo(sec, copy) {
+    var win = sec.ownerDocument.defaultView;
+    var live = sec.querySelectorAll('.rv-lu img'), mine = copy.querySelectorAll('.rv-lu img');
+    if (!win || live.length !== mine.length) return;
+    Array.prototype.forEach.call(live, function (img, i) {
+      if (win.getComputedStyle(img).display !== 'none') return;
+      img.__rvLeftOut = true;
+      mine[i].parentNode.removeChild(mine[i]);
+    });
+  }
+  /* the section's pictures that are in the copy (oneLogo leaves some out): the same order as the copy's */
+  function livePictures(sec) { return Array.prototype.filter.call(sec.querySelectorAll('img'), function (el) { return !el.__rvLeftOut; }); }
   function urlsIn(text) {
     var out = [], re = /url\(\s*(['"]?)([^'")]+)\1\s*\)/g, m;
     while ((m = re.exec(String(text || '')))) out.push(m[2]);
@@ -1044,7 +1183,7 @@
       if (bg && bg.indexOf('url(') !== -1 && a > area) { best = el; area = a; }
     });
     var bigImg = null, imgArea = 0;
-    Array.prototype.forEach.call(sec.querySelectorAll('img'), function (el, i) {
+    livePictures(sec).forEach(function (el, i) {
       var r = el.getBoundingClientRect(), a = r.width * r.height;
       if (a > imgArea && !el.classList.contains('rv-lu-dark')) { bigImg = imgs[i]; imgArea = a; }
     });
@@ -1135,7 +1274,7 @@
   }
 
   /* each box as ETB2B's CMS takes it — its code as it is put on the page, with its own tags ('' stays '') */
-  function styleBox(css) { return css ? '<style>\n' + String(css).replace(/<\/(style)/gi, '<\\/$1') + '\n</style>' : ''; }
+  function styleBox(css) { css = bareCss(String(css || '')); return css ? '<style>\n' + css.replace(/<\/(style)/gi, '<\\/$1') + '\n</style>' : ''; }
   function scriptBox(js) { return js ? '<script>\n' + String(js).replace(/<\/(script)/gi, '<\\/$1') + '\n</script>' : ''; }
 
   /* One section: its HTML (one <section>), its own CSS and JS, and — for a website that takes one HTML field, and
@@ -1158,10 +1297,10 @@
     bannerMark(sec, copy, id, css);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
-    var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, [m], base) });
+    var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: withEdges(scriptsFor(doc, [m], base), o.edges, base), edges: o.edges });
     var allJs = jsCommon + (js ? '\n' + js : '');
     // one block: the styles first (no unstyled moment), the section, then the script
-    var all = '<!-- ' + title.replace(/--/g, '–') + ' — from ETB2B EventSphere -->\n<style>\n' + (common + '\n' + css).replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n' +
+    var all = '<style>\n' + bareCss(common + '\n' + css).replace(/<\/(style)/gi, '<\\/$1') + '\n</style>\n' +
       html + '\n<script>\n' + allJs.replace(/<\/(script)/gi, '<\\/$1') + '\n</script>';
     var page = '<!DOCTYPE html>\n<html lang="' + (doc.documentElement.getAttribute('lang') || 'en') + '">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n<title>' +
       title.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</title>\n</head>\n<body style="margin:0">\n' + all + '\n</body>\n</html>\n';
@@ -1190,7 +1329,7 @@
     });
     var css = commonCss(doc, win, models, base, remPx, ctx, ownText);
     var title = o.eventName || 'This event';
-    return { css: styleBox(css), js: scriptBox(commonJs({ title: title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, models, base) })), sections: models.length };
+    return { css: styleBox(css), js: scriptBox(commonJs({ title: title, pageUrl: o.pageUrl, scripts: withEdges(scriptsFor(doc, models, base), o.edges, base), edges: o.edges })), sections: models.length };
   }
 
   /* the page at url, out of sight, its scripts off (sandbox without allow-scripts), once its fonts are in */
@@ -1227,6 +1366,6 @@
     loadPage: loadPage,
     _test: { splitTop: splitTop, compoundsOf: compoundsOf, joinCompounds: joinCompounds, simplesOf: simplesOf, testable: testable,
       absolute: absolute, absoluteUrls: absoluteUrls, remToPx: remToPx, varsUsed: varsUsed, familiesUsed: familiesUsed,
-      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, singleQuoted: singleQuoted, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE }
+      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, singleQuoted: singleQuoted, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE, bare: bare, bareCss: bareCss, fontFacesFor: fontFacesFor, rangeHits: rangeHits, withEdges: withEdges }
   };
 })(typeof window !== 'undefined' ? window : this);

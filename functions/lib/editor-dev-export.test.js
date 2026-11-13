@@ -203,7 +203,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   var own = T.sectionJs({ id: 'speakers', title: 'Speakers — QA Summit', ownJs: "section.setAttribute('data-own', String((+section.getAttribute('data-own') || 0) + 1));\nif (this !== section) throw new Error('this');" });
   function parses(js) { try { new Function(js); return true; } catch (e) { return e.message; } }
   check('4.1 the common script and a section\'s script parse', parses(common) === true && parses(own) === true, [parses(common), parses(own)]);
-  check('4.2 the common script says what it is and where it goes', /^\/\* QA Summit — the common script of the sections copied from ETB2B EventSphere\.\n   Put it once on the page \(the CMS’s global section\)\./.test(common), common.slice(0, 200));
+  check('4.2 the common script is only code: no comments, no blank lines (the owner: "only the code which are required")', /^\(function embedLoader\(CONFIG\) \{/.test(common) && !/\/\*|^\s*\/\//m.test(common) && !/\n\s*\n/.test(common), common.slice(0, 200));
   check('4.3 a section with no script of its own has nothing in its JS box', T.sectionJs({ id: 'a', title: 't', ownJs: '  ' }) === '');
   check('4.4 a section\'s script hands its code to the common script, by the section\'s id', /\(window\.RevampEmbedQ = window\.RevampEmbedQ \|\| \[\]\)\.push\(\["speakers", function \(section\) \{/.test(own) && /var ID|RevampSections/.test(own) === false);
   check('4.5 jsString keeps </script> and line separators from ending the script', T.jsString('</script>\u2028') === '"<\\/script>\\u2028"', T.jsString('</script>\u2028'));
@@ -283,6 +283,55 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('4b.3 no ETB2B header: nothing set', !('--rv-etb2b-head' in none.props), none.props);
   other.setHead(100); other.events.load();
   check('4b.4 measured again once the page has loaded (and on resize): back to the usual height, the value goes', !('--rv-etb2b-head' in other.props) && typeof other.events.resize === 'function', other.props);
+})();
+
+/* ======================= 4c what is pasted is only code; fonts; edges; one logo ======================= */
+(function () {
+  var js = 'function f(a) {\n  /* a note */\n  var u = "http://x.y/*z*/"; // trailing note\n\n  // a line note\n  var r = /\\/\\*not a comment/g, q = a.replace(/["\']/g, \'\'), k = 4 / 2;\n  return u + r.source + q + k;\n}';
+  var b = T.bare(js);
+  var f1 = vm.runInNewContext('(' + js + ')("a\'b")'), f2 = vm.runInNewContext('(' + b + ')("a\'b")');
+  check('4c.1 a script\'s comments and blank lines out; strings, regular expressions and division kept whole', f1 === f2 && !/note/.test(b) && /http:\/\/x\.y\/\*z\*\//.test(b) && !/\n\s*\n/.test(b), b);
+  var css = T.bareCss('/* the ground */\n.a { content: "/* kept */"; color: red; }\n\n/* x */ .b { margin: 0 }');
+  check('4c.2 a stylesheet\'s comments out, strings kept', css === '.a { content: "/* kept */"; color: red; }\n .b { margin: 0 }', css);
+  check('4c.3 the boxes as pasted carry no comments', !/\/\*/.test(T.styleBox('/* c */ .a { color: red !important; }')) && /\.a \{ color: red !important; \}/.test(T.styleBox('/* c */ .a { color: red !important; }')));
+  // fonts: a variable font named once per weight and per alphabet
+  var faces = [];
+  [300, 400, 500, 600, 700, 800].forEach(function (w) {
+    [['latin', 'U+0-FF, U+131, U+20AC'], ['latin-ext', 'U+100-2BA, U+20A0-20AB, U+20AD-20C0'], ['vietnamese', 'U+102-103, U+1EA0-1EF9']].forEach(function (a) {
+      faces.push({ family: 'fraunces', weight: String(w), style: 'normal', range: a[1], src: 'url("https://f/' + a[0] + '.woff2")', text: '@font-face { font-family: Fraunces; font-style: normal; font-weight: ' + w + '; src: url("https://f/' + a[0] + '.woff2"); unicode-range: ' + a[1] + '; }' });
+    });
+  });
+  faces.push({ family: 'fraunces', weight: '400', style: 'italic', range: 'U+0-FF', src: 'url("https://f/i.woff2")', text: '@font-face { font-family: Fraunces; font-style: italic; font-weight: 400; src: url("https://f/i.woff2"); unicode-range: U+0-FF; }' });
+  faces.push({ family: 'other', weight: '400', style: 'normal', range: '', src: 'url("https://f/o.woff2")', text: '@font-face { font-family: Other; }' });
+  var chars = {}; for (var c = 0x20; c < 0x7f; c++) chars[c] = 1;
+  var kept = T.fontFacesFor({ fontFaces: faces, fontUse: { fraunces: { weights: { 600: 1 }, styles: { normal: 1 } } }, chars: chars }, ['fraunces']);
+  check('4c.4 fonts: only the family\'s weights in use (and 400, 700), its styles in use, the alphabets its letters are in — one face for a variable font\'s weights', kept.length === 1 && /font-weight: 400 700;/.test(kept[0]) && /latin\.woff2/.test(kept[0]), kept);
+  chars[0x20B9] = 1;   // ₹
+  var withRupee = T.fontFacesFor({ fontFaces: faces, fontUse: { fraunces: { weights: { 600: 1 }, styles: { normal: 1 } } }, chars: chars }, ['fraunces']);
+  check('4c.5 …a letter of another alphabet (₹, latin-ext) brings that one too; never vietnamese, italic or a family not used', withRupee.length === 2 && withRupee.some(function (t) { return /latin-ext/.test(t); }) && !withRupee.some(function (t) { return /vietnamese|italic|Other/.test(t); }), withRupee);
+  var none = T.fontFacesFor({ fontFaces: faces, fontUse: { fraunces: { weights: { 900: 1 }, styles: { normal: 1 } } }, chars: { 65: 1 } }, ['fraunces']);
+  check('4c.6 …a weight the family does not have takes its nearest', none.length === 1 && /font-weight: 400 800;/.test(none[0]), none);
+  check('4c.7 font faces read with their weight, style, alphabets and file', /weight: fd\('font-weight'\) \|\| '400', style: fd\('font-style'\) \|\| 'normal',/.test(SRC) && /fontFacesFor\(ctx, families\)\.forEach/.test(SRC) && /fontUse\(doc\.defaultView, models, ctx\);/.test(SRC));
+  // each rule once: the copy is one <section>
+  check('4c.8 a section\'s rules are written once (the copy\'s root classes are known, so the form for a section in a wrapper reaches nothing)', /models\.forEach\(function \(m\) \{ note\(m\.copy\); /.test(SRC));
+  // edges
+  var sm = T.withEdges([{ src: 'https://h.example/templates/_shared/et-runtime.js', global: 'RevampSections' }], 'smooth', 'https://h.example/preview/x');
+  check('4c.9 Smooth section edges: the common script loads rv-blend.js; Sharp: nothing more', sm.length === 2 && sm[1].src === 'https://h.example/templates/_shared/rv-blend.js' && sm[1].global === 'RevampBlend' && T.withEdges([1], 'sharp', 'https://h.example/').length === 1, sm);
+  var cs = T.commonJs({ title: 'QA', pageUrl: '', scripts: sm, edges: 'smooth' }), sharp = T.commonJs({ title: 'QA', pageUrl: '', scripts: [], edges: 'sharp' });
+  var attrs = {}, sb = { console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, addEventListener: function () {} };
+  var rootEl = { style: { getPropertyValue: function () { return ''; }, setProperty: function () {}, removeProperty: function () {} }, setAttribute: function (k, v) { attrs[k] = v; }, firstChild: null, insertBefore: function () {}, appendChild: function () {} };
+  sb.document = { readyState: 'complete', head: rootEl, documentElement: rootEl, createElement: function () { return { setAttribute: function () {} }; }, addEventListener: function () {}, getElementById: function () { return null; }, querySelector: function () { return null; }, querySelectorAll: function () { return []; } };
+  sb.window = sb;
+  vm.runInContext(cs, vm.createContext(sb));
+  check('4c.10 …and marks the page <html data-rv-edges="smooth">, which rv-blend.js reads; Sharp says nothing of edges', attrs['data-rv-edges'] === 'smooth' && /"edges":"smooth"/.test(cs) && !/edges"/.test(sharp), attrs);
+  check('4c.11 the fades rv-blend.js puts in a section are left out of the reset', T.RUNTIME_MADE.indexOf('[data-rv-edge]') !== -1 && /\[data-rv-edge\]/.test(T.resetCss('.x')));
+  // one logo
+  check('4c.12 one logo: the logo unit keeps only the picture the chosen theme shows (the other left out before anything is read)', /var copy = sec\.cloneNode\(true\);\n\s*sizePictures\(sec, copy\);\n\s*oneLogo\(sec, copy\);/.test(SRC) && /if \(win\.getComputedStyle\(img\)\.display !== 'none'\) return;/.test(SRC) && /livePictures\(sec\)\.forEach\(function \(el, i\)/.test(SRC));
+  // the copy view
+  check('4c.13 the copy view: Theme (the site\'s themes, starting at the one in use) and Section edges (Smooth | Sharp, as the site has them)', /id="rv-dev-theme"/.test(UI) && /data-copy-edges="smooth"/.test(UI) && /copyTheme = ti \? ti\.current : null;/.test(UI) && /copyEdges = ei \? savedSectionEdges\(\) : 'sharp';/.test(UI));
+  check('4c.14 …the staged page takes the chosen theme as the editor applies one, before the copy is made; the edges go into the copy', /window\.RevampTheme\.apply\(d, t\);/.test(UI) && /stagePage\(\)\.then\(function \(frame\) \{ return themeFrame\(frame, theme\); \}\)/.test(UI) && (UI.match(/edges: copyEdges/g) || []).length === 2);
+  check('4c.15 the common part copied as one block holds its boxes once (no <style> inside <style>)', /all: c\.css \+ \(c\.js \? '\\n' \+ c\.js : ''\)/.test(UI));
+  check('4c.16 the options have their look', /\.dev-copy-opts\{/.test(PAGE) && /\.dev-opt-label\{/.test(PAGE));
 })();
 
 /* ======================= 5 the site editor ======================= */
