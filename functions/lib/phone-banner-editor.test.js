@@ -171,7 +171,11 @@ check('E.5 "Phone banner" sits beside "Background picture" on the banner\'s tool
   /function phoneBannerFor\(sec\) \{[\s\S]{0,200}eventId && sec && PB\.isBanner\(sec\) && PB\.hostFor\(sec, canvas\)/.test(UI));
 check('E.5 its button opens the dialog with the editor\'s own undo steps, upload, sign-in and the banner video', /action === 'phone-banner'\) \{\s*if \(phoneBannerFor\(sec\)\) openPhoneBanner\(sec\);/.test(UI) &&
   /before: flush, commit: commitNow,/.test(UI) && /uploadImage: window\.RevampCore && RevampCore\.uploadImage, authedFetch: window\.RevampAuth && RevampAuth\.authedFetch,/.test(UI) && /videoOn: heroVideoOn\(\)/.test(UI));
-check('E.5 a new banner picture says the phone banner went with the old one', /hadPhone \? 'Picture updated\. The phone banner was made for the old picture, so phones now show this one: make a new one in Phone banner\.'/.test(UI));
+check('E.5 a new banner picture says the phone banner went with the old one', /hadPhone \? 'Picture updated\. The phone banner was made for the old picture, so it was removed: make one for this picture\.'/.test(UI));
+check('E.5a a different banner picture opens Phone banner by itself, Generate and Upload ready (the owner: "it should automatically show the option to upload/generate phone banner") — not for the same picture, nor while ETB2B AI works',
+  /canvas\.setBackgroundPicture\(bgEl, url\); commitNow\(\);\n\s*offerPhone\(url\);/.test(UI) && /if \(!url \|\| url === wasUrl \|\| !PB\) return;/.test(UI) &&
+  /if \(isLive\(sec\) && phoneBannerFor\(sec\) && !aiWorking\) openPhoneBanner\(sec, \{ fresh: true \}\);/.test(UI) && /fresh: !!\(more && more\.fresh\),/.test(UI) &&
+  /if \(o\.fresh\) own\.checked = true;\n\s*draw\(\);/.test(SRC) && /Your new banner is in\. Make its phone version: generate it from this banner, or upload one\./.test(SRC));
 check('E.5 the canvas: a new background picture drops the phone banner first (before it reads the picture a phone-width canvas shows)',
   /function setBackgroundPicture\(el, url\) \{[\s\S]{0,400}window\.RevampPhoneBanner : null;\s*if \(phone\) phone\.drop\(el\);\s*var now = win\.getComputedStyle\(el\)/.test(CANVAS));
 check('E.5 the copy: the phone banner\'s part after the banner\'s preload, and its rule not copied twice',

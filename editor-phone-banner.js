@@ -311,6 +311,7 @@
       if (up) up.disabled = making || uploading;
       var lines = [];
       if (making) lines.push('ETB2B AI is laying the banner out for phones. It takes about half a minute; you can close this and go on editing — it goes in when it is ready.');
+      else if (!now && o.fresh) lines.push('Your new banner is in. Make its phone version: generate it from this banner, or upload one. Close to let phones show the middle of the banner.');
       else if (!now && own.checked) lines.push('Until you add one, phones show the middle of the banner above.');
       if (!desk) lines.push('The banner has no picture of its own yet: set one in Background picture first.');
       if (o.videoOn) lines.push('Your banner plays a video, so phones show the video’s still picture rather than a phone banner while it is on.');
@@ -403,6 +404,8 @@
         });
       });
     });
+    // opened for a new banner: the switch on, Generate and Upload in view
+    if (o.fresh) own.checked = true;
     draw();
   }
 

@@ -2996,9 +2996,10 @@
     var PB = window.RevampPhoneBanner;
     return !!(PB && eventId && sec && PB.isBanner(sec) && PB.hostFor(sec, canvas));
   }
-  function openPhoneBanner(sec) {
+  function openPhoneBanner(sec, more) {
     if (!isLive(sec)) return;
     window.RevampPhoneBanner.open({
+      fresh: !!(more && more.fresh),
       sec: sec, canvas: canvas, eventId: eventId, openDialog: host.openDialog, showToast: showToast, offerUndo: offerUndo,
       before: flush, commit: commitNow,
       busy: function () { return aiWorking; }, busyLine: workSafety.busyLine('working').replace(/ — one moment$/, ''),
@@ -3665,10 +3666,19 @@
     } else if (action === 'section-background') {
       var bgEl = canvas.backgroundHost(sec);
       var PB = window.RevampPhoneBanner, hadPhone = !!(PB && PB.read(sec));
-      if (bgEl) openPictureDialog('Background picture', PB ? PB.desktopUrl(bgEl, canvas.win) || canvas.backgroundOf(bgEl) : canvas.backgroundOf(bgEl), function (url) {
+      var wasUrl = bgEl ? (PB ? PB.desktopUrl(bgEl, canvas.win) || canvas.backgroundOf(bgEl) : canvas.backgroundOf(bgEl)) : '';
+      /* a new banner picture: its phone version is offered straight away — Phone banner opens with Generate and
+         Upload ready (the owner, 13 Nov 2026: "if a different banner is uploaded, it should automatically show the
+         option to upload/generate phone banner") */
+      var offerPhone = function (url) {
+        if (!url || url === wasUrl || !PB) return;
+        setTimeout(function () { if (isLive(sec) && phoneBannerFor(sec) && !aiWorking) openPhoneBanner(sec, { fresh: true }); }, 350);
+      };
+      if (bgEl) openPictureDialog('Background picture', wasUrl, function (url) {
         if (!bgEl.isConnected) return;
         canvas.setBackgroundPicture(bgEl, url); commitNow();
-      }, hadPhone ? 'Picture updated. The phone banner was made for the old picture, so phones now show this one: make a new one in Phone banner.' : undefined);
+        offerPhone(url);
+      }, hadPhone ? 'Picture updated. The phone banner was made for the old picture, so it was removed: make one for this picture.' : undefined);
     } else if (action === 'phone-banner') {
       if (phoneBannerFor(sec)) openPhoneBanner(sec);
     } else if (action === 'move-up' || action === 'move-down') {
