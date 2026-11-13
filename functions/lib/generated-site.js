@@ -9,6 +9,18 @@
                                                doneAt } — the plan (plan-structure), kept apart from the event
      events/<id>/generations/<runId>/sections/<sectionId>
                                              { id, kind, page?, html, css, order } — the site it wrote (generate-content)
+     events/<id>/generations/<runId>/written/<sectionId>
+                                             { id, html, css, planKey, at } — BE-030: the model's own answer for one
+                                             section, kept as soon as the call that wrote it came back, so that a step
+                                             that failed, or whose caller left (a reload), is taken up again by asking
+                                             only for the sections not kept yet. Only answers to the run's present plan
+                                             (planKey) count. Let go once the run's site is on the event.
+     events/<id>/generations/<runId>.writing { planKey, state: 'writing' | 'left' | 'failed', startedAt, at, planned,
+                                               checked?, overviewDone?, overviewPlan? } — BE-033: where its writing
+                                             step is, for GET /api/generate/status (at: the last sign of life);
+                                             checked / overviewDone: the second look at its sections, and the overview's
+                                             picture, were done (not done again on a later try)
+     events/<id>/generations/<runId>.planningAt  when its plan step started (cleared when the plan is kept)
    Only when the whole site is written does the event switch to it, in one write of the event document:
      events/<id>.generatedSite               { runId, at, sections: [{ id, kind, page? }] } — which sections the site
                                              has, top to bottom, without their markup
@@ -40,11 +52,20 @@
      writeSections(fb, eventId, runId, sections, extra) -> Promise: the run's sections (and its record)
      pointer(runId, sections, at)          -> the value of events/<id>.generatedSite
      retire(fb, eventId, runId, opts)      -> Promise<{ runs, briefs, sources }>: what earlier runs left, let go;
-                                              opts.inputs: also their briefs and pages read. Never rejects. */
+                                              opts.inputs: also their briefs and pages read. Never rejects.
+     planKey(designPlan)                   -> the name of a plan: answers kept for another plan are not used
+     readWritten(fb, eventId, runId, key)  -> Promise<{ sections: [{ id, html, css }], checked, overviewDone, overviewPlan }>:
+                                              what the run has kept for that plan
+     keepWritten(within, fb, eventId, runId, key, sections, writing, opts) -> Promise<'kept' | 'busy' | 'stopped' | 'done' |
+                                              'gone' | 'failed'>: keeps answers (and/or the writing record) in a
+                                              transaction run by within(fn) (api.js watchEvent: only while the event is
+                                              there), never for a run that was stopped or is done; opts { tryId, claim }:
+                                              one try of a run writes at a time ('busy'). Never rejects.
+     dropWritten(fb, eventId, runId)       -> Promise: the run's kept answers, let go. Never rejects. */
 'use strict';
 var crypto = require('crypto');
 
-var RUNS = 'generations', SECTIONS = 'sections';
+var RUNS = 'generations', SECTIONS = 'sections', WRITTEN = 'written';
 var RUN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 var BATCH = 400;                                   // Firestore takes 500 writes in a batch
 
@@ -204,7 +225,8 @@ function retire(fb, eventId, runId, opts) {
     var gone = snap.docs.filter(function (d) { return earlier(d.id, runId); });
     out.runs = gone.length;
     return Promise.all(gone.map(function (d) {
-      return d.ref.collection(SECTIONS).get().then(function (s) { return deleteDocs(fb, s.docs); }).then(function () { return d.ref.delete(); });
+      return Promise.all([SECTIONS, WRITTEN].map(function (c) { return d.ref.collection(c).get().then(function (s) { return deleteDocs(fb, s.docs); }); }))
+        .then(function () { return d.ref.delete(); });
     }));
   });
   var briefs = !(opts && opts.inputs) ? null : ref.collection('briefs').get().then(function (snap) {
@@ -227,9 +249,81 @@ function retire(fb, eventId, runId, opts) {
   });
 }
 
+/* ---------- what a run's writing step has kept so far (BE-030, BE-033) ---------- */
+function writtenCol(fb, eventId, runId) { return runRef(fb, eventId, runId).collection(WRITTEN); }
+/* a plan's name: the same plan always has it — whatever order the store gives its fields in — and a plan made again in
+   the same run has another */
+function canonical(v) {
+  if (Array.isArray(v)) return '[' + v.map(canonical).join(',') + ']';
+  if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map(function (k) { return JSON.stringify(k) + ':' + canonical(v[k]); }).join(',') + '}';
+  return JSON.stringify(v === undefined ? null : v);
+}
+function planKey(designPlan) {
+  var p = designPlan || {};
+  return crypto.createHash('sha1').update(canonical([p.sections || [], p.design || {}, p.siteMode || ''])).digest('hex').slice(0, 16);
+}
+function readWritten(fb, eventId, runId, key) {
+  var none = { sections: [], checked: false, overviewPlan: null, overviewDone: false };
+  if (!isRunId(runId) || !key) return Promise.resolve(none);
+  return Promise.all([runRef(fb, eventId, runId).get(), writtenCol(fb, eventId, runId).get()]).then(function (r) {
+    var run = r[0].exists ? r[0].data() || {} : {}, w = run.writing && run.writing.planKey === key ? run.writing : {};
+    var sections = r[1].docs.map(function (d) { return d.data() || {}; }).filter(function (s) {
+      return named(s) && s.planKey === key && /<[a-z]/i.test(String(s.html || ''));
+    }).map(function (s) { return { id: s.id, html: String(s.html || ''), css: String(s.css || '') }; });
+    return { sections: sections, checked: w.checked === true, overviewDone: w.overviewDone === true,
+      overviewPlan: w.overviewPlan && typeof w.overviewPlan === 'object' ? w.overviewPlan : null };
+  });
+}
+/* How long a writing step is taken to be under way after its last sign of life: each model call is at most 100 s, and a
+   picture and a call follow one another at most. A step not heard from for longer has ended without saying so (its
+   server instance went away). */
+var WRITING_FRESH_MS = 5 * 60 * 1000;
+/* opts.tryId: the request (try) doing the writing; only the try that holds the run's record changes it.
+   opts.claim: this try starts writing: refused ('busy') while another try of the same run is under way, so that two
+   requests for one run (a page reloaded a moment ago, a second tab) never write it side by side. */
+function keepWritten(within, fb, eventId, runId, key, sections, writing, opts) {
+  if (!isRunId(runId)) return Promise.resolve('failed');
+  opts = opts || {};
+  var list = (sections || []).filter(named);
+  var at = new Date().toISOString();
+  return within(function (tx) {
+    var ref = runRef(fb, eventId, runId);
+    return tx.get(ref).then(function (snap) {
+      var run = snap.exists ? snap.data() || {} : {};
+      /* a run the person stopped, or whose site another request has already put on the event, keeps nothing more */
+      if (run.status === 'stopped' || run.status === 'done') return run.status;
+      /* the record is of this plan: what it said of another plan (checked, the overview) does not carry over */
+      var was = run.writing && typeof run.writing === 'object' && run.writing.planKey === key ? run.writing : {};
+      var other = !!(was.tryId && opts.tryId && was.tryId !== opts.tryId);
+      var underWay = was.state === 'writing' && Date.now() - (Date.parse(was.at || '') || 0) < WRITING_FRESH_MS;
+      if (opts.claim && other && underWay) return 'busy';
+      list.forEach(function (s) {
+        tx.set(writtenCol(fb, eventId, runId).doc(docIdOf(s.id)), { id: s.id, html: String(s.html || ''), css: String(s.css || ''), planKey: key, at: at });
+      });
+      /* another try holds the record (it took the run over once this one fell silent): its answers count, its state does not */
+      if (other && !opts.claim) return 'kept';
+      var next = Object.assign({}, was, writing || {}, { planKey: key, at: at }, opts.tryId ? { tryId: opts.tryId } : {});
+      if (snap.exists) tx.update(ref, { writing: next });
+      else tx.set(ref, { runId: runId, writing: next });
+      return 'kept';
+    });
+  }).then(null, function (err) {
+    if (err && err.body && err.body.code === 'event-gone') return 'gone';
+    console.error('generated-site: what run ' + runId + ' of ' + eventId + ' wrote was not kept — ' + (err && err.message));
+    return 'failed';
+  });
+}
+function dropWritten(fb, eventId, runId) {
+  if (!isRunId(runId)) return Promise.resolve();
+  return writtenCol(fb, eventId, runId).get().then(function (s) { return deleteDocs(fb, s.docs); }).then(null, function (err) {
+    console.error('generated-site: the answers run ' + runId + ' of ' + eventId + ' kept were not let go — ' + (err && err.message));
+  });
+}
+
 module.exports = {
   isRunId: isRunId, newRunId: newRunId, runStart: runStart, docIdOf: docIdOf,
   where: where, index: index, has: has, readAll: readAll, readOne: readOne, sectionRef: sectionRef,
   inputs: inputs, readRun: readRun, runRef: runRef, writeSections: writeSections, pointer: pointer, retire: retire,
-  RUNS: RUNS, SECTIONS: SECTIONS
+  planKey: planKey, readWritten: readWritten, keepWritten: keepWritten, dropWritten: dropWritten, writtenCol: writtenCol, WRITING_FRESH_MS: WRITING_FRESH_MS,
+  RUNS: RUNS, SECTIONS: SECTIONS, WRITTEN: WRITTEN
 };

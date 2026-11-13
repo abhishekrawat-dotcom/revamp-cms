@@ -2966,6 +2966,7 @@
     syncedAt: null,             // the savedAt of the copy the account last confirmed: the draft is in the account when it equals savedAt
     files: {},                  // { <account slot ('logo', 'banner', 'banner-text', 'img-<n>')>: { name, savedAt } } the pictures the account holds (sendDraftFile)
     aiHero: null,             // ETB2B AI's hero picture for an event it started: { subject ('' = the event's field, from its portal, and its place: portal-fields.js), removed, made: {url, subject} | null, note, turnId, at } — made only once the event is created (makeAiHero), never before
+    genRun: null,               // the "Generate my site" run under way: { runId, eventId, startedAt, replace, createdEvent, at, steps: { <row>: status }, took, causes } — picked up again after a reload (resumeGeneration, BE-033)
     assembled: false            // the draft was handed to the site editor; a draft found in this state is finished and is never resumed (see restore())
   };
   function draftId(){
@@ -6682,41 +6683,74 @@
      There is exactly one run at a time: it holds the 'brief' busy state (beginBusy), and every
      continuation returns without doing anything once that run has been cancelled, so no paid call and no
      navigation can follow a Cancel.
-     replace: the owner has confirmed that this run replaces a site generated earlier for the same event. */
-  function startGenerateFromBrief(replace){
-    if (detailsIssues().length){ renderFoot(); return; }
+     replace: the owner has confirmed that this run replaces a site generated earlier for the same event.
+     resume: S.genRun, a run that was under way when this page was reloaded or closed (BE-033, resumeGeneration): it
+     goes on under its own name, its finished rows stay finished, and a row that was running asks the server where that
+     step is before anything is sent again (GET /api/generate/status) — the pages of a run are asked for only once. */
+  function startGenerateFromBrief(replace, resume){
+    if (!resume && detailsIssues().length){ renderFoot(); return; }
     var run = beginBusy('brief');
     if (!run) return;
     run.note = 'Generating your site — keep this tab open.';
 
     // the real event id this draft (and the eventual editor session) is keyed by: the event an earlier,
     // abandoned run of this draft already created, or the address on the form
-    var eventId = S.createdEventId || S.basics.slug;
-    /* one id per press of "Generate my site" — a Retry of a row belongs to the same run */
-    var runId = 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+    var eventId = resume ? resume.eventId : (S.createdEventId || S.basics.slug);
+    /* one id per press of "Generate my site" — a Retry of a row belongs to the same run, and so does the run picked
+       up again after a reload */
+    var runId = resume ? resume.runId : 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
     /* What this run works from. Each row reads it when it runs, not when the run was set up, so a link,
        file or description corrected on a failed row is what its retry sends. */
     var inputs = run.inputs = { text: briefAnswers(S.brief.text), file: briefDoc, urls: {}, future: !!S.brief.future,
       themeMode: ['light', 'dark'].indexOf(S.brief.themeMode) !== -1 ? S.brief.themeMode : 'auto' };
     BRIEF_URL_FIELDS.forEach(function(f){ inputs.urls[f.key] = normalUrl(S.brief[f.key]); });
 
-    var steps = [{ key: 'create', label: S.createdEventId ? 'Updating your event' : 'Creating your event' }];
-    if (inputs.file || inputs.text) steps.push({ key: 'brief' });
+    var was = (resume && resume.steps) || {};
+    /* (a run picked up again says what it did when it started: made the event, or updated one that was there) */
+    var steps = [{ key: 'create', label: (resume ? !resume.createdEvent : !!S.createdEventId) ? 'Updating your event' : 'Creating your event' }];
+    if (inputs.file || inputs.text || was.brief) steps.push({ key: 'brief' });
     BRIEF_URL_FIELDS.forEach(function(f){
       if (inputs.urls[f.key]) steps.push({ key: 'source-' + f.key, field: f });
     });
     steps.push({ key: 'plan', label: 'Designing the site and making its pictures' });
     steps.push({ key: 'generate', label: 'Writing the pages' });
     steps.push({ key: 'open', label: 'Opening your site' });
-    steps.forEach(function(s){ s.status = 'pending'; });
-    var startedAt = Date.now();
+    /* a run picked up again: the rows it had finished stay finished, with the time each took, and a row that had
+       failed shows its failure and its Retry again (it is not run again by itself) */
+    steps.forEach(function(s){
+      var w = was[s.key];
+      s.status = w === 'done' || w === 'skipped' || w === 'error' ? w : 'pending';
+      if (w === 'done'){ s.startedAt = 0; s.endedAt = +((resume && resume.took) || {})[s.key] || 0; }
+      if (w === 'error'){ s.startedAt = s.endedAt = Date.now(); s.cause = ((resume && resume.causes) || {})[s.key] || 'This step did not finish. Retry it.'; }
+    });
+    var startedAt = (resume && +resume.startedAt) || Date.now();
+    if (resume && resume.createdEvent) run.createdEvent = true;
     function stepBy(key){ return steps.filter(function(s){ return s.key === key; })[0]; }
     function isSource(s){ return !!s.field; }
+    /* BE-033: the run as this draft keeps it (S.genRun), so that a reload picks it up where it was: its name, its
+       event, which rows are finished and which one was running. Forgotten when it ends, one way or another. */
+    /* goingOn: a row whose request lost its answer (the page being reloaded or closed aborts it, or the connection
+       dropped) while its step goes on on the server: kept as running, so that a reload asks the server about it */
+    function remember(goingOn){
+      var at = {}, took = {}, causes = {};
+      steps.forEach(function(s){
+        if (s.status !== 'pending') at[s.key] = s.key === goingOn ? 'running' : s.status;
+        if (s.status === 'done') took[s.key] = Math.max(0, (s.endedAt || 0) - (s.startedAt || 0));
+        if (s.status === 'error') causes[s.key] = String(s.cause || '').slice(0, 300);
+      });
+      S.genRun = { runId: runId, eventId: eventId, startedAt: startedAt, replace: !!replace, createdEvent: !!run.createdEvent, at: Date.now(), steps: at, took: took, causes: causes };
+      save();
+    }
+    function forget(){
+      if (S.genRun && S.genRun.runId === runId){ S.genRun = null; save(); }
+    }
     /* the rows that depend on the inputs are named from them, so a corrected link or file renames its row */
     function relabel(){
       steps.forEach(function(s){
         if (s.key === 'brief'){
-          s.label = inputs.file ? 'Reading ' + inputs.file.name + (inputs.text ? ' and your description' : '') : 'Reading your description';
+          /* a run picked up after a reload no longer has the file itself, only its name */
+          var docName = inputs.file ? inputs.file.name : (was.brief === 'done' && S.brief.docName) || '';
+          s.label = docName ? 'Reading ' + docName + (inputs.text ? ' and your description' : '') : 'Reading your description';
         } else if (isSource(s)){
           var host = urlHost(inputs.urls[s.field.key]);
           /* the page that is read is the one that was given, so the row names it: its host and its path */
@@ -6794,14 +6828,75 @@
         });
       };
     });
+    /* BE-033: where this run is on the server, from its own record (GET /api/generate/status) */
+    var STATUS_POLL_MS = 5000;
+    function runStatus(){
+      return fetch('/api/generate/status?eventId=' + encodeURIComponent(eventId) + '&runId=' + encodeURIComponent(runId), { signal: runSignal(run) })
+        .then(readJson);
+    }
+    function pause(ms){ return new Promise(function(resolve){ setTimeout(resolve, ms); }); }
+    /* the row's progress line: how many of the sections ETB2B AI writes are written */
+    function showProgress(key, st){
+      var s = stepBy(key);
+      if (!s || s.status !== 'running' || !st) return;
+      if (key === 'plan' && st.state === 'planning') s.progress = 'Picked up where it was: the design is still being made.';
+      else if (st.sections && st.sections.planned) s.progress = Math.min(st.sections.written, st.sections.planned) + ' of ' + st.sections.planned + ' sections written';
+      else return;
+      var line = rowInput('data-step-progress', key), text = line && line.querySelector('.gb-step-cause');
+      if (text){ text.textContent = s.progress; line.hidden = false; }
+    }
+    /* the status once no step of this run is under way on the server: a step the page had started before it was
+       reloaded finishes there first (and is not paid for a second time); its progress is shown meanwhile */
+    function whenServerIdle(key){
+      return runStatus().then(function(st){
+        if (!isCurrent(run) || !st.active) return st;
+        showProgress(key, st);
+        return pause(STATUS_POLL_MS).then(function(){ return isCurrent(run) ? whenServerIdle(key) : st; });
+      });
+    }
+    /* a run picked up again: the row that was running when the page went asks the server first */
+    var askFirst = {};
+    Object.keys(was).forEach(function(k){ if (was[k] === 'running') askFirst[k] = true; });
     /* read when the row runs, like the other inputs: instructions corrected before a retry are what is sent */
-    runners.plan = function(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim(), siteMode: S.brief.siteMode === 'advanced' ? 'advanced' : 'standard' }); };
+    runners.plan = function(){
+      function ask(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim(), siteMode: S.brief.siteMode === 'advanced' ? 'advanced' : 'standard' }); }
+      if (!askFirst.plan) return ask();
+      return whenServerIdle('plan').then(function(st){
+        askFirst.plan = false;
+        /* the plan that was being made when the page went is kept: this row is done */
+        if (['planned', 'writing', 'left', 'failed'].indexOf(st.state) !== -1 || st.siteReady) return st;
+        return ask();
+      });
+    };
     runners.generate = function(){
-      return postJson('/api/generate-content', { templateId: 'gen-' + eventId }).then(function(resp){
+      function written(resp){
         /* from here on this draft's event has a generated site: generating again replaces it (onNext asks first) */
         S.generatedEventId = eventId;
         save();
         return resp;
+      }
+      function ask(){
+        /* while the request is open, the row says how far the writing is */
+        var open = true;
+        (function poll(){
+          pause(STATUS_POLL_MS).then(function(){
+            if (!open || !isCurrent(run)) return;
+            runStatus().then(function(st){ if (open) showProgress('generate', st); }, function(){}).then(poll);
+          });
+        })();
+        /* the same run asked again (Retry, or after a reload) is given only the sections it does not have yet */
+        return postJson('/api/generate-content', { templateId: 'gen-' + eventId }).then(function(resp){ open = false; return written(resp); },
+          function(err){
+            open = false;
+            /* an earlier request of this run is still writing it (the page was reloaded a moment ago): wait for that one */
+            if (err && err.code === 'run-busy' && isCurrent(run)) return whenServerIdle('generate').then(function(st){ return st.siteReady ? written(st) : ask(); });
+            throw err;
+          });
+      }
+      if (!askFirst.generate) return ask();
+      return whenServerIdle('generate').then(function(st){
+        askFirst.generate = false;
+        return st.siteReady ? written(st) : ask();
       });
     };
     /* The last row is real work too: load what was generated, record its template on the event, write the
@@ -6833,6 +6928,7 @@
             // the exact same storeKey as the first and silently show that first run's cached draft instead
             // of starting fresh (the bug this `&draft=` param exists to close).
             clearInterval(ticker);
+            forget();
             leaveForEditor(run, 'custom_editor.html?from=create&slug=' + encodeURIComponent(eventId) +
               '&template=' + encodeURIComponent(templateId) +
               (draftResp.draftId ? '&draft=' + encodeURIComponent(draftResp.draftId) : ''));
@@ -6863,11 +6959,14 @@
     function runStep(i){
       if (!isCurrent(run) || i >= steps.length) return;
       var s = steps[i];
-      s.status = 'running'; s.startedAt = Date.now(); s.endedAt = null; s.cause = ''; s.fixError = ''; s.editing = false; s.choice = null; s.slug = null;
+      s.status = 'running'; s.startedAt = Date.now(); s.endedAt = null; s.cause = ''; s.fixError = ''; s.editing = false; s.choice = null; s.slug = null; s.progress = '';
+      /* the event exists from the first row on: from then on a reload picks this run up (S.genRun) */
+      if (s.key !== 'create' || S.createdEventId === eventId) remember();
       render();
       runners[s.key]().then(function(){
         if (!isCurrent(run)) return;
         s.status = 'done'; s.endedAt = Date.now();
+        if (s.key !== 'open') remember();
         render();
         runStep(i + 1);
       }).catch(function(err){
@@ -6878,6 +6977,12 @@
         s.choice = (s.key === 'create' && err && err.portalChoice) || null;
         /* the address was taken since it was checked: back to the address box, not a retry that fails again */
         s.slug = (s.key === 'create' && err && err.slugTaken) || null;
+        /* a run that stopped on a failed row is picked up on that row, with its Retry, not run again by itself — but a
+           design or pages request that got no answer at all (a reload aborts it) is not a failure of that step: the
+           server goes on with it, so a reload asks the server where it is (askFirst) */
+        var unanswered = !(err && err.status) && (s.key === 'plan' || s.key === 'generate');
+        if (unanswered) askFirst[s.key] = true;          // its Retry, too, waits for that step instead of starting a second
+        if (S.createdEventId === eventId) remember(unanswered ? s.key : '');
         render();
         // paused — resumes only via the Retry / Skip handled by the delegated listeners below
       });
@@ -6923,6 +7028,7 @@
       var s = stepBy(key);
       if (!s || !isSource(s) || s.status !== 'error') return;      // only a link can be left out
       s.status = 'skipped';
+      remember();
       render();
       runStep(steps.indexOf(s) + 1);
     }
@@ -7020,24 +7126,28 @@
         return true;
       }, function(err){
         if (window.console) console.warn('[create-event] the event this run created was not removed:', err && err.status, err && err.message);
+        /* the event stays, so the run is stopped on the server like any run whose event stays */
+        stopOnServer();
         toast('Generation stopped. The unfinished event “' + named + '” is still in your events list: delete it there if you do not need it.');
         return false;
       });
     }
-    /* A run whose event stays: the server is told the run was stopped, so a step of it still under way there (its plan,
-       its pages) is never put on the event (POST /api/generate-content { stop: true }; no model is asked). Sent with
-       keepalive: it still goes when the page is being left. */
+    /* A run whose event stays: the server is told the run was stopped (POST /api/generate/cancel, BE-033; no model is
+       asked), so a step of it still under way there (its plan, its pages) asks for nothing more and is never put on the
+       event. Sent with keepalive: it still goes when the page is being left. */
     function stopOnServer(){
       if (S.createdEventId !== eventId || stepBy('generate').status === 'done') return;
       try {
-        fetch('/api/generate-content', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: eventId, runId: runId, templateId: 'gen-' + eventId, stop: true }) }).catch(function(){});
+        fetch('/api/generate/cancel', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: eventId, runId: runId }) }).catch(function(){});
       } catch (e) { /* not sent: a step whose caller has gone still writes nothing (the server checks that too) */ }
     }
     /* Cancel puts the brief form back exactly as it was left (its inputs never left the page). */
     run.onCancel = function(viaNav){
       run.stopped = true;
       clearInterval(ticker);
+      /* a stopped run is not picked up again on the next visit */
+      forget();
       showStep2View('landing');
       var removing = removeCreatedEvent();
       if (!removing) stopOnServer();
@@ -7050,7 +7160,24 @@
 
     render();
     showStep2View('brief');
-    runStep(0);
+    /* the first row not finished (a run picked up again starts where it was; one that had failed waits for its Retry) */
+    var next = steps.filter(function(s){ return s.status !== 'done' && s.status !== 'skipped'; })[0];
+    if (next && next.status !== 'error') runStep(steps.indexOf(next));
+  }
+
+  /* BE-033: a generation that was under way when this page was reloaded or closed is picked up where it was, under the
+     same run (startGenerateFromBrief's resume): the steps it had finished are not asked again, and the server says what
+     the step that was running did meanwhile. Only the event's own run, of a draft still on the form, and only for a
+     while after it last moved: an older one is let go, and Generate starts a new run. */
+  var GEN_RESUME_MS = 30 * 60 * 1000;
+  function resumeGeneration(){
+    var g = S.genRun;
+    if (!g) return;
+    var ok = typeof g === 'object' && typeof g.runId === 'string' && /^run-[a-z0-9-]{6,60}$/.test(g.runId) && g.eventId && g.eventId === S.createdEventId &&
+      Date.now() - (+g.at || 0) < GEN_RESUME_MS && S.creationMethod === 'brief' && S.step1Phase === 'details' && g.steps && typeof g.steps === 'object';
+    if (!ok){ S.genRun = null; save(); return; }
+    toast('Picking up your site’s generation where it was.');
+    startGenerateFromBrief(!!g.replace, g);
   }
 
   /* view: { steps, inputs, startedAt }. Rebuilds the list; whatever is being typed on a failed row, and
@@ -7107,6 +7234,9 @@
               '</div>';
           } else if (s.status === 'running'){
             sub = (BRIEF_STEP_DOING[s.key] ? '<div class="gb-step-sub"><span class="gb-step-cause">' + BRIEF_STEP_DOING[s.key] + '</span></div>' : '') +
+              /* how far the server is with it (BE-033: the run's record), once it says */
+              (s.key === 'plan' || s.key === 'generate' ? '<div class="gb-step-sub" data-step-progress="' + key + '"' + (s.progress ? '' : ' hidden') + '>' +
+                '<span class="gb-step-cause" role="status">' + esc(s.progress || '') + '</span></div>' : '') +
               '<div class="gb-step-sub" data-step-calm="' + key + '"' + (now - s.startedAt < BRIEF_REASSURE_MS ? ' hidden' : '') + '>' +
                 '<span class="gb-step-cause">Still working — the request is open and waiting for its answer.</span></div>';
           }
@@ -12632,6 +12762,8 @@
        without one is seen to once ET's roster has come — after anything above has filled the draft */
     startPortal(resumed);
 
+    /* …except a generation that was under way when the page went: it goes on, once the form below is drawn (BE-033) */
+    setTimeout(resumeGeneration, 0);
     /* a draft is always picked up on the form: the hand-off is a run, not a place to be */
     S.step = 1;
     goStep(1);

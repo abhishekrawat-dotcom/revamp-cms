@@ -178,7 +178,7 @@ const { getFirebase } = require('./firebase');
 /* Request plumbing (JSON in/out, body size limits, who is calling) lives in ./http and is shared with
    lib/api-events.js and lib/api-audience.js, so the three modules cannot drift apart on what a too-large
    body, a non-object JSON body or an expired sign-in is answered with. */
-const { sendJson, readBody, parseJsonObject, parseJsonBody, requireAdmin, requireMember, adminFromRequest, isEventId, isReservedEventId,
+const { sendJson, readBody, failureRef, parseJsonObject, parseJsonBody, requireAdmin, requireMember, adminFromRequest, isEventId, isReservedEventId,
   isEmail, CONTENT_STATUSES, str } = require('./http');
 const { logActivity, actorOf, maskEmail, sectionNames } = require('./activity');
 /* a shareable preview link's address, written into a log line without its token (lib/share-token.js) */
@@ -630,7 +630,7 @@ function handleSuggestDesign(req, res) {
       var sectionOrder = (reorderableIds.length && proposedOrder.length === reorderableIds.length && new Set(proposedOrder).size === reorderableIds.length) ? proposedOrder : null;
 
       sendJson(res, 200, { designs: designs, enhancements: enhancements, sectionOrder: sectionOrder });
-    });
+    }).catch(function (err) { sendFailure(res, 'suggest-design', err, 'The design proposals could not be made just now. Please try again.'); });
   }, BODY_LIMITS.ai);
 }
 
@@ -1341,7 +1341,7 @@ function handleChatEdit(req, res) {
         sendJson(res, 200, answer);
         learnEdit(req, fb, decoded, payload, eventId, eventData, learnt);
       });
-    }).catch(function (err) { sendStepFailure(res, err, err && err.status === 404 ? 404 : 500, 'The chat could not answer. Please try again.'); });
+    }).catch(function (err) { sendStepFailure(res, err, err && err.status === 404 ? 404 : 500, 'The chat could not answer. Please try again.', 'chat-edit'); });
   });
 }
 
@@ -1727,7 +1727,7 @@ function handleExtractBrief(req, res) {
         /* a document stored for a brief that was then not kept (the event went meanwhile, or the brief could not be
            written) must not be left behind */
         if (stored) fb.bucket.file(storagePath).delete().catch(function () { /* already removed with the event */ });
-        sendStepFailure(res, err, 500, 'extract-brief failed: ' + err.message);
+        sendStepFailure(res, err, 500, 'The brief could not be read just now. Please try again.', 'extract-brief');
       });
   }, BODY_LIMITS.brief);
 }
@@ -1737,6 +1737,11 @@ function handleExtractBrief(req, res) {
 var RUN_ID_ERROR = 'runId must be letters, digits, "-" or "_" (at most 64).';
 /* a step of a run the person stopped (WZ-055): it changes nothing */
 var RUN_STOPPED = 'This run was stopped, so nothing it made was saved.';
+/* BE-024: what a caller is told when a step comes before the one it needs — an owner's sentence and a code, never a
+   route to call */
+var NOT_PLANNED = 'This site has not been designed yet. Design it first, then write its pages.';
+var NOT_GENERATED = 'This event has no site made by ETB2B AI yet.';
+var IMPORT_NOT_FOUND = 'This imported design could not be found. Import it again.';
 function runIdOf(payload) {
   var v = payload && payload.runId;
   if (v == null || v === '') return '';
@@ -2236,6 +2241,45 @@ function keptKeyVisual(kv, read) {
   };
 }
 
+/* ---------- a page read a few minutes ago is not read again (BE-065) ----------
+   Reading a page costs a fetch, often the rendering service, and a model call. The same page (type and address) read
+   for the same event less than SOURCE_FRESH_MS ago — a Retry on the wizard's row, a reload, Generate pressed again — is
+   answered from that reading (cached: true) unless the caller asks for refresh: true. A previous edition picked from
+   ETB2B's list is read again when the earlier reading got none of its records. Looking it up never fails the step: a
+   reading that cannot be looked up is simply read again. -> Promise<{ ref, id, data } | null> */
+var SOURCE_FRESH_MS = 10 * 60 * 1000;
+var CACHED_READING = {};
+function freshSourceReading(fb, eventId, type, url, etPick) {
+  return fb.db.collection('events').doc(eventId).collection('sources').where('type', '==', type).where('url', '==', url).get().then(function (same) {
+    var now = Date.now();
+    return same.docs.map(function (d) { return { ref: d.ref, id: d.id, data: d.data() || {} }; }).filter(function (x) {
+      var at = Date.parse(String(x.data.fetchedAt || ''));
+      if (!(at > 0) || now - at >= SOURCE_FRESH_MS || at - now > 60000) return false;
+      if (!Array.isArray(x.data.extractedSections)) return false;
+      return !(etPick && !x.data.previous && !x.data.award);
+    }).sort(function (a, b) { return Date.parse(b.data.fetchedAt) - Date.parse(a.data.fetchedAt); })[0] || null;
+  }, function (err) {
+    console.error('ingest-source: an earlier reading of the page was not looked up, so it is read again — ' + (err && err.message));
+    return null;
+  });
+}
+/* answers with that reading, as a new reading is answered, and makes it this run's: the run's later steps read the
+   pages read for it (generated-site.js inputs). The reading is changed only while the event is there (watch.within). */
+function answerFreshReading(fb, res, watch, eventId, runId, hit) {
+  var rec = hit.data;
+  var claim = runId && rec.runId !== runId
+    ? watch.within(function (tx) { tx.update(hit.ref, { runId: runId }); })
+    : Promise.resolve();
+  return claim.then(function () {
+    var prev = rec.previous;
+    var count = function (list) { return Array.isArray(list) ? list.length : 0; };
+    sendJson(res, 200, { eventId: eventId, sourceId: hit.id, type: rec.type, url: rec.url, extractedSections: rec.extractedSections || [],
+      colorSignals: rec.colorSignals || [], fontSignals: rec.fontSignals || [], design: rec.design === undefined ? null : rec.design, tone: rec.tone === undefined ? null : rec.tone,
+      previous: prev ? { name: prev.name, speakers: count(prev.speakers), sponsors: count(prev.sponsors), agenda: count(prev.agenda), glimpses: count(prev.glimpses) } : null,
+      cached: true, fetchedAt: rec.fetchedAt });
+  });
+}
+
 function handleIngestSource(req, res) {
   readBody(req, res, function (raw) {
     var payload;
@@ -2274,12 +2318,18 @@ function handleIngestSource(req, res) {
       })
       .then(function (other) {
         if (other) throw otherPortalError(watch.portal, other);
-        return readSourcePage(url, etEdition);
+        /* BE-065: the same page read for this event a few minutes ago (a retried row, a reload, Generate pressed again)
+           is not fetched and paid for again; refresh: true reads it again all the same */
+        return payload.refresh === true ? null : freshSourceReading(fb, eventId, type, url, etPick);
       })
-      .then(function (html) {
-        return fetchSourceCss(url, html).then(function (css) { return { html: html, css: css }; });
+      .then(function (hit) {
+        if (hit) return answerFreshReading(fb, res, watch, eventId, runId, hit).then(function () { return CACHED_READING; });
+        return readSourcePage(url, etEdition).then(function (html) {
+          return fetchSourceCss(url, html).then(function (css) { return { html: html, css: css }; });
+        });
       })
       .then(function (page) {
+        if (page === CACHED_READING) return;
         var html = page.html;
         /* colours and fonts are read from the page AND its stylesheets: most sites keep them in the latter */
         var colorSignals = extractColorSignals(html + '\n' + page.css);
@@ -2371,9 +2421,8 @@ function handleIngestSource(req, res) {
         });
       })
       .catch(function (err) {
-        /* a refusal made on purpose says why; anything else is logged here and answered in one fixed sentence */
-        if (!(err && err.status && err.body)) console.error('ingest-source: ' + url.split(/[?#]/)[0].slice(0, 200) + ' failed — ' + (err && err.stack || err));
-        sendStepFailure(res, err, 502, 'That page could not be read. Please try again, or skip it.');
+        /* a refusal made on purpose says why; anything else is logged (the page without its query) and answered in one fixed sentence */
+        sendStepFailure(res, err, 502, 'That page could not be read. Please try again, or skip it.', 'ingest-source ' + url.split(/[?#]/)[0].slice(0, 200));
       });
   }, BODY_LIMITS.small);
 }
@@ -2571,11 +2620,11 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
       })
       .catch(function (err) {
         console.error('plan-structure: hero image generated but Storage save/publish failed, degrading to no hero image — ' + err.message);
-        return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'Storage save/publish failed: ' + err.message };
+        return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'The banner picture could not be saved.' };
       });
   }).catch(function (err) {
-    console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + err.message);
-    return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: err.message };
+    console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + (err && err.stack || err));
+    return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'The banner picture could not be made.' };
   });
 }
 
@@ -5126,6 +5175,12 @@ function handlePlanStructure(req, res) {
     var deadlineAt = Date.now() + llm.LIMITS.budgetMs;
     watchEvent(fb, eventId).then(function (w) {
       watch = w;
+      /* BE-033: the run's record says its plan is being made (GET /api/generate/status), so a page reloaded meanwhile
+         waits for it instead of paying for a second one. The plan, once kept, replaces the record. Never fails the step. */
+      if (runId) {
+        w.within(function (tx) { tx.set(generatedSite.runRef(fb, eventId, runId), { runId: runId, planningAt: new Date().toISOString() }, { merge: true }); })
+          .then(null, function (err) { console.error('plan-structure: run ' + runId + ' of ' + eventId + ' was not marked as planning — ' + (err && err.message)); });
+      }
       return Promise.all([
         eventRef.get(),
         generatedSite.inputs(fb, eventId, inputsOf),
@@ -5351,7 +5406,7 @@ function handlePlanStructure(req, res) {
           });
         });
       });
-    }).catch(function (err) { sendStepFailure(res, err, 500, 'plan-structure failed: ' + err.message); });
+    }).catch(function (err) { sendStepFailure(res, err, 500, 'The site could not be designed just now. Please try again.', 'plan-structure'); });
   }, BODY_LIMITS.small);
 }
 
@@ -5554,7 +5609,7 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
           if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI content written for the site (' + Object.keys(library).length + ' parts) — opened in the editor next', { area: 'site' });
         });
     });
-  }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
+  }).catch(function (err) { sendStepFailure(res, err, 500, 'The pages could not be written just now. Please try again.', 'generate-content'); });
 }
 
 /* ---------- POST /api/generate-content, 'gen-' branch — AI-DESIGNED GENERATED TEMPLATES PIPELINE, step 2 ----------
@@ -5987,9 +6042,10 @@ var SECTION_CODE_SPLIT_ABOVE = 5;
 /* Claude writes at a steadier, slower pace than Gemini: asked first, it is given two sections a call, all
    calls side by side, so that each answer is ready well inside its time. */
 var SECTION_CODE_CLAUDE_BATCH = 2;
-function sectionCodeBatches(designPlan) {
-  /* every section but the hero and the nav, which are built here (genDesign.heroHtml, et-nav.js) */
-  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; }).filter(function (id) { return id !== 'hero' && id !== 'nav'; });
+function sectionCodeBatches(designPlan, skip) {
+  /* every section but the hero and the nav, which are built here (genDesign.heroHtml, et-nav.js) — and but those in
+     skip (a run's sections already written by an earlier try of it: BE-030) */
+  var ids = plannedSectionList(designPlan).map(function (s) { return s.id; }).filter(function (id) { return id !== 'hero' && id !== 'nav' && !(skip && skip.indexOf(id) !== -1); });
   if (llm.activeProvider() === 'claude') {
     var small = [];
     for (var i = 0; i < ids.length; i += SECTION_CODE_CLAUDE_BATCH) small.push(ids.slice(i, i + SECTION_CODE_CLAUDE_BATCH));
@@ -6139,15 +6195,48 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
   var callerGone = false;
   if (res && typeof res.on === 'function') res.on('close', function () { if (!res.writableEnded) callerGone = true; });
   var ownInputs = !!(run.ownInputs && run.runId && sourceEventId === eventId);
+  /* BE-030 / BE-033: within a run, every answer the model gives is kept with the run as soon as it comes back
+     (generated-site.js keepWritten), and the run's record says how far the step is (GET /api/generate/status). A try
+     of the same run after one that failed, or whose caller left (a reload), asks only for the sections not kept yet.
+     A run found stopped (or its event removed) while an answer is kept is not asked anything more. */
+  var keepRun = !!run.runId, planKey = keepRun ? generatedSite.planKey(designPlan) : '', halted = '';
+  /* this request's try of the run: one try writes a run at a time (keepWritten's claim) */
+  var tryId = crypto.randomBytes(4).toString('hex');
+  function keep(list, writing, claim) {
+    if (!keepRun || !watch) return Promise.resolve('');
+    return generatedSite.keepWritten(watch.within, fb, eventId, run.runId, planKey, list, writing, { tryId: tryId, claim: !!claim }).then(function (how) {
+      if (how === 'stopped' || how === 'gone') halted = how;
+      return how;
+    });
+  }
+  function haltIfStopped() {
+    if (halted === 'stopped') throw httpError(409, RUN_STOPPED, { code: 'run-stopped' });
+    if (halted === 'gone') throw httpError(409, 'This event was removed while this was running, so nothing was saved.', { code: 'event-gone' });
+  }
+  /* the sections of one answer that it was asked for and that have markup, as kept */
+  function keptOf(r, ids) {
+    if (!r || r.error || !r.parsed || !Array.isArray(r.parsed.sections)) return [];
+    return r.parsed.sections.filter(function (s) { return s && ids.indexOf(slugifyId(s.id)) !== -1 && /<[a-z]/i.test(String(s.html || '')); })
+      .map(function (s) { return { id: slugifyId(s.id), html: String(s.html || ''), css: String(s.css || '') }; });
+  }
   watchEvent(fb, eventId).then(function (w) {
     watch = w;
     return Promise.all([
       sourceRef.get(),
       /* this run's own brief and pages (WZ-034); a future edition's, its series' own as recorded */
-      generatedSite.inputs(fb, sourceEventId, ownInputs ? run.runId : '')
+      generatedSite.inputs(fb, sourceEventId, ownInputs ? run.runId : ''),
+      /* what an earlier try of this run, for this same plan, was given already */
+      keepRun ? generatedSite.readWritten(fb, eventId, run.runId, planKey) : null
     ]);
   }).then(function (results) {
     var eventSnap = results[0], read = results[1];
+    var kept = results[2] || { sections: [], checked: false, overviewPlan: null, overviewDone: false };
+    var keptIds = kept.sections.map(function (s) { return s.id; });
+    /* an overview an earlier try pictured (fillSparseOverview): its planned entry with the picture, as that try left it */
+    if (kept.overviewPlan && keptIds.indexOf('overview') !== -1) {
+      designPlan = Object.assign({}, designPlan, { sections: designPlan.sections.map(function (s) { return s.id === 'overview' ? Object.assign({}, s, kept.overviewPlan) : s; }) });
+      overviewPictured = true;
+    }
     var stored = eventSnap.exists ? eventSnap.data() : {};
     var eventMeta = eventFacts(stored, payload.eventMeta);
     var logoUrl = /^https:\/\//i.test(String(stored.logoUrl || '')) ? stored.logoUrl : '';
@@ -6165,10 +6254,21 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     // 100s, not the 60s default — writing full bespoke HTML/CSS is a genuinely bigger generation job than
     // any other call this file makes. A timeout is never retried (gemini.js), so 100s is also the longest
     // this request can spend on the model: the calls of a split site run side by side, not one after another.
-    var batches = sectionCodeBatches(designPlan);
+    /* only the sections no earlier try of this run was given (BE-030) */
+    var batches = sectionCodeBatches(designPlan, keptIds).filter(function (ids) { return ids.length; });
+    if (keptIds.length) console.log('generate-content: ' + eventId + ' — run ' + run.runId + ' already has ' + keptIds.length + ' sections; asking for ' + batches.reduce(function (n, b) { return n + b.length; }, 0) + ' more');
+    /* the run's record says its pages are being written, before any of them is asked for — and by this request: one
+       that finds another request still writing the same run (a page reloaded a moment ago, a second tab) asks for
+       nothing and answers 409 run-busy, to wait for that one (GET /api/generate/status) */
+    var writingMarked = keep([], { state: 'writing', startedAt: new Date().toISOString(),
+      planned: sectionCodeBatches(designPlan).reduce(function (all, b) { return all.concat(b); }, []) }, true).then(function (how) {
+      if (how === 'busy') throw httpError(409, 'The pages of this run are still being written. Wait a moment.', { code: 'run-busy', retryable: true });
+    });
     /* an award site: the words of its internal pages, written beside the sections (writeAwardPages) */
+    /* (once this request holds the run: a try that is turned away pays for nothing) */
     var awardRead = designPlan.siteMode === 'award'
-      ? writeAwardPages(fb, eventId, stored, sourceDocs, brief, eventMeta).then(function (a) {
+      ? writingMarked.then(function () { return writeAwardPages(fb, eventId, stored, sourceDocs, brief, eventMeta); }, function () { return null; }).then(function (a) {
+        if (!a) return null;
         /* its Nomination form (a Category list from its categories) and its Express Interest form
            (api-forms.js createAwardForms: reused when they exist, their categories brought up to date) */
         return require('./api-forms').createAwardForms(fb, eventId, { categories: a.award.categories, nominateTitle: 'Nomination', by: by })
@@ -6178,24 +6278,40 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
           });
       })
       : Promise.resolve(null);
-    return Promise.all(batches.map(function (ids) {
-      var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
-      return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') });
-    })).then(function (answers) {
+    return writingMarked.then(function () {
+      haltIfStopped();
+      return Promise.all(batches.map(function (ids) {
+        var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: ids });
+        return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') })
+          /* kept the moment it comes back: a batch that failed beside it does not cost this one (BE-030) */
+          .then(function (r) { var mine = keptOf(r, ids); return mine.length ? keep(mine, {}).then(function () { return r; }) : r; });
+      }));
+    }).then(function (fresh) {
+      haltIfStopped();
+      /* what earlier tries kept, after this try's answers (which are kept to the sections they were asked for) */
+      var answers = !keptIds.length ? fresh : fresh.map(function (a) {
+        if (!a || a.error || !a.parsed) return a;
+        return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || keptIds.indexOf(slugifyId(s.id)) === -1; }) }) });
+      }).concat([{ parsed: { sections: kept.sections, positioningNotes: '' } }]);
       /* a section that came back without its styles (or not at all) shows as bare text on the page: it is
          written once more on its own, and the second answer replaces the first */
       var failedAnswer = answers.some(function (r) { return r.error; });
       var again = failedAnswer ? [] : unstyledSectionIds(answers, designPlan);
       /* a section whose heading repeats one before it is written again too, told which headings are taken */
       var repeated = failedAnswer ? [] : repeatedHeadingIds(answers, designPlan);
+      /* …but not one an earlier try of this run has already been through this with (BE-030) */
+      if (kept.checked) {
+        again = again.filter(function (id) { return keptIds.indexOf(id) === -1; });
+        repeated = repeated.filter(function (id) { return keptIds.indexOf(id) === -1; });
+      }
       repeated.forEach(function (id) { if (again.indexOf(id) === -1) again.push(id); });
-      if (!again.length) return answers;
+      if (!again.length) { if (!failedAnswer) keep([], { checked: true }); return answers; }
       var taken = takenHeadings(answers, designPlan, again);
       console.warn('generate-content: ' + eventId + ' — written again, unstyled, missing or with a repeated heading: ' + again.join(', '));
       var prompt = buildSectionCodePrompt({ eventMeta: eventMeta, brief: brief, sources: sources, designPlan: designPlan, futureEdition: futureEdition, logoUrl: logoUrl, write: again, takenHeadings: taken.shown });
       return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') })
         .then(function (r) {
-          if (r.error || !r.parsed || !Array.isArray(r.parsed.sections)) return answers;
+          if (r.error || !r.parsed || !Array.isArray(r.parsed.sections)) return keep([], { checked: true }).then(function () { return answers; });
           /* a second answer replaces the first only when it is better: styled, no empty picture box and — for a
              repeated heading — a heading of its own this time */
           var fixed = r.parsed.sections.filter(function (s) {
@@ -6203,26 +6319,37 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
               (repeated.indexOf(slugifyId(s.id)) === -1 || taken.words.indexOf(headingWords(s.html)) === -1);
           });
           var ids = fixed.map(function (s) { return slugifyId(s.id); });
-          return answers.map(function (a) {
-            return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || ids.indexOf(slugifyId(s.id)) === -1; }) }) });
-          }).concat([{ parsed: { sections: fixed } }]);
+          /* the better answers are kept in place of the first ones, and the run is marked checked (BE-030) */
+          return keep(keptOf({ parsed: { sections: fixed } }, ids), { checked: true }).then(function () {
+            return answers.map(function (a) {
+              return Object.assign({}, a, { parsed: Object.assign({}, a.parsed, { sections: (a.parsed.sections || []).filter(function (s) { return !s || ids.indexOf(slugifyId(s.id)) === -1; }) }) });
+            }).concat([{ parsed: { sections: fixed } }]);
+          });
         }, function () { return answers; });
     }).then(function (answers) {
-      /* an overview too thin for its layout gets a picture made from its words, and is written again with it */
-      if (answers.some(function (r) { return r.error; })) return answers;
+      haltIfStopped();
+      /* an overview too thin for its layout gets a picture made from its words, and is written again with it — once
+         a run: an earlier try of it that did this (or found no need) is not done again (BE-030) */
+      if (answers.some(function (r) { return r.error; }) || kept.overviewDone) return answers;
       return fillSparseOverview(fb, eventId, answers, designPlan, {
         eventMeta: eventMeta, brief: brief,
         prompt: { eventMeta: eventMeta, brief: brief, sources: sources, futureEdition: futureEdition, logoUrl: logoUrl }
       }).then(function (r) {
-        if (r.designPlan !== designPlan) { designPlan = r.designPlan; overviewPictured = true; }
-        return r.answers;
+        var pictured = r.designPlan !== designPlan;
+        if (pictured) { designPlan = r.designPlan; overviewPictured = true; }
+        /* the overview written again with its picture is kept with its planned entry, which carries the picture */
+        var entry = pictured ? designPlan.sections.filter(function (s) { return s.id === 'overview'; })[0] : null;
+        var again = pictured ? keptOf(r.answers[r.answers.length - 1], ['overview']) : [];
+        return keep(again, { overviewDone: true, overviewPlan: entry && again.length ? { image: entry.image, imageKind: entry.imageKind, imageUrl: entry.imageUrl, layout: entry.layout } : null })
+          .then(function () { return r.answers; });
       });
     }).then(function (answers) {
       return Promise.all([footerRead, awardRead]).then(function (both) { return { answers: answers, footerList: both[0], award: both[1] }; });
     }).then(function (got) {
       var answers = got.answers;
       var failed = answers.filter(function (r) { return r.error; })[0];
-      if (failed) return sendAiFailure(res, failed);
+      /* what this try wrote is kept with the run: Retry (the same run) asks only for the rest (BE-030) */
+      if (failed) return keep([], { state: 'failed' }).then(function () { sendAiFailure(res, failed); });
       var written = [];
       answers.forEach(function (r) { written = written.concat(Array.isArray(r.parsed.sections) ? r.parsed.sections : []); });
       var design = designPlan.design || {};
@@ -6276,7 +6403,9 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var missing = missingSectionIds(sections, designPlan);
       if (missing.length) {
         console.error('generate-content: ' + eventId + ' — not written, so nothing was saved: ' + missing.join(', '));
-        return sendJson(res, 502, { error: missingSectionsSentence(missing, designPlan), code: 'ai-bad-output', retryable: true, missing: missing });
+        return keep([], { state: 'failed' }).then(function () {
+          sendJson(res, 502, { error: missingSectionsSentence(missing, designPlan), code: 'ai-bad-output', retryable: true, missing: missing });
+        });
       }
       /* Pictures were named to the model by short tokens; here they become addresses again, and any picture
          address that is not one of this site's is repaired (genDesign.restorePictures). The event's own
@@ -6305,7 +6434,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       try {
         var facts = inventedFacts.checkSections(sections, inventedFacts.groundOf(eventMeta, stored.description, brief,
           sources.filter(function (x) { return x.type !== 'competitor'; }), designPlan.ownerNotes, designPlan.owner,
-          sourcesSnap.docs.map(function (d) { var v = d.data() || {}; return v.type === 'previousEdition' ? inventedFacts.previousFacts(v.previous) : []; })), TOKEN_KIT, { fix: true });
+          sourceDocs.map(function (v) { return v.type === 'previousEdition' ? inventedFacts.previousFacts(v.previous) : []; })), TOKEN_KIT, { fix: true });
         sections = facts.sections;
         if (facts.removed.length || facts.flagged.length) {
           console.warn('generate-content: ' + eventId + ' — facts nothing supplied: ' + inventedFacts.summary(facts) + ' ' +
@@ -6399,10 +6528,12 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var now = new Date().toISOString();
 
       /* The caller stopped or left while the site was being written: the event is left as it was (the wizard's
-         Cancel says nothing is kept). What was paid for is not stored either: a site nobody is waiting for. */
+         Cancel says nothing is kept). Within a run, what the model wrote stays kept with the run (BE-030): a page
+         that was reloaded asks for the pages of the same run again, which puts them on the event without asking the
+         model anything more (BE-033: the run's record says 'left'). */
       if (callerGone) {
         console.warn('generate-content: ' + eventId + ' — the request was stopped before the site was written; the event was not changed.');
-        return;
+        return keep([], { state: 'left' }).then(function () {});
       }
       /* BE-032: the sections go into documents of this run's own (generated-site.js), then the event switches to them
          in one write — its plan, its list of sections, the description written with the plan — so a site is never
@@ -6411,14 +6542,24 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var commitRunId = run.runId || generatedSite.newRunId();
       var described = run.fromRun ? run.described : null, describedNow = null, describedBefore = '';
       /* the event is checked first: one removed meanwhile (Create Event's Cancel removes the event its run made) gets nothing */
+      /* BE-033: a run another request of it has already put on the event (it took the run over after this one fell
+         silent) is not put there twice: this one answers as that one did */
+      var ALREADY = { status: 200, body: { eventId: eventId, templateId: templateId, runId: commitRunId, already: true, library: {},
+        sections: sections.map(function (s) { return { id: s.id, kind: s.kind }; }) } };
+      var draftDoc = draftRef.collection('drafts').doc();
       return watch.stillThere()
+        .then(function () { return run.runId ? generatedSite.readRun(fb, eventId, commitRunId) : null; })
         /* (its status is left as it is: a Stop that comes in meanwhile is what the switch below reads) */
-        .then(function () { return generatedSite.writeSections(fb, eventId, commitRunId, sections, { writtenAt: now }); })
+        .then(function (rec) {
+          if (rec && rec.status === 'done') throw ALREADY;
+          return generatedSite.writeSections(fb, eventId, commitRunId, sections, { writtenAt: now });
+        })
         .then(function () {
           return watch.within(function (tx, ref, snap) {
             /* the run's own record, read in the same transaction: one the person stopped is never put on the event */
             return (run.runId ? tx.get(generatedSite.runRef(fb, eventId, commitRunId)) : Promise.resolve(null)).then(function (runSnap) {
             if (runSnap && runSnap.exists && (runSnap.data() || {}).status === 'stopped') throw httpError(409, RUN_STOPPED, { code: 'run-stopped' });
+            if (runSnap && runSnap.exists && (runSnap.data() || {}).status === 'done') throw ALREADY;
             var cur = snap.data() || {};
             describedNow = null;                    // a transaction may run more than once
             /* BE-029: only the event's newest run puts its site on it — one that planned after this one (another
@@ -6445,24 +6586,25 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
             /* an award site's internal pages' words, kept until the site can have pages (SITE_PAGES) */
             if (got.award) patch.awardPages = got.award.pages;
             tx.update(ref, patch);
-            tx.set(generatedSite.runRef(fb, eventId, commitRunId), { status: 'done', doneAt: now }, { merge: true });
+            tx.set(generatedSite.runRef(fb, eventId, commitRunId), { status: 'done', doneAt: now, writing: { state: 'done', at: now } }, { merge: true });
+            /* the draft row GET /api/draft hands the editor, written with the switch: a page that finds the run done (one
+               reloaded meanwhile: BE-033) opens this run's, never the one before it */
+            tx.set(draftDoc, { templateId: templateId, sourceEventId: sourceEventId, library: {}, runId: commitRunId, positioningNotes: positioningNotes,
+              model: (answers[0] && answers[0].model) || GEMINI_TEXT_MODEL, generatedAt: now, generatedBy: actorOf(by), skippedLibraries: [] });
             });
           });
         })
         /* what earlier runs left — their sections, plans, and (for a run made from its own inputs) the briefs and
            pages the owner has since replaced — is let go: nothing reads them any more. Never fails the request. */
         .then(function () { return generatedSite.retire(fb, eventId, commitRunId, { inputs: ownInputs }); })
+        /* the answers kept while it was written are in the site now (BE-030) */
+        .then(function () { return keepRun ? generatedSite.dropWritten(fb, eventId, commitRunId) : null; })
         /* an award site's FAQs are the event's FAQ records (Content › FAQ), as the page shows them: the ones
            written for this edition, put there only while the event has none of its own */
         .then(function () { return got.award ? seedAwardFaqs(fb, eventId, got.award, by) : null; })
         /* ...and its jury, the event's Speakers records: the jury on record, while the event has none of its own */
         .then(function () { return got.award ? seedAwardJury(fb, eventId, got.award.award.jury, by) : null; })
-        .then(function () {
-          return draftRef.collection('drafts').add({
-            templateId: templateId, sourceEventId: sourceEventId, library: {}, runId: commitRunId,
-            positioningNotes: positioningNotes, model: (answers[0] && answers[0].model) || GEMINI_TEXT_MODEL, generatedAt: now, generatedBy: actorOf(by), skippedLibraries: []
-          });
-        })
+        .then(function () { return draftDoc; })
         .then(function (docRef) {
           sendJson(res, 200, {
             eventId: eventId, templateId: templateId, draftId: docRef.id, runId: commitRunId, positioningNotes: positioningNotes,
@@ -6473,7 +6615,11 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
             fields: [{ field: 'description', before: describedBefore.slice(0, 600), after: describedNow }] });
         });
     });
-  }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
+  }).catch(function (err) {
+    /* the run's record says the try ended (a stopped run, or a removed event, is not written to: keepWritten) */
+    keep([], { state: 'failed' });
+    sendStepFailure(res, err, 500, 'The pages could not be written just now. Please try again.', 'generate-content');
+  });
 }
 
 /* ---------- POST /api/redesign-section — one section of an AI-designed site, designed again ----------
@@ -6664,7 +6810,7 @@ function handleRedesignSection(req, res) {
           summary: String(r.parsed.summary || '').trim().slice(0, 300)
         });
       });
-    }).catch(function (err) { sendStepFailure(res, err, 500, 'redesign-section failed: ' + err.message); });
+    }).catch(function (err) { sendStepFailure(res, err, 500, 'The section could not be redesigned just now. Please try again.', 'redesign-section'); });
   }, BODY_LIMITS.ai);
 }
 
@@ -6711,31 +6857,31 @@ function handleGenerateContent(req, res) {
          pages) is never put on the event, whatever happens to the request it came in on. */
       if (payload.stop === true) {
         if (!runId) return sendJson(res, 400, { error: 'Name the run to stop (runId).' });
-        return watchEvent(fb, eventId).then(function (w) {
-          return w.within(function (tx, ref, snap) {
-            var at = new Date().toISOString(), newest = (snap.data() || {}).generationRun || {};
-            if (newest.runId === runId && !newest.done) tx.update(ref, { 'generationRun.stopped': true });
-            tx.set(generatedSite.runRef(fb, eventId, runId), { runId: runId, status: 'stopped', stoppedAt: at, stoppedBy: actorOf(req.user) }, { merge: true });
-          });
-        }).then(function () { sendJson(res, 200, { eventId: eventId, runId: runId, stopped: true }); })
-          .catch(function (err) { sendStepFailure(res, err, 500, 'The run could not be stopped: ' + err.message); });
+        return stopGenerationRun(fb, eventId, runId, req.user).then(function (out) { sendJson(res, 200, { eventId: eventId, runId: runId, stopped: out.stopped, done: out.done }); })
+          .catch(function (err) { sendStepFailure(res, err, 500, 'The run could not be stopped. Please try again.', 'generate-content stop'); });
       }
       return sourceOk().then(function () {
         return Promise.all([fb.db.collection('events').doc(eventId).get(), generatedSite.readRun(fb, eventId, runId)]);
       }).then(function (got) {
         var data = got[0].exists ? got[0].data() : {}, run = got[1];
         if (run && run.status === 'stopped') return sendJson(res, 409, { error: RUN_STOPPED, code: 'run-stopped' });
+        /* BE-033: the run's site is on the event already (a page reloaded after it was put there asks again): it is
+           answered as written, and nothing is asked of the model */
+        if (runId && run && run.status === 'done' && data.generatedSite && data.generatedSite.runId === runId) {
+          return sendJson(res, 200, { eventId: eventId, templateId: templateId, runId: runId, already: true, library: {},
+            sections: generatedSite.index(data).map(function (s) { return { id: s.id, kind: s.kind }; }) });
+        }
         var fromRun = !!(run && run.designPlan);
         var designPlan = fromRun ? run.designPlan : data.designPlan;
         if (!designPlan || !designPlan.design || !Array.isArray(designPlan.sections)) {
-          return sendJson(res, 400, { error: 'No design plan found for "' + eventId + '" — run /api/plan-structure first.' });
+          return sendJson(res, 409, { error: NOT_PLANNED, code: 'not-planned' });
         }
         runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, req.user, {
           runId: runId, fromRun: fromRun, described: fromRun ? run.described || null : null,
           /* this run's own brief and pages, unless it was made from what the event already had */
           ownInputs: fromRun && !run.usedEventInputs && payload.useEventInputs !== true
         });
-      }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
+      }).catch(function (err) { sendStepFailure(res, err, 500, 'The pages could not be written just now. Please try again.', 'generate-content'); });
     }
 
     var templatePath = path.join(__dirname, '..', '..', 'templates', templateId, 'template.json');
@@ -6770,8 +6916,109 @@ function handleGenerateContent(req, res) {
 
     sourceOk().then(function () {
       runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, (templateJson.content || {}).map, skippedLibraries, null, req.user);
-    }, function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
+    }, function (err) { sendStepFailure(res, err, 500, 'The pages could not be written just now. Please try again.', 'generate-content'); });
   }, BODY_LIMITS.ai);
+}
+
+/* ---------- a run of "Generate my site": stopped, and where it is (BE-033) ----------
+   stopGenerationRun: the run is marked stopped in its own record (and on the event while it is the event's newest),
+   in one transaction with the check that the event is there. A step of it still under way on the server reads that
+   before it keeps an answer and before its site is put on the event (runGenerateDesignedContent, plan-structure),
+   so nothing of a stopped run is ever used. A run whose site is already the event's is left as it is.
+   -> Promise<{ stopped, done }> */
+function stopGenerationRun(fb, eventId, runId, by) {
+  var out = { stopped: false, done: false };
+  return watchEvent(fb, eventId).then(function (w) {
+    return w.within(function (tx, ref, snap) {
+      var runRef = generatedSite.runRef(fb, eventId, runId);
+      return tx.get(runRef).then(function (runSnap) {
+        var at = new Date().toISOString(), cur = snap.data() || {}, newest = cur.generationRun || {};
+        out.done = !!(cur.generatedSite && cur.generatedSite.runId === runId) || (runSnap.exists && (runSnap.data() || {}).status === 'done');
+        out.stopped = !out.done;
+        if (out.done) return;
+        if (newest.runId === runId && !newest.done) tx.update(ref, { 'generationRun.stopped': true });
+        tx.set(runRef, { runId: runId, status: 'stopped', stoppedAt: at, stoppedBy: actorOf(by) }, { merge: true });
+      });
+    });
+  }).then(function () { return out; });
+}
+
+/* What GET /api/generate/status answers for a run, from the event's document, the run's record and the answers it
+   has kept (generated-site.js). A step is `active` while its last sign of life is recent: the writing step marks one
+   at its start and with every answer kept (each model call is at most 100 s; a picture and a call follow one
+   another at most), the plan step once, at its start (a plan with its pictures is done within about four minutes).
+     state  'unknown'     no record of it (never started, or let go once a newer run's site was put on the event)
+            'planning'    its plan is being made
+            'planned'     its plan is kept and its pages are not being written
+            'writing'     its pages are being written
+            'left'        the request writing them ended before the site was put on the event (the page was reloaded
+                          or closed): asking for its pages again (the same runId) finishes it from what is kept
+            'failed'      its last try failed: asking again (the same runId) asks only for what is missing
+            'stopped'     it was stopped: nothing of it is used
+            'superseded'  a newer run has taken the event: this one's site is not used
+            'done'        its site is the event's (siteReady) */
+var RUN_ACTIVE_MS = { planning: 6 * 60 * 1000, writing: generatedSite.WRITING_FRESH_MS };
+function runStatusOf(eventId, runId, ev, run, written, now) {
+  ev = ev || {};
+  var siteReady = !!(ev.generatedSite && ev.generatedSite.runId === runId);
+  var newestId = ev.generationRun && ev.generationRun.runId, newest = newestId === runId;
+  var w = (run && run.writing && typeof run.writing === 'object') ? run.writing : {};
+  var planned = run && run.designPlan && Array.isArray(run.designPlan.sections)
+    ? sectionCodeBatches(run.designPlan).reduce(function (all, b) { return all.concat(b); }, [])
+    : Array.isArray(w.planned) ? w.planned.slice() : [];
+  var writtenIds = (written || []).filter(function (s) {
+    return s && typeof s.id === 'string' && (!w.planKey || s.planKey === w.planKey) && (!planned.length || planned.indexOf(s.id) !== -1);
+  }).map(function (s) { return s.id; });
+  var lastAt = Math.max(Date.parse(w.at || '') || 0, Date.parse((run && run.planningAt) || '') || 0);
+  var state = 'unknown', active = false;
+  if (siteReady) state = 'done';
+  else if (!run) state = 'unknown';
+  else if (run.status === 'stopped') state = 'stopped';
+  else if (newestId && !newest) state = 'superseded';
+  else if (run.status === 'done') state = 'done';
+  else if (w.state === 'writing') { active = now - (Date.parse(w.at || '') || 0) < RUN_ACTIVE_MS.writing; state = active ? 'writing' : 'left'; }
+  else if (w.state === 'left' || w.state === 'failed') state = w.state;
+  else if (run.status === 'planned') state = 'planned';
+  else if (run.planningAt) { active = now - (Date.parse(run.planningAt) || 0) < RUN_ACTIVE_MS.planning; state = active ? 'planning' : 'unknown'; }
+  return { eventId: eventId, runId: runId, state: state, active: active, newest: newest, siteReady: siteReady,
+    sections: { planned: planned.length, written: siteReady ? planned.length : Math.min(writtenIds.length, planned.length || writtenIds.length) },
+    at: lastAt ? new Date(lastAt).toISOString() : null };
+}
+
+/* ---------- GET /api/generate/status?eventId=&runId= — where a run of "Generate my site" is (BE-033) ----------
+   Signed in, any role, an event of the caller's portals (routeApi's caller check). Read from the run's own record,
+   never from the request doing the work, so it answers the same in any tab and after a reload: Create Event shows the
+   writing step's progress from it, and picks a run up again after a reload. 200 runStatusOf(…). */
+function handleGenerateStatus(req, res) {
+  var q = queryOf(req), eventId = String(q.get('eventId') || '').trim(), runId = String(q.get('runId') || '').trim();
+  if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+  if (!generatedSite.isRunId(runId)) return sendJson(res, 400, { error: RUN_ID_ERROR });
+  var fb = getFirebase();
+  if (fb.error) return sendJson(res, 503, { error: fb.error });
+  loadLiveEvent(fb, eventId).then(function (data) {
+    return Promise.all([generatedSite.readRun(fb, eventId, runId), generatedSite.writtenCol(fb, eventId, runId).get()]).then(function (r) {
+      sendJson(res, 200, runStatusOf(eventId, runId, data, r[0], r[1].docs.map(function (d) { return d.data() || {}; }), Date.now()));
+    });
+  }).catch(function (err) { sendFailure(res, 'generate status', err, 'Where this run is could not be read. Please try again.'); });
+}
+
+/* ---------- POST /api/generate/cancel { eventId, runId } — Create Event's Cancel generation (BE-033) ----------
+   An Editor of the event. The run is stopped (stopGenerationRun): whatever of it is still under way on the server
+   keeps nothing more and is never put on the event. No model is asked. 200 { eventId, runId, stopped, done } — done:
+   its site was the event's already, and stays. (POST /api/generate-content { stop: true } does the same.) */
+function handleGenerateCancel(req, res) {
+  readBody(req, res, function (raw) {
+    var payload;
+    try { payload = parseJsonObject(raw); } catch (e) { return sendJson(res, 400, { error: 'Invalid JSON body' }); }
+    var eventId = String(payload.eventId || '').trim(), runId = String(payload.runId || '').trim();
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    if (!generatedSite.isRunId(runId)) return sendJson(res, 400, { error: 'Name the run to stop (runId).' });
+    var fb = getFirebase();
+    if (fb.error) return sendJson(res, 503, { error: fb.error });
+    stopGenerationRun(fb, eventId, runId, req.user).then(function (out) {
+      sendJson(res, 200, { eventId: eventId, runId: runId, stopped: out.stopped, done: out.done });
+    }).catch(function (err) { sendStepFailure(res, err, 500, 'The run could not be stopped. Please try again.', 'generate cancel'); });
+  }, BODY_LIMITS.small);
 }
 
 /* ---------- GET /api/draft — fetches the latest generated draft, pre-shaped for the editor ----------
@@ -6812,11 +7059,11 @@ function handleGetDraft(req, res) {
 
   fb.db.collection('events').doc(eventId).collection('drafts').orderBy('generatedAt', 'desc').limit(1).get()
     .then(function (snap) {
-      if (snap.empty) return sendJson(res, 404, { error: 'No generated draft found for "' + eventId + '" — run /api/generate-content first.' });
+      if (snap.empty) return sendJson(res, 404, { error: NOT_GENERATED, code: 'not-generated' });
       var draftId = snap.docs[0].id, draft = snap.docs[0].data();
       sendJson(res, 200, { eventId: eventId, templateId: draft.templateId, draftId: draftId, generatedAt: draft.generatedAt || null, handoff: libraryToHandoffDraft(draft.library, eventId, draft.skippedLibraries) });
     })
-    .catch(function (err) { sendJson(res, 500, { error: 'get-draft failed: ' + err.message }); });
+    .catch(function (err) { sendFailure(res, 'get-draft', err, 'The generated site could not be loaded. Please try again.'); });
 }
 
 /* ---------- GET /api/generated-template?eventId=<id> — AI-DESIGNED GENERATED TEMPLATES PIPELINE, step 3 ----------
@@ -6833,7 +7080,9 @@ function buildGeneratedDesign(design) {
   return {
     headingFontVar: '--heading-font-family',
     headings: 'h1, h2, h3',
-    buttons: 'a, button, [class*="btn"], [class*="cta"]',
+    /* BE-039: buttons only — the register buttons, real <button>s and links styled as one. A bare "a" took in every
+       link of the top bar and the footer, so Corner radius rounded those too and was offered on every site. */
+    buttons: '[data-register-cta], button, a[class*="btn"], a[class*="button"], a[class*="cta"]',
     cards: '[data-rv-repeat-template], [class*="card"]',
     swatches: [design.themeColor]
   };
@@ -6889,13 +7138,13 @@ function handleGeneratedTemplate(req, res) {
       return sendJson(res, 409, { error: EARLIER_PIPELINE_SENTENCE, code: 'earlier-ai-design', published: data.published === true });
     }
     if (!designPlan || !designPlan.design || !Array.isArray(designPlan.sections)) {
-      return sendJson(res, 404, { error: 'No design plan found for "' + eventId + '" — run /api/plan-structure first.' });
+      return sendJson(res, 404, { error: NOT_GENERATED, code: 'not-generated' });
     }
     /* the site's sections without their markup (generated-site.js: the run's own documents, or the event's field for
        a site generated before 13 Nov 2026) */
     var generatedSections = generatedSite.index(data);
     if (!generatedSections.length) {
-      return sendJson(res, 404, { error: 'No generated sections found for "' + eventId + '" — run /api/generate-content first.' });
+      return sendJson(res, 404, { error: NOT_GENERATED, code: 'not-generated' });
     }
     // THEME_FALLBACK only as an absolute last resort — sanitizeDesignPlanDesign (POST /api/plan-structure)
     // always fills themeColor/headingFont/bodyFont itself, so this merge is normally a no-op.
@@ -6991,7 +7240,7 @@ function handleGeneratedTemplate(req, res) {
       bg: colours.backgroundColor, surface: colours.surfaceColor, muted: colours.mutedColor }));
     if (chosen.id !== 'original') Object.assign(template.body.style, rvTheme.varsOf(chosen));
     sendJson(res, 200, template);
-  }).catch(function (err) { sendJson(res, 500, { error: 'generated-template failed: ' + err.message }); });
+  }).catch(function (err) { sendFailure(res, 'generated-template', err, 'The site could not be loaded. Please try again.'); });
 }
 
 /* ---------- GET /api/generated-section?eventId=<id>&id=<sectionId> — AI-DESIGNED GENERATED TEMPLATES
@@ -7018,7 +7267,7 @@ function handleGeneratedSection(req, res) {
     return generatedSite.readOne(fb, eventId, data, sectionId);
   }).then(function (found) {
     if (!data) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
-    if (!found) return sendJson(res, 404, { error: 'No generated section "' + sectionId + '" found for "' + eventId + '".' });
+    if (!found) return sendJson(res, 404, { error: 'That section is not part of this event\'s site.', code: 'not-generated' });
     /* scoped on the way out as well as when stored (it is idempotent), so sections stored before the
        server did the scoping are served correctly too */
     var html = String(found.html || '');
@@ -7040,7 +7289,7 @@ function handleGeneratedSection(req, res) {
        footer, which the server builds for phones itself (et-nav.js, et-footer.js: their one-line texts stay one line) */
     if (sectionId !== 'nav' && sectionId !== 'footer') css = mobileSafeCss(css);
     sendJson(res, 200, { html: html, css: sanitize.sanitizeCss(css) });
-  }).catch(function (err) { sendJson(res, 500, { error: 'generated-section failed: ' + err.message }); });
+  }).catch(function (err) { sendFailure(res, 'generated-section', err, 'This section could not be loaded. Please try again.'); });
 }
 
 /* =====================================================================================================
@@ -7508,7 +7757,7 @@ function handleImportedTemplate(req, res) {
 
   /* imports/<id>, or an import from before the move still at events/import-<id> (lib/import-store.js) */
   importStore.readRecord(fb, importId).then(function (rec) {
-    if (!rec.data) return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
+    if (!rec.data) return sendJson(res, 404, { error: IMPORT_NOT_FOUND, code: 'import-not-found' });
     var data = rec.data;
     /* an import that did not work says so, and why (BE-048) */
     if (data.importStatus === 'failed') return sendFailedImport(res, data);
@@ -7548,7 +7797,7 @@ function handleImportedTemplate(req, res) {
       layout: { pinStart: ['imported'], pinEnd: [] },
       sections: [{ id: 'imported', name: 'Imported design', etId: null, script: false }]
     });
-  }).catch(function (err) { sendJson(res, 500, { error: 'imported-template failed: ' + err.message }); });
+  }).catch(function (err) { sendFailure(res, 'imported-template', err, 'The imported design could not be loaded. Please try again.'); });
 }
 
 function handleImportedSection(req, res) {
@@ -7564,7 +7813,7 @@ function handleImportedSection(req, res) {
     var data = rec.data;
     if (data && data.importStatus === 'failed') return sendFailedImport(res, data);
     if (!data || !data.sectionHtmlPath) {
-      return sendJson(res, 404, { error: 'No imported design found for "' + importId + '" — run /api/import-lovable first.' });
+      return sendJson(res, 404, { error: IMPORT_NOT_FOUND, code: 'import-not-found' });
     }
     /* ?all=1 — an import cut into sections: { frameOpen, frameClose, sections: { <id>: html } } */
     if (qs.get('all') === '1') {
@@ -7580,7 +7829,7 @@ function handleImportedSection(req, res) {
     return fb.bucket.file(data.sectionHtmlPath).download().then(function (contents) {
       sendJson(res, 200, { html: safeImportedMarkup(contents[0].toString('utf8')) });
     });
-  }).catch(function (err) { sendJson(res, 500, { error: 'imported-section failed: ' + err.message }); });
+  }).catch(function (err) { sendFailure(res, 'imported-section', err, 'The imported design could not be loaded. Please try again.'); });
 }
 
 /* ---------- an imported page, made safe as it is served (BE-050) ----------
@@ -7646,8 +7895,10 @@ function httpError(status, message, extra) {
    or Storage text (which used to leak document paths and gRPC codes into toasts). */
 function sendFailure(res, what, err, friendly) {
   if (err && err.status && err.body) return sendJson(res, err.status, err.body);
-  console.error('api: ' + what + ' failed — ' + (err && err.stack || err));
-  sendJson(res, 500, { error: friendly || 'Something went wrong on the server. Please try again.' });
+  /* the ref is the same in the answer and in the log line, so a reported failure can be found (BE-024) */
+  var ref = failureRef();
+  console.error('api: ' + what + ' failed [ref ' + ref + '] — ' + (err && err.stack || err));
+  sendJson(res, 500, { error: friendly || 'Something went wrong on the server. Please try again.', ref: ref });
 }
 
 /* requireAdmin / parseJsonBody call back from inside a promise or a stream event, where a synchronous
@@ -7842,11 +8093,16 @@ function watchEvent(fb, eventId) {
     };
   });
 }
-/* How an AI step answers a failure of its own chain: a refusal made on purpose (httpError) as written,
-   anything else as the route's existing message. */
-function sendStepFailure(res, err, status, message) {
+/* How an AI step answers a failure of its own chain: a refusal made on purpose (httpError) as written; anything else
+   is logged in full under `what` with a ref, and the person is given the step's plain sentence and that ref — never
+   the raw Firestore, Storage or library text (BE-024). sendFailure, at the step's own status (a page that could not
+   be read is 502). */
+function sendStepFailure(res, err, status, sentence, what) {
   if (err && err.status && err.body) return sendJson(res, err.status, err.body);
-  sendJson(res, status, { error: message });
+  if (status === 500) return sendFailure(res, what || 'an AI step', err, sentence);
+  var ref = failureRef();
+  console.error('api: ' + (what || 'an AI step') + ' failed [ref ' + ref + '] — ' + (err && err.stack || err));
+  sendJson(res, status, { error: sentence, ref: ref });
 }
 
 function publicPathOf(eventId) { return '/e/' + eventId; }
@@ -13034,7 +13290,9 @@ var CALLER_CHECKED = {
   'POST /api/suggest-design': 1, 'POST /api/extract-brief': 1, 'POST /api/ingest-source': 1, 'POST /api/plan-structure': 1,
   'POST /api/generate-content': 1, 'POST /api/redesign-section': 1,
   'GET /api/draft': 1, 'GET /api/generated-template': 1, 'GET /api/generated-section': 1,
-  'GET /api/imported-template': 1, 'GET /api/imported-section': 1
+  'GET /api/imported-template': 1, 'GET /api/imported-section': 1,
+  /* where a run of "Generate my site" is, and stopping it (BE-033): Create Event calls them with the cookie too */
+  'GET /api/generate/status': 1, 'POST /api/generate/cancel': 1
 };
 var ROUTES = {
   'POST /api/suggest-design': handleSuggestDesign,
@@ -13055,6 +13313,8 @@ var ROUTES = {
   'GET /api/et/events': handleEtEvents,
   'POST /api/plan-structure': handlePlanStructure,
   'POST /api/generate-content': handleGenerateContent,
+  'GET /api/generate/status': handleGenerateStatus,
+  'POST /api/generate/cancel': handleGenerateCancel,
   'POST /api/redesign-section': handleRedesignSection,
   'GET /api/draft': handleGetDraft,
   'GET /api/generated-template': handleGeneratedTemplate,
@@ -13329,6 +13589,7 @@ module.exports._testHooks = {
   unansweredLogoNote: unansweredLogoNote, logoNoteError: logoNoteError, darkCopyOfUnit: darkCopyOfUnit, LOGO_NOTE_CODE: LOGO_NOTE_CODE,
   redrawYearInPng: redrawYearInPng, classifyGlimpses: classifyGlimpses, unstyledSectionIds: unstyledSectionIds, emptyPictureBox: emptyPictureBox, dropPicture: dropPicture, embedsMainPicture: embedsMainPicture, usableLogoPicture: usableLogoPicture,
   aiDesignOf: aiDesignOf,
+  runStatusOf: runStatusOf, RUN_ACTIVE_MS: RUN_ACTIVE_MS, SOURCE_FRESH_MS: SOURCE_FRESH_MS, buildGeneratedDesign: buildGeneratedDesign,
   TRACK_PIXEL: TRACK_PIXEL,   // the open pixel answered when lib/promo-track.js cannot be loaded (must equal its PIXEL)
   sectionAnchorFor: sectionAnchorFor, publicBaseFor: publicBaseFor, cmsOriginFor: cmsOriginFor,
   publishVersion: publishVersion,   // tools/republish-current.js: the published version again, through today's publish step
