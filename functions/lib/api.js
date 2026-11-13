@@ -29,19 +29,23 @@
 //                               direction (mood/themeColor/accentColor/headingFont/bodyFont), grounded only
 //                               in that event's own real material (previousEdition colour/font signals are
 //                               fed in as a weighable signal, never copied mechanically) — plus a generated
-//                               hero background image. Saved on the event's own doc (events/{eventId}:
-//                               designPlan) for the two endpoints below to read.
+//                               hero background image. Within a generation (runId: Create Event sends one
+//                               with every step) the plan is kept with that run (events/{eventId}/generations/
+//                               {runId}) and becomes the event's designPlan only when the run's site is written
+//                               (lib/generated-site.js); without a run it is saved on the event's own doc.
 //   GET  /api/generated-template?eventId=<id>   AI-DESIGNED GENERATED TEMPLATES PIPELINE, step 3: assembles
 //                               the exact template.json shape (id, name, fonts, design, body.style,
-//                               content.map, layout, sections) for a generated page, from the designPlan +
-//                               generatedSections saved by /api/plan-structure and /api/generate-content.
+//                               content.map, layout, sections) for a generated page, from the designPlan and
+//                               the site's sections saved by /api/plan-structure and /api/generate-content
+//                               (lib/generated-site.js: the run's own documents, or, for a site generated before
+//                               13 Nov 2026, events/{eventId}.generatedSections).
 //                               The frontend's template-loader.js consumes this the same way it reads a real
 //                               templates/<id>/template.json file; each section's real markup/CSS (fully
 //                               Gemini's own per-event design, not a fixed library component) is resolved
 //                               via GET /api/generated-section right below.
 //   GET  /api/generated-section?eventId=<id>&id=<sectionId>   signed in (routeApi's caller check) — one
-//                               section's real, model-written {html, css}, read off events/{eventId}.
-//                               generatedSections and sanitised again on the way out (sanitize.js). The 5 data-bound kinds (speakers/faq/partners/contact/
+//                               section's real, model-written {html, css}, read where the site keeps it
+//                               (lib/generated-site.js) and sanitised again on the way out (sanitize.js). The 5 data-bound kinds (speakers/faq/partners/contact/
 //                               glimpses) carry a data-rv-repeat-template/data-rv-field convention in that
 //                               markup for a client-side mechanism (built separately) to fill with real
 //                               per-event Firestore records. The css is confined to its own section on
@@ -207,6 +211,8 @@ const awardSite = require('./award-site');
 const awardSections = require('./award-sections');
 const prevSections = require('./prev-sections');
 const sectionOrder = require('./section-order');
+/* an AI-designed site's generations (runs) and where its sections are kept (BE-029, BE-032) */
+const generatedSite = require('./generated-site');
 const etNav = require('./et-nav');
 /* registration forms: their shape, the public definitions, the AI chat's form changes (pure) */
 const formsLib = require('./forms');
@@ -1604,6 +1610,9 @@ function handleExtractBrief(req, res) {
       return sendJson(res, 400, { error: 'eventId, fileName, mimeType and docBase64 are all required.' });
     }
     if (!isEventId(eventId)) return sendJson(res, 400, { error: 'Invalid eventId.' });
+    /* the generation this brief is read for (WZ-034): only that run's later steps read it (generated-site.js) */
+    var runId = runIdOf(payload);
+    if (runId === null) return sendJson(res, 400, { error: RUN_ID_ERROR });
     /* the model is only ever given a document to read as a PDF or as plain text */
     mimeType = mimeType.split(';')[0].trim().toLowerCase();
     if (mimeType !== 'application/pdf' && mimeType !== 'text/plain') {
@@ -1684,10 +1693,12 @@ function handleExtractBrief(req, res) {
                (event-description.js). update(), not a merge: it never makes a document that is not there. */
             return watch.update(Object.assign({}, facts.value, { updatedAt: now }));
           })
-          .then(function () { return briefRef.set({
-            sourceFileName: shownName, mimeType: mimeType, storagePath: storagePath,
-            extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now
-          }); })
+          .then(function () {
+            var brief = { sourceFileName: shownName, mimeType: mimeType, storagePath: storagePath,
+              extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now };
+            if (runId) brief.runId = runId;
+            return briefRef.set(brief);
+          })
           .then(function () {
             sendJson(res, 200, { eventId: eventId, briefId: briefRef.id, extracted: extracted });
             if (watch.live) logActivity(fb, eventId, req.user, 'brief-updated', 'brief read from “' + shownName.slice(0, 120) + '”', { area: 'content' });
@@ -1700,6 +1711,17 @@ function handleExtractBrief(req, res) {
         sendStepFailure(res, err, 500, 'extract-brief failed: ' + err.message);
       });
   }, BODY_LIMITS.brief);
+}
+
+/* The generation a step belongs to (Create Event names each press of "Generate my site" and sends the name with
+   every step: lib/generated-site.js). -> the name, '' when none was sent, null when what was sent is not one */
+var RUN_ID_ERROR = 'runId must be letters, digits, "-" or "_" (at most 64).';
+/* a step of a run the person stopped (WZ-055): it changes nothing */
+var RUN_STOPPED = 'This run was stopped, so nothing it made was saved.';
+function runIdOf(payload) {
+  var v = payload && payload.runId;
+  if (v == null || v === '') return '';
+  return generatedSite.isRunId(v) ? v : null;
 }
 
 /* The facts of an event a brief step may store on it, from the form's eventMeta: name, start, end, venue and city,
@@ -2208,6 +2230,9 @@ function handleIngestSource(req, res) {
     if (!/^https?:\/\//i.test(url)) return sendJson(res, 400, { error: 'url must start with http:// or https://.' });
     var etPick = etPickOf(payload.etEvent);
     if (etPick === false) return sendJson(res, 400, { error: 'etEvent must name a known portal and a numeric event id.' });
+    /* the generation this page is read for (WZ-034): only that run's later steps read it (generated-site.js) */
+    var runId = runIdOf(payload);
+    if (runId === null) return sendJson(res, 400, { error: RUN_ID_ERROR });
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -2310,6 +2335,7 @@ function handleIngestSource(req, res) {
             design: design, tone: tone, logoCandidates: logoCandidates, editionHints: editionHints, fetchedAt: now,
             previous: previous || null, look: look, keyVisual: keyVisual, sectionPictures: pictureKinds, award: award
           };
+          if (runId) record.runId = runId;
           /* the same page read again (generating the site again) replaces its earlier reading: two readings of
              one previous edition left plan-structure taking whichever Firestore listed first. What ET's API gave the
              earlier reading (its award record, its speakers and photos) and the logo examined for it are kept when
@@ -4803,7 +4829,7 @@ function logoUnitInTime(fb, eventId, o) {
 
 /* ---------- the owner's logo after the site was made ----------
    An AI-designed site keeps its logo unit in two places the server writes: designPlan.design.logoUnit*
-   (what the hero is built from) and the hero in generatedSections (what the editor opens before the site
+   (what the hero is built from) and the generated hero (generated-site.js; what the editor opens before the site
    is first saved). A saved site (page.html, its versions) is the owner's: it is never written here — the
    editor offers the new unit there, and puts it in itself where the hero still shows the unit that was
    made automatically (editor-template-ui.js, ownerLogoOffer).
@@ -4893,29 +4919,38 @@ function saveOwnerUnit(fb, eventId, unit, opts) {
           ['logoUnitDarkUrl', 'logoUnitDarkStoragePath', 'logoUnitDarkOf'].forEach(function (k) { patch['designPlan.design.' + k] = fieldDelete(); });
         }
         out.savedSite = ownerLogoState(data).savedSite;
-        var sections = Array.isArray(data.generatedSections) ? data.generatedSections : null;
-        if (sections) {
-          var next = sections.map(function (s) {
-            if (!s || s.id !== 'hero') return s;
-            var heroTone = (/\bhero-on-(dark|light)\b/.exec(String(s.html || '')) || [])[1] || '';
-            /* as the hero is built (handleGenerateContent): a dark banner shows a light-drawn unit's copy as the unit;
-               a light banner keeps the copy beside it, for a dark theme */
-            var mode = unitHeroMode(unit, design), url = unit.url, darkUrl = '';
-            if (mode === 'light' && dark) { if ((heroTone || (darkSite ? 'dark' : 'light')) === 'dark') { mode = 'dark'; url = dark.url; } else darkUrl = dark.url; }
-            /* A logo drawn for a dark ground (white lettering) would vanish on a light hero, and the other way
-               round with no copy to show: the hero's own tone is not changed here (its colours and veil are the
-               design's), so such a logo is not swapped in — the owner is told (toneClash), and the design's unit
-               takes effect when the site is next generated. */
-            if (heroTone && /^(dark|light)$/.test(String(unit.heroMode)) && mode !== heroTone) { out.toneClash = unit.heroMode; return s; }
-            var unitHtml = genDesign.logoUnitImageHtml({ url: url, alt: data.name || eventId, width: unit.width, height: unit.height, plate: unit.plate, note: heroNote ? out.note : '', mode: mode, darkUrl: darkUrl });
-            var html = swapHeroUnit(s.html, unitHtml);
-            if (html === null || html === s.html) return s;
-            out.heroUpdated = true;
-            return Object.assign({}, s, { html: html });
-          });
-          if (out.heroUpdated) patch.generatedSections = next;
-        }
-        tx.update(ref, patch);
+        /* the generated hero, where the site keeps it (generated-site.js): its run's own document, read in this same
+           transaction, or the event's field (a site generated before 13 Nov 2026) */
+        var heroRef = generatedSite.sectionRef(fb, eventId, data, 'hero');
+        var heroRead = heroRef ? tx.get(heroRef).then(function (h) { return h.exists ? [h.data()] : null; })
+          : Promise.resolve(Array.isArray(data.generatedSections) ? data.generatedSections : null);
+        return heroRead.then(function (sections) {
+          if (sections) {
+            var next = sections.map(function (s) {
+              if (!s || s.id !== 'hero') return s;
+              var heroTone = (/\bhero-on-(dark|light)\b/.exec(String(s.html || '')) || [])[1] || '';
+              /* as the hero is built (handleGenerateContent): a dark banner shows a light-drawn unit's copy as the unit;
+                 a light banner keeps the copy beside it, for a dark theme */
+              var mode = unitHeroMode(unit, design), url = unit.url, darkUrl = '';
+              if (mode === 'light' && dark) { if ((heroTone || (darkSite ? 'dark' : 'light')) === 'dark') { mode = 'dark'; url = dark.url; } else darkUrl = dark.url; }
+              /* A logo drawn for a dark ground (white lettering) would vanish on a light hero, and the other way
+                 round with no copy to show: the hero's own tone is not changed here (its colours and veil are the
+                 design's), so such a logo is not swapped in — the owner is told (toneClash), and the design's unit
+                 takes effect when the site is next generated. */
+              if (heroTone && /^(dark|light)$/.test(String(unit.heroMode)) && mode !== heroTone) { out.toneClash = unit.heroMode; return s; }
+              var unitHtml = genDesign.logoUnitImageHtml({ url: url, alt: data.name || eventId, width: unit.width, height: unit.height, plate: unit.plate, note: heroNote ? out.note : '', mode: mode, darkUrl: darkUrl });
+              var html = swapHeroUnit(s.html, unitHtml);
+              if (html === null || html === s.html) return s;
+              out.heroUpdated = true;
+              return Object.assign({}, s, { html: html });
+            });
+            if (out.heroUpdated) {
+              if (heroRef) tx.update(heroRef, { html: next[0].html });
+              else patch.generatedSections = next;
+            }
+          }
+          tx.update(ref, patch);
+        });
       });
     });
   }).then(function () { return out; });
@@ -5006,6 +5041,14 @@ function handlePlanStructure(req, res) {
     var ownerNotes = String(payload.designNotes || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
     /* 'standard': the twelve sections every ET microsite draws on; 'advanced': the AI chooses the sections */
     var siteMode = payload.siteMode === 'standard' ? 'standard' : 'advanced';
+    /* The generation this plan is for (WZ-034, BE-029): it reads only what that run read — the brief and the pages
+       the owner gave this time, never an earlier run's — and the plan is kept with the run, not put on the event,
+       until the run's site is written (generate-content). useEventInputs: a run made from what the event already
+       has on record (an event whose site an earlier pipeline made). Without a run: the event's newest brief and
+       every page it has, and the plan saved on the event, as before. */
+    var runId = runIdOf(payload);
+    if (runId === null) return sendJson(res, 400, { error: RUN_ID_ERROR });
+    var inputsOf = runId && payload.useEventInputs !== true ? runId : '';
 
     var fb = getFirebase();
     if (fb.error) return sendJson(res, 503, { error: fb.error });
@@ -5018,14 +5061,13 @@ function handlePlanStructure(req, res) {
       watch = w;
       return Promise.all([
         eventRef.get(),
-        eventRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-        eventRef.collection('sources').get(),
+        generatedSite.inputs(fb, eventId, inputsOf),
         /* what the event already has on record (Content › Agenda, Speakers, FAQ): a list that exists gets its section */
         Promise.all(['sessions', 'speakers', 'faqs'].map(function (c) { return eventRef.collection(c).limit(1).get().then(function (q) { return q.empty ? '' : c; }, function () { return ''; }); }))
       ]);
     }).then(function (results) {
-      var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
-      var onRecord = (results[3] || []).filter(Boolean);
+      var eventSnap = results[0], read = results[1];
+      var onRecord = (results[2] || []).filter(Boolean);
       var stored = eventSnap.exists ? eventSnap.data() : {};
       /* the facts of the event only: what earlier runs left on the record is not material for a new design */
       var eventMeta = Object.assign({}, {
@@ -5035,8 +5077,8 @@ function handlePlanStructure(req, res) {
       /* the description's headings are the owner's brief — directions, not facts to show (owner-brief.js) */
       eventMeta.description = ownerBrief.withoutHeadings(eventMeta.description);
       if (!eventMeta.description) delete eventMeta.description;
-      var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
-      var sourceDocs = sourcesSnap.docs.map(function (d) { return d.data(); });
+      var brief = read.brief;
+      var sourceDocs = read.sourceDocs;
       /* an awards event is built as ET's award sites are (award-site.js), whatever structure was asked for */
       if (String(stored.category || '').toLowerCase() === 'awards' || payload.siteMode === 'award') siteMode = 'award';
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections, sectionPictures: v.type === 'previousEdition' ? v.sectionPictures || [] : [] }; });
@@ -5210,11 +5252,26 @@ function handlePlanStructure(req, res) {
           /* the event's description, written from the brief and the previous edition — only where it is empty or
              still the owner's raw brief; one the owner wrote by hand is kept (event-description.js) */
           var described = eventDescription.patch(r.parsed && r.parsed.eventDescription, stored, (payload.eventMeta || {}).description);
-          return watch.merge(Object.assign({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null }, described || {}))
+          /* within a run, the plan (and the description written with it) waits with the run for its site: the event
+             changes when the site is written (generate-content), never half-way. The run becomes the event's newest:
+             a run that planned earlier, in another tab or by someone else, can no longer put its site on the event. */
+          var kept = runId
+            ? watch.within(function (tx, ref) {
+              var at = new Date().toISOString(), runRef = generatedSite.runRef(fb, eventId, runId);
+              /* a run the person stopped while this was being made keeps the event as it is (WZ-055) */
+              return tx.get(runRef).then(function (was) {
+              if (was.exists && (was.data() || {}).status === 'stopped') throw httpError(409, RUN_STOPPED, { code: 'run-stopped' });
+              tx.set(runRef, { runId: runId, status: 'planned', designPlan: designPlan, described: described ? { description: described.description, from: String(stored.description || '') } : null,
+                usedEventInputs: !inputsOf, by: actorOf(req.user), plannedAt: at });    // whole: a plan made again in the same run replaces the last, never blends with it
+              tx.update(ref, { generationRun: { runId: runId, at: at } });
+              });
+            })
+            : watch.merge(Object.assign({ designPlan: designPlan, matchedTemplateId: null, structurePlan: null, theme: null }, described || {}));
+          return kept
             .then(function () {
-              sendJson(res, 200, { eventId: eventId, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan, description: described ? described.description : undefined });
-              if (watch.live) logActivity(fb, eventId, req.user, 'site-designed', 'AI made a new site design — ' + sections.length + ' sections', { area: 'design' });
-              if (watch.live && described) logActivity(fb, eventId, req.user, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
+              sendJson(res, 200, { eventId: eventId, runId: runId || undefined, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan, description: described ? described.description : undefined });
+              if (watch.live) logActivity(fb, eventId, req.user, 'site-designed', 'AI made a new site design — ' + sections.length + ' sections' + (runId ? ' (used once its pages are written)' : ''), { area: 'design' });
+              if (watch.live && described && !runId) logActivity(fb, eventId, req.user, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
                 fields: [{ field: 'description', before: String(stored.description || '').slice(0, 600), after: described.description }] });
             });
           });
@@ -5829,6 +5886,26 @@ function sanitizeSectionCodeResult(parsed, designPlan) {
   return sections;
 }
 
+/* BE-031: the planned sections the model was to write (not those built here from records) that are not in the site,
+   or are there with nothing in them. -> [id] */
+function missingSectionIds(sections, designPlan) {
+  var have = {};
+  /* a section is there when its markup has an element in it: the model's empty string or bare words are not one */
+  (sections || []).forEach(function (s) { if (s && s.id && /<[a-z]/i.test(String(s.html || ''))) have[s.id] = 1; });
+  return ((designPlan && designPlan.sections) || []).filter(function (p) { return p && p.id && !p.prebuilt; })
+    .map(function (p) { return p.id; }).filter(function (id) { return !have[id]; });
+}
+/* the failure in the owner's words: the sections by the names the plan gave them */
+function missingSectionsSentence(ids, designPlan) {
+  var names = ids.map(function (id) {
+    var p = ((designPlan && designPlan.sections) || []).filter(function (x) { return x && x.id === id; })[0];
+    return '“' + String((p && p.name) || id.replace(/-/g, ' ')).trim() + '”';
+  });
+  var list = names.length < 2 ? names.join('') : names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1];
+  /* short enough for Create Event to show as it is (its rows show a server's sentence of up to 140 characters) */
+  return 'ETB2B AI did not write ' + (names.length === 1 ? 'the ' + list + ' section' : list) + '. Nothing was saved — retry.';
+}
+
 /* The site is written in two calls side by side once it has more than a few sections: each answer is
    smaller, so neither runs into the time one call may take, and the page is ready sooner. Both are shown
    the whole plan and the same rules. -> [[ids], [ids]] or [[ids]] */
@@ -5967,38 +6044,48 @@ function fillSparseOverview(fb, eventId, answers, designPlan, ctx) {
 
 // The gen- branch's own tail, deliberately separate from runGenerateContent above (see this block's own
 // header comment for why) — reads brief/sources for sourceEventId exactly like runGenerateContent does,
-// builds the prompt from designPlan, calls Gemini, sanitizes, and persists {generatedSections} directly on
-// the event doc (not a subcollection — same persistence style designPlan/structurePlan/theme already used).
+// builds the prompt from designPlan, calls Gemini, sanitizes, and stores the sections in documents of the run's
+// own (generated-site.js), the event switching to them in one write (BE-032: not on the event's document).
 // Also still writes a `drafts` row (library: {} deliberately empty) purely so GET /api/draft's existing
 // draftId/staleness-tracking machinery keeps working for this event — see this function's call site for the
 // full reasoning.
-function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, by) {
+/* run: { runId, fromRun (the plan is the run's own, kept by plan-structure), described (the event description written
+   with that plan), ownInputs (read only this run's brief and pages) } — see generated-site.js. The event's site is
+   switched in one write once every section is written; a run overtaken by a newer one, or whose caller has gone
+   (Cancel, a closed tab), changes nothing. */
+function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, by, run) {
+  run = run || {};
   /* a plan made before sponsors were put first is written in today's order (section-order.js) */
   designPlan = Object.assign({}, designPlan, { sections: sectionOrder.sponsorsFirst(designPlan.sections) });
   var draftRef = fb.db.collection('events').doc(eventId);
   var sourceRef = fb.db.collection('events').doc(sourceEventId);
   var watch = null, overviewPictured = false;
+  /* the person who asked is still waiting for the answer: one who stopped (the wizard's Cancel aborts the request) or
+     left is not given a site they no longer expect (WZ-055) */
+  var callerGone = false;
+  if (res && typeof res.on === 'function') res.on('close', function () { if (!res.writableEnded) callerGone = true; });
+  var ownInputs = !!(run.ownInputs && run.runId && sourceEventId === eventId);
   watchEvent(fb, eventId).then(function (w) {
     watch = w;
     return Promise.all([
       sourceRef.get(),
-      sourceRef.collection('briefs').orderBy('createdAt', 'desc').limit(1).get(),
-      sourceRef.collection('sources').get()
+      /* this run's own brief and pages (WZ-034); a future edition's, its series' own as recorded */
+      generatedSite.inputs(fb, sourceEventId, ownInputs ? run.runId : '')
     ]);
   }).then(function (results) {
-    var eventSnap = results[0], briefSnap = results[1], sourcesSnap = results[2];
+    var eventSnap = results[0], read = results[1];
     var stored = eventSnap.exists ? eventSnap.data() : {};
     var eventMeta = eventFacts(stored, payload.eventMeta);
     var logoUrl = /^https:\/\//i.test(String(stored.logoUrl || '')) ? stored.logoUrl : '';
-    var brief = briefSnap.empty ? null : briefSnap.docs[0].data().extracted;
-    var sources = sourcesSnap.docs.map(function (d) {
-      var v = d.data();
+    var brief = read.brief;
+    var sourceDocs = read.sourceDocs;
+    var sources = sourceDocs.map(function (v) {
       return { type: v.type, url: v.url, extractedSections: v.extractedSections };
     });
     /* the footer's "What's Happening" is read from ET while the site is being written. The bar and the footer
        are the portal of the event this site is for (watchEvent read its document), not of the one the brief
        and sources may be read from (sourceEventId) */
-    var footerOf = sitePortalOf({ portal: watch.portal }, sourcesSnap.docs.map(function (d) { return d.data(); }));
+    var footerOf = sitePortalOf({ portal: watch.portal }, sourceDocs);
     var footerRead = footerEvents(footerOf.portal);
 
     // 100s, not the 60s default — writing full bespoke HTML/CSS is a genuinely bigger generation job than
@@ -6007,7 +6094,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
     var batches = sectionCodeBatches(designPlan);
     /* an award site: the words of its internal pages, written beside the sections (writeAwardPages) */
     var awardRead = designPlan.siteMode === 'award'
-      ? writeAwardPages(fb, eventId, stored, sourcesSnap.docs.map(function (d) { return d.data(); }), brief, eventMeta).then(function (a) {
+      ? writeAwardPages(fb, eventId, stored, sourceDocs, brief, eventMeta).then(function (a) {
         /* its Nomination form (a Category list from its categories) and its Express Interest form
            (api-forms.js createAwardForms: reused when they exist, their categories brought up to date) */
         return require('./api-forms').createAwardForms(fb, eventId, { categories: a.award.categories, nominateTitle: 'Nomination', by: by })
@@ -6110,6 +6197,13 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       written.push({ id: 'hero', html: genDesign.heroHtml(heroOpts), css: genDesign.heroCss(heroOpts) });
 
       var sections = sanitizeSectionCodeResult({ sections: written }, designPlan);
+      /* BE-031: a planned section the model did not write, even when asked once more on its own (above), is a failed
+         generation — said, never dropped in silence: nothing is saved and the wizard's row offers Retry */
+      var missing = missingSectionIds(sections, designPlan);
+      if (missing.length) {
+        console.error('generate-content: ' + eventId + ' — not written, so nothing was saved: ' + missing.join(', '));
+        return sendJson(res, 502, { error: missingSectionsSentence(missing, designPlan), code: 'ai-bad-output', retryable: true, missing: missing });
+      }
       /* Pictures were named to the model by short tokens; here they become addresses again, and any picture
          address that is not one of this site's is repaired (genDesign.restorePictures). The event's own
          logo is in the top bar whatever was written. */
@@ -6131,7 +6225,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       });
       /* the previous edition's sections, built here from its real records (prev-sections.js), each in its
          planned place */
-      var prevDoc = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.previous; })[0];
+      var prevDoc = sourceDocs.filter(function (v) { return v.type === 'previousEdition' && v.previous; })[0];
       /* every photo a section shows: the previous edition's gallery leaves them out (no picture twice on a page) */
       var usedPhotos = [];
       planned.forEach(function (x) { if (x.imageUrl) usedPhotos.push(x.imageUrl); (x.photos || []).forEach(function (u) { usedPhotos.push(u); }); });
@@ -6139,7 +6233,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* an award site's own sections built from its records (award-sections.js), by id */
       var awardHome = {};
       /* the previous edition's photos not shown elsewhere on the page light the award's stage panels and its calls to act */
-      var awardRec = sourcesSnap.docs.map(function (d) { return d.data(); }).filter(function (v) { return v.type === 'previousEdition' && v.award; }).map(function (v) { return v.award; })[0];
+      var awardRec = sourceDocs.filter(function (v) { return v.type === 'previousEdition' && v.award; }).map(function (v) { return v.award; })[0];
       var photoPool = (prevDoc && prevDoc.previous && prevDoc.previous.glimpses && prevDoc.previous.glimpses.length ? prevDoc.previous.glimpses : (awardRec && awardRec.glimpses) || []);
       var awardPhotos = photoPool.filter(function (u) { return usedPhotos.indexOf(u) === -1; }).slice(0, 5);
       /* the jury is the event's Speakers records (seedAwardJury): drawn into the page by the editor; the plan has its
@@ -6184,7 +6278,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       /* the top bar, built here as on ET's own event sites (et-nav.js): the portal's logo, the event's name,
          date and place, a link to every section in the page's order, the owner's main action */
       sections = sections.filter(function (s) { return s.id !== 'nav'; });
-      var navFor = { order: sections.filter(function (s) { return !s.page; }).map(function (s) { return s.id; }), sources: sourcesSnap.docs.map(function (d) { return d.data(); }), owner: designPlan.owner || (brief && brief.owner) };
+      var navFor = { order: sections.filter(function (s) { return !s.page; }).map(function (s) { return s.id; }), sources: sourceDocs, owner: designPlan.owner || (brief && brief.owner) };
       /* the bar's portal logo is the event's own portal, the footer's (sitePortalOf): et-nav.js takes it as given
          when the key is there ('' gives none), and works one out of the sources only for callers that send none */
       navFor.portal = footerOf.portal;
@@ -6215,13 +6309,60 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
       var positioningNotes = answers.map(function (r) { return String(r.parsed.positioningNotes || '').trim(); }).filter(Boolean).join(' ').slice(0, 500);
       var now = new Date().toISOString();
 
-      /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
-      var merged = { generatedSections: sections, generatedPages: sitePages, generatedAt: now };
-      /* the overview's picture, made here (fillSparseOverview), is kept with the plan as every section's is */
-      if (overviewPictured) merged.designPlan = { sections: designPlan.sections };
-      /* an award site's internal pages' words, kept until the site can have pages (SITE_PAGES) */
-      if (got.award) merged.awardPages = got.award.pages;
-      return watch.merge(merged)
+      /* The caller stopped or left while the site was being written: the event is left as it was (the wizard's
+         Cancel says nothing is kept). What was paid for is not stored either: a site nobody is waiting for. */
+      if (callerGone) {
+        console.warn('generate-content: ' + eventId + ' — the request was stopped before the site was written; the event was not changed.');
+        return;
+      }
+      /* BE-032: the sections go into documents of this run's own (generated-site.js), then the event switches to them
+         in one write — its plan, its list of sections, the description written with the plan — so a site is never
+         half the new run's and half an earlier one's. The sections no longer live on the event's document (the old
+         field is removed by the same write), so it stays small whatever the site holds. */
+      var commitRunId = run.runId || generatedSite.newRunId();
+      var described = run.fromRun ? run.described : null, describedNow = null, describedBefore = '';
+      /* the event is checked first: one removed meanwhile (Create Event's Cancel removes the event its run made) gets nothing */
+      return watch.stillThere()
+        /* (its status is left as it is: a Stop that comes in meanwhile is what the switch below reads) */
+        .then(function () { return generatedSite.writeSections(fb, eventId, commitRunId, sections, { writtenAt: now }); })
+        .then(function () {
+          return watch.within(function (tx, ref, snap) {
+            /* the run's own record, read in the same transaction: one the person stopped is never put on the event */
+            return (run.runId ? tx.get(generatedSite.runRef(fb, eventId, commitRunId)) : Promise.resolve(null)).then(function (runSnap) {
+            if (runSnap && runSnap.exists && (runSnap.data() || {}).status === 'stopped') throw httpError(409, RUN_STOPPED, { code: 'run-stopped' });
+            var cur = snap.data() || {};
+            describedNow = null;                    // a transaction may run more than once
+            /* BE-029: only the event's newest run puts its site on it — one that planned after this one (another
+               tab, someone else) has taken the event, and this run's site is not used */
+            var newest = cur.generationRun && cur.generationRun.runId;
+            if (run.runId && newest && newest !== run.runId) {
+              throw httpError(409, 'A newer run for this event was started elsewhere, so this one was not saved. Generate again to replace it.', { code: 'run-superseded' });
+            }
+            /* generatedAt is what a list reads to know this event has a generated site, without reading the site */
+            var patch = { generatedSite: generatedSite.pointer(commitRunId, sections, now), generatedPages: sitePages, generatedAt: now,
+              generationRun: { runId: commitRunId, at: now, done: true } };
+            if (Array.isArray(cur.generatedSections)) patch.generatedSections = fieldDelete();
+            /* the run's own plan becomes the event's, with what the earlier pipeline kept cleared, and the description
+               written with it (only where it was empty or the owner's raw brief: event-description.js) */
+            if (run.fromRun) {
+              patch.designPlan = designPlan; patch.matchedTemplateId = null; patch.structurePlan = null; patch.theme = null;
+              /* …and only while the description is still what it was then: one the owner has written meanwhile stays */
+              if (described && described.description && String(cur.description || '') === String(described.from || '')) {
+                patch.description = described.description;
+                describedNow = described.description; describedBefore = String(cur.description || '');
+              }
+            /* the event's own plan: only what this step changed in it — the overview's picture (fillSparseOverview) */
+            } else if (overviewPictured) patch['designPlan.sections'] = designPlan.sections;
+            /* an award site's internal pages' words, kept until the site can have pages (SITE_PAGES) */
+            if (got.award) patch.awardPages = got.award.pages;
+            tx.update(ref, patch);
+            tx.set(generatedSite.runRef(fb, eventId, commitRunId), { status: 'done', doneAt: now }, { merge: true });
+            });
+          });
+        })
+        /* what earlier runs left — their sections, plans, and (for a run made from its own inputs) the briefs and
+           pages the owner has since replaced — is let go: nothing reads them any more. Never fails the request. */
+        .then(function () { return generatedSite.retire(fb, eventId, commitRunId, { inputs: ownInputs }); })
         /* an award site's FAQs are the event's FAQ records (Content › FAQ), as the page shows them: the ones
            written for this edition, put there only while the event has none of its own */
         .then(function () { return got.award ? seedAwardFaqs(fb, eventId, got.award, by) : null; })
@@ -6229,16 +6370,18 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
         .then(function () { return got.award ? seedAwardJury(fb, eventId, got.award.award.jury, by) : null; })
         .then(function () {
           return draftRef.collection('drafts').add({
-            templateId: templateId, sourceEventId: sourceEventId, library: {},
+            templateId: templateId, sourceEventId: sourceEventId, library: {}, runId: commitRunId,
             positioningNotes: positioningNotes, model: (answers[0] && answers[0].model) || GEMINI_TEXT_MODEL, generatedAt: now, skippedLibraries: []
           });
         })
         .then(function (docRef) {
           sendJson(res, 200, {
-            eventId: eventId, templateId: templateId, draftId: docRef.id, positioningNotes: positioningNotes,
+            eventId: eventId, templateId: templateId, draftId: docRef.id, runId: commitRunId, positioningNotes: positioningNotes,
             sections: sections.map(function (s) { return { id: s.id, kind: s.kind }; }), library: {}
           });
           if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI wrote the site’s ' + sections.length + ' sections again — opened in the editor next', { area: 'site' });
+          if (watch.live && describedNow) logActivity(fb, eventId, by, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
+            fields: [{ field: 'description', before: describedBefore.slice(0, 600), after: describedNow }] });
         });
     });
   }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
@@ -6461,13 +6604,40 @@ function handleGenerateContent(req, res) {
     if (/^gen-/.test(templateId)) {
       /* the design is this event's own: 'gen-<another event>' would write that event's site onto this one */
       if (templateId !== 'gen-' + eventId) return sendJson(res, 400, { error: 'An AI-designed site is written from its own event\'s design (templateId must be "gen-' + eventId + '").', code: 'other-event' });
-      return sourceOk().then(function () { return fb.db.collection('events').doc(eventId).get(); }).then(function (snap) {
-        var data = snap.exists ? snap.data() : {};
-        var designPlan = data.designPlan;
+      /* the generation this is (WZ-034, BE-029): its own plan, kept with it by plan-structure, and its own brief and
+         pages; the event changes only once its site is written. A run with no record of its own (its plan was made
+         before runs were kept) works from the event's plan, as a caller without a run does. */
+      var runId = runIdOf(payload);
+      if (runId === null) return sendJson(res, 400, { error: RUN_ID_ERROR });
+      /* WZ-055: { stop: true } — the person stopped this run (Create Event's Stop generating, the editor's Stop). No
+         model is asked: the run is marked stopped, so a step of it still under way on the server (its plan, its
+         pages) is never put on the event, whatever happens to the request it came in on. */
+      if (payload.stop === true) {
+        if (!runId) return sendJson(res, 400, { error: 'Name the run to stop (runId).' });
+        return watchEvent(fb, eventId).then(function (w) {
+          return w.within(function (tx, ref, snap) {
+            var at = new Date().toISOString(), newest = (snap.data() || {}).generationRun || {};
+            if (newest.runId === runId && !newest.done) tx.update(ref, { 'generationRun.stopped': true });
+            tx.set(generatedSite.runRef(fb, eventId, runId), { runId: runId, status: 'stopped', stoppedAt: at, stoppedBy: actorOf(req.user) }, { merge: true });
+          });
+        }).then(function () { sendJson(res, 200, { eventId: eventId, runId: runId, stopped: true }); })
+          .catch(function (err) { sendStepFailure(res, err, 500, 'The run could not be stopped: ' + err.message); });
+      }
+      return sourceOk().then(function () {
+        return Promise.all([fb.db.collection('events').doc(eventId).get(), generatedSite.readRun(fb, eventId, runId)]);
+      }).then(function (got) {
+        var data = got[0].exists ? got[0].data() : {}, run = got[1];
+        if (run && run.status === 'stopped') return sendJson(res, 409, { error: RUN_STOPPED, code: 'run-stopped' });
+        var fromRun = !!(run && run.designPlan);
+        var designPlan = fromRun ? run.designPlan : data.designPlan;
         if (!designPlan || !designPlan.design || !Array.isArray(designPlan.sections)) {
           return sendJson(res, 400, { error: 'No design plan found for "' + eventId + '" — run /api/plan-structure first.' });
         }
-        runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, req.user);
+        runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourceEventId, futureEdition, designPlan, req.user, {
+          runId: runId, fromRun: fromRun, described: fromRun ? run.described || null : null,
+          /* this run's own brief and pages, unless it was made from what the event already had */
+          ownInputs: fromRun && !run.usedEventInputs && payload.useEventInputs !== true
+        });
       }).catch(function (err) { sendStepFailure(res, err, 500, 'generate-content failed: ' + err.message); });
     }
 
@@ -6554,8 +6724,8 @@ function handleGetDraft(req, res) {
 
 /* ---------- GET /api/generated-template?eventId=<id> — AI-DESIGNED GENERATED TEMPLATES PIPELINE, step 3 ----------
    Assembles the exact template.json shape (see the top-of-file comment and the contract shared with the
-   frontend's template-loader.js) from the designPlan + generatedSections /api/plan-structure and
-   /api/generate-content already saved on events/{eventId}. No fixed component library anymore: every
+   frontend's template-loader.js) from the designPlan and the site's sections /api/plan-structure and
+   /api/generate-content already saved for events/{eventId} (generated-site.js). No fixed component library anymore: every
    section's real markup/CSS is Gemini's own, served per-section by GET /api/generated-section right below.
    No "theme" key: every theme/colour value goes straight into body.style as inline CSS custom properties,
    computed fresh on every request — no Storage round-trip, no separate theme.css file. */
@@ -6574,10 +6744,19 @@ function buildGeneratedDesign(design) {
 
 function fontStack(family) { return '"' + family + '", Arial, sans-serif'; }
 
+/* BE-035: an event whose site the first AI pipeline made (October 2026: structurePlan + theme over the fixed section
+   library templates/_library, written to the event by plan-structure; no designPlan, no written sections). Four such
+   events exist (cio — published —, enterprise-ai, next-billion, nexttech-summit); they are left as they are. */
+function earlierPipelineSite(data) {
+  return !!(data && data.structurePlan && Array.isArray(data.structurePlan.sections) && !(data.designPlan && data.designPlan.design) &&
+    !generatedSite.has(data));
+}
+var EARLIER_PIPELINE_SENTENCE = 'This site was made by an earlier version of ETB2B AI, which the site editor cannot open. Nothing about the event has been changed.';
+
 /* The page's section ids, top to bottom: nav, hero, designPlan.sections in planned order with this edition's
-   sponsors first (section-order.js), footer — filtered down to whatever generatedSections actually has
-   (generate-content may have had to omit a planned section whose id was missing from Gemini's response; see
-   sanitizeSectionCodeResult). */
+   sponsors first (section-order.js), footer — filtered down to whatever sections the site has (generatedSections:
+   generated-site.js index(), [{ id, page? }]; a site generated before BE-031 may lack a planned section the model
+   left out). */
 function generatedPageIds(designPlan, generatedSections) {
   var have = {}, paged = [];
   (generatedSections || []).forEach(function (s) {
@@ -6606,10 +6785,18 @@ function handleGeneratedTemplate(req, res) {
     if (!snap.exists) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
     var data = snap.data();
     var designPlan = data.designPlan;
+    /* BE-035: a site the first AI pipeline made (October 2026: a structure plan over a fixed section library, no
+       design plan and no written sections) cannot be built here. Said as such — the editor explains it and offers
+       to make the site again — and nothing about the event is changed by asking. */
+    if (earlierPipelineSite(data)) {
+      return sendJson(res, 409, { error: EARLIER_PIPELINE_SENTENCE, code: 'earlier-ai-design', published: data.published === true });
+    }
     if (!designPlan || !designPlan.design || !Array.isArray(designPlan.sections)) {
       return sendJson(res, 404, { error: 'No design plan found for "' + eventId + '" — run /api/plan-structure first.' });
     }
-    var generatedSections = Array.isArray(data.generatedSections) ? data.generatedSections : [];
+    /* the site's sections without their markup (generated-site.js: the run's own documents, or the event's field for
+       a site generated before 13 Nov 2026) */
+    var generatedSections = generatedSite.index(data);
     if (!generatedSections.length) {
       return sendJson(res, 404, { error: 'No generated sections found for "' + eventId + '" — run /api/generate-content first.' });
     }
@@ -6682,6 +6869,11 @@ function handleGeneratedTemplate(req, res) {
         var planned = designPlan.sections.filter(function (x) { return x.id === id; })[0];
         var label = (planned && planned.name) || (id === 'nav' ? 'Top bar' : id.replace(/-/g, ' ').replace(/^./, function (c) { return c.toUpperCase(); }));
         var section = { id: id, name: label, etId: null, script: false };
+        /* ED-046: the sections whose words ETB2B AI wrote, for the editor's "Check what the AI wrote" before
+           publishing — not the top bar and the footer (built from the event's facts and its portal), nor a section
+           built from records (the previous edition's speakers, sponsors, agenda and photos; an award's categories
+           and jury): template-loader.js marks only the others (data-ai-generated) */
+        if (id === 'nav' || id === 'footer' || (planned && planned.prebuilt)) section.ai = false;
         /* internal pages (site-pages.js): the top bar and the footer are on every page; a planned section on the page
            its plan names (designPlan.sections[].page); the rest — the hero first — on the home page */
         if (sitePageList.length) {
@@ -6708,8 +6900,9 @@ function handleGeneratedTemplate(req, res) {
 /* ---------- GET /api/generated-section?eventId=<id>&id=<sectionId> — AI-DESIGNED GENERATED TEMPLATES
    PIPELINE, step 4 ----------
    Signed in, any role, an event of one of the caller's portals (routeApi's caller check) — one section's real,
-   model-written {html, css}, read off events/{eventId}.generatedSections (POST /api/generate-content wrote it
-   there) and made safe again on the way out (safeGeneratedSection), whatever was stored. */
+   model-written {html, css}, read where POST /api/generate-content keeps it (generated-site.js: the run's own
+   document, or events/{eventId}.generatedSections for a site generated before 13 Nov 2026) and made safe again on
+   the way out (safeGeneratedSection), whatever was stored. */
 function handleGeneratedSection(req, res) {
   var qs = new URLSearchParams(req.url.split('?')[1] || '');
   var eventId = String(qs.get('eventId') || '').trim();
@@ -6720,18 +6913,21 @@ function handleGeneratedSection(req, res) {
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
 
+  var data = null;
   fb.db.collection('events').doc(eventId).get().then(function (snap) {
-    if (!snap.exists) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
-    var data = snap.data();
-    var sections = Array.isArray(data.generatedSections) ? data.generatedSections : [];
-    var found = sections.filter(function (s) { return s && s.id === sectionId; })[0];
+    if (!snap.exists) return null;
+    data = snap.data();
+    /* where the site keeps it (generated-site.js): its run's own document, or the event's field (before 13 Nov 2026) */
+    return generatedSite.readOne(fb, eventId, data, sectionId);
+  }).then(function (found) {
+    if (!data) return sendJson(res, 404, { error: 'No event found for "' + eventId + '".' });
     if (!found) return sendJson(res, 404, { error: 'No generated section "' + sectionId + '" found for "' + eventId + '".' });
     /* scoped on the way out as well as when stored (it is idempotent), so sections stored before the
        server did the scoping are served correctly too */
     var html = String(found.html || '');
     /* the links of the top bar and the footer follow the page's order (a site made before that was enforced
        is served so too) */
-    if ((sectionId === 'nav' || sectionId === 'footer') && data.designPlan && Array.isArray(data.designPlan.sections)) html = sectionOrder.orderNavLinks(html, generatedPageIds(data.designPlan, sections));
+    if ((sectionId === 'nav' || sectionId === 'footer') && data.designPlan && Array.isArray(data.designPlan.sections)) html = sectionOrder.orderNavLinks(html, generatedPageIds(data.designPlan, generatedSite.index(data)));
     /* made safe on the way out as well as when stored (BE-025): a section stored before the real sanitiser, or
        written to the record by any other way, reaches the editor only through it. Its own <style> rules join its CSS. */
     var css = [String(found.css || '')].concat(sanitize.styleTexts(html)).join('\n');
@@ -7642,6 +7838,13 @@ function watchEvent(fb, eventId) {
         return fb.db.runTransaction(function (tx) {
           return tx.get(ref).then(function (now) { check(now, start); tx.update(ref, data); });
         });
+      },
+      /* fn(tx, ref, snap) in a transaction that has read the event and found it still there: for a step that writes
+         beside the event too (a generation's own record), or decides from what the event holds right then */
+      within: function (fn) {
+        return fb.db.runTransaction(function (tx) {
+          return tx.get(ref).then(function (now) { check(now, start); return fn(tx, ref, now); });
+        });
       }
     };
   });
@@ -7678,6 +7881,9 @@ function eventForClient(eventId, data) {
   var out = Object.assign({ eventId: eventId }, data);
   delete out.siteLock;
   delete out.aiUsage;                 // the History's own route answers it, with its labels
+  /* BE-032: the markup of a site generated before 13 Nov 2026, still on its document (generated-site.js): no page
+     reads it from here, and it is most of the document. Which sections the site has stays (generatedSite). */
+  delete out.generatedSections;
   EVENT_TIME_FIELDS.forEach(function (f) { if (has(out, f)) out[f] = isoOf(out[f]); });
   out.published = data.published === true;
   out.publishedPath = out.published ? publicPathOf(eventId) : null;
@@ -11462,8 +11668,11 @@ function handleSiteRepair(req, res) {
       return siteVersionOf(data) ? null : httpError(409, 'This site has not been saved yet. Open the site editor and save it first.', { code: 'site-not-saved' });
     }).then(function (data) {
       var version = siteVersionOf(data), undo = [];
-      return Promise.all([readObject(fb, sitePath(eventId, 'page.html')), readObject(fb, sitePath(eventId, 'snapshot.json'))]).then(function (r) {
+      /* the stored sections too, where the site keeps them (generated-site.js): an editor opened without its own copy
+         mounts the site from them, so they are put right with the page */
+      return Promise.all([readObject(fb, sitePath(eventId, 'page.html')), readObject(fb, sitePath(eventId, 'snapshot.json')), generatedSite.readAll(fb, eventId, data)]).then(function (r) {
         var before = r[0], page = r[0], snapText = r[1], snap = null;
+        var storedSections = r[2] && r[2].length ? r[2] : null, keptIn = generatedSite.where(data);
         try { snap = snapText != null ? JSON.parse(snapText) : null; } catch (e) { snap = null; }
         if (page == null) throw httpError(409, 'The saved site could not be found. Open the site editor, save it once, and try again.', { code: 'site-not-saved' });
         /* a site saved before the editor's snapshot was kept on the server has none: its page and its stored
@@ -11480,7 +11689,7 @@ function handleSiteRepair(req, res) {
               page = next.page;
               if (snap) snap.nodes = next.nodes;
             });
-            sectionsPatch = Array.isArray(data.generatedSections) ? data.generatedSections.map(function (s) {
+            sectionsPatch = storedSections ? storedSections.map(function (s) {
               return s && (s.id === 'nav' || s.id === 'footer') ? Object.assign({}, s, { html: built[s.id].html, css: built[s.id].css }) : s;
             }) : null;
             done.push('ETB2B header and footer');
@@ -11500,7 +11709,7 @@ function handleSiteRepair(req, res) {
             if (!fixes.length) return;
             page = fix(page);
             if (snap) snap.nodes = fix(snap.nodes);
-            var sections = sectionsPatch || data.generatedSections;
+            var sections = sectionsPatch || storedSections;
             if (Array.isArray(sections) && JSON.stringify(sections) !== JSON.stringify(fix(sections))) sectionsPatch = fix(sections);
             var plan = data.designPlan && data.designPlan.sections;
             if (Array.isArray(plan) && JSON.stringify(plan) !== JSON.stringify(fix(plan))) planPatch = fix(plan);
@@ -11522,7 +11731,7 @@ function handleSiteRepair(req, res) {
                 return withHeadingText(n, r.id, 'h2', written[r.id]) || n;
               });
             });
-            var sections = sectionsPatch || data.generatedSections;
+            var sections = sectionsPatch || storedSections;
             if (Array.isArray(sections)) {
               var patched = sections.map(function (sec) {
                 if (!sec || !written[sec.id] || typeof sec.html !== 'string') return sec;
@@ -11543,11 +11752,18 @@ function handleSiteRepair(req, res) {
             snap ? saveObject(fb, sitePath(eventId, 'snapshot.json'), JSON.stringify(snap), JSON_TYPE) : null,
             saveObject(fb, sitePath(eventId, 'page.html'), page, HTML)
           ]).then(function () {
+            /* a site generated since 13 Nov 2026 keeps its sections in documents of their own: written here, and put
+               back if the save does not go through */
+            if (!sectionsPatch || keptIn !== 'run') return null;
+            var runId = data.generatedSite.runId;
+            undo.push(function () { return generatedSite.writeSections(fb, eventId, runId, storedSections).catch(function () {}); });
+            return generatedSite.writeSections(fb, eventId, runId, sectionsPatch);
+          }).then(function () {
             var changes = {
               site: { version: next, snapshotVersion: snap ? next : (previous.snapshotVersion != null ? previous.snapshotVersion : 0), templateId: previous.templateId || data.templateId || null, updatedAt: now, updatedBy: actor },
               updatedAt: now
             };
-            if (sectionsPatch) changes.generatedSections = sectionsPatch;
+            if (sectionsPatch && keptIn === 'event') changes.generatedSections = sectionsPatch;
             if (planPatch) changes['designPlan.sections'] = planPatch;
             return commitSiteLock(fb, eventId, token, changes);
           }).then(function () {
@@ -12103,7 +12319,7 @@ function handlePublicPage(req, res, eventId, slug) {
 function themeSwitcherHtml(event, eventId, templateId) {
   var plan = event && event.designPlan;
   /* an AI-designed site: its template id says so, or (a site not saved yet) its own design and sections do */
-  if (!templateId && plan && Array.isArray(event.generatedSections) && event.generatedSections.length) templateId = 'gen-' + eventId;
+  if (!templateId && plan && generatedSite.has(event)) templateId = 'gen-' + eventId;
   if (!templateId) templateId = siteTemplateIdOf(event);
   /* every site but an imported one gets the box: the section edges for all, the themes for an AI-designed one */
   if (!eventId || !templateId || isImportedSite(eventId, templateId)) return '';
@@ -13022,6 +13238,10 @@ module.exports._testHooks.safeImportedFrame = safeImportedFrame;
 module.exports._testHooks.briefFacts = briefFacts;
 module.exports._testHooks.CALLER_CHECKED = CALLER_CHECKED;
 module.exports._testHooks.watchEvent = watchEvent;
+/* generations kept apart until complete, sections off the event's document, missing sections said (generation-runs.test.js) */
+module.exports._testHooks.missingSectionIds = missingSectionIds;
+module.exports._testHooks.earlierPipelineSite = earlierPipelineSite;
+module.exports._testHooks.runIdOf = runIdOf;
 module.exports._testHooks.handleExtractBrief = handleExtractBrief;
 module.exports._testHooks.handleGenerateContent = handleGenerateContent;
 module.exports._testHooks.handleGeneratedSection = handleGeneratedSection;

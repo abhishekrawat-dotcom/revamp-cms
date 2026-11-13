@@ -62,9 +62,12 @@
         if (res.redirected && new URL(res.url).pathname !== u.pathname) throw failure('Please sign in again.', 401, 'sign-in', u.href);
         if (res.ok) return body;
         var signIn = res.status === 401 || res.status === 403;
-        throw failure(
+        var err = failure(
           apiError(body) || (res.status === 404 ? 'This site could not be found.' : signIn ? 'Please sign in again.' : 'The site could not be loaded - try again.'),
           res.status, res.status === 404 ? 'template-not-found' : signIn ? 'sign-in' : 'server', u.href);
+        /* what the server said this is ("earlier-ai-design": a site the editor cannot build, BE-035), for the page to explain */
+        try { var said = JSON.parse(body); if (said && typeof said.code === 'string') err.apiCode = said.code; } catch (e) { /* not JSON */ }
+        throw err;
       });
     }, function (err) {
       if (err && err.status === 401) throw failure(err.message, 401, 'sign-in', u.href);
@@ -264,13 +267,15 @@
       function assemble(parts, ids) {
         var header = parts[0], footer = parts[1];
         var sectionsHtml = '', scripts = '';
-        /* An AI-designed site opened for editing: every section is the model's writing until its owner has
-           read it. The mark is saved with the page and comes off as each section is edited or approved, so
-           it is given here, on the first build, and nowhere else. */
-        var written = generated && opts.editing ? ' data-ai-generated="true"' : '';
+        /* An AI-designed site opened for editing: every section ETB2B AI wrote is the model's writing until its
+           owner has read it ("Check what the AI wrote" before publishing). The mark is saved with the page and comes
+           off as each section is edited or approved, so it is given here, on the first build, and nowhere else. The
+           server names the sections it built itself from the event's facts and records (the top bar, the footer,
+           the previous edition's lists: s.ai === false), which are not asked about (ED-046). */
+        function written(s) { return generated && opts.editing && s.ai !== false ? ' data-ai-generated="true"' : ''; }
         t.sections.forEach(function (s, i) {
           var html = parts[2 + i * 3], css = parts[3 + i * 3], js = parts[4 + i * 3];
-          sectionsHtml += tagSection(html, s.id, (ids[s.id] ? ' id="' + esc(s.id) + '"' : '') + pageAttr(s.page) + written) +
+          sectionsHtml += tagSection(html, s.id, (ids[s.id] ? ' id="' + esc(s.id) + '"' : '') + pageAttr(s.page) + written(s)) +
             '<style data-rv-style="' + esc(s.id) + '">\n' + css + '</style>\n';
           if (js) scripts += '<script data-rv-script="' + esc(s.id) + '">\n' + js + '</script>\n';
         });

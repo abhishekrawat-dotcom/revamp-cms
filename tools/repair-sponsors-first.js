@@ -55,6 +55,7 @@ function hrefs(html) { return (String(html || '').match(/href\s*=\s*["']#[^"']*[
   if (!snap.exists) throw new Error('No event "' + eventId + '".');
   const data = snap.data();
   const plan = data.designPlan;
+  if (data.generatedSite) throw new Error('"' + eventId + '" keeps its sections in documents of their own (events/<id>/generations/<runId>/sections, functions/lib/generated-site.js), which this script does not write: nothing was changed.');
   const gen = data.generatedSections;
   if (!plan || !Array.isArray(plan.sections) || !Array.isArray(gen) || !gen.length) throw new Error('"' + eventId + '" is not an AI-designed site (no designPlan.sections / generatedSections).');
 

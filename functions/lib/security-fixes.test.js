@@ -271,7 +271,8 @@ step(function () {
 step(function () {
   /* the generation writes its sections through the same step, last, after their pictures are addresses again */
   var src = require('fs').readFileSync(require('path').join(__dirname, 'api.js'), 'utf8');
-  var at = src.indexOf('genDesign.motionBudget(sections);'), safeAt = src.indexOf('var safe = safeGeneratedSection(s.html, s.css);', at), mergeAt = src.indexOf('var merged = { generatedSections: sections', at);
+  /* stored in the run's own documents since BE-032 (generated-site.js writeSections) */
+  var at = src.indexOf('genDesign.motionBudget(sections);'), safeAt = src.indexOf('var safe = safeGeneratedSection(s.html, s.css);', at), mergeAt = src.indexOf('generatedSite.writeSections(fb, eventId, commitRunId, sections', at);
   check('BE-025: generate-content makes every section safe after it is assembled and before it is stored', at !== -1 && safeAt > at && mergeAt > safeAt, [at, safeAt, mergeAt]);
   check('BE-025: the old regex strippers are gone; the model\'s text is only tidied before its pictures are put back', !/out\.replace\(\/\\son\[a-z\]\+/.test(src) && /var html = tidyGeneratedSectionHtml\(String\(found\.html \|\| ''\)\);/.test(src), '');
   var s = H.safeGeneratedSection(HOSTILE, HOSTILE_CSS);

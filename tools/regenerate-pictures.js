@@ -92,6 +92,7 @@ function kindPrompt(event, sections, previousKinds, place) {
   const e = snap.data();
   const plan = e.designPlan;
   if (!plan || !Array.isArray(plan.sections) || !plan.design) throw new Error(ID + ' has no AI design (designPlan)');
+  if (e.generatedSite) throw new Error(ID + ' keeps its sections in documents of their own (events/<id>/generations/<runId>/sections, functions/lib/generated-site.js), which this script does not write: nothing was changed.');
   const pictured = plan.sections.filter(function (s) { return s && s.image && s.imageUrl; });
   if (!pictured.length) { console.log(ID + ': no section pictures to make again.'); process.exit(0); }
   console.log(ID + ' — ' + e.name + ': ' + pictured.length + ' section pictures');

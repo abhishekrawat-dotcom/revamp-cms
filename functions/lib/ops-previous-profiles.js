@@ -16,7 +16,7 @@
      2. stores it on the event's previousEdition source (events/<id>/sources/<doc>.previous) — the speakers
         as now read; a list ET now answers empty for (the glimpses read from the page, say) is kept as it was;
      3. builds the previous-speakers and previous-glimpses sections again and puts them in place of the old
-        ones in events/<id>.generatedSections, scoped and capped exactly as generate-content does
+        ones in the site's stored sections (generated-site.js), scoped and capped exactly as generate-content does
         (lib/api.js), keeping a row still where the site had it still. No other section is touched, and a
         section the site does not have is not added.
    The page an owner has saved is not rewritten: the editor adds the profiles to the speakers' cards on that
@@ -28,6 +28,7 @@
    NODE_EXTRA_CA_CERTS=<pem>. Needs the same credentials as the server (tools/.env.local locally). */
 const fs = require('fs');
 const os = require('os');
+const generatedSite = require('./generated-site');
 const path = require('path');
 
 (function loadLocalEnv() {
@@ -84,11 +85,15 @@ function main() {
   var fb = getFirebase();
   if (fb.error) throw new Error('Cannot start: ' + fb.error);
   var ref = fb.db.collection('events').doc(EVENT);
+  var data = null;
   return Promise.all([ref.get(), ref.collection('sources').get()]).then(function (got) {
     var snap = got[0];
     if (!snap.exists) throw new Error('No event ' + EVENT + '.');
-    var data = snap.data() || {};
-    var sections = Array.isArray(data.generatedSections) ? data.generatedSections : [];
+    data = snap.data() || {};
+    /* where the site keeps its sections (generated-site.js): its generation's own documents, or this field */
+    return generatedSite.readAll(fb, EVENT, data).then(function (sections) { return { got: got, sections: sections }; });
+  }).then(function (both) {
+    var got = both.got, sections = both.sections;
     var src = got[1].docs.filter(function (d) { var v = d.data() || {}; return v.type === 'previousEdition' && v.previous; })[0];
     if (!src) throw new Error(EVENT + ' has no previousEdition source with a previous edition on it.');
     var old = src.data().previous || {};
@@ -128,7 +133,8 @@ function main() {
       fs.writeFileSync(backup, JSON.stringify({ event: EVENT, source: src.id, previous: old, generatedSections: sections.filter(function (s) { return s && changed.indexOf(s.id) !== -1; }) }, null, 1));
       console.log('\nBackup      ' + backup);
       return src.ref.update({ previous: next }).then(function () {
-        return changed.length ? ref.update({ generatedSections: updated }) : null;
+        if (!changed.length) return null;
+        return generatedSite.where(data) === 'run' ? generatedSite.writeSections(fb, EVENT, data.generatedSite.runId, updated) : ref.update({ generatedSections: updated });
       }).then(function () {
         console.log('Written     source ' + src.id + '.previous' + (changed.length ? ' and generatedSections: ' + changed.join(', ') : ''));
         return require('./activity').logActivity(fb, EVENT, 'platform', 'repaired', 'previous edition refresh (functions/lib/ops-previous-profiles.js): speaker profiles read again from ET' +
