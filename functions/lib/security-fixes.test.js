@@ -193,9 +193,10 @@ function step(fn) { steps.push(fn); }
 /* ================= BE-018: the caller is checked ================= */
 step(function () {
   var routes = Object.keys(H.CALLER_CHECKED).sort();
+  /* the eleven routes that leaned on the gate alone, and the run status and cancel routes Create Event calls (BE-033) */
   check('BE-018: the eleven routes that leaned on the gate alone are checked', JSON.stringify(routes) === JSON.stringify([
-    'GET /api/draft', 'GET /api/generated-section', 'GET /api/generated-template', 'GET /api/imported-section', 'GET /api/imported-template',
-    'POST /api/extract-brief', 'POST /api/generate-content', 'POST /api/ingest-source', 'POST /api/plan-structure', 'POST /api/redesign-section', 'POST /api/suggest-design']), routes);
+    'GET /api/draft', 'GET /api/generate/status', 'GET /api/generated-section', 'GET /api/generated-template', 'GET /api/imported-section', 'GET /api/imported-template',
+    'POST /api/extract-brief', 'POST /api/generate-content', 'POST /api/generate/cancel', 'POST /api/ingest-source', 'POST /api/plan-structure', 'POST /api/redesign-section', 'POST /api/suggest-design']), routes);
   return Promise.all([
     call('GET', '/api/generated-section?eventId=ev-a&id=overview', undefined, { who: null }),
     call('POST', '/api/extract-brief', { eventId: 'ev-a', fileName: 'b.txt', mimeType: 'text/plain', docBase64: b64('x') }, { who: null }),

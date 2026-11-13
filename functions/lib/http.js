@@ -4,6 +4,7 @@
 // Nothing in here may throw into the caller's request stream callbacks. An exception nobody catches ends
 // a plain Node http server's process, and with it every other request in flight on that instance — so
 // each helper answers the request itself (4xx/5xx) or returns a value, never throws.
+const crypto = require('crypto');
 const { getFirebase } = require('./firebase');
 const AC = require('./access-control');
 /* verifySession: how long a sign-in lasts, and whether it was revoked — one rule with the gate (BE-058) */
@@ -19,16 +20,31 @@ function sendJson(res, status, obj, extraHeaders) {
   res.end(JSON.stringify(obj));
 }
 
+/* A short id for one failure, given to the person with the plain sentence and written beside the full cause in the
+   server's log, so the two can be matched when someone reports it. */
+function failureRef() { return crypto.randomBytes(4).toString('hex'); }
+/* BE-019: an exception thrown by a handler inside a body callback (the request stream's "end" listener, or straight
+   away when the body came pre-buffered) is caught here and answered 500 with a ref — never left to end the process
+   or to leave the request hanging until the browser gives up. */
+function answerThrown(req, res, err) {
+  var ref = failureRef();
+  console.error('http: ' + req.method + ' ' + String(req.url || '').split('?')[0] + ' failed [ref ' + ref + '] — ' + (err && err.stack || err));
+  sendJson(res, 500, { error: 'Something went wrong on the server. Please try again.', ref: ref });
+}
+
 /* Calls cb(rawString) once the whole body has arrived, or answers 413 itself and never calls cb when the
    body is larger than maxBytes. (Firebase Functions v2 pre-buffers the body as req.rawBody; a plain http
    server does not — both are handled.) A route whose limit means something to the person — an image
-   size — passes the sentence to answer with as tooLarge. */
+   size — passes the sentence to answer with as tooLarge. A throw inside cb is answered 500 (answerThrown). */
 function readBody(req, res, cb, maxBytes, tooLarge) {
   var limit = maxBytes || DEFAULT_MAX_BODY;
   tooLarge = tooLarge || 'That request is too large.';
+  function deliver(raw) {
+    try { cb(raw); } catch (err) { answerThrown(req, res, err); }
+  }
   if (req.rawBody) {
     if (req.rawBody.length > limit) return sendJson(res, 413, { error: tooLarge });
-    return cb(req.rawBody.toString('utf8'));
+    return deliver(req.rawBody.toString('utf8'));
   }
   var chunks = [], size = 0, done = false;
   req.on('data', function (c) {
@@ -42,7 +58,7 @@ function readBody(req, res, cb, maxBytes, tooLarge) {
     }
     chunks.push(c);
   });
-  req.on('end', function () { if (!done) { done = true; cb(Buffer.concat(chunks).toString('utf8')); } });
+  req.on('end', function () { if (!done) { done = true; deliver(Buffer.concat(chunks).toString('utf8')); } });
   req.on('error', function () { if (!done) { done = true; sendJson(res, 400, { error: 'The request could not be read.' }); } });
 }
 
@@ -54,7 +70,7 @@ function parseJsonObject(raw) {
   return v;
 }
 
-/* cb(body) with a plain object, or a 400/413 answered here. */
+/* cb(body) with a plain object, or a 400/413 answered here (and a throw inside cb answered 500: readBody). */
 function parseJsonBody(req, res, cb, maxBytes, tooLarge) {
   readBody(req, res, function (raw) {
     var body;
@@ -96,7 +112,11 @@ function requireMember(req, res, cb) {
 
 function checkCaller(req, res, token, cb) {
   var fb = getFirebase();
-  if (fb.error) return sendJson(res, 503, { error: fb.error });
+  /* a server that is not set up says so in its log (the setting it lacks, where it is kept), never to the caller (BE-024) */
+  if (fb.error) {
+    console.error('http: the database is not available — ' + fb.error);
+    return sendJson(res, 503, { error: 'The service is not available just now. Please try again in a few minutes.', code: 'unavailable' });
+  }
   /* the sign-in's age and whether it was revoked are checked with the token (lib/access.js verifySession, BE-058) */
   session.verifySession(fb.auth, token).then(function (decoded) {
     return AC.readConfig(fb).then(function (cfg) {
@@ -190,7 +210,11 @@ function bufferBody(req, res, cb) {
     if (size > DEFAULT_MAX_BODY) { done = true; sendJson(res, 413, { error: 'That request is too large.' }); req.resume(); return; }
     chunks.push(c);
   });
-  req.on('end', function () { if (!done) { done = true; req.rawBody = Buffer.concat(chunks); cb(); } });
+  req.on('end', function () {
+    if (done) return;
+    done = true; req.rawBody = Buffer.concat(chunks);
+    try { cb(); } catch (err) { answerThrown(req, res, err); }
+  });
   req.on('error', function () { if (!done) { done = true; sendJson(res, 400, { error: 'The request could not be read.' }); } });
 }
 function portalCheck(fb, req, res, access, next) {
@@ -321,7 +345,7 @@ function isEmail(v) { return typeof v === 'string' && v.length <= 200 && EMAIL_R
 function str(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 300); }
 
 module.exports = {
-  sendJson, readBody, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin, requireMember,
+  sendJson, readBody, failureRef, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin, requireMember,
   adminFromRequest, CORS_HEADERS, sendPublicJson, sendPublicNoContent, clientIp, rateLimit, isEventId,
   isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str, AI_RATE
 };
