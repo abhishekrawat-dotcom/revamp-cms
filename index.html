@@ -417,7 +417,12 @@
       if (denied === 'blocked') showError('This account no longer has access to ETB2B EventSphere. Ask an admin if you need it back.');
       else if (denied === '1') showError('This Google account has not been given access to ETB2B EventSphere. Sign in with your @' + RevampAuth.allowedDomain + ' account, or ask an admin to invite you.');
       else if (reauth) showError('Your sign-in has expired. Please sign in again.');
-      RevampAuth.signOutUser().catch(function(){
+      RevampAuth.signOutUser().then(function(){
+        /* signed out: the address forgets ?signout / ?denied / ?reauth (LST-048), so a reload, Back to this page or a
+           tab left open on it never signs out again a session started since; where to go after signing in (?next=)
+           stays. The message on screen stays too. A sign-out that failed keeps them, so a reload tries again. */
+        try { history.replaceState(null, '', '/' + (next ? '?next=' + encodeURIComponent(next) : '') + location.hash); } catch (e) {}
+      }, function(){
         showError('Could not finish signing out. Check your connection and reload this page.');
       });
       return;

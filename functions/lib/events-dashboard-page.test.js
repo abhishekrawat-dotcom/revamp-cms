@@ -77,7 +77,7 @@ if (esbuild) {
   check('D.2 the inline script is ES5 by esbuild', es5 === true, es5);
 }
 check('D.2 a hashchange listener', INLINE.indexOf("window.addEventListener('hashchange', function(){") !== -1);
-check('D.2 the address is kept in step from renderResults (every change to the list passes there)', /function renderResults\(\)\{[\s\S]{0,400}?syncHash\(\);\n    renderChips\(\);/.test(INLINE));
+check('D.2 the address is kept in step from renderResults (every change to the list passes there)', /function renderResults\(\)\{[\s\S]{0,600}?syncHash\(\);\n    renderChips\(\);/.test(INLINE));
 
 /* ======== 2. the pure helpers, by name ======== */
 function fnSource(name) {
@@ -99,7 +99,7 @@ var CORE_TYPES = (new Function(/\n  var TYPES = (\{[\s\S]*?\});/.exec(CORE_SRC)[
 var helpers = { window: { RevampCore: { TYPES: CORE_TYPES } } };
 vm.createContext(helpers);
 vm.runInContext([varSource('EVENT_TYPES'), varSource('MONTH_SHORT'), varSource('IST_OFFSET_MIN')].concat(
-  ['pad2', 'validDay', 'istDay', 'cleanRange', 'inDays', 'fmtDayRange', 'parseListingHash', 'listingHash', 'searchLine', 'searchCells', 'searchHit', 'mapApiEventToRow'].map(fnSource)).join('\n'), helpers);
+  ['pad2', 'validDay', 'istDay', 'cleanRange', 'inDays', 'fmtDayRange', 'defaultSort', 'sameSort', 'parseListingHash', 'listingHash', 'searchLine', 'searchCells', 'searchHit', 'mapApiEventToRow'].map(fnSource)).join('\n'), helpers);
 var H = helpers;
 
 /* the parse of dc1a8e1, pasted unchanged, for "#tab=…&q=…" means exactly what it always did */
@@ -137,6 +137,20 @@ STATES.forEach(function (s, i) {
   check('D.2 listingHash → parseListingHash round-trips (' + i + ')', same(JSON.parse(JSON.stringify(round)), s), [h, round]);
 });
 check('D.2 the plain list keeps today\'s address', H.listingHash(STATES[0]) === '#tab=active' && H.listingHash({ tab: 'upcoming', search: 'x', filters: { types: [] } }) === '#tab=upcoming&q=x');
+/* LST-030: the page and an order the person picked are in the address; the list's own order and page 1 are not */
+check('LST-030 page 1 and the list\'s own order leave the address as it was',
+  H.listingHash({ tab: 'active', search: '', filters: { types: [] }, sort: { field: 'start', dir: 'asc' }, page: 1 }) === '#tab=active' &&
+  H.listingHash({ tab: 'active', search: '', specialView: 'draft', filters: { types: [] }, sort: { field: 'updated', dir: 'desc' }, page: 1 }) === '#tab=active&view=draft');
+var sorted = H.listingHash({ tab: 'upcoming', search: '', filters: { types: [] }, sort: { field: 'registrations', dir: 'desc' }, page: 3 });
+check('LST-030 a picked order and page 3 are written', sorted === '#tab=upcoming&sort=registrations-desc&page=3', sorted);
+check('LST-030 …and read back', same(JSON.parse(JSON.stringify(H.parseListingHash(sorted))), { tab: 'upcoming', sort: { field: 'registrations', dir: 'desc' }, page: 3 }), H.parseListingHash(sorted));
+check('LST-030 Drafts by date (not its own order) is written; the others by date are not',
+  H.listingHash({ tab: 'active', search: '', specialView: 'draft', filters: { types: [] }, sort: { field: 'start', dir: 'asc' } }) === '#tab=active&view=draft&sort=start-asc' &&
+  H.listingHash({ tab: 'completed', search: '', filters: { types: [] }, sort: { field: 'start', dir: 'desc' } }) === '#tab=completed&sort=start-desc');
+var badSort = JSON.parse(JSON.stringify(H.parseListingHash('#sort=name-asc&page=0&x=1') ));
+var badSort2 = JSON.parse(JSON.stringify(H.parseListingHash('#sort=visitors-up&page=-2&page=abc&page=1') ));
+var bigPage = H.parseListingHash('#page=99999').page, okPage = H.parseListingHash('#page=12').page;
+check('LST-030 an unknown order or a page that is not a page is left out', same(badSort, {}) && same(badSort2, {}) && bigPage === undefined && okPage === 12, [badSort, badSort2, bigPage, okPage]);
 
 /* India-time days, both ends included */
 var R = { from: '2026-10-26', to: '2026-11-01' };
@@ -372,10 +386,11 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   var chips2 = S.$('chip-row').innerHTML;
   check('D.2 the starts and "mine" chips each have a ✕', /Starts 1–30 Nov 2099<button type="button" data-chip="\d" aria-label="Remove filter: Starts 1–30 Nov 2099">/.test(chips2) &&
     /Created by you<button type="button" data-chip="\d" aria-label="Remove filter: Created by you">/.test(chips2), chips2);
-  check('D.2 the address holds it all', S.ctx.location.hash === '#tab=upcoming&type=ip&starts=2099-11-01..2099-11-30&mine=1', S.ctx.location.hash);
+  /* (LST-030: an order picked is in the address too) */
+  check('D.2 the address holds it all', S.ctx.location.hash === '#tab=upcoming&type=ip&starts=2099-11-01..2099-11-30&mine=1&sort=registrations-desc', S.ctx.location.hash);
   S.$('chip-clear-all').fire('click');
   var cleared = S.snap();
-  check('D.2 "Clear all" clears the date and "mine" filters too', cleared.created === null && cleared.starts === null && cleared.mine === false && cleared.filters.types.length === 0 && S.ctx.location.hash === '#tab=upcoming');
+  check('D.2 "Clear all" clears the date and "mine" filters too', cleared.created === null && cleared.starts === null && cleared.mine === false && cleared.filters.types.length === 0 && S.ctx.location.hash === '#tab=upcoming&sort=registrations-desc', S.ctx.location.hash);
   L.apply({ view: 'upcoming', mine: false, starts: { from: '2026-01-01', to: '2026-01-02' } });
   check('D.2 nothing in the window: "No events match", and Clear filters clears the window', /No events match/.test(S.$('table-body').innerHTML) && (function () {
     /* B07: the button carries data-empty-clear (it is drawn in the table and in the phone cards alike) */

@@ -506,6 +506,8 @@
   #results-view.view-list .card-list{ display:none; }
   #results-view.view-grid .table-wrap{ display:none; }
   #results-view.view-grid .card-list{ display:grid; grid-template-columns:repeat(auto-fill, minmax(290px,1fr)); gap:14px; }
+  /* an empty or failed list's message spans the cards' whole row, not their first 290 px column (LST-016) */
+  #results-view.view-grid .card-list > .empty-state{ grid-column:1 / -1; }
 
   /* ---------- help / support ---------- */
   /* Help sits in the top bar, beside the theme switch (UX-028). It was a pill fixed to the bottom-left corner that
@@ -681,7 +683,8 @@
 
 <header class="main-nav">
   <div class="main-nav-inner">
-    <a class="main-nav-brand" href="index.html">
+    <!-- home is this page itself: index.html is the sign-in page, which only forwards back here (LST-021) -->
+    <a class="main-nav-brand" href="Event_Listing.html">
       <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
       <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
     </a>
@@ -1261,8 +1264,10 @@
      #tab=active|upcoming|completed  &q=<search>  &view=draft|cancelled|deleted  &type=ip,awards  (#tab=draft is read as
      the Drafts tab, which is written as view=draft)
      &created=2026-10-26..2026-11-01  &starts=2026-11-01..2026-11-30  &mine=1
+     &sort=registrations-desc (only an order the person picked, not the list's own default)  &page=3 (from page 2)
      Only tab and q existed before; "#tab=upcoming&q=x" means exactly what it always did. A key that is junk (an
-     unknown tab or type, an impossible day) is left out, never guessed at. */
+     unknown tab, type or order, an impossible day, a page that is not a number) is left out, never guessed at; a
+     page past the end is the last page once the events are in (renderResults). */
   function parseListingHash(hash){
     var out = {}, draftTab = false;
     String(hash == null ? '' : hash).replace(/^#/, '').split('&').forEach(function(p){
@@ -1283,6 +1288,11 @@
         if (range) out[k] = range;
       }
       else if (k === 'mine'){ if (v === '1') out.mine = true; }
+      else if (k === 'sort'){
+        var so = /^(start|updated|registrations|visitors)-(asc|desc)$/.exec(v);
+        if (so) out.sort = { field: so[1], dir: so[2] };
+      }
+      else if (k === 'page'){ if (/^[1-9]\d{0,3}$/.test(v) && v !== '1') out.page = +v; }
     });
     /* "#tab=draft" is the Drafts tab, which is the draft view; a view named as well wins */
     if (draftTab && !out.specialView) out.specialView = 'draft';
@@ -1295,19 +1305,23 @@
     if (s.created) h += '&created=' + s.created.from + '..' + s.created.to;
     if (s.starts) h += '&starts=' + s.starts.from + '..' + s.starts.to;
     if (s.mine) h += '&mine=1';
+    /* the order and the page too (LST-030), so a reload or Back from an event comes back to the very rows */
+    if (s.sort && !sameSort(s.sort, defaultSort(s.specialView || s.tab))) h += '&sort=' + s.sort.field + '-' + (s.sort.dir === 'desc' ? 'desc' : 'asc');
+    if (s.page > 1) h += '&page=' + s.page;
     return h;
   }
   /* what the address says, with every key it leaves out back at its default */
   function applyHashState(p){
-    var from = currentBucket();
     state.tab = p.tab || 'active';
     state.search = p.search || '';
     state.specialView = p.specialView || null;
-    if (currentBucket() !== from && sameSort(state.sort, defaultSort(from))) state.sort = defaultSort(currentBucket());
+    /* an address with no order is the list's own (drafts: last edited; the rest: by date) */
+    state.sort = p.sort ? { field: p.sort.field, dir: p.sort.dir } : defaultSort(currentBucket());
     state.filters.types = p.types ? p.types.slice() : [];
     state.created = p.created || null;
     state.starts = p.starts || null;
     state.mine = p.mine === true;
+    state.page = p.page || 1;
   }
   /* Where the page opens (UX-018): an address says exactly which list; with none (the console's, the editor's and
      Create Event's "Back to events" are plain links), the list this browser tab last showed; else the tab last
@@ -1354,7 +1368,6 @@
   /* an address typed or pasted over this one (the page itself only ever replaces it, which fires nothing) */
   window.addEventListener('hashchange', function(){
     try { applyHashState(parseListingHash(location.hash)); } catch(e){ return; }
-    state.page = 1;
     closeAll(); showSearch(); renderApp();
   });
 
@@ -1383,7 +1396,32 @@
   /* =========================================================
      POPOVER / MENU MANAGEMENT
   ========================================================= */
+  /* each pop-over's button: it says whether its pop-over is open (aria-expanded), and Esc gives the focus back to it
+     (LST-044). A row's ⋯ menu has its own button, [data-row-menu-btn="<menu id>"]. */
+  var POPOVER_TRIGGERS = { 'type-popover':'btn-type', 'portal-popover':'btn-portal', 'range-popover':'btn-range',
+    'activity-range-popover':'btn-activity-range', 'more-menu':'btn-more', 'portals-nav-menu':'btn-portals-nav' };
+  function focusOn(id){ var el = $(id); if (el && typeof el.focus === 'function') try { el.focus(); } catch(e){} }
+  function popoverTrigger(id){
+    if (!id) return null;
+    if (POPOVER_TRIGGERS[id]) return $(POPOVER_TRIGGERS[id]);
+    return document.querySelector('[data-row-menu-btn="' + id + '"]');
+  }
+  /* set here, not in the markup, which other checks hold byte for byte: each button says it opens a pop-over, which
+     one, and that it is shut; Event type and Portal are menus of checkboxes */
+  Object.keys(POPOVER_TRIGGERS).forEach(function(id){
+    var b = $(POPOVER_TRIGGERS[id]);
+    if (!b) return;
+    if (!b.getAttribute('aria-haspopup')) b.setAttribute('aria-haspopup', 'true');
+    b.setAttribute('aria-expanded', 'false');
+    b.setAttribute('aria-controls', id);
+  });
+  [['type-popover', 'Event type'], ['portal-popover', 'Portal']].forEach(function(m){
+    var el = $(m[0]);
+    if (el){ el.setAttribute('role', 'menu'); el.setAttribute('aria-label', m[1]); }
+  });
   function closeAll(){
+    Object.keys(POPOVER_TRIGGERS).forEach(function(id){ var b = $(POPOVER_TRIGGERS[id]); if (b) b.setAttribute('aria-expanded', 'false'); });
+    document.querySelectorAll('[data-row-menu-btn][aria-expanded="true"]').forEach(function(b){ b.setAttribute('aria-expanded', 'false'); });
     document.querySelectorAll('.popover').forEach(function(p){ p.hidden = true; });
     /* a row menu moved to <body> while open (placeRowMenu) goes back into its row; one whose row was redrawn
        meanwhile has no row to go back to and is dropped */
@@ -1401,6 +1439,8 @@
     closeAll();
     var el = $(id);
     if (el){ el.hidden = false; state.openPopover = id; }
+    var b = popoverTrigger(id);
+    if (b) b.setAttribute('aria-expanded', 'true');
   }
   /* Was the click inside one of these? Asked of the path the click took when it happened (composedPath), not of the
      element now: "Custom range" redraws its own popover, so by the time its click reaches here the button is no
@@ -1415,7 +1455,17 @@
     if (clickWasIn(e, '.popover-wrap, .row-actions, .row-menu, #venue-quickview, [data-venue-id]')) return;
     closeAll();
   });
-  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeAll(); });
+  /* Esc closes what is open; the focus, when it was in the pop-over or on its button (or lost with a redraw), goes
+     back to the button that opened it, not to the top of the page (LST-044) */
+  document.addEventListener('keydown', function(e){
+    if (e.key !== 'Escape') return;
+    var open = state.openPopover, panel = open ? $(open) : null, trigger = popoverTrigger(open);
+    var at = document.activeElement;
+    var refocus = !!trigger && (!at || at === document.body || at === trigger || (panel && panel.contains(at)));
+    closeAll();
+    if (trigger) trigger.classList.remove('force-show');
+    if (refocus) try { trigger.focus(); } catch(err){}
+  });
 
   /* A row's ⋯ menu sits in the table's card, which scrolls (overflow:auto): drawn there, a menu below the last row
      was cut off at the card's edge and scrolled the card instead (UX-021). So, once open, it is pinned to the screen
@@ -2051,7 +2101,7 @@
     var opts = [['7','Last 7 days'],['10','Last 10 days'],['30','Last 30 days'],['custom','Custom range']];
     var body = opts.map(function(o){
       var on = state.range.mode === o[0];
-      return '<button class="radio-row ' + (on?'on':'') + '" data-range="' + o[0] + '"><span class="dot"><i></i></span>' + o[1] + '</button>';
+      return '<button type="button" class="radio-row ' + (on?'on':'') + '" aria-pressed="' + on + '" data-range="' + o[0] + '"><span class="dot" aria-hidden="true"><i></i></span>' + o[1] + '</button>';
     }).join('');
     if (state.range.mode === 'custom'){
       body += '<div class="custom-fields">' +
@@ -2065,18 +2115,19 @@
       b.addEventListener('click', function(){
         var mode = b.getAttribute('data-range');
         state.range.mode = mode;
-        if (mode !== 'custom'){ closeAll(); renderApp(); }
-        else { renderRangePopover(); }
+        /* the focus stays with the control, never dropped to the top of the page (LST-044) */
+        if (mode !== 'custom'){ closeAll(); renderApp(); focusOn('btn-range'); }
+        else { renderRangePopover(); focusOn('range-start'); }
       });
     });
     var cancelBtn = $('range-cancel'), applyBtn = $('range-apply');
-    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.range.mode='30'; closeAll(); renderApp(); });
+    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.range.mode='30'; closeAll(); renderApp(); focusOn('btn-range'); });
     if (applyBtn) applyBtn.addEventListener('click', function(){
       var s = $('range-start').value, e = $('range-end').value;
       if (!s || !e){ toast('Pick both a start and end date.', 'error'); return; }
       if (new Date(s) > new Date(e)){ toast('Start date must be before end date.', 'error'); return; }
       state.range.start = s; state.range.end = e;
-      closeAll(); renderApp();
+      closeAll(); renderApp(); focusOn('btn-range');
     });
   }
   $('btn-range').addEventListener('click', function(e){
@@ -2090,7 +2141,7 @@
     var rs = state.activityRange;
     var body = opts.map(function(o){
       var on = rs.mode === o[0];
-      return '<button class="radio-row ' + (on?'on':'') + '" data-arange="' + o[0] + '"><span class="dot"><i></i></span>' + o[1] + '</button>';
+      return '<button type="button" class="radio-row ' + (on?'on':'') + '" aria-pressed="' + on + '" data-arange="' + o[0] + '"><span class="dot" aria-hidden="true"><i></i></span>' + o[1] + '</button>';
     }).join('');
     if (rs.mode === 'custom'){
       body += '<div class="custom-fields">' +
@@ -2104,18 +2155,18 @@
       b.addEventListener('click', function(){
         var mode = b.getAttribute('data-arange');
         state.activityRange.mode = mode;
-        if (mode !== 'custom'){ closeAll(); renderActivity(); }
-        else { renderActivityRangePopover(); }
+        if (mode !== 'custom'){ closeAll(); renderActivity(); focusOn('btn-activity-range'); }
+        else { renderActivityRangePopover(); focusOn('arange-start'); }
       });
     });
     var cancelBtn = $('arange-cancel'), applyBtn = $('arange-apply');
-    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.activityRange.mode='30'; closeAll(); renderActivity(); });
+    if (cancelBtn) cancelBtn.addEventListener('click', function(){ state.activityRange.mode='30'; closeAll(); renderActivity(); focusOn('btn-activity-range'); });
     if (applyBtn) applyBtn.addEventListener('click', function(){
       var s = $('arange-start').value, e = $('arange-end').value;
       if (!s || !e){ toast('Pick both a start and end date.', 'error'); return; }
       if (new Date(s) > new Date(e)){ toast('Start date must be before end date.', 'error'); return; }
       state.activityRange.start = s; state.activityRange.end = e;
-      closeAll(); renderActivity();
+      closeAll(); renderActivity(); focusOn('btn-activity-range');
     });
   }
   $('btn-activity-range').addEventListener('click', function(e){
@@ -2131,15 +2182,51 @@
     var i = arr.indexOf(val);
     if (i===-1) arr.push(val); else arr.splice(i,1);
   }
+  /* An option of the Event type and Portal pop-overs is a checkbox in a menu (LST-044). A click ticks or unticks it
+     where it is: redrawing the pop-over took away the very button that had the focus, and a keyboard user was sent
+     back to the top of the page after every option. */
+  function checkRowHTML(attr, value, on, label){
+    return '<button type="button" class="check-row ' + (on?'on':'') + '" role="menuitemcheckbox" aria-checked="' + on + '" ' + attr + '="' + esc(value) + '">' +
+      '<span class="check-box" aria-hidden="true">' + (on?IC.check:'') + '</span>' + label + '</button>';
+  }
+  function setCheckRow(b, on){
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-checked', String(on));
+    var box = b.querySelector('.check-box');
+    if (box) box.innerHTML = on ? IC.check : '';
+  }
+  /* Up and Down (Home and End) move between a menu's options; Tab still leaves it */
+  function wireMenuKeys(menu){
+    if (!menu || menu._rvKeys) return;
+    menu._rvKeys = true;
+    menu.addEventListener('keydown', function(e){
+      var items = Array.prototype.slice.call(menu.querySelectorAll('[role="menuitemcheckbox"]'));
+      if (!items.length) return;
+      var at = items.indexOf(document.activeElement), to = -1;
+      if (e.key === 'ArrowDown') to = at < 0 ? 0 : (at + 1) % items.length;
+      else if (e.key === 'ArrowUp') to = at <= 0 ? items.length - 1 : at - 1;
+      else if (e.key === 'Home') to = 0;
+      else if (e.key === 'End') to = items.length - 1;
+      if (to < 0) return;
+      e.preventDefault();
+      items[to].focus();
+    });
+  }
   function renderTypePopover(){
     var offered = offeredTypes();
-    $('type-popover').innerHTML = '<div class="popover-label">Event type</div>' + (offered.length ? offered.map(function(k){
-      var on = state.filters.types.indexOf(k) !== -1;
-      return '<button class="check-row ' + (on?'on':'') + '" data-type="' + k + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(EVENT_TYPES[k]) + '</button>';
+    $('type-popover').innerHTML = '<div class="popover-label" aria-hidden="true">Event type</div>' + (offered.length ? offered.map(function(k){
+      return checkRowHTML('data-type', k, state.filters.types.indexOf(k) !== -1, esc(EVENT_TYPES[k]));
     }).join('') : '<p class="popover-empty">No events to filter yet.</p>');
     $('type-popover').querySelectorAll('[data-type]').forEach(function(b){
-      b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.types, b.getAttribute('data-type')); state.page=1; renderTypePopover(); renderResults(); renderToolbarButtons(); });
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        var k = b.getAttribute('data-type');
+        toggleInArray(state.filters.types, k); state.page=1;
+        setCheckRow(b, state.filters.types.indexOf(k) !== -1);
+        renderResults(); renderToolbarButtons();
+      });
     });
+    wireMenuKeys($('type-popover'));
   }
   /* All portals only (a one-portal view hides it: the switcher is the portal control there): "No portal yet", then
      every portal that has events, with their counts */
@@ -2148,14 +2235,20 @@
     return [{ slug:'none', name:'No portal yet', count:c.none }].concat(portalsWithEvents(c));
   }
   function renderPortalPopover(){
-    $('portal-popover').innerHTML = '<div class="popover-label">Portal</div>' + portalFilterRows().map(function(p){
-      var on = state.filters.portals.indexOf(p.slug) !== -1;
-      return '<button class="check-row ' + (on?'on':'') + '" data-portal="' + esc(p.slug) + '"><span class="check-box">' + (on?IC.check:'') + '</span>' + esc(p.name) +
-        ' <span class="mono muted" style="margin-left:auto;">' + p.count + '</span></button>';
+    $('portal-popover').innerHTML = '<div class="popover-label" aria-hidden="true">Portal</div>' + portalFilterRows().map(function(p){
+      return checkRowHTML('data-portal', p.slug, state.filters.portals.indexOf(p.slug) !== -1,
+        esc(p.name) + ' <span class="mono muted" style="margin-left:auto;">' + p.count + '</span>');
     }).join('');
     $('portal-popover').querySelectorAll('[data-portal]').forEach(function(b){
-      b.addEventListener('click', function(e){ e.stopPropagation(); toggleInArray(state.filters.portals, b.getAttribute('data-portal')); state.page=1; renderPortalPopover(); renderResults(); renderToolbarButtons(); });
+      b.addEventListener('click', function(e){
+        e.stopPropagation();
+        var v = b.getAttribute('data-portal');
+        toggleInArray(state.filters.portals, v); state.page=1;
+        setCheckRow(b, state.filters.portals.indexOf(v) !== -1);
+        renderResults(); renderToolbarButtons();
+      });
     });
+    wireMenuKeys($('portal-popover'));
   }
   $('btn-type').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='type-popover'){closeAll();return;} renderTypePopover(); openPopover('type-popover'); });
   $('btn-portal').addEventListener('click', function(e){ e.stopPropagation(); if (state.openPopover==='portal-popover'){closeAll();return;} renderPortalPopover(); openPopover('portal-popover'); });
@@ -2199,8 +2292,8 @@
   /* =========================================================
      SEARCH
   ========================================================= */
-  $('search-input').value = state.search;
-  $('btn-clear-search').hidden = !state.search;
+  /* the box, its clear button and its "/" hint as the list opens, a search from the address included (LST-016) */
+  showSearch();
   $('search-input').addEventListener('input', function(){
     state.search = this.value.trim(); state.page = 1;
     $('btn-clear-search').hidden = !state.search;
@@ -2396,7 +2489,7 @@
     if (e.status === 'deleted'){
       items.push(['restore', IC.restore, 'Restore', false, locked]);
     } else {
-      if (e.status !== 'draft') items.push(['setup', IC.settings, 'Event setup'], ['sep']);
+      /* no "Event setup" here (LST-046): the row itself, its name and a card all open the event's console */
       items.push(['duplicate', IC.copy, 'Clone event']);
       /* only a site that is live has a link that opens (publishedPath): a draft, or a site taken offline, has none
          to copy (UX-001) */
@@ -2414,23 +2507,22 @@
         (lock ? ' aria-disabled="true" title="' + esc(whoMayRemove()) + '"' : '') + '>' + it[1] + ' ' + it[2] + (lock ? '<span class="item-note">Approvers only</span>' : '') + '</button>';
     }).join('');
     var quickIcons = '';
-    /* Preview only for a site that has been saved: with none there is no page to show (the preview tab said "Nothing
-       to preview yet" with no way on, and many drafts are like that, UX-065), so the eye gives way to "Design the
-       site", which opens the site editor */
-    var previewIcon = e.siteSaved ? quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view')
-      : quickActionIcon('design', svg('<path d="M3 21l3.5-1 11-11-2.5-2.5-11 11z"/><path d="M14 6l2.5 2.5"/><path d="M17 3l4 4"/>', 14), 'Design the site', e.id, 'qa-view');
+    /* The pencil opens the site editor (LST-046): the row, its name and a card already open the event's console, so
+       a pencil that went there too was a third way to the same page, and an event with a saved site had no way into
+       its editor from here. With no site saved yet it says "Design the site". Preview only for a site that has been
+       saved: with none there is no page to show (the preview tab said "Nothing to preview yet" with no way on, UX-065). */
+    var editIcon = quickActionIcon('edit', IC.edit, e.siteSaved ? 'Edit site' : 'Design the site', e.id, 'qa-edit');
+    var previewIcon = e.siteSaved ? quickActionIcon('view', IC.eye, 'Preview', e.id, 'qa-view') : '';
     if (e.status === 'draft'){
       /* a draft is previewed like any other event: its last editor preview, or its saved site */
-      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
-        previewIcon;
+      quickIcons = editIcon + previewIcon;
     } else if (e.status !== 'deleted'){
-      quickIcons = quickActionIcon('edit', IC.edit, 'Edit', e.id, 'qa-edit') +
-        previewIcon +
+      quickIcons = editIcon + previewIcon +
         quickActionIcon('reports', IC.chart, 'Report', e.id, 'qa-report');
     }
     return '<div class="row-action-group">' + quickIcons +
       '<div class="popover-wrap">' +
-        '<button class="icon-btn" data-row-menu-btn="' + menuId + '" aria-label="More actions">' + IC.dots + '</button>' +
+        '<button class="icon-btn" data-row-menu-btn="' + menuId + '" aria-haspopup="true" aria-expanded="false" aria-label="More actions">' + IC.dots + '</button>' +
         '<div class="popover row-menu" id="' + menuId + '" hidden>' + menuHTML + '</div>' +
       '</div>' +
     '</div>';
@@ -2545,7 +2637,8 @@
     var list = state.loadFailed ? [] : getFilteredSorted();
     var total = list.length;
     var totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    if (state.page > totalPages) state.page = totalPages;
+    /* a page from the address waits for the events: only then is it known how many pages there are (LST-030) */
+    if (!state.loading && !state.loadFailed && state.page > totalPages) state.page = totalPages;
     var pageList = list.slice((state.page-1)*PAGE_SIZE, state.page*PAGE_SIZE);
 
     /* every change to what the list shows passes through here, so the address always matches it */
@@ -2563,8 +2656,10 @@
     /* All portals adds the Portal column and the cards' portal line (CSS on #results-view.all-portals) */
     var allPortals = state.portal === 'all', cols = allPortals ? 6 : 5;
     $('results-view').classList.toggle('all-portals', allPortals);
-    $('result-line').textContent = state.loading || state.loadFailed ? '' : ('Showing ' + (total ? ((state.page-1)*PAGE_SIZE+1) : 0) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s') +
+    /* nothing above an empty list (LST-016): "Showing 0–0 of 0 events" said nothing its message does not say better */
+    $('result-line').textContent = state.loading || state.loadFailed || !total ? '' : ('Showing ' + ((state.page-1)*PAGE_SIZE+1) + '–' + Math.min(total, state.page*PAGE_SIZE) + ' of ' + total + ' event' + (total===1?'':'s') +
       (allPortals ? '' : ' on ' + portalNameOf(state.portal)));
+    $('result-line').hidden = !$('result-line').textContent;
 
     document.querySelectorAll('.ev-table th.sortable').forEach(function(th){
       var on = th.getAttribute('data-sort') === state.sort.field;
@@ -2705,7 +2800,7 @@
     $('pagination').innerHTML = btns;
     $('pagination').querySelectorAll('[data-page]').forEach(function(b){
       b.addEventListener('click', function(){
-        state.page = parseInt(b.getAttribute('data-page'),10); renderResults();
+        state.page = Math.max(1, parseInt(b.getAttribute('data-page'),10) || 1); renderResults();
         try { window.scrollTo({top:0, behavior:'smooth'}); } catch(e){ try { window.scrollTo(0,0); } catch(e2){} }
       });
     });
@@ -2799,6 +2894,7 @@
         if (state.openPopover === panelId){ closeAll(); btn.classList.remove('force-show'); return; }
         closeAll();
         $(panelId).hidden = false; state.openPopover = panelId;
+        btn.setAttribute('aria-expanded', 'true');
         placeRowMenu($(panelId), btn);
         btn.classList.add('force-show');
       });
@@ -2837,13 +2933,13 @@
       case 'set-portal':
         /* the ⋯ menu closes behind the window, so focus comes back to its ⋯ button */
         openSetPortalFor(id, menuButtonOf(from)); break;
-      case 'edit': case 'setup':
+      case 'setup':
         window.location.href = 'edit-event.html?event=' + id; break;
       case 'view':
         /* the same page the Design editor's Preview opens (and the event console's Preview) */
         window.open('/preview/' + encodeURIComponent(e.id) + '?draft=1', '_blank'); break;
-      case 'design':
-        /* no saved site yet: the site editor, on the event's own template (as the console's "Open the site editor") */
+      case 'edit': case 'design':
+        /* the site editor, on the event's own template (as the console's "Open the site editor") */
         window.location.href = '/custom_editor.html?event=' + encodeURIComponent(e.id) + (e.templateId ? '&template=' + encodeURIComponent(e.templateId) : ''); break;
       case 'reports':
         window.location.href = 'audience-registrations.html?event=' + id; break;

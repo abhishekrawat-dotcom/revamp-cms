@@ -56,9 +56,10 @@ check('UX-016 edit-event-core.js loads before auth.js and the inline script, and
   require('./access').isServableFile('edit-event-core.js') === true);
 check('UX-017 (done before B07) stays done: no PORTAL_ACTIVITY_BASE, no newsletter or subscriber panels, no generated deltas',
   LIVE.indexOf('PORTAL_ACTIVITY_BASE') === -1 && LIVE.indexOf('renderNewsletterPanel') === -1 && LIVE.indexOf('renderSubscriberPanel') === -1 && !/Math\.sin\(/.test(CODE));
-check('UX-022 the top bar: Events only; no Awards, CRM, Webinars or More Products, no link to index.html but the logo',
+/* (LST-021: the logo too goes to this page now, not to the sign-in page that only forwards back here) */
+check('UX-022 the top bar: Events only; no Awards, CRM, Webinars or More Products, no link to index.html, the logo included',
   LIVE.indexOf('More Products') === -1 && LIVE.indexOf('btn-more-products') === -1 && !/label:'(Awards|CRM|Webinars|Payments|Event Edition|Marketing Dashboard)'/.test(CODE) &&
-  (LIVE.match(/href="index\.html"/g) || []).length === 1 && CODE.indexOf("href:'index.html'") === -1);
+  (LIVE.match(/href="index\.html"/g) || []).length === 0 && CODE.indexOf("href:'index.html'") === -1 && /<a class="main-nav-brand" href="Event_Listing\.html">/.test(LIVE));
 check('UX-022 no "Updated 2 min ago" text, no "Event data refreshed" toast, no Event ID chip', LIVE.indexOf('Updated 2 min ago') === -1 && LIVE.indexOf('Event data refreshed') === -1 &&
   LIVE.indexOf('Event ID:') === -1 && LIVE.indexOf('hashToEventNo') === -1 && LIVE.indexOf('ev-id-chip') === -1);
 check('UX-025 no Payment column, no Paid / Free filter, no rupee figures, Revenue honestly "not available yet"',
@@ -236,8 +237,9 @@ async function main() {
   await flush();
   check('the Active tab lists the running event', JSON.stringify(S.rows()) === JSON.stringify(['live-summit']), S.rows());
   /* (B10, UX-031: a published event's menu also has QR codes) */
-  check('UX-016 an Active row: Event setup, Clone event, Copy event link, QR codes, Delete event; no "Mark as completed"',
-    JSON.stringify(S.menu('live-summit').map(function (x) { return x[0]; })) === JSON.stringify(['setup', 'duplicate', 'copylink', 'qr', 'delete']) &&
+  /* (LST-046: no "Event setup" in the menu — the row itself, its name and a card open the event's console) */
+  check('UX-016 an Active row: Clone event, Copy event link, QR codes, Delete event; no "Mark as completed", no "Event setup"',
+    JSON.stringify(S.menu('live-summit').map(function (x) { return x[0]; })) === JSON.stringify(['duplicate', 'copylink', 'qr', 'delete']) &&
     S.menu('live-summit').every(function (x) { return x[2] === false; }) && /Delete event/.test(S.$('rowmenu-row-live-summit').innerHTML) &&
     / danger"/.test(S.$('rowmenu-row-live-summit').innerHTML), S.menu('live-summit'));
   check('UX-022 the "Updated" button says when the list was read', /^Updated \d/.test(S.$('sync-label').textContent), S.$('sync-label').textContent);
@@ -363,7 +365,8 @@ async function main() {
   var del = items.filter(function (x) { return x[0] === 'delete'; })[0];
   check('a team member who is not an approver: Delete stays in the menu, muted, "Approvers only", not red',
     !!del && del[2] === true && /Approvers only/.test(del[1]) && /is-locked/.test(S.$('rowmenu-row-live-summit').innerHTML) && !/ danger"/.test(S.$('rowmenu-row-live-summit').innerHTML), items);
-  check('…Clone stays open to everyone', items[1][0] === 'duplicate' && items[1][2] === false);
+  var clone = items.filter(function (x) { return x[0] === 'duplicate'; })[0];
+  check('…Clone stays open to everyone', !!clone && clone[2] === false, items);
   S.act('live-summit', 'delete');
   check('…clicking it opens nothing, sends nothing, and says who can', !S.dialog() && S.calls('DELETE', /./).length === 0 &&
     S.toasts().indexOf('Only an approver (boss@timesinternet.in) can delete or restore an event.') !== -1, S.toasts());

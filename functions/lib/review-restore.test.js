@@ -406,8 +406,12 @@ function pages() {
   ok(/if \(!siteSaved\(\)\) \{ location\.href = editorUrl\(\); return; \}/.test(CON) && /pvLabel\.textContent = pvSaved \? 'Preview' : 'Design the site';/.test(CON), 'UX-065 the console\'s Preview is "Design the site" until the site is saved');
   /* the dashboard */
   var DASH = read('Event_Listing.html');
-  ok(/var previewIcon = e\.siteSaved \? quickActionIcon\('view', IC\.eye, 'Preview'/.test(DASH) && /'Design the site', e\.id, 'qa-view'\);/.test(DASH) && /case 'design':\s*\n[^\n]*\n\s*window\.location\.href = '\/custom_editor\.html\?event='/.test(DASH) && /siteSaved: !!\(ev\.site && \+ev\.site\.version > 0\),/.test(DASH),
-    'UX-065 the dashboard\'s eye is "Design the site" for a site never saved, and opens the editor');
+  /* LST-046: the pencil opens the site editor ("Edit site", or "Design the site" while none is saved); the eye
+     (Preview) only once a site is saved */
+  ok(/var previewIcon = e\.siteSaved \? quickActionIcon\('view', IC\.eye, 'Preview', e\.id, 'qa-view'\) : '';/.test(DASH) &&
+    /quickActionIcon\('edit', IC\.edit, e\.siteSaved \? 'Edit site' : 'Design the site', e\.id, 'qa-edit'\);/.test(DASH) &&
+    /case 'edit': case 'design':\s*\n[^\n]*\n\s*window\.location\.href = '\/custom_editor\.html\?event='/.test(DASH) && /siteSaved: !!\(ev\.site && \+ev\.site\.version > 0\),/.test(DASH),
+    'UX-065 / LST-046 the dashboard\'s pencil is "Design the site" for a site never saved and "Edit site" after, and opens the editor');
   /* the editor's chip: live before waiting */
   var ED = read('editor-template-ui.js'), rs = ED.slice(ED.indexOf('  function renderSiteState() {'), ED.indexOf('  function scheduleServerSave() {'));
   ok(rs.indexOf("text = 'Live'") !== -1 && rs.indexOf("text = 'Live'") < rs.indexOf("text = 'Waiting for approval'"), 'UX-108 the editor says Live before it says Waiting for approval');

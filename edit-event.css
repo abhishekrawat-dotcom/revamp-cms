@@ -121,6 +121,8 @@
     display:inline-flex; align-items:center; justify-content:center; gap:7px;
     border-radius:9px; padding:8px 15px; font-size:13px; font-weight:700;
     cursor:pointer; border:1.5px solid transparent; white-space:nowrap;
+    /* a link drawn as a button ("Open the site editor", "Review", "View live site") reads as one, not underlined */
+    text-decoration:none;
     transition: background .14s, border-color .14s, color .14s, transform .1s;
   }
   .btn:active{ transform: translateY(1px); }
@@ -445,6 +447,11 @@
   }
   .sec-row:last-child{ border-bottom:0; }
   .sec-row .grip{ color: var(--text-faint); cursor:grab; flex-shrink:0; }
+  .sec-row .grip:active{ cursor:grabbing; }
+  /* a FAQ question being dragged by its grip, and where it would land (faqDragDrop) */
+  .sec-row.drag{ opacity:.4; }
+  .sec-row.over-top{ box-shadow: inset 0 2px 0 var(--accent); }
+  .sec-row.over-bot{ box-shadow: inset 0 -2px 0 var(--accent); }
   .sec-row .sn{ flex:1; min-width:0; }
   .sec-row .sn b{ font-size:13.5px; display:block; }
   .sec-row .sn span{ font-size:11.5px; color: var(--text-muted); }

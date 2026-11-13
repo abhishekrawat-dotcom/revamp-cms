@@ -508,6 +508,81 @@ async function main() {
   await flush();
   check('…and a reload opens in Card view', R.$('results-view').classList.contains('view-grid') && R.$('view-toggle').querySelector('[data-view="grid"]').getAttribute('aria-pressed') === 'true');
 
+  /* ======== launch polish (13 Nov 2026): LST-016, LST-030, LST-044, LST-046 ======== */
+  /* LST-030 the page and an order the person picked are kept in the address, and come back on reload and Back */
+  var P = page({ items: many, working: 'all' });
+  await flush();
+  P.$('pagination').querySelectorAll('[data-page="2"]')[0].click();
+  check('LST-030 page 2 is in the address', P.rows().length === 5 && P.ctx.location.hash === '#tab=active&view=draft&page=2', [P.rows().length, P.ctx.location.hash]);
+  P.ctx.RvListing.restore(Object.assign(P.ctx.RvListing.snapshot(), { sort: { field: 'updated', dir: 'asc' }, page: 2 }));
+  var P2rows = P.rows();
+  check('LST-030 an order picked (Last edited, oldest first) is in the address with the page', P.ctx.location.hash === '#tab=active&view=draft&sort=updated-asc&page=2' &&
+    same(P2rows, ['qa-ux-b10-4', 'qa-ux-b10-3', 'qa-ux-b10-2', 'qa-ux-b10-1', 'qa-ux-b10-0']), [P.ctx.location.hash, P2rows]);
+  var P3 = page({ items: many, working: 'all', hash: P.ctx.location.hash });
+  await flush();
+  var cur = P3.$('pagination').querySelector('[aria-current="true"]');
+  check('…a reload opens on that page in that order', same(P3.rows(), P2rows) && P3.$('sort-select').value === 'updated' && !!cur && cur.textContent === '2' &&
+    P3.ctx.location.hash === '#tab=active&view=draft&sort=updated-asc&page=2', [P3.rows(), P3.$('sort-select').value, P3.ctx.location.hash]);
+  var P4 = page({ items: many, working: 'all', session: P.session });
+  await flush();
+  check('…and so does "Back to events" (a plain link: this browser tab\'s last list)', same(P4.rows(), P2rows), P4.rows());
+  var P5 = page({ items: many, working: 'all', hash: '#tab=active&view=draft&page=9' });
+  check('…a page past the end waits for the events (still page 9 while they load)', /&page=9$/.test(P5.ctx.location.hash), P5.ctx.location.hash);
+  await flush();
+  check('…then is the last page', P5.rows().length === 5 && P5.ctx.location.hash === '#tab=active&view=draft&page=2', [P5.rows().length, P5.ctx.location.hash]);
+  P5.tab('upcoming');
+  check('…and another tab opens on its page 1, in its own order', !/page=|sort=/.test(P5.ctx.location.hash), P5.ctx.location.hash);
+
+  /* LST-016 an empty list has no "Showing 0–0 of 0" above it; a search from the address shows as one from the start */
+  var E = page();
+  await flush();
+  E.search('zz-nothing-matches-this');
+  check('LST-016 no result line above an empty list', E.$('result-line').hidden === true && E.$('result-line').textContent === '', [E.$('result-line').hidden, E.$('result-line').textContent]);
+  E.search('');
+  check('…and it is back with the rows', E.$('result-line').hidden === false && /^Showing 1–/.test(E.$('result-line').textContent), E.$('result-line').textContent);
+  var Q = page({ hash: '#tab=upcoming&q=QA' });
+  check('LST-016 a search from the address: in the box, Clear shown, the "/" hint hidden, from the start', Q.$('search-input').value === 'QA' && Q.$('btn-clear-search').hidden === false && Q.$('search-kbd').hidden === true);
+  check('LST-016 in Card view an empty list\'s message spans the whole row', /#results-view\.view-grid \.card-list > \.empty-state\{ grid-column:1 \/ -1; \}/.test(CSS));
+  check('LST-021 the logo goes to this page, not to the sign-in page', /<a class="main-nav-brand" href="Event_Listing\.html">/.test(BODY) && BODY.indexOf('href="index.html"') === -1);
+
+  /* LST-044 menus: the buttons say open or shut, an option ticks where it is, Esc gives the focus back */
+  var K = page({ items: baseItems().concat([{ id: 'site-saved', name: 'Saved Site', category: 'ip', published: true, start: wall(-1), end: wall(1, '18:00'), portal: 'cio', portalName: 'ETCIO', templateId: 'tech500', site: { version: 3 }, counters: {} }]) });
+  await flush();
+  var bt = K.$('btn-type');
+  check('LST-044 the pop-over buttons say they open one, shut', ['btn-type', 'btn-portal', 'btn-range', 'btn-activity-range', 'btn-more', 'btn-portals-nav'].every(function (id) {
+    var b = K.$(id); return b && b.getAttribute('aria-expanded') === 'false' && !!b.getAttribute('aria-haspopup');
+  }) && bt.getAttribute('aria-controls') === 'type-popover' && K.$('btn-portals-nav').getAttribute('aria-haspopup') === 'listbox');
+  bt.click();
+  var opts = K.$('type-popover').querySelectorAll('[role="menuitemcheckbox"]');
+  check('…Event type opens as a menu of checkboxes, its button says so', K.$('type-popover').hidden === false && bt.getAttribute('aria-expanded') === 'true' && K.$('type-popover').getAttribute('role') === 'menu' &&
+    opts.length >= 2 && opts.every(function (o) { return o.getAttribute('aria-checked') === 'false'; }), [bt.getAttribute('aria-expanded'), opts.length]);
+  var first = opts[0];
+  first.focus(); first.click();
+  check('…an option ticks in place: the same button, checked, still focused, the list filtered', K.$('type-popover').contains(first) && first.getAttribute('aria-checked') === 'true' && first.classList.contains('on') &&
+    K.doc.activeElement === first && K.$('type-popover').hidden === false && /Type:/.test(K.$('chip-row').textContent), [first.getAttribute('aria-checked'), K.doc.activeElement === first]);
+  K.dom.key(first, 'ArrowDown');
+  check('…Down moves to the next option', K.doc.activeElement === opts[1]);
+  first.click();
+  check('…and a second click unticks it', first.getAttribute('aria-checked') === 'false' && !first.classList.contains('on') && K.$('chip-row').textContent.indexOf('Type:') === -1);
+  K.dom.key(K.doc.activeElement, 'Escape');
+  check('…Esc shuts it and gives the focus back to Event type', K.$('type-popover').hidden === true && bt.getAttribute('aria-expanded') === 'false' && K.doc.activeElement === bt);
+  var mb = K.menuBtn('live-summit');
+  mb.focus(); mb.click();
+  check('LST-044 a row\'s ⋯ says it is open', mb.getAttribute('aria-haspopup') === 'true' && mb.getAttribute('aria-expanded') === 'true');
+  K.dom.key(K.doc.activeElement, 'Escape');
+  check('…Esc shuts it and the focus is back on that ⋯', mb.getAttribute('aria-expanded') === 'false' && K.doc.activeElement === mb && K.$('rowmenu-row-live-summit').hidden === true);
+
+  /* LST-046 the pencil opens the site editor; the row still opens the console; no "Event setup" in ⋯ */
+  function pencil(id) { return K.$('table-body').querySelector('[data-row="' + id + '"] [data-row-action="edit"]'); }
+  check('LST-046 the pencil: "Edit site" once a site is saved (with Preview), "Design the site" before (no Preview)', pencil('site-saved').getAttribute('aria-label') === 'Edit site' &&
+    !!K.$('table-body').querySelector('[data-row="site-saved"] [data-row-action="view"]') && pencil('live-summit').getAttribute('aria-label') === 'Design the site' &&
+    !K.$('table-body').querySelector('[data-row="live-summit"] [data-row-action="view"]') && !K.$('table-body').querySelector('[data-row-action="design"]'));
+  pencil('site-saved').click();
+  pencil('live-summit').click();
+  K.$('table-body').querySelector('[data-row="site-saved"]').click();
+  check('…it opens the editor on the event\'s template; the row opens the console', same(K.nav.slice(-3), ['/custom_editor.html?event=site-saved&template=tech500', '/custom_editor.html?event=live-summit', 'edit-event.html?event=site-saved']), K.nav.slice(-3));
+  check('…and the ⋯ menu has no "Event setup"', K.menu('site-saved').indexOf('setup') === -1 && K.menu('live-summit')[0] === 'duplicate', K.menu('site-saved'));
+
   console.log('events-dashboard-finding (node): ' + passed + ' passed, ' + failed + ' failed');
 }
 
@@ -593,7 +668,8 @@ async function browserPart() {
       var m = document.getElementById(id), r = m.getBoundingClientRect();
       return { parent: m.parentNode === document.body, top: Math.round(r.top), bottom: Math.round(r.bottom), vh: window.innerHeight, items: m.querySelectorAll('[data-row-action]').length };
     }, last);
-    check('browser 1440: UX-021 the last row\'s ⋯ menu is whole on screen', menu.parent && menu.top >= 0 && menu.bottom <= menu.vh && menu.items >= 4, menu);
+    /* (three items or more since LST-046 took "Event setup" out of the menu: the row itself opens the console) */
+    check('browser 1440: UX-021 the last row\'s ⋯ menu is whole on screen', menu.parent && menu.top >= 0 && menu.bottom <= menu.vh && menu.items >= 3, menu);
     await dk.keyboard.press('Escape');
     /* the sort headers by keyboard (UX-029) */
     await dk.focus('th[data-sort="registrations"] button');

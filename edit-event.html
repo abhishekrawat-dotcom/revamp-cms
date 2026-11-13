@@ -1491,7 +1491,7 @@
         var file = inp.files && inp.files[0];
         if (!file) return;
         /* the formats every link preview shows (WebP and SVG are not shown everywhere) */
-        if (!/^image\/(jpeg|png)$/.test(file.type)){ notify('Use a JPG or PNG picture: WhatsApp, LinkedIn and X do not all show other kinds.'); return; }
+        if (!/^image\/(jpeg|png)$/.test(file.type)){ notifyError('Use a JPG or PNG picture: WhatsApp, LinkedIn and X do not all show other kinds.'); return; }
         setBusy(true);
         var was = shareUrlOf(EV);
         show(was, 'Uploading…');
@@ -1502,7 +1502,8 @@
           notify('Share picture saved. It is on the live site after the next publish.');
         }, function(err){
           show(was);
-          notify('The share picture could not be saved: ' + ((err && err.message) || 'please try again'));
+          /* a failure is the red message that stays (CON-013), worded by errText, never the server's own text */
+          notifyError(err, { what: 'The share picture was not saved.' });
         }).then(function(){ setBusy(false); });
       };
       inp.click();
@@ -1516,7 +1517,7 @@
         notify('The site picks its share picture by itself again (after the next publish).');
       }, function(err){
         show(was);
-        notify('That could not be saved: ' + ((err && err.message) || 'please try again'));
+        notifyError(err, { what: 'The share picture setting was not saved.' });
       }).then(function(){ setBusy(false); });
     });
   }
@@ -1587,13 +1588,19 @@
       var y = new Date(b.getFullYear(), b.getMonth(), b.getDate());
       return Math.round((y - x) / 86400000) + 1;
     }
-    function countdown(a){
+    /* how far the start is, in calendar days from today (local midnights, as dayCount counts them, CON-071): an
+       event an hour away is today, not tomorrow. One that started earlier and has not ended yet is on today; one
+       that is over counts from its last day. */
+    function countdown(a, b){
       var now = new Date();
-      var days = Math.ceil((a - now) / 86400000);
+      var days = dayCount(now, a) - 1;
       if (days > 1)  return { cls:'', txt:'Opens in <b>' + days + ' days</b>' };
       if (days === 1) return { cls:'', txt:'Opens <b>tomorrow</b>' };
       if (days === 0) return { cls:'good', txt:'Happening <b>today</b>' };
-      return { cls:'', txt:'Ran <b>' + Math.abs(days) + ' days</b> ago' };
+      var ago = 1 - dayCount(now, b && b > a ? b : a);
+      if (ago <= 0) return { cls:'good', txt:'Happening <b>today</b>' };
+      if (ago === 1) return { cls:'', txt:'Ran <b>yesterday</b>' };
+      return { cls:'', txt:'Ran <b>' + ago + ' days</b> ago' };
     }
 
     function paintWhen(){
@@ -1622,7 +1629,7 @@
         } else {
           out.push({ cls:'', ico:IC.clock, txt:'Single day · <b>no end time set</b>' });
         }
-        var c = countdown(s.a);
+        var c = countdown(s.a, s.b);
         out.push({ cls:c.cls, ico:IC.bell, txt:c.txt });
       }
 
@@ -1927,13 +1934,14 @@
             }
             notify('Logo saved');
           }, function(err){
-            logoState('The logo was saved, but it could not be put into the site: ' + ((err && err.message) || 'please try again') + '. Use Replace image on the hero logo in the editor.');
+            console.error('The logo could not be put into the site:', err);
+            logoState('The logo was saved, but it could not be put into the site. ' + errText(err) + ' Or use Replace image on the hero logo in the editor.');
           });
         }, function(err){
           var was = SN.logoTile(EV, OUTLINE);
           logoShows(was.url, was.original);
           logoState(was.text);
-          notify('The logo could not be uploaded: ' + ((err && err.message) || 'please try again'));
+          notifyError(err, { what: 'The logo was not uploaded.' });
         }).then(function(){ LOGO.busy = false; logoBtn.disabled = false; });
       };
       inp.click();
@@ -5875,8 +5883,9 @@
   function viewFAQ(){
     var items = faqAll();
     var rows = items.map(function(f, i){
-      return '<div class="sec-row" style="align-items:flex-start">' +
-          '<span class="grip" style="margin-top:2px">' + svg(IC.grip, 16) + '</span>' +
+      /* the grip drags the question to another place (faqDragDrop); the arrows do the same from the keyboard */
+      return '<div class="sec-row" data-faq="' + esc(f.id) + '" style="align-items:flex-start">' +
+          '<span class="grip" draggable="true" title="Drag to reorder" style="margin-top:2px">' + svg(IC.grip, 16) + '</span>' +
           '<span class="sn"><b>' + esc(f.question || 'Untitled question') + '</b>' +
           '<span style="display:block;margin-top:3px;line-height:1.55">' + esc(f.answer || '') + '</span></span>' +
           '<button class="btn btn-ghost btn-icon" type="button" data-faqup="' + esc(f.id) + '" title="Move up"' +
@@ -5990,6 +5999,50 @@
     persistFaqOrder();
   }
 
+  /* drag a question by its grip onto another to put it above or below that one (CON-070: the grip drew a "grab"
+     hand and did nothing). Only the grip starts a drag, so an answer's text can still be selected. */
+  function faqDragDrop(){
+    var dragId = null;
+    function rows(){ return document.querySelectorAll('.sec-row[data-faq]'); }
+    function below(row, e){ var r = row.getBoundingClientRect(); return (e.clientY - r.top) > r.height / 2; }
+    rows().forEach(function(row){
+      var grip = row.querySelector('.grip[draggable]');
+      if (grip) grip.addEventListener('dragstart', function(e){
+        dragId = row.getAttribute('data-faq');
+        row.classList.add('drag');
+        try {
+          e.dataTransfer.setData('text/plain', dragId); e.dataTransfer.effectAllowed = 'move';
+          /* the whole question moves under the pointer, not the small grip alone */
+          if (e.dataTransfer.setDragImage) e.dataTransfer.setDragImage(row, 16, 16);
+        } catch(err){}
+      });
+      if (grip) grip.addEventListener('dragend', function(){
+        dragId = null;
+        rows().forEach(function(r){ r.classList.remove('drag', 'over-top', 'over-bot'); });
+      });
+      row.addEventListener('dragover', function(e){
+        if (!dragId || row.getAttribute('data-faq') === dragId) return;
+        e.preventDefault();
+        var after = below(row, e);
+        row.classList.toggle('over-bot', after);
+        row.classList.toggle('over-top', !after);
+      });
+      row.addEventListener('dragleave', function(){ row.classList.remove('over-top', 'over-bot'); });
+      row.addEventListener('drop', function(e){
+        if (!dragId || row.getAttribute('data-faq') === dragId) return;
+        e.preventDefault();
+        var list = faqAll(), moving = faqById(dragId), onto = faqById(row.getAttribute('data-faq'));
+        if (!moving || !onto) return;
+        var after = below(row, e);
+        dragId = null;
+        list.splice(list.indexOf(moving), 1);
+        list.splice(list.indexOf(onto) + (after ? 1 : 0), 0, moving);
+        render();
+        persistFaqOrder();
+      });
+    });
+  }
+
   function wireFaq(){
     var add = $('faq-add'); if (add) add.onclick = function(){ faqDialog(null); };
     document.querySelectorAll('[data-faqedit]').forEach(function(b){
@@ -6001,6 +6054,7 @@
     document.querySelectorAll('[data-faqdown]').forEach(function(b){
       b.onclick = function(){ faqMove(b.getAttribute('data-faqdown'), 1); };
     });
+    faqDragDrop();
   }
 
   /* ---------------- Contact ---------------- */
@@ -6028,8 +6082,8 @@
         '<td>' + (isEmail(t.email) ? '<a href="mailto:' + esc(t.email) + '">' + esc(t.email) + '</a>' : esc(t.email || '—')) + '</td>' +
         '<td class="num">' + esc(t.phone || '—') + '</td>' +
         '<td style="text-align:right">' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-ctedit="' + esc(t.id) + '" title="Edit">' + svg(IC.edit, 14) + '</button>' +
-          '<button class="btn btn-ghost btn-icon" type="button" data-ctdel="' + esc(t.id) + '" title="Remove">' + svg(IC.trash, 14) + '</button>' +
+          /* Remove is in the desk's dialog, as on FAQ and Sponsors (CON-070: a second bin here asked the same) */
+          '<button class="btn btn-ghost btn-icon" type="button" data-ctedit="' + esc(t.id) + '" title="Edit" aria-label="Edit the ' + esc(ctName(t)) + '">' + svg(IC.edit, 14) + '</button>' +
         '</td></tr>';
     }).join('');
 
@@ -6154,25 +6208,11 @@
     notify('Contact removed');
     persistContactOrder();
   }
-  /* removing a contact desk from its row (its dialog asks the same thing in place) */
-  function ctRemove(id){
-    var c = ctById(id);
-    if (!c) return;
-    confirmDialog('Remove the ' + ctName(c) + '?',
-      '<p>It will no longer appear on your site. This cannot be undone.</p>',
-      'Remove', 'contact',
-      function(){ return removeRecord('contacts', 'contacts', id); },
-      'The contact was not removed.',
-      function(){ render(); ctRemoved(); });
-  }
 
   function wireContact(){
     var add = $('ct-add'); if (add) add.onclick = function(){ ctDialog(null); };
     document.querySelectorAll('[data-ctedit]').forEach(function(b){
       b.onclick = function(){ ctDialog(b.getAttribute('data-ctedit')); };
-    });
-    document.querySelectorAll('[data-ctdel]').forEach(function(b){
-      b.onclick = function(){ ctRemove(b.getAttribute('data-ctdel')); };
     });
   }
 
