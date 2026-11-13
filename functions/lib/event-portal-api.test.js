@@ -109,6 +109,12 @@ var llm = require('./llm');
 var MODEL_CALLS = 0, FETCHES = [];
 llm.callJson = function () { MODEL_CALLS++; return Promise.resolve({ error: 'stub: no model in this test', code: 'ai-unavailable' }); };
 global.fetch = function (url) { FETCHES.push(String(url)); return Promise.resolve({ ok: false, status: 404, text: function () { return Promise.resolve(''); } }); };
+/* Ingest reads the page through safeFetch (BE-026, 13 Nov 2026): the same count, the same 404, no network */
+var SAFE_FETCH = require.resolve('./safe-fetch');
+require.cache[SAFE_FETCH] = { id: SAFE_FETCH, filename: SAFE_FETCH, loaded: true, children: [], paths: [],
+  exports: Object.assign({}, require('./safe-fetch'), {
+    safeFetch: function (url) { FETCHES.push(String(url)); return Promise.resolve({ status: 404, headers: {}, body: Buffer.alloc(0), finalUrl: String(url) }); }
+  }) };
 
 /* lib/event-portal.js and lib/working-portal.js are another unit's: here they are stubbed (or made missing) for
    api.js's own require, so the wiring is checked the same way whether or not those files exist yet */
@@ -425,7 +431,9 @@ function seed(id, data) { DOCS['events/' + id] = Object.assign({ name: id, creat
   check('… and the model was never asked', MODEL_CALLS === 0, MODEL_CALLS);
   var apiSrc = fs.readFileSync(path.join(__dirname, 'api.js'), 'utf8'), ingAt = apiSrc.indexOf('function handleIngestSource(');
   var ingSrc = apiSrc.slice(ingAt, apiSrc.indexOf('\nfunction ', ingAt + 10));
-  check('the page\'s 20s timer starts after the portal check (a slow ET list read never eats it)', ingSrc.indexOf('return otherPortalOf(') !== -1 && ingSrc.indexOf('timer = setTimeout(') > ingSrc.indexOf('return otherPortalOf(') && /var timer = null;/.test(ingSrc), ingSrc.length);
+  /* BE-026 (13 Nov 2026): the page is read by readSourcePage, whose safeFetch carries the 20 s */
+  check('the page\'s 20s timer starts after the portal check (a slow ET list read never eats it)', ingSrc.indexOf('return otherPortalOf(') !== -1 && ingSrc.indexOf('return readSourcePage(') > ingSrc.indexOf('return otherPortalOf(') &&
+    /var SOURCE_PAGE_TIMEOUT_MS = 20000;/.test(apiSrc) && /safeFetch\(url, \{ timeoutMs: SOURCE_PAGE_TIMEOUT_MS/.test(apiSrc), ingSrc.length);
 
   /* ---------- 6. the site's ET bar and footer ---------- */
   var SOUTH = [{ type: 'previousEdition', url: 'https://brandequity.economictimes.indiatimes.com/brand-world-summit-south2025', previous: { portal: 'brandequity', url: 'https://brandequity.economictimes.indiatimes.com/brand-world-summit-south2025' } }];

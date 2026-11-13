@@ -42,6 +42,13 @@ const guard = process.env.REVAMP_AUTH_DISABLED === '1' ? passThrough : gate;
 
 function notFound(res) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }); res.end('Not found'); }
 
+// The app's own pages may be framed only by the app itself, as server.js sends them (APP_PAGE_HEADERS there, BE-057)
+const APP_PAGE_HEADERS = {
+  'Content-Security-Policy': "frame-ancestors 'self'",
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Referrer-Policy': 'strict-origin-when-cross-origin'
+};
+
 function serve(req, res) {
   const url = req.url.split('?')[0];
   if (/^\/(api|e|preview|t)\//.test(url) || url.indexOf('/s/') === 0) return handleApi(req, res);   // /s/: a shared preview link
@@ -62,7 +69,9 @@ function serve(req, res) {
   else if (!isServableFile(path.relative(root, file).split(path.sep).join('/'))) return notFound(res);
   fs.readFile(file, (err, buf) => {
     if (err) return notFound(res);
-    res.writeHead(200, { 'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    const headers = { 'Content-Type': types[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' };
+    if (path.extname(file).toLowerCase() === '.html') Object.assign(headers, APP_PAGE_HEADERS);
+    res.writeHead(200, headers);
     res.end(req.method === 'HEAD' ? undefined : buf);
   });
 }

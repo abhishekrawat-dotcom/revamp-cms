@@ -2,12 +2,14 @@
 
      checkPublicUrl(url)        -> Promise<{ ok, reason, code }>       (never rejects)
      safeFetch(url, options)    -> Promise<{ status, headers, body: Buffer, finalUrl }>
-       options: { timeoutMs = 15000, maxBytes = 5 MB, maxRedirects = 3, accept, headers, method = 'GET', headersOnly }
+       options: { timeoutMs = 15000, maxBytes = 5 MB, maxRedirects = 3, accept, headers, method = 'GET', headersOnly, userAgent }
          accept: content types the answer may have — "text/html", a prefix "image/", or a RegExp
          method: 'GET' or 'HEAD' (a HEAD answer has no body: the site check asks whether a link answers at
                  all, without downloading what it leads to — link-check.js)
          headersOnly: true resolves as soon as the status and headers arrive, with an empty body, and reads none
                  of it (a HEAD always does): the site check needs to know only how an address answers
+         userAgent: the User-Agent to send instead of this fetcher's own (ingest-source reads a page as it always has:
+                 some sites turn away a client that does not say "Mozilla")
        rejects with an Error whose message can be shown to the user and whose .code is one of
        "bad-url" | "blocked-address" | "too-large" | "timeout" | "bad-type" | "unreachable"
        and, for a caller that words it (link-check.js): .url, the address refused, and .hops, how many redirects
@@ -116,7 +118,7 @@ function requestOnce(target, opts, deadlineAt, connectTo) {
     var pinned = connectTo ? connectTo(target) : { address: target.address, port: url.port ? +url.port : (secure ? 443 : 80) };
     var family = net.isIP(pinned.address);
     var headers = Object.assign({ 'Accept': '*/*' }, opts.headers || {}, {
-      'Host': url.host, 'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip, deflate, br', 'Connection': 'close'
+      'Host': url.host, 'User-Agent': opts.userAgent || USER_AGENT, 'Accept-Encoding': 'gzip, deflate, br', 'Connection': 'close'
     });
     delete headers.Cookie; delete headers.cookie; delete headers.Authorization; delete headers.authorization;
 
@@ -194,7 +196,8 @@ function safeFetch(raw, options) {
     headersOnly: options.headersOnly === true,
     maxBytes: options.maxBytes > 0 ? options.maxBytes : DEFAULT_MAX_BYTES,
     accept: options.accept || null,
-    headers: options.headers || null
+    headers: options.headers || null,
+    userAgent: typeof options.userAgent === 'string' ? options.userAgent.replace(/[\r\n]+/g, ' ').slice(0, 200) : ''
   };
   var maxRedirects = options.maxRedirects >= 0 ? options.maxRedirects : DEFAULT_MAX_REDIRECTS;
   var deadlineAt = Date.now() + (options.timeoutMs > 0 ? options.timeoutMs : DEFAULT_TIMEOUT_MS);

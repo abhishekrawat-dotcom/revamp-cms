@@ -6,6 +6,8 @@
 // each helper answers the request itself (4xx/5xx) or returns a value, never throws.
 const { getFirebase } = require('./firebase');
 const AC = require('./access-control');
+/* verifySession: how long a sign-in lasts, and whether it was revoked — one rule with the gate (BE-058) */
+const session = require('./access');
 
 const DEFAULT_MAX_BODY = 32 * 1024 * 1024;   // App Hosting's own request ceiling; routes pass something tighter
 
@@ -95,23 +97,55 @@ function requireMember(req, res, cb) {
 function checkCaller(req, res, token, cb) {
   var fb = getFirebase();
   if (fb.error) return sendJson(res, 503, { error: fb.error });
-  fb.auth.verifyIdToken(token).then(function (decoded) {
+  /* the sign-in's age and whether it was revoked are checked with the token (lib/access.js verifySession, BE-058) */
+  session.verifySession(fb.auth, token).then(function (decoded) {
     return AC.readConfig(fb).then(function (cfg) {
       var access = AC.accessOf(cfg, decoded);
       if (access.denied) return sendJson(res, 403, { error: AC.deniedSentence(access.denied), code: 'no-access' });
       decoded.access = access;
       var path = String(req.url || '').split('?')[0], need = AC.needFor(req.method, path);
       if (!AC.can(access, need)) return sendJson(res, 403, { error: AC.refusedSentence(access, need), code: need === 'admin' ? 'not-admin' : 'view-only', role: access.role });
-      if (AC.everywhere(access)) return cb(fb, decoded);
+      var go = function () { if (aiRateOk(req, res, path, decoded)) cb(fb, decoded); };
+      if (AC.everywhere(access)) return go();
       if (AC.everywhereOnly(path)) return sendJson(res, 403, { error: AC.everywhereSentence(), code: 'not-your-portal' });
-      return portalCheck(fb, req, res, access, function () { cb(fb, decoded); });
+      return portalCheck(fb, req, res, access, go);
     });
-  }, function () {
+  }, function (err) {
+    if (session.isReauth(err)) return sendJson(res, 401, { error: 'Your sign-in has expired. Please sign in again.', code: 'reauth' });
     sendJson(res, 401, { error: 'Your sign-in has expired or is invalid — please log in again.' });
   }).catch(function (err) {
     console.error('http: ' + req.method + ' ' + String(req.url || '').split('?')[0] + ' failed — ' + (err && err.stack || err));
     sendJson(res, 500, { error: 'Something went wrong on the server. Please try again.' });
   });
+}
+
+/* ---------- a person's paid AI steps (BE-018) ----------
+   Each of these routes pays for a model call (or the page-rendering service), and none had a limit of its own: at
+   most `max` calls per person in `ms`, counted per route once the caller has been let in (rateLimit below: per
+   server instance — the service runs at most two). Generous for real work: a Create Event run makes one brief, one
+   reading per reference link, one plan and one generation; the editor's Redesign with AI and the chat's reworked
+   and new sections one per section. The routes that already count their own calls (the chat, ETB2B AI on the
+   dashboard and in Promotions, SEO texts, the posts' copy, speaker photos, people pages, the AI pictures) keep
+   theirs. -> true, or false after answering 429 { code: 'rate-limited' } */
+var TEN_MINUTES = 10 * 60 * 1000;
+var AI_RATE = {
+  'POST /api/suggest-design': { max: 60, ms: TEN_MINUTES },
+  'POST /api/redesign-section': { max: 60, ms: TEN_MINUTES },
+  'POST /api/extract-brief': { max: 20, ms: TEN_MINUTES },
+  'POST /api/ingest-source': { max: 30, ms: TEN_MINUTES },
+  'POST /api/plan-structure': { max: 20, ms: TEN_MINUTES },
+  'POST /api/generate-content': { max: 20, ms: TEN_MINUTES },
+  'POST /api/import-lovable': { max: 20, ms: TEN_MINUTES },
+  'POST /api/promo/mailer/ai': { max: 60, ms: TEN_MINUTES }
+};
+function aiRateOk(req, res, path, decoded) {
+  var route = String(req.method || '').toUpperCase() + ' ' + path, rule = AI_RATE[route];
+  if (!rule) return true;
+  var who = String((decoded && (decoded.uid || decoded.email)) || 'anon');
+  if (rateLimit('ai|' + route + '|' + who, rule.max, rule.ms)) return true;
+  sendJson(res, 429, { error: 'You have asked ETB2B AI for a lot in the last few minutes. Please wait a few minutes and try again.', code: 'rate-limited', retryable: true },
+    { 'Retry-After': '60' });
+  return false;
 }
 
 /* ---------- the portal check, for someone who works in chosen portals ----------
@@ -189,7 +223,7 @@ function adminFromRequest(req, opts) {
   var fb = getFirebase();
   if (fb.error) return Promise.resolve(null);
   var eventId = opts && opts.eventId;
-  return fb.auth.verifyIdToken(token).then(function (decoded) {
+  return session.verifySession(fb.auth, token).then(function (decoded) {
     return AC.readConfig(fb).then(function (cfg) {
       var access = AC.accessOf(cfg, decoded);
       if (access.denied) return null;
@@ -289,5 +323,5 @@ function str(v, max) { return String(v == null ? '' : v).trim().slice(0, max || 
 module.exports = {
   sendJson, readBody, parseJsonObject, parseJsonBody, bearerToken, sessionCookieToken, requireAdmin, requireMember,
   adminFromRequest, CORS_HEADERS, sendPublicJson, sendPublicNoContent, clientIp, rateLimit, isEventId,
-  isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str
+  isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str, AI_RATE
 };
