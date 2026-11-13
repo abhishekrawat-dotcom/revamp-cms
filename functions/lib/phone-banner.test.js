@@ -132,7 +132,8 @@ function loud() { console.error = realError; }
   check('P.1 this event\'s own banner is read from the bucket, never fetched over the web', webCalls.length === 0);
   var prompt = imageCalls[0].prompt;
   check('P.1 the prompt: the same picture laid out for a tall phone screen, its look and subject kept', /9:16/.test(prompt) && /KEEP ITS LOOK/.test(prompt) && /same scene and subject/.test(prompt) &&
-    /Never stretch, squash or distort/.test(prompt) && /KEEP THE MIDDLE CALM/.test(prompt), prompt);
+    /Never stretch, squash or distort/.test(prompt) && /IT MUST NOT LOOK EMPTY ON A PHONE/.test(prompt) && /as large against the frame's width as they are in the banner, or larger/.test(prompt) &&
+    /LEAVE ROOM FOR THE WORDS, NOT A VOID/.test(prompt) && /never a blank sheet/.test(prompt), prompt);
   check('P.1 the prompt adds nothing: no people, words or logos of its own', /ADD NOTHING/.test(prompt) && /no people, faces, figures, silhouettes, words, letters, numbers or logos that the banner does not already have/.test(prompt), prompt);
   check('P.1 the prompt carries the ET logos\' rule (api.js ET_LOGO_COLOUR_RULE): the red ET square never changes', /The red ET square, with the white "ET" in it, is NEVER changed/.test(prompt), prompt);
   check('P.1 the made picture was checked once, for people, words and logos as strictly as a banner is (rule none)', checkCalls.length === 1 && /however small, distant/.test(checkCalls[0].prompt));

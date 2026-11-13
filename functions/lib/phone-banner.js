@@ -21,8 +21,9 @@
 
    WHAT. One call to the picture model (gemini.js callGeminiImage) with the banner itself as the picture to work from
    (opts.image) and a tall 9:16 shape (opts.aspectRatio), told to keep the picture's look and subject and to lay it
-   out again for the tall frame — never stretched or cropped off, the middle kept calm for the logo and words, nothing
-   added — under the rules every picture ETB2B AI makes carries: no people, words or logos of its own, and the ET
+   out again for the tall frame — its subject as large as in the banner, never stretched, cropped off or left small in
+   the corners, the middle softer for the logo and words but never empty (QA, 13 Nov 2026: the first wording, "keep the
+   middle open", gave the owner's banner back with its subject shrunk into the four corners), nothing added — under the rules every picture ETB2B AI makes carries: no people, words or logos of its own, and the ET
    logos' rule (api.js ET_LOGO_COLOUR_RULE: the red ET square is never changed). Stored as the editor's other new
    pictures are (events/<id>/generated/, public, cached a year, WebP copies by pictures.js).
 
@@ -101,8 +102,8 @@ function promptFor(logoRule) {
   return [
     'Lay this event website\'s banner picture out again as a tall, upright picture for a phone\'s screen (9:16): the same banner, made for a phone.',
     'KEEP ITS LOOK: it must read at once as the same picture — the same scene and subject, the same objects, materials, colours, light, finish, style and mood. Do not change its palette, add a filter, or turn a photograph into an illustration or an illustration into a photograph.',
-    'LAY IT OUT FOR THE TALL FRAME: bring its main subject and its most telling parts into the tall frame — move, regroup or stack them so they are seen, rather than cut off at the sides — and continue its background (sky, floor, walls, open space) naturally above and below. Never stretch, squash or distort anything, and leave no blank or mirrored bands.',
-    'KEEP THE MIDDLE CALM: on the website the event\'s logo, its title and its buttons sit over the middle of the picture, so keep the band from about a quarter to three quarters of its height open and quiet — soft background, no busy detail — with the subject framing it above, below or at the sides.',
+    'LAY IT OUT FOR THE TALL FRAME — IT MUST NOT LOOK EMPTY ON A PHONE: bring its main subject and its most telling parts into the tall frame at a size a phone shows clearly — as large against the frame\'s width as they are in the banner, or larger — moving, regrouping or stacking them rather than leaving them small in the corners or cutting them off at the sides, and continue its background (sky, floor, walls, open space) naturally above and below. Never stretch, squash or distort anything, and leave no blank or mirrored bands.',
+    'LEAVE ROOM FOR THE WORDS, NOT A VOID: on the website the event\'s logo, its title and its buttons sit over the middle of the picture, so the subject sits mainly in its upper and lower parts and at its sides, and the middle is softer and less busy — but still part of the scene (its light, floor, sky or space), never a blank sheet.',
     'ADD NOTHING: no new objects, and no people, faces, figures, silhouettes, words, letters, numbers or logos that the banner does not already have. Anything of that kind already in it is kept exactly as it is — never redrawn, respelled, recoloured or reshaped.',
     String(logoRule || '').trim()
   ].filter(Boolean).join('\n');
