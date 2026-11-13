@@ -105,8 +105,14 @@ function promptFor(event, want) {
 /* What the check refused in this picture's first real makings (QA, 11 Nov 2026: a marketing event in Chennai, both
    pictures "people"): a field's scene of studios and "product forms" draws mannequins and dress forms, and a city's
    temple towers come with rows of statues — the check counts a mannequin or a statue of a person as a person. The
-   picture only stands behind a logo unit, so it is asked for without any of them. */
-var NO_FIGURE_FORMS = 'STRICT, for this picture: no mannequins, dress forms, dolls, statues, idols, busts, or sculpted or painted figures of any kind — not on a temple, a tower, a gateway or a monument either; no camera crew and no audience. The field shows through its objects, light and materials alone, and the place through its skyline, shoreline and the outlines of its buildings.';
+   picture only stands behind a logo unit, so it is asked for without any of them.
+   Then production Brand World Summit (same field and city), whose first four pictures the check passed only one of:
+   11 Nov "text", then "people" and "text"; 12 Nov "people", then one that passed — and even that one had a small
+   hand holding a film camera. A field of "cameras, spotlights, product forms" is drawn with posters, framed
+   pictures, signboards and labelled packaging (lettering, often a face in a frame) and with hands working the
+   cameras. So those are named too: no hands, arms or gloves, no posters, banners, signboards or framed pictures,
+   and no lettering on cameras, lights or packaging. */
+var NO_FIGURE_FORMS = 'STRICT, for this picture: no mannequins, dress forms, dolls, statues, idols, busts, or sculpted or painted figures of any kind — not on a temple, a tower, a gateway or a monument either; no camera crew and no audience; no hands, arms or gloves, not even one holding a camera, a light or a microphone — every camera and light stands on its own or on a stand. No posters, banners, signboards, framed pictures, or lettering on cameras, lights or packaging: every box, bottle and product form is plain, with no label. The field shows through its objects, light and materials alone, and the place through its skyline, shoreline and the outlines of its buildings.';
 
 /* one transaction: -> { how: 'go' | 'ready' | 'wait' | 'gone', rec } */
 function claim(fb, eventId, now) {

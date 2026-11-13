@@ -94,6 +94,12 @@ function stillFiles(id) { return Object.keys(FB.files).filter(function (p) { ret
   ok(/dark and moody/.test(still.promptFor(EVENT, { tone: 'dark' })), 'dark for a unit drawn for a dark ground');
   ok(/no mannequins, dress forms, dolls, statues, idols, busts, or sculpted or painted figures of any kind/.test(prompt) && /not on a temple/.test(prompt),
     'no mannequins and no statues, not even on a temple (the check counts them as people: QA, 11 Nov)');
+  ok(/no hands, arms or gloves, not even one holding a camera, a light or a microphone/.test(prompt) && /every camera and light stands on its own or on a stand/.test(prompt),
+    'no hands working the cameras (production Brand World Summit: "people", and a small hand on the one that passed)');
+  ok(/No posters, banners, signboards, framed pictures, or lettering on cameras, lights or packaging/.test(prompt) && /plain, with no label/.test(prompt),
+    'no posters, signboards, framed pictures or lettered packaging (production Brand World Summit: "text", then "people" and "text")');
+  ok(prompt.indexOf(' STRICT, for this picture: ') !== -1 && prompt.lastIndexOf('STRICT, for this picture:') > prompt.indexOf('Landscape, 16:9'),
+    'the forms this picture may not have come after the hero picture\'s own rules');
 
   /* ===================== 2. made once ===================== */
   var ID = 'qa-still-1';
