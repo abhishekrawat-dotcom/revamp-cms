@@ -89,6 +89,11 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2b.4 build reads it when the browser hands back empty longhands', /if \(\/:\\s\*;\/\.test\(body\)\) \{ var words = rawBody\(rule, ctx\); if \(words\) body = words; \}/.test(SRC));
 })();
 
+/* ======================= 2f the banner under another page's header ======================= */
+(function () {
+  check('2f.1 the copy\'s banner is as tall as its content, with the room below it above it too (the owner chose to tighten it), only for the page\'s banner and only with extra room', /function bannerRoom\(win, sec, id\)/.test(SRC) && /if \(pt <= pb \+ 8 && mh < vh \* 0\.5\) return '';/.test(SRC) && /min-height: 0 !important; padding-top: clamp\(32px, /.test(SRC) && /\+ bannerRoom\(win, sec, id\);/.test(SRC));
+})();
+
 /* ======================= 2e only what the other website uses ======================= */
 (function () {
   check('2e.1 a speaker\'s pop-up text goes on an event site (its card leads to the speaker\'s page), stays on an awards site (jury cards)', /if \(!opt\.awards\) each\('template\[data-rv-profile\]', function \(n\) \{ n\.remove\(\); \}\);/.test(SRC) && /awards: !!\(doc\.body && doc\.body\.hasAttribute\('data-rv-awards'\)\)/.test(SRC));

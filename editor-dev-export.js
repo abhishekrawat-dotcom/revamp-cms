@@ -980,6 +980,22 @@
       SCOPE + ' { ' + important(lookText) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx);
   }
 
+  /* The event site's banner fills most of the screen and keeps generous room above its content; on another website
+     the page's own header stands above it and that room reads as a gap (the owner, 13 Nov 2026: "what about the
+     padding issue?" — chose to tighten it in the copy). The copy's banner is as tall as its content, with the room
+     below it above it too (scaled down on a phone, 32px at least). Only the page's banner — its hero (an AI-designed
+     or awards site), its banner (a template), or the section holding its h1 — and only when it has that extra room. */
+  function bannerRoom(win, sec, id) {
+    if (!(/^(hero|banner)$/i.test(id) || sec.querySelector('h1'))) return '';
+    var cs = win.getComputedStyle(sec), vh = win.innerHeight || 900, vw = win.innerWidth || 1440;
+    var pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0, mh = parseFloat(cs.minHeight) || 0;
+    if (pt <= pb + 8 && mh < vh * 0.5) return '';
+    var room = Math.max(32, Math.round(pb));
+    var sel = (sec.id ? '#' + sec.id.replace(/[^\w-]/g, '\\$&') : '') + new Array(4).join('.' + scopeId(id)) + SCOPE;
+    return '\n/* on another website: the banner as tall as its content, with as much room above as below it */\n' + sel +
+      ' { min-height: 0 !important; padding-top: clamp(32px, ' + (Math.round(room / vw * 10000) / 100) + 'vw, ' + room + 'px) !important; }';
+  }
+
   /* ---------- the copies ---------- */
 
   /* The HTML of an element, written so that no attribute value holds a double quote: ETB2B's CMS turns &quot; back
@@ -1022,7 +1038,7 @@
     var families = familiesUsed(ownText);
     var ground = wrapperStyle(win, sec, []).filter(function (p) { return p[0] === 'background-color'; })[0];
     var groundRule = ground ? '/* the event page\u2019s ground behind this section */\n.' + scopeId(id) + WEIGHT + ' { background-color: ' + ground[1] + ' !important; }\n' : '';
-    var css = groundRule + remToPx(extrasFor(ownText, ctx, families).concat(own).join('\n'), remPx);
+    var css = groundRule + remToPx(extrasFor(ownText, ctx, families).concat(own).join('\n'), remPx) + bannerRoom(win, sec, id);
     var common = commonCss(doc, win, [m], base, remPx, ctx, ownText);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
