@@ -68,9 +68,11 @@ check('2 on every page only ?v= is added, nothing else changes', changed.length 
 check('2 on every page each of our own stylesheets and scripts is named by its hash', missed.length === 0 && stamped > 100, { missed: missed.slice(0, 8), stamped: stamped });
 check('2 no page carries a hand-made version mark any more', pages.every(function (rel) { return !/\.(css|js)\?v=[a-z]/.test(fs.readFileSync(path.join(ROOT, rel), 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')); }));
 
-/* 3. server.js stamps every page it sends, keys its compressed copy by what it sends, and keeps a current hash a year */
-var SERVER = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-check('3 server.js stamps each .html it sends', /const \{ assetVersion, versionPageAssets \} = require\('\.\/functions\/lib\/delivery'\);/.test(SERVER) &&
+/* 3. the server stamps every page it sends, keys its compressed copy by what it sends, and keeps a current hash a year
+   (functions/lib/web-server.js: what server.js and tools/serve.js both run, BE-063) */
+var SERVER = fs.readFileSync(path.join(ROOT, 'functions', 'lib', 'web-server.js'), 'utf8');
+check('3 the server (web-server.js, as server.js and tools/serve.js run it) stamps each .html it sends', /const \{ assetVersion, versionPageAssets \} = require\('\.\/delivery'\);/.test(SERVER) &&
+  /require\('\.\/functions\/lib\/web-server'\)/.test(fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8')) &&
   /if \(ext === '\.html'\)\{\s*const text = versionPageAssets\(buf\.toString\('utf8'\), url\);/.test(SERVER) &&
   /key \+= '\|' \+ require\('crypto'\)\.createHash\('sha1'\)\.update\(body\)/.test(SERVER));
 check('3 a current hash is kept a year, anything else 5 minutes, a page never',

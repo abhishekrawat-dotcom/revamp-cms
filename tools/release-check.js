@@ -31,7 +31,13 @@
      4. `firebase deploy --only firestore,storage --project revamp-cms` when firestore.rules, storage.rules or
         firestore.indexes.json changed (BE-062).
      5. Push to main: App Hosting deploys the app. apphosting.yaml is the owner's (sizing: BE-060).
-     6. One-off scripts named in the release notes, each with --dry-run first, on a qa- event, then for real.
+     6. One-off scripts named in the release notes, each as a dry run first (their default: it writes nothing),
+        then for real. Standing ones (BE-070, CON-056), in this order:
+          `node tools/clean-ghosts.js` then `node tools/clean-ghosts.js --apply --all`
+          `node tools/migrate-inline-pictures.js` then `node tools/migrate-inline-pictures.js --apply --all`
+        (once a dry run of the second finds nothing, lib/api-audience.js imageUrl's legacyInline branch can go).
+        Once: `gcloud run services describe revamp-cms --region us-east4 --project revamp-cms
+        --format='value(spec.template.spec.timeoutSeconds)'` says 300, the request limit lib/http.js records (BE-061).
      7. `node tools/release-check.js smoke --url <app> --event <a published event>` against production, and by
         hand in a signed-out browser: /e/<event> loads, a registration goes through and appears in the console.
    ETB2B EventSphere. Node 20, no dependencies beyond this repository's own. */

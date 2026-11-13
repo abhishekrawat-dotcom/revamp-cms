@@ -31,8 +31,9 @@ check('the icon is the logo\'s red square and its white ET, path for path, nothi
   iconPaths.every(function (p) { return LOGO.indexOf(p) !== -1; }) && iconPaths[0] === red && /fill="white"\/>$/.test(iconPaths[1]), iconPaths.length);
 check('its colours are the logo\'s own (the red ET square never changes)', (ICON.match(/fill="[^"]*"/g) || []).join(' ') === 'fill="#ED1A3B" fill="white"');
 check('its view is the square itself', /viewBox="0 0\.896484 36\.6069 36\.313816"/.test(ICON) && !/<(rect|circle|g|style|image)\b/.test(ICON));
-check('/favicon.ico is that icon (server.js and the dev server)', /path\.join\(root, 'assets', 'favicon\.svg'\)/.test(read('server.js')) &&
-  /rel === '\/favicon\.ico'\) file = path\.join\(root, 'assets', 'favicon\.svg'\)/.test(read('tools/serve.js')));
+check('/favicon.ico is that icon (server.js and the dev server, both through web-server.js)', /path\.join\(root, 'assets', 'favicon\.svg'\)/.test(read('functions/lib/web-server.js')) &&
+  /if \(url === '\/favicon\.ico'\)\{/.test(read('functions/lib/web-server.js')) &&
+  /require\('\.\/functions\/lib\/web-server'\)/.test(read('server.js')) && /require\('\.\.\/functions\/lib\/web-server'\)/.test(read('tools/serve.js')));
 var API = read('functions/lib/api.js');
 check('the published sites name it too (SITE_FAVICON)', /var SITE_FAVICON = '\/assets\/favicon\.svg';/.test(API));
 

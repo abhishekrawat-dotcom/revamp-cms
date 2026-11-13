@@ -150,8 +150,10 @@ function isPhone(v) { return /^\+?[\d\s().-]{7,24}$/.test(v) && v.replace(/\D/g,
 
 /* An image address that is safe to put in a public page's src: a web address or a path on this host.
    `legacyInline` also lets through a picture stored inline in the record itself — nothing stores
-   pictures that way any more (uploads go to Storage), but records made before that still hold them and
-   their events should not lose their photos. Never a script or any other scheme. */
+   pictures that way any more (uploads go to Storage; lib/api.js checkUrl and checkPicture refuse image text), but
+   records made before 13 Nov 2026 still hold them (national-data-center-symposium has four) and their events must
+   not lose their photos. It STAYS until the owner has run tools/migrate-inline-pictures.js --apply --all and a dry
+   run then finds nothing (BE-070, CON-056); only then can this branch go. Never a script or any other scheme. */
 function imageUrl(v, legacyInline) {
   var s = typeof v === 'string' ? v.trim() : '';
   if (!s) return '';

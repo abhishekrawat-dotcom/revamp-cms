@@ -2,14 +2,18 @@
    node tools/migrate-inline-pictures.js --apply (--event <eventId> | --all) [--include-qa]       moves the pictures
 
    Speaker photos, speakers' company logos, sponsor logos and gallery pictures saved before 13 Nov 2026 are held
-   INSIDE their records as image text (data: URLs; launch check CON-052/054/055/056). Since then every new one is
-   stored as a file and the record keeps its address (functions/lib/inline-pictures.js); the old ones stay as they
-   are until the owner decides to move them. This script finds them and, with --apply, moves them.
+   INSIDE their records as image text (data: URLs; launch check CON-052/054/055/056, BE-070), and an event's own logo
+   or banner could be too. Since then every new one is stored as a file and the record keeps its address
+   (functions/lib/inline-pictures.js; PATCH /api/event refuses image text, lib/api.js checkUrl); the old ones stay as
+   they are — and are still shown as they are (lib/api-audience.js imageUrl's legacyInline, the console's safeUrl) —
+   until the owner moves them. This script finds them and, with --apply, moves them. Once it has run with --apply
+   --all and a dry run finds nothing, the legacyInline branch of imageUrl can go.
 
    WHERE IT LOOKS
      events/<id>/speakers/<rec>   photoUrl, logoUrl
      events/<id>/partners/<rec>   logoUrl
      events/<id>/gallery/<rec>    imageUrl
+     events/<id>                  logoUrl, bannerUrl   (the event's own logo and banner)
      speakerPages/<slug>          set.photo      (the speaker pages' own photo, added by the team)
      sponsorPages/<slug>          set.logo
    qa- events are test data and are left out unless --include-qa. The pages' change history (…Pages/<slug>/log) keeps
@@ -20,7 +24,7 @@
    --json <file> also writes that list (without the pictures themselves) as JSON.
 
    --apply stores each such picture as a file exactly as an upload stores one (lib/api-events.js storeImageFile:
-   events/<id>/speakers|partners|gallery/, a name unique for ever, WebP copies; a page's picture in
+   events/<id>/speakers|partners|gallery|logo|banner/, a name unique for ever, WebP copies; a page's picture in
    people/<kind>/<slug>/) and sets the record's field to the file's address, in a transaction that writes only while
    the field still holds that same picture: a record changed meanwhile is left alone, said, and its new file removed.
    Nothing else on the record changes (not updatedAt: the picture is the same picture). A page's version goes up by
@@ -46,6 +50,8 @@ var RECORDS = {
   gallery: { fields: { imageUrl: 'gallery picture' }, folder: 'gallery' }
 };
 var PAGES = { speakers: { field: 'photo', what: 'speaker page photo' }, sponsors: { field: 'logo', what: 'sponsor page logo' } };
+/* the event document's own pictures: field -> the upload folder (lib/api-events.js UPLOAD_KINDS), what it is called */
+var EVENT_FIELDS = { logoUrl: { folder: 'logo', what: 'event logo', label: 'The logo' }, bannerUrl: { folder: 'banner', what: 'event banner', label: 'The banner' } };
 var RECORD_PATH = /^events\/([^/]+)\/(speakers|partners|gallery)\/([^/]+)$/;
 
 function isInline(v) { return typeof v === 'string' && /^\s*data:/i.test(v); }
@@ -75,7 +81,7 @@ function recordHits(eventId, col, id, data) {
 /* -> Promise<{ hits: [hit], events: { <id>: { name, state } }, leftOutQa: n }>   o: { eventId, includeQa, pages } */
 function scan(fb, o) {
   o = o || {};
-  var hits = [], leftOutQa = 0, read = { speakers: 0, partners: 0, gallery: 0, pages: 0, events: {} };
+  var hits = [], leftOutQa = 0, read = { speakers: 0, partners: 0, gallery: 0, pages: 0, eventDocs: 0, events: {} };
   function take(eventId, col, id, data) {
     read[col]++; read.events[eventId] = true;
     var h = recordHits(eventId, col, id, data || {});
@@ -112,7 +118,25 @@ function scan(fb, o) {
       });
     });
   }));
-  return Promise.all([records, pages]).then(function () {
+  /* the events' own logo and banner (not the Lovable import records, events/import-<id>) */
+  var evCol = fb.db.collection('events');
+  var eventDocs = (o.eventId ? evCol.doc(o.eventId).get().then(function (s) { return s.exists ? [s] : []; })
+    : (typeof evCol.select === 'function' ? evCol.select('logoUrl', 'bannerUrl', 'name') : evCol).get().then(function (snap) { return snap.docs; }))
+    .then(function (docs) {
+      docs.forEach(function (d) {
+        if (/^import-/.test(d.id)) return;
+        read.eventDocs++;
+        var data = d.data() || {};
+        Object.keys(EVENT_FIELDS).forEach(function (f) {
+          if (!isInline(data[f])) return;
+          if (isQa(d.id) && !o.includeQa) { leftOutQa++; return; }
+          var sz = sizeOf(data[f]);
+          hits.push({ area: 'eventDoc', eventId: d.id, col: 'event', id: d.id, name: String(data.name || '').replace(/\s+/g, ' ').trim().slice(0, 60), field: f,
+            what: EVENT_FIELDS[f].what, type: sz.type, chars: sz.chars, bytes: sz.bytes, value: data[f] });
+        });
+      });
+    });
+  return Promise.all([records, pages, eventDocs]).then(function () {
     var ids = [];
     hits.forEach(function (h) { if (h.eventId && ids.indexOf(h.eventId) === -1) ids.push(h.eventId); });
     var events = {};
@@ -159,7 +183,12 @@ function moveOne(fb, hit, o) {
   o = o || {};
   var IP = require(path.join(LIB, 'inline-pictures.js'));
   var ref, folder, field, label;
-  if (hit.area === 'page') {
+  if (hit.area === 'eventDoc') {
+    ref = fb.db.collection('events').doc(hit.eventId);
+    folder = 'events/' + hit.eventId + '/' + EVENT_FIELDS[hit.field].folder;
+    field = hit.field;
+    label = EVENT_FIELDS[hit.field].label;
+  } else if (hit.area === 'page') {
     var people = require(path.join(LIB, 'people.js'));
     ref = fb.db.collection(hit.col).doc(hit.id);
     folder = people.picturesFolder(hit.kind, hit.id);
@@ -172,7 +201,8 @@ function moveOne(fb, hit, o) {
     label = field === 'photoUrl' ? 'The photo' : field === 'logoUrl' ? 'The logo' : 'The picture';
   }
   var who = hit.area === 'event' && field === 'logoUrl' && hit.col === 'speakers' ? '' : hit.name;
-  return IP.store(fb, folder, hit.value, { label: label, fileName: (who ? who + ' ' : '') + (field === 'photoUrl' || field === 'photo' ? 'photo' : field === 'imageUrl' ? 'picture' : 'logo'), actor: o.actor || 'migrate-inline-pictures' })
+  var kindName = field === 'photoUrl' || field === 'photo' ? 'photo' : field === 'imageUrl' ? 'picture' : field === 'bannerUrl' ? 'banner' : 'logo';
+  return IP.store(fb, folder, hit.value, { label: label, fileName: (who ? who + ' ' : '') + kindName, actor: o.actor || 'migrate-inline-pictures' })
     .then(function (up) {
       return fb.db.runTransaction(function (tx) {
         return tx.get(ref).then(function (snap) {
@@ -199,7 +229,7 @@ function apply(fb, hits, o) {
   }, Promise.resolve()).then(function () { return out; });
 }
 
-module.exports = { scan: scan, summarise: summarise, apply: apply, moveOne: moveOne, sizeOf: sizeOf, RECORDS: RECORDS };
+module.exports = { scan: scan, summarise: summarise, apply: apply, moveOne: moveOne, sizeOf: sizeOf, RECORDS: RECORDS, EVENT_FIELDS: EVENT_FIELDS };
 
 /* ---------------------------------------------------------------------------------------------- the command */
 if (require.main === module) {
@@ -240,7 +270,7 @@ if (require.main === module) {
     });
     const sum = summarise(result);
     console.log('\nSUMMARY');
-    console.log('  read: ' + sum.read.speakers + ' speakers, ' + sum.read.partners + ' sponsors, ' + sum.read.gallery + ' gallery pictures (in ' + sum.read.events + ' events, qa- included), ' + sum.read.pages + ' speaker and sponsor pages');
+    console.log('  read: ' + sum.read.speakers + ' speakers, ' + sum.read.partners + ' sponsors, ' + sum.read.gallery + ' gallery pictures (in ' + sum.read.events + ' events, qa- included), ' + sum.read.eventDocs + ' event documents, ' + sum.read.pages + ' speaker and sponsor pages');
     Object.keys(sum.byKind).sort().forEach(function (k) {
       const b = sum.byKind[k];
       console.log('  ' + (k + ':').padEnd(24) + String(b.n).padStart(5) + '   ' + kb(b.bytes).padStart(10) + '   largest ' + kb(b.max));

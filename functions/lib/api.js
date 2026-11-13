@@ -1,10 +1,9 @@
-// The /api/*, /e/*, /preview/* and /t/* endpoint logic — the ONE place it's routed. Runs identically in:
-//   - production, called from server.js (Firebase App Hosting)
-//   - locally, called from tools/serve.js
-//   - the legacy Cloud Function entry point, functions/index.js (an Express-based request/response)
-// The req/res shapes are close enough (all are/extend Node's http.IncomingMessage / ServerResponse) that
-// the same handlers work unmodified — the one real difference is how the request body arrives (see
-// readBody in lib/http.js), which is the only place that branches on environment.
+// The /api/*, /e/*, /preview/*, /s/*, /t/* and /img/* endpoint logic — the ONE place it's routed (routeApi at the
+// end of this file). It runs behind functions/lib/web-server.js, the same in production (server.js on Firebase App
+// Hosting) and locally (tools/serve.js); the QA harness calls handleApi directly. req and res are Node's own
+// http.IncomingMessage and ServerResponse. Signed in or public: the sign-in gate (lib/access.js) lets a signed-out
+// request reach only the public routes named below, and every route that is not public checks the caller itself
+// as well (requireAdmin / requireMember in lib/http.js, CALLER_CHECKED below) — it never relies on the gate alone.
 //
 //   POST /api/suggest-design   create-event.html's "Let AI design it" (step 2)
 //   POST /api/chat-edit        custom_editor.html's "Ask AI to edit" chat panel (template mode only)
@@ -83,7 +82,8 @@
 //                                           sections that list speakers, sessions, sponsors…, the previous
 //                                           edition's own sections, the banner's logo — for the console's notes.
 //   POST  /api/event/publish | unpublish    put the saved site live at /e/<id> / take it down.
-//   POST  /api/event/stage                  only for browsers still running the previous editor script.
+//   POST  /api/event/stage                  the editor's Preview: the page in that person's editor, saved or not
+//                                           ({ draft: true }), shown at /preview/<id>?draft=1. Theirs alone.
 //   POST  /api/event/live-view              the editor's "Edit with AI" live view: the page through the
 //                                           preview transform, answered, never stored.
 //   GET   /e/<eventId>                      PUBLIC — the published site, served from private Storage.
@@ -1616,7 +1616,7 @@ function buildExtractBriefPrompt(eventMeta, ownerText) {
 }
 
 // 15MB cap on the decoded file — generous for a brief overview doc, small enough to keep one request fast
-// and well under Cloud Functions' own request size ceiling.
+// and well under the 32 MB App Hosting takes in one request (lib/http.js DEFAULT_MAX_BODY).
 var MAX_BRIEF_BYTES = 15 * 1024 * 1024;
 
 function handleExtractBrief(req, res) {
@@ -6780,8 +6780,8 @@ function handleGenerateContent(req, res) {
 /* ---------- GET /api/draft — fetches the latest generated draft, pre-shaped for the editor ----------
    Turns a stored draft's `library` (what /api/generate-content produced and saved) into the exact
    `revamp.editor.handoff.v1` shape the real wizard hand-off uses: {event, sections:[{libId,name,data}], …}.
-   Used by preview-draft.html so a generated draft can be opened from a plain URL — no manual payload
-   wiring per event, and it works the same locally and once deployed. */
+   The site editor (editor-template-ui.js) and Create Event read it, so a generated draft opens from the event's
+   id alone — no payload wiring per event. */
 function libraryToHandoffDraft(library, eventId, skippedLibraries) {
   library = library || {};
   var ev = library.event || {};
@@ -7093,8 +7093,8 @@ function handleGeneratedSection(req, res) {
    content.map judgment call above, and everything else in this block needed ZERO changes to support the
    new input method. */
 
-// 40MB cap on the decoded ZIP — generous for a real site export (it can carry many images), small enough to
-// keep one request well under Cloud Functions' own request size ceiling. Named/sized the same way
+// 40MB cap on the decoded ZIP — generous for a real site export (it can carry many images). Note: base64 makes a
+// 40 MB ZIP about 53 MB of request, over the 32 MB App Hosting takes in one request (lib/http.js DEFAULT_MAX_BODY). Named/sized the same way
 // MAX_BRIEF_BYTES/MAX_PUBLISHED_HTML_BYTES already are in this file.
 var MAX_IMPORT_ZIP_BYTES = 40 * 1024 * 1024;
 
@@ -7988,19 +7988,16 @@ function checkText(label, v, max, required) {
    data: URL is exactly what used to be written into the Firestore document, where anything over about
    0.75 MB failed with a raw database error. Images go through POST /api/event/upload and arrive here as
    the URL that returned. */
-var INLINE_IMAGE_MAX_CHARS = 700000;   // ~520 KB of image as base64; a Firestore document holds 1 MiB
 function checkUrl(label, v, max) {
   if (v == null || v === '') return '';
   if (typeof v !== 'string') return label + ' must be a web address.';
-  /* A speaker's photo and company logo, a partner's logo and a gallery picture are no longer judged here:
-     they are 'picture:' fields (checkPicture), stored as files (lib/inline-pictures.js). What still comes
-     here inline (an event's own logo or banner on PATCH /api/event, a promotion's picture) is accepted
-     while it is small enough to fit a Firestore document beside the record's other fields; anything
-     larger gets the instruction that actually helps. */
-  if (/^\s*data:/i.test(v)) {
-    if (/^\s*data:image\/(png|jpe?g|webp|gif);base64,/i.test(v) && v.length <= INLINE_IMAGE_MAX_CHARS) return '';
-    return label + ' is too large to be saved with the record — use a smaller picture (under about 500 KB).';
-  }
+  /* Nothing is written with a picture held inside it (CON-056): an event's own logo and banner (PATCH /api/event),
+     a link on a record — an address only. A speaker's photo and company logo, a partner's logo and a gallery picture
+     are 'picture:' fields (checkPicture): a new one sent as image text is stored as a file first
+     (lib/inline-pictures.js), and one sent back exactly as it is stored is not judged again. Pictures saved inline
+     before 13 Nov 2026 are still READ as they are (lib/api-audience.js imageUrl's legacyInline, the console's
+     safeUrl) until the owner has run tools/migrate-inline-pictures.js --apply --all (BE-070). */
+  if (/^\s*data:/i.test(v)) return label + ' must be a web address. A picture is uploaded as a file first: add it again.';
   if (v.length > (max || 2000)) return label + ' is too long.';
   /* http(s), a path on this host ("/assets/…") or a bare "company.com/page" — the console stores web
      addresses without their scheme. Any other scheme (javascript:, ftp:, mailto:) is not a web address;
@@ -8795,22 +8792,17 @@ RESOURCES['leads'] = { list: handleLeadsList, create: handleLeadCreate, update: 
 // Deliberately NOT 'theme': that field name is owned by the GENERATED TEMPLATES pipeline
 // (handlePlanStructure writes {themeColor, headingFont, bodyFont, heroImageUrl, ...} there).
 //
+// No longer 'payment' or 'checklist' (BE-071): online payment is not part of this release — every event registers
+// free, whatever an older document says (eventForClient answers { type: 'free' }) — and nothing has sent a checklist
+// since the console stopped keeping one. A page that still sends either (Create Event sends payment: { type: 'free' })
+// is not refused: a field not listed here is not read off the request at all.
+//
 // Deliberately NOT 'published' either. It used to be plain data that any PATCH could flip, so an event
 // could say "published" with no page behind it, or "unpublished" while its page was still up. It now
 // changes in exactly two places: POST /api/event/publish and POST /api/event/unpublish.
 var EVENT_STATUSES = ['draft', 'upcoming', 'active', 'live', 'completed', 'cancelled'];
 var SOCIAL_KINDS = ['linkedin', 'x', 'facebook', 'instagram', 'youtube', 'website'];
 var DATE_MODES = ['exact', 'month', 'quarter', 'tbd', 'none'];
-
-/* Free-form JSON a client sends to be stored as it is (the checklist, an audience's filters) must still
-   be something Firestore accepts: no empty or "__reserved__" field name, and not nested without end.
-   Otherwise the write fails as a database error instead of a 400 that says what is wrong. */
-function storableJson(v, depth) {
-  if (v == null || typeof v !== 'object') return true;
-  if ((depth || 0) > 12) return false;
-  if (Array.isArray(v)) return v.every(function (x) { return !Array.isArray(x) && storableJson(x, (depth || 0) + 1); });
-  return Object.keys(v).every(function (k) { return k !== '' && !/^__.*__$/.test(k) && storableJson(v[k], (depth || 0) + 1); });
-}
 
 var EVENT_FIELD_CHECKS = {
   name: function (v) { return checkText('The event name', v, 200, true); },
@@ -8852,15 +8844,6 @@ var EVENT_FIELD_CHECKS = {
   logoUrl: function (v) { return checkUrl('The logo', v); },
   bannerUrl: function (v) { return checkUrl('The banner', v); },
   templateId: function (v) { return (v == null || v === '' || (typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9_-]{0,160}$/.test(v))) ? '' : '"templateId" is not valid.'; },
-  /* Accepted so that a page which still sends it is not refused, and never looked at: whatever arrives,
-     { type: 'free' } is what is stored (cleanEventBody) — no amount, no currency. */
-  payment: function (v) { return (v == null || isPlainObject(v)) ? '' : '"payment" must be an object.'; },
-  checklist: function (v) {
-    if (v == null) return '';
-    if (!isPlainObject(v) || Object.keys(v).length > 200) return '"checklist" must be an object.';
-    if (!storableJson(v)) return '"checklist" has a name that cannot be stored.';
-    return Object.keys(v).every(function (k) { return v[k] == null || typeof v[k] === 'boolean' || typeof v[k] === 'string' || typeof v[k] === 'number'; }) ? '' : '"checklist" has a value that is not valid.';
-  },
   /* The ET portal the event belongs to (ETHRWorld, ETCIO …): a slug on et-events.js's roster and nothing else
      (isPortal is an own-property check, so "__proto__" is refused too). It decides where the event is listed,
      whose previous editions it is made from, its site's ET bar and footer, its consent links and its mailers'
@@ -8982,7 +8965,6 @@ function cleanEventBody(body, eventId, creating) {
   }
   if (creating && !has(data, 'name')) return { error: 'The event name is required.' };
   if (typeof data.name === 'string') data.name = data.name.trim();
-  if (has(data, 'payment')) data.payment = { type: 'free' };        // whatever was sent: see eventForClient
   if (data.start && data.end && Date.parse(data.end) < Date.parse(data.start)) return { error: 'The end date is before the start date.' };
   var settings = null;
   if (has(body, 'settings') && body.settings != null) {
@@ -9104,7 +9086,7 @@ function handleEventGet(req, res) {
 }
 
 /* PATCH /api/event. 200 { ok, updatedAt }; 404 for an id that is not a live event (it used to create the
-   document). Each field sent replaces the stored one as a whole — a `checklist` or `nomination` object is
+   document). Each field sent replaces the stored one as a whole — a `nomination` or `datePartial` object is
    not deep-merged, so a key the client stops sending really goes. `settings` is the one deliberate
    exception: see mergeSettings.
 
@@ -9307,8 +9289,8 @@ function handleEventsList(req, res) {
        events/<id>/published/index.html  the page visitors get at /e/<id>, already through the publish
                                          transform. (Pages published by the previous version of this file
                                          are public objects written as-is; /e/<id> serves those too.)
-       events/<id>/staging/index.html    only for editors still running the previous script: see
-                                         handleEventStage.
+       events/<id>/staging/index.html    the staged copy: the page as last saved, written by every save
+                                         (recordSave) and shown at /preview/<id>?staged=1.
      Firestore, on events/<id>
        site { version, snapshotVersion, templateId, updatedAt, updatedBy }
        published, publishedAt, publishedBy, publishedVersion, publishedPath
@@ -12180,25 +12162,23 @@ function handleRestoreVersion(req, res) {
   });
 }
 
-/* ---------- POST /api/event/stage — only for editors still running the previous script ----------
-   The previous Preview button sends the page it has in hand and opens whatever `stagingUrl` comes back.
-   It used to be written to a PUBLIC Storage object, so an unreleased site could be read by anyone who
-   guessed the event's address. It is now kept private and shown through /preview/<id>?staged=1, behind
-   the sign-in gate like every other preview. It does not touch the saved site: a page with no snapshot
-   must not become "the latest version" just because somebody looked at it. The current editor does not
-   call this at all — it saves, then opens /preview/<id>. */
+/* ---------- POST /api/event/stage { eventId, html, draft: true, origin } — the editor's Preview ----------
+   The page as it is in that person's editor, saved or not (RevampCore.previewDraft), kept as their own preview
+   (events/<id>/site/drafts/<uid>.html) and shown at /preview/<id>?draft=1. It is theirs alone and never the
+   staged copy: that changes only when somebody saves (recordSave).
+   A body without draft: true was the previous editor script's Preview, which wrote the page it had in hand over
+   the staged copy — an unsaved page that then showed as "the staged copy" to everyone. That form is gone
+   (BE-071): it answers 400 { code: 'reload-editor' }, never a silent fallback. */
 function handleEventStage(req, res) {
   withAdminBody(req, res, BODY_LIMITS.site, function (fb, decoded, body) {
     var eventId = eventIdOr400(res, body.eventId);
     if (!eventId) return;
+    if (body.draft !== true) return sendJson(res, 400, { error: 'This site editor is out of date. Reload the page, then press Preview again.', code: 'reload-editor' });
     if (typeof body.html !== 'string' || !body.html.trim()) return sendJson(res, 400, { error: 'The page to preview ("html") is missing.' });
-    /* draft: true — the editor's Preview: the page as it is in that person's editor, saved or not. It is
-       theirs alone and is not staging: staging changes only when somebody presses Save. */
-    var draft = body.draft === true;
     loadLiveEvent(fb, eventId).then(function () {
-      return saveObject(fb, draft ? draftObjectPath(eventId, decoded) : stagingObjectPath(eventId), rewriteOrigins(body.html, [cleanOrigin(body.origin)]), 'text/html; charset=utf-8');
+      return saveObject(fb, draftObjectPath(eventId, decoded), rewriteOrigins(body.html, [cleanOrigin(body.origin)]), 'text/html; charset=utf-8');
     }).then(function () {
-      var previewPath = '/preview/' + eventId + (draft ? '?draft=1' : '?staged=1');
+      var previewPath = '/preview/' + eventId + '?draft=1';
       sendJson(res, 200, { stagingUrl: cmsOriginFor(req, body.origin) + previewPath, previewPath: previewPath });
     }).catch(function (err) { sendFailure(res, 'stage', err, 'The preview could not be prepared. Please try again.'); });
   });
@@ -12523,9 +12503,9 @@ function handlePublicPage(req, res, eventId, slug) {
    transform, in preview mode (the runtime then stores no registration and counts no visit), with a
    ribbon. Signed-in only. server.js's gate already turns a signed-out visitor away before this runs; the
    check is repeated here because this handler is also reachable where that gate is not in front of it
-   (the Cloud Function entry point, a local server with the gate switched off), and an unreleased site
-   must not depend on which door it is asked for at. ?staged=1 shows the page the previous editor
-   script's Preview button sent instead (handleEventStage). */
+   (tools/serve.js with REVAMP_AUTH_DISABLED=1, the QA harness), and an unreleased site must not depend on
+   which door it is asked for at. ?staged=1 shows the staged copy (events/<id>/staging/index.html: the page as
+   last saved, recordSave) — the console's "See the staged copy". */
 /* The preview's theme switcher (only for an AI-designed site): the themes as buttons; picking one restyles the
    page in place (templates/_shared/rv-theme.js — the colours a section wrote as fixed values are turned into
    the variables first, the ET logo takes the version for its new ground), and "Apply in editor" opens the

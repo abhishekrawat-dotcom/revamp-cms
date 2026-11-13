@@ -220,11 +220,13 @@ function samePixelHeaders(h) {
   ok(!g4.next && g4.status === 401, 'the dashboard endpoint is not public: 401 signed out', JSON.stringify(g4));
 
   /* ---------- 6. both servers hand /t/ to the API; server.js flushes counts on SIGTERM ---------- */
+  /* both servers route through functions/lib/web-server.js (BE-063) */
   var serverSrc = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   var serveSrc = fs.readFileSync(path.join(ROOT, 'tools', 'serve.js'), 'utf8');
+  var webSrc = fs.readFileSync(path.join(ROOT, 'functions', 'lib', 'web-server.js'), 'utf8');
   var NEW_RE = '/^\\/(api|e|preview|t)\\//', OLD_RE = '/^\\/(api|e|preview)\\//';
-  ok(serverSrc.indexOf(NEW_RE) !== -1 && serverSrc.indexOf(OLD_RE) === -1, 'server.js routes /t/ to the API', NEW_RE);
-  ok(serveSrc.indexOf(NEW_RE) !== -1 && serveSrc.indexOf(OLD_RE) === -1, 'tools/serve.js routes /t/ to the API');
+  ok(webSrc.indexOf(NEW_RE) !== -1 && webSrc.indexOf(OLD_RE) === -1 && /require\('\.\/functions\/lib\/web-server'\)/.test(serverSrc), 'server.js routes /t/ to the API (web-server.js)', NEW_RE);
+  ok(/require\('\.\.\/functions\/lib\/web-server'\)/.test(serveSrc), 'tools/serve.js routes /t/ to the API (web-server.js)');
   ok(new RegExp(NEW_RE.slice(1, -1)).test('/t/o/' + ID + '.gif') && !new RegExp(NEW_RE.slice(1, -1)).test('/tx/'), 'that pattern takes /t/ and not /tx/');
 
   var sig = /\nprocess\.on\('SIGTERM', function \(\) \{[\s\S]*?\n\}\);\n/.exec(serverSrc);

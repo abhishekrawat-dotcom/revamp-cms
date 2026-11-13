@@ -97,7 +97,7 @@ var CAPS = {
   makingMs: 5 * 60 * 1000,
   timeoutMs: 60000,           // one call to the image model, as the site pipeline gives it
   /* from the moment the request arrived: the editor's own (chat-picture.js DEADLINE_MS), room for two pictures and
-     their checks inside the function's 240 s */
+     their checks inside the platform's request limit (lib/http.js PLATFORM_REQUEST_LIMIT_MS, 300 s) */
   deadlineMs: chatPicture.DEADLINE_MS,
   variantsBudgetMs: 15000     // WebP copies: past this the answer goes without waiting for them
 };

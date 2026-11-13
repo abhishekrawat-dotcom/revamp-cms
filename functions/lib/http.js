@@ -4,7 +4,9 @@
 // Nothing in here may throw into the caller's request stream callbacks. An exception nobody catches ends
 // a plain Node http server's process, and with it every other request in flight on that instance — so
 // each helper answers the request itself (4xx/5xx) or returns a value, never throws.
-const { getFirebase } = require('./firebase');
+/* read when a request needs it, not when this file loads: lib/llm.js reads this file's request limit at its own
+   load, so this file may load before a test has put its in-memory Firebase in place */
+function getFirebase() { return require('./firebase').getFirebase(); }
 const AC = require('./access-control');
 /* verifySession: how long a sign-in lasts, and whether it was revoked — one rule with the gate (BE-058) */
 const session = require('./access');
@@ -281,6 +283,24 @@ function rateLimit(key, max, windowMs) {
   return true;
 }
 
+/* ---------- how long one request may take (BE-061) ----------
+   PLATFORM_REQUEST_LIMIT_MS: the longest a request may run before the platform ends it. Firebase App Hosting sends
+   every request through Google Cloud Load Balancing with Cloud CDN to the backend's Cloud Run service. Its
+   apphosting.yaml has no request timeout to set (runConfig takes cpu, memoryMiB, maxInstances, minInstances,
+   concurrency, cpuAlwaysAllocated and vpcAccess, nothing else), so the service keeps Cloud Run's default: 300 s.
+   Neither the App Hosting nor the load-balancing documentation names a shorter limit in front of it.
+   Past the limit the platform closes the connection and answers 504; the instance keeps running the handler, so a
+   model call still in flight is paid for and its answer lost.
+   TAKEN FROM DOCUMENTATION, NOT MEASURED (13 Nov 2026): firebase.google.com/docs/app-hosting/configure and
+   /about-app-hosting, docs.cloud.google.com/run/docs/configuring/request-timeout. The deployed figure is
+   `gcloud run services describe revamp-cms --region us-east4 --project revamp-cms
+    --format='value(spec.template.spec.timeoutSeconds)'` (the owner's sign-in); change it here if that says otherwise.
+   Derived from it: lib/llm.js LIMITS.budgetMs (one AI call, three quarters of it) and server.js's
+   server.requestTimeout (SERVER_REQUEST_TIMEOUT_MS: Node must never be the one to cut a request off first;
+   request-limit.test.js keeps every route's own deadline under the limit). */
+var PLATFORM_REQUEST_LIMIT_MS = 300000;
+var SERVER_REQUEST_TIMEOUT_MS = PLATFORM_REQUEST_LIMIT_MS + 30000;
+
 /* Event ids are Firestore document ids and path segments in Storage and in /e/<id>. */
 function isEventId(v) { return typeof v === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/.test(v); }
 
@@ -325,3 +345,6 @@ module.exports = {
   adminFromRequest, CORS_HEADERS, sendPublicJson, sendPublicNoContent, clientIp, rateLimit, isEventId,
   isReservedEventId, CONTENT_STATUSES, EMAIL_RE, isEmail, str, AI_RATE
 };
+/* the request time limit (above): lib/llm.js, server.js, tools/serve.js */
+module.exports.PLATFORM_REQUEST_LIMIT_MS = PLATFORM_REQUEST_LIMIT_MS;
+module.exports.SERVER_REQUEST_TIMEOUT_MS = SERVER_REQUEST_TIMEOUT_MS;
