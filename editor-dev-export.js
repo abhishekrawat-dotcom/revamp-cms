@@ -1262,7 +1262,10 @@
     var pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0, mh = parseFloat(cs.minHeight) || 0;
     var tight = !(pt <= pb + 8 && mh < vh * 0.5);
     var room = Math.max(32, Math.round(tight ? pb : pt));
-    var top = 'clamp(32px, ' + (Math.round(room / vw * 10000) / 100) + 'vw, ' + room + 'px)';
+    /* on a phone, the room the banner keeps below its content there (measured at a phone's width), so its content
+       stands as far below the top as above the bottom; never less than 32px, never more than the room on a computer */
+    var low = Math.min(room, Math.max(32, Math.round(phonePad(win, sec, tight ? 'paddingBottom' : 'paddingTop'))));
+    var top = 'clamp(' + low + 'px, ' + (Math.round(room / vw * 10000) / 100) + 'vw, ' + room + 'px)';
     var sel = (sec.id ? '#' + sec.id.replace(/[^\w-]/g, '\\$&') : '') + new Array(4).join('.' + scopeId(id)) + SCOPE;
     return (tight ? '\n/* on another website: the banner as tall as its content, with as much room above as below it */\n' + sel +
       ' { min-height: 0 !important; padding-top: ' + top + ' !important; }' : '') +
@@ -1276,6 +1279,16 @@
   function phoneBanner(sec, copy, id) {
     var PB = root.RevampPhoneBanner;
     return PB && PB.forCopy ? PB.forCopy(sec, copy, { cls: scopeId(id), scope: SCOPE }) : '';
+  }
+  /* a padding of the section as the page has it at a phone's width (the staged page's frame, as phoneSizes measures) */
+  function phonePad(win, sec, prop) {
+    var frame = win && win.frameElement;
+    if (!frame || !frame.style) return 0;
+    var was = frame.style.width, v = 0;
+    frame.style.width = PHONE_W + 'px';
+    try { void win.document.documentElement.offsetWidth; v = parseFloat(win.getComputedStyle(sec)[prop]) || 0; }
+    finally { frame.style.width = was; void win.document.documentElement.offsetWidth; }
+    return v;
   }
   /* the hidden #banner mark (where the banner is not #banner already), placed where it does not count as a child */
   function bannerMark(sec, copy, id, ownCss) {

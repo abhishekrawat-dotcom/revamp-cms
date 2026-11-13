@@ -116,6 +116,11 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
     /body:has\(#ms_header_oauth_wrapper\):not\(:has\(section#banner:not\(\.rv-embed\)\)\) #hero\.rv-embed-hero\.rv-embed-hero\.rv-embed-hero\.rv-embed:not\(#_#_#_#_\) \{ padding-top: calc\(var\(--rv-etb2b-head, 100px\) \+ clamp\(32px, 7\.64vw, 110px\)\) !important; \}/.test(roomy), roomy);
   var snug = B.bannerRoom(page(64, 64, 0), hero, 'hero');
   check('2f.3 a banner without extra room is left as it is, but on an ETB2B page still starts below the header', snug.indexOf('min-height') === -1 && /padding-top: calc\(var\(--rv-etb2b-head, 100px\) \+ clamp\(32px, 4\.44vw, 64px\)\) !important;/.test(snug), snug);
+  var frame = { style: { width: '' } };
+  var phonePage = { innerHeight: 900, innerWidth: 1440, frameElement: frame, document: { documentElement: { offsetWidth: 1 } },
+    getComputedStyle: function () { var phone = frame.style.width === '412px'; return { paddingTop: (phone ? 100 : 220) + 'px', paddingBottom: (phone ? 64 : 110) + 'px', minHeight: '760px' }; } };
+  var onPhone = B.bannerRoom(phonePage, hero, 'hero');
+  check('2f.3a on a phone the room above is at least the room the banner keeps below there (measured at a phone\'s width), and the frame is put back', /padding-top: clamp\(64px, 7\.64vw, 110px\) !important;/.test(onPhone) && frame.style.width === '', onPhone);
   check('2f.4 not the banner: nothing', B.bannerRoom(page(220, 110, 760), el('section', { id: 'about' }), 'about') === '');
   var c1 = el('section', { id: 'hero' }); c1.appendChild(el('div'));
   B.bannerMark(c1, c1, 'hero', '.hero > div { color: red }');
