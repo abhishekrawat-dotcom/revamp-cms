@@ -38,7 +38,8 @@
      - a CSS background (a <style> block or a style attribute) keeps its url() and gets the same
        declaration again with image-set(<full-size variant> type("image/webp"), <original>): a browser
        that does not read that keeps the first; the hero's background (<style data-rv-style="hero">) is
-       preloaded, since a browser finds a CSS background only late.
+       preloaded, since a browser finds a CSS background only late — and a banner's own picture for phones
+       (<style data-rv-phone-banner-css>) is preloaded for phones, the hero's then for larger screens only.
    An <img> that already has a srcset is left as it is (the author chose), which is also what makes
    rewriting a page twice change nothing.
    A browser without WebP (Safari 13 and older, 2019) shows no picture for an <img> rewritten this way.
@@ -384,9 +385,15 @@ function rewriteCss(css, index, state, quoted) {
     });
     if (!changed) return full;
     if (state && first && !state.heroBg && state.inHeroStyle) state.heroBg = first;
+    if (state && first && !state.phoneBg && state.inPhoneStyle) state.phoneBg = first;
     return full + ';' + prop + colon + twin + (imp || '') + space;
   });
 }
+
+/* The banner's own picture for phones (editor-phone-banner.js): its rule is a <style data-rv-phone-banner-css> in the
+   banner, for screens up to 767px wide. Its picture is preloaded for those screens, and the hero's for the others. */
+var PHONE_STYLE = /\bdata-rv-phone-banner-css\b/i;
+var PHONE_MEDIA = '(max-width: 767px)', WIDE_MEDIA = '(min-width: 768px)';
 
 /* The page with its pictures' variants (see the top of this file). Text inside <script>, <textarea> and
    comments is never touched. */
@@ -394,7 +401,7 @@ function rewriteHtml(html, index) {
   html = String(html == null ? '' : html);
   if (html.indexOf(SIZED_CSS_V1) !== -1) html = html.split(SIZED_CSS_V1).join(SIZED_CSS);
   if (!index || !index.entries || !Object.keys(index.entries).length) return html;
-  var state = { lcpDone: false, inHero: false, sized: false, heroBg: '', inHeroStyle: false };
+  var state = { lcpDone: false, inHero: false, sized: false, heroBg: '', inHeroStyle: false, phoneBg: '', inPhoneStyle: false };
   var hero = null;                                  // { name, depth } while inside the first hero/banner element
   var heroSeen = false;
   var re = /<!--[\s\S]*?-->|<(script|textarea)\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/\1\s*>|<style\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)(<\/style\s*>)|<\/([a-zA-Z][a-zA-Z0-9-]*)\s*>|<([a-zA-Z][a-zA-Z0-9-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi;
@@ -402,8 +409,10 @@ function rewriteHtml(html, index) {
     if (rawTag || full.charAt(1) === '!') return full;
     if (styleText != null && styleEnd) {
       state.inHeroStyle = /\bdata-rv-style\s*=\s*["']?hero\b/i.test(styleAttrs || '');
+      state.inPhoneStyle = PHONE_STYLE.test(styleAttrs || '');
       var css = rewriteCss(styleText, index, state, false);
       state.inHeroStyle = false;
+      state.inPhoneStyle = false;
       return '<style' + (styleAttrs || '') + '>' + css + styleEnd;
     }
     if (closeName) {
@@ -431,8 +440,13 @@ function rewriteHtml(html, index) {
      head, so that transforming the page again leaves every line where it was */
   var head = [];
   if (state.sized && out.indexOf('<style data-rv-pictures>') === -1) head.push(SIZED_CSS);
+  /* with a phone banner (editor-phone-banner.js) a phone is never sent the wide banner first, nor a larger screen
+     the phone's: each preload says which screens it is for */
   if (state.heroBg && out.indexOf('data-rv-pictures-preload') === -1) {
-    head.push('<link rel="preload" as="image" type="image/webp" href="' + state.heroBg + '" fetchpriority="high" data-rv-pictures-preload>');
+    head.push('<link rel="preload" as="image" type="image/webp" href="' + state.heroBg + '" fetchpriority="high"' + (state.phoneBg ? ' media="' + WIDE_MEDIA + '"' : '') + ' data-rv-pictures-preload>');
+  }
+  if (state.phoneBg && out.indexOf('data-rv-pictures-phone') === -1) {
+    head.push('<link rel="preload" as="image" type="image/webp" href="' + state.phoneBg + '" fetchpriority="high" media="' + PHONE_MEDIA + '" data-rv-pictures-phone>');
   }
   if (!head.length) return out;
   var at = 0, m = /<head(?:\s[^>]*)?>(\s*<meta\s+charset\s*=[^>]*>)?/i.exec(out);

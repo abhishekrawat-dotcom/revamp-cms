@@ -975,6 +975,7 @@
       // and which internal page shows): about the event's page, not a section on another website
       if (owner && owner.hasAttribute && owner.hasAttribute('data-rv-runtime')) return;
       if (owner && owner.closest && owner.closest('.is-hidden-sec')) return;         // a hidden section's
+      if (owner && owner.hasAttribute && owner.hasAttribute('data-rv-phone-banner-css')) return;   // the phone banner's: phoneBanner() writes it
       if (sheet.disabled || !pick(sheetOwner(sheet))) return;
       var list = null;
       try { list = sheet.cssRules; } catch (e) { list = null; }
@@ -1253,6 +1254,14 @@
       '\n/* on an ETB2B page without a banner of its own: the banner starts under its fixed header, as ETB2B’s own banner does, its room above below that header */\n' +
       'body:has(' + ETB2B_HEAD + '):not(:has(section#banner:not(.rv-embed))) ' + sel + ' { padding-top: calc(var(--rv-etb2b-head, 100px) + ' + top + ') !important; }';
   }
+  /* The banner's own picture for phones (the owner, 13 Nov 2026: "A mobile version of hero background banner should be
+     there, currently it is blank"): editor-phone-banner.js writes the copy's part of it — the banner's picture moved
+     from its style attribute (inline !important outweighs every rule) into the CSS, the phone's after it in a
+     max-width media query, and a preload for each kind of screen. '' for a section without one. */
+  function phoneBanner(sec, copy, id) {
+    var PB = root.RevampPhoneBanner;
+    return PB && PB.forCopy ? PB.forCopy(sec, copy, { cls: scopeId(id), scope: SCOPE }) : '';
+  }
   /* the hidden #banner mark (where the banner is not #banner already), placed where it does not count as a child */
   function bannerMark(sec, copy, id, ownCss) {
     if (!isBanner(sec, id) || copy.id === 'banner' || copy.querySelector('[id="banner"]')) return;
@@ -1466,6 +1475,7 @@
     bannerMark(sec, copy, id, css);
     phoneSizes(win, sec, copy);
     pageLinks(copy, o.pageUrl);
+    css += phoneBanner(sec, copy, id);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
     var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: withEdges(scriptsFor(doc, [m], base), o.edges, base), edges: o.edges });

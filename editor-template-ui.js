@@ -2988,6 +2988,25 @@
     }
   }
 
+  /* ---------- the banner's own picture for phones (editor-phone-banner.js) ----------
+     The page's banner — its hero, its banner, or the section of its h1 — with a picture behind it gets "Phone banner"
+     beside "Background picture" (the owner, 13 Nov 2026: "A mobile version of hero background banner should be there,
+     currently it is blank"). Only on an event's site: a phone banner is made or uploaded for the event. */
+  function phoneBannerFor(sec) {
+    var PB = window.RevampPhoneBanner;
+    return !!(PB && eventId && sec && PB.isBanner(sec) && PB.hostFor(sec, canvas));
+  }
+  function openPhoneBanner(sec) {
+    if (!isLive(sec)) return;
+    window.RevampPhoneBanner.open({
+      sec: sec, canvas: canvas, eventId: eventId, openDialog: host.openDialog, showToast: showToast, offerUndo: offerUndo,
+      before: flush, commit: commitNow,
+      busy: function () { return aiWorking; }, busyLine: workSafety.busyLine('working').replace(/ — one moment$/, ''),
+      uploadImage: window.RevampCore && RevampCore.uploadImage, authedFetch: window.RevampAuth && RevampAuth.authedFetch,
+      videoOn: heroVideoOn()
+    });
+  }
+
   /* A picture on the page replaced: from its toolbar (Replace image) and from the logo's notice (Replace logo). */
   function replacePicture(picEl, title) {
     if (!picEl || !picEl.isConnected) return;
@@ -3575,6 +3594,7 @@
         (repeatItems(sec).some(function (it) { return !recordOf(it); }) ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
         (canvas.canRedesign(sec) ? '<button data-action="redesign-section" title="Have the AI design this section again, keeping its content">&#10024; Redesign with AI</button>' : '') +
         (canvas.backgroundHost(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
+        (phoneBannerFor(sec) ? '<button data-action="phone-banner" title="A banner of its own for phones: made by ETB2B AI from this one, or uploaded">Phone banner</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
     }
@@ -3644,10 +3664,13 @@
       openRedesignDialog(sec);
     } else if (action === 'section-background') {
       var bgEl = canvas.backgroundHost(sec);
-      if (bgEl) openPictureDialog('Background picture', canvas.backgroundOf(bgEl), function (url) {
+      var PB = window.RevampPhoneBanner, hadPhone = !!(PB && PB.read(sec));
+      if (bgEl) openPictureDialog('Background picture', PB ? PB.desktopUrl(bgEl, canvas.win) || canvas.backgroundOf(bgEl) : canvas.backgroundOf(bgEl), function (url) {
         if (!bgEl.isConnected) return;
         canvas.setBackgroundPicture(bgEl, url); commitNow();
-      });
+      }, hadPhone ? 'Picture updated. The phone banner was made for the old picture, so phones now show this one: make a new one in Phone banner.' : undefined);
+    } else if (action === 'phone-banner') {
+      if (phoneBannerFor(sec)) openPhoneBanner(sec);
     } else if (action === 'move-up' || action === 'move-down') {
       var before = moveTarget(sec, action === 'move-up' ? -1 : 1);
       if (before !== undefined) moveSectionBefore(sec, before);

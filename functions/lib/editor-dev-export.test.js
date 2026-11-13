@@ -286,7 +286,7 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   var links = [img({ 'data-rv-page-link': 'award-category', href: 'https://cms.example/preview/award-category' }), img({ 'data-rv-page-link': 'home', href: '/preview/x' }), img({ 'data-rv-page-link': 'award faq', href: '/preview/x/award-faq' })];
   P.pageLinks({ querySelectorAll: function (q) { return /a\[data-rv-page-link\]/.test(q) ? links : []; } }, 'https://cms.example/e/qa-awards/#overview');
   check('2i.10 a link to another page of the event goes to that page on the event\'s public site, never to the preview (EventSphere\'s sign-in for a visitor)', links[0].attrs.href === 'https://cms.example/e/qa-awards/award-category' && links[1].attrs.href === 'https://cms.example/e/qa-awards' && links[2].attrs.href === 'https://cms.example/e/qa-awards/award%20faq', links.map(function (l) { return l.attrs.href; }));
-  check('2i.11 build measures the pictures on a phone and sets the page links before it writes the HTML', /bannerMark\(sec, copy, id, css\);\n\s*phoneSizes\(win, sec, copy\);\n\s*pageLinks\(copy, o\.pageUrl\);\n\s*var html = htmlOf\(copy\);/.test(SRC));
+  check('2i.11 build measures the pictures on a phone and sets the page links before it writes the HTML', /bannerMark\(sec, copy, id, css\);\n\s*phoneSizes\(win, sec, copy\);\n\s*pageLinks\(copy, o\.pageUrl\);\n\s*css \+= phoneBanner\(sec, copy, id\);\n\s*var html = htmlOf\(copy\);/.test(SRC));
 })();
 
 /* ======================= 2e only what the other website uses ======================= */
