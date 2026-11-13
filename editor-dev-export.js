@@ -835,9 +835,25 @@
     queue.push = function (item) { take(item); return queue.length; };
     w.RevampEmbed = { need: need, start: startAll };
     if (!w.__rvEmbedAway) { w.__rvEmbedAway = true; d.addEventListener('click', away, true); }
+    /* an ETB2B page: the copied banner keeps 100px above it for ETB2B's fixed header (its usual height, so nothing
+       moves); a header of another height is measured and the banner's room follows it (more than 4px off only) */
+    function head() {
+      var h = d.getElementById ? d.getElementById('ms_header_oauth_wrapper') : null, root = d.documentElement;
+      if (!root || !root.style || !root.style.setProperty) return;
+      var px = h ? Math.round(h.getBoundingClientRect().height) : 0, want = px && Math.abs(px - 100) > 4 ? px + 'px' : '';
+      if (root.style.getPropertyValue('--rv-etb2b-head') === want) return;
+      if (want) root.style.setProperty('--rv-etb2b-head', want); else root.style.removeProperty('--rv-etb2b-head');
+    }
+    if (!w.__rvEmbedHead && w.addEventListener) {
+      w.__rvEmbedHead = true;
+      var headTimer = null;
+      w.addEventListener('resize', function () { clearTimeout(headTimer); headTimer = setTimeout(head, 150); });
+      w.addEventListener('load', head);
+    }
     need(CONFIG);
     /* a page that puts sections in later: they are started as they come (for a minute) */
     function watch() {
+      head();
       startAll();
       if (!w.MutationObserver) return;
       var timer = null, seen = new w.MutationObserver(function () {
@@ -1049,21 +1065,49 @@
     link.setAttribute('href', href);
     link.setAttribute('fetchpriority', 'high');
     if (webp) link.setAttribute('type', 'image/webp');
-    var counts = String(ownCss || '');
-    var first = /:(first-child|nth-child|first-of-type|only-child|only-of-type)/.test(counts), last = /:(last-child|nth-last-child|last-of-type|only-child|only-of-type)/.test(counts);
-    if (!first) copy.insertBefore(link, copy.firstChild);
-    else if (!last) copy.appendChild(link);
+    placeQuiet(copy, link, ownCss);
   }
 
+  /* On an ETB2B microsite page (the owner, 13 Nov 2026: "The margin-top: 151px css was not there earlier in this
+     website, as soon as I have added the hero section code, it was added automatically"): ETB2B's footer script
+     (etb2b_footer_event_v2.js, "Header Height Adjustment") pushes the whole page down by its header's height + 50px
+     — once the page is ready, so everything moves — unless the page has a banner of its own (#banner or #page-hdr).
+     ETB2B's own banner starts at the very top, under its fixed, see-through header (99–101px at every width), with
+     room above its content for that header. The copy's banner does the same: it carries a hidden #banner mark, and on
+     a page with ETB2B's header (#ms_header_oauth_wrapper) its room above starts below that header — 100px, or the
+     header's own height where it differs (the common script measures it: --rv-etb2b-head). */
+  var ETB2B_HEAD = '#ms_header_oauth_wrapper';
   function bannerRoom(win, sec, id) {
     if (!isBanner(sec, id)) return '';
     var cs = win.getComputedStyle(sec), vh = win.innerHeight || 900, vw = win.innerWidth || 1440;
     var pt = parseFloat(cs.paddingTop) || 0, pb = parseFloat(cs.paddingBottom) || 0, mh = parseFloat(cs.minHeight) || 0;
-    if (pt <= pb + 8 && mh < vh * 0.5) return '';
-    var room = Math.max(32, Math.round(pb));
+    var tight = !(pt <= pb + 8 && mh < vh * 0.5);
+    var room = Math.max(32, Math.round(tight ? pb : pt));
+    var top = 'clamp(32px, ' + (Math.round(room / vw * 10000) / 100) + 'vw, ' + room + 'px)';
     var sel = (sec.id ? '#' + sec.id.replace(/[^\w-]/g, '\\$&') : '') + new Array(4).join('.' + scopeId(id)) + SCOPE;
-    return '\n/* on another website: the banner as tall as its content, with as much room above as below it */\n' + sel +
-      ' { min-height: 0 !important; padding-top: clamp(32px, ' + (Math.round(room / vw * 10000) / 100) + 'vw, ' + room + 'px) !important; }';
+    return (tight ? '\n/* on another website: the banner as tall as its content, with as much room above as below it */\n' + sel +
+      ' { min-height: 0 !important; padding-top: ' + top + ' !important; }' : '') +
+      '\n/* on an ETB2B page without a banner of its own: the banner starts under its fixed header, as ETB2B’s own banner does, its room above below that header */\n' +
+      'body:has(' + ETB2B_HEAD + '):not(:has(section#banner:not(.rv-embed))) ' + sel + ' { padding-top: calc(var(--rv-etb2b-head, 100px) + ' + top + ') !important; }';
+  }
+  /* the hidden #banner mark (where the banner is not #banner already), placed where it does not count as a child */
+  function bannerMark(sec, copy, id, ownCss) {
+    if (!isBanner(sec, id) || copy.id === 'banner' || copy.querySelector('[id="banner"]')) return;
+    var mark = copy.ownerDocument.createElement('i');
+    mark.setAttribute('id', 'banner');
+    mark.setAttribute('hidden', '');
+    mark.setAttribute('aria-hidden', 'true');
+    mark.setAttribute('style', 'display:none !important');
+    placeQuiet(copy, mark, ownCss);
+  }
+  /* an element of the copy's own (a preload link, the banner mark) goes first, or last where the section's CSS counts
+     its first children; where it counts both, a preload link stays out and the mark goes inside the first child */
+  function placeQuiet(copy, el, ownCss) {
+    var counts = String(ownCss || '');
+    var first = /:(first-child|nth-child|first-of-type|only-child|only-of-type)/.test(counts), last = /:(last-child|nth-last-child|last-of-type|only-child|only-of-type)/.test(counts);
+    if (!first) copy.insertBefore(el, copy.firstChild);
+    else if (!last) copy.appendChild(el);
+    else if (el.localName !== 'link' && copy.firstElementChild && !VOID_TAGS.test(copy.firstElementChild.localName)) copy.firstElementChild.appendChild(el);
   }
 
   /* ---------- the copies ---------- */
@@ -1111,6 +1155,7 @@
     var css = groundRule + remToPx(extrasFor(ownText, ctx, families).concat(own).join('\n'), remPx) + bannerRoom(win, sec, id);
     var common = commonCss(doc, win, [m], base, remPx, ctx, ownText);
     pictures(win, sec, copy, id, css);
+    bannerMark(sec, copy, id, css);
     var html = htmlOf(copy);
     var js = sectionJs({ id: id, title: title, ownJs: info.js });
     var jsCommon = commonJs({ title: o.eventName || title, pageUrl: o.pageUrl, scripts: scriptsFor(doc, [m], base) });

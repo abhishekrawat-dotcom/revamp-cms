@@ -91,13 +91,57 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
 
 /* ======================= 2f the banner under another page's header ======================= */
 (function () {
-  check('2f.1 the copy\'s banner is as tall as its content, with the room below it above it too (the owner chose to tighten it), only for the page\'s banner and only with extra room', /function bannerRoom\(win, sec, id\)/.test(SRC) && /if \(pt <= pb \+ 8 && mh < vh \* 0\.5\) return '';/.test(SRC) && /min-height: 0 !important; padding-top: clamp\(32px, /.test(SRC) && /\+ bannerRoom\(win, sec, id\);/.test(SRC));
+  check('2f.1 the copy\'s banner is as tall as its content, with the room below it above it too (the owner chose to tighten it), only for the page\'s banner and only with extra room', /function bannerRoom\(win, sec, id\)/.test(SRC) && /var tight = !\(pt <= pb \+ 8 && mh < vh \* 0\.5\);/.test(SRC) && /min-height: 0 !important; padding-top: ' \+ top \+ ' !important; \}' : ''\)/.test(SRC) && /\+ bannerRoom\(win, sec, id\);/.test(SRC));
+  // bannerRoom, bannerMark and placeQuiet are internal: tried through the module's text, with a page made of stand-ins
+  var ctxWin = {};
+  vm.runInNewContext(SRC.replace("root.RevampDevExport = {", "root.__banner = { bannerRoom: bannerRoom, bannerMark: bannerMark, placeQuiet: placeQuiet };\n  root.RevampDevExport = {"), { window: ctxWin, URL: URL });
+  var B = ctxWin.__banner;
+  function el(tag, attrs) {
+    var e = { localName: tag, attrs: attrs || {}, childNodes: [], id: (attrs || {}).id || '' };
+    e.setAttribute = function (n, v) { e.attrs[n] = v; if (n === 'id') e.id = v; };
+    e.querySelector = function (q) { var m = /^\[id="(.+)"\]$/.exec(q); return m ? find(e, function (k) { return k.id === m[1]; }) : (q === 'h1' ? find(e, function (k) { return k.localName === 'h1'; }) : null); };
+    e.insertBefore = function (k, ref) { var i = e.childNodes.indexOf(ref); e.childNodes.splice(i < 0 ? e.childNodes.length : i, 0, k); };
+    e.appendChild = function (k) { e.childNodes.push(k); };
+    Object.defineProperty(e, 'firstChild', { get: function () { return e.childNodes[0] || null; } });
+    Object.defineProperty(e, 'firstElementChild', { get: function () { return e.childNodes[0] || null; } });
+    e.ownerDocument = { createElement: function (t) { return el(t); } };
+    return e;
+  }
+  function find(e, fn) { for (var i = 0; i < e.childNodes.length; i++) { var k = e.childNodes[i]; if (fn(k)) return k; var d = find(k, fn); if (d) return d; } return null; }
+  function page(pt, pb, mh) { return { innerHeight: 900, innerWidth: 1440, getComputedStyle: function () { return { paddingTop: pt + 'px', paddingBottom: pb + 'px', minHeight: mh + 'px' }; } }; }
+  var hero = el('section', { id: 'hero' });
+  var roomy = B.bannerRoom(page(220, 110, 760), hero, 'hero');
+  check('2f.2 a roomy banner: tightened, and on an ETB2B page its room starts below ETB2B\'s fixed header (100px, or the measured height)',
+    /#hero\.rv-embed-hero\.rv-embed-hero\.rv-embed-hero\.rv-embed:not\(#_#_#_#_\) \{ min-height: 0 !important; padding-top: clamp\(32px, 7\.64vw, 110px\) !important; \}/.test(roomy) &&
+    /body:has\(#ms_header_oauth_wrapper\):not\(:has\(section#banner:not\(\.rv-embed\)\)\) #hero\.rv-embed-hero\.rv-embed-hero\.rv-embed-hero\.rv-embed:not\(#_#_#_#_\) \{ padding-top: calc\(var\(--rv-etb2b-head, 100px\) \+ clamp\(32px, 7\.64vw, 110px\)\) !important; \}/.test(roomy), roomy);
+  var snug = B.bannerRoom(page(64, 64, 0), hero, 'hero');
+  check('2f.3 a banner without extra room is left as it is, but on an ETB2B page still starts below the header', snug.indexOf('min-height') === -1 && /padding-top: calc\(var\(--rv-etb2b-head, 100px\) \+ clamp\(32px, 4\.44vw, 64px\)\) !important;/.test(snug), snug);
+  check('2f.4 not the banner: nothing', B.bannerRoom(page(220, 110, 760), el('section', { id: 'about' }), 'about') === '');
+  var c1 = el('section', { id: 'hero' }); c1.appendChild(el('div'));
+  B.bannerMark(c1, c1, 'hero', '.hero > div { color: red }');
+  var mark = c1.childNodes[0];
+  check('2f.5 the banner carries a hidden #banner mark (ETB2B\'s footer script then adds no margin above the page), first', mark && mark.localName === 'i' && mark.id === 'banner' && mark.attrs.hidden === '' && mark.attrs['aria-hidden'] === 'true' && mark.attrs.style === 'display:none !important', c1.childNodes.map(function (k) { return k.localName + '#' + k.id; }));
+  var c2 = el('section', { id: 'hero' }); c2.appendChild(el('div'));
+  B.bannerMark(c2, c2, 'hero', '.hero > div:first-child { color: red }');
+  check('2f.6 …last where the section\'s CSS counts first children', c2.childNodes[1] && c2.childNodes[1].id === 'banner');
+  var c3 = el('section', { id: 'hero' }); var inner = el('div'); c3.appendChild(inner);
+  B.bannerMark(c3, c3, 'hero', '.a:first-child, .b:last-child { color: red }');
+  check('2f.7 …inside its first child where it counts both', c3.childNodes.length === 1 && inner.childNodes[0] && inner.childNodes[0].id === 'banner');
+  var link = el('link'), c4 = el('section'); c4.appendChild(el('div'));
+  B.placeQuiet(c4, link, ':first-child :last-child');
+  check('2f.8 …but a preload link stays out then', c4.childNodes.length === 1 && c4.childNodes[0].childNodes.length === 0);
+  var c5 = el('section', { id: 'banner' }); B.bannerMark(c5, c5, 'banner', '');
+  var c6 = el('section', { id: 'about' }); c6.appendChild(el('h2')); B.bannerMark(c6, c6, 'about', '');
+  check('2f.9 no mark on a banner that is #banner already, nor on a section that is not the banner', c5.childNodes.length === 0 && c6.childNodes.length === 1);
+  check('2f.10 build marks the banner after its pictures', /pictures\(win, sec, copy, id, css\);\n\s*bannerMark\(sec, copy, id, css\);/.test(SRC));
+  check('2f.11 the common script measures ETB2B\'s header where it is not ~100px (at the start, on load and on resize), so nothing moves on the usual page',
+    /var px = h \? Math\.round\(h\.getBoundingClientRect\(\)\.height\) : 0, want = px && Math\.abs\(px - 100\) > 4 \? px \+ 'px' : '';/.test(SRC) && /w\.addEventListener\('load', head\);/.test(SRC) && /function watch\(\) \{\n\s*head\(\);/.test(SRC) && /getElementById\('ms_header_oauth_wrapper'\)/.test(SRC));
 })();
 
 /* ======================= 2g pictures: the banner's first ======================= */
 (function () {
   check('2g.1 the banner\'s picture is asked for first: a preload link (fetchpriority high, WebP where image-set has one), or fetchpriority on an <img> banner', /link\.setAttribute\('rel', 'preload'\);/.test(SRC) && /link\.setAttribute\('fetchpriority', 'high'\);/.test(SRC) && /if \(webp\) link\.setAttribute\('type', 'image\/webp'\);/.test(SRC) && /bigImg\.setAttribute\('fetchpriority', 'high'\);/.test(SRC));
-  check('2g.2 …never where the section\'s CSS counts children', /if \(!first\) copy\.insertBefore\(link, copy\.firstChild\);\n\s*else if \(!last\) copy\.appendChild\(link\);/.test(SRC));
+  check('2g.2 …never where the section\'s CSS counts children', /placeQuiet\(copy, link, ownCss\);/.test(SRC) && /if \(!first\) copy\.insertBefore\(el, copy\.firstChild\);\n\s*else if \(!last\) copy\.appendChild\(el\);\n\s*else if \(el\.localName !== 'link'/.test(SRC));
   check('2g.3 every picture below the banner loads as it comes into view; the hidden dark-theme logo too; a picture gets its size', /if \(!img\.hasAttribute\('loading'\)\) img\.setAttribute\('loading', 'lazy'\);/.test(SRC) && /classList\.contains\('rv-lu-dark'\)\) img\.setAttribute\('loading', 'lazy'\)/.test(SRC) && /function sizePictures\(sec, copy\)/.test(SRC));
 })();
 
@@ -217,6 +261,28 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
     check('4.14 "Winners will be announced soon" stays a status: a click goes nowhere', !soon.prevented && soon.to === '', soon);
     finish();
   }, 300);
+})();
+
+/* ======================= 4b ETB2B's header height, measured by the common script ======================= */
+(function () {
+  function run(headPx) {
+    var props = {}, events = {};
+    var style = { getPropertyValue: function (n) { return props[n] || ''; }, setProperty: function (n, v) { props[n] = v; }, removeProperty: function (n) { delete props[n]; } };
+    var root = { style: style, firstChild: null, insertBefore: function () {}, appendChild: function () {} };
+    var header = headPx == null ? null : { getBoundingClientRect: function () { return { height: headPx }; } };
+    var sb = { console: console, setTimeout: setTimeout, clearTimeout: clearTimeout, addEventListener: function (t, fn) { events[t] = fn; } };
+    sb.document = { readyState: 'complete', head: root, documentElement: root, createElement: function () { return {}; }, addEventListener: function () {},
+      getElementById: function (id) { return id === 'ms_header_oauth_wrapper' ? header : null; }, querySelector: function () { return null; }, querySelectorAll: function () { return []; } };
+    sb.window = sb;
+    vm.runInContext(T.commonJs({ title: 'QA', pageUrl: '', scripts: [] }), vm.createContext(sb));
+    return { props: props, events: events, setHead: function (px) { headPx = px; header = { getBoundingClientRect: function () { return { height: px }; } }; } };
+  }
+  var usual = run(101), other = run(140), none = run(null);
+  check('4b.1 ETB2B\'s usual header (99–101px): nothing set, so the banner\'s CSS (100px) stands and nothing moves', !('--rv-etb2b-head' in usual.props), usual.props);
+  check('4b.2 a header of another height: the banner\'s room follows it', other.props['--rv-etb2b-head'] === '140px', other.props);
+  check('4b.3 no ETB2B header: nothing set', !('--rv-etb2b-head' in none.props), none.props);
+  other.setHead(100); other.events.load();
+  check('4b.4 measured again once the page has loaded (and on resize): back to the usual height, the value goes', !('--rv-etb2b-head' in other.props) && typeof other.events.resize === 'function', other.props);
 })();
 
 /* ======================= 5 the site editor ======================= */
