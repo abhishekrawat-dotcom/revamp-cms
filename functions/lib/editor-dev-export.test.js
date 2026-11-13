@@ -340,6 +340,11 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
     /var els = Array\.prototype\.slice\.call\(root\.querySelectorAll\('\[data-rv-motion\]'\)\);\n\s*if \(root\.hasAttribute\('data-rv-motion'\)\) els\.unshift\(root\);\n\s*each\(els, function \(el\) \{/.test(RUNTIME));
   check('2j.6 …starts each imported part once, as it comes (a section put in later), and marks the page ready once',
     /return !r\.__rvMotion && !\(r\.parentElement && r\.parentElement\.closest\('\.rv-imported'\)\);/.test(RUNTIME) && /if \(motionStarted\) return;\n\s*motionStarted = true;/.test(RUNTIME));
+  // what the browser run on ETB2B's page found next (13 Nov): group-hover left out, the theme's rem sizes at ETB2B's root size
+  var gh = T.testable('.group-hover\\:translate-x-2:is(:where(.group):hover *)', function () { return true; });
+  check('2j.8 a state inside :is() / :where() is left out to try a selector too (Tailwind\'s group-hover reached nothing with nothing hovered)', gh === '.group-hover\\:translate-x-2:is(:where(.group) *)' &&
+    T.testable('.a:has(> .b:hover)', null) === '.a:has(> .b:hover)' && T.testable('.a:where(.b:focus-visible, .c)', null) === '.a:where(.b, .c)', [gh, T.testable('.a:has(> .b:hover)', null), T.testable('.a:where(.b:focus-visible, .c)', null)]);
+  check('2j.9 the page\'s look on the sections (its theme variables: Tailwind\'s --spacing: .25rem, --container-7xl: 80rem) in px, as every other rule: ETB2B\'s root is 10px', /SCOPE \+ ' \{ ' \+ important\(remToPx\(lookText, remPx\)\) \+ ' \}\\n'/.test(SRC) && T.remToPx('--spacing: .25rem; --container-7xl: 80rem', 16) === '--spacing: 4px; --container-7xl: 1280px');
   var marks = (RUNTIME.match(/settle\((el|c|w), 'rv-(shown|gone|open|bar)'\)/g) || []).length;
   check('2j.7 …and what it shows, lifts, opens or reveals takes its rule\'s values where the element\'s own style says !important (every style of a copy is): never the class alone',
     marks === 7 && !/classList\.add\('rv-(shown|gone|open|bar)'\)/.test(RUNTIME) && /if \(v && el\.style\.getPropertyPriority\(p\) === 'important'\) el\.style\.setProperty\(p, v\);/.test(RUNTIME), marks);

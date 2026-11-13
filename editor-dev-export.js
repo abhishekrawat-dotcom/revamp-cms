@@ -181,6 +181,11 @@
         if (PSEUDO_ELEMENT.test(t)) return false;
         if (t.charAt(0) === ':' && STATE_PSEUDO.test(t.replace(/\(.*$/, ''))) return false;
         return true;
+      }).map(function (t) {
+        /* the same inside :is() / :where() / :has(): Tailwind's group-hover is .x:is(:where(.group):hover *), which
+           reached nothing with nothing hovered and was left out (the arrow that slides on hovering its button) */
+        var m = /^:(is|where|has)\((.*)\)$/i.exec(t);
+        return m ? ':' + m[1] + '(' + splitTop(m[2], ',').map(function (x) { return /^[>+~]/.test(x) ? x : testable(x, knownClass); }).join(', ') + ')' : t;
       });
       if (knownClass) {
         var strong = kept.filter(function (t) {
@@ -1147,7 +1152,7 @@
     extra = fonts.extra;
     return (imports.length ? imports.join('\n') + '\n' : '') + resetCss(SCOPE) + '\n' +
       '/* the event page’s look on every copied section: its theme and its text; a section’s own rules outweigh it */\n' +
-      SCOPE + ' { ' + important(lookText) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx) + importedHold(models);
+      SCOPE + ' { ' + important(remToPx(lookText, remPx)) + ' }\n' + remToPx(extra.concat(shared).join('\n'), remPx) + importedHold(models);
   }
 
   /* The event site's banner fills most of the screen and keeps generous room above its content; on another website
