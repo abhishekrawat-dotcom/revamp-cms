@@ -203,7 +203,8 @@ async function runSmoke() {
       check(r.status === 200 && /<html/i.test(r.text), 'GET /e/' + event + ': 200, a page', r.status);
       check(/public/.test(cc) && /max-age=\d+/.test(cc), 'the live page may be kept by the CDN (public, max-age)', cc);
       check(/id="rv-site-config"/.test(r.text) && /rv-forms/.test(r.text), 'the live page carries its settings and the forms runtime', '');
-      check(/\/templates\/_shared\/rv-visit\.js[^"]*"[^>]*data-rv-visit="' + event + '"/.test(r.text) || /data-rv-visit="' + event + '"[^>]*src="[^"]*rv-visit\.js/.test(r.text),
+      // (the event id goes into the pattern: a regular expression literal cannot take it)
+      check(new RegExp('/templates/_shared/rv-visit\\.js[^"]*"[^>]*data-rv-visit="' + event + '"').test(r.text) || new RegExp('data-rv-visit="' + event + '"[^>]*src="[^"]*rv-visit\\.js').test(r.text),
         'the live page carries the visit counter for this event (TPL-039)', '');
       r = await ask(base + '/e/' + event + '?qr=release-check', { method: 'HEAD' });
       const loc = r.headers.get('location') || '';
