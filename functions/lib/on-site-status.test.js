@@ -146,7 +146,7 @@ function fakeDoc() {
   return doc;
 }
 (async function () {
-  var names = ['byOrder', 'recId', 'translateSpeakers', 'translatePartners', 'fetchGenericRepeatOverlay', 'fillEmptyNote', 'recordPill'];
+  var names = ['fetchGenericRepeatOverlay', 'fillEmptyNote', 'recordPill'];
   var missing = names.filter(function (n) { return !body(n); });
   check('4.0 the editor\'s functions are found', !missing.length, missing);
   var fetched = {};
@@ -157,23 +157,26 @@ function fakeDoc() {
     'var GENERIC_REPEAT_SOURCES = {};\n' +
     'RevampRecords.KINDS.forEach(function (kind) { GENERIC_REPEAT_SOURCES[kind] = { resources: RevampRecords.SOURCES[kind], translate: RevampRecords.translate[kind] }; });\n' +
     names.map(body).join('\n') + '\n' +
-    'return { translateSpeakers: translateSpeakers, translatePartners: translatePartners, fetchGenericRepeatOverlay: fetchGenericRepeatOverlay, fillEmptyNote: fillEmptyNote, recordPill: recordPill };');
+    'return { fetchGenericRepeatOverlay: fetchGenericRepeatOverlay, fillEmptyNote: fillEmptyNote, recordPill: recordPill };');
   function editor(data, kinds) {
     return run(RR, { fetchSub: function (r) { fetched[r] = true; return Promise.resolve(data[r] || []); } }, kinds,
       function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }, 'qa-x');
   }
   var E = editor({}, []);
 
-  /* a real template (content.map: cx-leaders-forum, making-ai-work speakers; retail-leadership-summit partners) */
-  var ts = E.translateSpeakers(SPEAKERS);
+  /* a real template (content.map: cx-leaders-forum, making-ai-work speakers; retail-leadership-summit partners): the
+     editor and the server read them through the same rules (templates/_shared/rv-draw.js mapTranslate) */
+  var RD = require('../../templates/_shared/rv-draw.js');
+  var ts = RD.mapTranslate.speakers(SPEAKERS);
   check('4.1 a real template\'s speakers: only those on the site', ts && ts.items.map(function (i) { return i.id; }).join() === 's1,s4', ts);
-  var none = E.translateSpeakers([SPEAKERS[1], SPEAKERS[2]]);
+  var none = RD.mapTranslate.speakers([SPEAKERS[1], SPEAKERS[2]]);
   check('4.2 …none on the site: an empty list, which the template\'s "empty":"hide" rule clears (no Invited card stays from an earlier open)', none && Array.isArray(none.items) && none.items.length === 0, none);
-  check('4.3 …no records at all: left alone, as before (TPL-007 is its own item)', E.translateSpeakers([]) === null);
-  var tp = E.translatePartners(PARTNERS, [{ id: 't1', name: 'Gold', order: 0 }]);
+  var noneAtAll = RD.mapContent({ speakers: [] }).speakers;
+  check('4.3 …no records at all: an empty list too (TPL-007): the model card and earlier records\' cards go', noneAtAll && noneAtAll.items.length === 0 && noneAtAll.waiting === 0, noneAtAll);
+  var tp = RD.mapTranslate.partners(PARTNERS, [{ id: 't1', name: 'Gold', order: 0 }]);
   var logos = tp && tp.tiers.reduce(function (a, t) { return a.concat(t.logos); }, []);
   check('4.4 a real template\'s sponsors: only those on the site', logos && logos.map(function (l) { return l.id; }).join() === 'p1,p4', tp);
-  var tpNone = E.translatePartners([PARTNERS[1], PARTNERS[2]], []);
+  var tpNone = RD.mapTranslate.partners([PARTNERS[1], PARTNERS[2]], []);
   check('4.5 …none on the site: no tiers, so the cards go', tpNone && Array.isArray(tpNone.tiers) && tpNone.tiers.length === 0, tpNone);
   var rules = JSON.parse(src('templates/cx-leaders-forum/template.json')).content.map.filter(function (m) { return m.from === 'speakers'; })[0];
   var rules2 = JSON.parse(src('templates/retail-leadership-summit/template.json')).content.map.filter(function (m) { return m.from === 'partners'; })[0];
@@ -214,16 +217,18 @@ function fakeDoc() {
   check('4.15 the notice over a list already marked empty is said again with today\'s count', /had\.setAttribute\('data-rv-empty-waiting'/.test(fill) && /fillEmptyNote\(had, kind/.test(fill));
   check('4.16 applyGenericRepeat passes the count to the notice', /markEmpty\(canvas\.doc, kind, items\.waiting \|\| 0\)/.test(body('applyGenericRepeat')));
   var api = src('functions/lib/api.js');
-  check('4.17 a real template with speakers or sponsors, none on the site, still tells the console to open the editor (it takes their cards away)',
-    /function editorDrawnKinds[\s\S]{0,900}siteRecords\.SOURCES\[kind\]\[0\][\s\S]{0,300}own\.length/.test(api));
+  check('4.17 a real template\'s speakers and sponsors are drawn by the server too (TPL-034): the console is never sent to the editor for them',
+    !/function editorDrawnKinds/.test(api) && /siteRecords\.renderRecords\(page, got\[1\], \{ templateId: templateId, event: data \}\)/.test(api) &&
+    /needsEditor: \[\]/.test(api));
 
   /* ===================== 5. the console and the other readers ===================== */
   var CON = src('edit-event.html');
   check('5.1 the console\'s "Not on the site" and "N on site" ask the site\'s own rule', /function isConfirmed\(r\)\{ return RevampRecords\.isOnSite\(r\); \}/.test(CON) &&
     CON.indexOf('<script src="templates/_shared/rv-records.js"></script>') !== -1 && CON.indexOf('<script src="templates/_shared/rv-records.js"></script>') < CON.indexOf('function isConfirmed('));
-  check('5.2 the editor page loads the rule before the editor', (function (h) {
-    var a = h.indexOf('<script src="templates/_shared/rv-records.js"></script>'), b = h.indexOf('<script src="editor-template-ui.js"></script>');
-    return a !== -1 && b !== -1 && a < b;
+  check('5.2 the editor page loads the rule, and the drawing that uses it, before the editor', (function (h) {
+    var a = h.indexOf('<script src="templates/_shared/rv-records.js"></script>'), d = h.indexOf('<script src="templates/_shared/rv-draw.js"></script>'),
+      b = h.indexOf('<script src="editor-template-ui.js"></script>');
+    return a !== -1 && d !== -1 && b !== -1 && a < d && d < b;
   })(src('custom_editor.html')));
   var seo = require('./seo-fields');
   var picked = seo.pickRecords({}, SPEAKERS, []);

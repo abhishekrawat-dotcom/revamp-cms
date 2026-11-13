@@ -49,7 +49,10 @@ var built = nav.build({ name: 'Brand World Summit 2026', sub: { date: '5–7 Dec
 var h = built.html;
 check('one root element, the nav section\'s', /^<header class="rv-etnav" id="nav" data-rv-etnav>/.test(h) && /<\/header>$/.test(h) && sectionRootInfo(h).tag === 'header');
 check('menu button, portal logo with both versions, name, date and place', /data-rv-etnav-burger/.test(h) && /data-rv-et-logo data-rv-on-light="\/templates\/_shared\/img\/portals\/brandequity\.png" data-rv-on-dark="\/templates\/_shared\/img\/portals\/brandequity-light\.png"/.test(h) &&
-  />Brand World Summit 2026</.test(h) && /<span class="rv-etnav-date">5–7 Dec 2026<\/span><span class="rv-etnav-place">Taj Wellington Mews, Chennai<\/span>/.test(h));
+  />Brand World Summit 2026</.test(h) &&
+  /* the name, date and place follow Basics (data-rv-bind, BE-040), the date in the bar's own words */
+  /<span class="rv-etnav-date" data-rv-bind="event.date" data-rv-bind-style="short">5–7 Dec 2026<\/span><span class="rv-etnav-place" data-rv-bind="event.venue">Taj Wellington Mews, Chennai<\/span>/.test(h) &&
+  /class="rv-etnav-name" href="#hero" data-rv-bind="event.name">Brand World Summit 2026</.test(h));
 check('the section links and the main action', /<li><a href="#overview">Overview<\/a><\/li><li><a href="#agenda">Agenda<\/a><\/li>/.test(h) && /<a class="rv-etnav-cta" data-register-cta href="#contact-us">Register Now<\/a>/.test(h));
 check('no tabs unless the event has them', !/rv-etnav-tabs/.test(h));
 var tabbed = nav.build({ name: 'X', tabs: [{ label: 'Conference', href: '#hero', active: true }, { label: 'Awards', href: 'https://brandequity.economictimes.indiatimes.com/awards' }] }).html;

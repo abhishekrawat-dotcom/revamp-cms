@@ -446,11 +446,13 @@ function ctaAttrs(btn) {
   return out;
 }
 
+/* The date and the place follow the event's Basics from then on (data-rv-bind, templates/_shared/rv-draw.js: the
+   site editor and the server write them in again whenever Basics change), in this banner's own date style. */
 function heroHtml(o) {
   o = o || {};
   var facts = '';
-  if (o.date) facts += '<span class="hero-fact">' + HERO_ICONS.date + '<span>' + escAttr(o.date) + '</span></span>';
-  if (o.place) facts += '<span class="hero-fact">' + HERO_ICONS.place + '<span>' + escAttr(o.place) + '</span></span>';
+  if (o.date) facts += '<span class="hero-fact" data-rv-bind="event.date" data-rv-bind-style="long">' + HERO_ICONS.date + '<span>' + escAttr(o.date) + '</span></span>';
+  if (o.place) facts += '<span class="hero-fact" data-rv-bind="event.venue">' + HERO_ICONS.place + '<span>' + escAttr(o.place) + '</span></span>';
   var buttons = '';
   if (o.primary && o.primary.label) buttons += '<a class="hero-btn hero-btn-primary"' + ctaAttrs(o.primary) + ' href="' + escAttr(o.primary.href || '#') + '">' + escAttr(o.primary.label) + '</a>';
   if (o.secondary && o.secondary.label) buttons += '<a class="hero-btn hero-btn-secondary"' + (o.secondary.page ? ' data-rv-page-link="' + escAttr(o.secondary.page) + '"' : '') + ' href="' + escAttr(o.secondary.href || '#') + '">' + escAttr(o.secondary.label) + '</a>';

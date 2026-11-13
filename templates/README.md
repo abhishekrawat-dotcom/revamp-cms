@@ -117,8 +117,10 @@ before `intro`, so a template can set a default (e.g. "About {event.name}") that
   which.
 
 **Sections that show the event's records.** Speakers, FAQs, sponsors, the gallery and contacts are managed in the
-event console's Content tabs, and `rv-data.js` draws them through the same `content.map` list rules (from
-`speakers`, `faq`, `partners`, `glimpses`, `contact`). Such a section:
+event console's Content tabs, and `_shared/rv-draw.js` draws them through the same `content.map` list rules (from
+`speakers`, `faq`, `partners`, `glimpses`, `contact`) in data mode: the site editor when it opens a site, and the server
+(`functions/lib/site-records.js`, running `editor-fill.js` itself) whenever the site is saved or something changes in
+Content — so the staged copy shows the change at once and it goes live with the next approval. Such a section:
 
 - carries `data-rv-bound="<kind>"` on its root element in `index.html` (`speakers | faq | partners | glimpses |
   contact`), so the editor knows from the first moment that its cards are records, not text to type over;
@@ -132,7 +134,9 @@ event console's Content tabs, and `rv-data.js` draws them through the same `cont
   another value takes `"if"`); a photo's own link, `alt` and caption; `"empty": "remove"` on a line that may be
   missing (a speaker's "role, company", a contact's label, e-mail or phone).
 
-With no records the section is not on the live site; in the editor it says where to add them.
+With no records to show (none, or only Invited or Tentative speakers and sponsors) the section has no cards — the model
+is kept aside in `<template data-rv-pristine>` — and is marked `data-rv-empty="<kind>"`: it is not on the published or
+previewed page (`rv-live.css`), nor is the menu's link to it; in the editor it says where to add them.
 
 **The banner.** All four banners are built the same way:
 
@@ -143,7 +147,10 @@ With no records the section is not on the live site; in the editor it says where
   `{ "text": ".banner-title", "value": "{hero.title|event.name}", "bind": "event.name" }` leaves the title following
   Basics unless the owner wrote a headline of their own;
 - date and venue are `data-rv-bind="event.date"` / `"event.venue"` (also listed in `content.bind`, for pages saved
-  before the attributes existed), so they follow Basics on every visit; a line with no value is not shown;
+  before the attributes existed), so they follow Basics: the editor and the server write Basics into them
+  (`_shared/rv-draw.js`) whenever the site is opened or saved and whenever Basics change, and the change goes live with
+  the next approval. A date in another style says so (`data-rv-bind-style="day"`: "27 November, 2026"). A line with no
+  value is not shown on the site; a line the owner rewrote by hand in the editor keeps their words (`data-rv-unbound`);
 - ONE picture, `<img class="banner-bg-image" data-rv-media="bg-image">`, which the event's own banner replaces, and
   an empty `<div class="bnr-bg-video" data-rv-media="bg-video">` that gets a video only when the event supplies a
   video file (`{ "bgvideo": … }`); `widgets/et-banner/script.js` loads it — never on a phone — and takes the

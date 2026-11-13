@@ -9221,7 +9221,9 @@ function handleSitePut(req, res) {
       ]).then(function (got) {
         beforeHtml = current ? got[0] : null;
         beforeSnapshot = got[1];
-        if (got[2]) pageHtml = siteRecords.renderRecords(pageHtml, got[2]).html;
+        /* today's records, and the event's name, date and place as Basics hold them (records that could not be read
+           are left as the editor drew them) */
+        pageHtml = siteRecords.renderRecords(pageHtml, got[2] || {}, { templateId: templateId, event: data }).html;
         var same = beforeHtml != null && pageHtml === beforeHtml && (automatic || snapshotText === beforeSnapshot);
         if (!same && automatic && beforeHtml != null) {
           var seen = [];
@@ -10322,8 +10324,9 @@ function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note, o
    staging address. It goes live like any edit: with the next approval (handleApprovalRequest draws Content in
    first, so a request always holds it). A site that is not live yet simply shows it from then on.
 
-   The event's records, by console resource, as GET /api/event/<resource> lists them -> Promise<rows> */
-var RECORD_RESOURCES = ['speakers', 'sessions', 'agenda-groups', 'faqs', 'partners', 'contacts', 'gallery'];
+   The event's records, by console resource, as GET /api/event/<resource> lists them -> Promise<rows> (the sponsors'
+   tiers too: a real template lists its sponsors tier by tier) */
+var RECORD_RESOURCES = ['speakers', 'sessions', 'agenda-groups', 'faqs', 'partners', 'partner-tiers', 'contacts', 'gallery'];
 function readRecordRows(fb, eventId) {
   return Promise.all(RECORD_RESOURCES.map(function (name) {
     return RESOURCES[name].col(fb, eventId).get().then(function (snap) {
@@ -10335,24 +10338,11 @@ function readRecordRows(fb, eventId) {
     return rows;
   });
 }
-/* the kinds a real template shows through its own content.map lists, which only the site editor draws
-   (editor-fill.js): with records of that kind, the editor has to open and save the site to show them */
-var MAP_KIND = { speakers: 'speakers', sessions: 'sessions', agenda: 'sessions', partners: 'partners', glimpses: 'glimpses', faq: 'faq', contact: 'contact' };
-function editorDrawnKinds(templateId, rows) {
-  var map = contentMapFor(templateId) || [], items = siteRecords.itemsByKind(rows), out = [];
-  map.forEach(function (m) {
-    var kind = MAP_KIND[m && m.from];
-    /* records of the kind, on the site or not: a speaker or sponsor moved to Invited or Tentative leaves a card
-       for the editor to take away (it draws only the confirmed ones, an empty list when there are none) */
-    var own = kind && rows ? rows[siteRecords.SOURCES[kind][0]] : null;
-    if (kind && items[kind] && (items[kind].length || (Array.isArray(own) && own.length)) && out.indexOf(kind) === -1) out.push(kind);
-  });
-  return out;
-}
-
-/* Draws the event's records into its saved site and keeps the result as a new version, when that changes what a
-   visitor would see. -> Promise<{ notSaved } | { version, staged, summary, items, changeId, unplaced, needsEditor,
-   published, publishedVersion }> — staged false when the saved site already shows Content as it is. */
+/* Draws the event's records — and its name, date and place from Basics — into its saved site and keeps the result as
+   a new version, when that changes what a visitor would see. A real template's own lists are drawn here too
+   (site-records.js drawOwn: TPL-007, TPL-034), so nothing waits for the site editor: needsEditor is always [] (kept
+   for the console that reads it). -> Promise<{ notSaved } | { version, staged, summary, items, changeId, unplaced,
+   needsEditor, published, publishedVersion }> — staged false when the saved site already shows Content as it is. */
 function stageContent(fb, eventId, decoded) {
   var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
   return loadLiveEvent(fb, eventId).then(function (data) {
@@ -10364,9 +10354,8 @@ function stageContent(fb, eventId, decoded) {
       return Promise.all([readObject(fb, sitePath(eventId, 'page.html')), readRecordRows(fb, eventId)]).then(function (got) {
         var page = got[0];
         if (page == null) throw httpError(409, 'The saved site could not be found. Open the site editor and save it again.', { code: 'site-not-saved' });
-        var drawn = siteRecords.renderRecords(page, got[1]);
+        var drawn = siteRecords.renderRecords(page, got[1], { templateId: templateId, event: data });
         answer.unplaced = drawn.unplaced;
-        answer.needsEditor = editorDrawnKinds(templateId, got[1]);
         var items = [];
         if (drawn.changed) { try { items = diffPages(page, drawn.html); } catch (e) { items = [{ type: 'unknown' }]; } }
         /* nothing a visitor would see (a page that only gains its records' ids): no new version */

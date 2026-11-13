@@ -4333,7 +4333,10 @@
     /* venue and the registration note share what the date fields leave of the row (c6 or c7); exact dates take
        a date and a time each (c3), so the venue has the rest of the row and the note goes under it */
     var venueSpan = exact ? 'c4' : twoUp ? 'c3' : 'c4';
-    var paymentSpan = exact ? (C.venue ? 'c12' : 'c4') : C.venue ? 'c3' : (twoUp ? 'c6' : 'c7');
+    /* the city has a field of its own (it was typed into the venue's, and the event never had one): beside the venue
+       when the date takes one field, at the start of the next row beside the note when it takes two with times */
+    var citySpan = exact ? 'c4' : 'c3';
+    var paymentSpan = exact ? (C.venue ? 'c8' : 'c4') : C.venue ? 'c12' : (twoUp ? 'c6' : 'c7');
 
     h += '<div class="field c2">' +
            '<label for="f-datemode">Date Format</label>' +
@@ -4363,8 +4366,11 @@
 
     if (C.venue){
       h += '<div class="field ' + venueSpan + '" id="venue-cell">' +
-             '<div class="flabel-row"><label for="f-venue">Venue &amp; city</label><span class="pill-opt">Optional</span></div>' +
-             '<input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt, Mumbai" value="' + esc(b.venue) + '"></div>';
+             '<div class="flabel-row"><label for="f-venue">Venue</label><span class="pill-opt">Optional</span></div>' +
+             '<input class="inp" id="f-venue" type="text" placeholder="e.g. Grand Hyatt" value="' + esc(b.venue) + '"></div>' +
+           '<div class="field ' + citySpan + '" id="city-cell">' +
+             '<div class="flabel-row"><label for="f-city">City</label><span class="pill-opt">Optional</span></div>' +
+             '<input class="inp" id="f-city" type="text" placeholder="e.g. Mumbai" value="' + esc(b.city) + '"></div>';
     }
     /* every event is free to register for: there is no online payment to offer yet, on any path */
     h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
@@ -4379,9 +4385,15 @@
       venueEl.oninput = function(){ b.venue = venueEl.value; refreshHeroCallout(); renderFoot(); save(); };
       venueEl.onchange = venueEl.oninput;
     }
+    var cityEl = $('f-city');
+    if (cityEl){
+      cityEl.oninput = function(){ b.city = cityEl.value; refreshHeroCallout(); renderFoot(); save(); };
+      cityEl.onchange = cityEl.oninput;
+    }
 
     selectFrom($('f-datemode'), C.dateModes.map(function(m){ return { v: m, t: DATE_MODE_LABEL[m] }; }), b.dateMode, function(v){
-      b.dateMode = v; save(); initStep1(); refreshHeroCallout(); renderFoot();
+      /* the owner's own choice: a later change of type keeps it whenever that type allows it (pickCategory) */
+      b.dateMode = v; b.dateModePicked = true; save(); initStep1(); refreshHeroCallout(); renderFoot();
     });
 
     if (b.dateMode === 'quarter'){
@@ -4937,8 +4949,9 @@
     S.catReturnPhase = null;
     if (S.aiPrefill && S.aiPrefill.thenDetails) S.aiPrefill.thenDetails = false;
     b.category = k;
-    /* carry the date over only if the new category understands that mode */
-    if (C.dateModes.indexOf(b.dateMode) < 0) b.dateMode = C.defaultDateMode;
+    /* carry the date over only if the new category understands that mode; until the owner has picked a format (or
+       typed a start), the type opens on its own (an award on its month, WZ-054) */
+    if (C.dateModes.indexOf(b.dateMode) < 0 || (!b.dateModePicked && !b.start && C.defaultDateMode)) b.dateMode = C.defaultDateMode;
     var said = changed && to === 'details' && !aiBrief ? (C.label + ' selected — form updated') : (C.label + ' selected');
     /* a removed previous edition has already been said, with the portal */
     if (!(portal && portal.dropped)) toast(portal && portal.changed ? portalName(b.portal) + ' · ' + said : said);
@@ -10955,6 +10968,15 @@
   var HANDOFF_BLOCKED = 'Your browser would not store the draft for the editor — its storage for this site is full or blocked. Free some space or allow site data, then try again.';
 
   /* the details the event record takes from the form */
+  /* The words a site, the events list and the console show for a date that is not fixed yet (the event's dateLabel):
+     what eventDateLabel() previews, without its "not picked yet" prompts — never a date nobody gave. */
+  function siteDateLabel(b){
+    var m = b.dateMode;
+    if (m === 'tbd')     return ((b.dateNote || '').trim() || 'Date to be announced').slice(0, 120);
+    if (m === 'month')   return fmtMonth(b.month) || '';
+    if (m === 'quarter') return /^\d{4}$/.test(String(b.year || '')) ? (b.quarter || 'Q1') + ' ' + b.year : '';
+    return '';
+  }
   function eventRecordFromBasics(){
     var b = S.basics, exact = b.dateMode === 'exact';
     var rec = {
@@ -10965,6 +10987,19 @@
       end: (exact && b.end) ? b.end : null,
       payment: { type: 'free' }
     };
+    /* A month, a quarter or "to be announced" reaches the event (WZ-054): the kind of date, its parts and the words
+       shown for it (CON-051: Basics shows and changes them). An exact date clears the words an earlier choice left. */
+    var mode = ['exact', 'month', 'quarter', 'tbd', 'none'].indexOf(b.dateMode) !== -1 ? b.dateMode : 'exact';
+    rec.dateMode = mode;
+    rec.dateLabel = exact ? '' : siteDateLabel(b);
+    rec.datePartial = exact || mode === 'none' ? null : {
+      month: mode === 'month' && /^\d{4}-(0[1-9]|1[0-2])$/.test(String(b.month || '')) ? b.month : '',
+      quarter: mode === 'quarter' && /^Q[1-4]$/.test(String(b.quarter || '')) ? b.quarter : '',
+      year: mode === 'quarter' && /^\d{4}$/.test(String(b.year || '')) ? String(b.year) : '',
+      note: mode === 'tbd' ? String(b.dateNote || '').trim().slice(0, 120) : ''
+    };
+    /* the client or sponsor, for a type that asks for one */
+    if (CATS[b.category] && CATS[b.category].client) rec.client = String(b.client || '').trim().slice(0, 200);
     /* an award's nomination window (the server's events/<id>.nomination): what its site's Key Dates and its
        main button follow */
     if (CATS[b.category] && CATS[b.category].nomination){
