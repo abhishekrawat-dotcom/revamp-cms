@@ -260,7 +260,9 @@ function isReservedEventId(id) {
 }
 
 /* The status a speaker or a partner can have in the console. Only "confirmed" ones (and records from
-   before the field existed, which have none) are shown on the site — see lib/api-audience.js. */
+   before the field existed, which have none) are shown on the site: the one rule is
+   templates/_shared/rv-records.js isOnSite, which everything that draws a site asks (the server's
+   drawing in lib/site-records.js, the site editor, lib/api-audience.js, search, the people pages). */
 var CONTENT_STATUSES = ['confirmed', 'invited', 'tentative'];
 
 /* An e-mail address as people write them. One definition for the registration form, the content records

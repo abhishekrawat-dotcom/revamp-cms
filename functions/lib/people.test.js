@@ -400,6 +400,29 @@ function page(url) {
   check('10 …a person whose entry leads to their company\'s article: not used, and said why', notHim.status === 'none' && notHim.candidates.some(function (c) { return /not about them/.test(c.why); }), notHim);
   check('10 what is kept of Wikipedia: https on its own hosts only', W.clean({ url: 'https://evil.test/x', extract: 'x' }) === null && W.clean({ url: 'https://en.wikipedia.org/wiki/X', extract: 'Y', image: 'https://evil.test/a.jpg', imagePage: 'https://commons.wikimedia.org/wiki/File:a.jpg' }).image === '');
 
+  /* 11. only who the event's site shows (CON-036, CON-037): an Invited or Tentative speaker or sponsor on a live event
+     has no page from it, is not named as a co-speaker, and one made Invited after the index placed them leaves the
+     page at once */
+  FB.docs['events/ciso-secufest-summit-2027/speakers/s9'] = { name: 'Rhea Kapoor', desig: 'CISO', comp: 'Umbrella Corp', status: 'invited' };
+  FB.docs['events/ciso-secufest-summit-2027/sessions/x9'] = { title: 'Panel: Cloud risk', start: '12:00', speakerIds: ['s1', 's9'] };
+  FB.docs['events/ciso-secufest-summit-2027/partners/p9'] = { name: 'Hooli', status: 'tentative' };
+  await P.reconcileAll(FB);
+  var ix11 = await T.readIndex(FB, 'speakers', true), sx11 = await T.readIndex(FB, 'sponsors', true);
+  check('11 an Invited speaker and a Tentative sponsor are not placed in the index', !ix11.byRow['o~ciso-secufest-summit-2027~s9'] && !sx11.byRow['o~ciso-secufest-summit-2027~p9'] &&
+    !!ix11.byRow['o~ciso-secufest-summit-2027~s1']);
+  r = await page('/speakers/rhea-kapoor');
+  var r2 = await page('/sponsors/hooli');
+  check('11 …so they have no page', r.status === 404 && r2.status === 404, [r.status, r2.status]);
+  r = await page('/speakers/naven-singh');
+  check('11 a session shared with an Invited speaker is on the page, without their name', r.status === 200 && /Panel: Cloud risk/.test(r.text) && !/Rhea Kapoor/.test(r.text), (r.text.match(/Panel: Cloud risk[\s\S]{0,400}/) || [r.status])[0]);
+  FB.docs['events/ciso-secufest-summit-2027/speakers/s1'].status = 'tentative';
+  r = await page('/speakers/naven-singh');
+  check('11 a speaker made Tentative after the index placed them: that event leaves their page at once (ETB2B\'s editions stay)', r.status === 200 && !/CISO Secufest Summit 2027/.test(r.text) && /ETCISO Annual Conclave 2026/.test(r.text));
+  var con11 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'viewer');
+  var row11 = con11.body && con11.body.person && (con11.body.person.rows || []).filter(function (x) { return x.eventId === 'ciso-secufest-summit-2027'; })[0];
+  check('11 …and the console\'s list says why', con11.status === 200 && row11 && row11.public === false && /Invited or Tentative/.test(row11.why), row11 || con11.body);
+  FB.docs['events/ciso-secufest-summit-2027/speakers/s1'].status = 'confirmed';
+
   process.stdout.write('people: ' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);
 })().catch(function (e) { process.stderr.write('CRASH ' + (e && e.stack || e) + '\n'); process.exit(1); });

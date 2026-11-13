@@ -48,6 +48,8 @@
 'use strict';
 
 var places = require('./places');
+/* which speakers are on the site: the site's own rule (Confirmed, or no status) */
+var RR = require('../../templates/_shared/rv-records.js');
 
 var AI_FIELDS = ['title', 'description', 'keywords', 'h1', 'schemaTitle', 'schemaDescription'];
 var LEGACY = ['canonicalUrl', 'description', 'shareImageUrl', 'noindex'];
@@ -303,7 +305,7 @@ function byOrder(a, b) { return (+a.order || 0) - (+b.order || 0); }
 function pickRecords(seo, speakers, faqs) {
   seo = seo || {};
   var spOff = Array.isArray(seo.speakersOff) ? seo.speakersOff : [], fqOff = Array.isArray(seo.faqsOff) ? seo.faqsOff : [];
-  var sp = (speakers || []).filter(function (s) { return s && s.id && line(s.name) && (s.status == null || s.status === '' || s.status === 'confirmed') && spOff.indexOf(s.id) === -1; })
+  var sp = (speakers || []).filter(function (s) { return s && s.id && line(s.name) && RR.isOnSite(s) && spOff.indexOf(s.id) === -1; })
     .slice().sort(byOrder).slice(0, 60).map(function (s) {
       var o = { id: s.id, name: line(s.name).slice(0, 120) };
       if (line(s.desig)) o.role = line(s.desig).slice(0, 120);

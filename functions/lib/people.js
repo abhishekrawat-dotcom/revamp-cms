@@ -60,6 +60,8 @@ var crypto = require('crypto');
 var PM = require('./people-match');
 var AC = require('./access-control');
 var etEvents = require('./et-events');
+/* which speakers and sponsors an event's site shows (Confirmed, or no status): the site's own rule */
+var RR = require('../../templates/_shared/rv-records.js');
 
 var H = null;
 function wire(h) { H = h; }
@@ -466,7 +468,8 @@ function personOf(fb, kind, slug, entry, page, o) {
       return Promise.all([readEvent(fb, k.eventId), fb.db.collection('events').doc(k.eventId).collection(spec.records).doc(k.recordId).get()]).then(function (r) {
         var ev = r[0], snap = r[1];
         var v = snap && snap.exists ? snap.data() || {} : null;
-        var why = !v ? 'the record was removed' : whyNotPublic(ev) || (kind === 'speakers' && ev && ev.category === 'awards' ? 'an awards event: its people are the jury' : '');
+        var why = !v ? 'the record was removed' : whyNotPublic(ev) || (kind === 'speakers' && ev && ev.category === 'awards' ? 'an awards event: its people are the jury' : '') ||
+          (RR.isOnSite(v) ? '' : 'Invited or Tentative in Content: not on the event\'s site');
         var extra = kind === 'speakers'
           ? (v && ev ? fb.db.collection('events').doc(k.eventId).collection('sessions').where('speakerIds', 'array-contains', k.recordId).get().then(function (s) {
               var list = s.docs.map(function (d) { return d.data() || {}; });
@@ -477,7 +480,8 @@ function personOf(fb, kind, slug, entry, page, o) {
               var col = fb.db.collection('events').doc(k.eventId).collection('speakers');
               return fb.db.getAll.apply(fb.db, others.map(function (id) { return col.doc(id); })).then(function (snaps) {
                 var names = {};
-                snaps.forEach(function (sn, i) { if (sn && sn.exists) names[others[i]] = str((sn.data() || {}).name).trim(); });
+                /* only those the event's site shows: an Invited or Tentative co-speaker is not named */
+                snaps.forEach(function (sn, i) { if (sn && sn.exists && RR.isOnSite(sn.data() || {})) names[others[i]] = str((sn.data() || {}).name).trim(); });
                 list.forEach(function (x) { x._with = (x.speakerIds || []).map(str).filter(function (id) { return id !== k.recordId && names[id]; }).slice(0, 8).map(function (id) { return { id: id, name: names[id] }; }); });
                 return list;
               }, function () { return list; });

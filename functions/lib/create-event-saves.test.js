@@ -773,7 +773,8 @@ async function main() {
   /* =====================================================================================================
      The editor: the Content overlay keeps logos and captions; a Create Event arrival saves version 1
      ===================================================================================================== */
-  var X = { console: console };
+  /* the editor page loads the records' rules (templates/_shared/rv-records.js) before the editor: which sponsors are on the site */
+  var X = { console: console, RevampRecords: require('../../templates/_shared/rv-records.js') };
   vm.createContext(X);
   vm.runInContext([fnSrc(ED, 'byOrder'), fnSrc(ED, 'recId'), fnSrc(ED, 'translatePartners'), fnSrc(ED, 'translateGallery')].join('\n'), X);
   var tp = X.translatePartners([{ name: 'Acme', tierId: 't1', logoUrl: 'https://x/a.png', url: 'https://acme.com', order: 1 }, { name: 'Loose', order: 2 }], [{ id: 't1', name: 'Gold', order: 1 }]);
