@@ -78,8 +78,16 @@ var realLlm = require('./llm');
 var modelCalls = 0;
 stub('./llm', Object.assign({}, realLlm, { callJson: function () { modelCalls++; return Promise.reject(new Error('no model in this test')); } }));
 var realSafe = require('./safe-fetch');
-/* no network: the heading font cannot be fetched, so the unit is set in a system face (its widths enforced) */
-stub('./safe-fetch', Object.assign({}, realSafe, { safeFetch: function () { return Promise.resolve({ status: 404, body: Buffer.from('') }); } }));
+/* no network: Google Fonts answers with a font of the repo's own (a subset of Playfair Display, fixtures/logo-unit), as it
+   answers fetchUnitFont with the heading font cut down to the name's letters; fontsDown makes it not answer */
+var FONT_TTF = fs.readFileSync(path.join(__dirname, 'fixtures', 'logo-unit', 'playfair-display-700-subset.ttf'));
+var fontsDown = false;
+stub('./safe-fetch', Object.assign({}, realSafe, { safeFetch: function (url) {
+  url = String(url);
+  if (!fontsDown && /^https:\/\/fonts\.googleapis\.com\/css2\?/.test(url)) return Promise.resolve({ status: 200, body: Buffer.from("@font-face{font-family:'Space Grotesk';src:url(https://fonts.gstatic.com/s/test/v1/font.ttf) format('truetype')}") });
+  if (!fontsDown && /^https:\/\/fonts\.gstatic\.com\//.test(url)) return Promise.resolve({ status: 200, body: FONT_TTF });
+  return Promise.resolve({ status: 404, body: Buffer.from('') });
+} }));
 process.env.ALLOWED_EMAIL_DOMAIN = 'timesinternet.in';
 var api = require('./api');
 var hooks = api._testHooks;
@@ -195,6 +203,8 @@ function near(a, b, tol) { return !!a && !!b && a.every(function (v, i) { return
   ok(/<title>National Data Center Symposium<\/title>/.test(svg) && />NATIONAL<\/text>/.test(svg) && />DATA CENTER<\/text>/.test(svg) && />SYMPOSIUM<\/text>/.test(svg),
     'it is the event\'s name, as the design splits it (NATIONAL / DATA CENTER / SYMPOSIUM)', svg.replace(/base64,[^"]+/g, 'base64,…').slice(0, 900));
   ok(/fill="#0044cc"[^>]*>DATA CENTER</.test(svg) && /fill="#16181d"[^>]*>NATIONAL</.test(svg), 'its keyword in the site\'s theme colour, the rest in dark lettering for a light ground');
+  ok(svg.indexOf("@font-face{font-family:'rvlu';src:url(data:font/ttf;base64,") !== -1 && /font-family="'rvlu', /.test(svg), 'its lettering in the heading font, embedded (as Google Fonts sent it)');
+  ok(/drawn: .*its lettering in Space Grotesk \(embedded\)/.test(done.lines.join('\n')), 'the run says the font was embedded', done.lines.join('\n'));
   ok(!/<rect\b/.test(svg) && !/plate/i.test(svg), 'never boxed, never on a plate (style stacked)');
   var et = embeddedLogo(svg), etDark = embeddedLogo(darkSvg);
   ok(et && et.file === ET_ON_LIGHT, 'the ET logo in it is the official file for a light ground, byte for byte');
@@ -283,6 +293,19 @@ function near(a, b, tol) { return !!a && !!b && a.every(function (v, i) { return
   var runHero = FB.docs['events/run-kept/generations/' + RUN + '/sections/hero'].html;
   ok(runHero.indexOf('generated/20261114150000-logo-unit.svg') !== -1 && runHero.indexOf('rv-lu-name') === -1 && !('generatedSections' in FB.docs['events/run-kept']),
     'and the drawn unit goes into it (no copy left on the event)', runHero.slice(0, 400));
+
+  /* ---------- Google Fonts not answering: the run stops, having written only the two pictures ---------- */
+  seed('fonts-down', { name: NAME });
+  var fdPlan = await tool.plan(FB, hooks, 'fonts-down', { publish: true });
+  var fdBefore = JSON.stringify(FB.docs['events/fonts-down']);
+  fontsDown = true;
+  var fd = await tool.apply(FB, hooks, logActivity, 'https://cms.example', fdPlan, { publish: true, stamp: '20261114160000' }).then(function () { return 'ran'; }, function (e) { return e; });
+  fontsDown = false;
+  ok(fd && /heading font \(Space Grotesk\) could not be fetched/.test(fd.message) && JSON.stringify(FB.docs['events/fonts-down']) === fdBefore && savedOf('fonts-down') === PAGE && liveOf('fonts-down') === PAGE &&
+    filesUnder('events/fonts-down/generated/').length === 2 && Array.isArray(fd.lines) && !fd.lines.length,
+    'the heading font not to be had: stopped before the design, the hero or the site is touched (only the two pictures stored)', fd && fd.message);
+  var fdOk = await tool.apply(FB, hooks, logActivity, 'https://cms.example', fdPlan, { publish: true, stamp: '20261114160100' }).then(function (r) { return r; }, function (e) { return e; });
+  ok(fdOk && fdOk.version === 4 && /its lettering in Space Grotesk \(embedded\)/.test((fdOk.lines || []).join('\n')), 'run again once the fonts answer: done', fdOk && (fdOk.message || fdOk.lines.join(' | ')));
 
   /* ---------- a run without --publish stages the version and leaves the live page as it is ---------- */
   seed('staged-only', { name: NAME });

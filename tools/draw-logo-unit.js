@@ -44,6 +44,8 @@
                 with --publish, the checks a publishing run makes. --preview <dir>: the units it would draw are also
                 saved there (a local folder), with a page showing them on their grounds.
      --publish  puts the new version live (only when the event is live and its saved version is the live one)
+     --system-font  goes on with a unit whose lettering is in a system face when the heading font cannot be had from
+                Google Fonts (without it the run stops there, having written only the two pictures)
    Env: tools/.env.local (this checkout's, else the main checkout's when run from a worktree), never printed. */
 'use strict';
 const fs = require('fs');
@@ -254,8 +256,22 @@ function apply(fb, hooks, logActivity, origin, p, opts) {
   let unit = p.unit, version = 0, published = null;
   return (p.draw ? draw(fb, hooks, p, stamp) : Promise.resolve(unit)).then(function (u) {
     if (!u || !/^https:\/\//i.test(String(u.url || ''))) throw new Error('the unit could not be drawn (the event has no name to draw, or the ET logo file could not be read)');
+    if (!p.draw) return u;
+    /* Its lettering in the site's heading font, embedded — not a system face standing in for it because Google Fonts
+       did not answer just now (drawnLogoUnit accepts that; a run made by hand need not): stopped before anything but
+       the two pictures is written, unless --system-font says a system face will do */
+    return Promise.resolve(fb.bucket.file(u.storagePath).download()).then(function (r) { return r && r[0] ? r[0].toString('utf8') : ''; }, function () { return ''; }).then(function (svg) {
+      if (!/<svg\b/.test(svg)) throw new Error('the drawn unit could not be read back from ' + u.storagePath + ' to check it; nothing else was written');
+      const embedded = /@font-face\{font-family:'rvlu'/.test(svg);
+      if (p.design.headingFont && !embedded && !opts.systemFontOk) {
+        throw new Error('the heading font (' + p.design.headingFont + ') could not be fetched from Google Fonts just now, so the unit came out in a system face; nothing but its two pictures (' + u.storagePath + ') was written. Run again, or add --system-font to accept a system face');
+      }
+      lines.push('drawn:           ' + String(u.url).split('/').pop() + ' ' + u.width + '×' + u.height + (embedded ? ', its lettering in ' + p.design.headingFont + ' (embedded)' : ', its lettering in a system face') +
+        (u.darkUrl ? '; and its copy for a dark ground ' + String(u.darkUrl).split('/').pop() : ''));
+      return u;
+    });
+  }).then(function (u) {
     unit = u;
-    if (p.draw) lines.push('drawn:           ' + String(u.url).split('/').pop() + ' ' + u.width + '×' + u.height + (u.darkUrl ? ', and its copy for a dark ground ' + String(u.darkUrl).split('/').pop() : ''));
     /* the design and the generated hero, as plan-structure writes a drawn unit */
     if (!p.draw && !p.genInType) return null;
     return hooks.saveOwnerUnit(fb, p.id, unit, { heroNote: false, stamp: stamp }).then(function (done) {
@@ -311,7 +327,7 @@ function printPlan(p, drawn, opts) {
     console.log('                   style ' + (d.logoUnitStyle || 'stacked (none set)') + ', ' + p.tone + ' ground, theme colour ' + (d.themeColor || '(none: #e81d3d)') + ', heading font ' + (d.headingFont || '(none)') +
       ', the official ET logo for a ' + p.tone + ' ground (templates/_shared/img/et-business-verticals-on-' + p.tone + '.svg)' + (p.tone === 'light' ? '; and its copy for a dark ground, drawn the same way' : ''));
     if (drawn) {
-      console.log('  drawn in memory: ' + drawn.width + ' × ' + drawn.height + ' SVG' + (drawn.font ? ', its lettering in ' + drawn.font + ' (embedded)' : ', its lettering in a system face (the heading font could not be fetched)') +
+      console.log('  drawn in memory: ' + drawn.width + ' × ' + drawn.height + ' SVG' + (drawn.font ? ', its lettering in ' + drawn.font + ' (embedded)' : ', its lettering in a system face (the heading font could not be fetched: a real run stops there unless --system-font is given)') +
         (drawn.darkUrl ? '; dark copy ' + drawn.width + ' × ' + drawn.height : p.tone === 'light' ? '; NO dark copy could be drawn' : ''));
       console.log('  would store:     events/' + p.id + '/generated/<stamp>-logo-unit.svg' + (drawn.darkUrl ? ' and …-logo-unit-on-dark.svg' : '') + ' (public pictures)');
     } else if (opts && opts.dry) console.log('  drawn in memory: FAILED — the unit could not be drawn (no name, or the ET logo file could not be read); a real run would stop here');
@@ -342,9 +358,9 @@ function previewPage(name, tone, design, files) {
 
 function main() {
   function arg(name) { const i = process.argv.indexOf('--' + name); return i !== -1 && process.argv[i + 1] && !/^--/.test(process.argv[i + 1]) ? process.argv[i + 1] : ''; }
-  const ID = arg('event'), DRY = process.argv.includes('--dry'), PUBLISH = process.argv.includes('--publish'), PREVIEW = arg('preview');
+  const ID = arg('event'), DRY = process.argv.includes('--dry'), PUBLISH = process.argv.includes('--publish'), PREVIEW = arg('preview'), SYSTEM_FONT = process.argv.includes('--system-font');
   if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(ID) || (PREVIEW && !DRY)) {
-    console.error('Usage: node tools/draw-logo-unit.js --event <event id> [--dry [--preview <dir>]] [--publish]');
+    console.error('Usage: node tools/draw-logo-unit.js --event <event id> [--dry [--preview <dir>]] [--publish] [--system-font]');
     process.exit(2);
   }
   /* the credentials, only once the arguments are right (never printed) */
@@ -380,7 +396,7 @@ function main() {
     if (DRY) { console.log('\nDRY RUN: nothing written.' + (p.ok ? ' Run again without --dry' + (PUBLISH ? ' (with --publish)' : '') + ' to do it.' : '')); return p.ok || p.nothing ? 0 : 1; }
     if (!p.ok) return p.nothing ? 0 : 1;
     console.log('\nDoing it:');
-    return apply(fb, hooks, logActivity, ORIGIN, p, { publish: PUBLISH }).then(function (done) {
+    return apply(fb, hooks, logActivity, ORIGIN, p, { publish: PUBLISH, systemFontOk: SYSTEM_FONT }).then(function (done) {
       done.lines.forEach(function (l) { console.log('  ' + l); });
       console.log('Done.');
       return 0;
