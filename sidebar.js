@@ -91,7 +91,9 @@
     { id:'speakers', label:'Speakers', icon:'<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0"/><path d="M12 17.5V21"/><path d="M8.5 21h7"/>' },
     { id:'agenda', label:'Agenda', icon:'<rect x="3" y="4.5" width="18" height="16.5" rx="2.4"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/><path d="M7.5 13.5h4M7.5 17h7"/>' },
     { id:'sponsors', label:'Sponsors', icon:'<circle cx="12" cy="9" r="6"/><path d="M8.5 13.9L7 21.5l5-2.7 5 2.7-1.5-7.6"/>' },
-    { id:'design', label:'Design', icon:'<path d="M12 2l7 7-9 9H3v-7z"/><path d="M15 5l4 4"/>' },
+    /* the site editor, by the name people look for when they want to change their site's words (NU-021: "Design" was
+       not where a newcomer looked); its id stays 'design', so every address and page that names it keeps working */
+    { id:'design', label:'Site editor', icon:'<path d="M12 2l7 7-9 9H3v-7z"/><path d="M15 5l4 4"/>' },
     { id:'payment', label:'Payment', soon:'Not available yet', icon:'<rect x="2.5" y="5" width="19" height="14" rx="2.4"/><path d="M2.5 10h19"/><path d="M6 15h4"/>' },
     { id:'marketing', label:'Promotions', icon:'<path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15 8a5 5 0 0 1 0 8"/><path d="M18.5 5a9 9 0 0 1 0 14"/>' },
     { id:'audience', label:'Reporting', icon:'<circle cx="9" cy="8" r="3.4"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 8.5a3 3 0 0 1 0 6"/><path d="M18.5 20a5.6 5.6 0 0 0-3-4.4"/>' },
