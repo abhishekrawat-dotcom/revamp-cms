@@ -20,10 +20,11 @@
         and Save and Publish stay in the top bar's second row with an icon beside their words;
      5. the console's top bar keeps what is saved in sight at every width, in shorter words where it is narrow;
      6. the published sites' ET bar and footer make their links 40px tap targets on a phone;
-     7. the site editor's one-row top bar from 901 to 1100 px fits (Publish's short word, tighter gaps, the site-state
-        chip gives way before anything goes off the screen), and its two rows take under a quarter of a phone held
-        sideways;
-     8. the registration forms builder's controls are 40px tap targets on a phone.
+     7. the site editor's one-row top bar from 901px keeps Publish's whole words and the mode switch's short names
+        (it fits as it is since the bar was made smaller: measured 901-1100px), and its two rows take under a quarter
+        of a phone held sideways, the second row (Preview with its arrow, Save, Publish) level;
+     8. the registration forms builder's controls, and the Registration panel's switch above it, are 40px tap targets
+        on a phone.
    Exits 1 listing every failure. */
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
@@ -163,7 +164,7 @@ check('ET bar on a phone: the menu button, the logo and the action are 40px targ
 check('ET footer on a phone: the social links are 40px, the words-links\' tap areas grow in place',
   /@media \(max-width:860px\)\{\.etf-social a\{width:40px;height:40px\}\.etf-links a,\.etf-h a\{padding-top:12px;padding-bottom:12px\}\.etf-logo-link\{padding-top:6px;padding-bottom:6px;margin-top:-6px;margin-bottom:-6px\}\}/.test(footCss));
 
-/* ---------- 7. the site editor's top bar from 901 to 1100px, and on a phone held sideways ---------- */
+/* ---------- 7. the site editor's top bar from 901px, and on a phone held sideways ---------- */
 function exactBlocks(src, q) {
   var out = [], at = 0;
   for (;;) {
@@ -173,17 +174,22 @@ function exactBlocks(src, q) {
     out.push(src.slice(j + 1, k)); at = k;
   }
 }
-var mid = exactBlocks(EDITOR, '@media (min-width: 901px) and (max-width: 1100px)').join('\n');
-check('editor, 901-1100px: Publish shows its short word (its whole words stay its name), as the console does below 900px',
-  /\.topbar #btn-publish\[data-rvpf-short\]:not\(\[aria-busy\]\)\{ font-size:0;/.test(mid) && /\.topbar #btn-publish\[data-rvpf-short\]:not\(\[aria-busy\]\)::after\{ content:attr\(data-rvpf-short\); font-size:13px; \}/.test(mid), mid.slice(0, 300));
-check('editor, 901-1100px: tighter gaps, and the site-state chip gives way (cut with "…") before anything is pushed off the screen',
-  /\.topbar\{ gap:10px;/.test(mid) && /\.topbar \.topbar-acts\{ gap:6px; flex-shrink:0\.01; min-width:0; \}/.test(mid) &&
-  /\.topbar \.site-state:not\(\[hidden\]\)\{ display:block; flex:0 1 auto; min-width:44px; overflow:hidden; text-overflow:ellipsis; \}/.test(mid));
-check('editor: those rules are only between 901 and 1100px (the two-row bar keeps below 900 its whole Publish words)',
-  (EDITOR.match(/content:attr\(data-rvpf-short\)/g) || []).length === 1);
+/* The one-row bar (901px and up) has room for Publish's whole words since the bar was made smaller (Preview's menu,
+   where the site stands under the name): measured in a browser at 901, 950, 983, 1000, 1024 and 1100px, the event's
+   name keeps 269px or more and nothing is cut off. So nothing there shortens Publish, the mode switch shows its icons
+   alone only below 900px as before, and where the site stands is never cut into a chip again. */
+check('editor, from 901px: Publish keeps its whole words (only publish-flow.js shortens it, below 600px)',
+  EDITOR.indexOf('content:attr(data-rvpf-short)') === -1 && EDITOR.indexOf('(min-width: 901px)') === -1);
+check('editor: the mode switch shows its icons alone only below 900px',
+  /@media \(max-width: 900px\)\{ \.mode-toggle \.mt-short\{ display:none; \} \}/.test(EDITOR) && EDITOR.indexOf('@media (max-width: 1000px)') === -1);
+check('editor: no rule treats where the site stands as a chip in the bar (it is words under the name)',
+  EDITOR.indexOf('.topbar .site-state:not([hidden])') === -1 && EDITOR.indexOf('.topbar .site-state::before') === -1);
 var sideways = exactBlocks(EDITOR, '@media (max-width: 900px) and (max-height: 500px)').join('\n');
-check('editor, a phone held sideways: the two rows\' padding is smaller and the mode switch has no ring (109px was 28% of a 390px-tall screen)',
-  /\.topbar\{ padding-top:2px; padding-bottom:2px; \}/.test(sideways) && /\.topbar \.mode-toggle\{ padding:0; border-width:0; \}/.test(sideways) && /margin-top:2px;/.test(sideways), sideways);
+check('editor, a phone held sideways: smaller padding, the second row (Preview\'s group, Save, Publish) closer and level, the mode switch without its ring (87px, was 109px: 28% of a 390px-tall screen)',
+  /\.topbar\{ padding-top:2px; padding-bottom:2px; \}/.test(sideways) && /\.topbar \.mode-toggle\{ padding:0; border-width:0; \}/.test(sideways) &&
+  /\.topbar \.pv-split, \.topbar #btn-save, \.topbar #btn-publish\{ margin-top:2px; \}/.test(sideways), sideways);
+check('editor, a phone held sideways: nothing aimed at parts no longer in the bar\'s rows (Share preview is in Preview\'s menu, where the site stands under the name; Preview itself sits in its group)',
+  !/#btn-share-preview|\.site-state|#btn-preview\b/.test(sideways), sideways);
 
 /* ---------- 8. the registration forms builder on a phone ---------- */
 var FB = read('forms-builder.css'), fbPhone = mediaBlocks(FB, '720px').join('\n');
@@ -192,6 +198,10 @@ check('forms builder, below 720px: its buttons, menus, switches, field rows and 
   /\.fb-icon\{ width: 40px; height: 40px; \}/.test(fbPhone) && /:not\(\.rv-form-input\)\{ min-height: 40px; \}/.test(fbPhone), fbPhone);
 check('forms builder: "0 responses" keeps its line, only its tap area grows (an inline link\'s padding moves nothing)',
   /\.fb-row-meta \.fb-link\{ padding-top: 13px; padding-bottom: 13px; \}/.test(fbPhone));
+check('Registration forms on a phone: the Registration panel\'s switch beats the console\'s 19px form label (.field > label) and is 40px',
+  /\.regforms \.field > label\.fb-switch\{ min-height: 40px; \}/.test(fbPhone));
+check('the console\'s save bar on a phone: Discard is as tall as Save beside it (40px)',
+  /\.savebar \.sb-ghost\{ min-height:40px; \}/.test(mediaBlocks(CSS, '720px').join('\n')));
 
 if (failures.length) { console.error('page-skeleton: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - ')); process.exit(1); }
 console.log('page-skeleton: all ' + checks + ' checks passed');

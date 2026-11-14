@@ -3,7 +3,14 @@
    No network, no Firebase, no browser: the browser checks were made on the harness (see the batch's report).
      1. plan(): how far each side of a small control may grow — to 40px where there is room, never past 4px short of
         another control's middle (a dense list, a row of carousel dots), never past the window's sides or the page's
-        end, the need shared between two sides and rounded up in half pixels;
+        end, the need shared between two sides and rounded up in whole pixels (a half pixel of padding moved where the
+        words were painted by a device pixel on the live sites);
+     1b. how a control grows, or is left as it is, so that the page is drawn pixel for pixel as before: one that
+        paints nothing by padding; one with only a square-cornered background by a transparent border; a bare rounded
+        background (a carousel dot) by padding with the background kept to its content box and its corners grown to
+        the same curve from the radius drawn before anything grew (the dots were drawn as rounded squares on the live
+        CIO Awards site at 390px); one with a border, a shadow, a rounded background with padding of its own, or a
+        background under a border of its own not at all (each would be drawn differently);
      2. the script as pages carry it (site-a11y.js TAPS_JS): ES5, no comments, nothing that could end its <script>, and
         it only waits for the page when it runs in one (nothing runs when Node loads it);
      3. the page pass writes it into every kind of page (template, AI-designed, imported) once, afresh on every run,
@@ -23,9 +30,9 @@ var PAGE = { w: 390, h: 10000 };
 
 /* ---------- 1. plan() ---------- */
 var g = T.plan(box(100, 500, 92, 17), [], PAGE);
-check('a lone 17px link ("NOMINATE") grows 11.5px above and below, to 40px, and not sideways', g.top === 11.5 && g.bottom === 11.5 && g.left === 0 && g.right === 0, g);
+check('a lone 17px link ("NOMINATE") grows 12px above and 11px below, to 40px, and not sideways (whole pixels)', g.top === 12 && g.bottom === 11 && g.left === 0 && g.right === 0, g);
 g = T.plan(box(100, 500, 92, 19.5), [], PAGE);
-check('a 19.5px link comes to at least 40 (half pixels rounded up: 10.5 + 10)', g.top + g.bottom >= 20.5 && g.top + g.bottom <= 21, g);
+check('a 19.5px link comes to at least 40 (whole pixels rounded up: 11 + 10)', g.top === 11 && g.bottom === 10, g);
 g = T.plan(box(100, 500, 40, 40), [], PAGE);
 check('a 40px control is left alone', g.top === 0 && g.bottom === 0 && g.left === 0 && g.right === 0, g);
 g = T.plan(box(100, 500, 16, 16), [], PAGE);
@@ -55,9 +62,80 @@ check('a control whose middle is inside this one (an icon in a card link) does n
 g = T.plan(box(20, 500, 90, 16), [box(20, 520, 90, 16)], PAGE);
 check('a neighbour right under it (its middle 12px below) leaves 8px of growth below; the rest goes above', g.bottom === 8 && g.top === 16, g);
 var s = T.split(7.4, 99, 99);
-check('split(): half pixels, rounded up (7.4 -> 4 + 3.5)', s[0] === 4 && s[1] === 3.5, s);
+check('split(): whole pixels, rounded up (7.4 -> 4 + 4)', s[0] === 4 && s[1] === 4, s);
 s = T.split(24, 3.7, 99);
-check('split(): a side with 3.7px of room takes 3.5, never more than its room', s[0] === 3.5 && s[1] === 20.5, s);
+check('split(): a side with 3.7px of room takes 3, never more than its room', s[0] === 3 && s[1] === 21, s);
+s = T.split(23.0000001, 99, 99);
+check('split(): a need that is whole but for floating-point dust is not rounded up a pixel', s[0] + s[1] === 23, s);
+var halves = [];
+[[box(100, 500, 92, 17), []], [box(100, 500, 92, 19.5), []], [box(2, 500, 16, 16), []], [box(20, 500, 90, 16), [box(20, 520.5, 90, 16)]], [box(100.3, 500.7, 33.4, 21.2), []]].forEach(function (k) {
+  var p = T.plan(k[0], k[1], PAGE); ['top', 'right', 'bottom', 'left'].forEach(function (side) { if (p[side] !== Math.round(p[side])) halves.push(side + ' ' + p[side]); });
+});
+check('plan(): every side grows by whole pixels, whatever the box\'s own size and place', !halves.length, halves);
+
+/* ---------- 1b. how a control grows (modeOf, corners) ---------- */
+function fakeCs(o) {
+  o = o || {};
+  var props = { 'border-top-width': '0px', 'border-right-width': '0px', 'border-bottom-width': '0px', 'border-left-width': '0px',
+    'border-top-style': 'none', 'border-right-style': 'none', 'border-bottom-style': 'none', 'border-left-style': 'none',
+    'border-top-color': 'rgb(0, 0, 0)', 'border-right-color': 'rgb(0, 0, 0)', 'border-bottom-color': 'rgb(0, 0, 0)', 'border-left-color': 'rgb(0, 0, 0)' };
+  Object.keys(o.props || {}).forEach(function (k) { props[k] = o.props[k]; });
+  return { getPropertyValue: function (k) { return props[k] || ''; }, boxShadow: o.shadow || 'none', backgroundColor: o.bg || 'rgba(0, 0, 0, 0)',
+    backgroundImage: o.image || 'none', backgroundClip: o.clip || 'border-box', backgroundOrigin: o.origin || 'padding-box',
+    borderTopLeftRadius: o.radius || '0px', borderTopRightRadius: o.radius || '0px', borderBottomLeftRadius: o.radius || '0px', borderBottomRightRadius: o.radius || '0px' };
+}
+var solid = { 'border-top-width': '1px', 'border-right-width': '1px', 'border-bottom-width': '1px', 'border-left-width': '1px',
+  'border-top-style': 'solid', 'border-right-style': 'solid', 'border-bottom-style': 'solid', 'border-left-style': 'solid' };
+var unseen = { 'border-top-width': '2px', 'border-right-width': '2px', 'border-bottom-width': '2px', 'border-left-width': '2px',
+  'border-top-style': 'solid', 'border-right-style': 'solid', 'border-bottom-style': 'solid', 'border-left-style': 'solid',
+  'border-top-color': 'rgba(0, 0, 0, 0)', 'border-right-color': 'rgba(0, 0, 0, 0)', 'border-bottom-color': 'rgba(0, 0, 0, 0)', 'border-left-color': 'rgba(0, 0, 0, 0)' };
+check('a link that paints nothing grows by padding', T.modeOf(fakeCs()) === 'pad');
+check('a round dot that paints only a background (no padding or border of its own) grows by padding, its background kept to its content box',
+  T.modeOf(fakeCs({ bg: 'rgb(229, 224, 216)', radius: '3.35544e+07px' })) === 'inset');
+check('a square-cornered background grows by a transparent border', T.modeOf(fakeCs({ bg: 'rgb(229, 224, 216)' })) === 'border' && T.modeOf(fakeCs({ bg: 'rgb(229, 224, 216)', radius: '0px' })) === 'border');
+var padded = { 'padding-top': '8px', 'padding-right': '16px', 'padding-bottom': '8px', 'padding-left': '16px' };
+check('a pill-shaped button (rounded background with padding of its own) is left as it is (its curved ends would be drawn a shade differently)',
+  T.modeOf(fakeCs({ props: padded, bg: 'rgb(10, 135, 77)', radius: '999px' })) === '');
+check('...while a square-cornered one with padding grows by a transparent border', T.modeOf(fakeCs({ props: padded, bg: 'rgb(10, 135, 77)' })) === 'border');
+check('a 36px arrow with a border is left as it is (a bigger ring would be seen)', T.modeOf(fakeCs({ props: solid, bg: 'rgb(255, 255, 255)' })) === '' && T.modeOf(fakeCs({ props: solid })) === '');
+check('a control with a shadow is left as it is', T.modeOf(fakeCs({ shadow: 'rgba(0, 0, 0, 0.2) 0px 1px 2px 0px', bg: 'rgb(255, 255, 255)' })) === '' && T.modeOf(fakeCs({ shadow: 'rgba(0, 0, 0, 0.2) 0px 1px 2px 0px' })) === '');
+check('a background drawn under an unseen border of its own is left as it is (kept to its padding it would lose that strip)',
+  T.modeOf(fakeCs({ props: unseen, bg: 'rgb(200, 0, 0)' })) === '' && T.modeOf(fakeCs({ props: unseen, bg: 'rgb(200, 0, 0)', clip: 'padding-box', origin: 'border-box' })) === '');
+check('...but grows where that background is already kept inside the border (padding-box), as nothing it draws changes',
+  T.modeOf(fakeCs({ props: unseen, bg: 'rgb(200, 0, 0)', clip: 'padding-box' })) === 'border');
+check('...and a rounded one under an unseen border of its own is left as it is', T.modeOf(fakeCs({ props: unseen, bg: 'rgb(200, 0, 0)', clip: 'padding-box', radius: '6px' })) === '');
+check('a background with corners in % is left as it is', T.modeOf(fakeCs({ bg: 'rgb(200, 0, 0)', radius: '50%' })) === '');
+check('an unseen border with nothing else painted grows by padding', T.modeOf(fakeCs({ props: unseen })) === 'pad');
+var SRC_ALL_PRE = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'rv-taps.js'), 'utf8');
+var R = 33554400, round = [[R, R], [R, R], [R, R], [R, R]];
+var c = T.corners(8, 8, round, { top: 16, bottom: 16, left: 8, right: 8 });
+check('an 8px round dot grown 8px a side and 16px above and below: every corner 12px x 20px, so the 24x40 box\'s background (8x8 inside the padding) is drawn with 4px corners, round as before',
+  c.every(function (k) { return k[0] === 12 && k[1] === 20; }), c);
+c = T.corners(28, 8, round, { top: 16, bottom: 16, left: 6, right: 6 });
+check('the current dot, a 28x8 pill: 10px x 20px corners, its ends still half its height (4px) inside the padding', c.every(function (k) { return k[0] === 10 && k[1] === 20; }), c);
+c = T.corners(8, 8, round, { top: 16, bottom: 16, left: 18, right: 8 });
+check('a dot that grows more on one side: each corner by the border beside it (22 and 12 across), the dot inside still round',
+  c[0][0] === 22 && c[3][0] === 22 && c[1][0] === 12 && c[2][0] === 12 && c.every(function (k) { return k[1] === 20; }), c);
+c = T.corners(40, 20, [[6, 6], [6, 6], [0, 0], [0, 0]], { top: 10, bottom: 10, left: 0, right: 0 });
+check('square corners stay square, rounded ones grow by the padding beside them', c[2] === null && c[3] === null && c[0][0] === 6 && c[0][1] === 16, c);
+var srcNoComments = SRC_ALL_PRE.replace(/\/\*[\s\S]*?\*\//g, '');
+check('a rounded background grows only with no padding or border of its own, whole pixels in size, and nothing placed inside it from its edges',
+  /if \(own \|\| padded\) return '';/.test(srcNoComments) && /!whole\(size\[0\]\) \|\| !whole\(size\[1\]\) \|\| anchors\(el, cs\)/.test(srcNoComments));
+check('a control that paints nothing does not grow by padding when something inside it is placed from its edges', /return anchors\(el, cs\) \? '' : 'pad';/.test(srcNoComments));
+var SRC_ALL = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'rv-taps.js'), 'utf8');
+var applySrc = SRC_ALL.slice(SRC_ALL.indexOf('function apply('), SRC_ALL.indexOf('function undo('));
+check('the box\'s size is read before anything on it changes (read after its border grew, an 8px dot was taken for 16x32 and drawn square)',
+  applySrc.indexOf('sizeOf(el, cs)') !== -1 && applySrc.indexOf('sizeOf(el, cs)') < applySrc.indexOf("set('"), applySrc.slice(0, 300));
+var pill = { offsetWidth: 117, offsetHeight: 33, getBoundingClientRect: function () { return { width: 117.03, height: 32.8 }; } };
+var sz = T.sizeOf(pill, { width: '117.031px', height: '32.7969px', boxSizing: 'border-box' });
+check('sizeOf(): to the fraction of a pixel (a 32.8px pill is not taken for 33)', sz[0] === 117.031 && sz[1] === 32.7969, sz);
+sz = T.sizeOf(pill, { width: '100px', height: '20px', boxSizing: 'content-box', paddingLeft: '6px', paddingRight: '6px', paddingTop: '2px', paddingBottom: '2px', borderLeftWidth: '1px', borderRightWidth: '1px', borderTopWidth: '1px', borderBottomWidth: '1px' });
+check('sizeOf(): a content-box size has its padding and border added', sz[0] === 114 && sz[1] === 26, sz);
+sz = T.sizeOf({ offsetWidth: 61, offsetHeight: 17, getBoundingClientRect: function () { return { width: 61.234, height: 17 }; } }, { width: 'auto', height: 'auto' });
+check('sizeOf(): an inline box (no computed size) by its rectangle', sz[0] === 61.234 && sz[1] === 17, sz);
+sz = T.sizeOf({ offsetWidth: 40, offsetHeight: 40, getBoundingClientRect: function () { return { width: 20, height: 20 }; } }, { width: 'auto', height: 'auto' });
+check('sizeOf(): ...unless a transform is scaling it at that moment (then its whole-pixel layout size)', sz[0] === 40 && sz[1] === 40, sz);
+check('nothing is grown visibly any more (no least width or height written)', !/min-width|min-height|VISIBLE_MAX|'visible'/.test(SRC_ALL.replace(/\/\*[\s\S]*?\*\//g, '')));
 
 /* ---------- 2. the script as pages carry it ---------- */
 var JS = A11y.TAPS_JS, SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', '_shared', 'rv-taps.js'), 'utf8');
