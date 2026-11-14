@@ -249,6 +249,11 @@
   .rail-tools.more-start:not(.more-end){ -webkit-mask-image:linear-gradient(90deg, transparent, #000 28px); mask-image:linear-gradient(90deg, transparent, #000 28px); }
   .rail-tools.more-start.more-end{ -webkit-mask-image:linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); mask-image:linear-gradient(90deg, transparent, #000 28px, #000 calc(100% - 28px), transparent); }
 
+  /* the event rail's items that leave the site editor (wireEventRail, NU-021): a small arrow at the icon's corner */
+  #global-rail .rail-item[data-leaves] .ri{ position:relative; }
+  #global-rail .rail-item[data-leaves] .ri::after{ content:'\2197'; position:absolute; top:-5px; right:-9px; font-size:11px; font-weight:800; line-height:1; color: var(--text-faint); }
+  #global-rail .rail-item[data-leaves]:hover .ri::after{ color: var(--text-muted); }
+
   /* ---------- slide-out side panels ---------- */
   .side-panel{
     width: 300px; flex-shrink:0; background: var(--surface); border-right: 1px solid var(--border);
@@ -261,8 +266,8 @@
   /* ============ EDITOR MODES (editor-ai-mode.js) ============
      The toggle in the top bar, and "Edit with AI": the site full width as its draft preview shows it (the live
      view, #ai-live, over the canvas — which stays laid out underneath, out of sight, so every tool that measures
-     it still works), the editing tools put away, ETB2B AI floating at the bottom right. "Edit myself" is
-     everything above, untouched. */
+     it still works), the editing tools put away, ETB2B AI docked beside it from 1100px and floating at the bottom
+     right on a narrower window. "Edit myself" is everything above, untouched. */
   .mode-toggle{ display:inline-flex; align-items:center; gap:2px; padding:3px; border-radius:10px; background: var(--surface-2); border:1px solid var(--border); flex-shrink:0; }
   .mode-toggle button{ display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 11px; border:0; border-radius:7px; background:transparent;
     color: var(--text-muted); font: inherit; font-size:12.5px; font-weight:700; white-space:nowrap; cursor:pointer; }
@@ -294,7 +299,8 @@
   body.ed-mode-ai #rail-more-menu,
   body.ed-mode-ai #panel-add, body.ed-mode-ai #panel-layers, body.ed-mode-ai #panel-design, body.ed-mode-ai #panel-forms, body.ed-mode-ai #lyr-ctx-menu,
   body.ed-mode-ai .ed-workspace > .rail,
-  body.ed-mode-ai .tpl-sel-toolbar, body.ed-mode-ai .tpl-sec-toolbar, body.ed-mode-ai .tpl-pop,
+  body.ed-mode-ai .tpl-sel-toolbar, body.ed-mode-ai .tpl-sec-toolbar, body.ed-mode-ai .tpl-pop, body.ed-mode-ai .tpl-sample-tag,
+  body.ed-mode-ai .ed-notice[data-notice="samples"],
   body.ed-mode-ai #gt-style-pop{ display:none !important; }
   body.ed-mode-ai .stage{ padding:0; }
   body.ed-mode-ai #stage.stage .frame{ width:100%; max-width:none; border-radius:0; box-shadow:none; outline:0; background:transparent; }
@@ -313,7 +319,7 @@
   .ai-live-pick .ai-live-tag{ background:#8A5A9E; }
   .ai-live-status{ position:absolute; left:50%; top:12px; transform:translateX(-50%); padding:6px 12px; border-radius:999px; background:#241B1A; color:#fff;
     font:600 12px/1.3 Inter, Arial, sans-serif; box-shadow:0 6px 18px rgba(0,0,0,.25); pointer-events:none; }
-  /* ETB2B AI floats at the bottom right over the live view (editor-chat-client.js); on a phone it is a half sheet
+  /* ETB2B AI is docked beside the live view from 1100px and floats at the bottom right below that (editor-chat-client.js); on a phone it is a half sheet
      along the bottom, and the live view keeps the window above it, uncovered */
   @media (max-width: 720px){
     body.ed-mode-ai.ai-chat-open .stage{ padding-bottom:56vh; }
@@ -371,12 +377,15 @@
   /* ---------- ETB2B AI in the editor ----------
      The one ETB2B AI panel of every console page (etb2b-chat.css, mounted by etb2b-assistant.js), with the editor's
      part (editor-chat-client.js): docked as a column beside the canvas in "Edit myself" above a phone's width
-     (400px wide from 1100px, 340px below), floating at the bottom right over the live view in "Edit with AI".
+     (400px wide from 1100px, 340px below), and beside the live view in "Edit with AI" from 1100px, so it never lies
+     over the page being asked about (NU-020); narrower than that, "Edit with AI" has it floating at the bottom right
+     (a sheet on a phone), with its Close at the top.
      What the editor draws inside an answer — a change's card and its steps, a picture it made — is styled here in
      the panel's own palette (the kit's --rvc-* tokens), so the panel reads as one in the console's light and dark
      themes. */
-  /* the docked column: the canvas keeps the room beside it (the kit sets html.rvc-docked while it is docked open) */
-  @media (min-width: 1100px){ html.rvc-docked body:not(.ed-mode-ai) .ed-main{ margin-right:400px; } }
+  /* the docked column: the canvas, or the live view, keeps the room beside it (the kit sets html.rvc-docked while it is
+     docked open); below 1100px only "Edit myself" docks it */
+  @media (min-width: 1100px){ html.rvc-docked .ed-main{ margin-right:400px; } }
   @media (max-width: 1099.98px){
     .rvc.rvc-is-docked{ --rvc-panel-w:340px; }
     html.rvc-docked body:not(.ed-mode-ai) .ed-main{ margin-right:340px; }
@@ -659,6 +668,11 @@
   .tpl-sel-toolbar .tpl-tb-link{ color:#fff; font-size:12.5px; font-weight:600; text-decoration:underline; text-underline-offset:2px; padding:4px 7px; border-radius:5px; }
   /* the keyboard's ring stays on the link, as on the pill's buttons (UX-085: no control may lose it) */
   .tpl-sel-toolbar .tpl-tb-link:hover, .tpl-sel-toolbar .tpl-tb-link:focus-visible{ background:rgba(255,255,255,.18); }
+  /* what the dashed amber outline means, over a sample text or picture when it is pointed at (editor-template-ui.js
+     placeSampleTag, NU-009); over the site, so one colour in both themes (white on #845B10 is 6:1) */
+  .tpl-sample-tag{ position:absolute; z-index:39; max-width:calc(100% - 12px); padding:4px 9px; border-radius:6px; background:#845B10; color:#fff;
+    font:600 12px/1.35 Inter, Arial, sans-serif; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;
+    box-shadow:0 6px 18px rgba(0,0,0,.25); }
   /* a small form opened from the element toolbar (Link) */
   .tpl-pop{ z-index:41; width:300px; max-width:calc(100% - 12px); padding:12px; display:flex; flex-direction:column; gap:10px; }
   .tpl-pop h4{ font-size:13px; font-weight:700; color:#fff; }
@@ -789,6 +803,10 @@
   .topbar .site-state[hidden]{ display:none; }
   .ed-sub .meta:not(:empty) + .site-state::before{ content:'·'; }
   .site-state.warn{ color: var(--warn); font-weight:700; }
+  /* work waiting to be saved says how to keep it (editor-template-ui.js renderSiteState, NU-035); Save has a dot */
+  .site-state .ss-hint{ font-weight:600; }
+  #btn-save.is-due{ border-color: var(--warn); color: var(--text); font-weight:700; }
+  #btn-save.is-due::after{ content:''; width:7px; height:7px; border-radius:50%; background: var(--warn); flex-shrink:0; }
   .site-state.wait{ color: var(--text); font-weight:600; }
   a.site-state[href]:hover{ text-decoration: underline; }
   /* the last request was rejected (UX-103) */
@@ -891,6 +909,28 @@
   .ed-dialog .ed-dialog-body{ font-size:13.5px; color: var(--text-muted); display:flex; flex-direction:column; gap:10px; }
   .ed-dialog .modal-foot{ justify-content:flex-end; flex-wrap:wrap; padding: 14px 24px 22px; }
   .ed-dialog .modal-foot .ed-dialog-aside{ margin-right:auto; }
+  /* the first steps (editor-start.js, NU-008): five numbered steps, each with where it stands when the editor knows */
+  .modal.ed-steps-dialog{ max-width:540px; }
+  .ed-steps-lead{ margin:0; padding:10px 12px; border-radius:10px; background: var(--review-soft, var(--surface-2)); color: var(--text); font-weight:600; }
+  .ed-steps{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+  .ed-step{ display:flex; gap:11px; align-items:flex-start; }
+  .ed-step-n{ flex-shrink:0; width:24px; height:24px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center;
+    background: var(--surface-2); color: var(--text); font-size:12.5px; font-weight:800; margin-top:1px; }
+  .ed-step.is-done .ed-step-n{ background: var(--ok-soft); color: var(--ok); }
+  .ed-step-body{ display:flex; flex-direction:column; gap:2px; min-width:0; }
+  .ed-step-head{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; color: var(--text); }
+  .ed-step-state{ font-size:11.5px; font-weight:700; padding:1px 8px; border-radius:999px; background: var(--warn-soft); color: var(--warn); }
+  .ed-step-state.ok{ background: var(--ok-soft); color: var(--ok); }
+  .ed-step-text{ line-height:1.5; }
+  .ed-steps-foot{ margin:2px 0 0; font-size:12.5px; }
+  /* Help, at the start of the tools row's right end (editor-start.js) */
+  .rail-help{ display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; margin-right:8px; align-self:center; border-radius:7px; border:1px solid var(--border);
+    background: var(--surface); color: var(--text-muted); font: inherit; font-size:12.5px; font-weight:700; white-space:nowrap; cursor:pointer; }
+  .rail-help:hover{ background: var(--surface-2); color: var(--text); }
+  .rail-help:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+  .rail-help[hidden]{ display:none; }
+  .ed-rail.is-snugger .rail-help-word{ display:none; }
+  .ed-rail.is-snugger .rail-help{ padding:0 7px; }
   .btn.btn-danger{ background: var(--crit); border-color: var(--crit); color: var(--accent-contrast); }   /* dark words on the light red of the dark theme (UX-004) */
 
   @media (prefers-reduced-motion: reduce){ *{ transition: none !important; animation: none !important; } }
@@ -1169,6 +1209,8 @@
     .topbar .back-btn{ order:1; min-width:40px; min-height:40px; justify-content:center; }
     .topbar .ev-title{ order:2; flex:1 1 0; min-width:0; padding-right:0; }
     .topbar .ev-title .meta{ display:none; }
+    /* under a short name there is room for "Unsaved changes" only: Save's dot says the rest */
+    .topbar .site-state .ss-hint{ display:none; }
     .ed-sub .meta:not(:empty) + .site-state::before{ content:none; }
     .topbar .topbar-acts > *{ order:4; }
     .topbar #ed-mode-toggle{ order:3; }
@@ -1211,11 +1253,18 @@
     .topbar .site-state::before{ display:inline-block; vertical-align:middle; margin:-2px 6px 0 0; }
   }
   @media (max-width: 720px){
+    /* the mode switch says its two modes in words on a phone, "AI" and "Myself" (NU-036): two bare icons did not say
+       which mode the editor was in; the words take the icons' place, so the event's name keeps its room */
+    .mode-toggle .mt-short{ display:inline; }
+    .mode-toggle button svg{ display:none; }
+    .mode-toggle button{ padding:0 10px; }
     .ed-rail .rail-tools, .ed-rail .rail-scroll, #rail-more-menu, #panel-add, #panel-layers, #panel-design, #panel-forms, #lyr-ctx-menu,
     .tpl-sel-toolbar, .tpl-sec-toolbar, .tpl-pop, #gt-style-pop{ display:none !important; }
+    .tpl-sample-tag{ display:none !important; }
     .ed-rail{ height:48px; padding:0 10px; }
     .ed-rail .rail-fixed{ margin-left:auto; }
     .device-toggle button{ width:40px; height:40px; }
+    .rail-help{ height:40px; min-width:40px; justify-content:center; }
     .history-toggle button{ height:40px; min-width:40px; justify-content:center; }
     /* a notice above the page: its words take the full width, its buttons go under them */
     .ed-notice{ flex-wrap:wrap; padding:8px 10px; row-gap:6px; }
@@ -1319,7 +1368,7 @@
     <div class="ed-body">
     <!-- ============ ADD PANEL ============ -->
     <aside class="side-panel" id="panel-add" data-keep-selection hidden>
-      <div class="side-panel-head"><h3>Add elements</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-head"><h3>Add elements</h3><button class="icon-btn" data-close-panel aria-label="Close Add elements"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
       <div class="side-panel-body">
         <div class="panel-search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input id="blk-search" type="search" placeholder="Search elements" aria-label="Search elements"></div>
         <span class="hint">Added after the element you have selected, or at the end of the section you clicked.</span>
@@ -1342,11 +1391,11 @@
     </aside>
 
 
-    <!-- ============ LAYERS PANEL ============ -->
+    <!-- ============ SECTIONS PANEL (#panel-layers: the page's sections, in order) ============ -->
     <aside class="side-panel" id="panel-layers" data-keep-selection hidden>
-      <div class="side-panel-head"><h3>Layers</h3><button class="icon-btn" data-close-panel><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+      <div class="side-panel-head"><h3>Sections</h3><button class="icon-btn" data-close-panel aria-label="Close Sections"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
       <div class="side-panel-body">
-        <p class="hint" style="font-size:12px;color:var(--text-faint);">Drag sections to reorder. Click a name to jump to it on the canvas.</p>
+        <p class="hint" style="font-size:12px;color:var(--text-faint);">The sections on your page, in order. Drag one to move it, click a name to go to it on the page. To add one, use Add section.</p>
         <!-- only for a site written by AI from a brief, which has the markers (initAiProvenanceToggle); it was an icon in
              the top bar, beside nothing it belonged to (UX-078) -->
         <div class="lyr-ai-markers" id="lyr-ai-markers" hidden>
@@ -1493,9 +1542,12 @@
             reaches every tool and the row scrolls to the one focused by itself -->
        <button type="button" class="rail-scroll" id="rail-scroll-back" data-dir="-1" tabindex="-1" aria-hidden="true" title="More tools this way">&#8249;</button>
        <div class="rail-tools">
-        <button class="rail-btn" data-panel="add" title="Add elements">Add</button>
-        <button class="rail-btn" data-panel="predefined" title="Add a section">Sections</button>
-        <button class="rail-btn" data-panel="layers" title="Layers">Layers</button>
+        <!-- named for what each does (NU-021): "Sections" opened the gallery of new designs while "Layers" was the list
+             of the page's sections; now "Add section" adds one and "Sections" is the list (its panel is still
+             #panel-layers / data-panel="layers", so nothing that opens it changed) -->
+        <button class="rail-btn" data-panel="add" title="Add a heading, text, button, picture or form to the section you clicked">Add element</button>
+        <button class="rail-btn" data-panel="predefined" title="Add a new section to the page">Add section</button>
+        <button class="rail-btn" data-panel="layers" title="The page's sections: move, rename, hide or jump to one">Sections</button>
         <button class="rail-btn" data-panel="design" title="Colors, fonts and corners of the whole site">Theme</button>
         <button class="rail-btn" data-panel="forms" title="Registration forms: make them, and put them on the page">Forms</button>
         <!-- tools for developers, kept out of the main path (UX-080) -->
@@ -1503,6 +1555,10 @@
        </div>
        <button type="button" class="rail-scroll" id="rail-scroll-fwd" data-dir="1" tabindex="-1" aria-hidden="true" title="More tools this way">&#8250;</button>
        <div class="rail-fixed">
+        <!-- the steps to finish the site, again (editor-start.js, NU-008): shown once the site is open -->
+        <button type="button" class="rail-help" id="btn-editor-help" aria-haspopup="dialog" title="How to finish your site, step by step" hidden>
+         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9.3 9.2a2.8 2.8 0 0 1 5.4 1c0 1.9-2.7 2.4-2.7 4"/><path d="M12 17.4h.01"/></svg><span class="rail-help-word">Help</span>
+        </button>
         <div class="device-toggle" role="group" aria-label="Device preview">
          <button class="active" data-device="desktop" title="Desktop"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg></button>
          <button data-device="tablet" title="Tablet"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4.5" y="2.5" width="15" height="19" rx="2"/><path d="M11 18h2"/></svg></button>
@@ -1580,6 +1636,8 @@
 <script src="editor-ai-mode.js"></script>
 <script src="topbar-menu.js"></script>
 <script src="share-preview.js"></script>
+<!-- the first steps: what to do next once per person, Help, and the line about the design's samples (NU-008, NU-009) -->
+<script src="editor-start.js"></script>
 <!-- ETB2B AI: the chat kit, the events side, the shell, then the editor's part (it waits for the site) -->
 <!-- reads the PDFs and PowerPoint decks attached to ETB2B AI (owner decision 14), before the chat that takes them -->
 <script src="ai-docs-client.js"></script>
@@ -1610,6 +1668,18 @@
           window.RevampTemplateUI.leave(window.RevampRail.href(section, editorEventId));
         }
       });
+      /* every other item leaves the site editor for another page of the event (NU-021): marked with a small arrow and
+         saying so on hover, so Speakers, Agenda or Sponsors is not taken for a panel of the editor */
+      document.querySelectorAll('#global-rail .rail-item[data-section]').forEach(function(item){
+        var section = item.getAttribute('data-section');
+        if (section === 'design') return;
+        item.setAttribute('data-leaves', '');
+        var label = item.querySelector('.rl');
+        var where = section === 'marketing' ? 'Promotions' : section === 'audience' ? 'Reporting' : 'the event console';
+        var words = (label ? label.textContent : section) + ': opens ' + (where === 'the event console' ? 'in the event console' : where) +
+          ' and leaves the site editor (unsaved changes are asked about first)';
+        if (!item.hasAttribute('title')) item.setAttribute('title', words);
+      });
     }
     document.querySelector('.topbar .back-btn').addEventListener('click', function(e){
       if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -1620,8 +1690,10 @@
   /* ---------- "Generate from a brief" arrival notice ----------
      create-event.html's startGenerateFromBrief() stamps the handoff payload with generatedFromBrief:true
      before redirecting here with ?from=create — a plain manual/AI-design handoff has no such flag, so this
-     only fires for an actual brief-generated draft. Runs up front, so the modal appears before the canvas
-     even starts mounting. */
+     only fires for an actual brief-generated draft. Runs up front, so the strip is there before the canvas
+     even starts mounting. Its one-time welcome is now the editor's first steps (editor-start.js, NU-008): the same
+     words, with what to do next, once the site is on the canvas. */
+  var arrivedFromBrief = false;
   (function initGenerateFromBriefNotice(){
     var qs = new URLSearchParams(location.search);
     if (qs.get('from') !== 'create') return;
@@ -1629,17 +1701,15 @@
     var draft = window.RevampTemplateUI.handoffFor(editorEventId);
 
     var slug = qs.get('slug') || '';
-    var SPARK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>';
     function stored(key){ try { return localStorage.getItem(key); } catch(e){ return null; } }
     function store(key, value){ try { localStorage.setItem(key, value); } catch(e){} }
 
-    /* Each notice remembers its own state per draft: '0' still due, '1' dealt with. The hand-off is gone
-       once the site has been filled from it, so a reload goes by these, not by the hand-off. */
+    /* The strip remembers its own state per draft: '0' still due, '1' dealt with. The hand-off is gone once the
+       site has been filled from it, so a reload goes by this, not by the hand-off. */
     var stripKey = 'revamp.gbStripDismissed.' + slug;
-    var modalSeenKey = 'revamp.gbWelcomeSeen.' + slug;
     if (draft && draft.generatedFromBrief){
+      arrivedFromBrief = true;
       if (stored(stripKey) === null) store(stripKey, '0');
-      if (stored(modalSeenKey) === null) store(modalSeenKey, '0');
     }
 
     /* persistent strip, directly under the topbar — reappears on every reload of this draft until
@@ -1654,19 +1724,6 @@
       });
     }
 
-    /* One-time welcome, shown once per draft, in the editor's own dialog (UX-086): its button, Escape or a click
-       beside it closes it, and any of the three marks it seen. Opened once this script has set the dialog up
-       (openDialog is further down), still long before the canvas has finished opening. */
-    if (stored(modalSeenKey) !== '0') return;
-    setTimeout(function(){
-      openDialog({
-        title: 'Your site is ready to review',
-        bodyHtml: '<div class="callout ai">' + SPARK + '<span><strong>This draft is yours now.</strong> Edit anything directly on the page. ' +
-          'Generating from the brief again makes a new draft and does not change this one.</span></div>',
-        actions: [{ label: 'Got it, let’s look', kind: 'primary', autofocus: true }],
-        onClose: function(){ store(modalSeenKey, '1'); }
-      });
-    }, 0);
   })();
 
   var frame = document.getElementById('frame');
@@ -1742,7 +1799,7 @@
       x.className = 'ed-notice-x';
       x.setAttribute('aria-label', 'Dismiss');
       x.innerHTML = '&times;';
-      x.addEventListener('click', function(){ clearNotice(id); });
+      x.addEventListener('click', function(){ clearNotice(id); if (typeof opts.onDismiss === 'function') opts.onDismiss(); });
       row.appendChild(x);
     }
   }
@@ -2000,7 +2057,33 @@
   /* true while the site is still opening (editor-template-ui.js setOpening): the tools wait, also from the keyboard */
   function siteOpening(){ return !!document.querySelector('.ed[data-opening]'); }
 
+  /* One panel beside the page at a time below 1600px (NU-020): a tool panel and ETB2B AI's docked column together left
+     the page about 480px wide at 1440px. Opening one closes the other (the conversation stays; the launcher opens it
+     again); from 1600px both fit. */
+  var SIDE_BY_SIDE_MIN = 1600;
+  function bothFit(){ return window.innerWidth >= SIDE_BY_SIDE_MIN; }
+  function closeToolPanels(){
+    Object.keys(panels).forEach(function(k){ panels[k].hidden = true; });
+    railBtns.forEach(function(b){ b.classList.remove('active'); });
+    window.dispatchEvent(new Event('resize'));
+  }
+  function aiDockedOpen(){
+    var A = window.RevampAssistant;
+    return !!(A && typeof A.isOpen === 'function' && A.isOpen() && document.documentElement.classList.contains('rvc-docked'));
+  }
+  if (window.RevampAssistant && typeof window.RevampAssistant.onOpenChange === 'function'){
+    window.RevampAssistant.onOpenChange(function(open){
+      if (!open || bothFit()) return;
+      // after the kit has docked the column (html.rvc-docked), so only a column beside the page counts
+      setTimeout(function(){
+        if (!aiDockedOpen()) return;
+        var anyOpen = Object.keys(panels).some(function(k){ return !panels[k].hidden; });
+        if (anyOpen) closeToolPanels();
+      }, 0);
+    });
+  }
   function openPanel(name){
+    if (!bothFit() && aiDockedOpen()) window.RevampAssistant.close();
     Object.keys(panels).forEach(function(k){ panels[k].hidden = (k !== name); });
     railBtns.forEach(function(b){ b.classList.toggle('active', b.getAttribute('data-panel') === name); });
     // a panel of the same width as the one before changes no size: the row still brings its tool into view
@@ -3244,7 +3327,15 @@
     .then(function(ready){
       if (!ready) return;
       initAiProvenanceToggle();
+      /* a phone opens the page at a phone's width, and the device switch says so (NU-036: it showed Desktop selected
+         over a page laid out for the phone) */
+      if (window.matchMedia && window.matchMedia('(max-width: 720px)').matches){
+        var phoneBtn = document.querySelector('.device-toggle button[data-device="mobile"]');
+        if (phoneBtn && !phoneBtn.classList.contains('active')) phoneBtn.click();
+      }
       if (window.RevampEditorMode) window.RevampEditorMode.ready();
+      // what to do next, once per person; Help; the line about the design's samples (NU-008, NU-009)
+      if (window.RevampEditorStart) window.RevampEditorStart.ready({ openDialog: openDialog, showNotice: showNotice, clearNotice: clearNotice, generated: arrivedFromBrief });
     });
 })();
 </script>

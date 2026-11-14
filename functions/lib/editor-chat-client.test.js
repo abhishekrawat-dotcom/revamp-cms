@@ -575,8 +575,8 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   var at = order.map(function (f) { return PAGE.indexOf('<script src="' + f + '"></script>'); });
   check('E.1 scripts: the editor, its modes, then the kit, the events side, the shell and the editor\'s part', at.every(function (x, i) { return x !== -1 && (i === 0 || x > at[i - 1]); }), at);
   check('E.1 each of the four ETB2B AI scripts once', order.slice(2).every(function (f) { return PAGE.split('<script src="' + f + '"></script>').length === 2; }));
-  check('E.1 the docked column keeps its room beside the canvas (Edit myself, 1100 px and wider: 400 px)',
-    /@media \(min-width: ?1100px\)\{ ?html\.rvc-docked body:not\(\.ed-mode-ai\) \.ed-main\{ ?margin-right: ?400px; ?\} ?\}/.test(PAGE));
+  check('E.1 the docked column keeps its room beside the canvas and beside the live view (both modes, 1100 px and wider: 400 px, NU-020)',
+    /@media \(min-width: ?1100px\)\{ ?html\.rvc-docked \.ed-main\{ ?margin-right: ?400px; ?\} ?\}/.test(PAGE));
   var narrowDock = /@media \(max-width: ?1099\.98px\)\{([^@]*?)\n  \}/.exec(PAGE);
   check('E.1 …and below 1100 px a 340 px column with the same room kept (it docks above a phone\'s width)', !!narrowDock &&
     /\.rvc\.rvc-is-docked\{ ?--rvc-panel-w: ?340px; ?\}/.test(narrowDock[1]) && /html\.rvc-docked body:not\(\.ed-mode-ai\) \.ed-main\{ ?margin-right: ?340px; ?\}/.test(narrowDock[1]), narrowDock && narrowDock[1]);
@@ -981,7 +981,15 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   d1.modes.fns.forEach(function (f) { f('ai'); });
   d1.A.open();
   await settle(4);
-  check('E.9 Edit with AI, 1440 px: floating at the bottom right, not docked', !d1.doc.documentElement.classList.contains('rvc-docked') && !d1.chat().isDocked());
+  /* NU-020: floating, the panel lay over the right 400 px of the live view and cut the words being asked about */
+  check('E.9 Edit with AI, 1440 px: a column beside the live view, never over it', d1.doc.documentElement.classList.contains('rvc-docked') && d1.chat().isDocked());
+  d1.setVw(1000);
+  await settle(4);
+  check('E.9 Edit with AI narrower than 1100 px: floating at the bottom right (the live view would be too small beside a column)', !d1.doc.documentElement.classList.contains('rvc-docked') && !d1.chat().isDocked());
+  d1.setVw(1440);
+  await settle(4);
+  check('E.9 …made wide again: docked beside the live view again', d1.doc.documentElement.classList.contains('rvc-docked') && d1.chat().isDocked());
+  check('E.9 dockFor: Edit myself always, Edit with AI only on a wide window', EC.dockFor(false, false) === true && EC.dockFor(false, true) === true && EC.dockFor(true, true) === true && EC.dockFor(true, false) === false && EC.AI_DOCK_QUERY === '(min-width: 1100px)');
   d1.modes.now = 'manual';
   d1.modes.fns.forEach(function (f) { f('manual'); });
   await settle(4);
@@ -1102,8 +1110,9 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   check('E.3 a site that never opened: the client does not join', !nf.seam.view && nf.seam.changeFns.length === 0);
   check('E.3 …the shell mounts the events side alone and says why', !!nf.wrap() && wrapText(nf).indexOf('Editing this page with ETB2B AI isn’t available right now; reload the editor.') !== -1);
 
-  /* ======== E.11 the real "Edit with AI" live view after a change (editor-ai-mode.js) ======== */
-  var lv = editorPage({ realModes: true });
+  /* ======== E.11 the real "Edit with AI" live view after a change (editor-ai-mode.js) ========
+     on a window narrower than 1100 px, where the panel floats over the live view (NU-020: wider, it is docked beside it) */
+  var lv = editorPage({ realModes: true, vw: 1000 });
   var LM = lv.M();
   check('E.11 the real modes are loaded', !!LM && typeof LM.show === 'function' && typeof LM.whenShown === 'function' && LM !== lv.modes.api);
   LM.ready();
@@ -1119,7 +1128,7 @@ function peekUndo(env) { var p = env.$('peek'); return p ? byClass(p, 'rvc-undo'
   var pick = lv.doc.querySelector('.ai-live-pick:not(.ai-live-flash)');
   check('E.11 the selected section is outlined on it', pick && !pick.hidden && pick.textContent === 'ETB2B AI: Agenda' && pick.style.top === '600px', pick && [pick.hidden, pick.textContent, pick.style.top]);
   check('E.11 nothing threw while it was drawn', lv.thrown.length === 0, lv.thrown);
-  check('E.11 the panel opened with the mode, floating', lv.chat().isOpen() && !lv.chat().isDocked());
+  check('E.11 the panel opened with the mode, floating (narrower than 1100 px)', lv.chat().isOpen() && !lv.chat().isDocked());
 
   /* a change: the client's listener asks the real modes to show it; the panel lies over the hero, so it folds */
   panelEl(lv)._rect = R(1018, 160, 400, 640);

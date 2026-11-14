@@ -17,6 +17,30 @@ html[data-rv-editing] [data-rv-placeholder]{ outline:1.5px dashed #C98A1B; outli
 
 html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; outline-offset:-2px; }
 
+/* A section visitors would see with only its heading says so, with its two buttons (editor-template-ui.js
+   drawEmptyNotes, NU-018). The editor's own, never saved; its colours are fixed, as it lies over any site's, at a size
+   that reads on the scaled-down canvas (16px there is about 11-13px on screen). */
+html[data-rv-editing] [data-rv-ed-note]{
+  display:block !important; box-sizing:border-box !important; width:100% !important; max-width:760px !important; flex:0 0 100% !important;
+  margin:18px auto !important; padding:14px 18px !important; position:relative !important; z-index:2 !important;
+  border:1.5px dashed #C98A1B !important; border-radius:10px !important; background:#FFF8E8 !important; color:#3D2A00 !important;
+  font:500 16px/1.5 Inter, Arial, Helvetica, sans-serif !important; letter-spacing:0 !important; text-transform:none !important;
+  text-align:left !important; text-shadow:none !important; opacity:1 !important; transform:none !important; cursor:pointer;
+}
+html[data-rv-editing] [data-rv-ed-note] p{
+  display:block !important; margin:0 0 4px !important; padding:0 !important; color:inherit !important; font:inherit !important;
+  letter-spacing:0 !important; text-transform:none !important; text-align:left !important; background:none !important;
+}
+html[data-rv-editing] [data-rv-ed-note] p:first-child{ font-weight:700 !important; }
+html[data-rv-editing] [data-rv-ed-note] [data-rv-ed-acts]{ margin:10px 0 0 !important; }
+html[data-rv-editing] [data-rv-ed-note] [data-rv-ed-act]{
+  display:inline-block !important; margin:0 8px 0 0 !important; padding:9px 16px !important; min-height:0 !important;
+  border:1.5px solid #241B1A !important; border-radius:8px !important; background:#241B1A !important; color:#FFFFFF !important;
+  font:700 15px/1.2 Inter, Arial, Helvetica, sans-serif !important; letter-spacing:0 !important; text-transform:none !important;
+  box-shadow:none !important; cursor:pointer !important; width:auto !important; height:auto !important;
+}
+html[data-rv-editing] [data-rv-ed-note] [data-rv-ed-act="hide"]{ background:#FFFFFF !important; color:#241B1A !important; }
+
 /* The repeated item (card, tile, question) the selected element belongs to: what "Add item" and "Remove item" act on. */
 html[data-rv-editing] [data-rv-cur-item]{ outline:1.5px dashed #ED1C24; outline-offset:3px; }
 /* the event's records (editor-template-ui.js recordOf): picked as a whole card, never a word inside it */

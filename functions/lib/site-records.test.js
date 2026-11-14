@@ -253,7 +253,7 @@ function rows(extra) {
     (dark.match(/commitAutoStep\(DARK_COPY_NAME\);/g) || []).length === 2 && !/commitNow\(\)/.test(dark));
   function editorAuto() {
     var names = ['snapHash', 'record', 'commitNow', 'commitTyping', 'commitAutomatic', 'commitAutoStep', 'noteOpening', 'noteAuto', 'bakeAuto', 'settleAuto', 'tagAutoStep', 'autoPoint', 'autoOnly'];
-    var src = 'var undoStack = [], undoPtr = 0, typingPtr = -1, commitTimer = null, remounting = false, aiWorking = false, editingEl = null, localEdited = false, savedMark = null;\n' +
+    var src = 'var undoStack = [], undoPtr = 0, typingPtr = -1, commitTimer = null, remounting = false, aiWorking = false, editingEl = null, localEdited = false, savedMark = null, bootDone = false, editedThisVisit = false;\n' +
       'var autoNames = [], autoPoints = [], openedSaved = false, openPtr = 0, autoReady = false, page = {};\n' +
       'var canvas = { snapshot: function () { return JSON.parse(JSON.stringify(page)); }, sameSnapshot: function (a, b) { return JSON.stringify(a) === JSON.stringify(b); }, serialize: function () { return JSON.stringify(page); } };\n' +
       'function noop() {} var keepFormSectionsShown = noop, dismissUndoToast = noop, updateHistoryButtons = noop, saveLocal = noop, scheduleServerSave = noop, repositionToolbars = noop,' +

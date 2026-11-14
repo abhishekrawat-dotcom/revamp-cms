@@ -8,8 +8,9 @@
      - the edit brain: a message sent, Stop, "undo that" with no AI call, the event's conversation read back;
      - the place: the welcome, suggestions and quick ideas for a site page; the "Selected" chip (what is selected
        on the page goes with the message); pictures attached the editor's own way, numbered as the AI is told
-       them; the panel docked as a column beside the canvas in "Edit myself" (every width above a phone's), a
-       half sheet on a narrow "Edit with AI", and floating there below the tools rail; leaving the editor only
+       them; the panel docked as a column beside the canvas in "Edit myself" (every width above a phone's) and
+       beside the live view in "Edit with AI" from 1100 px (NU-020), a half sheet on a phone's "Edit with AI", and
+       floating below the tools rail on an "Edit with AI" between the two; leaving the editor only
        through its own guard for unsaved work (RevampTemplateUI.leave);
      - the view editor-template-ui.js draws into: an answer with the change's card in it, the busy strip (with
        Stop while a message waits for its answer; a change being applied has its Stop on its card), the tray,
@@ -93,6 +94,10 @@
      lie over the canvas's toolbars and the tools rail's Undo / Redo. Below 1100 px the column is 340 px wide, as
      the editor's own chat column was (custom_editor.html). */
   var DOCK_MIN_WIDTH = 721;
+  /* "Edit with AI" docks the open panel too from this width (NU-020): floating, it lay over the right 400 px of the live
+     view and cut the words being asked about. Narrower, the live view would be too small beside a column, so the panel
+     floats there (a half sheet on a phone), with its Close at the top. */
+  var AI_DOCK_QUERY = '(min-width: 1100px)';
   /* a phone, or a window as narrow: the page has no viewport meta, so a phone lays it out 980 px wide and only its
      screen's width (the device width) tells; the window's width is the narrow "Edit with AI" on a desktop */
   var PHONE_QUERY = '(max-device-width: 720px), (max-width: 720px)';
@@ -155,6 +160,9 @@
     if (!a || !b) return false;
     return Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0;
   }
+  /* whether the open panel docks as a column: always in "Edit myself" (the kit still floats it on a phone), and in
+     "Edit with AI" only on a wide window (AI_DOCK_QUERY), where the live view keeps the rest (NU-020) */
+  function dockFor(aiMode, wide) { return !aiMode || !!wide; }
   /* a picture stored with the event, as a chip in the tray: its address is what a message sends */
   function recFor(url, name, size) {
     return { id: str(url), url: str(url), name: str(name) || 'Picture', kind: 'image', thumb: str(url), size: +size || 0 };
@@ -337,8 +345,9 @@
     var chat = chatRef;
     if (!chat) return;
     var ai = isAiMode();
-    // Edit myself: a column beside the canvas (above a phone's width, the kit's rule); Edit with AI: floating
-    if (isFn(chat.setDock)) chat.setDock(!ai);
+    /* Edit myself: a column beside the canvas (above a phone's width, the kit's rule); Edit with AI: a column beside
+       the live view from AI_DOCK_QUERY's width, floating below it (dockFor) */
+    if (isFn(chat.setDock)) chat.setDock(dockFor(ai, aiDockWide()));
     if (isFn(chat.setPhoneSheet)) chat.setPhoneSheet(ai ? 'half' : 'full');
     /* On a phone "Edit myself" has no room for the column: the open panel would become a sheet over the whole
        editor, hiding the page the person just chose to edit by hand (and the Forms panel "Open Forms" goes to).
@@ -350,6 +359,9 @@
   }
   function onPhone() {
     try { return !!(isFn(root.matchMedia) && root.matchMedia(PHONE_QUERY).matches); } catch (e) { return false; }
+  }
+  function aiDockWide() {
+    try { return !!(isFn(root.matchMedia) && root.matchMedia(AI_DOCK_QUERY).matches); } catch (e) { return false; }
   }
   /* where the docked column starts (--rvc-dock-top) and the floating panel's top may reach (--rvc-ed-top) */
   function syncDockTop() {
@@ -523,6 +535,12 @@
     if (A && isFn(A.onOpenChange)) A.onOpenChange(onOpenChange);
     if (M && isFn(M.onModeChange)) M.onModeChange(syncMode);
     root.addEventListener('resize', syncDockTop);
+    // a window made wider or narrower than AI_DOCK_QUERY in "Edit with AI": the panel docks or floats again
+    try {
+      var wideMq = isFn(root.matchMedia) ? root.matchMedia(AI_DOCK_QUERY) : null;
+      if (wideMq && isFn(wideMq.addEventListener)) wideMq.addEventListener('change', syncMode);
+      else if (wideMq && isFn(wideMq.addListener)) wideMq.addListener(syncMode);
+    } catch (e) { /* the shape is chosen again on the next switch of mode */ }
     // the "generated from a brief" strip comes and goes above the workspace: the docked column follows
     var d = doc(), shell = d && isFn(d.querySelector) ? d.querySelector('.ed') : null;
     if (shell && isFn(root.MutationObserver)) new root.MutationObserver(syncDockTop).observe(shell, { childList: true });
@@ -547,7 +565,8 @@
 
   var api = {
     start: start, TEXT: TEXT, goToFor: goToFor, contentUrl: contentUrl, focusLabel: focusLabel, isPicture: isPicture,
-    wouldCover: wouldCover, recFor: recFor, brain: brain, DOCK_MIN_WIDTH: DOCK_MIN_WIDTH, PHONE_QUERY: PHONE_QUERY
+    wouldCover: wouldCover, recFor: recFor, brain: brain, DOCK_MIN_WIDTH: DOCK_MIN_WIDTH, PHONE_QUERY: PHONE_QUERY,
+    dockFor: dockFor, AI_DOCK_QUERY: AI_DOCK_QUERY
   };
   root.RevampEditorChat = api;
   if (typeof module === 'object' && module && module.exports) module.exports = api;

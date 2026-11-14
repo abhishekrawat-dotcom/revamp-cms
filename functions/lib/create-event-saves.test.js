@@ -788,8 +788,9 @@ async function main() {
   /* The hand-off screen says "keeps your page as its first saved version" on both of its paths: a gallery design (handed
      over with its sections) and an imported one (handed over with none, being one finished page). The editor's real
      opening path (resolveFromBrowser, then saveFirstVersion) is run for each, not the condition alone: an earlier test
-     passed on the condition while the imported path never reached it. Only a generated site, whose page the server
-     made, is left out, and nothing is saved without this event's own hand-off in this browser. */
+     passed on the condition while the imported path never reached it. A site ETB2B AI generated from a brief is saved the
+     same way (NU-011: it opened as "Not saved yet" after minutes of waiting), and nothing is saved without this event's
+     own hand-off in this browser. */
   function arrive(o) {
     var store = {}, L = { saves: 0 };
     if (o.handoff) store['revamp.editor.handoff.v1'] = JSON.stringify(o.handoff);
@@ -811,6 +812,7 @@ async function main() {
       'function fetchServerDraft() { return Promise.resolve(null); }' +
       'function markTemplateSamples() { return 0; }' +
       'function saveToStaging() { L.saves++; return Promise.resolve({ version: 1 }); }' +
+      'var firstSavePending = false; function renderSiteState() {}' +
       ['fromCreate', 'handoffFor', 'readHandoffDraft', 'forgetHandoff', 'applyHandoffDraft', 'handoffLogoAddress', 'seedSnapshot', 'localRecord', 'aiHeroFromEvent',
         'resolveFromBrowser', 'saveFirstVersion'].map(function (n) { return topFn(ED, n); }).join('\n'), C);
     return C.resolveFromBrowser(undefined).then(function () {
@@ -834,7 +836,12 @@ async function main() {
     I3.saves === 0 && I4.saves === 0 && I4.handoffLeft === true, [I3, I4]);
   var I5 = await arrive({ templateId: 'imported-abc123', search: '?eventId=qa-ux-b08-x', handoff: handoffOf('qa-ux-b08-x', 'imported-abc123', []) });
   var I6 = await arrive({ templateId: 'gen-qa-x', search: FROM, handoff: handoffOf('qa-ux-b08-x', 'gen-qa-x', []) });
-  check('UX-042 nothing is saved on a plain open (not from Create Event), nor for a generated site', I5.saves === 0 && I6.saves === 0, [I5, I6]);
+  check('UX-042 nothing is saved on a plain open (not from Create Event), nor for a generated hand-off with nothing in it', I5.saves === 0 && I6.saves === 0, [I5, I6]);
+  var I7 = await arrive({ templateId: 'gen-qa-x', search: FROM + '&draft=d1', handoff: Object.assign(handoffOf('qa-ux-b08-x', 'gen-qa-x', [{ libId: 'hero', name: 'Hero', data: { title: 'QA' } }]), { generatedFromBrief: true }) });
+  check('NU-011 a site ETB2B AI generated from a brief is saved as version 1 when the editor opens it from Create Event, like a gallery design',
+    I7.due === true && I7.saves === 1 && I7.handoffLeft === false, I7);
+  var I8 = await arrive({ templateId: 'gen-qa-x', search: '?eventId=qa-ux-b08-x&draft=d1', handoff: Object.assign(handoffOf('qa-ux-b08-x', 'gen-qa-x', [{ libId: 'hero', name: 'Hero', data: { title: 'QA' } }]), { generatedFromBrief: true }) });
+  check('NU-011 …but not on a plain open of a generated site', I8.saves === 0, I8);
   function firstSave(o) {
     var L = { saves: 0, notices: [] };
     var C = { L: L, setTimeout: function (f) { f(); }, Promise: Promise };
@@ -842,12 +849,14 @@ async function main() {
     vm.runInContext('var firstSaveDue = ' + !!o.due + ', canvas = {}, eventId = "qa-x", siteInfo = ' + JSON.stringify(o.siteInfo) + ', currentEvent = ' + JSON.stringify(o.event || {}) + ';' +
       'function saveToStaging(opts){ L.saves++; L.quiet = opts && opts.quiet; return ' + (o.fail ? 'Promise.reject(new Error("down"))' : 'Promise.resolve({ version: 1 })') + '; }' +
       'function showNotice(id, n){ L.notices.push(id + ": " + n.text); }' +
+      'var firstSavePending = false; function renderSiteState() { L.renders = (L.renders || 0) + 1; }' +
       'var FIRST_SAVE_DELAY_MS = 0;' + fnSrc(ED, 'saveFirstVersion').replace('var FIRST_SAVE_DELAY_MS = 1700;', ''), C);
     C.saveFirstVersion();
     return tick().then(function () { return L; });
   }
   var L1 = await firstSave({ due: true, siteInfo: { savedVersion: 0 } });
   check('UX-042 editor: a page Create Event filled is saved as the first version, quietly', L1.saves === 1 && L1.quiet === true && L1.notices.length === 0, L1);
+  check('NU-035 editor: once the first save is over, the words under the name are drawn again (they did not ask for Save meanwhile)', L1.renders >= 1, L1);
   var L2 = await firstSave({ due: true, siteInfo: { savedVersion: 3 } });
   var L3 = await firstSave({ due: true, siteInfo: { savedVersion: 0 }, event: { site: { version: 2 } } });
   var L4 = await firstSave({ due: false, siteInfo: { savedVersion: 0 } });

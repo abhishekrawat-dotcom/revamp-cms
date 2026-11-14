@@ -198,7 +198,7 @@ check('9 marking checked is the person\'s own step, which Publish saves (so ever
 check('9 a hidden section is not asked about', /return !sec\.classList\.contains\('is-hidden-sec'\);/.test(body(EDITOR, 'aiProvenanceSections')));
 check('9 the AI switch draws the pills, and they are never saved or recorded', /if \(aiMarkersOn\) renderAiProvenanceBadges\(\);/.test(body(EDITOR, 'setAiMarkers')) &&
   /if \(aiMarkersOn\) renderAiProvenanceBadges\(\);/.test(body(EDITOR, 'pageChanged')) &&
-  (body(EDITOR, 'renderAiProvenanceBadges').match(/data-rv-ai-mark/g) || []).length >= 3 && /var FORM_PREVIEW = '\[data-rv-form-preview\], \[data-rv-hv-preview\], \[data-rv-ai-mark\]';/.test(CANVAS));
+  (body(EDITOR, 'renderAiProvenanceBadges').match(/data-rv-ai-mark/g) || []).length >= 3 && /var FORM_PREVIEW = '\[data-rv-form-preview\], \[data-rv-hv-preview\], \[data-rv-ai-mark\](?:, \[data-rv-ed-note\])?';/.test(CANVAS));
 
 /* ======================= 10 the approver sees what is waiting (UX-102) ======================= */
 check('10 the dashboard keeps each event\'s waiting request', /approval: ev\.approval && typeof ev\.approval === 'object' && ev\.approval\.id \? ev\.approval : null,/.test(LIST));

@@ -3,9 +3,10 @@
    "Edit myself" is the editor as it always was: the canvas (editor-canvas.js) with selection, typing in place,
    the panels, the section tools, and ETB2B AI docked as a column beside the canvas. Nothing here changes it.
 
-   "Edit with AI" shows the site as its draft preview shows it (/preview/<id>?draft=1), full width, with ETB2B AI
-   (the one panel of every console page, etb2b-assistant.js; editor-chat-client.js is the editor's part of it)
-   floating at the bottom right. The page in it is a throw-away copy: the
+   "Edit with AI" shows the site as its draft preview shows it (/preview/<id>?draft=1), with ETB2B AI (the one
+   panel of every console page, etb2b-assistant.js; editor-chat-client.js is the editor's part of it) docked as a
+   column beside it from 1100 px, so the panel never lies over the page being asked about (NU-020), and floating at
+   the bottom right on a narrower window. The page in it is a throw-away copy: the
    editor's page (canvas.serialize()) put through the preview's own transform (POST /api/event/live-view ->
    lib/api.js publishTransform, liveView), shown in a frame of its own (the "live view") and drawn again after
    every change. So the site's runtime runs there as on the preview — carousels, reveals, the nav, pop-ups —
@@ -83,11 +84,13 @@
     try { if (s) s.setItem(userKey(), m); } catch (e) { /* private window or blocked storage: this visit only */ }
   }
 
-  function device() {
+  function deviceName() {
     var b = document.querySelector('.device-toggle button.active');
-    var name = b ? b.getAttribute('data-device') : 'desktop';
+    return b ? b.getAttribute('data-device') : 'desktop';
+  }
+  function device() {
     var sizes = (window.RevampCanvas && RevampCanvas.DEVICES) || { desktop: 1440, mobile: 390 };
-    return sizes[name] || sizes.desktop;
+    return sizes[deviceName()] || sizes.desktop;
   }
   function narrow() { return window.innerWidth <= MOBILE_MAX; }
   /* Which mode the editor opens in. A phone opens in Edit with AI whatever was chosen on a bigger screen: the tools of
@@ -241,8 +244,9 @@
     if (!ifr || !viewport) return;
     var w = device(), vw = viewport.clientWidth, vh = viewport.clientHeight;
     if (!vw || !vh) return;
-    // on a phone the page is laid out at the phone's own width, as its preview there would be
-    if (narrow() && w > vw) w = vw;
+    /* on a phone the page is laid out at the phone's own width, as its preview there would be: the Mobile device, which
+       the editor picks by itself there (NU-036). Desktop or Tablet chosen on a phone shows that page, made smaller. */
+    if (narrow() && w > vw && deviceName() === 'mobile') w = vw;
     scale = Math.min(1, vw / w);
     ifr.style.width = w + 'px';
     ifr.style.height = (vh / scale) + 'px';
