@@ -56,7 +56,7 @@ var S = require(path.join(ROOT, 'editor-start.js'));
   check('1 five steps, in the order of the work', t.map(function (s) { return s.key; }).join() === 'words,pictures,content,form,send', t);
   check('1 the words step says how many samples are left and what their outline means', t[0].state === '7 left' && !t[0].done &&
     t[0].text === 'Click any text on the page and type over it. 7 texts are still the design’s sample, with a dashed amber outline: replace them with your event’s own, or hide their section.', t[0].text);
-  check('1 the content step says Speakers, Agenda and Sponsors open the console, marked ↗', /in the left bar, open the event console \(marked ↗\)\. The site shows what you add there\./.test(t[2].text));
+  check('1 the content step says Speakers, Agenda and Sponsors open the console, marked ↗, and never promises the site shows them when the design has no section for them', /in the left bar, open the event console \(marked ↗\)\. Each shows on the site in its own section; if this design has none for it yet, the site editor adds one the next time it opens \(press Save to keep it\)\./.test(t[2].text) && !/The site shows what you add there/.test(t[2].text));
   check('1 the last step: Save with its keys, that the editor does not save by itself, then Send for approval…; done once saved',
     t[4].text === 'Save (⌘S) keeps your changes: the editor does not save by itself. Preview opens the site in a new tab. Send for approval… asks an approver to put it live.' && t[4].state === 'Saved' && t[4].done === true);
   var none = S.steps({ kind: 'template', samples: { words: 0, pictures: 0 }, saved: false, dirty: true });

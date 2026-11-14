@@ -38,7 +38,7 @@
     { id: 'create', title: 'Create the event', where: 'Events dashboard',
       text: 'Press **Create Event** at the top right of the events dashboard. Choose the portal the event belongs to, then its microsite type.' },
     { id: 'build', title: 'Choose how to build the site', where: 'Create Event',
-      text: 'Pick **Generate from brief** (ETB2B AI writes the site from your overview document and links), **Choose a previous edition**, **Import from Lovable**, or a design from the templates with **Use this template**. Fill in the event details and press **Continue** (**Generate my site** for a brief). The event is saved and the site editor opens.' },
+      text: 'Pick **Generate from brief** (ETB2B AI writes the site from your overview document and links), **Choose a previous edition**, **Import from Lovable**, or a design from the templates with **Use this template**. Fill in the event details and press **Review and create**, check the summary, then **Create event** (**Generate my site** for a brief). The event is saved and the site editor opens.' },
     { id: 'design', title: 'Design the site', where: 'Site editor',
       text: 'With **Edit myself**, click any text, picture or section on the page to change it. With **Edit with AI**, ask ETB2B AI for the change instead. Press **Save** to keep your changes: nothing goes live yet. To come back later, press the pencil (**Edit site**) on the event’s row on the dashboard.' },
     { id: 'content', title: 'Add speakers, agenda and sponsors', where: 'Event console',
@@ -58,7 +58,7 @@
       ask: 'how EventSphere works, what to do first, how to create and publish an event from start to finish',
       steps: [
         '**Create Event** on the events dashboard: choose the portal and the microsite type.',
-        'Choose how to build the site (**Generate from brief**, a previous edition, a Lovable design or **Use this template**), fill in the details and press **Continue**. The site editor opens.',
+        'Choose how to build the site (**Generate from brief**, a previous edition, a Lovable design or **Use this template**), fill in the details and press **Review and create**, check the summary, then **Create event**. The site editor opens.',
         'Change the page with **Edit myself** or **Edit with AI**, and press **Save**.',
         'Open the event’s console (click its name on the dashboard) to add **Speakers**, **Agenda** and **Sponsors**.',
         'Check it with **Preview**, at the top right.',
@@ -71,7 +71,7 @@
         'Press **Create Event** at the top right of the events dashboard.',
         'Choose the portal the event belongs to, then its microsite type.',
         'Pick how to build it: **Generate from brief** (ETB2B AI writes it from your overview document and links), **Choose a previous edition**, **Import from Lovable**, or a template with **Use this template**.',
-        'Fill in the event details and press **Continue** (**Generate my site** for a brief). The event is saved and the site editor opens.',
+        'Fill in the event details and press **Review and create**, check the summary, then **Create event** (**Generate my site** for a brief). The event is saved and the site editor opens.',
         'A Create Event you leave halfway waits under **Drafts** on the dashboard, with **Resume**.'
       ] },
     { id: 'design', title: 'How to change the site’s design and words',

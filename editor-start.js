@@ -76,7 +76,7 @@
 
     out.push({ key: 'content', title: 'Add speakers, agenda and sponsors',
       text: (st.phone ? 'Speakers, Agenda and Sponsors, in the event’s menu (switch to Myself to see it), open' : 'Speakers, Agenda and Sponsors, in the left bar, open') +
-        ' the event console (marked ↗). The site shows what you add there.',
+        ' the event console (marked ↗). Each shows on the site in its own section; if this design has none for it yet, the site editor adds one the next time it opens (press Save to keep it).',
       state: '', done: false });
 
     out.push({ key: 'form', title: 'Check the registration form',
