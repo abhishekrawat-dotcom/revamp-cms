@@ -146,7 +146,7 @@ check('the contact e-mail placeholder is name@company.com', ED.indexOf('placehol
    (lib/api-seo.js: publicBaseFor, i.e. public-base.js publicSiteBase) */
 var SEOJS = read('edit-event-seo.js'), APISEO = read('functions/lib/api-seo.js');
 check('Settings › URL & SEO uses the same setting', /var base = H\.publicBaseFor\(req, ''\);\s*var ownUrl = base \+ H\.publicPathOf\(eventId\);/.test(APISEO) &&
-  /'<span class="num">' \+ esc\(a\.url\) \+ '<\/span>/.test(SEOJS) && !/etoneworld|economictimes\.indiatimes\.com\/e\//.test(SEOJS));
+  /<span class="num">' \+ esc\(a\.url\) \+ '<\/span>/.test(SEOJS) && !/etoneworld|economictimes\.indiatimes\.com\/e\//.test(SEOJS));
 
 /* Create Event */
 var CE = read('create-event.html');

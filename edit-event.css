@@ -1676,14 +1676,6 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo-v .inp{ max-width:520px; }
 .seo-short{ max-width:180px !important; }
 .seo-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.seo-chips{ display:flex; flex-wrap:wrap; gap:6px; min-height:30px; align-items:center; }
-.seo-chip{ display:inline-flex; align-items:center; gap:4px; padding:3px 4px 3px 10px; border-radius:999px; background: var(--surface-2);
-  border:1px solid var(--border); font-size:12.5px; font-weight:600; }
-.seo-chip button{ border:0; background:transparent; color: var(--text-muted); cursor:pointer; font-size:15px; line-height:1; width:24px; height:24px; border-radius:50%; }
-.seo-chip button:hover, .seo-chip button:focus-visible{ background: var(--surface-3); color: var(--text); }
-.seo-kw-add{ display:flex; gap:8px; margin-top:8px; }
-.seo-kw-add .inp{ max-width:360px; }
-.seo-ref{ color: var(--text); }
 .seo-switch{ margin-bottom:12px; }
 .seo-switch .tgl:disabled{ opacity:.55; cursor:not-allowed; }
 .seo-off{ opacity:.55; }
@@ -1736,7 +1728,6 @@ a.ev-chip:hover{ border-color: currentColor; }
   .seo-v .inp, .seo-kw-add .inp{ max-width:none; }
   .seo-field .flabel-row .seo-sp{ flex-basis:100%; height:0; }
   .seo-ai-one, .seo-list .badge{ min-height:36px; }
-  .seo-chip button{ width:32px; height:32px; }
   .seo-list li{ flex-wrap:wrap; }
   .seo-list li label{ flex-basis:calc(100% - 40px); }
 }
@@ -1878,3 +1869,54 @@ a.ev-chip:hover{ border-color: currentColor; }
 .st-table .st-tag{ font-size:11.5px; color: var(--accent-strong); font-weight:600; white-space:nowrap; }
 .st-table tr.st-skip td{ color: var(--text-faint); }
 @media (max-width: 640px){ .st-list{ grid-template-columns:1fr; } .st-src .btn{ flex:1 1 auto; justify-content:center; min-height:40px; } .st-table .st-tag{ white-space:normal; } }
+
+/* seo2: search — Settings › URL & SEO, the "Google result" panel (edit-event-seo.js searchHtml). Four fields, each a
+   label with a small muted counter at its right, the field, and at most one muted line under it saying where the value
+   comes from; then, below one hairline, the main web address, Show in Google and the short link. No badges, and no box
+   inside the panel but the search words' own field. Console tokens only, so light and dark both follow. */
+.seo2-acts{ display:flex; gap:8px; flex-wrap:wrap; }
+.seo2-search{ display:flex; flex-direction:column; gap:16px; }
+.seo2-field{ display:flex; flex-direction:column; min-width:0; }
+.seo2-head{ display:flex; align-items:baseline; justify-content:space-between; gap:4px 12px; flex-wrap:wrap; margin-bottom:6px; }
+.seo2-head label, .seo2-label{ font-size:13px; font-weight:600; color: var(--text); }
+.seo2-aside{ font-weight:400; color: var(--text-muted); }
+.seo2-search .ctr{ font-family: var(--font-body); font-size:12px; font-weight:500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.seo2-search .ctr.warn{ color: var(--text-faint); }
+.seo2-search .ctr.over{ color: var(--warn); }
+.seo2-note{ margin:6px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere; }
+.seo2-note[hidden]{ display:none; }
+.seo2-warn{ color: var(--warn); }
+.seo2-warn svg{ vertical-align:-2px; }
+/* a small text button: Suggest again, Add, Use another address */
+.seo2-link{ background:none; border:0; padding:0; font:inherit; font-weight:600; color: var(--text); cursor:pointer; white-space:nowrap;
+  text-decoration:underline; text-decoration-color: var(--border); text-underline-offset:3px; }
+.seo2-link:hover{ text-decoration-color: currentColor; }
+.seo2-link:disabled{ opacity:.5; cursor:not-allowed; text-decoration-color: var(--border); }
+.seo2-link:focus-visible, .seo2-search .tgl:focus-visible{ outline:2px solid var(--text-muted); outline-offset:3px; border-radius:4px; }
+/* search words: the words and the line to add one, drawn as one field */
+.seo2-kw{ border:1px solid var(--border); border-radius:8px; background: var(--surface); padding:5px 6px; transition: border-color .14s, box-shadow .14s; }
+.seo2-kw:focus-within{ border-color: var(--text-muted); box-shadow: 0 0 0 3px var(--surface-3); }
+.seo2-chips{ list-style:none; margin:0 0 3px; padding:0; display:flex; flex-wrap:wrap; gap:6px; }
+.seo2-chip{ display:inline-flex; align-items:center; gap:2px; padding:2px 2px 2px 9px; border-radius:6px; background: var(--surface-2); font-size:13px; color: var(--text); max-width:100%; overflow-wrap:anywhere; }
+.seo2-chip button{ flex-shrink:0; border:0; background:transparent; color: var(--text-faint); cursor:pointer; font-size:15px; line-height:1; width:24px; height:24px; border-radius:5px; }
+.seo2-chip button:hover, .seo2-chip button:focus-visible{ background: var(--surface-3); color: var(--text); }
+.seo2-kw-add{ display:flex; align-items:center; gap:10px; padding:0 6px 0 5px; }
+.seo2-kw-in{ flex:1; min-width:0; border:0; outline:none; background:transparent; height:28px; padding:0; font-size:13.5px; color: var(--text); }
+.seo2-kw-in::placeholder{ color: var(--text-faint); }
+.seo2-kw-in:disabled{ cursor:not-allowed; }
+/* the main web address, Show in Google and the short link: a second group, 24px down, under one hairline */
+.seo2-group{ display:flex; flex-direction:column; gap:16px; margin-top:8px; padding-top:20px; border-top:1px solid var(--border); }
+.seo2-group > .seo2-note{ margin:0; }
+.seo2-row{ display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; min-width:0; font-size:13px; }
+.seo2-row .inp{ flex:1 1 280px; max-width:520px; }
+.seo2-row .num{ color: var(--text-muted); overflow-wrap:anywhere; min-width:0; }
+.seo2-search .tgl{ align-self:flex-start; font-size:13px; font-weight:600; color: var(--text); }
+.seo2-search .tgl[aria-pressed="true"]{ color: var(--text); }
+@media (max-width: 720px){
+  .seo2-acts{ width:100%; }
+  .seo2-acts .btn{ flex:1 1 auto; }
+  .seo2-link{ min-height:32px; }
+  .seo2-chip button{ width:32px; height:32px; }
+  .seo2-kw-in{ height:38px; }
+  .seo2-search .tgl{ min-height:40px; }
+}
