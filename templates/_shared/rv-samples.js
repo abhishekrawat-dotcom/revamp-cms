@@ -18,8 +18,12 @@
 
    WHO READS IT
      functions/lib/site-checks.js samplesOf / sampleHits: the check before publishing, on HTML read as tokens;
-     editor-template-ui.js settleSamples: the site editor, on the page itself — what it outlines in amber, counts and
-     brings into view with "Show next" is exactly what the check lists, and nothing else (NEW-3).
+     editor-template-ui.js markTemplateSamples: the site editor, on the page itself — what it outlines in amber, counts
+     and brings into view with "Show next" is exactly what the check lists, and nothing else (NEW-3).
+   Both read the page as visitors get it: the check reads it as served (lib/api.js servedSampleHits), where an event's
+   banner video with a still of its own puts that still in the banner picture's place, and the editor leaves out the
+   banner picture under such a still (templates/_shared/rv-hero-video-core.js pictureUnderStill) — no visitor sees it
+   (A1-01).
 
    A tree is read through an adapter, one for tokens and one for the page:
      A.kids(n)        the nodes in n (elements and text), in order; n may be the root (a document, a fragment)

@@ -388,7 +388,9 @@ function placeholderHits(html, kit) {
    same, listed apart (instructions), so the check can say what it is.
    And the banner's picture behind its words (img[data-rv-media="bg-image"], NEW-4): the four real templates keep their
    own while the event has no banner (template.json's hero rule, "empty": "keep") — the stage of the event the design
-   was made for, "#ET MAKING" — so it is one of srcs, and a hit on it is said plainly (banner, say).
+   was made for, "#ET MAKING" — so it is one of srcs, and a hit on it is said plainly (banner, say). The check reads
+   the page as visitors get it (lib/api.js servedSampleHits): an event's banner video with a still of its own puts
+   that still in the picture's place, and the picture under it is then seen by no one (A1-01).
    -> wholes: [{ tag, cls, text, parts? }], instructions: [text] */
 /* the page's tokens as a tree for the samples' rule: a node is a token's index, -1 the page itself */
 function tokenTree(s, kit) {

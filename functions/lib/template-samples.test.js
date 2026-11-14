@@ -262,10 +262,88 @@ if (DOM_TREE) {
     ok(s && s.level === 'block' && s.lines.indexOf('The banner still shows the design’s sample picture, from another event — replace it') !== -1 &&
       s.fix[0].label === '“Banner” in the site editor' && /&section=banner$/.test(s.fix[0].href), '6 NEW-4 the check before publishing holds the site back for it, in plain words, with a link to the banner', s);
   }, function (err) { ok(false, '6 the site check ran', err && err.stack); });
+
+  /* A1-01: the event's banner video with a still of its own. Visitors get the still in the banner picture's place
+     (api.js applyHeroVideo), so the design's picture under it is no sample: the check reads the page as served
+     (servedSampleHits) and the editor leaves it out of its outline, count and "Show next" by the same rule
+     (rv-hero-video-core.js pictureUnderStill). Without a still, that picture is the video's still: it stays one. */
+  var HVC = require('../../templates/_shared/rv-hero-video-core.js');
+  var VIDEO = { enabled: true, url: 'https://storage.googleapis.com/b/events/qa-x/media/loop.mp4', contentType: 'video/mp4',
+    posterUrl: 'https://storage.googleapis.com/b/events/qa-x/media/still.jpg', overlay: { mode: 'auto' }, updatedAt: '2026-11-14T10:00:00.000Z' };
+  var NO_STILL = Object.assign({}, VIDEO, { posterUrl: '' }), VIDEO_OFF = Object.assign({}, VIDEO, { enabled: false });
+  function isBanner(h) { return h.banner; }
+  function servedHits(id, html, hv) { return api._testHooks.servedSampleHits(html, { site: { templateId: id }, heroVideo: hv }, kit); }
+  function hitCount(list) { return list.reduce(function (n, h) { return n + h.count; }, 0); }
+  /* the editor's own marking, run as it is (editor-template-ui.js, from SAMPLE_LEFT to samplesLeft, and heroVideoChanged)
+     on a small DOM of the page, the canvas's untouched copies of the sections as its library */
+  function fnText(name) {
+    var i = UI.indexOf('  function ' + name + '('), open = UI.indexOf('{', i), depth = 0;
+    for (var j = open; i !== -1 && j < UI.length; j++) {
+      if (UI[j] === '{') depth++;
+      else if (UI[j] === '}' && --depth === 0) return UI.slice(i, j + 1);
+    }
+    return '';
+  }
+  var MARK_SRC = UI.slice(UI.indexOf('  var SAMPLE_LEFT = '), UI.indexOf('  var sampleCursor = -1;'));
+  ok(/function markTemplateSamples\(\)/.test(MARK_SRC) && /function samplesLeft\(\)/.test(MARK_SRC) && /function bannerUnderStill\(doc\)/.test(MARK_SRC) &&
+    /markTemplateSamples\(\);/.test(fnText('heroVideoChanged')), '6 A1-01 the editor\'s marking and its banner-video change, read from its source');
+  function editorOn(id, html, hv) {
+    var doc = domOf(html), box = {
+      window: { RevampSamples: RS, RevampHeroVideoCore: HVC }, RevampSamples: RS, templateId: id, heroVideo: hv || null, remounting: false, changeListeners: [],
+      editorWords: { placeholderLeft: function () { return true; } }, console: console,
+      canvas: { doc: doc, pictureOf: function () { return ''; }, library: function () { return tpl(id).sections.map(function (s) { return { id: s.id, html: onPage(id, s.id) }; }); } }
+    };
+    vm.runInNewContext(MARK_SRC + fnText('drawHeroVideo') + '\n' + fnText('heroVideoChanged') +
+      '\nthis.ed = { mark: markTemplateSamples, left: samplesLeft, changed: heroVideoChanged, listen: function (fn) { changeListeners.push(fn); } };', box);
+    var ed = box.ed;
+    ed.doc = doc;
+    ed.bannerMark = function () { var img = doc.querySelector('img.banner-bg-image'); return img ? img.getAttribute('data-rv-sample-left') : null; };
+    return ed;
+  }
+  TEMPLATES.forEach(function (id) {
+    var whole = page(tpl(id).sections.map(function (s) { return onPage(id, s.id); }).join(''));
+    var still = servedHits(id, whole, VIDEO), none = servedHits(id, whole, null), noStill = servedHits(id, whole, NO_STILL), off = servedHits(id, whole, VIDEO_OFF);
+    ok(!still.some(isBanner) && none.some(isBanner) && noStill.some(isBanner) && off.some(isBanner),
+      '6 A1-01 ' + id + ': the check lists the banner\'s sample picture unless the banner video has a still of its own (no video, a video without a still, a video switched off: listed)',
+      { still: still.filter(isBanner).length, none: none.filter(isBanner).length, noStill: noStill.filter(isBanner).length, off: off.filter(isBanner).length });
+    ok(hitCount(still) === hitCount(none) - 1 && JSON.stringify(still.map(function (h) { return h.text; })) === JSON.stringify(none.filter(function (h) { return !h.banner; }).map(function (h) { return h.text; })),
+      '6 A1-01 ' + id + ': … and the still changes nothing else the check lists', { still: hitCount(still), none: hitCount(none) });
+    [[VIDEO, still, 'a still of its own'], [NO_STILL, noStill, 'no still'], [null, none, 'no video']].forEach(function (c) {
+      var ed = editorOn(id, whole, c[0]), marked = ed.mark(), left = ed.left();
+      ok(marked === hitCount(c[1]) && ed.bannerMark() === (c[0] === VIDEO ? null : 'banner') && left.banner === (c[0] === VIDEO ? 0 : 1) && left.total === marked,
+        '6 A1-01 ' + id + ' (' + c[2] + '): the editor outlines and counts exactly what the check lists, the banner\'s picture with it or not',
+        { marked: marked, check: hitCount(c[1]), banner: ed.bannerMark(), left: left });
+    });
+    /* the video or its still changed in Design › Banner video: outlined again, or no longer, before the line above the
+       page and the first steps count them (they listen to the change) */
+    var ed = editorOn(id, whole, VIDEO), heard = [];
+    ed.mark();
+    ed.listen(function () { heard.push(ed.left().banner); });
+    ed.changed(NO_STILL);
+    var afterNoStill = ed.bannerMark();
+    ed.changed(VIDEO);
+    var afterStill = ed.bannerMark();
+    ed.changed(null);
+    ok(afterNoStill === 'banner' && afterStill === null && ed.bannerMark() === 'banner' && heard.join() === '1,0,1',
+      '6 A1-01 ' + id + ': taking the still away outlines the banner\'s picture again, giving one back takes the outline off, and the count is told after', { afterNoStill: afterNoStill, afterStill: afterStill, heard: heard });
+  });
+  /* the page has no banner video layer (an edit took it out): nothing is served over the picture, so it stays one */
+  var noLayer = page(onPage('making-ai-work', 'banner').replace(/<div class="bnr-bg-video" data-rv-media="bg-video"><\/div>/, ''));
+  ok(noLayer.indexOf('bnr-bg-video') === -1 && servedHits('making-ai-work', noLayer, VIDEO).some(isBanner) && editorOn('making-ai-work', noLayer, VIDEO).mark() === 1,
+    '6 A1-01 a banner with no place for the video keeps its picture, and the check and the editor still count it');
+  pending6b = Promise.all([
+    api._testHooks.siteCheckOf(null, 'qa-n', { name: 'N', site: { templateId: 'making-ai-work' }, heroVideo: VIDEO }, page(onPage('making-ai-work', 'banner')), {}),
+    api._testHooks.siteCheckOf(null, 'qa-n', { name: 'N', site: { templateId: 'making-ai-work' }, heroVideo: NO_STILL }, page(onPage('making-ai-work', 'banner')), {})
+  ]).then(function (r) {
+    var withStill = r[0].items.filter(function (x) { return x.code === 'samples'; })[0], without = r[1].items.filter(function (x) { return x.code === 'samples'; })[0];
+    ok(!withStill, '6 A1-01 the check before publishing does not hold a site back for a banner picture its video\'s still covers', r[0].items);
+    ok(without && without.level === 'block' && without.lines[0] === 'The banner still shows the design’s sample picture, from another event — replace it',
+      '6 A1-01 … and still does when the video has no still of its own (the picture is its still)', without);
+  }, function (err) { ok(false, '6 A1-01 the site check ran', err && err.stack); });
 }
 
-var pending4, pending6;
-Promise.all([pending4, pending6]).then(function () {
+var pending4, pending6, pending6b;
+Promise.all([pending4, pending6, pending6b]).then(function () {
   if (failures.length) {
     console.error('template-samples: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
     process.exit(1);

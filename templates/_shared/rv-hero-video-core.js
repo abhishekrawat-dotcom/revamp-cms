@@ -35,6 +35,8 @@
                                                          the opacity text stays readable at
      clean(raw) -> heroVideo | null                      a stored value as a page may use it, or null
      looksAt(html) -> { host: 'banner'|'hero'|'none', tone, scrim }   from a page's markup
+     pictureUnderStill(doc, raw) -> <img> | null         the banner picture no visitor sees: the video's own still
+                                                         takes its place as the page is served (the site editor)
      videoTag(hv, cls) -> '<video …></video>'            lazy: preload="none", the address in data-rv-src
      heroLayer(hv) -> html                               the AI hero's layer
      toggleCss(ink) -> [css rule]                        the pause button's rules, for a banner of 'dark' or 'light' words
@@ -174,6 +176,19 @@
     return { host: 'none', tone: 'dark', scrim: '' };
   }
 
+  /* The banner picture the video's still takes the place of, on the page as visitors get it (lib/api.js
+     applyHeroVideo): with the event's video on and a still of its own, a page with an ET banner's video layer
+     shows that still in its img.banner-bg-image (the first one), so the picture saved there is seen by no visitor.
+     The site editor reads its canvas with this, as the check before publishing reads the page as served: the
+     design's own banner picture under the still is not a sample left on the page (A1-01). Without a still, that
+     picture is the video's still, and stays one. doc: a document -> that <img>, or null */
+  function pictureUnderStill(doc, raw) {
+    var hv = clean(raw);
+    if (!hv || !hv.posterUrl || !doc || typeof doc.querySelector !== 'function') return null;
+    if (!doc.querySelector('[data-rv-media="bg-video"], .bnr-bg-video')) return null;
+    return doc.querySelector('img.banner-bg-image');
+  }
+
   /* An AI hero's tone is what its words ARE: an AI edit can restyle them (BWS: dark words on a white veil in a
      hero still classed hero-on-dark), and an overlay of the wrong tone would make them unreadable. In order:
      the colour its own stylesheet gives the headline (else the hero itself), the tone its logo unit was drawn
@@ -299,6 +314,6 @@
   return {
     LIMITS: LIMITS, TYPES: TYPES, AUTO: AUTO,
     parseColour: parseColour, hexOf: hexOf, luminance: lum, contrast: contrast, minOpacity: minOpacity, inkFor: inkFor, overlayFor: overlayFor,
-    clean: clean, looksAt: looksAt, videoTag: videoTag, heroLayer: heroLayer, toggleCss: toggleCss, pageCss: pageCss, editorLayer: editorLayer, editorBadge: editorBadge, editorCss: editorCss
+    clean: clean, looksAt: looksAt, pictureUnderStill: pictureUnderStill, videoTag: videoTag, heroLayer: heroLayer, toggleCss: toggleCss, pageCss: pageCss, editorLayer: editorLayer, editorBadge: editorBadge, editorCss: editorCss
   };
 });

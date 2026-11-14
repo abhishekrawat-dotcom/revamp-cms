@@ -6051,6 +6051,16 @@ function templateSamples(templateId) {
     return samples;
   } catch (e) { return none; }
 }
+/* The design's samples still on a page as visitors get it (siteCheckOf, alreadyLiveTest): the event's banner video goes
+   on as the page is served (applyHeroVideo), and with a still of its own that still takes the place of the banner's
+   picture, so the design's own picture saved under it is seen by no one and holds nothing back (A1-01). The site
+   editor outlines and counts by the same rule (rv-hero-video-core.js pictureUnderStill). Without a still, the banner's
+   picture is the video's still, and stays a sample. -> siteChecks.sampleHits */
+function servedSampleHits(page, data, kit) {
+  var samples = templateSamples((data && data.site && data.site.templateId) || (data && data.templateId) || '');
+  if (!samples.texts.length && !samples.srcs.length && !samples.wholes.length) return [];
+  return siteChecks.sampleHits(applyHeroVideo(page, data), kit, samples);
+}
 
 /* The names the site editor lists a site's sections by (NU-002), so the site check, the publish window and the
    console say "Questions this raises", "Who should attend", "Manifesto" — never a section's id in words ("Who enter",
@@ -6156,7 +6166,7 @@ function siteCheckOf(fb, eventId, data, html, opts) {
     return [];
   }) : Promise.resolve([]);
 
-  var hits = siteChecks.sampleHits(page, kit, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
+  var hits = servedSampleHits(page, data, kit);
   /* the design's own notes of what belongs there, apart from another event's words (NU-023) */
   var samples = hits.filter(function (h) { return !h.instruction; }), notes = hits.filter(function (h) { return h.instruction; });
   var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
@@ -6283,8 +6293,7 @@ function alreadyLiveTest(livePage, data) {
   livePage = String(livePage);
   var ins = siteChecks.inspect(livePage, TOKEN_KIT);
   var texts = ins.placeholders.map(function (h) { return h.text; });
-  var samples = siteChecks.sampleHits(livePage, TOKEN_KIT, templateSamples((data && data.site && data.site.templateId) || (data && data.templateId) || ''))
-    .map(function (h) { return (h.picture ? 'picture:' : 'text:') + h.text; });
+  var samples = servedSampleHits(livePage, data, TOKEN_KIT).map(function (h) { return (h.picture ? 'picture:' : 'text:') + h.text; });
   var urls = siteChecks.storageRefs(livePage).map(function (r) { return r.url; });
   var logos = ins.logos.map(function (l) { return l.where + ' ' + l.src; });
   return {
@@ -8122,7 +8131,7 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
-  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, sectionNamesFor: sectionNamesFor, templateSamples: templateSamples, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
+  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, sectionNamesFor: sectionNamesFor, templateSamples: templateSamples, servedSampleHits: servedSampleHits, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
   replaceSiteSection: replaceSiteSection, etChromeFor: etChromeFor, searchVerdicts: searchVerdicts, handleSitemapXml: handleSitemapXml, handleSiteRepair: handleSiteRepair, handleSiteCheck: handleSiteCheck,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, rasterise, yearCutColour, yearFont,

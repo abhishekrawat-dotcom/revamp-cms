@@ -210,6 +210,31 @@ ok(noStill.indexOf('background-image:none') === -1 && noStill.indexOf('rel="prel
 var IMPORTED = '<!DOCTYPE html><html><head></head><body><div class="hero"><video autoplay src="/__l5e/film.mp4"></video></div></body></html>';
 ok(hooks.applyHeroVideo(IMPORTED, { heroVideo: HV }) === IMPORTED, 'an imported design is served as it is (the console says it has no place for one)');
 
+/* the banner picture no visitor sees (A1-01): pictureUnderStill names, on a page as the site editor holds it, exactly the
+   picture applyHeroVideo gives the video's still to — on each real template's own banner */
+(function () {
+  var fs = require('fs'), path = require('path'), miniDom = require('./mini-dom'), parseDocument = require('htmlparser2').parseDocument;
+  function domOf(html) { return miniDom.wrapDocument(parseDocument(html)); }
+  /* the src the served page's banner picture has (the first img.banner-bg-image), or '' */
+  function servedSrc(html, hv) {
+    var img = domOf(hooks.applyHeroVideo(html, { heroVideo: hv })).querySelector('img.banner-bg-image');
+    return img ? img.getAttribute('src') : '';
+  }
+  var NO_STILL = Object.assign({}, HV, { posterUrl: '' }), OFF = Object.assign({}, HV, { enabled: false });
+  ['tech500', 'making-ai-work', 'cx-leaders-forum', 'retail-leadership-summit'].forEach(function (id) {
+    var section = fs.readFileSync(path.join(__dirname, '..', '..', 'templates', id, 'sections', 'banner', 'index.html'), 'utf8');
+    var html = '<!DOCTYPE html><html><head><title>t</title></head><body>' + section + '</body></html>', doc = domOf(html);
+    var own = doc.querySelector('img.banner-bg-image').getAttribute('src');
+    ok(core.pictureUnderStill(doc, HV) === doc.querySelector('img.banner-bg-image') && servedSrc(html, HV) === HV.posterUrl,
+      id + ': with a still of its own, the banner picture is the one the served page gives the still to', servedSrc(html, HV));
+    ok(core.pictureUnderStill(doc, NO_STILL) === null && servedSrc(html, NO_STILL) === own, id + ': without a still, none (visitors see the banner picture: it is the video\'s still)');
+    ok(core.pictureUnderStill(doc, OFF) === null && core.pictureUnderStill(doc, null) === null && servedSrc(html, OFF) === own, id + ': with the video off or none, none');
+    var noLayer = html.replace(/<div class="bnr-bg-video"[^>]*><\/div>/, '');
+    ok(noLayer !== html && core.pictureUnderStill(domOf(noLayer), HV) === null && servedSrc(noLayer, HV) === own, id + ': a banner without the video layer takes no video, so none');
+  });
+  ok(core.pictureUnderStill(null, HV) === null && core.pictureUnderStill({}, HV) === null, 'no page, nothing');
+})();
+
 ok(hooks.heroVideoStamp({ heroVideo: HV }) !== hooks.heroVideoStamp({}) && hooks.heroVideoStamp({ heroVideo: HV }) !== hooks.heroVideoStamp({ heroVideo: Object.assign({}, HV, { updatedAt: 'later' }) }),
   'a change to the video is a new page in the server\'s page cache');
 

@@ -412,6 +412,33 @@ pending.push(ndcsFirst.then(function () { return hooks.siteCheckGate(GATE_FB, 'n
 pending.push(ndcsFirst.then(function () { return hooks.siteCheckGate(GATE_FB, 'ndcs3', Object.assign({}, DATA, { published: false }), NDCS_FIXED, 'owner', null).then(function () {
   ok(false, 'a site that is not live yet is still held back by its template text');
 }, function (err) { ok(err && err.status === 409 && /“Sponsor 1”/.test(err.message), 'a site that is not live yet is still held back by its template text', err && err.message); }); }));
+/* A1-01: the gate checks the page as visitors get it. A real template's banner picture (the design's own, another event's
+   stage) under the event's banner video with a still of its own is seen by no one — the still takes its place as the page
+   is served — so it holds nothing back; with no still the picture is the video's still, and it does, as before (NEW-4) */
+(function () {
+  var file = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'templates', 'making-ai-work', 'sections', 'banner', 'index.html'), 'utf8');
+  var MAW = page(file.replace(/<section\b/, '<section data-rv-section="banner" data-rv-key="banner"'));
+  var LOOP = { enabled: true, url: 'https://storage.googleapis.com/revamp-cms.firebasestorage.app/events/qa-v/media/loop.mp4', contentType: 'video/mp4',
+    posterUrl: 'https://storage.googleapis.com/revamp-cms.firebasestorage.app/events/qa-v/media/still.jpg', overlay: { mode: 'auto' } };
+  var EV = { name: 'HR Tech Summit 2027', site: { templateId: 'making-ai-work' }, published: false };
+  var SAY = 'The banner still shows the design’s sample picture, from another event — replace it';
+  pending.push(hooks.siteCheckGate(fakeFb({}), 'qa-v', Object.assign({}, EV, { heroVideo: LOOP }), MAW, 'owner', null).then(function (check) {
+    ok(!check.blocking && !check.items.some(function (x) { return x.code === 'samples'; }), 'A1-01 the gate lets a site go live whose banner picture its video\'s own still covers', check.items);
+  }, function (err) { ok(false, 'A1-01 the gate lets a site go live whose banner picture its video\'s own still covers', err && err.message); }));
+  [['no still', Object.assign({}, LOOP, { posterUrl: '' })], ['the video off', Object.assign({}, LOOP, { enabled: false })], ['no video', null]].forEach(function (c) {
+    pending.push(hooks.siteCheckGate(fakeFb({}), 'qa-v', Object.assign({}, EV, { heroVideo: c[1] }), MAW, 'owner', null).then(function () {
+      ok(false, 'A1-01 with ' + c[0] + ', the banner\'s sample picture still holds the site back');
+    }, function (err) {
+      var item = err && err.body && (err.body.checks || []).filter(function (x) { return x.code === 'samples'; })[0];
+      ok(err && err.status === 409 && item && item.level === 'block' && item.lines[0] === SAY, 'A1-01 with ' + c[0] + ', the banner\'s sample picture still holds the site back', err && (err.body || err.message));
+    }));
+  });
+  /* a live site: the live page shows the sample (no video then), the next version is checked with the video's still on */
+  var LIVE = fakeFb({ 'events/qa-v2/site/versions/3/page.html': MAW });
+  pending.push(hooks.siteCheckOf(LIVE, 'qa-v2', Object.assign({}, EV, { published: true, publishedVersion: 3, heroVideo: LOOP }), MAW, { livePage: MAW }).then(function (r) {
+    ok(!r.blocking && !r.items.some(function (x) { return x.code === 'samples'; }), 'A1-01 … the live page is read as served too: nothing about the banner picture, held back or already live', r.items);
+  }));
+})();
 
 /* ---------- 8c. a heading two sections share (UX-155: Agentic's "Not more AI. Better AI." twice in a row) ---------- */
 var AGENTIC_TWICE = page('<header data-rv-section="nav" id="nav"><h2>Agentic Summit</h2></header>' +

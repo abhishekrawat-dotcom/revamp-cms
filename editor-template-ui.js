@@ -189,7 +189,9 @@
      background" badge on the canvas's banner. Like a form's preview it is the editor's own (data-rv-editor, never
      saved, never in a snapshot), so drawing it again after every change records nothing; nothing plays while
      editing. heroVideoChanged(hv) is called by the Design panel after each save: the canvas and the "Edit with
-     AI" live view (which asks the server, where the video is put on the page) show it at once. */
+     AI" live view (which asks the server, where the video is put on the page) show it at once. A still of the
+     video's own hides the banner's picture from every visitor, so the design's sample picture there stops being
+     outlined and counted, and is again once the still or the video is gone (markTemplateSamples, A1-01). */
   var heroVideo = null;
   function drawHeroVideo() {
     if (!canvas || remounting || !window.RevampHeroVideoUI) return;
@@ -198,6 +200,8 @@
   function heroVideoChanged(hv) {
     heroVideo = hv || null;
     drawHeroVideo();
+    // before the line above the page and the first steps count them again (editor-start.js listens)
+    if (canvas && canvas.doc && !remounting) markTemplateSamples();
     changeListeners.forEach(function (fn) { try { fn(); } catch (err) { if (window.console) console.error(err); } });
   }
   /* the event's forms changed (made, edited, deleted — in the Forms panel or by the AI): the live view of
@@ -3211,7 +3215,7 @@
      one step that Undo takes back. Only its src changes (canvas.setPicture: srcset and sizes, made for the old
      picture, go); its class, fetchpriority="high" and loading="eager" stay, so it still loads first, and publishing
      still gives it its WebP copy and its preload (functions/lib/pictures.js). With a banner video it is the video's
-     still, as before. */
+     still, as before — unless the video has a still of its own, which takes its place as the page is served. */
   function bannerImg(sec) { return canvas && canvas.backgroundImg ? canvas.backgroundImg(sec) : null; }
   function replaceBannerPicture(img) {
     if (!img || !img.isConnected) return;
@@ -4350,6 +4354,10 @@
      counted, and brought into view by "Show next" — every piece the check lists, by its content, whichever road changed
      the page (typing, ETB2B AI, a paste, Undo), and nothing the check does not list: one line of a two-line heading
      rewritten leaves the other line outlined, as the check still names it (NU-034).
+     The banner's picture under the event's banner video, when the video has a still of its own, is no sample: visitors
+     get the still in its place, and the check reads the page as served (lib/api.js servedSampleHits). It is left out
+     here by the same rule (rv-hero-video-core.js pictureUnderStill), and outlined again once the video or its still is
+     gone (heroVideoChanged) — then it is the video's still too (A1-01).
      The mark is the editor's own: in no snapshot and never saved (editor-canvas.js), set again whenever the page changes
      (settlePlaceholders, in record(), and pageChanged), so opening, typing or saving never counts as a change because of
      it. The design's samples are read once per canvas from its untouched copies of the sections (canvas.library()), as
@@ -4388,13 +4396,20 @@
     designSamplesOf = canvas; designSamplesKept = out;
     return out;
   }
+  /* the banner picture no visitor sees: the event's banner video has a still of its own, which takes its place */
+  function bannerUnderStill(doc) {
+    var core = window.RevampHeroVideoCore;
+    if (!heroVideo || !core || typeof core.pictureUnderStill !== 'function') return null;
+    try { return core.pictureUnderStill(doc, heroVideo); } catch (err) { return null; }
+  }
   function markTemplateSamples() {
     var doc = canvas && canvas.doc;
     if (!doc || !doc.body) return 0;
     var samples = designSamples(), found = [];
     if (samples) {
+      var underStill = bannerUnderStill(doc);
       RevampSamples.find(doc.body, samples, DOM_TREE, function (h) {
-        if (found.indexOf(h.node) !== -1) return;
+        if (found.indexOf(h.node) !== -1 || (h.banner && h.node === underStill)) return;
         found.push(h.node);
         var kind = h.banner ? 'banner' : h.picture ? 'picture' : '';
         if (h.node.getAttribute(SAMPLE_LEFT) !== kind) h.node.setAttribute(SAMPLE_LEFT, kind);

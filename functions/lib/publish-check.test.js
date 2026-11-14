@@ -179,6 +179,51 @@ check('5 NU-010 a refusal for what the check holds back shows its list', /if \(e
   check('6 NEW-7 ES5 only', !/=>|\blet\s|\bconst\s|`/.test(gateSrc));
 })();
 
+/* ---------- 7. A1-01: the site editor's question before sending, with the event's banner video ----------
+   placeholderGate run as it is (editor-template-ui.js, with what it counts: SAMPLE_LEFT … samplesLeft, and editorWords) on
+   the Dark keynote design's own page. The banner's sample picture under the video's own still is seen by no visitor, and
+   the server's check does not list it, so the question does not name it; without a still it is the video's still, and
+   the question names it, as the check does. */
+(function () {
+  var RS = require('../../templates/_shared/rv-samples.js'), HVC = require('../../templates/_shared/rv-hero-video-core.js');
+  var miniDom = require('./mini-dom'), parseDocument = require('htmlparser2').parseDocument;
+  function fnText(name) {
+    var i = EDITOR.indexOf('  function ' + name + '('), open = EDITOR.indexOf('{', i), depth = 0;
+    for (var j = open; i !== -1 && j < EDITOR.length; j++) {
+      if (EDITOR[j] === '{') depth++;
+      else if (EDITOR[j] === '}' && --depth === 0) return EDITOR.slice(i, j + 1);
+    }
+    return '';
+  }
+  var TPL = JSON.parse(read('templates/making-ai-work/template.json'));
+  function onPage(id) { return read('templates/making-ai-work/sections/' + id + '/index.html').replace(/<section\b/, '<section data-rv-section="' + id + '" data-rv-key="' + id + '"'); }
+  var PAGE = '<!DOCTYPE html><html><head><title>x</title></head><body>' + TPL.sections.map(function (s) { return onPage(s.id); }).join('') + '</body></html>';
+  var MARK = EDITOR.slice(EDITOR.indexOf('  var SAMPLE_LEFT = '), EDITOR.indexOf('  var sampleCursor = -1;'));
+  var WORDS = EDITOR.slice(EDITOR.indexOf('  var editorWords = (function () {'), EDITOR.indexOf('  /* editorWords:end */'));
+  var GATE = fnText('placeholderGate');
+  check('7 A1-01 the editor\'s question and what it counts, read from its source', /function bannerUnderStill\(doc\)/.test(MARK) && /placeholderAsk:/.test(WORDS) && /settlePlaceholders\(\);/.test(GATE));
+  var VIDEO = { enabled: true, url: 'https://storage.googleapis.com/b/events/qa-x/media/loop.mp4', contentType: 'video/mp4',
+    posterUrl: 'https://storage.googleapis.com/b/events/qa-x/media/still.jpg', overlay: { mode: 'auto' } };
+  function askedWith(hv) {
+    var asked = null, box = {
+      window: { RevampSamples: RS, RevampHeroVideoCore: HVC }, RevampSamples: RS, templateId: 'making-ai-work', heroVideo: hv, remounting: false, console: console,
+      canvas: { doc: miniDom.wrapDocument(parseDocument(PAGE)), pictureOf: function () { return ''; },
+        library: function () { return TPL.sections.map(function (s) { return { id: s.id, html: onPage(s.id) }; }); } },
+      document: { getElementById: function (id) { return id === 'btn-publish' ? { textContent: 'Send for approval…' } : null; } },
+      flush: function () {}, ask: function (o) { asked = o; return { then: function () {} }; }
+    };
+    vm.runInNewContext(WORDS + MARK + GATE + '\nthis.gate = placeholderGate;', box);
+    return { held: box.gate(function () {}), title: asked && asked.title, text: asked && asked.text };
+  }
+  var still = askedWith(VIDEO), noStill = askedWith(Object.assign({}, VIDEO, { posterUrl: '' })), none = askedWith(null);
+  check('7 A1-01 with the video\'s own still, the question names only the sample words: the banner\'s picture under it is seen by no one',
+    still.held && /^\d+ placeholder texts are still on the page$/.test(still.title) && !/sample picture/.test(still.text), still);
+  check('7 A1-01 without a still, the banner\'s picture is the video\'s still: the question names it, as the check does',
+    noStill.held && /^\d+ placeholder texts and 1 sample picture are still on the page$/.test(noStill.title) && /The sample picture is from another event: replace it with this event’s own\./.test(noStill.text) &&
+    noStill.title.replace(' and 1 sample picture', '') === still.title, noStill);
+  check('7 A1-01 … and with no banner video, the same', none.title === noStill.title && none.text === noStill.text, none);
+})();
+
 function finish() {
   if (failed) { console.error('publish-check: ' + failed + ' of ' + (failed + passed) + ' checks FAILED'); process.exit(1); }
   console.log('publish-check: all ' + passed + ' checks passed');
