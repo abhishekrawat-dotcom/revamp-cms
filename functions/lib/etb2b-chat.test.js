@@ -2257,6 +2257,57 @@ function fileOf(name, size, t) { return { name: name, size: size || 1000, type: 
   check('C.10 the contrast numbers of the plan (§8 UX-100), on the console\'s palette', Math.round(ratio(KIT_LIGHT['rvc-text-muted'], KIT_LIGHT['rvc-surface']) * 100) / 100 === 6.82 &&
     Math.round(ratio(KIT_DARK['rvc-text-muted'], KIT_DARK['rvc-surface']) * 100) / 100 === 6.97);
 
+  /* ======== K.17 the pill steps aside to its round face over what a page shows (NU-030) ======== */
+  await (async function () {
+    var e = setup({ vw: 1440, vh: 900 });
+    /* what lies under each point of the pill: the launcher itself first, then the page's own top element there */
+    var under = 'background';
+    function pageEl(kind) {
+      var control = kind === 'button', words = kind === 'words';
+      return { tagName: control ? 'BUTTON' : words ? 'P' : 'DIV', nodeType: 1,
+        closest: function (sel) { return control && /button/.test(sel) ? this : null; },
+        firstChild: words ? { nodeType: 3, nodeValue: 'Confirmed speakers, in the order the site lists them.', nextSibling: null } : null };
+    }
+    var points = 0;
+    e.doc.elementsFromPoint = function () { points++; return [mm.$('launcher'), pageEl(under)]; };
+    var mm = mountChat(e, {});
+    mm.$('launcher')._rect = R(1269, 834, 149, 44);
+    var scrollT = e.winLs.filter(function (l) { return l.type === 'scroll' && l.o && l.o.capture && l.o.passive; });
+    check('K.17 every page measures it again after a scroll (capture, passive), a resize and a change to the page', scrollT.length >= 1 &&
+      e.winLs.some(function (l) { return l.type === 'resize'; }) && e.mos.some(function (m) { return m.target === e.doc.body && m.o.subtree === true; }));
+    e.clock.advance(700);
+    check('K.17 over the page\'s empty margin: the pill', !mm.wrap.classList.contains('rvc-tucked') && points > 0 && !mm.$('launcher').hasAttribute('title'));
+    under = 'button';
+    scrollT[0].fn({});
+    e.clock.advance(16);
+    check('K.17 a button under the pill (Create Event\'s "Use this template"): the round face only, its name in its tooltip',
+      mm.wrap.classList.contains('rvc-tucked') && mm.$('launcher').getAttribute('title') === 'Ask ETB2B AI' && mm.$('launcher').getAttribute('aria-label') === 'Ask ETB2B AI');
+    /* tucked, the launcher is 44 px wide: what decides is the place the pill would take, not the round face's */
+    mm.$('launcher')._rect = R(1374, 834, 44, 44);
+    var xs = [];
+    e.doc.elementsFromPoint = function (x) { xs.push(x); return [mm.$('launcher'), pageEl(under)]; };
+    under = 'words';
+    scrollT[0].fn({});
+    e.clock.advance(16);
+    check('K.17 words of the page under it (the console\'s "Order at a glance" card): still the round face', mm.wrap.classList.contains('rvc-tucked'));
+    check('K.17 … looked for across the whole pill\'s place, not only the round face\'s', xs.length && Math.min.apply(null, xs) < 1300, Math.min.apply(null, xs));
+    under = 'background';
+    scrollT[0].fn({});
+    e.clock.advance(16);
+    check('K.17 nothing under it any more: the pill comes back, without its slide-in', !mm.wrap.classList.contains('rvc-tucked') && !mm.$('launcher').hasAttribute('title') &&
+      mm.$('launcher').classList.contains('is-quiet'));
+    /* a phone already has the round face; a page without elementsFromPoint is left as it is */
+    var p = setup({ vw: 390, vh: 844, phone: true });
+    p.doc.elementsFromPoint = function () { return [pm.$('launcher'), pageEl('button')]; };
+    var pm = mountChat(p, {});
+    pm.$('launcher')._rect = R(322, 776, 52, 52);
+    p.clock.advance(700);
+    check('K.17 a phone: never tucked (its launcher is the round face already)', !pm.wrap.classList.contains('rvc-tucked'));
+    var css = fs.readFileSync(path.join(__dirname, '..', '..', 'etb2b-chat.css'), 'utf8');
+    check('K.17 the tucked launcher is round and 44 px, as tall as the pill, so the panel above does not move',
+      /\.rvc\.rvc-tucked \.rvc-launcher\{ width:44px; padding:0; justify-content:center; border-radius:50%; \}/.test(css) && /\.rvc\.rvc-tucked \.rvc-launcher-label\{ display:none; \}/.test(css));
+  })();
+
   if (failed) { console.error('etb2b-chat: ' + failed + ' of ' + (passed + failed) + ' checks FAILED'); process.exit(1); }
   console.log('etb2b-chat: all ' + passed + ' checks passed');
   process.exit(0);
