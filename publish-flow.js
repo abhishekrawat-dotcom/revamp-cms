@@ -20,6 +20,12 @@
    to the place to put it right (the section in the site editor, the console's tab). It is advice: Send and Publish
    never wait for it and are never stopped by it (what blocks is the server's to refuse, as before). Other sites are
    slow to answer, so the list shows what is known at once and fills in (QA_POLLS asks at most).
+   Except what the server would refuse (a 'block': template text, another event's samples…): NU-010 (the first-time-
+   user QA, 14 Nov 2026) found Send still red and pressable while the dialog said "1 thing must be put right", and
+   the refusal came back at the very bottom of a long dialog. Now, once the check says something holds the site back,
+   that list moves to the top, Send (or Publish) is greyed out with the reason beside it, and the red button is "Put
+   it right first", which goes to the first place to put it right (gateOf). A refusal is said at the top of the
+   dialog, and its list is shown there too.
 
    Who approves is named from config/approvals (fetchApproval's approvers): EventSphere sends no e-mail, so the person
    asking is told exactly whom to send the link to, and can copy a ready message (UX-102).
@@ -231,8 +237,11 @@
       : 'Nothing to fix found.';
     if (still) state += ' Still checking ' + still + (still === 1 ? ' link' : ' links') + ' on other sites…';
     var html = items.map(function (x) {
-      var lines = Array.isArray(x.lines) ? x.lines : [];
-      var shown = lines.slice(0, QA_LINES_SHOWN), more = lines.length - shown.length;
+      var lines = Array.isArray(x.lines) ? x.lines.slice() : [];
+      /* the server ends a long list with its own "…and 18 more": counted in, never as one more line */
+      var cut = /^…and (\d+) more$/.exec(lines[lines.length - 1] || ''), extra = cut ? +cut[1] : 0;
+      if (cut) lines.pop();
+      var shown = lines.slice(0, QA_LINES_SHOWN), more = lines.length - shown.length + extra;
       var links = (Array.isArray(x.fix) ? x.fix : []).filter(function (f) { return f && f.href && f.label; }).map(function (f) {
         fixes.push(f);
         return '<a class="rvpf-qa-fix" href="' + esc(f.href) + '" target="_blank" rel="noopener" data-rvpf-fix="' + (fixes.length - 1) + '">' + esc(f.label) + '</a>';
@@ -245,6 +254,20 @@
         '</li>';
     }).join('');
     return { state: state, html: html ? '<ul class="rvpf-qa-list">' + html + '</ul>' : '', fixes: fixes };
+  }
+  /* What the check says about sending at all (NU-010): r as for checksView; direct as there.
+     -> { blocked, count, first (the first place to put it right: a Fix, or null), why (the reason beside the greyed
+     button) }. A check that could not be read blocks nothing: the server checks again as it is sent. Pure. */
+  function gateOf(r, direct) {
+    var items = r && Array.isArray(r.items) ? r.items : [];
+    var block = items.filter(function (x) { return x && x.level === 'block'; });
+    if (!block.length) return { blocked: false, count: 0, first: null, why: '' };
+    var first = null;
+    block.some(function (x) {
+      return (Array.isArray(x.fix) ? x.fix : []).some(function (f) { if (f && f.href && f.label) { first = f; return true; } return false; });
+    });
+    return { blocked: true, count: block.length, first: first,
+      why: (block.length === 1 ? '1 thing' : block.length + ' things') + ' must be put right before it can be ' + (direct ? 'published' : 'sent') + ': see the list at the top.' };
   }
   /* the box the dialogs keep for it, filled by watchChecks */
   function checksBox() {
@@ -279,6 +302,10 @@
     '.rvpf-link input{flex:1;min-width:0;min-height:40px;padding:0 12px;border:1px solid var(--border);border-radius:9px;background:var(--surface-2);color:var(--text);font:inherit;font-size:13px;font-weight:500;text-overflow:ellipsis}',
     '.rvpf-err:empty{display:none}',
     '.rvpf-err{padding:9px 12px;border-radius:9px;border-left:3px solid var(--accent);background:var(--accent-soft);color:var(--text);font-size:13px;font-weight:600}',
+    /* why Send is greyed out (NU-010): a full line above the buttons */
+    '.rvpf-why{flex:1 1 100%;margin:0;font-size:12.5px;color:var(--text-muted)}',
+    '.rvpf-why[hidden],.rvpf-foot [hidden]{display:none}',
+    '.rvpf-box .btn[disabled]{opacity:.55;cursor:not-allowed}',
     '.rvpf-foot{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;align-items:center;padding:12px 20px 16px;border-top:1px solid var(--border)}',
     '.rvpf-foot .grow{flex:1}',
     '.rvpf-box .btn{min-height:40px}',
@@ -350,12 +377,13 @@
     scrim.innerHTML =
       '<div class="rvpf-box" role="dialog" aria-modal="true" aria-labelledby="rvpf-title" tabindex="-1">' +
         '<div class="rvpf-head"><h2 id="rvpf-title">' + esc(spec.title) + '</h2><button type="button" class="rvpf-x" data-rvpf="close" aria-label="Close">×</button></div>' +
-        '<div class="rvpf-body">' + spec.body + '<p class="rvpf-err" role="alert"></p></div>' +
-        '<div class="rvpf-foot">' + (spec.actions || []).map(function (a) {
+        /* a refusal is said at the top, where the person is looking (NU-010) */
+        '<div class="rvpf-body"><p class="rvpf-err" role="alert"></p>' + spec.body + '</div>' +
+        '<div class="rvpf-foot">' + (spec.why ? '<p class="rvpf-why" id="rvpf-why" hidden></p>' : '') + (spec.actions || []).map(function (a) {
           var cls = 'btn ' + (a.kind === 'primary' ? 'btn-primary' : 'btn-secondary');
           return (a.aside ? '<span class="grow"></span>' : '') + (a.href
-            ? '<a class="' + cls + '" data-rvpf="' + esc(a.key) + '" href="' + esc(a.href) + '"' + (a.newTab ? ' target="_blank" rel="noopener"' : '') + '>' + esc(a.label) + '</a>'
-            : '<button type="button" class="' + cls + '" data-rvpf="' + esc(a.key) + '">' + esc(a.label) + '</button>');
+            ? '<a class="' + cls + '" data-rvpf="' + esc(a.key) + '" href="' + esc(a.href) + '"' + (a.newTab ? ' target="_blank" rel="noopener"' : '') + (a.hidden ? ' hidden' : '') + '>' + esc(a.label) + '</a>'
+            : '<button type="button" class="' + cls + '" data-rvpf="' + esc(a.key) + '"' + (a.hidden ? ' hidden' : '') + '>' + esc(a.label) + '</button>');
         }).join('') + '</div>' +
       '</div>';
     var box = scrim.firstChild, handlers = {}, busy = false, closed = false, downOnScrim = false;
@@ -396,11 +424,16 @@
       box: box, close: close,
       on: function (key, fn) { handlers[key] = fn; return handle; },
       field: function (sel) { return box.querySelector(sel); },
-      error: function (text) { box.querySelector('.rvpf-err').textContent = text || ''; },
-      /* while the server works: nothing in the dialog can be used and it cannot be closed; the button says so */
+      error: function (text) {
+        var e = box.querySelector('.rvpf-err');
+        e.textContent = text || '';
+        if (text) { box.querySelector('.rvpf-body').scrollTop = 0; if (e.scrollIntoView) e.scrollIntoView({ block: 'nearest' }); }
+      },
+      /* while the server works: nothing in the dialog can be used and it cannot be closed; the button says so. A
+         button the check holds back (data-rvpf-blocked, NU-010) stays greyed out after. */
       busy: function (on, key, label) {
         busy = !!on;
-        Array.prototype.forEach.call(box.querySelectorAll('button, textarea, input'), function (b) { b.disabled = busy; });
+        Array.prototype.forEach.call(box.querySelectorAll('button, textarea, input'), function (b) { b.disabled = busy || b.hasAttribute('data-rvpf-blocked'); });
         box.setAttribute('aria-busy', busy ? 'true' : 'false');
         var b = key ? box.querySelector('[data-rvpf="' + key + '"]') : null;
         if (b) {
@@ -585,30 +618,40 @@
      dialog goes. A "put it right" link shows the place: the section in the editor this is open in (opts.showSection),
      the console's own tab; any other opens in a new tab, so nothing here is left behind. */
   var QA_POLLS = 6, QA_FIRST_WAIT_MS = 2500, QA_WAIT_MS = 6000;
-  function watchChecks(eventId, d, direct, opts) {
+  /* The place to put something right, from the publish window: the section in the editor this is open in, the
+     console's own tab; any other place opens in a new tab from a link (here: true when it was dealt with), or in this
+     tab from "Put it right first" (sameTab). */
+  function openFix(f, d, opts, sameTab) {
+    if (!f) return false;
+    if (f.where === 'editor' && opts.from === 'editor' && typeof opts.showSection === 'function') {
+      d.close(true);
+      if (f.key) opts.showSection(f.key);
+      return true;
+    }
+    if (f.where === 'console' && opts.from === 'console' && f.route) {
+      d.close(true);
+      location.hash = f.route;            // the console's own router takes it from there (and asks about unsaved work)
+      return true;
+    }
+    if (sameTab && f.href) { d.close(true); location.assign(f.href); return true; }
+    return false;
+  }
+  /* onCheck(r): each answer painted (null when it could not be read); -> paint(r), for a list the server sent back */
+  function watchChecks(eventId, d, direct, opts, onCheck) {
     var C = window.RevampCore, box = d.box.querySelector('.rvpf-qa'), asked = 0, fixes = [];
-    if (!box) return;
+    if (!box) return function () {};
     function alive() { return document.body.contains(d.box); }
     function paint(r) {
       var v = checksView(r, direct);
       fixes = v.fixes;
       box.querySelector('.rvpf-qa-state').textContent = v.state;
       box.querySelector('.rvpf-qa-body').innerHTML = v.html;
+      if (typeof onCheck === 'function') onCheck(r);
     }
     box.addEventListener('click', function (e) {
       var a = e.target && e.target.closest ? e.target.closest('[data-rvpf-fix]') : null;
       if (!a || d.box.getAttribute('aria-busy') === 'true') return;
-      var f = fixes[+a.getAttribute('data-rvpf-fix')];
-      if (!f) return;
-      if (f.where === 'editor' && opts.from === 'editor' && typeof opts.showSection === 'function') {
-        e.preventDefault();
-        d.close(true);
-        if (f.key) opts.showSection(f.key);
-      } else if (f.where === 'console' && opts.from === 'console' && f.route) {
-        e.preventDefault();
-        d.close(true);
-        location.hash = f.route;            // the console's own router takes it from there (and asks about unsaved work)
-      }
+      if (openFix(fixes[+a.getAttribute('data-rvpf-fix')], d, opts, false)) e.preventDefault();
     });
     function ask(wait) {
       asked++;
@@ -620,8 +663,41 @@
         if (r && num(r.pending) > 0 && asked < QA_POLLS) ask(QA_WAIT_MS);
       }, function () { if (alive()) paint(null); });
     }
-    if (!C || typeof C.authedFetch !== 'function') { paint(null); return; }
+    if (!C || typeof C.authedFetch !== 'function') { paint(null); return paint; }
     ask(QA_FIRST_WAIT_MS);
+    return paint;
+  }
+  /* Send or Publish held back while the check says something blocks it (NU-010): the list at the top of the dialog,
+     the button greyed out with the reason beside it, and "Put it right first" as the red one. key: 'send' | 'publish' */
+  function gateDialog(d, key, direct, opts) {
+    var last = null;
+    function apply(r) {
+      var g = gateOf(r, direct), btn = d.box.querySelector('[data-rvpf="' + key + '"]'), fix = d.box.querySelector('[data-rvpf="fix-first"]');
+      var why = d.box.querySelector('.rvpf-why'), body = d.box.querySelector('.rvpf-body'), qa = d.box.querySelector('.rvpf-qa');
+      last = g;
+      if (!btn) return;
+      if (g.blocked) {
+        btn.setAttribute('data-rvpf-blocked', '');
+        btn.disabled = true;
+        btn.className = 'btn btn-secondary';
+        btn.setAttribute('aria-describedby', 'rvpf-why');
+        if (body && qa && body.firstChild && body.firstChild.nextSibling !== qa) body.insertBefore(qa, body.firstChild.nextSibling);
+      } else {
+        btn.removeAttribute('data-rvpf-blocked');
+        btn.removeAttribute('aria-describedby');
+        btn.className = 'btn btn-primary';
+        if (d.box.getAttribute('aria-busy') !== 'true') btn.disabled = false;
+      }
+      if (why) { why.hidden = !g.blocked; why.textContent = g.why; }
+      if (fix) {
+        var was = fix.hidden;
+        fix.hidden = !(g.blocked && g.first);
+        /* the focus goes with it when the button it was on is greyed out */
+        if (was && !fix.hidden && document.activeElement === btn) fix.focus();
+      }
+    }
+    d.on('fix-first', function () { if (last && last.first) openFix(last.first, d, opts, true); });
+    return apply;
   }
 
   function ask(eventId, a, plan, name, opts, toast) {
@@ -638,12 +714,16 @@
           '<div class="rvpf-field"><label for="rvpf-note">Note for the approver (optional)</label>' +
             '<textarea id="rvpf-note" rows="3" maxlength="1000" placeholder="What changed and why"></textarea></div>' +
           checksBox(),
-        actions: [{ key: 'cancel', label: 'Cancel' }, { key: 'send', label: 'Send for approval', kind: 'primary' }],
+        why: true,
+        actions: [{ key: 'cancel', label: 'Cancel' }, { key: 'send', label: 'Send for approval', kind: 'primary' },
+          { key: 'fix-first', label: 'Put it right first', kind: 'primary', hidden: true }],
         focus: '#rvpf-note'
       });
       d.onClose = function () { done(outcome); };
-      watchChecks(eventId, d, false, opts);
+      var gate = gateDialog(d, 'send', false, opts);
+      var repaint = watchChecks(eventId, d, false, opts, gate);
       d.on('send', function () {
+        if (d.box.querySelector('[data-rvpf="send"][data-rvpf-blocked]')) return;
         d.error('');
         d.busy(true, 'send', 'Sending…');
         C.requestApproval(eventId, d.field('#rvpf-note').value).then(function (r) {
@@ -663,6 +743,8 @@
           if (typeof opts.onError === 'function' && opts.onError(err)) { d.close(true); return; }
           if (next === 'nothing-new') { d.close(); toast('Nothing new to publish: the live site already shows the last save.', 'info'); return; }
           if (next === 'not-saved') { d.onClose = null; d.close(true); notSaved(opts).then(done); return; }
+          /* refused for what the site check holds back: its list, at the top with the refusal (NU-010) */
+          if (err && Array.isArray(err.checks) && err.checks.length) repaint({ items: err.checks, found: true });
           d.error('Not sent: ' + errText(err));
         });
       });
@@ -680,12 +762,16 @@
         body: '<p>' + esc(savedLine(a, plan.version)) + ' goes live at <b>' + esc(url) + '</b> at once.</p>' +
           '<p class="rvpf-muted">Approval is switched off for this team, so nobody else checks it first.</p>' +
           checksBox(),
-        actions: [{ key: 'cancel', label: 'Cancel' }, { key: 'publish', label: 'Publish', kind: 'primary' }],
+        why: true,
+        actions: [{ key: 'cancel', label: 'Cancel' }, { key: 'publish', label: 'Publish', kind: 'primary' },
+          { key: 'fix-first', label: 'Put it right first', kind: 'primary', hidden: true }],
         focus: '[data-rvpf="cancel"]'
       });
       d.onClose = function () { done(outcome); };
-      watchChecks(eventId, d, true, opts);
+      var gate = gateDialog(d, 'publish', true, opts);
+      var repaint = watchChecks(eventId, d, true, opts, gate);
       d.on('publish', function () {
+        if (d.box.querySelector('[data-rvpf="publish"][data-rvpf-blocked]')) return;
         d.error('');
         d.busy(true, 'publish', 'Publishing…');
         C.publishEvent(eventId).then(function (out) {
@@ -711,6 +797,7 @@
           if (next === 'ask') { d.onClose = null; d.close(true); ask(eventId, Object.assign({}, a, { required: true }), Object.assign({}, plan, { kind: 'ask' }), String(opts.name || a.name || ''), opts, toast).then(done); return; }
           if (next === 'not-saved') { d.onClose = null; d.close(true); notSaved(opts).then(done); return; }
           if (next === 'nothing-new') { d.close(); toast('Nothing new to publish: the live site already shows the last save.', 'info'); return; }
+          if (err && Array.isArray(err.checks) && err.checks.length) repaint({ items: err.checks, found: true });
           d.error('Not published: ' + errText(err));
         });
       });
@@ -759,7 +846,7 @@
     aiUncheckedOf: aiUncheckedOf, approverWords: approverWords,
     _test: { planOf: planOf, buttonState: buttonState, approverWords: approverWords, copyMessage: copyMessage, decisionNotice: decisionNotice,
       aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, setBusy: setBusy, CSS: CSS,
-      checksView: checksView, checksBox: checksBox }
+      checksView: checksView, checksBox: checksBox, gateOf: gateOf }
   };
   if (window.RevampCore) window.RevampCore.openPublishFlow = open;
 })();
