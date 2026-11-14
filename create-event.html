@@ -455,6 +455,9 @@
   }
   .logo-meta.ok{ color: var(--ok); }
   .logo-meta.bad{ color: var(--crit); }
+  /* an error, and what the site does without a logo, are read whole (NU-024, NU-006) */
+  .logo-meta.bad, .logo-meta.logo-later{ white-space: normal; overflow: visible; line-height: 1.4; }
+  .logo-meta.logo-later{ margin-top: 3px; font-weight: 400; }
   @media (max-width: 1080px){
     #identity-row > .field, #sched-body .field{ grid-column: span 6 !important; }
   }
@@ -620,10 +623,14 @@
   .dropzone .s{ font-size: 11.5px; color: var(--text-faint); }
   .dropzone.filled{ border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
 
+  /* an information box is neutral (NU-029): red is for what has gone wrong (.crit), amber for what needs looking at */
   .callout{
     display:flex; gap: 11px; padding: 13px 15px; border-radius: 10px; font-size: 13px;
-    background: var(--accent-soft); color: var(--accent-strong);
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
   }
+  .callout > svg{ color: var(--text-muted); }
+  .callout.amber, .callout.plain, .callout.crit{ border-color: transparent; }
+  .callout.amber > svg, .callout.crit > svg{ color: inherit; }
   .callout svg{ flex-shrink:0; margin-top: 1px; }
   .callout strong{ display:block; margin-bottom: 2px; font-size: 12.5px; }
   .callout.amber{ background: var(--warn-soft); color: var(--warn); }
@@ -776,7 +783,7 @@
   .sheet .gb-guide-btn{ color: var(--accent-strong); }
   .sheet .gb-guide-btn:hover, .sheet .gb-guide-btn[aria-expanded="true"]{ background: var(--accent-soft); color: var(--accent-strong); }
   .sheet .gb-more > summary::before{ border-color: var(--accent); color: var(--accent); }
-  .sheet .slug-prefix{ color: var(--accent-strong); }
+  .sheet .slug-prefix{ color: var(--text-muted); }
   .gb-guide{ border-top: 3px solid var(--accent); }
   .gb-guide-list b{ color: var(--accent-strong); }
 
@@ -1163,6 +1170,42 @@
   @media (max-width: 620px){ .kp-card > .sec-problem{ margin-left: 14px; } }
   .check-list{ margin: 0; padding-left: 18px; display:flex; flex-direction:column; gap: 8px; font-size: 13px; line-height: 1.45; }
   .check-list strong{ font-weight: 700; }
+  /* the guidance over the section list (NU-017), the count of sections still showing sample words and their tag (NU-001) */
+  .build-guide{ margin: 0 0 14px; }
+  .prog-sample{ margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--warn); }
+  .sec-sample{ display:inline-block; margin-left: 6px; padding: 0 7px; border-radius: 100px; font-size: 11px; font-weight: 700; line-height: 17px;
+    letter-spacing: .02em; vertical-align: 1px; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
+  .eh-help{ margin: 0; padding: 10px 18px 0; font-size: 13px; line-height: 1.5; color: var(--text-muted); }
+  .eh-help .eh-example{ color: var(--text-faint); font-style: italic; }
+  .sec-sample-note{ margin: 10px 18px 0; }
+  /* the summary before the event is created (NU-012) */
+  .review-list{ margin: 0; display:flex; flex-direction:column; flex-shrink: 0; gap: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .modal-body > .review-samples, .modal-body > .check-list, .modal-body > .review-h{ flex-shrink: 0; }
+  .review-list .rv-row{ display:grid; grid-template-columns: 130px 1fr; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 13px; line-height: 1.45; }
+  .review-list .rv-row:first-child{ border-top: 0; }
+  .review-list dt{ color: var(--text-muted); font-weight: 600; }
+  .review-list dd{ margin: 0; color: var(--text); overflow-wrap: anywhere; }
+  .review-list .rv-note{ display:block; color: var(--text-muted); font-size: 12px; }
+  @media (max-width: 520px){ .review-list .rv-row{ grid-template-columns: 1fr; gap: 1px; } }
+  .review-samples{ margin: 0; flex-shrink: 0; }
+  .review-samples .callout{ margin: 0; }
+  .review-checking{ display:flex; align-items:center; gap: 8px; margin: 0; }
+  .review-ok{ display:flex; align-items:center; gap: 6px; margin: 0; font-size: 13px; color: var(--ok); font-weight: 600; }
+  .review-h{ margin: 14px 0 6px; font-size: 13px; font-weight: 700; color: var(--text); }
+  /* the previous editions to start from, as cards (NU-031) */
+  .clone-list{ display:flex; flex-direction:column; gap: 8px; max-height: min(52vh, 420px); overflow-y: auto; padding: 2px; }
+  .clone-card{ display:flex; align-items:center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; background: var(--surface); }
+  .clone-card:hover{ border-color: var(--text-faint); }
+  .clone-card:has(input:checked){ border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .clone-card input{ flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .clone-card input:focus-visible{ outline: 2px solid var(--accent); outline-offset: 2px; }
+  .clone-thumb{ flex: none; width: 52px; height: 40px; border-radius: 7px; background: var(--surface-2); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .clone-thumb img{ max-width: 100%; max-height: 100%; object-fit: contain; }
+  .clone-thumb b{ font-size: 17px; color: var(--text-muted); }
+  .clone-txt{ display:flex; flex-direction:column; min-width: 0; gap: 1px; }
+  .clone-name{ font-size: 14px; font-weight: 700; color: var(--text); overflow-wrap: anywhere; }
+  .clone-when{ font-size: 13px; color: var(--text); }
+  .clone-meta{ font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
   .link-btn{ background: none; border: 0; padding: 0; font: inherit; font-weight: 700; color: var(--accent-strong); text-decoration: underline; cursor: pointer; }
   .kp-num{
     flex-shrink:0; min-width: 26px; height: 22px; padding: 0 6px; border-radius: 6px; display:flex; align-items:center; justify-content:center;
@@ -1510,6 +1553,15 @@
   .tpl-carousel-info-head h3{ margin:2px 0 2px; font-size:19px; }
   .tpl-carousel-info-head p{ margin:0; }
   .tpl-carousel-info-head .tpl-carousel-portal-note{ margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--warn); max-width: 76ch; }
+  /* what the design can show (NU-003) and where its sample words come from (NU-015) */
+  .tpl-can-show{ display:flex; flex-wrap:wrap; align-items:center; gap: 6px 8px; margin: 8px 0 0; font-size: 12.5px; }
+  .tpl-can-show .tcs-lbl{ font-weight: 700; color: var(--text-muted); margin-right: 2px; }
+  .tpl-can-show .tcs{ display:inline-flex; align-items:center; gap: 4px; padding: 2px 9px; border-radius: 100px; font-weight: 600; white-space: nowrap; }
+  .tpl-can-show .tcs.on{ background: var(--ok-soft); color: var(--ok); }
+  .tpl-can-show .tcs.off{ background: var(--surface-2); color: var(--text-muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, currentColor 55%, transparent); }
+  .tpl-can-show .tcs-sr{ position:absolute; width:1px; height:1px; overflow:hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .tpl-can-show .tcs-later{ flex-basis: 100%; color: var(--text-muted); }
+  .tpl-carousel-info-head .tpl-carousel-sample{ margin-top: 6px; max-width: 76ch; }
   .tpl-carousel-sections-label{
     margin:18px 0 8px; font-size:12px; font-weight:700; letter-spacing:.02em;
     text-transform:uppercase; color: var(--text-faint);
@@ -1865,6 +1917,8 @@
   /* ---------- clearer screens (UX batch B17) ---------- */
   /* one section list (UX-050): the design's name, what kind of form it is under it, the count beside "Sections" */
   .sec-row .nm .sub{ display: block; margin-top: 1px; font-size: 11px; font-weight: 500; color: var(--text-faint); white-space: normal; line-height: 1.35; }
+  /* the "Sample text" tag on a line of its own under the name, so a long name and the tag are both read whole */
+  .sec-row .nm .sec-sample{ display: table; margin: 3px 0 1px; }
   .sec-row[aria-current="true"] .nm .sub{ color: var(--accent-strong); opacity: .8; }
   .sec-row.sec-static .nm{ white-space: normal; }
   .sec-fixed, .tpl-preview-fixed{ flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--text-faint); }
@@ -1932,6 +1986,7 @@
      icon was as tall as that label or icon, and a table did not take the page's line height. These keep each of those
      parts exactly as tall as it was drawn. */
   .step-head > .eyebrow, .tpl-carousel-info-head > .tpl-carousel-count{ display:block; }
+  .b-eyebrow{ display:block; margin: 0 0 6px; }
   .dropzone > .ico{ display:flex; }
   table{ line-height:normal; }
   /* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
@@ -2014,7 +2069,7 @@
       <!-- ===== PHASE 1 : pick the portal and the category ===== -->
       <div class="phase" id="cat-picker" hidden>
         <div class="step-head">
-          <span class="eyebrow">Step 1 of 2 &middot; Event details</span>
+          <span class="eyebrow">Step 1 of 4 &middot; Portal and type</span>
           <h1>Which portal is this event on, and what type of microsite is it?</h1>
           <p class="desc">Choose the ETB2B portal it belongs to, then the type that best matches the microsite you want to build.</p>
         </div>
@@ -2048,7 +2103,7 @@
         <div id="step2-landing">
           <div class="callout plain" id="method-notice" role="status" hidden></div>
           <div class="step-head">
-            <span class="eyebrow">Step 1 of 2 &middot; How would you like to build it?</span>
+            <span class="eyebrow">Step 2 of 4 &middot; How would you like to build it?</span>
             <h1>Choose how to build your site</h1>
             <p class="desc">Generate it from a brief, reuse the design of an event you built here before, bring in a design you made in Lovable, or pick one of the templates below and fill it in yourself.</p>
           </div>
@@ -2070,7 +2125,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
               </span>
               <h3>Start from a previous edition</h3>
-              <p>Its speakers, sponsors, agenda and glimpses come into this event, on the template it used. Its words and look are not copied.</p>
+              <p>Your site starts on the same template as an earlier event of this portal, with its speakers, sponsors, agenda and glimpses brought in. Its words, colours and pictures stay with it: you write this edition&rsquo;s own.</p>
               <button class="btn btn-secondary" type="button" id="btn-clone-design">Choose a previous edition</button>
             </div>
             <div class="design-choice-card">
@@ -2106,6 +2161,9 @@
                 <span class="tpl-carousel-count" id="tpl-carousel-count"></span>
                 <h3 id="tpl-carousel-name"></h3>
                 <p class="hint" id="tpl-carousel-sub"></p>
+                <!-- what the design can show, from its own template.json (canShowHtml, NU-003) -->
+                <p class="tpl-can-show" id="tpl-carousel-shows" hidden></p>
+                <p class="hint tpl-carousel-sample" id="tpl-carousel-sample" hidden></p>
                 <!-- a design with another portal's fixed "About …" section says so (aboutPortalNote) -->
                 <p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden></p>
               </div>
@@ -2151,6 +2209,7 @@
 
         <div class="callout plain" id="existing-event" role="status" hidden></div>
 
+        <span class="eyebrow b-eyebrow">Step 3 of 4 &middot; Details and content</span>
         <div class="b-head">
           <span class="ttl">Event details</span>
           <span class="cat-chip">
@@ -2180,12 +2239,12 @@
                 <div class="slug-row">
                   <!-- the real address in front of what is typed (siteAddress); a long host gives way from its start -->
                   <span class="slug-prefix" id="slug-prefix"><span class="slug-prefix-text"><bdi id="slug-prefix-text"></bdi></span></span>
-                  <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
+                  <input class="inp" id="f-slug" type="text" placeholder="e.g. martech-plus-summit-2026" aria-label="Web address: the last part, after /e/" autocomplete="off" spellcheck="false">
                 </div>
                 <div class="slug-meta"><div id="slug-status"></div><div id="slug-ai"></div></div>
               </div>
               <div class="field c4 logo-field" id="logo-cell">
-                <div class="flabel-row"><span class="flabel">Event logo <span class="pill-req" id="logo-requirement">*</span></span></div>
+                <div class="flabel-row"><span class="flabel">Event logo <span class="pill-opt" id="logo-requirement">Optional</span></span></div>
                 <div class="logo-row" id="logo-tile" title="Upload a PNG, WEBP or SVG event logo">
                   <span class="logo-row-icon">
                     <img class="logo-tile-img" id="logo-preview-img" alt="" hidden>
@@ -2197,6 +2256,8 @@
                   </button>
                 </div>
                 <div class="logo-meta" id="logo-hint">PNG, WEBP or SVG, up to 5&nbsp;MB. Best at about 571&times;340.</div>
+                <!-- the logo is optional on every path (NU-006): what the site does without one, and where it is added later -->
+                <div class="logo-meta logo-later" id="logo-later">No logo yet? The banner shows the event name until you add one, here or later in the event&rsquo;s Basics.</div>
                 <input id="f-logo" type="file" accept="image/png,image/webp,image/svg+xml,.webp,.svg" hidden>
               </div>
             </div>
@@ -2465,27 +2526,27 @@
   ========================================================= */
   var LIBRARY = [
     { id:'hero',      name:'Top banner',             shape:'hero',    helper:'The first thing a visitor sees: your banner artwork with the event date, venue and the main buttons.' },
-    { id:'stats',     name:'Key numbers',            shape:'stats',   helper:'The numbers that show the scale of the event — each a figure and what it counts.' },
+    { id:'stats',     name:'Key numbers',            shape:'stats',   helper:'The numbers that show the scale of the event — each a figure and what it counts.', example:'For example: 500+ delegates, 60 speakers, 2 days.' },
     { id:'partners',  name:'Partner logos',          shape:'logos',   toggle:true, helper:'Sponsor and partner logos, grouped by tier.' },
-    { id:'about',     name:'Overview',               shape:'rich',    limit:900, core:true, helper:'What the event is about, in a paragraph or two.' },
-    { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.' },
-    { id:'factoids',  name:'Factoids',               shape:'cards',   toggle:true, helper:'A scrolling strip of market stats and quick facts that make the case for your industry — headline and a line of context each.' },
-    { id:'awaits',    name:'What awaits',            shape:'cards',   helper:'Conference / Awards / Studios mini blocks. Icon, title and a line of copy each.' },
-    { id:'verticals', name:'Industry verticals band', shape:'heading', helper:'A full-width heading that breaks the page and names the industries in play.' },
-    { id:'priorities',name:'Key Discussion Points',  shape:'columns', core:true, helper:'Three themed columns — the discussion points that guide conversations at your event.' },
-    { id:'keyquestions',name:'Questions this raises', shape:'columns', toggle:true, helper:'The hard questions your theme raises for the enterprise — each with a one-line answer or framing.' },
-    { id:'tracks',    name:'Named tracks',           shape:'chips',   toggle:true, helper:'Named mega-tracks or co-located conventions running alongside the main stage — icon, title and a short line each.' },
-    { id:'industries',name:'Industries in the room', shape:'chips',   toggle:true, helper:'The industry sectors represented in the room — short names, shown as a grid of chips.' },
-    { id:'exhibitors',name:'Who should exhibit',     shape:'chips',   toggle:true, helper:'The exhibitor categories this event is built for — each with a line on what they would showcase.' },
-    { id:'faq',       name:'FAQs',                   shape:'columns', toggle:true, helper:'Common questions delegates ask, each with a short answer.' },
+    { id:'about',     name:'Overview',               shape:'rich',    limit:900, core:true, helper:'What the event is about, in a paragraph or two.', example:'For example: what the event is, who it brings together and why this edition matters, in two or three sentences.' },
+    { id:'marquee',   name:'Marquee',                shape:'line',    limit:60,  helper:'One short scrolling line — usually the event hashtag.', example:'For example: the event hashtag.' },
+    { id:'factoids',  name:'Factoids',               shape:'cards',   toggle:true, helper:'A scrolling strip of market stats and quick facts that make the case for your industry — headline and a line of context each.', example:'For example: a market figure, with a line on where it comes from.' },
+    { id:'awaits',    name:'What awaits',            shape:'cards',   helper:'Short cards for what happens at the event, each with an icon, a title and a line of text.', example:'For example: Conference, Awards and Expo, each with a line on what happens there.' },
+    { id:'verticals', name:'Industry verticals band', shape:'heading', helper:'A full-width heading that breaks the page and names the industries in play.', example:'For example: the industries the event covers, in one line.' },
+    { id:'priorities',name:'Key Discussion Points',  shape:'columns', core:true, helper:'Three themed columns — the discussion points that guide conversations at your event.', example:'For example: a theme such as “Skills for an AI workplace”, with a line on what will be discussed.' },
+    { id:'keyquestions',name:'Questions this raises', shape:'columns', toggle:true, helper:'The hard questions your theme raises for the enterprise — each with a one-line answer or framing.', example:'For example: “Who owns AI decisions in the enterprise?”, with a one-line answer.' },
+    { id:'tracks',    name:'Named tracks',           shape:'chips',   toggle:true, helper:'Named mega-tracks or co-located conventions running alongside the main stage — icon, title and a short line each.', example:'For example: a named track or convention, with a line on what it covers.' },
+    { id:'industries',name:'Industries in the room', shape:'chips',   toggle:true, helper:'The industry sectors represented in the room — short names, shown as a grid of chips.', example:'For example: BFSI, Manufacturing, Healthcare.' },
+    { id:'exhibitors',name:'Who should exhibit',     shape:'chips',   toggle:true, helper:'The exhibitor categories this event is built for — each with a line on what they would showcase.', example:'For example: “HR technology platforms”, with a line on what they would show.' },
+    { id:'faq',       name:'FAQs',                   shape:'columns', toggle:true, helper:'Common questions delegates ask, each with a short answer.', example:'For example: “Who can attend?”, with a short answer.' },
     { id:'speakers',  name:'Speakers',               shape:'people',  toggle:true, helper:'Speaker cards with photo, name, role and company.' },
     { id:'agenda',    name:'Agenda',                 shape:'agenda',  toggle:true, helper:'The schedule: each session with its time, title and speaker or track.' },
-    { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.' },
-    { id:'attend',    name:'Who should attend',      shape:'chips',   core:true, helper:'The roles this event is for — each with a line on why they should be there. These also power delegate targeting later.' },
-    { id:'insights',  name:'Key insights / Testimonials', shape:'quotes', helper:'Quotes from past attendees with their name, role and company.' },
+    { id:'whyjoin',   name:'Why join us',            shape:'benefits',limit:600, helper:'The advantage pitch, plus repeatable benefit cards underneath it.', example:'For example: “Meet the leaders of your industry in one room”, with a line on why it matters.' },
+    { id:'attend',    name:'Who should attend',      shape:'chips',   core:true, helper:'The roles this event is for — each with a line on why they should be there. These also power delegate targeting later.', example:'For example: “CHROs”, with a line on why they should be there.' },
+    { id:'insights',  name:'Key insights / Testimonials', shape:'quotes', helper:'Quotes from past attendees with their name, role and company.', example:'For example: what a past attendee said, with their name, role and company.' },
     /* TPL-046 / TPL-049: places in TECH500 and Making AI Work that showed the source event's own copy with no field to change it */
-    { id:'closing',   name:'Closing call to action', shape:'rich', limit:400, helper:'A last heading and a line or two that ask visitors to take part or partner, with the button they press.' },
-    { id:'manifesto', name:'Manifesto',              shape:'rich', limit:1500, toggle:true, helper:'What the event stands for, in the organiser’s own words — a heading and a few paragraphs.' },
+    { id:'closing',   name:'Closing call to action', shape:'rich', limit:400, helper:'A last heading and a line or two that ask visitors to take part or partner, with the button they press.', example:'For example: “Be part of the conversation”, with a Register now button.' },
+    { id:'manifesto', name:'Manifesto',              shape:'rich', limit:1500, toggle:true, helper:'What the event stands for, in the organiser’s own words — a heading and a few paragraphs.', example:'For example: why this event exists and who it is for, in two or three sentences.' },
     { id:'glimpses',  name:'Previous glimpses',      shape:'gallery', toggle:true, helper:'Photo gallery from the last edition. Six to twelve images works best.' },
     { id:'contact',   name:'Contact us',             shape:'contacts',helper:'Speaking, delegate and partnership contacts — who a visitor should write to.' }
   ];
@@ -2498,16 +2559,19 @@
      template.json (loadTemplateInfo / templateCaps) — nothing about a design's sections is kept here.
      `cat` is the event type a design was made for; every design is offered for every type, those made
      for the chosen type first (templatesForCategory).
+     NU-015: a design is named for how it looks, for any portal, not after the event it was built from; `sample`
+     names that event, whose words the design shows until this event's own are entered. What it can show
+     (speakers, agenda, sponsors…) is read from its template.json (canShowHtml), never written here.
   ========================================================= */
   var TEMPLATES = [
-    { id:'tech500', name:'TECH500', cat:'IP', site:'tech500',
-      sub:'Enterprise tech decision-makers, one power room — CXO signal over noise.' },
-    { id:'retail-leadership-summit', name:'Retail Leadership Summit', cat:'IP', site:'retail-leadership-summit',
-      sub:'Retail CXOs and mall developers under one roof — named tracks, market factoids and an exhibitor-ready expo floor.' },
-    { id:'cx-leaders-forum', name:'CX Leaders Forum', cat:'IP', site:'cx-leaders-forum',
-      sub:'CMO and CX-leadership gathering — discussion themes, speaker voices and a residential-summit stats strip.' },
-    { id:'making-ai-work', name:'Making AI Work', cat:'IP', site:'making-ai-work',
-      sub:'AI leadership summit — partner logos, a full speaker grid and the themes defining enterprise AI.' }
+    { id:'tech500', name:'Editorial light', cat:'IP', site:'tech500', sample:'TECH500',
+      sub:'Light and airy, with large serif headlines and numbered cards.' },
+    { id:'retail-leadership-summit', name:'Bold maroon', cat:'IP', site:'retail-leadership-summit', sample:'Retail Leadership Summit',
+      sub:'Deep red, with elegant serif headings and rows of cards.' },
+    { id:'cx-leaders-forum', name:'Warm retreat', cat:'IP', site:'cx-leaders-forum', sample:'CX Leaders Forum',
+      sub:'Warm sunset colours and a calm, spacious layout.' },
+    { id:'making-ai-work', name:'Dark keynote', cat:'IP', site:'making-ai-work', sample:'Making AI Work',
+      sub:'A dark page with bold electric-blue headlines.' }
   ];
   function templateById(id){
     for (var i = 0; i < TEMPLATES.length; i++){ if (TEMPLATES[i].id === id) return TEMPLATES[i]; }
@@ -2546,7 +2610,7 @@
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'exact',
       venue: true, nomination: false, campaign: false, client: false,
-      hint: 'IP and residential events include the full section stack. Use an exact date, month, or quarter while the edition is being planned.'
+      hint: 'Owned conferences, summits and residential events. If the date is not fixed yet, choose Month only, Quarter or To be announced.'
     },
     Client: {
       label: 'Client Event',
@@ -2566,7 +2630,7 @@
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'month',
       venue: true, nomination: true, campaign: false, client: false,
-      hint: 'Awards microsites support the nomination window, jury milestones, shortlist, and ceremony date.'
+      hint: 'An awards site carries when nominations open and close, the shortlist date and the ceremony date. Dates not fixed yet can be decided later.'
     }
   };
 
@@ -2604,10 +2668,17 @@
   /* =========================================================
      STATE
   ========================================================= */
-  /* 2 rail dots over the internal S.step values: step 1's own three phases (category / method / details,
-     see setStep1Phase()) all render under dot 1; step 4 (the hand-off) is dot 2. */
-  var STEPS = ['Event details','Open in editor'];
-  function railPos(step){ return step >= 4 ? 2 : 1; }
+  /* The rail shows the screens a person really goes through (NU-012): step 1's own three phases (category / method /
+     details, see setStep1Phase()) are dots 1 to 3, and creating the event — the hand-off (S.step 4) or a site being
+     generated from a brief — is dot 4. S.step itself stays 1 or 4, as the resume logic has it. */
+  var STEPS = ['Portal and type', 'How to build', 'Details and content', 'Create'];
+  var PHASE_DOT = { category: 1, method: 2, details: 3 };
+  function railPos(){
+    if (S.step >= 4 || (busy && busy.kind === 'brief')) return 4;
+    return PHASE_DOT[S.step1Phase] || 1;
+  }
+  /* "Step 4 of 4 · Generating" — the eyebrow a screen drawn from script carries */
+  function stepEyebrow(n, words){ return 'Step ' + n + ' of ' + STEPS.length + ' · ' + words; }
   /* WHERE A DRAFT IS KEPT (UX-048)
      In the person's account (create-drafts.js, functions/lib/create-drafts.js): every draft is saved there a moment
      after it changes, the events dashboard lists it under Drafts with Resume and Discard, Resume opens it on any
@@ -2845,6 +2916,19 @@
   var logoPreviewUrl = '';   // what the step-1 logo tile shows: an object URL right after upload, the stored copy after a reload
   var logoSaving = null;      // the store write under way, so the hand-off can wait for it
   var logoFailed = false;     // the last chosen logo could not be stored; the tile says so until another is chosen
+  var logoError = '';         // why the last file chosen was not taken as the logo (logoFileIssue); said under the field until another is taken
+  var LOGO_HINT = 'PNG, WEBP or SVG, up to 5 MB. Best at about 571×340.';
+  /* why `file` cannot be the event's logo, as a sentence that says what to do; '' when it can */
+  function logoFileIssue(file){
+    var name = String((file && file.name) || ''), type = String((file && file.type) || '');
+    var ok = type === 'image/png' || type === 'image/webp' || type === 'image/svg+xml' || /\.(png|svg|webp)$/i.test(name);
+    if (!ok){
+      if (type === 'image/jpeg' || /\.jpe?g$/i.test(name)) return 'A logo needs a transparent background, which a JPG file cannot have. Use a PNG, WEBP or SVG file instead.';
+      return '“' + name + '” is not a PNG, WEBP or SVG file. Choose a logo in one of those formats.';
+    }
+    if (file.size > 5 * 1024 * 1024) return 'This file is ' + megabytes(file.size) + '. Use a logo file of 5 MB or less.';
+    return '';
+  }
   function logoDataUrl(file){
     return new Promise(function(resolve, reject){
       var reader = new FileReader();
@@ -3682,28 +3766,34 @@
   /* =========================================================
      PROGRESS RAIL
   ========================================================= */
-  /* the real S.step a rail dot jumps to — dot 2 ("Open in editor") always means S.step 4 */
-  var RAIL_TARGET = [1, 4];
+  /* a done dot pressed: back to that screen, as Back would take the person there (the type and portal are
+     changed with the same Cancel that "Change" gives) */
+  function railGo(n){
+    if (busy || n >= railPos()) return;
+    if (S.step !== 1) goStep(1);
+    if (n === 1) changeCategory();
+    else if (n === 2) setStep1Phase('method');
+    else setStep1Phase('details');
+  }
   function renderRail(){
     var rail = $('rail');
     var html = '';
-    var stage = railPos(S.step);
+    var stage = railPos();
     for (var i = 0; i < STEPS.length; i++){
       var n = i + 1;
       var state = n < stage ? 'done' : (n === stage ? 'current' : 'todo');
       if (i > 0) html += '<span class="rail-line' + (n < stage ? ' filled' : '') + '"></span>';
-      html += '<button class="rail-step" data-state="' + state + '" data-goto="' + RAIL_TARGET[i] + '"' +
+      html += '<button class="rail-step" data-state="' + state + '" data-goto="' + n + '"' +
+              (state === 'current' ? ' aria-current="step"' : '') +
               (state === 'todo' || busy ? ' disabled' : '') + '>' +
               '<span class="num">' + (state === 'done' ? IC.check : n) + '</span>' +
               (STEPS[i] ? '<span class="lbl">' + STEPS[i] + '</span>' : '') + '</button>';
     }
     rail.innerHTML = html;
+    rail.setAttribute('aria-label', 'Step ' + stage + ' of ' + STEPS.length + ': ' + STEPS[stage - 1]);
     renderTogglePanel();          // the header's previous-edition button belongs to the content editor only
     rail.querySelectorAll('[data-goto]').forEach(function(b){
-      b.addEventListener('click', function(){
-        var n = parseInt(b.getAttribute('data-goto'), 10);
-        if (!busy && railPos(n) < stage) goStep(n);
-      });
+      b.addEventListener('click', function(){ railGo(parseInt(b.getAttribute('data-goto'), 10)); });
     });
   }
 
@@ -3808,7 +3898,7 @@
       else if (S.step1Phase === 'details'){
         back.hidden = false;
         var briefMethod = S.creationMethod === 'brief';
-        next.innerHTML = (briefMethod ? 'Generate my site ' : 'Continue ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
+        next.innerHTML = (briefMethod ? 'Generate my site ' : S.createdEventId ? 'Review and save ' : 'Review and create ') + svg('<path d="M9 18l6-6-6-6"/>', 15);
         var issues = detailsIssues();
         showFieldProblems(issues);
         refreshDateNotes();
@@ -3889,13 +3979,22 @@
   }
   /* what stands in front of the box: that address without the event's own part ("host/e/") */
   function addressPrefix(){ return siteAddress('x').replace(/x$/, '').replace(/^https?:\/\//, ''); }
+  /* In front of the box (NU-028), in grey: the whole host when it fits, otherwise just "…/e/" — never a host cut off
+     part-way through a word. The whole address is in its title, and in the line under the box once one is typed. */
+  var SLUG_PREFIX_SHORT = '…/e/';
+  function drawSlugPrefix(){
+    var el = $('slug-prefix-text'), pre = $('slug-prefix'), box = $('f-slug');
+    if (!el || !pre) return;
+    var full = addressPrefix(), holder = el.parentNode;
+    el.textContent = full;
+    if (holder && holder.clientWidth > 0 && holder.scrollWidth > holder.clientWidth + 1) el.textContent = SLUG_PREFIX_SHORT;
+    pre.title = siteAddress((box && box.value) || 'your-event');
+  }
   /* the server names the public base in its first answer (X-Public-Base, UX-001); a prefix drawn before it came
      is drawn again, so the box never shows another host than the one the site will be at */
-  window.addEventListener('revamp:publicbase', function(){
-    var el = $('slug-prefix-text'), pre = $('slug-prefix'), box = $('f-slug');
-    if (el) el.textContent = addressPrefix();
-    if (pre) pre.title = siteAddress((box && box.value) || 'your-event');
-  });
+  window.addEventListener('revamp:publicbase', drawSlugPrefix);
+  var slugPrefixTimer = null;
+  window.addEventListener('resize', function(){ clearTimeout(slugPrefixTimer); slugPrefixTimer = setTimeout(drawSlugPrefix, 120); });
 
   /* ---------- is the address free? ----------
      Asked of the server a moment after the typing stops (GET /api/event/slug-available, RevampCore.slugAvailable).
@@ -4101,8 +4200,8 @@
     }
     return '';
   }
-  /* method: 'template' | 'imported' | 'brief'. The brief form asks only for name, address, date and venue;
-     a logo is needed where the design shows one — an imported design brings its own. */
+  /* method: 'template' | 'imported' | 'brief'. The logo is optional on every path (NU-006): until there is one the
+     banner shows the event's name in text, and it can be added later in the event's Basics (its banner follows it). */
   function validateBasics(method){
     var b = S.basics, C = CATS[b.category], out = [];
     function bad(field, message){ out.push({ field: field, message: message }); }
@@ -4112,7 +4211,6 @@
     if (!b.name.trim()) bad('f-name', 'Enter the event name.');
     var slugProblem = slugIssue(b.slug.trim());
     if (slugProblem) bad('f-slug', slugProblem);
-    if (method === 'template' && !b.logo) bad('logo-drop', 'Upload the event logo.');
     if (method !== 'brief' && C.client === 'required' && !b.client.trim()) bad('f-client', 'Enter the client or sponsor name.');
 
     var later = ', or choose “To be announced”.';
@@ -4290,11 +4388,10 @@
     $('client-wrap').hidden   = !C.client || briefMode;
     $('client-requirement').className = C.client === 'required' ? 'pill-req' : 'pill-opt';
     $('client-requirement').textContent = C.client === 'required' ? '*' : 'Optional';
-    /* a generated site carries the event's logo in its top bar when one is given; it can also do without */
+    /* every path can do without a logo for now (NU-006): the banner shows the event's name until one is added */
     $('logo-cell').hidden = false;
-    var logoOptional = S.creationMethod === 'imported' || briefMode;
-    $('logo-requirement').className = logoOptional ? 'pill-opt' : 'pill-req';
-    $('logo-requirement').textContent = logoOptional ? 'Optional' : '*';
+    $('logo-requirement').className = 'pill-opt';
+    $('logo-requirement').textContent = 'Optional';
     /* The first row contains identity and logo only. Brief mode drops client (above), so name, address and
        logo share the row three ways. */
     var withClient = C.client && !briefMode;
@@ -4659,7 +4756,7 @@
   function portalHint(){
     var p = stepPortal;
     if (!p) return 'Search ETB2B’s portals by name, for example ETCIO or ETHRWorld.';
-    if (isRosterPortal(workingPortal) && p !== workingPortal) return 'This event will be listed under ' + portalName(p) + ' on the dashboard.';
+    if (isRosterPortal(workingPortal) && p !== workingPortal) return 'This event will be listed under ' + portalName(p) + ' on the dashboard. Your events list switches to it when the event is created.';
     if (stepPortalFrom) return 'Set from your dashboard. Change it if this event belongs to another portal.';
     return '';
   }
@@ -4862,8 +4959,9 @@
   }
 
   /* "Clone design from a previous edition": the events of this draft's portal and type whose design the
-     wizard can start from — a gallery template, or a design imported from Lovable — newest change first.
-     A site designed by ETB2B AI has no design the wizard can take, and this draft's own event is left out. */
+     wizard can start from — a gallery template, or a design imported from Lovable — the latest edition first
+     (by its date; one with no exact date after them, by its last change). A site designed by ETB2B AI has no
+     design the wizard can take, and this draft's own event is left out. */
   function cloneCandidates(items, portal, cat, ownId){
     if (!portal) return [];
     return (Array.isArray(items) ? items : []).filter(function(it){
@@ -4875,6 +4973,8 @@
       var tpl = String(it.templateId || '');
       return !!templateById(tpl) || isImportedTemplate(tpl);
     }).sort(function(a, b){
+      var sa = String(a.start || ''), sb = String(b.start || '');
+      if (sa !== sb){ if (!sa) return 1; if (!sb) return -1; return sa < sb ? 1 : -1; }
       var x = String(a.updatedAt || ''), y = String(b.updatedAt || '');
       return x === y ? 0 : (x < y ? 1 : -1);
     });
@@ -5029,7 +5129,7 @@
     slugEl.value = b.slug;
     /* the address as it will be, in front of the box: the full one is in its title and in the line under it */
     var prefixEl = $('slug-prefix-text');
-    if (prefixEl){ prefixEl.textContent = addressPrefix(); $('slug-prefix').title = siteAddress(b.slug || 'your-event'); }
+    if (prefixEl) drawSlugPrefix();
     slugEl.oninput = function(){
       if (S.createdEventId){ slugEl.value = b.slug; return; }
       b.slugTouched = true;
@@ -5068,9 +5168,13 @@
       previewImg.hidden = true;
       removeBtn.hidden = true;
       logoCta.textContent = 'Upload logo';
-      logoHint.className = logoFailed ? 'logo-meta bad' : 'logo-meta';
-      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG, WEBP or SVG, up to 5 MB. Best at about 571×340.';
+      logoHint.className = logoFailed || logoError ? 'logo-meta bad' : 'logo-meta';
+      logoHint.textContent = logoError || (logoFailed ? 'Could not keep this logo — choose it again' : LOGO_HINT);
     }
+    /* a file that was not taken is said under the field, in words that say what to do (NU-024) */
+    if (logoError) logoHint.setAttribute('role', 'alert'); else logoHint.removeAttribute('role');
+    var logoLater = $('logo-later');
+    if (logoLater) logoLater.hidden = !!b.logo;
 
     var openLogoPicker = function(){ logoInput.click(); };
     logoTile.onclick = openLogoPicker;
@@ -5078,6 +5182,7 @@
       e.stopPropagation();
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
+      logoError = '';
       gen2Logo = null;
       forgetDraftFile('logo');
       RevampStore.remove(logoKey()).catch(function(){}).then(renderLivePreview);
@@ -5088,20 +5193,17 @@
     logoInput.onchange = function(){
       var file = logoInput.files && logoInput.files[0];
       if (!file) return;
-      var validType = file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/svg+xml' || /\.(svg|webp)$/i.test(file.name);
-      if (!validType){
+      var refused = logoFileIssue(file);
+      if (refused){
         logoInput.value = '';
-        toast('Choose a PNG, WEBP or SVG logo file', { type: 'error' });
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024){
-        logoInput.value = '';
-        toast('Logo must be 5 MB or smaller', { type: 'error' });
+        logoError = refused;
+        initStep1();
         return;
       }
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} }
       logoPreviewUrl = URL.createObjectURL(file);
       logoFailed = false;
+      logoError = '';
       b.logo = true;
       b.logoName = file.name;
       storeLogo(file);
@@ -5715,7 +5817,8 @@
       slotPaths(r.value, true).forEach(function(p){ own[p.split('.')[0]] = true; });
     });
   }
-  /* caps = { sections: [{ id, name, pinned, libId }] in page order,
+  /* caps = { sections: [{ id, name, label, pinned, libId }] in page order (label: the design's own neutral name for a
+              section whose name is the sample event's — "About the event" for "What is Tech500", NU-015),
               byLib: { <library id>: { sectionId, intro: { key: true }, fields: { name: visible }, list,
                                        itemFields: { name: true }, itemOwn: { name: true } } } } */
   function templateCaps(t){
@@ -5724,7 +5827,7 @@
     var caps = { sections: [], byLib: {} };
     var bySection = {};
     (t.sections || []).forEach(function(sec){
-      var row = { id: sec.id, name: sec.name || sec.id, pinned: !!pinned[sec.id], libId: null };
+      var row = { id: sec.id, name: sec.name || sec.id, label: typeof sec.label === 'string' ? sec.label : '', pinned: !!pinned[sec.id], libId: null };
       caps.sections.push(row);
       bySection[sec.id] = row;
     });
@@ -5826,7 +5929,7 @@
     return (caps ? caps.sections : []).map(function(sec){
       var lib = libBy(sec.libId), locked = sec.pinned && !lib && sec.id !== about;
       return {
-        id: sec.id, title: sec.name, libId: sec.libId, kind: lib ? lib.name : '',
+        id: sec.id, title: sec.label || sec.name, libId: sec.libId, kind: lib ? lib.name : '',
         fillable: !!lib, locked: locked, foreignAbout: sec.id === about,
         on: locked || !off[sec.id]
       };
@@ -5838,6 +5941,41 @@
     return { on: rows.filter(function(r){ return r.on; }).length, of: rows.length };
   }
   function designCountText(n){ return n.on + ' of ' + n.of + ' sections on your site'; }
+  /* NU-003: what an event team comes to publish, and whether this design has a section for it — read from the
+     design's own content map (caps.byLib, templateCaps), so a design is never said to show what it cannot */
+  var CAN_SHOW = [
+    { libId: 'speakers', label: 'Speakers', one: 'speaker' }, { libId: 'agenda', label: 'Agenda', one: 'agenda' },
+    { libId: 'partners', label: 'Sponsors', one: 'sponsor' }, { libId: 'glimpses', label: 'Photo gallery', one: 'photo gallery' },
+    { libId: 'faq', label: 'FAQs', one: 'FAQ' }
+  ];
+  /* -> { has: [label], lacks: [label], lacksOne: [word for one] } */
+  function canShow(caps){
+    var out = { has: [], lacks: [], lacksOne: [] };
+    CAN_SHOW.forEach(function(c){
+      if (caps && caps.byLib && caps.byLib[c.libId]) out.has.push(c.label);
+      else { out.lacks.push(c.label); out.lacksOne.push(c.one); }
+    });
+    return out;
+  }
+  /* "No agenda, sponsor or FAQ section in this design" */
+  function lacksWords(r){
+    var w = r.lacksOne;
+    return w.length < 2 ? w.join('') : w.slice(0, -1).join(', ') + ' or ' + w[w.length - 1];
+  }
+  function canShowHtml(caps){
+    var r = canShow(caps);
+    var yes = svg('<path d="M20 6L9 17l-5-5"/>', 13), no = svg('<path d="M18 6L6 18M6 6l12 12"/>', 12);
+    return '<span class="tcs-lbl">Can show</span>' + CAN_SHOW.map(function(c){
+        var on = r.has.indexOf(c.label) !== -1;
+        return '<span class="tcs ' + (on ? 'on' : 'off') + '" title="' + (on ? 'This design has a section for this' : 'Not in this design') + '">' +
+          (on ? yes : no) + '<span class="tcs-sr">' + (on ? 'Has ' : 'No ') + '</span>' + esc(c.label) + '</span>';
+      }).join('') +
+      (r.lacks.length ? '<span class="tcs-later">No ' + esc(lacksWords(r)) + ' section in this design: the site editor can add one later.</span>' : '');
+  }
+  /* where a design's sample words come from, so choosing it is never mistaken for copying that event */
+  function sampleWordsNote(t){
+    return t && t.sample ? 'Until you write your own, it shows sample words from ' + t.sample + ', another event. You replace them with yours.' : '';
+  }
   /* "Frequently asked questions" and "FAQs", "Banner" and "Top banner": the same name said two ways, so the
      form does not repeat it as a sub-label */
   function sameName(a, b){
@@ -5854,7 +5992,7 @@
   function secTitle(s){
     if (!s || isTextSection(s)) return String((s && s.name) || '');
     var caps = draftCaps(), c = caps && caps.byLib[s.libId], title = '';
-    if (c) caps.sections.forEach(function(sec){ if (sec.id === c.sectionId) title = sec.name; });
+    if (c) caps.sections.forEach(function(sec){ if (sec.id === c.sectionId) title = sec.label || sec.name; });
     return title || secKind(s);
   }
   /* A section of the draft is on the site when the design has a place for it and that place is not
@@ -6163,6 +6301,16 @@
     $('tpl-carousel-name').textContent = t.name;
     $('tpl-carousel-sub').textContent = t.sub || '';
     renderAboutNote(t);
+    var sampleNote = $('tpl-carousel-sample'), showsHost = $('tpl-carousel-shows');
+    if (sampleNote){ sampleNote.textContent = sampleWordsNote(t); sampleNote.hidden = !sampleNote.textContent; }
+    /* what it can show comes from its template.json: shown at once when it has been read, else once it is */
+    function renderShows(caps){
+      if (!showsHost) return;
+      showsHost.innerHTML = caps ? canShowHtml(caps) : '';
+      showsHost.hidden = !caps;
+    }
+    renderShows(capsOf(t.id));
+    if (!capsOf(t.id)) loadTemplateInfo(t).then(function(caps){ if (requestId === tplCarouselRequestSeq) renderShows(caps); }, function(){});
 
     var listHost = $('tpl-carousel-sections'), countHost = $('tpl-carousel-sec-count');
     if (countHost) countHost.textContent = '';
@@ -6170,6 +6318,7 @@
        and the details form say (designRows) */
     function renderToggles(canvas){
       var caps = capsOf(t.id) || setTemplateInfo(t, canvas.template);
+      renderShows(caps);
       if (countHost) countHost.textContent = '· ' + designCountText(designCount(t.id, caps));
       listHost.innerHTML = designRows(t.id, caps).map(function(r){
         return '<div class="tpl-preview-row' + (r.on ? '' : ' off') + '">' +
@@ -6658,10 +6807,21 @@
     return Math.floor(s / 60) + ':' + two(s % 60);
   }
   var BRIEF_REASSURE_MS = 30000;
-  var BRIEF_STEP_DOING = {
-    plan: 'Working out which sections your material supports and how the page should look.',
-    generate: 'Writing every section from your description, document and links. This is the longest step.'
-  };
+  /* what a running row is doing, naming only what this run was given (NU-026): "from your description", not a
+     document and links nobody added */
+  function briefSourceWords(inputs){
+    var urls = (inputs && inputs.urls) || {}, said = [];
+    if (inputs && inputs.text) said.push('your description');
+    if (inputs && inputs.file) said.push('your document');
+    if (urls.previous) said.push('the previous edition’s site');
+    if (Object.keys(urls).some(function(k){ return k !== 'previous' && !!urls[k]; })) said.push('the pages you linked');
+    return said.length ? listWords(said) : 'what you gave ETB2B AI';
+  }
+  function briefStepDoing(key, inputs){
+    if (key === 'plan') return 'Working out which sections ' + briefSourceWords(inputs) + ' can fill and how the page should look.';
+    if (key === 'generate') return 'Writing every section from ' + briefSourceWords(inputs) + '. This is the longest step.';
+    return '';
+  }
 
   /* The event's facts, sent with every step so each one works from what was entered on this form rather
      than guessing. category, start, end, venue and city carry exactly what the event record holds; date
@@ -6694,7 +6854,7 @@
     if (!resume && detailsIssues().length){ renderFoot(); return; }
     var run = beginBusy('brief');
     if (!run) return;
-    run.note = 'Generating your site — keep this tab open.';
+    run.note = 'Generating your site. You can work in another tab meanwhile.';
 
     // the real event id this draft (and the eventual editor session) is keyed by: the event an earlier,
     // abandoned run of this draft already created, or the address on the form
@@ -7197,9 +7357,9 @@
     var now = Date.now(), steps = view.steps, inputs = view.inputs;
     var opening = steps[steps.length - 1].status !== 'pending';
     host.innerHTML =
-      '<div class="step-head"><span class="eyebrow">' + (opening ? 'Opening' : 'Generating') + '</span>' +
+      '<div class="step-head"><span class="eyebrow">' + esc(stepEyebrow(4, opening ? 'Opening' : 'Generating')) + '</span>' +
         '<h1>' + (opening ? 'Opening your site&hellip;' : 'Generating your site&hellip;') + '</h1>' +
-        '<p class="desc">This usually takes 3 to 5 minutes. Keep this tab open.</p></div>' +
+        '<p class="desc">This usually takes 3 to 5 minutes. You can work in another tab meanwhile: your site opens here when it is ready.</p></div>' +
       '<div class="panel"><div class="proc-wrap">' + ET_LOADER +
         '<ul class="gb-steps">' + steps.map(function(s){
           var key = esc(s.key);
@@ -7236,12 +7396,13 @@
                 '<span class="gb-step-actions">' + fix + '</span>' +
               '</div>';
           } else if (s.status === 'running'){
-            sub = (BRIEF_STEP_DOING[s.key] ? '<div class="gb-step-sub"><span class="gb-step-cause">' + BRIEF_STEP_DOING[s.key] + '</span></div>' : '') +
+            var doing = briefStepDoing(s.key, inputs);
+            sub = (doing ? '<div class="gb-step-sub"><span class="gb-step-cause">' + esc(doing) + '</span></div>' : '') +
               /* how far the server is with it (BE-033: the run's record), once it says */
               (s.key === 'plan' || s.key === 'generate' ? '<div class="gb-step-sub" data-step-progress="' + key + '"' + (s.progress ? '' : ' hidden') + '>' +
                 '<span class="gb-step-cause" role="status">' + esc(s.progress || '') + '</span></div>' : '') +
               '<div class="gb-step-sub" data-step-calm="' + key + '"' + (now - s.startedAt < BRIEF_REASSURE_MS ? ' hidden' : '') + '>' +
-                '<span class="gb-step-cause">Still working — the request is open and waiting for its answer.</span></div>';
+                '<span class="gb-step-cause">Still working — this step can take a few minutes.</span></div>';
           }
           return '<li class="gb-step gb-step-' + s.status + '" data-step="' + key + '"><div class="gb-step-row">' + icon +
             '<span class="gb-step-label">' + esc(s.label) + '</span>' + time + '</div>' + sub + '</li>';
@@ -7272,9 +7433,28 @@
                          like any other; the rest come into the new event's Content as new records of its own at the
                          hand-off (carryEdition, RevampEditions.carryOver). The previous edition is only read.
        its venue         when this edition has none yet (takeEditionVenue) */
-  function cloneOptionLabel(it){
-    var tpl = templateById(String(it.templateId || '')), when = fmtD(it.updatedAt);
-    return String(it.name || it.id) + ' — ' + (tpl ? tpl.name : 'Imported design') + (when ? ', updated ' + when : '');
+  /* when a previous edition took place, as its site says it: its dates, the month or quarter it gave, or that it has none */
+  function cloneEditionDate(it){
+    var s = fmtD(it.start), e = fmtD(it.end);
+    if (s) return e && e !== s ? s + ' – ' + e : s;
+    return String(it.dateLabel || '').trim() || 'No date set';
+  }
+  /* NU-031: each previous edition as a card to pick — its logo, name, when it took place, its type, design and state —
+     so last year's edition can be told from another event of the portal */
+  function cloneCardsHtml(list){
+    return '<div class="clone-list" role="radiogroup" aria-label="Previous editions">' + list.map(function(it, i){
+      var tpl = templateById(String(it.templateId || '')), type = CATS[CAT_OF_EVENT[String(it.category || '').toLowerCase()]];
+      var logo = /^(https?:\/\/|\/(?!\/))/i.test(String(it.logoUrl || '')) ? String(it.logoUrl) : '';
+      var name = String(it.name || it.id), when = fmtD(it.updatedAt);
+      return '<label class="clone-card" for="clone-ed-' + i + '">' +
+          '<input type="radio" name="clone-ed" id="clone-ed-' + i + '" value="' + esc(it.id) + '"' + (i === 0 ? ' checked' : '') + '>' +
+          '<span class="clone-thumb" aria-hidden="true">' + (logo ? '<img src="' + esc(logo) + '" alt="" loading="lazy">' : '<b>' + esc(name.charAt(0).toUpperCase()) + '</b>') + '</span>' +
+          '<span class="clone-txt"><span class="clone-name">' + esc(name) + '</span>' +
+            '<span class="clone-when">' + esc(cloneEditionDate(it)) + '</span>' +
+            '<span class="clone-meta">' + esc([type ? type.label : '', tpl ? tpl.name + ' template' : 'Imported design', it.published ? 'Live' : 'Not published',
+              when ? 'changed ' + when : ''].filter(Boolean).join(' · ')) + '</span></span>' +
+        '</label>';
+    }).join('') + '</div>';
   }
   function openCloneDesignModal(){
     var portal = S.basics.portal;
@@ -7286,12 +7466,13 @@
       body: '<div id="clone-body"></div>',
       confirm: 'Continue',
       onConfirm: function(){
-        var sel = $('clone-event-select'), pe = null;
-        list.forEach(function(x){ if (sel && String(x.id) === sel.value) pe = x; });
+        var pe = null;
+        list.forEach(function(x){ if (String(x.id) === chosen) pe = x; });
         if (!pe) return;
         setTimeout(function(){ readEditionToStart(pe); }, 0);
       }
     });
+    var chosen = '';
     var ok = $('modal-ok');
     function load(){
       var host = $('clone-body');
@@ -7307,12 +7488,15 @@
           host.innerHTML = '<p class="hint">No ' + esc(name) + ' event has a design this wizard can start from yet. Sites designed by ETB2B AI are not offered here.</p>';
           return;
         }
-        host.innerHTML = '<div class="field"><label for="clone-event-select">Event</label>' +
-          '<select class="inp" id="clone-event-select">' +
-            list.map(function(it){ return '<option value="' + esc(it.id) + '">' + esc(cloneOptionLabel(it)) + '</option>'; }).join('') +
-          '</select></div>';
+        host.innerHTML = cloneCardsHtml(list);
+        chosen = String(list[0].id);
+        list.forEach(function(it, i){
+          var radio = $('clone-ed-' + i);
+          if (radio) radio.onchange = function(){ if (radio.checked !== false) chosen = String(it.id); };
+        });
         ok.disabled = false;
-        $('clone-event-select').focus();
+        var first = $('clone-ed-0');
+        if (first) first.focus();
       }, function(err){
         if ($('clone-body') !== host) return;
         host.innerHTML = '<p class="field-note field-error" role="alert">' + esc(plainError(err)) + '</p>' +
@@ -7917,13 +8101,13 @@
     /* an option, never the page's main action: secondary, whatever has been chosen */
     host.innerHTML =
       '<button class="btn btn-secondary btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
-        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Use a previous edition’s content</span><span class="nm-short">Previous edition</span></span>'
+        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Add speakers &amp; sponsors from a previous edition</span><span class="nm-short">Previous edition</span></span>'
                 : IC.check + '<span class="nm">' + esc(S.pulledEdition.name) + '</span>') +
         svg('<path d="M6 9l6 6 6-6"/>', 14) +
       '</button>' +
-      '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Reuse a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +
-        '<div class="ep-head"><h4>Reuse a previous edition</h4>' +
-          '<p>Bring in speakers, the agenda, sponsors and photos from an event of this portal you’ve already run.</p></div>' +
+      '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Add speakers and sponsors from a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +
+        '<div class="ep-head"><h4>Add speakers &amp; sponsors from a previous edition</h4>' +
+          '<p>Brings the speakers, agenda, sponsors and glimpses of an event of this portal you have already run into these sections. Your template stays as it is.</p></div>' +
         '<div class="ep-edition' + (locked ? '' : ' chosen') + '">' +
           '<span class="tile">' + (locked ? svg('<path d="M3 7h6l2 2h10v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>', 18) : svg('<path d="M20 6L9 17l-5-5"/>', 18)) + '</span>' +
           '<span class="txt"><span class="t">' + (locked ? 'No edition selected' : esc(S.pulledEdition.name)) + '</span>' +
@@ -8018,6 +8202,11 @@
     var on = designCount(tpl.id, info.caps);
 
     host.innerHTML = editionCarryNote() +
+      /* what to fill now and what an empty section does (NU-017, NU-001) */
+      '<div class="callout build-guide">' + IC.info + '<span><strong>Fill in what you have now.</strong>' +
+        'Everything can be changed later in the site editor. A section you leave empty keeps the template’s sample words, ' +
+        'which are another event’s, until you replace them or switch the section off. The site cannot go live while they show. ' +
+        'Sections marked “Sample text” still have them.</span></div>' +
       '<div class="build-grid">' +
         '<div class="rail-panel">' +
           '<div class="rail-panel-head">' +
@@ -8025,6 +8214,7 @@
             '<h3>Sections <span class="sec-count" id="sec-count">' + esc(designCountText(on)) + '</span></h3>' +
             '<div class="prog-line"><i style="width:' + p.pct + '%"></i></div>' +
             '<div class="prog-txt">' + p.done + '/' + p.of + ' filled</div>' +
+            '<div class="prog-sample" id="prog-sample" hidden></div>' +
           '</div>' +
           '<div class="sec-list" id="sec-list"></div>' +
           (TEXT_SECTIONS_PLACED ? '<div class="rail-panel-foot">' +
@@ -8037,6 +8227,8 @@
     renderTogglePanel();
     renderSecList();
     renderEditor();
+    renderSampleCount();
+    scheduleSampleCheck();
     var carryOff = $('edition-carry-off');
     if (carryOff) carryOff.onclick = leaveOutEditionCarry;
     var addText = $('btn-add-custom');
@@ -8078,6 +8270,8 @@
     try { oneColumn = !!(window.matchMedia && window.matchMedia('(max-width: 940px)').matches); } catch(e){ oneColumn = false; }
     if (panel && oneColumn && typeof panel.scrollIntoView === 'function') panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
   }
+  /* a row whose section still shows the template's sample words (sampleSections) */
+  var SAMPLE_TAG = '<span class="sec-sample" title="Still the template’s sample words, from another event">Sample text</span>';
   function renderSecList(){
     var host = $('sec-list');
     if (!host) return;
@@ -8093,16 +8287,17 @@
     }
     host.innerHTML = secListRows().map(function(row){
       if (row.design){
-        var r = row.design;
+        var r = row.design, staticSample = r.on && showsSample(r.id);
         return '<div class="sec-row sec-static' + (r.on ? '' : ' excluded') + '">' +
-          '<span class="nm">' + esc(r.title) + '<small class="sub">' +
-            (r.foreignAbout ? esc(aboutPortalNote(tpl.id, true)) : 'Edited in the site editor') + '</small></span>' +
+          '<span class="nm">' + esc(r.title) + (staticSample ? SAMPLE_TAG : '') + '<small class="sub">' +
+            (r.foreignAbout ? esc(aboutPortalNote(tpl.id, true)) : (staticSample ? 'Sample words now: replace them in the site editor' : 'Edited in the site editor')) + '</small></span>' +
           (r.locked ? '<span class="sec-fixed">Always on</span>' :
             '<button class="switch" type="button" data-sec-toggle="' + esc(r.id) + '" aria-pressed="' + r.on + '" title="Include this section on the site">' +
               '<span class="track"><i></i></span>' + (r.on ? 'Included' : 'Excluded') + '</button>') +
         '</div>';
       }
       var s = row.sec, title = secTitle(s), kind = secKind(s);
+      var sample = secIncluded(s) && showsSample(sampleSectionOf(s));
       n++;
       /* a section with something to check shows that instead of its tick (fieldProblems) */
       var flagged = secIncluded(s) && fieldProblems(s).length > 0;
@@ -8110,7 +8305,7 @@
       return '<button class="' + cls + '" data-sec="' + s.id + '" aria-current="' + (!!active && s.id === active.id) + '"' +
           (flagged ? ' title="Something in this section needs checking"' : '') + '>' +
         '<span class="tick">' + (flagged ? IC.warn : IC.check) + '</span>' +
-        '<span class="nm">' + esc(title) + (sameName(title, kind) ? '' : '<small class="sub">' + esc(kind) + '</small>') + '</span>' +
+        '<span class="nm">' + esc(title) + (sample ? SAMPLE_TAG : '') + (sameName(title, kind) ? '' : '<small class="sub">' + esc(kind) + '</small>') + '</span>' +
         '<span class="idx">' + n + '</span></button>';
     }).join('') +
     '<p class="sec-note">The page header and footer come with the design.</p>';
@@ -8155,7 +8350,9 @@
         ' title="' + (textOn ? 'Switch off to use one finished banner picture instead' : 'No finished banner? Switch on to use a background picture with your own text and buttons') + '">' +
         '<span class="track"><i></i></span>Build the banner from a picture and your own text</button>';
 
-    var helpText = isTextSection(s) ? 'A section of your own: a heading and text.' : ((libBy(s.libId) || {}).helper || '');
+    var lib = libBy(s.libId) || {};
+    var helpText = isTextSection(s) ? 'A section of your own: a heading and text.' : (lib.helper || '');
+    var example = isTextSection(s) ? '' : (lib.example || '');
     var deleteTool = !isTextSection(s) ? '' :
       '<button class="btn btn-ghost btn-sm" type="button" id="sec-delete">' + IC.trash + ' Delete section</button>';
     host.innerHTML =
@@ -8164,9 +8361,7 @@
             /* the name the section list and the gallery give it (secTitle), and what kind of section it is */
             '<h2>' + esc(secTitle(s)) + '</h2>' +
             (sameName(secTitle(s), secKind(s)) ? '' : '<span class="eh-kind">' + esc(secKind(s)) + '</span>') +
-            (helpText ? '<span class="eh-info" tabindex="0" aria-label="About this section: ' + esc(helpText) + '">' +
-              svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>', 15) +
-              '<span class="eh-tip" role="tooltip">' + esc(helpText) + '</span></span>' : '') +
+
             (s.source === 'detected' ? '<span class="pill pill-ai"><span class="d"></span>From your design</span>' : '') +
             (s.source === 'edition' ? '<span class="pill pill-ai"><span class="d"></span>From ' + esc(s.editionName || 'a previous edition') + '</span>' : '') +
           '</div>' +
@@ -8175,6 +8370,8 @@
           '<span class="track"><i></i></span>' + (included ? 'Included' : 'Excluded') + '</button>' +
         '</div>' +
       '</div>' +
+      (helpText ? '<p class="eh-help">' + esc(helpText) + (example ? ' <span class="eh-example">' + esc(example) + '</span>' : '') + '</p>' : '') +
+      '<div class="callout amber sec-sample-note" id="sec-sample-note" role="status" hidden></div>' +
       '<div class="editor-body' + (included ? '' : ' off') + '" id="editor-body">' + (hasIntro(s) ? introHTML(s) : '') + shapeHTML(s) +
         '<input type="file" id="img-file-input" accept="' + IMAGE_ACCEPT + '" hidden></div>';
 
@@ -8196,6 +8393,7 @@
     wireShape(s);
     if (hasIntro(s)) bindIntro(s, $('editor-body'));
     wireProblems(s);
+    renderSampleNote();
     fitPsdPreview();
   }
 
@@ -11277,6 +11475,7 @@
   function schedulePreview(){
     clearTimeout(previewTimer);
     previewTimer = setTimeout(renderLivePreview, 350);
+    scheduleSampleCheck();
   }
   function previewShowing(){
     var split = $('wiz-split');
@@ -11332,6 +11531,125 @@
     } else if (trigger && !trigger.hidden){
       trigger.focus();
     }
+  }
+
+  /* =========================================================
+     THE TEMPLATE'S SAMPLE WORDS STILL ON THE SITE (NU-001)
+     A design shows another event's words — its copy, figures, cards and quotes, marked data-rv-sample in its
+     section files — wherever this event's own have not been entered. The wizard says which of the design's
+     sections still show them while the form is filled in (a "Sample text" tag on their row, a note over their
+     form) and again before the event is created, because the site editor marks them with an amber outline and the
+     check before publishing holds a site back while they show. They are found the same two ways the editor finds
+     them (editor-template-ui.js markTemplateSamples) and that check does (functions/lib/site-checks.js
+     sampleHits): on the design filled with the draft (the preview's own canvas, fillGen2Canvas), a marked element
+     whose quote — a paragraph of 30 or more characters — or, with none, whose whole text is still the design's.
+     A card built from the event's own content (data-rv-item with a value) is never one by its whole text, and a
+     section switched off is never counted: it does not go live.
+  ========================================================= */
+  var SAMPLE_QUOTES = 'p, blockquote, q';
+  var SAMPLE_QUOTE_MIN = 30;
+  var sampleState = { tplId: '', bySection: null, texts: null };    // the last check: { <section id>: places still sample }, and their words
+  var sampleTimer = null, sampleSeq = 0;
+  function squashWords(x){ return String(x == null ? '' : x).replace(/\s+/g, ' ').trim(); }
+  /* -> { <section id>: how many places in it still show the design's sample words }, sections switched off left out.
+     texts: when given, { <section id>: [the words of each, as a visitor reads them] } is filled in too */
+  function samplesLeftOn(canvas, texts){
+    var out = {};
+    if (!canvas || !canvas.doc || typeof canvas.library !== 'function') return out;
+    var doc = canvas.doc;
+    var quoteOf = function(el){ return el.closest('figcaption, cite') ? '' : squashWords(el.textContent); };
+    var quotesIn = function(unit){ return unit.matches(SAMPLE_QUOTES) ? [unit] : Array.prototype.slice.call(unit.querySelectorAll(SAMPLE_QUOTES)); };
+    var wholes = {}, quotes = {}, any = false;
+    canvas.library().forEach(function(sec){
+      if (String(sec.html).indexOf('data-rv-sample') === -1) return;
+      var box = doc.createElement('template');
+      box.innerHTML = sec.html;
+      Array.prototype.forEach.call(box.content.querySelectorAll('[data-rv-sample]'), function(unit){
+        var quoted = false;
+        quotesIn(unit).forEach(function(q){ var w = quoteOf(q); if (w.length >= SAMPLE_QUOTE_MIN){ quotes[w] = 1; quoted = any = true; } });
+        var whole = quoted ? '' : squashWords(unit.textContent);
+        if (whole){ wholes[whole] = 1; any = true; }
+      });
+    });
+    if (!any) return out;
+    Array.prototype.forEach.call(doc.querySelectorAll('[data-rv-sample]'), function(unit){
+      var sec = unit.closest('[data-rv-section]');
+      if (!sec || unit.closest('.is-hidden-sec, [hidden]')) return;
+      var built = !!String(unit.getAttribute('data-rv-item') || '').trim(), words = '';
+      if (!built && wholes[squashWords(unit.textContent)]) words = squashWords(unit.textContent);
+      quotesIn(unit).forEach(function(q){ if (!words && quotes[quoteOf(q)]) words = quoteOf(q); });
+      if (!words) return;
+      var id = sec.getAttribute('data-rv-section');
+      out[id] = (out[id] || 0) + 1;
+      if (texts) (texts[id] = texts[id] || []).push(words);
+    });
+    return out;
+  }
+  /* the design's sections that still show sample words, from the last check: [section id] in page order; null when
+     there is no check for the draft's design yet */
+  function sampleSections(){
+    var caps = draftCaps();
+    if (!caps || !sampleState.bySection || sampleState.tplId !== S.template) return null;
+    var off = excludedOn(S.template);
+    return caps.sections.filter(function(sec){ return sampleState.bySection[sec.id] > 0 && !off[sec.id]; }).map(function(sec){ return sec.id; });
+  }
+  /* does design section `id` still show sample words (as last checked)? */
+  function showsSample(id){ var list = sampleSections(); return !!list && list.indexOf(id) !== -1; }
+  /* a section of the draft's own form, by the design section it fills */
+  function sampleSectionOf(s){ var c = sectionCaps(s); return c ? c.sectionId : ''; }
+  /* the names those sections go by in the wizard */
+  function sampleSectionNames(ids){
+    var caps = draftCaps(), names = [];
+    (ids || []).forEach(function(id){
+      (caps ? caps.sections : []).forEach(function(sec){ if (sec.id === id) names.push(sec.label || sec.name); });
+    });
+    return names;
+  }
+  function scheduleSampleCheck(){
+    clearTimeout(sampleTimer);
+    sampleTimer = setTimeout(checkSamplesNow, 700);
+  }
+  /* -> Promise<[section id] | null>: fills the design with the draft and looks; null when it could not be looked at */
+  function checkSamplesNow(){
+    clearTimeout(sampleTimer);
+    var tpl = portedTemplate();
+    if (!tpl || S.creationMethod !== 'template' || S.step !== 1 || S.step1Phase !== 'details' || !window.RevampCanvas) return Promise.resolve(null);
+    var seq = ++sampleSeq;
+    return loadTemplateInfo(tpl).then(function(){ return ensureGen2Canvas(tpl); }).then(function(canvas){
+      if (seq !== sampleSeq || !canvas || gen2TemplateId !== tpl.site) return null;
+      return fillGen2Canvas(canvas).then(function(){
+        if (seq !== sampleSeq || S.template !== tpl.id) return null;
+        var texts = {};
+        sampleState = { tplId: tpl.id, bySection: samplesLeftOn(canvas, texts), texts: texts };
+        renderSampleMarks();
+        return sampleSections();
+      });
+    }).then(null, function(){ return null; });
+  }
+  /* the section list's tags, the line under its count and the note over the open form follow the last check */
+  function renderSampleMarks(){
+    if (S.step !== 1 || S.step1Phase !== 'details' || S.creationMethod !== 'template') return;
+    renderSecList();
+    renderSampleCount();
+    renderSampleNote();
+  }
+  function renderSampleCount(){
+    var host = $('prog-sample'), list = sampleSections();
+    if (!host) return;
+    host.textContent = list && list.length ? (list.length === 1 ? '1 section still shows' : list.length + ' sections still show') + ' the template’s sample words' : '';
+    host.hidden = !host.textContent;
+  }
+  function renderSampleNote(){
+    var host = $('sec-sample-note'), s = activeSection();
+    if (!host) return;
+    var id = s ? sampleSectionOf(s) : '', on = !!s && secIncluded(s) && showsSample(id);
+    /* the first of its words still the design's, so the person can see which part is meant */
+    var words = on && sampleState.texts && sampleState.texts[id] ? sampleState.texts[id][0] || '' : '';
+    if (words.length > 90) words = words.slice(0, 88).replace(/\s+\S*$/, '') + '…';
+    host.innerHTML = on ? IC.warn + '<span>' + (s.done || sectionHasContent(s) ? 'Part of this section still shows the template’s sample words' : 'Until you fill this in, your site shows the template’s sample words here') +
+      ': another event’s, not yours' + (words ? ', such as “' + esc(words) + '”' : '') + '. ' +
+      'Write your own here, or switch the section off. The site cannot go live while they show.</span>' : '';
+    host.hidden = !on;
   }
 
   /* =========================================================
@@ -11477,6 +11795,7 @@
         S.portalSent = details.portal || '';
         save();
         renderEventExists();
+        showEventOnItsPortal(details.portal);
       }, function(err){
         var out = new Error('Could not create the event: ' + plainError(err));
         /* the address was taken (or found reserved) since it was checked: the step offers the free one the
@@ -11488,6 +11807,21 @@
         }
         throw out;
       });
+    });
+  }
+  /* NU-005: an event created on another portal than the one the events list shows would be hidden there behind the
+     portal switcher, so the list moves to the event's portal (the person's working portal, RevampPortals.setWorking:
+     this browser at once, their account a moment later) and says so. Back to events, the editor's and the console's,
+     then opens on it. */
+  function showEventOnItsPortal(portal){
+    if (!isRosterPortal(portal) || !isRosterPortal(workingPortal) || workingPortal === portal) return;
+    if (!window.RevampPortals || typeof RevampPortals.setWorking !== 'function') return;
+    var name = portalName(portal), was = workingPortal;
+    workingPortal = portal;
+    Promise.resolve().then(function(){ return RevampPortals.setWorking(portal); }).then(function(){
+      toast('Your events list now shows ' + name + ', where this event is.');
+    }, function(){
+      toast('Your events list may still show ' + portalName(was) + ': switch it to ' + name + ' there to find this event.');
     });
   }
   /* back on the details form with the keyboard in the address box (a taken address at the hand-off) */
@@ -11989,12 +12323,13 @@
     var host = $('step-4');
     var status = steps.map(function(){ return 'pending'; });
     var failure = null;         // { index, message, choice, slug } while the run is stopped on a failed step (choice: a portal question, portalChangedError; slug: the address was taken, createEventRecord)
+    var existed = !!S.createdEventId;   // the heading says what this run does: create the event, or save one made before
 
     function render(){
       host.innerHTML =
         '<div class="step-head">' +
-          '<span class="eyebrow">Step 2 of 2 &middot; Open in editor</span>' +
-          '<h1>Saving your event</h1>' +
+          '<span class="eyebrow">' + esc(stepEyebrow(4, 'Create')) + '</span>' +
+          '<h1>' + (existed ? 'Saving your event' : 'Creating your event') + '</h1>' +
           '<p class="desc">Your details, logo, pictures and content are saved with the event, then the editor opens and keeps your page as its first saved version, so it opens the same on any computer.</p>' +
         '</div>' +
         '<div class="panel"><div class="proc-wrap">' +
@@ -12185,6 +12520,13 @@
           return;
         }
         if (contentChecked){ contentChecked = false; renderFoot(); }
+        /* A site built on a design (a template, or one imported): one summary before the event is made (NU-012) —
+           what it will be, the sections that still show the template's sample words (NU-001) and the things to
+           check — and the event is created only on its button. An event made before is said there too. */
+        if (!brief){
+          openCreateReview(found, function(){ resumedExisting = false; proceed(); });
+          return;
+        }
         /* the pictures added to sections go with the event (the hand-off uploads them): nothing to warn about */
         if (found.length && !contentAccepted){
           var lines = found.map(function(p){ return '<li><strong>' + esc(secTitle(p.section)) + '</strong> — ' + esc(p.message) + '</li>'; });
@@ -12234,6 +12576,84 @@
     }
   }
 
+  /* =========================================================
+     THE SUMMARY BEFORE THE EVENT IS CREATED (NU-012)
+     The details form's Continue, for a site on a template or an imported design: what the event will be, where it
+     will be listed, the design and how much of it is filled in, the sections that still show the template's sample
+     words (NU-001: checked on the design filled with the draft, checkSamplesNow) and the things to check. Create
+     makes the event and opens the editor (the hand-off); Go back leads to what is to be put right.
+  ========================================================= */
+  function reviewRow(label, value, note){
+    return '<div class="rv-row"><dt>' + esc(label) + '</dt><dd>' + esc(value) + (note ? '<span class="rv-note">' + esc(note) + '</span>' : '') + '</dd></div>';
+  }
+  /* the portal the events list will switch to when this event is created there (NU-005), '' when it already shows it */
+  function portalAfterCreate(){
+    var p = S.basics.portal;
+    return isRosterPortal(p) && isRosterPortal(workingPortal) && workingPortal !== p ? p : '';
+  }
+  /* the included sections with a form here that nothing was entered in: what shows sample words when they could not
+     be looked at on the design itself */
+  function unfilledSectionNames(){
+    return listedSections().filter(function(s){ return secIncluded(s) && !s.done && s.libId !== 'hero'; }).map(secTitle);
+  }
+  /* list: the design's sections still showing sample words ([] none), null when they could not be looked at,
+     checking: the look is under way */
+  function reviewSamplesHtml(list, checking){
+    if (checking) return '<p class="hint review-checking"><span class="gb-spin"></span> Checking which sections still show the template’s sample words…</p>';
+    var names = list ? sampleSectionNames(list) : unfilledSectionNames();
+    if (!names.length) return list ? '<p class="review-ok">' + IC.check + ' No section shows the template’s sample words.</p>' : '';
+    var lead = list
+      ? (names.length === 1 ? '1 section still shows' : names.length + ' sections still show') + ' the template’s sample words, which are another event’s, not yours:'
+      : 'Sections you left empty show the template’s sample words, which are another event’s, not yours:';
+    return '<div class="callout amber" role="status">' + IC.warn + '<span><strong>' + esc(lead) + '</strong>' + esc(names.join(', ')) + '. ' +
+      'They stay on your site until you replace them or switch those sections off, and the site cannot go live while they show. ' +
+      'You can do that now, or later in the site editor, where they have an amber outline.</span></div>';
+  }
+  function openCreateReview(found, go){
+    var b = S.basics, C = CATS[b.category], gallery = templateById(S.template), caps = draftCaps();
+    var exists = !!S.createdEventId, named = b.name.trim() || S.createdEventId, switchTo = portalAfterCreate();
+    var counts = progressCounts();
+    var rows = reviewRow('Event', named) +
+      reviewRow('Web address', siteAddress(S.createdEventId || b.slug.trim())) +
+      reviewRow('Portal and type', (isRosterPortal(b.portal) ? portalName(b.portal) + ' · ' : '') + C.label,
+        switchTo ? 'Your events list will switch to ' + portalName(switchTo) + ', so you can find this event there.' : '') +
+      (b.dateMode === 'none' ? '' : reviewRow('Date', eventDateLabel(b))) +
+      (C.venue ? reviewRow('Venue', locLabel(b, false) || 'Not set yet') : '') +
+      reviewRow('Logo', b.logo ? 'Added' : 'Not added yet', b.logo ? '' : 'The banner shows the event name until you add one, later in the event’s Basics.') +
+      (gallery && caps ? reviewRow('Design', gallery.name + ' template · ' + designCountText(designCount(gallery.id, caps))) : '') +
+      (isImportedTemplate(S.template) ? reviewRow('Design', 'Your imported design') : '') +
+      (gallery ? reviewRow('Filled in here', counts.done + ' of ' + counts.of + ' sections') : '') +
+      (gallery && !activeBannerUrl() ? reviewRow('Banner picture', 'The template’s own picture for now', 'Upload yours in the Banner section, here or in the site editor.') : '');
+    var lines = found.map(function(p){ return '<li><strong>' + esc(secTitle(p.section)) + '</strong> — ' + esc(p.message) + '</li>'; });
+    var samples = null;           // what the look found, once it has answered
+    openModal({
+      title: exists ? 'Save “' + named + '” and open the editor?' : 'Create “' + named + '”?',
+      sub: (exists ? 'This event already exists, so its details are updated. ' : '') + 'It is saved as a draft and opens in the site editor. Nothing is published yet.',
+      /* the sample words first: on a phone the list below them scrolls, and they are what most needs saying */
+      body: (gallery ? '<div class="review-samples" id="review-samples">' + reviewSamplesHtml(null, true) + '</div>' : '') +
+        '<dl class="review-list">' + rows + '</dl>' +
+        (lines.length ? '<p class="review-h">' + (lines.length === 1 ? '1 thing to check' : lines.length + ' things to check') + '</p>' +
+          '<ul class="check-list">' + lines.join('') + '</ul>' : ''),
+      confirm: exists ? 'Save and open the editor' : 'Create event',
+      cancelLabel: 'Go back',
+      onConfirm: go,
+      /* Go back: to the first thing to check, else to the first section still showing sample words that has a form here */
+      onCancel: function(){
+        if (found.length){ focusContentProblem(found[0]); return; }
+        var ids = samples || [], target = null;
+        listedSections().forEach(function(s){ if (!target && secIncluded(s) && ids.indexOf(sampleSectionOf(s)) !== -1) target = s; });
+        if (target) pickSection(target.id);
+      }
+    });
+    if (gallery){
+      checkSamplesNow().then(function(list){
+        samples = list;
+        var host = $('review-samples');
+        if (host) host.innerHTML = reviewSamplesHtml(list, false);
+      });
+    }
+  }
+
   /* How much of "Describe the event" is written: the headings with something after them, and whether there is
      text of the owner's own besides */
   function briefPointsFilled(text){
@@ -12268,6 +12688,9 @@
       '. Theme: ' + (br.themeMode === 'light' ? 'light' : br.themeMode === 'dark' ? 'dark' : 'as the previous edition (or as the design decides)') + '.');
     var id = S.createdEventId || S.basics.slug;
     items.push((S.createdEventId ? 'Updates the event at ' : 'Creates the event at ') + siteAddress(id) + '.');
+    /* NU-005: where the new event will be found */
+    var switchTo = S.createdEventId ? '' : portalAfterCreate();
+    if (switchTo) items.push('Your events list will switch to ' + portalName(switchTo) + ', so you can find this event there.');
     if (regenerate) items.push('Replaces the site generated earlier for this event.');
     return { items: items, warn: warn };
   }

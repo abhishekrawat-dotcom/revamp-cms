@@ -200,9 +200,9 @@
     { "id": "overview",        "name": "Overview",                   "etId": null },
     { "id": "priorities",      "name": "Key Discussion Points",      "etId": null, "repeat": { "item": "#agenda-highlights .cards-grid > .card", "label": ".card-title" } },
     { "id": "partners",        "name": "Brands At The Summit",       "etId": null, "repeat": { "item": "#brands-bnr .tier-group", "label": ".tier-name" } },
-    { "id": "tracks",          "name": "Five Powerful Conventions",  "etId": null, "repeat": { "item": "#conventions-box .display-style9 li", "label": ".track-title" } },
+    { "id": "tracks",          "name": "Five Powerful Conventions", "label": "Named tracks",  "etId": null, "repeat": { "item": "#conventions-box .display-style9 li", "label": ".track-title" } },
     { "id": "whyjoin",         "name": "Why Join Us",                "etId": null, "repeat": { "item": "#event-wdgt-wrapper .ew-ds-2 ul > li", "label": "h4" } },
-    { "id": "factoids",        "name": "Retail Factoids",            "etId": null, "repeat": { "item": "#fact-marquee .marquee-content > .news-card", "label": ".factoid-title" } },
+    { "id": "factoids",        "name": "Retail Factoids", "label": "Factoids",            "etId": null, "repeat": { "item": "#fact-marquee .marquee-content > .news-card", "label": ".factoid-title" } },
     { "id": "exhibitors",      "name": "Who Should Exhibit",         "etId": null, "script": true, "repeat": { "item": "#faq-4 .accordion-bx", "label": ".accordion-text" },
       "toggle": { "item": ".accordion-bx", "open": "active", "expanded": ".accordion-btn" } },
     { "id": "attend",          "name": "Who Should Attend",          "etId": null, "repeat": { "item": "#who-enter .who-enter-box li", "label": ".role-name" } },
@@ -210,6 +210,6 @@
     { "id": "faq",             "name": "Frequently Asked Questions", "etId": null, "script": true, "repeat": { "item": "#faq-5 .accordion-bx", "label": ".accordion-text" },
       "toggle": { "item": ".accordion-bx", "open": "active", "expanded": ".accordion-btn" } },
     { "id": "contact-us",      "name": "Contact Us",                 "etId": null, "repeat": { "item": "#contact-us .flex-width-auto > .col-md-6", "label": ".line-1" } },
-    { "id": "about-us",        "name": "About ETRetail",             "etId": null }
+    { "id": "about-us",        "name": "About ETRetail", "label": "About the portal",             "etId": null }
   ]
 }

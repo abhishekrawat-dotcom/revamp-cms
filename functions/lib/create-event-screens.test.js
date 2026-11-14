@@ -56,9 +56,9 @@ async function main() {
   p.ctx.__t500 = TECH500; p.ctx.__retail = RETAIL;
   p.ce('S.basics.portal = "retail"; S.basics.category = "IP"; setTemplateInfo(templateById("tech500"), window.__t500); setTemplateInfo(templateById("retail-leadership-summit"), window.__retail);');
   var rows = p.ce('designRows("tech500", capsOf("tech500"))');
-  check('UX-050 the gallery list is every section of the design, in its order, under its own names (pinned ones too)',
-    rows.length === 11 && rows[0].title === 'Banner' && rows[4].title === 'Summit spotlight' && rows[10].title === 'About ETCIO',
-    rows.map(function (r) { return r.title; }));
+  check('UX-050 the gallery list is every section of the design, in its order, under its own names (pinned ones too); NU-015 a name that is the sample event\'s or a portal\'s goes by the design\'s neutral label',
+    rows.length === 11 && rows[0].title === 'Banner' && rows[4].title === 'Summit spotlight' && rows[2].title === 'About the event' && rows[3].title === 'Who should attend' &&
+    rows[10].title === 'About the portal', rows.map(function (r) { return r.title; }));
   check('UX-050 …"Summit spotlight" is the Key numbers form, "Beyond sponsorship" the Closing call to action form (TPL-046)',
     rows[4].kind === 'Key numbers' && rows[4].fillable && rows[7].fillable && rows[7].kind === 'Closing call to action' && rows[7].title === 'Beyond sponsorship', [rows[4], rows[7]]);
   check('UX-050 on an ETRetail event "About ETCIO" (ETCIO\'s own text) starts switched off, and can be switched',
@@ -87,29 +87,29 @@ async function main() {
   check('UX-050 …Banner and Contact us have switches, the about of the event\'s own portal would say "Always on"', /data-pv-toggle="banner"/.test(gal) && /data-pv-toggle="contact-us"/.test(gal) && /data-pv-toggle="about-us"/.test(gal));
   p.ce('S.basics.portal = "cio"; renderTemplateCarousel();');
   await tick();
-  check('UX-050 …and on an ETCIO event it does', /About ETCIO<\/span><span class="tpl-preview-fixed">Always on/.test(p.$('tpl-carousel-sections').innerHTML));
+  check('UX-050 …and on an ETCIO event it does', /About the portal<\/span><span class="tpl-preview-fixed">Always on/.test(p.$('tpl-carousel-sections').innerHTML));
   p.ce('S.basics.portal = "retail"');
 
   /* "Use this template": the toast says the same count */
   p.ce('useTemplate("tech500")');
   await tick();
   var toastMsg = (p.log.toasts[p.log.toasts.length - 1] || {}).msg;
-  check('UX-050 the toast after "Use this template" says the gallery\'s count', toastMsg === 'TECH500 selected — 10 of 11 sections on your site', toastMsg);
+  check('UX-050 the toast after "Use this template" says the gallery\'s count (NU-015: under the design\'s own name)', toastMsg === 'Editorial light selected — 10 of 11 sections on your site', toastMsg);
 
   /* the details form's list */
   p.ce('S.creationMethod = "template"; S.step1Phase = "details"; renderBuildWorkspace($("step1-build-host"));');
   var list = p.$('sec-list').innerHTML;
   var titles = (list.match(/<span class="nm">[^<]*/g) || []).map(function (m) { return m.replace('<span class="nm">', ''); });
   check('UX-050 the form lists the same 11 sections under the same names, in the page\'s order',
-    JSON.stringify(titles) === JSON.stringify(TECH500.sections.map(function (s) { return s.name; })), titles);
+    JSON.stringify(titles) === JSON.stringify(TECH500.sections.map(function (s) { return s.label || s.name; })), titles);
   check('UX-050 …numbers only the 10 rows with a form here', JSON.stringify((list.match(/<span class="idx">(\d+)</g) || []).map(function (m) { return +m.replace(/\D/g, ''); })) === '[1,2,3,4,5,6,7,8,9,10]');
   check('UX-050 …a row whose design name is not the form\'s says which form it is ("Summit spotlight" · Key numbers)',
-    /Summit spotlight<small class="sub">Key numbers<\/small>/.test(list) && /What is Tech500<small class="sub">Overview<\/small>/.test(list), list.slice(0, 300));
+    /Summit spotlight<small class="sub">Key numbers<\/small>/.test(list) && /About the event<small class="sub">Overview<\/small>/.test(list), list.slice(0, 300));
   check('UX-050 …and says nothing where both names are the same ("Banner" / Top banner, "Frequently asked questions" / FAQs)',
     /<span class="nm">Banner<\/span>/.test(list) && /<span class="nm">Frequently asked questions<\/span>/.test(list));
   check('UX-050 …"Beyond sponsorship" sits in its place with its form (TPL-046); no separate "Also on this design" group',
     /Beyond sponsorship<small class="sub">Closing call to action/.test(list) && list.indexOf('Also on this design') === -1, list);
-  check('UX-050 …ETCIO\'s About says why it is off, with its switch', /About ETCIO<small class="sub">ETCIO’s own text, so it starts off for ETRetail\./.test(list) &&
+  check('UX-050 …ETCIO\'s About says why it is off, with its switch', /About the portal<small class="sub">ETCIO’s own text, so it starts off for ETRetail\./.test(list) &&
     /data-sec-toggle="about-us" aria-pressed="false"/.test(list), list.slice(-700));
   check('UX-050 …and the form says the gallery\'s count', /<span class="sec-count" id="sec-count">10 of 11 sections on your site<\/span>/.test(p.$('step1-build-host').innerHTML) &&
     /0\/10 filled/.test(p.$('step1-build-host').innerHTML));
@@ -129,7 +129,7 @@ async function main() {
   r.ce('S.creationMethod = "template"; S.step = 1; S.step1Phase = "details"; renderBuildWorkspace($("step1-build-host"));');
   var early = r.$('sec-list').innerHTML;
   check('UX-050 before the roster has come, the About row names ETCIO from its own heading and this event, never a code',
-    /About ETCIO<small class="sub">ETCIO’s own text, so it starts off for this event\. Switch it on/.test(early) &&
+    /About the portal<small class="sub">ETCIO’s own text, so it starts off for this event\. Switch it on/.test(early) &&
     !/cio’s|for retail/.test(early), early.slice(-700));
   check('UX-050 …the gallery card\'s sentence too', r.ce('aboutPortalNote("tech500")') ===
     'Its “About ETCIO” section is ETCIO’s own text, so it starts switched off for this event. Switch it on to rewrite it in the site editor.' &&
@@ -138,7 +138,7 @@ async function main() {
   r.ce('portalArrived()');
   var late = r.$('sec-list').innerHTML;
   check('UX-050 …and once the roster comes the list is drawn again with its names, nothing else picked',
-    /About ETCIO<small class="sub">ETCIO’s own text, so it starts off for ETRetail\./.test(late) && late.indexOf('this event') === -1, late.slice(-700));
+    /About the portal<small class="sub">ETCIO’s own text, so it starts off for ETRetail\./.test(late) && late.indexOf('this event') === -1, late.slice(-700));
   /* a switch pressed with the keyboard keeps the focus when the list is drawn again */
   var host = r.$('sec-list'), asked = '', focused = 0;
   host.contains = function () { return true; };
@@ -214,14 +214,14 @@ async function main() {
     var j = JSON.parse(F.read('templates/' + t + '/template.json'));
     return j.sections.some(function (s) { return s.name === 'Key numbers'; }) && !j.sections.some(function (s) { return s.name === 'Stats strip'; });
   }));
-  check('UX-053 the rail: Event details, Open in editor', JSON.stringify(m.ce('STEPS')) === '["Event details","Open in editor"]');
+  check('UX-053 / NU-012 the rail: the four screens a person goes through', JSON.stringify(m.ce('STEPS')) === '["Portal and type","How to build","Details and content","Create"]');
   check('UX-053 the form: Event details, Web address, Previous edition', /<span class="ttl">Event details<\/span>/.test(page) && />Web address <span class="pill-req">/.test(page) && /id="gb-et-label">Previous edition</.test(page));
   check('UX-053 the banner\'s text mode: Main button / Second button', page.indexOf('>Main button</label>') !== -1 && page.indexOf('>Second button</label>') !== -1);
   check('UX-053 counters say industries and categories', m.ce('nounPlural("industry")') === 'industries' && m.ce('nounPlural("category")') === 'categories' &&
     m.ce('nounPlural("point")') === 'points' && m.ce('nounPlural("day")') === 'days');
   check('UX-053 the kinds: Top banner, Key numbers', m.ce('libBy("hero").name') === 'Top banner' && m.ce('libBy("stats").name') === 'Key numbers');
   check('UX-053 only the method screen says "How would you like to build it?"; busy screens say what they do',
-    (page.match(/How would you like to build it\?/g) || []).length === 1 && /'Opening' : 'Generating'/.test(page) && page.indexOf('<span class="eyebrow">Importing</span>') !== -1 &&
+    (page.match(/How would you like to build it\?/g) || []).length === 1 && /stepEyebrow\(4, opening \? 'Opening' : 'Generating'\)/.test(page) && page.indexOf('<span class="eyebrow">Importing</span>') !== -1 &&
     page.indexOf('<span class="eyebrow">Redesign with AI</span>') !== -1);
   check('UX-053 the address is asked for in plain words', m.ce('S.basics.slug = ""; slugIssue()') === 'Enter the web address — the last part of the event’s address, after /e/.', m.ce('slugIssue()'));
   m.ce('S.creationMethod = "brief"; S.brief.text = BRIEF_TEMPLATE; S.brief.previous = ""; S.brief.current = ""; S.brief.comp1 = ""; S.brief.comp2 = ""; briefDoc = null;');

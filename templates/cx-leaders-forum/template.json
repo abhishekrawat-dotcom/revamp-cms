@@ -169,15 +169,15 @@
     { "id": "banner",            "name": "Banner",                          "etId": null, "widget": "et-banner" },
     { "id": "stats-3",           "name": "Key numbers",                     "etId": null, "repeat": { "item": ".stat-box", "label": "h3" } },
     { "id": "overview-",         "name": "Overview",                        "etId": null },
-    { "id": "conventions-box",   "name": "The Editorial Agenda",            "etId": null, "repeat": { "item": ".conventions-grid li", "label": ".conventions-cntnd h3" } },
-    { "id": "pillars",           "name": "The CX Investment Stack",         "etId": null, "repeat": { "item": ".cards-container > .pillar-col", "label": ".layer-title" } },
+    { "id": "conventions-box",   "name": "The Editorial Agenda", "label": "What awaits",            "etId": null, "repeat": { "item": ".conventions-grid li", "label": ".conventions-cntnd h3" } },
+    { "id": "pillars",           "name": "The CX Investment Stack", "label": "Key discussion points",         "etId": null, "repeat": { "item": ".cards-container > .pillar-col", "label": ".layer-title" } },
     { "id": "who-should-attend", "name": "Who Should Attend",               "etId": null, "repeat": { "item": ".who-attend-item", "label": ".role" } },
     { "id": "speakers",          "name": "Speakers",                        "etId": null, "repeat": { "item": ".speaker-card", "label": "h5" } },
-    { "id": "leaders",           "name": "Quotes From CX Leaders",          "etId": null, "repeat": { "item": ".quote-card", "label": "figcaption > strong" } },
+    { "id": "leaders",           "name": "Quotes From CX Leaders", "label": "Quotes",          "etId": null, "repeat": { "item": ".quote-card", "label": "figcaption > strong" } },
     { "id": "glimpses_event",    "name": "Gallery",                         "etId": null, "repeat": { "item": ".glimpse-tile", "label": "img" } },
     { "id": "faqs",              "name": "Frequently Asked Questions",      "etId": null, "script": true, "repeat": { "item": ".faq-item", "label": ".faq-question-text" },
       "toggle": { "item": ".faq-item", "open": "active", "expanded": ".faq-question" } },
     { "id": "contact-us",        "name": "Contact us",                      "etId": null, "repeat": { "item": ".flex-width-auto > .col-md-6", "label": ".line-1" } },
-    { "id": "about_us_event",    "name": "About ETBrandEquity.com",         "etId": null }
+    { "id": "about_us_event",    "name": "About ETBrandEquity.com", "label": "About the portal",         "etId": null }
   ]
 }

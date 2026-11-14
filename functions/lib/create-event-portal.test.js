@@ -457,7 +457,7 @@ async function main() {
     items = p.ctx.__items || []; return items.length === ROSTER.length && items.filter(function (i) { return i.tag === 'Your portal'; }).map(function (i) { return i.value; }).join() === 'hr';
   })());
   p.ce('stepPortal = "cio"; stepPortalFrom = ""; stepPortalTouched = true; renderPortalStep()');
-  check('5a. another portal than the working one: "listed under ETCIO"', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard.');
+  check('5a. another portal than the working one: "listed under ETCIO"', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard. Your events list switches to it when the event is created.');
   p = load({ cached: 'hr', server: 'auto', serverDelay: 30 });
   p.ce('S.step = 1; S.step1Phase = "category"; startPortal(false)');
   await tick();
@@ -480,7 +480,7 @@ async function main() {
   await tick();
   check('5a. the dashboard link\'s portal comes first, over the working portal', p.ce('stepPortal') === 'cio' && p.ce('stepPortalFrom') === 'query');
   p.ce('renderPortalStep()');
-  check('5a. …with the "listed under" hint, as it is not the working portal', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard.');
+  check('5a. …with the "listed under" hint, as it is not the working portal', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard. Your events list switches to it when the event is created.');
   p = load({ portals: false });
   p.ce('S.step = 1; S.step1Phase = "category"; startPortal(false)');
   await tick();
@@ -685,18 +685,23 @@ async function main() {
   var m = p.log.modals[0];
   check('5. the dialog: its title, and in its sub the portal and what comes (WZ-064)', m && m.title === 'Start from a previous edition' &&
     m.sub === 'Bring an earlier ETHRWorld event’s speakers, sponsors, agenda and glimpses into this one, on the template it used.', m);
-  check('5. the method screen\'s card says the same, and no longer promises its design', /<h3>Start from a previous edition<\/h3>\s*<p>Its speakers, sponsors, agenda and glimpses come into this event, on the template it used\. Its words and look are not copied\.<\/p>/.test(page) &&
-    page.indexOf('Start from a prior event\'s design and sections') === -1);
+  check('5. the method screen\'s card says the same, without contradicting itself (NU-016): same template, its people brought in, its words and look not copied',
+    /<h3>Start from a previous edition<\/h3>\s*<p>Your site starts on the same template as an earlier event of this portal, with its speakers, sponsors, agenda and glimpses brought in\. Its words, colours and pictures stay with it: you write this edition&rsquo;s own\.<\/p>/.test(page) &&
+    page.indexOf('Its words and look are not copied') === -1 && page.indexOf('Start from a prior event\'s design and sections') === -1);
+  check('5. NU-016 the header button while a template is filled in has its own name: content only, the template stays',
+    page.indexOf('Add speakers &amp; sponsors from a previous edition') !== -1 && page.indexOf('Use a previous edition’s content') === -1 && page.indexOf('Your template stays as it is.') !== -1);
   check('5. while loading: "Loading ETHRWorld\'s events…", and Continue waits', p.$('clone-body').innerHTML.indexOf('Loading ETHRWorld’s events…') !== -1 && p.$('modal-ok').disabled === true);
   await tick();
   var opts = p.$('clone-body').innerHTML;
   check('5. it reads the real events list (GET /api/events through RevampCore)', p.log.fetchedEvents === 1);
-  check('5. each option reads "Name — Template name, updated 12 Oct 2026"', opts.indexOf('<option value="hr-new">HR New — Retail Leadership Summit, updated 12 Oct 2026</option>') !== -1 &&
-    opts.indexOf('<option value="hr-imp">HR Imported — Imported design, updated 1 Oct 2026</option>') !== -1 && opts.indexOf('<option value="hr-old">HR Old — TECH500, updated 1 Sep 2026</option>') !== -1 &&
-    count(opts, '<option ') === 3 && p.$('modal-ok').disabled === false, opts);
+  check('5. NU-031 each previous edition is a card: its name, when it took place, its type, design, state and last change; the first is picked',
+    /id="clone-ed-0" value="hr-new" checked>[\s\S]*?<span class="clone-name">HR New<\/span><span class="clone-when">No date set<\/span><span class="clone-meta">IP Event · Bold maroon template · Not published · changed 12 Oct 2026<\/span>/.test(opts) &&
+    /value="hr-imp">[\s\S]*?<span class="clone-meta">IP Event · Imported design · Not published · changed 1 Oct 2026<\/span>/.test(opts) &&
+    /value="hr-old">[\s\S]*?<span class="clone-meta">IP Event · Editorial light template · Not published · changed 1 Sep 2026<\/span>/.test(opts) &&
+    count(opts, 'class="clone-card"') === 3 && opts.indexOf('<option') === -1 && p.$('modal-ok').disabled === false, opts);
   p.ce('useTemplate = function(id, then){ window.__log.used = id; window.__log.then = then; }; applyImportedTemplate = function(id){ window.__log.imported = id; S.template = id; };' +
     'showStep2View = function(v){ window.__log.view = v; }; advanceToDetails = function(m){ window.__log.advanced = m; S.creationMethod = m; }; renderBuildWorkspace = function(){}; renderFoot = function(){};');
-  p.$('clone-event-select').value = 'hr-old';
+  p.$('clone-ed-2').checked = true; p.fire(p.$('clone-ed-2'), 'change');
   m.onConfirm();
   await new Promise(function (r) { setTimeout(r, 5); }); await tick();
   check('5. Continue reads its Content first (its seven lists), saying so; the design waits for the answer',
@@ -704,7 +709,7 @@ async function main() {
     p.log.toasts.some(function (t) { return t.msg === 'Reading HR Old’s speakers, sponsors, agenda and glimpses…' && t.opts.sticky === true; }), subReads);
   var q = p.log.modals[1];
   check('5. …then asks: its template, what comes as new records (only what its site showed), its venue, and that nothing else is copied',
-    q && q.title === 'Start from “HR Old”?' && q.sub === 'The site starts on the TECH500 template it used. These come into this event as new records of its own — HR Old itself is not changed.' &&
+    q && q.title === 'Start from “HR Old”?' && q.sub === 'The site starts on the Editorial light template it used. These come into this event as new records of its own — HR Old itself is not changed.' &&
     q.body.indexOf('<span class="pill-opt">1 speaker</span><span class="pill-opt">1 glimpse</span><span class="pill-opt">1 agenda session</span>') !== -1 &&
     q.body.indexOf('Venue: Grand Hyatt, Mumbai — the previous edition’s, as this edition has none yet. You can change it in the details.') !== -1 &&
     q.body.indexOf('Nothing else of it is copied: its words, colours, banner and page changes stay with it.') !== -1 && q.confirm === 'Start from this edition' && q.cancelLabel === 'Back', q);
@@ -755,7 +760,7 @@ async function main() {
   p.ce('S.step = 1; S.step1Phase = "method"; S.basics.portal = "hr"; S.basics.category = "IP"; S.basics.venue = "Taj Palace, Delhi"');
   p.ce('confirmStartFromEdition')({ id: 'hr-old', name: 'HR Old', templateId: 'tech500', venue: 'Grand Hyatt', city: 'Mumbai' }, {});
   check('5. this edition\'s own venue is kept, and a previous edition with nothing on its site gives only its template', p.log.modals[0].body.indexOf('Venue: this edition’s own, Taj Palace, Delhi, is kept.') !== -1 &&
-    p.log.modals[0].sub === 'The site starts on the TECH500 template it used. HR Old has no speakers, sponsors, agenda or glimpses on its site, so only its template is used.' &&
+    p.log.modals[0].sub === 'The site starts on the Editorial light template it used. HR Old has no speakers, sponsors, agenda or glimpses on its site, so only its template is used.' &&
     p.log.modals[0].body.indexOf('pill-opt') === -1, p.log.modals[0]);
   check('5. …taking it changes nothing of it', p.ce('takeEditionVenue')({ venue: 'Grand Hyatt', city: 'Mumbai' }) === '' && p.ce('S.basics.venue') === 'Taj Palace, Delhi');
   p.log.modals[0].onCancel();
@@ -769,7 +774,7 @@ async function main() {
     'showStep2View = function(v){ window.__log.view = v; }; advanceToDetails = function(m){ window.__log.advanced = m; S.creationMethod = m; }; renderBuildWorkspace = function(){}; renderFoot = function(){};');
   p.ce('openCloneDesignModal()');
   await tick();
-  p.$('clone-event-select').value = 'hr-imp';
+  p.$('clone-ed-1').checked = true; p.fire(p.$('clone-ed-1'), 'change');
   p.log.modals[0].onConfirm();
   await new Promise(function (r) { setTimeout(r, 5); }); await tick();
   q = p.log.modals[1];
@@ -806,7 +811,7 @@ async function main() {
   p.ce('RevampCore.fetchEvents = function(){ return Promise.resolve(' + JSON.stringify(ITEMS) + '); }');
   p.$('clone-retry').onclick();
   await tick();
-  check('5. …Retry reads it again', count(p.$('clone-body').innerHTML, '<option ') === 3);
+  check('5. …Retry reads it again', count(p.$('clone-body').innerHTML, 'class="clone-card"') === 3);
   p = load({ events: ITEMS });
   await p.ce('loadPortalRoster()');
   p.ce('initStep1 = function(){}; renderFoot = function(){}; renderStep2 = function(){}; S.step = 1; S.step1Phase = "method"; S.basics.portal = ""');
