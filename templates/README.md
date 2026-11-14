@@ -122,6 +122,10 @@ Section tools work on the real page in the iframe:
   editing. The trigger is a real `<button aria-expanded>` (keyboard, screen readers) with the question's words in
   a `<span>` inside it: text typed straight into a button loses its spaces.
 - A section hidden in the editor stays hidden on the preview and the live page.
+- **Section names**: `sections[].name` is the design's own heading for a section ("What is Tech500", "About ETCIO"),
+  kept as it is for the editor and the site. Where that name is the sample event's or a portal's, an optional
+  `sections[].label` gives the neutral name Create Event lists it under for any event ("About the event", "About the
+  portal"), so a newcomer on another portal does not take the design for another team's event.
 
 Theme controls (Design panel, global toolbar) set the platform's own variables on `<body>` — `--theme-color`,
 `--body-font-family`, the heading font variable, `--default-color`/`--body-color`, `--para-font-size`,
