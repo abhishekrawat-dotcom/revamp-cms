@@ -1989,3 +1989,107 @@ a.ev-chip:hover{ border-color: currentColor; }
   .seo2-more summary{ padding:10px 0; }
   .seo2-sh-link{ display:inline-flex; align-items:center; min-height:40px; }
 }
+
+/* seo2: rich — Settings › URL & SEO, inside the "Advanced" fold: "Event details for search engines" and "Speakers,
+   FAQs and reviews in Google" (edit-event-seo.js schemaHtml, richHtml), the structured data under them, and the
+   testimonial and previous-edition dialogs. Quiet facts, tidy rows, one muted line per note, no box inside a box,
+   no coloured pills; the console's tokens only, so light and dark both follow the theme. */
+.seo2-rich, .seo2-body{ display:flex; flex-direction:column; gap:24px; min-width:0; }
+.seo2-group{ min-width:0; }
+.seo2-off{ opacity:.55; }
+.seo2-rich .frow{ gap:16px; }
+/* the switch says its state with its track; its words stay calm (the console's own turns them red when on) */
+.seo2-switch .tgl, .seo2-switch .tgl[aria-pressed="true"]{ font-size:13px; text-align:left; color: var(--text); }
+.seo2-switch .tgl:disabled{ opacity:.55; cursor:not-allowed; }
+.seo2-switch .seo2-hint{ padding-left:42px; }
+.seo2-hint{ display:flex; gap:6px; align-items:flex-start; margin:6px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); }
+.seo2-hint a{ color: inherit; text-decoration:underline; text-underline-offset:2px; }
+.seo2-hint a:hover{ color: var(--text); }
+.seo2-hint .btn{ margin:-5px 0 -5px 2px; vertical-align:baseline; }
+.seo2-ico{ display:inline-flex; margin-top:3px; flex-shrink:0; }
+.seo2-faint{ color: var(--text-muted); }
+.seo2-err{ margin:0; font-size:13px; font-weight:600; color: var(--accent-strong); }
+/* a text field: its label, with the count and ETB2B AI's small button at the right */
+.seo2-lrow{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; margin-bottom:6px; min-height:28px; }
+.seo2-lrow label{ flex:1 1 auto; margin:0; font-size:12.5px; font-weight:700; }
+.seo2-pair{ display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:8px; }
+/* what is filled in for the team: a label and its value per line */
+.seo2-facts{ display:grid; grid-template-columns: max-content minmax(0,1fr); gap:8px 24px; margin:0; font-size:13px; line-height:1.5; }
+.seo2-facts dt{ color: var(--text-muted); }
+.seo2-facts dd{ margin:0; min-width:0; overflow-wrap:anywhere; }
+.seo2-logo-dd{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; }
+.seo2-logo{ display:inline-flex; align-items:center; max-width:120px; padding:4px 6px; border-radius:6px; background: var(--surface-2); }
+.seo2-logo img{ display:block; max-width:100%; max-height:28px; }
+/* speakers, FAQs, testimonials: tidy rows, a hairline between them */
+.seo2-head{ display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; margin-bottom:2px; }
+.seo2-head h4{ margin:0; font-size:13px; font-weight:700; }
+.seo2-head a{ font-size:12.5px; color: var(--text-muted); text-decoration:underline; text-underline-offset:2px; }
+.seo2-head a:hover{ color: var(--text); }
+.seo2-rows{ list-style:none; margin:0; padding:0; }
+.seo2-row{ display:flex; align-items:flex-start; gap:10px; padding:9px 0; font-size:13px; line-height:1.45; }
+.seo2-row + .seo2-row{ border-top:1px solid var(--border); }
+.seo2-row > input[type="checkbox"]{ width:16px; height:16px; margin:2px 0 0; flex-shrink:0; accent-color: var(--accent); cursor:pointer; }
+.seo2-row > input[type="checkbox"]:disabled{ cursor:not-allowed; }
+.seo2-row label{ flex:1 1 auto; min-width:0; cursor:pointer; }
+.seo2-row label b{ display:block; font-weight:600; overflow-wrap:anywhere; }
+.seo2-row label span{ display:block; font-size:12.5px; color: var(--text-muted); overflow-wrap:anywhere; }
+.seo2-row input:disabled + label{ color: var(--text-muted); cursor:default; }
+.seo2-row .seo2-clip{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.seo2-state{ flex-shrink:0; padding-top:1px; font-size:12px; color: var(--text-muted); white-space:nowrap; }
+.seo2-tmain{ flex:1 1 auto; min-width:0; }
+.seo2-twho{ display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 10px; }
+.seo2-twho label{ flex:0 1 auto; }
+.seo2-twho label b, .seo2-twho label span{ display:inline; }
+.seo2-twho label span{ margin-left:6px; }
+.seo2-stars{ font-size:12.5px; letter-spacing:1px; color: var(--text-muted); white-space:nowrap; }
+.seo2-quote{ margin:3px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.seo2-quote b{ color: var(--text); font-weight:600; }
+.seo2-meta{ margin:3px 0 0; font-size:12px; color: var(--text-muted); }
+.seo2-tacts{ display:flex; gap:2px; flex-shrink:0; margin:-4px -8px 0 0; }
+.seo2-acts{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
+.seo2-acts .seo2-faint{ font-size:12.5px; }
+/* a long list: the first six, then "Show N more" */
+.seo2-more{ border-top:1px solid var(--border); }
+.seo2-more > summary{ padding:9px 0; font-size:12.5px; font-weight:600; color: var(--text-muted); cursor:pointer; list-style:none; }
+.seo2-more > summary::-webkit-details-marker{ display:none; }
+.seo2-more > summary:hover{ color: var(--text); }
+.seo2-more-hide, .seo2-more[open] .seo2-more-show{ display:none; }
+.seo2-more[open] .seo2-more-hide{ display:inline; }
+.seo2-more > .seo2-rows{ border-top:1px solid var(--border); }
+/* the structured data the next publish gives, folded under the two panels */
+.seo2-ld{ margin:0 0 18px; font-size:13px; }
+details.seo2-ld > summary{ display:inline-block; padding:4px 0; font-weight:600; color: var(--text-muted); cursor:pointer; }
+details.seo2-ld > summary:hover{ color: var(--text); }
+details.seo2-ld > summary span{ margin-left:6px; font-size:12px; font-weight:400; }
+.seo2-ld pre{ margin:8px 0 0; max-height:360px; overflow:auto; padding:12px 14px; border-radius:8px; background: var(--surface-2); color: var(--text);
+  font-family: var(--font-mono); font-size:11.5px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
+/* the dialogs */
+.seo2-req{ font-size:12px; font-weight:500; color: var(--text-muted); }
+.seo2-tm .frow{ gap:16px; }
+.seo2-photo{ display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
+.seo2-photo [hidden]{ display:none; }
+.seo2-photo-pic{ width:44px; height:44px; flex-shrink:0; display:grid; place-items:center; overflow:hidden; border-radius:50%; background: var(--surface-2); color: var(--text-muted); }
+.seo2-photo-pic img{ width:100%; height:100%; object-fit:cover; display:block; }
+.seo2-photo-state{ flex:1 1 120px; font-size:13px; color: var(--text-muted); }
+.seo2-pick{ max-height:50vh; overflow:auto; margin-top:12px; }
+.seo2-pick-list{ list-style:none; margin:0; padding:0; }
+.seo2-pick-list li + li{ border-top:1px solid var(--border); }
+.seo2-pick-btn{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; width:100%; min-height:44px; padding:9px 8px; border:0; border-radius:8px;
+  background:transparent; color: var(--text); font:inherit; font-size:13px; text-align:left; cursor:pointer; }
+.seo2-pick-btn:hover{ background: var(--surface-2); }
+.seo2-pick-btn:focus-visible{ background: var(--surface-2); outline:2px solid var(--text-muted); outline-offset:-2px; }
+.seo2-pick-btn b{ font-weight:600; }
+.seo2-pick-btn span{ font-size:12.5px; color: var(--text-muted); }
+.seo2-bi{ margin-top:12px; }
+.seo2-bi-off{ list-style:none; margin:12px 0 0; padding:0; font-size:13px; line-height:1.5; color: var(--text-muted); }
+.seo2-bi-off li + li{ margin-top:4px; }
+.seo2-bi-other{ margin:12px 0 0; }
+.seo2-bi-other .btn{ margin-left:-11px; }
+/* a phone: the facts keep their two columns and a row keeps its state at its end; a testimonial's Edit and Remove
+   go under its words */
+@media (max-width: 560px){
+  .seo2-facts{ column-gap:16px; }
+  .seo2-trow{ flex-wrap:wrap; row-gap:0; }
+  .seo2-trow .seo2-tmain{ flex-basis:calc(100% - 26px); }
+  .seo2-tacts{ margin:0 0 0 18px; }
+}
