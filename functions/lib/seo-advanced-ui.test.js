@@ -68,9 +68,11 @@ ok(!/<span class="sub">/.test(both), 'no subtitle under either title');
 ok(/Filled in from Basics and the event’s portal\./.test(schema) && (schema.match(/Change them in Basics/g) || []).length === 1, 'what is filled in is said once, with one way to change it');
 ok(/<dt>Dates<\/dt><dd>18–19 February 2027<\/dd>/.test(schema) && /<dt>City<\/dt><dd>New Delhi, Delhi, India<\/dd>/.test(schema) && /<dt>Logo<\/dt><dd class="seo2-logo-dd"><span class="seo2-logo"><img/.test(schema),
   'the dates, the place and the logo read as quiet facts');
-ok(/Suggested by ETB2B AI\./.test(schema) && /Left empty, the description in Google is used\./.test(schema), 'a field says in one muted line who wrote it, or what is used while it is empty');
-ok(/aria-label="Suggest again with ETB2B AI: Event name for search engines"/.test(schema) && /aria-label="Suggest with ETB2B AI: Event description for search engines"/.test(schema),
-  'ETB2B AI\'s small button per field names the field in plain words (as its messages do)');
+ok(/<p class="seo2-hint" id="seo-schemaTitle-hint"><span>Suggested by ETB2B AI · <button class="seo2-link" type="button" data-seo-ai="schemaTitle"/.test(schema) &&
+  /<p class="seo2-hint" id="seo-schemaDescription-hint"><span>Left empty, the description in Google is used\.<\/span><\/p>/.test(schema),
+  'a field says in one muted line who wrote it (with Suggest again), or what is used while it is empty — as the Google result\'s fields do');
+ok(/aria-label="Suggest again with ETB2B AI: Event name for search engines"/.test(schema) && schema.indexOf('data-seo-ai="schemaDescription"') === -1 && !/btn-ghost/.test(schema) && schema.indexOf('Suggest with ETB2B AI') === -1,
+  'per field, only Suggest again on what ETB2B AI wrote, a small text button naming the field in plain words (the page\'s heading writes every field)');
 
 /* ---------- the same ids and data hooks as before (save, wiring, live counts, ETB2B AI, the previous edition) ---------- */
 ['seo-basicSchema', 'seo-advancedSchema', 'seo-schemaTitle', 'seo-schemaDescription', 'seo-attendanceMode', 'seo-streetAddress', 'seo-postalCode', 'seo-latitude', 'seo-longitude',
@@ -78,7 +80,8 @@ ok(/aria-label="Suggest again with ETB2B AI: Event name for search engines"/.tes
 ['schemaTitle', 'schemaDescription', 'attendanceMode', 'streetAddress', 'postalCode', 'latitude', 'longitude'].forEach(function (k) {
   ok(both.indexOf('data-seo-field="' + k + '"') !== -1, 'kept: data-seo-field="' + k + '"');
 });
-ok(/data-seo-ai="schemaTitle"/.test(schema) && /data-seo-ai="schemaDescription"/.test(schema), 'kept: ETB2B AI per field (data-seo-ai)');
+ok(/data-seo-ai="schemaTitle"/.test(schema), 'kept: ETB2B AI per field (data-seo-ai) on what it wrote');
+['seo-schemaTitle', 'seo-schemaDescription'].forEach(function (id) { ok(both.indexOf('aria-describedby="' + id + '-hint"') !== -1 && both.indexOf('id="' + id + '-hint"') !== -1, '#' + id + ' is described by its one line'); });
 ok(/data-seo-sp="s1" checked/.test(rich) && /data-seo-sp="s2">/.test(rich) && /data-seo-sp="s3" disabled>/.test(rich), 'speakers: ticked, left out (speakersOff), and not confirmed (cannot be ticked)');
 ok(/data-seo-fq="f1" checked/.test(rich) && /data-seo-tm-on="0" checked/.test(rich) && /data-seo-tm-edit="2"/.test(rich) && /data-seo-tm-x="1"/.test(rich), 'FAQs and testimonials: include, edit and remove hooks');
 ok(/data-seo="tm-add"/.test(rich) && /data-seo="prev-tm"/.test(rich) && (rich.match(/class="seo2-acts"/g) || []).length === 1, 'testimonials: Add and Bring in, in one action area');
@@ -89,11 +92,20 @@ ok((rich.match(/<li class="seo2-row"><input type="checkbox" id="seo-sp-/g) || []
   'ten speakers: six shown, the other four folded under "Show 4 more speakers"');
 T.ST.more = { sp: true };
 ok(/data-seo-more="sp" open>/.test(T.richHtml()), 'and it stays open after a redraw once opened');
-ok(/1 FAQ is not shown on the site, so it is left out\. Add an FAQ section in the <a href="#design\/editor" data-goto="design\/editor">site editor<\/a> to show it\./.test(rich) &&
+ok(/1 FAQ is not shown on the site, so it is left out\. Add an FAQ section in the <a class="seo2-link" href="#design\/editor" data-goto="design\/editor">site editor<\/a> to show it\./.test(rich) &&
   /1 testimonial is not shown on the site, so it is left out\./.test(rich), 'what is left out is one muted line each, with the way to the site editor');
 ok(/From the previous edition · Not on the site/.test(rich) && /Not saved yet/.test(rich) && /<b>A truly pleasant experience<\/b> The sessions were sharp\./.test(rich), 'a testimonial: its words, where it came from and whether the site shows it');
 ok(/<dt>Rating<\/dt><dd><b>5<\/b> <span class="seo2-stars" role="img" aria-label="5 out of 5 stars">★★★★★<\/span> <span class="seo2-faint">from 1 rating<\/span>/.test(rich), 'the rating is one line, from the testimonials the site shows');
-ok(/<details class="seo2-ld"><summary>What search engines read <span>structured data<\/span><\/summary><pre>/.test(rich) && rich.indexOf('&quot;@type&quot;: &quot;Event&quot;') !== -1, 'the structured data follows, folded');
+ok(/<details class="seo2-ld" id="seo2-ld"><summary>What search engines read <span>structured data<\/span><\/summary><pre>/.test(rich) && rich.indexOf('&quot;@type&quot;: &quot;Event&quot;') !== -1 &&
+  (rich.match(/What search engines read/g) || []).length === 1 && SRC.indexOf('function ldHtml') === -1, 'the structured data follows, folded, drawn once');
+T.ST.ldOpen = true;
+ok(/<details class="seo2-ld" id="seo2-ld" open>/.test(T.richHtml()), 'and it stays open after a redraw once opened');
+T.ST.ldOpen = false;
+/* what ETB2B AI left out of a field: the Google result's warning line, with Suggest again */
+T.ST.dropped = [{ field: 'schemaDescription', why: 'left out: it said “2000+”, which the event’s details do not say' }];
+ok(/id="seo-schemaDescription-hint"><span><span class="seo2-warn"><svg><\/svg> ETB2B AI left out: it said “2000\+”, which the event’s details do not say\.<\/span> <button class="seo2-link" type="button" data-seo-ai="schemaDescription"/.test(T.schemaHtml()),
+  'what ETB2B AI left out: one muted warning line with a small icon, and Suggest again');
+T.ST.dropped = [];
 
 /* ---------- the empty and switched-off states ---------- */
 const empty = JSON.parse(JSON.stringify(DATA));

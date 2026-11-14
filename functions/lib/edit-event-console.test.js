@@ -255,7 +255,7 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   check('URL & SEO reads top to bottom: status, preview, Google result, shared link, then a closed Advanced fold, then the save bar',
     /ctx\.vhead\('Search and sharing', 'How this event appears in Google and when its link is shared\. Most of it is filled in for you\.'/.test(seoView) &&
     /statusHtml\(\) \+ aiStatusHtml\(\) \+ previewHtml\(\) \+\s*searchHtml\(\) \+ socialHtml\(\) \+\s*'<details class="seo2-adv" id="seo2-adv"' \+ \(ST\.advOpen \? ' open' : ''\) \+ '>/.test(seoView) &&
-    /schemaHtml\(\) \+ richHtml\(\) \+ ldHtml\(\) \+ readyHtml\(\) \+ '<\/div><\/details>' \+\s*saveBarHtml\(\)/.test(seoView) &&
+    /schemaHtml\(\) \+ richHtml\(\) \+ readyHtml\(\) \+ '<\/div><\/details>' \+\s*saveBarHtml\(\)/.test(seoView) && seoJs.indexOf('ldHtml') === -1 &&
     /ST\.advOpen = false;/.test(seoView), seoView.slice(0, 300));
   var seoFnOf = function (name) { return (new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}\\n').exec(seoJs) || [''])[0]; };
   check('URL & SEO: the header\'s helpers and the status line\'s publish are not primary buttons (Save changes is the one)',

@@ -92,11 +92,11 @@ function readiness(x) {
     !seo.description ? (head.description ? 'None yet: the short description from Basics is used.' : 'None yet, and Basics has no short description: search engines pick words from the page.')
       : dl > 160 ? 'Cut to 160 characters in results' : dl < 70 ? dl + ' characters: 120 to 160 reads best' : dl + ' characters');
   var kn = (seo.keywords || []).length;
-  add('search', 'keywords', 'Keywords', kn >= 8 && kn <= 12 ? 'ok' : 'warn', kn ? kn + (kn === 1 ? ' keyword' : ' keywords') + (kn < 8 ? ': 8 to 12 works best' : kn > 12 ? ': 8 to 12 works best' : '') : 'None yet');
+  add('search', 'keywords', 'Keywords', kn >= 8 && kn <= 12 ? 'ok' : 'warn', kn ? kn + (kn === 1 ? ' search word' : ' search words') + (kn < 8 ? ': 8 to 12 works best' : kn > 12 ? ': 8 to 12 works best' : '') : 'None yet');
   add('search', 'h1', 'H1 heading', seo.h1 || (auto.h1 && auto.h1.own) ? 'ok' : 'warn',
     auto.h1 && auto.h1.own ? 'The site’s own main heading: “' + auto.h1.own.slice(0, 80) + '”' : seo.h1 ? 'Set' : 'None yet: the event’s name is used.');
   add('search', 'indexing', 'Indexing', auto.indexing && auto.indexing.on ? 'ok' : 'warn', auto.indexing ? auto.indexing.text : '');
-  add('sharing', 'image', 'Share picture', head.ogImage ? 'ok' : 'warn', head.ogImage ? (seo.shareImageUrl ? 'The team’s own picture' : 'Chosen automatically from the site') : 'None: a shared link shows the title and description only.');
+  add('sharing', 'image', 'Share picture', head.ogImage ? 'ok' : 'warn', head.ogImage ? (seo.shareImageUrl ? 'Your own picture' : 'Made automatically') : 'None: a shared link shows the title and description only.');
   var dates = auto.dates || {};
   if (seo.basicSchema === false) add('schema', 'basic', 'Event schema', 'warn', 'Turned off: search engines are not told the event’s date and place.');
   else if (!dates.exact) add('schema', 'basic', 'Event schema', 'warn', 'Not given while the date is to be announced: set exact dates in Basics.');

@@ -1,8 +1,9 @@
 // node functions/lib/seo-search-panel.test.js — Settings › URL & SEO, the "Google result" panel (edit-event-seo.js
-// searchHtml, the clean redesign of 14 Nov 2026): plain words, no numbering and no badges, the panel's one action row,
-// at most one muted line under a field saying where its value comes from, and the same ids and settings the save, the
-// live preview and the leave guard read. The panel's functions are run as written, with the file's own helpers. No
-// browser, no network.
+// searchHtml, the clean redesign of 14 Nov 2026): plain words, no numbering and no badges, no actions in its head (the
+// page's heading has Suggest with ETB2B AI and Bring in from the previous edition, for every panel), at most one muted
+// line under a field saying where its value comes from, the page's shared label row, link and switch, and the same ids
+// and settings the save, the live preview and the leave guard read. The panel's functions are run as written, with the
+// file's own helpers. No browser, no network.
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
 var SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'edit-event-seo.js'), 'utf8');
@@ -23,8 +24,8 @@ function decl(name) {
   if (!m) throw new Error('edit-event-seo.js has no var ' + name);
   return m[0];
 }
-var code = ['LABEL', 'IDEAL', 'MAX', 'SEARCH_FIELDS'].map(decl).concat(['same', 'norm', 'str', 'line', 'esc', 'svg', '$', 'counter', 'toggle',
-  'searchNote', 'paintSearchNote', 'searchField', 'searchHtml'].map(fn)).join('\n');
+var code = ['LABEL', 'IDEAL', 'MAX'].map(decl).concat(['same', 'norm', 'str', 'line', 'esc', 'svg', '$', 'counter', 'toggle',
+  'aiAgain', 'aiLeftOut', 'aiWrote', 'searchNote', 'paintSearchNote', 'searchField', 'searchHtml'].map(fn)).join('\n');
 
 function render(over) {
   over = over || {};
@@ -47,7 +48,7 @@ function render(over) {
 
 /* ---------- the panel: plain words, quiet ---------- */
 var h = render();
-ok(/<h3>Google result<\/h3><div class="seo2-acts">/.test(h), 'the panel is "Google result", with no subtitle and its action row in its head', h.slice(0, 200));
+ok(/<h3>Google result<\/h3><\/div><div class="panel-body">/.test(h) && h.indexOf('seo2-acts') === -1, 'the panel is "Google result", with no subtitle and nothing else in its head', h.slice(0, 200));
 ok(h.indexOf('1 ·') === -1 && h.indexOf('class="badge') === -1 && h.indexOf('seo-src') === -1, 'no numbering and no coloured badges');
 ['SEO title', 'Meta description', 'Keywords', 'H1 heading', 'Canonical address', 'Indexing', 'Write with ETB2B AI', 'Not set'].forEach(function (w) {
   ok(h.indexOf('>' + w + '<') === -1 && h.indexOf('>' + w + ' ') === -1, 'the old word "' + w + '" is gone');
@@ -57,13 +58,17 @@ ok(JSON.stringify(labels) === JSON.stringify(['Title in Google', 'Description in
   'the fields, in order, in plain words', JSON.stringify(labels));
 ok(/<label for="seo-h1">Main heading <span class="seo2-aside">\(not shown on the page\)<\/span><\/label>/.test(h), 'the main heading says it is not shown, in muted words');
 
-/* ---------- one action row; per field only "Suggest again", on what ETB2B AI wrote ---------- */
-ok((h.match(/data-seo2-ai="title,description,keywords,h1"/g) || []).length === 1 && /Suggest with ETB2B AI<\/button>/.test(h), 'Suggest with ETB2B AI: once, for the panel\'s four fields');
-ok((h.match(/data-seo="prev"/g) || []).length === 1 && /Bring in from previous edition<\/button>/.test(h), 'Bring in from previous edition: once');
+/* ---------- no actions of its own: the page's heading has them; per field only "Suggest again", on what ETB2B AI wrote ---------- */
+ok(h.indexOf('data-seo2-ai') === -1 && h.indexOf('Suggest with ETB2B AI') === -1 && h.indexOf('data-seo="prev"') === -1 && h.indexOf('Bring in') === -1,
+  'no Suggest with ETB2B AI or Bring in in the panel (the page\'s heading has them, once)');
+var actions = fn('actionsHtml');
+ok((actions.match(/data-seo="ai-all"/g) || []).length === 1 && /Suggest with ETB2B AI<\/button>/.test(actions) && (actions.match(/data-seo="prev"/g) || []).length === 1 &&
+  /Bring in from the previous edition/.test(actions) && (SRC.match(/type="button" data-seo="prev"/g) || []).length === 1 && SRC.indexOf('data-seo2-ai') === -1,
+  'the page\'s heading has Suggest with ETB2B AI and Bring in from the previous edition, and nothing else on the page repeats them');
 ok((h.match(/data-seo-ai="/g) || []).length === 1 && /<p class="seo2-note" id="seo2-note-title">Suggested by ETB2B AI · <button class="seo2-link" type="button" data-seo-ai="title"/.test(h),
   'the title ETB2B AI wrote says so in one muted line, with Suggest again; nothing else has a per-field AI button');
 var busy = render({ aiBusy: 'writing' });
-ok(/data-seo2-ai="title,description,keywords,h1" disabled>/.test(busy) && /data-seo-ai="title" disabled /.test(busy) && !/data-seo2-ai="[^"]*" disabled/.test(h), 'while ETB2B AI writes, its buttons wait');
+ok(/data-seo-ai="title" disabled /.test(busy) && !/data-seo-ai="title" disabled/.test(h), 'while ETB2B AI writes, Suggest again waits');
 
 /* ---------- the line under a field: where the value comes from ---------- */
 var edited = render({ F: { title: 'A title the team changed' }, B: { title: 'ET CIO Summit 2027 | Leaders on AI and cloud' } });
@@ -98,6 +103,13 @@ var fifteen = render({ F: { keywords: new Array(16).join('k,').split(',').slice(
 ok(/id="seo-kw-in" maxlength="60" aria-describedby="seo2-note-keywords" placeholder="15 is the most" disabled>/.test(fifteen) && /data-seo="kw-add" disabled>Add/.test(fifteen) && /15 added · 8 to 12 works best/.test(fifteen) && /seo-ctr over/.test(fifteen),
   'fifteen search words: no more can be added, and the count says it is over');
 
+/* ---------- the page's shared pieces (edit-event.css "seo2: shared"): label row, inline row, switch ---------- */
+ok((h.match(/<div class="seo2-lrow"><label for="seo-(title|description|kw-in|h1)">/g) || []).length === 4 && /<div class="seo2-lrow"><span class="seo2-label">Main web address<\/span><\/div>/.test(h),
+  'every field\'s label sits in the page\'s one label row');
+ok(/<div class="seo2-inline"><span class="num">/.test(h) && h.indexOf('seo2-row') === -1 && h.indexOf('seo2-head') === -1, 'the address and its action are an inline row (seo2-row and seo2-head are the speakers\' and FAQs\' list rows and headings)');
+ok(/<div class="seo2-switch"><button type="button" class="tgl" id="seo-noindex"/.test(h) && /<div class="seo2-switch">[\s\S]*?<p class="seo2-note">Google is asked not to list it/.test(render({ F: { noindex: true } })),
+  'Show in Google is the page\'s one switch, its line under it like the Advanced panels\' switches');
+
 /* ---------- Show in Google: the switch is the team's choice; the line says what else keeps the site out ---------- */
 ok(/id="seo-noindex" aria-pressed="true"><span class="track"><i><\/i><\/span><span>Show in Google<\/span>/.test(h) && !/Google is asked not to list it/.test(h), 'shown in Google: switched on, nothing more said');
 var off = render({ F: { noindex: true } });
@@ -107,7 +119,8 @@ ok(/Listed once the site is live\./.test(render({ auto: { indexing: { on: false,
 ok(/No short link: ETB2B’s link shortener \(ethrworld\.com\/s\/…\) cannot be used from EventSphere, so the site’s own address is used\./.test(h), 'the short link: not available, said honestly in one line');
 
 /* ---------- its wiring ---------- */
-ok(/closest\('\[data-seo2-ai\]'\)/.test(SRC) && /askThenWrite\(b\.getAttribute\('data-seo2-ai'\)\.split\(','\), true\)/.test(SRC), 'Suggest with ETB2B AI asks before it replaces what the team wrote (with "Only the empty ones")');
+ok(/if \(what === 'ai-all'\) askThenWrite\(AI_FIELDS\.slice\(\), true\);/.test(SRC) && /var AI_FIELDS = \['title', 'description', 'keywords', 'h1', 'schemaTitle', 'schemaDescription'\];/.test(SRC),
+  'the heading\'s Suggest with ETB2B AI writes every field it may (the panel\'s four among them), asking before it replaces what the team wrote');
 ok(/if \(k === 'title' \|\| k === 'description' \|\| k === 'h1'\) paintSearchNote\(k\);/.test(SRC), 'the line under a field follows the typing');
 ok(/if \(b\.id === 'seo-noindex'\) \{ ST\.F\.noindex = !ST\.F\.noindex;/.test(SRC), 'the switch still flips settings.seo.noindex');
 ok(!/\b(let|const)\s|=>|`/.test(['searchNote', 'paintSearchNote', 'searchField', 'searchHtml'].map(fn).join('\n')), 'ES5 only');

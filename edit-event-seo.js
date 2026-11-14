@@ -1,38 +1,54 @@
-/* Settings › URL & SEO in the event console (edit-event.html): every SEO field of ET's own event platform, in one
-   section — the owner (6 Nov 2026): "keep everything in one section under settings -> seo", search and sharing only,
-   never the site's own words.
+/* Settings › URL & SEO in the event console (edit-event.html): "Search and sharing", every search and sharing setting
+   of an event in one calm page — the owner (6 Nov 2026): "keep everything in one section under settings -> seo", never
+   the site's own words; (14 Nov 2026) "too noisy, it should be neat and clean". Written for event and marketing teams,
+   so every field is named in plain words (LABEL), never in search-engine jargon.
 
-   FOUR PARTS AND A CHECKLIST, each field saying where it comes from:
-     1 Search listing   SEO title, meta description, keywords, H1 heading (ETB2B AI or typed), the canonical address
-                        and indexing (automatic, the team may change them), the short link (not available: say so)
-     2 Social sharing   the share title and description (the SEO title and description), the share picture (the
-                        console's own Share picture panel, moved here from Basics), the square picture (none apart)
-     3 Event schema     the schema.org Event: on or off, its title and description (ETB2B AI or typed), the dates and
-                        venue (Basics), the attendance mode, street address, postcode, latitude and longitude (the
-                        team), the city's state and country (the place list), the organiser and the logo (automatic)
-     4 Rich results     speakers and FAQs (Content, picked here), testimonials (typed here, or brought in from the
-                        previous edition — never written by AI), the rating (worked out), passes and prices (left out)
-     Schema ready       what is complete and what is missing (functions/lib/api-seo.js readiness)
-   with a live preview of the Google result and of the social card.
+   THE PAGE, TOP TO BOTTOM (view):
+     heading            "Search and sharing", one line under it, and the page's two helpers (actionsHtml): Suggest with
+                        ETB2B AI (every field it writes, asking before it replaces what the team typed) and Bring in from
+                        the previous edition (the street address and the testimonials, ticked in a dialog)
+     status line        live, or how many changes the next publish takes live (the list folded under "What changed")
+                        with the console's own Publish or Send for approval as a link; under it, while ETB2B AI works
+                        or after it wrote, one line with Undo
+     preview            the Google result and the shared link, side by side on a wide screen: the page's anchor
+     Google result      title, description, search words and main heading, each with one muted line under it (where
+                        its value comes from, or "Suggest again" after ETB2B AI wrote it); then the main web address,
+                        Show in Google and the short link (not available, said so)
+     When the link is   the share picture (the console's own field, CTX.seo.sharePictureField: it saves itself at once)
+       shared           and the title and description a shared link shows, which are always Google's
+     Advanced (closed)  Event details for search engines: on or off, what is filled in from Basics and the portal, the
+                        event's name and description, street address, postcode, how people attend, latitude and
+                        longitude. Speakers, FAQs and reviews in Google: on or off, the speakers and FAQs to give (from
+                        Content), testimonials (typed here or brought in, never written by AI), the rating (worked out),
+                        passes and prices (left out). What search engines read (the structured data, folded). The
+                        readiness checklist, one line until it is opened (functions/lib/api-seo.js readiness).
+     save bar           the page's one primary button
+   Folded, never taken out: every field is still on the page, and a field with an error inside a fold opens it.
 
    HOW IT SAVES. The fields are a form with the console's save bar (Save changes / Discard), sent as the changed keys of
-   settings.seo through PATCH /api/event. ETB2B AI ("Write with ETB2B AI", per field "Write again") writes and saves at
+   settings.seo through PATCH /api/event. ETB2B AI (Suggest with ETB2B AI, per field Suggest again) writes and saves at
    once — the console's "do it, then undo": Undo saves what was there before. A field ETB2B AI wrote is marked as its
    own until somebody edits it. Nothing here changes a live site: a live page carries the values that were published
-   with it, so the section says "Live after the next publish", lists what changed since the live version, and offers the
-   console's own Publish (or Send for approval).
+   with it, so the status line says what the next publish changes and offers the console's own Publish (or Send for
+   approval).
 
-   The console hands this file its helpers (edit-event.html, CTX.seo): the share picture panel's two functions, its
-   dialog, the publish action, the tab cache and the leave guard. ES5, no build step. */
+   The console hands this file its helpers (edit-event.html, CTX.seo): the share picture field's two functions, its
+   dialogs, the publish action, the tab cache and the leave guard. Its styles are the "seo2" blocks at the end of
+   edit-event.css. ES5, no build step. */
 (function (global) {
   'use strict';
 
   var C = global.RevampCore;
   var AI_FIELDS = ['title', 'description', 'keywords', 'h1', 'schemaTitle', 'schemaDescription'];
-  var LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading', schemaTitle: 'Schema title',
-    schemaDescription: 'Schema description', canonicalUrl: 'Main web address', noindex: 'Show in Google', streetAddress: 'Street address',
-    postalCode: 'Postcode', latitude: 'Latitude', longitude: 'Longitude', attendanceMode: 'Attendance mode', basicSchema: 'Basic schema',
-    advancedSchema: 'Advanced schema', speakersOff: 'Speakers', faqsOff: 'FAQs', testimonials: 'Testimonials' };
+  /* every setting by the name the page gives it: in ETB2B AI's messages, the replace dialog, the aria-labels and the
+     status line's list of changes (the server's own labels, functions/lib/seo-fields.js LABELS, are the activity log's
+     and the approver's) */
+  var LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading',
+    schemaTitle: 'Event name for search engines', schemaDescription: 'Event description for search engines', canonicalUrl: 'Main web address',
+    noindex: 'Show in Google', shareImageUrl: 'Share picture', streetAddress: 'Street address', postalCode: 'Postcode', latitude: 'Latitude',
+    longitude: 'Longitude', attendanceMode: 'How people attend', basicSchema: 'Event details for search engines',
+    advancedSchema: 'Speakers, FAQs and reviews in Google', speakersOff: 'Speakers left out', faqsOff: 'FAQs left out', testimonials: 'Testimonials',
+    speakers: 'Speakers in Google', faqs: 'FAQs in Google' };
   /* the form's own fields (the share picture saves itself, as it always did; aiWritten and previous are bookkeeping) */
   var FORM = ['title', 'description', 'keywords', 'h1', 'canonicalUrl', 'noindex', 'basicSchema', 'schemaTitle', 'schemaDescription', 'attendanceMode',
     'streetAddress', 'postalCode', 'latitude', 'longitude', 'advancedSchema', 'speakersOff', 'faqsOff', 'testimonials'];
@@ -100,51 +116,35 @@
   }
   function onScreen() { return !!$('seo-root') || !!$('seo-loading'); }
 
-  /* ---------- small pieces ---------- */
-  var FROM_CLS = { ai: 'b-review', team: 'b-info', auto: 'b-mute', basics: 'b-ok', content: 'b-ok', none: 'b-warn' };
-  function from(kind, text) { return '<span class="badge seo-src ' + (FROM_CLS[kind] || 'b-mute') + '">' + esc(text) + '</span>'; }
-  function aiFrom(k) {
-    var F = ST.F;
-    var v = F[k], empty = Array.isArray(v) ? !v.length : !line(v);
-    if (empty) return from('none', 'Not set');
-    var written = (ST.B.aiWritten || []).indexOf(k) !== -1 && same(F[k], ST.B[k]);
-    return written ? from('ai', 'ETB2B AI') : from('team', 'Team');
-  }
-  function aiButton(k) {
-    var written = (ST.B.aiWritten || []).indexOf(k) !== -1 && same(ST.F[k], ST.B[k]);
-    var busy = !!ST.aiBusy;
-    return '<button class="btn btn-ghost btn-sm seo-ai-one" type="button" data-seo-ai="' + k + '"' + (busy ? ' disabled' : '') +
-      ' aria-label="' + esc((written ? 'Write again: ' : 'Write with ETB2B AI: ') + LABEL[k]) + '">' + svg(ST.ctx.IC.star, 13) + ' ' + (written ? 'Write again' : 'Write with ETB2B AI') + '</button>';
-  }
+  /* ---------- small pieces, shared by every part of the page ---------- */
+  /* a text field's count against what reads best: "n / ideal", small and muted at the right of its label (class ctr
+     seo-ctr [over|warn]; paintLive repaints it while typing) */
   function counter(k) {
-    var n = k === 'keywords' ? ST.F.keywords.length : line(ST.F[k]).length;
-    if (k === 'keywords') return '<span class="ctr seo-ctr' + (n && (n < 8 || n > 12) ? ' warn' : '') + '" id="seo-ctr-keywords">' + n + (n === 1 ? ' keyword' : ' keywords') + ' · 8 to 12 works best</span>';
-    var ideal = IDEAL[k];
+    var n = line(ST.F[k]).length, ideal = IDEAL[k];
     return '<span class="ctr seo-ctr' + (n > ideal ? ' over' : n > ideal * 0.9 ? ' warn' : '') + '" id="seo-ctr-' + k + '">' + n + ' / ' + ideal + '</span>';
   }
-  function row(label, value, src, extra) {
-    return '<div class="seo-row"><div class="seo-k">' + esc(label) + (src || '') + '</div><div class="seo-v">' + value + (extra || '') + '</div></div>';
+  /* the muted line under a field ETB2B AI writes, as far as ETB2B AI is concerned (the search and the event details
+     fields alike): what it left out, with a small icon (aiLeftOut), or that it wrote what is there (aiWrote), each
+     with Suggest again; '' otherwise, and the field says what is used without a value. Suggest again is the page's
+     only per-field AI action, a small text button; Suggest with ETB2B AI, in the heading, writes every field. */
+  function aiAgain(k) {
+    return '<button class="seo2-link" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') +
+      ' aria-label="' + esc('Suggest again with ETB2B AI: ' + LABEL[k]) + '">Suggest again</button>';
   }
-  function fieldText(k, label, opts) {
-    opts = opts || {};
-    var id = 'seo-' + k, v = ST.F[k];
-    var input = opts.area
-      ? '<textarea class="inp" id="' + id + '" data-seo-field="' + k + '" rows="3" maxlength="' + MAX[k] + '" aria-describedby="' + id + '-hint" placeholder="' + esc(opts.placeholder || '') + '">' + esc(v) + '</textarea>'
-      : '<input class="inp" id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" value="' + esc(v) + '" aria-describedby="' + id + '-hint" placeholder="' + esc(opts.placeholder || '') + '">';
-    return '<div class="field c12 seo-field" data-seo-wrap="' + k + '"><div class="flabel-row"><label for="' + id + '">' + esc(label) + '</label>' + aiFrom(k) +
-      '<span class="seo-sp"></span>' + counter(k) + aiButton(k) + '</div>' + input +
-      '<p class="hint" id="' + id + '-hint">' + opts.hint + '</p>' + droppedNote(k) + '</div>';
-  }
-  function droppedNote(k) {
+  function aiLeftOut(k) {
     var d = (ST.dropped || []).filter(function (x) { return x.field === k; })[0];
-    return d ? '<p class="field-over seo-dropped" role="status">ETB2B AI ' + esc(d.why) + '. Write it again, or type it.</p>' : '';
+    return d ? '<span class="seo2-warn">' + svg(ST.ctx.IC.info, 13) + ' ETB2B AI ' + esc(d.why) + '.</span> ' + aiAgain(k) : '';
+  }
+  function aiWrote(k) {
+    var v = ST.F[k], empty = Array.isArray(v) ? !v.length : !line(v);
+    return !empty && (ST.B.aiWritten || []).indexOf(k) !== -1 && same(v, ST.B[k]) ? 'Suggested by ETB2B AI · ' + aiAgain(k) : '';
   }
   function toggle(id, on, label, attrs) {
     return '<button type="button" class="tgl" id="' + id + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + (attrs || '') + '><span class="track"><i></i></span><span>' + esc(label) + '</span></button>';
   }
-  function linkTo(route, text) { return '<a href="#' + route + '" data-goto="' + route + '">' + esc(text) + '</a>'; }
+  /* a link to another part of the console, in the page's one quiet link style */
+  function linkTo(route, text) { return '<a class="seo2-link" href="#' + route + '" data-goto="' + route + '">' + esc(text) + '</a>'; }
   function stars(n) {
-    if (!n) return '<span class="seo-none">No rating</span>';
     var s = '';
     for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆';
     return '<span class="seo2-stars" role="img" aria-label="' + n + ' out of 5 stars">' + s + '</span>';
@@ -176,24 +176,31 @@
       searchHtml() + socialHtml() +
       '<details class="seo2-adv" id="seo2-adv"' + (ST.advOpen ? ' open' : '') + '><summary>' +
         '<span class="seo2-adv-t">Advanced</span><span class="seo2-adv-s">Event details, speakers, FAQs and reviews for search engines. Filled in automatically.</span></summary>' +
-        '<div class="seo2-adv-body">' + schemaHtml() + richHtml() + ldHtml() + readyHtml() + '</div></details>' +
+        '<div class="seo2-adv-body">' + schemaHtml() + richHtml() + readyHtml() + '</div></details>' +
       saveBarHtml() + '</div>';
   }
 
-  /* the header's two helpers: secondary, so the save bar's Save changes is the page's one primary button */
+  /* the page's two helpers, in its heading and nowhere else (they cover every panel: ETB2B AI writes all six fields it
+     may write, Bring in offers the street address and the testimonials); secondary, so the save bar's Save changes is
+     the page's one primary button */
   function actionsHtml() {
     var busy = !!ST.aiBusy;
-    return '<button class="btn btn-secondary btn-sm" type="button" data-seo="ai-all"' + (busy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Suggest with ETB2B AI</button>' +
-      '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from the previous edition') + '</button>';
+    return '<button class="btn btn-secondary btn-sm seo2-hact" type="button" data-seo="ai-all"' + (busy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Suggest with ETB2B AI</button>' +
+      '<button class="btn btn-secondary btn-sm seo2-hact" type="button" data-seo="prev"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from the previous edition') + '</button>';
   }
 
   /* going live, said once, in one line: live, or what the next publish changes (the list folded under "What changed"),
-     and the console's own way to publish as a link. The changes are named in the page's own words (the server's labels
-     are the activity log's). */
-  var CHANGE_LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading',
-    canonicalUrl: 'Main web address', noindex: 'Show in Google', shareImageUrl: 'Share picture', basicSchema: 'Event details for search engines',
-    schemaTitle: 'Event name for search engines', schemaDescription: 'Event description for search engines',
-    advancedSchema: 'Speakers, FAQs and reviews in Google', speakers: 'Speakers in Google', faqs: 'FAQs in Google' };
+     and the console's own way to publish as a link. Each change is named and worded as this page says it (LABEL): the
+     server's words are the activity log's ("SEO title", a picture's address, "2 taken out"). */
+  function changeValue(c) {
+    var seo = ST.data.seo || {}, after = String(c.after || '');
+    if (c.field === 'noindex') return seo.noindex === true ? 'Off' : 'On';
+    if (c.field === 'shareImageUrl') return after ? 'Your own picture' : 'Made automatically';
+    if (c.field === 'canonicalUrl' && !after) return 'The site’s own';
+    if (c.field === 'speakersOff' || c.field === 'faqsOff') return String((seo[c.field] || []).length || 'None');
+    if (!after) return c.field === 'speakers' || c.field === 'faqs' || c.field === 'testimonials' || c.field === 'keywords' ? 'None' : 'Removed';
+    return after.length > 120 ? after.slice(0, 119).replace(/\s+\S*$/, '') + ' …' : after;
+  }
   function statusHtml() {
     var d = ST.data, pend = d.pending, changes = d.changes || [], n = changes.length, tone = 'ok', text, act = '', more = '';
     if (!d.live.published) {
@@ -210,7 +217,7 @@
         : '<button class="seo2-link" type="button" data-seo="publish">' + (d.approvalRequired ? (pend ? 'Send again for approval' : 'Send for approval') : 'Publish now') + '</button>';
       if (n) {
         more = '<details class="seo2-chg" id="seo2-chg"' + (ST.chgOpen ? ' open' : '') + '><summary>What changed</summary><ul>' + changes.slice(0, 8).map(function (c) {
-          return '<li><b>' + esc(CHANGE_LABEL[c.field] || c.label) + '</b>' + (c.after ? ': ' + esc(c.after.slice(0, 120)) : ': removed') + '</li>';
+          return '<li><b>' + esc(LABEL[c.field] || c.label) + '</b>: ' + esc(changeValue(c)) + '</li>';
         }).join('') + (n > 8 ? '<li>and ' + (n - 8) + ' more</li>' : '') + '</ul></details>';
       }
     }
@@ -226,20 +233,18 @@
 
   /* ---------- the "Google result" panel: what a search result shows ----------
      Four fields, each a label with a small counter, the field, and at most one muted line under it (searchNote): what
-     ETB2B AI left out, else where the value comes from (ETB2B AI, Basics, the previous edition), else nothing. The
-     panel's own actions sit in its head: Suggest with ETB2B AI (its four fields at once, asking before it replaces
-     what the team wrote) and Bring in from previous edition. Below a hairline: the main web address, Show in Google
-     and the short link (not available, said so). Same ids and ST.F keys as before: the save, the live preview and
-     the leave guard read them. */
-  var SEARCH_FIELDS = ['title', 'description', 'keywords', 'h1'];
+     ETB2B AI left out, else where the value comes from (ETB2B AI, Basics, the previous edition), else nothing. No
+     actions of its own in its head: the page's heading has Suggest with ETB2B AI and Bring in from the previous
+     edition, for every panel; a field ETB2B AI wrote has Suggest again in its line. Below a hairline: the main web
+     address, Show in Google and the short link (not available, said so). Same ids and ST.F keys as before: the save,
+     the live preview and the leave guard read them. */
   function searchNote(k) {
     var F = ST.F, a = ST.data.auto, v = F[k], empty = Array.isArray(v) ? !v.length : !line(v);
-    var again = '<button class="seo2-link" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') +
-      ' aria-label="' + esc('Suggest again with ETB2B AI: ' + LABEL[k]) + '">Suggest again</button>';
-    var d = (ST.dropped || []).filter(function (x) { return x.field === k; })[0];
-    if (d) return '<span class="seo2-warn">' + svg(ST.ctx.IC.info, 13) + ' ETB2B AI ' + esc(d.why) + '.</span> ' + again;
+    var left = aiLeftOut(k);
+    if (left) return left;
     if (k === 'h1' && a.h1 && a.h1.own) return 'The site has its own main heading, “' + esc(a.h1.own.slice(0, 90)) + '”, which Google reads instead.';
-    if (!empty && (ST.B.aiWritten || []).indexOf(k) !== -1 && same(F[k], ST.B[k])) return 'Suggested by ETB2B AI · ' + again;
+    var wrote = aiWrote(k);
+    if (wrote) return wrote;
     if (k === 'keywords') {
       var p = ST.prev && ST.prev.previous, prevKw = p && p.seo && p.seo.keywords && p.seo.keywords.length ? p.seo.keywords : null;
       if (prevKw) return 'The previous edition used: ' + esc(prevKw.join(', ')) + ' (ETB2B AI reads them as a reference).';
@@ -260,7 +265,7 @@
   /* label: HTML, already escaped */
   function searchField(k, label, opts) {
     var id = 'seo-' + k, note = searchNote(k), at = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" aria-describedby="seo2-note-' + k + '" placeholder="' + esc(opts.placeholder || '') + '"';
-    return '<div class="seo2-field" data-seo-wrap="' + k + '"><div class="seo2-head"><label for="' + id + '">' + label + '</label>' + counter(k) + '</div>' +
+    return '<div class="seo2-field" data-seo-wrap="' + k + '"><div class="seo2-lrow"><label for="' + id + '">' + label + '</label>' + counter(k) + '</div>' +
       (opts.area ? '<textarea class="inp" rows="3"' + at + '>' + esc(ST.F[k]) + '</textarea>' : '<input class="inp"' + at + ' value="' + esc(ST.F[k]) + '">') +
       '<p class="seo2-note" id="seo2-note-' + k + '"' + (note ? '' : ' hidden') + '>' + note + '</p></div>';
   }
@@ -268,15 +273,12 @@
     var d = ST.data, F = ST.F, a = d.auto, n = F.keywords.length, full = n >= 15;
     /* an empty description shows what is used instead: Basics' short description, cut where a search result cuts it */
     var basics = line(ST.ctx.EV.description), basicsCut = basics.length > 158 ? basics.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : basics;
-    var acts = '<div class="seo2-acts"><button class="btn btn-secondary btn-sm" type="button" data-seo2-ai="' + SEARCH_FIELDS.join(',') + '"' + (ST.aiBusy ? ' disabled' : '') + '>' +
-        svg(ST.ctx.IC.star, 13) + ' Suggest with ETB2B AI</button>' +
-      '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from previous edition') + '</button></div>';
 
     var chips = F.keywords.map(function (k, i) {
       return '<li class="seo2-chip">' + esc(k) + '<button type="button" data-seo-kw-x="' + i + '" aria-label="Remove the search word ' + esc(k) + '">×</button></li>';
     }).join('');
     var kwNote = searchNote('keywords');
-    var kw = '<div class="seo2-field" data-seo-wrap="keywords"><div class="seo2-head"><label for="seo-kw-in">Search words</label>' +
+    var kw = '<div class="seo2-field" data-seo-wrap="keywords"><div class="seo2-lrow"><label for="seo-kw-in">Search words</label>' +
         '<span class="ctr seo-ctr' + (n > 12 ? ' over' : '') + '" id="seo-ctr-keywords">' + (n ? n + ' added · ' : '') + '8 to 12 works best</span></div>' +
       '<div class="seo2-kw">' + (chips ? '<ul class="seo2-chips" id="seo-kw-list" aria-label="Search words">' + chips + '</ul>' : '') +
         '<div class="seo2-kw-add"><input class="seo2-kw-in" id="seo-kw-in" maxlength="60" aria-describedby="seo2-note-keywords" placeholder="' +
@@ -285,18 +287,19 @@
       '<p class="seo2-note" id="seo2-note-keywords"' + (kwNote ? '' : ' hidden') + '>' + kwNote + '</p></div>';
 
     var own = F.canonicalUrl || ST.canonOpen;
-    var canon = '<div class="seo2-field"><div class="seo2-head">' + (own ? '<label for="seo-canonicalUrl">Main web address</label>' : '<span class="seo2-label">Main web address</span>') + '</div>' +
-      (own ? '<div class="seo2-row"><input class="inp" id="seo-canonicalUrl" data-seo-field="canonicalUrl" type="url" maxlength="500" value="' + esc(F.canonicalUrl) + '" placeholder="https://…" aria-describedby="seo2-note-canon">' +
+    var canon = '<div class="seo2-field"><div class="seo2-lrow">' + (own ? '<label for="seo-canonicalUrl">Main web address</label>' : '<span class="seo2-label">Main web address</span>') + '</div>' +
+      (own ? '<div class="seo2-inline"><input class="inp" id="seo-canonicalUrl" data-seo-field="canonicalUrl" type="url" maxlength="500" value="' + esc(F.canonicalUrl) + '" placeholder="https://…" aria-describedby="seo2-note-canon">' +
           '<button class="seo2-link" type="button" data-seo="canon-auto">Use the site’s own</button></div>' +
           '<p class="seo2-note" id="seo2-note-canon">Only when the event’s main page is somewhere else: Google then lists that address instead.</p>'
-        : '<div class="seo2-row"><span class="num">' + esc(a.url) + '</span><button class="seo2-link" type="button" data-seo="canon-own">Use another address</button></div>') + '</div>';
-    /* the switch says what the team chose; the line under it, what keeps the site out of Google all the same */
+        : '<div class="seo2-inline"><span class="num">' + esc(a.url) + '</span><button class="seo2-link" type="button" data-seo="canon-own">Use another address</button></div>') + '</div>';
+    /* the switch says what the team chose; the line under it, what keeps the site out of Google all the same (the
+       page's one switch style, .seo2-switch, as the Advanced panels' switches) */
     var why = a.indexing && a.indexing.reason;
     var idxNote = F.noindex ? 'Google is asked not to list it. Anyone with the address can still open it.'
       : why === 'test' ? 'Not listed yet: the event’s name says it is a test.'
       : why === 'template' ? 'Not listed yet: the site still shows template text.'
       : why === 'not-live' ? 'Listed once the site is live.' : '';
-    var idx = '<div class="seo2-field">' + toggle('seo-noindex', !F.noindex, 'Show in Google') + (idxNote ? '<p class="seo2-note">' + idxNote + '</p>' : '') + '</div>';
+    var idx = '<div class="seo2-switch">' + toggle('seo-noindex', !F.noindex, 'Show in Google') + (idxNote ? '<p class="seo2-note">' + idxNote + '</p>' : '') + '</div>';
 
     return ST.ctx.panel('Google result', '', '<div class="seo2-search">' +
       searchField('title', 'Title in Google', { placeholder: a.title }) +
@@ -305,7 +308,7 @@
       searchField('h1', 'Main heading <span class="seo2-aside">(not shown on the page)</span>', { placeholder: a.title }) +
       '<div class="seo2-group">' + canon + idx +
         '<p class="seo2-note">No short link: ETB2B’s link shortener (ethrworld.com/s/…) cannot be used from EventSphere, so the site’s own address is used.</p></div>' +
-      '</div>', acts);
+      '</div>');
   }
 
   /* "When the link is shared" (WhatsApp, LinkedIn and X): the share picture, large, with its state in one line and its
@@ -320,7 +323,7 @@
       '<div class="seo2-sh-group" role="group" aria-labelledby="seo2-sh-tl"><p class="seo2-sh-label" id="seo2-sh-tl">Title and description</p>' +
         '<p class="seo2-sh-title" id="seo2-sh-title">' + sharingText('title') + '</p>' +
         '<p class="seo2-sh-desc" id="seo2-sh-desc">' + sharingText('description') + '</p>' +
-        '<p class="seo2-sh-src">The same as in Google. <button class="seo2-sh-link" type="button" data-seo2-sh="edit">Change them</button></p>' +
+        '<p class="seo2-sh-src">The same as in Google. <button class="seo2-link" type="button" data-seo2-sh="edit">Change them</button></p>' +
       '</div>');
   }
   /* the title or description a shared link shows: Google's, as typed (`typed`, else the form's), else what the next
@@ -351,9 +354,6 @@
      reads as quiet facts with one line saying where they come from, the few fields the team may add sit under them,
      and speakers, FAQs and testimonials are tidy rows to tick. A value's source and a warning are one muted line
      each, never a coloured pill; the structured data the next publish gives follows, folded. */
-  /* the words ETB2B AI's messages use for this part's two fields ("ETB2B AI wrote … and saved them") */
-  LABEL.schemaTitle = 'Event name for search engines';
-  LABEL.schemaDescription = 'Event description for search engines';
 
   /* one muted line under a field, a list or a switch: where a value comes from, what is used without one, or (warn)
      what is left out and why. html: already escaped */
@@ -361,19 +361,24 @@
     return '<p class="seo2-hint"' + (id ? ' id="' + id + '"' : '') + '>' +
       (warn ? '<span class="seo2-ico" aria-hidden="true">' + svg(ST.ctx.IC.info, 13) + '</span>' : '') + '<span>' + html + '</span></p>';
   }
-  /* a text field of this part: its label with the count and ETB2B AI's small button on the right, the field, then
-     one muted line (ETB2B AI's, when it wrote what is there; else what is used while it is empty) */
+  /* a text field of this part, drawn as the Google result's are: its label with the count on the right, the field,
+     then one muted line (richFieldNote: what ETB2B AI left out, or that it wrote what is there, each with Suggest
+     again; else what is used while it is empty), which follows the typing (paintRichNote) */
+  var RICH_EMPTY = { schemaTitle: 'Left empty, the event’s name is used.', schemaDescription: 'Left empty, the description in Google is used.' };
+  function richFieldNote(k) { return aiLeftOut(k) || aiWrote(k) || (line(ST.F[k]) ? '' : esc(RICH_EMPTY[k])); }
   function richField(k, label, opts) {
-    var id = 'seo-' + k, v = ST.F[k];
-    var aiOwn = (ST.B.aiWritten || []).indexOf(k) !== -1 && same(ST.F[k], ST.B[k]);
-    var note = aiOwn ? 'Suggested by ETB2B AI.' : !line(v) ? opts.empty : '';
-    var attrs = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '"' + (note ? ' aria-describedby="' + id + '-hint"' : '') +
-      ' placeholder="' + esc(opts.placeholder || '') + '"';
+    var id = 'seo-' + k, v = ST.F[k], note = richFieldNote(k);
+    var attrs = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" aria-describedby="' + id + '-hint" placeholder="' + esc(opts.placeholder || '') + '"';
     var input = opts.area ? '<textarea class="inp" rows="3"' + attrs + '>' + esc(v) + '</textarea>' : '<input class="inp"' + attrs + ' value="' + esc(v) + '">';
-    return '<div class="field c12" data-seo-wrap="' + k + '"><div class="seo2-lrow"><label for="' + id + '">' + esc(label) + '</label>' + counter(k) +
-      '<button class="btn btn-ghost btn-sm" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') + ' aria-label="' +
-        esc((aiOwn ? 'Suggest again with ETB2B AI: ' : 'Suggest with ETB2B AI: ') + LABEL[k]) + '">' + svg(ST.ctx.IC.star, 13) + (aiOwn ? ' Suggest again' : ' Suggest with ETB2B AI') + '</button></div>' +
-      input + (note ? richNote(esc(note), id + '-hint') : '') + droppedNote(k) + '</div>';
+    return '<div class="field c12" data-seo-wrap="' + k + '"><div class="seo2-lrow"><label for="' + id + '">' + esc(label) + '</label>' + counter(k) + '</div>' +
+      input + '<p class="seo2-hint" id="' + id + '-hint"' + (note ? '' : ' hidden') + '><span>' + note + '</span></p></div>';
+  }
+  function paintRichNote(k) {
+    var el = $('seo-' + k + '-hint');
+    if (!el || !ST.F) return;
+    var html = richFieldNote(k);
+    el.innerHTML = '<span>' + html + '</span>';
+    el.hidden = !html;
   }
   function richHead(title, right) { return '<div class="seo2-head"><h4>' + esc(title) + '</h4>' + (right || '') + '</div>'; }
   function richRow(inner, state) { return '<li class="seo2-row">' + inner + '<span class="seo2-state">' + esc(state) + '</span></li>'; }
@@ -413,8 +418,8 @@
       richNote('Filled in from Basics and the event’s portal. ' + linkTo('content/basics', 'Change them in Basics'));
 
     /* the few the team may add */
-    var text = richField('schemaTitle', 'Event name', { placeholder: a.title, empty: 'Left empty, the event’s name is used.' }) +
-      richField('schemaDescription', 'Event description', { area: true, placeholder: 'Two or three sentences for an event listing.', empty: 'Left empty, the description in Google is used.' });
+    var text = richField('schemaTitle', 'Event name', { placeholder: a.title }) +
+      richField('schemaDescription', 'Event description', { area: true, placeholder: 'Two or three sentences for an event listing.' });
     var pv = ST.prev && ST.prev.sameVenue && ST.prev.previous && ST.prev.previous.seo.streetAddress && ST.prev.previous.seo.streetAddress !== F.streetAddress ? ST.prev.previous.seo : null;
     var mode = '<select class="inp" id="seo-attendanceMode" data-seo-field="attendanceMode">' +
       [['', 'Automatic: ' + (a.attendanceAuto === 'offline' ? 'in person (it has a venue)' : 'not said (no venue yet)')], ['offline', 'In person'], ['online', 'Online'], ['mixed', 'In person and online']].map(function (o) {
@@ -423,7 +428,7 @@
     var where = '<div class="field c8"><label for="seo-streetAddress">Street address</label>' +
         '<input class="inp" id="seo-streetAddress" data-seo-field="streetAddress" maxlength="200" value="' + esc(F.streetAddress) + '" placeholder="e.g. National Highway 8, Ambience Island, DLF Phase 3">' +
         (pv ? richNote('The previous edition at this venue gave “' + esc(pv.streetAddress) + (pv.postalCode ? ', ' + esc(pv.postalCode) : '') + '”. ' +
-          '<button class="btn btn-ghost btn-sm" type="button" data-seo="use-prev-address">Use it</button>') : '') + '</div>' +
+          '<button class="seo2-link" type="button" data-seo="use-prev-address">Use it</button>') : '') + '</div>' +
       '<div class="field c4"><label for="seo-postalCode">Postcode</label>' +
         '<input class="inp" id="seo-postalCode" data-seo-field="postalCode" maxlength="12" inputmode="text" value="' + esc(F.postalCode) + '" placeholder="e.g. 122010"></div>' +
       '<div class="field c6"><label for="seo-attendanceMode">How people attend</label>' + mode + '</div>' +
@@ -498,11 +503,13 @@
     var sum = list.reduce(function (a, t) { return a + t.rating; }, 0), avg = Math.round(sum / list.length * 10) / 10;
     return { text: '<b>' + avg + '</b> ' + stars(Math.round(avg)) + ' <span class="seo2-faint">from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + '</span>' };
   }
-  /* what the next publish gives search engines, as they read it (the page's structured data), folded under the panels */
+  /* what the next publish gives search engines, as they read it (the page's structured data), folded under the panels;
+     drawn once, here, and kept open across a redraw once opened (ST.ldOpen, wireShell) */
   function structuredHtml() {
     var s = ST.data.schema, list = [s.event, s.faq].filter(Boolean);
     if (!list.length) return '<p class="seo2-ld seo2-hint">What search engines read: nothing yet.</p>';
-    return '<details class="seo2-ld"><summary>What search engines read <span>structured data</span></summary><pre>' + esc(JSON.stringify(list, null, 2)) + '</pre></details>';
+    return '<details class="seo2-ld" id="seo2-ld"' + (ST.ldOpen ? ' open' : '') + '><summary>What search engines read <span>structured data</span></summary><pre>' +
+      esc(JSON.stringify(list, null, 2)) + '</pre></details>';
   }
 
   /* the words both previews show, as typed (the event's own name, Basics' short description and the site's own address
@@ -527,21 +534,22 @@
       '</section>';
   }
 
-  /* what search engines read (the structured data the next publish gives them), for whoever wants to check it: in the
-     Advanced fold, itself folded */
-  function ldHtml() {
-    var list = [ST.data.schema.event, ST.data.schema.faq].filter(Boolean);
-    if (!list.length) return '';
-    return '<details class="seo-ld seo2-ld" id="seo2-ld"' + (ST.ldOpen ? ' open' : '') + '><summary>What search engines read <span class="seo2-quiet">(structured data)</span></summary><pre>' +
-      esc(JSON.stringify(list, null, 2)) + '</pre></details>';
-  }
-
   /* the readiness checklist (functions/lib/api-seo.js readiness), one line until it is opened: "7 of 15 ready". Its
      groups and items are named in the page's own words; an item's text is the server's. */
   var READY_GROUP = [['search', 'Google result'], ['sharing', 'When the link is shared'], ['schema', 'Event details for search engines'], ['rich', 'Speakers, FAQs and reviews in Google']];
   var READY_LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading', indexing: 'Show in Google',
     image: 'Share picture', basic: 'Event details', advanced: 'Speakers, FAQs and reviews' };
-  function readyLabel(i) { return READY_LABEL[i.id] || (/^problem-/.test(i.id) ? 'Event details' : i.label); }
+  function readyLabel(i) {
+    if (/^problem-/.test(i.id)) return /address must be PostalAddress/.test(i.text) ? 'Full address' : 'Event details';
+    return READY_LABEL[i.id] || i.label;
+  }
+  /* a problem the server's check found in what search engines read (functions/lib/site-seo.js checkJsonLd) comes as a
+     technical line: the one the team can fix is said in plain words, any other plainly, its technical words after */
+  function readyText(i) {
+    if (!/^problem-/.test(i.id)) return i.text;
+    if (/address must be PostalAddress/.test(i.text)) return 'Search engines get only the venue’s name as its address until the street address and postcode are added.';
+    return 'Search engines may not read all of it (' + i.text + ').';
+  }
   function readyHtml() {
     var items = ST.data.ready || [];
     var counted = items.filter(function (i) { return i.level !== 'info'; }), done = counted.filter(function (i) { return i.ok; }).length;
@@ -550,7 +558,7 @@
       if (!mine.length) return '';
       return '<div class="seo-rg"><div class="seo-rg-h">' + esc(g[1]) + '</div>' + mine.map(function (i) {
         return '<div class="seo-check"><span class="dash-dot dash-dot-' + (i.ok ? 'ok' : i.level === 'info' ? 'mute' : 'warn') + '" aria-hidden="true"></span><span><b>' + esc(readyLabel(i)) +
-          '<span class="rv-sr"> — ' + (i.ok ? 'complete' : i.level === 'info' ? 'note' : 'missing') + '</span></b><span>' + esc(i.text) + '</span></span></div>';
+          '<span class="rv-sr"> — ' + (i.ok ? 'complete' : i.level === 'info' ? 'note' : 'missing') + '</span></b><span>' + esc(readyText(i)) + '</span></span></div>';
       }).join('') + '</div>';
     }).join('');
     return '<details class="seo2-ready" id="seo2-ready"' + (ST.readyOpen ? ' open' : '') + '><summary><b>' + done + ' of ' + counted.length + ' ready</b>' +
@@ -946,16 +954,12 @@
       ST.failed = '';
       paintLive();
     });
-    /* the Google result panel (searchHtml): the line under a field follows the typing (a field ETB2B AI wrote is the
-       team's once edited; an emptied one says what Google shows instead), and Suggest with ETB2B AI writes its four
-       fields at once */
+    /* the line under a text field follows the typing, in the Google result and the event details alike: a field ETB2B AI
+       wrote is the team's once edited, an emptied one says what is used instead */
     root.addEventListener('input', function (e) {
       var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-field');
       if (k === 'title' || k === 'description' || k === 'h1') paintSearchNote(k);
-    });
-    root.addEventListener('click', function (e) {
-      var b = e.target && e.target.closest ? e.target.closest('[data-seo2-ai]') : null;
-      if (b && !b.disabled) askThenWrite(b.getAttribute('data-seo2-ai').split(','), true);
+      else if (k === 'schemaTitle' || k === 'schemaDescription') paintRichNote(k);
     });
     root.addEventListener('change', function (e) {
       var t = e.target;
@@ -994,7 +998,7 @@
       if (!what) return;
       act(what);
     });
-    /* the two actions in the view's heading (Write with ETB2B AI, Bring in from the previous edition) are drawn above
+    /* the two actions in the view's heading (Suggest with ETB2B AI, Bring in from the previous edition) are drawn above
        #seo-root, so they are wired here themselves */
     Array.prototype.forEach.call(document.querySelectorAll('.vhead [data-seo="ai-all"], .vhead [data-seo="prev"]'), function (b) {
       b.onclick = function () { act(b.getAttribute('data-seo')); };

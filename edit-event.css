@@ -927,6 +927,8 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 .mock-serp .t{ font-size:14.5px; color:#1a4fc4; font-weight:600; margin:3px 0 4px; line-height:1.3; overflow-wrap:anywhere; }
 .mock-serp .d{ font-size:12px; color: var(--text-muted); line-height:1.5; overflow-wrap:anywhere; }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .mock-serp .t{ color:#8ab0ff; } }
+/* the console pins its theme with html[data-theme]: a dark theme chosen there gets the same light link blue */
+:root[data-theme="dark"] .mock-serp .t{ color:#8ab0ff; }
 .mock-og .img{
   aspect-ratio: 1.91 / 1; display:flex; flex-direction:column; justify-content:flex-end; gap:4px;
   padding:13px; color:#fff; position:relative; overflow:hidden;
@@ -1631,95 +1633,27 @@ a.ev-chip:hover{ border-color: currentColor; }
 .field-over{ margin:6px 0 0; font-size:12px; font-weight:600; color: var(--accent-strong); line-height:1.45; }
 .field-over[hidden]{ display:none; }
 
-/* ============ URL & SEO: shared pieces (the checklist rows, the counts) ============ */
+/* ============ URL & SEO: the readiness checklist's rows, and the loading line ============ */
 .seo-lead{ margin:0 0 12px; font-size:13px; color: var(--text-muted); line-height:1.55; }
-.seo-from{ display:block; font-size:11px; font-weight:600; color: var(--text-faint); margin-top:2px; }
-.seo-n, .seo-none{ font-weight:600; color: var(--text-muted); }
-.seo-pic{ display:block; width:220px; max-width:100%; aspect-ratio: 1.91 / 1; border-radius:8px; overflow:hidden; border:1px solid var(--border); background: var(--surface-3); }
-.seo-pic img{ width:100%; height:100%; object-fit:cover; display:block; }
-.seo-foot{ margin:14px 0 0; font-size:12px; color: var(--text-muted); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .seo-check{ display:flex; gap:10px; align-items:flex-start; padding:7px 0; font-size:13px; }
 .seo-check .dash-dot{ margin-top:5px; }
 .seo-check b{ display:block; font-size:13px; }
 .seo-check span span{ display:block; font-size:12px; color: var(--text-muted); }
-@media (max-width: 680px){ .kv-row{ flex-direction:column; gap:2px; } .kv-row .k{ min-width:0; } }
 
-/* ============ SETTINGS › URL & SEO (edit-event-seo.js): every search and sharing setting ============ */
+/* ============ SETTINGS › URL & SEO (edit-event-seo.js): the pieces kept from before the "seo2" blocks at the end ============ */
 .seo-ai-status{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; padding:10px 14px; border-radius:11px;
   background: var(--review-soft); color: var(--text); font-size:13px; line-height:1.5; }
 .seo-ai-status[hidden]{ display:none; }
-.seo-src{ font-size:11px; padding:2px 7px; }
-.seo-sp{ flex:1; }
-.seo-field .flabel-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
-.seo-field .flabel-row label, .seo-sub .flabel{ font-size:12.5px; font-weight:700; }
-.seo-ai-one{ white-space:nowrap; }
-.seo-dropped{ color: var(--warn); }
-.seo-rows{ display:flex; flex-direction:column; margin-top:14px; border-top:1px solid var(--border); }
-/* rows that open a panel (Social sharing) sit under the panel's own heading line: no second line, no gap */
-.panel-body > .seo-rows:first-child{ margin-top:-6px; border-top:0; }
-.seo-row{ display:grid; grid-template-columns: 190px minmax(0,1fr); gap:6px 16px; padding:11px 0; border-bottom:1px solid var(--border); font-size:13px; }
-.seo-row:last-child{ border-bottom:0; }
-.seo-k{ font-weight:700; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
-.seo-v{ min-width:0; overflow-wrap:anywhere; line-height:1.5; }
-.seo-v .hint{ margin:6px 0 0; font-size:11.5px; color: var(--text-muted); }
-.seo-v .inp{ max-width:520px; }
-.seo-short{ max-width:180px !important; }
-.seo-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-.seo-switch{ margin-bottom:12px; }
-.seo-switch .tgl:disabled{ opacity:.55; cursor:not-allowed; }
-.seo-off{ opacity:.55; }
-.seo-sub{ margin-top:16px; }
-.seo-sub > .flabel-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-.seo-list{ list-style:none; margin:0; padding:0; border:1px solid var(--border); border-radius:11px; overflow:hidden; }
-.seo-list li{ display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid var(--border); background: var(--surface); }
-.seo-list li:last-child{ border-bottom:0; }
-.seo-list li input[type="checkbox"]{ width:18px; height:18px; flex-shrink:0; accent-color: var(--accent); }
-.seo-list li label{ flex:1; min-width:0; cursor:pointer; }
-.seo-list li label b{ display:block; font-size:13px; }
-.seo-list li label span{ display:block; font-size:12px; color: var(--text-muted); overflow-wrap:anywhere; }
-.seo-list .badge{ flex-shrink:0; }
-.seo-bi-off{ font-size:12.5px; color: var(--text-muted); }
-.seo-empty{ padding:12px; border:1px dashed var(--border); border-radius:11px; }
-.seo-empty .seo-none{ margin:0 0 8px; }
-.seo-tlist{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
-.seo-t{ border:1px solid var(--border); border-radius:11px; padding:11px 13px; background: var(--surface); }
-.seo-t-top{ display:flex; align-items:center; gap:10px; }
-.seo-t-top input{ width:18px; height:18px; accent-color: var(--accent); flex-shrink:0; }
-.seo-t-top label{ flex:1; min-width:0; }
-.seo-t-top label b{ display:block; font-size:13px; }
-.seo-t-top label span{ display:block; font-size:12px; color: var(--text-muted); }
-.seo-t-title{ margin:8px 0 0; font-weight:700; font-size:12.5px; }
-.seo-t-text{ margin:4px 0 0; font-size:12.5px; color: var(--text-muted); line-height:1.55; display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden; }
-.seo-t-foot{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:8px; }
-.seo-stars{ color: var(--warn); letter-spacing:1px; font-size:13px; white-space:nowrap; }
-.seo-warn{ color: var(--warn) !important; font-weight:600; }
-.seo-logo{ display:inline-block; vertical-align:middle; max-width:140px; padding:6px 8px; border-radius:8px; background: var(--surface-2); border:1px solid var(--border); }
-.seo-logo img{ display:block; max-width:100%; max-height:40px; }
 .seo-og-img{ padding:0 !important; justify-content:center !important; align-items:center; background: var(--surface-3) !important; color: var(--text-muted) !important; }
 .seo-og-img img{ width:100%; height:100%; object-fit:cover; display:block; }
 .seo-og-img .md{ padding:13px; text-align:center; }
-.seo-ld summary{ cursor:pointer; font-size:12.5px; font-weight:700; }
-.seo-ld pre{ margin:10px 0 0; max-height:320px; overflow:auto; font-size:11px; line-height:1.45; background: var(--surface); border:1px solid var(--border);
-  border-radius:8px; padding:10px; white-space:pre-wrap; overflow-wrap:anywhere; font-family: var(--font-mono); }
 .seo-rg + .seo-rg{ margin-top:10px; }
 .seo-rg-h{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color: var(--text-faint); margin-bottom:2px; }
-.seo-pick{ max-height:50vh; overflow:auto; }
-.seo-pick-btn{ width:100%; justify-content:flex-start; text-align:left; display:flex; flex-direction:column; align-items:flex-start; gap:2px; height:auto; padding:8px 4px; }
-.seo-pick-btn span{ font-size:12px; color: var(--text-muted); font-weight:500; }
-.seo-pick .seo-list li{ padding:2px 8px; }
+/* Basics says where the share picture went */
 .seo-moved{ display:flex; gap:9px; align-items:center; margin:14px 0 0; padding:11px 14px; border-radius:11px; background: var(--surface); border:1px dashed var(--border); font-size:12.5px; color: var(--text-muted); }
 .seo-moved svg{ flex-shrink:0; }
 /* words for a screen reader only */
 .rv-sr{ position:absolute !important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-@media (max-width: 680px){
-  .seo-row{ grid-template-columns: minmax(0,1fr); gap:6px; }
-  .seo-k{ flex-direction:row; flex-wrap:wrap; align-items:center; }
-  .seo-v .inp, .seo-kw-add .inp{ max-width:none; }
-  .seo-field .flabel-row .seo-sp{ flex-basis:100%; height:0; }
-  .seo-ai-one, .seo-list .badge{ min-height:36px; }
-  .seo-list li{ flex-wrap:wrap; }
-  .seo-list li label{ flex-basis:calc(100% - 40px); }
-}
 
 /* ============ SETTINGS › VISIBILITY ============ */
 .vis-state{ display:flex; gap:16px; align-items:flex-start; }
@@ -1863,24 +1797,24 @@ a.ev-chip:hover{ border-color: currentColor; }
    two open panels, the closed Advanced fold (event details, speakers, FAQs and reviews, what search engines read, the
    readiness checklist), the one save bar. One column at a reading width; flat, no box inside a box. */
 #seo-root.seo2{ max-width:980px; }
+/* the heading keeps room for its title and line: on a tablet its two helpers go under them rather than squeeze them */
+.vhead-row:has(.seo2-hact) > .grow{ min-width:min(100%, 360px); }
 .seo2 > .panel, .seo2-adv-body > .panel{ margin-bottom:16px; }
 .seo2-status{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; margin:0 0 14px; font-size:13px; line-height:1.5; color: var(--text-muted); }
 .seo2-status .dash-dot{ display:inline-block; width:8px; height:8px; margin:0 8px 1px 0; vertical-align:middle; }
 .seo2-status-t{ min-width:0; overflow-wrap:anywhere; }
-.seo2-link{ border:0; background:none; padding:0; font:inherit; font-weight:700; color: var(--accent-strong); cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
-.seo2-link:hover{ color: var(--accent); }
 .seo2-quiet{ color: var(--text-faint); font-weight:500; }
-.seo2-chg{ font-size:12.5px; }
-.seo2-chg > summary{ cursor:pointer; font-weight:600; color: var(--text-muted); }
 .seo2-chg[open]{ flex-basis:100%; padding-left:18px; }
-.seo2-chg ul{ margin:6px 0 0; padding-left:18px; line-height:1.6; }
-.seo2-chg b{ color: var(--text); }
+.seo2-chg ul{ margin:6px 0 0; padding-left:18px; font-size:13px; line-height:1.6; }
+.seo2-chg b{ font-weight:600; color: var(--text); }
 .seo-ai-status.seo2-ai{ margin:0 0 14px; padding:9px 12px; border-radius:10px; background: var(--surface-2); }
 .seo2-pv{ display:grid; grid-template-columns: minmax(0,1fr); gap:16px; margin:0 0 16px; padding:16px; border-radius:13px; background: var(--surface-2); }
 @media (min-width:1100px){ .seo2-pv{ grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); align-items:start; } }
 .seo2-pv-one{ min-width:0; }
 .seo2-pv-h{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color: var(--text-faint); margin:0 0 8px; }
 .seo2-pv .mock{ background: var(--surface); }
+/* the shared link keeps the size it has side by side (as a phone shows it) when the two go one above the other */
+.seo2-pv .mock-og{ max-width:440px; }
 .seo2-adv{ margin:8px 0 16px; }
 .seo2-adv > summary{ list-style:none; cursor:pointer; display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 10px; padding:14px 16px 14px 38px; position:relative;
   border:1px solid var(--border); border-radius:13px; background: var(--surface); }
@@ -1893,8 +1827,6 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo2-adv[open] > summary{ margin-bottom:16px; }
 .seo2-adv-t{ font-size:15px; font-weight:700; color: var(--text); }
 .seo2-adv-s{ font-size:12.5px; color: var(--text-muted); }
-.seo2-ld{ margin:0 0 16px; padding:0 2px; }
-.seo2-ld > summary{ color: var(--text); }
 .seo2-ready{ padding:0 2px; font-size:13px; }
 .seo2-ready > summary{ cursor:pointer; display:inline-flex; gap:10px; align-items:baseline; }
 .seo2-ready > summary b{ font-weight:700; color: var(--text); }
@@ -1906,32 +1838,53 @@ a.ev-chip:hover{ border-color: currentColor; }
   .seo2-pv{ padding:12px; }
   .seo2-adv > summary{ padding:13px 14px 13px 34px; }
   .seo2-adv > summary::before{ left:14px; }
+}
+
+/* seo2: shared — what every part of the page uses, defined once so the four parts read as one design: a field's label
+   row (the label, its count at the right), the count, the one muted line under a field (a warning is the same line
+   with a small icon), the one quiet text link, a group, a switch with the line under it, and a small fold. A part's
+   own rules stay in its block below, scoped under its root where a name means something else there. */
+.seo2-lrow{ display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; margin-bottom:6px; min-height:19px; }
+.seo2-lrow label, .seo2-label{ flex:1 1 auto; margin:0; font-size:12.5px; font-weight:700; color: var(--text); }
+.seo2 .ctr{ font-family: var(--font-body); font-size:12px; font-weight:500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.seo2 .ctr.warn{ color: var(--text-faint); }
+.seo2 .ctr.over{ color: var(--warn); }
+.seo2-note, .seo2-hint{ margin:6px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere; }
+.seo2-hint{ display:flex; gap:6px; align-items:flex-start; }
+.seo2-note[hidden], .seo2-hint[hidden]{ display:none; }
+.seo2-warn svg, .seo2-ico{ color: var(--warn); }
+.seo2-warn svg{ vertical-align:-2px; }
+.seo2-ico{ display:inline-flex; margin-top:3px; flex-shrink:0; }
+/* the quiet text link: Suggest again, Add, Use another address, Use it, Change them, Publish now, Undo, Edit in
+   Content › Speakers — a button or a link, it reads the same */
+.seo2-link{ background:none; border:0; padding:0; font:inherit; font-weight:600; color: var(--text); cursor:pointer; white-space:nowrap;
+  text-decoration:underline; text-decoration-color: var(--border); text-underline-offset:3px; }
+.seo2-link:hover{ color: var(--text); text-decoration-color: currentColor; }
+.seo2-link:disabled{ opacity:.5; cursor:not-allowed; text-decoration-color: var(--border); }
+.seo2-link:focus-visible{ outline:2px solid var(--text-muted); outline-offset:3px; border-radius:4px; }
+.seo2-group{ min-width:0; }
+/* a switch says its state with its track; its words stay calm (the console's own turn red when on), and the line
+   under it starts where its words do */
+.seo2-switch .tgl, .seo2-switch .tgl[aria-pressed="true"]{ font-size:13px; text-align:left; color: var(--text); }
+.seo2-switch .tgl:disabled{ opacity:.55; cursor:not-allowed; }
+.seo2-switch .tgl:focus-visible{ outline:2px solid var(--text-muted); outline-offset:3px; border-radius:4px; }
+.seo2-switch .seo2-note, .seo2-switch .seo2-hint{ padding-left:42px; }
+/* a small fold — What changed, How it works, What search engines read: muted words after the browser's own triangle */
+.seo2-chg > summary, .seo2-share .seo2-more > summary, details.seo2-ld > summary{ cursor:pointer; font-size:13px; font-weight:600; color: var(--text-muted); }
+.seo2-chg > summary:hover, .seo2-chg[open] > summary, .seo2-share .seo2-more > summary:hover, .seo2-share .seo2-more[open] > summary,
+  details.seo2-ld > summary:hover, details.seo2-ld[open] > summary{ color: var(--text); }
+@media (max-width: 720px){
   .seo2-link{ min-height:32px; }
+  .seo2-switch .tgl{ min-height:40px; }
 }
 
 /* seo2: search — Settings › URL & SEO, the "Google result" panel (edit-event-seo.js searchHtml). Four fields, each a
    label with a small muted counter at its right, the field, and at most one muted line under it saying where the value
    comes from; then, below one hairline, the main web address, Show in Google and the short link. No badges, and no box
    inside the panel but the search words' own field. Console tokens only, so light and dark both follow. */
-.seo2-acts{ display:flex; gap:8px; flex-wrap:wrap; }
 .seo2-search{ display:flex; flex-direction:column; gap:16px; }
 .seo2-field{ display:flex; flex-direction:column; min-width:0; }
-.seo2-head{ display:flex; align-items:baseline; justify-content:space-between; gap:4px 12px; flex-wrap:wrap; margin-bottom:6px; }
-.seo2-head label, .seo2-label{ font-size:13px; font-weight:600; color: var(--text); }
 .seo2-aside{ font-weight:400; color: var(--text-muted); }
-.seo2-search .ctr{ font-family: var(--font-body); font-size:12px; font-weight:500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-.seo2-search .ctr.warn{ color: var(--text-faint); }
-.seo2-search .ctr.over{ color: var(--warn); }
-.seo2-note{ margin:6px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere; }
-.seo2-note[hidden]{ display:none; }
-.seo2-warn{ color: var(--warn); }
-.seo2-warn svg{ vertical-align:-2px; }
-/* a small text button: Suggest again, Add, Use another address */
-.seo2-link{ background:none; border:0; padding:0; font:inherit; font-weight:600; color: var(--text); cursor:pointer; white-space:nowrap;
-  text-decoration:underline; text-decoration-color: var(--border); text-underline-offset:3px; }
-.seo2-link:hover{ text-decoration-color: currentColor; }
-.seo2-link:disabled{ opacity:.5; cursor:not-allowed; text-decoration-color: var(--border); }
-.seo2-link:focus-visible, .seo2-search .tgl:focus-visible{ outline:2px solid var(--text-muted); outline-offset:3px; border-radius:4px; }
 /* search words: the words and the line to add one, drawn as one field */
 .seo2-kw{ border:1px solid var(--border); border-radius:8px; background: var(--surface); padding:5px 6px; transition: border-color .14s, box-shadow .14s; }
 .seo2-kw:focus-within{ border-color: var(--text-muted); box-shadow: 0 0 0 3px var(--surface-3); }
@@ -1944,20 +1897,15 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo2-kw-in::placeholder{ color: var(--text-faint); }
 .seo2-kw-in:disabled{ cursor:not-allowed; }
 /* the main web address, Show in Google and the short link: a second group, 24px down, under one hairline */
-.seo2-group{ display:flex; flex-direction:column; gap:16px; margin-top:8px; padding-top:20px; border-top:1px solid var(--border); }
-.seo2-group > .seo2-note{ margin:0; }
-.seo2-row{ display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; min-width:0; font-size:13px; }
-.seo2-row .inp{ flex:1 1 280px; max-width:520px; }
-.seo2-row .num{ color: var(--text-muted); overflow-wrap:anywhere; min-width:0; }
-.seo2-search .tgl{ align-self:flex-start; font-size:13px; font-weight:600; color: var(--text); }
-.seo2-search .tgl[aria-pressed="true"]{ color: var(--text); }
+.seo2-search > .seo2-group{ display:flex; flex-direction:column; gap:16px; margin-top:8px; padding-top:20px; border-top:1px solid var(--border); }
+.seo2-search > .seo2-group > .seo2-note{ margin:0; }
+/* the address and its one action, on one line */
+.seo2-inline{ display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; min-width:0; font-size:13px; }
+.seo2-inline .inp{ flex:1 1 280px; max-width:520px; }
+.seo2-inline .num{ color: var(--text-muted); overflow-wrap:anywhere; min-width:0; }
 @media (max-width: 720px){
-  .seo2-acts{ width:100%; }
-  .seo2-acts .btn{ flex:1 1 auto; }
-  .seo2-link{ min-height:32px; }
   .seo2-chip button{ width:32px; height:32px; }
   .seo2-kw-in{ height:38px; }
-  .seo2-search .tgl{ min-height:40px; }
 }
 
 /* seo2: sharing — Settings › URL & SEO, "When the link is shared" (socialHtml in edit-event-seo.js, and the share
@@ -1974,44 +1922,27 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo2-share-line{ margin:0; display:flex; gap:7px; align-items:flex-start; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere; }
 .seo2-share-line svg{ flex-shrink:0; margin-top:2px; color: var(--warn); }
 .seo2-share-acts{ display:flex; gap:8px; flex-wrap:wrap; }
-.seo2-more summary{ cursor:pointer; font-size:12.5px; font-weight:600; color: var(--text-muted); }
-.seo2-more summary:hover, .seo2-more[open] summary{ color: var(--text); }
-.seo2-more p{ margin:8px 0 0; max-width:62ch; font-size:12.5px; line-height:1.55; color: var(--text-muted); }
+.seo2-share .seo2-more p{ margin:8px 0 0; max-width:62ch; font-size:13px; line-height:1.55; color: var(--text-muted); }
 .seo2-sh-title{ margin:0; font-size:14px; font-weight:600; line-height:1.45; color: var(--text); overflow-wrap:anywhere; }
 .seo2-sh-desc{ margin:4px 0 0; max-width:72ch; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 .seo2-sh-none{ font-weight:500; color: var(--text-faint); }
-.seo2-sh-src{ margin:8px 0 0; font-size:12px; color: var(--text-faint); }
-.seo2-sh-link{ padding:0; border:0; background:none; font:inherit; color: var(--text-muted); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
-.seo2-sh-link:hover, .seo2-sh-link:focus-visible{ color: var(--text); }
+.seo2-sh-src{ margin:8px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); }
 @media (max-width: 720px){
   .seo2-share-pic{ flex-basis:100%; }
-  .seo2-more summary{ padding:10px 0; }
-  .seo2-sh-link{ display:inline-flex; align-items:center; min-height:40px; }
+  .seo2-share .seo2-more > summary{ padding:10px 0; }
 }
 
 /* seo2: rich — Settings › URL & SEO, inside the "Advanced" fold: "Event details for search engines" and "Speakers,
    FAQs and reviews in Google" (edit-event-seo.js schemaHtml, richHtml), the structured data under them, and the
    testimonial and previous-edition dialogs. Quiet facts, tidy rows, one muted line per note, no box inside a box,
-   no coloured pills; the console's tokens only, so light and dark both follow the theme. */
+   no coloured pills; the console's tokens only, so light and dark both follow the theme. (A field's label row, its
+   note, the switches and the links are the shared ones, above.) */
 .seo2-rich, .seo2-body{ display:flex; flex-direction:column; gap:24px; min-width:0; }
-.seo2-group{ min-width:0; }
 .seo2-off{ opacity:.55; }
 .seo2-rich .frow{ gap:16px; }
-/* the switch says its state with its track; its words stay calm (the console's own turns them red when on) */
-.seo2-switch .tgl, .seo2-switch .tgl[aria-pressed="true"]{ font-size:13px; text-align:left; color: var(--text); }
-.seo2-switch .tgl:disabled{ opacity:.55; cursor:not-allowed; }
-.seo2-switch .seo2-hint{ padding-left:42px; }
-.seo2-hint{ display:flex; gap:6px; align-items:flex-start; margin:6px 0 0; font-size:13px; line-height:1.5; color: var(--text-muted); }
-.seo2-hint a{ color: inherit; text-decoration:underline; text-underline-offset:2px; }
-.seo2-hint a:hover{ color: var(--text); }
-.seo2-hint .btn{ margin:-5px 0 -5px 2px; vertical-align:baseline; }
-.seo2-ico{ display:inline-flex; margin-top:3px; flex-shrink:0; }
 .seo2-faint{ color: var(--text-muted); }
 .seo2-err{ margin:0; font-size:13px; font-weight:600; color: var(--accent-strong); }
-/* a text field: its label, with the count and ETB2B AI's small button at the right */
-.seo2-lrow{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; margin-bottom:6px; min-height:28px; }
-.seo2-lrow label{ flex:1 1 auto; margin:0; font-size:12.5px; font-weight:700; }
 .seo2-pair{ display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap:8px; }
 /* what is filled in for the team: a label and its value per line */
 .seo2-facts{ display:grid; grid-template-columns: max-content minmax(0,1fr); gap:8px 24px; margin:0; font-size:13px; line-height:1.5; }
@@ -2020,11 +1951,9 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo2-logo-dd{ display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; }
 .seo2-logo{ display:inline-flex; align-items:center; max-width:120px; padding:4px 6px; border-radius:6px; background: var(--surface-2); }
 .seo2-logo img{ display:block; max-width:100%; max-height:28px; }
-/* speakers, FAQs, testimonials: tidy rows, a hairline between them */
-.seo2-head{ display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; margin-bottom:2px; }
-.seo2-head h4{ margin:0; font-size:13px; font-weight:700; }
-.seo2-head a{ font-size:12.5px; color: var(--text-muted); text-decoration:underline; text-underline-offset:2px; }
-.seo2-head a:hover{ color: var(--text); }
+/* speakers, FAQs, testimonials: a heading (with its way to Content at the right), then tidy rows, a hairline between them */
+.seo2-head{ display:flex; align-items:baseline; justify-content:space-between; flex-wrap:wrap; gap:4px 12px; margin-bottom:2px; font-size:12.5px; }
+.seo2-head h4{ margin:0; font-size:12.5px; font-weight:700; }
 .seo2-rows{ list-style:none; margin:0; padding:0; }
 .seo2-row{ display:flex; align-items:flex-start; gap:10px; padding:9px 0; font-size:13px; line-height:1.45; }
 .seo2-row + .seo2-row{ border-top:1px solid var(--border); }
@@ -2048,19 +1977,18 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo2-tacts{ display:flex; gap:2px; flex-shrink:0; margin:-4px -8px 0 0; }
 .seo2-acts{ display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
 .seo2-acts .seo2-faint{ font-size:12.5px; }
-/* a long list: the first six, then "Show N more" */
-.seo2-more{ border-top:1px solid var(--border); }
-.seo2-more > summary{ padding:9px 0; font-size:12.5px; font-weight:600; color: var(--text-muted); cursor:pointer; list-style:none; }
-.seo2-more > summary::-webkit-details-marker{ display:none; }
-.seo2-more > summary:hover{ color: var(--text); }
+/* a long list: the first six, then "Show N more" (it carries on the list's hairlines, so no triangle) */
+.seo2-rich .seo2-more{ border-top:1px solid var(--border); }
+.seo2-rich .seo2-more > summary{ padding:9px 0; font-size:13px; font-weight:600; color: var(--text-muted); cursor:pointer; list-style:none; }
+.seo2-rich .seo2-more > summary::-webkit-details-marker{ display:none; }
+.seo2-rich .seo2-more > summary:hover{ color: var(--text); }
 .seo2-more-hide, .seo2-more[open] .seo2-more-show{ display:none; }
 .seo2-more[open] .seo2-more-hide{ display:inline; }
-.seo2-more > .seo2-rows{ border-top:1px solid var(--border); }
-/* the structured data the next publish gives, folded under the two panels */
-.seo2-ld{ margin:0 0 18px; font-size:13px; }
-details.seo2-ld > summary{ display:inline-block; padding:4px 0; font-weight:600; color: var(--text-muted); cursor:pointer; }
-details.seo2-ld > summary:hover{ color: var(--text); }
-details.seo2-ld > summary span{ margin-left:6px; font-size:12px; font-weight:400; }
+.seo2-rich .seo2-more > .seo2-rows{ border-top:1px solid var(--border); }
+/* the structured data the next publish gives, folded under the two panels (its summary is the shared small fold) */
+.seo2-ld{ margin:0 0 16px; font-size:13px; }
+details.seo2-ld > summary{ padding:4px 0; }
+details.seo2-ld > summary span{ margin-left:4px; font-size:12px; font-weight:400; }
 .seo2-ld pre{ margin:8px 0 0; max-height:360px; overflow:auto; padding:12px 14px; border-radius:8px; background: var(--surface-2); color: var(--text);
   font-family: var(--font-mono); font-size:11.5px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
 /* the dialogs */
