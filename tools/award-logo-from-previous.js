@@ -413,6 +413,10 @@ function printPlan(P, dry) {
 }
 
 function main() {
+  function arg(name) { const i = process.argv.indexOf('--' + name); return i !== -1 && process.argv[i + 1] && !/^--/.test(process.argv[i + 1]) ? process.argv[i + 1] : ''; }
+  const ID = arg('event'), DRY = process.argv.indexOf('--dry') !== -1;
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(ID)) { console.error('Usage: node tools/award-logo-from-previous.js --event <event id> [--dry]'); process.exit(2); }
+  /* the credentials, once the command is known to be one: this checkout's, else the main checkout's (from a worktree) */
   const envFile = [path.join(ROOT, 'tools', '.env.local'), path.join(ROOT, '..', '..', '..', 'tools', '.env.local')].filter(function (f) { return fs.existsSync(f); })[0];
   if (envFile) {
     fs.readFileSync(envFile, 'utf8').split(/\r?\n/).forEach(function (l) {
@@ -420,9 +424,6 @@ function main() {
       if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
     });
   }
-  function arg(name) { const i = process.argv.indexOf('--' + name); return i !== -1 && process.argv[i + 1] && !/^--/.test(process.argv[i + 1]) ? process.argv[i + 1] : ''; }
-  const ID = arg('event'), DRY = process.argv.indexOf('--dry') !== -1;
-  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(ID)) { console.error('Usage: node tools/award-logo-from-previous.js --event <event id> [--dry]'); process.exit(2); }
   const api = require(path.join(lib, 'api.js'));
   const { safeFetch } = require(path.join(lib, 'safe-fetch.js'));
   const { getFirebase } = require(path.join(lib, 'firebase.js'));
