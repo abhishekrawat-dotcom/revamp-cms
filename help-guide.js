@@ -77,7 +77,7 @@
     { id: 'design', title: 'How to change the site’s design and words',
       ask: 'how to edit, design or change the website, its words, pictures, colours or sections',
       steps: [
-        'Open the site editor: the pencil (**Edit site**) on the event’s row on the dashboard, or **Design** in the event’s left rail.',
+        'Open the site editor: the pencil (**Edit site**) on the event’s row on the dashboard, or **Site editor** in the event’s left rail.',
         'With **Edit myself**, click any text, picture or section on the page to change it.',
         'With **Edit with AI**, ask ETB2B AI for the change instead. You can switch between the two at any time.',
         'Press **Save** to keep your changes. Nothing goes live until it is approved.'

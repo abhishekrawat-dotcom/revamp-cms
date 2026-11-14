@@ -69,7 +69,7 @@ check('G.4 Create Event\'s four ways in are its buttons', ['>Generate from brief
 check('G.4 the site editor\'s two modes and Save', ['>Edit with AI<', '>Edit myself<', '>Save</button>'].every(function (t) { return onPage('custom_editor.html', t); }));
 check('G.4 Send for approval… is the editor\'s and the console\'s red button (publish-flow.js words it)', onPage('custom_editor.html', '>Send for approval…</button>') && onPage('publish-flow.js', "'Send for approval…'"));
 check('G.4 the review page approves with Approve and publish, or Reject', onPage('review.html', '>Approve and publish</button>') && onPage('review.html', '>Reject</button>'));
-check('G.4 the rail has Speakers, Agenda, Sponsors, Content, Settings, Design, Promotions and Reporting', ['Speakers', 'Agenda', 'Sponsors', 'Content', 'Settings', 'Design', 'Promotions', 'Reporting'].every(function (l) { return onPage('sidebar.js', "label:'" + l + "'"); }));
+check('G.4 the rail has Speakers, Agenda, Sponsors, Content, Settings, Site editor, Promotions and Reporting', ['Speakers', 'Agenda', 'Sponsors', 'Content', 'Settings', 'Site editor', 'Promotions', 'Reporting'].every(function (l) { return onPage('sidebar.js', "label:'" + l + "'"); }));
 
 /* ---- the server answers with exactly these topics ---- */
 var T = require('./dash-bot')._test;
