@@ -1942,7 +1942,13 @@ function saveOwnerUnit(fb, eventId, unit, opts) {
   return ref.get().then(function (snap) {
     var design = snap.exists ? (((snap.data() || {}).designPlan || {}).design || {}) : {};
     var wants = unitHeroMode(unit, design) === 'light' && unit.url && !unit.plate;
-    return wants ? storeOnDarkUnit(fb, eventId, stamp, unit).then(function (dark) { return { wants: true, dark: dark }; }) : { wants: false, dark: null };
+    if (!wants) return { wants: false, dark: null };
+    /* the event's name drawn as a unit (source 'generated', api-generate.js drawnLogoUnit) brings its own copy, drawn the
+       same way, as plan-structure takes it: its lettering is text in the SVG, which storeOnDarkUnit cannot draw
+       (tools/draw-logo-unit.js) */
+    var dark = unit.source === 'generated' ? Promise.resolve(unit.darkUrl ? { url: unit.darkUrl, storagePath: unit.darkStoragePath || '' } : { why: 'failed' })
+      : storeOnDarkUnit(fb, eventId, stamp, unit);
+    return dark.then(function (d) { return { wants: true, dark: d }; });
   }).then(function (made) {
     var dark = made.dark && made.dark.url ? made.dark : null;
     return fb.db.runTransaction(function (tx) {
@@ -8149,6 +8155,12 @@ module.exports._testHooks.sanitizeGeneratedSectionHtml = sanitizeGeneratedSectio
 module.exports._testHooks.safeGeneratedSection = safeGeneratedSection;
 module.exports._testHooks.tidyGeneratedSectionHtml = tidyGeneratedSectionHtml;
 module.exports._testHooks.CALLER_CHECKED = CALLER_CHECKED;
+/* the record of the versions that have been live (events/<id>/publishes), for tools/draw-logo-unit.js: a version it puts
+   live is noted as the console notes one, so an approver can put the version before it back (UX-107) */
+module.exports._testHooks.recordPublish = recordPublish;
+module.exports._testHooks.liveVersionsOf = liveVersionsOf;
+module.exports._testHooks.previousLiveOf = previousLiveOf;
+module.exports._testHooks.isoOf = isoOf;
 /* The internals of lib/api-generate.js, lib/api-chat.js and lib/api-import.js that the tests and tools/ read here, as
    they did before those routes were moved (BE-017): each is read from its own module, loaded and wired as a request
    would be, on its first read — never when this file is loaded. */
