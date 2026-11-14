@@ -1986,7 +1986,7 @@ a.ev-chip:hover{ border-color: currentColor; }
 .seo2-more[open] .seo2-more-hide{ display:inline; }
 .seo2-rich .seo2-more > .seo2-rows{ border-top:1px solid var(--border); }
 /* the structured data the next publish gives, folded under the two panels (its summary is the shared small fold) */
-.seo2-ld{ margin:0 0 16px; font-size:13px; }
+.seo2-ld{ margin:0 0 16px; padding:0 2px; font-size:13px; }
 details.seo2-ld > summary{ padding:4px 0; }
 details.seo2-ld > summary span{ margin-left:4px; font-size:12px; font-weight:400; }
 .seo2-ld pre{ margin:8px 0 0; max-height:360px; overflow:auto; padding:12px 14px; border-radius:8px; background: var(--surface-2); color: var(--text);

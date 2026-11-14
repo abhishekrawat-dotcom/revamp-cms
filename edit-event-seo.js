@@ -562,7 +562,7 @@
       }).join('') + '</div>';
     }).join('');
     return '<details class="seo2-ready" id="seo2-ready"' + (ST.readyOpen ? ' open' : '') + '><summary><b>' + done + ' of ' + counted.length + ' ready</b>' +
-      '<span class="seo2-quiet seo2-show">Show</span><span class="seo2-quiet seo2-hide">Hide</span></summary>' +
+      '<span class="seo2-link seo2-show">Show</span><span class="seo2-link seo2-hide">Hide</span></summary>' +
       '<div class="seo2-ready-body">' + (dirty() ? '<p class="seo2-quiet">As last saved: save to check your changes.</p>' : '') + body + '</div></details>';
   }
 
@@ -832,7 +832,7 @@
     } else off.push('Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ETB2B has none for it.'));
     if (p.seo && p.seo.keywords && p.seo.keywords.length) off.push('Its ' + p.seo.keywords.length + ' search words: kept as a reference for ETB2B AI, which writes this edition’s own.');
     var m = M.openModal('<div class="modal-head"><h3>Bring in from ' + esc(p.name || 'the previous edition') + '</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s record of the previous edition' + (p.link ? ' (<a href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing changes until you save.</p>' +
+      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s record of the previous edition' + (p.link ? ' (<a class="seo2-link" href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing changes until you save.</p>' +
       (rows.length ? '<ul class="seo2-rows seo2-bi">' + rows.join('') + '</ul>' : '') +
       (off.length ? '<ul class="seo2-bi-off">' + off.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' : '') +
       '<p class="seo2-bi-other"><button class="btn btn-ghost btn-sm" type="button" id="seo-bi-other">Choose another previous edition</button></p></div>' +
