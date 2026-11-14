@@ -29,8 +29,8 @@
 
   var C = global.RevampCore;
   var AI_FIELDS = ['title', 'description', 'keywords', 'h1', 'schemaTitle', 'schemaDescription'];
-  var LABEL = { title: 'SEO title', description: 'Meta description', keywords: 'Keywords', h1: 'H1 heading', schemaTitle: 'Schema title',
-    schemaDescription: 'Schema description', canonicalUrl: 'Canonical address', noindex: 'Indexing', streetAddress: 'Street address',
+  var LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading', schemaTitle: 'Schema title',
+    schemaDescription: 'Schema description', canonicalUrl: 'Main web address', noindex: 'Show in Google', streetAddress: 'Street address',
     postalCode: 'Postcode', latitude: 'Latitude', longitude: 'Longitude', attendanceMode: 'Attendance mode', basicSchema: 'Basic schema',
     advancedSchema: 'Advanced schema', speakersOff: 'Speakers', faqsOff: 'FAQs', testimonials: 'Testimonials' };
   /* the form's own fields (the share picture saves itself, as it always did; aiWritten and previous are bookkeeping) */
@@ -224,39 +224,88 @@
     return '<div class="seo-ai-status seo2-ai" id="seo-ai-status" role="status" aria-live="polite"' + (s ? '' : ' hidden') + '>' + s + '</div>';
   }
 
+  /* ---------- the "Google result" panel: what a search result shows ----------
+     Four fields, each a label with a small counter, the field, and at most one muted line under it (searchNote): what
+     ETB2B AI left out, else where the value comes from (ETB2B AI, Basics, the previous edition), else nothing. The
+     panel's own actions sit in its head: Suggest with ETB2B AI (its four fields at once, asking before it replaces
+     what the team wrote) and Bring in from previous edition. Below a hairline: the main web address, Show in Google
+     and the short link (not available, said so). Same ids and ST.F keys as before: the save, the live preview and
+     the leave guard read them. */
+  var SEARCH_FIELDS = ['title', 'description', 'keywords', 'h1'];
+  function searchNote(k) {
+    var F = ST.F, a = ST.data.auto, v = F[k], empty = Array.isArray(v) ? !v.length : !line(v);
+    var again = '<button class="seo2-link" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') +
+      ' aria-label="' + esc('Suggest again with ETB2B AI: ' + LABEL[k]) + '">Suggest again</button>';
+    var d = (ST.dropped || []).filter(function (x) { return x.field === k; })[0];
+    if (d) return '<span class="seo2-warn">' + svg(ST.ctx.IC.info, 13) + ' ETB2B AI ' + esc(d.why) + '.</span> ' + again;
+    if (k === 'h1' && a.h1 && a.h1.own) return 'The site has its own main heading, “' + esc(a.h1.own.slice(0, 90)) + '”, which Google reads instead.';
+    if (!empty && (ST.B.aiWritten || []).indexOf(k) !== -1 && same(F[k], ST.B[k])) return 'Suggested by ETB2B AI · ' + again;
+    if (k === 'keywords') {
+      var p = ST.prev && ST.prev.previous, prevKw = p && p.seo && p.seo.keywords && p.seo.keywords.length ? p.seo.keywords : null;
+      if (prevKw) return 'The previous edition used: ' + esc(prevKw.join(', ')) + ' (ETB2B AI reads them as a reference).';
+      return empty ? 'What people type into Google to find it: the event, its subject, its audience, its city.' : '';
+    }
+    if (!empty) return '';
+    if (k === 'title') return 'Until you write one, Google shows the event’s name, from Basics.';
+    if (k === 'description') return line(ST.ctx.EV.description) ? 'Until you write one, Google shows the short description from Basics.' : 'Until you write one, Google picks lines from the page itself.';
+    return 'Until you write one, the event’s name is used.';
+  }
+  function paintSearchNote(k) {
+    var el = $('seo2-note-' + k);
+    if (!el || !ST.F) return;
+    var html = searchNote(k);
+    el.innerHTML = html;
+    el.hidden = !html;
+  }
+  /* label: HTML, already escaped */
+  function searchField(k, label, opts) {
+    var id = 'seo-' + k, note = searchNote(k), at = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" aria-describedby="seo2-note-' + k + '" placeholder="' + esc(opts.placeholder || '') + '"';
+    return '<div class="seo2-field" data-seo-wrap="' + k + '"><div class="seo2-head"><label for="' + id + '">' + label + '</label>' + counter(k) + '</div>' +
+      (opts.area ? '<textarea class="inp" rows="3"' + at + '>' + esc(ST.F[k]) + '</textarea>' : '<input class="inp"' + at + ' value="' + esc(ST.F[k]) + '">') +
+      '<p class="seo2-note" id="seo2-note-' + k + '"' + (note ? '' : ' hidden') + '>' + note + '</p></div>';
+  }
   function searchHtml() {
-    var d = ST.data, F = ST.F, a = d.auto, prevKw = ST.prev && ST.prev.seo && ST.prev.seo.keywords && ST.prev.seo.keywords.length ? ST.prev.seo.keywords : null;
-    var chips = F.keywords.map(function (k, i) {
-      return '<span class="seo-chip">' + esc(k) + '<button type="button" data-seo-kw-x="' + i + '" aria-label="Remove the keyword ' + esc(k) + '">×</button></span>';
-    }).join('');
-    var kw = '<div class="field c12 seo-field" data-seo-wrap="keywords"><div class="flabel-row"><label for="seo-kw-in">Keywords</label>' + aiFrom('keywords') +
-      '<span class="seo-sp"></span>' + counter('keywords') + aiButton('keywords') + '</div>' +
-      '<div class="seo-chips" id="seo-kw-list" aria-label="Keywords">' + (chips || '<span class="seo-none">None yet</span>') + '</div>' +
-      '<div class="seo-kw-add"><input class="inp" id="seo-kw-in" placeholder="Type a keyword, then Enter" maxlength="60" aria-describedby="seo-kw-hint"' + (F.keywords.length >= 15 ? ' disabled' : '') + '>' +
-      '<button class="btn btn-secondary btn-sm" type="button" data-seo="kw-add"' + (F.keywords.length >= 15 ? ' disabled' : '') + '>Add</button></div>' +
-      '<p class="hint" id="seo-kw-hint">Phrases people search for: the event, its subject, its audience, its city. Up to 15.' +
-      (prevKw ? ' The previous edition used: <span class="seo-ref">' + esc(prevKw.join(', ')) + '</span> (ETB2B AI reads these as a reference, with this edition’s year).' : '') + '</p>' + droppedNote('keywords') + '</div>';
+    var d = ST.data, F = ST.F, a = d.auto, n = F.keywords.length, full = n >= 15;
+    /* an empty description shows what is used instead: Basics' short description, cut where a search result cuts it */
+    var basics = line(ST.ctx.EV.description), basicsCut = basics.length > 158 ? basics.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : basics;
+    var acts = '<div class="seo2-acts"><button class="btn btn-secondary btn-sm" type="button" data-seo2-ai="' + SEARCH_FIELDS.join(',') + '"' + (ST.aiBusy ? ' disabled' : '') + '>' +
+        svg(ST.ctx.IC.star, 13) + ' Suggest with ETB2B AI</button>' +
+      '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from previous edition') + '</button></div>';
 
-    var h1Hint = a.h1 && a.h1.own
-      ? 'The site has its own main heading, “' + esc(a.h1.own.slice(0, 90)) + '”: search engines read that one, and this is used only if the site has none.'
-      : 'The page’s main heading for search engines. It is not shown on the page (its banner shows the logo); without it, the event’s name is used.';
-    var canon = F.canonicalUrl || ST.canonOpen
-      ? '<div class="seo-inline"><input class="inp" id="seo-canonicalUrl" data-seo-field="canonicalUrl" type="url" maxlength="500" value="' + esc(F.canonicalUrl) + '" placeholder="https://…" aria-label="Canonical address">' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-seo="canon-auto">Use the site’s own</button></div>' +
-        '<p class="hint">Only when the event’s page of record is somewhere else: search engines then list that address instead.</p>'
-      : '<span class="num">' + esc(a.url) + '</span> <button class="btn btn-ghost btn-sm" type="button" data-seo="canon-own">Use another address</button>';
-    var idx = '<span>' + esc(a.indexing.text) + '</span><div style="margin-top:8px">' + toggle('seo-noindex', F.noindex, 'Keep this site out of search engines') + '</div>' +
-      '<p class="hint">The site stays open to anyone with its address; search engines are asked not to list it, and the sitemap leaves it out.</p>';
-    return ST.ctx.panel('1 · Search listing', 'What a search result shows', '<div class="frow">' +
-      fieldText('title', 'SEO title', { hint: 'The title of the search result and of a shared link. About 60 characters; the event’s name is used without one.', placeholder: a.title }) +
-      fieldText('description', 'Meta description', { area: true, hint: 'The lines under the title in a search result, and under a shared link. 120 to 160 characters reads best.', placeholder: d.head.description || 'One or two sentences: what it is, for whom, when and where.' }) +
+    var chips = F.keywords.map(function (k, i) {
+      return '<li class="seo2-chip">' + esc(k) + '<button type="button" data-seo-kw-x="' + i + '" aria-label="Remove the search word ' + esc(k) + '">×</button></li>';
+    }).join('');
+    var kwNote = searchNote('keywords');
+    var kw = '<div class="seo2-field" data-seo-wrap="keywords"><div class="seo2-head"><label for="seo-kw-in">Search words</label>' +
+        '<span class="ctr seo-ctr' + (n > 12 ? ' over' : '') + '" id="seo-ctr-keywords">' + (n ? n + ' added · ' : '') + '8 to 12 works best</span></div>' +
+      '<div class="seo2-kw">' + (chips ? '<ul class="seo2-chips" id="seo-kw-list" aria-label="Search words">' + chips + '</ul>' : '') +
+        '<div class="seo2-kw-add"><input class="seo2-kw-in" id="seo-kw-in" maxlength="60" aria-describedby="seo2-note-keywords" placeholder="' +
+          (full ? '15 is the most' : 'Type a word or phrase, then press Enter') + '"' + (full ? ' disabled' : '') + '>' +
+        '<button class="seo2-link" type="button" data-seo="kw-add"' + (full ? ' disabled' : '') + '>Add</button></div></div>' +
+      '<p class="seo2-note" id="seo2-note-keywords"' + (kwNote ? '' : ' hidden') + '>' + kwNote + '</p></div>';
+
+    var own = F.canonicalUrl || ST.canonOpen;
+    var canon = '<div class="seo2-field"><div class="seo2-head">' + (own ? '<label for="seo-canonicalUrl">Main web address</label>' : '<span class="seo2-label">Main web address</span>') + '</div>' +
+      (own ? '<div class="seo2-row"><input class="inp" id="seo-canonicalUrl" data-seo-field="canonicalUrl" type="url" maxlength="500" value="' + esc(F.canonicalUrl) + '" placeholder="https://…" aria-describedby="seo2-note-canon">' +
+          '<button class="seo2-link" type="button" data-seo="canon-auto">Use the site’s own</button></div>' +
+          '<p class="seo2-note" id="seo2-note-canon">Only when the event’s main page is somewhere else: Google then lists that address instead.</p>'
+        : '<div class="seo2-row"><span class="num">' + esc(a.url) + '</span><button class="seo2-link" type="button" data-seo="canon-own">Use another address</button></div>') + '</div>';
+    /* the switch says what the team chose; the line under it, what keeps the site out of Google all the same */
+    var why = a.indexing && a.indexing.reason;
+    var idxNote = F.noindex ? 'Google is asked not to list it. Anyone with the address can still open it.'
+      : why === 'test' ? 'Not listed yet: the event’s name says it is a test.'
+      : why === 'template' ? 'Not listed yet: the site still shows template text.'
+      : why === 'not-live' ? 'Listed once the site is live.' : '';
+    var idx = '<div class="seo2-field">' + toggle('seo-noindex', !F.noindex, 'Show in Google') + (idxNote ? '<p class="seo2-note">' + idxNote + '</p>' : '') + '</div>';
+
+    return ST.ctx.panel('Google result', '', '<div class="seo2-search">' +
+      searchField('title', 'Title in Google', { placeholder: a.title }) +
+      searchField('description', 'Description in Google', { area: true, placeholder: basicsCut || 'One or two sentences: what it is, for whom, when and where.' }) +
       kw +
-      fieldText('h1', 'H1 heading', { hint: h1Hint, placeholder: a.title }) +
-      '</div><div class="seo-rows">' +
-      row('Canonical address', canon, F.canonicalUrl ? from('team', 'Team') : from('auto', 'Auto'), '') +
-      row('Indexing', idx, F.noindex ? from('team', 'Team') : from('auto', 'Auto')) +
-      row('Short link', '<span class="seo-none">Not available.</span> <span class="seo-n">ETB2B’s short links (such as ethrworld.com/s/…) are made by ETB2B’s own link shortener, which EventSphere cannot use. The site’s own address is used everywhere.</span>', from('none', 'Not available')) +
-      '</div>');
+      searchField('h1', 'Main heading <span class="seo2-aside">(not shown on the page)</span>', { placeholder: a.title }) +
+      '<div class="seo2-group">' + canon + idx +
+        '<p class="seo2-note">No short link: ETB2B’s link shortener (ethrworld.com/s/…) cannot be used from EventSphere, so the site’s own address is used.</p></div>' +
+      '</div>', acts);
   }
 
   function socialHtml() {
@@ -786,6 +835,17 @@
       else ST.F[k] = e.target.value;
       ST.failed = '';
       paintLive();
+    });
+    /* the Google result panel (searchHtml): the line under a field follows the typing (a field ETB2B AI wrote is the
+       team's once edited; an emptied one says what Google shows instead), and Suggest with ETB2B AI writes its four
+       fields at once */
+    root.addEventListener('input', function (e) {
+      var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-field');
+      if (k === 'title' || k === 'description' || k === 'h1') paintSearchNote(k);
+    });
+    root.addEventListener('click', function (e) {
+      var b = e.target && e.target.closest ? e.target.closest('[data-seo2-ai]') : null;
+      if (b && !b.disabled) askThenWrite(b.getAttribute('data-seo2-ai').split(','), true);
     });
     root.addEventListener('change', function (e) {
       var t = e.target;
