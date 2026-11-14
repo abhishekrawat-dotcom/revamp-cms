@@ -151,11 +151,18 @@
   }
 
   /* ---------- the view ---------- */
+  /* THE PAGE, TOP TO BOTTOM (the owner, 14 Nov 2026: "too noisy, it should be neat and clean"): a heading with one line
+     under it; one status line (live, or what the next publish changes); the preview of the Google result and of the
+     shared link, the page's anchor; the two parts a person sets up — the Google result and the shared link — open; and
+     folded away, closed, everything search engines are given on their own (the event's details, speakers, FAQs and
+     reviews, what search engines read, the readiness checklist); then the one save bar. Folded, never taken out: every
+     field is still here, and a field with an error inside the fold opens it (showFieldErrors). The fold stays as the
+     person left it while the section is drawn again (ST.advOpen, wireShell). */
   function view(ctx) {
     ST.ctx = ctx;
     var ev = ctx.EV;
-    if (ST.id !== ev.id) { ST.id = ev.id; ST.data = null; ST.F = null; ST.B = null; ST.undo = null; ST.prev = null; ST.dropped = []; }
-    var head = ctx.vhead('URL & SEO', 'What search engines and link previews read about this event, and where each part comes from. Only search and sharing are set here: the site’s own words are edited in the site editor.',
+    if (ST.id !== ev.id) { ST.id = ev.id; ST.data = null; ST.F = null; ST.B = null; ST.undo = null; ST.prev = null; ST.dropped = []; ST.advOpen = false; ST.readyOpen = false; ST.ldOpen = false; ST.chgOpen = false; }
+    var head = ctx.vhead('Search and sharing', 'How this event appears in Google and when its link is shared. Most of it is filled in for you.',
       ST.data ? actionsHtml() : '');
     if (!ST.data) {
       if (!ST.loading && !ST.error) setTimeout(function () { if (!ST.data && !ST.loading) load(false); }, 0);
@@ -165,44 +172,56 @@
       }
       return head + '<div id="seo-loading" class="seo-lead" aria-busy="true">Loading the search and sharing settings…</div>';
     }
-    return head + '<div id="seo-root">' + statusHtml() + aiStatusHtml() +
-      '<div class="bx seo-bx"><div class="bx-main">' + searchHtml() + socialHtml() + schemaHtml() + richHtml() + '</div>' +
-      '<aside class="bx-side">' + previewHtml() + readyHtml() + '</aside></div>' + saveBarHtml() + '</div>';
+    return head + '<div id="seo-root" class="seo2">' + statusHtml() + aiStatusHtml() + previewHtml() +
+      searchHtml() + socialHtml() +
+      '<details class="seo2-adv" id="seo2-adv"' + (ST.advOpen ? ' open' : '') + '><summary>' +
+        '<span class="seo2-adv-t">Advanced</span><span class="seo2-adv-s">Event details, speakers, FAQs and reviews for search engines. Filled in automatically.</span></summary>' +
+        '<div class="seo2-adv-body">' + schemaHtml() + richHtml() + ldHtml() + readyHtml() + '</div></details>' +
+      saveBarHtml() + '</div>';
   }
 
+  /* the header's two helpers: secondary, so the save bar's Save changes is the page's one primary button */
   function actionsHtml() {
     var busy = !!ST.aiBusy;
-    return '<button class="btn btn-primary btn-sm" type="button" data-seo="ai-all"' + (busy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Write with ETB2B AI</button>' +
+    return '<button class="btn btn-secondary btn-sm" type="button" data-seo="ai-all"' + (busy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Suggest with ETB2B AI</button>' +
       '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from the previous edition') + '</button>';
   }
 
-  /* going live: what the next publish changes, and the console's own way to publish */
+  /* going live, said once, in one line: live, or what the next publish changes (the list folded under "What changed"),
+     and the console's own way to publish as a link. The changes are named in the page's own words (the server's labels
+     are the activity log's). */
+  var CHANGE_LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading',
+    canonicalUrl: 'Main web address', noindex: 'Show in Google', shareImageUrl: 'Share picture', basicSchema: 'Event details for search engines',
+    schemaTitle: 'Event name for search engines', schemaDescription: 'Event description for search engines',
+    advancedSchema: 'Speakers, FAQs and reviews in Google', speakers: 'Speakers in Google', faqs: 'FAQs in Google' };
   function statusHtml() {
-    var d = ST.data, ev = ST.ctx.EV, body;
-    var pend = d.pending, changes = d.changes || [];
+    var d = ST.data, pend = d.pending, changes = d.changes || [], n = changes.length, tone = 'ok', text, act = '', more = '';
     if (!d.live.published) {
-      body = '<p class="seo-lead"><b>Not live yet.</b> The site carries all of this when it is first published.</p>';
-    } else if (!changes.length && !dirty()) {
-      body = '<p class="seo-lead"><b>Everything here is live.</b> A change you make here reaches the live site with the next publish' + (d.approvalRequired ? ', once it is approved' : '') + '.</p>';
+      tone = 'mute';
+      text = 'Not live yet. The site carries all of this when it is first published.';
+    } else if (!n && !dirty()) {
+      text = 'Everything here is live. A change reaches the site with the next publish' + (d.approvalRequired ? ', once it is approved' : '') + '.';
     } else {
-      var list = changes.slice(0, 8).map(function (c) {
-        return '<li><b>' + esc(c.label) + '</b>' + (c.after ? ': ' + esc(c.after.slice(0, 120)) : ': removed') + '</li>';
-      }).join('');
-      var act = dirty() ? '<span class="seo-n">Save your changes first, then send them.</span>'
-        : pend && pend.seoSame ? '<a class="btn btn-secondary btn-sm" href="' + esc(pend.reviewPath) + '">Open the review</a>'
-        : '<button class="btn btn-primary btn-sm" type="button" data-seo="publish">' + (d.approvalRequired ? (pend ? 'Send again for approval' : 'Send for approval') : 'Publish now') + '</button>';
-      body = '<p class="seo-lead"><b>Live after the next publish.</b> ' + (changes.length ? changes.length + (changes.length === 1 ? ' change' : ' changes') + ' since the live version' : 'Your unsaved changes') +
-        (pend ? (pend.seoSame ? ' are waiting for approval.' : ': a request is waiting, but changes made since it was sent are not in it.') : '.') + '</p>' +
-        (list ? '<ul class="seo-changes">' + list + (changes.length > 8 ? '<li>and ' + (changes.length - 8) + ' more</li>' : '') + '</ul>' : '') +
-        '<div class="seo-acts">' + act + '</div>';
+      tone = 'warn';
+      text = (n ? n + (n === 1 ? ' change goes' : ' changes go') : 'Your changes go') + ' live with the next publish' +
+        (pend ? (pend.seoSame ? ', and ' + (n === 1 ? 'it is' : 'they are') + ' waiting for approval.' : '. A request is waiting, but it does not have the newest changes.') : '.');
+      act = dirty() ? '<span class="seo2-quiet">Save first.</span>'
+        : pend && pend.seoSame ? '<a class="seo2-link" href="' + esc(pend.reviewPath) + '">Open the review</a>'
+        : '<button class="seo2-link" type="button" data-seo="publish">' + (d.approvalRequired ? (pend ? 'Send again for approval' : 'Send for approval') : 'Publish now') + '</button>';
+      if (n) {
+        more = '<details class="seo2-chg" id="seo2-chg"' + (ST.chgOpen ? ' open' : '') + '><summary>What changed</summary><ul>' + changes.slice(0, 8).map(function (c) {
+          return '<li><b>' + esc(CHANGE_LABEL[c.field] || c.label) + '</b>' + (c.after ? ': ' + esc(c.after.slice(0, 120)) : ': removed') + '</li>';
+        }).join('') + (n > 8 ? '<li>and ' + (n - 8) + ' more</li>' : '') + '</ul></details>';
+      }
     }
-    return '<div class="seo-status" role="status">' + body + '</div>';
+    return '<div class="seo2-status" role="status"><span class="seo2-status-t"><span class="dash-dot dash-dot-' + tone + '" aria-hidden="true"></span>' +
+      esc(text) + '</span>' + act + more + '</div>';
   }
   function aiStatusHtml() {
     var s = '';
-    if (ST.aiBusy) s = '<span class="spin"></span> ' + esc(ST.aiBusy);
-    else if (ST.undo) s = esc(ST.undo.said) + ' <button class="btn btn-secondary btn-sm" type="button" data-seo="undo">Undo</button>';
-    return '<div class="seo-ai-status" id="seo-ai-status" role="status" aria-live="polite"' + (s ? '' : ' hidden') + '>' + s + '</div>';
+    if (ST.aiBusy) s = '<span class="spin"></span> <span>' + esc(ST.aiBusy) + '</span>';
+    else if (ST.undo) s = '<span>' + esc(ST.undo.said) + '</span> <button class="seo2-link" type="button" data-seo="undo">Undo</button>';
+    return '<div class="seo-ai-status seo2-ai" id="seo-ai-status" role="status" aria-live="polite"' + (s ? '' : ' hidden') + '>' + s + '</div>';
   }
 
   function searchHtml() {
@@ -336,41 +355,57 @@
     return { text: '<b>' + avg + '</b> from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + ' ' + stars(Math.round(avg)) };
   }
 
-  function previewHtml() {
+  /* the words both previews show, as typed (the event's own name, Basics' short description and the site's own address
+     without them): drawn by previewHtml and repainted while typing by paintLive */
+  function previewText() {
     var d = ST.data, F = ST.F;
-    var title = line(F.title) || d.auto.title || 'Untitled event';
-    var desc = line(F.description) || d.head.description || '';
-    var shownDesc = desc.length > 158 ? desc.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : desc;
-    var url = line(F.canonicalUrl) || d.auto.url;
-    var where = url.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › ');
-    var dom = url.replace(/^https?:\/\//, '').split('/')[0];
+    var desc = line(F.description) || d.head.description || '', url = line(F.canonicalUrl) || d.auto.url;
+    return { title: line(F.title) || d.auto.title || 'Untitled event', desc: desc.length > 158 ? desc.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : desc,
+      where: url.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › '), dom: url.replace(/^https?:\/\//, '').split('/')[0] };
+  }
+  /* the page's anchor: the Google result and the shared link, side by side on a wide screen, one above the other on a
+     narrow one. The picture is the one the next publish gives (the share picture, or the automatic one). */
+  function previewHtml() {
+    var d = ST.data, p = previewText();
     var pic = d.head.ogImage && ST.ctx.seo && ST.ctx.seo.imgTag ? ST.ctx.seo.imgTag(d.head.ogImage) : '';
-    var ld = d.schema.event || d.schema.faq ? '<details class="seo-ld"><summary>What search engines read (structured data)</summary><pre>' +
-      esc(JSON.stringify([d.schema.event, d.schema.faq].filter(Boolean), null, 2)) + '</pre></details>' : '<p class="seo-n">No structured data yet.</p>';
-    return '<div class="pvc"><div class="pvc-head"><span class="eyebrow">Google result</span></div><div class="pvc-body"><div class="mock mock-serp">' +
-        '<div class="u" id="seo-pv-url">' + esc(where) + '</div><div class="t" id="seo-pv-title">' + esc(title) + '</div><div class="d" id="seo-pv-desc">' + esc(shownDesc) + '</div></div></div>' +
-        '<div class="pvc-foot">Roughly how a search result shows it.</div></div>' +
-      '<div class="pvc"><div class="pvc-head"><span class="eyebrow">Social card</span></div><div class="pvc-body"><div class="mock mock-og seo-og">' +
-        '<div class="img seo-og-img">' + (pic || '<span class="md">No picture: the card shows words only</span>') + '</div>' +
-        '<div class="cap"><span class="dom">' + esc(dom) + '</span><b id="seo-og-title">' + esc(title) + '</b><span id="seo-og-desc">' + esc(shownDesc) + '</span></div></div></div>' +
-        '<div class="pvc-foot">What a WhatsApp, LinkedIn or X share unfurls into. The picture is the one the live page gives' + (d.live.published ? '' : ' once published') + '.</div></div>' +
-      '<div class="pvc"><div class="pvc-body">' + ld + '</div></div>';
+    return '<section class="seo2-pv" aria-label="Preview">' +
+      '<div class="seo2-pv-one"><div class="seo2-pv-h" id="seo2-pv-g">In Google</div><div class="mock mock-serp" aria-labelledby="seo2-pv-g">' +
+        '<div class="u" id="seo-pv-url">' + esc(p.where) + '</div><div class="t" id="seo-pv-title">' + esc(p.title) + '</div><div class="d" id="seo-pv-desc">' + esc(p.desc) + '</div></div></div>' +
+      '<div class="seo2-pv-one"><div class="seo2-pv-h" id="seo2-pv-s">When the link is shared</div><div class="mock mock-og seo-og" aria-labelledby="seo2-pv-s">' +
+        '<div class="img seo-og-img">' + (pic || '<span class="md">No picture yet: the link shows words only</span>') + '</div>' +
+        '<div class="cap"><span class="dom">' + esc(p.dom) + '</span><b id="seo-og-title">' + esc(p.title) + '</b><span id="seo-og-desc">' + esc(p.desc) + '</span></div></div></div>' +
+      '</section>';
   }
 
+  /* what search engines read (the structured data the next publish gives them), for whoever wants to check it: in the
+     Advanced fold, itself folded */
+  function ldHtml() {
+    var list = [ST.data.schema.event, ST.data.schema.faq].filter(Boolean);
+    if (!list.length) return '';
+    return '<details class="seo-ld seo2-ld" id="seo2-ld"' + (ST.ldOpen ? ' open' : '') + '><summary>What search engines read <span class="seo2-quiet">(structured data)</span></summary><pre>' +
+      esc(JSON.stringify(list, null, 2)) + '</pre></details>';
+  }
+
+  /* the readiness checklist (functions/lib/api-seo.js readiness), one line until it is opened: "7 of 15 ready". Its
+     groups and items are named in the page's own words; an item's text is the server's. */
+  var READY_GROUP = [['search', 'Google result'], ['sharing', 'When the link is shared'], ['schema', 'Event details for search engines'], ['rich', 'Speakers, FAQs and reviews in Google']];
+  var READY_LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading', indexing: 'Show in Google',
+    image: 'Share picture', basic: 'Event details', advanced: 'Speakers, FAQs and reviews' };
+  function readyLabel(i) { return READY_LABEL[i.id] || (/^problem-/.test(i.id) ? 'Event details' : i.label); }
   function readyHtml() {
     var items = ST.data.ready || [];
-    var groups = [['search', 'Search listing'], ['sharing', 'Social sharing'], ['schema', 'Event schema'], ['rich', 'Rich results']];
-    var done = items.filter(function (i) { return i.ok; }).length, all = items.filter(function (i) { return i.level !== 'info'; }).length;
-    var body = groups.map(function (g) {
+    var counted = items.filter(function (i) { return i.level !== 'info'; }), done = counted.filter(function (i) { return i.ok; }).length;
+    var body = READY_GROUP.map(function (g) {
       var mine = items.filter(function (i) { return i.group === g[0]; });
       if (!mine.length) return '';
       return '<div class="seo-rg"><div class="seo-rg-h">' + esc(g[1]) + '</div>' + mine.map(function (i) {
-        return '<div class="seo-check"><span class="dash-dot dash-dot-' + (i.ok ? 'ok' : i.level === 'info' ? 'mute' : 'warn') + '" aria-hidden="true"></span><span><b>' + esc(i.label) +
+        return '<div class="seo-check"><span class="dash-dot dash-dot-' + (i.ok ? 'ok' : i.level === 'info' ? 'mute' : 'warn') + '" aria-hidden="true"></span><span><b>' + esc(readyLabel(i)) +
           '<span class="rv-sr"> — ' + (i.ok ? 'complete' : i.level === 'info' ? 'note' : 'missing') + '</span></b><span>' + esc(i.text) + '</span></span></div>';
       }).join('') + '</div>';
     }).join('');
-    return '<div class="pvc"><div class="pvc-head"><span class="eyebrow">Schema ready</span><span class="ctr">' + done + ' / ' + all + '</span></div>' +
-      '<div class="pvc-body">' + (dirty() ? '<p class="seo-n">As last saved: save to check your changes.</p>' : '') + body + '</div></div>';
+    return '<details class="seo2-ready" id="seo2-ready"' + (ST.readyOpen ? ' open' : '') + '><summary><b>' + done + ' of ' + counted.length + ' ready</b>' +
+      '<span class="seo2-quiet seo2-show">Show</span><span class="seo2-quiet seo2-hide">Hide</span></summary>' +
+      '<div class="seo2-ready-body">' + (dirty() ? '<p class="seo2-quiet">As last saved: save to check your changes.</p>' : '') + body + '</div></details>';
   }
 
   function saveBarHtml() {
@@ -383,18 +418,16 @@
   }
 
   /* ---------- in place, while typing (nothing is redrawn under the cursor) ---------- */
+  /* the counters (#seo-ctr-<field>: "n / ideal", class ctr seo-ctr [over|warn]), both previews and the save bar */
   function paintLive() {
     if (!$('seo-root')) return;
-    var d = ST.data, F = ST.F;
+    var F = ST.F;
     ['title', 'description', 'h1', 'schemaTitle', 'schemaDescription'].forEach(function (k) {
       var c = $('seo-ctr-' + k);
       if (c) { var n = line(F[k]).length, ideal = IDEAL[k]; c.textContent = n + ' / ' + ideal; c.className = 'ctr seo-ctr' + (n > ideal ? ' over' : n > ideal * 0.9 ? ' warn' : ''); }
     });
-    var title = line(F.title) || d.auto.title || 'Untitled event', desc = line(F.description) || d.head.description || '';
-    var shownDesc = desc.length > 158 ? desc.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : desc;
-    var url = line(F.canonicalUrl) || d.auto.url;
-    [['seo-pv-title', title], ['seo-pv-desc', shownDesc], ['seo-og-title', title], ['seo-og-desc', shownDesc],
-      ['seo-pv-url', url.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › ')]].forEach(function (p) { var el = $(p[0]); if (el) el.textContent = p[1]; });
+    var p = previewText();
+    [['seo-pv-title', p.title], ['seo-pv-desc', p.desc], ['seo-og-title', p.title], ['seo-og-desc', p.desc], ['seo-pv-url', p.where]].forEach(function (x) { var el = $(x[0]); if (el) el.textContent = x[1]; });
     var bar = $('seo-savebar');
     if (bar) {
       var n2 = changedKeys().length;
@@ -719,6 +752,13 @@
   }
 
   /* ---------- wiring ---------- */
+  /* the page's folds stay as the person left them while the section is drawn again (a toggle or a save redraws it) */
+  function wireShell() {
+    [['seo2-adv', 'advOpen'], ['seo2-ready', 'readyOpen'], ['seo2-ld', 'ldOpen'], ['seo2-chg', 'chgOpen']].forEach(function (f) {
+      var el = $(f[0]);
+      if (el) el.addEventListener('toggle', function () { ST[f[1]] = el.open; });
+    });
+  }
   function wireSaveBar() {
     var s = $('seo-save'), x = $('seo-discard');
     if (s) s.onclick = function () {
@@ -733,6 +773,7 @@
     var root = $('seo-root') || $('seo-loading') || document;
     Array.prototype.forEach.call(document.querySelectorAll('[data-seo="reload"]'), function (b) { b.onclick = function () { ST.error = ''; load(false); redraw(); }; });
     if (!$('seo-root')) return;
+    wireShell();
     if (ctx.seo && ctx.seo.wireSharePicture) ctx.seo.wireSharePicture();
     ctx.seo.setLeave({ label: 'URL & SEO', dirty: dirty, save: save, discard: function () { ST.F = clone(ST.B); ST.failed = ''; } });
 

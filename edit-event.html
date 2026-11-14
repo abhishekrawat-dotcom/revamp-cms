@@ -268,13 +268,16 @@
     input.setAttribute('aria-describedby', msg.id);
   }
   /* errs: [[field id, message], …] — marks each one and puts focus on the first. A field inside a
-     folded "more" block is unfolded first, or its error could not be seen. */
+     folded "more" block (or a closed <details>, such as URL & SEO's Advanced) is unfolded first, or its
+     error could not be seen. */
   function showFieldErrors(errs){
     errs.forEach(function(pair, i){
       var input = $(pair[0]);
       if (!input) return;
       var acc = input.closest('.acc');
       if (acc && acc.getAttribute('data-open') !== 'true') acc.querySelector('.acc-head').click();
+      var fold = input.closest('details');
+      if (fold && !fold.open) fold.open = true;
       setFieldError(input, pair[1]);
       if (i === 0) input.focus();
     });

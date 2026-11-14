@@ -1648,14 +1648,6 @@ a.ev-chip:hover{ border-color: currentColor; }
 @media (max-width: 680px){ .kv-row{ flex-direction:column; gap:2px; } .kv-row .k{ min-width:0; } }
 
 /* ============ SETTINGS › URL & SEO (edit-event-seo.js): every search and sharing setting ============ */
-.seo-bx{ margin-top:14px; }
-.seo-bx .bx-main > .panel + .panel{ margin-top:16px; }
-.seo-bx .bx-side{ display:flex; flex-direction:column; gap:14px; }
-.seo-status{ background: var(--surface); border:1px solid var(--border); border-radius:13px; padding:13px 16px; }
-.seo-status .seo-lead{ margin:0; color: var(--text); }
-.seo-changes{ margin:8px 0 0; padding-left:18px; font-size:12.5px; color: var(--text-muted); line-height:1.6; }
-.seo-changes b{ color: var(--text); }
-.seo-acts{ display:flex; gap:9px; flex-wrap:wrap; margin-top:10px; align-items:center; }
 .seo-ai-status{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; padding:10px 14px; border-radius:11px;
   background: var(--review-soft); color: var(--text); font-size:13px; line-height:1.5; }
 .seo-ai-status[hidden]{ display:none; }
@@ -1878,3 +1870,53 @@ a.ev-chip:hover{ border-color: currentColor; }
 .st-table .st-tag{ font-size:11.5px; color: var(--accent-strong); font-weight:600; white-space:nowrap; }
 .st-table tr.st-skip td{ color: var(--text-faint); }
 @media (max-width: 640px){ .st-list{ grid-template-columns:1fr; } .st-src .btn{ flex:1 1 auto; justify-content:center; min-height:40px; } .st-table .st-tag{ white-space:normal; } }
+
+/* seo2: shell — Settings › URL & SEO's frame (edit-event-seo.js view): one status line, the preview (the anchor), the
+   two open panels, the closed Advanced fold (event details, speakers, FAQs and reviews, what search engines read, the
+   readiness checklist), the one save bar. One column at a reading width; flat, no box inside a box. */
+#seo-root.seo2{ max-width:980px; }
+.seo2 > .panel, .seo2-adv-body > .panel{ margin-bottom:16px; }
+.seo2-status{ display:flex; align-items:center; flex-wrap:wrap; gap:4px 10px; margin:0 0 14px; font-size:13px; line-height:1.5; color: var(--text-muted); }
+.seo2-status .dash-dot{ display:inline-block; width:8px; height:8px; margin:0 8px 1px 0; vertical-align:middle; }
+.seo2-status-t{ min-width:0; overflow-wrap:anywhere; }
+.seo2-link{ border:0; background:none; padding:0; font:inherit; font-weight:700; color: var(--accent-strong); cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.seo2-link:hover{ color: var(--accent); }
+.seo2-quiet{ color: var(--text-faint); font-weight:500; }
+.seo2-chg{ font-size:12.5px; }
+.seo2-chg > summary{ cursor:pointer; font-weight:600; color: var(--text-muted); }
+.seo2-chg[open]{ flex-basis:100%; padding-left:18px; }
+.seo2-chg ul{ margin:6px 0 0; padding-left:18px; line-height:1.6; }
+.seo2-chg b{ color: var(--text); }
+.seo-ai-status.seo2-ai{ margin:0 0 14px; padding:9px 12px; border-radius:10px; background: var(--surface-2); }
+.seo2-pv{ display:grid; grid-template-columns: minmax(0,1fr); gap:16px; margin:0 0 16px; padding:16px; border-radius:13px; background: var(--surface-2); }
+@media (min-width:1100px){ .seo2-pv{ grid-template-columns: minmax(0,1.2fr) minmax(0,1fr); align-items:start; } }
+.seo2-pv-one{ min-width:0; }
+.seo2-pv-h{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color: var(--text-faint); margin:0 0 8px; }
+.seo2-pv .mock{ background: var(--surface); }
+.seo2-adv{ margin:8px 0 16px; }
+.seo2-adv > summary{ list-style:none; cursor:pointer; display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 10px; padding:14px 16px 14px 38px; position:relative;
+  border:1px solid var(--border); border-radius:13px; background: var(--surface); }
+.seo2-adv > summary::-webkit-details-marker{ display:none; }
+.seo2-adv > summary::before{ content:''; position:absolute; left:17px; top:20px; width:7px; height:7px; border-right:2px solid var(--text-muted); border-bottom:2px solid var(--text-muted);
+  transform: rotate(-45deg); transition: transform .15s; }
+.seo2-adv[open] > summary::before{ transform: rotate(45deg); top:18px; }
+.seo2-adv > summary:hover{ background: var(--surface-2); }
+.seo2-adv > summary:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+.seo2-adv[open] > summary{ margin-bottom:16px; }
+.seo2-adv-t{ font-size:15px; font-weight:700; color: var(--text); }
+.seo2-adv-s{ font-size:12.5px; color: var(--text-muted); }
+.seo2-ld{ margin:0 0 16px; padding:0 2px; }
+.seo2-ld > summary{ color: var(--text); }
+.seo2-ready{ padding:0 2px; font-size:13px; }
+.seo2-ready > summary{ cursor:pointer; display:inline-flex; gap:10px; align-items:baseline; }
+.seo2-ready > summary b{ font-weight:700; color: var(--text); }
+.seo2-ready .seo2-hide, .seo2-ready[open] .seo2-show{ display:none; }
+.seo2-ready[open] .seo2-hide{ display:inline; }
+.seo2-ready-body{ margin-top:10px; }
+.seo2-ready-body > p{ margin:0 0 8px; font-size:12.5px; }
+@media (max-width: 680px){
+  .seo2-pv{ padding:12px; }
+  .seo2-adv > summary{ padding:13px 14px 13px 34px; }
+  .seo2-adv > summary::before{ left:14px; }
+  .seo2-link{ min-height:32px; }
+}

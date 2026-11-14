@@ -248,6 +248,25 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
     /window\.EditEventSEO\.view\(CTX\)/.test(seoFn) && /<script src="edit-event-seo\.js"><\/script>/.test(page) && /C\.fetchSeo\(ev\.id\)/.test(seoJs) &&
     /C\.updateEvent\(ev\.id, \{ settings: \{ seo: patch \} \}\)/.test(seoJs) && seoJs.indexOf('etoneworld') === -1, seoFn.slice(0, 200));
   es5('the SEO section', seoJs);
+  /* the clean page (owner, 14 Nov 2026: "too noisy, it should be neat and clean"): one line under the heading, one status
+     line, the preview as the anchor, the Google result and the shared link open, everything automatic folded into a
+     closed Advanced area (kept as the person left it), the save bar the only primary button */
+  var seoView = (/function view\(ctx\) \{[\s\S]*?\n  \}\n/.exec(seoJs) || [''])[0];
+  check('URL & SEO reads top to bottom: status, preview, Google result, shared link, then a closed Advanced fold, then the save bar',
+    /ctx\.vhead\('Search and sharing', 'How this event appears in Google and when its link is shared\. Most of it is filled in for you\.'/.test(seoView) &&
+    /statusHtml\(\) \+ aiStatusHtml\(\) \+ previewHtml\(\) \+\s*searchHtml\(\) \+ socialHtml\(\) \+\s*'<details class="seo2-adv" id="seo2-adv"' \+ \(ST\.advOpen \? ' open' : ''\) \+ '>/.test(seoView) &&
+    /schemaHtml\(\) \+ richHtml\(\) \+ ldHtml\(\) \+ readyHtml\(\) \+ '<\/div><\/details>' \+\s*saveBarHtml\(\)/.test(seoView) &&
+    /ST\.advOpen = false;/.test(seoView), seoView.slice(0, 300));
+  var seoFnOf = function (name) { return (new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}\\n').exec(seoJs) || [''])[0]; };
+  check('URL & SEO: the header\'s helpers and the status line\'s publish are not primary buttons (Save changes is the one)',
+    seoFnOf('actionsHtml').indexOf('btn-primary') === -1 && /Suggest with ETB2B AI/.test(seoFnOf('actionsHtml')) &&
+    seoFnOf('statusHtml').indexOf('btn-primary') === -1 && /<button class="seo2-link" type="button" data-seo="publish">/.test(seoFnOf('statusHtml')) &&
+    /id="seo-save"/.test(seoFnOf('saveBarHtml')));
+  check('URL & SEO: the readiness checklist is one line until opened, named in plain words',
+    /' of ' \+ counted\.length \+ ' ready<\/b>'/.test(seoFnOf('readyHtml')) && /\['schema', 'Event details for search engines'\]/.test(seoJs) && !/Schema ready/.test(seoFnOf('readyHtml')));
+  check('URL & SEO: its folds stay as left across a redraw, and a field error inside a closed fold opens it',
+    /\['seo2-adv', 'advOpen'\]/.test(seoFnOf('wireShell')) && /addEventListener\('toggle'/.test(seoFnOf('wireShell')) && /\n    wireShell\(\);\n/.test(seoJs) &&
+    /var fold = input\.closest\('details'\);\s*if \(fold && !fold\.open\) fold\.open = true;/.test(page));
   check('Visibility: Publish is the header\'s, taking offline is the real unpublish', /pub\.onclick = doPublish/.test(page) && /off\.onclick = takeOffline/.test(page) && /C\.unpublishEvent\(EV\.id\)/.test(page) && /C\.mayTakeOffline\(APPROVAL\)/.test(page));
   /* the release re-check of 5 Nov: a team member who is not an approver saw "Take the site offline…" for 2-9 s, until
      who approves had been read; now it is drawn only once that is known (or could not be read: the server decides) */
