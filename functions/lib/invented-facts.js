@@ -366,7 +366,7 @@ function findings(html, ground, kit, opts) {
   r.flagged.concat(r.removed).forEach(function (x) {
     var key = x.kind + '|' + x.text.toLowerCase();
     if (!found[key]) { found[key] = { kind: x.kind, label: LABELS[x.kind] || x.kind, text: x.text, count: 0, sections: [], places: [] }; order.push(key); }
-    var f = found[key], name = siteChecks.sectionName(x.section);
+    var f = found[key], name = siteChecks.sectionName(x.section, kit && kit.names);
     f.count++;
     if (f.sections.indexOf(name) === -1) f.sections.push(name);
     if (x.section && !f.places.some(function (p) { return p.key === x.section; })) f.places.push({ key: x.section, section: name });

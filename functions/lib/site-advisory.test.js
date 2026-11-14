@@ -274,7 +274,7 @@ pending.push(Promise.all(pending).then(function () {
 pending.push(Promise.all(pending).then(function () {
   return hooks.siteCheckOf(fakeFb({}), 'qa-e', { name: 'E' }, page('<section data-rv-section="faq" data-rv-key="faq-1"><h2>FAQ</h2><h3>Question goes here?</h3><p>Answer goes here.</p></section>'), {}).then(function (r) {
     var ph = r.items.filter(function (x) { return x.code === 'placeholders'; })[0];
-    ok(ph && ph.level === 'block' && ph.fix && ph.fix[0].key === 'faq-1' && ph.fix[0].label === '“Faq” in the site editor' && /&section=faq-1$/.test(ph.fix[0].href), 'template text (still a block, as before) links to its section', ph);
+    ok(ph && ph.level === 'block' && ph.fix && ph.fix[0].key === 'faq-1' && ph.fix[0].label === '“FAQ” in the site editor' && /&section=faq-1$/.test(ph.fix[0].href), 'template text (still a block, as before) links to its section, named by its heading when the design gives it no name (NU-002)', ph);
   });
 }));
 

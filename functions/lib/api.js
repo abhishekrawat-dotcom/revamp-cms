@@ -6013,10 +6013,11 @@ function logoProblems(fb, data, logos) {
 }
 
 /* A real template's samples of its design (data-rv-sample in the index.html of each of its sections: another event's
-   quotes, people, logos, figures and copy — TPL-051), read from disk once per file version. -> { texts, srcs, wholes } */
+   quotes, people, logos, figures and copy — TPL-051), read from disk once per file version. -> { texts, srcs, wholes,
+   instructions } (instructions: the design's own notes of what belongs there, data-rv-sample="instruction": NU-023) */
 var TEMPLATE_SAMPLES = {};
 function templateSamples(templateId) {
-  var none = { texts: [], srcs: [], wholes: [] };
+  var none = { texts: [], srcs: [], wholes: [], instructions: [] };
   if (typeof templateId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,80}$/.test(templateId) || /^(gen|imported)-/.test(templateId)) return none;
   try {
     var dir = path.join(TEMPLATES_DIR, templateId, 'sections');
@@ -6024,7 +6025,7 @@ function templateSamples(templateId) {
     var stamp = files.map(function (f) { return f + ':' + fs.statSync(f).mtimeMs; }).join('|');
     var hit = TEMPLATE_SAMPLES[templateId];
     if (hit && hit.stamp === stamp) return hit.samples;
-    var samples = { texts: [], srcs: [], wholes: [] };
+    var samples = { texts: [], srcs: [], wholes: [], instructions: [] };
     files.forEach(function (f) {
       var text = fs.readFileSync(f, 'utf8');
       if (text.indexOf('data-rv-sample') === -1) return;
@@ -6032,11 +6033,49 @@ function templateSamples(templateId) {
       samples.texts = samples.texts.concat(got.texts);
       samples.srcs = samples.srcs.concat(got.srcs);
       samples.wholes = samples.wholes.concat(got.wholes);
+      samples.instructions = samples.instructions.concat(got.instructions || []);
     });
     TEMPLATE_SAMPLES[templateId] = { stamp: stamp, samples: samples };
     return samples;
   } catch (e) { return none; }
 }
+
+/* The names the site editor lists a site's sections by (NU-002), so the site check, the publish window and the
+   console say "Questions this raises", "Who should attend", "Manifesto" — never a section's id in words ("Who enter",
+   "Conventions box", "About wrapper"), which the person never sees. A real template's are its template.json
+   sections[].name (editor-canvas.js names them so; read from disk once per file version), an AI-designed site's its
+   plan's (GET /api/generated-template: designPlan.sections[].name, the top bar "Top bar"). A section the design has
+   no name for is named by its id in words, as the editor does; one the design does not have at all by its heading
+   (site-checks.js titleOf). -> { sectionId: name } ({} for an imported site: one page, "Page") */
+var SECTION_NAMES = {};
+function sectionNamesFor(data) {
+  var templateId = String((data && data.site && data.site.templateId) || (data && data.templateId) || '');
+  var out = {};
+  function put(id, name) {
+    id = String(id == null ? '' : id).trim();
+    if (!id || Object.prototype.hasOwnProperty.call(out, id)) return;
+    name = String(name == null ? '' : name).replace(/\s+/g, ' ').trim();
+    out[id] = (name && name !== id ? name : siteChecks.sectionName(id)).slice(0, 80);
+  }
+  if (/^gen-/.test(templateId)) {
+    (((data && data.designPlan) || {}).sections || []).forEach(function (x) { if (x && x.id) put(x.id, x.name); });
+    put('nav', 'Top bar');
+    return out;
+  }
+  if (!/^[a-z0-9][a-z0-9-]{0,80}$/.test(templateId) || /^imported-/.test(templateId)) return out;
+  try {
+    var file = path.join(TEMPLATES_DIR, templateId, 'template.json');
+    var mtime = fs.statSync(file).mtimeMs, hit = SECTION_NAMES[templateId];
+    if (!hit || hit.mtime !== mtime) {
+      var json = JSON.parse(fs.readFileSync(file, 'utf8'));
+      hit = SECTION_NAMES[templateId] = { mtime: mtime, sections: Array.isArray(json && json.sections) ? json.sections.map(function (x) { return { id: x && x.id, name: x && x.name }; }) : [] };
+    }
+    hit.sections.forEach(function (x) { put(x.id, x.name); });
+  } catch (e) { /* no names: the check names sections by their ids, as before */ }
+  return out;
+}
+/* TOKEN_KIT with the site's section names (site-checks.js kit.names), for what is said to a person */
+function namedKit(data) { return Object.assign({}, TOKEN_KIT, { names: sectionNamesFor(data) }); }
 
 /* The words of Content's records a visitor would read as names (site-checks.js recordPlaceholders), read with only
    those fields: a sponsor's or speaker's logo and photo can be stored inline and are not wanted here.
@@ -6091,24 +6130,28 @@ function siteCheckOf(fb, eventId, data, html, opts) {
   opts = opts || {};
   data = data || {};
   var page = String(html == null ? '' : html);
-  var ins = siteChecks.inspect(page, TOKEN_KIT);
-  var fixed = siteChecks.repair(page, TOKEN_KIT, { eventId: eventId, homeHref: publicPathOf(eventId), portal: data.portal, forms: opts.forms });
-  var after = siteChecks.inspect(fixed.html, TOKEN_KIT);
+  /* every section named as the site editor names it (NU-002) */
+  var kit = namedKit(data), names = kit.names;
+  var ins = siteChecks.inspect(page, kit);
+  var fixed = siteChecks.repair(page, kit, { eventId: eventId, homeHref: publicPathOf(eventId), portal: data.portal, forms: opts.forms });
+  var after = siteChecks.inspect(fixed.html, kit);
   var records = opts.records ? contentNames(fb, eventId) : Promise.resolve(null);
   /* an AI-designed site: what its words state that nothing the event supplied supports (BE-043) */
   var facts = ins.generated ? Promise.resolve().then(function () { return factGroundOf(fb, eventId, data); }).then(function (g) {
-    return g ? inventedFacts.findings(page, g, TOKEN_KIT, { skipSections: factSkips(data) }) : [];
+    return g ? inventedFacts.findings(page, g, kit, { skipSections: factSkips(data) }) : [];
   }).then(null, function (err) {
     console.error('api: the facts check of ' + eventId + ' failed — ' + (err && err.message));
     return [];
   }) : Promise.resolve([]);
 
-  var samples = siteChecks.sampleHits(page, TOKEN_KIT, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
+  var hits = siteChecks.sampleHits(page, kit, templateSamples((data.site && data.site.templateId) || data.templateId || ''));
+  /* the design's own notes of what belongs there, apart from another event's words (NU-023) */
+  var samples = hits.filter(function (h) { return !h.instruction; }), notes = hits.filter(function (h) { return h.instruction; });
   var onLive = alreadyLiveTest(opts.live ? page : opts.livePage, data);
   /* the forms are handed over still being read, so other sites are asked meanwhile: the first list comes sooner */
   var adv = opts.advisory ? Promise.resolve().then(function () {
     return siteAdvisory.check(page, {
-      kit: TOKEN_KIT, eventId: eventId, event: data, inspect: ins, forms: opts.forms !== undefined ? opts.forms : publicFormsFor(fb, eventId, data),
+      kit: kit, eventId: eventId, event: data, inspect: ins, forms: opts.forms !== undefined ? opts.forms : publicFormsFor(fb, eventId, data),
       pages: sitePages.readPages(page, TOKEN_KIT), version: opts.advisory.version, waitMs: advisoryLeft(opts.advisory),
       fetch: opts.advisory.fetch, fetchOptions: opts.advisory.fetchOptions
     });
@@ -6132,7 +6175,14 @@ function siteCheckOf(fb, eventId, data, html, opts) {
     blockUnlessLive(items, 'samples', samples, onLive.sample, function (list) {
       return { title: 'Samples from the template are still on the page',
         lines: capLines(list.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
-        hint: 'They belong to another event: its words, figures, quotes, people or logos, shown until this event’s own are entered. Put this event’s own in, or take them out, in the site editor (they have a dashed amber outline there), then save.', fix: inEditor(placesOf(list)) };
+        hint: 'They belong to another event: its words, figures, quotes, people or logos, shown until this event’s own are entered. Put this event’s own in, or take them out, in the site editor, then save.', fix: inEditor(placesOf(list)) };
+    });
+    /* the design's own notes of what to write there, which would go live as the page's words (NU-023) */
+    blockUnlessLive(items, 'instructions', notes, onLive.sample, function (list) {
+      return { title: list.length === 1 ? 'A writing tip from the template is still on the page' : 'Writing tips from the template are still on the page',
+        lines: capLines(list.map(function (h) { return quoteText(h.text, 70) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
+        hint: (list.length === 1 ? 'It says' : 'They say') + ' what belongs there; visitors would read ' + (list.length === 1 ? 'it' : 'them') + ' as they are. Write this event’s own words in ' + (list.length === 1 ? 'its' : 'their') + ' place, or take the section out, in the site editor, then save.',
+        fix: inEditor(placesOf(list)) };
     });
     blockUnlessLive(items, 'pictures', pics, onLive.picture, function (list) {
       var fixable = list.filter(function (p) { return p.fixUrl; }).length;
@@ -6176,11 +6226,11 @@ function siteCheckOf(fb, eventId, data, html, opts) {
     var reps = repeatedPageHeadings(page);
     if (reps.length) {
       items.push({ code: 'headings', level: 'warn', title: reps.length === 1 ? 'Two sections have the same heading' : reps.length + ' sections repeat another section’s heading',
-        lines: capLines(reps.map(function (r) { return quoteText(r.text, 70) + ' — ' + siteChecks.sectionName(r.id) + ' repeats ' + (r.firstId === 'hero' ? 'the banner' : siteChecks.sectionName(r.firstId)); })),
+        lines: capLines(reps.map(function (r) { return quoteText(r.text, 70) + ' — ' + siteChecks.sectionName(r.id, names) + ' repeats ' + (r.firstId === 'hero' ? 'the banner' : siteChecks.sectionName(r.firstId, names)); })),
         hint: ins.generated ? 'Visitors read the same heading twice. ETB2B AI can write the later section a heading of its own from what that section says, as a new saved version' + (opts.live ? ' sent for approval' : '') + '; or change it in the site editor.'
           : 'Visitors read the same heading twice. Give the later section a heading of its own in the site editor, then save.',
         action: ins.generated ? { kind: 'headings', label: reps.length === 1 ? 'Write it a heading of its own' : 'Write them headings of their own' } : null,
-        fix: inEditor(reps.map(function (r) { return { key: r.id, section: siteChecks.sectionName(r.id) }; })) });
+        fix: inEditor(reps.map(function (r) { return { key: r.id, section: siteChecks.sectionName(r.id, names) }; })) });
     }
     if (after.payment.length) {
       items.push({ code: 'payment', level: 'warn', title: 'A button promises tickets or payment',
@@ -6198,7 +6248,7 @@ function siteCheckOf(fb, eventId, data, html, opts) {
         fix: inEditor(fixed.changes) });
     }
     if (opts.live) {
-      var why = siteChecks.noindexReason(Object.assign({ id: eventId }, data), page, TOKEN_KIT);
+      var why = siteChecks.noindexReason(Object.assign({ id: eventId }, data), page, kit);
       if (why) items.push({ code: 'search', level: 'info', title: 'Kept out of search engines',
         lines: [why === 'owner' ? 'Its settings say so.' : why === 'test' ? 'Its name says it is a test (' + quoteText(data.name, 60) + ').' : 'Its page is still the template (' + quoteText((ins.placeholders.filter(function (h) { return h.strong; })[0] || {}).text || 'Event name goes here') + ').'],
         hint: 'It stays live for anyone with its address; search engines are asked not to list it, and the sitemap leaves it out.' });
@@ -6355,7 +6405,8 @@ function handleSiteOutline(req, res) {
     if (!eventId) return;
     loadLiveEvent(fb, eventId).then(function (data) {
       var live = data.published === true, saved = siteVersionOf(data);
-      var none = { eventId: eventId, of: 'none', version: 0, places: siteOutline.outline('', TOKEN_KIT).places, previous: [], logo: '', logoIsUnit: false };
+      var none = { eventId: eventId, of: 'none', version: 0, places: siteOutline.outline('', TOKEN_KIT).places, previous: [], logo: '', logoIsUnit: false,
+        imported: /^imported-/.test(String((data.site && data.site.templateId) || data.templateId || '')) };
       /* a live site whose published copy cannot be found is read as last saved, which is what goes live next */
       var reads = live ? [['live', publishedObjectPath(eventId), +data.publishedVersion || 0]] : [];
       if (saved) reads.push(['saved', sitePath(eventId, 'page.html'), saved]);
@@ -6366,10 +6417,12 @@ function handleSiteOutline(req, res) {
           var templateId = (data.site && data.site.templateId) || data.templateId || '';
           /* redrawn: whether the page's records are drawn again on every visit, which decides what an unmarked
              section does with no records (site-outline.js placeState) */
-          var o = siteOutline.outline(html, TOKEN_KIT, contentMapFor(templateId), { redrawn: LIVE_RUNTIME_PRESENT });
+          var o = siteOutline.outline(html, namedKit(data), contentMapFor(templateId), { redrawn: LIVE_RUNTIME_PRESENT });
           var design = aiDesignOf(data.designPlan);
           return sameStoredPicture(fb, o.logo, design ? String(design.logoUnitUrl || '') : '').then(function (same) {
-            sendJson(res, 200, { eventId: eventId, of: reads[i][0], version: reads[i][2], places: o.places, previous: o.previous, logo: o.logo, logoIsUnit: same });
+            /* imported: one captured page, which the site editor adds no section to (edit-event-site-notes.js says so) */
+            sendJson(res, 200, { eventId: eventId, of: reads[i][0], version: reads[i][2], places: o.places, previous: o.previous, logo: o.logo, logoIsUnit: same,
+              imported: /^imported-/.test(templateId) });
           });
         });
       }
@@ -6457,7 +6510,7 @@ function handleSiteRepair(req, res) {
             /* the page, the editor's snapshot and the stored sections, as the other repairs change them */
             reps.forEach(function (r) {
               var next = withHeadingText(page, r.id, 'h2', written[r.id]);
-              if (next == null) throw httpError(409, 'The heading of “' + siteChecks.sectionName(r.id) + '” could not be found in the saved site. Open the site editor, save it once, and try again.', { code: 'section-missing' });
+              if (next == null) throw httpError(409, 'The heading of “' + siteChecks.sectionName(r.id, sectionNamesFor(data)) + '” could not be found in the saved site. Open the site editor, save it once, and try again.', { code: 'section-missing' });
               page = next;
               if (snap) snap.nodes = snap.nodes.map(function (n) {
                 if (typeof n !== 'string' || !new RegExp('^<[a-z][\\w-]*\\b[^>]*\\sdata-rv-section="' + r.id + '"', 'i').test(n)) return n;
@@ -6473,7 +6526,7 @@ function handleSiteRepair(req, res) {
               });
               if (JSON.stringify(patched) !== JSON.stringify(sections)) sectionsPatch = patched;
             }
-            done.push(reps.map(function (r) { return siteChecks.sectionName(r.id) + '’s heading (now “' + written[r.id] + '”)'; }).join(', '));
+            done.push(reps.map(function (r) { return siteChecks.sectionName(r.id, sectionNamesFor(data)) + '’s heading (now “' + written[r.id] + '”)'; }).join(', '));
           });
         });
         return chain.then(function () {
@@ -8056,7 +8109,7 @@ module.exports._testHooks = {
   sanitizeGeneratedSectionHtml, sanitizeGeneratedSectionCss,
   chatRateOk: chatRateOk, CHAT_RATE: CHAT_RATE,
   TOKEN_KIT: TOKEN_KIT, selectSitePage: selectSitePage,
-  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
+  siteCheckOf: siteCheckOf, siteCheckError: siteCheckError, sectionNamesFor: sectionNamesFor, templateSamples: templateSamples, siteCheckGate: siteCheckGate, livePageOf: livePageOf, repeatedPageHeadings: repeatedPageHeadings, withHeadingText: withHeadingText, writeSectionHeadings: writeSectionHeadings, pictureProblems: pictureProblems, setPictureProbe: function (fn) { pictureProbe = fn || probeUrl; }, logoProblems: logoProblems, liveRepair: liveRepair,
   replaceSiteSection: replaceSiteSection, etChromeFor: etChromeFor, searchVerdicts: searchVerdicts, handleSitemapXml: handleSitemapXml, handleSiteRepair: handleSiteRepair, handleSiteCheck: handleSiteCheck,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, rasterise, yearCutColour, yearFont,

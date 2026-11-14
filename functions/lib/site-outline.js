@@ -78,11 +78,14 @@ function matchEnds(tokens) {
   return ends;
 }
 
-/* A section's name as the owner knows it: the editor lists sections by their id ("sponsors", "contact-us"), so this
-   is that id in words — never the section's heading, which on an AI-designed site is a line of copy ("The brands
-   powering the South's big stage"). */
-function nameOf(key) {
-  return siteChecks.sectionName(key).replace(/\bfaq(s?)\b/gi, function (m, s) { return 'FAQ' + s; });
+/* A section's name as the owner knows it: the name the site editor lists it by (kit.names: a real template's
+   template.json names, an AI-designed site's plan — NU-002), else its id in words — never the section's heading,
+   which on an AI-designed site is a line of copy ("The brands powering the South's big stage"). */
+function nameOf(s, kit) {
+  if (typeof s === 'string') s = { key: s, id: s };
+  var names = kit && kit.names;
+  var named = names && Object.prototype.hasOwnProperty.call(names, s.key) && names[s.key] ? String(names[s.key]) : siteChecks.sectionName(s.id || s.key, names);
+  return named.replace(/\bfaq(s?)\b/gi, function (m, x) { return 'FAQ' + x; });
 }
 
 /* the sections each kind of record goes into, by a real template's content.map: { sectionId: [{ kind, scoped }] } —
@@ -184,7 +187,7 @@ function outline(html, kit, contentMap, opts) {
     }
     Object.keys(s.kinds).forEach(function (k) {
       if (out.places[k].some(function (p) { return p.key === s.key; })) return;
-      var st = placeState(s, k, redrawn), place = { key: s.key, name: nameOf(s.key), hides: st.hides };
+      var st = placeState(s, k, redrawn), place = { key: s.key, name: nameOf(s, kit), hides: st.hides };
       if (st.stands) place.stands = st.stands;
       out.places[k].push(place);
     });
