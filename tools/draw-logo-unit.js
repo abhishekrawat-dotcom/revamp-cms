@@ -141,7 +141,7 @@ function plan(fb, hooks, id, opts) {
   const generatedSite = require(path.join(lib, 'generated-site.js'));
   const genDesign = require(path.join(lib, 'gen-design.js'));
   const events = fb.db.collection('events');
-  const out = { id: id, ok: false, nothing: false, line: '', facts: [] };
+  const out = { id: id, ok: false, nothing: false, line: '' };
   function refuse(why) { out.line = why + ' — left as it is'; return out; }
   return events.doc(id).get().then(function (snap) {
     const state = hooks.eventStateOf(snap);
@@ -192,7 +192,7 @@ function plan(fb, hooks, id, opts) {
       out.heroNow = has ? 'the design\'s drawn unit (' + String(design.logoUnitUrl).split('/').pop() + ')' : 'set in type (the design has no unit' + (source ? ': ' + source : '') + ')';
       /* the generated hero (what the editor opens before a site is first saved) */
       const gen = got[2] ? unitBlockOf(got[2], false) : { why: 'none' };
-      out.genHero = gen.why ? (got[2] ? 'has no logo unit block — design only' : 'none — design only') : gen.picture ? (has && (gen.picture === unit.url || gen.picture === unit.darkUrl) ? 'shows the drawn unit already' : 'shows a picture (' + gen.picture.split('/').pop().slice(0, 60) + ') — left to saveOwnerUnit') : 'its unit block set in type would be swapped';
+      out.genHero = gen.why ? (got[2] ? 'has no logo unit block — design only' : 'none — design only') : gen.picture ? (has && (gen.picture === unit.url || gen.picture === unit.darkUrl) ? 'shows the drawn unit already' : 'shows a picture (' + gen.picture.split('/').pop().slice(0, 60) + ') — swapped for the drawn unit only with a new drawing, as repair-logo-unit.js swaps one') : 'its unit block set in type would be swapped';
       out.genInType = !gen.why && !gen.picture;
       /* the saved hero: checked with a stand-in for the unit when none is drawn yet (the real one is put in under the site lock) */
       if (page) {

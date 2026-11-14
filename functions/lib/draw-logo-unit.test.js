@@ -272,6 +272,18 @@ function near(a, b, tol) { return !!a && !!b && a.every(function (v, i) { return
   ok(!second.ok && second.nothing && /nothing to do/.test(second.line), 'a second run finds nothing to do', second.line);
   ok(snapshot() === again, 'and writes nothing');
 
+  /* ---------- a site generated since 13 Nov 2026: its generated hero is kept in its run's own document ---------- */
+  var RUN = 'run-' + (Date.parse('2026-11-13T10:00:00Z')).toString(36) + '-bbbbbb';
+  seed('run-kept', { generatedSite: { runId: RUN, at: '2026-11-13T10:00:00Z', sections: [{ id: 'hero', kind: 'hero' }] } });
+  delete FB.docs['events/run-kept'].generatedSections;
+  FB.docs['events/run-kept/generations/' + RUN + '/sections/hero'] = { id: 'hero', kind: 'hero', html: GEN_HERO, css: '', order: 0 };
+  var rk = await tool.plan(FB, hooks, 'run-kept', {});
+  ok(rk.ok && rk.genInType && /would be swapped/.test(rk.genHero), 'a run\'s own hero document is read', rk.genHero);
+  await tool.apply(FB, hooks, logActivity, 'https://cms.example', rk, { stamp: '20261114150000' });
+  var runHero = FB.docs['events/run-kept/generations/' + RUN + '/sections/hero'].html;
+  ok(runHero.indexOf('generated/20261114150000-logo-unit.svg') !== -1 && runHero.indexOf('rv-lu-name') === -1 && !('generatedSections' in FB.docs['events/run-kept']),
+    'and the drawn unit goes into it (no copy left on the event)', runHero.slice(0, 400));
+
   /* ---------- a run without --publish stages the version and leaves the live page as it is ---------- */
   seed('staged-only', { name: NAME });
   var sp = await tool.plan(FB, hooks, 'staged-only', {});
