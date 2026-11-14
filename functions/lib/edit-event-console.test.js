@@ -297,6 +297,23 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   check('access.notAnApprover: anybody else is told who can', access.notAnApprover(['boss@timesinternet.in', 'two@timesinternet.in'], 'member@timesinternet.in', 'take a live site offline') ===
     'Only an approver (boss@timesinternet.in, two@timesinternet.in) can take a live site offline.');
 
+  /* ---------- the first-time-user QA (14 Nov 2026) ---------- */
+  var bar = page.slice(page.indexOf('  function siteBarState(){'), page.indexOf('  function paintSiteBar(){'));
+  var barWords = (bar.match(/'[^']*'/g) || []).join(' ');
+  check('NU-019 the bar above a Content tab says where a change is in plain words, never "staged copy"', !/staged copy/i.test(barWords) &&
+    /' added to your site straight away\. '\) \+ 'Visitors see them once the site is published\.'/.test(bar) &&
+    /' added to your site straight away\. Visitors see them once an approver approves them\.'/.test(bar) && /' is saved, not live yet\. '/.test(bar) && /'Preview it'/.test(bar), barWords.slice(0, 400));
+  check('NU-022 with no groups, "Not in a group" is optional and calm, and says the site lists them in this order',
+    /' <span class="gopt">\(optional\)<\/span>'/.test(page) && /'They show on the site in this order\. Use groups to add headings such as “'/.test(page) &&
+    /grp grp-loose' \+ \(groups\.length \? '' : ' is-optional'\)/.test(page) && /\.grp-loose\.is-optional \.grp-note\{ background: var\(--surface-2\); \}/.test(read('edit-event.css')));
+  check('NU-022 … the same for sessions with no day and sponsors with no tier', /'They show on the site by their start time\./.test(page) && /'They show on the site in this order\. Use tiers to add headings such as “Gold partners”\.'/.test(page));
+  check('NU-037 a site never saved: Preview is "Design the site" with a pencil where its words give way, named by its words at every width',
+    /<svg class="pv-ic-design"[^>]*aria-hidden="true" style="display:none">/.test(page) && /if \(pvPen\) pvPen\.style\.display = pvSaved \? 'none' : '';/.test(page) &&
+    /pv\.setAttribute\('aria-label', pvSaved \? 'Preview' : 'Design the site'\);/.test(page) && /pv\.classList\.toggle\('is-design', !pvSaved\)/.test(page) &&
+    /\.topbar\.ev-bar #btn-preview\.is-design > span\{ position:static;/.test(read('edit-event.css')));
+  check('NU-033 the default form heading reads as a sentence', /var DEFAULT_TITLE = 'Please take a moment to share your details';/.test(read('templates/_shared/rv-forms.js')) &&
+    require('./forms').FORMS_RUNTIME_V >= 6);
+
   console.log((failed ? 'FAILED ' : 'ok ') + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(function (e) { console.error(e); process.exit(1); });

@@ -25,7 +25,9 @@
      patch(parsedDescription, stored, briefText) -> { description } | null   what plan-structure writes
      buildPrompt(o)                    -> the prompt of a description-only call (the repair tool):
                                           o = { event, brief, previous, previousSummary }
-     ACTIVITY_DETAIL                   the activity log line
+     ACTIVITY_DETAIL                   the activity log line, when the previous edition was read too
+     activityDetail(fromPrevious)      -> the activity log line as it happened: "…from the brief", and "…and the previous
+                                          edition" only when one was given (NU-025)
    No network, no Firebase: see event-description.test.js. */
 
 var ownerBrief = require('./owner-brief');
@@ -41,6 +43,7 @@ var SCHEMA = {
 };
 
 var ACTIVITY_DETAIL = 'Description written by AI from the brief and the previous edition';
+function activityDetail(fromPrevious) { return fromPrevious ? ACTIVITY_DETAIL : 'Description written by AI from the brief'; }
 
 function norm(t) { return String(t == null ? '' : t).replace(/\s+/g, ' ').trim(); }
 
@@ -146,4 +149,4 @@ function buildPrompt(o) {
   return lines.join('\n');
 }
 
-module.exports = { IDEAL_LENGTH, MAX_LENGTH, RULE, SCHEMA, ACTIVITY_DETAIL, BRIEF_FACT_FIELDS, isRawBrief, replaceable, clean, storedFacts, patch, buildPrompt, dateText };
+module.exports = { IDEAL_LENGTH, MAX_LENGTH, RULE, SCHEMA, ACTIVITY_DETAIL, activityDetail, BRIEF_FACT_FIELDS, isRawBrief, replaceable, clean, storedFacts, patch, buildPrompt, dateText };

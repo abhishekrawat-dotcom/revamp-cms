@@ -2552,7 +2552,7 @@ function handlePlanStructure(req, res) {
               /* a run the person stopped while this was being made keeps the event as it is (WZ-055) */
               return tx.get(runRef).then(function (was) {
               if (was.exists && (was.data() || {}).status === 'stopped') throw httpError(409, RUN_STOPPED, { code: 'run-stopped' });
-              tx.set(runRef, { runId: runId, status: 'planned', designPlan: designPlan, described: described ? { description: described.description, from: String(stored.description || '') } : null,
+              tx.set(runRef, { runId: runId, status: 'planned', designPlan: designPlan, described: described ? { description: described.description, from: String(stored.description || ''), previous: !!prevSource } : null,
                 usedEventInputs: !inputsOf, by: actorOf(req.user), plannedAt: at });    // whole: a plan made again in the same run replaces the last, never blends with it
               tx.update(ref, { generationRun: { runId: runId, at: at } });
               });
@@ -2562,7 +2562,7 @@ function handlePlanStructure(req, res) {
             .then(function () {
               sendJson(res, 200, { eventId: eventId, runId: runId || undefined, matchedTemplateId: null, structurePlan: null, theme: null, designPlan: designPlan, description: described ? described.description : undefined });
               if (watch.live) logActivity(fb, eventId, req.user, 'site-designed', 'AI made a new site design — ' + sections.length + ' sections' + (runId ? ' (used once its pages are written)' : ''), { area: 'design' });
-              if (watch.live && described && !runId) logActivity(fb, eventId, req.user, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
+              if (watch.live && described && !runId) logActivity(fb, eventId, req.user, 'updated', eventDescription.activityDetail(!!prevSource), { area: 'event',
                 fields: [{ field: 'description', before: String(stored.description || '').slice(0, 600), after: described.description }] });
             });
           });
@@ -3568,7 +3568,7 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
          half the new run's and half an earlier one's. The sections no longer live on the event's document (the old
          field is removed by the same write), so it stays small whatever the site holds. */
       var commitRunId = run.runId || generatedSite.newRunId();
-      var described = run.fromRun ? run.described : null, describedNow = null, describedBefore = '';
+      var described = run.fromRun ? run.described : null, describedNow = null, describedBefore = '', hadSite = false;
       /* the event is checked first: one removed meanwhile (Create Event's Cancel removes the event its run made) gets nothing */
       /* BE-033: a run another request of it has already put on the event (it took the run over after this one fell
          silent) is not put there twice: this one answers as that one did */
@@ -3590,6 +3590,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
             if (runSnap && runSnap.exists && (runSnap.data() || {}).status === 'done') throw ALREADY;
             var cur = snap.data() || {};
             describedNow = null;                    // a transaction may run more than once
+            /* the activity log says "again" only when the event had a site written before this one (NU-025) */
+            hadSite = !!(cur.generatedSite || cur.generatedAt || (Array.isArray(cur.generatedSections) && cur.generatedSections.length));
             /* BE-029: only the event's newest run puts its site on it — one that planned after this one (another
                tab, someone else) has taken the event, and this run's site is not used */
             var newest = cur.generationRun && cur.generationRun.runId;
@@ -3638,8 +3640,8 @@ function runGenerateDesignedContent(res, fb, payload, eventId, templateId, sourc
             eventId: eventId, templateId: templateId, draftId: docRef.id, runId: commitRunId, positioningNotes: positioningNotes,
             sections: sections.map(function (s) { return { id: s.id, kind: s.kind }; }), library: {}
           });
-          if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI wrote the site’s ' + sections.length + ' sections again — opened in the editor next', { area: 'site' });
-          if (watch.live && describedNow) logActivity(fb, eventId, by, 'updated', eventDescription.ACTIVITY_DETAIL, { area: 'event',
+          if (watch.live) logActivity(fb, eventId, by, 'site-generated', 'AI wrote the site’s ' + sections.length + ' sections' + (hadSite ? ' again, in place of the last ones' : ''), { area: 'site' });
+          if (watch.live && describedNow) logActivity(fb, eventId, by, 'updated', eventDescription.activityDetail(!!(described && described.previous)), { area: 'event',
             fields: [{ field: 'description', before: describedBefore.slice(0, 600), after: describedNow }] });
         });
     });

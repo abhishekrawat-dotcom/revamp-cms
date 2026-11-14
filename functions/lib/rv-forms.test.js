@@ -309,7 +309,7 @@ check('consent: the owner\'s words, as written', SRC.indexOf('I understand that 
   'https://cio.economictimes.indiatimes.com/terms_conditions.php'].forEach(function (u) { check('consent: a page published without consent words still links ' + u, SRC.indexOf("'" + u + "'") !== -1); });
 check('consent: sent as the body\'s consent: true', /consent: true/.test(SRC));
 check('consent: the policy links open in a new tab, without the opener', /a\.target = '_blank'/.test(SRC) && /noopener/.test(SRC));
-check('the default form\'s title is the design\'s sentence', SRC.indexOf("'Please take a moment to provide us with your Information'") !== -1);
+check('the default form\'s title is the design\'s sentence', SRC.indexOf("'Please take a moment to share your details'") !== -1);
 check('styles are in px (a fixed template\'s root font size is 10px)', !/\d(?:\.\d+)?rem\b/.test(SRC.slice(SRC.indexOf('var CSS = ['), SRC.indexOf("].join('\\n')"))));
 /* on a phone the pop-up's Submit bar and title stick: a field focused after a failed submit (the consent box,
    last) must scroll clear of them, not sit under the Submit bar (WCAG 2.4.11) */
