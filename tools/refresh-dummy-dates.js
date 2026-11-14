@@ -55,6 +55,21 @@ const CIO_YEAR = /(<span\b[^>]*>)\s*2026\s*(<\/span>)/g;
 const TBA = /Date to be announced/g;
 
 function count(s, re) { return (String(s).match(re) || []).length; }
+/* one phrase for another, word for word, whatever space the page has between the words (a plain space, a
+   non-breaking one, &nbsp;): each keeps its own */
+const SEP = '((?:\\s|&nbsp;|&#160;|&#xa0;)+)';
+function swap(html, from, to) {
+  const a = from.split(' '), b = to.split(' ');
+  if (a.length !== b.length) { const n0 = html.split(from).length - 1; return { n: n0, html: html.split(from).join(to) }; }
+  const re = new RegExp(a.map(escRe).join(SEP), 'g');
+  let n = 0;
+  const out = html.replace(re, function () {
+    n++;
+    const seps = Array.prototype.slice.call(arguments, 1, a.length);
+    return b.map(function (w, i) { return w + (i < seps.length ? seps[i] : ''); }).join('');
+  });
+  return { n: n, html: out };
+}
 function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
 /* the words the three sites show where "Date to be announced" is left: the top bar's short form, else the long */
@@ -87,10 +102,10 @@ function changeOf(id, page, data) {
     const report = { swaps: [], left2026: [] };
     let missing = 0;
     CIO_SWAPS.forEach(function (s) {
-      const n = count(html, new RegExp(escRe(s[0]), 'g'));
-      if (!n) missing++;
-      report.swaps.push(s[0].replace(/[<>]/g, '') + ' -> ' + s[1].replace(/[<>]/g, '') + ': ' + n);
-      html = html.split(s[0]).join(s[1]);
+      const r = swap(html, s[0], s[1]);
+      if (!r.n) missing++;
+      report.swaps.push(s[0].replace(/[<>]/g, '') + ' -> ' + s[1].replace(/[<>]/g, '') + ': ' + r.n);
+      html = r.html;
     });
     const years = count(html, CIO_YEAR);
     report.swaps.push('the banner\'s year 2026 -> 2027: ' + years);

@@ -86,8 +86,8 @@ function genPage(name, extra) {
 var CIO_PAGE = '<!DOCTYPE html><html><head><title>CIO Awards</title></head><body><main>' +
   '<section data-rv-section="hero"><h1>The Economic Times Awards for Enterprise Tech Excellence 2026</h1>' +
   '<span class="text-[clamp(1.5rem,7.6vw,3.4rem)]">2026</span><p>27 November 2026 · Grand Hyatt, Mumbai</p></section>' +
-  '<section data-rv-section="timeline"><p>15 August 2026</p><p>Nomination Starts</p><p>Open now</p><p>30 October 2026</p><p>Nomination Deadline</p><p>Closing soon</p>' +
-  '<p>31 October 2026</p><p>Shortlist Announcement</p><p>Upcoming</p><p>17 November 2026</p><p>27 November 2026</p></section>' +
+  '<section data-rv-section="timeline"><p>15 August\u00a02026</p><p>Nomination Starts</p><p>Open now</p><p>30 October 2026</p><p>Nomination Deadline</p><p>Closing soon</p>' +
+  '<p>31 October 2026</p><p>Shortlist Announcement</p><p>Upcoming</p><p>17&nbsp;November 2026</p><p>27 November 2026</p></section>' +
   '<section data-rv-section="faq"><h3>What are the ET Awards for Enterprise Tech Excellence 2026?</h3><p>Submit before the deadline, 30 October 2026.</p></section>' +
   '</main><footer><span>© 2026 The Economic Times. All rights reserved</span></footer><div data-award="etcio-awards-2026"></div></body></html>';
 
@@ -142,7 +142,7 @@ function live(id) { var f = FB.files['events/' + id + '/published/index.html']; 
   ok(c.indexOf(TBA) === -1 && /closing-cta-date">2–3 December 2027</.test(c), 'CPL live: its own date line says 2–3 December 2027', (c.match(/closing-cta-date[^<]*/) || [''])[0]);
 
   var cio = live('cio-awards');
-  ['15 August 2027', '30 October 2027', '31 October 2027', '17 November 2027', '26 November 2027', 'Excellence 2027'].forEach(function (w) { ok(cio.indexOf(w) !== -1, 'CIO live: ' + w); });
+  ['15 August\u00a02027', '17&nbsp;November 2027', '30 October 2027', '31 October 2027', '26 November 2027', 'Excellence 2027'].forEach(function (w) { ok(cio.indexOf(w) !== -1, 'CIO live: ' + w); });
   ok(!/\b(August|October|November) 2026\b|Excellence 2026|>2026</.test(cio), 'CIO live: no 2026 date or banner year left', cio);
   ok(cio.indexOf('© 2026') !== -1 && cio.indexOf('etcio-awards-2026') !== -1, 'CIO live: the copyright line and the awards\' own id are kept');
   ok(cio.indexOf('Open now') === -1 && cio.indexOf('Closing soon') === -1, 'CIO live: the timeline no longer says nominations are open');
