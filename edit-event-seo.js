@@ -1,38 +1,60 @@
-/* Settings › URL & SEO in the event console (edit-event.html): every SEO field of ET's own event platform, in one
-   section — the owner (6 Nov 2026): "keep everything in one section under settings -> seo", search and sharing only,
-   never the site's own words.
+/* Settings › Search and sharing in the event console (edit-event.html; route settings/seo, the tab was "URL & SEO"):
+   every search and sharing setting of an event in one calm page — the owner (6 Nov 2026): "keep everything in one
+   section under settings -> seo", never the site's own words; (14 Nov 2026) "too noisy, it should be neat and clean".
+   Written for event and marketing teams, so every field is named in plain words (LABEL), never in search-engine jargon.
 
-   FOUR PARTS AND A CHECKLIST, each field saying where it comes from:
-     1 Search listing   SEO title, meta description, keywords, H1 heading (ETB2B AI or typed), the canonical address
-                        and indexing (automatic, the team may change them), the short link (not available: say so)
-     2 Social sharing   the share title and description (the SEO title and description), the share picture (the
-                        console's own Share picture panel, moved here from Basics), the square picture (none apart)
-     3 Event schema     the schema.org Event: on or off, its title and description (ETB2B AI or typed), the dates and
-                        venue (Basics), the attendance mode, street address, postcode, latitude and longitude (the
-                        team), the city's state and country (the place list), the organiser and the logo (automatic)
-     4 Rich results     speakers and FAQs (Content, picked here), testimonials (typed here, or brought in from the
-                        previous edition — never written by AI), the rating (worked out), passes and prices (left out)
-     Schema ready       what is complete and what is missing (functions/lib/api-seo.js readiness)
-   with a live preview of the Google result and of the social card.
+   THE PAGE, TOP TO BOTTOM (view):
+     heading            "Search and sharing", one line under it saying what needs the team (the title, description
+                        and search words), and the page's one helper (actionsHtml): Suggest with ETB2B AI (every field
+                        it writes, asking before it replaces what is already filled in)
+     status line        live, or how many changes the next publish takes live (the list folded under "What changed")
+                        with the console's own Publish or Send for approval as a link; under it, while ETB2B AI works
+                        or after it wrote, one line with Undo
+     preview            the Google result and the shared link, side by side on a wide screen: the page's anchor
+     checklist          one line, "Checklist: 3 of 5 done · Show" (functions/lib/api-seo.js readiness): what to do here
+     Google result      title, description, search words and main heading, each with one muted line under it (where
+                        its value comes from, what is cut off, and Suggest with ETB2B AI for that field alone, or
+                        "Suggest again" after ETB2B AI wrote it); then the main web address and Show in Google. A site
+                        with a main heading of its own says so in one line instead of the heading's field (the field
+                        moves into Advanced: it is used only if that heading goes)
+     When the link is   the share picture (the console's own field, CTX.seo.sharePictureField: it saves itself at once),
+       shared           small, as the preview shows it large, and one line: a shared link shows Google's title and
+                        description, with the way to change them
+     Advanced (closed)  Event details for search engines: on or off, what is filled in from Basics and the portal, the
+                        event's name and description in event listings, street address (with Bring in the previous
+                        edition's address), postcode, how people attend, latitude and longitude (and the main heading,
+                        when the site has its own). Speakers, FAQs and reviews in Google: on or off, the speakers and
+                        FAQs to give (from Content), testimonials (typed here or brought in from the previous edition,
+                        never written by AI), the rating (worked out), passes and prices (left out). The code search
+                        engines read (for developers, folded). Short links: not available yet, said so.
+     save bar           the page's one primary button
+   Folded, never taken out: every field is still on the page, and a field with an error inside a fold opens it, as
+   does a result that lands inside the closed fold (what ETB2B AI left out of a field there).
 
    HOW IT SAVES. The fields are a form with the console's save bar (Save changes / Discard), sent as the changed keys of
-   settings.seo through PATCH /api/event. ETB2B AI ("Write with ETB2B AI", per field "Write again") writes and saves at
-   once — the console's "do it, then undo": Undo saves what was there before. A field ETB2B AI wrote is marked as its
-   own until somebody edits it. Nothing here changes a live site: a live page carries the values that were published
-   with it, so the section says "Live after the next publish", lists what changed since the live version, and offers the
-   console's own Publish (or Send for approval).
+   settings.seo through PATCH /api/event. ETB2B AI (Suggest with ETB2B AI, for the page or for one field; Suggest again)
+   writes and saves at once — the console's "do it, then undo": Undo saves what was there before; the fields it is
+   writing cannot be typed in meanwhile. A field ETB2B AI wrote is marked as its own until somebody edits it. Nothing
+   here changes a live site: a live page carries the values that were published with it, so the status line says
+   what the next publish changes and offers the console's own Publish (or Send for approval).
 
-   The console hands this file its helpers (edit-event.html, CTX.seo): the share picture panel's two functions, its
-   dialog, the publish action, the tab cache and the leave guard. ES5, no build step. */
+   The console hands this file its helpers (edit-event.html, CTX.seo): the share picture field's two functions, its
+   dialogs, the publish action, the tab cache and the leave guard. Its styles are the "seo2" blocks at the end of
+   edit-event.css. ES5, no build step. */
 (function (global) {
   'use strict';
 
   var C = global.RevampCore;
   var AI_FIELDS = ['title', 'description', 'keywords', 'h1', 'schemaTitle', 'schemaDescription'];
-  var LABEL = { title: 'SEO title', description: 'Meta description', keywords: 'Keywords', h1: 'H1 heading', schemaTitle: 'Schema title',
-    schemaDescription: 'Schema description', canonicalUrl: 'Canonical address', noindex: 'Indexing', streetAddress: 'Street address',
-    postalCode: 'Postcode', latitude: 'Latitude', longitude: 'Longitude', attendanceMode: 'Attendance mode', basicSchema: 'Basic schema',
-    advancedSchema: 'Advanced schema', speakersOff: 'Speakers', faqsOff: 'FAQs', testimonials: 'Testimonials' };
+  /* every setting by the name the page gives it: in ETB2B AI's messages, the replace dialog, the aria-labels and the
+     status line's list of changes (the server's own labels, functions/lib/seo-fields.js LABELS, are the activity log's
+     and the approver's) */
+  var LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading',
+    schemaTitle: 'Event name in event listings', schemaDescription: 'Event description in event listings', canonicalUrl: 'Main web address',
+    noindex: 'Show in Google', shareImageUrl: 'Share picture', streetAddress: 'Street address', postalCode: 'Postcode', latitude: 'Latitude',
+    longitude: 'Longitude', attendanceMode: 'How people attend', basicSchema: 'Event details for search engines',
+    advancedSchema: 'Speakers, FAQs and reviews in Google', speakersOff: 'Speakers left out', faqsOff: 'FAQs left out', testimonials: 'Testimonials',
+    speakers: 'Speakers in Google', faqs: 'FAQs in Google' };
   /* the form's own fields (the share picture saves itself, as it always did; aiWritten and previous are bookkeeping) */
   var FORM = ['title', 'description', 'keywords', 'h1', 'canonicalUrl', 'noindex', 'basicSchema', 'schemaTitle', 'schemaDescription', 'attendanceMode',
     'streetAddress', 'postalCode', 'latitude', 'longitude', 'advancedSchema', 'speakersOff', 'faqsOff', 'testimonials'];
@@ -40,7 +62,7 @@
   var MAX = { title: 70, description: 320, h1: 120, schemaTitle: 120, schemaDescription: 500 };
 
   /* the section's state, for the event on screen */
-  var ST = { id: '', data: null, loading: false, error: '', F: null, B: null, aiBusy: '', undo: null, dropped: [], prev: null, prevBusy: false,
+  var ST = { id: '', data: null, loading: false, error: '', F: null, B: null, aiBusy: '', aiFields: [], undo: null, dropped: [], prev: null, prevBusy: false,
     canonOpen: false, saving: false, failed: '', seq: 0, ctx: null };
 
   function clone(v) { return v == null ? v : JSON.parse(JSON.stringify(v)); }
@@ -100,62 +122,73 @@
   }
   function onScreen() { return !!$('seo-root') || !!$('seo-loading'); }
 
-  /* ---------- small pieces ---------- */
-  var FROM_CLS = { ai: 'b-review', team: 'b-info', auto: 'b-mute', basics: 'b-ok', content: 'b-ok', none: 'b-warn' };
-  function from(kind, text) { return '<span class="badge seo-src ' + (FROM_CLS[kind] || 'b-mute') + '">' + esc(text) + '</span>'; }
-  function aiFrom(k) {
-    var F = ST.F;
-    var v = F[k], empty = Array.isArray(v) ? !v.length : !line(v);
-    if (empty) return from('none', 'Not set');
-    var written = (ST.B.aiWritten || []).indexOf(k) !== -1 && same(F[k], ST.B[k]);
-    return written ? from('ai', 'ETB2B AI') : from('team', 'Team');
-  }
-  function aiButton(k) {
-    var written = (ST.B.aiWritten || []).indexOf(k) !== -1 && same(ST.F[k], ST.B[k]);
-    var busy = !!ST.aiBusy;
-    return '<button class="btn btn-ghost btn-sm seo-ai-one" type="button" data-seo-ai="' + k + '"' + (busy ? ' disabled' : '') +
-      ' aria-label="' + esc((written ? 'Write again: ' : 'Write with ETB2B AI: ') + LABEL[k]) + '">' + svg(ST.ctx.IC.star, 13) + ' ' + (written ? 'Write again' : 'Write with ETB2B AI') + '</button>';
-  }
+  /* ---------- small pieces, shared by every part of the page ---------- */
+  /* a text field's count against what reads best: "n / ideal", small and muted at the right of its label (class ctr
+     seo-ctr [over|warn]; paintLive repaints it while typing) */
   function counter(k) {
-    var n = k === 'keywords' ? ST.F.keywords.length : line(ST.F[k]).length;
-    if (k === 'keywords') return '<span class="ctr seo-ctr' + (n && (n < 8 || n > 12) ? ' warn' : '') + '" id="seo-ctr-keywords">' + n + (n === 1 ? ' keyword' : ' keywords') + ' · 8 to 12 works best</span>';
-    var ideal = IDEAL[k];
+    var n = line(ST.F[k]).length, ideal = IDEAL[k];
     return '<span class="ctr seo-ctr' + (n > ideal ? ' over' : n > ideal * 0.9 ? ' warn' : '') + '" id="seo-ctr-' + k + '">' + n + ' / ' + ideal + '</span>';
   }
-  function row(label, value, src, extra) {
-    return '<div class="seo-row"><div class="seo-k">' + esc(label) + (src || '') + '</div><div class="seo-v">' + value + (extra || '') + '</div></div>';
+  /* the site shows a main heading of its own: Google reads that one, and the page's own field (h1) is used only if it
+     goes — so it is not offered in the Google result, nor written by the heading's Suggest with ETB2B AI */
+  function ownHeading() { return !!(ST.data && ST.data.auto && ST.data.auto.h1 && ST.data.auto.h1.own); }
+  function aiFields() { return AI_FIELDS.filter(function (k) { return k !== 'h1' || !ownHeading(); }); }
+  /* the fields drawn inside the closed Advanced fold: a result about one of them opens it */
+  function inAdvanced(k) { return k === 'schemaTitle' || k === 'schemaDescription' || (k === 'h1' && ownHeading()); }
+  /* a field ETB2B AI is writing just now cannot be typed in: its answer would replace what was typed meanwhile */
+  function aiWriting(k) { return !!ST.aiBusy && (ST.aiFields || []).indexOf(k) !== -1; }
+  function joinAnd(list) { return list.length > 1 ? list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1] : list.join(''); }
+  /* the muted line under a field ETB2B AI writes, as far as ETB2B AI is concerned (the search and the event details
+     fields alike): what it left out, with a small icon (aiLeftOut), or that it wrote what is there (aiWrote), each
+     with Suggest again; else the field's own words end with Suggest with ETB2B AI for that field alone (aiOne). Both
+     are small text buttons; Suggest with ETB2B AI in the heading writes every field. */
+  function aiAgain(k) {
+    return '<button class="seo2-link" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') +
+      ' aria-label="' + esc('Suggest again with ETB2B AI: ' + LABEL[k]) + '">Suggest again</button>';
   }
-  function fieldText(k, label, opts) {
-    opts = opts || {};
-    var id = 'seo-' + k, v = ST.F[k];
-    var input = opts.area
-      ? '<textarea class="inp" id="' + id + '" data-seo-field="' + k + '" rows="3" maxlength="' + MAX[k] + '" aria-describedby="' + id + '-hint" placeholder="' + esc(opts.placeholder || '') + '">' + esc(v) + '</textarea>'
-      : '<input class="inp" id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" value="' + esc(v) + '" aria-describedby="' + id + '-hint" placeholder="' + esc(opts.placeholder || '') + '">';
-    return '<div class="field c12 seo-field" data-seo-wrap="' + k + '"><div class="flabel-row"><label for="' + id + '">' + esc(label) + '</label>' + aiFrom(k) +
-      '<span class="seo-sp"></span>' + counter(k) + aiButton(k) + '</div>' + input +
-      '<p class="hint" id="' + id + '-hint">' + opts.hint + '</p>' + droppedNote(k) + '</div>';
+  function aiOne(k) {
+    return '<button class="seo2-link" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') +
+      ' aria-label="' + esc('Suggest with ETB2B AI: ' + LABEL[k]) + '">Suggest with ETB2B AI</button>';
   }
-  function droppedNote(k) {
+  function aiOwn(k) {
+    var v = ST.F[k], empty = Array.isArray(v) ? !v.length : !line(v);
+    return !empty && (ST.B.aiWritten || []).indexOf(k) !== -1 && same(v, ST.B[k]);
+  }
+  function aiLink(k) { return aiOwn(k) ? aiAgain(k) : aiOne(k); }
+  function aiLeftOut(k) {
     var d = (ST.dropped || []).filter(function (x) { return x.field === k; })[0];
-    return d ? '<p class="field-over seo-dropped" role="status">ETB2B AI ' + esc(d.why) + '. Write it again, or type it.</p>' : '';
+    return d ? '<span class="seo2-warn">' + svg(ST.ctx.IC.info, 13) + ' ETB2B AI ' + esc(d.why) + '.</span> ' + aiAgain(k) : '';
+  }
+  function aiWrote(k) { return aiOwn(k) ? 'Suggested by ETB2B AI · ' + aiAgain(k) : ''; }
+  /* past what a search result shows: said in words (the counter alone, in the warning colour, read as an error) */
+  var OVER = { title: 'Google shows about 60 characters; the rest may be cut off.', description: 'Google shows about 160 characters; the rest may be cut off.' };
+  function overNote(k) {
+    return OVER[k] && line(ST.F[k]).length > IDEAL[k] ? '<span class="seo2-warn">' + svg(ST.ctx.IC.info, 13) + ' ' + esc(OVER[k]) + '</span>' : '';
   }
   function toggle(id, on, label, attrs) {
     return '<button type="button" class="tgl" id="' + id + '" aria-pressed="' + (on ? 'true' : 'false') + '"' + (attrs || '') + '><span class="track"><i></i></span><span>' + esc(label) + '</span></button>';
   }
-  function linkTo(route, text) { return '<a href="#' + route + '" data-goto="' + route + '">' + esc(text) + '</a>'; }
+  /* a link to another part of the console, in the page's one quiet link style */
+  function linkTo(route, text) { return '<a class="seo2-link" href="#' + route + '" data-goto="' + route + '">' + esc(text) + '</a>'; }
   function stars(n) {
-    if (!n) return '<span class="seo-none">No rating</span>';
     var s = '';
     for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆';
-    return '<span class="seo-stars" aria-label="' + n + ' out of 5 stars">' + s + '</span>';
+    return '<span class="seo2-stars" role="img" aria-label="' + n + ' out of 5 stars">' + s + '</span>';
   }
 
   /* ---------- the view ---------- */
+  /* THE PAGE, TOP TO BOTTOM (the owner, 14 Nov 2026: "too noisy, it should be neat and clean"): a heading with one line
+     under it; one status line (live, or what the next publish changes); the preview of the Google result and of the
+     shared link, the page's anchor; the two parts a person sets up — the Google result and the shared link — open; and
+     folded away, closed, everything search engines are given on their own (the event's details, speakers, FAQs and
+     reviews, what search engines read, the readiness checklist); then the one save bar. Folded, never taken out: every
+     field is still here, and a field with an error inside the fold opens it (showFieldErrors). The fold stays as the
+     person left it while the section is drawn again (ST.advOpen, wireShell). */
   function view(ctx) {
     ST.ctx = ctx;
     var ev = ctx.EV;
-    if (ST.id !== ev.id) { ST.id = ev.id; ST.data = null; ST.F = null; ST.B = null; ST.undo = null; ST.prev = null; ST.dropped = []; }
-    var head = ctx.vhead('URL & SEO', 'What search engines and link previews read about this event, and where each part comes from. Only search and sharing are set here: the site’s own words are edited in the site editor.',
+    if (ST.id !== ev.id) { ST.id = ev.id; ST.data = null; ST.F = null; ST.B = null; ST.undo = null; ST.prev = null; ST.dropped = []; ST.advOpen = false; ST.readyOpen = false; ST.ldOpen = false; ST.chgOpen = false; ST.canonOpen = false; }
+    var head = ctx.vhead('Search and sharing', 'How this event appears in Google and when its link is shared. Only the title, description and search words need you; everything else is filled in.',
       ST.data ? actionsHtml() : '');
     if (!ST.data) {
       if (!ST.loading && !ST.error) setTimeout(function () { if (!ST.data && !ST.loading) load(false); }, 0);
@@ -165,212 +198,452 @@
       }
       return head + '<div id="seo-loading" class="seo-lead" aria-busy="true">Loading the search and sharing settings…</div>';
     }
-    return head + '<div id="seo-root">' + statusHtml() + aiStatusHtml() +
-      '<div class="bx seo-bx"><div class="bx-main">' + searchHtml() + socialHtml() + schemaHtml() + richHtml() + '</div>' +
-      '<aside class="bx-side">' + previewHtml() + readyHtml() + '</aside></div>' + saveBarHtml() + '</div>';
+    return head + '<div id="seo-root" class="seo2">' + statusHtml() + aiStatusHtml() + previewHtml() + readyHtml() +
+      searchHtml() + socialHtml() +
+      '<details class="seo2-adv" id="seo2-adv"' + (ST.advOpen ? ' open' : '') + '><summary>' +
+        '<span class="seo2-adv-t">Advanced</span><span class="seo2-adv-s">Event details, speakers, FAQs and reviews for search engines. Filled in for you; the extras inside are optional.</span></summary>' +
+        '<div class="seo2-adv-body">' + schemaHtml() + richHtml() +
+          '<p class="seo2-hint seo2-adv-note"><span>Short links are not available yet: share the site’s own address.</span></p></div></details>' +
+      saveBarHtml() + '</div>';
   }
 
+  /* the page's one helper, in its heading: ETB2B AI writes every field it may write (each field also has its own
+     Suggest with ETB2B AI, in its line). Secondary, so the save bar's Save changes is the page's one primary button.
+     Bringing in from the previous edition sits where what it brings lands: the testimonials, and the street address. */
   function actionsHtml() {
     var busy = !!ST.aiBusy;
-    return '<button class="btn btn-primary btn-sm" type="button" data-seo="ai-all"' + (busy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Write with ETB2B AI</button>' +
-      '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from the previous edition') + '</button>';
+    return '<button class="btn btn-secondary btn-sm seo2-hact" type="button" data-seo="ai-all"' + (busy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Suggest with ETB2B AI</button>';
   }
 
-  /* going live: what the next publish changes, and the console's own way to publish */
-  function statusHtml() {
-    var d = ST.data, ev = ST.ctx.EV, body;
-    var pend = d.pending, changes = d.changes || [];
-    if (!d.live.published) {
-      body = '<p class="seo-lead"><b>Not live yet.</b> The site carries all of this when it is first published.</p>';
-    } else if (!changes.length && !dirty()) {
-      body = '<p class="seo-lead"><b>Everything here is live.</b> A change you make here reaches the live site with the next publish' + (d.approvalRequired ? ', once it is approved' : '') + '.</p>';
-    } else {
-      var list = changes.slice(0, 8).map(function (c) {
-        return '<li><b>' + esc(c.label) + '</b>' + (c.after ? ': ' + esc(c.after.slice(0, 120)) : ': removed') + '</li>';
-      }).join('');
-      var act = dirty() ? '<span class="seo-n">Save your changes first, then send them.</span>'
-        : pend && pend.seoSame ? '<a class="btn btn-secondary btn-sm" href="' + esc(pend.reviewPath) + '">Open the review</a>'
-        : '<button class="btn btn-primary btn-sm" type="button" data-seo="publish">' + (d.approvalRequired ? (pend ? 'Send again for approval' : 'Send for approval') : 'Publish now') + '</button>';
-      body = '<p class="seo-lead"><b>Live after the next publish.</b> ' + (changes.length ? changes.length + (changes.length === 1 ? ' change' : ' changes') + ' since the live version' : 'Your unsaved changes') +
-        (pend ? (pend.seoSame ? ' are waiting for approval.' : ': a request is waiting, but changes made since it was sent are not in it.') : '.') + '</p>' +
-        (list ? '<ul class="seo-changes">' + list + (changes.length > 8 ? '<li>and ' + (changes.length - 8) + ' more</li>' : '') + '</ul>' : '') +
-        '<div class="seo-acts">' + act + '</div>';
+  /* going live, said once, in one line: live, or what the next publish changes (the list folded under "What changed"),
+     and the console's own way to publish as a link. Each change is named and worded as this page says it (LABEL): the
+     server's words are the activity log's ("SEO title", a picture's address, "2 taken out"). */
+  function cutAt(s, n) { return s.length > n ? s.slice(0, n - 1).replace(/\s+\S*$/, '') + ' …' : s; }
+  /* the speakers, FAQs or testimonials the next publish gives: only those the site shows (search engines are given
+     nothing the page does not show), the rest counted */
+  function namesOf(list, nameOf, picked, noun) {
+    if (!picked) return 'None';
+    if (!list.length) return 'None on the site yet (' + picked + ' ' + noun + ')';
+    var names = list.slice(0, 3).map(nameOf).join(', ') + (list.length > 3 ? ' and ' + (list.length - 3) + ' more' : '');
+    return cutAt(names, 120) + (picked > list.length ? ' (' + (picked - list.length) + ' not on the site)' : '');
+  }
+  function changeValue(c) {
+    var d = ST.data, seo = d.seo || {}, after = String(c.after || '');
+    if (c.field === 'noindex') return seo.noindex === true ? 'Off' : 'On';
+    if (c.field === 'shareImageUrl') return after ? 'Your own picture' : 'Made automatically';
+    if (c.field === 'canonicalUrl' && !after) return 'The site’s own';
+    if (c.field === 'speakersOff' || c.field === 'faqsOff') return String((seo[c.field] || []).length || 'None');
+    if (c.field === 'h1' && after && ownHeading()) return 'Not used: the site has its own main heading';
+    if (c.field === 'speakers' || c.field === 'faqs') {
+      var recs = (c.field === 'speakers' ? d.speakers : d.faqs).filter(function (x) { return x.counts; });
+      return namesOf(recs.filter(function (x) { return x.shown; }), function (x) { return c.field === 'speakers' ? x.name : x.question; }, recs.length, 'picked');
     }
-    return '<div class="seo-status" role="status">' + body + '</div>';
+    if (c.field === 'testimonials') {
+      var tms = (seo.testimonials || []).filter(function (t) { return !t.off; });
+      return namesOf(tms.filter(function (t) { return d.testimonials[t.id] && d.testimonials[t.id].shown; }),
+        function (t) { return t.name + (t.rating ? ' (' + t.rating + '★)' : ''); }, tms.length, 'added');
+    }
+    if (!after) return c.field === 'keywords' ? 'None' : 'Removed';
+    return cutAt(after, 120);
+  }
+  function statusHtml() {
+    var d = ST.data, pend = d.pending, changes = d.changes || [], n = changes.length, tone = 'ok', text, act = '', more = '';
+    if (!d.live.published) {
+      tone = 'mute';
+      text = 'Not live yet. These settings go live when the site is first published.';
+    } else if (!n && !dirty()) {
+      text = 'Everything here is live. A change reaches the site with the next publish' + (d.approvalRequired ? ', once it is approved' : '') + '.';
+    } else {
+      tone = 'warn';
+      /* "waiting for approval" only of changes that are saved: what is still being typed is in no request */
+      text = (n ? n + (n === 1 ? ' change goes' : ' changes go') : 'Your changes go') + ' live with the next publish' +
+        (n && pend ? (pend.seoSame ? ', and ' + (n === 1 ? 'it is' : 'they are') + ' waiting for approval.' : '. A request is waiting, but it does not have the newest changes.') : '.');
+      act = dirty() ? '<span class="seo2-quiet">Save first.</span>'
+        : pend && pend.seoSame ? '<a class="seo2-link" href="' + esc(pend.reviewPath) + '">Open the review</a>'
+        : '<button class="seo2-link" type="button" data-seo="publish">' + (d.approvalRequired ? (pend ? 'Send again for approval' : 'Send for approval') : 'Publish now') + '</button>';
+      if (n) {
+        more = '<details class="seo2-chg" id="seo2-chg"' + (ST.chgOpen ? ' open' : '') + '><summary>What changed</summary><ul>' + changes.slice(0, 8).map(function (c) {
+          return '<li><b>' + esc(LABEL[c.field] || c.label) + '</b>: ' + esc(changeValue(c)) + '</li>';
+        }).join('') + (n > 8 ? '<li>and ' + (n - 8) + ' more</li>' : '') + '</ul></details>';
+      }
+    }
+    return '<div class="seo2-status" role="status"><span class="seo2-status-t"><span class="dash-dot dash-dot-' + tone + '" aria-hidden="true"></span>' +
+      esc(text) + '</span>' + act + more + '</div>';
   }
   function aiStatusHtml() {
     var s = '';
-    if (ST.aiBusy) s = '<span class="spin"></span> ' + esc(ST.aiBusy);
-    else if (ST.undo) s = esc(ST.undo.said) + ' <button class="btn btn-secondary btn-sm" type="button" data-seo="undo">Undo</button>';
-    return '<div class="seo-ai-status" id="seo-ai-status" role="status" aria-live="polite"' + (s ? '' : ' hidden') + '>' + s + '</div>';
+    if (ST.aiBusy) s = '<span class="spin"></span> <span>' + esc(ST.aiBusy) + '</span>';
+    else if (ST.undo) s = '<span>' + esc(ST.undo.said) + '</span> <button class="seo2-link" type="button" data-seo="undo">Undo</button>';
+    return '<div class="seo-ai-status seo2-ai" id="seo-ai-status" role="status" aria-live="polite"' + (s ? '' : ' hidden') + '>' + s + '</div>';
   }
 
+  /* ---------- the "Google result" panel: what a search result shows ----------
+     Four fields, each a label with a small counter, the field, and at most one muted line under it (searchNote): what
+     ETB2B AI left out, else what a search result cuts off, else where the value comes from (ETB2B AI, Basics, the
+     previous edition) — ending with Suggest with ETB2B AI for that field alone (Suggest again on ETB2B AI's own). No
+     actions in the panel's head: the page's heading has Suggest with ETB2B AI for every field. A site with a main
+     heading of its own shows that heading in one line instead of the field (the field is in Advanced). Below a
+     hairline: the main web address and Show in Google. Same ids and ST.F keys as before: the save, the live preview
+     and the leave guard read them. */
+  function searchNote(k) {
+    var F = ST.F, v = F[k], empty = Array.isArray(v) ? !v.length : !line(v);
+    var left = aiLeftOut(k);
+    if (left) return left;
+    var over = overNote(k);
+    if (over) return over + ' ' + aiLink(k);
+    var wrote = aiWrote(k);
+    if (wrote) return wrote;
+    var base = '';
+    if (k === 'keywords') {
+      var p = ST.prev && ST.prev.previous, prevKw = p && p.seo && p.seo.keywords && p.seo.keywords.length ? p.seo.keywords : null;
+      base = prevKw ? 'The previous edition used: ' + esc(prevKw.join(', ')) + ' (ETB2B AI reads them as a reference).'
+        : empty ? 'What people type into Google to find it: the event, its subject, its audience, its city.' : '';
+    } else if (empty) {
+      base = k === 'title' ? 'Until you write one, Google shows the event’s name, from Basics.'
+        : k === 'description' ? (line(ST.ctx.EV.description) ? 'Until you write one, Google shows the short description from Basics.' : 'Until you write one, Google picks lines from the page itself.')
+        : 'Google reads it as the page’s main heading. Until you write one, the event’s name is used.';
+    }
+    return (base ? base + ' ' : '') + aiOne(k);
+  }
+  function paintSearchNote(k) {
+    var el = $('seo2-note-' + k);
+    if (!el || !ST.F) return;
+    var html = searchNote(k);
+    el.innerHTML = html;
+    el.hidden = !html;
+  }
+  /* label: HTML, already escaped */
+  function searchField(k, label, opts) {
+    var id = 'seo-' + k, note = searchNote(k), at = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" aria-describedby="seo2-note-' + k + '" placeholder="' + esc(opts.placeholder || '') + '"' +
+      (aiWriting(k) ? ' readonly' : '');
+    return '<div class="seo2-field" data-seo-wrap="' + k + '"><div class="seo2-lrow"><label for="' + id + '">' + label + '</label>' + counter(k) + '</div>' +
+      (opts.area ? '<textarea class="inp" rows="3"' + at + '>' + esc(ST.F[k]) + '</textarea>' : '<input class="inp"' + at + ' value="' + esc(ST.F[k]) + '">') +
+      '<p class="seo2-note" id="seo2-note-' + k + '"' + (note ? '' : ' hidden') + '>' + note + '</p></div>';
+  }
   function searchHtml() {
-    var d = ST.data, F = ST.F, a = d.auto, prevKw = ST.prev && ST.prev.seo && ST.prev.seo.keywords && ST.prev.seo.keywords.length ? ST.prev.seo.keywords : null;
-    var chips = F.keywords.map(function (k, i) {
-      return '<span class="seo-chip">' + esc(k) + '<button type="button" data-seo-kw-x="' + i + '" aria-label="Remove the keyword ' + esc(k) + '">×</button></span>';
-    }).join('');
-    var kw = '<div class="field c12 seo-field" data-seo-wrap="keywords"><div class="flabel-row"><label for="seo-kw-in">Keywords</label>' + aiFrom('keywords') +
-      '<span class="seo-sp"></span>' + counter('keywords') + aiButton('keywords') + '</div>' +
-      '<div class="seo-chips" id="seo-kw-list" aria-label="Keywords">' + (chips || '<span class="seo-none">None yet</span>') + '</div>' +
-      '<div class="seo-kw-add"><input class="inp" id="seo-kw-in" placeholder="Type a keyword, then Enter" maxlength="60" aria-describedby="seo-kw-hint"' + (F.keywords.length >= 15 ? ' disabled' : '') + '>' +
-      '<button class="btn btn-secondary btn-sm" type="button" data-seo="kw-add"' + (F.keywords.length >= 15 ? ' disabled' : '') + '>Add</button></div>' +
-      '<p class="hint" id="seo-kw-hint">Phrases people search for: the event, its subject, its audience, its city. Up to 15.' +
-      (prevKw ? ' The previous edition used: <span class="seo-ref">' + esc(prevKw.join(', ')) + '</span> (ETB2B AI reads these as a reference, with this edition’s year).' : '') + '</p>' + droppedNote('keywords') + '</div>';
+    var d = ST.data, F = ST.F, a = d.auto, n = F.keywords.length, full = n >= 15;
+    /* an empty description shows what is used instead: Basics' short description, cut where a search result cuts it */
+    var basics = line(ST.ctx.EV.description), basicsCut = basics.length > 158 ? basics.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : basics;
 
-    var h1Hint = a.h1 && a.h1.own
-      ? 'The site has its own main heading, “' + esc(a.h1.own.slice(0, 90)) + '”: search engines read that one, and this is used only if the site has none.'
-      : 'The page’s main heading for search engines. It is not shown on the page (its banner shows the logo); without it, the event’s name is used.';
-    var canon = F.canonicalUrl || ST.canonOpen
-      ? '<div class="seo-inline"><input class="inp" id="seo-canonicalUrl" data-seo-field="canonicalUrl" type="url" maxlength="500" value="' + esc(F.canonicalUrl) + '" placeholder="https://…" aria-label="Canonical address">' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-seo="canon-auto">Use the site’s own</button></div>' +
-        '<p class="hint">Only when the event’s page of record is somewhere else: search engines then list that address instead.</p>'
-      : '<span class="num">' + esc(a.url) + '</span> <button class="btn btn-ghost btn-sm" type="button" data-seo="canon-own">Use another address</button>';
-    var idx = '<span>' + esc(a.indexing.text) + '</span><div style="margin-top:8px">' + toggle('seo-noindex', F.noindex, 'Keep this site out of search engines') + '</div>' +
-      '<p class="hint">The site stays open to anyone with its address; search engines are asked not to list it, and the sitemap leaves it out.</p>';
-    return ST.ctx.panel('1 · Search listing', 'What a search result shows', '<div class="frow">' +
-      fieldText('title', 'SEO title', { hint: 'The title of the search result and of a shared link. About 60 characters; the event’s name is used without one.', placeholder: a.title }) +
-      fieldText('description', 'Meta description', { area: true, hint: 'The lines under the title in a search result, and under a shared link. 120 to 160 characters reads best.', placeholder: d.head.description || 'One or two sentences: what it is, for whom, when and where.' }) +
-      kw +
-      fieldText('h1', 'H1 heading', { hint: h1Hint, placeholder: a.title }) +
-      '</div><div class="seo-rows">' +
-      row('Canonical address', canon, F.canonicalUrl ? from('team', 'Team') : from('auto', 'Auto'), '') +
-      row('Indexing', idx, F.noindex ? from('team', 'Team') : from('auto', 'Auto')) +
-      row('Short link', '<span class="seo-none">Not available.</span> <span class="seo-n">ETB2B’s short links (such as ethrworld.com/s/…) are made by ETB2B’s own link shortener, which EventSphere cannot use. The site’s own address is used everywhere.</span>', from('none', 'Not available')) +
+    /* while ETB2B AI writes the search words, they wait: no word is added or taken out under it */
+    var kwBusy = aiWriting('keywords');
+    var chips = F.keywords.map(function (k, i) {
+      return '<li class="seo2-chip">' + esc(k) + '<button type="button" data-seo-kw-x="' + i + '" aria-label="Remove the search word ' + esc(k) + '"' + (kwBusy ? ' disabled' : '') + '>×</button></li>';
+    }).join('');
+    var kwNote = searchNote('keywords');
+    var kw = '<div class="seo2-field" data-seo-wrap="keywords"><div class="seo2-lrow"><label for="seo-kw-in">Search words</label>' +
+        '<span class="ctr seo-ctr' + (n > 12 ? ' over' : '') + '" id="seo-ctr-keywords">' + (n ? n + ' added · ' : '') + '8 to 12 works best</span></div>' +
+      '<div class="seo2-kw">' + (chips ? '<ul class="seo2-chips" id="seo-kw-list" aria-label="Search words">' + chips + '</ul>' : '') +
+        '<div class="seo2-kw-add"><input class="seo2-kw-in" id="seo-kw-in" maxlength="60" aria-describedby="seo2-note-keywords" placeholder="' +
+          (full ? '15 is the most' : 'Type a word or phrase, then press Enter') + '"' + (full ? ' disabled' : kwBusy ? ' readonly' : '') + '>' +
+        '<button class="seo2-link" type="button" data-seo="kw-add"' + (full || kwBusy ? ' disabled' : '') + '>Add</button></div></div>' +
+      '<p class="seo2-note" id="seo2-note-keywords"' + (kwNote ? '' : ' hidden') + '>' + kwNote + '</p></div>';
+
+    /* the main heading: the site's own when it has one (one line, nothing to write; the field is in Advanced) */
+    var h1 = ownHeading()
+      ? '<div class="seo2-field"><div class="seo2-lrow"><span class="seo2-label">Main heading</span></div>' +
+          '<p class="seo2-note">The site’s own, “' + esc(cutAt(line(a.h1.own), 90)) + '”. Google reads it from the page, so there is nothing to write here.</p></div>'
+      : searchField('h1', 'Main heading <span class="seo2-aside">(not shown on the page)</span>', { placeholder: a.title });
+
+    /* the main web address: the site's own, said as what Google lists; another page only when the event's main page is
+       elsewhere (said before the box opens, so it is not mistaken for the place to change the site's address) */
+    var own = F.canonicalUrl || ST.canonOpen;
+    var canon = '<div class="seo2-field"><div class="seo2-lrow">' + (own ? '<label for="seo-canonicalUrl">Main web address</label>' : '<span class="seo2-label">Main web address</span>') + '</div>' +
+      (own ? '<div class="seo2-inline"><input class="inp" id="seo-canonicalUrl" data-seo-field="canonicalUrl" type="url" maxlength="500" value="' + esc(F.canonicalUrl) + '" placeholder="https://…" aria-describedby="seo2-note-canon">' +
+          '<button class="seo2-link" type="button" data-seo="canon-auto">Use the site’s own</button></div>' +
+          '<p class="seo2-note" id="seo2-note-canon">Only if this event’s main page is on another site. Google then lists that page instead of this one.</p>'
+        : '<div class="seo2-inline"><span class="num">' + esc(a.url) + '</span><button class="seo2-link" type="button" data-seo="canon-own">Point Google to another page</button></div>' +
+          '<p class="seo2-note">Google lists the site at this address.</p>') + '</div>';
+    /* the switch says what the team chose; the line under it, what keeps the site out of Google all the same (the
+       page's one switch style, .seo2-switch, as the Advanced panels' switches) */
+    var why = a.indexing && a.indexing.reason;
+    var idxNote = F.noindex ? 'Google is asked not to list it. Anyone with the address can still open it.'
+      : why === 'test' ? 'Not listed yet: the event’s name says it is a test.'
+      : why === 'template' ? 'Not listed yet: the site still shows template text.'
+      : why === 'not-live' ? 'Listed once the site is live.' : '';
+    var idx = '<div class="seo2-switch">' + toggle('seo-noindex', !F.noindex, 'Show in Google') + (idxNote ? '<p class="seo2-note">' + idxNote + '</p>' : '') + '</div>';
+
+    return ST.ctx.panel('Google result', '', '<div class="seo2-search">' +
+      searchField('title', 'Title in Google', { placeholder: a.title }) +
+      searchField('description', 'Description in Google', { area: true, placeholder: basicsCut || 'One or two sentences: what it is, for whom, when and where.' }) +
+      kw + h1 +
+      '<div class="seo2-group">' + canon + idx + '</div>' +
       '</div>');
   }
 
+  /* "When the link is shared" (WhatsApp, LinkedIn and X): the share picture, small, as the preview above shows it
+     large, with its state in one line and its two actions (the console's own field, CTX.seo.sharePictureField, which
+     saves itself at once as it always did; how the picture is made, and the square crop WhatsApp uses, are folded
+     inside it). It is handed the picture the next publish gives (the preview's), so the two always show the same one.
+     A shared link's title and description are always the ones in Google (the publish writes og:title and
+     og:description from the same values): one line says so, with the way to change them — the preview shows them. */
   function socialHtml() {
-    var d = ST.data, F = ST.F;
-    var title = line(F.title) || d.auto.title, desc = line(F.description) || d.head.description;
-    var share = ST.ctx.seo && ST.ctx.seo.sharePictureField ? ST.ctx.seo.sharePictureField(ST.ctx.EV) : '';
-    return ST.ctx.panel('2 · Social sharing', 'What a link to the site shows on WhatsApp, LinkedIn and X', '<div class="seo-rows">' +
-      row('Share title', esc(title) || '<span class="seo-none">None</span>', from('auto', 'Auto'), '<p class="hint">The SEO title (the event’s name without one).</p>') +
-      row('Share description', esc(desc) || '<span class="seo-none">None</span>', from('auto', 'Auto'), '<p class="hint">The meta description (Basics’ short description without one).</p>') +
-      '</div><div class="seo-sub"><div class="flabel-row"><span class="flabel">Share picture</span>' + (str(ST.ctx.EV.settings && ST.ctx.EV.settings.seo && ST.ctx.EV.settings.seo.shareImageUrl) ? from('team', 'Team') : from('auto', 'Auto')) + '</div><div class="frow">' + share + '</div></div>' +
-      '<div class="seo-rows">' + row('Square picture', '<span class="seo-n">No separate square picture. Where a link is shown as a square (WhatsApp), the centre of the share picture is used.</span>', from('auto', 'Auto')) + '</div>');
+    var M = ST.ctx.seo, share = M && M.sharePictureField ? M.sharePictureField(ST.ctx.EV, ST.data.head.ogImage || '') : '';
+    return ST.ctx.panel('When the link is shared', 'WhatsApp, LinkedIn and X',
+      '<p class="seo2-sh-label" aria-hidden="true">Share picture</p>' + share +
+      '<p class="seo2-sh-src">A shared link shows the title and description in Google. <button class="seo2-link" type="button" data-seo2-sh="edit">Change them</button></p>');
+  }
+  /* "Change them" goes to the title in Google (the search panel's own field, found by what the form reads) */
+  function wireSharing(root) {
+    var b = root.querySelector('[data-seo2-sh="edit"]');
+    if (b) b.onclick = function () {
+      var f = root.querySelector('[data-seo-field="title"]');
+      if (!f) return;
+      if (f.scrollIntoView) f.scrollIntoView({ block: 'center' });
+      try { f.focus({ preventScroll: true }); } catch (err) { f.focus(); }
+    };
+  }
+
+  /* ---------- Advanced: the event's details and its rich results (the two panels of the "Advanced" fold) ----------
+     Neat and calm (the owner, 14 Nov 2026: "too noisy, it should be neat and clean"): what is filled in for the team
+     reads as quiet facts with one line saying where they come from, the few fields the team may add sit under them,
+     and speakers, FAQs and testimonials are tidy rows to tick. A value's source and a warning are one muted line
+     each, never a coloured pill; the structured data the next publish gives follows, folded. */
+
+  /* one muted line under a field, a list or a switch: where a value comes from, what is used without one, or (warn)
+     what is left out and why. html: already escaped */
+  function richNote(html, id, warn) {
+    return '<p class="seo2-hint"' + (id ? ' id="' + id + '"' : '') + '>' +
+      (warn ? '<span class="seo2-ico" aria-hidden="true">' + svg(ST.ctx.IC.info, 13) + '</span>' : '') + '<span>' + html + '</span></p>';
+  }
+  /* a text field of this part, drawn as the Google result's are: its label with the count on the right, the field,
+     then one muted line (richFieldNote: what ETB2B AI left out, or that it wrote what is there, each with Suggest
+     again; else what the field is for and what is used while it is empty, with Suggest with ETB2B AI for it alone),
+     which follows the typing (paintRichNote). The main heading is drawn here only when the site has one of its own:
+     Google reads that one, so this one waits, unused, and ETB2B AI is not offered for it. */
+  var RICH_EMPTY = { schemaTitle: 'How search engines name the event in their event lists. Left empty, the event’s name is used.',
+    schemaDescription: 'Left empty, the description in Google is used.' };
+  function richFieldNote(k) {
+    if (k === 'h1') return 'Used only when the site has no main heading of its own.';
+    return aiLeftOut(k) || aiWrote(k) || ((line(ST.F[k]) ? '' : esc(RICH_EMPTY[k]) + ' ') + aiOne(k));
+  }
+  function richField(k, label, opts) {
+    var id = 'seo-' + k, v = ST.F[k], note = richFieldNote(k);
+    var attrs = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '" aria-describedby="' + id + '-hint" placeholder="' + esc(opts.placeholder || '') + '"' +
+      (aiWriting(k) ? ' readonly' : '');
+    var input = opts.area ? '<textarea class="inp" rows="3"' + attrs + '>' + esc(v) + '</textarea>' : '<input class="inp"' + attrs + ' value="' + esc(v) + '">';
+    return '<div class="field c12" data-seo-wrap="' + k + '"><div class="seo2-lrow"><label for="' + id + '">' + (opts.html ? label : esc(label)) + '</label>' + counter(k) + '</div>' +
+      input + '<p class="seo2-hint" id="' + id + '-hint"' + (note ? '' : ' hidden') + '><span>' + note + '</span></p></div>';
+  }
+  function paintRichNote(k) {
+    var el = $('seo-' + k + '-hint');
+    if (!el || !ST.F) return;
+    var html = richFieldNote(k);
+    el.innerHTML = '<span>' + html + '</span>';
+    el.hidden = !html;
+  }
+  function richHead(title, right) { return '<div class="seo2-head"><h4>' + esc(title) + '</h4>' + (right || '') + '</div>'; }
+  function richRow(inner, state) { return '<li class="seo2-row">' + inner + '<span class="seo2-state">' + esc(state) + '</span></li>'; }
+  /* a list of rows; a long one shows its first six and folds the rest under "Show N more" (kept open across redraws) */
+  function richRows(rows, key, noun) {
+    var more = ST.more || (ST.more = {});
+    if (rows.length <= 7) return '<ul class="seo2-rows">' + rows.join('') + '</ul>';
+    return '<ul class="seo2-rows">' + rows.slice(0, 6).join('') + '</ul><details class="seo2-more" data-seo-more="' + key + '"' + (more[key] ? ' open' : '') + '>' +
+      '<summary><span class="seo2-more-show">Show ' + (rows.length - 6) + ' more ' + esc(noun) + '</span><span class="seo2-more-hide">Show fewer</span></summary>' +
+      '<ul class="seo2-rows">' + rows.slice(6).join('') + '</ul></details>';
+  }
+  /* "Show N more" is a <details>: whether it is open is kept here, so a redraw (a tick, a save) does not fold it again */
+  function wireRich(root) {
+    root.addEventListener('toggle', function (e) {
+      var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-more');
+      if (k) (ST.more || (ST.more = {}))[k] = e.target.open;
+    }, true);
   }
 
   function schemaHtml() {
-    var d = ST.data, F = ST.F, a = d.auto, ev = ST.ctx.EV;
-    var exact = a.dates.exact;
-    var basic = '<div class="seo-switch">' + toggle('seo-basicSchema', exact && F.basicSchema, 'Give search engines the event’s details', exact ? '' : ' disabled aria-describedby="seo-basic-why"') +
-      (exact ? '' : '<p class="hint" id="seo-basic-why">Not while the date is to be announced: search engines list an event by its exact date. Set the dates in ' + linkTo('content/basics', 'Basics') + '.</p>') + '</div>';
-    var modeSel = '<select class="inp" id="seo-attendanceMode" data-seo-field="attendanceMode" aria-label="Attendance mode">' +
+    var d = ST.data, F = ST.F, a = d.auto, M = ST.ctx.seo;
+    var exact = a.dates.exact, on = exact && F.basicSchema;
+    /* off is said in words under the switch; the fields below stay as they are (they can still be filled in), never
+       greyed out as if they could not */
+    var why = !exact ? 'Not while the date is to be announced: search engines list an event by its exact date. Set the dates in ' + linkTo('content/basics', 'Basics') + '.'
+      : !on ? 'Off: search engines are not given these details.' : '';
+    var sw = '<div class="seo2-switch">' + toggle('seo-basicSchema', on, 'Give search engines the event’s details', (exact ? '' : ' disabled') + (why ? ' aria-describedby="seo-basic-why"' : '')) +
+      (why ? richNote(why, 'seo-basic-why') : '') + '</div>';
+
+    /* filled in for the team: from Basics, the place list and the event's portal */
+    var faint = function (t) { return '<span class="seo2-faint">' + esc(t) + '</span>'; };
+    var place = a.place ? esc(a.place.label) : a.city ? esc(a.city) + ' ' + faint('· its state and country are not known') : faint('No city yet');
+    var org = esc(a.organizer.name) + (a.organizer.url ? ' ' + faint(a.organizer.url.replace(/^https?:\/\//, '').replace(/\/+$/, '')) : '') + (a.organizer.portal ? '' : ' ' + faint('· no portal yet'));
+    var logo = a.logo ? '<span class="seo2-logo">' + (M && M.imgTag ? M.imgTag(a.logo.url) : '') + '</span><span>The ' + esc(a.logo.from) + '</span>' : faint('None yet');
+    var facts = '<dl class="seo2-facts">' +
+      '<dt>Dates</dt><dd>' + esc(a.dates.label || 'To be announced') + '</dd>' +
+      '<dt>Venue</dt><dd>' + (a.venue ? esc(a.venue) : faint('None yet')) + '</dd>' +
+      '<dt>City</dt><dd>' + place + '</dd>' +
+      '<dt>Organiser</dt><dd>' + org + '</dd>' +
+      '<dt>Logo</dt><dd class="seo2-logo-dd">' + logo + '</dd></dl>' +
+      richNote('Filled in from Basics and the event’s portal. ' + linkTo('content/basics', 'Change them in Basics'));
+
+    /* the few the team may add (and the main heading, when the site has its own: it waits here, unused) */
+    var text = richField('schemaTitle', 'Event name in event listings', { placeholder: a.title }) +
+      richField('schemaDescription', 'Event description in event listings', { area: true, placeholder: 'Two or three sentences for an event listing.' }) +
+      (ownHeading() ? richField('h1', 'Main heading <span class="seo2-aside">(not shown on the page)</span>', { placeholder: a.title, html: true }) : '');
+    var pv = ST.prev && ST.prev.sameVenue && ST.prev.previous && ST.prev.previous.seo.streetAddress && ST.prev.previous.seo.streetAddress !== F.streetAddress ? ST.prev.previous.seo : null;
+    /* the previous edition's street address: offered once it is known to be at this venue (Use it), else, while the
+       field is empty, a way to bring it in (the dialog says whether it was at the same venue) */
+    var prevAddr = pv ? richNote('The previous edition at this venue gave “' + esc(pv.streetAddress) + (pv.postalCode ? ', ' + esc(pv.postalCode) : '') + '”. ' +
+        '<button class="seo2-link" type="button" data-seo="use-prev-address">Use it</button>')
+      : !line(F.streetAddress) ? richNote('<button class="seo2-link" type="button" data-seo="prev-addr"' + (ST.prevBusy ? ' disabled' : '') + '>' +
+        (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in the previous edition’s address') + '</button>') : '';
+    var mode = '<select class="inp" id="seo-attendanceMode" data-seo-field="attendanceMode">' +
       [['', 'Automatic: ' + (a.attendanceAuto === 'offline' ? 'in person (it has a venue)' : 'not said (no venue yet)')], ['offline', 'In person'], ['online', 'Online'], ['mixed', 'In person and online']].map(function (o) {
         return '<option value="' + o[0] + '"' + (F.attendanceMode === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
       }).join('') + '</select>';
-    var prevAddr = ST.prev && ST.prev.sameVenue && ST.prev.previous && ST.prev.previous.seo.streetAddress && ST.prev.previous.seo.streetAddress !== F.streetAddress
-      ? '<p class="hint">The previous edition at this venue gave “' + esc(ST.prev.previous.seo.streetAddress) + (ST.prev.previous.seo.postalCode ? ', ' + esc(ST.prev.previous.seo.postalCode) : '') + '”. <button class="btn btn-ghost btn-sm" type="button" data-seo="use-prev-address">Use it</button></p>' : '';
-    var logo = a.logo ? '<span class="seo-logo">' + (ST.ctx.seo && ST.ctx.seo.imgTag ? ST.ctx.seo.imgTag(a.logo.url) : '') + '</span> <span class="seo-n">The ' + esc(a.logo.from) + ', given with the event’s pictures</span>' : '<span class="seo-none">None: give the event a logo in ' + linkTo('content/basics', 'Basics') + '</span>';
-    var place = a.place ? esc(a.place.label) : '<span class="seo-none">' + (a.city ? '“' + esc(a.city) + '” is not in the place list: it is given as typed' : 'No city in Basics') + '</span>';
-    return ST.ctx.panel('3 · Event schema', 'The event’s details search engines show with the result', basic +
-      '<div class="frow' + (exact && F.basicSchema ? '' : ' seo-off') + '">' +
-      fieldText('schemaTitle', 'Schema title', { hint: 'The event’s name as search engines list it as an event. Without one, the event’s name.', placeholder: a.title }) +
-      fieldText('schemaDescription', 'Schema description', { area: true, hint: 'Two or three sentences for an event listing. Without one, the meta description.' }) +
-      '</div><div class="seo-rows' + (exact && F.basicSchema ? '' : ' seo-off') + '">' +
-      row('Starts and ends', esc(a.dates.label || 'To be announced') + ' · ' + linkTo('content/basics', 'Change in Basics'), from('basics', 'Basics')) +
-      row('Attendance mode', modeSel, F.attendanceMode ? from('team', 'Team') : from('auto', 'Auto')) +
-      row('Venue', (a.venue ? esc(a.venue) : '<span class="seo-none">None</span>') + ' · ' + linkTo('content/basics', 'Change in Basics'), from('basics', 'Basics')) +
-      row('Street address', '<input class="inp" id="seo-streetAddress" data-seo-field="streetAddress" maxlength="200" value="' + esc(F.streetAddress) + '" placeholder="e.g. National Highway 8, Ambience Island, DLF Phase 3" aria-label="Street address">' + prevAddr, F.streetAddress ? from('team', 'Team') : from('none', 'Not set')) +
-      row('City, state, country', place, from('auto', 'Auto'), '<p class="hint">From Basics’ city, through the place list.</p>') +
-      row('Postcode', '<input class="inp seo-short" id="seo-postalCode" data-seo-field="postalCode" maxlength="12" inputmode="text" value="' + esc(F.postalCode) + '" placeholder="e.g. 122010" aria-label="Postcode">', F.postalCode ? from('team', 'Team') : from('none', 'Not set')) +
-      row('Latitude and longitude', '<span class="seo-inline"><input class="inp seo-short" id="seo-latitude" data-seo-field="latitude" inputmode="decimal" value="' + (F.latitude == null ? '' : esc(String(F.latitude))) + '" placeholder="28.5022" aria-label="Latitude">' +
-        '<input class="inp seo-short" id="seo-longitude" data-seo-field="longitude" inputmode="decimal" value="' + (F.longitude == null ? '' : esc(String(F.longitude))) + '" placeholder="77.0969" aria-label="Longitude"></span>' +
-        '<p class="hint">Optional. Both, or neither.</p>', F.latitude != null ? from('team', 'Team') : from('auto', 'Optional')) +
-      row('Organiser', esc(a.organizer.name) + (a.organizer.url ? ' · <span class="num">' + esc(a.organizer.url.replace(/^https?:\/\//, '')) + '</span>' : ''), from('auto', 'Auto'), '<p class="hint">The event’s portal and its home address' + (a.organizer.portal ? '' : ' (no portal yet: set one in Basics)') + '.</p>') +
-      row('Logo', logo, from('auto', 'Auto')) +
-      '</div>');
+    var where = '<div class="field c8"><label for="seo-streetAddress">Street address</label>' +
+        '<input class="inp" id="seo-streetAddress" data-seo-field="streetAddress" maxlength="200" value="' + esc(F.streetAddress) + '" placeholder="e.g. National Highway 8, Ambience Island, DLF Phase 3">' +
+        prevAddr + '</div>' +
+      '<div class="field c4"><label for="seo-postalCode">Postcode</label>' +
+        '<input class="inp" id="seo-postalCode" data-seo-field="postalCode" maxlength="12" inputmode="text" value="' + esc(F.postalCode) + '" placeholder="e.g. 122010"></div>' +
+      '<div class="field c6"><label for="seo-attendanceMode">How people attend</label>' + mode + '</div>' +
+      '<div class="field c6"><span class="flabel" id="seo-geo-label">Latitude and longitude</span><div class="seo2-pair" role="group" aria-labelledby="seo-geo-label">' +
+        '<div><input class="inp" id="seo-latitude" data-seo-field="latitude" inputmode="decimal" value="' + (F.latitude == null ? '' : esc(String(F.latitude))) + '" placeholder="e.g. 28.5022" aria-label="Latitude" aria-describedby="seo-geo-hint"></div>' +
+        '<div><input class="inp" id="seo-longitude" data-seo-field="longitude" inputmode="decimal" value="' + (F.longitude == null ? '' : esc(String(F.longitude))) + '" placeholder="e.g. 77.0969" aria-label="Longitude" aria-describedby="seo-geo-hint"></div>' +
+        '</div>' + richNote('Optional, to put the venue on a map: in Google Maps, right-click the venue and click the two numbers at the top to copy them, then paste them here.', 'seo-geo-hint') + '</div>';
+
+    return ST.ctx.panel('Event details for search engines', '', '<div class="seo2-rich">' + sw +
+      '<div class="seo2-body"><div class="seo2-group">' + facts + '</div>' +
+      '<div class="seo2-group frow">' + text + '</div><div class="seo2-group frow">' + where + '</div></div></div>');
   }
 
   function richHtml() {
-    var d = ST.data, F = ST.F, ctx = ST.ctx, adv = F.advancedSchema;
-    var sp = d.speakers.length ? '<ul class="seo-list">' + d.speakers.map(function (s) {
-      var on = F.speakersOff.indexOf(s.id) === -1, id = 'seo-sp-' + s.id;
-      var tag = !s.confirmed ? '<span class="badge b-mute">Not confirmed: not on the site</span>' : s.shown ? '<span class="badge b-ok">On the site</span>' : '<span class="badge b-warn">Not on the site</span>';
-      return '<li><input type="checkbox" id="' + id + '" data-seo-sp="' + esc(s.id) + '"' + (on && s.confirmed ? ' checked' : '') + (s.confirmed ? '' : ' disabled') + '>' +
-        '<label for="' + id + '"><b>' + esc(s.name || 'No name') + '</b><span>' + esc([s.role, s.company].filter(Boolean).join(' · ')) + '</span></label>' + tag + '</li>';
-    }).join('') + '</ul>' : '<p class="seo-none">No speakers in ' + linkTo('content/speakers', 'Content › Speakers') + ' yet.</p>';
-    var fq = d.faqs.length ? '<ul class="seo-list">' + d.faqs.map(function (f) {
+    var d = ST.data, F = ST.F, adv = F.advancedSchema, n;
+    var sp = d.speakers.map(function (s) {
+      var on = F.speakersOff.indexOf(s.id) === -1, id = 'seo-sp-' + s.id, who = [s.role, s.company].filter(Boolean).join(' · ');
+      return richRow('<input type="checkbox" id="' + id + '" data-seo-sp="' + esc(s.id) + '"' + (on && s.confirmed ? ' checked' : '') + (s.confirmed ? '' : ' disabled') + '>' +
+        '<label for="' + id + '"><b>' + esc(s.name || 'No name') + '</b>' + (who ? '<span>' + esc(who) + '</span>' : '') + '</label>',
+        !s.confirmed ? 'Not confirmed' : s.shown ? 'On the site' : 'Not on the site');
+    });
+    var fq = d.faqs.map(function (f) {
       var on = F.faqsOff.indexOf(f.id) === -1, id = 'seo-fq-' + f.id;
-      var tag = !f.answer ? '<span class="badge b-mute">No answer</span>' : f.shown ? '<span class="badge b-ok">On the site</span>' : '<span class="badge b-warn">Not on the site</span>';
-      return '<li><input type="checkbox" id="' + id + '" data-seo-fq="' + esc(f.id) + '"' + (on ? ' checked' : '') + '>' +
-        '<label for="' + id + '"><b>' + esc(f.question) + '</b><span>' + esc(f.answer.slice(0, 140)) + (f.answer.length > 140 ? '…' : '') + '</span></label>' + tag + '</li>';
-    }).join('') + '</ul>'
-      : '<div class="seo-empty"><p class="seo-none">No FAQs in ' + linkTo('content/faq', 'Content › FAQ') + ' yet.</p>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-seo="faq-draft"' + (ST.aiBusy ? ' disabled' : '') + '>' + svg(ctx.IC.star, 13) + ' Draft FAQs with ETB2B AI</button>' +
-        '<p class="hint">ETB2B AI drafts five or six from the event’s real details and adds them to Content › FAQ, for you to check there. Nothing it does not know is guessed.</p></div>';
-    var ts = F.testimonials.length ? '<ul class="seo-tlist">' + F.testimonials.map(function (t, i) {
-      var shown = d.testimonials[t.id], id = 'seo-tm-' + t.id;
-      var tag = t.off ? '<span class="badge b-mute">Left out</span>' : !shown ? '<span class="badge b-mute">Shown after saving</span>' : shown.shown ? '<span class="badge b-ok">On the site</span>' : '<span class="badge b-warn">Not on the site</span>';
-      return '<li class="seo-t"><div class="seo-t-top"><input type="checkbox" id="' + id + '" data-seo-tm-on="' + i + '"' + (t.off ? '' : ' checked') + ' aria-label="Include ' + esc(t.name) + '’s testimonial">' +
-        '<label for="' + id + '"><b>' + esc(t.name) + '</b><span>' + esc([t.role, t.company].filter(Boolean).join(', ')) + '</span></label>' + stars(t.rating) + '</div>' +
-        (t.title ? '<p class="seo-t-title">' + esc(t.title) + '</p>' : '') + '<p class="seo-t-text">' + esc(t.text) + '</p>' +
-        '<div class="seo-t-foot">' + (t.from === 'previous' ? from('content', 'From the previous edition') : from('team', 'Team')) + tag + '<span class="seo-sp"></span>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-seo-tm-edit="' + i + '">Edit</button><button class="btn btn-ghost btn-sm" type="button" data-seo-tm-x="' + i + '">Remove</button></div></li>';
-    }).join('') + '</ul>' : '<p class="seo-none">No testimonials yet.</p>';
-    var rating = ratingNow();
-    var notShownT = F.testimonials.filter(function (t) { return !t.off && d.testimonials[t.id] && !d.testimonials[t.id].shown; }).length;
+      return richRow('<input type="checkbox" id="' + id + '" data-seo-fq="' + esc(f.id) + '"' + (on ? ' checked' : '') + '>' +
+        '<label for="' + id + '"><b>' + esc(f.question) + '</b>' + (f.answer ? '<span class="seo2-clip">' + esc(f.answer.slice(0, 160)) + '</span>' : '') + '</label>',
+        !f.answer ? 'No answer' : f.shown ? 'On the site' : 'Not on the site');
+    });
+    var ts = F.testimonials.map(function (t, i) {
+      var shown = d.testimonials[t.id], id = 'seo-tm-' + t.id, who = [t.role, t.company].filter(Boolean).join(', ');
+      var state = t.off ? 'Left out' : !shown ? 'Not saved yet' : shown.shown ? 'On the site' : 'Not on the site';
+      return '<li class="seo2-row seo2-trow"><input type="checkbox" id="' + id + '" data-seo-tm-on="' + i + '"' + (t.off ? '' : ' checked') + ' aria-label="Include ' + esc(t.name) + '’s testimonial">' +
+        '<div class="seo2-tmain"><div class="seo2-twho"><label for="' + id + '"><b>' + esc(t.name) + '</b>' + (who ? '<span>' + esc(who) + '</span>' : '') + '</label>' + (t.rating ? stars(t.rating) : '') + '</div>' +
+          '<p class="seo2-quote">' + (t.title ? '<b>' + esc(t.title) + '</b> ' : '') + esc(t.text) + '</p>' +
+          '<p class="seo2-meta">' + esc((t.from === 'previous' ? 'From the previous edition · ' : '') + state) + '</p></div>' +
+        '<span class="seo2-tacts"><button class="btn btn-ghost btn-sm" type="button" data-seo-tm-edit="' + i + '" aria-label="Edit ' + esc(t.name) + '’s testimonial">Edit</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-seo-tm-x="' + i + '" aria-label="Remove ' + esc(t.name) + '’s testimonial">Remove</button></span></li>';
+    });
+    /* left out because the site does not show them (search engines require what they are given to be on the page);
+       the way to show them depends on whether the site already has the section */
+    var notShownS = d.speakers.filter(function (s) { return s.confirmed && line(s.name) && !s.shown && F.speakersOff.indexOf(s.id) === -1; }).length;
     var notShownF = d.faqs.filter(function (f) { return f.counts && !f.shown && F.faqsOff.indexOf(f.id) === -1; }).length;
-    return ctx.panel('4 · Rich results', 'Speakers, FAQs and reviews in search results', '<div class="seo-switch">' + toggle('seo-advancedSchema', adv, 'Give search engines the speakers, FAQs and reviews') +
-      '<p class="hint">Only what the site itself shows is given: search engines require it to be visible on the page.</p></div>' +
-      '<div class="' + (adv ? '' : 'seo-off') + '">' +
-      '<div class="seo-sub"><div class="flabel-row"><span class="flabel">Speakers</span>' + from('content', 'Content') + '<span class="seo-sp"></span>' + linkTo('content/speakers', 'Edit in Content › Speakers') + '</div>' + sp + '</div>' +
-      '<div class="seo-sub"><div class="flabel-row"><span class="flabel">FAQs</span>' + from('content', 'Content') + '<span class="seo-sp"></span>' + linkTo('content/faq', 'Edit in Content › FAQ') + '</div>' + fq +
-        (notShownF ? '<p class="hint seo-warn">' + notShownF + (notShownF === 1 ? ' FAQ is' : ' FAQs are') + ' not shown on the site, so ' + (notShownF === 1 ? 'it is' : 'they are') + ' left out: add an FAQ section in the site editor to show them.</p>' : '') + '</div>' +
-      '<div class="seo-sub"><div class="flabel-row"><span class="flabel">Testimonials</span>' + from('team', 'Team') + '<span class="seo-sp"></span>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-seo="tm-add"' + (F.testimonials.length >= 30 ? ' disabled' : '') + '>Add a testimonial</button>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-seo="prev-tm">Bring in from the previous edition</button></div>' + ts +
-        '<p class="hint">What people who were there said, in their own words: typed by the team or brought in from ETB2B’s list for the previous edition — never written by AI.</p>' +
-        (notShownT ? '<p class="hint seo-warn">' + notShownT + (notShownT === 1 ? ' testimonial is' : ' testimonials are') + ' not shown on the site, so ' + (notShownT === 1 ? 'it is' : 'they are') + ' left out: add a testimonials section in the editor to show them.</p>' : '') + '</div>' +
-      '<div class="seo-rows">' +
-      row('Rating', rating.text, from('auto', 'Auto'), '<p class="hint">Worked out from the ratings of the testimonials the site shows. Never typed, never written by AI.</p>') +
-      row('Passes and prices', '<span class="seo-none">Not included.</span> <span class="seo-n">Search engines need prices to be shown on the page, and this site shows no passes yet.</span>', from('none', 'Not included')) +
-      '</div></div>');
+    var notShownT = F.testimonials.filter(function (t) { return !t.off && d.testimonials[t.id] && !d.testimonials[t.id].shown; }).length;
+    var editor = linkTo('design/editor', 'site editor');
+    function leftOut(n, one, many, section, has) {
+      var it = n === 1 ? 'it' : 'them';
+      return richNote(n + ' ' + (n === 1 ? one + ' is' : many + ' are') + ' not on the site, so search engines are not given ' + it + '. ' +
+        (has ? 'Show ' + it + ' in the site’s ' + section + ' section, in the ' + editor + '.' : 'Add ' + (section === 'FAQ' ? 'an ' : 'a ') + section + ' section in the ' + editor + ' to show ' + it + '.'), '', true);
+    }
+    /* a testimonial is on the site when the site shows its very words (seo-schema.js showsTestimonial): a section of
+       testimonials is not filled from this list, so the words are what to put there */
+    function tmLeftOut(n, has) {
+      var it = n === 1 ? 'it' : 'them';
+      return richNote(n + (n === 1 ? ' testimonial is' : ' testimonials are') + ' not on the site, so search engines are not given ' + it + '. To give ' + it + ', put the same words in ' +
+        (has ? 'the site’s testimonials section' : 'a testimonials section') + ' in the ' + editor + '.', '', true);
+    }
+
+    var speakers = '<div class="seo2-group">' + richHead('Speakers', sp.length ? linkTo('content/speakers', 'Edit in Content › Speakers') : '') +
+      (sp.length ? richRows(sp, 'sp', 'speakers') + (notShownS ? leftOut(notShownS, 'speaker', 'speakers', 'speakers', d.speakers.some(function (s) { return s.shown; })) : '')
+        : richNote('No speakers in ' + linkTo('content/speakers', 'Content › Speakers') + ' yet.')) + '</div>';
+    var faqs = '<div class="seo2-group">' + richHead('FAQs', fq.length ? linkTo('content/faq', 'Edit in Content › FAQ') : '') +
+      (fq.length ? richRows(fq, 'fq', 'FAQs') + (notShownF ? leftOut(notShownF, 'FAQ', 'FAQs', 'FAQ', d.faqs.some(function (f) { return f.shown; })) : '')
+        : richNote('No FAQs in ' + linkTo('content/faq', 'Content › FAQ') + ' yet. ETB2B AI can draft five or six from the event’s details and add them there, for you to check.') +
+          '<div class="seo2-acts"><button class="btn btn-secondary btn-sm" type="button" data-seo="faq-draft"' + (ST.aiBusy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Draft FAQs with ETB2B AI</button></div>') + '</div>';
+    n = F.testimonials.length;
+    var tms = '<div class="seo2-group">' + richHead('Testimonials', '') +
+      (n ? '<ul class="seo2-rows">' + ts.join('') + '</ul>' : richNote('None yet. Add what people who were there said, in their own words, or bring them in from the previous edition.')) +
+      (notShownT ? tmLeftOut(notShownT, F.testimonials.some(function (t) { return d.testimonials[t.id] && d.testimonials[t.id].shown; })) : '') +
+      '<div class="seo2-acts"><button class="btn btn-secondary btn-sm" type="button" data-seo="tm-add"' + (n >= 30 ? ' disabled aria-describedby="seo-tm-max"' : '') + '>Add a testimonial</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev-tm"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in testimonials from the previous edition') + '</button>' +
+        (n >= 30 ? '<span class="seo2-faint" id="seo-tm-max">30 is the most.</span>' : '') + '</div></div>';
+    var rating = '<div class="seo2-group"><dl class="seo2-facts"><dt>Rating</dt><dd>' + ratingNow().text + '</dd>' +
+      '<dt>Passes and prices</dt><dd><span class="seo2-faint">Not given</span></dd></dl>' +
+      richNote('The rating is the average of the star ratings of the testimonials the site shows. Prices are left out until the site shows passes.') + '</div>';
+
+    /* what a tick does, said once under the switch; off is said there too, and the rows below stay as they are (they
+       can still be ticked), never greyed out as if they could not */
+    return ST.ctx.panel('Speakers, FAQs and reviews in Google', '', '<div class="seo2-rich">' +
+      '<div class="seo2-switch">' + toggle('seo-advancedSchema', adv, 'Give search engines the speakers, FAQs and reviews', ' aria-describedby="seo-adv-why"') +
+        richNote(adv ? 'Ticked speakers, FAQs and testimonials go to search engines when the site shows them; untick one to leave it out.'
+          : 'Off: search engines are not given the speakers, FAQs or reviews.', 'seo-adv-why') + '</div>' +
+      '<div class="seo2-body">' + speakers + faqs + tms + rating + '</div></div>') + structuredHtml();
   }
   /* the rating as it would be given: the included testimonials whose words the site shows (as last saved), with a rating */
   function ratingNow() {
     var d = ST.data, list = ST.F.testimonials.filter(function (t) { return !t.off && t.rating && d.testimonials[t.id] && d.testimonials[t.id].shown; });
-    if (!list.length) return { text: '<span class="seo-none">None.</span> <span class="seo-n">No testimonial with a rating is shown on the site.</span>' };
+    if (!list.length) return { text: '<span class="seo2-faint">None yet: no testimonial with a rating is on the site</span>' };
     var sum = list.reduce(function (a, t) { return a + t.rating; }, 0), avg = Math.round(sum / list.length * 10) / 10;
-    return { text: '<b>' + avg + '</b> from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + ' ' + stars(Math.round(avg)) };
+    return { text: '<b>' + avg + '</b> ' + stars(Math.round(avg)) + ' <span class="seo2-faint">from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + '</span>' };
+  }
+  /* what the next publish gives search engines, as they read it (the page's structured data: code, so it is said to
+     be for developers), folded under the panels; drawn once, here, and kept open across a redraw once opened
+     (ST.ldOpen, wireShell) */
+  function structuredHtml() {
+    var s = ST.data.schema, list = [s.event, s.faq].filter(Boolean);
+    if (!list.length) return '<p class="seo2-ld seo2-hint">For developers: there is no code for search engines yet.</p>';
+    return '<details class="seo2-ld" id="seo2-ld"' + (ST.ldOpen ? ' open' : '') + '><summary>For developers: the code search engines read</summary><pre>' +
+      esc(JSON.stringify(list, null, 2)) + '</pre></details>';
   }
 
-  function previewHtml() {
+  /* the words both previews show, as typed (the event's own name, Basics' short description and the site's own address
+     without them): drawn by previewHtml and repainted while typing by paintLive */
+  function previewText() {
     var d = ST.data, F = ST.F;
-    var title = line(F.title) || d.auto.title || 'Untitled event';
-    var desc = line(F.description) || d.head.description || '';
-    var shownDesc = desc.length > 158 ? desc.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : desc;
-    var url = line(F.canonicalUrl) || d.auto.url;
-    var where = url.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › ');
-    var dom = url.replace(/^https?:\/\//, '').split('/')[0];
+    var desc = line(F.description) || d.head.description || '', url = line(F.canonicalUrl) || d.auto.url;
+    return { title: line(F.title) || d.auto.title || 'Untitled event', desc: desc.length > 158 ? desc.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : desc,
+      where: url.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › '), dom: url.replace(/^https?:\/\//, '').split('/')[0] };
+  }
+  /* the page's anchor: the Google result and the shared link, side by side on a wide screen, one above the other on a
+     narrow one. The picture is the one the next publish gives (the share picture, or the automatic one). */
+  function previewHtml() {
+    var d = ST.data, p = previewText();
     var pic = d.head.ogImage && ST.ctx.seo && ST.ctx.seo.imgTag ? ST.ctx.seo.imgTag(d.head.ogImage) : '';
-    var ld = d.schema.event || d.schema.faq ? '<details class="seo-ld"><summary>What search engines read (structured data)</summary><pre>' +
-      esc(JSON.stringify([d.schema.event, d.schema.faq].filter(Boolean), null, 2)) + '</pre></details>' : '<p class="seo-n">No structured data yet.</p>';
-    return '<div class="pvc"><div class="pvc-head"><span class="eyebrow">Google result</span></div><div class="pvc-body"><div class="mock mock-serp">' +
-        '<div class="u" id="seo-pv-url">' + esc(where) + '</div><div class="t" id="seo-pv-title">' + esc(title) + '</div><div class="d" id="seo-pv-desc">' + esc(shownDesc) + '</div></div></div>' +
-        '<div class="pvc-foot">Roughly how a search result shows it.</div></div>' +
-      '<div class="pvc"><div class="pvc-head"><span class="eyebrow">Social card</span></div><div class="pvc-body"><div class="mock mock-og seo-og">' +
-        '<div class="img seo-og-img">' + (pic || '<span class="md">No picture: the card shows words only</span>') + '</div>' +
-        '<div class="cap"><span class="dom">' + esc(dom) + '</span><b id="seo-og-title">' + esc(title) + '</b><span id="seo-og-desc">' + esc(shownDesc) + '</span></div></div></div>' +
-        '<div class="pvc-foot">What a WhatsApp, LinkedIn or X share unfurls into. The picture is the one the live page gives' + (d.live.published ? '' : ' once published') + '.</div></div>' +
-      '<div class="pvc"><div class="pvc-body">' + ld + '</div></div>';
+    return '<section class="seo2-pv" aria-label="Preview">' +
+      '<div class="seo2-pv-one"><div class="seo2-pv-h" id="seo2-pv-g">In Google</div><div class="mock mock-serp" role="group" aria-labelledby="seo2-pv-g">' +
+        '<div class="u" id="seo-pv-url">' + esc(p.where) + '</div><div class="t" id="seo-pv-title">' + esc(p.title) + '</div><div class="d" id="seo-pv-desc">' + esc(p.desc) + '</div></div></div>' +
+      '<div class="seo2-pv-one"><div class="seo2-pv-h" id="seo2-pv-s">As a shared link</div><div class="mock mock-og seo-og" role="group" aria-labelledby="seo2-pv-s">' +
+        '<div class="img seo-og-img">' + (pic || '<span class="md">No picture yet: the link shows words only</span>') + '</div>' +
+        '<div class="cap"><span class="dom">' + esc(p.dom) + '</span><b id="seo-og-title">' + esc(p.title) + '</b><span id="seo-og-desc">' + esc(p.desc) + '</span></div></div></div>' +
+      '</section>';
   }
 
+  /* the readiness checklist (functions/lib/api-seo.js readiness), one line under the preview until it is opened:
+     "Checklist: 3 of 5 done" — what is left to do here. What cannot be done on this page, or is an optional extra, is
+     a note (level 'info': listed, never counted). Its groups and items are named in the page's own words; an item's
+     text is the server's. */
+  var READY_GROUP = [['search', 'Google result'], ['sharing', 'When the link is shared'], ['schema', 'Event details for search engines'], ['rich', 'Speakers, FAQs and reviews in Google']];
+  var READY_LABEL = { title: 'Title in Google', description: 'Description in Google', keywords: 'Search words', h1: 'Main heading', indexing: 'Show in Google',
+    image: 'Share picture', basic: 'Event details', advanced: 'Speakers, FAQs and reviews' };
+  function readyLabel(i) {
+    if (/^problem-/.test(i.id)) return /address must be PostalAddress/.test(i.text) ? 'Full address' : 'Event details';
+    return READY_LABEL[i.id] || i.label;
+  }
+  /* a problem the server's check found in what search engines read (functions/lib/site-seo.js checkJsonLd) comes as a
+     technical line: the one the team can fix is said in plain words, any other plainly, its technical words after */
+  function readyText(i) {
+    if (!/^problem-/.test(i.id)) return i.text;
+    if (/address must be PostalAddress/.test(i.text)) return 'Search engines get only the venue’s name as its address until the street address and postcode are added.';
+    return 'Search engines may not read all of it (' + i.text + ').';
+  }
   function readyHtml() {
     var items = ST.data.ready || [];
-    var groups = [['search', 'Search listing'], ['sharing', 'Social sharing'], ['schema', 'Event schema'], ['rich', 'Rich results']];
-    var done = items.filter(function (i) { return i.ok; }).length, all = items.filter(function (i) { return i.level !== 'info'; }).length;
-    var body = groups.map(function (g) {
+    var counted = items.filter(function (i) { return i.level !== 'info'; }), done = counted.filter(function (i) { return i.ok; }).length;
+    var body = READY_GROUP.map(function (g) {
       var mine = items.filter(function (i) { return i.group === g[0]; });
       if (!mine.length) return '';
       return '<div class="seo-rg"><div class="seo-rg-h">' + esc(g[1]) + '</div>' + mine.map(function (i) {
-        return '<div class="seo-check"><span class="dash-dot dash-dot-' + (i.ok ? 'ok' : i.level === 'info' ? 'mute' : 'warn') + '" aria-hidden="true"></span><span><b>' + esc(i.label) +
-          '<span class="rv-sr"> — ' + (i.ok ? 'complete' : i.level === 'info' ? 'note' : 'missing') + '</span></b><span>' + esc(i.text) + '</span></span></div>';
+        return '<div class="seo-check"><span class="dash-dot dash-dot-' + (i.ok ? 'ok' : i.level === 'info' ? 'mute' : 'warn') + '" aria-hidden="true"></span><span><b>' + esc(readyLabel(i)) +
+          '<span class="rv-sr"> — ' + (i.ok ? 'complete' : i.level === 'info' ? 'note' : 'needs a look') + '</span></b><span>' + esc(readyText(i)) + '</span></span></div>';
       }).join('') + '</div>';
     }).join('');
-    return '<div class="pvc"><div class="pvc-head"><span class="eyebrow">Schema ready</span><span class="ctr">' + done + ' / ' + all + '</span></div>' +
-      '<div class="pvc-body">' + (dirty() ? '<p class="seo-n">As last saved: save to check your changes.</p>' : '') + body + '</div></div>';
+    return '<details class="seo2-ready" id="seo2-ready"' + (ST.readyOpen ? ' open' : '') + '><summary><b>Checklist: ' + done + ' of ' + counted.length + ' done</b>' +
+      '<span class="seo2-link seo2-show">Show</span><span class="seo2-link seo2-hide">Hide</span></summary>' +
+      '<div class="seo2-ready-body">' + (dirty() ? '<p class="seo2-quiet">As last saved: save to check your changes.</p>' : '') + body + '</div></details>';
   }
 
   function saveBarHtml() {
@@ -383,18 +656,16 @@
   }
 
   /* ---------- in place, while typing (nothing is redrawn under the cursor) ---------- */
+  /* the counters (#seo-ctr-<field>: "n / ideal", class ctr seo-ctr [over|warn]), both previews and the save bar */
   function paintLive() {
     if (!$('seo-root')) return;
-    var d = ST.data, F = ST.F;
+    var F = ST.F;
     ['title', 'description', 'h1', 'schemaTitle', 'schemaDescription'].forEach(function (k) {
       var c = $('seo-ctr-' + k);
       if (c) { var n = line(F[k]).length, ideal = IDEAL[k]; c.textContent = n + ' / ' + ideal; c.className = 'ctr seo-ctr' + (n > ideal ? ' over' : n > ideal * 0.9 ? ' warn' : ''); }
     });
-    var title = line(F.title) || d.auto.title || 'Untitled event', desc = line(F.description) || d.head.description || '';
-    var shownDesc = desc.length > 158 ? desc.slice(0, 157).replace(/\s+\S*$/, '') + ' …' : desc;
-    var url = line(F.canonicalUrl) || d.auto.url;
-    [['seo-pv-title', title], ['seo-pv-desc', shownDesc], ['seo-og-title', title], ['seo-og-desc', shownDesc],
-      ['seo-pv-url', url.replace(/^https?:\/\//, '').replace(/\/+$/, '').replace(/\//g, ' › ')]].forEach(function (p) { var el = $(p[0]); if (el) el.textContent = p[1]; });
+    var p = previewText();
+    [['seo-pv-title', p.title], ['seo-pv-desc', p.desc], ['seo-og-title', p.title], ['seo-og-desc', p.desc], ['seo-pv-url', p.where]].forEach(function (x) { var el = $(x[0]); if (el) el.textContent = x[1]; });
     var bar = $('seo-savebar');
     if (bar) {
       var n2 = changedKeys().length;
@@ -456,7 +727,9 @@
     });
   }
   function paintSaveBar() { var bar = $('seo-savebar'); if (bar) bar.outerHTML = saveBarHtml(), wireSaveBar(); }
-  function discard() { ST.F = clone(ST.B); ST.failed = ''; redraw(); }
+  /* back to what is saved, the main web address included: a box opened for another address closes again */
+  function forget() { ST.F = clone(ST.B); ST.failed = ''; ST.canonOpen = false; }
+  function discard() { forget(); redraw(); }
 
   /* ---------- ETB2B AI ---------- */
   /* fields the team wrote (saved or typed) that an AI write would replace */
@@ -468,18 +741,21 @@
       return !aiOwn;
     });
   }
+  /* before ETB2B AI replaces words that are already there (typed just now, or saved by anyone on the team): asked, in
+     words that fit whoever wrote them */
   function askThenWrite(fields, all) {
     var typed = typedIn(fields);
     if (!typed.length) return writeAi(fields);
-    var M = ST.ctx.seo;
-    var names = typed.map(function (k) { return LABEL[k]; }).join(', ');
+    var M = ST.ctx.seo, it = typed.length === 1 ? 'it' : 'them';
+    var names = joinAnd(typed.map(function (k) { return LABEL[k]; }));
     var empty = fields.filter(function (k) { return typed.indexOf(k) === -1; });
-    var m = M.openModal('<div class="modal-head"><h3>' + (all ? 'Replace what the team wrote?' : 'Replace the ' + esc(LABEL[typed[0]]) + '?') + '</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><div class="confirm-msg">' + esc(names) + (typed.length === 1 ? ' was' : ' were') + ' written by the team. ETB2B AI can write ' + (typed.length === 1 ? 'it' : 'them') +
+    var both = all && empty.length;
+    var m = M.openModal('<div class="modal-head"><h3>' + (all ? 'Replace what is already filled in?' : 'Replace the ' + esc(LABEL[typed[0]]) + '?') + '</h3>' + M.closeBtn() + '</div>' +
+      '<div class="modal-body"><div class="confirm-msg">' + esc(names) + (typed.length === 1 ? ' is' : ' are') + ' already filled in. ETB2B AI can write ' + it +
       ' again from the event’s details; Undo puts back what is there now.</div></div>' +
       '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button><span style="flex:1"></span>' +
-      (all && empty.length ? '<button class="btn btn-secondary" type="button" id="seo-ask-empty">Only the empty ones</button>' : '') +
-      '<button class="btn btn-primary" type="button" id="seo-ask-all">Replace ' + (typed.length === 1 ? 'it' : 'them') + ' too</button></div>', { style: 'width:min(520px,100%)', initialFocus: '#seo-ask-all' });
+      (both ? '<button class="btn btn-secondary" type="button" id="seo-ask-empty">Fill only the empty ones</button>' : '') +
+      '<button class="btn btn-primary" type="button" id="seo-ask-all">Replace ' + it + (both ? ' as well' : '') + '</button></div>', { style: 'width:min(520px,100%)', initialFocus: '#seo-ask-all' });
     var e1 = $('seo-ask-empty'), e2 = $('seo-ask-all');
     if (e1) e1.onclick = function () { m.close(); writeAi(empty); };
     e2.onclick = function () { m.close(); writeAi(fields); };
@@ -488,23 +764,27 @@
     if (!fields.length || ST.aiBusy) return;
     var ev = ST.ctx.EV;
     ST.aiBusy = 'ETB2B AI is writing ' + (fields.length > 2 ? 'the search text' : fields.map(function (k) { return LABEL[k]; }).join(' and ')) + ' from the event’s details…';
+    /* the fields being written cannot be typed in meanwhile (they are drawn read-only): the answer replaces them */
+    ST.aiFields = fields.slice();
     ST.undo = null; ST.dropped = [];
     redraw();
     C.writeSeo(ev.id, fields).then(function (res) {
-      ST.aiBusy = '';
+      ST.aiBusy = ''; ST.aiFields = [];
       var keys = Object.keys(res.values || {});
       keys.forEach(function (k) { ST.F[k] = clone(res.values[k]); ST.B[k] = clone(res.values[k]); });
       ST.B.aiWritten = res.aiWritten || ST.B.aiWritten; ST.F.aiWritten = ST.B.aiWritten;
       ev.settings = ev.settings || {}; ev.settings.seo = Object.assign({}, ev.settings.seo || {}, res.values, { aiWritten: ST.B.aiWritten });
       if (res.updatedAt) { ev.updatedAt = res.updatedAt; ev.detailsUpdatedAt = res.updatedAt; }
       ST.dropped = res.dropped || [];
+      /* "see below" must be on screen: a field left out inside the closed Advanced fold opens it */
+      if (ST.dropped.some(function (x) { return inAdvanced(x.field); })) ST.advOpen = true;
       var said = keys.length ? 'ETB2B AI wrote ' + keys.map(function (k) { return LABEL[k]; }).join(', ') + ' and saved ' + (keys.length === 1 ? 'it' : 'them') + (res.previous ? ', with the previous edition as a reference' : '') + '.' :
         'ETB2B AI wrote nothing that could be used: every field is as it was.';
       if (ST.dropped.length) said += ' ' + ST.dropped.length + (ST.dropped.length === 1 ? ' field was' : ' fields were') + ' left out (see below).';
       ST.undo = keys.length ? { said: said, fields: keys, before: res.before || {}, aiWrittenBefore: res.aiWrittenBefore || [] } : { said: said, fields: [], before: null };
       return load(true);
     }, function (err) {
-      ST.aiBusy = '';
+      ST.aiBusy = ''; ST.aiFields = [];
       redraw();
       ST.ctx.toastError(err, { what: 'ETB2B AI could not write them. Nothing was changed.' });
     });
@@ -583,21 +863,23 @@
       bringInDialog(r, only);
     }, function (err) { ST.prevBusy = false; redraw(); ST.ctx.toastError(err, { what: 'The previous edition could not be read.' }); });
   }
-  function pickPrevious(only) {
+  /* again: opened from "Choose another previous edition" (the event has one on record already) */
+  function pickPrevious(only, again) {
     var ev = ST.ctx.EV, M = ST.ctx.seo;
     if (!ev.portal) { ST.ctx.toastError('Set the event’s portal in Basics first: a previous edition comes from that portal.'); return; }
-    var award = String(ev.category || '') === 'awards';
+    var award = String(ev.category || '') === 'awards', who = esc(ev.portalName || ev.portal), kind = award ? 'awards' : 'events';
     var m = M.openModal('<div class="modal-head"><h3>Choose the previous edition</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">This event has no previous edition on record. Choose it from ' + esc(ev.portalName || ev.portal) + '’s own ' + (award ? 'awards' : 'events') + ' on ETB2B.</p>' +
-      '<div id="seo-pick-list" class="seo-pick" aria-busy="true">Loading ' + esc(ev.portalName || ev.portal) + '’s events…</div></div>' +
-      '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button></div>', { style: 'width:min(620px,100%)' });
+      '<div class="modal-body"><p class="confirm-msg">' + (again ? 'Pick another of ' + who + '’s past ' + kind + ' on ETB2B.'
+        : 'No previous edition is on record for this event. Pick it from ' + who + '’s past ' + kind + ' on ETB2B; its testimonials and, at the same venue, its street address can then be brought in.') + '</p>' +
+      '<div id="seo-pick-list" class="seo2-pick" aria-busy="true"><p class="seo2-hint">Loading ' + who + '’s ' + kind + '…</p></div></div>' +
+      '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button></div>', { style: 'width:min(560px,100%)' });
     C.fetchEtEvents(ev.portal, award ? 'award' : '').then(function (r) {
       var list = (r.events || []).filter(function (e) { return e.past || !e.upcoming; });
       var host = $('seo-pick-list'); if (!host) return;
       host.removeAttribute('aria-busy');
-      host.innerHTML = list.length ? '<ul class="seo-list">' + list.slice(0, 60).map(function (e) {
-        return '<li><button class="btn btn-ghost seo-pick-btn" type="button" data-pick="' + esc(String(e.id)) + '"><b>' + esc(e.title) + '</b><span>' + esc(e.dateLabel || '') + '</span></button></li>';
-      }).join('') + '</ul>' : '<p class="seo-none">' + esc(ev.portalName || ev.portal) + ' has no past ' + (award ? 'awards' : 'events') + ' on ETB2B.</p>';
+      host.innerHTML = list.length ? '<ul class="seo2-pick-list">' + list.slice(0, 60).map(function (e) {
+        return '<li><button class="seo2-pick-btn" type="button" data-pick="' + esc(String(e.id)) + '"><b>' + esc(e.title) + '</b><span>' + esc(e.dateLabel || '') + '</span></button></li>';
+      }).join('') + '</ul>' : '<p class="seo2-hint">' + who + ' has no past ' + kind + ' on ETB2B.</p>';
       Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (b) {
         b.onclick = function () {
           var id = b.getAttribute('data-pick'), e = list.filter(function (x) { return String(x.id) === id; })[0];
@@ -616,7 +898,7 @@
         };
       });
     }, function (err) {
-      var host = $('seo-pick-list'); if (host) { host.removeAttribute('aria-busy'); host.innerHTML = '<p class="seo-none" role="alert">ETB2B’s list could not be read: ' + esc(errText(err)) + '</p>'; }
+      var host = $('seo-pick-list'); if (host) { host.removeAttribute('aria-busy'); host.innerHTML = '<p class="seo2-err" role="alert">ETB2B’s list could not be read: ' + esc(errText(err)) + '</p>'; }
     });
   }
   function bringInDialog(r, only) {
@@ -625,37 +907,47 @@
     F.testimonials.forEach(function (t) { if (t.prevId) have[t.prevId] = 1; });
     var newT = (p.testimonials || []).filter(function (t) { return !have[t.prevId]; });
     var addr = p.seo && p.seo.streetAddress;
-    var addrRow;
-    if (!addr) addrRow = '<li class="seo-bi-off">Street address and postcode: ETB2B has none for it.</li>';
-    else if (!r.sameVenue) addrRow = '<li class="seo-bi-off">Street address and postcode: not offered, because the previous edition was at ' + esc(r.venueThen || 'another venue') + (r.venueNow ? ' and this one is at ' + esc(r.venueNow) : '') + '.</li>';
+    /* what can be ticked, and (muted, one line each) what is not offered and why */
+    var rows = [], off = [];
+    if (!addr) off.push('Street address and postcode: ETB2B has none for it.');
+    else if (!r.sameVenue) off.push('Street address and postcode: not offered, as it was at ' + esc(r.venueThen || 'another venue') + (r.venueNow ? ' and this one is at ' + esc(r.venueNow) : '') + '.');
     else {
       var typed = F.streetAddress && F.streetAddress !== addr;
-      addrRow = '<li><input type="checkbox" id="seo-bi-addr"' + (typed || only === 'tm' ? '' : ' checked') + '><label for="seo-bi-addr"><b>Street address and postcode</b><span>' + esc(addr) + (p.seo.postalCode ? ', ' + esc(p.seo.postalCode) : '') +
-        (typed ? ' — replaces “' + esc(F.streetAddress) + '”' : '') + '</span></label></li>';
+      rows.push('<li class="seo2-row"><input type="checkbox" id="seo-bi-addr"' + (typed || only === 'tm' ? '' : ' checked') + '><label for="seo-bi-addr"><b>Street address and postcode</b><span>' + esc(addr) + (p.seo.postalCode ? ', ' + esc(p.seo.postalCode) : '') +
+        (typed ? ' — replaces “' + esc(F.streetAddress) + '”' : '') + '</span></label></li>');
     }
-    var tRow = newT.length ? '<li><input type="checkbox" id="seo-bi-tm"' + (only === 'addr' ? '' : ' checked') + '><label for="seo-bi-tm"><b>' + newT.length + (newT.length === 1 ? ' testimonial' : ' testimonials') + '</b><span>' +
-      esc(newT.map(function (t) { return t.name + (t.rating ? ' (' + t.rating + '★)' : ''); }).join(', ')) + ' — as they wrote them, marked as from the previous edition</span></label></li>'
-      : '<li class="seo-bi-off">Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ETB2B has none for it.') + '</li>';
-    var kwRow = p.seo && p.seo.keywords && p.seo.keywords.length ? '<li class="seo-bi-off">Keywords (' + p.seo.keywords.length + '): kept as a reference for ETB2B AI, which writes this edition’s own.</li>' : '';
+    if (newT.length) {
+      rows.push('<li class="seo2-row"><input type="checkbox" id="seo-bi-tm"' + (only === 'addr' ? '' : ' checked') + '><label for="seo-bi-tm"><b>' + newT.length + (newT.length === 1 ? ' testimonial' : ' testimonials') + '</b><span>' +
+        esc(newT.map(function (t) { return t.name + (t.rating ? ' (' + t.rating + '★)' : ''); }).join(', ')) + ' — as they wrote them</span></label></li>');
+    } else off.push('Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ETB2B has none for it.'));
+    if (p.seo && p.seo.keywords && p.seo.keywords.length) off.push('Its ' + p.seo.keywords.length + ' search words: kept as a reference for ETB2B AI, which writes this edition’s own.');
     var m = M.openModal('<div class="modal-head"><h3>Bring in from ' + esc(p.name || 'the previous edition') + '</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s own record of the previous edition' + (p.link ? ' (<a href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing is changed until you save.</p>' +
-      '<ul class="seo-list seo-bi">' + addrRow + tRow + kwRow + '</ul>' +
-      '<p class="hint"><button class="btn btn-ghost btn-sm" type="button" id="seo-bi-other">Choose another previous edition</button></p></div>' +
-      '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button><span style="flex:1"></span><button class="btn btn-primary" type="button" id="seo-bi-go">Bring them in</button></div>',
-      { style: 'width:min(620px,100%)', initialFocus: '#seo-bi-go' });
-    $('seo-bi-other').onclick = function () { m.close(); pickPrevious(only); };
-    $('seo-bi-go').onclick = function () {
+      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s record of the previous edition' + (p.link ? ' (<a class="seo2-link" href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing changes until you save.</p>' +
+      (rows.length ? '<ul class="seo2-rows seo2-bi">' + rows.join('') + '</ul>' : '') +
+      (off.length ? '<ul class="seo2-bi-off">' + off.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' : '') +
+      '<p class="seo2-bi-other"><button class="btn btn-ghost btn-sm" type="button" id="seo-bi-other">Choose another previous edition</button></p></div>' +
+      '<div class="modal-foot">' + (rows.length ? '<button class="btn btn-secondary" type="button" data-close>Cancel</button><button class="btn btn-primary" type="button" id="seo-bi-go">Bring them in</button>'
+        : '<button class="btn btn-secondary" type="button" data-close>Close</button>') + '</div>',
+      { style: 'width:min(560px,100%)', initialFocus: rows.length ? '#seo-bi-go' : '.modal-foot [data-close]' });
+    $('seo-bi-other').onclick = function () { m.close(); pickPrevious(only, true); };
+    var go = $('seo-bi-go');
+    if (go) go.onclick = function () {
       var a = $('seo-bi-addr'), t = $('seo-bi-tm'), n = 0;
       if (a && a.checked) { F.streetAddress = addr; if (p.seo.postalCode) F.postalCode = p.seo.postalCode; n++; }
       if (t && t.checked) {
-        newT.slice(0, Math.max(0, 30 - F.testimonials.length)).forEach(function (x) {
+        var room = newT.slice(0, Math.max(0, 30 - F.testimonials.length));
+        room.forEach(function (x) {
           F.testimonials.push({ id: uid(), name: x.name, role: x.role, company: x.company, title: x.title, text: x.text, rating: x.rating, photoUrl: x.photoUrl, from: 'previous', prevId: x.prevId });
         });
-        n++;
+        if (room.length) n++;
       }
       m.close();
+      /* what was brought in is in the Advanced fold: it is open, so it is seen */
+      if (n) ST.advOpen = true;
       redraw();
+      focusOn('[data-seo="' + (only === 'addr' ? 'prev-addr' : 'prev-tm') + '"]', a && a.checked ? 'seo-streetAddress' : '');
       if (n) ST.ctx.toast('Brought in. Save changes to keep them.');
+      else if (t && t.checked) ST.ctx.toast('Nothing was brought in: there are 30 testimonials already, the most there can be.');
     };
   }
 
@@ -665,23 +957,23 @@
     var photo = t.photoUrl;
     var opts = '<option value="">No rating</option>' + [5, 4, 3, 2, 1].map(function (n) { return '<option value="' + n + '"' + (t.rating === n ? ' selected' : '') + '>' + n + (n === 1 ? ' star' : ' stars') + '</option>'; }).join('');
     function typed() { return JSON.stringify(['tm-name', 'tm-role', 'tm-company', 'tm-title', 'tm-text', 'tm-rating'].map(function (x) { return ($(x) || {}).value; }).concat([photo])); }
-    var pristine = '';
+    var pristine = '', req = ' <span class="seo2-req">(required)</span>';
     var m = M.openModal('<div class="modal-head"><h3>' + (editing ? 'Edit the testimonial' : 'Add a testimonial') + '</h3>' + M.closeBtn() + '</div>' +
-      '<form class="modal-form" novalidate><div class="modal-body"><div class="frow">' +
-      '<div class="field c6"><label for="tm-name">Name <span class="pill-req">Required</span></label><input class="inp" id="tm-name" maxlength="120" value="' + esc(t.name) + '"></div>' +
+      '<form class="modal-form" novalidate><div class="modal-body seo2-tm"><div class="frow">' +
+      '<div class="field c6"><label for="tm-name">Name' + req + '</label><input class="inp" id="tm-name" maxlength="120" value="' + esc(t.name) + '"></div>' +
       '<div class="field c6"><label for="tm-role">Role</label><input class="inp" id="tm-role" maxlength="120" value="' + esc(t.role) + '" placeholder="e.g. CHRO"></div>' +
       '<div class="field c6"><label for="tm-company">Company</label><input class="inp" id="tm-company" maxlength="120" value="' + esc(t.company) + '"></div>' +
       '<div class="field c6"><label for="tm-rating">Rating</label><select class="inp" id="tm-rating">' + opts + '</select></div>' +
-      '<div class="field c12"><label for="tm-title">Title</label><input class="inp" id="tm-title" maxlength="200" value="' + esc(t.title) + '" placeholder="e.g. A truly pleasant experience"></div>' +
-      '<div class="field c12"><label for="tm-text">What they said <span class="pill-req">Required</span></label><textarea class="inp" id="tm-text" maxlength="1500" style="min-height:110px">' + esc(t.text) + '</textarea>' +
-        '<p class="hint">In their own words, as they said or wrote it.</p></div>' +
-      '<div class="field c12"><span class="flabel">Photo</span><div class="logo-box ev-logo"><span class="lprev" id="tm-photo-prev">' + (M.imgTag(photo) || svg(ST.ctx.IC.image, 18)) + '</span>' +
-        '<span class="lt" id="tm-photo-state">' + (photo ? 'Their photo.' : 'Optional.') + '</span>' +
+      '<div class="field c12"><label for="tm-text">What they said' + req + '</label><textarea class="inp" id="tm-text" maxlength="1500" rows="4" aria-describedby="tm-text-hint">' + esc(t.text) + '</textarea>' +
+        '<p class="seo2-hint" id="tm-text-hint">In their own words, as they said or wrote it.</p></div>' +
+      '<div class="field c12"><label for="tm-title">Headline</label><input class="inp" id="tm-title" maxlength="200" value="' + esc(t.title) + '" placeholder="e.g. A truly pleasant experience"></div>' +
+      '<div class="field c12"><span class="flabel">Photo</span><div class="seo2-photo"><span class="seo2-photo-pic" id="tm-photo-prev">' + (M.imgTag(photo) || svg(ST.ctx.IC.image, 18)) + '</span>' +
+        '<span class="seo2-photo-state" id="tm-photo-state">' + (photo ? 'Their photo.' : 'Optional.') + '</span>' +
         '<button class="btn btn-secondary btn-sm" type="button" id="tm-photo-btn">' + (photo ? 'Replace' : 'Upload') + '</button>' +
         '<button class="btn btn-ghost btn-sm" type="button" id="tm-photo-x"' + (photo ? '' : ' hidden') + '>Remove</button></div></div>' +
       '</div></div><div class="modal-foot"><span class="modal-err" id="tm-err" role="alert"></span><button class="btn btn-secondary" type="button" data-close>Cancel</button>' +
-      '<button class="btn btn-primary" type="submit" id="tm-save">' + (editing ? 'Update' : 'Add to the list') + '</button></div></form>',
-      { style: 'width:min(620px,100%)', initialFocus: '#tm-name', isDirty: function () { return typed() !== pristine; }, onSubmit: done });
+      '<button class="btn btn-primary" type="submit" id="tm-save">' + (editing ? 'Update testimonial' : 'Add testimonial') + '</button></div></form>',
+      { style: 'width:min(600px,100%)', initialFocus: '#tm-name', isDirty: function () { return typed() !== pristine; }, onSubmit: done });
     pristine = typed();
     function showPhoto() {
       $('tm-photo-prev').innerHTML = M.imgTag(photo) || svg(ST.ctx.IC.image, 18);
@@ -714,11 +1006,19 @@
       if (editing) F.testimonials[i] = next; else F.testimonials.push(next);
       m.close();
       redraw();
+      focusOn(editing ? '[data-seo-tm-edit="' + i + '"]' : '[data-seo="tm-add"]');
       ST.ctx.toast((editing ? 'Testimonial updated.' : 'Testimonial added.') + ' Save changes to keep it.');
     }
   }
 
   /* ---------- wiring ---------- */
+  /* the page's folds stay as the person left them while the section is drawn again (a toggle or a save redraws it) */
+  function wireShell() {
+    [['seo2-adv', 'advOpen'], ['seo2-ready', 'readyOpen'], ['seo2-ld', 'ldOpen'], ['seo2-chg', 'chgOpen']].forEach(function (f) {
+      var el = $(f[0]);
+      if (el) el.addEventListener('toggle', function () { ST[f[1]] = el.open; });
+    });
+  }
   function wireSaveBar() {
     var s = $('seo-save'), x = $('seo-discard');
     if (s) s.onclick = function () {
@@ -733,18 +1033,35 @@
     var root = $('seo-root') || $('seo-loading') || document;
     Array.prototype.forEach.call(document.querySelectorAll('[data-seo="reload"]'), function (b) { b.onclick = function () { ST.error = ''; load(false); redraw(); }; });
     if (!$('seo-root')) return;
+    wireShell();
     if (ctx.seo && ctx.seo.wireSharePicture) ctx.seo.wireSharePicture();
-    ctx.seo.setLeave({ label: 'URL & SEO', dirty: dirty, save: save, discard: function () { ST.F = clone(ST.B); ST.failed = ''; } });
+    wireSharing(root);
+    ctx.seo.setLeave({ label: 'Search and sharing', dirty: dirty, save: save, discard: forget });
 
     /* typing: kept in the form, counted, previewed, never redrawn under the cursor */
     root.addEventListener('input', function (e) {
       var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-field');
       if (!k) return;
       ctx.seo.clearFieldError(e.target);
-      if (k === 'latitude' || k === 'longitude') ST.F[k] = numberOf(e.target.value);
+      if (k === 'latitude' || k === 'longitude') {
+        /* the two numbers Google Maps copies ("28.502210, 77.096887"), pasted into either box, fill both */
+        var pair = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(e.target.value);
+        if (pair) {
+          ST.F.latitude = +pair[1]; ST.F.longitude = +pair[2];
+          [['seo-latitude', pair[1]], ['seo-longitude', pair[2]]].forEach(function (x) { var el = $(x[0]); if (el) { el.value = x[1]; ctx.seo.clearFieldError(el); } });
+        } else ST.F[k] = numberOf(e.target.value);
+      }
       else ST.F[k] = e.target.value;
       ST.failed = '';
       paintLive();
+    });
+    /* the line under a text field follows the typing, in the Google result and the event details alike: a field ETB2B AI
+       wrote is the team's once edited, an emptied one says what is used instead, a long one what is cut off (the main
+       heading in Advanced, unused while the site has its own, keeps its one line) */
+    root.addEventListener('input', function (e) {
+      var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-field');
+      if (k === 'title' || k === 'description' || (k === 'h1' && !ownHeading())) paintSearchNote(k);
+      else if (k === 'schemaTitle' || k === 'schemaDescription') paintRichNote(k);
     });
     root.addEventListener('change', function (e) {
       var t = e.target;
@@ -752,11 +1069,17 @@
       var sp = t && t.getAttribute('data-seo-sp'), fq = t && t.getAttribute('data-seo-fq'), tm = t && t.getAttribute('data-seo-tm-on');
       if (sp) { ST.F.speakersOff = ST.F.speakersOff.filter(function (x) { return x !== sp; }); if (!t.checked) ST.F.speakersOff.push(sp); paintLive(); }
       if (fq) { ST.F.faqsOff = ST.F.faqsOff.filter(function (x) { return x !== fq; }); if (!t.checked) ST.F.faqsOff.push(fq); paintLive(); }
-      if (tm != null) { var row = ST.F.testimonials[+tm]; if (row) { if (t.checked) delete row.off; else row.off = true; } redraw(); }
+      if (tm != null) {
+        var row = ST.F.testimonials[+tm];
+        if (row) { if (t.checked) delete row.off; else row.off = true; }
+        redraw();
+        if (row) focusAgain('seo-tm-' + row.id);
+      }
     });
+    wireRich(root);
     function addKeyword() {
       var inp = $('seo-kw-in'), v = line(inp && inp.value);
-      if (!v) return;
+      if (!v || aiWriting('keywords')) return;
       var parts = v.split(/\s*[,;]\s*/).filter(Boolean);
       parts.forEach(function (p) {
         if (ST.F.keywords.length >= 15) return;
@@ -775,34 +1098,35 @@
       if (one) { askThenWrite([one], false); return; }
       if (b.hasAttribute('data-seo-kw-x')) { ST.F.keywords.splice(+b.getAttribute('data-seo-kw-x'), 1); redraw(); var k2 = $('seo-kw-in'); if (k2) k2.focus(); return; }
       if (b.hasAttribute('data-seo-tm-edit')) { testimonialDialog(+b.getAttribute('data-seo-tm-edit')); return; }
-      if (b.hasAttribute('data-seo-tm-x')) { ST.F.testimonials.splice(+b.getAttribute('data-seo-tm-x'), 1); redraw(); ctx.toast('Testimonial removed. Save changes to keep that.'); return; }
+      if (b.hasAttribute('data-seo-tm-x')) { ST.F.testimonials.splice(+b.getAttribute('data-seo-tm-x'), 1); redraw(); focusOn('[data-seo="tm-add"]'); ctx.toast('Testimonial removed. Save changes to keep that.'); return; }
       if (b.id === 'seo-noindex') { ST.F.noindex = !ST.F.noindex; redraw(); focusAgain('seo-noindex'); return; }
       if (b.id === 'seo-basicSchema') { if (!ST.data.auto.dates.exact) return; ST.F.basicSchema = !ST.F.basicSchema; redraw(); focusAgain('seo-basicSchema'); return; }
       if (b.id === 'seo-advancedSchema') { ST.F.advancedSchema = !ST.F.advancedSchema; redraw(); focusAgain('seo-advancedSchema'); return; }
       if (!what) return;
       act(what);
     });
-    /* the two actions in the view's heading (Write with ETB2B AI, Bring in from the previous edition) are drawn above
-       #seo-root, so they are wired here themselves */
-    Array.prototype.forEach.call(document.querySelectorAll('.vhead [data-seo="ai-all"], .vhead [data-seo="prev"]'), function (b) {
+    /* the action in the view's heading (Suggest with ETB2B AI) is drawn above #seo-root, so it is wired here itself */
+    Array.prototype.forEach.call(document.querySelectorAll('.vhead [data-seo="ai-all"]'), function (b) {
       b.onclick = function () { act(b.getAttribute('data-seo')); };
     });
     function act(what) {
-      if (what === 'ai-all') askThenWrite(AI_FIELDS.slice(), true);
+      if (what === 'ai-all') askThenWrite(aiFields(), true);
       else if (what === 'undo') { if (ST.undo && ST.undo.faqs) undoFaqs(); else undo(); }
       else if (what === 'kw-add') addKeyword();
       else if (what === 'canon-own') { ST.canonOpen = true; redraw(); var c = $('seo-canonicalUrl'); if (c) c.focus(); }
-      else if (what === 'canon-auto') { ST.canonOpen = false; ST.F.canonicalUrl = ''; redraw(); }
-      else if (what === 'prev') bringIn('');
+      else if (what === 'canon-auto') { ST.canonOpen = false; ST.F.canonicalUrl = ''; redraw(); focusOn('[data-seo="canon-own"]'); }
       else if (what === 'prev-tm') bringIn('tm');
-      else if (what === 'use-prev-address') { var pv = ST.prev.previous.seo; ST.F.streetAddress = pv.streetAddress; if (pv.postalCode) ST.F.postalCode = pv.postalCode; redraw(); }
+      else if (what === 'prev-addr') bringIn('addr');
+      else if (what === 'use-prev-address') { var pv = ST.prev.previous.seo; ST.F.streetAddress = pv.streetAddress; if (pv.postalCode) ST.F.postalCode = pv.postalCode; redraw(); focusAgain('seo-streetAddress'); }
       else if (what === 'tm-add') testimonialDialog(null);
       else if (what === 'faq-draft') draftFaqs();
       else if (what === 'publish') ctx.seo.publish();
     }
     wireSaveBar();
   }
+  /* after a redraw, the keyboard's place is kept: the element by id, or the first match of a selector */
   function focusAgain(id) { setTimeout(function () { var el = $(id); if (el) el.focus(); }, 0); }
+  function focusOn(sel, id) { setTimeout(function () { var el = (id && $(id)) || (sel && document.querySelector(sel)); if (el && el.focus) el.focus(); }, 0); }
 
   /* Back to this tab — an approver may have put the site live meanwhile, from the review page: what is live and what
      waits is read again (keeping anything typed), at most every 20 seconds, and never while a field has the cursor */
@@ -819,5 +1143,7 @@
   document.addEventListener('visibilitychange', onBack);
   global.addEventListener('focus', onBack);
 
-  global.EditEventSEO = { view: view, wire: wire, reload: function () { if (ST.ctx) load(true); }, _state: ST, _formOf: formOf };
+  /* reload: what the server says is read again, keeping anything typed (after a publish, or after the share picture
+     saved itself); it hands back the promise, so the caller can put the keyboard back where it was */
+  global.EditEventSEO = { view: view, wire: wire, reload: function () { return ST.ctx ? load(true) : Promise.resolve(); }, _state: ST, _formOf: formOf };
 })(window);

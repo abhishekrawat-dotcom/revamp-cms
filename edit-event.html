@@ -118,7 +118,7 @@
 <!-- what each Content tab means on the site, and the one priority scale (window.RevampSiteNotes) -->
 <script src="edit-event-site-notes.js"></script>
 <script src="edit-event-dashboard.js"></script>
-<!-- Settings › URL & SEO: every search and sharing setting in one section -->
+<!-- Settings › Search and sharing (route settings/seo): every search and sharing setting in one section -->
 <script src="edit-event-seo.js"></script>
 <script src="library-suggest.js"></script>
 <script src="edit-event-speaker-tools.js"></script>
@@ -244,12 +244,16 @@
   }
 
   /* An error belongs to its field: a red border, the reason right under it, and both announced
-     with the field. openModal() clears it as soon as the field is typed in again. */
+     with the field. openModal() clears it as soon as the field is typed in again. A field that has
+     a hint of its own (aria-describedby) keeps it: the error is added to it, and the hint alone is
+     put back once the error goes (data-describedby holds it meanwhile). */
   function clearFieldError(input){
     if (!input || !input.classList || !input.classList.contains('invalid')) return;
     input.classList.remove('invalid');
     input.removeAttribute('aria-invalid');
-    input.removeAttribute('aria-describedby');
+    var keep = input.getAttribute('data-describedby');
+    if (keep) input.setAttribute('aria-describedby', keep); else input.removeAttribute('aria-describedby');
+    input.removeAttribute('data-describedby');
     var wrap = input.closest('.inp-grp');
     if (wrap) wrap.classList.remove('invalid');
     var msg = document.getElementById(input.id + '-err');
@@ -268,16 +272,21 @@
     msg.textContent = message;
     var after = wrap || input;
     after.parentNode.insertBefore(msg, after.nextSibling);
-    input.setAttribute('aria-describedby', msg.id);
+    var was = input.getAttribute('aria-describedby') || '';
+    if (was) input.setAttribute('data-describedby', was);
+    input.setAttribute('aria-describedby', (was ? was + ' ' : '') + msg.id);
   }
   /* errs: [[field id, message], …] — marks each one and puts focus on the first. A field inside a
-     folded "more" block is unfolded first, or its error could not be seen. */
+     folded "more" block (or a closed <details>, such as Search and sharing's Advanced) is unfolded first, or its
+     error could not be seen. */
   function showFieldErrors(errs){
     errs.forEach(function(pair, i){
       var input = $(pair[0]);
       if (!input) return;
       var acc = input.closest('.acc');
       if (acc && acc.getAttribute('data-open') !== 'true') acc.querySelector('.acc-head').click();
+      var fold = input.closest('details');
+      if (fold && !fold.open) fold.open = true;
       setFieldError(input, pair[1]);
       if (i === 0) input.focus();
     });
@@ -940,7 +949,7 @@
        social row is the ET vertical's own). Old addresses to them lead to the tab that covers the same ground. */
     { id:'settings', label:'Settings', icon:IC.gear, tabs:[
         { id:'form',       label:'Registration forms' },
-        { id:'seo',        label:'URL & SEO' },
+        { id:'seo',        label:'Search and sharing' },
         { id:'visibility', label:'Visibility' }
     ]}
   ];
@@ -1312,10 +1321,10 @@
     /* the banner video (hero-video-ui.js, mounted by mountHeroVideo): saved on its own, as it is changed —
        it is not part of this form's Save */
     if (window.RevampHeroVideoUI) form += panel('Banner video', 'A silent loop behind the top of the site', '<div id="b-herovideo"></div>');
-    /* the picture a shared link of the site shows is in Settings › URL & SEO now, with every other search and sharing
+    /* the picture a shared link of the site shows is in Settings › Search and sharing now, with every other search and sharing
        setting (the owner, 6 Nov 2026: everything SEO in one section): Basics says where it went */
-    form += '<p class="seo-moved" id="b-share-moved">' + svg(IC.image, 14) + '<span>The share picture, the search title and description and the rest of search and sharing are in ' +
-      '<a href="#settings/seo" data-goto="settings/seo">Settings › URL &amp; SEO</a>.</span></p>';
+    form += '<p class="seo-moved" id="b-share-moved">' + svg(IC.image, 14) + '<span>The share picture, and how this event appears in Google, are in ' +
+      '<a href="#settings/seo" data-goto="settings/seo">Settings › Search and sharing</a>.</span></p>';
 
     var side =
       '<div class="pvc">' +
@@ -1416,7 +1425,7 @@
     return '';
   }
 
-  /* ---------- the share picture (drawn and wired in Settings › URL & SEO by edit-event-seo.js, through CTX.seo) ---------- */
+  /* ---------- the share picture (drawn and wired in Settings › Search and sharing by edit-event-seo.js, through CTX.seo) ---------- */
   /* With no picture of the owner's own, the live site makes its share card itself (functions/lib/share-card.js): the
      banner's picture with the logo unit on it, 1200 × 630. Its record on the event (EV.shareCard) says whether it is
      made, or why none can be — said here in plain words, never a card that is not there. A banner that plays a video
@@ -1442,6 +1451,35 @@
     making: 'Automatic: the banner plays a video, so ETB2B AI makes a picture for it (the event’s field and place, with no people or words) and puts the logo unit on it. It is ready a minute or two after the site is next published or visited; until then a link shows the first picture of the site.',
     found: { people: 'people', text: 'words or letters', logos: 'a logo' }
   };
+  /* Settings › Search and sharing shows the picture with its state in ONE short line beside it (owner, 14 Nov 2026:
+     "neat and clean"); the full words above are folded under "How it works", with what a picture of one's own should
+     be. The line for each state shareAutoState names (a picture that cannot be made says why in its line instead): */
+  var SHARE_LINE = {
+    own: 'Your own picture.',
+    ready: 'Made automatically from the banner’s picture and the logo unit.',
+    still: 'Made automatically by ETB2B AI for the video banner.',
+    unpublished: 'Made automatically when the site is published.',
+    later: 'Being made: ready shortly after the next publish.',
+    making: 'Being made by ETB2B AI for the video banner.',
+    held: 'No picture yet for the video banner.'
+  };
+  /* Until the automatic picture is made, a link shows a picture of the site's own (the one the page pass picks: the
+     banner's, else the first of the page) — the one Search and sharing's preview shows. The field shows that picture
+     too, so the two never disagree, and its line says what it is (sharePictureField's `fallback`): */
+  var SHARE_FOR_NOW = {
+    unpublished: 'For now, the banner’s picture. The logo unit is added on it when the site is published.',
+    later: 'For now, the banner’s picture. The logo unit is added on it shortly after the next publish.'
+  };
+  function shareForNow(a){
+    if (SHARE_FOR_NOW[a.kind]) return SHARE_FOR_NOW[a.kind];
+    if (a.kind === 'none') return 'For now, a picture from the site: one with the logo unit cannot be made yet, as ' + a.why + '.';
+    if (a.kind === 'held') return 'For now, a picture from the site: none was made for the video banner.';
+    if (a.kind === 'making') return 'For now, a picture from the site, until ETB2B AI’s picture for the video banner is ready.';
+    return SHARE_FOR_NOW.later;
+  }
+  /* the picture the field was drawn with while there is no automatic one (never the team's own, which Remove takes away) */
+  var SHARE_FALLBACK = '';
+  var SHARE_TIPS = 'A picture of your own: a JPG or PNG, about 1200 × 630 px and under 1 MB, shows everywhere; where a link is shown as a square (WhatsApp), its middle is used. A new picture is on the live site after the next publish; WhatsApp and LinkedIn may keep showing an earlier picture for a link already shared.';
   function shareUrlOf(e){ return (e && e.settings && e.settings.seo && typeof e.settings.seo.shareImageUrl === 'string') ? e.settings.seo.shareImageUrl : ''; }
   /* no picture from ETB2B AI for a video banner: what became of the one it made (or that it could not make one), and
      whether it is tried again (the record's last: nothing more is tried for this event) */
@@ -1454,39 +1492,73 @@
     var again = s.last ? ' ETB2B AI does not try again.' : ' ETB2B AI tries once more a day later, when the site is next published or visited.';
     return 'The banner plays a video, and ' + what + '.' + again + ' Until then a link shows the first picture of the site; upload a picture to choose it yourself.';
   }
-  /* the automatic picture as the record has it -> { url: the card, '' when there is none; text } */
+  /* the automatic picture as the record has it -> { kind: its state (SHARE_LINE), url: the card, '' when there is none;
+     text: the full words; why: what stops one being made, for kind 'none' } */
   function shareAutoState(e){
     var r = e && e.shareCard && typeof e.shareCard === 'object' ? e.shareCard : null;
     var s = e && e.shareStill && typeof e.shareStill === 'object' ? e.shareStill : null;
-    if (!e || e.published !== true) return { url: '', text: SHARE_AUTO + ' It is made when the site is published.' };
-    if (r && r.state === 'ready' && typeof r.url === 'string' && /^https:\/\//.test(r.url)) return { url: r.url, text: r.still ? SHARE_VIDEO.ready : SHARE_AUTO };
-    if (s && (s.state === 'held' || (s.state === 'failed' && s.last))) return { url: '', text: shareHeldText(s) };
+    if (!e || e.published !== true) return { kind: 'unpublished', url: '', text: SHARE_AUTO + ' It is made when the site is published.' };
+    if (r && r.state === 'ready' && typeof r.url === 'string' && /^https:\/\//.test(r.url)) return { kind: r.still ? 'still' : 'ready', url: r.url, text: r.still ? SHARE_VIDEO.ready : SHARE_AUTO };
+    if (s && (s.state === 'held' || (s.state === 'failed' && s.last))) return { kind: 'held', url: '', text: shareHeldText(s) };
     var imported = /^imported-/.test(String(e.templateId || ''));
     if (r && (r.state === 'none' || r.state === 'failed') && SHARE_WHY[r.reason] && !(r.reason === 'video-no-still' && !imported)) {
-      return { url: '', text: SHARE_AUTO + ' None can be made for this site yet: ' + SHARE_WHY[r.reason] + '. Until then a link shows the banner’s picture alone, or the first picture of the site.' };
+      return { kind: 'none', why: SHARE_WHY[r.reason], url: '', text: SHARE_AUTO + ' None can be made for this site yet: ' + SHARE_WHY[r.reason] + '. Until then a link shows the banner’s picture alone, or the first picture of the site.' };
     }
-    if (s || (r && r.reason === 'video-no-still')) return { url: '', text: SHARE_VIDEO.making };
-    return { url: '', text: SHARE_AUTO + ' ' + SHARE_LATER };
+    if (s || (r && r.reason === 'video-no-still')) return { kind: 'making', url: '', text: SHARE_VIDEO.making };
+    return { kind: 'later', url: '', text: SHARE_AUTO + ' ' + SHARE_LATER };
   }
-  function sharePictureField(e){
-    var url = shareUrlOf(e), auto = url ? null : shareAutoState(e);
-    return '<div class="field c12"><div class="logo-box ev-logo ev-share" role="group" aria-label="Share picture">' +
-        '<span class="lprev" id="b-share-prev">' + (imgTag(url || auto.url) || svg(IC.image, 18)) + '</span>' +
-        '<span class="lt" id="b-share-state">' + esc(url ? SHARE_OWN : auto.text) + '</span>' +
-        '<button class="btn btn-secondary btn-sm" type="button" id="b-share-btn">' + (url ? 'Replace' : 'Upload') + '</button>' +
-        '<button class="btn btn-ghost btn-sm" type="button" id="b-share-auto"' + (url ? '' : ' hidden') + '>Use automatic</button>' +
-      '</div>' +
-      '<p class="hint">A JPG or PNG, about 1200 × 630 px and under 1 MB, shows everywhere. It is on the live site after the next publish; WhatsApp and LinkedIn may keep showing an earlier picture for a link already shared.</p></div>';
+  /* the share picture as Settings › Search and sharing shows it, with the team's own picture `own` (the event's, when
+     not given) and `fallback`, the picture a link shows while there is no automatic one ('' for none)
+     -> { url: the picture shown, '' for none; own; line: its state in one line; more: the full words, folded ('' when
+     the line says it all); warn: nothing can be shown yet } */
+  function shareStateOf(e, own, fallback){
+    own = own === undefined ? shareUrlOf(e) : own;
+    if (own) return { url: own, own: true, line: SHARE_LINE.own, more: SHARE_OWN + ' Remove it to go back to the one made automatically from the banner’s picture and the logo unit.', warn: false };
+    var a = shareAutoState(e), now = !a.url && fallback ? String(fallback) : '';
+    return { url: a.url || now, own: false, line: now ? shareForNow(a) : a.kind === 'none' ? 'None can be made yet: ' + a.why + '.' : SHARE_LINE[a.kind] || SHARE_LINE.later,
+      more: a.kind === 'ready' ? '' : a.text, warn: a.kind === 'none' || a.kind === 'held' };
+  }
+  function shareLineHtml(st){
+    return (st.warn ? svg(IC.info, 14) : '') + '<span>' + esc(st.line) + '</span>';
+  }
+  /* fallback: the picture the next publish gives (Search and sharing's preview, GET /api/event/seo head.ogImage) */
+  function sharePictureField(e, fallback){
+    SHARE_FALLBACK = fallback && fallback !== shareUrlOf(e) ? String(fallback) : '';
+    var st = shareStateOf(e, undefined, SHARE_FALLBACK);
+    return '<div class="seo2-share" role="group" aria-label="Share picture">' +
+        '<div class="seo2-share-pic" id="b-share-prev">' + (imgTag(st.url) || svg(IC.image, 22)) + '</div>' +
+        '<div class="seo2-share-side">' +
+          '<p class="seo2-share-line" id="b-share-state">' + shareLineHtml(st) + '</p>' +
+          '<div class="seo2-share-acts">' +
+            '<button class="btn btn-secondary btn-sm" type="button" id="b-share-btn">' + (st.own ? 'Replace' : 'Upload your own') + '</button>' +
+            '<button class="btn btn-ghost btn-sm" type="button" id="b-share-auto"' + (st.own ? '' : ' hidden') + ' aria-label="Remove your picture and use the automatic one">Remove</button>' +
+          '</div>' +
+          '<details class="seo2-more"><summary>How it works</summary>' +
+            '<p id="b-share-more"' + (st.more ? '' : ' hidden') + '>' + esc(st.more) + '</p><p>' + esc(SHARE_TIPS) + '</p></details>' +
+        '</div>' +
+      '</div>';
   }
   function wireSharePicture(){
     var btn = $('b-share-btn'), auto = $('b-share-auto'), busy = false;
     if (!btn) return;
     function show(url, text){
-      var prev = $('b-share-prev'), st = $('b-share-state'), a = url ? null : shareAutoState(EV);
-      if (prev) prev.innerHTML = imgTag(url || a.url) || svg(IC.image, 18);
-      if (st) st.textContent = text || (url ? SHARE_OWN : a.text);
-      btn.textContent = url ? 'Replace' : 'Upload';
-      if (auto) auto.hidden = !url;
+      var prev = $('b-share-prev'), st = $('b-share-state'), more = $('b-share-more'), s = shareStateOf(EV, url, SHARE_FALLBACK);
+      if (prev) prev.innerHTML = imgTag(s.url) || svg(IC.image, 22);
+      if (st){ if (text) st.textContent = text; else st.innerHTML = shareLineHtml(s); }
+      if (more){ more.textContent = s.more; more.hidden = !s.more; }
+      btn.textContent = s.own ? 'Replace' : 'Upload your own';
+      if (auto) auto.hidden = !s.own;
+    }
+    /* saved: Search and sharing around the field reads the server again, so its preview of a shared link, its status
+       line ("What changed") and its checklist show the new picture too (the field is drawn again with it); the
+       keyboard goes back to the field's button, unless it has moved on meanwhile */
+    function refresh(){
+      if (routeId() !== 'settings/seo' || !window.EditEventSEO || !window.EditEventSEO.reload) return;
+      var p = window.EditEventSEO.reload();
+      if (p && p.then) p.then(function(){
+        var a = document.activeElement, b = $('b-share-btn');
+        if (b && (!a || a === document.body)) b.focus();
+      });
     }
     function save(url){
       return C.updateEvent(EV.id, { settings: { seo: { shareImageUrl: url } } }).then(function(res){
@@ -1513,6 +1585,7 @@
         }).then(function(url){
           show(url);
           notify('Share picture saved. It is on the live site after the next publish.');
+          refresh();
         }, function(err){
           show(was);
           /* a failure is the red message that stays (CON-013), worded by errText, never the server's own text */
@@ -1528,6 +1601,7 @@
       save('').then(function(){
         show('');
         notify('The site picks its share picture by itself again (after the next publish).');
+        refresh();
       }, function(err){
         show(was);
         notifyError(err, { what: 'The share picture setting was not saved.' });
@@ -5281,7 +5355,7 @@
   }
 
   /* ============================================================
-     VIEW : URL & SEO
+     VIEW : SEARCH AND SHARING (Settings › Search and sharing, route settings/seo; it was "URL & SEO")
 
      Every SEO field of ET's own event platform, in one section (edit-event-seo.js, window.EditEventSEO; the
      server's side is functions/lib/api-seo.js). The console hands it what it needs through CTX.seo: the share
@@ -5289,7 +5363,7 @@
      the header's Publish (doPublish: send for approval where that is required) and the Content tab cache.
      ============================================================ */
   function viewSEO(){
-    if (!window.EditEventSEO) return vhead('URL & SEO', '') + panel('Search and sharing', '', '<p class="seo-lead">This part of the console could not be loaded. Reload the page.</p>');
+    if (!window.EditEventSEO) return vhead('Search and sharing', '') + panel('Search and sharing', '', '<p class="seo-lead">This part of the console could not be loaded. Reload the page.</p>');
     return window.EditEventSEO.view(CTX);
   }
   function wireSeo(){ if (window.EditEventSEO) window.EditEventSEO.wire(CTX); }
@@ -6315,7 +6389,7 @@
           '<li><b>A password, or only invited e-mail addresses.</b> A live site is open to anyone with its address.</li>' +
           '<li><b>Taking the site offline on a set date.</b> Take it offline here when the time comes.</li>' +
           '<li><b>A switch to keep a live site out of search results.</b> Whether the live page lets search engines list it is shown in ' +
-            '<a href="#settings/seo" data-goto="settings/seo">URL &amp; SEO</a>.</li>' +
+            '<a href="#settings/seo" data-goto="settings/seo">Search and sharing</a>.</li>' +
           '<li><b>A registration cut-off.</b> To stop taking registrations, turn off “Registration open” in ' +
             '<a href="#settings/form" data-goto="settings/form">Registration forms</a>.</li>' +
         '</ul>');
@@ -6637,7 +6711,7 @@
     });
   };
   CTX.log = { when: histWhen, who: whoLabel, action: actionLabel, detail: function(h){ return AW.detailText(h); } };
-  /* what Settings › URL & SEO (edit-event-seo.js) uses of the console's own */
+  /* what Settings › Search and sharing (edit-event-seo.js) uses of the console's own */
   /* Speakers' Paste a list and Add photos (edit-event-speaker-tools.js) use the console's own */
   if (window.EditEventSpeakerTools) window.EditEventSpeakerTools.init({
     C: C, ev: function(){ return EV; }, speakers: function(){ return spkAll(); }, groups: function(){ return spkGroups(); },
@@ -6775,7 +6849,7 @@
         }
         paintHeader();
         if (routeId() === 'dashboard' || routeId() === 'settings/visibility') render();
-        /* Settings › URL & SEO says what is live and what waits for approval: read again */
+        /* Settings › Search and sharing says what is live and what waits for approval: read again */
         if (routeId() === 'settings/seo' && window.EditEventSEO) window.EditEventSEO.reload();
         paintSiteBar();
         /* the server's own reading, so the header and the decision line are exact */

@@ -116,14 +116,14 @@ ok(/…$/.test(S.shareDescription(new Array(40).join('x') + ' ' + new Array(200)
 var fresh = hooks.publishTransform(PAGE.replace(/<meta name="description"[^>]*>\n/, '').replace(/<meta property="og:description"[^>]*>\n/, ''), { eventId: 'qa-x', event: { name: 'X', description: LONG }, mode: 'live', templateId: 'gen-qa-x', publicBase: 'https://sites.example' });
 ok(((/<meta name="description" content="([^"]*)"/.exec(fresh) || ['', ''])[1]).length <= 160 && /…" data-rv-head>/.test(fresh), 'a new publish cuts it at a word too');
 
-/* UX-148: the owner's own share picture — chosen in Settings › URL & SEO now, with every other search and sharing
+/* UX-148: the owner's own share picture — chosen in Settings › Search and sharing now, with every other search and sharing
    setting (the owner, 6 Nov 2026), its functions unchanged; Basics says where it went */
 (function () {
   var html = fs.readFileSync(path.join(__dirname, '../../edit-event.html'), 'utf8');
   var seoJs = fs.readFileSync(path.join(__dirname, '../../edit-event-seo.js'), 'utf8');
-  ok(!/panel\('Share picture'/.test(html) && /id="b-share-moved"/.test(html) && /data-goto="settings\/seo">Settings › URL &amp; SEO/.test(html) &&
-    /sharePictureField: sharePictureField, wireSharePicture: wireSharePicture/.test(html) && /ST\.ctx\.seo\.sharePictureField\(ST\.ctx\.EV\)/.test(seoJs) && /ctx\.seo\.wireSharePicture\(\)/.test(seoJs),
-    'the Share picture field is in Settings › URL & SEO, drawn and wired by the console\'s own functions; Basics points there');
+  ok(!/panel\('Share picture'/.test(html) && /id="b-share-moved"/.test(html) && /data-goto="settings\/seo">Settings › Search and sharing/.test(html) &&
+    /sharePictureField: sharePictureField, wireSharePicture: wireSharePicture/.test(html) && /M\.sharePictureField\(ST\.ctx\.EV, ST\.data\.head\.ogImage \|\| ''\)/.test(seoJs) && /ctx\.seo\.wireSharePicture\(\)/.test(seoJs),
+    'the Share picture field is in Settings › Search and sharing, drawn and wired by the console\'s own functions; Basics points there');
   ok(/C\.uploadImage\(EV\.id, 'media', file\)/.test(html) && /C\.updateEvent\(EV\.id, \{ settings: \{ seo: \{ shareImageUrl: url \} \} \}\)/.test(html), 'it uploads the picture and saves it as the event\'s share picture');
   ok(/inp\.accept = 'image\/jpeg,image\/png'/.test(html) && /save\(''\)/.test(html), 'JPG or PNG only (what every preview shows), and "Use automatic" clears it');
   ok(/after the next publish/.test(html), 'it says honestly when it reaches the live site');

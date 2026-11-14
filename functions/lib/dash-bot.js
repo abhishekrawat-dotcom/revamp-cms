@@ -263,7 +263,7 @@ var TABS = {
 };
 var TAB_LABELS = {
   basics: 'Basics', speakers: 'Speakers', agenda: 'Agenda', sponsors: 'Sponsors', gallery: 'Gallery', faq: 'FAQ', contact: 'Contact',
-  form: 'Registration forms', seo: 'URL & SEO', links: 'Social links', visibility: 'Visibility', advanced: 'Advanced',
+  form: 'Registration forms', seo: 'Search and sharing', links: 'Social links', visibility: 'Visibility', advanced: 'Advanced',
   posts: 'Social posts', 'site-posts': 'Site-look posts', mailers: 'Mailers'
 };
 /* the dashboard's own views; "deleted" is not one ETB2B AI offers: it reads the live events only (liveEventDocs) */

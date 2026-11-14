@@ -240,14 +240,61 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   check('nothing about the event is kept in this browser: no "published" flag, no checklist', !/S\.published/.test(page) && !/S\.checklist/.test(page) && !/localStorage\.setItem\(KEY/.test(page) && /localStorage\.removeItem\('revamp-edit-event-' \+ eventSlug\)/.test(page));
   check('the fake Archive is gone', page.indexOf('Archive requested') === -1 && page.indexOf('Archive event') === -1);
   check('no fake settings remain (GST, corporate social accounts, toggles that toast)', ['Collect GST', 'linkedin.com/company/et-oneworld', 'x.com/ETOneworld', 'Setting enabled', 'wireReminders', 'Social links saved', 'social-card.png', 'Sitemap submitted', 'Make it live', 'Make private', 'Private draft'].every(function (s) { return page.indexOf(s) === -1; }));
-  /* Settings › URL & SEO is a section of its own now (edit-event-seo.js, 6 Nov 2026): every SEO field, saved through
-     settings.seo; what it says of the site comes from the server (GET /api/event/seo), never a made-up address */
+  /* Settings › Search and sharing (route settings/seo; the tab was "URL & SEO") is a section of its own (edit-event-seo.js,
+     6 Nov 2026): every SEO field, saved through settings.seo; what it says of the site comes from the server
+     (GET /api/event/seo), never a made-up address */
   var seoFn = (/function viewSEO\(\)\{[\s\S]*?\n  \}\n/.exec(page) || [''])[0];
   var seoJs = read('edit-event-seo.js');
   check('URL & SEO is the SEO section (edit-event-seo.js), loaded by the console, with no made-up address',
     /window\.EditEventSEO\.view\(CTX\)/.test(seoFn) && /<script src="edit-event-seo\.js"><\/script>/.test(page) && /C\.fetchSeo\(ev\.id\)/.test(seoJs) &&
     /C\.updateEvent\(ev\.id, \{ settings: \{ seo: patch \} \}\)/.test(seoJs) && seoJs.indexOf('etoneworld') === -1, seoFn.slice(0, 200));
   es5('the SEO section', seoJs);
+  /* the clean page (owner, 14 Nov 2026: "too noisy, it should be neat and clean"): one line under the heading, one status
+     line, the preview as the anchor, the Google result and the shared link open, everything automatic folded into a
+     closed Advanced area (kept as the person left it), the save bar the only primary button */
+  var seoView = (/function view\(ctx\) \{[\s\S]*?\n  \}\n/.exec(seoJs) || [''])[0];
+  check('Search and sharing reads top to bottom: status, preview, the checklist\'s line, Google result, shared link, then a closed Advanced fold, then the save bar',
+    /ctx\.vhead\('Search and sharing', 'How this event appears in Google and when its link is shared\. Only the title, description and search words need you; everything else is filled in\.'/.test(seoView) &&
+    /statusHtml\(\) \+ aiStatusHtml\(\) \+ previewHtml\(\) \+ readyHtml\(\) \+\s*searchHtml\(\) \+ socialHtml\(\) \+\s*'<details class="seo2-adv" id="seo2-adv"' \+ \(ST\.advOpen \? ' open' : ''\) \+ '>/.test(seoView) &&
+    /'<div class="seo2-adv-body">' \+ schemaHtml\(\) \+ richHtml\(\) \+/.test(seoView) && /<\/div><\/details>' \+\s*saveBarHtml\(\)/.test(seoView) && seoJs.indexOf('ldHtml') === -1 &&
+    /ST\.advOpen = false;/.test(seoView), seoView.slice(0, 300));
+  var seoFnOf = function (name) { return (new RegExp('function ' + name + '\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}\\n').exec(seoJs) || [''])[0]; };
+  check('Search and sharing: the header\'s helper and the status line\'s publish are not primary buttons (Save changes is the one)',
+    seoFnOf('actionsHtml').indexOf('btn-primary') === -1 && /Suggest with ETB2B AI/.test(seoFnOf('actionsHtml')) &&
+    seoFnOf('statusHtml').indexOf('btn-primary') === -1 && /<button class="seo2-link" type="button" data-seo="publish">/.test(seoFnOf('statusHtml')) &&
+    /id="seo-save"/.test(seoFnOf('saveBarHtml')));
+  check('Search and sharing: the readiness checklist is one line until opened, named in plain words',
+    /<b>Checklist: ' \+ done \+ ' of ' \+ counted\.length \+ ' done<\/b>'/.test(seoFnOf('readyHtml')) && /\['schema', 'Event details for search engines'\]/.test(seoJs) && !/Schema ready/.test(seoFnOf('readyHtml')));
+  check('Search and sharing: its folds stay as left across a redraw, and a field error inside a closed fold opens it',
+    /\['seo2-adv', 'advOpen'\]/.test(seoFnOf('wireShell')) && /addEventListener\('toggle'/.test(seoFnOf('wireShell')) && /\n    wireShell\(\);\n/.test(seoJs) &&
+    /var fold = input\.closest\('details'\);\s*if \(fold && !fold\.open\) fold\.open = true;/.test(page));
+  /* a field's error is added to its own hint for a screen reader, and the hint alone comes back once the error goes */
+  (function () {
+    var src = ['clearFieldError', 'setFieldError'].map(function (n) { return (new RegExp('  function ' + n + '\\(([^)]*)\\)\\{[\\s\\S]*?\\n  \\}\\n')).exec(main)[0]; }).join('\n');
+    var nodes = {};
+    function node(id, attrs) {
+      var a = Object.assign({}, attrs || {}), cls = {};
+      var n = { id: id, parentNode: { insertBefore: function (m) { nodes[m.id] = m; m.parentNode = { removeChild: function (x) { delete nodes[x.id]; } }; } }, nextSibling: null,
+        classList: { add: function (c) { cls[c] = 1; }, remove: function (c) { delete cls[c]; }, contains: function (c) { return !!cls[c]; } },
+        getAttribute: function (k) { return a.hasOwnProperty(k) ? a[k] : null; }, setAttribute: function (k, v) { a[k] = String(v); }, removeAttribute: function (k) { delete a[k]; },
+        closest: function () { return null; } };
+      nodes[id] = n;
+      return n;
+    }
+    var F = vm.runInNewContext(src + '; ({ set: setFieldError, clear: clearFieldError })', { document: { getElementById: function (id) { return nodes[id] || null; }, createElement: function () { return node(''); } } });
+    var hinted = node('seo-canonicalUrl', { 'aria-describedby': 'seo2-note-canon' }), bare = node('b-name');
+    F.set(hinted, 'Give a web address starting with https://');
+    var during = hinted.getAttribute('aria-describedby');
+    F.set(hinted, 'Again');
+    var again = hinted.getAttribute('aria-describedby');
+    F.clear(hinted);
+    F.set(bare, 'Enter the name.');
+    var bareDuring = bare.getAttribute('aria-describedby');
+    F.clear(bare);
+    check('a field\'s error keeps its own hint: described by both while the error shows, by the hint alone after (a field with no hint, as before)',
+      during === 'seo2-note-canon seo-canonicalUrl-err' && again === 'seo2-note-canon seo-canonicalUrl-err' && hinted.getAttribute('aria-describedby') === 'seo2-note-canon' &&
+      hinted.getAttribute('data-describedby') === null && bareDuring === 'b-name-err' && bare.getAttribute('aria-describedby') === null, [during, again, hinted.getAttribute('aria-describedby'), bareDuring]);
+  })();
   check('Visibility: Publish is the header\'s, taking offline is the real unpublish', /pub\.onclick = doPublish/.test(page) && /off\.onclick = takeOffline/.test(page) && /C\.unpublishEvent\(EV\.id\)/.test(page) && /C\.mayTakeOffline\(APPROVAL\)/.test(page));
   /* the release re-check of 5 Nov: a team member who is not an approver saw "Take the site offline…" for 2-9 s, until
      who approves had been read; now it is drawn only once that is known (or could not be read: the server decides) */
@@ -282,7 +329,11 @@ var STATS = { registrations: 2, confirmed: 2, waitlist: 0, cancelled: 0, checked
   function r(x) { return JSON.stringify(routes.resolve(x)); }
   check('routes: Payment is a view of the console, not another page', r('payment') === '{"sec":"payment","tab":null}' && r('audience/payments') === '{"sec":"payment","tab":null}', r('payment'));
   check('routes: the removed Settings tabs lead to the tab that covers them', r('settings/links') === '{"sec":"settings","tab":"seo"}' && r('settings/advanced') === '{"sec":"settings","tab":"visibility"}', [r('settings/links'), r('settings/advanced')]);
-  check('routes: Settings has Registration forms, URL & SEO and Visibility', JSON.stringify(routes.SECTIONS.filter(function (s) { return s.id === 'settings'; })[0].tabs.map(function (x) { return x.id; })) === '["form","seo","visibility"]');
+  check('routes: Settings has Registration forms, Search and sharing (still settings/seo) and Visibility', JSON.stringify(routes.SECTIONS.filter(function (s) { return s.id === 'settings'; })[0].tabs.map(function (x) { return x.id + ':' + x.label; })) === '["form:Registration forms","seo:Search and sharing","visibility:Visibility"]');
+  check('the tab, its heading and every way to it name the one screen the same: Search and sharing (no "URL & SEO", no "SEO")',
+    page.indexOf('URL &amp; SEO</a>') === -1 && page.indexOf("label:'URL & SEO'") === -1 && /data-goto="settings\/seo">Settings › Search and sharing<\/a>/.test(page) &&
+    /data-goto="settings\/seo">Search and sharing<\/a>\.<\/li>/.test(page) && /label: 'Search and sharing', dirty: dirty/.test(seoJs) &&
+    /seo: 'Search and sharing'/.test(read('functions/lib/dash-bot.js')));
   check('routes: everything else as before', r('settings/history') === '{"sec":"activity","tab":null}' && r('dashboard') === '{"sec":"dashboard","tab":null}' && r('design/editor') === '{"url":"/editor"}' && r('nonsense') === '{"sec":"content","tab":"basics"}');
 
   /* ---------- the rail and the server's file list ---------- */

@@ -80,23 +80,34 @@ function readHead(html) {
   return out;
 }
 
-/* ---------- the checklist: what is complete for search and what is missing ---------- */
+/* ---------- the checklist: what is complete for search and what is missing ----------
+   Each item is ok (done), warn (to do: counted) or info (a note: listed, never counted — the console shows "Checklist:
+   3 of 5 done"). Counted: what the page says needs the team (the title, the description, the search words) and what
+   keeps the site, or its details, from search engines. A note until it is done: what cannot be done on this page or is
+   an optional extra — the main heading while the event's name stands in, Show in Google before the site is live, the
+   street address, speakers, FAQs and testimonials (none yet, or not on the site), the rating, passes and prices. */
 function readiness(x) {
-  var items = [], seo = x.seo || {}, head = x.head || {}, auto = x.auto || {}, sd = x.schema || {};
+  var items = [], seo = x.seo || {}, head = x.head || {}, auto = x.auto || {}, sd = x.schema || {}, ev = x.event || {};
   function add(group, id, label, level, text) { items.push({ group: group, id: id, label: label, ok: level === 'ok', level: level, text: text }); }
   var tl = (seo.title || '').length;
   add('search', 'title', 'SEO title', seo.title ? (tl <= 60 ? 'ok' : 'warn') : 'warn',
     seo.title ? (tl <= 60 ? tl + ' characters' : tl + ' characters: a search result shows about 60') : 'None yet: the event’s name is used. Write one (about 60 characters).');
-  var dl = (head.description || '').length;
+  /* the description as the team wrote it (the page's head carries it already cut at 160, which would always fit) */
+  var dl = String(seo.description || head.description || '').length;
   add('search', 'description', 'Meta description', !seo.description ? 'warn' : dl >= 70 && dl <= 160 ? 'ok' : 'warn',
     !seo.description ? (head.description ? 'None yet: the short description from Basics is used.' : 'None yet, and Basics has no short description: search engines pick words from the page.')
-      : dl > 160 ? 'Cut to 160 characters in results' : dl < 70 ? dl + ' characters: 120 to 160 reads best' : dl + ' characters');
+      : dl > 160 ? dl + ' characters: a search result shows about 160' : dl < 70 ? dl + ' characters: 120 to 160 reads best' : dl + ' characters');
   var kn = (seo.keywords || []).length;
-  add('search', 'keywords', 'Keywords', kn >= 8 && kn <= 12 ? 'ok' : 'warn', kn ? kn + (kn === 1 ? ' keyword' : ' keywords') + (kn < 8 ? ': 8 to 12 works best' : kn > 12 ? ': 8 to 12 works best' : '') : 'None yet');
-  add('search', 'h1', 'H1 heading', seo.h1 || (auto.h1 && auto.h1.own) ? 'ok' : 'warn',
+  add('search', 'keywords', 'Keywords', kn >= 8 && kn <= 12 ? 'ok' : 'warn', kn ? kn + (kn === 1 ? ' search word' : ' search words') + (kn < 8 ? ': 8 to 12 works best' : kn > 12 ? ': 8 to 12 works best' : '') : 'None yet');
+  add('search', 'h1', 'H1 heading', seo.h1 || (auto.h1 && auto.h1.own) ? 'ok' : 'info',
     auto.h1 && auto.h1.own ? 'The site’s own main heading: “' + auto.h1.own.slice(0, 80) + '”' : seo.h1 ? 'Set' : 'None yet: the event’s name is used.');
-  add('search', 'indexing', 'Indexing', auto.indexing && auto.indexing.on ? 'ok' : 'warn', auto.indexing ? auto.indexing.text : '');
-  add('sharing', 'image', 'Share picture', head.ogImage ? 'ok' : 'warn', head.ogImage ? (seo.shareImageUrl ? 'The team’s own picture' : 'Chosen automatically from the site') : 'None: a shared link shows the title and description only.');
+  add('search', 'indexing', 'Indexing', auto.indexing && auto.indexing.on ? 'ok' : auto.indexing && auto.indexing.reason === 'not-live' ? 'info' : 'warn', auto.indexing ? auto.indexing.text : '');
+  /* the share picture: the team's own, the automatic one once it is made, else (a picture of the site meanwhile) when it is */
+  var card = ev.shareCard && typeof ev.shareCard === 'object' ? ev.shareCard : null;
+  var made = !!(card && card.state === 'ready' && card.url && head.ogImage === card.url);
+  add('sharing', 'image', 'Share picture', head.ogImage ? 'ok' : 'warn', !head.ogImage ? 'None: a shared link shows the title and description only.'
+    : seo.shareImageUrl ? 'Your own picture' : made ? 'Made automatically' : ev.published !== true ? 'Made when the site is published'
+      : card && (card.state === 'none' || card.state === 'failed') ? 'For now, a picture from the site' : 'Being made');
   var dates = auto.dates || {};
   if (seo.basicSchema === false) add('schema', 'basic', 'Event schema', 'warn', 'Turned off: search engines are not told the event’s date and place.');
   else if (!dates.exact) add('schema', 'basic', 'Event schema', 'warn', 'Not given while the date is to be announced: set exact dates in Basics.');
@@ -105,7 +116,7 @@ function readiness(x) {
     var mode = seoFields.attendanceOf(seo, x.event || {});
     if (mode !== 'online') {
       add('schema', 'venue', 'Venue', auto.venue ? 'ok' : 'warn', auto.venue ? auto.venue : 'No venue in Basics');
-      add('schema', 'address', 'Street address and postcode', seo.streetAddress && seo.postalCode ? 'ok' : 'warn',
+      add('schema', 'address', 'Street address and postcode', seo.streetAddress && seo.postalCode ? 'ok' : 'info',
         seo.streetAddress && seo.postalCode ? seo.streetAddress + ', ' + seo.postalCode : 'Missing: ' + [seo.streetAddress ? '' : 'street address', seo.postalCode ? '' : 'postcode'].filter(Boolean).join(' and '));
       add('schema', 'place', 'City, state, country', auto.place ? 'ok' : 'warn', auto.place ? auto.place.label : (x.event && x.event.city ? '“' + x.event.city + '” is not in the place list: the city is given as typed' : 'No city in Basics'));
     }
@@ -115,12 +126,13 @@ function readiness(x) {
   if (seo.advancedSchema === false) add('rich', 'advanced', 'Rich results', 'warn', 'Turned off: no speakers, FAQs or reviews are given.');
   else {
     var sp = (x.speakers || []).filter(function (s) { return s.counts; });
-    add('rich', 'speakers', 'Speakers', rep.performers ? 'ok' : 'warn', rep.performers ? rep.performers + ' shown on the site' + (rep.notShown && rep.notShown.speakers.length ? ', ' + rep.notShown.speakers.length + ' not on it' : '') : sp.length ? 'None of the ones picked is on the site yet' : 'None in Content › Speakers');
+    add('rich', 'speakers', 'Speakers', rep.performers ? 'ok' : 'info', rep.performers ? rep.performers + ' shown on the site' + (rep.notShown && rep.notShown.speakers.length ? ', ' + rep.notShown.speakers.length + ' not on it' : '') : sp.length ? 'None of the ones picked is on the site yet' : 'None in Content › Speakers');
     var fq = (x.faqs || []).filter(function (f) { return f.counts; });
-    add('rich', 'faqs', 'FAQs', rep.faqs ? 'ok' : 'warn', rep.faqs ? rep.faqs + ' shown on the site' + (rep.notShown && rep.notShown.faqs.length ? ', ' + rep.notShown.faqs.length + ' not on it' : '') : fq.length ? 'None of the ones picked is on the site yet' : 'None in Content › FAQ');
+    add('rich', 'faqs', 'FAQs', rep.faqs ? 'ok' : 'info', rep.faqs ? rep.faqs + ' shown on the site' + (rep.notShown && rep.notShown.faqs.length ? ', ' + rep.notShown.faqs.length + ' not on it' : '') : fq.length ? 'None of the ones picked is on the site yet' : 'None in Content › FAQ');
     var tm = (seo.testimonials || []).filter(function (t) { return !t.off; });
-    add('rich', 'reviews', 'Testimonials', rep.reviews ? 'ok' : 'warn', rep.reviews ? rep.reviews + ' shown on the site' : tm.length ? 'Not shown on the site: add a testimonials section in the editor to show them' : 'None yet');
-    add('rich', 'rating', 'Rating', rep.rating ? 'ok' : 'warn', rep.rating ? rep.rating + ' from ' + rep.ratings + (rep.ratings === 1 ? ' rating' : ' ratings') : 'None: it is worked out from the ratings of the testimonials the site shows');
+    /* a testimonial is on the site when the site shows its very words (seo-schema.js showsTestimonial) */
+    add('rich', 'reviews', 'Testimonials', rep.reviews ? 'ok' : 'info', rep.reviews ? rep.reviews + ' shown on the site' : tm.length ? 'Not on the site: put the same words in a testimonials section in the site editor' : 'None yet');
+    add('rich', 'rating', 'Rating', rep.rating ? 'ok' : 'info', rep.rating ? rep.rating + ' from ' + rep.ratings + (rep.ratings === 1 ? ' rating' : ' ratings') : 'None: it is worked out from the ratings of the testimonials the site shows');
   }
   add('rich', 'offers', 'Passes and prices', 'info', 'Not included: search engines need prices shown on the page, and this site shows no passes yet.');
   (sd.problems || []).forEach(function (p, n) { add('schema', 'problem-' + n, 'Structured data', 'warn', p); });
