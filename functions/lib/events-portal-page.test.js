@@ -467,6 +467,9 @@ function page(o) {
       }) }));
       if (/^\/api\/activity\/all\?/.test(url)) return Promise.resolve(response(200, { items: [], next: null }));
       if (url === '/api/promo/analytics/all') return Promise.resolve(response(200, { available: false, backend: 'none', series: [], totals: { sends: 0, opens: 0, clicks: 0 } }));
+      /* who the approvers are (o.approvers; none named, as here unless said, makes everyone one): the "no portal yet"
+         notice is theirs (NU-032) */
+      if (url === '/api/settings/approvals') return Promise.resolve(response(200, { approvers: o.approvers || [], allowSelf: false, required: true }));
       return Promise.resolve(response(200, { items: o.items || ITEMS }));
     },
     RevampAuth: {
@@ -532,6 +535,18 @@ async function main() {
   check('D.4 the Drafts tab counts every portal\'s drafts in All portals', S.tabs().draft === 2 && !S.$('more-menu').querySelector('[data-special="draft"]'));
   check('D.4 the "No portal yet" notice: the count (Deleted not counted), Show them, Review suggested portals', S.notice().indexOf('2 events have no portal yet.') !== -1 && !!S.$('pn-show-none') &&
     S.$('portal-notice').querySelector('a[href="portal-review.html"]').textContent === 'Review suggested portals');
+  /* NU-032: housekeeping is the approvers'; anyone else hears only of their own events with no portal */
+  var mineNp = ITEMS.map(function (e) { return e.id === 'np-draft' ? Object.assign({}, e, { createdBy: 'asha.rao@timesinternet.in' }) : e; });
+  var Sm = page({ store: {}, server: 'all', approvers: ['boss@timesinternet.in'], items: mineNp });
+  await flush();
+  check('D.4 not an approver: only their own event with no portal ("1 of your events…"), Show them, no Review suggested portals',
+    Sm.notice().indexOf('1 of your events has no portal yet.') !== -1 && Sm.notice().indexOf('2 events') === -1 && !!Sm.$('pn-show-none') && !Sm.$('portal-notice').querySelector('a[href="portal-review.html"]'), Sm.notice());
+  Sm.$('pn-show-none').click();
+  await flush();
+  check('D.4 …Show them lists just their own (the Mine filter, a chip they can take off)', JSON.stringify(Sm.rows()) === JSON.stringify(['np-draft']) && Sm.ctx.RvListing.snapshot().mine === true, [Sm.rows(), Sm.ctx.RvListing.snapshot().mine]);
+  var So = page({ store: {}, server: 'all', approvers: ['boss@timesinternet.in'] });
+  await flush();
+  check('D.4 not an approver, none of their own without a portal: no notice at all (other people\'s housekeeping is not theirs)', So.notice().indexOf('no portal yet') === -1, So.notice());
 
   /* ======== the switcher: open, search, keys, pick ======== */
   S.$('btn-portals-nav').click();

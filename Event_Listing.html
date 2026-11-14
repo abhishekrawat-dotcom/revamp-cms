@@ -657,6 +657,9 @@
   .cdrafts-head h2{ font-size:14px; }
   .cdrafts-head .tc{ font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-faint); background:var(--surface-2); border-radius:100px; padding:1px 7px; }
   .cdrafts-note{ font-size:12.5px; color:var(--text-muted); margin:4px 0 0; }
+  /* the one line left when none of them is on this portal (NU-032) */
+  .cdrafts-line{ font-size:12.5px; color:var(--text-muted); margin:0; padding:2px 2px 0; }
+  .cdrafts-line .pn-link{ font-size:12.5px; }
   .cdrafts-list{ list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; }
   .cdraft{ display:flex; align-items:center; gap:10px 16px; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--border); }
   .cdraft-main{ flex:1 1 260px; min-width:0; }
@@ -1803,7 +1806,7 @@
   }
   function showNoPortal(){
     /* the events with no portal may all be drafts, or all past: open the list that has some of them */
-    var none = EVENTS.filter(function(e){ return !e.portal && e.status !== 'deleted'; });
+    var none = EVENTS.filter(function(e){ return !e.portal && e.status !== 'deleted' && (!state.mine || isMine(e)); });
     function has(s){ return none.some(function(e){ return e.status === s; }); }
     var bucket = state.specialView || state.tab;
     if (!has(bucket)){
@@ -1942,16 +1945,26 @@
           '<button type="button" class="btn btn-secondary btn-sm" id="pn-choose">Choose portal</button></div>';
       }
       var filteringNone = state.portal === 'all' && state.filters.portals.indexOf('none') !== -1;
-      if (c.none){
+      /* Housekeeping is the approvers' (NU-032: "1 event has no portal yet" was noise to a newcomer, whose events all
+         have one, since Create Event asks for it first). Anybody else hears only of their own events with none,
+         and Show them lists just those (the "Created by you" filter, a chip they can take off). */
+      var approver = approverHere() === true;
+      var noneShown = approver ? c.none : EVENTS.filter(function(e){ return !e.portal && e.status !== 'deleted' && isMine(e); }).length;
+      if (noneShown){
         html += '<div class="portal-notice">' + IC.alert + '<span class="pn-text">' +
-          (c.none === 1 ? '1 event has no portal yet.' : c.none + ' events have no portal yet.') + '</span>' +
-          (filteringNone ? '' : '<button type="button" class="pn-link" id="pn-show-none">Show them</button>') + review + '</div>';
+          (approver ? (noneShown === 1 ? '1 event has no portal yet.' : noneShown + ' events have no portal yet.')
+            : (noneShown === 1 ? '1 of your events has no portal yet.' : noneShown + ' of your events have no portal yet.')) + '</span>' +
+          (filteringNone ? '' : '<button type="button" class="pn-link" id="pn-show-none">Show them</button>') + (approver ? review : '') + '</div>';
       }
     }
     el.innerHTML = html;
     var back = $('pn-back'), choose = $('pn-choose'), showNone = $('pn-show-none');
     if (back) back.addEventListener('click', backToWorkingPortal);
-    if (showNone) showNone.addEventListener('click', showNoPortal);
+    if (showNone) showNone.addEventListener('click', function(){
+      /* someone who is not an approver was told of their own events only: those are what Show them lists */
+      if (approverHere() !== true) state.mine = true;
+      showNoPortal();
+    });
     if (choose) choose.addEventListener('click', function(e){
       e.stopPropagation();
       /* the top-bar switcher is hidden on phones: the Filters sheet carries the Portal choice there */
@@ -3970,6 +3983,20 @@
     var onPortal = createDraftsOnPortal(), shown = createDraftsShown();
     var elsewhere = CDRAFTS.list.length - onPortal.length, hidden = onPortal.length - shown.length;
     if (!CDRAFTS.list.length || (!shown.length && !elsewhere && !hidden)){ el.innerHTML = ''; return; }
+    /* none to show here (NU-032): no empty box with a 0 in it, only one line saying where they are, with the way there */
+    if (!shown.length){
+      var only = [];
+      if (hidden) only.push((state.created || state.starts)
+        ? (hidden === 1 ? '1 unfinished Create Event draft is not shown while a date filter is on: it has no date yet.'
+          : hidden + ' unfinished Create Event drafts are not shown while a date filter is on: they have no dates yet.')
+        : (hidden === 1 ? '1 unfinished Create Event draft does not match the search or filters.'
+          : hidden + ' unfinished Create Event drafts do not match the search or filters.'));
+      if (elsewhere) only.push((elsewhere === 1 ? '1 unfinished Create Event draft is' : elsewhere + ' unfinished Create Event drafts are') + ' on other portals.');
+      el.innerHTML = '<p class="cdrafts-line">' + esc(only.join(' ')) +
+        (elsewhere ? ' <button type="button" class="pn-link" id="cdrafts-elsewhere">Show ' + (elsewhere === 1 ? 'it' : 'them') + '</button>' : '') + '</p>';
+      if ($('cdrafts-elsewhere')) $('cdrafts-elsewhere').addEventListener('click', function(){ showAllPortalsForNow(''); });
+      return;
+    }
     var notes = [];
     if (hidden) notes.push((state.created || state.starts)
       ? (hidden === 1 ? '1 is' : hidden + ' are') + ' not shown while a date filter is on: they have no dates yet.'
