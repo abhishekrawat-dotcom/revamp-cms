@@ -285,7 +285,11 @@ function h(tag, attrs, kids) { return new El(tag, attrs, kids); }
 
 /* ======================= 5 the amber outline says what it is (NU-009) ======================= */
 (function () {
-  check('5 pointed at, a sample says what it is', SRC.indexOf("text: 'Sample text from the design — type your event’s own over it'") !== -1 && SRC.indexOf("image: 'Sample picture from the design — replace it with your event’s own'") !== -1);
+  check('5 pointed at, a sample says what it is', SRC.indexOf("text: 'Sample text from the design — type your event’s own over it'") !== -1 && SRC.indexOf("box: 'Sample picture from the design — replace it with your event’s own'") !== -1);
+  /* NEW-4: another event's picture the design came with (the banner's own stage photo) says so, with the way to replace it */
+  check('5 NEW-4 … and another event\'s picture, the banner\'s with the way to replace it', SRC.indexOf("picture: 'Another event’s picture, from the design — replace it with your event’s own'") !== -1 &&
+    SRC.indexOf("banner: 'The design’s sample picture, from another event — replace it: Background picture, in the banner’s menu'") !== -1 &&
+    /SAMPLE_TAG_WORDS\[sampleKind\(el\)\]/.test(body('placeSampleTag')) && /img\[' \+ SAMPLE_LEFT \+ '="banner"\]/.test(body('onCanvasHover')));
   check('5 the tag follows the pointer over the page, and goes when it leaves', /canvas\.doc\.addEventListener\('mouseover', onCanvasHover, true\);/.test(SRC) && /canvas\.doc\.documentElement\.addEventListener\('mouseleave', hideSampleTag\);/.test(SRC));
   var place = body('placeSampleTag');
   check('5 … under the element while it is selected (its toolbar is above), never while it is typed in or ETB2B AI is busy', /el === selectedEl \|\| above < 4 \? below : above/.test(place) && /el === editingEl/.test(place) && /aiWorking/.test(place));
@@ -299,13 +303,41 @@ function h(tag, attrs, kids) { return new El(tag, attrs, kids); }
 (function () {
   var rs = body('renderSiteState');
   check('6 unsaved work says how to keep it, beside the words, with the keys', /hint\.className = 'ss-hint';/.test(rs) && rs.indexOf("hint.textContent = '— press Save (' + saveKeys() + ')';") !== -1 && /text = 'Unsaved changes'/.test(rs));
-  check('6 … not while saving, nor while the first save of a site Create Event just made is on its way', /var due = kind === 'warn' && \(dirty \|\| !v\) && !saving && !firstSavePending;/.test(rs));
+  check('6 … not while saving, nor while the first save of a site Create Event just made is due or on its way (NU-011)', /var due = kind === 'warn' && \(dirty \|\| !v\) && !saving && !firstSavePending && !firstSaveDue;/.test(rs));
   check('6 Save shows a dot while there is work to keep', /save\.classList\.toggle\('is-due', due && dirty\);/.test(rs) && /#btn-save\.is-due::after\{ content:''; width:7px; height:7px; border-radius:50%; background: var\(--warn\);/.test(PAGE));
   check('6 under a short name (a phone) only the words show; Save\'s dot says the rest', /\.topbar \.site-state \.ss-hint\{ display:none; \}/.test(PAGE));
   check('6 the first change of a person\'s own says once, in a sentence, that the editor keeps it until Save', /if \(due && dirty && editedThisVisit\) firstUnsavedNote\(\);/.test(rs) &&
     /The site editor keeps your changes in this browser until you press Save \(' \+ saveKeys\(\) \+ '\)\. Nothing goes live until it is published\./.test(body('firstUnsavedNote')) && /'revamp\.editorSaveNote\.' \+ personKey\(\)/.test(body('firstUnsavedNote')));
   check('6 … never for what the editor did as it opened (a hand-off, its own touch-ups, ETB2B AI\'s hero picture)', /if \(\(!automatic \|\| editingEl\) && bootDone\) editedThisVisit = true;/.test(body('record')) &&
     /applyAiHero\(heroDraft\); \}\s*\n\s*bootDone = true;/.test(SRC));
+  /* NEW-1: a section the editor added as it opened (the console's "Open the site editor to add the “Agenda” section") is
+     unsaved work, said so — never only "Updated automatically", with no dot and nothing asked on leaving */
+  check('6 NEW-1 a section added as the page opened makes the words say "Unsaved changes" (so Save shows its dot)',
+    /var added = dirty \? addedSectionsLeft\(\) : \[\];/.test(rs) && /else if \(dirty && added\.length\) \{\s*\n\s*kind = 'warn'; text = 'Unsaved changes';/.test(rs) &&
+    rs.indexOf('else if (dirty && added.length)') < rs.indexOf('else if (dirty && autoOnly())') && /noteAddedSections\(\);/.test(rs));
+  check('6 NEW-1 … leaving asks, as for the person\'s own changes', /var added = addedUnsaved\(\);\s*\n\s*return workSafety\.unsavedWork\(\{ dirty: isDirty\(\) && \(!autoOnly\(\) \|\| added\), savedVersion: [^,]+, edited: localEdited \|\| added \}\);/.test(body('hasUnsavedWork')) &&
+    /added: canvas && addedUnsaved\(\) \? addedPhrase\(addedSectionsLeft\(\)\) : ''/.test(body('leave')));
+  check('6 NEW-1 … the kinds added are kept from the opening, and named in the automatic version\'s note', /addedAtOpening = added; return drawRecords\(added\.length > 0\);/.test(body('applySubcollectionOverlay')) &&
+    /if \(addedAtOpening\.length\) noteAuto\(\[addedPhrase\(addedAtOpening\)\]\);/.test(SRC));
+  /* the line above the page, run as it is: what was added, for what, and the one step that keeps it */
+  var notices = [], cleared = [];
+  var N = vm.createContext({ window: { RevampRecords: { TABS: { sessions: { many: 'sessions' }, speakers: { many: 'speakers' }, faq: { many: 'FAQs' } } } }, notices: notices, cleared: cleared });
+  N.RevampRecords = N.window.RevampRecords;
+  vm.runInContext('var AUTO_SECTIONS = { sessions: { name: "Agenda" }, speakers: { name: "Speakers" }, faq: { name: "FAQs" } };' +
+    'var addedAtOpening = [], addedNoteGone = false, addedNoteSaid = "", saving = false, firstSaveDue = false, firstSavePending = false, dirty = true, siteInfo = { savedVersion: 2 };' +
+    'var onPage = {}; var canvas = { doc: { querySelector: function (s) { var k = /data-rv-auto="([a-z]+)"/.exec(s)[1]; return onPage[k] ? { classList: { contains: function () { return false; } } } : null; } } };' +
+    'function isDirty() { return dirty; } function showNotice(id, o) { notices.push(o); } function clearNotice(id) { cleared.push(id); } function saveToStaging() { return Promise.resolve(); }' +
+    ['addedSectionsLeft', 'addedUnsaved', 'kindsWords', 'addedLine', 'addedPhrase', 'noteAddedSections'].map(function (n) { return body(n); }).join('\n'), N);
+  vm.runInContext('addedAtOpening = ["sessions"]; onPage.sessions = true; noteAddedSections(); noteAddedSections();', N);
+  check('6 NEW-1 the line names what was added and how to keep it, once, with Show it and Save', notices.length === 1 &&
+    notices[0].text === 'An “Agenda” section was added for your sessions — press Save to keep it.' && notices[0].actions.map(function (a) { return a.label; }).join() === 'Show it,Save' && notices[0].dismissible === true, notices);
+  check('6 NEW-1 … and in the words the leave question and the saved version use', vm.runInContext('addedPhrase(["sessions"])', N) === 'the “Agenda” section added for your sessions' &&
+    vm.runInContext('addedLine(["speakers", "sessions"])', N) === '“Speakers” and “Agenda” sections were added for your speakers and sessions — press Save to keep them.' &&
+    vm.runInContext('addedLine(["faq"])', N) === 'An “FAQs” section was added for your FAQs — press Save to keep it.');
+  vm.runInContext('dirty = false; noteAddedSections();', N);
+  check('6 NEW-1 … gone once a save keeps it, and from then on it is a section like any other', cleared.indexOf('auto-sections') !== -1 && vm.runInContext('addedAtOpening.length', N) === 0 && vm.runInContext('addedUnsaved()', N) === false);
+  vm.runInContext('addedAtOpening = ["sessions"]; dirty = true; firstSaveDue = true; addedNoteSaid = ""; noteAddedSections();', N);
+  check('6 NEW-1 … not said while the first save of a site Create Event just made is due (that save keeps it)', notices.length === 1, notices.length);
   var C = vm.createContext({ navigator: { platform: 'MacIntel' } });
   vm.runInContext(body('saveKeys'), C);
   var mac = C.saveKeys();

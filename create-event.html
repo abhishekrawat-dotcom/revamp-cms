@@ -12623,7 +12623,10 @@
       (gallery && caps ? reviewRow('Design', gallery.name + ' template · ' + designCountText(designCount(gallery.id, caps))) : '') +
       (isImportedTemplate(S.template) ? reviewRow('Design', 'Your imported design') : '') +
       (gallery ? reviewRow('Filled in here', counts.done + ' of ' + counts.of + ' sections') : '') +
-      (gallery && !activeBannerUrl() ? reviewRow('Banner picture', 'The template’s own picture for now', 'Upload yours in the Banner section, here or in the site editor.') : '');
+      /* the design's own banner picture is another event's stage: the check before publishing holds the site back while it
+         shows (NEW-4), so the summary says so before Create */
+      (gallery && !activeBannerUrl() ? reviewRow('Banner picture', 'The design’s sample picture, from another event',
+        'Upload yours in the Banner section, here or later in the site editor. The site cannot go live while the sample shows.') : '');
     var lines = found.map(function(p){ return '<li><strong>' + esc(secTitle(p.section)) + '</strong> — ' + esc(p.message) + '</li>'; });
     var samples = null;           // what the look found, once it has answered
     openModal({

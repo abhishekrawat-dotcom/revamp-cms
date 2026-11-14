@@ -37,6 +37,7 @@
     gotIt: 'Got it',
     close: 'Close',
     showSamples: 'Show the sample texts',
+    showSamplesAll: 'Show the samples',
     showNext: 'Show next',
     helpTitle: 'How to finish your site, step by step',
     left: function (n) { return n + ' left'; },
@@ -70,9 +71,13 @@
     out.push({ key: 'words', title: 'Change the words', text: wordsText,
       state: words ? TEXT.left(words) : (st.kind === 'template' ? TEXT.done : ''), done: !words && st.kind === 'template' });
 
+    /* another event's pictures the design came with (NEW-4): the banner's own, and photos in its samples */
+    var photos = +s.photos || 0, banner = Math.min(+s.banner || 0, photos), others = photos - banner;
     var picText = click + ' a picture, then Replace image.';
     if (pictures) picText += ' ' + cap(plural(pictures, 'picture box is', 'picture boxes are')) + ' still empty, with a dashed amber outline.';
-    out.push({ key: 'pictures', title: 'Change the pictures', text: picText, state: pictures ? TEXT.left(pictures) : '', done: false });
+    if (banner) picText += ' The banner still shows the design’s sample picture, from another event: select the banner, then Background picture, to replace it.';
+    if (others) picText += ' ' + cap(plural(others, 'picture is', 'pictures are')) + ' another event’s, from the design, with a dashed amber outline: replace ' + (others === 1 ? 'it' : 'them') + ' with your event’s own.';
+    out.push({ key: 'pictures', title: 'Change the pictures', text: picText, state: pictures + photos ? TEXT.left(pictures + photos) : '', done: false });
 
     out.push({ key: 'content', title: 'Add speakers, agenda and sponsors',
       text: (st.phone ? 'Speakers, Agenda and Sponsors, in the event’s menu (switch to Myself to see it), open' : 'Speakers, Agenda and Sponsors, in the left bar, open') +
@@ -93,13 +98,17 @@
     if (!st.first) return TEXT.titleAgain;
     return st.generated ? TEXT.titleFirstAi : TEXT.titleFirst;
   }
-  /* the line above the page while the design's samples are on it (NU-009) */
-  function legendText(words, pictures) {
-    words = +words || 0; pictures = +pictures || 0;
-    if (!words && !pictures) return '';
-    var what = words && pictures ? plural(words, 'text', 'texts') + ' and ' + plural(pictures, 'picture box', 'picture boxes')
-      : words ? plural(words, 'text', 'texts') : plural(pictures, 'picture box', 'picture boxes');
-    var many = words + pictures > 1;
+  /* the line above the page while the design's samples are on it (NU-009); photos: another event's pictures the design
+     came with, the banner's among them (NEW-4) */
+  function legendText(words, pictures, photos) {
+    words = +words || 0; pictures = +pictures || 0; photos = +photos || 0;
+    if (!words && !pictures && !photos) return '';
+    var bits = [];
+    if (words) bits.push(plural(words, 'text', 'texts'));
+    if (pictures) bits.push(plural(pictures, 'picture box', 'picture boxes'));
+    if (photos) bits.push(plural(photos, 'picture', 'pictures'));
+    var what = bits.length > 1 ? bits.slice(0, -1).join(', ') + ' and ' + bits[bits.length - 1] : bits[0];
+    var many = words + pictures + photos > 1;
     return cap(what) + ' on this page ' + (many ? 'are' : 'is') + ' still the design’s sample' + (many ? 's' : '') +
       ': ' + (many ? 'they have' : 'it has') + ' a dashed amber outline. Replace ' + (many ? 'them' : 'it') +
       ' with your event’s own, or hide ' + (many ? 'their' : 'its') + ' section, before you send the site for approval.';
@@ -148,8 +157,8 @@
     if (!host || !isFn(host.openDialog)) return null;
     var st = state(first), U = ui();
     var actions = [];
-    if (st.samples && (+st.samples.words || +st.samples.pictures) && U && isFn(U.showNextSample)) {
-      actions.push({ label: TEXT.showSamples, kind: 'secondary', aside: true, onClick: function () { setTimeout(function () { U.showNextSample(); }, 0); } });
+    if (st.samples && (+st.samples.words || +st.samples.pictures || +st.samples.photos) && U && isFn(U.showNextSample)) {
+      actions.push({ label: +st.samples.words ? TEXT.showSamples : TEXT.showSamplesAll, kind: 'secondary', aside: true, onClick: function () { setTimeout(function () { U.showNextSample(); }, 0); } });
     }
     actions.push({ label: first ? TEXT.gotIt : TEXT.close, kind: 'primary', autofocus: true });
     var d = host.openDialog({
@@ -187,7 +196,7 @@
   function drawLegend() {
     var U = ui();
     if (!host || !U || legendGone || !isFn(host.showNotice)) return;
-    var s = U.samplesLeft(), text = legendText(s.words, s.pictures);
+    var s = U.samplesLeft(), text = legendText(s.words, s.pictures, s.photos);
     if (text === legendSaid) return;
     legendSaid = text;
     if (!text) { if (isFn(host.clearNotice)) host.clearNotice('samples'); return; }

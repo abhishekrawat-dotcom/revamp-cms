@@ -127,6 +127,11 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   var q = W.leaveAsk({ ai: 'ready', saving: false, dirty: true });
   check('4 unsaved changes: asked, in the words of the checklist', q && q.kind === 'unsaved' && q.text === 'You have changes that are not saved. They stay only in this browser until you save.', q);
   check('4 a save on its way: it finishes first', W.leaveAsk({ ai: 'ready', saving: true, dirty: true }).kind === 'wait');
+  /* NEW-1: a section the editor added as it opened is named, as the site does not show it until it is saved */
+  q = W.leaveAsk({ ai: 'ready', saving: false, dirty: true, added: 'the “Agenda” section added for your sessions' });
+  check('4 NEW-1 a section added as the editor opened: asked, and named', q && q.kind === 'unsaved' && q.title === 'Leave without saving?' &&
+    q.text === 'You have changes that are not saved, among them the “Agenda” section added for your sessions. They stay only in this browser until you save, and the site does not show them.', q);
+  check('4 NEW-1 … the same work counts as unsaved for a site saved before and for one never saved', W.unsavedWork({ dirty: true, savedVersion: 3, edited: true }) === true && W.unsavedWork({ dirty: true, savedVersion: 0, edited: true }) === true);
   q = W.leaveAsk({ ai: 'working', saving: false, dirty: false });
   check('4 EA-M2: ETB2B AI still applying: "Leave anyway? This change will be lost."', q.kind === 'ai' && q.title === 'ETB2B AI is still changing the page' && q.text === 'Leave anyway? This change will be lost.', q);
   q = W.leaveAsk({ ai: 'working', saving: false, dirty: true });
@@ -312,10 +317,11 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-093: the welcome says to press Save', /Every change has an Undo\. Press Save to keep your changes; nothing goes live until you publish\./.test(fs.readFileSync(path.join(ROOT, 'editor-chat-client.js'), 'utf8')));
 
   var leave = body('leave');
-  check('7 UX-073: leaving asks by workSafety.leaveAsk: Save and leave, Leave without saving, Stay', /workSafety\.leaveAsk\(\{ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork\(\) \}\)/.test(leave) &&
+  check('7 UX-073: leaving asks by workSafety.leaveAsk: Save and leave, Leave without saving, Stay', /workSafety\.leaveAsk\(\{ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork\(\),\s*\n\s*added: /.test(leave) &&
     /label: 'Save and leave'/.test(leave) && /label: 'Leave without saving'/.test(leave) && /label: 'Stay'/.test(leave) && /saveToStaging\(\{ quiet: true \}\)\.then\(go, function \(\) \{\}\)/.test(leave));
   check('7 UX-073 (B04 verify): what leaving asks about is the person\'s own work (hasUnsavedWork), while Save still sees a site never saved as unsaved',
-    /workSafety\.unsavedWork\(\{ dirty: isDirty\(\) && !autoOnly\(\), savedVersion: siteInfo \? siteInfo\.savedVersion : baseVersion, edited: localEdited \}\)/.test(body('hasUnsavedWork')) &&
+    /* NEW-1: a section the editor added as it opened counts as that work too (addedUnsaved) */
+    /workSafety\.unsavedWork\(\{ dirty: isDirty\(\) && \(!autoOnly\(\) \|\| added\), savedVersion: siteInfo \? siteInfo\.savedVersion : baseVersion, edited: localEdited \|\| added \}\)/.test(body('hasUnsavedWork')) &&
     /if \(!savedMark \|\| !siteInfo \|\| !siteInfo\.savedVersion\) return true;/.test(body('isDirty')) && /var dirty = isDirty\(\)/.test(state));
   check('7 UX-073: a save on its way is waited for, so this browser records the version', /\(savingNow \|\| Promise\.resolve\(\)\)\.then\(again, again\);/.test(leave));
   check('7 UX-073: leaving while ETB2B AI applies a change records the turn as not finished first', /stopAiTurn\(false\)\.then\(go, go\);/.test(leave) && /reportTurn\(t\.turnId, 'failed', \[\], \[STOPPED_LINE\], keepalive\)/.test(body('stopAiTurn')));

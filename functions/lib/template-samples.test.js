@@ -149,7 +149,9 @@ ok(/samples\.wholes = samples\.wholes\.concat\(got\.wholes\)/.test(SRC), '4 the 
 ok(/hint: 'They belong to another event: its words, figures, quotes, people or logos/.test(SRC), '4 … and says what they are and where they are marked');
 var UI = read('editor-template-ui.js');
 ok(/function seedSnapshot\(draft\) \{\s*\/\/[^\n]*\n\s*markTemplateSamples\(\);\s*var snap = canvas\.snapshot\(\);/.test(UI), '4 the editor marks a fresh page\'s samples before its first step');
-ok(/var built = !!String\(unit\.getAttribute\('data-rv-item'\) \|\| ''\)\.trim\(\);\s*if \(!built && wholes\[squash\(unit\.textContent\)\]\) mark\(unit\);/.test(UI), '4 … by their words, never a card filled from the event\'s own content by its whole text');
+ok(/RevampSamples\.learn\(box\.content, DOM_TREE, out\);/.test(UI) && /RevampSamples\.find\(doc\.body, samples, DOM_TREE,/.test(UI) &&
+  /function builtFromData\(n, A\) \{ return !!String\(A\.attr\(n, 'data-rv-item'\) \|\| ''\)\.trim\(\); \}/.test(read('templates/_shared/rv-samples.js')),
+  '4 … by the check\'s own rule (templates/_shared/rv-samples.js), never a card filled from the event\'s own content by its whole text');
 ok(/' with the design, or with a section or block you added'/.test(UI), '4 the question before publishing says the samples came with the design');
 if (tsamples) ok(tsamples.wholes.length >= 30, '4 tech500\'s samples, read from disk', tsamples.wholes.length);
 
@@ -196,8 +198,74 @@ pending4 = api._testHooks.siteCheckOf(null, 'qa-n', { name: 'N', site: { templat
     n.fix[0].label === '“Manifesto” in the site editor', '5 NU-023 a writing tip is said as one, apart from another event\'s samples, and still holds the site back', n);
 }, function (err) { ok(false, '5 the site check ran', err && err.stack); });
 
-var pending4;
-Promise.resolve(pending4).then(function () {
+/* ---------- 6. the editor and the check: one rule (NEW-3), and the banner's own picture (NEW-4) ---------- */
+/* the editor's own adapter (editor-template-ui.js DOM_TREE), run as it is over the server's small DOM, against the
+   check on the same page: what the editor outlines is what the check lists, piece for piece */
+var RS = require('../../templates/_shared/rv-samples.js');
+var miniDom = require('./mini-dom'), parseDocument = require('htmlparser2').parseDocument;
+var DOM_SRC = /var DOM_TREE = \{[\s\S]*?\n  \};/.exec(UI);
+ok(!!DOM_SRC, '6 the editor reads the page through its own adapter (DOM_TREE)');
+var DOM_TREE = DOM_SRC ? vm.runInNewContext('(function(){ ' + DOM_SRC[0] + ' return DOM_TREE; })()', { window: { RevampSamples: RS } }) : null;
+function domOf(html) { return miniDom.wrapDocument(parseDocument(html)); }
+/* as the editor learns the design's samples: each section of the template as the canvas mounts it */
+function editorSamples(id) {
+  var out = { texts: [], srcs: [], wholes: [], instructions: [] };
+  tpl(id).sections.forEach(function (s) {
+    var html = onPage(id, s.id);
+    if (!/data-rv-sample|data-rv-media="bg-image"/.test(html)) return;
+    RS.learn(domOf(html), DOM_TREE, out);
+  });
+  return out;
+}
+function editorHits(id, html) {
+  var doc = domOf(/<body/i.test(html) ? html : page(html)), out = [];
+  RS.find(doc.body, editorSamples(id), DOM_TREE, function (h) { out.push({ text: h.text, kind: h.kind, tag: String(h.node.tagName).toLowerCase(), banner: h.banner }); });
+  return out;
+}
+function checkTexts(id, html) {
+  var out = [];
+  SC.sampleHits(page(html), kit, api._testHooks.templateSamples(id)).forEach(function (h) { for (var i = 0; i < h.count; i++) out.push(h.text); });
+  return out.sort();
+}
+if (DOM_TREE) {
+  TEMPLATES.forEach(function (id) {
+    var whole = tpl(id).sections.map(function (s) { return onPage(id, s.id); }).join('');
+    var mine = editorHits(id, page(whole)).map(function (h) { return h.text; }).sort(), theirs = checkTexts(id, whole);
+    ok(mine.length > 0 && JSON.stringify(mine) === JSON.stringify(theirs), '6 NEW-3 ' + id + ': the editor outlines exactly the samples the check lists (' + theirs.length + ')',
+      { editor: mine.length, check: theirs.length, onlyEditor: mine.filter(function (t) { return theirs.indexOf(t) === -1; }).slice(0, 3), onlyCheck: theirs.filter(function (t) { return mine.indexOf(t) === -1; }).slice(0, 3) });
+  });
+  /* NU-034 / NEW-3: one line of the Overview's heading rewritten — the other line is outlined on its own, as the check names it */
+  var halfEditor = editorHits('making-ai-work', halfDone);
+  var line = halfEditor.filter(function (h) { return h.text === 'THE NEXT PHASE IS NOT MORE AI.'; })[0];
+  ok(line && line.kind === 'part' && line.tag === 'clr' && !halfEditor.some(function (h) { return /WHERE PEOPLE/.test(h.text); }),
+    '6 NEW-3 a two-line heading with one line rewritten: the line left is outlined on its own (not the heading), the new one is not', halfEditor);
+  ok(JSON.stringify(halfEditor.map(function (h) { return h.text; }).sort()) === JSON.stringify(checkTexts('making-ai-work', halfDone)), '6 NEW-3 … the same as the check lists for that section');
+  var bothEditor = editorHits('making-ai-work', bothDone);
+  ok(!bothEditor.some(function (h) { return /NEXT PHASE|WHEN AI STARTS/.test(h.text); }), '6 NEW-3 … with both lines rewritten, nothing of the heading is outlined (the check ignores it)', bothEditor);
+
+  /* NEW-4: the banner's own picture (img[data-rv-media="bg-image"]) is a sample of each design, said plainly */
+  TEMPLATES.forEach(function (id) {
+    var banner = onPage(id, 'banner'), src = /<img src="([^"]+)"[^>]*class="banner-bg-image"/.exec(banner)[1];
+    var s = api._testHooks.templateSamples(id);
+    ok(s.srcs.indexOf(src) !== -1 && SC.hasSamples(section(id, 'banner')), '6 NEW-4 ' + id + ': the design\'s own banner picture is one of its samples', src);
+    var hit = SC.sampleHits(page(banner), kit, s).filter(function (h) { return h.banner; })[0];
+    ok(hit && hit.picture && hit.say === 'The banner still shows the design’s sample picture, from another event — replace it' && hit.places[0].key === 'banner',
+      '6 NEW-4 ' + id + ': still on the page, the check lists it, said plainly, with the way to the banner', hit);
+    var eh = editorHits(id, page(banner)).filter(function (h) { return h.banner; });
+    ok(eh.length === 1 && eh[0].kind === 'banner', '6 NEW-4 ' + id + ': … and the editor outlines it as the banner\'s picture', eh);
+    var own = banner.replace(src, 'https://storage.googleapis.com/x/events/qa-x/media/our-banner.jpg');
+    ok(!SC.sampleHits(page(own), kit, s).some(function (h) { return h.banner; }) && !editorHits(id, page(own)).some(function (h) { return h.banner; }),
+      '6 NEW-4 ' + id + ': the event\'s own banner picture is never one');
+  });
+  pending6 = api._testHooks.siteCheckOf(null, 'qa-n', { name: 'N', site: { templateId: 'making-ai-work' } }, page(onPage('making-ai-work', 'banner')), {}).then(function (r) {
+    var s = r.items.filter(function (x) { return x.code === 'samples'; })[0];
+    ok(s && s.level === 'block' && s.lines.indexOf('The banner still shows the design’s sample picture, from another event — replace it') !== -1 &&
+      s.fix[0].label === '“Banner” in the site editor' && /&section=banner$/.test(s.fix[0].href), '6 NEW-4 the check before publishing holds the site back for it, in plain words, with a link to the banner', s);
+  }, function (err) { ok(false, '6 the site check ran', err && err.stack); });
+}
+
+var pending4, pending6;
+Promise.all([pending4, pending6]).then(function () {
   if (failures.length) {
     console.error('template-samples: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
     process.exit(1);

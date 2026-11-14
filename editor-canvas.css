@@ -14,6 +14,20 @@ html[data-rv-editing] [data-editable][contenteditable="true"]{ cursor:text; outl
    markPlaceholders): marked, so sample copy is not taken for the event's own before it goes live. Pointed at,
    selected or typed into, the outlines above win. */
 html[data-rv-editing] [data-rv-placeholder]{ outline:1.5px dashed #C98A1B; outline-offset:2px; }
+/* The design's samples still on the page, as the check before publishing reads them (editor-template-ui.js
+   markTemplateSamples, templates/_shared/rv-samples.js): outlined the same way. Inside one of the design's samples only
+   that rule decides, so an earlier editor's mark there by whole text (data-rv-placeholder) shows nothing of its own. */
+html[data-rv-editing] [data-rv-sample-left]{ outline:1.5px dashed #C98A1B; outline-offset:2px; }
+html[data-rv-editing] [data-rv-sample] [data-rv-placeholder]:not([data-rv-sample-left]):not(:hover),
+html[data-rv-editing] [data-rv-sample][data-rv-placeholder]:not([data-rv-sample-left]):not(:hover){ outline:none; }
+/* The banner's own picture (another event's stage) lies under its words and the layer over them (the banner is
+   position:relative, et-platform.css), which would cover an outline of the picture or of the section: the dashed
+   amber line is drawn just inside the banner's edge, above the picture and its layer and under nothing a click needs,
+   as long as it shows the design's picture (NEW-4), selected or not (the section's red outline is under those layers too). */
+html[data-rv-editing] img[data-rv-sample-left="banner"]{ outline:none; }
+html[data-rv-editing] [data-rv-section]:has(> img[data-rv-sample-left="banner"]):not(.is-hidden-sec)::after{
+  content:''; position:absolute; inset:6px; border:2px dashed #C98A1B; border-radius:4px; pointer-events:none; z-index:3;
+}
 
 html[data-rv-editing] [data-rv-section].sec-active{ outline:2px solid #ED1C24; outline-offset:-2px; }
 

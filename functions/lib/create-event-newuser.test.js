@@ -312,6 +312,13 @@ async function main() {
   check('NU-031 …and each says when it took place', p.ce('cloneEditionDate({ start: "2026-11-12T09:00", end: "2026-11-13T18:00" })') === '12 Nov 2026 – 13 Nov 2026' &&
     p.ce('cloneEditionDate({ dateLabel: "Q1 2027" })') === 'Q1 2027' && p.ce('cloneEditionDate({})') === 'No date set');
 
+  /* NEW-4: the design's own banner picture is another event's stage, and the check before publishing holds the site back
+     while it shows: the summary says so plainly, not "the template's own picture for now" */
+  check('NEW-4 the summary says the banner still shows the design\'s sample picture, from another event, and that the site cannot go live with it',
+    SRC.indexOf("reviewRow('Banner picture', 'The design’s sample picture, from another event',") !== -1 &&
+    SRC.indexOf("'Upload yours in the Banner section, here or later in the site editor. The site cannot go live while the sample shows.'") !== -1 &&
+    SRC.indexOf('The template’s own picture for now') === -1);
+
   console.log('create-event-newuser: ' + passed + ' passed, ' + failed + ' failed');
   if (failed) process.exit(1);
 }

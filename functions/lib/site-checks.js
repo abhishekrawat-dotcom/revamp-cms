@@ -34,11 +34,14 @@
      repair(html, kit, opts)            -> { html, changes: [{ what, label, section, how }] }
         opts = { eventId, homeHref ('/e/<id>'; false leaves a home link alone), portal (an et-footer slug or ''),
                  forms (the public forms payload, when known), imported (true for a page's body at import) }
+     hasSamples(html)                   -> bool   a section file has samples to read (data-rv-sample, the banner's picture)
      samplesOf(html, kit)               -> { texts, srcs, wholes }   what a template marks as a sample of its design
                                           (data-rv-sample: another event's quotes, people, logos, figures, copy), its
                                           quotes and its pictures (never a role or a company, which the owner's own cards
                                           can share), and each marked element's words all together
-     sampleHits(html, kit, samples)     -> [{ text, picture, count, sections, places }]   those still shown on a page, by content: a
+     sampleHits(html, kit, samples)     -> [{ text, picture, count, sections, places, instruction?, banner?, say? }]   those still
+                                          shown on a page, by content (the rule shared with the site editor,
+                                          templates/_shared/rv-samples.js): a
                                           card the owner rewrote no longer counts
      storageRefs(html)                  -> [{ url, bucket, path }]   every picture of storage.googleapis.com
      nearBucket(a, b)                   -> bool   a bucket name one or two letters away from ours (a typo)
@@ -50,6 +53,8 @@
 var etFooter = require('./et-footer');
 var seoFields = require('./seo-fields');
 var forms = require('./forms');
+/* the samples' one rule, shared with the site editor (NEW-3) */
+var RS = require('../../templates/_shared/rv-samples.js');
 
 /* ---------- the words a button says ---------- */
 /* opens the registration form */
@@ -120,13 +125,12 @@ function placeholderOf(text) {
 }
 
 /* ---------- reading the page ---------- */
-var VOID = { area: 1, base: 1, br: 1, col: 1, embed: 1, hr: 1, img: 1, input: 1, link: 1, meta: 1, param: 1, source: 1, track: 1, wbr: 1 };
-/* nothing a visitor reads as the page's words */
-var SKIP = { head: 1, script: 1, style: 1, template: 1, noscript: 1, title: 1, textarea: 1, svg: 1, select: 1, iframe: 1, object: 1 };
-/* the marks of something not shown on a live page (rv-live.css, the editor's own, a hidden attribute) */
-var HIDDEN_MARKS = ['hidden', 'data-rv-empty', 'data-rv-hidden-empty', 'data-rv-bind-empty', 'data-rv-nav-empty', 'data-rv-editor',
-  'data-rv-empty-state', 'data-rv-preview-ribbon', 'data-rv-removed'];
-var SHOWN_AT_SOME_WIDTH = /^(?:sm|md|lg|xl|2xl):(?:block|flex|grid|inline|inline-block|inline-flex|table|contents|flow-root)$/;
+/* the void elements, what a visitor never reads as the page's words, and the marks of something not shown on a live
+   page (rv-live.css, the editor's own, a hidden attribute): the samples' rule's own lists, so both read a page alike */
+var VOID = RS.VOID;
+var SKIP = RS.SKIP;
+var HIDDEN_MARKS = RS.HIDDEN_MARKS;
+var SHOWN_AT_SOME_WIDTH = RS.SHOWN_AT_SOME_WIDTH;
 
 function decode(s) {
   return String(s == null ? '' : s).replace(/&(#x[0-9a-f]+|#\d+|amp|quot|apos|lt|gt|nbsp|rarr|larr|times|copy|mdash|ndash|hellip|rsquo|lsquo|ldquo|rdquo);/gi, function (m, e) {
@@ -361,7 +365,9 @@ function placeholderHits(html, kit) {
   return order.map(function (k) { return found[k]; });
 }
 
-/* ---------- a template's samples of its design (data-rv-sample) ----------
+/* ---------- a template's samples of its design (data-rv-sample, and the banner's own picture) ----------
+   The rule is templates/_shared/rv-samples.js (RevampSamples), the one the site editor outlines them by, so the editor
+   marks exactly what this check lists (NEW-3): read here on the page's tokens (tokenTree), there on the page itself.
    What a sample is known by: its quote (the words of a <p>, <blockquote> or <q> of it, outside the caption that
    names the person) and its photo (a picture in a <figure> of it; never an icon the design repeats on every card,
    which the owner's own cards keep). Never the person's role or company: "Chief Marketing Officer", "Executive
@@ -380,125 +386,54 @@ function placeholderHits(html, kit) {
    An element marked data-rv-sample="instruction" is not another event's words but the design's own note of what
    belongs there ("What this event stands for, in the organiser's own words...", NU-023): it is a sample all the
    same, listed apart (instructions), so the check can say what it is.
+   And the banner's picture behind its words (img[data-rv-media="bg-image"], NEW-4): the four real templates keep their
+   own while the event has no banner (template.json's hero rule, "empty": "keep") — the stage of the event the design
+   was made for, "#ET MAKING" — so it is one of srcs, and a hit on it is said plainly (banner, say).
    -> wholes: [{ tag, cls, text, parts? }], instructions: [text] */
-var SAMPLE_WORDS_MIN = 30;
-var PART_WORDS = 5, PART_CHARS = 25;
-/* the words of an element, as a visitor reads them (text only: never a label or an alt) */
-function wordsOf(s, i, kit) {
-  var parts = [], skipTo = -1;
-  for (var k = i + 1; k < s.ends[i]; k++) {
-    if (k <= skipTo) continue;
-    var x = s.tokens[k];
-    if (x.t === 'open' && (SKIP[x.name] || isHiddenTag(x, kit))) { skipTo = s.ends[k]; continue; }
-    if (x.t === 'text') parts.push(s.html.slice(x.s, x.e));
-  }
-  return clean(parts.join(' '));
-}
-function firstClass(t, kit) { return kit.classListOf(t)[0] || ''; }
-function builtFromData(t, kit) { return !!String(kit.attrValue(t, 'data-rv-item') || '').trim(); }
-/* whether an element has words directly in it (not only inside the elements it holds) */
-function ownText(s, i) {
-  for (var k = i + 1; k < s.ends[i]; k++) {
-    var x = s.tokens[k];
-    if (x.t === 'open') { k = s.ends[k]; continue; }
-    if (x.t === 'text' && /\S/.test(s.html.slice(x.s, x.e))) return true;
-  }
-  return false;
-}
-/* the parts of an element the editor edits one at a time: each outermost element with words of its own (an element
-   with words of its own is one part, itself) -> [text] */
-function partsOf(s, i, kit) {
-  if (ownText(s, i)) { var all = wordsOf(s, i, kit); return all ? [all] : []; }
-  var out = [];
-  for (var k = i + 1; k < s.ends[i]; k++) {
-    var x = s.tokens[k];
-    if (x.t !== 'open' || VOID[x.name] || s.ends[k] === k) continue;
-    if (SKIP[x.name] || isHiddenTag(x, kit)) { k = s.ends[k]; continue; }
-    if (ownText(s, k)) { var w = wordsOf(s, k, kit); if (w) out.push(w); k = s.ends[k]; }
-  }
-  return out;
-}
-function isPhrase(text) { return text.length >= PART_CHARS && text.split(/\s+/).length >= PART_WORDS; }
-function samplesOf(html, kit) {
-  var s = typeof html === 'string' ? scan(html, kit) : html, texts = [], srcs = [], wholes = [], instructions = [];
-  for (var i = 0; i < s.tokens.length; i++) {
-    var t = s.tokens[i];
-    if (t.t !== 'open' || !kit.attrOf(t, 'data-rv-sample')) continue;
-    var note = String(kit.attrValue(t, 'data-rv-sample') || '').trim().toLowerCase() === 'instruction';
-    var quoted = false, figureEnd = -1;
-    for (var k = i; k <= s.ends[i]; k++) {
-      var x = s.tokens[k];
-      if (x.t === 'open' && (x.name === 'figcaption' || x.name === 'cite')) { k = s.ends[k]; continue; }
-      if (x.t === 'open' && x.name === 'figure') figureEnd = Math.max(figureEnd, s.ends[k]);
-      if (x.t === 'open' && /^(?:p|blockquote|q)$/.test(x.name)) {
-        var words = labelOf(s, k, kit);
-        if (words.length >= SAMPLE_WORDS_MIN) {
-          quoted = true;
-          if (texts.indexOf(words) === -1) texts.push(words);
-          if (note && instructions.indexOf(words) === -1) instructions.push(words);
-        }
-        k = s.ends[k];
-        continue;
+/* the page's tokens as a tree for the samples' rule: a node is a token's index, -1 the page itself */
+function tokenTree(s, kit) {
+  return {
+    kids: function (i) {
+      var out = [], end = i < 0 ? s.tokens.length : s.ends[i];
+      for (var k = i + 1; k < end; k++) {
+        var x = s.tokens[k];
+        if (x.t === 'text') out.push(k);
+        else if (x.t === 'open') { out.push(k); k = s.ends[k]; }
       }
-      /* a photo (in a <figure>, as a quote card's person), never an icon the design repeats on every card */
-      if (x.t === 'open' && x.name === 'img' && (k === i || k <= figureEnd)) { var src = decode(kit.attrValue(x, 'src') || '').trim(); if (src && srcs.indexOf(src) === -1) srcs.push(src); }
-    }
-    /* one with words of its own (a quote, a card's copy) is known by them, as before; the rest by all their words */
-    var whole = quoted ? '' : wordsOf(s, i, kit), cls = firstClass(t, kit);
-    if (whole && !wholes.some(function (w) { return w.tag === t.name && w.cls === cls && w.text === whole; })) {
-      var entry = { tag: t.name, cls: cls, text: whole }, parts = partsOf(s, i, kit);
-      if (parts.length >= 2 && parts.some(isPhrase)) entry.parts = parts.filter(isPhrase);
-      wholes.push(entry);
-      if (note && instructions.indexOf(whole) === -1) instructions.push(whole);
-    }
-    i = s.ends[i];
-  }
-  return { texts: texts, srcs: srcs, wholes: wholes, instructions: instructions };
+      return out;
+    },
+    isEl: function (i) { return i >= 0 && s.tokens[i].t === 'open'; },
+    isText: function (i) { return i >= 0 && s.tokens[i].t === 'text'; },
+    text: function (i) { var x = s.tokens[i]; return decode(s.html.slice(x.s, x.e)); },
+    tag: function (i) { return s.tokens[i].name; },
+    attr: function (i, name) { var v = kit.attrValue(s.tokens[i], name); return v == null ? null : decode(v); },
+    classes: function (i) { return kit.classListOf(s.tokens[i]); }
+  };
+}
+/* whether a section file has anything the rule reads (lib/api.js templateSamples reads only those) */
+function hasSamples(html) { return /data-rv-sample|data-rv-media\s*=\s*["']?bg-image/.test(String(html || '')); }
+function samplesOf(html, kit) {
+  var s = typeof html === 'string' ? scan(html, kit) : html;
+  return RS.learn(-1, tokenTree(s, kit));
 }
 function sampleHits(html, kit, samples) {
   var wholes = (samples && samples.wholes) || [];
   if (!samples || (!samples.texts.length && !samples.srcs.length && !wholes.length)) return [];
-  var byTag = {};
-  wholes.forEach(function (w) { (byTag[w.tag] || (byTag[w.tag] = [])).push(w); });
   var s = typeof html === 'string' ? scan(html, kit) : html, found = {}, order = [];
-  var notes = (samples && samples.instructions) || [];
-  function add(key, text, c, picture) {
+  RS.find(-1, samples, tokenTree(s, kit), function (h) {
+    var key = h.picture ? 'p:' + h.src : (h.kind === 'quote' ? 't:' : 'w:') + h.text, c = s.ctx[h.at];
     if (!found[key]) {
-      found[key] = { text: text, picture: !!picture, count: 0, sections: [], places: [] };
-      if (!picture && notes.indexOf(text) !== -1) found[key].instruction = true;
+      found[key] = { text: h.text, picture: h.picture, count: 0, sections: [], places: [] };
+      if (h.instruction) found[key].instruction = true;
+      /* the banner's own picture, said as what it is (its file's name means nothing to the owner) */
+      if (h.banner) { found[key].banner = true; found[key].say = RS.BANNER_SAY; }
       order.push(key);
     }
     found[key].count++;
     var name = c.name || sectionName(c.section);
     if (found[key].sections.indexOf(name) === -1) found[key].sections.push(name);
     addPlace(found[key].places, c.key, name);
-  }
-  for (var i = 0; i < s.tokens.length; i++) {
-    var t = s.tokens[i], c = s.ctx[i];
-    if (c.skip || c.hidden) continue;
-    /* a marked element, all of its words still as the template had them: one hit, and nothing inside it again */
-    if (t.t === 'open' && byTag[t.name] && !builtFromData(t, kit)) {
-      var cls = kit.classListOf(t), whole = null;
-      var like = byTag[t.name].filter(function (w) { return !w.cls || cls.indexOf(w.cls) !== -1; });
-      if (like.length) {
-        whole = wordsOf(s, i, kit);
-        if (whole && like.some(function (w) { return w.text === whole; })) { add('w:' + whole, whole, c, false); i = s.ends[i]; continue; }
-        /* part of it rewritten: a part still as the template wrote it is still another event's (NU-034) */
-        var known = [];
-        like.forEach(function (w) { (w.parts || []).forEach(function (p) { known.push(p); }); });
-        var left = known.length ? partsOf(s, i, kit).filter(function (p) { return known.indexOf(p) !== -1; }) : [];
-        if (left.length) { left.forEach(function (p) { add('w:' + p, p, c, false); }); i = s.ends[i]; continue; }
-      }
-    }
-    /* a quote, read whole as samplesOf reads it */
-    if (t.t === 'open' && /^(?:p|blockquote|q)$/.test(t.name)) {
-      var words = labelOf(s, i, kit);
-      if (words.length >= SAMPLE_WORDS_MIN && samples.texts.indexOf(words) !== -1) { add('t:' + words, words, c, false); i = s.ends[i]; }
-    } else if (t.t === 'open' && t.name === 'img') {
-      var src = decode(kit.attrValue(t, 'src') || '').trim();
-      if (src && samples.srcs.indexOf(src) !== -1) add('p:' + src, src.replace(/[?#].*$/, '').split('/').pop(), c, true);
-    }
-  }
+  });
   return order.map(function (k) { return found[k]; });
 }
 
@@ -1448,7 +1383,7 @@ function enclosing(s, k, name) {
 
 module.exports = {
   inspect: inspect, placeholderHits: placeholderHits, recordPlaceholders: recordPlaceholders, looksLikeTest: looksLikeTest,
-  samplesOf: samplesOf, sampleHits: sampleHits,
+  samplesOf: samplesOf, sampleHits: sampleHits, hasSamples: hasSamples,
   noindexReason: noindexReason, robots: robots, isNoindexPage: isNoindexPage, repair: repair, storageRefs: storageRefs,
   nearBucket: nearBucket, yearsIn: yearsIn, sectionName: sectionName, ENQUIRY: ENQUIRY, REGISTER_RE: REGISTER_RE,
   PARTNER_RE: PARTNER_RE, PAYMENT_RE: PAYMENT_RE,
