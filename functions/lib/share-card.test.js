@@ -564,21 +564,37 @@ function reasonOf(p) { return p.then(function () { return 'made'; }, function (e
   var main = (page.match(/<script>([\s\S]*?)<\/script>/g) || []).map(function (s) { return s.replace(/^<script>|<\/script>$/g, ''); }).filter(function (s) { return s.indexOf('function wireBasics') !== -1; })[0] || '';
   function fnSrc(name) { var m = new RegExp('\\n  function ' + name + '\\([^)]*\\)\\{[\\s\\S]*?\\n  \\}\\n').exec(main); return m ? m[0] : ''; }
   function varSrc(name) { var b = new RegExp('\\n  var ' + name + ' = \\{\\n[\\s\\S]*?\\n  \\};\\n').exec(main); if (b) return b[0]; var m = new RegExp('\\n  var ' + name + '\\b[^\\n]*\\n').exec(main); return m ? m[0] : ''; }
-  var src = ['SHARE_AUTO', 'SHARE_OWN', 'SHARE_LATER', 'SHARE_WHY', 'SHARE_VIDEO'].map(varSrc).join('') + ['shareUrlOf', 'shareHeldText', 'shareAutoState', 'sharePictureField'].map(fnSrc).join('');
+  var src = ['SHARE_AUTO', 'SHARE_OWN', 'SHARE_LATER', 'SHARE_WHY', 'SHARE_VIDEO', 'SHARE_LINE', 'SHARE_TIPS'].map(varSrc).join('') +
+    ['shareUrlOf', 'shareHeldText', 'shareAutoState', 'shareStateOf', 'shareLineHtml', 'sharePictureField'].map(fnSrc).join('');
   var sb = { esc: function (s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }, imgTag: function (u) { return u ? '<img src="' + u + '" alt="">' : ''; }, svg: function () { return '<svg/>'; }, IC: {} };
   vm.runInNewContext(src, sb);
+  /* Settings › URL & SEO, "When the link is shared" (14 Nov 2026, "neat and clean"): the picture large, its state in ONE
+     short line (#b-share-state), Upload your own / Replace and Remove, and the full words folded under "How it works"
+     (#b-share-more, hidden when the line says it all) with what a picture of one's own should be */
+  function stateLine(html) { return ((/id="b-share-state">([\s\S]*?)<\/p>/.exec(html) || [])[1] || '').replace(/<[^>]+>/g, ''); }
   var ready = sb.sharePictureField({ published: true, shareCard: { state: 'ready', url: 'https://storage.googleapis.com/b/events/x/share-card/a.jpg' } });
-  ok(/Automatic: the banner’s picture with the logo unit on it\./.test(ready) && ready.indexOf('<img src="https://storage.googleapis.com/b/events/x/share-card/a.jpg"') !== -1 && /id="b-share-btn">Upload</.test(ready) && /id="b-share-auto" hidden/.test(ready),
-    'Basics › Share picture: the automatic choice says what it is and shows the card; Upload stays', ready);
+  ok(stateLine(ready) === 'Made automatically from the banner’s picture and the logo unit.' && ready.indexOf('<img src="https://storage.googleapis.com/b/events/x/share-card/a.jpg"') !== -1 &&
+    /id="b-share-btn">Upload your own</.test(ready) && /id="b-share-auto" hidden/.test(ready) && /id="b-share-more" hidden>/.test(ready) && !/Automatic: the banner’s picture/.test(ready) &&
+    /<details class="seo2-more"><summary>How it works<\/summary>/.test(ready) && /1200 × 630 px and under 1 MB/.test(ready) && /square \(WhatsApp\), its middle is used/.test(ready) && /after the next publish/.test(ready),
+    'URL & SEO › Share picture: the automatic card, shown, with its state in one line (said once, not again in the fold); Upload your own; the rest folded', ready);
   var later = sb.sharePictureField({ published: true });
-  ok(/It is made when the site is next published or visited\./.test(later) && later.indexOf('<img') === -1, 'no card yet: said plainly when it is made, and no picture pretended');
+  ok(stateLine(later) === 'Being made: ready when the site is next published or visited.' && /It is made when the site is next published or visited\./.test(later) && later.indexOf('<img') === -1,
+    'no card yet: said plainly when it is made (the full words folded), and no picture pretended', later);
   var notLive = sb.sharePictureField({ published: false });
-  ok(/It is made when the site is published\./.test(notLive), 'a site not live yet: made when it is published');
+  ok(stateLine(notLive) === 'Made automatically when the site is published.' && /It is made when the site is published\./.test(notLive), 'a site not live yet: made when it is published');
   var why = sb.sharePictureField({ published: true, shareCard: { state: 'none', reason: 'logo-unit-in-type' } });
-  ok(/None can be made for this site yet: the banner’s logo unit is set in type, not a picture\. Until then a link shows the banner’s picture alone, or the first picture of the site\./.test(why), 'none can be made: why, in plain words', why);
+  ok(stateLine(why) === 'None can be made yet: the banner’s logo unit is set in type, not a picture.' && /id="b-share-state"><svg\/>/.test(why) &&
+    /None can be made for this site yet: the banner’s logo unit is set in type, not a picture\. Until then a link shows the banner’s picture alone, or the first picture of the site\./.test(why),
+    'none can be made: why, in its one line with a small icon (and what a link shows until then, folded)', why);
   var ownField = sb.sharePictureField({ published: true, settings: { seo: { shareImageUrl: 'https://x/own.jpg' } }, shareCard: { state: 'ready', url: 'https://x/card.jpg' } });
-  ok(/Shared links of the site show this picture\./.test(ownField) && ownField.indexOf('own.jpg') !== -1 && ownField.indexOf('card.jpg') === -1 && /id="b-share-btn">Replace</.test(ownField) && !/id="b-share-auto" hidden/.test(ownField),
-    'the owner\'s own picture: shown, with Replace and Use automatic as before');
+  ok(stateLine(ownField) === 'Your own picture.' && /Shared links of the site show this picture\./.test(ownField) && ownField.indexOf('own.jpg') !== -1 && ownField.indexOf('card.jpg') === -1 &&
+    /id="b-share-btn">Replace</.test(ownField) && !/id="b-share-auto" hidden/.test(ownField) && /id="b-share-auto" aria-label="Remove your picture and use the automatic one">Remove</.test(ownField),
+    'the owner\'s own picture: shown, with Replace and Remove (back to the automatic one)', ownField);
+  var held = sb.sharePictureField({ published: true, shareStill: { state: 'held', why: 'twice', found: ['people'], rounds: 1, last: false } });
+  var stillReady = sb.sharePictureField({ published: true, shareCard: { state: 'ready', url: 'https://x/card.jpg', still: 'https://x/still.png' } });
+  ok(stateLine(held) === 'No picture yet for the video banner.' && /id="b-share-state"><svg\/>/.test(held) && /had people in it, so it is not used/.test(held) &&
+    stateLine(stillReady) === 'Made automatically by ETB2B AI for the video banner.' && /Only shared links show this picture: the site keeps its video\./.test(stillReady),
+    'a video banner: its state in one line, what became of ETB2B AI\'s picture folded', [stateLine(held), stateLine(stillReady)]);
   ok(Object.keys(card.REASONS).every(function (k) { return sb.SHARE_WHY[k]; }), 'the console has words for every reason the server records', Object.keys(card.REASONS).filter(function (k) { return !sb.SHARE_WHY[k]; }));
   /* Settings › URL & SEO (edit-event-seo.js) draws the share picture with the console's own field above, so it says
      the same: the card when it is made, else when it will be or why it cannot be */

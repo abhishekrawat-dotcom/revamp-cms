@@ -1240,9 +1240,6 @@ table.tbl tbody tr[data-lead]{ cursor:pointer; }
 /* the upload, one click away when the banner shows another picture (UX-071) */
 .logo-box .lorig{ display:inline-block; margin-top:3px; font-weight:700; color: var(--accent-strong); white-space:nowrap; }
 .logo-box .lorig[hidden]{ display:none; }
-/* a control the share picture does not offer right now ("Use automatic" while it already is) is not shown: a button's
-   own display would otherwise win over its hidden attribute */
-.logo-box.ev-share [hidden]{ display:none; }
 
 /* optional extras stay shut until asked for */
 .acc{ border:1px solid var(--border); border-radius:11px; margin-top:16px; overflow:hidden; }
@@ -1961,4 +1958,34 @@ a.ev-chip:hover{ border-color: currentColor; }
   .seo2-chip button{ width:32px; height:32px; }
   .seo2-kw-in{ height:38px; }
   .seo2-search .tgl{ min-height:40px; }
+}
+
+/* seo2: sharing — Settings › URL & SEO, "When the link is shared" (socialHtml in edit-event-seo.js, and the share
+   picture field the console draws for it: sharePictureField in edit-event.html). The picture large and calm, its
+   state in one muted line, two small actions, how it is made folded; then the title and description, read-only. */
+.seo2-sh-group + .seo2-sh-group{ margin-top:24px; }
+.seo2-sh-label{ margin:0 0 8px; font-size:12.5px; font-weight:700; color: var(--text); }
+.seo2-share{ display:flex; flex-wrap:wrap; gap:16px 20px; align-items:flex-start; }
+.seo2-share [hidden]{ display:none; }
+.seo2-share-pic{ position:relative; flex:0 1 420px; min-width:0; aspect-ratio:1.91 / 1; border-radius:10px; overflow:hidden;
+  border:1px solid var(--border); background: var(--surface-2); color: var(--text-faint); display:grid; place-items:center; }
+.seo2-share-pic img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; }
+.seo2-share-side{ flex:1 1 240px; min-width:0; display:flex; flex-direction:column; align-items:flex-start; gap:12px; }
+.seo2-share-line{ margin:0; display:flex; gap:7px; align-items:flex-start; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere; }
+.seo2-share-line svg{ flex-shrink:0; margin-top:2px; color: var(--warn); }
+.seo2-share-acts{ display:flex; gap:8px; flex-wrap:wrap; }
+.seo2-more summary{ cursor:pointer; font-size:12.5px; font-weight:600; color: var(--text-muted); }
+.seo2-more summary:hover, .seo2-more[open] summary{ color: var(--text); }
+.seo2-more p{ margin:8px 0 0; max-width:62ch; font-size:12.5px; line-height:1.55; color: var(--text-muted); }
+.seo2-sh-title{ margin:0; font-size:14px; font-weight:600; line-height:1.45; color: var(--text); overflow-wrap:anywhere; }
+.seo2-sh-desc{ margin:4px 0 0; max-width:72ch; font-size:13px; line-height:1.5; color: var(--text-muted); overflow-wrap:anywhere;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.seo2-sh-none{ font-weight:500; color: var(--text-faint); }
+.seo2-sh-src{ margin:8px 0 0; font-size:12px; color: var(--text-faint); }
+.seo2-sh-link{ padding:0; border:0; background:none; font:inherit; color: var(--text-muted); text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+.seo2-sh-link:hover, .seo2-sh-link:focus-visible{ color: var(--text); }
+@media (max-width: 720px){
+  .seo2-share-pic{ flex-basis:100%; }
+  .seo2-more summary{ padding:10px 0; }
+  .seo2-sh-link{ display:inline-flex; align-items:center; min-height:40px; }
 }
