@@ -1815,6 +1815,8 @@ a.ev-chip:hover{ border-color: currentColor; }
   .icon-btn, .back-btn, .btn-ghost{ min-width:40px; }
   #b-logo-orig{ padding-top:11px; padding-bottom:11px; }
   .back-btn{ justify-content:center; }
+  /* the save bar's Discard (Basics, Registration forms): as tall as Save beside it, so the bar keeps its height */
+  .savebar .sb-ghost{ min-height:40px; }
   .topbar #btn-preview, .topbar #btn-share-preview{ min-width:40px; }
   /* the console's state tag: a 40px tap whose extra height is taken back by its margins, so the pill and the
      lines around it stay where they were; and Preview's arrow */
