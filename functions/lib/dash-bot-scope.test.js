@@ -385,6 +385,47 @@ var tk = function (f) { return '{{' + OTHER + (f ? '.' + f : '') + '}}'; };
   check('S.8 a message too long inside an event: the sentence offers no new event; on the dashboard it still does', out.status === 400 && out.body.code === 'too-long' &&
     out.body.error === 'Keep the message under 4,000 characters.' && outD.status === 400 && /start a new event from a brief/.test(outD.body.error), [out.body, outD.body]);
 
+  /* ===== S.9 how-to questions (NU-007): Getting started's own steps, on every page, inside an event too ===== */
+  var GUIDE = require('../../help-guide');
+  var promptD = '';
+  answers.push({ kind: 'reply', help: 'content', text: '', events: [], intent: 'how to add speakers' });
+  out = await ask('How do I add speakers?', { page: 'dashboard' });
+  promptD = calls[calls.length - 1].prompt;
+  check('S.9 the dashboard\'s prompt offers the how-to topics, each with what it answers', promptD.indexOf('HOW-TO QUESTIONS') !== -1 &&
+    GUIDE.TOPICS.every(function (t) { return promptD.indexOf(t.id + ' (' + t.ask + ')') !== -1; }) && promptD.indexOf('Never write the steps or name buttons yourself') !== -1);
+  check('S.9 a how-to answer with no words of its own is used (not "an answer it could not use"): the topic\'s steps, word for word',
+    out.status === 200 && out.body.kind === 'reply' && text(out.body.parts) === GUIDE.answerText('content') && out.body.action && out.body.action.type === 'help' && out.body.action.what === 'content' &&
+    out.body.action.label === 'How to add speakers, agenda and sponsors' && !out.body.list && !out.body.choices && out.body.notes.indexOf('help') !== -1, out.body);
+  /* the model's own words and a list are never shown with it: the guide's are */
+  answers.push({ kind: 'reply', help: 'approval', text: 'Press the big Publish button and it goes live at once.', events: [OTHER], list: { title: '', statuses: ['draft'], site: '', when: '', types: [], mine: false, portal: '', createdFrom: '', createdTo: '', startFrom: '', startTo: '', search: '', sort: '', dir: '', limit: 0 } });
+  out = await ask('How do I publish?', CONSOLE);
+  prompt = calls[calls.length - 1].prompt;
+  check('S.9 inside an event the prompt offers the same topics, and says a how-to question is not another event', prompt.indexOf('HOW-TO QUESTIONS') !== -1 && prompt.indexOf('not about another event, so answer it here too') !== -1 &&
+    GUIDE.TOPICS.every(function (t) { return prompt.indexOf(t.id + ' (') !== -1; }));
+  check('S.9 inside an event a how-to answer is the guide\'s steps, not the scoped line, with no event, number or list in it (the model\'s words, its id and its list dropped)',
+    out.status === 200 && out.body.kind === 'reply' && text(out.body.parts) === GUIDE.answerText('approval') && out.body.action.type === 'help' && out.body.action.what === 'approval' &&
+    !out.body.list && !leaks(out.body) && JSON.stringify(out.body).indexOf('big Publish button') === -1, out.body);
+  await tick();
+  var keptH = convOf(MAIN);
+  var lastH = keptH[keptH.length - 1];
+  check('S.9 …kept in this event\'s conversation as an answer, its action "help" with the topic (so the history draws the guide again), the memory a short line',
+    lastH && lastH.question === 'How do I publish?' && lastH.dashKind === 'reply' && lastH.status === 'answered' && lastH.action && lastH.action.type === 'help' && lastH.action.what === 'approval' &&
+    lastH.answerRaw === 'I showed the Getting started steps “How to publish the site”.' && JSON.stringify(lastH.events) === '[]', lastH);
+  check('S.9 …and the history reader keeps the topic (shapeTurn: type, label and what)', JSON.stringify(T.shapeTurn(Object.assign({ id: 'x' }, lastH)).action) === JSON.stringify({ type: 'help', label: 'How to publish the site', what: 'approval' }));
+  answers.push({ kind: 'reply', help: 'create', text: '', events: [] });
+  out = await ask('How do I create an event?', EDITOR);
+  check('S.9 "how do I create an event?" in the site editor: the Create Event steps (no new event is started, nothing is handed to the editor\'s AI)',
+    out.status === 200 && out.body.kind === 'reply' && text(out.body.parts) === GUIDE.answerText('create') && out.body.action.type === 'help' && !leaks(out.body), out.body);
+  answers.push({ kind: 'reply', help: 'not-a-topic', text: 'Here is how.', events: [] });
+  out = await ask('How do I fly?', CONSOLE);
+  check('S.9 a topic that does not exist is no how-to answer: the model\'s own sentence, as for any reply', out.status === 200 && text(out.body.parts) === 'Here is how.' && !(out.body.action && out.body.action.type === 'help'), out.body);
+  answers.push({ kind: 'reply', help: 'not-a-topic', text: '', events: [] });
+  out = await ask('How do I fly?', CONSOLE);
+  check('S.9 …and with no words either, it is an answer that could not be used', out.status === 502 && out.body.code === 'ai-bad-output', out.body);
+  answers.push({ kind: 'create', help: 'create', text: 'Starting it.', create: { category: 'IP', method: '', name: 'Retail Next', client: '', dateMode: '', start: '', end: '', month: '', quarter: '', year: '', venue: '', city: '', portal: '', briefFromMessage: false, currentUrl: '', previousUrl: '', heroSubject: '', noHeroPicture: false, files: [] } });
+  out = await ask('Create an IP event called Retail Next', CONSOLE);
+  check('S.9 a topic on another kind (a new event inside an event) changes nothing: still the scoped line', scoped(out), out.body);
+
   console.log('dash-bot-scope: ' + passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
 })().catch(function (err) { console.error(err && err.stack || err); process.exit(1); });

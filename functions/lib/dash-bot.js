@@ -49,7 +49,8 @@
    typed (or "Generate from a brief" with their own brief); find and open any event's pages, or filter the list;
    answer questions from the real data of the events they may see, with links; open Promotions on the post and
    mailer templates they ask for. And inside an event (10 Nov 2026), a fifth: add the speakers or sponsors their message
-   or an attached document names (kind "records", RECORD_WHAT). "Do it, then undo": every action runs at once in the
+   or an attached document names (kind "records", RECORD_WHAT). And on every page (14 Nov 2026, NU-007), how to use the
+   product: a how-to question is answered with a Getting started topic, word for word (HOW-TO). "Do it, then undo": every action runs at once in the
    browser (dash-bot-client.js) and can be taken back there; there is no Apply step here.
    PORTALS (the owner, 3 Nov 2026, after the portals change): every event belongs to one of ET's portals, and the
    dashboard works one portal at a time. Lists, filters and answers follow the portal the person is looking at
@@ -127,6 +128,9 @@ const engine = require('./vendor/promo-engine');
 const etEvents = require('./et-events');
 const aiDocs = require('./ai-docs');
 const lifecycle = require('../../event-lifecycle');
+/* Getting started (help-guide.js at the repo's root, the dashboard's Help window): a how-to question is answered with
+   one of its topics, word for word (HOW-TO below) */
+const helpGuide = require('../../help-guide');
 
 /* ---------- helpers from lib/api.js ---------- */
 
@@ -214,6 +218,14 @@ var KINDS = ['reply', 'create', 'open', 'filter', 'promo', 'undo', 'refuse', 'po
    titles and companies only, exactly as written: no photos, no logos, nobody the source only describes. */
 var RECORD_WHAT = ['speakers', 'sponsors'];
 var RECORD_TAB = { speakers: 'speakers', sponsors: 'sponsors' };
+/* HOW-TO (NU-007, the first-time-user QA of 14 Nov 2026: "how do I create an event?" had no answer anywhere but an
+   e-mail to Customer Care). A question about how to use the product is answered kind "reply" with `help`, the id of
+   the Getting started topic that answers it (help-guide.js TOPICS). The model picks the topic and nothing else: the
+   answer is the topic's own steps, the very words of the dashboard's Help window, which name the screens' real
+   buttons (help-guide.test.js checks them against the pages), never the model's. The guide names no event, person,
+   number or address, so it is answered on every page, inside an event too: how to use the product is not another
+   event's data (owner decision 10). */
+var HELP_IDS = helpGuide.TOPICS.map(function (t) { return t.id; });
 
 /* The pages the assistant is on (plan §3b), what each is called in the prompt, whether it is a page of one event,
    and the History area its exchanges are written under (only areas lib/activity.js accepts). A page that is not
@@ -1038,6 +1050,17 @@ function onlyThisEvent(s, id) {
   });
 }
 
+/* HOW-TO: when to answer with a Getting started topic, and the topics (both prompts). scoped: a page of one event,
+   where the guide is answered all the same (it is how to use the product, not another event's data). */
+function howToLines(scoped) {
+  return [
+    'HOW-TO QUESTIONS. When the person asks HOW to do something in ETB2B EventSphere, or how it works ("how do I create an event?", "how do I add speakers?", "how do I publish?", "what do I do first?", "where do I see registrations?"), answer kind "reply" with `help` set to the one topic below that answers it, and text "": the product then shows that topic\'s steps from its own guide, which match the real screens. Never write the steps or name buttons yourself.' +
+      (scoped ? ' A how-to question is about using the product, not about another event, so answer it here too, even "how do I create an event?" or "how do I switch portal?".' : ''),
+    '- When the person wants it done rather than explained ("add these speakers", "open the editor", "create an event called …"), do that instead. When no topic covers the question (how to delete, restore or take a site offline), answer as you would otherwise.',
+    '- Topics: ' + helpGuide.TOPICS.map(function (t) { return t.id + ' (' + t.ask + ')'; }).join('; ') + '.'
+  ].join('\n');
+}
+
 /* The prompt of a page locked to one event (owner decision 10): the only event is this one, and the only abilities
    are its numbers, its pages (and the dashboard, to leave), its promotions, Undo and the refusals. No list rule, no
    new event, no filter, no portal switch and no other event is offered; scopeBreak() refuses them all the same. */
@@ -1072,6 +1095,9 @@ function buildScopedPrompt(ctx) {
     /* 3b. the team's past requests on this page that worked (lib/ai-habits.js) */
     examplesLines(ctx),
     examplesLines(ctx) ? '' : null,
+    /* 3c. how to use the product: a Getting started topic (help-guide.js) */
+    howToLines(true),
+    '',
     /* 4. what you never do */
     'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. Adding this event\'s speakers or sponsors ("records") is the one change you make to the event, and only when asked. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.' + (mayHandOff ? ' A change to this site\'s page is not refused here: it is a "handoff".' : ''),
     'Here you also never answer about, open, list or change any OTHER event, never list or count events, never start a new event, never switch the portal and never filter the dashboard\'s list. For any of those, answer kind "refuse" with refuse.action "other-event": the product says where to do it.',
@@ -1098,7 +1124,7 @@ function buildScopedPrompt(ctx) {
     '- A "save the date" or "announcement" post is post "generic.announcement". An "announcement mailer" is mailer "mailer.announcement". A "reminder" or "final call" is mailer "mailer.reminder". A post "in the site\'s look" is a sitePost (a save the date in the site\'s look is sitePost "announce").',
     '',
     /* 7. out of scope */
-    'OUT OF SCOPE: anything that is not about this event or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (answering from this event\'s real numbers, opening its pages, adding its speakers and sponsors, setting up its promotions).',
+    'OUT OF SCOPE: anything that is not about this event or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (answering from this event\'s real numbers, opening its pages, adding its speakers and sponsors, setting up its promotions, explaining how EventSphere works).',
     '',
     /* 8. where the person is */
     'WHERE ' + name.toUpperCase() + ' IS: ' + placeLine(ctx) + '. "This event", "here", "this page", "we", "our" and a question that names no event mean ' + here + '. "It", "its" and a follow-up mean ' + here + ' too, except right after the person asked about another event: then they mean that other event, so answer kind "refuse" with refuse.action "other-event". A word that stands for something the same message names first is about that thing here ("open the speakers, they need photos": they are this event\'s speakers). Its row in the EVENTS table ends with THIS EVENT.',
@@ -1120,7 +1146,7 @@ function buildScopedPrompt(ctx) {
     '',
     /* 11. output */
     NAME_RULE,
-    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`open`, `promo`, `records` or `refuse`), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
+    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`open`, `promo`, `records` or `refuse`; `help` goes with a "reply" to a how-to question), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
 }
@@ -1184,6 +1210,9 @@ function buildPrompt(ctx) {
     /* 3b. the team's past requests on this page that worked (lib/ai-habits.js) */
     examplesLines(ctx),
     examplesLines(ctx) ? '' : null,
+    /* 3c. how to use the product: a Getting started topic (help-guide.js) */
+    howToLines(false),
+    '',
     /* 4. what you never do */
     'WHAT YOU NEVER DO: delete, cancel, publish, unpublish, approve or reject (site changes or registrations), restore, send mail, WhatsApp or social posts, take payments, change a site\'s content or design, or set or change an event\'s portal. For any of these, answer kind "refuse" with `refuse.action` (delete, cancel, publish, unpublish, approve (also for reject), restore, send, pay, edit-site, set-portal, other), and do not say how to do it: the product adds that.' + (mayHandOff ? ' A change to this site\'s page is not refused here: it is a "handoff".' : ''),
     '',
@@ -1223,7 +1252,7 @@ function buildPrompt(ctx) {
     !inEditor && arr(ctx.attachments).length ? '- files: one entry per attached file (ATTACHED below), its number `n` and its `role`: "logo" (a picture the person calls the logo), "brief" (the PDF or text file that describes the event) or "none". With a brief file, method is "brief".' : null,
     '',
     /* 8. out of scope */
-    'OUT OF SCOPE: anything that is not about these events or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (starting an event, opening its pages, answering from its real numbers, setting up promotions).',
+    'OUT OF SCOPE: anything that is not about these events or ETB2B EventSphere gets kind "reply" with one polite line on what ETB2B AI can help with here (starting an event, opening its pages, answering from its real numbers, setting up promotions, explaining how EventSphere works).',
     '',
     /* 9. what the person is looking at */
     dash ? 'WHAT ' + name.toUpperCase() + ' IS LOOKING AT: ' + viewLine(ctx) + '.'
@@ -1251,7 +1280,7 @@ function buildPrompt(ctx) {
     '',
     /* 12. output */
     NAME_RULE,
-    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`create`, `open`, `filter`, `promo` or `refuse`; `list` goes with a "reply"), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
+    'OUTPUT: one JSON object that matches the schema. `text`, `kind` and `intent` (the kind of request in a few words) are required. Add only the block this kind uses (`create`, `open`, `filter`, `promo` or `refuse`; `list` or `help` goes with a "reply"), and leave the other blocks out. Inside a block, give every field: "" (an empty string), false, [] or 0 for what the person did not say or does not apply.'
   ].filter(function (line) { return line !== null; })   // a line this place does not have
     .filter(function (line, i, all) { return line !== '' || (all[i - 1] !== '' && i > 0); }).join('\n');
 }
@@ -1317,6 +1346,7 @@ var SCHEMA = {
       post: sEnum(ids(POST_TEMPLATES).concat([''])), sitePost: sEnum(ids(SITE_POSTS).concat([''])), mailer: sEnum(ids(MAILERS).concat(['']))
     }, 'kind "promo"'),
     refuse: sBlock({ action: sEnum(REFUSE_ACTIONS) }, 'kind "refuse"'),
+    help: sEnum(HELP_IDS.concat(['']), 'with kind "reply", for a question on HOW to do something in EventSphere: the Getting started topic that answers it'),
     switchTo: sBlock({ portal: sStr('the slug of the portal to work in, or "all"') }, 'kind "portal"'),
     records: sBlock({
       what: sEnum(RECORD_WHAT, 'speakers (people) or sponsors (companies)'),
@@ -2497,6 +2527,12 @@ function cleanAnswer(parsed, ctx) {
   });
   if (unknown.length) notes.push('unknown-event');
 
+  /* HOW-TO: a question on how to use the product is answered with its Getting started topic, word for word. It is
+     taken before the event lock below because it holds no event's data at all (no name, id, number or link of any
+     event), so it is the same answer on every page; the model's own text, events and list are not used. */
+  var helpId = helpOf(parsed);
+  if (asked === 'reply' && helpId) return Promise.resolve(helpAnswer(helpId, notes));
+
   /* LOCKED TO THE EVENT (owner decision 10): an answer that reaches past the event the page is locked to is the one
      scoped line, whatever else it held. Past this point every id it names is this event's. A notFound that is only
      this event's own shorter name is no other event, and is not said to be missing. */
@@ -2808,6 +2844,22 @@ function cleanAnswer(parsed, ctx) {
   });
 }
 
+/* the Getting started topic the model answered a how-to question with: a known id, else '' */
+function helpOf(parsed) {
+  var id = isObj(parsed) && typeof parsed.help === 'string' ? parsed.help.trim() : '';
+  return HELP_IDS.indexOf(id) !== -1 ? id : '';
+}
+/* A how-to answer: the topic's steps as the guide writes them (help-guide.js answerText: its title, then "1. …" lines,
+   which the chat draws as a numbered list), and action "help" with the topic's id, so the page can offer the whole
+   guide and the history draws it the same way again. No event: `events` is empty and nothing in it names one. The
+   memory keeps one short line, not the steps. */
+function helpAnswer(id, notes) {
+  var t = helpGuide.topic(id);
+  return { kind: 'reply', parts: [{ t: 'text', v: helpGuide.answerText(id) }], answerRaw: 'I showed the Getting started steps \u201c' + t.title + '\u201d.',
+    list: null, choices: null, action: { type: 'help', what: id, label: t.title }, events: [], notes: uniq(arr(notes).concat(['help'])),
+    asOf: new Date(clock.now()).toISOString(), memo: 'the Getting started steps \u201c' + t.title + '\u201d' };
+}
+
 /* The product's own sentence for an answer that acts, said when the model's is empty or the guard took part of it:
    never the event's name (a name is typed by people, and is shown on the action's card as data). '' for an undo,
    whose result the page says itself. */
@@ -2898,6 +2950,8 @@ function actionForStore(a, memo) {
   if (a.eventId) out.eventId = a.eventId;
   if (a.patch) out.patch = plainCopy(a.patch);
   if (a.type === 'records') { out.what = a.what; out.count = a.count; if (a.href) out.url = a.href; }
+  /* a how-to answer: which Getting started topic, so the history draws it as the guide again */
+  if (a.type === 'help') out.what = a.what;
   return out;
 }
 var STARTS_DONE = { filter: 1, open: 1, promo: 1, create: 1, portal: 1 };
@@ -3011,7 +3065,9 @@ function handleChat(req, res) {
             }
             var parsed = r.parsed;
             var asked = kindOf(parsed);
-            var usable = isObj(parsed) && ((typeof parsed.text === 'string' && parsed.text.trim()) || (KINDS.indexOf(asked) !== -1 && asked !== 'reply') || !!harmOf(asked));
+            /* a how-to answer has no text of its own: its words are the guide's (helpAnswer) */
+            var usable = isObj(parsed) && ((typeof parsed.text === 'string' && parsed.text.trim()) || (KINDS.indexOf(asked) !== -1 && asked !== 'reply') || !!harmOf(asked) ||
+              (asked === 'reply' && !!helpOf(parsed)));
             if (!usable) {
               H.sendJson(res, 502, { code: 'ai-bad-output', retryable: true, error: MSG.badOutput });
               return recordDashTurn(fb, ctx, req, body, { code: 'ai-bad-output', parsed: parsed, known: knownOf(got[0]) });
@@ -3185,5 +3241,5 @@ module.exports._test = {
   createFiles: createFiles, attachedBlock: attachedBlock, setTurns: setTurns, TURN_STATUSES: TURN_STATUSES, lastTurnElsewhere: lastTurnElsewhere,
   scopeBreak: scopeBreak, scopedRefusal: scopedRefusal, followsElsewhere: followsElsewhere, onlyThisEvent: onlyThisEvent, DASHBOARD_URL: DASHBOARD_URL,
   followUpWord: followUpWord, releaseDay: releaseDay, claimDay: claimDay,
-  REFUSE_ACTIONS: REFUSE_ACTIONS
+  REFUSE_ACTIONS: REFUSE_ACTIONS, HELP_IDS: HELP_IDS, helpOf: helpOf, helpAnswer: helpAnswer, actionForStore: actionForStore, shapeTurn: shapeTurn
 };

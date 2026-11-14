@@ -44,10 +44,11 @@ var scripts = PAGE.match(/<script\b[^>]*>/g) || [];
    (create-drafts.js, UX-048) and (B11, UX-032) the vendored QR library, which draws the QR Codes dialog's code, between
    the picker and event-lifecycle.js; the one assistant (ai-everywhere) adds etb2b-assistant.js last, as on every
    page (assistant-pages.test.js) */
-check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, qrcode-generator.js, event-lifecycle.js, the inline script, then ETB2B AI\'s three',
-  JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="event-lifecycle.js">', '<script>',
+/* NU-007: help-guide.js (Getting started) after the QR library */
+check('D.3 scripts: the theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, qrcode-generator.js, help-guide.js, event-lifecycle.js, the inline script, then ETB2B AI\'s three',
+  JSON.stringify(scripts) === JSON.stringify(['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="help-guide.js">', '<script src="event-lifecycle.js">', '<script>',
     '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">', '<script src="etb2b-assistant.js">']), scripts);
-check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="create-drafts.js"><\/script>\n<!--[^\n]*-->\n<script src="assets\/vendor\/qrcode-generator.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
+check('D.3 portal-picker.js comes right after auth.js and before the inline script', /<script src="auth.js"><\/script>\n<!--[^\n]*-->\n<script src="portal-picker.js"><\/script>\n<!--[^\n]*-->\n<script src="create-drafts.js"><\/script>\n<!--[^\n]*-->\n<script src="assets\/vendor\/qrcode-generator.js"><\/script>\n<!--[^\n]*-->\n<script src="help-guide.js"><\/script>\n<!--[^\n]*-->\n<script src="event-lifecycle.js"><\/script>\n<script>\n\(function\(\)\{/.test(PAGE));
 check('D.3 the server sends portal-picker.js', require('./access').isServableFile('portal-picker.js') === true && fs.existsSync(path.join(ROOT, 'portal-picker.js')));
 check('D.3 th.col-portal right after "Event name"', count(PAGE, '<th class="col-portal">Portal</th>') === 1 && /<th>Event name<\/th>\n\s*<th class="col-portal">Portal<\/th>/.test(PAGE));
 check('D.3 #portal-notice right after #special-banner', count(PAGE, 'id="portal-notice"') === 1 && /<div id="special-banner"><\/div>\n\s*<!--[^\n]*-->\n\s*<div id="portal-notice"><\/div>/.test(PAGE));
@@ -467,6 +468,9 @@ function page(o) {
       }) }));
       if (/^\/api\/activity\/all\?/.test(url)) return Promise.resolve(response(200, { items: [], next: null }));
       if (url === '/api/promo/analytics/all') return Promise.resolve(response(200, { available: false, backend: 'none', series: [], totals: { sends: 0, opens: 0, clicks: 0 } }));
+      /* who the approvers are (o.approvers; none named, as here unless said, makes everyone one): the "no portal yet"
+         notice is theirs (NU-032) */
+      if (url === '/api/settings/approvals') return Promise.resolve(response(200, { approvers: o.approvers || [], allowSelf: false, required: true }));
       return Promise.resolve(response(200, { items: o.items || ITEMS }));
     },
     RevampAuth: {
@@ -532,6 +536,18 @@ async function main() {
   check('D.4 the Drafts tab counts every portal\'s drafts in All portals', S.tabs().draft === 2 && !S.$('more-menu').querySelector('[data-special="draft"]'));
   check('D.4 the "No portal yet" notice: the count (Deleted not counted), Show them, Review suggested portals', S.notice().indexOf('2 events have no portal yet.') !== -1 && !!S.$('pn-show-none') &&
     S.$('portal-notice').querySelector('a[href="portal-review.html"]').textContent === 'Review suggested portals');
+  /* NU-032: housekeeping is the approvers'; anyone else hears only of their own events with no portal */
+  var mineNp = ITEMS.map(function (e) { return e.id === 'np-draft' ? Object.assign({}, e, { createdBy: 'asha.rao@timesinternet.in' }) : e; });
+  var Sm = page({ store: {}, server: 'all', approvers: ['boss@timesinternet.in'], items: mineNp });
+  await flush();
+  check('D.4 not an approver: only their own event with no portal ("1 of your events…"), Show them, no Review suggested portals',
+    Sm.notice().indexOf('1 of your events has no portal yet.') !== -1 && Sm.notice().indexOf('2 events') === -1 && !!Sm.$('pn-show-none') && !Sm.$('portal-notice').querySelector('a[href="portal-review.html"]'), Sm.notice());
+  Sm.$('pn-show-none').click();
+  await flush();
+  check('D.4 …Show them lists just their own (the Mine filter, a chip they can take off)', JSON.stringify(Sm.rows()) === JSON.stringify(['np-draft']) && Sm.ctx.RvListing.snapshot().mine === true, [Sm.rows(), Sm.ctx.RvListing.snapshot().mine]);
+  var So = page({ store: {}, server: 'all', approvers: ['boss@timesinternet.in'] });
+  await flush();
+  check('D.4 not an approver, none of their own without a portal: no notice at all (other people\'s housekeeping is not theirs)', So.notice().indexOf('no portal yet') === -1, So.notice());
 
   /* ======== the switcher: open, search, keys, pick ======== */
   S.$('btn-portals-nav').click();

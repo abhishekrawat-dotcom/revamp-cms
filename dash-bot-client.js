@@ -88,9 +88,12 @@
   /* Every sentence this brain says on its own. The product is ETB2B EventSphere (owner decision 6) and the
      assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
-    welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions.',
+    welcome: 'I can start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions. New here? Ask me how anything works, for example “How do I add speakers?”.',
     /* inside an event ETB2B AI works on that event only (owner decision 10): no new event from here */
-    welcomeEvent: 'I work on this event only: I can answer questions from its real numbers, open its pages, add its speakers and sponsors from a brochure or your message, and set up its promotions. Other events and new ones are on the events dashboard.',
+    welcomeEvent: 'I work on this event only: I can answer questions from its real numbers, open its pages, add its speakers and sponsors from a brochure or your message, and set up its promotions. Other events and new ones are on the events dashboard. Ask me how anything works, too.',
+    /* under a how-to answer (NU-007): the whole Getting started guide, the dashboard's Help window */
+    openGuide: 'Open Getting started',
+    openGuideNewTab: 'Open Getting started (new tab)',
     footNote: 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.',
     footNoteElsewhere: 'ETB2B AI opens pages, answers from your events’ real numbers and starts drafts. It never deletes, cancels, publishes or approves anything.',
     footNoteEvent: 'ETB2B AI works on this event only. It never deletes, cancels, publishes or approves anything.',
@@ -141,6 +144,8 @@
 
   /* the four things ETB2B AI does here; a chip fills the box (the kit selects the first "…") and never sends */
   var SUGGESTIONS = [
+    /* the newcomer's question first (NU-007): answered with Getting started's own steps */
+    { label: 'How do I create and publish an event?', text: 'How do I create and publish an event?' },
     { label: 'Create an IP event called … on … in …', text: 'Create an IP event called … on … in …' },
     { label: 'Show drafts from last week', text: 'Show drafts from last week' },
     { label: 'Which events go live this month?', text: 'Which events go live this month?' },
@@ -150,12 +155,14 @@
     { label: 'How many registrations does this event have?', text: 'How many registrations does this event have?' },
     { label: 'Open this event’s speakers', text: 'Open this event’s speakers' },
     { label: 'Make a save-the-date post for this event', text: 'Make a save-the-date post for this event' },
-    { label: 'Open this event’s registrations', text: 'Open this event’s registrations' }
+    { label: 'Open this event’s registrations', text: 'Open this event’s registrations' },
+    { label: 'How do I publish this site?', text: 'How do I publish this site?' }
   ];
   /* small chips under the box once the conversation has a turn: they fill it, never send (UX-095) */
   var QUICK = [
     { label: 'Which events go live this month?', text: 'Which events go live this month?' },
-    { label: 'Create an IP event called …', text: 'Create an IP event called … on … in …' }
+    { label: 'Create an IP event called …', text: 'Create an IP event called … on … in …' },
+    { label: 'How do I …?', text: 'How do I …?' }
   ];
   var QUICK_EVENT = [
     { label: 'Registrations so far', text: 'How many registrations does this event have?' },
@@ -455,6 +462,8 @@
     }
     /* speakers or sponsors are added only to the event this page is of (eventId was checked above) */
     if (action.type === 'records') return str(action.eventId) === here.eventId;
+    /* a how-to answer is Getting started's own steps: no event's data, so it is shown on any page (NU-007) */
+    if (action.type === 'help') return true;
     return action.type === 'undo';
   }
   /* an answer's own parts, its list and its choices, inside an event: none may link to another event */
@@ -520,7 +529,9 @@
     }
     ctx.shown = partsText(parts);
     var startsCreate = body.kind === 'create' && !!action;
-    var bubble = chat.ai(parts.length ? parts : (list ? 'Here is what I found.' : (startsCreate ? TEXT.creating : '')), bubbleOpts(parts, list, body.asOf));
+    /* a how-to answer's one text is drawn with its structure (a bold title, a numbered list): see drawHelp */
+    var isHelp = !!action && action.type === 'help';
+    var bubble = chat.ai(isHelp ? helpText(parts) : parts.length ? parts : (list ? 'Here is what I found.' : (startsCreate ? TEXT.creating : '')), bubbleOpts(parts, list, body.asOf));
     if (body.notKept) bubble.note(TEXT.notKept);
     if (list) drawList(bubble, list, ctx);
     if (body.kind === 'choose' && Array.isArray(body.choices) && body.choices.length) { drawChoices(bubble, body.choices, ctx); return; }
@@ -537,7 +548,32 @@
     if (action.type === 'create') return runCreate(action, bubble, ctx);
     if (action.type === 'records') return runRecords(action, bubble, ctx);
     if (action.type === 'refuse') { drawRefusal(action, bubble, shownText || ''); return true; }
+    if (action.type === 'help') return drawHelp(bubble);
     return false;
+  }
+
+  /* ---------- a how-to answer (NU-007, the first-time-user QA) ----------
+     The server answers "how do I …?" with one topic of Getting started (help-guide.js), word for word, as one text:
+     its title in ** and its steps as "1. " lines, which the kit draws as a bold line and a numbered list (a text part
+     would be drawn as plain words, run together). Under it, the whole guide: on the events dashboard its Help window
+     opens on Getting started; on any other page the dashboard opens on it in a new tab, so nothing on this page is
+     left behind. Customer Care stays the last resort, in the panel's header and in that window. */
+  var GUIDE_URL = DASHBOARD_URL + '?help=guide';
+  function helpText(parts) {
+    return parts.length === 1 && parts[0] && parts[0].t === 'text' ? str(parts[0].v) : partsText(parts);
+  }
+  function drawHelp(bubble) {
+    var L = root.RvListing;
+    if (L && typeof L.openHelp === 'function' && placeNow().page === 'dashboard') {
+      bubble.button(TEXT.openGuide, function (e) { openHelp(e, 'guide'); });
+      return true;
+    }
+    var a = bubble.link(GUIDE_URL, TEXT.openGuideNewTab);
+    if (a && typeof a.setAttribute === 'function') {
+      a.setAttribute('target', '_blank');
+      a.setAttribute('rel', 'noopener');
+    }
+    return true;
   }
   function started(ctx) { if (ctx.onStart) { var f = ctx.onStart; ctx.onStart = null; f(); } }
   function failed(bubble, ctx, reason) {
@@ -1244,6 +1280,12 @@
     var a = t.action && typeof t.action === 'object' ? t.action : null;
     /* a create kept before the server sent its fixed sentence has no words: it gets them, never an empty line */
     var said = parts.length ? parts : (str(t.answer) || (a && a.type === 'create' ? TEXT.creating : ''));
+    /* a how-to answer is drawn as it was: the guide's steps as a list, and the way to the whole guide */
+    if (a && a.type === 'help' && parts.length) {
+      var bh = w.ai(helpText(parts), bubbleOpts(parts, null, '', at));
+      drawHelp(bh);
+      return true;
+    }
     var b = w.ai(said, bubbleOpts(parts, list, t.asOf, at));
     if (list) b.list(kitList(list));
     if (t.status === 'stopped') { b.note(TEXT.stoppedReplay); return true; }
@@ -1313,7 +1355,8 @@
   /* "Email Customer Care" in the panel's header opens the dashboard's own help window. On a phone the panel is a
      full-screen sheet, so it steps aside first and the focus comes back to its launcher. Elsewhere the shell
      opens a mail to Customer Care instead. */
-  function openHelp(arg) {
+  /* view 'guide': Getting started (a how-to answer's "Open Getting started"); otherwise the message to Customer Care */
+  function openHelp(arg, view) {
     var L = root.RvListing;
     if (!L || typeof L.openHelp !== 'function') return;
     /* the kit passes its "Email Customer Care" button; an event's target works too */
@@ -1325,11 +1368,12 @@
       try { chat.close(); } catch (x) { /* already closed */ }
       from = (doc && doc.getElementById('dash-chat-launcher')) || from;
     }
-    L.openHelp(from);
+    if (view === 'guide') L.openHelp(from, 'guide');
+    else L.openHelp(from);
   }
   function help(p) {
     var L = root.RvListing;
-    if (p && p.page === 'dashboard' && L && typeof L.openHelp === 'function') return { label: 'Email Customer Care', onClick: openHelp };
+    if (p && p.page === 'dashboard' && L && typeof L.openHelp === 'function') return { label: 'Email Customer Care', onClick: function (e) { openHelp(e); } };
     return null;
   }
   function welcome(p) {

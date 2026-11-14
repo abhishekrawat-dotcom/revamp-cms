@@ -222,7 +222,19 @@ async function main() {
   check('the Type filter narrows them by their type (Awards)', same(P.names(), ['HR Awards Night']), P.names());
   P = page({ hash: '#tab=active&view=draft&created=2026-01-01..2026-12-31' });
   await flush();
-  check('a date filter hides them, and says why (they have no dates yet)', P.names().length === 0 && P.box().indexOf('3 are not shown while a date filter is on: they have no dates yet.') !== -1, P.box());
+  /* NU-032: with none shown, one line says why, and no box with a 0 in it */
+  check('a date filter hides them, and says why (they have no dates yet), in one line with no empty box', P.names().length === 0 &&
+    P.box().indexOf('3 unfinished Create Event drafts are not shown while a date filter is on: they have no dates yet.') === 0 && !P.$('create-drafts').querySelector('.cdrafts'), P.box());
+
+  /* NU-032: none on the portal the person works in: no empty box, only where they are, with the way there */
+  P = page({ working: 'hr', draftList: drafts().filter(function (x) { return x.summary.portal; }).map(function (x) { return x.summary.portal === 'hr' ? Object.assign({}, x, { summary: Object.assign({}, x.summary, { portal: 'cio' }) }) : x; }) });
+  await flush();
+  P.tab('draft');
+  check('none on this portal: no "Unfinished in Create Event" box with a 0, one line instead: how many are on other portals, and Show them',
+    P.box() === '3 unfinished Create Event drafts are on other portals. Show them' && !P.$('create-drafts').querySelector('.cdrafts') && !/Unfinished in Create Event/.test(P.box()) && !!P.$('cdrafts-elsewhere'), P.box());
+  P.$('cdrafts-elsewhere').click();
+  await flush();
+  check('…Show them looks at every portal for now (the way back to the portal is on the notice), and lists them', P.names().length === 3 && /Back to ETHRWorld/.test(P.$('portal-notice').textContent), [P.names(), P.$('portal-notice').textContent]);
 
   /* no draft event at all, only unfinished ones */
   P = page({ noDraftEvents: true });

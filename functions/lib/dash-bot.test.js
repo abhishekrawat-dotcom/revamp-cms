@@ -409,7 +409,8 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   }
   var optional = converted ? optionalParams(converted) : -1;
   check('A.6 strict mode: at most 24 optional parameters in claude.toJsonSchema(SCHEMA) (it was 55)', optional >= 0 && optional <= 24 && T.STRICT_OPTIONAL_MAX === 24, optional);
-  check('A.6 strict mode: only the top level is optional (10: events, notFound and the eight blocks)', optional === 10, optional);
+  /* 11 since NU-007: `help`, the Getting started topic of a how-to answer, is optional at the top level too */
+  check('A.6 strict mode: only the top level is optional (11: events, notFound, the eight blocks and help)', optional === 11, optional);
   check('A.6 strict mode: no union types', !!converted && unionParams(converted) === 0);
   var blocks = ['create', 'open', 'filter', 'list', 'promo', 'refuse', 'switchTo'];
   function allRequired(o) { return !!o && o.type === 'object' && o.additionalProperties === false && JSON.stringify(Object.keys(o.properties).sort()) === JSON.stringify((o.required || []).slice().sort()); }
