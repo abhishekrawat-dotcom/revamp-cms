@@ -108,7 +108,7 @@ server.listen(0, '127.0.0.1', function () {
     return page.goto(base + '/repaired', { waitUntil: 'load' }).then(function () { return sleep(300); })
       /* 1. the header's Register Now */
       .then(function () { return click('header .nav-btn'); }).then(modal).then(function (m) {
-        ok(m && /provide us with your Information/.test(m.title) && !m.intro, 'the header\'s "Register Now" (it led to the About section) opens the registration form', m);
+        ok(m && /Please take a moment to share your details/.test(m.title) && !m.intro, 'the header\'s "Register Now" (it led to the About section) opens the registration form', m);
       }).then(closeModal)
       /* Join as Partner: its own title and line, and the source of what it sends */
       .then(function () { return click('.hero-btn-2'); }).then(modal).then(function (m) {
@@ -151,7 +151,7 @@ server.listen(0, '127.0.0.1', function () {
       /* 3. rv-forms.js on its own: the safety net */
       .then(function () { return page.goto(base + '/raw', { waitUntil: 'load' }); }).then(function () { return sleep(300); })
       .then(function () { return click('#to-hidden'); }).then(modal).then(function (m) {
-        ok(m && /provide us with your Information/.test(m.title), 'a "Register Now" to a hidden section opens the form, even on a page the live pass has not seen', m);
+        ok(m && /Please take a moment to share your details/.test(m.title), 'a "Register Now" to a hidden section opens the form, even on a page the live pass has not seen', m);
       }).then(closeModal)
       .then(function () { return click('#to-shown'); }).then(function () {
         return Promise.all([modal(), page.evaluate(function () { return location.hash; })]);

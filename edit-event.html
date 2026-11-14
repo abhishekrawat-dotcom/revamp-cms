@@ -72,8 +72,10 @@
          saying who it is for: the live site, and a link for people without an ET login (owner decision 13, v2). The menu
          opens under the arrow (topbar-menu.js, shared with the site editor); share-preview.js wires its Share item -->
     <span class="pv-split" id="pv-split">
-      <button class="btn btn-secondary" type="button" id="btn-preview">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+      <button class="btn btn-secondary" type="button" id="btn-preview" aria-label="Preview">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="2.6"/></svg>
+        <!-- "Design the site" (a site never saved): a pencil where the words do not fit (NU-037) -->
+        <svg class="pv-ic-design" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:none"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
         <span>Preview</span>
       </button>
       <button class="btn btn-secondary pv-more" type="button" id="btn-preview-more" hidden data-topbar-menu data-follows="btn-preview" aria-expanded="false" aria-controls="pv-menu" aria-label="More ways to preview" title="More ways to preview">
@@ -879,19 +881,25 @@
   function standsLine(s){
     return esc(s.text) + ' <a href="' + esc(editorAt(s.key)) + '">Open “' + esc(s.name) + '” in the site editor</a>';
   }
+  /* The one step that puts a missing section on the site (NU-004): opening the site editor, which adds a section for
+     the records the site would show as it opens (SN.forTab add). Only offered when that would add it now. */
+  function addSectionLink(notes){
+    if (!notes.add || !notes.add.ready) return '';
+    return ' <a class="btn btn-secondary btn-sm sn-add" href="' + esc(editorUrl()) + '">Open the site editor to add the “' + esc(notes.add.name) + '” section</a>';
+  }
   /* An empty tab's line about the site: its section is hidden until a record is added, shows items of its own, or
-     the site has none. */
+     the site has none (and what puts one there: NU-004). */
   function emptySiteLine(notes){
     if (!notes.hidden && !notes.stands && !notes.none) return '';
     return '<p class="empty-site">' + svg(IC.info, 14) + '<span>' +
       (notes.hidden ? esc(notes.hidden) + (notes.stands ? ' ' : '') : '') + (notes.stands ? standsLine(notes.stands) : '') +
-      (!notes.hidden && !notes.stands ? esc(notes.none) + ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>' : '') + '</span></p>';
+      (!notes.hidden && !notes.stands ? esc(notes.none) + addSectionLink(notes) : '') + '</span></p>';
   }
   /* Above a tab: what the site shows from the previous edition, and — when the tab has records — that they are not on
      the site because its section is hidden or missing. Information, so the info style (UX-069). */
   function siteCallout(notes, hasRecords){
     var lines = [];
-    if (hasRecords && notes.none) lines.push(esc(notes.none) + ' <a href="' + esc(editorUrl()) + '">Open the site editor</a>');
+    if (hasRecords && notes.none) lines.push(esc(notes.none) + addSectionLink(notes));
     else if (hasRecords && notes.hidden) lines.push(esc(notes.hidden));
     if (hasRecords && notes.stands) lines.push(standsLine(notes.stands));
     if (notes.previous) lines.push(esc(notes.previous.text) + ' <a href="' + esc(editorAt(notes.previous.key)) + '">Open “' +
@@ -2953,12 +2961,14 @@
           '</div>';
       }).join('');
 
-      if (loose) return '<div class="grp grp-loose">' +
-          '<div class="grp-head"><span class="gtitle">Not in a group</span>' +
+      /* NU-022: with no groups at all, being in none is fine — the site lists them in this order — so it is said
+         calmly and as optional; only records whose group was deleted are something to put right */
+      if (loose) return '<div class="grp grp-loose' + (groups.length ? '' : ' is-optional') + '">' +
+          '<div class="grp-head"><span class="gtitle">Not in a group' + (groups.length ? '' : ' <span class="gopt">(optional)</span>') + '</span>' +
             '<span class="gcount">' + nSpk(people.length) + '</span></div>' +
           '<div class="grp-note">' + (groups.length
             ? 'The group these ' + W.many + ' were in no longer exists. Drag each one into a group, or open it and choose one.'
-            : 'These ' + W.many + ' are not in a group yet. Add a group, then drag them in.') + '</div>' +
+            : 'They show on the site in this order. Use groups to add headings such as “' + (isAwardEvent() ? 'Chair of the jury' : 'Keynote speakers') + '”.') + '</div>' +
           rows + '</div>';
 
       return '<div class="grp" data-grp="' + esc(g.id) + '">' +
@@ -3915,12 +3925,12 @@
           ((lastEnd / 60 < 10 ? '0' : '') + Math.floor(lastEnd / 60) + ':' + (lastEnd % 60 < 10 ? '0' : '') + (lastEnd % 60));
       }
 
-      if (loose) return '<div class="grp grp-loose">' +
-          '<div class="grp-head"><span class="gtitle">Not in a day</span>' +
+      if (loose) return '<div class="grp grp-loose' + (groups.length ? '' : ' is-optional') + '">' +
+          '<div class="grp-head"><span class="gtitle">Not in a day' + (groups.length ? '' : ' <span class="gopt">(optional)</span>') + '</span>' +
             '<span class="gcount">' + list.length + (list.length === 1 ? ' session' : ' sessions') + '</span></div>' +
           '<div class="grp-note">' + (groups.length
             ? 'The day these sessions were in no longer exists. Drag each one into a day, or open it and choose one.'
-            : 'These sessions are not in a day yet. Add a day, then drag them in.') + '</div>' +
+            : 'They show on the site by their start time. Use days to split a programme that runs over more than one day.') + '</div>' +
           rows + '</div>';
 
       return '<div class="grp" data-aggrp="' + esc(g.id) + '">' +
@@ -4634,12 +4644,12 @@
           '</div>';
       }).join('');
 
-      if (loose) return '<div class="grp grp-loose">' +
-          '<div class="grp-head"><span class="gtitle">Not in a tier</span>' +
+      if (loose) return '<div class="grp grp-loose' + (tiers.length ? '' : ' is-optional') + '">' +
+          '<div class="grp-head"><span class="gtitle">Not in a tier' + (tiers.length ? '' : ' <span class="gopt">(optional)</span>') + '</span>' +
             '<span class="gcount">' + list.length + (list.length === 1 ? ' sponsor' : ' sponsors') + '</span></div>' +
           '<div class="grp-note">' + (tiers.length
             ? 'The tier these sponsors were in no longer exists. Drag each one into a tier, or open it and choose one.'
-            : 'These sponsors are not in a tier yet. Add a tier, then drag them in.') + '</div>' +
+            : 'They show on the site in this order. Use tiers to add headings such as “Gold partners”.') + '</div>' +
           rows + '</div>';
 
       return '<div class="grp" data-pttier="' + esc(t.id) + '">' +
@@ -6602,7 +6612,7 @@
       return { speakers: spkAll().filter(isConfirmed).length, agenda: agAll().length, sponsors: ptAll().filter(isConfirmed).length };
     });
   };
-  CTX.log = { when: histWhen, who: whoLabel, action: actionLabel };
+  CTX.log = { when: histWhen, who: whoLabel, action: actionLabel, detail: function(h){ return AW.detailText(h); } };
   /* what Settings › URL & SEO (edit-event-seo.js) uses of the console's own */
   /* Speakers' Paste a list and Add photos (edit-event-speaker-tools.js) use the console's own */
   if (window.EditEventSpeakerTools) window.EditEventSpeakerTools.init({
@@ -6759,9 +6769,15 @@
        it is "Design the site" and leads to the site editor, never to a tab saying "Nothing to preview yet" (UX-065) */
     var pv = $('btn-preview'), pvSaved = !!(EV && EV.site && +EV.site.version > 0);
     if (pv && EV && pv.querySelector){
-      var pvLabel = pv.querySelector('span'), pvIcon = pv.querySelector('svg');
+      var pvLabel = pv.querySelector('span'), pvIcon = pv.querySelector('svg'), pvPen = pv.querySelector('.pv-ic-design');
       if (pvLabel) pvLabel.textContent = pvSaved ? 'Preview' : 'Design the site';
       if (pvIcon) pvIcon.style.display = pvSaved ? '' : 'none';
+      /* NU-037: where the words give way (900px and below) a site never saved showed an empty box: a pencil stands for
+         "Design the site" there, the words come back on a phone's second row, and the button is named by its words at
+         every width */
+      if (pvPen) pvPen.style.display = pvSaved ? 'none' : '';
+      if (pv.classList) pv.classList.toggle('is-design', !pvSaved);
+      pv.setAttribute('aria-label', pvSaved ? 'Preview' : 'Design the site');
       pv.title = pvSaved ? 'Open the site in a new tab, as it was last saved or previewed' : 'The site has not been saved yet: design it in the site editor first';
     }
     var F = window.RevampPublishFlow, btn = $('btn-publish');
@@ -6836,13 +6852,14 @@
     var kind = TAB_KIND[cur.tab] || '', words = KIND_WORDS[kind] || 'these', b = SITE_BAR || {};
     var tpl = siteTemplate(), v = EV.site ? +EV.site.version || 0 : 0, live = liveVersion();
     var pending = EV.approval && EV.approval.id ? EV.approval : null;
-    var staged = barLink('/preview/' + encodeURIComponent(EV.id) + '?staged=1', 'See the staged copy');
+    /* NU-019: plain words — the site as saved, not live yet — never "the staged copy" */
+    var staged = barLink('/preview/' + encodeURIComponent(EV.id) + '?staged=1', 'Preview it');
     var editor = '<a class="btn btn-secondary btn-sm" href="' + esc(editorUrl()) + '">Open the site editor</a>';
     var send = barButton('publish', b.approvalRequired === false ? 'Publish' : 'Send for approval', true);
     var review = pending ? barLink('/review.html?event=' + encodeURIComponent(EV.id) + '&request=' + encodeURIComponent(pending.id), 'Review') : '';
     if (/^imported-/.test(tpl)) return { tone: '', text: 'This site was imported, so it shows its own copy of this content: changes made here do not reach it.', acts: '' };
-    if (b.busy) return { tone: '', text: '<span class="spin"></span> Putting this change on the site’s staged copy…', acts: '' };
-    if (b.error) return { tone: 'bad', text: 'This change is saved here, but the site’s staged copy could not be updated: ' + esc(b.error), acts: barButton('retry', 'Try again', true) };
+    if (b.busy) return { tone: '', text: '<span class="spin"></span> Adding this change to your site…', acts: '' };
+    if (b.error) return { tone: 'bad', text: 'This change is saved here, but it could not be added to your site: ' + esc(b.error), acts: barButton('retry', 'Try again', true) };
     if (b.needsEditor && b.needsEditor.indexOf(kind) !== -1) {
       return { tone: 'warn', text: 'This design shows ' + words + ' through the site editor: open it and save to bring this change onto the site.', acts: editor };
     }
@@ -6852,16 +6869,16 @@
     var what = b.staged && b.summary ? ' (' + esc(b.summary) + ')' : '';
     if (live && v > live) {
       if (pending && pending.toVersion >= v) return { tone: 'wait', text: 'Version ' + v + what + ' is waiting for approval. The live site shows it once it is approved.', acts: review };
-      if (pending) return { tone: 'wait', text: 'Version ' + v + what + ' is on the staged copy. The request waiting for approval holds version ' + pending.toVersion + ', without this change.', acts: barButton('publish', 'Add it to the request', true) + review };
-      return { tone: 'wait', text: (b.staged ? 'Version ' + v + what + ' is on the staged copy. ' : 'The staged copy (version ' + v + ') has changes the live site does not show yet. ') +
+      if (pending) return { tone: 'wait', text: 'Version ' + v + what + ' is saved, not live yet. The request waiting for approval holds version ' + pending.toVersion + ', without this change.', acts: barButton('publish', 'Add it to the request', true) + review };
+      return { tone: 'wait', text: (b.staged ? 'Version ' + v + what + ' is saved, not live yet. ' : 'Your site has saved changes (version ' + v + ') that the live site does not show yet. ') +
         (b.approvalRequired === false ? 'Publish it to put it live.' : 'The live site shows it once it is approved.'), acts: send + staged };
     }
     /* every kind of site but an imported one is drawn by the server: a real template's own lists too (site-records.js) */
-    var here = cur.tab === 'basics' ? 'Changes to the name, dates and place here go' : 'Changes here go';
+    var here = cur.tab === 'basics' ? 'Changes to the name, dates and place here are' : 'Changes here are';
     if (!live) {
-      return { tone: '', text: (b.staged ? 'On the site’s staged copy as version ' + v + what + '. ' : here + ' onto the site’s staged copy at once. ') + 'The site shows them once it is published.', acts: b.staged ? staged : '' };
+      return { tone: '', text: (b.staged ? 'Added to your site as version ' + v + what + '. ' : here + ' added to your site straight away. ') + 'Visitors see them once the site is published.', acts: b.staged ? staged : '' };
     }
-    return { tone: '', text: here + ' onto the site’s staged copy at once, and reach the live site once they are approved.', acts: '' };
+    return { tone: '', text: here + ' added to your site straight away. Visitors see them once an approver approves them.', acts: '' };
   }
   function paintSiteBar(){
     var el = $('site-bar');

@@ -322,7 +322,7 @@ pending.push(hooks.siteCheckOf(fakeFb({}), 'cio', { name: 'Cio' }, CIO, { live: 
 /* a site made from that template, still showing them: held back */
 pending.push(hooks.siteCheckOf(fakeFb({}), 'cx', { name: 'CX Forum', site: { templateId: 'cx-leaders-forum' } }, page(LEADERS), {}).then(function (r) {
   var it = r.items.filter(function (x) { return x.code === 'samples'; })[0];
-  ok(it && it.level === 'block' && r.blocking && /another event/.test(it.hint) && it.lines[0].indexOf('“Customer experience should not be seen') === 0 && /^Their picture “custom_section_img_\d+_\d+\.png” — Leaders$/.test(it.lines[1]), 'another event\'s quotes and photos from the template hold a page back (UX-140)', it && it.lines.slice(0, 3));
+  ok(it && it.level === 'block' && r.blocking && /another event/.test(it.hint) && it.lines[0].indexOf('“Customer experience should not be seen') === 0 && /^Their picture “custom_section_img_\d+_\d+\.png” — Quotes From CX Leaders$/.test(it.lines[1]), 'another event\'s quotes and photos from the template hold a page back (UX-140), named as the site editor names the section (its template.json name, NU-002)', it && it.lines.slice(0, 3));
 }));
 /* the owner's own cards (new quotes, names and pictures) whose people happen to hold the template's roles: nothing to
    hold back (the verifier's case of 3 Nov 2026: a real CMO's quote stopped a CX site going live) */
@@ -553,6 +553,20 @@ ok(st.blocks === 1 && st.nextVersion === 10 && st.items.length === 4 && LIVE_CHE
 var notSent = panel.settle(Object.assign({}, LIVE_CHECK, { approvalVersion: 0 }), SAVED_CHECK);
 ok(/saved and not live yet: send it for approval\.$/.test(notSent.items[1].settled), 'one saved but not sent for approval says so');
 ok(panel.settle(LIVE_CHECK, { found: false, items: [] }).items[0].action, 'with no saved check to go by, nothing changes');
+/* NU-014: one line with the count on every tab, open on its own only on the Dashboard when something holds it back */
+var SAMPLE_BLOCK = { of: 'saved', items: [{ code: 'samples', level: 'block', title: 'Samples from the template are still on the page' }, { code: 'empty-sections', level: 'warn', title: 'A section has nothing in it' }, { code: 'x', level: 'info', title: 'Good to know' }] };
+var sum = panel.summaryOf(SAMPLE_BLOCK);
+ok(sum.title === 'Before this site goes live: 1 thing to put right, 1 to look at' && sum.lead === 'The site can’t go live until it is put right.' && sum.shown.length === 2,
+  'NU-014 the panel\'s one line counts what to put right and what to look at, in plain words', sum);
+ok(panel.opensOn('dashboard', SAMPLE_BLOCK) && panel.opensOn('', SAMPLE_BLOCK) && !panel.opensOn('content/speakers', SAMPLE_BLOCK) && !panel.opensOn('content/basics', SAMPLE_BLOCK) &&
+  !panel.opensOn('content/agenda', SAMPLE_BLOCK), 'NU-014 it opens on its own on the Dashboard only, folded to its line on every other tab');
+ok(!panel.opensOn('dashboard', { of: 'saved', items: [{ level: 'warn', title: 'A link leads nowhere' }] }), 'NU-014 … and not even there when there is only something to look at');
+ok(panel.opensOn('dashboard', { of: 'live', items: [{ level: 'warn', title: 't', action: { kind: 'et-chrome', label: 'Update' } }] }), 'NU-014 … but it does when a one-click repair is waiting');
+ok(panel.summaryOf(st).title === 'Your live site: 1 thing to put right, 1 to look at',
+  'NU-014 a live site\'s line says it is the live site', panel.summaryOf(st));
+ok(panel.summaryOf(st).lead === 'Version 10 can’t go live until it is put right.', 'NU-014 … and which version is held back', panel.summaryOf(st).lead);
+var PANEL_SRC = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'edit-event-site-check.js'), 'utf8');
+ok(/'Put it right:'/.test(PANEL_SRC) && /a\.href = f\.href/.test(PANEL_SRC) && /location\.hash = f\.route/.test(PANEL_SRC), 'NU-014 every item carries its links to the place to put it right, as the publish window does');
 
 Promise.all(pending).then(function () {
   if (failures.length) {

@@ -84,7 +84,13 @@ ok(schema && schema.properties.eventDescription && schema.properties.eventDescri
 var build = genApi.buildDesignPlanPrompt || (genApi._testHooks || {}).buildDesignPlanPrompt;
 if (build) ok(/- eventDescription: /.test(build({ eventMeta: { name: 'X' }, reference: { basis: null, others: [] }, artDirection: { id: 'a' } })), 'the plan prompt names the task');
 ok(/eventDescription\.patch\(r\.parsed && r\.parsed\.eventDescription, stored, \(payload\.eventMeta \|\| \{\}\)\.description\)/.test(api), 'plan-structure writes through patch(), against the stored description and the brief it was sent');
-ok(/logActivity\(fb, eventId, req\.user, 'updated', eventDescription\.ACTIVITY_DETAIL, \{ area: 'event'/.test(api), 'plan-structure logs the description it wrote');
+ok(/logActivity\(fb, eventId, req\.user, 'updated', eventDescription\.activityDetail\(!!prevSource\), \{ area: 'event'/.test(api), 'plan-structure logs the description it wrote');
+ok(ed.activityDetail(false) === 'Description written by AI from the brief' && ed.activityDetail(true) === 'Description written by AI from the brief and the previous edition',
+  'NU-025 the log names the previous edition only when one was read');
+ok(/described: described \? \{ description: described\.description, from: String\(stored\.description \|\| ''\), previous: !!prevSource \}/.test(api) &&
+  /eventDescription\.activityDetail\(!!\(described && described\.previous\)\)/.test(api), 'NU-025 … also when the description goes on the event with the site');
+ok(/'AI wrote the site’s ' \+ sections\.length \+ ' sections' \+ \(hadSite \? ' again, in place of the last ones' : ''\)/.test(api) &&
+  /hadSite = !!\(cur\.generatedSite \|\| cur\.generatedAt/.test(api), 'NU-025 "again" only when the event had a site written before');
 ok(/never invent numbers, dates, speakers or sponsors/i.test(ed.RULE) && /no headings, no bullet lists/i.test(ed.RULE), 'the rule forbids invented facts and lists');
 
 /* ---- the repair prompt ---- */

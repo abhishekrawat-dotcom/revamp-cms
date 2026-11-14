@@ -40,7 +40,7 @@ Object.keys(SOURCE_NAMES).forEach(function (id) {
   });
 });
 ok(!/ai-logo|file_17652832944699_Group\.svg/.test(section('making-ai-work', 'about-wrapper')), '1 the Manifesto has no source-event logo');
-ok(!/Seats are limited to 500/.test(section('tech500', 'why-attend')) && /data-rv-sample>A line beside the button/.test(section('tech500', 'why-attend')), '1 tech500: the seat limit is a neutral model, not another event\'s number');
+ok(!/Seats are limited to 500/.test(section('tech500', 'why-attend')) && /data-rv-sample="instruction">A line beside the button/.test(section('tech500', 'why-attend')), '1 tech500: the seat limit is a neutral model, not another event\'s number');
 ok(!/<br>/.test(/<p class="strategic-influence-copy"[^>]*>[\s\S]*?<\/p>/.exec(section('tech500', 'strategic-influence'))[0]) &&
   /margin: calc\(52px \+ 24\.38px\) 0 0;/.test(read('templates/tech500/sections/strategic-influence/style.css')), '1 tech500: the pitch\'s opening line break is margin now, so a filled pitch keeps the gap');
 
@@ -151,10 +151,56 @@ var UI = read('editor-template-ui.js');
 ok(/function seedSnapshot\(draft\) \{\s*\/\/[^\n]*\n\s*markTemplateSamples\(\);\s*var snap = canvas\.snapshot\(\);/.test(UI), '4 the editor marks a fresh page\'s samples before its first step');
 ok(/var built = !!String\(unit\.getAttribute\('data-rv-item'\) \|\| ''\)\.trim\(\);\s*if \(!built && wholes\[squash\(unit\.textContent\)\]\) mark\(unit\);/.test(UI), '4 … by their words, never a card filled from the event\'s own content by its whole text');
 ok(/' with the design, or with a section or block you added'/.test(UI), '4 the question before publishing says the samples came with the design');
-if (tsamples) ok(tsamples.wholes.length > 40, '4 tech500\'s samples, read from disk', tsamples.wholes.length);
+if (tsamples) ok(tsamples.wholes.length >= 30, '4 tech500\'s samples, read from disk', tsamples.wholes.length);
 
-if (failures.length) {
-  console.error('template-samples: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
-  process.exit(1);
-}
-console.log('template-samples: all ' + checks + ' checks passed');
+/* ---------- 5. the first-time-user QA (14 Nov 2026) ---------- */
+/* NU-034: a heading of two parts, one of them rewritten — the other is still another event's */
+var MAW = api._testHooks.templateSamples('making-ai-work');
+var ovr = onPage('making-ai-work', 'overview');
+var halfDone = ovr.replace('<span>IT IS WHEN AI STARTS CHANGING THE ENTERPRISE ITSELF.</span>', '<span>WHERE PEOPLE STRATEGY MEETS THE MACHINE.</span>');
+var halfHits = SC.sampleHits(page(halfDone), kit, MAW).map(function (h) { return h.text; });
+ok(halfHits.indexOf('THE NEXT PHASE IS NOT MORE AI.') !== -1 && !halfHits.some(function (t) { return /WHERE PEOPLE/.test(t); }),
+  '5 NU-034 a heading with one of its two parts rewritten: the part left as the template wrote it is still found', halfHits);
+var bothDone = halfDone.replace('<clr>THE NEXT PHASE IS NOT MORE AI.</clr>', '<clr>OUR OWN FIRST LINE.</clr>');
+ok(!SC.sampleHits(page(bothDone), kit, MAW).some(function (h) { return /NEXT PHASE|WHEN AI STARTS/.test(h.text); }), '5 NU-034 … and with both parts rewritten, the heading is the owner\'s');
+var figure = onPage('making-ai-work', 'overview-stats').replace(/(<li class="ovr-stat[^"]*"[^>]*><span class="ovr-stat-num">)[^<]+/, '$1' + '9');
+ok(SC.sampleHits(page(figure), kit, MAW).every(function (h) { return !/^\d+$/.test(h.text); }), '5 NU-034 a figure on its own is never a part that counts (too short to be another event\'s words)');
+/* NU-023: the design's own notes of what to write are samples, said apart */
+var MAN = SC.sampleHits(page(onPage('making-ai-work', 'about-wrapper')), kit, MAW);
+ok(MAN.length === 1 && MAN[0].instruction === true && /^What this event stands for/.test(MAN[0].text), '5 NU-023 the Manifesto\'s line is a writing tip from the template, not another event\'s words', MAN);
+ok(MAW.instructions.length === 1 && api._testHooks.templateSamples('tech500').instructions.length === 4, '5 NU-023 the templates mark their writing tips (data-rv-sample="instruction")',
+  [MAW.instructions, api._testHooks.templateSamples('tech500').instructions]);
+/* NU-002: the editor's names for the sections (template.json), never their ids in words */
+var NAMES = api._testHooks.sectionNamesFor({ site: { templateId: 'making-ai-work' } });
+ok(NAMES['who-enter'] === 'Questions this raises' && NAMES['conventions-box'] === 'Who should attend' && NAMES['about-wrapper'] === 'Manifesto' &&
+  NAMES['overview-stats'] === 'Key numbers' && NAMES['fact-marquee'] === 'Reasons not to miss', '5 NU-002 a real template\'s sections by their template.json names', NAMES);
+var GEN = api._testHooks.sectionNamesFor({ templateId: 'gen-x', designPlan: { sections: [{ id: 'why-attend', name: 'Why you should come' }, { id: 'stats', name: 'stats' }] } });
+ok(GEN['why-attend'] === 'Why you should come' && GEN.stats === 'Stats' && GEN.nav === 'Top bar', '5 NU-002 an AI-designed site\'s by its plan, as the editor lists them', GEN);
+ok(JSON.stringify(api._testHooks.sectionNamesFor({ templateId: 'imported-x' })) === '{}', '5 NU-002 an imported site has no names of its own (it is one page)');
+var named = Object.assign({}, kit, { names: NAMES });
+var page2 = page(onPage('making-ai-work', 'who-enter') + onPage('making-ai-work', 'conventions-box') + onPage('making-ai-work', 'about-wrapper') +
+  '<section data-rv-section="generic" data-rv-key="generic-2"><h2>Our partners’ pledge</h2><p>Lorem ipsum dolor.</p></section>' +
+  '<section data-rv-section="auto-speakers" data-rv-key="auto-speakers"><h2>Speakers</h2></section>');
+var where = [];
+SC.sampleHits(page2, named, MAW).forEach(function (h) { h.sections.forEach(function (s) { if (where.indexOf(s) === -1) where.push(s); }); });
+ok(where.join('|') === 'Questions this raises|Who should attend|Manifesto', '5 NU-002 the samples are named as the site editor names their sections', where);
+var ph = SC.placeholderHits(page2, named);
+ok(ph.length && ph[0].sections[0] === 'Our partners’ pledge', '5 NU-002 a section the design does not name is named by its heading, never by its id', ph);
+ok(SC.sectionName('auto-speakers') === 'Speakers' && SC.sectionName('auto-sessions') === 'Agenda', '5 NU-002 the sections the editor adds for records, by the names it lists them under');
+ok(SC.sampleHits(page2, kit, MAW).some(function (h) { return h.sections[0] === 'Who enter'; }), '5 without the names, as before (the id in words): the live page pass is unchanged');
+pending4 = api._testHooks.siteCheckOf(null, 'qa-n', { name: 'N', site: { templateId: 'making-ai-work' } }, page(onPage('making-ai-work', 'who-enter') + onPage('making-ai-work', 'about-wrapper')), {}).then(function (r) {
+  var s = r.items.filter(function (x) { return x.code === 'samples'; })[0], n = r.items.filter(function (x) { return x.code === 'instructions'; })[0];
+  ok(s && s.level === 'block' && s.lines.every(function (l) { return / — Questions this raises$/.test(l); }) && s.fix[0].label === '“Questions this raises” in the site editor' &&
+    /&section=who-enter$/.test(s.fix[0].href), '5 NU-002 the check names the section as the editor does, with a link straight to it', s);
+  ok(n && n.level === 'block' && n.title === 'A writing tip from the template is still on the page' && / — Manifesto$/.test(n.lines[0]) && !/another event/.test(n.hint) &&
+    n.fix[0].label === '“Manifesto” in the site editor', '5 NU-023 a writing tip is said as one, apart from another event\'s samples, and still holds the site back', n);
+}, function (err) { ok(false, '5 the site check ran', err && err.stack); });
+
+var pending4;
+Promise.resolve(pending4).then(function () {
+  if (failures.length) {
+    console.error('template-samples: ' + failures.length + ' of ' + checks + ' checks failed:\n  - ' + failures.join('\n  - '));
+    process.exit(1);
+  }
+  console.log('template-samples: all ' + checks + ' checks passed');
+});

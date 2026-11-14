@@ -21,12 +21,18 @@
         stands    null or { text, key, name, count }: the site has a section for these that nothing hides, and it shows
                   items that are not in the tab (a real template's sample card, what Create Event wrote, records
                   deleted since): how many, and what puts the tab's own in their place (site-outline.js stands)
-        none      '' or a sentence: the site has no section that shows these at all
+        none      '' or a sentence: the site has no section that shows these at all, and what puts one there (NU-004)
+        add       null or { name, ready }: the section the site editor adds for these when it opens (editor-template-ui.js
+                  ensureAutoSections: it adds one for the records the site would show, when the page has none) —
+                  name as the editor lists it ("Speakers"); ready: true when opening the editor now adds it (there are
+                  records to show). null for an imported site, which the editor adds no section to.
         previous  null or { text, key, name, count }: the previous edition's own section of the same kind, which the
                   tab does not hold (it is part of the site's design; the site editor changes it)
      readiness(tab, shown, outline, o) -> { ok: true | false | 'na', text }
         a "Ready to publish" row of the Dashboard ('speakers', 'agenda', 'sponsors'); 'na': the site has no section
         for them, so the row is not something to get ready
+     actionNote(tab, outline, o) -> '' or the line under the Dashboard's "Add a speaker" when the site has no section
+        for them, so adding one does not look like it shows on the site (NU-004)
      logoTile(event, outline) -> { url, text, original }
         what the Event logo tile shows: the logo visitors see on the banner, and the upload one click away when that
         is a different picture
@@ -38,14 +44,15 @@
   'use strict';
 
   /* ---------- the tabs, and the name the site gives their records (templates/_shared/rv-data.js KINDS) ---------- */
+  /* section: the name the site editor lists the section it adds for them under (editor-template-ui.js AUTO_SECTIONS) */
   var TABS = {
-    speakers: { kind: 'speakers', prev: 'speakers', one: 'speaker', many: 'speakers', need: 'a confirmed speaker', confirms: true,
+    speakers: { kind: 'speakers', prev: 'speakers', one: 'speaker', many: 'speakers', need: 'a confirmed speaker', confirms: true, section: 'Speakers',
       jury: { one: 'jury member', many: 'jury members', need: 'a confirmed jury member' } },
-    agenda:   { kind: 'sessions', prev: 'agenda',   one: 'session', many: 'sessions', need: 'a session' },
-    sponsors: { kind: 'partners', prev: 'sponsors', one: 'sponsor', many: 'sponsors', need: 'a confirmed sponsor', confirms: true },
-    gallery:  { kind: 'glimpses', prev: 'glimpses', one: 'photo', many: 'photos', need: 'a photo' },
-    faq:      { kind: 'faq',      prev: '',         one: 'question', many: 'questions', need: 'a question' },
-    contact:  { kind: 'contact',  prev: '',         one: 'contact desk', many: 'contact desks', need: 'a contact desk' }
+    agenda:   { kind: 'sessions', prev: 'agenda',   one: 'session', many: 'sessions', need: 'a session', section: 'Agenda' },
+    sponsors: { kind: 'partners', prev: 'sponsors', one: 'sponsor', many: 'sponsors', need: 'a confirmed sponsor', confirms: true, section: 'Partners' },
+    gallery:  { kind: 'glimpses', prev: 'glimpses', one: 'photo', many: 'photos', need: 'a photo', section: 'Gallery' },
+    faq:      { kind: 'faq',      prev: '',         one: 'question', many: 'questions', need: 'a question', section: 'FAQs' },
+    contact:  { kind: 'contact',  prev: '',         one: 'contact desk', many: 'contact desks', need: 'a contact desk', section: 'Contact' }
   };
   /* what the previous edition's sections show (functions/lib/prev-sections.js) */
   var PREV_WORDS = { speakers: ['speaker', 'speakers'], sponsors: ['sponsor', 'sponsors'], agenda: ['session', 'sessions'], glimpses: ['photo', 'photos'] };
@@ -81,7 +88,7 @@
   }
 
   function forTab(tab, outline, n, o) {
-    var T = TABS[tab], out = { where: whereOf(outline), hidden: '', stands: null, none: '', previous: null };
+    var T = TABS[tab], out = { where: whereOf(outline), hidden: '', stands: null, none: '', add: null, previous: null };
     if (!T || !known(outline)) return out;
     var W = wordsOf(T, o);
     var total = Math.max(0, +(n && n.total) || 0);
@@ -107,9 +114,18 @@
               (c === 1 ? 'it is' : 'they are') + ' written into the site itself. ' + how };
         }
       }
+    } else if (outline.imported) {
+      /* one captured page: the site editor adds no section to it */
+      out.none = out.where + ' was imported as one finished page, so it cannot show ' + W.many + ' added here.';
     } else {
-      out.none = out.where + ' has no section that shows ' + W.many + ', so ' +
-        (total ? 'none of these are on it.' : W.many + ' added here do not appear on it.') + ' Sections are added in the site editor.';
+      /* NU-004: said plainly where they are added, with the one step that puts them on the site: the site editor adds
+         a section for the records the site would show when it opens (editor-template-ui.js ensureAutoSections) */
+      var nm = (/^(?:[AEIOU]|FAQ)/.test(T.section) ? 'an' : 'a') + ' “' + T.section + '”';
+      out.add = { name: T.section, ready: shown > 0 };
+      out.none = out.where + ' has no section for ' + W.many + ' yet, so ' + (total ? 'these are not on it. ' : W.many + ' added here do not show on it until it has one. ') +
+        (shown ? 'Open the site editor: it adds ' + nm + ' section for ' + (T.confirms ? 'the confirmed ' + W.many : 'them') + ' as it opens. Press Save there to keep it.'
+          : total && T.confirms ? 'Once one of them is confirmed, the site editor adds ' + nm + ' section for them when it opens; press Save there to keep it.'
+          : 'Add them here first: the next time the site editor opens, it adds ' + nm + ' section for them' + (T.confirms ? ' (confirmed ' + W.many + ' only)' : '') + '. Press Save there to keep it.');
     }
     var p = previousOf(outline, T);
     if (p) {
@@ -139,10 +155,22 @@
       return { ok: false, text: 'None yet: the site’s ' + (sp.whole.length ? namesOf(sp.whole) + sectionsWord(sp.whole) + ' hidden'
         : namesOf(sp.list) + sectionsShow(sp.list) + ' none') + ' until one is added' };
     }
-    if (shown) return { ok: false, text: have + ', but the site has no section that shows them' };
+    if (shown) return { ok: false, text: outline.imported ? have + ', but this imported site cannot show them'
+      : have + ', not on the site yet: open the site editor to add ' + (/^(?:[AEIOU]|FAQ)/.test(T.section) ? 'an' : 'a') + ' “' + T.section + '” section, then save' };
     var p = previousOf(outline, T), c = p ? Math.max(0, +p.count || 0) : 0;
     return { ok: 'na', text: 'The site has no section for ' + W.many +
-      (p ? '; it shows ' + (c ? count(c, PREV_WORDS[T.prev][0], PREV_WORDS[T.prev][1]) : PREV_WORDS[T.prev][1]) + ' from the previous edition' : '') };
+      (p ? '; it shows ' + (c ? count(c, PREV_WORDS[T.prev][0], PREV_WORDS[T.prev][1]) : PREV_WORDS[T.prev][1]) + ' from the previous edition'
+        : outline.imported ? '' : ' yet: add some, and the site editor adds one') };
+  }
+
+  /* The line under the Dashboard's "Add a speaker" (NU-004): with no section on the site to show them, adding one
+     must not look like it shows there. '' while what the site shows is not known, or when it has such a section. */
+  function actionNote(tab, outline, o) {
+    var T = TABS[tab];
+    if (!T || !known(outline) || placesOf(outline, T).length) return '';
+    var W = wordsOf(T, o);
+    return outline.imported ? 'This imported site cannot show ' + W.many
+      : 'Your site has no ' + T.section + ' section yet: add ' + W.many + ', then open the site editor, which adds one';
   }
 
   /* ---------- the Event logo tile (UX-071) ---------- */
@@ -213,7 +241,7 @@
   }
 
   var api = {
-    TABS: TABS, forTab: forTab, readiness: readiness, logoTile: logoTile,
+    TABS: TABS, forTab: forTab, readiness: readiness, actionNote: actionNote, logoTile: logoTile,
     PRIORITIES: PRIORITIES, PRIORITY_FOOT: PRIORITY_FOOT, priorityOptions: priorityOptions, priorityId: priorityId,
     priorityLabel: priorityLabel, isNormal: isNormal, byPriority: byPriority
   };

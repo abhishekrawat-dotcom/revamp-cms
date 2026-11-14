@@ -49,9 +49,9 @@ check('1 the box: a heading and a polite status line', /<h3 id="rvpf-qa-h">Befor
 /* ---------- 2. in the dialogs, never in the way ---------- */
 var askFn = FLOW.slice(FLOW.indexOf('  function ask(eventId'), FLOW.indexOf('  function direct('));
 var directFn = FLOW.slice(FLOW.indexOf('  function direct('), FLOW.indexOf('WHAT BECAME OF THE LAST REQUEST'));
-check('2 the send dialog and the publish dialog both carry the list, filled once they are open', /checksBox\(\)/.test(askFn) && /watchChecks\(eventId, d, false, opts\)/.test(askFn) && /checksBox\(\)/.test(directFn) && /watchChecks\(eventId, d, true, opts\)/.test(directFn));
+check('2 the send dialog and the publish dialog both carry the list, filled once they are open', /checksBox\(\)/.test(askFn) && /watchChecks\(eventId, d, false, opts, gate\)/.test(askFn) && /checksBox\(\)/.test(directFn) && /watchChecks\(eventId, d, true, opts, gate\)/.test(directFn));
 check('2 no second dialog: the list is part of the one that sends (the flow still opens its six)', (FLOW.match(/dialog\(\{/g) || []).length === 6 && !/dialog\(\{[^]{0,200}Before it goes live/.test(FLOW), (FLOW.match(/dialog\(\{/g) || []).length);
-var watch = FLOW.slice(FLOW.indexOf('  function watchChecks('), FLOW.indexOf('  function ask(eventId'));
+var watch = FLOW.slice(FLOW.indexOf('  function openFix('), FLOW.indexOf('  function ask(eventId'));
 check('2 it asks the saved site\'s check with the advice, and again while other sites are answering (bounded)', /\/api\/event\/site-check\?eventId=' \+ encodeURIComponent\(eventId\) \+ '&of=saved&advisory=1&wait='/.test(watch) && /asked < QA_POLLS/.test(watch) && /QA_POLLS = 6/.test(FLOW));
 check('2 Send and Publish never wait for it: nothing in the send or publish step reads it', !/checksView|watchChecks|rvpf-qa/.test(askFn.slice(askFn.indexOf("d.on('send'"))) && !/checksView|rvpf-qa/.test(directFn.slice(directFn.indexOf("d.on('publish'"))));
 check('2 a fix link shows the place: the editor\'s section in place, the console\'s tab by its route; else a new tab', /f\.where === 'editor' && opts\.from === 'editor' && typeof opts\.showSection === 'function'/.test(watch) && /location\.hash = f\.route/.test(watch) && /d\.close\(true\)/.test(watch));
@@ -103,6 +103,28 @@ var chk = REVIEW.slice(REVIEW.indexOf('  function checksHtml(r){'), REVIEW.index
 check('4 the review page shows each item\'s places to put it right, in a new tab', /Put it right: /.test(chk) && /target="_blank" rel="noopener"/.test(chk) && /esc\(f\.href\)/.test(chk) && /esc\(f\.label\)/.test(chk));
 check('4 and what is still being checked, asked again with the server waiting (bounded)', /Still checking ' \+ still/.test(chk) && /CHECK_POLLS = 6/.test(REVIEW) && /&wait=6000/.test(REVIEW) && /checkPolls < CHECK_POLLS\) loadChecks\(true\)/.test(REVIEW));
 check('4 a later ask that fails keeps the list', /if \(again && Array\.isArray\(data\.checks\)\) data\.checksPending = 0; else data\.checks = false;/.test(REVIEW));
+
+/* ---------- 5. NU-010: what the server would refuse greys Send out, with the way to put it right ---------- */
+var BLOCKED = { found: true, items: [
+  { code: 'samples', level: 'block', title: 'Samples from the template are still on the page', lines: ['“If AI…” — Overview'],
+    fix: [{ where: 'editor', key: 'overview', label: '“Overview” in the site editor', href: '/custom_editor.html?event=e&section=overview' }] },
+  R.items[1]] };
+var g = T.gateOf(BLOCKED, false);
+var longList = T.checksView({ found: true, items: [{ code: 'samples', level: 'block', title: 'S', lines: ['a', 'b', 'c', 'd', 'e', '…and 18 more'] }] }, false);
+check('5 a long list says how many more there really are (the server\'s own "…and 18 more" counted in)', /…and 19 more/.test(longList.html), longList.html);
+check('5 NU-010 a block holds Send back, says why, and names the first place to put it right', g.blocked && g.count === 1 && g.first && g.first.key === 'overview' &&
+  g.why === '1 thing must be put right before it can be sent: see the list at the top.', g);
+check('5 NU-010 … "published" when approval is switched off', /before it can be published/.test(T.gateOf(BLOCKED, true).why));
+check('5 NU-010 advice alone never holds it back (owner decision #11: advisory, always)', !T.gateOf({ found: true, items: [R.items[1], R.items[2]] }, false).blocked);
+check('5 NU-010 a check that could not be read holds nothing back (the server checks again as it is sent)', !T.gateOf(null, false).blocked && !T.gateOf({ found: false }, false).blocked);
+check('5 NU-010 the send and publish dialogs carry "Put it right first", hidden until the check says something blocks',
+  /\{ key: 'fix-first', label: 'Put it right first', kind: 'primary', hidden: true \}/.test(askFn) && /\{ key: 'fix-first', label: 'Put it right first', kind: 'primary', hidden: true \}/.test(directFn) &&
+  /gateDialog\(d, 'send', false, opts\)/.test(askFn) && /gateDialog\(d, 'publish', true, opts\)/.test(directFn));
+var gateFn = FLOW.slice(FLOW.indexOf('  function gateDialog('), FLOW.indexOf('  function ask(eventId'));
+check('5 NU-010 the greyed button stays greyed after a send that failed, and the list goes to the top', /btn\.setAttribute\('data-rvpf-blocked', ''\)/.test(gateFn) && /btn\.disabled = true/.test(gateFn) &&
+  /b\.disabled = busy \|\| b\.hasAttribute\('data-rvpf-blocked'\)/.test(FLOW) && /body\.insertBefore\(qa, body\.firstChild\.nextSibling\)/.test(gateFn) && /aria-describedby', 'rvpf-why'/.test(gateFn));
+check('5 NU-010 a refusal is said at the top of the dialog, and scrolled to', /'<div class="rvpf-body"><p class="rvpf-err" role="alert"><\/p>' \+ spec\.body/.test(FLOW) && /box\.querySelector\('\.rvpf-body'\)\.scrollTop = 0/.test(FLOW));
+check('5 NU-010 a refusal for what the check holds back shows its list', /if \(err && Array\.isArray\(err\.checks\) && err\.checks\.length\) repaint\(\{ items: err\.checks, found: true \}\);/.test(askFn));
 
 function finish() {
   if (failed) { console.error('publish-check: ' + failed + ' of ' + (failed + passed) + ' checks FAILED'); process.exit(1); }

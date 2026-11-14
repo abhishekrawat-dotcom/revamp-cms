@@ -58,12 +58,21 @@ check('Sponsors with a confirmed one: nothing hidden', !n.hidden && !n.none && n
 
 n = SN.forTab('speakers', BWS, { total: 0, shown: 0 });
 check('Speakers on BWS (UX-067): no section for this edition\'s speakers, and the 49 of the previous edition said',
-  n.none === 'Your live site has no section that shows speakers, so speakers added here do not appear on it. Sections are added in the site editor.' &&
+  n.none === 'Your live site has no section for speakers yet, so speakers added here do not show on it until it has one. Add them here first: the next time the site editor opens, it adds a “Speakers” section for them (confirmed speakers only). Press Save there to keep it.' &&
+  n.add && n.add.name === 'Speakers' && n.add.ready === false &&
   !n.hidden && n.previous && n.previous.count === 49 && /also shows 49 speakers from the previous edition, in its “Previous Edition Speakers” section/.test(n.previous.text), n);
 n = SN.forTab('speakers', BWS, { total: 2, shown: 2 });
-check('Speakers added with no section for them: none of these is on the site', /no section that shows speakers, so none of these are on it\./.test(n.none), n.none);
+check('Speakers added with no section for them: none of these is on the site, and opening the editor adds the section (NU-004)',
+  n.none === 'Your live site has no section for speakers yet, so these are not on it. Open the site editor: it adds a “Speakers” section for the confirmed speakers as it opens. Press Save there to keep it.' &&
+  n.add && n.add.ready === true, n);
+n = SN.forTab('speakers', BWS, { total: 2, shown: 0 });
+check('NU-004 only invited speakers: the section comes once one is confirmed, and nothing is offered yet', /Once one of them is confirmed, the site editor adds a “Speakers” section/.test(n.none) && n.add && n.add.ready === false, n);
+n = SN.forTab('agenda', Object.assign({}, BWS, { places: Object.assign({}, BWS.places, { sessions: [] }) }), { total: 3 });
+check('NU-004 the agenda: the editor\'s “Agenda” section, for every session (no confirming)', /it adds an “Agenda” section for them as it opens/.test(n.none) && n.add.ready === true, n);
+n = SN.forTab('speakers', Object.assign({}, BWS, { imported: true }), { total: 2, shown: 2 });
+check('NU-004 an imported site says it cannot show them, and offers nothing', n.none === 'Your live site was imported as one finished page, so it cannot show speakers added here.' && !n.add, n);
 n = SN.forTab('speakers', BWS, { total: 0, shown: 0 }, { award: true });
-check('an award\'s speakers are its jury', /no section that shows jury members/.test(n.none), n.none);
+check('an award\'s speakers are its jury', /no section for jury members yet/.test(n.none), n.none);
 
 check('Agenda, FAQ and Contact: each section named, hidden until one is added',
   SN.forTab('agenda', BWS, { total: 0 }).hidden === 'Your live site’s “Agenda” section is hidden until you add a session.' &&
@@ -71,7 +80,7 @@ check('Agenda, FAQ and Contact: each section named, hidden until one is added',
   SN.forTab('contact', BWS, { total: 0 }).hidden === 'Your live site’s “Contact us” section is hidden until you add a contact desk.' &&
   !SN.forTab('faq', BWS, { total: 1 }).hidden && !SN.forTab('faq', BWS, { total: 0 }).previous);
 n = SN.forTab('gallery', BWS, { total: 0 });
-check('Gallery on BWS: no section for photos, and the previous edition\'s 24 photos said', /has no section that shows photos/.test(n.none) &&
+check('Gallery on BWS: no section for photos, and the previous edition\'s 24 photos said', /has no section for photos yet/.test(n.none) &&
   n.previous && /24 photos from the previous edition/.test(n.previous.text) && n.previous.key === 'previous-glimpses', n);
 var SAVED = { of: 'saved', places: { speakers: [{ key: 'speakers', name: 'Speakers', hides: true }, { key: 'jury', name: 'Jury', hides: true }],
   sessions: [], partners: [], faq: [], glimpses: [], contact: [{ key: 'contact-us', name: 'Contact us', hides: false }] }, previous: [{ kind: 'speakers', key: 'previous-speakers', name: 'Previous Edition Speakers', count: 0 }] };
@@ -109,7 +118,13 @@ check('readiness, site not known: as before', j(SN.readiness('speakers', 3, null
   j(SN.readiness('agenda', 0, null)) === j({ ok: false, text: 'None on the site yet' }));
 check('readiness: a hidden section is a thing to do, said', j(SN.readiness('sponsors', 0, BWS)) === j({ ok: false, text: 'None yet: the site’s “Sponsors” section is hidden until one is added' }), SN.readiness('sponsors', 0, BWS));
 check('readiness: no section for them: not a thing to get ready, and the previous edition\'s said', j(SN.readiness('speakers', 0, BWS)) === j({ ok: 'na', text: 'The site has no section for speakers; it shows 49 speakers from the previous edition' }), SN.readiness('speakers', 0, BWS));
-check('readiness: some added but no section shows them: a thing to do', j(SN.readiness('speakers', 1, BWS)) === j({ ok: false, text: '1 speaker, but the site has no section that shows them' }));
+check('readiness: some added but no section shows them: a thing to do, with the step (NU-004)', j(SN.readiness('speakers', 1, BWS)) === j({ ok: false, text: '1 speaker, not on the site yet: open the site editor to add a “Speakers” section, then save' }), SN.readiness('speakers', 1, BWS));
+var NOPREV = Object.assign({}, BWS, { previous: [] });
+check('NU-004 readiness: no section and none added: says one comes with the first', j(SN.readiness('agenda', 0, Object.assign({}, NOPREV, { places: Object.assign({}, BWS.places, { sessions: [] }) }))) ===
+  j({ ok: 'na', text: 'The site has no section for sessions yet: add some, and the site editor adds one' }));
+check('NU-004 the Dashboard\'s "Add a speaker" says when the site has no section for them', SN.actionNote('speakers', NOPREV) === 'Your site has no Speakers section yet: add speakers, then open the site editor, which adds one' &&
+  SN.actionNote('speakers', Object.assign({}, NOPREV, { imported: true })) === 'This imported site cannot show speakers' && SN.actionNote('speakers', null) === '' &&
+  SN.actionNote('agenda', BWS) === '', [SN.actionNote('speakers', NOPREV), SN.actionNote('agenda', BWS)]);
 check('readiness: shown, with a section: ready, counted with commas', j(SN.readiness('agenda', 1200, BWS)) === j({ ok: true, text: '1,200 sessions on the site' }));
 
 /* ---------- UX-071: the Event logo tile ---------- */
@@ -187,7 +202,9 @@ check('UX-067: the previous edition\'s note opens the editor at that section', /
   var hid = box.emptySiteLine(SN.forTab('faq', BWS, { total: 0 }));
   check('an AI site\'s hidden FAQ: the line as before, no editor link', /section is hidden until you add a question\.<\/span><\/p>$/.test(hid) && hid.indexOf('<a ') === -1, hid);
   var none = box.emptySiteLine(SN.forTab('speakers', BWS, { total: 0, shown: 0 }));
-  check('no section for speakers: the line and "Open the site editor"', /do not appear on it\. Sections are added in the site editor\. <a href="\/custom_editor\.html\?event=e1">Open the site editor<\/a>/.test(none), none);
+  check('no section for speakers and none added: the line says what to do first, and offers no editor link that would add nothing (NU-004)', /Add them here first: the next time the site editor opens, it adds a “Speakers” section for them/.test(none) && none.indexOf('<a ') === -1, none);
+  var ready = box.siteCallout(SN.forTab('speakers', BWS, { total: 2, shown: 2 }), true);
+  check('NU-004 speakers added with no section: the callout offers the one step, a button to the site editor', ready.indexOf('<a class="btn btn-secondary btn-sm sn-add" href="/custom_editor.html?event=e1">Open the site editor to add the “Speakers” section</a>') !== -1, ready);
   var call = box.siteCallout(SN.forTab('speakers', CX, { total: 2, shown: 0 }), true);
   check('a tab with only invited speakers: the callout says the hidden section and the one that shows its own',
     call.indexOf('“Jury” section is hidden') !== -1 && call.indexOf('section=speakers">Open “Speakers” in the site editor</a>') !== -1, call);
@@ -212,7 +229,7 @@ function loadDash(opts) {
   vm.runInContext(read('edit-event-core.js'), ctx);
   var C = win.RevampCore;
   C.fetchStats = function () { return Promise.resolve({ registrations: 0, confirmed: 0, byDay: [] }); };
-  C.fetchActivityLog = function () { return Promise.resolve({ items: [] }); };
+  C.fetchActivityLog = function () { return Promise.resolve({ items: opts.log || [] }); };
   C.fetchForms = function () { return Promise.resolve({ forms: [{ id: 'f1' }], registration: { open: true } }); };
   vm.runInContext(read('edit-event-dashboard.js'), ctx);
   var D = win.EditEventDashboard, x = C.makeCtx({ EV: opts.ev, S: {}, render: function () {} });
@@ -221,6 +238,7 @@ function loadDash(opts) {
   x.isAward = function () { return false; };
   x.siteNotes = SN;
   x.siteOutline = function () { return opts.outline; };
+  if (opts.words) x.log = { detail: opts.words.detailText };
   return { D: D, ctx: x };
 }
 function text(html) { return html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' '); }
@@ -235,6 +253,15 @@ function text(html) { return html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&'
   check('Dashboard: Agenda and Sponsors say their sections are hidden until one is added',
     /Agenda None yet: the site’s “Agenda” section is hidden until one is added To do/.test(tv) && /Sponsors None yet: the site’s “Sponsors” section is hidden until one is added To do/.test(tv), tv);
   check('Dashboard: the ready count leaves out the row with no section', /Ready to publish \d of 5 ready/.test(tv), (tv.match(/Ready to publish .{0,20}/) || [])[0]);
+  check('NU-004 Dashboard: "Add a speaker" says the site has no section for them, and what adds one',
+    /Add a speaker Your site has no Speakers section yet: add speakers, then open the site editor, which adds one/.test(tv) && !/The line-up drives registrations/.test(tv), tv);
+  var d2 = loadDash({ ev: { id: 'x2', eventId: 'x2', name: 'X', site: { version: 1 } }, counts: { speakers: 0, agenda: 0, sponsors: 0 }, outline: null,
+    words: require('../../activity-words.js'), log: [{ at: '2026-11-14T05:52:00Z', by: 'qa@x.in', action: 'updated', area: 'event', detail: 'templateId', fields: [{ field: 'templateId', before: '', after: 'gen-x2' }] }] });
+  d2.D.view(d2.ctx); d2.D.wire(d2.ctx);
+  await new Promise(function (r) { setTimeout(r, 30); });
+  var tv2 = text(d2.D.view(d2.ctx));
+  check('NU-025 Recent activity says a field by its label, never its key', /› Template/.test(tv2.replace(/&rsaquo;/g, '›')) && !/templateId/.test(tv2), (tv2.match(/Recent activity.{0,200}/) || [])[0]);
+  check('NU-004 … and while the site is not known, the quick action says what it always did', /Add a speaker The line-up drives registrations/.test(tv2));
 
   /* ---------- the registrations drawer (UX-070) ---------- */
   var reg = read('audience-registrations.html');

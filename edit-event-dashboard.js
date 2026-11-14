@@ -40,7 +40,7 @@
                            of the Content tabs (GET /api/event/site-outline) or null: with both, the Speakers, Agenda and
                            Sponsors rows say what the site does with them (a section hidden until one is added, no
                            section at all, the previous edition's shown instead — UX-066, UX-067)
-     ctx.log               { when(iso), who(by), action(a) }: the Activity log's own wording
+     ctx.log               { when(iso), who(by), action(a), detail(entry) }: the Activity log's own wording
    =========================================================================== */
 
 window.EditEventDashboard = (function(){
@@ -171,12 +171,15 @@ window.EditEventDashboard = (function(){
     return ctx.panel('Registrations', ctx.comma(reg) + ' in all', bars(ctx, rows, reg));
   }
 
-  /* The things people actually open this screen to do. */
+  /* The things people actually open this screen to do. "Add a speaker" says so when the site has no section to show
+     speakers in (NU-004): adding one must not look like it shows on the site. */
   function quickActions(ctx, s){
-    var IC = ctx.IC;
+    var IC = ctx.IC, jury = !!(ctx.isAward && ctx.isAward());
+    var SNotes = ctx.siteNotes || null, outline = SNotes && ctx.siteOutline ? ctx.siteOutline() : null;
+    var spkNote = SNotes && typeof SNotes.actionNote === 'function' ? SNotes.actionNote('speakers', outline, { award: jury }) : '';
     return [
       ['Edit the site',     'Open the site editor',                                 IC.brush, 'design/editor'],
-      [ctx.isAward && ctx.isAward() ? 'Add a jury member' : 'Add a speaker', 'The line-up drives registrations', IC.users, 'content/speakers'],
+      [jury ? 'Add a jury member' : 'Add a speaker', spkNote || 'The line-up drives registrations', IC.users, 'content/speakers'],
       ['See registrations', s ? ctx.comma(+s.registrations || 0) + ' so far' : 'In Reporting', IC.chart, 'audience/reg']
     ].map(function(q){
       return '<button class="check-row" type="button" data-goto="' + q[3] + '" ' +
@@ -199,10 +202,13 @@ window.EditEventDashboard = (function(){
     function when(iso){ return L.when ? L.when(iso) : ctx.fmtDate(iso); }
     function who(by){ return L.who ? L.who(by) : String(by || ''); }
     function what(a){ return L.action ? L.action(a) : String(a || ''); }
+    /* the detail in the Activity log's own words: a field's label, never its key ("Template", not "templateId": NU-025) */
+    function detail(h){ return L.detail ? L.detail(h) : String(h.detail || ''); }
     return D.log.map(function(h){
+      var d = detail(h);
       return '<div class="feed-item"><span class="feed-dot"></span><div class="feed-body">' +
           '<div class="feed-when">' + ctx.esc(when(h.at)) + '</div>' +
-          '<div class="feed-what">' + ctx.esc(what(h.action)) + (h.detail ? '<span class="sep">&rsaquo;</span>' + ctx.esc(String(h.detail).slice(0, 160)) : '') + '</div>' +
+          '<div class="feed-what">' + ctx.esc(what(h.action)) + (d ? '<span class="sep">&rsaquo;</span>' + ctx.esc(String(d).slice(0, 160)) : '') + '</div>' +
           '<div class="feed-who">by ' + ctx.esc(who(h.by)) + '</div>' +
         '</div></div>';
     }).join('');

@@ -18,6 +18,11 @@
    kit: lib/api.js's tokenizer (TOKEN_KIT: tokenizeHtml, attrOf, attrValue, classListOf, writeTag, setAttr,
    dropAttr) — the same rules as the publish transform: whole tags it has matched, text it writes itself, every
    other byte as it was. Everything here is idempotent: running it on its own output changes nothing.
+   kit.names (optional, NU-002): { section id or key: name } — the names the site editor lists the sections by (a
+   real template's template.json sections[].name, an AI-designed site's plan: lib/api.js sectionNamesFor). With it, a
+   section is named as the person sees it in the editor — a section the site's design does not name (one added from
+   the gallery of designs) by its heading — never by its id in words ("Who enter", "About wrapper"). Without it, by
+   its id in words, as before.
 
      inspect(html, kit)                 -> { placeholders, links, payment, logos, etNav, etFooter, generated, imported }
      placeholderHits(html, kit)         -> [{ text, count, sections, places, strong }]   template text a visitor would read
@@ -38,7 +43,7 @@
      storageRefs(html)                  -> [{ url, bucket, path }]   every picture of storage.googleapis.com
      nearBucket(a, b)                   -> bool   a bucket name one or two letters away from ours (a typo)
      yearsIn(text)                      -> [2026, …]
-     sectionName(id)                    -> 'Key discussion points'
+     sectionName(id, names)             -> 'Key discussion points'   (names: kit.names, when known)
    No network, no Firebase: see site-checks.test.js. */
 'use strict';
 
@@ -169,7 +174,7 @@ function matchEnds(tokens) {
 /* every token with what it stands in: { hidden, skip, section, key, chrome ('nav' | 'footer' | ''), end } */
 function scan(html, kit) {
   var tokens = kit.tokenizeHtml(html), ends = matchEnds(tokens), A = kit.attrValue;
-  var root = { hidden: false, skip: false, section: '', key: '', chrome: '', end: tokens.length, form: false };
+  var root = { hidden: false, skip: false, section: '', key: '', name: 'Page', chrome: '', end: tokens.length, form: false };
   var ctx = new Array(tokens.length), stack = [root], ids = {};
   for (var i = 0; i < tokens.length; i++) {
     while (stack.length > 1 && i > stack[stack.length - 1].end) stack.pop();
@@ -187,6 +192,8 @@ function scan(html, kit) {
       key: sec ? String(A(t, 'data-rv-key') || sec) : cur.key,
       form: cur.form || t.name === 'form'
     };
+    /* the section's name as the person reads it in the site editor (kit.names; NU-002) */
+    node.name = sec ? titleOf(kit, sec, node.key, tokens, ends, i, html) : cur.name;
     ctx[i] = node;
     var id = A(t, 'id');
     if (id && !node.skip && !Object.prototype.hasOwnProperty.call(ids, id)) ids[id] = { i: i, node: node };
@@ -217,19 +224,54 @@ function labelOf(s, i, kit) {
 /* where something is, for the owner: its section's name, else the header or footer it is in (an imported page
    has no sections of its own: all of it is "Page") */
 function placeOf(c) {
-  var name = sectionName(c.section);
+  var name = c.name || sectionName(c.section);
   return name === 'Page' && c.chrome ? (c.chrome === 'footer' ? 'Footer' : 'Header') : name;
 }
 
-function sectionName(id) {
+/* the sections the site editor adds for the event's records when it opens (editor-template-ui.js AUTO_SECTIONS:
+   data-rv-section="auto-<kind>"), by the names it lists them under */
+var AUTO_NAMES = { speakers: 'Speakers', sessions: 'Agenda', partners: 'Partners', glimpses: 'Gallery', faq: 'FAQs', contact: 'Contact' };
+function own(o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); }
+/* a section's id as a name: what the editor shows for a section its design gives no name of its own */
+function idWords(id) {
+  var s = String(id || '').replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+/* names: kit.names (the editor's own names of the site's sections), when known */
+function sectionName(id, names) {
   id = String(id || '');
   if (!id) return 'Page';
+  if (names && own(names, id) && names[id]) return String(names[id]);
+  var auto = /^auto-(.+)$/.exec(id);
+  if (auto && own(AUTO_NAMES, auto[1])) return AUTO_NAMES[auto[1]];
   if (id === 'nav') return 'Header';
   if (id === 'footer') return 'Footer';
   if (id === 'hero') return 'Banner';
   if (id === 'imported') return 'Page';
-  var s = id.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return idWords(id);
+}
+/* A section's name in scan (NU-002): the editor's name for its key or its id (kit.names), the name of a section the
+   editor adds for records, and — for one the site's design does not name at all (a design added from the gallery,
+   which the editor names only while it is open) — its first heading as a visitor reads it. Without kit.names: its id
+   in words, as it always was. */
+var TITLE_MAX = 60;
+function titleOf(kit, sec, key, tokens, ends, i, html) {
+  var names = kit && kit.names;
+  if (!names) return sectionName(sec);
+  if (key && own(names, key) && names[key]) return String(names[key]);
+  if (own(names, sec) || /^auto-/.test(sec) || /^(?:nav|footer|hero|imported)$/.test(sec)) return sectionName(sec, names);
+  for (var k = i + 1; k < ends[i]; k++) {
+    var x = tokens[k];
+    if (x.t !== 'open') continue;
+    if (SKIP[x.name] || isHiddenTag(x, kit)) { k = ends[k]; continue; }
+    if (!/^h[1-3]$/.test(x.name)) continue;
+    var parts = [];
+    for (var j = k + 1; j < ends[k]; j++) if (tokens[j].t === 'text') parts.push(html.slice(tokens[j].s, tokens[j].e));
+    var words = clean(parts.join(' '));
+    if (words) return words.length > TITLE_MAX ? words.slice(0, TITLE_MAX - 1).replace(/\s+\S*$/, '') + '…' : words;
+    k = ends[k];
+  }
+  return sectionName(sec);
 }
 
 /* a link that looks like a button (its class says so), as opposed to words linked inside a sentence */
@@ -286,7 +328,7 @@ function linksOf(s, kit) {
     var label = labelOf(s, i, kit);
     var st = stateOf(s, i, kit);
     out.push({ i: i, tag: t.name, label: label, kind: kindOf(label), state: st.state, href: st.href || '', target: st.target || '', targetI: st.targetI,
-      section: c.section, key: c.key, chrome: c.chrome, buttonish: buttonish(t, kit) });
+      section: c.section, name: c.name, key: c.key, chrome: c.chrome, buttonish: buttonish(t, kit) });
   }
   return out;
 }
@@ -312,7 +354,7 @@ function placeholderHits(html, kit) {
     var key = text.toLowerCase();
     if (!found[key]) { found[key] = { text: text, count: 0, sections: [], places: [], strong: hit.strong }; order.push(key); }
     found[key].count++;
-    var name = sectionName(c.section);
+    var name = c.name || sectionName(c.section);
     if (found[key].sections.indexOf(name) === -1) found[key].sections.push(name);
     addPlace(found[key].places, c.key, name);
   }
@@ -331,8 +373,16 @@ function placeholderHits(html, kit) {
    tag (and first class) on the page, so a short figure is never taken for one in a sentence, and a card the owner
    changed in any part is theirs. A card the wizard or the event's records built (data-rv-item with a value) is never
    one by its whole text: its words are the event's.
-   -> wholes: [{ tag, cls, text }] */
+   Except a heading or a line made of two or more parts the editor edits one at a time (NU-034: the Overview's
+   "THE NEXT PHASE IS NOT MORE AI." over "IT IS WHEN AI STARTS..."): rewriting one part left the other on the page,
+   and it went past the check because the whole no longer matched. Each part that is a phrase of its own (PART_WORDS
+   words or more: never a figure or a short label, which the owner's own card can share) is known on its own too.
+   An element marked data-rv-sample="instruction" is not another event's words but the design's own note of what
+   belongs there ("What this event stands for, in the organiser's own words...", NU-023): it is a sample all the
+   same, listed apart (instructions), so the check can say what it is.
+   -> wholes: [{ tag, cls, text, parts? }], instructions: [text] */
 var SAMPLE_WORDS_MIN = 30;
+var PART_WORDS = 5, PART_CHARS = 25;
 /* the words of an element, as a visitor reads them (text only: never a label or an alt) */
 function wordsOf(s, i, kit) {
   var parts = [], skipTo = -1;
@@ -346,11 +396,35 @@ function wordsOf(s, i, kit) {
 }
 function firstClass(t, kit) { return kit.classListOf(t)[0] || ''; }
 function builtFromData(t, kit) { return !!String(kit.attrValue(t, 'data-rv-item') || '').trim(); }
+/* whether an element has words directly in it (not only inside the elements it holds) */
+function ownText(s, i) {
+  for (var k = i + 1; k < s.ends[i]; k++) {
+    var x = s.tokens[k];
+    if (x.t === 'open') { k = s.ends[k]; continue; }
+    if (x.t === 'text' && /\S/.test(s.html.slice(x.s, x.e))) return true;
+  }
+  return false;
+}
+/* the parts of an element the editor edits one at a time: each outermost element with words of its own (an element
+   with words of its own is one part, itself) -> [text] */
+function partsOf(s, i, kit) {
+  if (ownText(s, i)) { var all = wordsOf(s, i, kit); return all ? [all] : []; }
+  var out = [];
+  for (var k = i + 1; k < s.ends[i]; k++) {
+    var x = s.tokens[k];
+    if (x.t !== 'open' || VOID[x.name] || s.ends[k] === k) continue;
+    if (SKIP[x.name] || isHiddenTag(x, kit)) { k = s.ends[k]; continue; }
+    if (ownText(s, k)) { var w = wordsOf(s, k, kit); if (w) out.push(w); k = s.ends[k]; }
+  }
+  return out;
+}
+function isPhrase(text) { return text.length >= PART_CHARS && text.split(/\s+/).length >= PART_WORDS; }
 function samplesOf(html, kit) {
-  var s = typeof html === 'string' ? scan(html, kit) : html, texts = [], srcs = [], wholes = [];
+  var s = typeof html === 'string' ? scan(html, kit) : html, texts = [], srcs = [], wholes = [], instructions = [];
   for (var i = 0; i < s.tokens.length; i++) {
     var t = s.tokens[i];
     if (t.t !== 'open' || !kit.attrOf(t, 'data-rv-sample')) continue;
+    var note = String(kit.attrValue(t, 'data-rv-sample') || '').trim().toLowerCase() === 'instruction';
     var quoted = false, figureEnd = -1;
     for (var k = i; k <= s.ends[i]; k++) {
       var x = s.tokens[k];
@@ -358,7 +432,11 @@ function samplesOf(html, kit) {
       if (x.t === 'open' && x.name === 'figure') figureEnd = Math.max(figureEnd, s.ends[k]);
       if (x.t === 'open' && /^(?:p|blockquote|q)$/.test(x.name)) {
         var words = labelOf(s, k, kit);
-        if (words.length >= SAMPLE_WORDS_MIN) { quoted = true; if (texts.indexOf(words) === -1) texts.push(words); }
+        if (words.length >= SAMPLE_WORDS_MIN) {
+          quoted = true;
+          if (texts.indexOf(words) === -1) texts.push(words);
+          if (note && instructions.indexOf(words) === -1) instructions.push(words);
+        }
         k = s.ends[k];
         continue;
       }
@@ -367,10 +445,15 @@ function samplesOf(html, kit) {
     }
     /* one with words of its own (a quote, a card's copy) is known by them, as before; the rest by all their words */
     var whole = quoted ? '' : wordsOf(s, i, kit), cls = firstClass(t, kit);
-    if (whole && !wholes.some(function (w) { return w.tag === t.name && w.cls === cls && w.text === whole; })) wholes.push({ tag: t.name, cls: cls, text: whole });
+    if (whole && !wholes.some(function (w) { return w.tag === t.name && w.cls === cls && w.text === whole; })) {
+      var entry = { tag: t.name, cls: cls, text: whole }, parts = partsOf(s, i, kit);
+      if (parts.length >= 2 && parts.some(isPhrase)) entry.parts = parts.filter(isPhrase);
+      wholes.push(entry);
+      if (note && instructions.indexOf(whole) === -1) instructions.push(whole);
+    }
     i = s.ends[i];
   }
-  return { texts: texts, srcs: srcs, wholes: wholes };
+  return { texts: texts, srcs: srcs, wholes: wholes, instructions: instructions };
 }
 function sampleHits(html, kit, samples) {
   var wholes = (samples && samples.wholes) || [];
@@ -378,12 +461,17 @@ function sampleHits(html, kit, samples) {
   var byTag = {};
   wholes.forEach(function (w) { (byTag[w.tag] || (byTag[w.tag] = [])).push(w); });
   var s = typeof html === 'string' ? scan(html, kit) : html, found = {}, order = [];
-  function add(key, text, section, picture, sectionKey) {
-    if (!found[key]) { found[key] = { text: text, picture: !!picture, count: 0, sections: [], places: [] }; order.push(key); }
+  var notes = (samples && samples.instructions) || [];
+  function add(key, text, c, picture) {
+    if (!found[key]) {
+      found[key] = { text: text, picture: !!picture, count: 0, sections: [], places: [] };
+      if (!picture && notes.indexOf(text) !== -1) found[key].instruction = true;
+      order.push(key);
+    }
     found[key].count++;
-    var name = sectionName(section);
+    var name = c.name || sectionName(c.section);
     if (found[key].sections.indexOf(name) === -1) found[key].sections.push(name);
-    addPlace(found[key].places, sectionKey, name);
+    addPlace(found[key].places, c.key, name);
   }
   for (var i = 0; i < s.tokens.length; i++) {
     var t = s.tokens[i], c = s.ctx[i];
@@ -394,16 +482,21 @@ function sampleHits(html, kit, samples) {
       var like = byTag[t.name].filter(function (w) { return !w.cls || cls.indexOf(w.cls) !== -1; });
       if (like.length) {
         whole = wordsOf(s, i, kit);
-        if (whole && like.some(function (w) { return w.text === whole; })) { add('w:' + whole, whole, c.section, false, c.key); i = s.ends[i]; continue; }
+        if (whole && like.some(function (w) { return w.text === whole; })) { add('w:' + whole, whole, c, false); i = s.ends[i]; continue; }
+        /* part of it rewritten: a part still as the template wrote it is still another event's (NU-034) */
+        var known = [];
+        like.forEach(function (w) { (w.parts || []).forEach(function (p) { known.push(p); }); });
+        var left = known.length ? partsOf(s, i, kit).filter(function (p) { return known.indexOf(p) !== -1; }) : [];
+        if (left.length) { left.forEach(function (p) { add('w:' + p, p, c, false); }); i = s.ends[i]; continue; }
       }
     }
     /* a quote, read whole as samplesOf reads it */
     if (t.t === 'open' && /^(?:p|blockquote|q)$/.test(t.name)) {
       var words = labelOf(s, i, kit);
-      if (words.length >= SAMPLE_WORDS_MIN && samples.texts.indexOf(words) !== -1) { add('t:' + words, words, c.section, false, c.key); i = s.ends[i]; }
+      if (words.length >= SAMPLE_WORDS_MIN && samples.texts.indexOf(words) !== -1) { add('t:' + words, words, c, false); i = s.ends[i]; }
     } else if (t.t === 'open' && t.name === 'img') {
       var src = decode(kit.attrValue(t, 'src') || '').trim();
-      if (src && samples.srcs.indexOf(src) !== -1) add('p:' + src, src.replace(/[?#].*$/, '').split('/').pop(), c.section, true, c.key);
+      if (src && samples.srcs.indexOf(src) !== -1) add('p:' + src, src.replace(/[?#].*$/, '').split('/').pop(), c, true);
     }
   }
   return order.map(function (k) { return found[k]; });
@@ -534,7 +627,7 @@ function inspect(html, kit) {
     placeholders: placeholderHits(s, kit),
     links: links,
     payment: links.filter(function (l) { return l.state === 'form' || l.buttonish ? PAYMENT_RE.test(l.label) && l.label.length <= 40 : false; })
-      .map(function (l) { return { label: l.label, section: sectionName(l.section), key: l.key }; }),
+      .map(function (l) { return { label: l.label, section: l.name || sectionName(l.section), key: l.key }; }),
     logos: logos, hasNav: hasNav, hasFooter: hasFooter, etNav: etNav, etFooter: etFooterOn
   };
 }
@@ -673,7 +766,7 @@ function emptySections(html, kit) {
       }
       if (words > EMPTY_WORDS_MAX) substance = true;
     }
-    if (!substance) out.push({ section: sectionName(id), key: c.key || id, heading: heading });
+    if (!substance) out.push({ section: c.name || sectionName(id), key: c.key || id, heading: heading });
     i = s.ends[i];                       // a section inside a section is part of it
   }
   return out;
@@ -1091,7 +1184,7 @@ function repair(html, kit, opts) {
         return;
       }
       var anchor = anchorFor(link.href);
-      if (anchor) { kit.setAttr(t, 'href', '#' + anchor); rewrite(link.i); note('path', link, 'leads to the “' + sectionName(anchor) + '” part of the page'); return; }
+      if (anchor) { kit.setAttr(t, 'href', '#' + anchor); rewrite(link.i); note('path', link, 'leads to the “' + sectionName(anchor, kit.names) + '” part of the page'); return; }
       hide(link);
       note('path', link, 'is hidden: it led to ' + link.href + ', a page this site does not have');
       return;
@@ -1241,12 +1334,12 @@ function widgets(s, kit, changes) {
         remove(next);
         box = next;
       }
-      changes.push({ what: 'widget', label: 'Film', section: sectionName(c.section), how: 'taken out: it had no film this site can play' });
+      changes.push({ what: 'widget', label: 'Film', section: c.name || sectionName(c.section), how: 'taken out: it had no film this site can play' });
       var sec = sectionAround(s, i, kit);
       if (sec !== -1 && onlyTitleLeft(s, sec, out, kit)) {
         remove(sec);
         var secId = A(s.tokens[sec], 'data-rv-section') || A(s.tokens[sec], 'id');
-        changes.push({ what: 'widget', label: secId ? sectionName(secId) : 'Its section', section: sectionName(c.section), how: 'taken out: the film was all it showed' });
+        changes.push({ what: 'widget', label: secId ? sectionName(secId, kit.names) : 'Its section', section: c.name || sectionName(c.section), how: 'taken out: the film was all it showed' });
         box = sec;
       }
       i = s.ends[box];
@@ -1260,12 +1353,12 @@ function widgets(s, kit, changes) {
       var controls = A(t, 'aria-controls');
       if (controls && Object.prototype.hasOwnProperty.call(s.ids, controls)) continue;
       remove(i);
-      changes.push({ what: 'widget', label: label, section: sectionName(c.section), how: 'taken out: the menu it opened was not part of the import' });
+      changes.push({ what: 'widget', label: label, section: c.name || sectionName(c.section), how: 'taken out: the menu it opened was not part of the import' });
       continue;
     }
     if (fixed && /\b(?:chat|assistant|need help|ask us|help desk|support)\b/i.test(label)) {
       remove(i);
-      changes.push({ what: 'widget', label: label.length > 60 ? label.slice(0, 57) + '…' : label, section: sectionName(c.section), how: 'taken out: a chat that cannot answer outside the original site' });
+      changes.push({ what: 'widget', label: label.length > 60 ? label.slice(0, 57) + '…' : label, section: c.name || sectionName(c.section), how: 'taken out: a chat that cannot answer outside the original site' });
     }
   }
   return removed ? out.join('') : null;

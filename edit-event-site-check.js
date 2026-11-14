@@ -9,6 +9,11 @@
    to put right, so a repair can go live while the rest is still being put right (UX-144).
 
    Shown above every section of the console, only when there is something to fix or to know (a block or a check).
+   NU-014 (the first-time-user QA, 14 Nov 2026): it used to sit open, red and seven lines long, at the top of every
+   tab, pushing the tab the person opened below the fold, with no way to act on it. Now it is one line with the
+   count and "Show" on every tab, and open only on the console's Dashboard when something holds the site back (or a
+   one-click repair is waiting); each item carries its links to the place to put it right, as the publish window
+   does ("“Questions this raises” in the site editor", NU-002).
    An item that can be put right in one click carries its button ("Update this site's header and footer",
    "Correct the picture's address", "Write it a heading of its own"): that saves the repaired site as a new version (POST /api/event/site/repair)
    and, for a live site, sends it for approval like any edit (POST /api/event/approval/request) — nothing goes live
@@ -40,7 +45,32 @@
     var blocks = (next || live).items ? (next || live).items.filter(function (x) { return x.level === 'block'; }).length : 0;
     return { of: live.of, items: items, blocks: blocks, nextVersion: next ? next.savedVersion : 0 };
   }
-  if (typeof module === 'object' && module && module.exports) module.exports = { settle: settle };
+
+  /* The panel's one line, and the sentence that opens it (NU-014). r: settle()'s shape, or the server's check.
+     -> { shown (the items listed: blocks and checks), blocks, title, lead } — Pure; site-checks.test.js runs it. */
+  function summaryOf(r) {
+    var shown = ((r && r.items) || []).filter(function (x) { return x.level === 'block' || x.level === 'warn'; });
+    var blocks = r && r.blocks != null ? r.blocks : shown.filter(function (x) { return x.level === 'block'; }).length;
+    var looks = shown.filter(function (x) { return x.level === 'warn'; }).length;
+    var head = r && r.of === 'live' ? 'Your live site: ' : 'Before this site goes live: ';
+    var parts = [];
+    if (blocks) parts.push(blocks === 1 ? '1 thing to put right' : blocks + ' things to put right');
+    if (looks) parts.push((blocks ? looks : (looks === 1 ? '1 thing' : looks + ' things')) + ' to look at');
+    var which = r && r.nextVersion ? 'Version ' + r.nextVersion : r && r.of === 'live' ? 'The next version' : 'The site';
+    return {
+      shown: shown, blocks: blocks,
+      title: head + (parts.length ? parts.join(', ') : 'nothing to put right'),
+      lead: blocks ? which + ' can’t go live until ' + (blocks === 1 ? 'it is' : 'they are') + ' put right.' : ''
+    };
+  }
+  /* Whether the panel opens on its own on a tab: only on the Dashboard, and only when something holds the site back
+     or a one-click repair is waiting to be pressed (NU-014). route: the console's route ('dashboard', 'content/speakers') */
+  function opensOn(route, r) {
+    if (String(route || 'dashboard').split('/')[0] !== 'dashboard') return false;
+    var s = summaryOf(r);
+    return s.blocks > 0 || s.shown.some(function (x) { return !!(x.action && x.action.kind); });
+  }
+  if (typeof module === 'object' && module && module.exports) module.exports = { settle: settle, summaryOf: summaryOf, opensOn: opensOn };
   if (typeof window === 'undefined') return;
 
   var C = window.RevampCore;
@@ -49,7 +79,9 @@
   if (!eventId) return;
 
   var LEVEL = { block: 'Holds it back', warn: 'Check', info: 'Good to know' };
-  var box = null, busy = false;
+  var LINES_SHOWN = 4;
+  var box = null, busy = false, shownFor = '', lastCheck = null;
+  function route() { return String(location.hash || '').replace(/^#/, '').split('?')[0] || 'dashboard'; }
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -74,13 +106,17 @@
     st.id = 'site-check-css';
     st.textContent =
       '.site-check{margin:0 0 18px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:var(--shadow-sm);font-family:var(--font-body);color:var(--text)}' +
-      '.site-check>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;padding:12px 16px;font-weight:700;font-size:14px}' +
+      '.site-check>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;min-height:40px;padding:6px 14px;font-weight:700;font-size:13.5px}' +
       '.site-check>summary::-webkit-details-marker{display:none}' +
       '.site-check>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:12px}' +
-      '.site-check .sc-dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--warn)}' +
+      '.site-check .sc-dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--warn)}' +
       '.site-check.has-block .sc-dot{background:var(--accent)}' +
-      '.site-check .sc-sub{font-weight:500;color:var(--text-muted);font-size:13px;flex:1 1 220px}' +
-      '.site-check .sc-body{padding:0 16px 14px}' +
+      '.site-check .sc-title{flex:1 1 auto;min-width:0}' +
+      '.site-check .sc-toggle{flex:none;font-weight:700;font-size:13px;color:var(--text);text-decoration:underline;text-underline-offset:2px}' +
+      '.site-check .sc-body{padding:0 14px 14px}' +
+      '.site-check .sc-lead{margin:0 0 4px;font-size:13px;color:var(--text)}' +
+      '.site-check .sc-fixes{margin-top:6px;display:flex;flex-wrap:wrap;gap:2px 12px;align-items:baseline;font-size:12.5px;color:var(--text-muted)}' +
+      '.site-check .sc-fix{color:var(--text);font-weight:700;text-decoration:underline;text-underline-offset:2px;display:inline-block;padding:6px 0}' +
       '.site-check .sc-item{border:1px solid var(--border);border-left-width:4px;border-radius:10px;padding:10px 12px;margin-top:8px;font-size:13px}' +
       '.site-check .sc-item.block{border-left-color:var(--accent);background:var(--accent-soft)}' +
       '.site-check .sc-item.warn{border-left-color:var(--warn)}' +
@@ -91,6 +127,7 @@
       '.site-check .warn .sc-lvl{background:var(--warn-soft);color:var(--warn)}' +
       '.site-check ul{margin:6px 0 0;padding-left:18px}.site-check li{margin:2px 0;overflow-wrap:anywhere}' +
       '.site-check .sc-hint{color:var(--text-muted);font-size:12px;margin-top:6px}' +
+      '.site-check .sc-more{color:var(--text-muted);list-style:none;margin-left:-18px}' +
       '.site-check .sc-act{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}' +
       '.site-check .sc-msg{font-size:12.5px;color:var(--text-muted)}.site-check .sc-msg.err{color:var(--accent-strong)}.site-check .sc-msg a{color:inherit}';
     document.head.appendChild(st);
@@ -99,26 +136,38 @@
   function render(r) {
     var main = document.querySelector('main.main'), view = document.getElementById('view');
     if (!main || !view) return;
-    var shown = (r.items || []).filter(function (x) { return x.level === 'block' || x.level === 'warn'; });
+    var sum = summaryOf(r);
     if (box && box.parentNode) box.parentNode.removeChild(box);
     box = null;
-    if (!shown.length) return;
+    lastCheck = r;
+    if (!sum.shown.length) return;
     styles();
-    var blocks = r.blocks != null ? r.blocks : shown.filter(function (x) { return x.level === 'block'; }).length;
-    box = el('details', 'site-check' + (blocks ? ' has-block' : ''));
-    /* open when something holds the next version back, or a one-click repair is waiting to be pressed */
-    box.open = blocks > 0 || shown.some(function (x) { return !!(x.action && x.action.kind); });
-    var sum = el('summary');
-    sum.appendChild(el('span', 'sc-dot'));
-    sum.appendChild(el('span', null, r.of === 'live' ? 'Your live site: ' + shown.length + (shown.length === 1 ? ' thing to look at' : ' things to look at')
-      : 'Before this site goes live: ' + shown.length + (shown.length === 1 ? ' thing to look at' : ' things to look at')));
-    sum.appendChild(el('span', 'sc-sub', blocks ? '— ' + blocks + ' would hold ' + (r.nextVersion ? 'version ' + r.nextVersion : 'the next version') + ' back'
-      : '— nothing holds ' + (r.nextVersion ? 'version ' + r.nextVersion : 'it') + ' back'));
-    box.appendChild(sum);
+    box = el('details', 'site-check' + (sum.blocks ? ' has-block' : ''));
+    /* one line on every tab; open on its own only on the Dashboard, when it matters there (NU-014) */
+    shownFor = route();
+    box.open = opensOn(shownFor, r);
+    var line = el('summary');
+    line.appendChild(el('span', 'sc-dot'));
+    line.appendChild(el('span', 'sc-title', sum.title));
+    var toggle = el('span', 'sc-toggle', box.open ? 'Hide' : 'Show');
+    toggle.setAttribute('aria-hidden', 'true');
+    line.appendChild(toggle);
+    box.appendChild(line);
+    box.addEventListener('toggle', function () { toggle.textContent = box.open ? 'Hide' : 'Show'; });
     var body = el('div', 'sc-body');
+    if (sum.lead) body.appendChild(el('p', 'sc-lead', sum.lead));
     (r.items || []).forEach(function (item) { body.appendChild(itemEl(item, r)); });
     box.appendChild(body);
     main.insertBefore(box, view);
+  }
+  /* Another tab: the panel folds back to its line, and opens again on the Dashboard when it matters there. The same
+     tab drawn again keeps it as the person left it. */
+  function followRoute() {
+    if (!box || !lastCheck) return;
+    var now = route();
+    if (now === shownFor) return;
+    shownFor = now;
+    box.open = opensOn(now, lastCheck);
   }
 
   function itemEl(item, r) {
@@ -128,11 +177,35 @@
     top.appendChild(el('span', null, item.title));
     n.appendChild(top);
     if (item.lines && item.lines.length) {
+      /* the first few, as the publish window lists them: the panel stays short, even open (NU-014) */
+      var lines = item.lines.slice(), more = /^…and (\d+) more$/.exec(lines[lines.length - 1] || ''), extra = 0;
+      if (more) { extra = +more[1]; lines.pop(); }
+      extra += Math.max(0, lines.length - LINES_SHOWN);
       var ul = el('ul');
-      item.lines.forEach(function (l) { ul.appendChild(el('li', null, l)); });
+      lines.slice(0, LINES_SHOWN).forEach(function (l) { ul.appendChild(el('li', null, l)); });
+      if (extra) ul.appendChild(el('li', 'sc-more', '…and ' + extra + ' more'));
       n.appendChild(ul);
     }
     if (item.hint) n.appendChild(el('div', 'sc-hint', item.hint));
+    /* the places to put it right: the section in the site editor, or a tab of this console (NU-002, NU-014) */
+    var fixes = (item.fix || []).filter(function (f) { return f && f.href && f.label; });
+    if (fixes.length && !item.settled) {
+      var row = el('div', 'sc-fixes');
+      row.appendChild(el('span', null, 'Put it right:'));
+      fixes.forEach(function (f) {
+        var a = el('a', 'sc-fix', f.label);
+        a.href = f.href;
+        if (f.where === 'console' && f.route) {
+          a.addEventListener('click', function (e) {
+            if (e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            location.hash = f.route;        // the console's own router takes it from there (and asks about unsaved work)
+          });
+        }
+        row.appendChild(a);
+      });
+      n.appendChild(row);
+    }
     if (item.settled) {
       var done = el('div', 'sc-act');
       done.appendChild(el('span', 'sc-msg', item.settled));
@@ -206,7 +279,12 @@
   function start() {
     var tries = 0;
     (function wait() {
-      if (document.querySelector('main.main') && document.getElementById('view') && document.getElementById('rail') && !document.getElementById('rail').hidden) return load();
+      if (document.querySelector('main.main') && document.getElementById('view') && document.getElementById('rail') && !document.getElementById('rail').hidden) {
+        /* the console moves between tabs by its address, and sometimes by redrawing its view alone */
+        window.addEventListener('hashchange', followRoute);
+        if (window.MutationObserver) new MutationObserver(followRoute).observe(document.getElementById('view'), { childList: true });
+        return load();
+      }
       if (++tries < 60) setTimeout(wait, 500);
     })();
   }

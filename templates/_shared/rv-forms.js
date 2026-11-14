@@ -62,7 +62,7 @@
                  opener (the button that opened it: Submit takes that button's colour),
                  livePath (mode 'shared' only: the live site's "/e/<id>", when the event is already published) }
          Every form is drawn as one white card (the design of 21 Oct 2026): its title ("Register now" shows as
-         "Please take a moment to provide us with your Information"), one field to a row (first and last name
+         "Please take a moment to share your details"), one field to a row (first and last name
          share one), and last the consent box — the form's own type 'consent' item, or one added here — that
          must be ticked; it is sent as the body's consent: true. Submit takes the site's button colour.
          'editor-preview' draws the same form with every control disabled and out of the tab order, no
@@ -153,7 +153,7 @@
 
   /* A form named "Register now" (every event's default form) shows this sentence as its title instead; any
      other name or title an organiser gave a form shows as given. */
-  var DEFAULT_TITLE = 'Please take a moment to provide us with your Information';
+  var DEFAULT_TITLE = 'Please take a moment to share your details';
   function isGenericTitle(s) { return !s || /^register(\s+now)?$/i.test(s); }
   function formTitle(form) {
     var t = line(str(form && form.title), 200), n = line(str(form && form.name), 200);
