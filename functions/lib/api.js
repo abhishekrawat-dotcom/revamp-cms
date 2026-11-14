@@ -8048,7 +8048,7 @@ module.exports = { handleApi };
 module.exports._testHooks = {
   onDarkCopy: onDarkCopy, darkCopyOf: darkCopyOf, darkCopyNote: darkCopyNote, storeOnDarkUnit: storeOnDarkUnit, embeddedYearFont: embeddedYearFont,
   unansweredLogoNote: unansweredLogoNote, logoNoteError: logoNoteError, LOGO_NOTE_CODE: LOGO_NOTE_CODE,
-  redrawYearInPng: redrawYearInPng, embedsMainPicture: embedsMainPicture, stageContent: stageContent, sitePath: sitePath, readObject: readObject,
+  redrawYearInPng: redrawYearInPng, embedsMainPicture: embedsMainPicture, stageContent: stageContent, sitePath: sitePath, readObject: readObject, saveObject: saveObject, publishedObjectPath: publishedObjectPath,
   aiDesignOf: aiDesignOf,
   TRACK_PIXEL: TRACK_PIXEL,   // the open pixel answered when lib/promo-track.js cannot be loaded (must equal its PIXEL)
   sectionAnchorFor: sectionAnchorFor, publicBaseFor: publicBaseFor, cmsOriginFor: cmsOriginFor,

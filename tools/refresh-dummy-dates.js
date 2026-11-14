@@ -19,6 +19,10 @@
        date in Basics), "Enterprise Tech Excellence 2026" and the banner's year become 2027, and the timeline's
        "Open now" / "Closing soon" become "Upcoming" (nominations for 2027 are not open). "© 2026" stays (it is
        this year's copyright) and so does the awards' own id.
+   CIO Awards was published on 9 Oct 2026 the way sites were then: one live page and no saved site or versions
+   (published, no publishedVersion). Its live page itself (events/cio-awards/published/index.html, what /e/ serves
+   for such an event: lib/api.js livePageOf) is changed, after a copy of it is kept beside it
+   (published/before-2026-11-14.html), with the same line in its history.
    Refused, and left as they are: an event that is not live, one whose saved site holds work newer than the live
    version (that would go live with it), one with a request waiting for approval, and one where a change would not
    leave the page as it should be (the dry run says which and why).
@@ -109,7 +113,16 @@ function plan(fb, hooks) {
       if (!snap.exists) return { id: id, ok: false, line: 'no such event' };
       const e = snap.data(), live = +e.publishedVersion || 0, saved = (e.site && +e.site.version) || 0;
       if (e.deletedAt) return { id: id, ok: false, line: 'deleted — left alone' };
-      if (e.published !== true || !live) return { id: id, ok: false, line: 'not live — left alone' };
+      if (e.published === true && !live && id === CIO) {
+        /* published before sites had versions: its live page is the one object */
+        return hooks.readObject(fb, hooks.publishedObjectPath(id)).then(function (page) {
+          if (page == null) return { id: id, ok: false, line: 'published before sites had versions, but its live page was not found — left alone' };
+          const c = changeOf(id, page, e);
+          return { id: id, ok: c.ok && c.changed, legacy: true, data: e,
+            line: 'live since ' + (e.publishedAt || '?') + ' as one page (published before sites had versions)' + (c.ok ? '' : ' — left alone: ' + (c.report.why || 'nothing to change')), report: c.report };
+        });
+      }
+      if (e.published !== true || !live) return { id: id, ok: false, line: 'not live (published: ' + e.published + ', live version: ' + (e.publishedVersion || 'none') + ') — left alone' };
       if (saved !== live) return { id: id, ok: false, line: 'its saved site (version ' + saved + ') is not the live one (version ' + live + '): publishing would put that work live too — left alone' };
       if (e.approval && e.approval.id) return { id: id, ok: false, line: 'a request is waiting for approval — left alone' };
       return hooks.readObject(fb, hooks.sitePath(id, 'page.html')).then(function (page) {
@@ -129,6 +142,18 @@ function apply(fb, hooks, logActivity, origin, plans) {
     return chain.then(function (done) {
       if (!p.ok) return done.concat([{ id: p.id, line: 'skipped — ' + p.line }]);
       const note = p.id === CIO ? NOTE_CIO : NOTE_DRAW;
+      if (p.legacy) {
+        const HTML = 'text/html; charset=utf-8', livePath = hooks.publishedObjectPath(p.id), keep = livePath.replace(/index\.html$/, 'before-2026-11-14.html');
+        return hooks.readObject(fb, livePath).then(function (before) {
+          if (before == null) throw new Error('its live page was not found');
+          const c = changeOf(p.id, before, p.data || {});
+          if (!c.ok || !c.changed) return done.concat([{ id: p.id, line: 'nothing to change on its live page' }]);
+          return hooks.saveObject(fb, keep, before, HTML).then(function () { return hooks.saveObject(fb, livePath, c.html, HTML); }).then(function () {
+            if (typeof hooks.forgetCachedPage === 'function') hooks.forgetCachedPage(p.id);
+            return logActivity(fb, p.id, ACTOR, 'published', 'its live page — ' + note + '; put live on the owner\'s instruction (14 Nov 2026); the page before is kept as ' + keep, {});
+          }).then(function () { return done.concat([{ id: p.id, line: 'its live page changed at /e/' + p.id + ' (the page before is kept as ' + keep + ')' }]); });
+        }).then(null, function (err) { return done.concat([{ id: p.id, line: 'FAILED — ' + (err && err.message) }]); });
+      }
       return hooks.stageContent(fb, p.id, decoded, { transform: function (page, data) { return changeOf(p.id, page, data); }, note: note }).then(function (st) {
         if (!st || !st.staged) return done.concat([{ id: p.id, line: 'nothing to change on the saved site — not published' }]);
         return hooks.publishVersion(fb, req, p.id, st.version, ACTOR, origin).then(function (out) {

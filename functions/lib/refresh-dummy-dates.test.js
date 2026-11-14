@@ -106,6 +106,10 @@ seed('cyber-premier-league', { name: 'Cyber Premier League', start: '2027-12-02'
 seed('national-data-center-symposium', { name: 'National Data Center Symposium', start: '2027-12-09', end: '2027-12-09', templateId: 'gen-national-data-center-symposium' }, genPage('National Data Center Symposium'));
 FB.docs['events/national-data-center-symposium'].site.version = 4;
 seed('cio-awards', { name: 'CIO Awards', start: '2027-11-26', end: '2027-11-26', templateId: 'imported-imp-x' }, CIO_PAGE);
+/* CIO Awards was published before sites had versions: one live page, no saved site */
+delete FB.docs['events/cio-awards'].publishedVersion; delete FB.docs['events/cio-awards'].site;
+FB.docs['events/cio-awards'].publishedUrl = 'https://storage.googleapis.com/x/cio-awards/index.html';
+delete FB.files['events/cio-awards/site/page.html']; delete FB.files['events/cio-awards/site/versions/3.html'];
 
 function live(id) { var f = FB.files['events/' + id + '/published/index.html']; return f ? f.toString('utf8') : ''; }
 
@@ -120,7 +124,10 @@ function live(id) { var f = FB.files['events/' + id + '/published/index.html']; 
 
   var done = await tool.apply(FB, hooks, logActivity, 'https://cms.example', plans);
   var lines = {}; done.forEach(function (d) { lines[d.id] = d.line; });
-  ['agentic-summit-2027', 'cyber-premier-league', 'cio-awards'].forEach(function (id) {
+  ok(/its live page changed/.test(lines['cio-awards']), 'CIO: its one live page is changed', lines['cio-awards']);
+  ok(FB.files['events/cio-awards/published/before-2026-11-14.html'] && FB.files['events/cio-awards/published/before-2026-11-14.html'].toString().indexOf('27 November 2026') !== -1, 'CIO: the page before is kept beside it');
+  ok(!FB.docs['events/cio-awards'].publishedVersion && !FB.docs['events/cio-awards'].site, 'CIO: still published the way it was (no versions made up)');
+  ['agentic-summit-2027', 'cyber-premier-league'].forEach(function (id) {
     ok(/version 4 saved and live/.test(lines[id]), id + ': version 4 saved and put live', lines[id]);
     var e = FB.docs['events/' + id];
     ok(e.publishedVersion === 4 && e.site.version === 4, id + ': the event records version 4 as saved and live', JSON.stringify({ p: e.publishedVersion, s: e.site && e.site.version }));
