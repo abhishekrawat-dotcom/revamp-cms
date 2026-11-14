@@ -842,6 +842,18 @@ async function main() {
     I7.due === true && I7.saves === 1 && I7.handoffLeft === false, I7);
   var I8 = await arrive({ templateId: 'gen-qa-x', search: '?eventId=qa-ux-b08-x&draft=d1', handoff: Object.assign(handoffOf('qa-ux-b08-x', 'gen-qa-x', [{ libId: 'hero', name: 'Hero', data: { title: 'QA' } }]), { generatedFromBrief: true }) });
   check('NU-011 …but not on a plain open of a generated site', I8.saves === 0, I8);
+  /* NU-011 (follow-up, 14 Nov): Create Event hands a generated site over with no sections at all — the page as it mounts
+     from the server is the site — so it went down the editor's sections-less path, which never saved it */
+  var GEN_HANDOFF = Object.assign(handoffOf('qa-ux-b08-x', 'gen-qa-x', []), { generatedFromBrief: true });
+  var I9 = await arrive({ templateId: 'gen-qa-x', search: FROM + '&draft=d1', handoff: GEN_HANDOFF });
+  check('NU-011 a generated site handed over with no sections (as Create Event hands it) is saved as version 1 as it opens',
+    I9.due === true && I9.saves === 1, I9);
+  var I10 = await arrive({ templateId: 'gen-qa-x', search: '?eventId=qa-ux-b08-x&draft=d1', handoff: GEN_HANDOFF });
+  var I11 = await arrive({ templateId: 'gen-qa-x', search: FROM + '&draft=d2', handoff: GEN_HANDOFF });
+  var I12 = await arrive({ templateId: 'gen-qa-x', search: FROM + '&draft=d1', handoff: Object.assign(handoffOf('qa-ux-b08-other', 'gen-qa-x', []), { generatedFromBrief: true }) });
+  check('NU-011 …never on a plain open, for another run of the brief, or with another event\'s hand-off', I10.saves === 0 && I11.saves === 0 && I12.saves === 0, [I10, I11, I12]);
+  check('NU-011 …and the copy kept in this browser records that run (the same address opened again is not a new run)',
+    /if \(generated\) sourceDraftId = draftId \|\| draft\.draftId \|\| null;/.test(ED) && /if \(generated\) firstSaveDue = true;/.test(ED));
   function firstSave(o) {
     var L = { saves: 0, notices: [] };
     var C = { L: L, setTimeout: function (f) { f(); }, Promise: Promise };

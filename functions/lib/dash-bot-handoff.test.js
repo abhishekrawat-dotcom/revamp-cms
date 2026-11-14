@@ -1643,7 +1643,7 @@ async function e7() {
   check('E.7 the hand-off holds the picture until the boot is done (its first step is the design\'s own picture)', /if \(kept\) forgetHandoff\(\);\s*pendingAiHero = draft;/.test(handoff));
   check('E.7 the boot puts it in last, after the records are drawn into the first step', start.indexOf('applySubcollectionOverlay()') !== -1 &&
     start.indexOf('applyAiHero(heroDraft)') > start.indexOf('applySubcollectionOverlay()') && start.indexOf('applyAiHero(heroDraft)') > start.indexOf('logoUnitNotice();'));
-  check('E.7 a hand-off with no sections still brings the picture', /return seedSnapshot\(null\)\.then\(function \(\) \{ pendingAiHero = draft \|\| aiHeroFromEvent\(\); \}\);/.test(ED));
+  check('E.7 a hand-off with no sections still brings the picture', /return seedSnapshot\(null\)\.then\(function \(\) \{\s*\n\s*pendingAiHero = draft \|\| aiHeroFromEvent\(\);/.test(ED));
 
   /* QA follow-up 2: the editor opened in ANOTHER browser (no copy of the site, no hand-off) before the site was ever
      saved puts in ETB2B AI's picture from the event's own record, as the hand-off does: one step of its own, which

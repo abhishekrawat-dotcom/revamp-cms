@@ -6031,7 +6031,8 @@ function templateSamples(templateId) {
     var samples = { texts: [], srcs: [], wholes: [], instructions: [] };
     files.forEach(function (f) {
       var text = fs.readFileSync(f, 'utf8');
-      if (text.indexOf('data-rv-sample') === -1) return;
+      // its marked samples, or the banner's own picture (NEW-4): siteChecks.hasSamples
+      if (!siteChecks.hasSamples(text)) return;
       var got = siteChecks.samplesOf(text, TOKEN_KIT);
       samples.texts = samples.texts.concat(got.texts);
       samples.srcs = samples.srcs.concat(got.srcs);
@@ -6177,7 +6178,8 @@ function siteCheckOf(fb, eventId, data, html, opts) {
     /* another event's quotes, people, logos, figures or copy the template shows as samples of its design (TPL-051) */
     blockUnlessLive(items, 'samples', samples, onLive.sample, function (list) {
       return { title: 'Samples from the template are still on the page',
-        lines: capLines(list.map(function (h) { return (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
+        /* h.say: the banner's own picture, said plainly (site-checks.js sampleHits, NEW-4) */
+        lines: capLines(list.map(function (h) { return h.say || (h.picture ? 'Their picture ' + quoteText(h.text, 70) : quoteText(h.text, 70)) + (h.count > 1 ? ' ×' + h.count : '') + ' — ' + h.sections.join(', '); })),
         hint: 'They belong to another event: its words, figures, quotes, people or logos, shown until this event’s own are entered. Put this event’s own in, or take them out, in the site editor, then save.', fix: inEditor(placesOf(list)) };
     });
     /* the design's own notes of what to write there, which would go live as the page's words (NU-023) */

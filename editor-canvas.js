@@ -1313,8 +1313,10 @@
       root.querySelectorAll('.ai-prov-badge, .ai-skip-badge, .ai-media-skip-badge').forEach(function (n) { n.remove(); });
       root.classList.remove('show-ai-markers');
       if (!root.getAttribute('class')) root.removeAttribute('class');
+      /* data-rv-sample-left: the editor's outline of the design's samples still on the page (editor-template-ui.js
+         markTemplateSamples), set again whenever the page changes */
       var EDITOR_ATTRS = ['data-editable', 'contenteditable', 'data-sec-name', 'data-text-original', 'data-date', 'data-date-shown', 'data-date-format',
-        'data-ed', 'data-rv-cur-item', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-ai-busy'];
+        'data-ed', 'data-rv-cur-item', 'data-rv-sample-left', 'data-ai-generated', 'data-ai-skipped', 'data-ai-media-skipped', 'data-rv-ai-busy'];
       root.querySelectorAll(EDITOR_ATTRS.map(function (a) { return '[' + a + ']'; }).join(', ')).forEach(function (n) {
         EDITOR_ATTRS.forEach(function (a) { n.removeAttribute(a); });
       });
@@ -1367,7 +1369,9 @@
        Selection, in-place editing and items the editor opened are left out. The shared header and footer aren't the
        page's to change. */
     /* data-rv-ai-busy: a section ETB2B AI is rewriting is locked for that while (editor-template-ui.js lockSection) */
-    var TRANSIENT = '.ed-selected, .sec-active, [contenteditable], [data-text-original], [data-rv-open], [data-rv-aria], [data-rv-cur-item], [data-rv-ai-busy]';
+    /* data-rv-sample-left: the outline of the design's samples still on the page, worked out again whenever the page
+       changes (editor-template-ui.js markTemplateSamples): in no snapshot, so it is never a change of its own (NEW-3) */
+    var TRANSIENT = '.ed-selected, .sec-active, [contenteditable], [data-text-original], [data-rv-open], [data-rv-aria], [data-rv-cur-item], [data-rv-sample-left], [data-rv-ai-busy]';
 
     /* takes the editor's selection and editing marks off a copy */
     function stripTransient(c) {
@@ -1378,6 +1382,7 @@
         m.removeAttribute('data-text-original');
         m.removeAttribute('data-rv-cur-item');
         m.removeAttribute('data-rv-ai-busy');
+        m.removeAttribute('data-rv-sample-left');
       });
       unopen(c);
       return c;

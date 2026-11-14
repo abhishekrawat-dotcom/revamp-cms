@@ -130,6 +130,8 @@
      its live view from it — see onChange() */
   var changeListeners = [];
   function pageChanged() {
+    // the design's samples still on the page, outlined by the check's own rule (NEW-3): a step back or forward too
+    if (canvas && canvas.doc && !remounting) markTemplateSamples();
     drawFormPreviews(true);
     drawEmptyNotes();
     // the AI pills are the editor's drawing too: a section put back by Undo gets its pill again (UX-104)
@@ -284,7 +286,11 @@
       var seen = recordsSeen(), was = undoStack[undoPtr];
       return applySubcollectionOverlay().then(function () {
         // named only when a visitor would see it: a page the records left as its saved version has nothing to name (drawRecords)
-        if (canvas && was && !canvas.sameSnapshot(undoStack[undoPtr], was) && !(savedMark && savedMark.hash === snapHash(undoStack[undoPtr]))) noteAuto(recordsNamed(seen));
+        if (canvas && was && !canvas.sameSnapshot(undoStack[undoPtr], was) && !(savedMark && savedMark.hash === snapHash(undoStack[undoPtr]))) {
+          // a section added for the records first, in the words the line above the page uses (NEW-1)
+          if (addedAtOpening.length) noteAuto([addedPhrase(addedAtOpening)]);
+          noteAuto(recordsNamed(seen));
+        }
       });
     }).then(function () {
       if (!pageWired) {
@@ -321,6 +327,8 @@
       designChanged();
       drawFormPreviews(false);
       drawEmptyNotes();
+      // the design's samples still on the page, whichever copy opened (the mark is in no snapshot): NEW-3
+      markTemplateSamples();
       drawHeroVideo();
       previewNav();
       /* Preview and Publish stay disabled until the site is mounted AND filled: pressed any earlier they
@@ -968,9 +976,20 @@
             firstSaveDue = true;
           });
         }
+        /* A site ETB2B AI generated from a brief is handed over with no sections (generatedFromBrief): the page as it
+           mounted from the server is the generated site. It is saved as the site's first version as it opens, as a
+           gallery design is (NU-011): after minutes of waiting it opened as "Not saved yet", leaving asked nothing, and
+           the console said to open the editor and save it. Only with this event's own hand-off of this run (handoffFor
+           checks the event and the run), which shows it was just made here; the run is recorded with the copy, so the
+           next opening from the same address knows it (isNewRun). */
+        var generated = !!(draft && draft.generatedFromBrief === true && /^gen-/.test(templateId || ''));
+        if (generated) sourceDraftId = draftId || draft.draftId || null;
         /* a hand-off with no sections may still bring ETB2B AI's hero picture: put in at the end of the boot, as above.
            With no hand-off in this browser at all, the event's own record brings it (aiHeroFromEvent) */
-        return seedSnapshot(null).then(function () { pendingAiHero = draft || aiHeroFromEvent(); });
+        return seedSnapshot(null).then(function () {
+          pendingAiHero = draft || aiHeroFromEvent();
+          if (generated) firstSaveDue = true;
+        });
       }
 
       if (!/^gen-/.test(templateId || '')) {
@@ -1504,7 +1523,69 @@
      drawn: nothing else of the page changes, no section is hidden or shown by it, and no AI-provenance badge
      appears because it ran. */
   function applySubcollectionOverlay() {
-    return ensureAutoSections().then(function (added) { return drawRecords(added.length > 0); });
+    return ensureAutoSections().then(function (added) { addedAtOpening = added; return drawRecords(added.length > 0); });
+  }
+  /* ---------- a section the editor added as it opened (NEW-1) ----------
+     The console sends the person here to add one ("Open the site editor to add the “Agenda” section … Press Save there
+     to keep it"), and the editor adds it as the page opens (ensureAutoSections). That is a change to the site nobody
+     would see until it is saved, so it is never only "Updated automatically": the words under the name say "Unsaved
+     changes", Save shows its dot, a line above the page names what was added, and leaving asks first. Save keeps it as
+     the editor's own update, apart from the person's changes (UX-076). */
+  var addedAtOpening = [];          // the kinds a section was added for as the page opened, until a save keeps them
+  var addedNoteGone = false;        // the line about them was dismissed for this visit
+  function addedSectionsLeft() {
+    if (!canvas || !canvas.doc || !addedAtOpening.length) return [];
+    var doc = canvas.doc;
+    return addedAtOpening.filter(function (kind) {
+      var sec = doc.querySelector('[data-rv-auto="' + kind + '"]');
+      return !!sec && !sec.classList.contains('is-hidden-sec');
+    });
+  }
+  // the added sections still on the page while it is not saved
+  function addedUnsaved() { return addedSectionsLeft().length > 0 && isDirty(); }
+  function kindsWords(kinds) {
+    var names = kinds.map(function (k) { return '“' + AUTO_SECTIONS[k].name + '”'; });
+    var recs = kinds.map(function (k) { return (window.RevampRecords && RevampRecords.TABS[k] && RevampRecords.TABS[k].many) || 'records'; });
+    function list(a) { return a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length - 1] : a[0]; }
+    return { names: list(names), recs: list(recs), many: kinds.length > 1, first: names[0] };
+  }
+  /* "An “Agenda” section was added for your sessions — press Save to keep it." */
+  function addedLine(kinds) {
+    var w = kindsWords(kinds);
+    return w.many ? w.names + ' sections were added for your ' + w.recs + ' — press Save to keep them.'
+      : (/^“(?:[AEIOU]|FAQ)/.test(w.first) ? 'An ' : 'A ') + w.first + ' section was added for your ' + w.recs + ' — press Save to keep it.';
+  }
+  // what the automatic version is noted as, and what leaving names: "the “Agenda” section added for your sessions"
+  function addedPhrase(kinds) {
+    var w = kindsWords(kinds);
+    return 'the ' + w.names + ' section' + (w.many ? 's' : '') + ' added for your ' + w.recs;
+  }
+  function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  var addedNoteSaid = '';
+  function noteAddedSections() {
+    var left = addedSectionsLeft();
+    if (!left.length || !isDirty()) {
+      if (addedNoteSaid) { clearNotice('auto-sections'); addedNoteSaid = ''; }
+      // kept by a save (or taken off the page): from now on it is a section like any other
+      if (!left.length || (siteInfo && siteInfo.savedVersion)) addedAtOpening = [];
+      return;
+    }
+    // the first save of a site Create Event just made keeps it by itself; a save on its way says nothing new
+    if (saving || firstSaveDue || firstSavePending || addedNoteGone) return;
+    var line = addedLine(left);
+    if (line === addedNoteSaid) return;
+    addedNoteSaid = line;
+    showNotice('auto-sections', {
+      kind: 'info', text: addedLine(left), dismissible: true,
+      actions: [
+        { label: left.length > 1 ? 'Show them' : 'Show it', onClick: function () {
+          var sec = canvas && canvas.doc.querySelector('[data-rv-auto="' + addedSectionsLeft()[0] + '"]');
+          if (sec) { selectSection(sec); canvas.scrollToSection(sec); }
+        } },
+        { label: 'Save', onClick: function () { saveToStaging().then(null, function () {}); } }
+      ],
+      onDismiss: function () { addedNoteGone = true; addedNoteSaid = ''; }
+    });
   }
   /* The previous edition's speakers (built by the server, functions/lib/prev-sections.js) carry each speaker's
      profile — their sessions at that edition, LinkedIn, text — for the visitor's pop-up. A page saved before
@@ -2484,7 +2565,7 @@
      record drawn, the page's colours and fonts and every shared rule it uses, kept to the section, and a script
      that brings the site's runtime from here (editor-dev-export.js). Read-only; what is typed under "Edit this
      section" waits there, unapplied, until it is applied or thrown away. */
-  var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-filled', 'data-rv-ai-busy'];
+  var DEV_MARKS = ['data-editable', 'contenteditable', 'data-text-original', 'data-rv-cur-item', 'data-rv-open', 'data-rv-aria', 'data-rv-key', 'data-sec-name', 'data-ai-generated', 'data-ai-skipped', 'data-rv-sample-left', 'data-rv-filled', 'data-rv-ai-busy'];
   function devSource(sec) {
     var copy = sec.cloneNode(true);
     // an embedded form's preview is the editor's drawing, not the section's markup
@@ -4261,61 +4342,96 @@
     });
     return n;
   }
-  /* A real template's samples (TPL-051): what its section files mark data-rv-sample — another event's copy, figures,
-     cards and quotes, shown until this event's own are entered — is marked the same way on a page that opens fresh
-     (seedSnapshot: the bare template, or the template as Create Event filled it), while it still reads as the
-     template wrote it: each quote in it (a card's copy, a paragraph), or, with none, the whole marked element (the same
-     two ways functions/lib/site-checks.js knows a sample before publishing). A card filled from the event's own
-     content (data-rv-item with a value) is never one by its whole text. A page saved before is left as saved: the
-     check before publishing still names what is left on it.
-     -> how many were marked */
-  function markTemplateSamples() {
-    if (!canvas || !canvas.library || /^(gen|imported)-/.test(templateId || '')) return 0;
-    var squash = function (s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); };
-    var QUOTES = 'p, blockquote, q';
-    var quoteOf = function (el) { return el.closest('figcaption, cite') ? '' : squash(el.textContent); };
-    var wholes = {}, quotes = {}, any = false;
+  /* A real template's samples (TPL-051, NEW-3, NEW-4): another event's copy, figures, cards, quotes and photos that its
+     section files mark data-rv-sample, and its banner's own picture, shown until this event's own are entered. Which of
+     them are still on the page is decided by the check before publishing's own rule (templates/_shared/rv-samples.js,
+     the one functions/lib/site-checks.js reads the saved page with), run here on the page itself: what it finds is
+     outlined in amber (data-rv-sample-left: '' for words, 'picture' for a photo, 'banner' for the banner's picture),
+     counted, and brought into view by "Show next" — every piece the check lists, by its content, whichever road changed
+     the page (typing, ETB2B AI, a paste, Undo), and nothing the check does not list: one line of a two-line heading
+     rewritten leaves the other line outlined, as the check still names it (NU-034).
+     The mark is the editor's own: in no snapshot and never saved (editor-canvas.js), set again whenever the page changes
+     (settlePlaceholders, in record(), and pageChanged), so opening, typing or saving never counts as a change because of
+     it. The design's samples are read once per canvas from its untouched copies of the sections (canvas.library()), as
+     the check reads the section files. Inside a sample, an earlier editor's marks by whole text (data-rv-placeholder)
+     are left to this rule (shownPlaceholders, editor-canvas.css).
+     -> how many are marked */
+  var SAMPLE_LEFT = 'data-rv-sample-left';
+  var DOM_TREE = {
+    kids: function (n) { return n.childNodes || []; },
+    isEl: function (n) { return !!n && n.nodeType === 1; },
+    isText: function (n) { return !!n && n.nodeType === 3; },
+    text: function (n) { return n.nodeValue || ''; },
+    tag: function (n) { return String(n.tagName || '').toLowerCase(); },
+    attr: function (n, name) { return n.getAttribute(name); },
+    // as the check reads them (its class attribute, in order)
+    classes: function (n) { return String(n.getAttribute('class') || '').split(/\s+/).filter(Boolean); },
+    /* the editor's own drawings on the page are no visitor's words either */
+    unseen: function (n) {
+      if (window.RevampSamples.unseen(n, DOM_TREE)) return true;
+      var c = DOM_TREE.classes(n);
+      return c.indexOf('ai-prov-badge') !== -1 || c.indexOf('ai-skip-badge') !== -1 || c.indexOf('ai-media-skip-badge') !== -1 ||
+        n.hasAttribute('data-rv-form-preview') || n.hasAttribute('data-rv-hv-preview') || n.hasAttribute('data-rv-ai-mark') || n.hasAttribute('data-rv-ed-note');
+    }
+  };
+  var designSamplesOf = null, designSamplesKept = null;
+  function designSamples() {
+    if (!canvas || !canvas.library || !window.RevampSamples || /^(gen|imported)-/.test(templateId || '')) return null;
+    if (designSamplesOf === canvas) return designSamplesKept;
+    var out = { texts: [], srcs: [], wholes: [], instructions: [] };
     canvas.library().forEach(function (s) {
-      if (String(s.html).indexOf('data-rv-sample') === -1) return;
+      if (!/data-rv-sample|data-rv-media="bg-image"/.test(String(s.html))) return;
       var box = canvas.doc.createElement('template');
       box.innerHTML = s.html;
-      Array.prototype.forEach.call(box.content.querySelectorAll('[data-rv-sample]'), function (unit) {
-        var qs = unit.matches(QUOTES) ? [unit] : Array.prototype.slice.call(unit.querySelectorAll(QUOTES)), quoted = false;
-        qs.forEach(function (q) { var w = quoteOf(q); if (w.length >= 30) { quotes[w] = 1; quoted = any = true; } });
-        /* one with words of its own (a quote, a card's copy) is known by them; the rest by all their words */
-        var whole = quoted ? '' : squash(unit.textContent);
-        if (whole) { wholes[whole] = 1; any = true; }
+      RevampSamples.learn(box.content, DOM_TREE, out);
+    });
+    designSamplesOf = canvas; designSamplesKept = out;
+    return out;
+  }
+  function markTemplateSamples() {
+    var doc = canvas && canvas.doc;
+    if (!doc || !doc.body) return 0;
+    var samples = designSamples(), found = [];
+    if (samples) {
+      RevampSamples.find(doc.body, samples, DOM_TREE, function (h) {
+        if (found.indexOf(h.node) !== -1) return;
+        found.push(h.node);
+        var kind = h.banner ? 'banner' : h.picture ? 'picture' : '';
+        if (h.node.getAttribute(SAMPLE_LEFT) !== kind) h.node.setAttribute(SAMPLE_LEFT, kind);
       });
-    });
-    if (!any) return 0;
-    var n = 0;
-    function mark(el) {
-      if (el.hasAttribute('data-rv-placeholder')) return;
-      el.setAttribute('data-rv-placeholder', squash(el.textContent));
-      n++;
     }
-    Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-sample]'), function (unit) {
-      var built = !!String(unit.getAttribute('data-rv-item') || '').trim();
-      if (!built && wholes[squash(unit.textContent)]) mark(unit);
-      var qs = unit.matches(QUOTES) ? [unit] : Array.prototype.slice.call(unit.querySelectorAll(QUOTES));
-      qs.forEach(function (q) { if (quotes[quoteOf(q)]) mark(q); });
-    });
-    return n;
+    Array.prototype.forEach.call(doc.querySelectorAll('[' + SAMPLE_LEFT + ']'), function (el) { if (found.indexOf(el) === -1) el.removeAttribute(SAMPLE_LEFT); });
+    return found.length;
+  }
+  /* an element whose amber outline the person sees: the check's samples, and what an added section or block came with
+     (never an earlier editor's mark inside one of the design's samples, which the check's rule decides) */
+  function markShown(el) {
+    if (!el || el.nodeType !== 1) return false;
+    if (el.hasAttribute(SAMPLE_LEFT)) return true;
+    return el.hasAttribute('data-rv-placeholder') && !el.closest('[data-rv-sample]');
   }
   function settlePlaceholders() {
+    if (!canvas || !canvas.doc) return;
     Array.prototype.forEach.call(canvas.doc.querySelectorAll('[data-rv-placeholder]'), function (el) {
       if (!editorWords.placeholderLeft(el.getAttribute('data-editable'), el.getAttribute('data-rv-placeholder'), el.textContent, !!canvas.pictureOf(el))) {
         el.removeAttribute('data-rv-placeholder');
       }
     });
+    markTemplateSamples();
   }
-  // the ones still on the site: a hidden section is not saved, so it never goes live
+  // the ones still on the site, in page order: a hidden section is not saved, so it never goes live
   function shownPlaceholders() {
     if (!canvas || remounting || !canvas.doc) return [];
-    return Array.prototype.filter.call(canvas.doc.querySelectorAll('[data-rv-placeholder]'), function (el) {
-      return !el.closest('.is-hidden-sec') &&
-        editorWords.placeholderLeft(el.getAttribute('data-editable'), el.getAttribute('data-rv-placeholder'), el.textContent, !!canvas.pictureOf(el));
+    return Array.prototype.filter.call(canvas.doc.querySelectorAll('[data-rv-placeholder], [' + SAMPLE_LEFT + ']'), function (el) {
+      if (el.closest('.is-hidden-sec') || !markShown(el)) return false;
+      if (el.hasAttribute(SAMPLE_LEFT)) return true;
+      return editorWords.placeholderLeft(el.getAttribute('data-editable'), el.getAttribute('data-rv-placeholder'), el.textContent, !!canvas.pictureOf(el));
     });
+  }
+  // what one of them is: 'banner' (the banner's own picture), 'picture' (another event's photo), 'box' (an empty picture box) or 'text'
+  function sampleKind(el) {
+    if (el.hasAttribute(SAMPLE_LEFT)) return el.getAttribute(SAMPLE_LEFT) || 'text';
+    return el.getAttribute('data-editable') === 'image' ? 'box' : 'text';
   }
   /* the first one brought into view and selected — on its own page, in the manual editor (as revealLogoUnit) */
   function showPlaceholders() {
@@ -4331,16 +4447,26 @@
         if (on !== '*') showPage(on);
       }
       revealElement(el);
+      /* the banner's picture lies under its words, where no click reaches it: its section's menu changes it (ED-058) */
+      if (sampleKind(el) === 'banner') showToast(BANNER_SAMPLE_HOW, { duration: 8000 });
     }
     var aiMode = window.RevampEditorMode;
     if (aiMode && aiMode.mode && aiMode.mode() === 'ai') { aiMode.setMode('manual'); setTimeout(go, 120); } else go();
   }
+  var BANNER_SAMPLE_HOW = 'The banner still shows the design’s sample picture, from another event. Replace it: Background picture, in the banner’s menu.';
   /* How many of the design's samples are still on the site (NU-009: the legend above the page, the steps in Help):
-     -> { words, pictures, total } */
+     -> { words, pictures (empty picture boxes), photos (another event's pictures: the banner's among them), banner
+          (1 while the banner shows the design's own picture), total } */
   function samplesLeft() {
-    var left = shownPlaceholders();
-    var pictures = left.filter(function (el) { return el.getAttribute('data-editable') === 'image'; }).length;
-    return { words: left.length - pictures, pictures: pictures, total: left.length };
+    var out = { words: 0, pictures: 0, photos: 0, banner: 0, total: 0 };
+    shownPlaceholders().forEach(function (el) {
+      var k = sampleKind(el);
+      out.total++;
+      if (k === 'text') out.words++;
+      else if (k === 'box') out.pictures++;
+      else { out.photos++; if (k === 'banner') out.banner++; }
+    });
+    return out;
   }
   /* the legend's "Show next": each press brings the next sample left into view and selects it, round again at the end */
   var sampleCursor = -1;
@@ -4362,7 +4488,9 @@
      toolbars and never part of the page. The legend above the page counts them (editor-start.js). */
   var SAMPLE_TAG_WORDS = {
     text: 'Sample text from the design — type your event’s own over it',
-    image: 'Sample picture from the design — replace it with your event’s own'
+    box: 'Sample picture from the design — replace it with your event’s own',
+    picture: 'Another event’s picture, from the design — replace it with your event’s own',
+    banner: 'The design’s sample picture, from another event — replace it: Background picture, in the banner’s menu'
   };
   var sampleTag = null, sampleTagEl = null;
   function buildSampleTag() {
@@ -4375,10 +4503,10 @@
   function placeSampleTag() {
     var el = sampleTagEl;
     if (!sampleTag) return;
-    if (!el || !canvas || remounting || aiWorking || !el.isConnected || el === editingEl || !el.hasAttribute('data-rv-placeholder') ||
+    if (!el || !canvas || remounting || aiWorking || !el.isConnected || el === editingEl || !markShown(el) ||
         el.closest('.is-hidden-sec') || !canvas.inView(el)) { sampleTag.hidden = true; return; }
     var fr = frame.getBoundingClientRect(), r = canvas.screenRect(el);
-    sampleTag.textContent = SAMPLE_TAG_WORDS[el.getAttribute('data-editable') === 'image' ? 'image' : 'text'];
+    sampleTag.textContent = SAMPLE_TAG_WORDS[sampleKind(el)] || SAMPLE_TAG_WORDS.text;
     sampleTag.hidden = false;
     var w = sampleTag.offsetWidth, h = sampleTag.offsetHeight;
     var above = r.top - fr.top - h - 6, below = r.bottom - fr.top + 6;
@@ -4389,7 +4517,13 @@
   }
   function onCanvasHover(e) {
     var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
-    var el = t && t.closest ? t.closest('[data-rv-placeholder]') : null;
+    var el = t && t.closest ? t.closest('[data-rv-placeholder], [' + SAMPLE_LEFT + ']') : null;
+    while (el && !markShown(el)) el = el.parentElement ? el.parentElement.closest('[data-rv-placeholder], [' + SAMPLE_LEFT + ']') : null;
+    /* the banner's picture lies under its words and the layer over them: said wherever else the banner is pointed at */
+    if (!el && t && t.closest) {
+      var sec = t.closest('[data-rv-section]');
+      el = sec ? sec.querySelector(':scope > img[' + SAMPLE_LEFT + '="banner"]') : null;
+    }
     if (el === sampleTagEl) return;
     sampleTagEl = el;
     placeSampleTag();
@@ -4559,11 +4693,11 @@
     settlePlaceholders();
     var left = shownPlaceholders();
     if (!left.length) return false;
-    var pictures = left.filter(function (el) { return el.getAttribute('data-editable') === 'image'; }).length;
-    var sample = (left.filter(function (el) { return el.getAttribute('data-editable') !== 'image'; })[0] || {}).textContent || '';
+    var n = samplesLeft();
+    var sample = (left.filter(function (el) { return sampleKind(el) === 'text'; })[0] || {}).textContent || '';
     var pub = document.getElementById('btn-publish');
-    // "Send for approval anyway", without the button's "…" (B06)
-    var words = editorWords.placeholderAsk(left.length - pictures, pictures, sample, pub ? pub.textContent.replace(/…$/, '') : '');
+    // "Send for approval anyway", without the button's "…" (B06); another event's pictures said apart (NEW-4)
+    var words = editorWords.placeholderAsk(n.words, n.pictures, sample, pub ? pub.textContent.replace(/…$/, '') : '', n.photos);
     ask({ title: words.title, text: words.text, actions: [
       { key: 'anyway', label: words.anyway, kind: 'secondary', aside: true },
       { key: 'show', label: words.show, kind: 'primary', autofocus: true }
@@ -8096,7 +8230,10 @@
       if (s.ai === 'working') return { kind: 'ai', title: 'ETB2B AI is still changing the page', text: 'Leave anyway? This change will be lost.' + rest };
       if (s.ai === 'thinking') return { kind: 'ai', title: 'ETB2B AI is still working on your request', text: 'Leave anyway? The change you asked for will not be made.' + rest };
       if (s.saving) return { kind: 'wait' };
-      if (s.dirty) return { kind: 'unsaved', title: 'Leave without saving?', text: 'You have changes that are not saved. They stay only in this browser until you save.' };
+      /* s.added: a section the editor added as it opened, which the site shows only once it is saved (NEW-1) */
+      if (s.dirty) return { kind: 'unsaved', title: 'Leave without saving?', text: s.added
+        ? 'You have changes that are not saved, among them ' + s.added + '. They stay only in this browser until you save, and the site does not show them.'
+        : 'You have changes that are not saved. They stay only in this browser until you save.' };
       return null;
     }
     /* Whether leaving would leave work behind unsaved (leaveAsk's dirty). s: { dirty: the page is not the saved
@@ -8305,18 +8442,23 @@
       var now = squash(text);
       return now !== '' && now === squash(original);
     }
-    function placeholderAsk(texts, pictures, sample, publishLabel) {
-      texts = texts || 0; pictures = pictures || 0;
+    /* photos: another event's pictures the design came with (the banner's own, NEW-4) */
+    function placeholderAsk(texts, pictures, sample, publishLabel, photos) {
+      texts = texts || 0; pictures = pictures || 0; photos = photos || 0;
       var parts = [];
       if (texts) parts.push(texts === 1 ? '1 placeholder text' : texts + ' placeholder texts');
       if (pictures) parts.push(pictures === 1 ? '1 empty picture' : pictures + ' empty pictures');
-      var one = texts + pictures === 1;
+      if (photos) parts.push(photos === 1 ? '1 sample picture' : photos + ' sample pictures');
+      if (parts.length > 2) parts = [parts.slice(0, -1).join(', '), parts[parts.length - 1]];
+      var one = texts + pictures + photos === 1;
       sample = squash(sample);
       if (sample.length > 60) sample = sample.slice(0, 57).replace(/\s+\S*$/, '') + '…';
       return {
         title: parts.join(' and ') + (one ? ' is' : ' are') + ' still on the page',
         text: (one ? 'It came' : 'They came') + ' with the design, or with a section or block you added' + (sample ? ', such as “' + sample + '”' : '') +
-          ', and would go live as ' + (one ? 'it is' : 'they are') + '. Write this event’s own words in, or delete what the site does not need. ' +
+          ', and would go live as ' + (one ? 'it is' : 'they are') + '. ' +
+          (texts || pictures ? 'Write this event’s own words in, or delete what the site does not need. ' : '') +
+          (photos ? (photos === 1 ? 'The sample picture is' : 'The sample pictures are') + ' from another event: replace ' + (photos === 1 ? 'it' : 'them') + ' with this event’s own. ' : '') +
           (one ? 'It has' : 'They have') + ' a dashed amber outline on the page.',
         show: one ? 'Show it' : 'Show them',
         anyway: squash(publishLabel || 'Publish') + ' anyway'
@@ -8358,8 +8500,10 @@
   /* what leaving asks about: isDirty() is true for a site never saved, which Save needs, but only the person's own
      work there is worth a question (workSafety.unsavedWork) */
   function hasUnsavedWork() {
-    // what the editor updated by itself as it opened is nothing of the person's: it makes the same updates next time
-    return workSafety.unsavedWork({ dirty: isDirty() && !autoOnly(), savedVersion: siteInfo ? siteInfo.savedVersion : baseVersion, edited: localEdited });
+    /* what the editor updated by itself as it opened is nothing of the person's: it makes the same updates next time —
+       except a section it added, which the console sent the person here to keep with Save (NEW-1) */
+    var added = addedUnsaved();
+    return workSafety.unsavedWork({ dirty: isDirty() && (!autoOnly() || added), savedVersion: siteInfo ? siteInfo.savedVersion : baseVersion, edited: localEdited || added });
   }
 
   function loadSiteInfo() {
@@ -8408,7 +8552,13 @@
     var pend = siteInfo.pending, last = siteInfo.last, saved = '/preview/' + eventId + '?staged=1';
     /* words a marketer uses: saved, not live yet, waiting for approval, live; the version number only where two have
        to be told apart (UX-112) */
+    /* a section the editor added as it opened is waiting for Save, said as unsaved (NEW-1) */
+    var added = dirty ? addedSectionsLeft() : [];
     if (!v) { kind = 'warn'; text = 'Not saved yet'; title = 'Save keeps the site on the server, where your team can see it. Nothing goes live until it is published.'; }
+    else if (dirty && added.length) {
+      kind = 'warn'; text = 'Unsaved changes'; href = saved;
+      title = cap(addedPhrase(added)) + ' as the editor opened ' + (added.length > 1 ? 'are' : 'is') + ' only in this browser until you press Save (' + saveKeys() + '); the saved site still shows version ' + v + '.';
+    }
     else if (dirty && autoOnly()) {
       kind = 'plain'; text = 'Updated automatically'; href = saved;
       title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Nothing of yours is waiting to be saved; Save keeps these updates apart from your own changes.';
@@ -8427,7 +8577,9 @@
     /* Work waiting to be saved says how to keep it, beside the words (NU-035): Create Event and the console save as you
        type, the editor only on Save, and the newcomer took "Unsaved changes" for something that would pass by itself.
        The hint is put away where the bar has no room for it (custom_editor.html, .ss-hint). Save shows a dot meanwhile. */
-    var due = kind === 'warn' && (dirty || !v) && !saving && !firstSavePending;
+    /* nor while the first save of a site Create Event just made is due (NU-011: an AI-designed site said "press Save" for
+       the moment before its first save started) */
+    var due = kind === 'warn' && (dirty || !v) && !saving && !firstSavePending && !firstSaveDue;
     if (due) {
       var hint = document.createElement('span');
       hint.className = 'ss-hint';
@@ -8436,6 +8588,7 @@
     }
     save.classList.toggle('is-due', due && dirty);
     if (due && dirty && editedThisVisit) firstUnsavedNote();
+    noteAddedSections();
     /* Preview's menu has the live site while there is one: what visitors see (owner decision 13) */
     var liveItem = document.getElementById('pv-live');
     if (liveItem) {
@@ -8793,7 +8946,8 @@
   function leave(url) {
     flush();
     function go() { leavingNow = true; location.href = url; }
-    var q = workSafety.leaveAsk({ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork() });
+    var q = workSafety.leaveAsk({ ai: aiState, saving: saving, dirty: !!eventId && !!canvas && hasUnsavedWork(),
+      added: canvas && addedUnsaved() ? addedPhrase(addedSectionsLeft()) : '' });
     if (!q) { go(); return; }
     if (q.kind === 'wait') {
       // the server is finishing the version: this browser records it before the page goes, then asks again if need be
@@ -8885,7 +9039,7 @@
     placeholderGate: placeholderGate,
     /* the design's samples still on the site, { words, pictures, total }, and the next one shown and selected (the
        legend above the page and the steps in Help, editor-start.js, NU-008 / NU-009) */
-    samplesLeft: function () { return canvas && !remounting ? samplesLeft() : { words: 0, pictures: 0, total: 0 }; },
+    samplesLeft: function () { return canvas && !remounting ? samplesLeft() : { words: 0, pictures: 0, photos: 0, banner: 0, total: 0 }; },
     showNextSample: whenPageFree(showNextSample),
     /* what made the site: 'gen' (ETB2B AI, from a brief), 'imported' (Lovable), 'template' (a gallery design), '' none */
     siteKind: function () { return !templateId ? '' : /^gen-/.test(templateId) ? 'gen' : /^imported-/.test(templateId) ? 'imported' : 'template'; },

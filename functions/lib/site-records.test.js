@@ -235,13 +235,17 @@ function rows(extra) {
     /if \(undoPtr !== openPtr \|\| editingEl\) \{ commitAutoStep\(names\); return; \}/.test(code('bakeAuto')) && /undoStack\[openPtr\] = snap;/.test(code('bakeAuto')) && /aiWorking/.test(code('bakeAuto')) &&
     /undoPtr !== openPtr\) return;/.test(code('settleAuto')) && /ptr: openPtr,/.test(code('settleAuto')) && /undoPtr !== openPtr \+ 1\) return;/.test(code('tagAutoStep')));
   var chip = code('renderSiteState');
-  check('1b.4 the chip says "Updated automatically", never "Unsaved changes", for them', chip.indexOf("text = 'Updated automatically'") !== -1 && chip.indexOf("dirty && autoOnly()") < chip.indexOf("text = 'Unsaved changes'"));
+  check('1b.4 the chip says "Updated automatically", never "Unsaved changes", for them', chip.indexOf("text = 'Updated automatically'") !== -1 && chip.indexOf("dirty && autoOnly()") < chip.lastIndexOf("text = 'Unsaved changes'"));
+  /* NEW-1: except a section the editor added as it opened (the console sends the person to the editor to keep it with
+     Save): that is "Unsaved changes", said before the automatic case */
+  check('1b.4 NEW-1 …except a section added as the page opened, which is unsaved work', chip.indexOf('else if (dirty && added.length)') !== -1 &&
+    chip.indexOf('else if (dirty && added.length)') < chip.indexOf("dirty && autoOnly()"));
   var saveFn = code('saveToStaging');
   check('1b.5 Save keeps them first, on the version this editor is on, as automatic; the person\'s save is then made on what that answered',
     /baseVersion: baseVersion, snapshot: undoStack\[auto\.ptr\], html: auto\.html,\s*automatic: true/.test(saveFn) && /writeMark\(\{ version: out\.version, hash: auto\.hash \}\);\s*baseVersion = out\.version;/.test(saveFn) &&
     /if \(a && hash === auto\.hash\) return a;/.test(saveFn));
   check('1b.6 they are no reason to ask before leaving, nor the person\'s own after an Undo, and the owner\'s logo put in by itself is the editor\'s step',
-    /dirty: isDirty\(\) && !autoOnly\(\)/.test(code('hasUnsavedWork')) && /&& !autoOnly\(\)\);/.test(code('step')) &&
+    /dirty: isDirty\(\) && \(!autoOnly\(\) \|\| added\)/.test(code('hasUnsavedWork')) && /&& !autoOnly\(\)\);/.test(code('step')) &&
     /if \(byItself\) commitAutomatic\(\); else commitNow\(\);/.test(ED) && /putIn\(true\);\s*tagAutoStep\(/.test(ED));
 
   /* B05 verify (round 6, UX-076): the owner's logo went in as the editor opened (an automatic step), then the server's
@@ -337,7 +341,7 @@ function rows(extra) {
     /var asSaved = !!\(canvas && savedMark && savedMark\.hash && savedMark\.hash === snapHash\(undoStack\[undoPtr\]\)\);/.test(draw) &&
     /var seen = asSaved \? pageSeen\(canvas\.doc && canvas\.doc\.body\) : '';/.test(draw) &&
     /undoStack\[undoPtr\] = snap;\s*if \(asSaved && pageSeen\(canvas\.doc && canvas\.doc\.body\) === seen\) writeMark\(\{ version: savedMark\.version, hash: snapHash\(snap\) \}\);\s*return persist\(snap\);/.test(draw) &&
-    /!\(savedMark && savedMark\.hash === snapHash\(undoStack\[undoPtr\]\)\)\) noteAuto\(recordsNamed\(seen\)\);/.test(opened) &&
+    /!\(savedMark && savedMark\.hash === snapHash\(undoStack\[undoPtr\]\)\)\) \{[\s\S]{0,200}?noteAuto\(recordsNamed\(seen\)\);/.test(opened) &&
     /out\[kind\] = \(out\[kind\] \|\| ''\) \+ '\\u0002' \+ pageSeen\(el\);/.test(code('recordsSeen')) && !/data-rv-id/.test(code('recordsSeen')));
 })();
 

@@ -110,6 +110,12 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('1 one is "is", "it", "Show it"', w.title === '1 placeholder text is still on the page' && /^It came with/.test(w.text) && /as it is\./.test(w.text) && w.show === 'Show it' && w.anyway === 'Publish changes anyway', w);
   w = E.placeholderAsk(0, 3, '', '');
   check('1 pictures only, and no sample to quote', w.title === '3 empty pictures are still on the page' && w.text.indexOf('such as') === -1 && w.anyway === 'Publish anyway', w);
+  /* NEW-4: the banner's own picture (another event's stage) is asked about as a sample picture, said as one */
+  w = E.placeholderAsk(0, 0, '', 'Send for approval', 1);
+  check('1 NEW-4 a sample picture from another event is asked about on its own', w.title === '1 sample picture is still on the page' &&
+    /The sample picture is from another event: replace it with this event’s own\./.test(w.text) && !/Write this event’s own words/.test(w.text) && w.show === 'Show it', w);
+  w = E.placeholderAsk(3, 1, 'Overview', 'Publish', 1);
+  check('1 NEW-4 … and counted with texts and empty pictures', w.title === '3 placeholder texts, 1 empty picture and 1 sample picture are still on the page' && /Write this event’s own words in/.test(w.text), w.title);
   w = E.placeholderAsk(1, 0, 'Add a concise introduction that explains the purpose, audience, and energy of your event.', 'Publish');
   check('1 a long sample is cut at a word', /such as “Add a concise introduction that explains the purpose,…”/.test(w.text) || /such as “Add a concise introduction that explains the[^”]*…”/.test(w.text), w.text);
 })();
@@ -371,7 +377,20 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('7 Publish asks about them after the logo check, before the AI review', /logoUnitGate\(\)\) return;\s*\n\s*\/\*[^*]*\*\/\s*\n\s*if \(window\.RevampTemplateUI\.placeholderGate && window\.RevampTemplateUI\.placeholderGate\(publishOn\)\) return;\s*\n\s*publishOn\(\);/.test(INLINE) &&
     /* B06 (UX-104): the AI review lists only the sections nobody has checked yet */
     /function publishOn\(\)\{[\s\S]{0,200}var info = window\.RevampTemplateUI\.aiProvenanceSections\(\);\s*\n\s*if \(info\.generated\.length\)/.test(INLINE));
-  check('7 … hidden sections do not count (they are not saved)', /!el\.closest\('\.is-hidden-sec'\)/.test(body('shownPlaceholders')));
+  check('7 … hidden sections do not count (they are not saved)', /if \(el\.closest\('\.is-hidden-sec'\) \|\| !markShown\(el\)\) return false;/.test(body('shownPlaceholders')));
+  /* NEW-3: the design's samples are the check's own (templates/_shared/rv-samples.js), worked out on the page again
+     whenever it changes, and never part of a snapshot or a saved page */
+  check('7 NEW-3 the design\'s samples are outlined by the check\'s own rule, again whenever the page changes',
+    /RevampSamples\.find\(doc\.body, samples, DOM_TREE,/.test(body('markTemplateSamples')) && /markTemplateSamples\(\);/.test(body('settlePlaceholders')) &&
+    /markTemplateSamples\(\);/.test(body('pageChanged')) && /<script src="templates\/_shared\/rv-samples\.js"><\/script>/.test(read('custom_editor.html')));
+  check('7 NEW-3 … the outline is the editor\'s own: in no snapshot, never saved, never in the developer zone\'s copy',
+    /\[data-rv-sample-left\], \[data-rv-ai-busy\]';/.test(read('editor-canvas.js')) && /m\.removeAttribute\('data-rv-sample-left'\);/.test(read('editor-canvas.js')) &&
+    /'data-rv-cur-item', 'data-rv-sample-left',/.test(read('editor-canvas.js')) && /'data-ai-skipped', 'data-rv-sample-left', 'data-rv-filled'/.test(SRC));
+  check('7 NEW-3 … outlined like the rest, and an earlier editor\'s mark inside a sample shows nothing of its own',
+    /html\[data-rv-editing\] \[data-rv-sample-left\]\{ outline:1\.5px dashed #C98A1B;/.test(CANVAS_CSS) &&
+    /\[data-rv-sample\] \[data-rv-placeholder\]:not\(\[data-rv-sample-left\]\):not\(:hover\)/.test(CANVAS_CSS) && /!el\.closest\('\[data-rv-sample\]'\)/.test(body('markShown')));
+  check('7 NEW-4 the banner\'s own picture is outlined just inside the banner, above its picture and layer (they would cover an outline)',
+    /\[data-rv-section\]:has\(> img\[data-rv-sample-left="banner"\]\):not\(\.is-hidden-sec\)::after\{\s*\n\s*content:''; position:absolute; inset:6px; border:2px dashed #C98A1B;[^}]*pointer-events:none; z-index:3;/.test(CANVAS_CSS));
   check('7 "Show them" brings the first one into view, on its own page', /revealPlaceholder\(first\)/.test(body('showPlaceholders')) &&
     /revealElement\(el\)/.test(body('revealPlaceholder')) && /showPage\(on\)/.test(body('revealPlaceholder')));
   check('7 NU-009 "Show next" above the page brings each one left into view in turn', /sampleCursor = \(sampleCursor \+ 1\) % left\.length;/.test(body('showNextSample')) && /revealPlaceholder\(left\[sampleCursor\]\)/.test(body('showNextSample')));
