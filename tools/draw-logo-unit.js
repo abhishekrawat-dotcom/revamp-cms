@@ -37,11 +37,12 @@
    the live version (it would go live with it); a request waiting for approval. --publish also refuses an event that
    is not live or has no saved site. A second run finds nothing to do.
 
-   node tools/draw-logo-unit.js --event <id> --dry [--preview <dir>]
+   node tools/draw-logo-unit.js --event <id> --dry [--publish] [--preview <dir>]
    node tools/draw-logo-unit.js --event <id> [--publish]
      --dry      reads only, writes nothing: the unit is drawn in memory (its font fetched from Google Fonts), and what a
-                real run would do is printed — the parts the unit is drawn from and the hero element it would replace.
-                --preview <dir>: the units it would draw are also saved there, with a page showing them on their grounds.
+                real run would do is printed — the parts the unit is drawn from and the hero element it would replace;
+                with --publish, the checks a publishing run makes. --preview <dir>: the units it would draw are also
+                saved there (a local folder), with a page showing them on their grounds.
      --publish  puts the new version live (only when the event is live and its saved version is the live one)
    Env: tools/.env.local (this checkout's, else the main checkout's when run from a worktree), never printed. */
 'use strict';
@@ -204,8 +205,7 @@ function plan(fb, hooks, id, opts) {
         out.blockH1 = !!w.h1;
         const h1 = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(page);
         out.pageH1 = h1 ? words(h1[1]) : '';
-        const blockOf = unitBlockOf(page, true);
-        out.heroElement = blockOf.html || '';
+        out.page = page;
       }
       if (!out.draw && (!page || out.pageDone) && !out.genInType) { out.nothing = true; out.line = 'nothing to do: the hero already shows its drawn unit'; return out; }
       out.ok = true;
@@ -234,6 +234,11 @@ function dryRun(fb, hooks, id, opts) {
     return draw(mem, hooks, p, stamp).then(null, function () { return null; }).then(function (u) {
       if (!u || !mem.files[u.storagePath]) return { p: p, drawn: null };
       const svg = mem.files[u.storagePath].toString('utf8');
+      /* the hero's new markup with the drawn unit's own size (its addresses are this dry run's) */
+      if (p.page && !p.pageDone) {
+        const w = withUnit(p.page, u, { name: p.name, designMode: p.design.mode });
+        if (w.after) p.after = w.after;
+      }
       return { p: p, drawn: { unit: u, svg: svg, darkSvg: u.darkStoragePath && mem.files[u.darkStoragePath] ? mem.files[u.darkStoragePath].toString('utf8') : '',
         font: /@font-face\{font-family:'rvlu'/.test(svg) ? (p.design.headingFont || 'the heading font') : '' } };
     });
@@ -282,7 +287,11 @@ function apply(fb, hooks, logActivity, origin, p, opts) {
         return logActivity(fb, p.id, ACTOR, 'published', 'version ' + st.version + ' — ' + NOTE + '; put live on the owner\'s instruction (' + OWNER_DAY + ')', { version: st.version });
       }).then(function () { lines.push('live:            version ' + st.version + ' at ' + published.publishedPath); });
     });
-  }).then(function () { return { id: p.id, lines: lines, version: version, published: published, unit: unit }; });
+  }).then(function () { return { id: p.id, lines: lines, version: version, published: published, unit: unit }; }, function (err) {
+    /* what was done before it failed goes with the error, for the operator */
+    if (err && typeof err === 'object') err.lines = lines.slice();
+    throw err;
+  });
 }
 
 /* ---------- printing ---------- */
@@ -305,7 +314,7 @@ function printPlan(p, drawn, opts) {
       console.log('  drawn in memory: ' + drawn.width + ' × ' + drawn.height + ' SVG' + (drawn.font ? ', its lettering in ' + drawn.font + ' (embedded)' : ', its lettering in a system face (the heading font could not be fetched)') +
         (drawn.darkUrl ? '; dark copy ' + drawn.width + ' × ' + drawn.height : p.tone === 'light' ? '; NO dark copy could be drawn' : ''));
       console.log('  would store:     events/' + p.id + '/generated/<stamp>-logo-unit.svg' + (drawn.darkUrl ? ' and …-logo-unit-on-dark.svg' : '') + ' (public pictures)');
-    } else console.log('  drawn in memory: FAILED — the unit could not be drawn (no name, or the ET logo file could not be read)');
+    } else if (opts && opts.dry) console.log('  drawn in memory: FAILED — the unit could not be drawn (no name, or the ET logo file could not be read); a real run would stop here');
     console.log('  design:          designPlan.design.logoUnit* would be the drawn unit (source generated)' + (p.tone === 'light' ? ', logoUnitDark* its copy' : ''));
   } else console.log('  design:          keeps the unit drawn before: ' + short(p.unit.url));
   console.log('  generated hero:  ' + p.genHero);
@@ -332,6 +341,13 @@ function previewPage(name, tone, design, files) {
 }
 
 function main() {
+  function arg(name) { const i = process.argv.indexOf('--' + name); return i !== -1 && process.argv[i + 1] && !/^--/.test(process.argv[i + 1]) ? process.argv[i + 1] : ''; }
+  const ID = arg('event'), DRY = process.argv.includes('--dry'), PUBLISH = process.argv.includes('--publish'), PREVIEW = arg('preview');
+  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(ID) || (PREVIEW && !DRY)) {
+    console.error('Usage: node tools/draw-logo-unit.js --event <event id> [--dry [--preview <dir>]] [--publish]');
+    process.exit(2);
+  }
+  /* the credentials, only once the arguments are right (never printed) */
   (function loadEnv() {
     const envFile = [path.join(ROOT, 'tools', '.env.local'), path.join(ROOT, '..', '..', '..', 'tools', '.env.local')].filter(function (f) { return fs.existsSync(f); })[0];
     if (!envFile) return;
@@ -340,12 +356,6 @@ function main() {
       if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
     });
   })();
-  function arg(name) { const i = process.argv.indexOf('--' + name); return i !== -1 && process.argv[i + 1] && !/^--/.test(process.argv[i + 1]) ? process.argv[i + 1] : ''; }
-  const ID = arg('event'), DRY = process.argv.includes('--dry'), PUBLISH = process.argv.includes('--publish'), PREVIEW = arg('preview');
-  if (!/^[a-z0-9][a-z0-9-]{1,80}$/.test(ID) || (PREVIEW && !DRY)) {
-    console.error('Usage: node tools/draw-logo-unit.js --event <event id> (--dry [--preview <dir>] | [--publish])');
-    process.exit(2);
-  }
   const api = require(path.join(lib, 'api.js'));
   const hooks = api._testHooks;
   const { getFirebase } = require(path.join(lib, 'firebase.js'));
@@ -369,9 +379,15 @@ function main() {
   }).then(function (p) {
     if (DRY) { console.log('\nDRY RUN: nothing written.' + (p.ok ? ' Run again without --dry' + (PUBLISH ? ' (with --publish)' : '') + ' to do it.' : '')); return p.ok || p.nothing ? 0 : 1; }
     if (!p.ok) return p.nothing ? 0 : 1;
+    console.log('\nDoing it:');
     return apply(fb, hooks, logActivity, ORIGIN, p, { publish: PUBLISH }).then(function (done) {
       done.lines.forEach(function (l) { console.log('  ' + l); });
+      console.log('Done.');
       return 0;
+    }, function (err) {
+      (err && err.lines || []).forEach(function (l) { console.log('  ' + l); });
+      console.log('  FAILED:          ' + (err && err.message || err) + (err && err.lines && err.lines.length ? ' (what is above was done)' : ' (nothing was written)'));
+      return 1;
     });
   }).then(function (code) { process.exit(code); });
 }
