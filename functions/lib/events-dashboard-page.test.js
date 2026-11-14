@@ -32,8 +32,9 @@ var scripts = (PAGE.match(/<script\b[^>]*>/g) || []);
 /* edit-event-core.js (B07): the API calls Clone, Delete and Restore make, before auth.js (it reads RevampAuth only when one runs) */
 /* B08 (UX-048) Create Event's drafts, then B11 (UX-032) the vendored QR library, before event-lifecycle.js */
 /* the one assistant (ai-everywhere) adds etb2b-assistant.js last */
-check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, qrcode-generator.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js',
-  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">', '<script src="etb2b-assistant.js">']), scripts);
+/* NU-007: help-guide.js (Getting started, the Help window's guide, which ETB2B AI's server reads too) after the QR library */
+check('D.2 script order: theme bootstrap, theme-toggle.js, edit-event-core.js, auth.js, portal-picker.js, create-drafts.js, qrcode-generator.js, help-guide.js, event-lifecycle.js, the inline script, etb2b-chat.js, dash-bot-client.js, etb2b-assistant.js',
+  same(scripts, ['<script>', '<script src="theme-toggle.js">', '<script src="edit-event-core.js">', '<script src="auth.js">', '<script src="portal-picker.js">', '<script src="create-drafts.js">', '<script src="assets/vendor/qrcode-generator.js">', '<script src="help-guide.js">', '<script src="event-lifecycle.js">', '<script>', '<script src="etb2b-chat.js">', '<script src="dash-bot-client.js">', '<script src="etb2b-assistant.js">']), scripts);
 check('D.2 the second plain <script> is the inline script itself', PAGE.indexOf('<script src="event-lifecycle.js"></script>\n<script>\n(function(){') !== -1);
 check('D.2 the kit\'s scripts come after the inline script (RvListing exists before they run)', PAGE.indexOf('<script src="etb2b-chat.js">') > PAGE.indexOf('})();\n</script>', START) &&
   PAGE.indexOf('<script src="dash-bot-client.js">') > PAGE.indexOf('<script src="etb2b-chat.js">'));
@@ -44,14 +45,16 @@ check('D.2 etb2b-assistant.js loads once, right after dash-bot-client.js, and is
 var link = PAGE.indexOf('<link rel="stylesheet" href="etb2b-chat.css">');
 check('D.2 etb2b-chat.css is linked once, in the head (before the page\'s styles and its header)', count(PAGE, 'href="etb2b-chat.css"') === 1 && link !== -1 && link < PAGE.indexOf('<style>') && link < PAGE.indexOf('<header'));
 var access = require('./access');
-['event-lifecycle.js', 'create-drafts.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js', 'etb2b-assistant.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
+['event-lifecycle.js', 'create-drafts.js', 'help-guide.js', 'etb2b-chat.js', 'etb2b-chat.css', 'dash-bot-client.js', 'etb2b-assistant.js'].forEach(function (f) { check('D.2 the server sends ' + f, access.isServableFile(f) === true); });
 check('D.2 one rule for the lifecycle: no function lifecycleOf( here, RevampLifecycle.of( used', INLINE.indexOf('function lifecycleOf(') === -1 && INLINE.indexOf('lifecycleOf(') === -1 && INLINE.indexOf('window.RevampLifecycle.of(ev, Date.now())') !== -1);
 /* B11 (UX-028): Help is a button in the top bar, beside the theme switch; the floating pill is gone, so ETB2B AI's
    launcher has its corner whether or not it has mounted */
 check('D.2 Help is in the top bar, before the theme switch', /<div class="main-nav-right">[\s\S]*?<button class="nav-help-btn" id="btn-help" type="button" aria-label="Help" aria-haspopup="dialog">[\s\S]*?<span class="nav-help-label">Help<\/span>\s*<\/button>\s*<span data-theme-toggle-target/.test(PAGE));
-check('D.2 …with its click handler', INLINE.indexOf("$('btn-help').addEventListener('click', function(){ openHelpModal($('btn-help')); });") !== -1);
+/* NU-007: Help opens Getting started first; Customer Care is under it */
+check('D.2 …with its click handler, which opens Getting started', INLINE.indexOf("$('btn-help').addEventListener('click', function(){ openGuideModal($('btn-help')); });") !== -1);
 check('D.2 …and no floating "Need help?" pill is left to cover the page', PAGE.indexOf('help-fab') === -1 && PAGE.indexOf('rvc-ready') === -1);
-check('D.2 openHelpModal stays, and RvListing.openHelp calls it', INLINE.indexOf('function openHelpModal(returnTo){') !== -1 && INLINE.indexOf('openHelp: function(returnTo){ openHelpModal(returnTo); }') !== -1);
+check('D.2 openHelpModal stays, and RvListing.openHelp calls it (the guide for view "guide")', INLINE.indexOf('function openHelpModal(returnTo, fromGuide){') !== -1 &&
+  INLINE.indexOf("openHelp: function(returnTo, view){ if (view === 'guide') openGuideModal(returnTo); else openHelpModal(returnTo); }") !== -1);
 var mountAt = PAGE.indexOf('<div id="rv-dash-bot" data-rv-assistant="dashboard"></div>');
 check('D.2 <div id="rv-dash-bot"> keeps its place, right before #toast-region, and is the one assistant\'s mount for the dashboard',
   count(PAGE, 'id="rv-dash-bot"') === 1 && mountAt !== -1 && /<div id="rv-dash-bot" data-rv-assistant="dashboard"><\/div>\n<div id="toast-region"><\/div>/.test(PAGE));
@@ -260,13 +263,14 @@ function stand(opt) {
     createElement: function (t) { return new El('', {}, t); },
     addEventListener: function (t, fn) { (docLs[t] = docLs[t] || []).push(fn); }
   };
-  var fetched = [];
+  var fetched = [], timers = [];
   var ctx = {
     document: doc, console: { log: function () {}, warn: function () {}, error: function () {} },
     navigator: {},
-    location: { hash: opt.hash || '', href: 'http://localhost/Event_Listing.html' + (opt.hash || ''), pathname: '/Event_Listing.html' },
+    location: { hash: opt.hash || '', search: opt.search || '', href: 'http://localhost/Event_Listing.html' + (opt.search || '') + (opt.hash || ''), pathname: '/Event_Listing.html' },
     history: { replaceState: function (s, t, url) { replaced.push(url); if (/^#/.test(url)) ctx.location.hash = url; } },
-    setTimeout: function () { return 0; }, clearTimeout: function () {},
+    /* opt.timers: the callbacks are kept, and run when the test says (runTimers) */
+    setTimeout: function (fn) { if (opt.timers) timers.push(fn); return 0; }, clearTimeout: function () {},
     requestAnimationFrame: function () { return 0; },
     scrollTo: function (a, b) { scrolled.push(typeof a === 'object' ? a : { top: b }); },
     matchMedia: function (q) { return { matches: !!opt.reducedMotion && /reduced-motion/.test(q) }; },
@@ -315,9 +319,11 @@ function stand(opt) {
   /* edit-event-core.js, which the page loads before its own script, as it is: it gives the page the category names
      (RevampCore.TYPES, UX-005) and the way it writes dates and messages (RevampCore.fmtDate, .toast; UX-010, UX-006) */
   vm.runInContext(CORE_SRC, ctx, { filename: 'edit-event-core.js' });
+  /* help-guide.js, which the page loads before its own script (Getting started, NU-007); opt.noGuide leaves it out */
+  if (!opt.noGuide) vm.runInContext(fs.readFileSync(path.join(ROOT, 'help-guide.js'), 'utf8'), ctx, { filename: 'help-guide.js' });
   vm.runInContext(fs.readFileSync(path.join(ROOT, 'event-lifecycle.js'), 'utf8'), ctx, { filename: 'event-lifecycle.js' });
   vm.runInContext(INLINE, ctx, { filename: 'Event_Listing.html (inline)' });
-  return { ctx: ctx, doc: doc, $: function (id) { return doc.getElementById(id); }, replaced: replaced, scrolled: scrolled, winLs: winLs, docLs: docLs, fetched: fetched, observers: observers,
+  return { ctx: ctx, doc: doc, runTimers: function () { var t = timers.splice(0); t.forEach(function (fn) { fn(); }); }, $: function (id) { return doc.getElementById(id); }, replaced: replaced, scrolled: scrolled, winLs: winLs, docLs: docLs, fetched: fetched, observers: observers,
     L: ctx.RvListing, snap: function () { return JSON.parse(JSON.stringify(ctx.RvListing.snapshot())); } };
 }
 var ME = 'asha.rao@timesinternet.in';
@@ -433,7 +439,66 @@ function shownIds(S) { return (S.$('table-body').innerHTML.match(/data-row="([^"
   S.$('help-cancel').fire('click');
   check('D.2 "Need help?" works as before, and gets its focus back too', S.$('btn-help').focused === 1);
 
+  /* NU-007: Help is Getting started first (help-guide.js), Customer Care the last resort */
+  var GUIDE = require(path.join(ROOT, 'help-guide.js'));
+  S.$('btn-help').fire('click');
+  var gHtml = S.$('sheet-root').innerHTML;
+  check('D.2 Help opens Getting started: its title and line, every step with the screen it is on', gHtml.indexOf('<h3 id="help-title" tabindex="-1">Getting started</h3>') !== -1 &&
+    gHtml.indexOf(GUIDE.INTRO) !== -1 && GUIDE.STEPS.every(function (st) { return gHtml.indexOf('<span class="hs-title">' + st.title + '</span><span class="hs-where">' + st.where + '</span>') !== -1; }) &&
+    (gHtml.match(/<li>/g) || []).length === GUIDE.STEPS.length, gHtml.slice(0, 400));
+  check('D.2 …the screens\' button names in bold, escaped (no ** left)', gHtml.indexOf('Press <b>Create Event</b> at the top right') !== -1 && gHtml.indexOf('**') === -1);
+  check('D.2 …ETB2B AI as the next stop, and Email Customer Care under it', /Stuck on a step\?<\/b> Ask ETB2B AI/.test(gHtml) && /id="help-to-email"[^>]*>[\s\S]*?Email Customer Care<\/button>/.test(gHtml));
+  check('D.2 …the focus is on its title (the top of the steps)', S.$('help-title').focused >= 1);
+  S.$('help-to-email').fire('click');
+  var eHtml = S.$('sheet-root').innerHTML;
+  check('D.2 Email Customer Care: the message to Customer Care, with the way back to the guide', /<h3 id="help-title">Need help\?<\/h3>/.test(eHtml) && eHtml.indexOf('customercare@economictimesb2b.com') !== -1 &&
+    eHtml.indexOf('>Back to Getting started</button> first: most questions are answered there.') !== -1);
+  S.$('help-to-guide').fire('click');
+  check('D.2 …Back to Getting started opens the guide again', S.$('sheet-root').innerHTML.indexOf('>Getting started</h3>') !== -1);
+  S.$('help-cancel').fire('click');
+  check('D.2 …and closing it gives the focus back to Help', S.$('sheet-root').innerHTML === '' && S.$('btn-help').focused >= 2);
+  L.openHelp(opener);
+  check('D.2 the panel\'s Email Customer Care opens the message, which offers the guide ("Read Getting started")', S.$('sheet-root').innerHTML.indexOf('>Read Getting started</button>') !== -1);
+  S.$('help-close').fire('click');
+  L.openHelp(opener, 'guide');
+  check('D.2 a how-to answer\'s Open Getting started (openHelp(el, "guide")) opens the guide', S.$('sheet-root').innerHTML.indexOf('>Getting started</h3>') !== -1);
+  S.$('help-close').fire('click');
+  var Sng = stand({ noGuide: true }); await flush();
+  Sng.$('btn-help').fire('click');
+  check('D.2 without help-guide.js, Help is the message to Customer Care, as before (no way to a guide that is not there)', /<h3 id="help-title">Need help\?<\/h3>/.test(Sng.$('sheet-root').innerHTML) && Sng.$('sheet-root').innerHTML.indexOf('help-to-guide') === -1);
+  var Sq = stand({ search: '?help=guide', hash: '#tab=upcoming', timers: true }); await flush();
+  Sq.runTimers();
+  check('D.2 ?help=guide (ETB2B AI\'s link from another page) opens Getting started once, and the word leaves the address',
+    Sq.$('sheet-root').innerHTML.indexOf('>Getting started</h3>') !== -1 && Sq.replaced.indexOf('/Event_Listing.html#tab=upcoming') !== -1, Sq.replaced);
+
   /* reduced motion: no smooth scroll */
+  /* NU-013: what is waiting for approval is one line (the count and Show), an approver's every request, anyone else's
+     only their own; nobody's first screen is other people's work */
+  function waitingItems() {
+    return ITEMS.map(function (e) {
+      if (e.id === 'draft-week') return Object.assign({}, e, { approval: { id: 'req-mine', toVersion: 3, requestedBy: ME, requestedAt: '2026-11-10T10:00:00.000Z' } });
+      if (e.id === 'live-active') return Object.assign({}, e, { approval: { id: 'req-bob', toVersion: 7, requestedBy: 'bob@timesinternet.in', requestedAt: '2026-11-11T10:00:00.000Z' } });
+      return e;
+    });
+  }
+  var Sa = stand({ items: waitingItems(), approvers: [ME, 'boss@timesinternet.in'] }); await flush();
+  var wa = Sa.$('apv-waiting');
+  check('D.2 an approver: one line, "2 requests are waiting for your approval", with Show; the list shut', wa.hidden === false &&
+    wa.innerHTML.indexOf('<h2 id="apv-waiting-h">2 requests are waiting for your approval</h2>') !== -1 && /id="apv-toggle" aria-expanded="false" aria-controls="apv-list">Show<\/button>/.test(wa.innerHTML) &&
+    /<div class="apv-list" id="apv-list" hidden>/.test(wa.innerHTML), wa.innerHTML.slice(0, 300));
+  check('D.2 …the shut list still holds both requests, each with Review', (wa.innerHTML.match(/>Review<\/a>/g) || []).length === 2 && wa.innerHTML.indexOf('sent by you') !== -1 && wa.innerHTML.indexOf('sent by bob@timesinternet.in') !== -1);
+  Sa.$('apv-toggle').fire('click');
+  check('D.2 …Show opens the list (Hide, aria-expanded true)', /aria-expanded="true" aria-controls="apv-list">Hide<\/button>/.test(wa.innerHTML) && /<div class="apv-list" id="apv-list">/.test(wa.innerHTML), wa.innerHTML.slice(0, 300));
+  Sa.$('apv-toggle').fire('click');
+  check('D.2 …and Hide shuts it again', /aria-expanded="false"/.test(wa.innerHTML) && /id="apv-list" hidden>/.test(wa.innerHTML));
+  var Sb = stand({ items: waitingItems(), approvers: ['boss@timesinternet.in'] }); await flush();
+  var wb = Sb.$('apv-waiting');
+  check('D.2 not an approver: only the request they sent ("Your request is waiting for approval"), never Bob\'s', wb.hidden === false &&
+    wb.innerHTML.indexOf('>Your request is waiting for approval</h2>') !== -1 && (wb.innerHTML.match(/>Review<\/a>/g) || []).length === 1 && wb.innerHTML.indexOf('bob@timesinternet.in') === -1 &&
+    wb.innerHTML.indexOf('Only boss@timesinternet.in can approve it.') !== -1, wb.innerHTML.slice(0, 400));
+  var Sc = stand({ items: waitingItems().map(function (e) { return e.id === 'draft-week' ? Object.assign({}, e, { approval: null }) : e; }), approvers: ['boss@timesinternet.in'] }); await flush();
+  check('D.2 not an approver, nothing of their own waiting: no box at all (each event\'s row still says "Waiting for approval")', Sc.$('apv-waiting').hidden === true && Sc.$('apv-waiting').innerHTML === '');
+
   var Srm = stand({ reducedMotion: true }); await flush();
   Srm.L.apply({ view: 'upcoming' });
   check('D.2 under reduced motion the jump is instant', Srm.scrolled[Srm.scrolled.length - 1].behavior === 'auto');

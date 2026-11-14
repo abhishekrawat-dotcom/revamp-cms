@@ -94,7 +94,7 @@ function makeKit(opt) {
 function makeBubble(content, o, chat) {
   var b = { content: content, o: o || {}, notes: [], links: [], buttons: [], lists: [], countdowns: [], choices_: null, picked: -1 };
   b.note = function (t) { b.notes.push(t); };
-  b.link = function (href, label) { var el = fakeEl({ href: href, label: label }); b.links.push(el); return el; };
+  b.link = function (href, label) { var el = fakeEl({ href: href, label: label, attrs: {} }); el.setAttribute = function (k, v) { el.attrs[k] = String(v); }; b.links.push(el); return el; };
   b.button = function (label, onClick, opts) {
     var el = fakeEl({ label: label, textContent: label, opts: opts });
     el.click = function () { if (!el.disabled) onClick({ currentTarget: el }); };
@@ -269,8 +269,10 @@ var LIST = {
   /* "portal" (the dashboard's own switcher, plan §17) joins them: no destructive action is in it */
   /* "records" (10 Nov 2026) adds speakers or sponsors through the console's own record routes; its Undo removes only the
      records it added itself */
-  check('D.1 the action switch knows filter, portal, navigate, create, records, refuse (and undo) only',
-    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).filter(function (x, i, all) { return all.indexOf(x) === i; }).sort().join(',') === 'create,filter,navigate,portal,records,refuse,undo',
+  /* "help" (NU-007, 14 Nov 2026) draws a how-to answer, Getting started's own steps, with the way to the whole guide:
+     it changes nothing */
+  check('D.1 the action switch knows filter, portal, navigate, create, records, refuse, help (and undo) only',
+    (SRC.match(/action\.type === '([a-z]+)'/g) || []).map(function (s) { return s.replace(/.*'([a-z]+)'/, '$1'); }).filter(function (x, i, all) { return all.indexOf(x) === i; }).sort().join(',') === 'create,filter,help,navigate,portal,records,refuse,undo',
     SRC.match(/action\.type === '([a-z]+)'/g));
   check('D.1 the answer is drawn by the kit (no innerHTML here)', SRC.indexOf('innerHTML') === -1 && SRC.indexOf('insertAdjacentHTML') === -1 && SRC.indexOf('document.write') === -1);
   check('D.1 NAV_OK is one regex literal (the integration test reads it from here)', /\bvar NAV_OK = \/\^\\\/\(\?:edit-event[^\n]*\$\/;/.test(SRC));
@@ -298,8 +300,9 @@ var LIST = {
   var o = m.opts;
   check('D.1 the kit\'s options: id, title, launcher label, placeholder', o.id === 'dash' && o.title === 'ETB2B AI' && o.launcherLabel === 'Ask ETB2B AI' && o.placeholder === 'Ask ETB2B AI…');
   check('D.1 the welcome greets by first name', o.welcome.heading === 'Hi Asha, I’m ETB2B AI.' && /start a new event, open any event’s pages, answer questions from your events’ real numbers, and set up promotions/.test(o.welcome.text), o.welcome);
-  check('D.1 four suggestions, one per ability, each with a "…" to fill or none',
-    same(o.suggestions.map(function (s) { return s.text; }), ['Create an IP event called … on … in …', 'Show drafts from last week', 'Which events go live this month?', 'Make a save-the-date post and an announcement mailer for …']));
+  /* the newcomer's how-to question first (NU-007), then one per ability */
+  check('D.1 five suggestions: the how-to question, then one per ability, each with a "…" to fill or none',
+    same(o.suggestions.map(function (s) { return s.text; }), ['How do I create and publish an event?', 'Create an IP event called … on … in …', 'Show drafts from last week', 'Which events go live this month?', 'Make a save-the-date post and an announcement mailer for …']));
   check('D.1 the foot note says what it never does', o.footNote === 'ETB2B AI opens pages, filters this list, switches its portal and starts drafts. It never deletes, cancels, publishes or approves anything.');
   check('D.1 "Email Customer Care" sits in the header', o.help && o.help.label === 'Email Customer Care' && typeof o.help.onClick === 'function');
   check('D.1 send and loadHistory are given; it does not start open', typeof o.send === 'function' && typeof o.loadHistory === 'function' && o.startOpen === false);
@@ -899,7 +902,7 @@ var LIST = {
   var DT = Pe0.ctx.RevampDashBot.TEXT;
   check('D.2 …the welcome says it works on this event only, never that it starts a new one', oc.welcome.heading === 'Hi Asha, I’m ETB2B AI.' && oc.welcome.text === DT.welcomeEvent &&
     /^I work on this event only/.test(oc.welcome.text) && !/start a new event/.test(oc.welcome.text), oc.welcome);
-  check('D.2 …suggestions for this event only, each one only fills the box', same(oc.suggestions.map(function (x) { return x.text; }), ['How many registrations does this event have?', 'Open this event’s speakers', 'Make a save-the-date post for this event', 'Open this event’s registrations']));
+  check('D.2 …suggestions for this event only, each one only fills the box', same(oc.suggestions.map(function (x) { return x.text; }), ['How many registrations does this event have?', 'Open this event’s speakers', 'Make a save-the-date post for this event', 'Open this event’s registrations', 'How do I publish this site?']));
   check('D.2 …quick ideas stay after the first turn (they fill, never send)', oc.quickIdeas.length === 2 && oc.quickIdeas.every(function (q) { return q.label && q.text && !/Create an/.test(q.text); }));
   check('D.2 …the foot note says this event only', oc.footNote === 'ETB2B AI works on this event only. It never deletes, cancels, publishes or approves anything.');
   check('D.2 …"Email Customer Care" mails Customer Care, naming the page', oc.help && oc.help.label === 'Email Customer Care' && oc.help.href === 'mailto:customercare@economictimesb2b.com?subject=' + encodeURIComponent('ETB2B EventSphere help: Event console'), oc.help);
@@ -1221,6 +1224,37 @@ var LIST = {
   var Ppromo = await page({ page: 'promotions', noListing: true, path: '/marketing.html', search: '?event=qa-main&tab=mailers', answers: [hello('TurnPromo00001')], portals: portalsStub() });
   await Ppromo.say('hi');
   check('D.6 Promotions: its tab is the place\'s', same(Ppromo.botCalls()[0].body.place, { page: 'promotions', eventId: 'qa-main', tab: 'mailers' }), Ppromo.botCalls()[0].body.place);
+
+  /* ======== a how-to answer (NU-007): Getting started's own steps, and the way to the whole guide ======== */
+  var GUIDE = require(path.join(ROOT, 'help-guide.js'));
+  function helpAnswerBody(id, topicId) {
+    var t = GUIDE.topic(topicId);
+    return ok({ turnId: id, kind: 'reply', parts: [{ t: 'text', v: GUIDE.answerText(topicId) }], list: null,
+      action: { type: 'help', what: topicId, label: t.title }, choices: null, asOf: '2026-11-14T06:35:00.000Z', notes: ['help'], scope: 'global' });
+  }
+  var Ph1 = await page({ answers: [helpAnswerBody('TurnHelp000001', 'create')] });
+  await Ph1.say('How do I create an event?');
+  var bh1 = Ph1.last();
+  check('D.7 a how-to answer is drawn as one text, so the kit gives it its bold title and numbered steps', typeof bh1.content === 'string' && bh1.content === GUIDE.answerText('create') &&
+    /^\*\*How to create an event\*\*\n1\. /.test(bh1.content), bh1.content);
+  check('D.7 …on the dashboard, "Open Getting started" opens its Help window on the guide, and nothing else is done',
+    bh1.buttons.length === 1 && bh1.buttons[0].label === 'Open Getting started' && bh1.links.length === 0 && Ph1.assigned.length === 0 && Ph1.turnCalls().length === 0 && Ph1.kit.chat.folds.length === 0, bh1);
+  var helpedBefore = Ph1.listing.help.length;
+  bh1.buttons[0].click();
+  check('D.7 …which asks the dashboard for the guide (RvListing.openHelp(button, "guide"))', Ph1.listing.help.length === helpedBefore + 1);
+  var Ph2 = await conPage({ answers: [helpAnswerBody('TurnHelpCon001', 'create')] });
+  await Ph2.say('How do I create an event?');
+  var bh2 = Ph2.last();
+  check('D.7 inside an event a how-to answer is shown too (it holds no event\'s data), not the "another event" line',
+    bh2.content === GUIDE.answerText('create') && bh2.content !== DT.otherEvent && Ph2.assigned.length === 0, bh2);
+  check('D.7 …with the guide one click away in a new tab, so the console is not left (target _blank)',
+    bh2.buttons.length === 0 && bh2.links.length === 1 && bh2.links[0].href === '/Event_Listing.html?help=guide' && bh2.links[0].label === 'Open Getting started (new tab)' &&
+    bh2.links[0].attrs.target === '_blank' && bh2.links[0].attrs.rel === 'noopener', bh2.links);
+  Ph1.ctx.RevampDashBot.brain.replay({ id: 'TurnHelp000002', question: 'How do I publish?', answer: GUIDE.answerText('approval'), parts: [{ t: 'text', v: GUIDE.answerText('approval') }],
+    list: null, asOf: 'x', kind: 'reply', status: 'answered', action: { type: 'help', label: 'How to publish the site', what: 'approval' }, at: '2026-11-14T06:30:00.000Z' });
+  var bh3 = Ph1.last();
+  check('D.7 a how-to answer read back from the history is drawn the same way (steps as a list, Open Getting started)',
+    bh3.content === GUIDE.answerText('approval') && bh3.buttons.length === 1 && bh3.buttons[0].label === 'Open Getting started', bh3);
 
   /* ======== the real kit, when Unit C's etb2b-chat.js is there ======== */
   var KIT = path.join(ROOT, 'etb2b-chat.js');

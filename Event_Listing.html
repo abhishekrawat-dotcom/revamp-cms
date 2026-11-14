@@ -537,6 +537,27 @@
   /* what the help window says once the email app was asked to open: nothing was sent from here */
   .help-note{ font-size:12.5px; line-height:1.5; color:var(--text); background:var(--info-soft); border-radius:8px; padding:10px 12px; }
   .help-note b{ font-weight:700; }
+  /* Getting started (help-guide.js): wider than the other windows, and its steps scroll inside it on a short screen */
+  .modal-card.help-card{ max-width:600px; max-height:calc(100vh - 40px); display:flex; flex-direction:column; }
+  .help-card .modal-card-head, .help-card .modal-card-foot{ flex-shrink:0; }
+  .help-card .help-body{ overflow-y:auto; min-height:0; gap:14px; }
+  #help-title:focus{ outline:none; }
+  .help-steps{ list-style:none; margin:0; padding:0; counter-reset:hs; display:flex; flex-direction:column; gap:12px; }
+  .help-steps li{ counter-increment:hs; position:relative; padding-left:36px; }
+  .help-steps li::before{ content:counter(hs); position:absolute; left:0; top:0; width:24px; height:24px; border-radius:50%; background:var(--accent-soft); color:var(--accent-strong); font-size:12px; font-weight:800; display:flex; align-items:center; justify-content:center; }
+  .hs-head{ display:flex; align-items:baseline; gap:4px 10px; flex-wrap:wrap; }
+  .hs-title{ font-size:14px; font-weight:700; color:var(--text); }
+  .hs-where{ font-size:11.5px; font-weight:600; color:var(--text-muted); background:var(--surface-2); border-radius:100px; padding:1px 8px; }
+  .hs-text{ margin:3px 0 0; font-size:13px; line-height:1.5; color:var(--text); }
+  .hs-text b{ font-weight:700; }
+  .help-ask{ margin:0; font-size:13px; line-height:1.5; color:var(--text); background:var(--info-soft); border-radius:8px; padding:10px 12px; }
+  .help-back{ margin:0; font-size:12.5px; color:var(--text-muted); }
+  /* on a phone a window's buttons share its foot over two rows rather than run off its edge ("Open in email app" was
+     cut off at 390px) */
+  @media (max-width: 480px){
+    #sheet-root .modal-card-foot{ flex-wrap:wrap; }
+    #sheet-root .modal-card-foot .btn{ flex:1 1 auto; justify-content:center; margin-left:0 !important; }
+  }
   /* A row's ⋯ menu, once open, is pinned to the screen from <body> (placeRowMenu) and can reach the bottom-right
      corner: it opens above ETB2B AI's launcher (65) and panel (69), and under the page's dialogs (90). */
   body > .popover.row-menu{ z-index:70; }
@@ -917,6 +938,8 @@
 <script src="create-drafts.js"></script>
 <!-- QR codes drawn in the page (the QR Codes dialog), as Promotions draws its own: no outside service is sent the link -->
 <script src="assets/vendor/qrcode-generator.js"></script>
+<!-- Getting started, the Help window's guide: the same words ETB2B AI answers a how-to question with (its server reads this file) -->
+<script src="help-guide.js"></script>
 <!-- the one rule for Draft / Upcoming / Active / Completed, shared with ETB2B AI's server so the two never disagree -->
 <script src="event-lifecycle.js"></script>
 <script>
@@ -2608,6 +2631,8 @@
   function emptyStateHTML(allPortals){
     var bucket = state.specialView || state.tab;
     var create = '<a class="btn btn-primary" href="' + esc(createHref()) + '">Create Event</a>';
+    /* a dashboard with nothing on it yet is where a newcomer starts: the guide is one click away (NU-007) */
+    var guide = helpGuide() ? ' <button type="button" class="btn btn-secondary" data-empty-guide>How it works</button>' : '';
     if (listFiltered()) return noMatchHTML(bucket);
     /* on Drafts, with unfinished Create Event drafts above and no draft event yet (UX-048) */
     if (bucket === 'draft' && createDraftsShown().length){
@@ -2619,11 +2644,11 @@
       return emptyBlock(IC.trashLg, 'No deleted events', 'An event an approver deletes waits here, and can be restored.');
     }
     var anyLive = EVENTS.some(function(e){ return e.status !== 'deleted'; });
-    if (!anyLive && allPortals) return emptyBlock(IC.plusOutline, 'Create your first event', 'It takes about ten minutes.', create);
+    if (!anyLive && allPortals) return emptyBlock(IC.plusOutline, 'Create your first event', 'It takes about ten minutes.', create + guide);
     if (!allPortals && !EVENTS.some(function(e){ return e.portal === state.portal && e.status !== 'deleted'; })){
       /* a portal with no events at all yet: start its first, or look at every portal (for this visit) */
       return emptyBlock(IC.plusOutline, portalNameOf(state.portal) + ' has no events yet', 'Create its first event, or show the events of every portal.',
-        create + ' <button type="button" class="btn btn-secondary" data-empty-all-portals>Show all portals</button>');
+        create + ' <button type="button" class="btn btn-secondary" data-empty-all-portals>Show all portals</button>' + guide);
     }
     if (bucket === 'active'){
       var up = countIn('upcoming');
@@ -2662,6 +2687,7 @@
     each('[data-empty-clear]', function(){ state.filters={types:[],portals:[],payment:[]}; clearDateFilters(); state.page=1; renderApp(); });
     each('[data-empty-clear-search]', function(){ state.search=''; state.page=1; showSearch(); renderApp(); try { $('search-input').focus(); } catch(e){} });
     each('[data-empty-all-portals]', function(){ showAllPortalsForNow(''); });
+    each('[data-empty-guide]', function(b){ openGuideModal(b); });
     each('[data-empty-tab]', function(b){ goToBucket(b.getAttribute('data-empty-tab'), true); });
     each('[data-empty-retry]', function(){ refreshEvents(); });
     each('[data-load-retry]', function(){ loadAndRender(); });
@@ -4046,7 +4072,14 @@
   }
 
   /* =========================================================
-     NEED HELP — a message to ET's Customer Care, written here and sent from the person's own email.
+     HELP — "Getting started" first, then ETB2B's Customer Care as the last resort (NU-007, the first-time-user QA of
+     14 Nov 2026: Help was only "write to Customer Care", so a newcomer with no training had nowhere to read how an
+     event goes live). Help in the top bar (and "How it works" on an empty dashboard) opens the guide: the steps from
+     Create Event to a live site, each with the screen it happens on, from help-guide.js, the same words ETB2B AI
+     answers a how-to question with. "Email Customer Care" under it opens the message below; "Email Customer Care" in
+     ETB2B AI's panel opens the message straight away. Without help-guide.js the window is the message, as before.
+
+     NEED HELP — a message to ETB2B's Customer Care, written here and sent from the person's own email.
      There is no support service behind this page, so nothing is sent from it: "Open in email app" hands the
      message to the computer's email app (a mailto: link), and "Copy message" puts it on the clipboard for Gmail in
      the browser, where most of the team works and where a mailto: link often opens nothing at all. The window
@@ -4068,14 +4101,46 @@
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, failed);
     else failed();
   }
+  /* the guide's words: escaped, then its **names** in bold (help-guide.js writes the screens' own button names so) */
+  function guideRich(s){ return esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>'); }
+  function helpGuide(){ var G = window.RevampHelpGuide; return G && Array.isArray(G.STEPS) && G.STEPS.length ? G : null; }
+  /* The Getting started window: the steps in order, each with where it happens, ETB2B AI as the next stop and Customer
+     Care as the last. returnTo as for openHelpModal. */
+  function openGuideModal(returnTo){
+    var G = helpGuide(), root = $('sheet-root');
+    if (!G) return openHelpModal(returnTo);
+    root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card help-card fade-in">' +
+      '<div class="modal-card-head"><div><h3 id="help-title" tabindex="-1">' + esc(G.TITLE) + '</h3><p>' + esc(G.INTRO) + '</p></div>' +
+        '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
+      '<div class="modal-card-body help-body">' +
+        '<ol class="help-steps">' + G.STEPS.map(function(st){
+          return '<li><div class="hs-head"><span class="hs-title">' + esc(st.title) + '</span><span class="hs-where">' + esc(st.where) + '</span></div>' +
+            '<p class="hs-text">' + guideRich(st.text) + '</p></li>';
+        }).join('') + '</ol>' +
+        '<p class="help-ask"><b>Stuck on a step?</b> Ask ETB2B AI, at the bottom right of every page, for example \u201cHow do I add speakers?\u201d It answers from this guide.</p>' +
+      '</div>' +
+      '<div class="modal-card-foot"><button class="btn btn-secondary" id="help-cancel">Close</button>' +
+        '<button class="btn btn-secondary" id="help-to-email" style="margin-left:auto;">' + IC.mail + ' Email Customer Care</button></div>' +
+    '</div></div>';
+    function close(){ root.innerHTML = ''; giveFocusBack(returnTo); }
+    asDialog(root.querySelector('.modal-card'), 'help-title', close);
+    $('help-close').addEventListener('click', close);
+    $('help-cancel').addEventListener('click', close);
+    $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
+    $('help-to-email').addEventListener('click', function(){ openHelpModal(returnTo, true); });
+    /* the window is where the keyboard is now: on its title, so a screen reader starts at the top of the steps */
+    try { $('help-title').focus(); } catch(e){}
+  }
   /* returnTo: the control that opened it (Help in the top bar, or "Email Customer Care" in ETB2B AI's panel), which
-     gets the focus back when the window closes, so a keyboard user is left where they were */
-  function openHelpModal(returnTo){
-    var root = $('sheet-root');
+     gets the focus back when the window closes, so a keyboard user is left where they were. fromGuide: opened from
+     Getting started's "Email Customer Care", so its way back says "Back to". */
+  function openHelpModal(returnTo, fromGuide){
+    var root = $('sheet-root'), G = helpGuide();
     root.innerHTML = '<div class="modal-scrim" id="help-scrim"><div class="modal-card fade-in">' +
       '<div class="modal-card-head"><div><h3 id="help-title">Need help?</h3><p>Write your question for ETB2B\'s Customer Care team, then send it from your own email.</p></div>' +
         '<button class="icon-btn" id="help-close" aria-label="Close">' + IC.x + '</button></div>' +
       '<div class="modal-card-body">' +
+        (G ? '<p class="help-back"><button type="button" class="pn-link" id="help-to-guide">' + (fromGuide ? 'Back to ' : 'Read ') + esc(G.TITLE) + '</button> first: most questions are answered there.</p>' : '') +
         '<div class="email-row">' + IC.mail + '<span>' + HELP_EMAIL + '</span><button id="help-copy-email" data-tooltip="Copy address" aria-label="Copy address" type="button">' + IC.copy + '</button></div>' +
         '<div><label class="flabel" for="help-subject">Subject</label><input class="finput" id="help-subject"></div>' +
         '<div><label class="flabel" for="help-message">Your question</label><textarea class="finput" id="help-message" placeholder="Tell us what you need help with: an event, its site, registrations, promotions…"></textarea></div>' +
@@ -4108,6 +4173,7 @@
     $('help-close').addEventListener('click', close);
     $('help-cancel').addEventListener('click', close);
     $('help-scrim').addEventListener('click', function(e){ if (e.target===$('help-scrim')) close(); });
+    if ($('help-to-guide')) $('help-to-guide').addEventListener('click', function(){ keep(); openGuideModal(returnTo); });
     $('help-copy-email').addEventListener('click', function(){
       copyText(HELP_EMAIL, function(){ toast('Email address copied'); }, function(){ toast(HELP_EMAIL, 'info'); });
     });
@@ -4127,7 +4193,19 @@
     /* the window is where the keyboard is now (its controls were behind the page before) */
     try { $('help-message').focus(); } catch(e){}
   }
-  $('btn-help').addEventListener('click', function(){ openHelpModal($('btn-help')); });
+  $('btn-help').addEventListener('click', function(){ openGuideModal($('btn-help')); });
+  /* ?help=guide (ETB2B AI's "Open Getting started" on a page that has no Help window) opens the guide once; the word
+     leaves the address, so a reload or a shared link opens the list as usual */
+  (function(){
+    var q = '';
+    try { q = String(window.location.search || ''); } catch(e){ q = ''; }
+    if (!/(?:^|[?&])help=guide(?:&|$)/.test(q)) return;
+    try {
+      var rest = q.replace(/^\?/, '').split('&').filter(function(kv){ return kv && kv !== 'help=guide'; }).join('&');
+      window.history.replaceState(window.history.state, '', window.location.pathname + (rest ? '?' + rest : '') + (window.location.hash || ''));
+    } catch(e){}
+    setTimeout(function(){ openGuideModal($('btn-help')); }, 0);
+  })();
   $('venue-quickview').addEventListener('mouseenter', cancelCloseQV);
   $('venue-quickview').addEventListener('mouseleave', scheduleCloseQV);
 
@@ -4267,7 +4345,9 @@
     apply: listingApply,
     restore: listingRestore,
     setPortal: listingSetPortal,
-    openHelp: function(returnTo){ openHelpModal(returnTo); },
+    /* the help window: "Email Customer Care" in ETB2B AI's panel opens the message; a how-to answer's "Open Getting
+       started" (view 'guide') opens the guide */
+    openHelp: function(returnTo, view){ if (view === 'guide') openGuideModal(returnTo); else openHelpModal(returnTo); },
     me: listingMe,
     /* settles once the first load of the events has finished, or failed */
     ready: function(){ return listingReady; }
