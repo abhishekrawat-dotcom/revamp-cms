@@ -55,9 +55,9 @@ const CIO_YEAR = /(<span\b[^>]*>)\s*2026\s*(<\/span>)/g;
 const TBA = /Date to be announced/g;
 
 function count(s, re) { return (String(s).match(re) || []).length; }
-/* one phrase for another, word for word, whatever space the page has between the words (a plain space, a
-   non-breaking one, &nbsp;): each keeps its own */
-const SEP = '((?:\\s|&nbsp;|&#160;|&#xa0;)+)';
+/* one phrase for another, word for word, whatever the page has between the words (a plain space, a non-breaking
+   one, &nbsp;, React's empty <!-- --> markers): each keeps its own */
+const SEP = '((?:\\s|&nbsp;|&#160;|&#xa0;|<!--[^>]*?-->)+)';
 function swap(html, from, to) {
   const a = from.split(' '), b = to.split(' ');
   if (a.length !== b.length) { const n0 = html.split(from).length - 1; return { n: n0, html: html.split(from).join(to) }; }
@@ -103,7 +103,12 @@ function changeOf(id, page, data) {
     let missing = 0;
     CIO_SWAPS.forEach(function (s) {
       const r = swap(html, s[0], s[1]);
-      if (!r.n) missing++;
+      if (!r.n) {
+        missing++;
+        /* what the page has there instead, as written (for the dry run) */
+        const words = s[0].replace(/[<>]/g, '').split(' '), at = html.indexOf(words[1] || words[0]);
+        if (at !== -1) report.swaps.push('  (not as expected; the page has ' + JSON.stringify(html.slice(Math.max(0, at - 30), at + 50)) + ')');
+      }
       report.swaps.push(s[0].replace(/[<>]/g, '') + ' -> ' + s[1].replace(/[<>]/g, '') + ': ' + r.n);
       html = r.html;
     });
