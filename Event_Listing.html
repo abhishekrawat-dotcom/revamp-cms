@@ -335,9 +335,14 @@
     background:var(--warn-soft); color:var(--text); font-size:11.5px; font-weight:700; text-decoration:none; white-space:nowrap; }
   .apv-badge:hover{ text-decoration:underline; }
   .apv-badge::before{ content:''; width:7px; height:7px; border-radius:50%; background:var(--warn); }
-  .apv-waiting{ margin:0 0 14px; padding:12px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
+  /* one line (the count and Show), the list under it once opened (NU-013) */
+  .apv-waiting{ margin:0 0 2px; padding:6px 14px; border:1px solid var(--border); border-radius:12px; background:var(--surface); }
   .apv-waiting[hidden]{ display:none; }
-  .apv-waiting h2{ margin:0 0 4px; font-size:14px; font-weight:700; color:var(--text); }
+  .apv-strip{ display:flex; align-items:center; gap:4px 12px; flex-wrap:wrap; min-height:30px; }
+  .apv-waiting h2{ margin:0; font-size:13px; font-weight:650; color:var(--text); flex:0 1 auto; min-width:0; }
+  .apv-toggle{ font-size:13px; }
+  .apv-list{ margin-top:6px; padding:8px 0 6px; border-top:1px solid var(--border); }
+  .apv-list[hidden]{ display:none; }
   .apv-waiting p{ margin:0 0 8px; font-size:12.5px; color:var(--text-muted); }
   .apv-waiting ul{ list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:6px; }
   .apv-waiting li{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 10px; font-size:13px; color:var(--text); }
@@ -2778,17 +2783,37 @@
     return state.approvers.indexOf(listingMe().email.toLowerCase()) !== -1;
   }
   var WAITING_SHOWN = 5;
+  /* NU-013 (first-time-user QA): the box listed everybody's requests, on every portal, as the first thing on the page,
+     and on a phone it filled the whole first screen, so a newcomer met other people's work before their own. Now:
+     - an approver gets every request (theirs to decide), anybody else only the ones they sent themselves; everyone's
+       event rows still say "Waiting for approval · Review" on the portal they are on;
+     - it is one line, the count with Show, and the list opens under it; whether it is open is remembered in this
+       browser (rv.listing.waitingOpen), so an approver who keeps it open finds it open. */
+  var MEMO_WAITING_OPEN = 'rv.listing.waitingOpen';
+  /* kept here too, so Show still works with this browser's storage blocked */
+  var waitingOpen = memoGet('localStorage', MEMO_WAITING_OPEN) === '1';
+  /* the requests this person sees in the box: all of them for an approver, else their own */
+  function waitingShown(){
+    var all = state.loading || state.loadFailed ? [] : waitingEvents();
+    if (approverHere() === true) return all;
+    var me = listingMe().email.toLowerCase();
+    return me ? all.filter(function(e){ return String(e.approval.requestedBy || '').toLowerCase() === me; }) : [];
+  }
   function renderWaiting(){
     var box = $('apv-waiting');
     if (!box) return;
-    var list = state.loading || state.loadFailed ? [] : waitingEvents();
+    var list = waitingShown();
     if (!list.length){ box.hidden = true; box.innerHTML = ''; return; }
-    var mine = approverHere(), me = listingMe().email.toLowerCase();
+    var mine = approverHere() === true, me = listingMe().email.toLowerCase(), n = list.length;
+    var open = waitingOpen;
     var who = state.approvers && state.approvers.length ? state.approvers.join(', ') : '';
-    var head = (mine ? 'Waiting for your approval' : 'Waiting for approval') + ' (' + list.length + ')';
+    var head = mine ? (n === 1 ? '1 request is waiting for your approval' : n + ' requests are waiting for your approval')
+      : (n === 1 ? 'Your request is waiting for approval' : 'Your ' + n + ' requests are waiting for approval');
     var line = mine ? 'Open each one to see what changed and approve it or send it back with a reason. Changes you sent yourself need another approver.'
-      : (who ? 'Only ' + who + ' can approve these. EventSphere does not e-mail them: send them the review link.' : 'Anyone on the team other than the person who sent it can approve these.');
-    box.innerHTML = '<h2 id="apv-waiting-h">' + esc(head) + '</h2><p>' + esc(line) + '</p><ul>' +
+      : (who ? 'Only ' + who + ' can approve ' + (n === 1 ? 'it' : 'them') + '. EventSphere does not e-mail them: send them the review link.' : 'Anyone on the team other than you can approve ' + (n === 1 ? 'it' : 'them') + '. EventSphere does not e-mail anyone: send them the review link.');
+    box.innerHTML = '<div class="apv-strip"><h2 id="apv-waiting-h">' + esc(head) + '</h2>' +
+      '<button type="button" class="pn-link apv-toggle" id="apv-toggle" aria-expanded="' + open + '" aria-controls="apv-list">' + (open ? 'Hide' : 'Show') + '</button></div>' +
+      '<div class="apv-list" id="apv-list"' + (open ? '' : ' hidden') + '><p>' + esc(line) + '</p><ul>' +
       list.slice(0, WAITING_SHOWN).map(function(e){
         var a = e.approval, own = me && String(a.requestedBy || '').toLowerCase() === me;
         return '<li><span class="grow"><a class="ev-link" href="edit-event.html?event=' + encodeURIComponent(e.id) + '">' + esc(e.name) + '</a> ' +
@@ -2796,8 +2821,15 @@
           (e.portal ? ' · ' + portalNameOf(e.portal) : '')) + '</span></span>' +
           '<a class="btn btn-secondary btn-sm" href="' + esc(reviewHrefOf(e)) + '" target="_blank" rel="noopener">Review</a></li>';
       }).join('') + '</ul>' +
-      (list.length > WAITING_SHOWN ? '<p style="margin:8px 0 0">and ' + (list.length - WAITING_SHOWN) + ' more: each one\u2019s row says “Waiting for approval”.</p>' : '');
+      (list.length > WAITING_SHOWN ? '<p style="margin:8px 0 0">and ' + (list.length - WAITING_SHOWN) + ' more: each one\u2019s row says “Waiting for approval”.</p>' : '') +
+      '</div>';
     box.hidden = false;
+    $('apv-toggle').addEventListener('click', function(){
+      waitingOpen = !waitingOpen;
+      memoSet('localStorage', MEMO_WAITING_OPEN, waitingOpen ? '1' : '0');
+      renderWaiting();
+      try { $('apv-toggle').focus(); } catch(e){}
+    });
   }
 
   /* the event's name: a link to its console, except for a deleted event, which the console cannot open */

@@ -202,7 +202,9 @@ check('9 the AI switch draws the pills, and they are never saved or recorded', /
 
 /* ======================= 10 the approver sees what is waiting (UX-102) ======================= */
 check('10 the dashboard keeps each event\'s waiting request', /approval: ev\.approval && typeof ev\.approval === 'object' && ev\.approval\.id \? ev\.approval : null,/.test(LIST));
-check('10 a list of what is waiting, above the tabs, for approvers as theirs', /<section class="apv-waiting" id="apv-waiting"/.test(LIST) && /'Waiting for your approval' : 'Waiting for approval'/.test(LIST) && /renderWaiting\(\);/.test(LIST));
+/* NU-013: one line with the count and Show; an approver's is every request, anyone else's only their own */
+check('10 a list of what is waiting, above the tabs, for approvers as theirs (one line, the list under Show)', /<section class="apv-waiting" id="apv-waiting"/.test(LIST) &&
+  /' requests are waiting for your approval'/.test(LIST) && /'Your request is waiting for approval'/.test(LIST) && /id="apv-toggle" aria-expanded="/.test(LIST) && /renderWaiting\(\);/.test(LIST));
 check('10 each such row and card says so, with Review', (LIST.match(/'<\/div>' \+ approvalBadgeHTML\(e\) \+ '<\/div>/g) || []).length === 2 && /Waiting for approval · Review<\/a>/.test(LIST));
 check('10 a deleted event waits for nobody', /e\.approval && e\.status !== 'deleted'/.test(LIST));
 
