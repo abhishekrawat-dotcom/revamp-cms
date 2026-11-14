@@ -7,8 +7,10 @@
      UX-015  both activity logs read the same: one table of words (activity-words.js) for actions, people, fields and
              sections; one filter order (Event · Person · Area · From · To · Search, Event left out of one event's
              log); no action codes on screen (kept in the CSV); Basics edits filed under Content;
-     UX-023  the app's logo, local, in a light and a dark copy that differ only in the lettering (the red ET square
-             exactly as drawn), swapped by the theme on every page, no white chips; Latest Activity totals in --text;
+     UX-023  the app's logo, local, the same on every page, no white chips; Latest Activity totals in --text. Since
+             owner decision #12 (8 Nov 2026) the logo is one unit: the red ET square exactly as ETB2B's logo draws it
+             (assets/favicon.svg), then "EventSphere" as live text in the theme's text colour, one name for screen
+             readers ("ETB2B EventSphere"), sized where the old picture was so no top bar moved;
      UX-024  (done by the dashboard's ETB2B AI, checked here that it is still mounted);
      UX-028  Help in the top bar, no floating pill; its window keeps what was typed, never says it was sent, and
              offers "Open in email app" and "Copy message";
@@ -117,23 +119,67 @@ check('UX-014 the Figma import page reads the app\'s choice before it paints, an
   FIGMA.indexOf('<script src="../theme-toggle.js"></script>') !== -1 && FIGMA.indexOf('<span data-theme-toggle-target') !== -1);
 check('UX-014 …and its dark palette answers the switch (:root[data-theme="dark"]), not only the computer', /:root\[data-theme="dark"\]\{\n    --bg:#171514;[\s\S]*?--accent:#FF6B70;/.test(FIGMA));
 
-/* ---- UX-023 the logo ---- */
-var LOGO_PAGES = [['Event_Listing.html', PAGE], ['index.html', SIGNIN], ['create-event.html', CREATE], ['activity-log.html', ALOG], ['mailer-performance.html', MPERF]];
+/* ---- UX-023, owner decision #12: the app's logo, one unit on every page that shows it ----
+   The red ET square exactly as ETB2B's logo draws it (assets/favicon.svg, checked path for path against
+   assets/et-b2b-logo.svg by product-name.test.js), then the word "EventSphere" as live text in the theme's text
+   colour; one name for screen readers, "ETB2B EventSphere". It replaced the two pictures of the old logo (a light
+   and a dark copy), which still read a product name no longer used. */
+var LOGO_UNIT = '<span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt="">' +
+  '<span class="app-logo-word">EventSphere</span></span>';
+var AIREP = read('ai-report.html');
+var LOGO_PAGES = [['Event_Listing.html', PAGE], ['index.html', SIGNIN], ['create-event.html', CREATE], ['activity-log.html', ALOG], ['mailer-performance.html', MPERF], ['ai-report.html', AIREP]];
+function count(s, sub) { return s.split(sub).length - 1; }
 LOGO_PAGES.forEach(function (f) {
   var html = f[1];
-  check('UX-023 ' + f[0] + ' shows the local logo, a light and a dark copy, and links app-logo.css', html.indexOf('src="assets/app-logo.png"') !== -1 && html.indexOf('src="assets/app-logo-dark.png"') !== -1 &&
-    /class="[^"]*app-logo-light"/.test(html) && /class="[^"]*app-logo-dark"/.test(html) && html.indexOf('<link rel="stylesheet" href="app-logo.css">') !== -1);
-  check('UX-023 ' + f[0] + ': no logo from another site, no white chip or plate behind it', html.indexOf('oneworld-logo.svg') === -1 && !/background:\s*#(fff|FFFFFF)\b[^}]*\}[^\n]*\n?/.test(html.slice(0, html.indexOf('</style>')).split('\n').filter(function (l) { return /brand|nav-brand img/.test(l); }).join('\n')));
+  check('#12 ' + f[0] + ' shows the logo unit (the red ET square, then "EventSphere") and links app-logo.css', html.indexOf(LOGO_UNIT) !== -1 &&
+    html.indexOf('<link rel="stylesheet" href="app-logo.css">') !== -1);
+  check('#12 ' + f[0] + ': no old logo picture, no logo from another site, no white chip or plate behind it', !/app-logo(-dark)?\.png|app-logo-(light|dark)|brand-logo-img|oneworld-logo\.svg/.test(html) &&
+    !/background:\s*#(fff|FFFFFF)\b[^}]*\}[^\n]*\n?/.test(html.slice(0, html.indexOf('</style>')).split('\n').filter(function (l) { return /brand|app-logo/.test(l); }).join('\n')));
+  check('#12 ' + f[0] + ': the word follows the theme (the page has a --text for its light and its dark palette)',
+    (html.match(/--text:\s*#[0-9A-Fa-f]{6}/g) || []).map(function (d) { return d.replace(/\s/g, '').toUpperCase(); }).filter(function (d, i, a) { return a.indexOf(d) === i; }).length >= 2 &&
+    /\[data-theme="dark"\]\s*\{[^}]*--text:\s*#/.test(html));
 });
+/* every place in the app that writes the unit writes it the same way (the pages and the browser scripts) */
+var unitPlaces = [];
+fs.readdirSync(ROOT).filter(function (f) { return /\.(html|js)$/.test(f); }).forEach(function (f) {
+  var s = read(f);
+  if (count(s, 'class="app-logo"') !== count(s, LOGO_UNIT)) unitPlaces.push(f);
+});
+check('#12 every page and script that shows the logo writes the same unit', unitPlaces.length === 0, unitPlaces);
+check('#12 where each page has it: the dashboard\'s and the top bars\' brand links go to the events dashboard, Create Event and sign-in show it unlinked (sign-in twice: the panel, and over the card on a phone)',
+  BODY.indexOf('<a class="main-nav-brand" href="Event_Listing.html">\n      ' + LOGO_UNIT + '\n    </a>') !== -1 &&
+  [ALOG, MPERF, AIREP].every(function (h) { return h.indexOf('<a class="nav-brand" href="Event_Listing.html">' + LOGO_UNIT + '</a>') !== -1; }) &&
+  CREATE.indexOf('<div class="brand-mark">') !== -1 && count(CREATE, LOGO_UNIT) === 1 &&
+  SIGNIN.indexOf('<div class="brand-mark">\n        ' + LOGO_UNIT + '\n      </div>') !== -1 && SIGNIN.indexOf('<div class="login-brand-phone">\n          ' + LOGO_UNIT + '\n        </div>') !== -1 && count(SIGNIN, LOGO_UNIT) === 2);
+check('#12 each page sizes it where its picture was, by --app-logo-h (so nothing else in the bar moved)',
+  /\.main-nav-brand\{ display:flex; align-items:center; gap:9px; flex-shrink:0; --app-logo-h:28px; \}/.test(CSS) &&
+  /\.nav-brand\{ --app-logo-h:28px; text-decoration:none; \}/.test(ALOG) && /\.nav-brand\{ --app-logo-h:22px; \}/.test(ALOG) &&
+  [MPERF, AIREP].every(function (h) { return /\.nav-brand\{ flex-shrink:0; --app-logo-h:28px; text-decoration:none; \}/.test(h) && /\.nav-brand\{ --app-logo-h:22px; \}/.test(h) && /\.nav-brand\{ --app-logo-h:18px; \}/.test(h); }) &&
+  /\.brand-mark\{ display:flex; align-items:center; gap: 9px; flex-shrink: 0; --app-logo-h: 26px; \}/.test(CREATE) &&
+  /\.brand-mark\{ flex: 0 1 118px; min-width: 56px; --app-logo-h: 19\.33px; \}\n    @supports \(width: 1cqw\)\{\n      \.brand-mark\{ container-type: inline-size; --app-logo-h: calc\(100cqw \/ 6\.1045\); \}/.test(CREATE) &&
+  /\.brand-mark\{ display:flex; align-items:center; gap: 10px; --app-logo-h: 32px; \}/.test(SIGNIN) && /\.login-brand-phone\{ display: none; margin-bottom: 24px; --app-logo-h: 28px; \}/.test(SIGNIN));
 check('UX-023 Create Event no longer carries the logo as 12 KB of base64', CREATE.indexOf('src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAZkAAABD') === -1);
 var LOGO_CSS = read('app-logo.css');
-check('UX-023 app-logo.css: the dark copy hidden by default, shown on the switch\'s dark and on the computer\'s dark when the switch has not said light',
-  /\.app-logo-dark\{ display:none !important; \}/.test(LOGO_CSS) && /:root\[data-theme="dark"\] \.app-logo-light\{ display:none !important; \}/.test(LOGO_CSS) &&
-  /:root\[data-theme="dark"\] \.app-logo-dark\{ display:block !important; \}/.test(LOGO_CSS) && /:root:not\(\[data-theme="light"\]\) \.app-logo-dark\{ display:block !important; \}/.test(LOGO_CSS));
-check('UX-023 no filter, inversion or blend on a logo (ET\'s rule: only the lettering may change, by a copy)', !/filter:|mix-blend|invert\(/.test(LOGO_CSS));
+var ruleOf = function (sel) { return (new RegExp('(?:^|\\n)' + sel.replace(/[.]/g, '\\.') + '\\{([^}]*)\\}').exec(LOGO_CSS) || [])[1] || ''; };
+var MARK = ruleOf('.app-logo-mark'), WORD = ruleOf('.app-logo-word'), UNIT_CSS = ruleOf('.app-logo');
+var ICON_SVG = read('assets/favicon.svg'), VIEW = /viewBox="0 0\.896484 ([\d.]+) ([\d.]+)"/.exec(ICON_SVG);
+check('#12 the square is shown as the file draws it: at the unit\'s height, in the file\'s own proportions, with nothing drawn on, round or over it',
+  /height:var\(--app-logo-h, 28px\);/.test(MARK) && /width:auto;/.test(MARK) && !!VIEW && MARK.indexOf('aspect-ratio:' + VIEW[1] + ' / ' + VIEW[2] + ';') !== -1 &&
+  /filter:none;/.test(MARK) && /opacity:1;/.test(MARK) && /mix-blend-mode:normal;/.test(MARK) && /background:none;/.test(MARK) && /border:0;/.test(MARK) &&
+  /border-radius:0;/.test(MARK) && /box-shadow:none;/.test(MARK) && /padding:0;/.test(MARK), MARK);
+check('#12 nothing in app-logo.css recolours anything (no filter but none, no blend, no inversion, no second copy to swap)',
+  (LOGO_CSS.match(/filter:[^;]*/g) || []).every(function (d) { return d === 'filter:none'; }) && (LOGO_CSS.match(/mix-blend-mode:[^;]*/g) || []).every(function (d) { return d === 'mix-blend-mode:normal'; }) &&
+  !/invert\(|hue-rotate|app-logo-(light|dark)|data-theme/.test(LOGO_CSS.replace(/\/\*[\s\S]*?\*\//g, '')));
+check('#12 the word: live text in the app\'s own font (Inter, --font-body), in the theme\'s text colour, sized with the unit',
+  /font-family:var\(--font-body, 'Inter', /.test(WORD) && /color:var\(--text, #241B1A\);/.test(WORD) && /font-size:calc\(var\(--app-logo-h, 28px\) \* \.76\);/.test(WORD) && /font-weight:700;/.test(WORD), WORD);
+check('#12 the unit is as wide as the old picture at the same height (409 x 67), so no bar moved; one link round it is never underlined',
+  Math.abs(409 / 67 - 6.1045) < 0.0001 && /width:calc\(var\(--app-logo-h, 28px\) \* 6\.1045\);/.test(UNIT_CSS) && /height:var\(--app-logo-h, 28px\);/.test(UNIT_CSS) &&
+  /\na:has\(> \.app-logo\)\{ text-decoration:none; \}/.test(LOGO_CSS), UNIT_CSS);
+check('#12 the old pictures and the tool that made the dark one are gone', !fs.existsSync(path.join(ROOT, 'assets', 'app-logo.png')) && !fs.existsSync(path.join(ROOT, 'assets', 'app-logo-dark.png')) &&
+  !fs.existsSync(path.join(ROOT, 'tools', 'build-app-logo.js')));
 var access = require('./access');
-check('UX-023 the server sends the two pictures and the stylesheet, signed out too (the sign-in page shows the logo)', ['assets/app-logo.png', 'assets/app-logo-dark.png', 'app-logo.css', 'activity-words.js'].every(function (f) { return access.isServableFile(f); }) &&
-  access.isPublic({ method: 'GET' }, '/assets/app-logo-dark.png') && access.isPublic({ method: 'GET' }, '/app-logo.css'));
+check('UX-023 the server sends the square and the stylesheet, signed out too (the sign-in page shows the logo)', ['assets/favicon.svg', 'app-logo.css', 'activity-words.js'].every(function (f) { return access.isServableFile(f); }) &&
+  access.isPublic({ method: 'GET' }, '/assets/favicon.svg') && access.isPublic({ method: 'GET' }, '/app-logo.css'));
 check('UX-023 Latest Activity\'s totals use the theme\'s text colour (they were black on the dark card)', /\.activity-row-total\{[^}]*color:var\(--text\);/.test(CSS));
 
 /* ---- UX-040 the meta line's dot (see the run below) ---- */
@@ -158,7 +204,7 @@ check('UX-038 the page has a doctype and a viewport line (a phone laid it out 98
   /^<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">/.test(SIGNIN) && /<\/head>\n<body>/.test(SIGNIN) && /<\/body>\n<\/html>\n$/.test(SIGNIN));
 check('UX-038 one phone rule (no second one earlier)', SCSS.split('@media (max-width: 860px)').length === 2);
 check('UX-038 on phones the card sits near the top with the logo over it', /\.login-form-wrap\{ align-items: flex-start; padding: 72px 20px 32px; \}/.test(SCSS) && /\.login-brand-phone\{ display: block; \}/.test(SCSS) &&
-  /<div class="login-brand-phone">[\s\S]*?app-logo-light[\s\S]*?app-logo-dark/.test(SIGNIN));
+  SIGNIN.indexOf('<div class="login-brand-phone">\n          ' + LOGO_UNIT) !== -1);
 check('UX-038 the theme switch is in the page\'s top-right corner, not under the button', /\.login-theme\{ position: absolute; top: 16px; right: 16px;/.test(SCSS) &&
   SIGNIN.indexOf('<div class="login-theme"><span data-theme-toggle-target') !== -1 && SIGNIN.indexOf('login-foot') === -1);
 
@@ -475,19 +521,4 @@ async function main() {
   console.log('events-dashboard-b11: ' + (failed ? failed + ' of ' + (passed + failed) + ' checks FAILED' : 'all ' + passed + ' checks passed'));
 }
 
-/* the two logo pictures: only the lettering may differ (tools/build-app-logo.js's own check) */
-async function logo() {
-  var tool = require('../../tools/build-app-logo.js');
-  var a = await tool.pixels(tool.LIGHT), b = await tool.pixels(tool.DARK);
-  check('UX-023 the dark logo differs from the light one only in its neutral lettering: the red ET square and the blue arrow exactly as drawn', tool.firstBreak(a, b) === null, tool.firstBreak(a, b));
-  var changed = 0;
-  for (var i = 0; i < a.data.length; i += 4) if (a.data[i] !== b.data[i]) changed++;
-  check('UX-023 …and the lettering did change (it is light on a dark ground)', changed > 1000, changed);
-  var lettering = 0, light = 0;
-  for (var j = 0; j < a.data.length; j += 4) {
-    if (a.data[j + 3] > 200 && a.data[j] < 40 && a.data[j + 1] < 40 && a.data[j + 2] < 40) { lettering++; if (b.data[j] > 215 && b.data[j + 1] > 215 && b.data[j + 2] > 215) light++; }
-  }
-  check('UX-023 every solid black pixel of the lettering is light in the dark copy', lettering > 1000 && light === lettering, [lettering, light]);
-}
-
-logo().then(main).then(function () { process.exit(failed ? 1 : 0); }, function (err) { console.error('CRASH ' + (err && err.stack || err)); process.exit(1); });
+main().then(function () { process.exit(failed ? 1 : 0); }, function (err) { console.error('CRASH ' + (err && err.stack || err)); process.exit(1); });

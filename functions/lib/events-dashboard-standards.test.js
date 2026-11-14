@@ -56,7 +56,6 @@ var AUTH = '(function(){var u={uid:"qa",email:"qa-agent@timesinternet.in",displa
   'function t(){return Promise.resolve("t");}window.RevampAuth={getIdToken:t,currentUser:function(){return u;},onAuthChange:function(cb){setTimeout(function(){cb(u);},0);return function(){};},' +
   'whenResolved:function(){return Promise.resolve(u);},authedFetch:function(url,o){o=o||{};var h={};for(var k in (o.headers||{}))h[k]=o.headers[k];h.Authorization="Bearer t";o.headers=h;return fetch(url,o);},' +
   'redirectToSignIn:function(){},mountAccountMenu:function(){},ensureSession:t};})();';
-var LOGO = '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="28" viewBox="0 0 120 28"><rect width="28" height="28" fill="#ED1C24"/></svg>';
 var NOW = Date.now();
 function day(n) { return new Date(NOW + 330 * 60000 + n * 86400000).toISOString().slice(0, 10); }
 /* ET's portals (the portals change): the roster as GET /api/et/portals gives it, and the person's working portal
@@ -89,7 +88,6 @@ function api(u) {
 function serve(r) {
   var u = new URL(r.url());
   if (u.origin !== ORIGIN) {
-    if (/oneworld-logo\.svg$/.test(u.pathname)) return r.respond({ status: 200, contentType: 'image/svg+xml', body: LOGO });
     return r.abort();                                         // fonts and anything else outside: never fetched
   }
   if (u.pathname === '/quirks/Event_Listing.html') return r.respond({ status: 200, contentType: TYPES['.html'], body: QUIRKS });

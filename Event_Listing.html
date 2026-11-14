@@ -10,7 +10,7 @@
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
-<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<!-- the app's logo: the red ET square and the word EventSphere, one unit on every page that shows it (app-logo.css) -->
 <link rel="stylesheet" href="app-logo.css">
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
@@ -143,8 +143,8 @@
   /* ---------- main portal navigation (sticky, full-bleed, single row) ---------- */
   .main-nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:60; }
   .main-nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:16px; padding:0 24px; }
-  .main-nav-brand{ display:flex; align-items:center; gap:9px; flex-shrink:0; }
-  .brand-logo-img{ height:28px; width:auto; display:block; }
+  /* the logo unit (app-logo.css) is sized by --app-logo-h, the height its picture used to have here */
+  .main-nav-brand{ display:flex; align-items:center; gap:9px; flex-shrink:0; --app-logo-h:28px; }
 
   .main-nav-scroll{ flex:0 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; display:flex; align-items:center; gap:2px; }
   .main-nav-scroll::-webkit-scrollbar{ display:none; }
@@ -685,8 +685,7 @@
   <div class="main-nav-inner">
     <!-- home is this page itself: index.html is the sign-in page, which only forwards back here (LST-021) -->
     <a class="main-nav-brand" href="Event_Listing.html">
-      <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
-      <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
+      <span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt=""><span class="app-logo-word">EventSphere</span></span>
     </a>
 
     <div class="main-nav-scroll">

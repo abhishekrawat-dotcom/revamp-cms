@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700;800&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
-<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<!-- the app's logo: the red ET square and the word EventSphere, one unit on every page that shows it (app-logo.css) -->
 <link rel="stylesheet" href="app-logo.css">
 <style>
   :root{
@@ -154,8 +154,8 @@
     border-right: 1px solid var(--border);
     padding: 48px; display: flex; flex-direction: column; justify-content: space-between;
   }
-  .brand-mark{ display:flex; align-items:center; gap: 10px; }
-  .brand-logo-img{ height: 32px; width:auto; display:block; }
+  /* the logo unit (app-logo.css) is sized by --app-logo-h, the height its picture used to have here */
+  .brand-mark{ display:flex; align-items:center; gap: 10px; --app-logo-h: 32px; }
 
   .login-art .art-copy{ max-width: 380px; }
   .login-art h1{ font-size: 30px; line-height: 1.2; margin-bottom: 14px; color: var(--text); }
@@ -184,8 +184,7 @@
   /* the theme switch, in the page's top-right corner on every width (it floated alone under the button) */
   .login-theme{ position: absolute; top: 16px; right: 16px; z-index: 2; display: inline-flex; align-items: center; }
   /* the logo over the card, for phones only: on a wide screen it is in the panel on the left */
-  .login-brand-phone{ display: none; margin-bottom: 24px; }
-  .login-brand-phone .brand-logo-img{ height: 28px; }
+  .login-brand-phone{ display: none; margin-bottom: 24px; --app-logo-h: 28px; }
 
   /* Phones (UX-038): the sign-in card first, near the top, so "Continue with Google" is in view on a short screen.
      This comes after .login-art's own rule on purpose: it used to come before it, so display:flex won and the
@@ -215,8 +214,7 @@
   <section id="view-login">
     <div class="login-art">
       <div class="brand-mark">
-        <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
-        <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
+        <span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt=""><span class="app-logo-word">EventSphere</span></span>
       </div>
 
       <div class="art-illustration" aria-hidden="true">
@@ -259,8 +257,7 @@
     <div class="login-form-wrap">
       <div class="login-card">
         <div class="login-brand-phone">
-          <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
-          <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
+          <span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt=""><span class="app-logo-word">EventSphere</span></span>
         </div>
         <!-- shown until it is known whether someone is already signed in, so a signed-in visitor is
              forwarded without ever being offered the sign-in button -->

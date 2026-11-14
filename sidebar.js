@@ -11,7 +11,8 @@
       '<aside class="sidebar">',
       '  <div style="position:relative;">',
       '    <button class="workspace-btn" id="workspace-btn">',
-      '      <img class="brand-logo-img-sm" src="https://oneworld.economictimes.indiatimes.com/Design/HackerRocks/images/hr_images/oneworld-logo.svg" alt="ET Oneworld">',
+      /* the app's logo unit, as on every page that shows one (app-logo.css) */
+      '      <span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt=""><span class="app-logo-word">EventSphere</span></span>',
       '      <span class="names">',
       '        <span class="l2">ET Enterprise AI</span>',
       '      </span>',

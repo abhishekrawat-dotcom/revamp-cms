@@ -623,7 +623,6 @@ async function browserPart() {
   function serve(r) {
     var u = new URL(r.url());
     if (u.origin !== ORIGIN) {
-      if (/oneworld-logo\.svg$/.test(u.pathname)) return r.respond({ status: 200, contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="28"><rect width="28" height="28" fill="#ED1C24"/></svg>' });
       return r.abort();
     }
     if (u.pathname === '/auth.js') return r.respond({ status: 200, contentType: TYPES['.js'], body: AUTH });

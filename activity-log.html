@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <script>try{var t=localStorage.getItem("revamp-theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.setAttribute("data-theme","dark");else document.documentElement.setAttribute("data-theme","light");}catch(e){}</script>
-<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<!-- the app's logo: the red ET square and the word EventSphere, one unit on every page that shows it (app-logo.css) -->
 <link rel="stylesheet" href="app-logo.css">
 <style>
   :root{
@@ -56,7 +56,8 @@
 
   .nav{ background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:20; }
   .nav-inner{ max-width:1240px; margin:0 auto; height:60px; display:flex; align-items:center; gap:14px; padding:0 24px; }
-  .nav-brand img{ height:28px; width:auto; display:block; }
+  /* the logo unit (app-logo.css) is sized by --app-logo-h, the height its picture used to have here */
+  .nav-brand{ --app-logo-h:28px; text-decoration:none; }
   /* the console's Back to events button: the same look and words on every page (UX-007) */
   .nav-back{ display:flex; align-items:center; gap:7px; padding:7px 13px 7px 10px; border-radius:9px; border:1px solid var(--border); background:var(--surface-2); font-size:13px; font-weight:700; color:var(--text); text-decoration:none; white-space:nowrap; }
   .nav-back:hover{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-strong); }
@@ -138,7 +139,7 @@
   }
   @media (max-width: 700px){
     .nav-inner{ padding:0 16px; gap:8px; }
-    .nav-brand img{ height:22px; }
+    .nav-brand{ --app-logo-h:22px; }
     .app{ padding:16px 16px 60px; }
   }
   /* Tap targets on a phone (UX-002 screen-size sweep): below 720px every control here is at least 40px tall, an
@@ -156,7 +157,7 @@
 <body>
 <header class="nav">
   <div class="nav-inner">
-    <a class="nav-brand" href="Event_Listing.html"><img class="app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere"><img class="app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere"></a>
+    <a class="nav-brand" href="Event_Listing.html"><span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt=""><span class="app-logo-word">EventSphere</span></span></a>
     <a class="nav-back" href="Event_Listing.html" aria-label="Back to events">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
       <span class="nav-back-long">Back to events</span><span class="nav-back-short">Events</span>

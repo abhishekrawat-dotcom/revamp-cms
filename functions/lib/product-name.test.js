@@ -3,8 +3,9 @@
      - the product is ETB2B EventSphere (owner decision #6), "EventSphere" alone where space is tight: a browser tab
        reads "<Page> — EventSphere", and "<Page> · <Event> — EventSphere" with an event open;
      - no served page or browser script, and no message the server sends, says "Revamp CMS", "Revamp", "Oneworld 2.0"
-       or "Oneworld" to a person (comments, code names, the header logo's own alt text and the AI's instructions are
-       not words a person reads), so the old names cannot come back;
+       or "Oneworld" to a person (comments, code names and the AI's instructions are not words a person reads), so
+       the old names cannot come back; the header logo is the red ET square and the word "EventSphere" now (owner
+       decision #12, app-logo.css), so no picture or alt text of the old logo is let through either;
      - every page names the same tab icon, the red ET square cut from the ET B2B logo unchanged (assets/favicon.svg),
        and so do /favicon.ico and the published sites;
      - a preview's tab starts "Preview · ", so it is not taken for the live site's;
@@ -87,9 +88,6 @@ function wordsOf(text, file) {
   var t = text.replace(/<!--[\s\S]*?-->/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
   t = t.replace(/(^|[\s;{}(),])\/\/[^\n]*/g, '$1');
   t = t.replace(/([=(,:!&|?]\s*|\.(?:replace|test|match|exec)\(\s*)\/(?:\\.|[^\/\n\\])+\/[gimsuy]*/g, '$1/RE/');
-  /* the header logo pictures still read "ET Oneworld"; their alt says what the picture shows (the owner is
-     choosing the new logo) */
-  t = t.replace(/alt="ET Oneworld"/g, 'alt=""');
   /* the AI's own instructions (functions/lib) name ET's former event builder, ET Oneworld, as context for the
      model: they are not shown to anyone */
   if (/^functions\/lib\//.test(file)) t = t.replace(/ET Oneworld/g, 'ET');
@@ -165,7 +163,7 @@ function codeOnly(src) {
 var BARE = /\bET(?:\\'s|’s|\\u2019s|'s)?\s+(?:portal|portals|bar|footer|sections|record|link|page|login|templates|team|logo and menu)\b|\bET(?:\\'|’|\\u2019|')s\b|\bon ET\.|alt="ET(?: Oneworld)?"/;
 var where = [];
 fs.readdirSync(ROOT).filter(function (f) { return /\.(html|js)$/.test(f) && !/bundle|backup|dummy|server\.js$/.test(f); }).forEach(function (f) {
-  codeOnly(read(f)).split('\n').forEach(function (l, k) { if (BARE.test(l) && !/oneworld-logo\.svg/.test(l)) where.push(f + ':' + (k + 1) + ' ' + l.trim().slice(0, 90)); });
+  codeOnly(read(f)).split('\n').forEach(function (l, k) { if (BARE.test(l)) where.push(f + ':' + (k + 1) + ' ' + l.trim().slice(0, 90)); });
 });
 ['forms.js', 'site-advisory.js', 'api-seo.js', 'seo-fields.js', 'award-sections.js', 'prev-sections.js', 'promo.js', 'promo-social.js', 'people-page.js', 'event-portal.js'].forEach(function (f) {
   codeOnly(read('functions/lib/' + f)).split('\n').forEach(function (l, k) { if (BARE.test(l)) where.push(f + ':' + (k + 1) + ' ' + l.trim().slice(0, 90)); });
