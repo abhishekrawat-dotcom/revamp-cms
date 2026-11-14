@@ -6,11 +6,21 @@
    button and summary smaller than 40px gets a bigger area that takes the tap, while nothing on the page moves or
    changes how it looks:
      - a control that paints nothing (no background, border or shadow): padding on the side it grows, the same
-       amount taken off its margin, so its box grows and its words, and everything around it, stay where they were;
-     - one that paints only a background (a carousel dot): a transparent border instead of the padding, with the
-       background kept to its old area (background-clip) and its corners kept round by growing their radius;
-     - one with a border or a shadow and at most 8px short (a 36px arrow): it grows that little, visibly, around
-       its middle (a least width and height, and the same amount taken off its margins).
+       amount taken off its margin, so its box grows and its words, and everything around it, stay where they were
+       ('pad');
+     - one that paints only a square-cornered background: a transparent border instead of the padding, with the
+       background kept to its old area (background-clip: padding-box) ('border');
+     - one that paints only a rounded background and has no padding or border of its own (a carousel dot), whole
+       pixels in size: padding, with the background kept to its content box (background-clip and -origin:
+       content-box) and each corner's radius grown by the padding beside it, from the radius drawn before anything
+       grew: a round dot stays round ('inset');
+     - one with a border or a shadow (a 36px arrow), a rounded background with padding of its own or a size in
+       fractions of a pixel (a pill-shaped button), a background under a border of its own, or one that places
+       something inside it from its own edges (an absolutely placed badge or underline), is left as it is.
+   Each way was chosen because the browser then draws the page pixel for pixel as before, at 1, 2 and 3 device
+   pixels to the px (measured in Chrome: a rounded background kept inside a transparent border, or one of a
+   fractional size, has its curved edge drawn a shade differently, so those are not grown); the growth is in whole
+   pixels for the same reason (see split).
    A box never grows past 4px short of the middle of another control (in a dense list each link keeps its own
    middle, as the ET footer's own phone rules do), nor past the window's sides or the page's end; a link inside a
    line of text is left as it is (it is part of the text). Once grown, each control's words, its parent and its
@@ -29,7 +39,7 @@
   else { root.RevampTaps = api; api.start(); }
 })(this, function () {
   'use strict';
-  var MIN = 40, NEAR = 4, VISIBLE_MAX = 8, PHONE = '(max-width: 860px)';
+  var MIN = 40, NEAR = 4, PHONE = '(max-width: 860px)';
   var CTRL = 'a[href],button,summary,[role="button"],[role="tab"],[role="link"]';
   var SIDES = ['top', 'right', 'bottom', 'left'];
   var grown = [], report = [];
@@ -61,11 +71,14 @@
     return { top: v[0], bottom: v[1], left: h[0], right: h[1] };
   }
   /* need shared by two sides: half each, and what one side has no room for goes to the other where it can; in
-     half pixels, rounded up, so a 32.6px box comes to 40.6 rather than 39.6, and never past a side's room */
+     whole pixels, rounded up (a 32.6px box comes to 41 rather than 39.6), never past a side's room. Whole, because a
+     half pixel of padding moves where the browser paints the words by a device pixel, though the layout does not
+     move: 11.5px did so to the ET footer's links at 1, 2 and 3 device pixels to the px, 12px did not; and a border
+     is drawn in whole pixels anyway. */
   function split(need, a, b) {
-    a = Math.max(0, Math.floor(a * 2) / 2); b = Math.max(0, Math.floor(b * 2) / 2);
-    var half = Math.ceil(need) / 2, x = Math.min(Math.ceil(half * 2) / 2, a), y = Math.min(Math.ceil((need - x) * 2) / 2, b);
-    x = Math.min(Math.ceil((need - y) * 2) / 2, a);
+    a = Math.max(0, Math.floor(a)); b = Math.max(0, Math.floor(b));
+    var n = Math.max(0, Math.ceil(need - 1e-6)), x = Math.min(Math.ceil(n / 2), a), y = Math.min(n - x, b);
+    x = Math.min(n - y, a);
     return [Math.max(0, x), Math.max(0, y)];
   }
 
@@ -86,18 +99,69 @@
     var p = el.parentElement, own = String(el.textContent || '').replace(/\s+/g, ' ').trim();
     return !!p && String(p.textContent || '').replace(/\s+/g, ' ').trim().length > own.length + 3;
   }
-  /* how it may grow: 'pad' (paints nothing), 'clip' (a background only), 'visible' (a border or a shadow), or '' */
-  function modeOf(cs, g) {
+  /* Something placed inside the control from its own edges (an absolutely placed badge, an underline drawn by
+     ::after) would move with its padding box: such a control does not grow by padding. */
+  function anchors(el, cs) {
+    if (!el || (cs.position === 'static' && (!cs.transform || cs.transform === 'none'))) return false;
+    var pseudo = ['::before', '::after'].some(function (p) {
+      var ps = getComputedStyle(el, p);
+      return ps.content && ps.content !== 'none' && ps.content !== 'normal' && (ps.position === 'absolute' || ps.position === 'fixed');
+    });
+    if (pseudo) return true;
+    var all = el.getElementsByTagName('*');
+    for (var i = 0; i < all.length && i < 200; i++) { var p = getComputedStyle(all[i]).position; if (p === 'absolute' || p === 'fixed') return true; }
+    return false;
+  }
+  function whole(v) { return Math.abs(v - Math.round(v)) < 0.01; }
+  /* how it may grow (see the top of this file): 'pad', 'border', 'inset', or '' (left as it is). el is optional
+     (without it, its size and what it holds are not looked at). */
+  function modeOf(cs, el) {
     var bordered = SIDES.some(function (s) {
       return num(cs.getPropertyValue('border-' + s + '-width')) > 0 && cs.getPropertyValue('border-' + s + '-style') !== 'none' && seen(cs.getPropertyValue('border-' + s + '-color'));
     });
     var shadow = cs.boxShadow && cs.boxShadow !== 'none';
-    if (bordered || shadow) return g.top + g.bottom <= VISIBLE_MAX && g.left + g.right <= VISIBLE_MAX ? 'visible' : '';
-    if (seen(cs.backgroundColor) || (cs.backgroundImage && cs.backgroundImage !== 'none')) {
-      /* corners in % cannot be grown to the same curve */
-      return /%/.test(cs.borderTopLeftRadius + cs.borderTopRightRadius + cs.borderBottomLeftRadius + cs.borderBottomRightRadius) ? '' : 'clip';
+    if (bordered || shadow) return '';
+    if (!seen(cs.backgroundColor) && !(cs.backgroundImage && cs.backgroundImage !== 'none')) return anchors(el, cs) ? '' : 'pad';
+    var radius = String(cs.borderTopLeftRadius) + ' ' + cs.borderTopRightRadius + ' ' + cs.borderBottomLeftRadius + ' ' + cs.borderBottomRightRadius;
+    if (/%/.test(radius)) return '';
+    var own = SIDES.some(function (s) { return num(cs.getPropertyValue('border-' + s + '-width')) > 0; });
+    var padded = SIDES.some(function (s) { return num(cs.getPropertyValue('padding-' + s)) > 0; });
+    if (!/[1-9]/.test(radius.replace(/\b0(\.0+)?px/g, ''))) {
+      /* square corners: a background drawn under a border of its own (an unseen one: a button that shows its border
+         on hover) or placed from it would lose that strip once it is kept to the padding */
+      return own && /border-box/.test(String(cs.backgroundClip) + ' ' + String(cs.backgroundOrigin)) ? '' : 'border';
     }
-    return 'pad';
+    if (own || padded) return '';
+    if (el) { var size = sizeOf(el, cs); if (!whole(size[0]) || !whole(size[1]) || anchors(el, cs)) return ''; }
+    return 'inset';
+  }
+  /* The corners of a control that grows by padding around a rounded background ('inset'): each corner's radius
+     grows by the padding beside it, from the radius the browser draws on the box as it was before anything grew
+     (w x h: its size then; a pill's 9999px is drawn as half its height). The background, kept to the old box, is
+     then drawn with the very same corners: a round dot stays round. radii: [[x, y]] for top-left, top-right,
+     bottom-right, bottom-left. -> [[x, y]] for the same corners, or null where a corner is square */
+  function corners(w, h, radii, g) {
+    var f = Math.min(1, w / (radii[0][0] + radii[1][0] || 1), w / (radii[3][0] + radii[2][0] || 1), h / (radii[0][1] + radii[3][1] || 1), h / (radii[1][1] + radii[2][1] || 1));
+    var SIDE = [['left', 'top'], ['right', 'top'], ['right', 'bottom'], ['left', 'bottom']];
+    return radii.map(function (r, i) {
+      var rx = r[0] * f, ry = r[1] * f;
+      return rx > 0 || ry > 0 ? [rx + (g[SIDE[i][0]] || 0), ry + (g[SIDE[i][1]] || 0)] : null;
+    });
+  }
+  /* a box's border-box size in the layout, to the fraction of a pixel and whatever a transform does to it for a moment:
+     its computed size where it has one (offsetWidth/Height are whole numbers: a 32.8px pill taken for 33 had its
+     corners grown from a radius 0.1px too big, and its curved ends drawn a shade differently) */
+  function sizeOf(el, cs) {
+    if (/px$/.test(cs.width) && /px$/.test(cs.height)) {
+      var w = num(cs.width), h = num(cs.height);
+      if (cs.boxSizing !== 'border-box') {
+        w += num(cs.paddingLeft) + num(cs.paddingRight) + num(cs.borderLeftWidth) + num(cs.borderRightWidth);
+        h += num(cs.paddingTop) + num(cs.paddingBottom) + num(cs.borderTopWidth) + num(cs.borderBottomWidth);
+      }
+      return [w, h];
+    }
+    var r = el.getBoundingClientRect();
+    return Math.abs(r.width - el.offsetWidth) < 1 && Math.abs(r.height - el.offsetHeight) < 1 ? [r.width, r.height] : [el.offsetWidth, el.offsetHeight];
   }
   function apply(el, cs, g, mode) {
     var s = el.style, saved = {};
@@ -105,45 +169,44 @@
       if (!saved.hasOwnProperty(p)) saved[p] = [s.getPropertyValue(p), s.getPropertyPriority(p)];
       s.setProperty(p, val, 'important');
     }
+    /* everything this needs of the box as it is, read before any of it changes (cs is live) */
     var bare = SIDES.every(function (side) { return !num(cs.getPropertyValue('padding-' + side)) && !num(cs.getPropertyValue('border-' + side + '-width')); });
-    if (mode === 'visible') {
-      var bb = cs.boxSizing === 'border-box';
-      var cw = bb ? el.offsetWidth : num(cs.width), ch = bb ? el.offsetHeight : num(cs.height);
-      if (g.left || g.right) set('min-width', cw + g.left + g.right + 'px');
-      if (g.top || g.bottom) set('min-height', ch + g.top + g.bottom + 'px');
-      SIDES.forEach(function (side) { if (g[side]) set('margin-' + side, num(cs.getPropertyValue('margin-' + side)) - g[side] + 'px'); });
-      el.__rvTaps = saved;
-      grown.push(el);
-      return;
-    }
+    var size = sizeOf(el, cs), w = size[0], h = size[1], sizing = cs.boxSizing;
+    var CORNERS = [['top', 'left'], ['top', 'right'], ['bottom', 'right'], ['bottom', 'left']];
+    var radii = CORNERS.map(function (k) {
+      var r = String(cs.getPropertyValue('border-' + k[0] + '-' + k[1] + '-radius') || '0').split(/\s+/);
+      return [num(r[0]), num(r[1] == null ? r[0] : r[1])];
+    });
+    var clip = String(cs.backgroundClip || ''), origin = String(cs.backgroundOrigin || '');
+    var before = {};
+    SIDES.forEach(function (side) { before[side] = { pad: num(cs.getPropertyValue('padding-' + side)), border: num(cs.getPropertyValue('border-' + side + '-width')), margin: num(cs.getPropertyValue('margin-' + side)) }; });
     SIDES.forEach(function (side) {
       var v = g[side];
       if (!v) return;
-      if (mode === 'clip') {
-        set('border-' + side + '-width', v + 'px'); set('border-' + side + '-style', 'solid'); set('border-' + side + '-color', 'transparent');
-      } else set('padding-' + side, num(cs.getPropertyValue('padding-' + side)) + v + 'px');
-      set('margin-' + side, num(cs.getPropertyValue('margin-' + side)) - v + 'px');
+      if (mode === 'border') {
+        set('border-' + side + '-width', before[side].border + v + 'px'); set('border-' + side + '-style', 'solid'); set('border-' + side + '-color', 'transparent');
+      } else set('padding-' + side, before[side].pad + v + 'px');
+      set('margin-' + side, before[side].margin - v + 'px');
     });
-    if (mode === 'clip') {
-      set('background-clip', 'padding-box');
-      /* Each corner grows by the border beside it, from the radius the browser really draws: a pill's 999px is drawn
-         as half its height, and growing the 999px instead would flatten its ends. */
-      var CORNERS = [['top', 'left'], ['top', 'right'], ['bottom', 'right'], ['bottom', 'left']], w = el.offsetWidth, h = el.offsetHeight;
-      var radii = CORNERS.map(function (k) {
-        var r = String(cs.getPropertyValue('border-' + k[0] + '-' + k[1] + '-radius') || '0').split(/\s+/);
-        return [num(r[0]), num(r[1] == null ? r[0] : r[1])];
-      });
-      var f = Math.min(1, w / (radii[0][0] + radii[1][0] || 1), w / (radii[3][0] + radii[2][0] || 1), h / (radii[0][1] + radii[3][1] || 1), h / (radii[1][1] + radii[2][1] || 1));
-      CORNERS.forEach(function (k, i) {
-        var rx = radii[i][0] * f, ry = radii[i][1] * f;
-        if (rx > 0 || ry > 0) set('border-' + k[0] + '-' + k[1] + '-radius', (rx + g[k[1]]) + 'px ' + (ry + g[k[0]]) + 'px');
+    if (mode === 'border') {
+      /* the old border box (it had no border) is the new padding box: the background is drawn and placed there */
+      if (/border-box/.test(clip)) set('background-clip', clip.replace(/border-box/g, 'padding-box'));
+      if (/border-box/.test(origin)) set('background-origin', origin.replace(/border-box/g, 'padding-box'));
+    }
+    if (mode === 'inset') {
+      /* the old box (no padding, no border) is the new content box: the background is drawn and placed there (one
+         drawn behind the words only, background-clip: text, stays so), with the same corners */
+      set('background-clip', clip.replace(/border-box|padding-box/g, 'content-box'));
+      set('background-origin', origin.replace(/border-box|padding-box/g, 'content-box'));
+      corners(w, h, radii, g).forEach(function (c, i) {
+        if (c) set('border-' + CORNERS[i][0] + '-' + CORNERS[i][1] + '-radius', c[0] + 'px ' + c[1] + 'px');
       });
     }
     /* A box that had no padding and no border measures the same either way, so a size the page gives it (a dot's 8px,
        or the 28px it widens to when it is the current one) is kept for its content when it takes the growth outside.
        Nothing here writes a width or a height: a size the page changes later is still the page's to change. A box with
        padding or a border of its own keeps its sizing; if that squeezes its content, the check after puts it back. */
-    if (bare && cs.boxSizing === 'border-box') set('box-sizing', 'content-box');
+    if (bare && sizing === 'border-box') set('box-sizing', 'content-box');
     el.__rvTaps = saved;
     grown.push(el);
   }
@@ -195,17 +258,15 @@
   var MARKS = ['own', 'parent', 'previous', 'next'];
   function marks(el) { return [content(el), room(el.parentElement), room(el.previousElementSibling), room(el.nextElementSibling)]; }
   /* -> '' when nothing moved, else which of the marks did and by how much. t.before / t.size: as they were.
-     A control's words stay put (one that grows visibly may shift them by at most half its growth, and its content
-     may grow by its growth), and its box must have grown as planned: a box whose size the page fixed only squeezes
-     its content, which is no bigger target. */
+     A control's words stay put, and its box must have grown as planned: a box whose size the page fixed only
+     squeezes its content, which is no bigger target. */
   function moved(t) {
-    var a = t.before, b = marks(t.el), vis = t.mode === 'visible';
+    var a = t.before, b = marks(t.el);
     for (var i = 0; i < a.length; i++) {
       if (!a[i] || !b[i]) { if (a[i] !== b[i]) return MARKS[i]; continue; }
       for (var k = 0; k < a[i].length; k++) {
-        var d = b[i][k] - a[i][k], ok = 0.5;
-        if (i === 0 && vis) ok = k < 2 ? VISIBLE_MAX / 2 : (k === 2 ? t.g.left + t.g.right : t.g.top + t.g.bottom) + 0.5;
-        if (Math.abs(d) > ok) return MARKS[i] + ' ' + 'xywh'.charAt(k) + ' ' + Math.round(d * 10) / 10;
+        var d = b[i][k] - a[i][k];
+        if (Math.abs(d) > 0.5) return MARKS[i] + ' ' + 'xywh'.charAt(k) + ' ' + Math.round(d * 10) / 10;
       }
     }
     var r = t.el.getBoundingClientRect();
@@ -216,7 +277,7 @@
      transform of half its own size (a carousel's arrow) would otherwise shift by half its growth. Its content is put
      back where it was, through its margins. */
   function place(list) {
-    /* by the middle of its content: one that grows visibly has a bigger content box, around the same middle */
+    /* by the middle of its content */
     list.forEach(function (t) { var c = content(t.el), o = t.before[0]; t.shift = [c[0] + c[2] / 2 - o[0] - o[2] / 2, c[1] + c[3] / 2 - o[1] - o[3] / 2]; });
     list.forEach(function (t) {
       var s = t.el.style, saved = t.el.__rvTaps, cs = getComputedStyle(t.el);
@@ -248,9 +309,7 @@
       if (inText(el, cs) || cs.position === 'fixed') return;
       var g = plan(b, boxes.filter(function (o, j) { return j !== i; }), page);
       if (!(g.top || g.right || g.bottom || g.left)) return;
-      var mode = modeOf(cs, g);
-      /* a border is drawn in whole pixels (3.5px is drawn as 3), so a transparent one is given whole pixels */
-      if (mode === 'clip') SIDES.forEach(function (side) { g[side] = Math.ceil(g[side]); });
+      var mode = modeOf(cs, el);
       if (mode) todo.push({ el: el, cs: cs, g: g, mode: mode });
     });
     todo.forEach(function (t) { var r = t.el.getBoundingClientRect(); t.before = marks(t.el); t.size = [r.width, r.height]; });
@@ -306,5 +365,5 @@
       if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch);
     }
   }
-  return { plan: plan, split: split, run: run, start: start, report: function () { return report; }, MIN: MIN, PHONE: PHONE };
+  return { plan: plan, split: split, corners: corners, modeOf: modeOf, sizeOf: sizeOf, run: run, start: start, report: function () { return report; }, MIN: MIN, PHONE: PHONE };
 });
