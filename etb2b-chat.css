@@ -433,6 +433,14 @@ html.rvc-lock, html.rvc-lock body{ overflow:hidden; }
 .rvc.rvc-compact .rvc-launcher:focus-visible, .rvc.rvc-phone .rvc-launcher:focus-visible{ border-radius:50%; }
 .rvc.rvc-compact{ --rvc-gap:70px; }
 
+/* ---------- tucked: a page's link, button or field lies under the pill, so only the round face shows (NU-030) ----------
+   44 px round, as tall as the pill, in the same corner: the panel and the folded bar above it do not move. Its name stays
+   in its tooltip and for screen readers (etb2b-chat.js tuck). */
+.rvc.rvc-tucked .rvc-launcher{ width:44px; padding:0; justify-content:center; border-radius:50%; }
+.rvc.rvc-tucked .rvc-launcher-label{ display:none; }
+.rvc.rvc-tucked .rvc-launcher-face{ width:34px; height:34px; }
+.rvc.rvc-tucked .rvc-launcher:focus-visible{ border-radius:50%; }
+
 /* ---------- the editor's docked column (opts.dock): full height at the right edge, under its top bar ---------- */
 .rvc.rvc-is-docked .rvc-panel{
   top:var(--rvc-dock-top); right:0; bottom:0; left:auto;

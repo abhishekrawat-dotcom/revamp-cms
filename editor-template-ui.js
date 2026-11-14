@@ -131,6 +131,7 @@
   var changeListeners = [];
   function pageChanged() {
     drawFormPreviews(true);
+    drawEmptyNotes();
     // the AI pills are the editor's drawing too: a section put back by Undo gets its pill again (UX-104)
     if (aiMarkersOn) renderAiProvenanceBadges();
     drawHeroVideo();
@@ -319,6 +320,7 @@
       sectionsChanged();
       designChanged();
       drawFormPreviews(false);
+      drawEmptyNotes();
       drawHeroVideo();
       previewNav();
       /* Preview and Publish stay disabled until the site is mounted AND filled: pressed any earlier they
@@ -335,6 +337,7 @@
       /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
          them into it), so the picture's own step, and its Undo, hold the picture alone */
       if (pendingAiHero) { var heroDraft = pendingAiHero; pendingAiHero = null; applyAiHero(heroDraft); }
+      bootDone = true;
       return true;
     }).catch(function (err) {
       if (window.console) console.error(err);
@@ -658,12 +661,14 @@
     }).then(function (kept) {
       if (kept) forgetHandoff();
       pendingAiHero = draft;      // put in at the end of boot(), as a step of its own
-      /* what Create Event handed over for a gallery design is saved as the site's first version once the page is
-         ready (saveFirstVersion): the person's content is then on the server, for every computer and colleague, as
-         Create Event's "Saving your event" screen says (an imported design, handed over with no sections, is marked in
-         resolveFromBrowser). A generated site ("gen-") is not: its page is made on the server, and Create Event's
-         brief path never shows that screen. */
-      if (fromCreate() && !/^gen-/.test(templateId || '')) firstSaveDue = true;
+      /* what Create Event handed over is saved as the site's first version once the page is ready (saveFirstVersion):
+         the person's content is then on the server, for every computer and colleague, as Create Event's "Saving your
+         event" screen says (an imported design, handed over with no sections, is marked in resolveFromBrowser). A site
+         ETB2B AI generated from a brief ("gen-") is saved the same way (NU-011): after minutes of waiting the editor
+         opened it as "Not saved yet" and the console's list said to open the editor and save it, while a gallery
+         design opened as "Saved · not live yet". Its generation stays on the server as before, so a later run of the
+         brief is still told apart from this saved version (workSafety.openPlan, generationNewer). */
+      if (fromCreate()) firstSaveDue = true;
     });
   }
   /* this browser's copy of the hand-off logo ({ name, dataUrl }), stored as a file of the event -> its address, ''
@@ -689,15 +694,21 @@
      site never saved before (another saved version is never replaced from here), and quietly: the chip beside Save
      then says "v1 · saved to staging". When it cannot be saved, the person is told it is in this browser only. */
   var FIRST_SAVE_DELAY_MS = 1700;   // after the page's own touch-ups as it opens (the ET logo in its right version, at 400 and 1500 ms)
+  /* while the first save is on its way, the words under the name do not ask the person to press Save (NU-035), and the
+     first steps wait for it (editor-start.js reads siteState().firstSave) */
+  var firstSavePending = false;
   function saveFirstVersion() {
     if (!firstSaveDue || !canvas || !eventId) return;
     firstSaveDue = false;
+    firstSavePending = true;
     setTimeout(function () {
-      if (!canvas || !eventId) return;
+      function done() { firstSavePending = false; renderSiteState(); }
+      if (!canvas || !eventId) { done(); return; }
       // never over a version saved already: the server's answer, and the event's own record of its site
       var everSaved = (siteInfo && siteInfo.savedVersion) || (currentEvent && currentEvent.site && +currentEvent.site.version);
-      if (!siteInfo || everSaved) return;
-      saveToStaging({ quiet: true }).then(null, function (err) {
+      if (!siteInfo || everSaved) { done(); return; }
+      saveToStaging({ quiet: true }).then(done, function (err) {
+        done();
         if (err && err.cancelled) return;
         showNotice('first-save', { kind: 'warn', dismissible: true,
           text: 'Your page could not be saved to the server yet, so it is only in this browser. Press Save to keep it for every computer.' });
@@ -1877,6 +1888,8 @@
     var snap = canvas.snapshot(undoStack[undoPtr]);
     if (canvas.sameSnapshot(snap, undoStack[undoPtr])) return false;
     if (!automatic || editingEl) localEdited = true;
+    // a change of the person's own, once the editor is open (not what it did as the page opened): firstUnsavedNote
+    if ((!automatic || editingEl) && bootDone) editedThisVisit = true;
     if (replacing && canvas.sameSnapshot(snap, undoStack[undoPtr - 1])) {
       // typed back to what it was before this edit session: no step left to undo
       undoStack = undoStack.slice(0, undoPtr);
@@ -2002,6 +2015,8 @@
     secToolbar.className = 'tpl-sec-toolbar';
     secToolbar.hidden = true;
     frame.appendChild(secToolbar);
+
+    buildSampleTag();
 
     linkPop = document.createElement('div');
     linkPop.id = 'tpl-link-pop';
@@ -2145,7 +2160,7 @@
     var words = rec.state === 'record' ? 'From ' + t.label : 'No ' + (waiting ? 'confirmed ' : '') + t.many + ' yet' + (hidden ? ' · hidden on the live site' : '');
     return '<span class="tpl-tb-text">' + escHtml(words) + '</span>' +
       (href ? '<a class="tpl-tb-link" href="' + escHtml(href) + '" target="_blank" rel="noopener" title="Opens ' + escHtml(t.label) +
-        ' in a new tab. The site’s staged copy shows a change made there at once; this editor shows it the next time it opens.">' +
+        ' in a new tab. Changes there are added to your site straight away; visitors see them once the site is published. This editor shows them the next time it opens.">' +
         (rec.state === 'record' ? 'Edit in Content' : (waiting ? 'Confirm ' : 'Add ') + escHtml(t.many) + ' in Content') + ' ↗</a>' : '');
   }
 
@@ -2237,6 +2252,7 @@
 
   function positionToolbars() {
     positionBusyPills();
+    placeSampleTag();
     if (!canvas || remounting || !selToolbar) return;
     /* while ETB2B AI is applying a change neither pill shows: their tools would change the page under it (UX-090).
        Anything still selected gets its pills back when the change is on the page (setAiWorking). */
@@ -2405,7 +2421,7 @@
         Array.prototype.forEach.call(item.querySelectorAll('[data-rv-field][style*="background-image"]'), function (el) { el.style.backgroundImage = ''; });
       });
       // an embedded form's preview is the editor's drawing, not the section's markup
-      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark]'), function (n) { n.remove(); });
+      Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark], [data-rv-ed-note]'), function (n) { n.remove(); });
       RevampAuth.authedFetch('/api/redesign-section', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2472,7 +2488,7 @@
   function devSource(sec) {
     var copy = sec.cloneNode(true);
     // an embedded form's preview is the editor's drawing, not the section's markup
-    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark]'), function (n) { n.remove(); });
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark], [data-rv-ed-note]'), function (n) { n.remove(); });
     [copy].concat(Array.prototype.slice.call(copy.querySelectorAll('*'))).forEach(function (n) {
       DEV_MARKS.forEach(function (a) { n.removeAttribute(a); });
       n.classList.remove('ed-selected', 'sec-active', 'rv-in');
@@ -2732,7 +2748,7 @@
       var mine = staged = { frame: null };
       mine.ready = RevampCore.previewDraft(eventId, canvas.serialize()).then(function (result) {
         var url = result && result.stagingUrl;
-        if (typeof url !== 'string' || !url) throw new Error('the page could not be staged');
+        if (typeof url !== 'string' || !url) throw new Error('the page could not be prepared');
         // the page shown in the editor: its own address, as Preview opens it
         if (pageShown !== 'home') url = url.replace(/^([^?#]*?)\/?(?=[?#]|$)/, '$1/' + encodeURIComponent(pageShown));
         return RevampDevExport.loadPage(url);
@@ -3969,7 +3985,9 @@
       html += '<button data-action="toggle-hide" title="Show this section on the site again">Show</button>';
     } else {
       html += '<button data-action="add-section" title="Add a section below this one">+ Section</button>' +
-        (repeatItems(sec).some(function (it) { return !recordOf(it); }) ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>' : '') +
+        (repeatItems(sec).some(function (it) { return !recordOf(it); }) ? '<button data-action="add-item" title="Add another item to this section">+ Item</button>'
+          /* a list the wizard left empty: its first item, from the design's own model (NU-018) */
+          : listModelOf(sec) && !listModelOf(sec).list.children.length ? '<button data-action="add-first-item" title="Add an item to this section">+ Item</button>' : '') +
         (canvas.canRedesign(sec) ? '<button data-action="redesign-section" title="Have the AI design this section again, keeping its content">&#10024; Redesign with AI</button>' : '') +
         (canvas.backgroundHost(sec) || bannerImg(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
         (phoneBannerFor(sec) ? '<button data-action="phone-banner" title="A banner of its own for phones: made by ETB2B AI from this one, or uploaded">Phone banner</button>' : '') +
@@ -4038,6 +4056,8 @@
       host.pickSection(sec);
     } else if (action === 'add-item') {
       selectNewItem(addRepeatItem(sec));
+    } else if (action === 'add-first-item') {
+      addFirstItem(sec);
     } else if (action === 'redesign-section') {
       openRedesignDialog(sec);
     } else if (action === 'section-background' && !canvas.backgroundHost(sec) && bannerImg(sec)) {
@@ -4300,18 +4320,237 @@
   /* the first one brought into view and selected — on its own page, in the manual editor (as revealLogoUnit) */
   function showPlaceholders() {
     var first = shownPlaceholders()[0];
-    if (!first) return;
+    if (first) revealPlaceholder(first);
+  }
+  function revealPlaceholder(el) {
     function go() {
-      if (!first.isConnected) return;
-      var sec = first.closest('[data-rv-section]');
+      if (!el.isConnected) return;
+      var sec = el.closest('[data-rv-section]');
       if (sec && pagesLib() && sitePages().length && !onShownPage(sec)) {
         var on = pagesLib().pageOfElement(sec);
         if (on !== '*') showPage(on);
       }
-      revealElement(first);
+      revealElement(el);
     }
     var aiMode = window.RevampEditorMode;
     if (aiMode && aiMode.mode && aiMode.mode() === 'ai') { aiMode.setMode('manual'); setTimeout(go, 120); } else go();
+  }
+  /* How many of the design's samples are still on the site (NU-009: the legend above the page, the steps in Help):
+     -> { words, pictures, total } */
+  function samplesLeft() {
+    var left = shownPlaceholders();
+    var pictures = left.filter(function (el) { return el.getAttribute('data-editable') === 'image'; }).length;
+    return { words: left.length - pictures, pictures: pictures, total: left.length };
+  }
+  /* the legend's "Show next": each press brings the next sample left into view and selects it, round again at the end */
+  var sampleCursor = -1;
+  function showNextSample() {
+    if (!canvas || remounting) return false;
+    flush();
+    settlePlaceholders();
+    var left = shownPlaceholders();
+    if (!left.length) return false;
+    sampleCursor = (sampleCursor + 1) % left.length;
+    revealPlaceholder(left[sampleCursor]);
+    return true;
+  }
+
+  /* ---------- the dashed amber outline, said where it is seen (NU-009) ----------
+     A text or picture box still holding the design's sample (data-rv-placeholder) was outlined in amber with nothing
+     to say what that meant: the newcomer took it for "you can edit this". Pointed at, it now says so in a small tag
+     over it (under it while it is selected, its toolbar being above), drawn in #frame's own coordinates like the
+     toolbars and never part of the page. The legend above the page counts them (editor-start.js). */
+  var SAMPLE_TAG_WORDS = {
+    text: 'Sample text from the design — type your event’s own over it',
+    image: 'Sample picture from the design — replace it with your event’s own'
+  };
+  var sampleTag = null, sampleTagEl = null;
+  function buildSampleTag() {
+    sampleTag = document.createElement('div');
+    sampleTag.className = 'tpl-sample-tag';
+    sampleTag.setAttribute('aria-hidden', 'true');
+    sampleTag.hidden = true;
+    frame.appendChild(sampleTag);
+  }
+  function placeSampleTag() {
+    var el = sampleTagEl;
+    if (!sampleTag) return;
+    if (!el || !canvas || remounting || aiWorking || !el.isConnected || el === editingEl || !el.hasAttribute('data-rv-placeholder') ||
+        el.closest('.is-hidden-sec') || !canvas.inView(el)) { sampleTag.hidden = true; return; }
+    var fr = frame.getBoundingClientRect(), r = canvas.screenRect(el);
+    sampleTag.textContent = SAMPLE_TAG_WORDS[el.getAttribute('data-editable') === 'image' ? 'image' : 'text'];
+    sampleTag.hidden = false;
+    var w = sampleTag.offsetWidth, h = sampleTag.offsetHeight;
+    var above = r.top - fr.top - h - 6, below = r.bottom - fr.top + 6;
+    var top = el === selectedEl || above < 4 ? below : above;
+    if (top + h > fr.height - 4) top = Math.max(4, above);
+    sampleTag.style.left = Math.round(Math.max(6, Math.min(r.left - fr.left, fr.width - w - 6))) + 'px';
+    sampleTag.style.top = Math.round(top) + 'px';
+  }
+  function onCanvasHover(e) {
+    var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+    var el = t && t.closest ? t.closest('[data-rv-placeholder]') : null;
+    if (el === sampleTagEl) return;
+    sampleTagEl = el;
+    placeSampleTag();
+  }
+  function hideSampleTag() { sampleTagEl = null; if (sampleTag) sampleTag.hidden = true; }
+
+  /* ---------- a section visitors would see with only its heading (NU-018) ----------
+     "Key Discussion Points" or "Reasons not to miss" left with no items showed only their heading on the canvas, while
+     an empty Gallery said what was missing and where to add it. Such a section now holds a note of the editor's own,
+     under its heading: what visitors would see, and two buttons, "+ Add an item" (a card from the design's own model
+     list, when the section has one, with its sample words outlined to type over) and "Hide this section". The test is
+     the one the check before publishing makes (functions/lib/site-checks.js emptySections: nothing but a heading and a
+     short label, no picture, link, button, list, figure or form), read on the page itself. The note is the editor's
+     (data-rv-editor, data-rv-ed-note): never saved, in no snapshot (editor-canvas.js nodeHtml), drawn again after every
+     change (pageChanged), never tagged for typing (data-ed="none"). */
+  var ED_NOTE = 'data-rv-ed-note';
+  var BARE_SUBSTANCE = /^(?:img|picture|video|audio|iframe|object|embed|canvas|svg|form|input|select|textarea|table|a|button|details|summary)$/;
+  var BARE_SKIP = /^(?:head|script|style|template|noscript|title|textarea|svg|select|iframe|object)$/;
+  var BARE_RUNTIME = ['data-rv-form-embed', 'data-rv-hv', 'data-rv-award-cta', 'data-register-cta', 'data-nominate-form', 'data-interest-form', 'data-rv-countdown'];
+  var BARE_HIDDEN = ['hidden', 'data-rv-empty', 'data-rv-hidden-empty', 'data-rv-bind-empty', 'data-rv-nav-empty', 'data-rv-editor', 'data-rv-empty-state',
+    'data-rv-preview-ribbon', 'data-rv-removed', 'data-rv-form-preview', 'data-rv-hv-preview', 'data-rv-ai-mark', ED_NOTE];
+  var BARE_SHOWN_AT = /^(?:sm|md|lg|xl|2xl):(?:block|flex|grid|inline|inline-block|inline-flex|table|contents|flow-root)$/;
+  var BARE_WORDS_MAX = 30;
+  function bareClean(s) { return String(s == null ? '' : s).replace(/[\s ]+/g, ' ').trim(); }
+  function bareHidden(el) {
+    for (var i = 0; i < BARE_HIDDEN.length; i++) if (el.hasAttribute(BARE_HIDDEN[i])) return true;
+    var cls = el.classList;
+    if (cls.contains('is-hidden-sec') || cls.contains('ai-prov-badge') || cls.contains('ai-skip-badge') || cls.contains('ai-media-skip-badge')) return true;
+    if (/(?:^|;)\s*display\s*:\s*none\b/i.test(el.getAttribute('style') || '')) return true;
+    if (cls.contains('hidden') && !Array.prototype.some.call(cls, function (c) { return BARE_SHOWN_AT.test(c); })) return true;
+    return el.id === 'revamp-register-modal';
+  }
+  // an element's words, else its label, else a picture's alt (site-checks.js labelOf)
+  function bareLabel(el) {
+    var parts = [];
+    function walk(n) {
+      for (var c = n.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3) parts.push(c.nodeValue);
+        else if (c.nodeType === 1 && !BARE_SKIP.test(c.tagName.toLowerCase()) && !bareHidden(c)) walk(c);
+      }
+    }
+    walk(el);
+    var text = bareClean(parts.join(' '));
+    if (text) return text;
+    text = bareClean(el.getAttribute('aria-label') || el.getAttribute('title') || '');
+    if (text) return text;
+    var img = el.querySelector('img[alt]');
+    return img ? bareClean(img.getAttribute('alt')) : '';
+  }
+  /* -> { heading } when visitors would see the section with nothing in it but its heading ('' when it has none), or
+     null when it shows something, is hidden, or is the header or footer */
+  function bareSection(sec) {
+    var id = sec.getAttribute('data-rv-section') || '';
+    if (!id || id === 'nav' || id === 'footer' || sec.closest('header, nav, footer')) return null;
+    for (var n = sec; n && n.nodeType === 1; n = n.parentElement) if (bareHidden(n)) return null;
+    if (/url\(/i.test(sec.getAttribute('style') || '')) return null;
+    var heading = '', words = 0, banner = /^(?:hero|banner)$/i.test(id);
+    function shows(el) {
+      for (var c = el.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType === 3) {
+          var w = bareClean(c.nodeValue);
+          if (!w) continue;
+          if (/\d/.test(w)) return true;
+          words += w.length;
+          if (words > BARE_WORDS_MAX) return true;
+          continue;
+        }
+        if (c.nodeType !== 1 || bareHidden(c)) continue;
+        var tag = c.tagName.toLowerCase();
+        if (BARE_SUBSTANCE.test(tag) || /url\(/i.test(c.getAttribute('style') || '')) return true;
+        if (BARE_SKIP.test(tag)) continue;
+        for (var i = 0; i < BARE_RUNTIME.length; i++) if (c.hasAttribute(BARE_RUNTIME[i])) return true;
+        if (/^h[1-6]$/.test(tag)) {
+          var said = bareLabel(c);
+          if (said && (heading || banner)) return true;
+          if (!heading) heading = said;
+          continue;
+        }
+        if (/^(?:li|dt|dd)$/.test(tag) && bareLabel(c)) return true;
+        if (shows(c)) return true;
+      }
+      return false;
+    }
+    return shows(sec) ? null : { heading: heading };
+  }
+  /* the design's own model of the section's list (editor-fill.js keeps it in <template data-rv-pristine="<key>"> beside
+     the list it fills, data-rv-list="<key>"), when the wizard left the list empty -> { list, model } or null */
+  function listModelOf(sec) {
+    var tpls = sec.querySelectorAll('template[data-rv-pristine]');
+    for (var i = 0; i < tpls.length; i++) {
+      var key = tpls[i].getAttribute('data-rv-pristine') || '';
+      var model = tpls[i].content && tpls[i].content.firstElementChild;
+      if (!model) continue;
+      var lists = sec.querySelectorAll('[data-rv-list]');
+      for (var j = 0; j < lists.length; j++) {
+        if (lists[j].getAttribute('data-rv-list') === key && !lists[j].closest('[' + ED_NOTE + ']')) return { list: lists[j], model: model };
+      }
+    }
+    return null;
+  }
+  function noteButton(doc, act, words) {
+    var b = doc.createElement('button');
+    b.type = 'button';
+    b.setAttribute('data-rv-ed-act', act);
+    b.textContent = words;
+    return b;
+  }
+  function drawEmptyNotes() {
+    if (!canvas || remounting || !canvas.doc) return;
+    var doc = canvas.doc;
+    Array.prototype.forEach.call(doc.querySelectorAll('[' + ED_NOTE + ']'), function (n) { if (n.parentNode) n.parentNode.removeChild(n); });
+    canvas.sections().forEach(function (sec) {
+      if (sec.parentElement && sec.parentElement.closest('[data-rv-section]')) return;
+      var bare = bareSection(sec);
+      if (!bare) return;
+      var model = listModelOf(sec);
+      var note = doc.createElement('div');
+      note.setAttribute(ED_NOTE, '');
+      note.setAttribute('data-rv-editor', '');
+      note.setAttribute('data-ed', 'none');
+      var say = doc.createElement('p');
+      say.textContent = bare.heading
+        ? 'Nothing under “' + bare.heading.slice(0, 80) + '” yet: visitors would see only this heading.'
+        : 'Nothing in this section yet: visitors would see an empty space.';
+      note.appendChild(say);
+      var how = doc.createElement('p');
+      how.textContent = model ? 'Add an item and type your event’s own words over it, or hide this section.'
+        : 'Select it and use Add element, in the tools row, to put words or a picture in it, or hide this section.';
+      note.appendChild(how);
+      var acts = doc.createElement('p');
+      acts.setAttribute('data-rv-ed-acts', '');
+      if (model) acts.appendChild(noteButton(doc, 'add-item', '+ Add an item'));
+      acts.appendChild(noteButton(doc, 'hide', 'Hide this section'));
+      note.appendChild(acts);
+      contentBox(sec).appendChild(note);
+    });
+  }
+  /* "+ Add an item": a card from the design's own model, after any the list has; its sample words are outlined to type
+     over (markPlaceholders), and its title is selected */
+  function addFirstItem(sec) {
+    var m = isLive(sec) ? listModelOf(sec) : null;
+    if (!m) return null;
+    if (editingEl) exitEdit(editingEl);
+    var card = canvas.doc.importNode(m.model, true);
+    m.list.appendChild(card);
+    canvas.adoptElement(card);
+    canvas.retag(card);
+    markPlaceholders(card);
+    clearAiGenerated(sec);
+    commitNow();
+    selectNewItem(card);
+    showToast('Added an item. Its sample words have a dashed amber outline: type your event’s own over them. "+ Add item" on its toolbar adds another.');
+    return card;
+  }
+  function onNoteAction(act, sec) {
+    if (!sec || !isLive(sec)) return;
+    if (act === 'add-item') { addFirstItem(sec); return; }
+    if (act === 'hide') {
+      setSectionHidden(sec, true);
+      offerUndo('Section hidden: visitors do not see it. It stays here as a slim bar; click it to show it again.');
+    }
   }
   /* Before publishing: true when some are left — the person is asked, and go() runs only on "… anyway". */
   function placeholderGate(go) {
@@ -4577,6 +4816,9 @@
       if (editingEl && e.detail === 0) return;
       var target = e.target.nodeType === 1 ? e.target : e.target.parentElement;
       if (!target) return;
+      /* the buttons of a section's "nothing here yet" note (drawEmptyNotes, NU-018) */
+      var noteAct = target.closest('[data-rv-ed-act]');
+      if (noteAct) { onNoteAction(noteAct.getAttribute('data-rv-ed-act'), noteAct.closest('[data-rv-section]')); return; }
       if (canvas.openItem(target)) { repositionToolbars(); return; }
       /* the event's records: selected whole, and the toolbar says where they are edited (recordOf) */
       var rec = recordOf(target);
@@ -4623,6 +4865,9 @@
     canvas.doc.addEventListener('drop', onTypingDrop, true);
     canvas.doc.addEventListener('input', onCanvasInput, true);
     canvas.win.addEventListener('scroll', repositionToolbars, { passive: true });
+    // the amber outline says what it is when pointed at (NU-009)
+    canvas.doc.addEventListener('mouseover', onCanvasHover, true);
+    canvas.doc.documentElement.addEventListener('mouseleave', hideSampleTag);
     canvas.win.addEventListener('keydown', onGlobalKey);
     wireCanvasKeys();
     if (canvas.onResize === null) canvas.onResize = repositionToolbars;
@@ -4644,6 +4889,7 @@
     if (selWatch) selWatch.disconnect();
     closeLinkPop();
     selToolbar.hidden = true; secToolbar.hidden = true;
+    hideSampleTag();
     selectionChanged();
     canvas.destroy();
     RevampCanvas.mount(frame, templateId, mountOpts).then(function (c) {
@@ -8167,7 +8413,7 @@
       kind = 'plain'; text = 'Updated automatically'; href = saved;
       title = 'Updated automatically when the editor opened: ' + autoPoint().names.join(', ') + '. Nothing of yours is waiting to be saved; Save keeps these updates apart from your own changes.';
     }
-    else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Your changes are only in this browser. Save keeps them (the saved site still shows version ' + v + ').'; href = saved; }
+    else if (dirty) { kind = 'warn'; text = 'Unsaved changes'; title = 'Your changes are only in this browser until you press Save (' + saveKeys() + '). The editor does not save by itself; the saved site still shows version ' + v + '.'; href = saved; }
     /* live is said before a request: a request for a version that is already live is over, whatever it still says
        (UX-108: the chip read "waiting for approval" for the live version) */
     else if (siteInfo.published && siteInfo.publishedVersion === v) { kind = 'ok'; text = 'Live'; href = '/e/' + eventId; title = 'What you see is the live site (version ' + v + '). Open it.'; }
@@ -8178,6 +8424,18 @@
     else { text = 'Saved · not live yet'; href = saved; title = 'Version ' + v + ' is saved. Open the saved site; it goes live once it is published.'; }
     chip.className = 'site-state ' + kind;
     chip.textContent = text; chip.title = title;
+    /* Work waiting to be saved says how to keep it, beside the words (NU-035): Create Event and the console save as you
+       type, the editor only on Save, and the newcomer took "Unsaved changes" for something that would pass by itself.
+       The hint is put away where the bar has no room for it (custom_editor.html, .ss-hint). Save shows a dot meanwhile. */
+    var due = kind === 'warn' && (dirty || !v) && !saving && !firstSavePending;
+    if (due) {
+      var hint = document.createElement('span');
+      hint.className = 'ss-hint';
+      hint.textContent = '— press Save (' + saveKeys() + ')';
+      chip.appendChild(hint);
+    }
+    save.classList.toggle('is-due', due && dirty);
+    if (due && dirty && editedThisVisit) firstUnsavedNote();
     /* Preview's menu has the live site while there is one: what visitors see (owner decision 13) */
     var liveItem = document.getElementById('pv-live');
     if (liveItem) {
@@ -8197,6 +8455,28 @@
       else { pub.removeAttribute('aria-busy'); RevampPublishFlow.paintButton(pub, RevampPublishFlow.buttonState(approvalShape(), { dirty: dirty })); }
     }
     syncCardSaves(dirty);
+  }
+  /* Save's keys as this computer writes them: "⌘S" on a Mac, iPhone or iPad, "Ctrl+S" elsewhere */
+  function saveKeys() {
+    var p = '';
+    try { p = String((navigator && (navigator.platform || navigator.userAgent)) || ''); } catch (e) { p = ''; }
+    return /Mac|iPhone|iPad|iPod/i.test(p) ? '⌘S' : 'Ctrl+S';
+  }
+  /* The first change a person makes in the editor, once per person in this browser (NU-035): said in a sentence that the
+     editor keeps changes until Save, as Create Event and the console save by themselves. */
+  var unsavedNoted = false, editedThisVisit = false, bootDone = false;
+  function firstUnsavedNote() {
+    if (unsavedNoted) return;
+    unsavedNoted = true;
+    var key = 'revamp.editorSaveNote.' + personKey();
+    try { if (localStorage.getItem(key)) return; localStorage.setItem(key, '1'); } catch (e) { return; }
+    showToast('The site editor keeps your changes in this browser until you press Save (' + saveKeys() + '). Nothing goes live until it is published.', { duration: 9000 });
+  }
+  /* who is signed in, for what this browser remembers per person */
+  function personKey() {
+    var u = null;
+    try { u = window.RevampAuth && RevampAuth.currentUser ? RevampAuth.currentUser() : null; } catch (e) { u = null; }
+    return (u && (u.uid || u.email)) || 'anon';
   }
   /* The site lives in this browser's copy until Save; a change only moves the chip to "Unsaved changes". */
   function scheduleServerSave() {
@@ -8594,7 +8874,7 @@
   window.RevampTemplateUI = {
     openDevZone: whenPageFree(openDevZone),
     open: open, leave: leave, handoffFor: handoffFor,
-    setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty() }; }, undo: undo, redo: redo, flush: flush,
+    setDevice: setDevice, openPreview: openPreview, publish: publish, save: saveToStaging, siteState: function () { return { info: siteInfo, dirty: isDirty(), saving: saving, firstSave: firstSaveDue || firstSavePending }; }, undo: undo, redo: redo, flush: flush,
     /* why Save, Publish changes, Undo and Redo wait while ETB2B AI is busy ('' when they need not): the Ctrl/Cmd+S
        shortcuts say it rather than doing nothing */
     busyLine: function () { return workSafety.busyLine(aiState); },
@@ -8603,6 +8883,12 @@
     /* true when copy that came with an added section or block is still on the page: the person is asked, and
        go() runs on "… anyway" (UX-081) */
     placeholderGate: placeholderGate,
+    /* the design's samples still on the site, { words, pictures, total }, and the next one shown and selected (the
+       legend above the page and the steps in Help, editor-start.js, NU-008 / NU-009) */
+    samplesLeft: function () { return canvas && !remounting ? samplesLeft() : { words: 0, pictures: 0, total: 0 }; },
+    showNextSample: whenPageFree(showNextSample),
+    /* what made the site: 'gen' (ETB2B AI, from a brief), 'imported' (Lovable), 'template' (a gallery design), '' none */
+    siteKind: function () { return !templateId ? '' : /^gen-/.test(templateId) ? 'gen' : /^imported-/.test(templateId) ? 'imported' : 'template'; },
     /* "… changed across the whole site — Undo" for a change made from the Theme panel or the "Aa" pop-over: the
        change is recorded first, so Undo takes back that change and nothing older (UX-075) */
     offerUndo: function (msg) { flush(); if (!aiWorking) offerUndo(msg); },

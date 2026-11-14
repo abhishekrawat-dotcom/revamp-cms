@@ -151,16 +151,12 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
   check('2 the top bar uses it, not the start date with its time', /meta = editorPolish\.topbarMeta\(ev, RevampCore\.fmtRange\);/.test(rt) && rt.indexOf('fmtDT') === -1);
 
   var gb = blockFrom(INLINE, '(function initGenerateFromBriefNotice(){', ')();');
-  check('2 the welcome reads plainly, without the broken sentence', /This draft is yours now\.<\/strong> Edit anything directly on the page\. ' \+\s*'Generating from the brief again makes a new draft and does not change this one\./.test(gb) &&
-    gb.indexOf('Running Generate from a brief again') === -1 && gb.indexOf('right here') === -1, gb.slice(-900));
-  check('2 it opens in the editor\'s own dialog, once the dialog is set up', /setTimeout\(function\(\)\{\s*openDialog\(\{/.test(gb) && !/modal: true/.test(gb));
-  check('2 … which closes on its button, Escape and a click beside it, and each marks it seen',
-    /onClose: function\(\)\{ store\(modalSeenKey, '1'\); \}/.test(gb) && /if \(e\.key === 'Escape'\)\{\s*e\.stopPropagation\(\);\s*if \(!opts\.modal\) close\(\);/.test(INLINE) &&
-    /scrim\.addEventListener\('mousedown', function\(e\)\{ if \(e\.target === scrim && !opts\.modal\) close\(\); \}\);/.test(INLINE) && /if \(opts\.onClose\) opts\.onClose\(\);/.test(body('close', INLINE.slice(INLINE.indexOf('function openDialog(')))));
-  // run it: the welcome shows once, and is seen after Escape as after its button
+  /* NU-008: the brief's one-time welcome became the editor's first steps (editor-start.js), shown once per person for
+     every site, with what to do next; this block keeps the strip and only says the site came from a brief */
+  check('2 the brief\'s welcome is no dialog of its own here any more; the strip stays', gb.indexOf('openDialog(') === -1 && /strip\.hidden = false;/.test(gb), gb.slice(-600));
   var store = {}, opened = [];
   var c = vm.createContext({
-    URLSearchParams: URLSearchParams, location: { search: '?from=create&slug=qa-ux-b21-x' }, editorEventId: 'qa-ux-b21-x',
+    URLSearchParams: URLSearchParams, location: { search: '?from=create&slug=qa-ux-b21-x' }, editorEventId: 'qa-ux-b21-x', arrivedFromBrief: false,
     window: { RevampTemplateUI: { handoffFor: function () { return { generatedFromBrief: true }; } } },
     document: { getElementById: function () { return null; } },
     localStorage: { getItem: function (k) { return k in store ? store[k] : null; }, setItem: function (k, v) { store[k] = String(v); } },
@@ -168,10 +164,16 @@ check('0 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
     openDialog: function (o) { opened.push(o); return { close: function () { if (o.onClose) o.onClose(); } }; }
   });
   vm.runInContext(gb, c);
-  check('2 the welcome opens for a brief-made draft', opened.length === 1 && opened[0].title === 'Your site is ready to review' && opened[0].actions[0].label === 'Got it, let’s look', opened.length);
-  if (opened[0]) opened[0].onClose();          // Escape, a click beside it or its button: openDialog calls onClose for each
-  vm.runInContext(gb, c);
-  check('2 once closed in any way it does not come back', opened.length === 1 && store['revamp.gbWelcomeSeen.qa-ux-b21-x'] === '1', store);
+  check('2 a brief-made draft is noted for the first steps, and its strip is still due', c.arrivedFromBrief === true && opened.length === 0 && store['revamp.gbStripDismissed.qa-ux-b21-x'] === '0', store);
+  var START = require(path.join(ROOT, 'editor-start.js'));
+  check('2 the first steps open for it as the welcome did, with the welcome\'s own words',
+    START.stepsTitle({ first: true, generated: true }) === 'Your site is ready to review' &&
+    START.TEXT.leadAi === 'This draft is yours now. Generating from the brief again makes a new draft and does not change this one.');
+  check('2 the editor hands the first steps its dialog, its notices and whether the site came from a brief, once the site is open',
+    /RevampEditorStart\.ready\(\{ openDialog: openDialog, showNotice: showNotice, clearNotice: clearNotice, generated: arrivedFromBrief \}\)/.test(INLINE));
+  check('2 a dialog of the editor still closes on its button, Escape and a click beside it, each telling onClose',
+    /if \(e\.key === 'Escape'\)\{\s*e\.stopPropagation\(\);\s*if \(!opts\.modal\) close\(\);/.test(INLINE) &&
+    /scrim\.addEventListener\('mousedown', function\(e\)\{ if \(e\.target === scrim && !opts\.modal\) close\(\); \}\);/.test(INLINE) && /if \(opts\.onClose\) opts\.onClose\(\);/.test(body('close', INLINE.slice(INLINE.indexOf('function openDialog(')))));
 })();
 
 /* ======================= 3 UX-088 the canvas menu, and settings saved by themselves ======================= */

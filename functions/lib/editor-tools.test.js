@@ -372,7 +372,9 @@ check('1 the block names nothing of the editor or the page', !/(^|[^.\w$])(windo
     /* B06 (UX-104): the AI review lists only the sections nobody has checked yet */
     /function publishOn\(\)\{[\s\S]{0,200}var info = window\.RevampTemplateUI\.aiProvenanceSections\(\);\s*\n\s*if \(info\.generated\.length\)/.test(INLINE));
   check('7 … hidden sections do not count (they are not saved)', /!el\.closest\('\.is-hidden-sec'\)/.test(body('shownPlaceholders')));
-  check('7 "Show them" brings the first one into view, on its own page', /revealElement\(first\)/.test(body('showPlaceholders')) && /showPage\(on\)/.test(body('showPlaceholders')));
+  check('7 "Show them" brings the first one into view, on its own page', /revealPlaceholder\(first\)/.test(body('showPlaceholders')) &&
+    /revealElement\(el\)/.test(body('revealPlaceholder')) && /showPage\(on\)/.test(body('revealPlaceholder')));
+  check('7 NU-009 "Show next" above the page brings each one left into view in turn', /sampleCursor = \(sampleCursor \+ 1\) % left\.length;/.test(body('showNextSample')) && /revealPlaceholder\(left\[sampleCursor\]\)/.test(body('showNextSample')));
 
   var hooks = require('./api')._testHooks;
   var page = '<!doctype html><html><head><title>x</title></head><body><section data-rv-section="s1"><h2 data-editable="text" data-rv-placeholder="Card one">Card one</h2>' +

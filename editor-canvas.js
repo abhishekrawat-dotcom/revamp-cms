@@ -1388,8 +1388,9 @@
        "unsaved". */
     /* drawn by the editor over the page and never part of it: a form's preview (editor-forms.js) and the banner
        video's still with its badge (hero-video-ui.js) */
-    /* and the AI-review pills drawn since UX-104 (editor-template-ui.js renderAiProvenanceBadges, data-rv-ai-mark) */
-    var FORM_PREVIEW = '[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark]';
+    /* and the AI-review pills drawn since UX-104 (editor-template-ui.js renderAiProvenanceBadges, data-rv-ai-mark), and
+       the note in a section visitors would see with only its heading (drawEmptyNotes, data-rv-ed-note, NU-018) */
+    var FORM_PREVIEW = '[data-rv-form-preview], [data-rv-hv-preview], [data-rv-ai-mark], [data-rv-ed-note]';
     function nodeHtml(n) {
       if (ownsCss && n.matches('style[data-rv-style]')) return '<style data-rv-style="' + n.getAttribute('data-rv-style').replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"></style>';
       var isSection = n.hasAttribute('data-rv-section');

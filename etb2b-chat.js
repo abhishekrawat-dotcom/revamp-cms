@@ -951,6 +951,7 @@
       if (v !== liftNow) {
         liftNow = v;
         wrap.style.setProperty('--rvc-lift', v + 'px');
+        scheduleTuck();                            /* lifted, the pill lies over other things */
       }
       checkUnder(bars);
       return liftNow;
@@ -1001,6 +1002,58 @@
       var t = ev && ev.target;
       if (t && t.nodeType === 1 && wrap.contains(t)) return;
       scheduleLift();
+    }
+
+    /* ---------- the pill never lies over what a page shows (NU-030) ----------
+       At 1440 × 900 the "Ask ETB2B AI" pill covered part of Create Event's "Use this template", the console's ready list
+       and "Order at a glance" card, and the dashboard's activity rows. While a link, button or field of the page, or its
+       words or a picture, is under the place the pill takes, the launcher shows only its round face (rvc-tucked,
+       etb2b-chat.css), in the corner, 44 px like the pill is tall, so the panel above it does not move; over the page's
+       empty margin the pill comes back. Measured once a frame after a scroll, a resize or a change to the page, on every
+       page (not only those with keepClear bars). */
+    var tucked = false, tuckQueued = false, pillW = 0;
+    var TUCK_CONTROLS = 'a[href], button, input, select, textarea, summary, label, [role="button"], [role="link"], [role="tab"], [tabindex]:not([tabindex="-1"])';
+    var TUCK_SHOWS = /^(?:IMG|SVG|VIDEO|CANVAS|IFRAME|PICTURE|svg)$/;
+    /* the page's own top element at a point shows something: a control, a picture, or words of its own */
+    function showsSomething(e) {
+      if (e.closest && e.closest(TUCK_CONTROLS)) return true;
+      if (TUCK_SHOWS.test(e.tagName) || (e.closest && e.closest('svg'))) return true;
+      for (var c = e.firstChild; c; c = c.nextSibling) if (c.nodeType === 3 && /\S/.test(c.nodeValue)) return true;
+      return false;
+    }
+    function pillCovers() {
+      if (!isFn(doc.elementsFromPoint) || phoneNow() || compact || docked) return false;
+      var lr = rectOf(launcher);
+      if (!lr || !(lr.width > 0) || !(lr.height > 0)) return false;
+      if (!tucked) pillW = lr.width;
+      var left = lr.right - Math.max(pillW || 0, lr.width), step = 10;
+      for (var y = lr.top + 4; y < lr.bottom - 2; y += step) {
+        for (var x = left + 4; x < lr.right - 2; x += step) {
+          var stack = doc.elementsFromPoint(x, y) || [];
+          for (var i = 0; i < stack.length; i++) {
+            var e = stack[i];
+            if (!e || wrap.contains(e)) continue;
+            if (showsSomething(e)) return true;
+            break;                                      /* the page's top element here is its background */
+          }
+        }
+      }
+      return false;
+    }
+    function phoneNow() { return !!(mq && mq.matches); }
+    function tuck() {
+      var t = pillCovers();
+      if (t === tucked) return;
+      tucked = t;
+      setClass(wrap, 'rvc-tucked', t);
+      /* the round face keeps its whole name in its tooltip, as it does for screen readers (aria-label) */
+      if (t) launcher.setAttribute('title', launcherLabel); else launcher.removeAttribute('title');
+      if (t) launcher.classList.add('is-quiet');      /* the label does not slide in again when the pill comes back */
+    }
+    function scheduleTuck() {
+      if (tuckQueued) return;
+      tuckQueued = true;
+      nextFrame(function () { tuckQueued = false; tuck(); });
     }
 
     function tellOpen(v) {
@@ -2299,6 +2352,23 @@
       if (vv && isFn(vv.addEventListener)) {
         vv.addEventListener('resize', function () { syncViewport(); scheduleLift(); });
         vv.addEventListener('scroll', function () { syncViewport(); scheduleLift(); });
+      }
+      /* the pill steps aside to its round face over a page's control (tuck, NU-030), on every page */
+      if (isFn(doc.elementsFromPoint)) {
+        if (isFn(root.addEventListener)) {
+          root.addEventListener('scroll', scheduleTuck, { capture: true, passive: true });
+          root.addEventListener('resize', scheduleTuck);
+        }
+        if (isFn(root.MutationObserver) && doc.body) {
+          var tmo = new root.MutationObserver(function (list) {
+            for (var i = 0; i < list.length; i++) {
+              var t = list[i] && list[i].target;
+              if (!t || !wrap.contains(t)) { scheduleTuck(); return; }
+            }
+          });
+          tmo.observe(doc.body, { attributes: true, attributeFilter: ['class', 'hidden', 'style'], childList: true, subtree: true });
+        }
+        root.setTimeout(scheduleTuck, 600);       /* once the page has drawn its first view */
       }
       if (keepSel) {
         if (isFn(root.addEventListener)) {
