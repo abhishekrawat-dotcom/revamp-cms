@@ -8136,6 +8136,12 @@ module.exports._testHooks.sanitizeGeneratedSectionHtml = sanitizeGeneratedSectio
 module.exports._testHooks.safeGeneratedSection = safeGeneratedSection;
 module.exports._testHooks.tidyGeneratedSectionHtml = tidyGeneratedSectionHtml;
 module.exports._testHooks.CALLER_CHECKED = CALLER_CHECKED;
+/* the record of the versions that have been live (events/<id>/publishes), for tools/draw-logo-unit.js: a version it puts
+   live is noted as the console notes one, so an approver can put the version before it back (UX-107) */
+module.exports._testHooks.recordPublish = recordPublish;
+module.exports._testHooks.liveVersionsOf = liveVersionsOf;
+module.exports._testHooks.previousLiveOf = previousLiveOf;
+module.exports._testHooks.isoOf = isoOf;
 /* The internals of lib/api-generate.js, lib/api-chat.js and lib/api-import.js that the tests and tools/ read here, as
    they did before those routes were moved (BE-017): each is read from its own module, loaded and wired as a request
    would be, on its first read — never when this file is loaded. */
