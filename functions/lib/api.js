@@ -5247,8 +5247,10 @@ function readRecordRows(fb, eventId) {
    a new version, when that changes what a visitor would see. A real template's own lists are drawn here too
    (site-records.js drawOwn: TPL-007, TPL-034), so nothing waits for the site editor: needsEditor is always [] (kept
    for the console that reads it). -> Promise<{ notSaved } | { version, staged, summary, items, changeId, unplaced,
-   needsEditor, published, publishedVersion }> — staged false when the saved site already shows Content as it is. */
-function stageContent(fb, eventId, decoded) {
+   needsEditor, published, publishedVersion }> — staged false when the saved site already shows Content as it is.
+   opts.transform(page, event) -> { html, changed }, for an operator's tool only (tools/refresh-dummy-dates.js): a
+   change of its own made to the saved site in place of the drawing, kept as a version the same way. */
+function stageContent(fb, eventId, decoded, opts) {
   var token = crypto.randomBytes(12).toString('hex'), actor = actorOf(decoded), now = new Date().toISOString();
   return loadLiveEvent(fb, eventId).then(function (data) {
     if (!siteVersionOf(data)) return { notSaved: true, published: data.published === true };
@@ -5259,8 +5261,9 @@ function stageContent(fb, eventId, decoded) {
       return Promise.all([readObject(fb, sitePath(eventId, 'page.html')), readRecordRows(fb, eventId)]).then(function (got) {
         var page = got[0];
         if (page == null) throw httpError(409, 'The saved site could not be found. Open the site editor and save it again.', { code: 'site-not-saved' });
-        var drawn = siteRecords.renderRecords(page, got[1], { templateId: templateId, event: data });
-        answer.unplaced = drawn.unplaced;
+        var drawn = opts && typeof opts.transform === 'function' ? opts.transform(page, data)
+          : siteRecords.renderRecords(page, got[1], { templateId: templateId, event: data });
+        answer.unplaced = drawn.unplaced || [];
         var items = [];
         if (drawn.changed) { try { items = diffPages(page, drawn.html); } catch (e) { items = [{ type: 'unknown' }]; } }
         /* nothing a visitor would see (a page that only gains its records' ids): no new version */
@@ -5275,7 +5278,7 @@ function stageContent(fb, eventId, decoded) {
             updatedAt: now
           });
         }).then(function () {
-          return recordSave(fb, eventId, decoded, version, page, drawn.html, '', { kind: 'content' });
+          return recordSave(fb, eventId, decoded, version, page, drawn.html, (opts && opts.note) || '', { kind: (opts && opts.kind) || 'content' });
         }).then(function (rec) {
           return Object.assign(answer, { version: version, staged: true, summary: rec.summary, items: rec.items.slice(0, 20), changeId: rec.changeId });
         });
@@ -8045,7 +8048,7 @@ module.exports = { handleApi };
 module.exports._testHooks = {
   onDarkCopy: onDarkCopy, darkCopyOf: darkCopyOf, darkCopyNote: darkCopyNote, storeOnDarkUnit: storeOnDarkUnit, embeddedYearFont: embeddedYearFont,
   unansweredLogoNote: unansweredLogoNote, logoNoteError: logoNoteError, LOGO_NOTE_CODE: LOGO_NOTE_CODE,
-  redrawYearInPng: redrawYearInPng, embedsMainPicture: embedsMainPicture,
+  redrawYearInPng: redrawYearInPng, embedsMainPicture: embedsMainPicture, stageContent: stageContent, sitePath: sitePath, readObject: readObject,
   aiDesignOf: aiDesignOf,
   TRACK_PIXEL: TRACK_PIXEL,   // the open pixel answered when lib/promo-track.js cannot be loaded (must equal its PIXEL)
   sectionAnchorFor: sectionAnchorFor, publicBaseFor: publicBaseFor, cmsOriginFor: cmsOriginFor,
