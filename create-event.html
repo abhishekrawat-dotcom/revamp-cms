@@ -1187,7 +1187,7 @@
   .review-list dd{ margin: 0; color: var(--text); overflow-wrap: anywhere; }
   .review-list .rv-note{ display:block; color: var(--text-muted); font-size: 12px; }
   @media (max-width: 520px){ .review-list .rv-row{ grid-template-columns: 1fr; gap: 1px; } }
-  .review-samples{ margin-top: 12px; }
+  .review-samples{ margin: 0; flex-shrink: 0; }
   .review-samples .callout{ margin: 0; }
   .review-checking{ display:flex; align-items:center; gap: 8px; margin: 0; }
   .review-ok{ display:flex; align-items:center; gap: 6px; margin: 0; font-size: 13px; color: var(--ok); font-weight: 600; }
@@ -12629,8 +12629,9 @@
     openModal({
       title: exists ? 'Save “' + named + '” and open the editor?' : 'Create “' + named + '”?',
       sub: (exists ? 'This event already exists, so its details are updated. ' : '') + 'It is saved as a draft and opens in the site editor. Nothing is published yet.',
-      body: '<dl class="review-list">' + rows + '</dl>' +
-        (gallery ? '<div class="review-samples" id="review-samples">' + reviewSamplesHtml(null, true) + '</div>' : '') +
+      /* the sample words first: on a phone the list below them scrolls, and they are what most needs saying */
+      body: (gallery ? '<div class="review-samples" id="review-samples">' + reviewSamplesHtml(null, true) + '</div>' : '') +
+        '<dl class="review-list">' + rows + '</dl>' +
         (lines.length ? '<p class="review-h">' + (lines.length === 1 ? '1 thing to check' : lines.length + ' things to check') + '</p>' +
           '<ul class="check-list">' + lines.join('') + '</ul>' : ''),
       confirm: exists ? 'Save and open the editor' : 'Create event',
