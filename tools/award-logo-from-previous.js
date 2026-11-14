@@ -348,7 +348,7 @@ function plan(fb, deps, id) {
 function planChange(P, unit) {
   const edition = P.facts && P.facts.confirmed ? { from: P.facts.from, to: P.facts.to } : null;
   /* the award's name for this edition as the page writes it: the title's words */
-  const words = (P.title && P.title.text) || (P.cfg && P.year ? 'The Economic Times Awards for Enterprise Tech Excellence ' + P.year : '');
+  const words = (P.title && P.title.text) || '';
   return { cfg: P.cfg, year: P.year, unit: unit, edition: edition, awardWords: words };
 }
 
