@@ -91,7 +91,14 @@ check('UX-029 touch targets of 44 px on phones: icon buttons, toolbar buttons, m
   /\.pagination button\{ min-width:44px; height:44px; \}/.test(phone) && /\.tabs-row button\{[^}]*min-height:44px;/.test(phone) && /\.search-box \.clear-btn::after\{ content:''; position:absolute; inset:-14px; \}/.test(phone), phone.slice(0, 300));
 /* UX-031 */
 check('UX-031 every desk-only part of the toolbar is hidden on phones, its wrappers too', /\.toolbar \.desk-only\{ display:none; \}/.test(phone) && phone.indexOf('.toolbar-btn.desk-only') === -1);
-check('UX-031 the header nav (only "Events") is not drawn at phone width', /\.main-nav-scroll\{ display:none; \}/.test(narrow));
+/* since Speakers and Sponsors joined Events (11 Nov) the header has no room for them below 960px (Sponsors was cut in
+   half at 768px, and a phone could not reach either): there the same links are a row of their own under the bar */
+var midNav = mediaBlock('max-width: 959px');
+check('UX-031 the header nav is not drawn below 960px, phone width included: its links are the row under the bar (#page-nav) there',
+  /\.main-nav-scroll\{ display:none; \}/.test(midNav) && /\.page-nav\{ display:flex;/.test(midNav) && /\.page-nav\{ display:none; \}/.test(PAGE) &&
+  /<nav class="page-nav" id="page-nav" aria-label="Pages"><\/nav>/.test(PAGE) && /if \(\$\('page-nav'\)\) \$\('page-nav'\)\.innerHTML = links;/.test(PAGE), midNav.slice(0, 200));
+check('UX-031 the header\'s page links never shrink (nothing cut), the portal name gives way with … instead', /\.main-nav-scroll\{ flex:0 0 auto;/.test(PAGE) && /\.main-nav-portals\{ flex:0 1 auto; min-width:0; \}/.test(PAGE) &&
+  /\.mp-label\{ min-width:0; overflow:hidden; text-overflow:ellipsis; \}/.test(PAGE));
 /* (a comment may still say what the address used to be) */
 check('UX-031 the made-up domain is gone from the page', PAGE.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').indexOf('events.economictimes.indiatimes.com') === -1 &&
   CODE.indexOf('eventSlug') === -1 && /C\.publicUrl\(e\)/.test(CODE));

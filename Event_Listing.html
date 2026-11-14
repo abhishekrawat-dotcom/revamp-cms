@@ -146,26 +146,35 @@
   /* the logo unit (app-logo.css) is sized by --app-logo-h, the height its picture used to have here */
   .main-nav-brand{ display:flex; align-items:center; gap:9px; flex-shrink:0; --app-logo-h:28px; }
 
-  .main-nav-scroll{ flex:0 1 auto; min-width:0; overflow-x:auto; scrollbar-width:none; display:flex; align-items:center; gap:2px; }
-  .main-nav-scroll::-webkit-scrollbar{ display:none; }
+  /* the page links (Events, Speakers, Sponsors) never shrink: when the bar is short of room, the portal's name gives
+     way (cut with …, its whole name stays the button's title and spoken name), so a link is never cut off */
+  .main-nav-scroll{ flex:0 0 auto; display:flex; align-items:center; gap:2px; }
   .main-nav-links{ display:flex; align-items:center; gap:2px; flex-shrink:0; }
-  .main-nav-links a, .mp-btn{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); white-space:nowrap; background:none; border:none; font-family:var(--font-body); cursor:pointer; flex-shrink:0; }
-  .main-nav-links a svg, .mp-btn svg{ flex-shrink:0; opacity:.75; }
-  .main-nav-links a:hover, .mp-btn:hover{ background:var(--surface-2); color:var(--text); }
-  .main-nav-links a.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; }
-  .main-nav-links a.active svg{ opacity:1; }
-  .main-nav-portals{ flex-shrink:0; }
+  .main-nav-links a, .mp-btn, .page-nav a{ display:flex; align-items:center; gap:6px; padding:8px 12px; border-radius:8px; font-size:13px; font-weight:600; color:var(--text-muted); white-space:nowrap; background:none; border:none; font-family:var(--font-body); cursor:pointer; flex-shrink:0; text-decoration:none; }
+  .main-nav-links a svg, .mp-btn svg, .page-nav a svg{ flex-shrink:0; opacity:.75; }
+  .main-nav-links a:hover, .mp-btn:hover, .page-nav a:hover{ background:var(--surface-2); color:var(--text); }
+  .main-nav-links a.active, .page-nav a.active{ background:var(--accent-soft); color:var(--accent-strong); font-weight:700; }
+  .main-nav-links a.active svg, .page-nav a.active svg{ opacity:1; }
+  .main-nav-portals{ flex:0 1 auto; min-width:0; }
+  .main-nav-portals .mp-btn{ max-width:100%; min-width:0; flex-shrink:1; }
+  .mp-label{ min-width:0; overflow:hidden; text-overflow:ellipsis; }
 
   .main-nav-right{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
 
+  /* Below 960px the bar has no room for the page links beside the logo, the portal, Help, the theme switch and the
+     account (at 768px Sponsors was cut in half, and on a phone Speakers and Sponsors could not be reached at all).
+     There they are a row of their own at the top of the page, under the bar (#page-nav, the same links), which
+     scrolls away with the page, so the bar stays one row. */
+  .page-nav{ display:none; }
+  @media (max-width: 959px){
+    .main-nav-scroll{ display:none; }
+    .page-nav{ display:flex; align-items:center; gap:4px; flex-wrap:wrap; margin:10px 0 -2px; }
+  }
   /* at phone width, brand + the portal switcher + the account controls (all flex-shrink:0) together pushed the
      account avatar (the one control a signed-in user needs reachable at all times) off-screen. The switcher is
      dropped there: the phone Filters sheet carries the Portal choice instead. */
   @media (max-width: 640px){
     .main-nav-portals{ display:none; }
-    /* the nav holds only "Events", the page itself (UX-022), and at phone width it was squeezed to a 27 px sliver
-       showing a stray icon (UX-031): the brand and the account controls are enough there */
-    .main-nav-scroll{ display:none; }
   }
 
   /* ---------- section bar: tabs + actions, one compact row ---------- */
@@ -671,7 +680,7 @@
      icon-only one 40px wide; a link that is a line of words keeps its place and only the area that takes the tap grows.
      Layout only. */
   @media (max-width: 720px){
-    .main-nav-brand, .btn, .finput, .check-row{ min-height:40px; }
+    .main-nav-brand, .btn, .finput, .check-row, .page-nav a{ min-height:40px; }
     .search-box{ padding-top:0; padding-bottom:0; }
     .search-box input{ min-height:40px; }
     .pn-link{ padding-top:12px; padding-bottom:12px; margin-top:-12px; margin-bottom:-12px; }
@@ -718,6 +727,9 @@
 </header>
 
 <div class="app">
+  <!-- the page links again, as a row of their own under the top bar, below 960px where the bar has no room for them
+       (renderMainNavLinks draws both; CSS shows one of the two) -->
+  <nav class="page-nav" id="page-nav" aria-label="Pages"></nav>
   <div id="error-slot"></div>
 
   <section style="display:flex;flex-direction:column;gap:8px;">
@@ -1582,9 +1594,12 @@
     /* Speakers and Sponsors across every portal (people.html; the owner, 11 Nov 2026): one page each, whichever event */
     var mic = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>';
     var medal = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 13.9L7 21.5l5-2.7 5 2.7-1.5-7.6"/></svg>';
-    $('main-nav-links').innerHTML = '<a href="Event_Listing.html" class="active" aria-current="page">' + IC.calendarSm + ' Events</a>' +
+    var links = '<a href="Event_Listing.html" class="active" aria-current="page">' + IC.calendarSm + ' Events</a>' +
       '<a href="people.html?kind=speakers">' + mic + ' Speakers</a>' +
       '<a href="people.html?kind=sponsors">' + medal + ' Sponsors</a>';
+    $('main-nav-links').innerHTML = links;
+    /* below 960px the same links are a row under the top bar (#page-nav), where they all fit, a phone's 390px too */
+    if ($('page-nav')) $('page-nav').innerHTML = links;
   }
   renderMainNavLinks();
 
@@ -1635,9 +1650,12 @@
   function renderPortalsNavBtn(){
     var p = workingPortal();
     var label = !state.portalKnown ? 'Portal' : p === 'all' ? 'All portals' : portalNameOf(p);
-    $('btn-portals-nav').innerHTML = esc(label) +
+    /* the name is cut with … when the top bar is short of room (one of the longest portal names, at 960px):
+       its whole name stays the button's title and spoken name */
+    $('btn-portals-nav').innerHTML = '<span class="mp-label">' + esc(label) + '</span>' +
       ' <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 9l6 6 6-6"/></svg>';
     $('btn-portals-nav').setAttribute('aria-label', state.portalKnown ? 'Switch portal, now ' + label : 'Switch portal');
+    $('btn-portals-nav').setAttribute('title', state.portalKnown ? 'Switch portal, now ' + label : 'Switch portal');
   }
   /* what follows the working portal outside the list itself: the switcher's name and Create Event's link */
   function renderPortalView(){
