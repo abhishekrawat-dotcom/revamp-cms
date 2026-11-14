@@ -147,7 +147,7 @@
     if (!n) return '<span class="seo-none">No rating</span>';
     var s = '';
     for (var i = 1; i <= 5; i++) s += i <= n ? '★' : '☆';
-    return '<span class="seo-stars" aria-label="' + n + ' out of 5 stars">' + s + '</span>';
+    return '<span class="seo2-stars" role="img" aria-label="' + n + ' out of 5 stars">' + s + '</span>';
   }
 
   /* ---------- the view ---------- */
@@ -251,89 +251,163 @@
       '<div class="seo-rows">' + row('Square picture', '<span class="seo-n">No separate square picture. Where a link is shown as a square (WhatsApp), the centre of the share picture is used.</span>', from('auto', 'Auto')) + '</div>');
   }
 
+  /* ---------- Advanced: the event's details and its rich results (the two panels of the "Advanced" fold) ----------
+     Neat and calm (the owner, 14 Nov 2026: "too noisy, it should be neat and clean"): what is filled in for the team
+     reads as quiet facts with one line saying where they come from, the few fields the team may add sit under them,
+     and speakers, FAQs and testimonials are tidy rows to tick. A value's source and a warning are one muted line
+     each, never a coloured pill; the structured data the next publish gives follows, folded. */
+  /* the words ETB2B AI's messages use for this part's two fields ("ETB2B AI wrote … and saved them") */
+  LABEL.schemaTitle = 'Event name for search engines';
+  LABEL.schemaDescription = 'Event description for search engines';
+
+  /* one muted line under a field, a list or a switch: where a value comes from, what is used without one, or (warn)
+     what is left out and why. html: already escaped */
+  function richNote(html, id, warn) {
+    return '<p class="seo2-hint"' + (id ? ' id="' + id + '"' : '') + '>' +
+      (warn ? '<span class="seo2-ico" aria-hidden="true">' + svg(ST.ctx.IC.info, 13) + '</span>' : '') + '<span>' + html + '</span></p>';
+  }
+  /* a text field of this part: its label with the count and ETB2B AI's small button on the right, the field, then
+     one muted line (ETB2B AI's, when it wrote what is there; else what is used while it is empty) */
+  function richField(k, label, opts) {
+    var id = 'seo-' + k, v = ST.F[k];
+    var aiOwn = (ST.B.aiWritten || []).indexOf(k) !== -1 && same(ST.F[k], ST.B[k]);
+    var note = aiOwn ? 'Suggested by ETB2B AI.' : !line(v) ? opts.empty : '';
+    var attrs = ' id="' + id + '" data-seo-field="' + k + '" maxlength="' + MAX[k] + '"' + (note ? ' aria-describedby="' + id + '-hint"' : '') +
+      ' placeholder="' + esc(opts.placeholder || '') + '"';
+    var input = opts.area ? '<textarea class="inp" rows="3"' + attrs + '>' + esc(v) + '</textarea>' : '<input class="inp"' + attrs + ' value="' + esc(v) + '">';
+    return '<div class="field c12" data-seo-wrap="' + k + '"><div class="seo2-lrow"><label for="' + id + '">' + esc(label) + '</label>' + counter(k) +
+      '<button class="btn btn-ghost btn-sm" type="button" data-seo-ai="' + k + '"' + (ST.aiBusy ? ' disabled' : '') + ' aria-label="' +
+        esc((aiOwn ? 'Suggest again with ETB2B AI: ' : 'Suggest with ETB2B AI: ') + LABEL[k]) + '">' + svg(ST.ctx.IC.star, 13) + (aiOwn ? ' Suggest again' : ' Suggest with ETB2B AI') + '</button></div>' +
+      input + (note ? richNote(esc(note), id + '-hint') : '') + droppedNote(k) + '</div>';
+  }
+  function richHead(title, right) { return '<div class="seo2-head"><h4>' + esc(title) + '</h4>' + (right || '') + '</div>'; }
+  function richRow(inner, state) { return '<li class="seo2-row">' + inner + '<span class="seo2-state">' + esc(state) + '</span></li>'; }
+  /* a list of rows; a long one shows its first six and folds the rest under "Show N more" (kept open across redraws) */
+  function richRows(rows, key, noun) {
+    var more = ST.more || (ST.more = {});
+    if (rows.length <= 7) return '<ul class="seo2-rows">' + rows.join('') + '</ul>';
+    return '<ul class="seo2-rows">' + rows.slice(0, 6).join('') + '</ul><details class="seo2-more" data-seo-more="' + key + '"' + (more[key] ? ' open' : '') + '>' +
+      '<summary><span class="seo2-more-show">Show ' + (rows.length - 6) + ' more ' + esc(noun) + '</span><span class="seo2-more-hide">Show fewer</span></summary>' +
+      '<ul class="seo2-rows">' + rows.slice(6).join('') + '</ul></details>';
+  }
+  /* "Show N more" is a <details>: whether it is open is kept here, so a redraw (a tick, a save) does not fold it again */
+  function wireRich(root) {
+    root.addEventListener('toggle', function (e) {
+      var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-more');
+      if (k) (ST.more || (ST.more = {}))[k] = e.target.open;
+    }, true);
+  }
+
   function schemaHtml() {
-    var d = ST.data, F = ST.F, a = d.auto, ev = ST.ctx.EV;
-    var exact = a.dates.exact;
-    var basic = '<div class="seo-switch">' + toggle('seo-basicSchema', exact && F.basicSchema, 'Give search engines the event’s details', exact ? '' : ' disabled aria-describedby="seo-basic-why"') +
-      (exact ? '' : '<p class="hint" id="seo-basic-why">Not while the date is to be announced: search engines list an event by its exact date. Set the dates in ' + linkTo('content/basics', 'Basics') + '.</p>') + '</div>';
-    var modeSel = '<select class="inp" id="seo-attendanceMode" data-seo-field="attendanceMode" aria-label="Attendance mode">' +
+    var d = ST.data, F = ST.F, a = d.auto, M = ST.ctx.seo;
+    var exact = a.dates.exact, on = exact && F.basicSchema;
+    var sw = '<div class="seo2-switch">' + toggle('seo-basicSchema', on, 'Give search engines the event’s details', exact ? '' : ' disabled aria-describedby="seo-basic-why"') +
+      (exact ? '' : richNote('Not while the date is to be announced: search engines list an event by its exact date. Set the dates in ' + linkTo('content/basics', 'Basics') + '.', 'seo-basic-why')) + '</div>';
+
+    /* filled in for the team: from Basics, the place list and the event's portal */
+    var faint = function (t) { return '<span class="seo2-faint">' + esc(t) + '</span>'; };
+    var place = a.place ? esc(a.place.label) : a.city ? esc(a.city) + ' ' + faint('· its state and country are not known') : faint('No city yet');
+    var org = esc(a.organizer.name) + (a.organizer.url ? ' ' + faint(a.organizer.url.replace(/^https?:\/\//, '').replace(/\/+$/, '')) : '') + (a.organizer.portal ? '' : ' ' + faint('· no portal yet'));
+    var logo = a.logo ? '<span class="seo2-logo">' + (M && M.imgTag ? M.imgTag(a.logo.url) : '') + '</span><span>The ' + esc(a.logo.from) + '</span>' : faint('None yet');
+    var facts = '<dl class="seo2-facts">' +
+      '<dt>Dates</dt><dd>' + esc(a.dates.label || 'To be announced') + '</dd>' +
+      '<dt>Venue</dt><dd>' + (a.venue ? esc(a.venue) : faint('None yet')) + '</dd>' +
+      '<dt>City</dt><dd>' + place + '</dd>' +
+      '<dt>Organiser</dt><dd>' + org + '</dd>' +
+      '<dt>Logo</dt><dd class="seo2-logo-dd">' + logo + '</dd></dl>' +
+      richNote('Filled in from Basics and the event’s portal. ' + linkTo('content/basics', 'Change them in Basics'));
+
+    /* the few the team may add */
+    var text = richField('schemaTitle', 'Event name', { placeholder: a.title, empty: 'Left empty, the event’s name is used.' }) +
+      richField('schemaDescription', 'Event description', { area: true, placeholder: 'Two or three sentences for an event listing.', empty: 'Left empty, the description in Google is used.' });
+    var pv = ST.prev && ST.prev.sameVenue && ST.prev.previous && ST.prev.previous.seo.streetAddress && ST.prev.previous.seo.streetAddress !== F.streetAddress ? ST.prev.previous.seo : null;
+    var mode = '<select class="inp" id="seo-attendanceMode" data-seo-field="attendanceMode">' +
       [['', 'Automatic: ' + (a.attendanceAuto === 'offline' ? 'in person (it has a venue)' : 'not said (no venue yet)')], ['offline', 'In person'], ['online', 'Online'], ['mixed', 'In person and online']].map(function (o) {
         return '<option value="' + o[0] + '"' + (F.attendanceMode === o[0] ? ' selected' : '') + '>' + esc(o[1]) + '</option>';
       }).join('') + '</select>';
-    var prevAddr = ST.prev && ST.prev.sameVenue && ST.prev.previous && ST.prev.previous.seo.streetAddress && ST.prev.previous.seo.streetAddress !== F.streetAddress
-      ? '<p class="hint">The previous edition at this venue gave “' + esc(ST.prev.previous.seo.streetAddress) + (ST.prev.previous.seo.postalCode ? ', ' + esc(ST.prev.previous.seo.postalCode) : '') + '”. <button class="btn btn-ghost btn-sm" type="button" data-seo="use-prev-address">Use it</button></p>' : '';
-    var logo = a.logo ? '<span class="seo-logo">' + (ST.ctx.seo && ST.ctx.seo.imgTag ? ST.ctx.seo.imgTag(a.logo.url) : '') + '</span> <span class="seo-n">The ' + esc(a.logo.from) + ', given with the event’s pictures</span>' : '<span class="seo-none">None: give the event a logo in ' + linkTo('content/basics', 'Basics') + '</span>';
-    var place = a.place ? esc(a.place.label) : '<span class="seo-none">' + (a.city ? '“' + esc(a.city) + '” is not in the place list: it is given as typed' : 'No city in Basics') + '</span>';
-    return ST.ctx.panel('3 · Event schema', 'The event’s details search engines show with the result', basic +
-      '<div class="frow' + (exact && F.basicSchema ? '' : ' seo-off') + '">' +
-      fieldText('schemaTitle', 'Schema title', { hint: 'The event’s name as search engines list it as an event. Without one, the event’s name.', placeholder: a.title }) +
-      fieldText('schemaDescription', 'Schema description', { area: true, hint: 'Two or three sentences for an event listing. Without one, the meta description.' }) +
-      '</div><div class="seo-rows' + (exact && F.basicSchema ? '' : ' seo-off') + '">' +
-      row('Starts and ends', esc(a.dates.label || 'To be announced') + ' · ' + linkTo('content/basics', 'Change in Basics'), from('basics', 'Basics')) +
-      row('Attendance mode', modeSel, F.attendanceMode ? from('team', 'Team') : from('auto', 'Auto')) +
-      row('Venue', (a.venue ? esc(a.venue) : '<span class="seo-none">None</span>') + ' · ' + linkTo('content/basics', 'Change in Basics'), from('basics', 'Basics')) +
-      row('Street address', '<input class="inp" id="seo-streetAddress" data-seo-field="streetAddress" maxlength="200" value="' + esc(F.streetAddress) + '" placeholder="e.g. National Highway 8, Ambience Island, DLF Phase 3" aria-label="Street address">' + prevAddr, F.streetAddress ? from('team', 'Team') : from('none', 'Not set')) +
-      row('City, state, country', place, from('auto', 'Auto'), '<p class="hint">From Basics’ city, through the place list.</p>') +
-      row('Postcode', '<input class="inp seo-short" id="seo-postalCode" data-seo-field="postalCode" maxlength="12" inputmode="text" value="' + esc(F.postalCode) + '" placeholder="e.g. 122010" aria-label="Postcode">', F.postalCode ? from('team', 'Team') : from('none', 'Not set')) +
-      row('Latitude and longitude', '<span class="seo-inline"><input class="inp seo-short" id="seo-latitude" data-seo-field="latitude" inputmode="decimal" value="' + (F.latitude == null ? '' : esc(String(F.latitude))) + '" placeholder="28.5022" aria-label="Latitude">' +
-        '<input class="inp seo-short" id="seo-longitude" data-seo-field="longitude" inputmode="decimal" value="' + (F.longitude == null ? '' : esc(String(F.longitude))) + '" placeholder="77.0969" aria-label="Longitude"></span>' +
-        '<p class="hint">Optional. Both, or neither.</p>', F.latitude != null ? from('team', 'Team') : from('auto', 'Optional')) +
-      row('Organiser', esc(a.organizer.name) + (a.organizer.url ? ' · <span class="num">' + esc(a.organizer.url.replace(/^https?:\/\//, '')) + '</span>' : ''), from('auto', 'Auto'), '<p class="hint">The event’s portal and its home address' + (a.organizer.portal ? '' : ' (no portal yet: set one in Basics)') + '.</p>') +
-      row('Logo', logo, from('auto', 'Auto')) +
-      '</div>');
+    var where = '<div class="field c8"><label for="seo-streetAddress">Street address</label>' +
+        '<input class="inp" id="seo-streetAddress" data-seo-field="streetAddress" maxlength="200" value="' + esc(F.streetAddress) + '" placeholder="e.g. National Highway 8, Ambience Island, DLF Phase 3">' +
+        (pv ? richNote('The previous edition at this venue gave “' + esc(pv.streetAddress) + (pv.postalCode ? ', ' + esc(pv.postalCode) : '') + '”. ' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-seo="use-prev-address">Use it</button>') : '') + '</div>' +
+      '<div class="field c4"><label for="seo-postalCode">Postcode</label>' +
+        '<input class="inp" id="seo-postalCode" data-seo-field="postalCode" maxlength="12" inputmode="text" value="' + esc(F.postalCode) + '" placeholder="e.g. 122010"></div>' +
+      '<div class="field c6"><label for="seo-attendanceMode">How people attend</label>' + mode + '</div>' +
+      '<div class="field c6"><span class="flabel" id="seo-geo-label">Latitude and longitude</span><div class="seo2-pair">' +
+        '<div><input class="inp" id="seo-latitude" data-seo-field="latitude" inputmode="decimal" value="' + (F.latitude == null ? '' : esc(String(F.latitude))) + '" placeholder="28.5022" aria-label="Latitude" aria-describedby="seo-geo-hint"></div>' +
+        '<div><input class="inp" id="seo-longitude" data-seo-field="longitude" inputmode="decimal" value="' + (F.longitude == null ? '' : esc(String(F.longitude))) + '" placeholder="77.0969" aria-label="Longitude" aria-describedby="seo-geo-hint"></div>' +
+        '</div>' + richNote('Optional: both or neither, to put the venue on a map.', 'seo-geo-hint') + '</div>';
+
+    return ST.ctx.panel('Event details for search engines', '', '<div class="seo2-rich">' + sw +
+      '<div class="seo2-body' + (on ? '' : ' seo2-off') + '"><div class="seo2-group">' + facts + '</div>' +
+      '<div class="seo2-group frow">' + text + '</div><div class="seo2-group frow">' + where + '</div></div></div>');
   }
 
   function richHtml() {
-    var d = ST.data, F = ST.F, ctx = ST.ctx, adv = F.advancedSchema;
-    var sp = d.speakers.length ? '<ul class="seo-list">' + d.speakers.map(function (s) {
-      var on = F.speakersOff.indexOf(s.id) === -1, id = 'seo-sp-' + s.id;
-      var tag = !s.confirmed ? '<span class="badge b-mute">Not confirmed: not on the site</span>' : s.shown ? '<span class="badge b-ok">On the site</span>' : '<span class="badge b-warn">Not on the site</span>';
-      return '<li><input type="checkbox" id="' + id + '" data-seo-sp="' + esc(s.id) + '"' + (on && s.confirmed ? ' checked' : '') + (s.confirmed ? '' : ' disabled') + '>' +
-        '<label for="' + id + '"><b>' + esc(s.name || 'No name') + '</b><span>' + esc([s.role, s.company].filter(Boolean).join(' · ')) + '</span></label>' + tag + '</li>';
-    }).join('') + '</ul>' : '<p class="seo-none">No speakers in ' + linkTo('content/speakers', 'Content › Speakers') + ' yet.</p>';
-    var fq = d.faqs.length ? '<ul class="seo-list">' + d.faqs.map(function (f) {
+    var d = ST.data, F = ST.F, adv = F.advancedSchema, n;
+    var sp = d.speakers.map(function (s) {
+      var on = F.speakersOff.indexOf(s.id) === -1, id = 'seo-sp-' + s.id, who = [s.role, s.company].filter(Boolean).join(' · ');
+      return richRow('<input type="checkbox" id="' + id + '" data-seo-sp="' + esc(s.id) + '"' + (on && s.confirmed ? ' checked' : '') + (s.confirmed ? '' : ' disabled') + '>' +
+        '<label for="' + id + '"><b>' + esc(s.name || 'No name') + '</b>' + (who ? '<span>' + esc(who) + '</span>' : '') + '</label>',
+        !s.confirmed ? 'Not confirmed' : s.shown ? 'On the site' : 'Not on the site');
+    });
+    var fq = d.faqs.map(function (f) {
       var on = F.faqsOff.indexOf(f.id) === -1, id = 'seo-fq-' + f.id;
-      var tag = !f.answer ? '<span class="badge b-mute">No answer</span>' : f.shown ? '<span class="badge b-ok">On the site</span>' : '<span class="badge b-warn">Not on the site</span>';
-      return '<li><input type="checkbox" id="' + id + '" data-seo-fq="' + esc(f.id) + '"' + (on ? ' checked' : '') + '>' +
-        '<label for="' + id + '"><b>' + esc(f.question) + '</b><span>' + esc(f.answer.slice(0, 140)) + (f.answer.length > 140 ? '…' : '') + '</span></label>' + tag + '</li>';
-    }).join('') + '</ul>'
-      : '<div class="seo-empty"><p class="seo-none">No FAQs in ' + linkTo('content/faq', 'Content › FAQ') + ' yet.</p>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-seo="faq-draft"' + (ST.aiBusy ? ' disabled' : '') + '>' + svg(ctx.IC.star, 13) + ' Draft FAQs with ETB2B AI</button>' +
-        '<p class="hint">ETB2B AI drafts five or six from the event’s real details and adds them to Content › FAQ, for you to check there. Nothing it does not know is guessed.</p></div>';
-    var ts = F.testimonials.length ? '<ul class="seo-tlist">' + F.testimonials.map(function (t, i) {
-      var shown = d.testimonials[t.id], id = 'seo-tm-' + t.id;
-      var tag = t.off ? '<span class="badge b-mute">Left out</span>' : !shown ? '<span class="badge b-mute">Shown after saving</span>' : shown.shown ? '<span class="badge b-ok">On the site</span>' : '<span class="badge b-warn">Not on the site</span>';
-      return '<li class="seo-t"><div class="seo-t-top"><input type="checkbox" id="' + id + '" data-seo-tm-on="' + i + '"' + (t.off ? '' : ' checked') + ' aria-label="Include ' + esc(t.name) + '’s testimonial">' +
-        '<label for="' + id + '"><b>' + esc(t.name) + '</b><span>' + esc([t.role, t.company].filter(Boolean).join(', ')) + '</span></label>' + stars(t.rating) + '</div>' +
-        (t.title ? '<p class="seo-t-title">' + esc(t.title) + '</p>' : '') + '<p class="seo-t-text">' + esc(t.text) + '</p>' +
-        '<div class="seo-t-foot">' + (t.from === 'previous' ? from('content', 'From the previous edition') : from('team', 'Team')) + tag + '<span class="seo-sp"></span>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-seo-tm-edit="' + i + '">Edit</button><button class="btn btn-ghost btn-sm" type="button" data-seo-tm-x="' + i + '">Remove</button></div></li>';
-    }).join('') + '</ul>' : '<p class="seo-none">No testimonials yet.</p>';
-    var rating = ratingNow();
+      return richRow('<input type="checkbox" id="' + id + '" data-seo-fq="' + esc(f.id) + '"' + (on ? ' checked' : '') + '>' +
+        '<label for="' + id + '"><b>' + esc(f.question) + '</b>' + (f.answer ? '<span class="seo2-clip">' + esc(f.answer.slice(0, 160)) + '</span>' : '') + '</label>',
+        !f.answer ? 'No answer' : f.shown ? 'On the site' : 'Not on the site');
+    });
+    var ts = F.testimonials.map(function (t, i) {
+      var shown = d.testimonials[t.id], id = 'seo-tm-' + t.id, who = [t.role, t.company].filter(Boolean).join(', ');
+      var state = t.off ? 'Left out' : !shown ? 'Not saved yet' : shown.shown ? 'On the site' : 'Not on the site';
+      return '<li class="seo2-row seo2-trow"><input type="checkbox" id="' + id + '" data-seo-tm-on="' + i + '"' + (t.off ? '' : ' checked') + ' aria-label="Include ' + esc(t.name) + '’s testimonial">' +
+        '<div class="seo2-tmain"><div class="seo2-twho"><label for="' + id + '"><b>' + esc(t.name) + '</b>' + (who ? '<span>' + esc(who) + '</span>' : '') + '</label>' + (t.rating ? stars(t.rating) : '') + '</div>' +
+          '<p class="seo2-quote">' + (t.title ? '<b>' + esc(t.title) + '</b> ' : '') + esc(t.text) + '</p>' +
+          '<p class="seo2-meta">' + esc((t.from === 'previous' ? 'From the previous edition · ' : '') + state) + '</p></div>' +
+        '<span class="seo2-tacts"><button class="btn btn-ghost btn-sm" type="button" data-seo-tm-edit="' + i + '" aria-label="Edit ' + esc(t.name) + '’s testimonial">Edit</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-seo-tm-x="' + i + '" aria-label="Remove ' + esc(t.name) + '’s testimonial">Remove</button></span></li>';
+    });
+    /* left out because the site does not show them (search engines require what they are given to be on the page) */
     var notShownT = F.testimonials.filter(function (t) { return !t.off && d.testimonials[t.id] && !d.testimonials[t.id].shown; }).length;
     var notShownF = d.faqs.filter(function (f) { return f.counts && !f.shown && F.faqsOff.indexOf(f.id) === -1; }).length;
-    return ctx.panel('4 · Rich results', 'Speakers, FAQs and reviews in search results', '<div class="seo-switch">' + toggle('seo-advancedSchema', adv, 'Give search engines the speakers, FAQs and reviews') +
-      '<p class="hint">Only what the site itself shows is given: search engines require it to be visible on the page.</p></div>' +
-      '<div class="' + (adv ? '' : 'seo-off') + '">' +
-      '<div class="seo-sub"><div class="flabel-row"><span class="flabel">Speakers</span>' + from('content', 'Content') + '<span class="seo-sp"></span>' + linkTo('content/speakers', 'Edit in Content › Speakers') + '</div>' + sp + '</div>' +
-      '<div class="seo-sub"><div class="flabel-row"><span class="flabel">FAQs</span>' + from('content', 'Content') + '<span class="seo-sp"></span>' + linkTo('content/faq', 'Edit in Content › FAQ') + '</div>' + fq +
-        (notShownF ? '<p class="hint seo-warn">' + notShownF + (notShownF === 1 ? ' FAQ is' : ' FAQs are') + ' not shown on the site, so ' + (notShownF === 1 ? 'it is' : 'they are') + ' left out: add an FAQ section in the site editor to show them.</p>' : '') + '</div>' +
-      '<div class="seo-sub"><div class="flabel-row"><span class="flabel">Testimonials</span>' + from('team', 'Team') + '<span class="seo-sp"></span>' +
-        '<button class="btn btn-secondary btn-sm" type="button" data-seo="tm-add"' + (F.testimonials.length >= 30 ? ' disabled' : '') + '>Add a testimonial</button>' +
-        '<button class="btn btn-ghost btn-sm" type="button" data-seo="prev-tm">Bring in from the previous edition</button></div>' + ts +
-        '<p class="hint">What people who were there said, in their own words: typed by the team or brought in from ETB2B’s list for the previous edition — never written by AI.</p>' +
-        (notShownT ? '<p class="hint seo-warn">' + notShownT + (notShownT === 1 ? ' testimonial is' : ' testimonials are') + ' not shown on the site, so ' + (notShownT === 1 ? 'it is' : 'they are') + ' left out: add a testimonials section in the editor to show them.</p>' : '') + '</div>' +
-      '<div class="seo-rows">' +
-      row('Rating', rating.text, from('auto', 'Auto'), '<p class="hint">Worked out from the ratings of the testimonials the site shows. Never typed, never written by AI.</p>') +
-      row('Passes and prices', '<span class="seo-none">Not included.</span> <span class="seo-n">Search engines need prices to be shown on the page, and this site shows no passes yet.</span>', from('none', 'Not included')) +
-      '</div></div>');
+    function leftOut(n, one, many, section) {
+      return richNote(n + ' ' + (n === 1 ? one + ' is' : many + ' are') + ' not shown on the site, so ' + (n === 1 ? 'it is' : 'they are') + ' left out. Add ' + section + ' in the ' +
+        linkTo('design/editor', 'site editor') + ' to show ' + (n === 1 ? 'it' : 'them') + '.', '', true);
+    }
+
+    var speakers = '<div class="seo2-group">' + richHead('Speakers', sp.length ? linkTo('content/speakers', 'Edit in Content › Speakers') : '') +
+      (sp.length ? richRows(sp, 'sp', 'speakers') : richNote('No speakers in ' + linkTo('content/speakers', 'Content › Speakers') + ' yet.')) + '</div>';
+    var faqs = '<div class="seo2-group">' + richHead('FAQs', fq.length ? linkTo('content/faq', 'Edit in Content › FAQ') : '') +
+      (fq.length ? richRows(fq, 'fq', 'FAQs') + (notShownF ? leftOut(notShownF, 'FAQ', 'FAQs', 'an FAQ section') : '')
+        : richNote('No FAQs in ' + linkTo('content/faq', 'Content › FAQ') + ' yet. ETB2B AI can draft five or six from the event’s details and add them there, for you to check.') +
+          '<div class="seo2-acts"><button class="btn btn-secondary btn-sm" type="button" data-seo="faq-draft"' + (ST.aiBusy ? ' disabled' : '') + '>' + svg(ST.ctx.IC.star, 13) + ' Draft FAQs with ETB2B AI</button></div>') + '</div>';
+    n = F.testimonials.length;
+    var tms = '<div class="seo2-group">' + richHead('Testimonials', '') +
+      (n ? '<ul class="seo2-rows">' + ts.join('') + '</ul>' : richNote('None yet. Add what people who were there said, in their own words, or bring them in from the previous edition.')) +
+      (notShownT ? leftOut(notShownT, 'testimonial', 'testimonials', 'a testimonials section') : '') +
+      '<div class="seo2-acts"><button class="btn btn-secondary btn-sm" type="button" data-seo="tm-add"' + (n >= 30 ? ' disabled aria-describedby="seo-tm-max"' : '') + '>Add a testimonial</button>' +
+        '<button class="btn btn-secondary btn-sm" type="button" data-seo="prev-tm"' + (ST.prevBusy ? ' disabled' : '') + '>' + (ST.prevBusy ? 'Reading the previous edition…' : 'Bring in from the previous edition') + '</button>' +
+        (n >= 30 ? '<span class="seo2-faint" id="seo-tm-max">30 is the most.</span>' : '') + '</div></div>';
+    var rating = '<div class="seo2-group"><dl class="seo2-facts"><dt>Rating</dt><dd>' + ratingNow().text + '</dd>' +
+      '<dt>Passes and prices</dt><dd><span class="seo2-faint">Not given</span></dd></dl>' +
+      richNote('The rating is worked out from the testimonials the site shows, never typed. Prices are left out until the site shows passes.') + '</div>';
+
+    return ST.ctx.panel('Speakers, FAQs and reviews in Google', '', '<div class="seo2-rich">' +
+      '<div class="seo2-switch">' + toggle('seo-advancedSchema', adv, 'Give search engines the speakers, FAQs and reviews', ' aria-describedby="seo-adv-why"') +
+        richNote('Only what the site itself shows is given.', 'seo-adv-why') + '</div>' +
+      '<div class="seo2-body' + (adv ? '' : ' seo2-off') + '">' + speakers + faqs + tms + rating + '</div></div>') + structuredHtml();
   }
   /* the rating as it would be given: the included testimonials whose words the site shows (as last saved), with a rating */
   function ratingNow() {
     var d = ST.data, list = ST.F.testimonials.filter(function (t) { return !t.off && t.rating && d.testimonials[t.id] && d.testimonials[t.id].shown; });
-    if (!list.length) return { text: '<span class="seo-none">None.</span> <span class="seo-n">No testimonial with a rating is shown on the site.</span>' };
+    if (!list.length) return { text: '<span class="seo2-faint">None yet: no testimonial with a rating is on the site</span>' };
     var sum = list.reduce(function (a, t) { return a + t.rating; }, 0), avg = Math.round(sum / list.length * 10) / 10;
-    return { text: '<b>' + avg + '</b> from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + ' ' + stars(Math.round(avg)) };
+    return { text: '<b>' + avg + '</b> ' + stars(Math.round(avg)) + ' <span class="seo2-faint">from ' + list.length + (list.length === 1 ? ' rating' : ' ratings') + '</span>' };
+  }
+  /* what the next publish gives search engines, as they read it (the page's structured data), folded under the panels */
+  function structuredHtml() {
+    var s = ST.data.schema, list = [s.event, s.faq].filter(Boolean);
+    if (!list.length) return '<p class="seo2-ld seo2-hint">What search engines read: nothing yet.</p>';
+    return '<details class="seo2-ld"><summary>What search engines read <span>structured data</span></summary><pre>' + esc(JSON.stringify(list, null, 2)) + '</pre></details>';
   }
 
   function previewHtml() {
@@ -583,21 +657,22 @@
       bringInDialog(r, only);
     }, function (err) { ST.prevBusy = false; redraw(); ST.ctx.toastError(err, { what: 'The previous edition could not be read.' }); });
   }
-  function pickPrevious(only) {
+  /* again: opened from "Choose another previous edition" (the event has one on record already) */
+  function pickPrevious(only, again) {
     var ev = ST.ctx.EV, M = ST.ctx.seo;
     if (!ev.portal) { ST.ctx.toastError('Set the event’s portal in Basics first: a previous edition comes from that portal.'); return; }
-    var award = String(ev.category || '') === 'awards';
+    var award = String(ev.category || '') === 'awards', who = esc(ev.portalName || ev.portal), kind = award ? 'awards' : 'events';
     var m = M.openModal('<div class="modal-head"><h3>Choose the previous edition</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">This event has no previous edition on record. Choose it from ' + esc(ev.portalName || ev.portal) + '’s own ' + (award ? 'awards' : 'events') + ' on ETB2B.</p>' +
-      '<div id="seo-pick-list" class="seo-pick" aria-busy="true">Loading ' + esc(ev.portalName || ev.portal) + '’s events…</div></div>' +
-      '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button></div>', { style: 'width:min(620px,100%)' });
+      '<div class="modal-body"><p class="confirm-msg">' + (again ? 'Pick another of ' : 'No previous edition is on record for this event. Pick it from ') + who + '’s past ' + kind + ' on ETB2B.</p>' +
+      '<div id="seo-pick-list" class="seo2-pick" aria-busy="true"><p class="seo2-hint">Loading ' + who + '’s ' + kind + '…</p></div></div>' +
+      '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button></div>', { style: 'width:min(560px,100%)' });
     C.fetchEtEvents(ev.portal, award ? 'award' : '').then(function (r) {
       var list = (r.events || []).filter(function (e) { return e.past || !e.upcoming; });
       var host = $('seo-pick-list'); if (!host) return;
       host.removeAttribute('aria-busy');
-      host.innerHTML = list.length ? '<ul class="seo-list">' + list.slice(0, 60).map(function (e) {
-        return '<li><button class="btn btn-ghost seo-pick-btn" type="button" data-pick="' + esc(String(e.id)) + '"><b>' + esc(e.title) + '</b><span>' + esc(e.dateLabel || '') + '</span></button></li>';
-      }).join('') + '</ul>' : '<p class="seo-none">' + esc(ev.portalName || ev.portal) + ' has no past ' + (award ? 'awards' : 'events') + ' on ETB2B.</p>';
+      host.innerHTML = list.length ? '<ul class="seo2-pick-list">' + list.slice(0, 60).map(function (e) {
+        return '<li><button class="seo2-pick-btn" type="button" data-pick="' + esc(String(e.id)) + '"><b>' + esc(e.title) + '</b><span>' + esc(e.dateLabel || '') + '</span></button></li>';
+      }).join('') + '</ul>' : '<p class="seo2-hint">' + who + ' has no past ' + kind + ' on ETB2B.</p>';
       Array.prototype.forEach.call(host.querySelectorAll('[data-pick]'), function (b) {
         b.onclick = function () {
           var id = b.getAttribute('data-pick'), e = list.filter(function (x) { return String(x.id) === id; })[0];
@@ -616,7 +691,7 @@
         };
       });
     }, function (err) {
-      var host = $('seo-pick-list'); if (host) { host.removeAttribute('aria-busy'); host.innerHTML = '<p class="seo-none" role="alert">ETB2B’s list could not be read: ' + esc(errText(err)) + '</p>'; }
+      var host = $('seo-pick-list'); if (host) { host.removeAttribute('aria-busy'); host.innerHTML = '<p class="seo2-err" role="alert">ETB2B’s list could not be read: ' + esc(errText(err)) + '</p>'; }
     });
   }
   function bringInDialog(r, only) {
@@ -625,37 +700,44 @@
     F.testimonials.forEach(function (t) { if (t.prevId) have[t.prevId] = 1; });
     var newT = (p.testimonials || []).filter(function (t) { return !have[t.prevId]; });
     var addr = p.seo && p.seo.streetAddress;
-    var addrRow;
-    if (!addr) addrRow = '<li class="seo-bi-off">Street address and postcode: ETB2B has none for it.</li>';
-    else if (!r.sameVenue) addrRow = '<li class="seo-bi-off">Street address and postcode: not offered, because the previous edition was at ' + esc(r.venueThen || 'another venue') + (r.venueNow ? ' and this one is at ' + esc(r.venueNow) : '') + '.</li>';
+    /* what can be ticked, and (muted, one line each) what is not offered and why */
+    var rows = [], off = [];
+    if (!addr) off.push('Street address and postcode: ETB2B has none for it.');
+    else if (!r.sameVenue) off.push('Street address and postcode: not offered, as it was at ' + esc(r.venueThen || 'another venue') + (r.venueNow ? ' and this one is at ' + esc(r.venueNow) : '') + '.');
     else {
       var typed = F.streetAddress && F.streetAddress !== addr;
-      addrRow = '<li><input type="checkbox" id="seo-bi-addr"' + (typed || only === 'tm' ? '' : ' checked') + '><label for="seo-bi-addr"><b>Street address and postcode</b><span>' + esc(addr) + (p.seo.postalCode ? ', ' + esc(p.seo.postalCode) : '') +
-        (typed ? ' — replaces “' + esc(F.streetAddress) + '”' : '') + '</span></label></li>';
+      rows.push('<li class="seo2-row"><input type="checkbox" id="seo-bi-addr"' + (typed || only === 'tm' ? '' : ' checked') + '><label for="seo-bi-addr"><b>Street address and postcode</b><span>' + esc(addr) + (p.seo.postalCode ? ', ' + esc(p.seo.postalCode) : '') +
+        (typed ? ' — replaces “' + esc(F.streetAddress) + '”' : '') + '</span></label></li>');
     }
-    var tRow = newT.length ? '<li><input type="checkbox" id="seo-bi-tm"' + (only === 'addr' ? '' : ' checked') + '><label for="seo-bi-tm"><b>' + newT.length + (newT.length === 1 ? ' testimonial' : ' testimonials') + '</b><span>' +
-      esc(newT.map(function (t) { return t.name + (t.rating ? ' (' + t.rating + '★)' : ''); }).join(', ')) + ' — as they wrote them, marked as from the previous edition</span></label></li>'
-      : '<li class="seo-bi-off">Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ETB2B has none for it.') + '</li>';
-    var kwRow = p.seo && p.seo.keywords && p.seo.keywords.length ? '<li class="seo-bi-off">Keywords (' + p.seo.keywords.length + '): kept as a reference for ETB2B AI, which writes this edition’s own.</li>' : '';
+    if (newT.length) {
+      rows.push('<li class="seo2-row"><input type="checkbox" id="seo-bi-tm"' + (only === 'addr' ? '' : ' checked') + '><label for="seo-bi-tm"><b>' + newT.length + (newT.length === 1 ? ' testimonial' : ' testimonials') + '</b><span>' +
+        esc(newT.map(function (t) { return t.name + (t.rating ? ' (' + t.rating + '★)' : ''); }).join(', ')) + ' — as they wrote them</span></label></li>');
+    } else off.push('Testimonials: ' + ((p.testimonials || []).length ? 'all of them are here already.' : 'ETB2B has none for it.'));
+    if (p.seo && p.seo.keywords && p.seo.keywords.length) off.push('Its ' + p.seo.keywords.length + ' search words: kept as a reference for ETB2B AI, which writes this edition’s own.');
     var m = M.openModal('<div class="modal-head"><h3>Bring in from ' + esc(p.name || 'the previous edition') + '</h3>' + M.closeBtn() + '</div>' +
-      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s own record of the previous edition' + (p.link ? ' (<a href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing is changed until you save.</p>' +
-      '<ul class="seo-list seo-bi">' + addrRow + tRow + kwRow + '</ul>' +
-      '<p class="hint"><button class="btn btn-ghost btn-sm" type="button" id="seo-bi-other">Choose another previous edition</button></p></div>' +
-      '<div class="modal-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button><span style="flex:1"></span><button class="btn btn-primary" type="button" id="seo-bi-go">Bring them in</button></div>',
-      { style: 'width:min(620px,100%)', initialFocus: '#seo-bi-go' });
-    $('seo-bi-other').onclick = function () { m.close(); pickPrevious(only); };
-    $('seo-bi-go').onclick = function () {
+      '<div class="modal-body"><p class="confirm-msg">From ETB2B’s record of the previous edition' + (p.link ? ' (<a href="' + esc(p.link) + '" target="_blank" rel="noopener">its site</a>)' : '') + '. Nothing changes until you save.</p>' +
+      (rows.length ? '<ul class="seo2-rows seo2-bi">' + rows.join('') + '</ul>' : '') +
+      (off.length ? '<ul class="seo2-bi-off">' + off.map(function (x) { return '<li>' + x + '</li>'; }).join('') + '</ul>' : '') +
+      '<p class="seo2-bi-other"><button class="btn btn-ghost btn-sm" type="button" id="seo-bi-other">Choose another previous edition</button></p></div>' +
+      '<div class="modal-foot">' + (rows.length ? '<button class="btn btn-secondary" type="button" data-close>Cancel</button><button class="btn btn-primary" type="button" id="seo-bi-go">Bring them in</button>'
+        : '<button class="btn btn-secondary" type="button" data-close>Close</button>') + '</div>',
+      { style: 'width:min(560px,100%)', initialFocus: rows.length ? '#seo-bi-go' : '.modal-foot [data-close]' });
+    $('seo-bi-other').onclick = function () { m.close(); pickPrevious(only, true); };
+    var go = $('seo-bi-go');
+    if (go) go.onclick = function () {
       var a = $('seo-bi-addr'), t = $('seo-bi-tm'), n = 0;
       if (a && a.checked) { F.streetAddress = addr; if (p.seo.postalCode) F.postalCode = p.seo.postalCode; n++; }
       if (t && t.checked) {
-        newT.slice(0, Math.max(0, 30 - F.testimonials.length)).forEach(function (x) {
+        var room = newT.slice(0, Math.max(0, 30 - F.testimonials.length));
+        room.forEach(function (x) {
           F.testimonials.push({ id: uid(), name: x.name, role: x.role, company: x.company, title: x.title, text: x.text, rating: x.rating, photoUrl: x.photoUrl, from: 'previous', prevId: x.prevId });
         });
-        n++;
+        if (room.length) n++;
       }
       m.close();
       redraw();
       if (n) ST.ctx.toast('Brought in. Save changes to keep them.');
+      else if (t && t.checked) ST.ctx.toast('Nothing was brought in: there are 30 testimonials already, the most there can be.');
     };
   }
 
@@ -665,23 +747,23 @@
     var photo = t.photoUrl;
     var opts = '<option value="">No rating</option>' + [5, 4, 3, 2, 1].map(function (n) { return '<option value="' + n + '"' + (t.rating === n ? ' selected' : '') + '>' + n + (n === 1 ? ' star' : ' stars') + '</option>'; }).join('');
     function typed() { return JSON.stringify(['tm-name', 'tm-role', 'tm-company', 'tm-title', 'tm-text', 'tm-rating'].map(function (x) { return ($(x) || {}).value; }).concat([photo])); }
-    var pristine = '';
+    var pristine = '', req = ' <span class="seo2-req">(required)</span>';
     var m = M.openModal('<div class="modal-head"><h3>' + (editing ? 'Edit the testimonial' : 'Add a testimonial') + '</h3>' + M.closeBtn() + '</div>' +
-      '<form class="modal-form" novalidate><div class="modal-body"><div class="frow">' +
-      '<div class="field c6"><label for="tm-name">Name <span class="pill-req">Required</span></label><input class="inp" id="tm-name" maxlength="120" value="' + esc(t.name) + '"></div>' +
+      '<form class="modal-form" novalidate><div class="modal-body seo2-tm"><div class="frow">' +
+      '<div class="field c6"><label for="tm-name">Name' + req + '</label><input class="inp" id="tm-name" maxlength="120" value="' + esc(t.name) + '"></div>' +
       '<div class="field c6"><label for="tm-role">Role</label><input class="inp" id="tm-role" maxlength="120" value="' + esc(t.role) + '" placeholder="e.g. CHRO"></div>' +
       '<div class="field c6"><label for="tm-company">Company</label><input class="inp" id="tm-company" maxlength="120" value="' + esc(t.company) + '"></div>' +
       '<div class="field c6"><label for="tm-rating">Rating</label><select class="inp" id="tm-rating">' + opts + '</select></div>' +
-      '<div class="field c12"><label for="tm-title">Title</label><input class="inp" id="tm-title" maxlength="200" value="' + esc(t.title) + '" placeholder="e.g. A truly pleasant experience"></div>' +
-      '<div class="field c12"><label for="tm-text">What they said <span class="pill-req">Required</span></label><textarea class="inp" id="tm-text" maxlength="1500" style="min-height:110px">' + esc(t.text) + '</textarea>' +
-        '<p class="hint">In their own words, as they said or wrote it.</p></div>' +
-      '<div class="field c12"><span class="flabel">Photo</span><div class="logo-box ev-logo"><span class="lprev" id="tm-photo-prev">' + (M.imgTag(photo) || svg(ST.ctx.IC.image, 18)) + '</span>' +
-        '<span class="lt" id="tm-photo-state">' + (photo ? 'Their photo.' : 'Optional.') + '</span>' +
+      '<div class="field c12"><label for="tm-text">What they said' + req + '</label><textarea class="inp" id="tm-text" maxlength="1500" rows="4" aria-describedby="tm-text-hint">' + esc(t.text) + '</textarea>' +
+        '<p class="seo2-hint" id="tm-text-hint">In their own words, as they said or wrote it.</p></div>' +
+      '<div class="field c12"><label for="tm-title">Headline</label><input class="inp" id="tm-title" maxlength="200" value="' + esc(t.title) + '" placeholder="e.g. A truly pleasant experience"></div>' +
+      '<div class="field c12"><span class="flabel">Photo</span><div class="seo2-photo"><span class="seo2-photo-pic" id="tm-photo-prev">' + (M.imgTag(photo) || svg(ST.ctx.IC.image, 18)) + '</span>' +
+        '<span class="seo2-photo-state" id="tm-photo-state">' + (photo ? 'Their photo.' : 'Optional.') + '</span>' +
         '<button class="btn btn-secondary btn-sm" type="button" id="tm-photo-btn">' + (photo ? 'Replace' : 'Upload') + '</button>' +
         '<button class="btn btn-ghost btn-sm" type="button" id="tm-photo-x"' + (photo ? '' : ' hidden') + '>Remove</button></div></div>' +
       '</div></div><div class="modal-foot"><span class="modal-err" id="tm-err" role="alert"></span><button class="btn btn-secondary" type="button" data-close>Cancel</button>' +
-      '<button class="btn btn-primary" type="submit" id="tm-save">' + (editing ? 'Update' : 'Add to the list') + '</button></div></form>',
-      { style: 'width:min(620px,100%)', initialFocus: '#tm-name', isDirty: function () { return typed() !== pristine; }, onSubmit: done });
+      '<button class="btn btn-primary" type="submit" id="tm-save">' + (editing ? 'Update testimonial' : 'Add testimonial') + '</button></div></form>',
+      { style: 'width:min(600px,100%)', initialFocus: '#tm-name', isDirty: function () { return typed() !== pristine; }, onSubmit: done });
     pristine = typed();
     function showPhoto() {
       $('tm-photo-prev').innerHTML = M.imgTag(photo) || svg(ST.ctx.IC.image, 18);
@@ -754,6 +836,7 @@
       if (fq) { ST.F.faqsOff = ST.F.faqsOff.filter(function (x) { return x !== fq; }); if (!t.checked) ST.F.faqsOff.push(fq); paintLive(); }
       if (tm != null) { var row = ST.F.testimonials[+tm]; if (row) { if (t.checked) delete row.off; else row.off = true; } redraw(); }
     });
+    wireRich(root);
     function addKeyword() {
       var inp = $('seo-kw-in'), v = line(inp && inp.value);
       if (!v) return;
