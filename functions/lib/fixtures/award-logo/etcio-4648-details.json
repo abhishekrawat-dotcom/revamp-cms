@@ -1,0 +1,17 @@
+{
+ "status": true,
+ "status_code": 200,
+ "message": "success",
+ "data": {
+  "company_id": 4648,
+  "company_name": "ET Awards for Enterprise Tech Excellence 2026",
+  "award_id": 407,
+  "portal": "cio",
+  "event_start_date": "2026-11-27 08:00:00",
+  "event_venue": "Grand Hyatt, Mumbai",
+  "url_text": "enterprise-tech-award",
+  "branding_url": "https://cio.economictimes.indiatimes.com/enterprise-tech-award",
+  "logo_img": "https://img.etb2bimg.com/files/data_file_17870504901629_99094.jpg",
+  "template_settings": "{\"font_family\":\"Inter\",\"primary_font_size\":\"44\",\"secondary_font_size\":\"18\",\"paragraph_font_size\":\"16\",\"theme_font_size\":\"16\",\"body_bg_color\":\"rgba(250, 250, 247, 1)\",\"body_color\":\"rgba(10, 10, 10, 1)\",\"theme_line_height\":\"70\",\"header_bg_color\":\"rgba(184, 17, 43, 1)\",\"bg_img\":\"\",\"nav_bg_color\":\"rgba(31, 25, 27, 1)\",\"nav_text_color\":\"rgba(255, 255, 255, 1)\",\"nav_align\":\"Center\",\"nav_font_size\":\"14\",\"banner_hash_tag\":\"#ET_TECHAWARDS\",\"edition_txt\":\"3rd Edition\",\"edition_img\":\"\",\"default_lang\":\"\",\"banner_color\":\"rgba(0, 0, 0, 1)\",\"button_color\":\"rgba(255, 0, 0, 1)\",\"button_font\":\"rgba(0, 0, 0, 1)\",\"footer_color\":\"rgba(191, 255, 0, 1)\",\"button_links\":\"rgba(0, 0, 0, 1)\",\"heading_font_family\":\"Playfair Display\",\"heading_color\":\"rgba(0, 0, 0, 1)\",\"heading_camel_case\":\"initial\",\"heading_font_weight\":\"700\",\"heading_style\":\"3\",\"ct_title\":\"Express Your Interest\",\"ct_form_id\":\"\",\"default_form_id\":\"\",\"countdown_date\":\"2025-11-13 23:59\",\"social_link_status\":{\"FacebookLink\":\"true\",\"TwitterLink\":\"true\",\"WhatsAppLink\":\"true\",\"LinkedInLink\":\"true\"},\"featured_image\":\"\",\"is_overwrite_entity_id\":\"1\",\"microsite_entity_id\":\"d0dzWFdTNHpuL2Q2NWxvemFINzBJdz09\",\"countdown_classes\":\"\",\"activity_id\":1,\"socialShareWdgtType\":1}"
+ }
+}
