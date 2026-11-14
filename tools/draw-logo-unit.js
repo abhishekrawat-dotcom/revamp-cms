@@ -411,7 +411,7 @@ function apply(fb, hooks, logActivity, origin, p, opts) {
     return hooks.saveOwnerUnit(fb, p.id, unit, { heroNote: false, stamp: stamp }).then(function (done) {
       lines.push('design:          designPlan.design.logoUnit* = the drawn unit (source generated)' + (done.darkUrl ? ', logoUnitDark* = its copy for a dark ground' : '') +
         (done.heroUpdated ? '; generated hero swapped' : '; generated hero unchanged'));
-      return logActivity(fb, p.id, ACTOR, 'logo-changed', 'logo drawn (tools/draw-logo-unit.js): the event’s name drawn as its logo unit, with the official ET logo — no logo was uploaded and no previous edition’s page named one; put into the site’s design' +
+      return logActivity(fb, p.id, ACTOR, 'logo-changed', 'logo drawn (tools/draw-logo-unit.js): the event’s name drawn as its logo unit, with the official ETB2B logo — no logo was uploaded and no previous edition’s page named one; put into the site’s design' +
         (done.heroUpdated ? '; banner updated' : ''), { area: 'design' });
     });
   }).then(function () {
