@@ -126,6 +126,59 @@ check('5 NU-010 the greyed button stays greyed after a send that failed, and the
 check('5 NU-010 a refusal is said at the top of the dialog, and scrolled to', /'<div class="rvpf-body"><p class="rvpf-err" role="alert"><\/p>' \+ spec\.body/.test(FLOW) && /box\.querySelector\('\.rvpf-body'\)\.scrollTop = 0/.test(FLOW));
 check('5 NU-010 a refusal for what the check holds back shows its list', /if \(err && Array\.isArray\(err\.checks\) && err\.checks\.length\) repaint\(\{ items: err\.checks, found: true \}\);/.test(askFn));
 
+/* ---------- 6. NEW-7: Send is greyed out and says "Checking the site…" until the check's first answer ---------- */
+(function () {
+  function Btn(label, cls) {
+    this.textContent = label; this.className = cls; this.disabled = false; this.hidden = false; this.attrs = {};
+  }
+  Btn.prototype.setAttribute = function (k, v) { this.attrs[k] = String(v); };
+  Btn.prototype.getAttribute = function (k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; };
+  Btn.prototype.hasAttribute = function (k) { return Object.prototype.hasOwnProperty.call(this.attrs, k); };
+  Btn.prototype.removeAttribute = function (k) { delete this.attrs[k]; };
+  Btn.prototype.focus = function () {};
+  function dialogWith() {
+    var send = new Btn('Send for approval', 'btn btn-primary'), fix = new Btn('Put it right first', 'btn btn-primary'), why = new Btn('', '');
+    fix.hidden = true; why.hidden = true;
+    var box = { attrs: {}, getAttribute: function () { return null; },
+      querySelector: function (sel) { return sel === '[data-rvpf="send"]' ? send : sel === '[data-rvpf="fix-first"]' ? fix : sel === '.rvpf-why' ? why : null; } };
+    return { send: send, fix: fix, why: why, d: { box: box, on: function () {} } };
+  }
+  var timers = [];
+  var c3 = vm.createContext({ window: { RevampCore: {} }, console: console, location: { hash: '' },
+    document: { activeElement: null, body: { contains: function () { return true; } } },
+    setTimeout: function (fn, ms) { timers.push({ fn: fn, ms: ms }); return timers.length; }, clearTimeout: function (n) { if (timers[n - 1]) timers[n - 1].fn = null; } });
+  vm.runInContext(FLOW, c3, { filename: 'publish-flow.js' });
+  var gateSrc = FLOW.slice(FLOW.indexOf('  var CHECK_HOLD_MS'), FLOW.indexOf('  function ask(eventId'));
+  var gate = vm.runInContext('(function(){ var openFix = function(){ return true; };' + FLOW.slice(FLOW.indexOf('  function gateOf('), FLOW.indexOf('  /* the box the dialogs keep for it')) + gateSrc + ' return gateDialog; })()', c3);
+
+  var t = dialogWith(), apply = gate(t.d, 'send', false, {});
+  check('6 NEW-7 while the check runs, Send is greyed out and says what is happening', t.send.disabled === true && t.send.textContent === 'Checking the site…' && t.send.hasAttribute('data-rvpf-blocked'), t.send);
+  check('6 NEW-7 … a press then sends nothing: the send step refuses a held button, and busy() keeps it greyed', /if \(d\.box\.querySelector\('\[data-rvpf="send"\]\[data-rvpf-blocked\]'\)\) return;/.test(askFn) && /b\.disabled = busy \|\| b\.hasAttribute\('data-rvpf-blocked'\)/.test(FLOW));
+  apply({ found: true, items: [R.items[1]] });
+  check('6 NEW-7 the check answers with advice only: Send, red and pressable, with its own words', t.send.disabled === false && t.send.textContent === 'Send for approval' && t.send.className === 'btn btn-primary' && !t.send.hasAttribute('data-rvpf-blocked') && t.fix.hidden, t.send);
+  apply({ found: true, pending: 2, items: [R.items[1]] });
+  check('6 NEW-7 later answers (links on other sites) never hold it again', t.send.disabled === false && t.send.textContent === 'Send for approval');
+
+  t = dialogWith(); apply = gate(t.d, 'send', false, {});
+  apply(BLOCKED);
+  check('6 NEW-7 the check answers with a block: Send stays greyed (its own words back), "Put it right first" shows', t.send.disabled === true && t.send.textContent === 'Send for approval' && t.send.className === 'btn btn-secondary' && !t.fix.hidden && !t.why.hidden, { send: t.send, fix: t.fix.hidden });
+
+  t = dialogWith(); apply = gate(t.d, 'send', false, {});
+  apply(null);
+  check('6 NEW-7 a check that could not be read holds nothing back', t.send.disabled === false && t.send.textContent === 'Send for approval');
+
+  t = dialogWith(); timers = [];
+  apply = gate(t.d, 'send', false, {});
+  var hold = timers.filter(function (x) { return x.ms === 15000; })[0];
+  check('6 NEW-7 a check that never answers holds Send back for 15 seconds at most', !!hold && t.send.disabled === true, timers.map(function (x) { return x.ms; }));
+  hold.fn();
+  check('6 NEW-7 … then Send comes back (the server checks again as it is sent)', t.send.disabled === false && t.send.textContent === 'Send for approval');
+  apply(BLOCKED);
+  check('6 NEW-7 … and an answer that comes later still holds it back', t.send.disabled === true && !t.fix.hidden);
+  check('6 NEW-7 the publish dialog (approval switched off) is held the same way', /gateDialog\(d, 'publish', true, opts\)/.test(directFn) && /holdWhileChecking\(d\.box\.querySelector\('\[data-rvpf="' \+ key \+ '"\]'\)\)/.test(gateSrc));
+  check('6 NEW-7 ES5 only', !/=>|\blet\s|\bconst\s|`/.test(gateSrc));
+})();
+
 function finish() {
   if (failed) { console.error('publish-check: ' + failed + ' of ' + (failed + passed) + ' checks FAILED'); process.exit(1); }
   console.log('publish-check: all ' + passed + ' checks passed');

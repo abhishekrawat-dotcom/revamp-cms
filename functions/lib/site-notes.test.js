@@ -43,7 +43,20 @@ var BWS = {
 /* ---------- UX-066 / UX-067: the tabs ---------- */
 var n = SN.forTab('sponsors', null, { total: 0, shown: 0 });
 check('nothing is said about a site that is not known yet', !n.hidden && !n.none && !n.previous, n);
-check('nothing is said about a site never saved', (function () { var x = SN.forTab('faq', { of: 'none', places: BWS.places, previous: [] }, { total: 0 }); return !x.hidden && !x.none && !x.previous; })());
+/* NU-004c (the first-time-user follow-ups, 14 Nov 2026): an AI-designed site before its first save said only "None on the
+   site yet — To do". A site never saved (site-outline's of 'none') now says so on every tab, with the one step. */
+var NEVER = { of: 'none', places: BWS.places, previous: [], imported: false };
+var x = SN.forTab('faq', NEVER, { total: 0 });
+check('NU-004c a site never saved: the empty tab says nothing added is on it yet, and the step that puts it there',
+  x.none === 'Your site has not been saved yet, so questions added here are not on it. Open the site editor and press Save; what you add here then shows on the site.' &&
+  x.unsaved === true && !x.add && !x.hidden && !x.stands && !x.previous, x);
+x = SN.forTab('speakers', NEVER, { total: 2, shown: 1 });
+check('NU-004c … a tab with records: these are not on it; only confirmed speakers ever show',
+  x.none === 'Your site has not been saved yet, so these are not on it. Open the site editor and press Save; what you add here then shows on the site (confirmed speakers only).' && x.unsaved, x);
+check('NU-004c … every tab says it', ['speakers', 'agenda', 'sponsors', 'gallery', 'faq', 'contact'].every(function (t) { return /has not been saved yet/.test(SN.forTab(t, NEVER, { total: 0 }).none); }));
+x = SN.forTab('speakers', Object.assign({}, NEVER, { imported: true }), { total: 1, shown: 1 });
+check('NU-004c … an imported site still says it can never show them, and offers no step', /imported as one finished page, so it cannot show speakers added here/.test(x.none) && !x.unsaved, x);
+check('NU-004c … while the answer is loading or failed, still nothing is said', (function () { var y = SN.forTab('faq', null, { total: 0 }); return !y.none && !y.unsaved; })());
 
 n = SN.forTab('sponsors', BWS, { total: 0, shown: 0 });
 check('Sponsors, empty: the live site\'s section is hidden until a confirmed sponsor is added',
@@ -114,8 +127,28 @@ check('readiness: a section showing its own is a thing to do, never "hidden"',
 check('readiness: a hidden section is still said first', /“Jury” section is hidden until one is added/.test(SN.readiness('speakers', 0, CX).text), SN.readiness('speakers', 0, CX));
 
 /* ---------- the Dashboard's rows ---------- */
-check('readiness, site not known: as before', j(SN.readiness('speakers', 3, null)) === j({ ok: true, text: '3 speakers on the site' }) &&
-  j(SN.readiness('agenda', 0, null)) === j({ ok: false, text: 'None on the site yet' }));
+check('readiness, site not known: how many there are, never "on the site" (NEW-9)', j(SN.readiness('speakers', 3, null)) === j({ ok: true, text: '3 confirmed speakers' }) &&
+  j(SN.readiness('agenda', 1, null)) === j({ ok: true, text: '1 session' }) && j(SN.readiness('agenda', 0, null)) === j({ ok: false, text: 'None yet' }) &&
+  j(SN.readiness('sponsors', 0, null)) === j({ ok: false, text: 'None confirmed yet' }), [SN.readiness('speakers', 3, null), SN.readiness('agenda', 0, null)]);
+check('NU-004c readiness, site never saved: a thing to do, with the step — never a bare "None on the site yet"',
+  j(SN.readiness('speakers', 0, NEVER)) === j({ ok: false, text: 'None yet, and the site has not been saved: open the site editor and press Save' }) &&
+  j(SN.readiness('agenda', 2, NEVER)) === j({ ok: false, text: '2 sessions, not on the site yet: it has not been saved. Open the site editor and press Save' }),
+  [SN.readiness('speakers', 0, NEVER), SN.readiness('agenda', 2, NEVER)]);
+check('NU-004c the Dashboard\'s "Add a speaker" says the site is not saved yet, and the step',
+  SN.actionNote('speakers', NEVER) === 'Your site is not saved yet: open the site editor and press Save, then the speakers you add show on it' &&
+  SN.actionNote('speakers', NEVER, { award: true }) === 'Your site is not saved yet: open the site editor and press Save, then the jury members you add show on it', SN.actionNote('speakers', NEVER));
+
+/* NEW-9: "Order at a glance — 1 on site" stood beside "Your site has no section for sessions yet" */
+var NO_AGENDA = Object.assign({}, BWS, { previous: [], places: Object.assign({}, BWS.places, { sessions: [] }) });
+check('NEW-9 glance: no section that shows sessions: "Not on the site yet", never "1 on site"', j(SN.glance('agenda', NO_AGENDA, { total: 1 })) === j({ text: 'Not on the site yet', on: false }), SN.glance('agenda', NO_AGENDA, { total: 1 }));
+check('NEW-9 glance: a section that shows them: counted on site (confirmed only for speakers and sponsors)',
+  j(SN.glance('agenda', BWS, { total: 3 })) === j({ text: '3 on site', on: true }) && j(SN.glance('sponsors', BWS, { total: 3, shown: 1 })) === j({ text: '1 on site', on: true }) &&
+  j(SN.glance('agenda', BWS, { total: 1200 })) === j({ text: '1,200 on site', on: true }));
+check('NEW-9 glance: speakers on a site with no Speakers section, an unsaved site, an imported one',
+  SN.glance('speakers', BWS, { total: 2, shown: 2 }).text === 'Not on the site yet' && SN.glance('agenda', NEVER, { total: 2 }).text === 'Not on the site yet' &&
+  SN.glance('speakers', Object.assign({}, BWS, { imported: true }), { total: 2, shown: 2 }).text === 'Not on this site');
+check('NEW-9 glance: while the site is not known, how many there are and nothing about the site',
+  j(SN.glance('speakers', null, { total: 3, shown: 2 })) === j({ text: '2 confirmed', on: null }) && j(SN.glance('agenda', null, { total: 1 })) === j({ text: '1 session', on: null }));
 check('readiness: a hidden section is a thing to do, said', j(SN.readiness('sponsors', 0, BWS)) === j({ ok: false, text: 'None yet: the site’s “Sponsors” section is hidden until one is added' }), SN.readiness('sponsors', 0, BWS));
 check('readiness: no section for them: not a thing to get ready, and the previous edition\'s said', j(SN.readiness('speakers', 0, BWS)) === j({ ok: 'na', text: 'The site has no section for speakers; it shows 49 speakers from the previous edition' }), SN.readiness('speakers', 0, BWS));
 check('readiness: some added but no section shows them: a thing to do, with the step (NU-004)', j(SN.readiness('speakers', 1, BWS)) === j({ ok: false, text: '1 speaker, not on the site yet: open the site editor to add a “Speakers” section, then save' }), SN.readiness('speakers', 1, BWS));
@@ -205,9 +238,29 @@ check('UX-067: the previous edition\'s note opens the editor at that section', /
   check('no section for speakers and none added: the line says what to do first, and offers no editor link that would add nothing (NU-004)', /Add them here first: the next time the site editor opens, it adds a “Speakers” section for them/.test(none) && none.indexOf('<a ') === -1, none);
   var ready = box.siteCallout(SN.forTab('speakers', BWS, { total: 2, shown: 2 }), true);
   check('NU-004 speakers added with no section: the callout offers the one step, a button to the site editor', ready.indexOf('<a class="btn btn-secondary btn-sm sn-add" href="/custom_editor.html?event=e1">Open the site editor to add the “Speakers” section</a>') !== -1, ready);
+  var never = box.emptySiteLine(SN.forTab('speakers', NEVER, { total: 0, shown: 0 }));
+  check('NU-004c a site never saved: the empty tab says what to do, with a button to the site editor', /has not been saved yet, so speakers added here are not on it\. Open the site editor and press Save/.test(never) &&
+    never.indexOf('<a class="btn btn-secondary btn-sm sn-add" href="/custom_editor.html?event=e1">Open the site editor</a>') !== -1, never);
+  var neverCall = box.siteCallout(SN.forTab('agenda', NEVER, { total: 1 }), true);
+  check('NU-004c … and a tab with records says it above them, with the same button', /<strong>On your site<\/strong>/.test(neverCall) && /so these are not on it/.test(neverCall) && /href="\/custom_editor\.html\?event=e1">Open the site editor<\/a>/.test(neverCall), neverCall);
   var call = box.siteCallout(SN.forTab('speakers', CX, { total: 2, shown: 0 }), true);
   check('a tab with only invited speakers: the callout says the hidden section and the one that shows its own',
     call.indexOf('“Jury” section is hidden') !== -1 && call.indexOf('section=speakers">Open “Speakers” in the site editor</a>') !== -1, call);
+})();
+/* NEW-9: the "Order at a glance" count of Speakers, Agenda and Sponsors comes from SN.glance */
+(function () {
+  check('NEW-9 the three glance cards take their count and foot from glanceOf, never "N on site" by hand',
+    (userText.match(/glanceCard\('(spv|agv|ptv)', \w+\(\), gl\.count, gl\.foot\)/g) || []).length === 3 && !/' on site'/.test(userText) &&
+    /var gl = glanceOf\('speakers', /.test(userText) && /var gl = glanceOf\('agenda', /.test(userText) && /var gl = glanceOf\('sponsors', /.test(userText));
+  var a = page.indexOf('  function glanceOf('), b = page.indexOf('  function glanceCard(');
+  var box = { SN: SN, OUTLINE: NO_AGENDA, isAwardEvent: function () { return false; } };
+  vm.createContext(box);
+  vm.runInContext(page.slice(a, b), box);
+  var g = box.glanceOf('agenda', { total: 1 }, 'Sessions day by day');
+  check('NEW-9 an agenda with no section on the site: "Not on the site yet", in the order the site will list them', g.count === 'Not on the site yet' && g.foot === 'Sessions day by day, in the order the site will list them.', g);
+  box.OUTLINE = BWS;
+  g = box.glanceOf('agenda', { total: 1 }, 'Sessions day by day');
+  check('NEW-9 … with its section: "1 on site", in the order the site lists them', g.count === '1 on site' && g.foot === 'Sessions day by day, in the order the site lists them.', g);
 })();
 check('the site is read once the console is up, and handed to the Dashboard', /setTimeout\(loadOutline, 0\);/.test(page) && /C\.fetchSiteOutline\(id\)/.test(page) &&
   /CTX\.siteNotes = SN;/.test(page) && /CTX\.siteOutline = function\(\)\{ return OUTLINE; \};/.test(page));
@@ -239,7 +292,14 @@ function loadDash(opts) {
   x.siteNotes = SN;
   x.siteOutline = function () { return opts.outline; };
   if (opts.words) x.log = { detail: opts.words.detailText };
-  return { D: D, ctx: x };
+  var seen = { show: 0, recheck: 0, went: [] };
+  if (opts.check !== undefined) {
+    x.siteCheck = function () { return opts.check; };
+    x.showSiteCheck = function () { seen.show++; return opts.shown !== false; };
+    x.recheckSite = function () { seen.recheck++; };
+  }
+  x.go = function (r) { seen.went.push(r); };
+  return { D: D, ctx: x, seen: seen };
 }
 function text(html) { return html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' '); }
 (async function () {
@@ -252,7 +312,7 @@ function text(html) { return html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&'
     /Speakers The site has no section for speakers; it shows 49 speakers from the previous edition No section/.test(tv), tv);
   check('Dashboard: Agenda and Sponsors say their sections are hidden until one is added',
     /Agenda None yet: the site’s “Agenda” section is hidden until one is added To do/.test(tv) && /Sponsors None yet: the site’s “Sponsors” section is hidden until one is added To do/.test(tv), tv);
-  check('Dashboard: the ready count leaves out the row with no section', /Ready to publish \d of 5 ready/.test(tv), (tv.match(/Ready to publish .{0,20}/) || [])[0]);
+  check('Dashboard: the ready count leaves out the row with no section, and says so (NEW-11)', /Ready to publish \d of 5 ready · 1 with no section/.test(tv), (tv.match(/Ready to publish .{0,40}/) || [])[0]);
   check('NU-004 Dashboard: "Add a speaker" says the site has no section for them, and what adds one',
     /Add a speaker Your site has no Speakers section yet: add speakers, then open the site editor, which adds one/.test(tv) && !/The line-up drives registrations/.test(tv), tv);
   var d2 = loadDash({ ev: { id: 'x2', eventId: 'x2', name: 'X', site: { version: 1 } }, counts: { speakers: 0, agenda: 0, sponsors: 0 }, outline: null,
@@ -262,6 +322,47 @@ function text(html) { return html.replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&'
   var tv2 = text(d2.D.view(d2.ctx));
   check('NU-025 Recent activity says a field by its label, never its key', /› Template/.test(tv2.replace(/&rsaquo;/g, '›')) && !/templateId/.test(tv2), (tv2.match(/Recent activity.{0,200}/) || [])[0]);
   check('NU-004 … and while the site is not known, the quick action says what it always did', /Add a speaker The line-up drives registrations/.test(tv2));
+
+  /* ---------- NEW-11: the Site row of Ready to publish follows the check before going live ---------- */
+  var EV6 = { id: 'qa-n', eventId: 'qa-n', name: 'N', start: '2027-03-20T09:00', venue: 'V', city: 'Pune', category: 'ip', description: 'x'.repeat(200), portal: 'hr', portalName: 'ETHRWorld', site: { version: 3 } };
+  async function siteRowOf(check, ev, shown) {
+    var dd = loadDash({ ev: ev || EV6, counts: { speakers: 1, agenda: 0, sponsors: 0 }, outline: BWS, check: check, shown: shown });
+    dd.D.view(dd.ctx); dd.D.wire(dd.ctx);
+    await new Promise(function (r) { setTimeout(r, 30); });
+    var html = dd.D.view(dd.ctx);
+    var row = (html.match(/<button class="check-row dash-ready"[^>]*>(?:(?!<\/button>)[\s\S])*<\/button>/g) || []).filter(function (b) { return />Site</.test(b); })[0] || '';
+    return { d: dd, html: html, row: row, text: text(row).trim(), sub: (text(html).match(/Ready to publish (\d+ of \d+ ready[^A-Z]*)/) || [])[1] };
+  }
+  var r1 = await siteRowOf({ status: 'done', blocks: 2, looks: 1, live: false });
+  check('NEW-11 the check holds the site back: Site is a thing to do, with how many, and leads to the list — not "Ready"',
+    r1.text === 'Site 2 things to put right before it can go live: see the list at the top To do' && /data-site-check="1"/.test(r1.row) && !/data-goto="design\/editor"/.test(r1.row), r1.text);
+  /* the row opens the list; with no list to open, the site editor */
+  var clicked = null, root = { querySelector: function (sel) { return sel === '[data-site-check]' ? (clicked = clicked || {}) : null; } };
+  r1.d.ctx.$ = function (id) { return id === 'dash-root' ? root : null; };
+  r1.d.D.wire(r1.d.ctx);
+  clicked.onclick();
+  check('NEW-11 pressing the Site row opens the list of what to put right', r1.d.seen.show === 1 && !r1.d.seen.went.length, r1.d.seen);
+  var r1b = await siteRowOf({ status: 'done', blocks: 1, looks: 0, live: false }, null, false);
+  clicked = null; r1b.d.ctx.$ = function (id) { return id === 'dash-root' ? root : null; };
+  r1b.d.D.wire(r1b.d.ctx); clicked.onclick();
+  check('NEW-11 … one thing, said in the singular; no list on the page: the site editor instead', /^Site 1 thing to put right before it can go live/.test(r1b.text) && r1b.d.seen.went[0] === 'design/editor', [r1b.text, r1b.d.seen]);
+  var r2 = await siteRowOf({ status: 'done', blocks: 1, looks: 0, live: true }, Object.assign({}, EV6, { published: true, publishedVersion: 2 }));
+  check('NEW-11 a live site: the next version is what is held back', /^Site 1 thing to put right before the next version can go live: see the list at the top To do$/.test(r2.text), r2.text);
+  var r3 = await siteRowOf({ status: 'done', blocks: 0, looks: 2, live: false });
+  check('NEW-11 only things to look at: ready, and it says where they are', r3.text === 'Site Saved in the site editor · 2 things to look at in the list at the top Ready' && /data-goto="design\/editor"/.test(r3.row), r3.text);
+  check('NEW-11 the Site row held back is not counted ready', parseInt(r1.sub, 10) + 1 === parseInt(r3.sub, 10) && / of 6 ready/.test(r1.sub) && !/Site Saved in the site editor/.test(text(r1.html)), [r1.sub, r3.sub]);
+  var r4 = await siteRowOf({ status: 'loading', blocks: 0, looks: 0, live: false });
+  check('NEW-11 while the check is being read: saved, being checked — not "Ready" yet', r4.text === 'Site Saved in the site editor · checking it… …', r4.text);
+  var r5 = await siteRowOf({ status: 'failed', blocks: 0, looks: 0, live: false });
+  check('NEW-11 a check that could not be read says so, and how to try again', r5.text === 'Site Saved in the site editor; it could not be checked just now. Refresh to try again Not checked', r5.text);
+  var r6 = await siteRowOf({ status: 'done', blocks: 3, looks: 0, live: false }, Object.assign({}, EV6, { site: {} }));
+  check('NEW-11 a site never saved: the check has nothing to say, the row says to save it', r6.text === 'Site Not saved yet: open the site editor and save it To do', r6.text);
+  var r7 = await siteRowOf(undefined);
+  check('NEW-11 without the check on the page: as before', r7.text === 'Site Saved in the site editor Ready', r7.text);
+  var refresh = null;
+  r3.d.ctx.$ = function (id) { if (id === 'dash-refresh') return refresh = refresh || {}; return id === 'dash-root' ? {} : null; };
+  r3.d.D.wire(r3.d.ctx); refresh.onclick();
+  check('NEW-11 Refresh reads the check again too', r3.d.seen.recheck === 1, r3.d.seen);
 
   /* ---------- the registrations drawer (UX-070) ---------- */
   var reg = read('audience-registrations.html');

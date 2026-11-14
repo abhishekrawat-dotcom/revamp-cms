@@ -10,7 +10,7 @@
    site's hero", while the hero shows the logo cut from it (UX-071); and a "weight" was shown on every row of
    Speakers, Agenda and Sponsors in two different scales, though it changes nothing on the site (UX-068).
 
-     forTab(tab, outline, n, o) -> { where, hidden, stands, none, previous }
+     forTab(tab, outline, n, o) -> { where, hidden, stands, none, add, unsaved, previous }
         tab       'speakers' | 'agenda' | 'sponsors' | 'gallery' | 'faq' | 'contact'
         outline   GET /api/event/site-outline's answer, or null while it is not known (nothing is then said)
         n         { total: the tab's records, shown: how many of them the site shows (only confirmed speakers and
@@ -21,7 +21,11 @@
         stands    null or { text, key, name, count }: the site has a section for these that nothing hides, and it shows
                   items that are not in the tab (a real template's sample card, what Create Event wrote, records
                   deleted since): how many, and what puts the tab's own in their place (site-outline.js stands)
-        none      '' or a sentence: the site has no section that shows these at all, and what puts one there (NU-004)
+        none      '' or a sentence: the site has no section that shows these at all, and what puts one there (NU-004); or
+                  the site has never been saved, so nothing added here is on it, and what to do (NU-004c: the site editor,
+                  then Save)
+        unsaved   true when none is about a site never saved (the server read nothing: site-outline's of 'none'); the
+                  tab then offers the site editor itself
         add       null or { name, ready }: the section the site editor adds for these when it opens (editor-template-ui.js
                   ensureAutoSections: it adds one for the records the site would show, when the page has none) —
                   name as the editor lists it ("Speakers"); ready: true when opening the editor now adds it (there are
@@ -30,7 +34,13 @@
                   tab does not hold (it is part of the site's design; the site editor changes it)
      readiness(tab, shown, outline, o) -> { ok: true | false | 'na', text }
         a "Ready to publish" row of the Dashboard ('speakers', 'agenda', 'sponsors'); 'na': the site has no section
-        for them, so the row is not something to get ready
+        for them, so the row is not something to get ready. "on the site" is said only once the site has been read
+        and has a section that shows them; a site never saved says what to do (NU-004c)
+     glance(tab, outline, n, o) -> { text, on }
+        the count beside a tab's "Order at a glance" (Speakers, Agenda, Sponsors): "3 on site" only when the site has
+        a section that shows them (NEW-9: "1 on site" stood beside "Your site has no section for sessions yet");
+        "Not on the site yet" when it has none or was never saved; while what the site shows is not known, how many
+        there are ("3 confirmed", "2 sessions"). on: true, false, or null while not known
      actionNote(tab, outline, o) -> '' or the line under the Dashboard's "Add a speaker" when the site has no section
         for them, so adding one does not look like it shows on the site (NU-004)
      logoTile(event, outline) -> { url, text, original }
@@ -61,8 +71,13 @@
   function count(n, one, many) { return comma(n) + ' ' + (n === 1 ? one : many); }
   function wordsOf(T, o) { return o && o.award && T.jury ? T.jury : T; }
 
-  /* only an answer that read a page says anything: none at all while it is loading, failed, or the site was never saved */
+  /* only an answer that read a page says what the site shows: none at all while it is loading or failed */
   function known(outline) { return !!(outline && outline.places && (outline.of === 'live' || outline.of === 'saved')); }
+  /* the server's answer that there is no page to read: the site was never saved (an AI-designed site until the site
+     editor saves it: NU-004c). Not said while the answer is loading or failed (outline null). */
+  function unsaved(outline) { return !!(outline && outline.of === 'none'); }
+  /* the one step for a site never saved, said the same way on every tab and on the Dashboard */
+  var SAVE_STEP = 'Open the site editor and press Save; what you add here then shows on the site';
   function whereOf(outline) { return outline && outline.of === 'live' ? 'Your live site' : 'Your site'; }
 
   /* [{ name }] -> “A” | “A” and “B” | “A”, “B” and “C” */
@@ -87,12 +102,25 @@
     return (outline.previous || []).filter(function (p) { return p && p.kind === T.prev; })[0] || null;
   }
 
-  function forTab(tab, outline, n, o) {
-    var T = TABS[tab], out = { where: whereOf(outline), hidden: '', stands: null, none: '', add: null, previous: null };
-    if (!T || !known(outline)) return out;
-    var W = wordsOf(T, o);
+  function totals(n) {
     var total = Math.max(0, +(n && n.total) || 0);
-    var shown = n && n.shown != null ? Math.max(0, +n.shown || 0) : total;
+    return { total: total, shown: n && n.shown != null ? Math.max(0, +n.shown || 0) : total };
+  }
+
+  function forTab(tab, outline, n, o) {
+    var T = TABS[tab], out = { where: whereOf(outline), hidden: '', stands: null, none: '', add: null, unsaved: false, previous: null };
+    if (!T) return out;
+    var W = wordsOf(T, o), tt = totals(n), total = tt.total, shown = tt.shown;
+    /* NU-004c: a site never saved has no page, so nothing added here is on it — said with what to do, never left as a
+       bare "None on the site yet". An imported site can never show them, saved or not. */
+    if (unsaved(outline)) {
+      if (outline.imported) { out.none = out.where + ' was imported as one finished page, so it cannot show ' + W.many + ' added here.'; return out; }
+      out.unsaved = true;
+      out.none = out.where + ' has not been saved yet, so ' + (total ? 'these are' : W.many + ' added here are') + ' not on it. ' + SAVE_STEP +
+        (T.confirms ? ' (confirmed ' + W.many + ' only).' : '.');
+      return out;
+    }
+    if (!known(outline)) return out;
     var places = placesOf(outline, T);
     if (places.length) {
       if (!shown) {
@@ -143,7 +171,15 @@
     var W = wordsOf(T, o);
     shown = Math.max(0, +shown || 0);
     var have = shown ? count(shown, W.one, W.many) : '';
-    if (!known(outline)) return { ok: shown > 0, text: shown ? have + ' on the site' : 'None on the site yet' };
+    /* NU-004c: a site never saved shows nothing yet; the row says the step, not a bare "None on the site yet" */
+    if (unsaved(outline) && !outline.imported) {
+      return { ok: false, text: (shown ? have + ', not on the site yet: it has not been saved. Open' : 'None yet, and the site has not been saved: open') +
+        ' the site editor and press Save' };
+    }
+    /* not known yet (or could not be read): how many there are, never that they are "on the site" (NEW-9) */
+    if (!known(outline)) {
+      return { ok: shown > 0, text: shown ? (T.confirms ? count(shown, 'confirmed ' + W.one, 'confirmed ' + W.many) : have) : T.confirms ? 'None confirmed yet' : 'None yet' };
+    }
     var places = placesOf(outline, T);
     if (places.length) {
       if (shown) return { ok: true, text: have + ' on the site' };
@@ -167,10 +203,22 @@
      must not look like it shows there. '' while what the site shows is not known, or when it has such a section. */
   function actionNote(tab, outline, o) {
     var T = TABS[tab];
+    if (T && unsaved(outline) && !outline.imported) return 'Your site is not saved yet: open the site editor and press Save, then the ' + wordsOf(T, o).many + ' you add show on it';
     if (!T || !known(outline) || placesOf(outline, T).length) return '';
     var W = wordsOf(T, o);
     return outline.imported ? 'This imported site cannot show ' + W.many
       : 'Your site has no ' + T.section + ' section yet: add ' + W.many + ', then open the site editor, which adds one';
+  }
+
+  /* The count beside "Order at a glance" (NEW-9): "on site" only for a section that shows them. n as for forTab. */
+  function glance(tab, outline, n, o) {
+    var T = TABS[tab];
+    if (!T) return { text: '', on: null };
+    var W = wordsOf(T, o), tt = totals(n);
+    if (unsaved(outline)) return { text: outline.imported ? 'Not on this site' : 'Not on the site yet', on: false };
+    if (!known(outline)) return { text: T.confirms ? comma(tt.shown) + ' confirmed' : count(tt.total, W.one, W.many), on: null };
+    if (!placesOf(outline, T).length) return { text: outline.imported ? 'Not on this site' : 'Not on the site yet', on: false };
+    return { text: comma(tt.shown) + ' on site', on: true };
   }
 
   /* ---------- the Event logo tile (UX-071) ---------- */
@@ -241,7 +289,7 @@
   }
 
   var api = {
-    TABS: TABS, forTab: forTab, readiness: readiness, actionNote: actionNote, logoTile: logoTile,
+    TABS: TABS, forTab: forTab, readiness: readiness, actionNote: actionNote, glance: glance, logoTile: logoTile,
     PRIORITIES: PRIORITIES, PRIORITY_FOOT: PRIORITY_FOOT, priorityOptions: priorityOptions, priorityId: priorityId,
     priorityLabel: priorityLabel, isNormal: isNormal, byPriority: byPriority
   };

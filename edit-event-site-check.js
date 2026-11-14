@@ -19,7 +19,15 @@
    and, for a live site, sends it for approval like any edit (POST /api/event/approval/request) — nothing goes live
    from here. A live site with a newer saved version (a repair waiting for approval) is checked as saved too: what that
    version already puts right says so, with no button to press again. Plain ES5; builds everything with
-   createElement / textContent. */
+   createElement / textContent.
+
+   NEW-11 (the first-time-user follow-ups, 14 Nov 2026): the Dashboard's "Ready to publish" said "Site — Saved in the
+   site editor — Ready" under this very panel's "2 things to put right". The check is now shared with it, so the Site
+   row says what holds the site back, how many, and opens this list (window.RevampSiteCheck):
+     state()   -> { status: 'loading' | 'done' | 'failed', blocks, looks, live } — the check as last read
+     show()    opens this list, scrolls to it and puts the focus on its line; false when there is no list
+     reload()  reads the check again (the Dashboard's Refresh)
+   and 'rv-site-check' is sent on window each time state() changes. */
 (function () {
   'use strict';
 
@@ -70,7 +78,15 @@
     var s = summaryOf(r);
     return s.blocks > 0 || s.shown.some(function (x) { return !!(x.action && x.action.kind); });
   }
-  if (typeof module === 'object' && module && module.exports) module.exports = { settle: settle, summaryOf: summaryOf, opensOn: opensOn };
+  /* What the Dashboard's Site row reads (NEW-11): r as for summaryOf, or null while it is being read; failed: it could
+     not be read. -> { status, blocks, looks, live } — Pure; site-checks.test.js runs it. */
+  function stateOf(r, failed) {
+    if (failed) return { status: 'failed', blocks: 0, looks: 0, live: false };
+    if (!r) return { status: 'loading', blocks: 0, looks: 0, live: false };
+    var s = summaryOf(r);
+    return { status: 'done', blocks: s.blocks, looks: s.shown.filter(function (x) { return x.level === 'warn'; }).length, live: r.of === 'live' };
+  }
+  if (typeof module === 'object' && module && module.exports) module.exports = { settle: settle, summaryOf: summaryOf, opensOn: opensOn, stateOf: stateOf };
   if (typeof window === 'undefined') return;
 
   var C = window.RevampCore;
@@ -80,7 +96,13 @@
 
   var LEVEL = { block: 'Holds it back', warn: 'Check', info: 'Good to know' };
   var LINES_SHOWN = 4;
-  var box = null, busy = false, shownFor = '', lastCheck = null;
+  var box = null, busy = false, shownFor = '', lastCheck = null, failed = false, asking = 0;
+  /* the Dashboard draws its Site row again from state() (NEW-11) */
+  function told() {
+    var ev;
+    try { ev = new window.CustomEvent('rv-site-check'); } catch (e) { ev = document.createEvent('Event'); ev.initEvent('rv-site-check', false, false); }
+    window.dispatchEvent(ev);
+  }
   function route() { return String(location.hash || '').replace(/^#/, '').split('?')[0] || 'dashboard'; }
 
   function el(tag, cls, text) {
@@ -140,6 +162,7 @@
     if (box && box.parentNode) box.parentNode.removeChild(box);
     box = null;
     lastCheck = r;
+    failed = false;
     if (!sum.shown.length) return;
     styles();
     box = el('details', 'site-check' + (sum.blocks ? ' has-block' : ''));
@@ -267,19 +290,52 @@
 
   function load() {
     var saved = function () { return call('GET', '/api/event/site-check?eventId=' + encodeURIComponent(eventId) + '&of=saved'); };
+    var mine = ++asking;
     call('GET', '/api/event/site-check?eventId=' + encodeURIComponent(eventId) + '&of=live').then(function (r) {
       if (!r.published) return saved();
       /* a newer version saved since (a repair from here, waiting for approval): what it puts right is said so */
       if (r.savedVersion > r.publishedVersion) return saved().then(function (s) { return settle(r, s); }, function () { return r; });
       return r;
-    }).then(render, function () { /* the console works without it; a failure here is not the owner's to read */ });
+    }).then(function (r) {
+      if (mine !== asking) return;
+      render(r);
+      told();
+    }, function () {
+      /* the console works without it; a failure here is not the owner's to read — the Dashboard's Site row says the
+         site could not be checked just now (NEW-11) */
+      if (mine !== asking) return;
+      failed = true;
+      told();
+    });
   }
 
+  /* NEW-11: the Dashboard's Site row reads the check and opens its list */
+  window.RevampSiteCheck = {
+    state: function () { return stateOf(failed ? null : lastCheck, failed); },
+    show: function () {
+      if (!box || !box.parentNode) return false;
+      box.open = true;
+      var line = box.querySelector('summary');
+      if (box.scrollIntoView) box.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      if (line && line.focus) { try { line.focus({ preventScroll: true }); } catch (e) { line.focus(); } }
+      return true;
+    },
+    reload: function () {
+      if (!started) return;
+      lastCheck = null;
+      failed = false;
+      told();
+      load();
+    }
+  };
+
   /* after the console has drawn its first view (it waits for its session and the event) */
+  var started = false;
   function start() {
     var tries = 0;
     (function wait() {
       if (document.querySelector('main.main') && document.getElementById('view') && document.getElementById('rail') && !document.getElementById('rail').hidden) {
+        started = true;
         /* the console moves between tabs by its address, and sometimes by redrawing its view alone */
         window.addEventListener('hashchange', followRoute);
         if (window.MutationObserver) new MutationObserver(followRoute).observe(document.getElementById('view'), { childList: true });
