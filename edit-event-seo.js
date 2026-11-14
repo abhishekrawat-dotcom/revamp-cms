@@ -240,15 +240,42 @@
       '</div>');
   }
 
+  /* "When the link is shared" (WhatsApp, LinkedIn and X): the share picture, large, with its state in one line and its
+     two actions (the console's own field, CTX.seo.sharePictureField, which saves itself at once as it always did;
+     how the picture is made, and the square crop WhatsApp uses, are folded inside it), then the title and description a
+     shared link shows. Those are always the ones in Google (the publish writes og:title and og:description from the
+     same values), so they are said to be, with the way to change them. */
   function socialHtml() {
-    var d = ST.data, F = ST.F;
-    var title = line(F.title) || d.auto.title, desc = line(F.description) || d.head.description;
     var share = ST.ctx.seo && ST.ctx.seo.sharePictureField ? ST.ctx.seo.sharePictureField(ST.ctx.EV) : '';
-    return ST.ctx.panel('2 · Social sharing', 'What a link to the site shows on WhatsApp, LinkedIn and X', '<div class="seo-rows">' +
-      row('Share title', esc(title) || '<span class="seo-none">None</span>', from('auto', 'Auto'), '<p class="hint">The SEO title (the event’s name without one).</p>') +
-      row('Share description', esc(desc) || '<span class="seo-none">None</span>', from('auto', 'Auto'), '<p class="hint">The meta description (Basics’ short description without one).</p>') +
-      '</div><div class="seo-sub"><div class="flabel-row"><span class="flabel">Share picture</span>' + (str(ST.ctx.EV.settings && ST.ctx.EV.settings.seo && ST.ctx.EV.settings.seo.shareImageUrl) ? from('team', 'Team') : from('auto', 'Auto')) + '</div><div class="frow">' + share + '</div></div>' +
-      '<div class="seo-rows">' + row('Square picture', '<span class="seo-n">No separate square picture. Where a link is shown as a square (WhatsApp), the centre of the share picture is used.</span>', from('auto', 'Auto')) + '</div>');
+    return ST.ctx.panel('When the link is shared', 'WhatsApp, LinkedIn and X',
+      '<div class="seo2-sh-group"><p class="seo2-sh-label" aria-hidden="true">Share picture</p>' + share + '</div>' +
+      '<div class="seo2-sh-group" role="group" aria-labelledby="seo2-sh-tl"><p class="seo2-sh-label" id="seo2-sh-tl">Title and description</p>' +
+        '<p class="seo2-sh-title" id="seo2-sh-title">' + sharingText('title') + '</p>' +
+        '<p class="seo2-sh-desc" id="seo2-sh-desc">' + sharingText('description') + '</p>' +
+        '<p class="seo2-sh-src">The same as in Google. <button class="seo2-sh-link" type="button" data-seo2-sh="edit">Change them</button></p>' +
+      '</div>');
+  }
+  /* the title or description a shared link shows: Google's, as typed (`typed`, else the form's), else what the next
+     publish writes without one (the event's name; the description it works out as last saved), as the preview does */
+  function sharingText(k, typed) {
+    var d = ST.data, v = line(typed === undefined ? ST.F[k] : typed) || (k === 'title' ? d.auto.title : d.head.description);
+    return v ? esc(v) : '<span class="seo2-sh-none">None yet</span>';
+  }
+  /* its title and description follow the Google fields while they are typed; "Change them" goes to the title in Google
+     (the search panel's own field, found by what the form reads) */
+  function wireSharing(root) {
+    root.addEventListener('input', function (e) {
+      var k = e.target && e.target.getAttribute && e.target.getAttribute('data-seo-field');
+      var el = k === 'title' ? $('seo2-sh-title') : k === 'description' ? $('seo2-sh-desc') : null;
+      if (el) el.innerHTML = sharingText(k, e.target.value);
+    });
+    var b = root.querySelector('[data-seo2-sh="edit"]');
+    if (b) b.onclick = function () {
+      var f = root.querySelector('[data-seo-field="title"]');
+      if (!f) return;
+      if (f.scrollIntoView) f.scrollIntoView({ block: 'center' });
+      try { f.focus({ preventScroll: true }); } catch (err) { f.focus(); }
+    };
   }
 
   function schemaHtml() {
@@ -734,6 +761,7 @@
     Array.prototype.forEach.call(document.querySelectorAll('[data-seo="reload"]'), function (b) { b.onclick = function () { ST.error = ''; load(false); redraw(); }; });
     if (!$('seo-root')) return;
     if (ctx.seo && ctx.seo.wireSharePicture) ctx.seo.wireSharePicture();
+    wireSharing(root);
     ctx.seo.setLeave({ label: 'URL & SEO', dirty: dirty, save: save, discard: function () { ST.F = clone(ST.B); ST.failed = ''; } });
 
     /* typing: kept in the form, counted, previewed, never redrawn under the cursor */
