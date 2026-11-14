@@ -63,7 +63,7 @@ var items = R({ seo: { title: 'x'.repeat(65), keywords: ['a', 'b', 'c', 'd', 'e'
 var by = items.reduce(function (a, i) { a[i.id] = i; return a; }, {});
 ok(by.title.level === 'warn' && /65 characters/.test(by.title.text) && by.keywords.ok && !by.description.ok && /Basics/.test(by.description.text), 'search listing: a long title, the keywords, a description borrowed from Basics');
 ok(!by.address.ok && /street address and postcode/.test(by.address.text) && !by.place.ok && /“Goa” is not in the place list/.test(by.place.text), 'the address missing, a city the place list does not have', JSON.stringify([by.address, by.place]));
-ok(/not shown on the site: add a testimonials section/i.test(by.reviews.text) && by.offers.level === 'info' && items.some(function (i) { return /Event needs location/.test(i.text); }), 'testimonials not shown, passes not included, a validator problem listed');
+ok(/not on the site: put the same words in a testimonials section/i.test(by.reviews.text) && by.offers.level === 'info' && items.some(function (i) { return /Event needs location/.test(i.text); }), 'testimonials not shown, passes not included, a validator problem listed');
 var tbaItems = R({ seo: {}, head: {}, auto: { indexing: { on: false, text: 'Off' }, dates: { exact: false } }, schema: {}, event: {} });
 ok(tbaItems.filter(function (i) { return i.id === 'basic'; })[0].text.indexOf('to be announced') !== -1, 'the date to be announced: no Event schema, and why');
 
