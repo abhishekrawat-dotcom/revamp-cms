@@ -1,19 +1,42 @@
-/* app-logo.css — the app's logo in both themes (UX-023), the same on every page that shows it: the events
-   dashboard, sign-in, Create Event, the Activity log and Mailer performance.
+/* app-logo.css — the app's logo, one unit, the same on every page that shows it: the events dashboard, sign-in,
+   Create Event, the Activity log, What people ask ETB2B AI and Mailer performance (owner decision #12, 8 Nov
+   2026). It replaced the old header picture, which still read a product name no longer used.
 
-   Each page puts both pictures in its top bar, side by side in the markup:
-     <img class="… app-logo-light" src="assets/app-logo.png" …>       for a light ground
-     <img class="… app-logo-dark"  src="assets/app-logo-dark.png" …>  for a dark ground
-   and this shows the one that suits the theme. The dark one changes only the black lettering to light; the red ET
-   square never changes (ET's logo rule; tools/build-app-logo.js makes it and checks it). On the dark theme the
-   light picture used to show only its red square on the dashboard and sign-in, and sat on a white chip elsewhere.
+   The unit is the red ET square exactly as ETB2B's own logo draws it, followed by the word "EventSphere" as live
+   text in the app's own font. Every page writes it the same way:
 
-   The app's theme switch sets data-theme on <html> before the page paints; the media query covers a page whose
-   switch has not run, which follows the computer's own setting as the page's colours do. */
-.app-logo-dark{ display:none !important; }
-:root[data-theme="dark"] .app-logo-light{ display:none !important; }
-:root[data-theme="dark"] .app-logo-dark{ display:block !important; }
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]) .app-logo-light{ display:none !important; }
-  :root:not([data-theme="light"]) .app-logo-dark{ display:block !important; }
+     <span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark"
+       src="assets/favicon.svg" alt=""><span class="app-logo-word">EventSphere</span></span>
+
+   - Screen readers hear one name, "ETB2B EventSphere": the unit is one picture to them (role="img"), and the
+     link round it, where there is one, takes that name.
+   - The square is assets/favicon.svg, which is the square of assets/et-b2b-logo.svg cut out path for path
+     (functions/lib/product-name.test.js checks that). It is shown as the file draws it, at the unit's height and
+     in its own proportions: never redrawn, recoloured, boxed or restyled, so nothing here gives it a filter,
+     background, border, radius, shadow, padding or blend.
+   - The word takes the theme's text colour (var(--text): dark on the light theme, light on the dark one). The
+     app's theme switch (theme-toggle.js sets data-theme on <html>) and the computer's own setting reach it with
+     the page's other words, so there is no second copy to swap.
+   - Its size is one number, --app-logo-h, set by the page round it (28px when none is): the square is that tall,
+     and the gap and the word follow it. The unit is as wide as the old picture was at the same height (409 × 67),
+     so no top bar moved when it was replaced, and nothing moves when the font arrives; the word, in Inter (the
+     widest of the fonts it may fall back on), leaves a few pixels of that width free. */
+.app-logo{
+  display:flex; align-items:center; flex:none; box-sizing:border-box;
+  height:var(--app-logo-h, 28px); width:calc(var(--app-logo-h, 28px) * 6.1045);
+  gap:calc(var(--app-logo-h, 28px) * .27);
+  white-space:nowrap; text-decoration:none;
 }
+.app-logo-mark{
+  display:block; flex:none; box-sizing:content-box;
+  height:var(--app-logo-h, 28px); width:auto; max-width:none; aspect-ratio:36.6069 / 36.313816;
+  margin:0; padding:0; border:0; border-radius:0; background:none; box-shadow:none;
+  filter:none; opacity:1; mix-blend-mode:normal; object-fit:contain;
+}
+.app-logo-word{
+  font-family:var(--font-body, 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif);
+  font-size:calc(var(--app-logo-h, 28px) * .76); font-weight:700; line-height:1; letter-spacing:-.01em;
+  color:var(--text, #241B1A);
+}
+/* a link's underline would run under the word (a few pages leave links underlined) */
+a:has(> .app-logo){ text-decoration:none; }

@@ -131,8 +131,8 @@
     border-bottom: 1px solid var(--border);
   }
   .wiz-top-row{ height: 58px; display: flex; align-items: center; gap: 14px; padding: 0 20px; }
-  .brand-mark{ display:flex; align-items:center; gap: 9px; flex-shrink: 0; }
-  .brand-logo-img{ height: 26px; width:auto; display:block; }
+  /* the logo unit (app-logo.css) is sized by --app-logo-h, the height its picture used to have here */
+  .brand-mark{ display:flex; align-items:center; gap: 9px; flex-shrink: 0; --app-logo-h: 26px; }
   .wiz-top-row .sep{ width:1px; height: 22px; background: var(--border); }
   .wiz-title{ font-size: 13.5px; font-weight: 700; }
   .wiz-title .sub{ display:block; font-size: 11.5px; font-weight: 600; color: var(--text-faint); }
@@ -150,8 +150,12 @@
      58px row (no wrap, no shrink) — drop the least essential pieces first (subtitle, then the autosave
      status text) so the close button and Save & exit stay reachable without horizontal scrolling */
   @media (max-width: 560px){
-    .brand-mark{ flex: 0 1 118px; min-width: 56px; }
-    .brand-logo-img{ width: 100%; height: auto; }
+    /* the logo is 118px wide here and gives way first, down to 56px, as the picture it replaced did: its height
+       follows the width the row leaves it (100cqw is .brand-mark's width; the unit is 6.1045 times as wide as tall) */
+    .brand-mark{ flex: 0 1 118px; min-width: 56px; --app-logo-h: 19.33px; }
+    @supports (width: 1cqw){
+      .brand-mark{ container-type: inline-size; --app-logo-h: calc(100cqw / 6.1045); }
+    }
     .wiz-top-row{ gap: 8px; padding: 0 12px; }
     .wiz-title .sub{ display:none; }
     .save-state{ display:none; }
@@ -1939,7 +1943,7 @@
 
 </style>
 <link rel="stylesheet" href="motion.css">
-<!-- the app's logo for a light and a dark ground, one shown by the theme (UX-023) -->
+<!-- the app's logo: the red ET square and the word EventSphere, one unit on every page that shows it (app-logo.css) -->
 <link rel="stylesheet" href="app-logo.css">
 <!-- ETB2B AI's launcher and panel (etb2b-chat.js): the same look on every page, bottom-right -->
 <link rel="stylesheet" href="etb2b-chat.css">
@@ -1952,10 +1956,9 @@
   <header class="wiz-top">
     <div class="wiz-top-row">
       <div class="brand-mark">
-        <!-- the ET Oneworld mark, one picture for a light ground and one for a dark ground (app-logo.css shows the one
-             that suits the theme; only the dark copy's lettering is light, its red ET square is as drawn) -->
-        <img class="brand-logo-img app-logo-light" src="assets/app-logo.png" width="409" height="67" alt="ETB2B EventSphere">
-        <img class="brand-logo-img app-logo-dark" src="assets/app-logo-dark.png" width="409" height="67" alt="ETB2B EventSphere">
+        <!-- the app's logo (app-logo.css): the red ET square as ETB2B's logo draws it, then "EventSphere" in the theme's
+             text colour -->
+        <span class="app-logo" role="img" aria-label="ETB2B EventSphere"><img class="app-logo-mark" src="assets/favicon.svg" width="37" height="36" alt=""><span class="app-logo-word">EventSphere</span></span>
       </div>
       <span class="sep"></span>
       <span class="wiz-title">

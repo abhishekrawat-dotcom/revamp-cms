@@ -71,7 +71,6 @@ async function redCount(file) {
   return b ? b.n : 0;
 }
 
-/* tools/build-app-logo.js makes the app's own logo for a dark ground with the very same rule */
 module.exports = { onDark: onDark, redBox: redBox, redCount: redCount, isEtRed: isEtRed };
 
 if (require.main === module) (async function () {
