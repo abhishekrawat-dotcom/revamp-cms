@@ -214,14 +214,14 @@ async function main() {
     var j = JSON.parse(F.read('templates/' + t + '/template.json'));
     return j.sections.some(function (s) { return s.name === 'Key numbers'; }) && !j.sections.some(function (s) { return s.name === 'Stats strip'; });
   }));
-  check('UX-053 the rail: Event details, Open in editor', JSON.stringify(m.ce('STEPS')) === '["Event details","Open in editor"]');
+  check('UX-053 / NU-012 the rail: the four screens a person goes through', JSON.stringify(m.ce('STEPS')) === '["Portal and type","How to build","Details and content","Create"]');
   check('UX-053 the form: Event details, Web address, Previous edition', /<span class="ttl">Event details<\/span>/.test(page) && />Web address <span class="pill-req">/.test(page) && /id="gb-et-label">Previous edition</.test(page));
   check('UX-053 the banner\'s text mode: Main button / Second button', page.indexOf('>Main button</label>') !== -1 && page.indexOf('>Second button</label>') !== -1);
   check('UX-053 counters say industries and categories', m.ce('nounPlural("industry")') === 'industries' && m.ce('nounPlural("category")') === 'categories' &&
     m.ce('nounPlural("point")') === 'points' && m.ce('nounPlural("day")') === 'days');
   check('UX-053 the kinds: Top banner, Key numbers', m.ce('libBy("hero").name') === 'Top banner' && m.ce('libBy("stats").name') === 'Key numbers');
   check('UX-053 only the method screen says "How would you like to build it?"; busy screens say what they do',
-    (page.match(/How would you like to build it\?/g) || []).length === 1 && /'Opening' : 'Generating'/.test(page) && page.indexOf('<span class="eyebrow">Importing</span>') !== -1 &&
+    (page.match(/How would you like to build it\?/g) || []).length === 1 && /stepEyebrow\(4, opening \? 'Opening' : 'Generating'\)/.test(page) && page.indexOf('<span class="eyebrow">Importing</span>') !== -1 &&
     page.indexOf('<span class="eyebrow">Redesign with AI</span>') !== -1);
   check('UX-053 the address is asked for in plain words', m.ce('S.basics.slug = ""; slugIssue()') === 'Enter the web address — the last part of the event’s address, after /e/.', m.ce('slugIssue()'));
   m.ce('S.creationMethod = "brief"; S.brief.text = BRIEF_TEMPLATE; S.brief.previous = ""; S.brief.current = ""; S.brief.comp1 = ""; S.brief.comp2 = ""; briefDoc = null;');

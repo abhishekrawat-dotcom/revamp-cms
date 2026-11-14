@@ -457,7 +457,7 @@ async function main() {
     items = p.ctx.__items || []; return items.length === ROSTER.length && items.filter(function (i) { return i.tag === 'Your portal'; }).map(function (i) { return i.value; }).join() === 'hr';
   })());
   p.ce('stepPortal = "cio"; stepPortalFrom = ""; stepPortalTouched = true; renderPortalStep()');
-  check('5a. another portal than the working one: "listed under ETCIO"', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard.');
+  check('5a. another portal than the working one: "listed under ETCIO"', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard. Your events list switches to it when the event is created.');
   p = load({ cached: 'hr', server: 'auto', serverDelay: 30 });
   p.ce('S.step = 1; S.step1Phase = "category"; startPortal(false)');
   await tick();
@@ -480,7 +480,7 @@ async function main() {
   await tick();
   check('5a. the dashboard link\'s portal comes first, over the working portal', p.ce('stepPortal') === 'cio' && p.ce('stepPortalFrom') === 'query');
   p.ce('renderPortalStep()');
-  check('5a. …with the "listed under" hint, as it is not the working portal', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard.');
+  check('5a. …with the "listed under" hint, as it is not the working portal', p.$('cat-portal-hint').textContent === 'This event will be listed under ETCIO on the dashboard. Your events list switches to it when the event is created.');
   p = load({ portals: false });
   p.ce('S.step = 1; S.step1Phase = "category"; startPortal(false)');
   await tick();

@@ -442,9 +442,9 @@ async function main() {
   check('regression: …behind that question the footer stays put away: its own buttons are the ways on', p.$('wiz-foot').hidden === true);
   p.log.modals[0].onConfirm();
   await tick();
-  check('regression: …Continue this draft opens it, with the footer and Save & exit back and Continue on its step',
+  check('regression: …Continue this draft opens it, with the footer and Save & exit back and Review and create (NU-012) on its step',
     p.ce('S.basics.name') === 'QA Local Only' && p.$('wiz-foot').hidden === false && p.$('btn-save-exit').hidden === false &&
-    p.$('btn-next').hidden === false && p.$('btn-next').textContent.indexOf('Continue') !== -1 && p.ce('draftOpening') === false);
+    p.$('btn-next').hidden === false && p.$('btn-next').textContent.indexOf('Review and create') !== -1 && p.ce('draftOpening') === false);
   /* a draft the account already has answers at once: the line is never left showing, and the new event starts */
   A = account();
   A.store[old.draftId] = { rev: 2, state: Object.assign({}, old), writer: 'wtest01' };
@@ -505,8 +505,8 @@ async function main() {
   p.ce('exitToDashboard = window.__realExit');
   await sleep(80); await tick();
   check('UX-048 …an account that does not answer in time: this browser\'s copy opens, and the line goes', p.ctx.__started && p.ctx.__started.basics.name === 'Kept here' && p.$('draft-opening').hidden === true);
-  check('regression: …and the footer comes back with the step the draft opens on, its Back and Continue working', p.$('wiz-foot').hidden === false &&
-    p.ce('S.basics.name') === 'Kept here' && p.$('btn-next').hidden === false && p.$('btn-next').textContent.indexOf('Continue') !== -1);
+  check('regression: …and the footer comes back with the step the draft opens on, its Back and Review and create working', p.$('wiz-foot').hidden === false &&
+    p.ce('S.basics.name') === 'Kept here' && p.$('btn-next').hidden === false && p.$('btn-next').textContent.indexOf('Review and create') !== -1);
   check('regression: …with Save & exit back in the header, and the close button\'s quick way out gone (start() wires its own)', p.$('btn-save-exit').hidden === false &&
     p.ce('draftOpening') === false && (function () { p.ctx.__left = 'no'; p.ce('window.__realExit = exitToDashboard; exitToDashboard = function(t){ window.__left = t; }'); p.$('btn-close').onclick(); p.ce('exitToDashboard = window.__realExit'); return p.ctx.__left === 'no'; })());
   A = account(); A.hang = true;
