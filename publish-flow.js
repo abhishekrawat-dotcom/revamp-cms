@@ -26,6 +26,11 @@
    that list moves to the top, Send (or Publish) is greyed out with the reason beside it, and the red button is "Put
    it right first", which goes to the first place to put it right (gateOf). A refusal is said at the top of the
    dialog, and its list is shown there too.
+   NEW-7 (the follow-ups of 14 Nov 2026): for the second or so before the check's first answer, Send was red and
+   pressable, then turned grey. Now Send (or Publish) is greyed out and reads "Checking the site…" until that first
+   answer is in — what the server would refuse is in it; links on other sites still being asked are advice and never
+   hold it — and it becomes Send, or gives way to "Put it right first", only then. A check that cannot be read, or that
+   has not answered after CHECK_HOLD_MS, holds nothing back: the server checks again as it is sent.
 
    Who approves is named from config/approvals (fetchApproval's approvers): EventSphere sends no e-mail, so the person
    asking is told exactly whom to send the link to, and can copy a ready message (UX-102).
@@ -668,13 +673,36 @@
     return paint;
   }
   /* Send or Publish held back while the check says something blocks it (NU-010): the list at the top of the dialog,
-     the button greyed out with the reason beside it, and "Put it right first" as the red one. key: 'send' | 'publish' */
+     the button greyed out with the reason beside it, and "Put it right first" as the red one. Until the check's first
+     answer the button is greyed out and says so (NEW-7: holdWhileChecking). key: 'send' | 'publish' */
+  var CHECK_HOLD_MS = 15000, CHECKING_LABEL = 'Checking the site…';
+  /* the button while the check has not answered: greyed out (data-rvpf-blocked keeps it so through busy()), saying
+     what is happening; -> release(), which gives it back its own label (the check's answer then decides the rest) */
+  function holdWhileChecking(btn) {
+    if (!btn) return function () {};
+    var label = btn.textContent, held = true;
+    btn.setAttribute('data-rvpf-blocked', '');
+    btn.setAttribute('data-rvpf-checking', '');
+    btn.disabled = true;
+    btn.textContent = CHECKING_LABEL;
+    return function release() {
+      if (!held) return;
+      held = false;
+      btn.removeAttribute('data-rvpf-checking');
+      btn.removeAttribute('data-rvpf-blocked');
+      btn.textContent = label;
+    };
+  }
   function gateDialog(d, key, direct, opts) {
-    var last = null;
+    var last = null, release = holdWhileChecking(d.box.querySelector('[data-rvpf="' + key + '"]'));
+    /* a check that never answers holds nothing back for long: the server checks again as it is sent */
+    var timer = setTimeout(function () { if (!last && document.body.contains(d.box)) apply(null); }, CHECK_HOLD_MS);
     function apply(r) {
       var g = gateOf(r, direct), btn = d.box.querySelector('[data-rvpf="' + key + '"]'), fix = d.box.querySelector('[data-rvpf="fix-first"]');
       var why = d.box.querySelector('.rvpf-why'), body = d.box.querySelector('.rvpf-body'), qa = d.box.querySelector('.rvpf-qa');
       last = g;
+      clearTimeout(timer);
+      release();
       if (!btn) return;
       if (g.blocked) {
         btn.setAttribute('data-rvpf-blocked', '');
@@ -846,7 +874,7 @@
     aiUncheckedOf: aiUncheckedOf, approverWords: approverWords,
     _test: { planOf: planOf, buttonState: buttonState, approverWords: approverWords, copyMessage: copyMessage, decisionNotice: decisionNotice,
       aiUncheckedOf: aiUncheckedOf, errorPlan: errorPlan, errText: errText, savedLine: savedLine, setBusy: setBusy, CSS: CSS,
-      checksView: checksView, checksBox: checksBox, gateOf: gateOf }
+      checksView: checksView, checksBox: checksBox, gateOf: gateOf, holdWhileChecking: holdWhileChecking, CHECKING_LABEL: CHECKING_LABEL }
   };
   if (window.RevampCore) window.RevampCore.openPublishFlow = open;
 })();
