@@ -1942,7 +1942,13 @@ function saveOwnerUnit(fb, eventId, unit, opts) {
   return ref.get().then(function (snap) {
     var design = snap.exists ? (((snap.data() || {}).designPlan || {}).design || {}) : {};
     var wants = unitHeroMode(unit, design) === 'light' && unit.url && !unit.plate;
-    return wants ? storeOnDarkUnit(fb, eventId, stamp, unit).then(function (dark) { return { wants: true, dark: dark }; }) : { wants: false, dark: null };
+    if (!wants) return { wants: false, dark: null };
+    /* the event's name drawn as a unit (source 'generated', api-generate.js drawnLogoUnit) brings its own copy, drawn the
+       same way, as plan-structure takes it: its lettering is text in the SVG, which storeOnDarkUnit cannot draw
+       (tools/draw-logo-unit.js) */
+    var dark = unit.source === 'generated' ? Promise.resolve(unit.darkUrl ? { url: unit.darkUrl, storagePath: unit.darkStoragePath || '' } : { why: 'failed' })
+      : storeOnDarkUnit(fb, eventId, stamp, unit);
+    return dark.then(function (d) { return { wants: true, dark: d }; });
   }).then(function (made) {
     var dark = made.dark && made.dark.url ? made.dark : null;
     return fb.db.runTransaction(function (tx) {
