@@ -685,8 +685,11 @@ async function main() {
   var m = p.log.modals[0];
   check('5. the dialog: its title, and in its sub the portal and what comes (WZ-064)', m && m.title === 'Start from a previous edition' &&
     m.sub === 'Bring an earlier ETHRWorld event’s speakers, sponsors, agenda and glimpses into this one, on the template it used.', m);
-  check('5. the method screen\'s card says the same, and no longer promises its design', /<h3>Start from a previous edition<\/h3>\s*<p>Its speakers, sponsors, agenda and glimpses come into this event, on the template it used\. Its words and look are not copied\.<\/p>/.test(page) &&
-    page.indexOf('Start from a prior event\'s design and sections') === -1);
+  check('5. the method screen\'s card says the same, without contradicting itself (NU-016): same template, its people brought in, its words and look not copied',
+    /<h3>Start from a previous edition<\/h3>\s*<p>Your site starts on the same template as an earlier event of this portal, with its speakers, sponsors, agenda and glimpses brought in\. Its words, colours and pictures stay with it: you write this edition&rsquo;s own\.<\/p>/.test(page) &&
+    page.indexOf('Its words and look are not copied') === -1 && page.indexOf('Start from a prior event\'s design and sections') === -1);
+  check('5. NU-016 the header button while a template is filled in has its own name: content only, the template stays',
+    page.indexOf('Add speakers &amp; sponsors from a previous edition') !== -1 && page.indexOf('Use a previous edition’s content') === -1 && page.indexOf('Your template stays as it is.') !== -1);
   check('5. while loading: "Loading ETHRWorld\'s events…", and Continue waits', p.$('clone-body').innerHTML.indexOf('Loading ETHRWorld’s events…') !== -1 && p.$('modal-ok').disabled === true);
   await tick();
   var opts = p.$('clone-body').innerHTML;

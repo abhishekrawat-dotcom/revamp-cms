@@ -455,6 +455,9 @@
   }
   .logo-meta.ok{ color: var(--ok); }
   .logo-meta.bad{ color: var(--crit); }
+  /* an error, and what the site does without a logo, are read whole (NU-024, NU-006) */
+  .logo-meta.bad, .logo-meta.logo-later{ white-space: normal; overflow: visible; line-height: 1.4; }
+  .logo-meta.logo-later{ margin-top: 3px; font-weight: 400; }
   @media (max-width: 1080px){
     #identity-row > .field, #sched-body .field{ grid-column: span 6 !important; }
   }
@@ -620,10 +623,14 @@
   .dropzone .s{ font-size: 11.5px; color: var(--text-faint); }
   .dropzone.filled{ border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
 
+  /* an information box is neutral (NU-029): red is for what has gone wrong (.crit), amber for what needs looking at */
   .callout{
     display:flex; gap: 11px; padding: 13px 15px; border-radius: 10px; font-size: 13px;
-    background: var(--accent-soft); color: var(--accent-strong);
+    background: var(--surface-2); color: var(--text); border: 1px solid var(--border);
   }
+  .callout > svg{ color: var(--text-muted); }
+  .callout.amber, .callout.plain, .callout.crit{ border-color: transparent; }
+  .callout.amber > svg, .callout.crit > svg{ color: inherit; }
   .callout svg{ flex-shrink:0; margin-top: 1px; }
   .callout strong{ display:block; margin-bottom: 2px; font-size: 12.5px; }
   .callout.amber{ background: var(--warn-soft); color: var(--warn); }
@@ -776,7 +783,7 @@
   .sheet .gb-guide-btn{ color: var(--accent-strong); }
   .sheet .gb-guide-btn:hover, .sheet .gb-guide-btn[aria-expanded="true"]{ background: var(--accent-soft); color: var(--accent-strong); }
   .sheet .gb-more > summary::before{ border-color: var(--accent); color: var(--accent); }
-  .sheet .slug-prefix{ color: var(--accent-strong); }
+  .sheet .slug-prefix{ color: var(--text-muted); }
   .gb-guide{ border-top: 3px solid var(--accent); }
   .gb-guide-list b{ color: var(--accent-strong); }
 
@@ -2070,7 +2077,7 @@
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><path d="M3 5v7h7"/></svg>
               </span>
               <h3>Start from a previous edition</h3>
-              <p>Its speakers, sponsors, agenda and glimpses come into this event, on the template it used. Its words and look are not copied.</p>
+              <p>Your site starts on the same template as an earlier event of this portal, with its speakers, sponsors, agenda and glimpses brought in. Its words, colours and pictures stay with it: you write this edition&rsquo;s own.</p>
               <button class="btn btn-secondary" type="button" id="btn-clone-design">Choose a previous edition</button>
             </div>
             <div class="design-choice-card">
@@ -2180,12 +2187,12 @@
                 <div class="slug-row">
                   <!-- the real address in front of what is typed (siteAddress); a long host gives way from its start -->
                   <span class="slug-prefix" id="slug-prefix"><span class="slug-prefix-text"><bdi id="slug-prefix-text"></bdi></span></span>
-                  <input class="inp" id="f-slug" type="text" placeholder="martech-plus-summit-2026" autocomplete="off" spellcheck="false">
+                  <input class="inp" id="f-slug" type="text" placeholder="e.g. martech-plus-summit-2026" aria-label="Web address: the last part, after /e/" autocomplete="off" spellcheck="false">
                 </div>
                 <div class="slug-meta"><div id="slug-status"></div><div id="slug-ai"></div></div>
               </div>
               <div class="field c4 logo-field" id="logo-cell">
-                <div class="flabel-row"><span class="flabel">Event logo <span class="pill-req" id="logo-requirement">*</span></span></div>
+                <div class="flabel-row"><span class="flabel">Event logo <span class="pill-opt" id="logo-requirement">Optional</span></span></div>
                 <div class="logo-row" id="logo-tile" title="Upload a PNG, WEBP or SVG event logo">
                   <span class="logo-row-icon">
                     <img class="logo-tile-img" id="logo-preview-img" alt="" hidden>
@@ -2197,6 +2204,8 @@
                   </button>
                 </div>
                 <div class="logo-meta" id="logo-hint">PNG, WEBP or SVG, up to 5&nbsp;MB. Best at about 571&times;340.</div>
+                <!-- the logo is optional on every path (NU-006): what the site does without one, and where it is added later -->
+                <div class="logo-meta logo-later" id="logo-later">No logo yet? The banner shows the event name until you add one, here or later in the event&rsquo;s Basics.</div>
                 <input id="f-logo" type="file" accept="image/png,image/webp,image/svg+xml,.webp,.svg" hidden>
               </div>
             </div>
@@ -2546,7 +2555,7 @@
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'exact',
       venue: true, nomination: false, campaign: false, client: false,
-      hint: 'IP and residential events include the full section stack. Use an exact date, month, or quarter while the edition is being planned.'
+      hint: 'Owned conferences, summits and residential events. If the date is not fixed yet, choose Month only, Quarter or To be announced.'
     },
     Client: {
       label: 'Client Event',
@@ -2566,7 +2575,7 @@
       dateModes: ['exact','month','quarter','tbd'],
       defaultDateMode: 'month',
       venue: true, nomination: true, campaign: false, client: false,
-      hint: 'Awards microsites support the nomination window, jury milestones, shortlist, and ceremony date.'
+      hint: 'An awards site carries when nominations open and close, the shortlist date and the ceremony date. Dates not fixed yet can be decided later.'
     }
   };
 
@@ -2845,6 +2854,19 @@
   var logoPreviewUrl = '';   // what the step-1 logo tile shows: an object URL right after upload, the stored copy after a reload
   var logoSaving = null;      // the store write under way, so the hand-off can wait for it
   var logoFailed = false;     // the last chosen logo could not be stored; the tile says so until another is chosen
+  var logoError = '';         // why the last file chosen was not taken as the logo (logoFileIssue); said under the field until another is taken
+  var LOGO_HINT = 'PNG, WEBP or SVG, up to 5 MB. Best at about 571×340.';
+  /* why `file` cannot be the event's logo, as a sentence that says what to do; '' when it can */
+  function logoFileIssue(file){
+    var name = String((file && file.name) || ''), type = String((file && file.type) || '');
+    var ok = type === 'image/png' || type === 'image/webp' || type === 'image/svg+xml' || /\.(png|svg|webp)$/i.test(name);
+    if (!ok){
+      if (type === 'image/jpeg' || /\.jpe?g$/i.test(name)) return 'A logo needs a transparent background, which a JPG file cannot have. Use a PNG, WEBP or SVG file instead.';
+      return '“' + name + '” is not a PNG, WEBP or SVG file. Choose a logo in one of those formats.';
+    }
+    if (file.size > 5 * 1024 * 1024) return 'This file is ' + megabytes(file.size) + '. Use a logo file of 5 MB or less.';
+    return '';
+  }
   function logoDataUrl(file){
     return new Promise(function(resolve, reject){
       var reader = new FileReader();
@@ -3889,13 +3911,22 @@
   }
   /* what stands in front of the box: that address without the event's own part ("host/e/") */
   function addressPrefix(){ return siteAddress('x').replace(/x$/, '').replace(/^https?:\/\//, ''); }
+  /* In front of the box (NU-028), in grey: the whole host when it fits, otherwise just "…/e/" — never a host cut off
+     part-way through a word. The whole address is in its title, and in the line under the box once one is typed. */
+  var SLUG_PREFIX_SHORT = '…/e/';
+  function drawSlugPrefix(){
+    var el = $('slug-prefix-text'), pre = $('slug-prefix'), box = $('f-slug');
+    if (!el || !pre) return;
+    var full = addressPrefix(), holder = el.parentNode;
+    el.textContent = full;
+    if (holder && holder.clientWidth > 0 && holder.scrollWidth > holder.clientWidth + 1) el.textContent = SLUG_PREFIX_SHORT;
+    pre.title = siteAddress((box && box.value) || 'your-event');
+  }
   /* the server names the public base in its first answer (X-Public-Base, UX-001); a prefix drawn before it came
      is drawn again, so the box never shows another host than the one the site will be at */
-  window.addEventListener('revamp:publicbase', function(){
-    var el = $('slug-prefix-text'), pre = $('slug-prefix'), box = $('f-slug');
-    if (el) el.textContent = addressPrefix();
-    if (pre) pre.title = siteAddress((box && box.value) || 'your-event');
-  });
+  window.addEventListener('revamp:publicbase', drawSlugPrefix);
+  var slugPrefixTimer = null;
+  window.addEventListener('resize', function(){ clearTimeout(slugPrefixTimer); slugPrefixTimer = setTimeout(drawSlugPrefix, 120); });
 
   /* ---------- is the address free? ----------
      Asked of the server a moment after the typing stops (GET /api/event/slug-available, RevampCore.slugAvailable).
@@ -4101,8 +4132,8 @@
     }
     return '';
   }
-  /* method: 'template' | 'imported' | 'brief'. The brief form asks only for name, address, date and venue;
-     a logo is needed where the design shows one — an imported design brings its own. */
+  /* method: 'template' | 'imported' | 'brief'. The logo is optional on every path (NU-006): until there is one the
+     banner shows the event's name in text, and it can be added later in the event's Basics (its banner follows it). */
   function validateBasics(method){
     var b = S.basics, C = CATS[b.category], out = [];
     function bad(field, message){ out.push({ field: field, message: message }); }
@@ -4112,7 +4143,6 @@
     if (!b.name.trim()) bad('f-name', 'Enter the event name.');
     var slugProblem = slugIssue(b.slug.trim());
     if (slugProblem) bad('f-slug', slugProblem);
-    if (method === 'template' && !b.logo) bad('logo-drop', 'Upload the event logo.');
     if (method !== 'brief' && C.client === 'required' && !b.client.trim()) bad('f-client', 'Enter the client or sponsor name.');
 
     var later = ', or choose “To be announced”.';
@@ -4290,11 +4320,10 @@
     $('client-wrap').hidden   = !C.client || briefMode;
     $('client-requirement').className = C.client === 'required' ? 'pill-req' : 'pill-opt';
     $('client-requirement').textContent = C.client === 'required' ? '*' : 'Optional';
-    /* a generated site carries the event's logo in its top bar when one is given; it can also do without */
+    /* every path can do without a logo for now (NU-006): the banner shows the event's name until one is added */
     $('logo-cell').hidden = false;
-    var logoOptional = S.creationMethod === 'imported' || briefMode;
-    $('logo-requirement').className = logoOptional ? 'pill-opt' : 'pill-req';
-    $('logo-requirement').textContent = logoOptional ? 'Optional' : '*';
+    $('logo-requirement').className = 'pill-opt';
+    $('logo-requirement').textContent = 'Optional';
     /* The first row contains identity and logo only. Brief mode drops client (above), so name, address and
        logo share the row three ways. */
     var withClient = C.client && !briefMode;
@@ -5029,7 +5058,7 @@
     slugEl.value = b.slug;
     /* the address as it will be, in front of the box: the full one is in its title and in the line under it */
     var prefixEl = $('slug-prefix-text');
-    if (prefixEl){ prefixEl.textContent = addressPrefix(); $('slug-prefix').title = siteAddress(b.slug || 'your-event'); }
+    if (prefixEl) drawSlugPrefix();
     slugEl.oninput = function(){
       if (S.createdEventId){ slugEl.value = b.slug; return; }
       b.slugTouched = true;
@@ -5068,9 +5097,13 @@
       previewImg.hidden = true;
       removeBtn.hidden = true;
       logoCta.textContent = 'Upload logo';
-      logoHint.className = logoFailed ? 'logo-meta bad' : 'logo-meta';
-      logoHint.textContent = logoFailed ? 'Could not keep this logo — choose it again' : 'PNG, WEBP or SVG, up to 5 MB. Best at about 571×340.';
+      logoHint.className = logoFailed || logoError ? 'logo-meta bad' : 'logo-meta';
+      logoHint.textContent = logoError || (logoFailed ? 'Could not keep this logo — choose it again' : LOGO_HINT);
     }
+    /* a file that was not taken is said under the field, in words that say what to do (NU-024) */
+    if (logoError) logoHint.setAttribute('role', 'alert'); else logoHint.removeAttribute('role');
+    var logoLater = $('logo-later');
+    if (logoLater) logoLater.hidden = !!b.logo;
 
     var openLogoPicker = function(){ logoInput.click(); };
     logoTile.onclick = openLogoPicker;
@@ -5078,6 +5111,7 @@
       e.stopPropagation();
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} logoPreviewUrl = ''; }
       b.logo = false; b.logoName = '';
+      logoError = '';
       gen2Logo = null;
       forgetDraftFile('logo');
       RevampStore.remove(logoKey()).catch(function(){}).then(renderLivePreview);
@@ -5088,20 +5122,17 @@
     logoInput.onchange = function(){
       var file = logoInput.files && logoInput.files[0];
       if (!file) return;
-      var validType = file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/svg+xml' || /\.(svg|webp)$/i.test(file.name);
-      if (!validType){
+      var refused = logoFileIssue(file);
+      if (refused){
         logoInput.value = '';
-        toast('Choose a PNG, WEBP or SVG logo file', { type: 'error' });
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024){
-        logoInput.value = '';
-        toast('Logo must be 5 MB or smaller', { type: 'error' });
+        logoError = refused;
+        initStep1();
         return;
       }
       if (logoPreviewUrl){ try { URL.revokeObjectURL(logoPreviewUrl); } catch(err){} }
       logoPreviewUrl = URL.createObjectURL(file);
       logoFailed = false;
+      logoError = '';
       b.logo = true;
       b.logoName = file.name;
       storeLogo(file);
@@ -6658,10 +6689,21 @@
     return Math.floor(s / 60) + ':' + two(s % 60);
   }
   var BRIEF_REASSURE_MS = 30000;
-  var BRIEF_STEP_DOING = {
-    plan: 'Working out which sections your material supports and how the page should look.',
-    generate: 'Writing every section from your description, document and links. This is the longest step.'
-  };
+  /* what a running row is doing, naming only what this run was given (NU-026): "from your description", not a
+     document and links nobody added */
+  function briefSourceWords(inputs){
+    var urls = (inputs && inputs.urls) || {}, said = [];
+    if (inputs && inputs.text) said.push('your description');
+    if (inputs && inputs.file) said.push('your document');
+    if (urls.previous) said.push('the previous edition’s site');
+    if (Object.keys(urls).some(function(k){ return k !== 'previous' && !!urls[k]; })) said.push('the pages you linked');
+    return said.length ? listWords(said) : 'what you gave ETB2B AI';
+  }
+  function briefStepDoing(key, inputs){
+    if (key === 'plan') return 'Working out which sections ' + briefSourceWords(inputs) + ' can fill and how the page should look.';
+    if (key === 'generate') return 'Writing every section from ' + briefSourceWords(inputs) + '. This is the longest step.';
+    return '';
+  }
 
   /* The event's facts, sent with every step so each one works from what was entered on this form rather
      than guessing. category, start, end, venue and city carry exactly what the event record holds; date
@@ -6694,7 +6736,7 @@
     if (!resume && detailsIssues().length){ renderFoot(); return; }
     var run = beginBusy('brief');
     if (!run) return;
-    run.note = 'Generating your site — keep this tab open.';
+    run.note = 'Generating your site. You can work in another tab meanwhile.';
 
     // the real event id this draft (and the eventual editor session) is keyed by: the event an earlier,
     // abandoned run of this draft already created, or the address on the form
@@ -7236,12 +7278,13 @@
                 '<span class="gb-step-actions">' + fix + '</span>' +
               '</div>';
           } else if (s.status === 'running'){
-            sub = (BRIEF_STEP_DOING[s.key] ? '<div class="gb-step-sub"><span class="gb-step-cause">' + BRIEF_STEP_DOING[s.key] + '</span></div>' : '') +
+            var doing = briefStepDoing(s.key, inputs);
+            sub = (doing ? '<div class="gb-step-sub"><span class="gb-step-cause">' + esc(doing) + '</span></div>' : '') +
               /* how far the server is with it (BE-033: the run's record), once it says */
               (s.key === 'plan' || s.key === 'generate' ? '<div class="gb-step-sub" data-step-progress="' + key + '"' + (s.progress ? '' : ' hidden') + '>' +
                 '<span class="gb-step-cause" role="status">' + esc(s.progress || '') + '</span></div>' : '') +
               '<div class="gb-step-sub" data-step-calm="' + key + '"' + (now - s.startedAt < BRIEF_REASSURE_MS ? ' hidden' : '') + '>' +
-                '<span class="gb-step-cause">Still working — the request is open and waiting for its answer.</span></div>';
+                '<span class="gb-step-cause">Still working — this step can take a few minutes.</span></div>';
           }
           return '<li class="gb-step gb-step-' + s.status + '" data-step="' + key + '"><div class="gb-step-row">' + icon +
             '<span class="gb-step-label">' + esc(s.label) + '</span>' + time + '</div>' + sub + '</li>';
@@ -7917,13 +7960,13 @@
     /* an option, never the page's main action: secondary, whatever has been chosen */
     host.innerHTML =
       '<button class="btn btn-secondary btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
-        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Use a previous edition’s content</span><span class="nm-short">Previous edition</span></span>'
+        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Add speakers &amp; sponsors from a previous edition</span><span class="nm-short">Previous edition</span></span>'
                 : IC.check + '<span class="nm">' + esc(S.pulledEdition.name) + '</span>') +
         svg('<path d="M6 9l6 6 6-6"/>', 14) +
       '</button>' +
-      '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Reuse a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +
-        '<div class="ep-head"><h4>Reuse a previous edition</h4>' +
-          '<p>Bring in speakers, the agenda, sponsors and photos from an event of this portal you’ve already run.</p></div>' +
+      '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Add speakers and sponsors from a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +
+        '<div class="ep-head"><h4>Add speakers &amp; sponsors from a previous edition</h4>' +
+          '<p>Brings the speakers, agenda, sponsors and glimpses of an event of this portal you have already run into these sections. Your template stays as it is.</p></div>' +
         '<div class="ep-edition' + (locked ? '' : ' chosen') + '">' +
           '<span class="tile">' + (locked ? svg('<path d="M3 7h6l2 2h10v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/>', 18) : svg('<path d="M20 6L9 17l-5-5"/>', 18)) + '</span>' +
           '<span class="txt"><span class="t">' + (locked ? 'No edition selected' : esc(S.pulledEdition.name)) + '</span>' +
