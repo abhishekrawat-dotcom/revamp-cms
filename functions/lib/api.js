@@ -239,7 +239,7 @@ const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-marku
 const genDesign = require('./gen-design');
 /* a Lovable import that did not work, said so (BE-048) */
 const importCheck = require('./import-check');
-const { diffPages, summarise, listed, changeCount } = require('./page-diff');
+const { diffPages, summarise, listed, changeCount, places } = require('./page-diff');
 /* the event's records drawn into a saved site on the server (Content reaches the staged copy at once) */
 const siteRecords = require('./site-records');
 /* the request waiting on each event of the list, and the AI-written sections nobody has checked (UX-102, UX-105) */
@@ -4170,7 +4170,7 @@ function handleSitePut(req, res) {
         if (!stored) return;
         /* a save is somebody pressing Save: every one is a kept version, on staging, with its own line in
            the history saying what changed */
-        return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note, { kind: automatic ? 'automatic' : '' }).then(function (rec) {
+        return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note, { kind: automatic ? 'automatic' : '', event: { templateId: templateId, designPlan: data.designPlan } }).then(function (rec) {
           sendJson(res, 200, { version: version, updatedAt: now, changeId: rec.changeId, summary: rec.summary, changes: changeCount(rec.items),
             stagingPath: '/preview/' + eventId + '?staged=1', published: data.published === true, publishedVersion: data.published === true ? (+data.publishedVersion || 0) : 0 });
         });
@@ -5192,14 +5192,18 @@ function reviewPathOf(eventId, id) { return '/review.html?event=' + encodeURICom
    'automatic' for the editor's own load-time updates (PUT /api/event/site, automatic: true). The approval page
    lists those apart from the person's changes. An automatic version is nobody's change: it is recorded, and told
    in the History, as AUTOMATIC_BY's, with who pressed Save kept as savedBy (UX-076: an untouched Save recorded
-   "4 sections edited" under the person's name). */
+   "4 sections edited" under the person's name).
+   opts.event: the event (its templateId, site.templateId and designPlan are what is read), so the changes and the
+   Activity log name each section as the site editor lists it and the site check names it (sectionNamesFor): "Key
+   Discussion Points", "Agenda" — never its id in words ("Key topic", "Auto sessions", NEW-5). */
 var AUTOMATIC_BY = 'Site editor (automatic)';
 function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note, opts) {
   var HTML = 'text/html; charset=utf-8', now = new Date().toISOString(), actor = actorOf(decoded);
   var kind = (opts && opts.kind) || '';
   var by = kind === 'automatic' ? AUTOMATIC_BY : actor;
-  var items = [];
-  try { items = diffPages(beforeHtml || '', pageHtml); } catch (e) { console.error('api: could not compare versions of ' + eventId + ' — ' + e.message); }
+  var items = [], names = null;
+  try { names = opts && opts.event ? sectionNamesFor(opts.event) : null; } catch (e) { console.error('api: the section names of ' + eventId + ' could not be read — ' + e.message); }
+  try { items = diffPages(beforeHtml || '', pageHtml, { names: names }); } catch (e) { console.error('api: could not compare versions of ' + eventId + ' — ' + e.message); }
   var summary = beforeHtml == null ? 'first saved version' : summarise(items);
   var told = kind === 'automatic' ? 'updated automatically when the site editor opened: ' : '';
   return Promise.all([
@@ -5214,7 +5218,11 @@ function recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, note, o
     if (by !== actor) change.savedBy = actor;
     return eventDocRef(fb, eventId).collection('changes').add(change);
   }).then(function (ref) {
-    var named = beforeHtml == null ? '' : sectionNames(items);   // which sections: "Hero, Speakers, Agenda"
+    /* which sections, by name: "Overview, Key Discussion Points", a record's by the section that shows it ("Agenda", not
+       "Session"); a long one (a section named by its heading) cut at a word within the 40 letters the log keeps of each */
+    var named = beforeHtml == null ? '' : sectionNames(places(items).map(function (n) {
+      return { name: n.length > 40 ? n.slice(0, 39).replace(/\s+\S*$/, '') + '…' : n };
+    }));
     logActivity(fb, eventId, by === actor ? decoded : by, 'site-saved', 'version ' + version + ' — ' + told + summary + (named ? ' (' + named + ')' : ''), { area: 'site', changeId: ref.id, version: version });
     return { changeId: ref.id, summary: summary, items: items };
   }).then(null, function (err) {
@@ -5278,7 +5286,7 @@ function stageContent(fb, eventId, decoded, opts) {
             updatedAt: now
           });
         }).then(function () {
-          return recordSave(fb, eventId, decoded, version, page, drawn.html, (opts && opts.note) || '', { kind: (opts && opts.kind) || 'content' });
+          return recordSave(fb, eventId, decoded, version, page, drawn.html, (opts && opts.note) || '', { kind: (opts && opts.kind) || 'content', event: data });
         }).then(function (rec) {
           return Object.assign(answer, { version: version, staged: true, summary: rec.summary, items: rec.items.slice(0, 20), changeId: rec.changeId });
         });
@@ -5344,7 +5352,7 @@ function handleApprovalRequest(req, res) {
            saves one after another */
         var items = [], seoItems = r[3] || [];
         /* a first publication has no "before": the whole site is new, and listing every section as added says nothing */
-        if (before != null && !seoOnly) { try { items = diffPages(before, after); } catch (e) { items = []; } }
+        if (before != null && !seoOnly) { try { items = diffPages(before, after, { names: sectionNamesFor(data) }); } catch (e) { items = []; } }
         if (liveVersion && before == null && !seoOnly) saves.forEach(function (c) { items = items.concat(c.items); });
         /* kept within one document, and never cut unsaid: what is past the caps is counted in the last item, which the
            summary counts too (page-diff listed; UX-114: a silent cut at 60 left a fourth FAQ out and said "3 FAQs added") */
@@ -6556,7 +6564,7 @@ function handleSiteRepair(req, res) {
             if (planPatch) changes['designPlan.sections'] = planPatch;
             return commitSiteLock(fb, eventId, token, changes);
           }).then(function () {
-            return recordSave(fb, eventId, decoded, next, before, page, 'Put right from the site check: ' + done.join(', ')).then(function (rec) {
+            return recordSave(fb, eventId, decoded, next, before, page, 'Put right from the site check: ' + done.join(', '), { event: data }).then(function (rec) {
               sendJson(res, 200, { version: next, repaired: done, summary: rec.summary, published: data.published === true });
             });
           });

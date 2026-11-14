@@ -1,5 +1,5 @@
 /* node functions/lib/page-diff.test.js — exits 1 on the first failure it lists. No network, no Firebase. */
-const { diffPages, summarise, listed, changeCount } = require('./page-diff');
+const { diffPages, summarise, listed, changeCount, places } = require('./page-diff');
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
 var failures = [], checks = 0;
@@ -165,6 +165,56 @@ ok(RV.count(big) === 704 && (shownHtml.match(/class="chg"/g) || []).length === 6
   'review page: 600 records listed, "104 more…" said after them with the way to see them, and "What changed" counts 704', RV.count(big) + ' ' + shownHtml.slice(-300));
 var shownSmall = RV.html(trendies, '/preview/ev?version=11');
 ok(shownSmall.indexOf('more-note') === -1 && /QA question 4\?/.test(shownSmall) && RV.count(trendies) === 59, 'review page: a list with nothing left out has no note, and shows the fourth FAQ');
+
+/* ---- NEW-5: sections named as the site editor lists them and the site check names them, never by their ids ---- */
+function bare(type, key, inner, extra) { return '<section data-rv-section="' + type + '"' + (key ? ' data-rv-key="' + key + '"' : '') + (extra || '') + '>' + inner + '</section>'; }
+var NAMES = { overview: 'Overview', 'key-topic': 'Key Discussion Points', 'our-speakers': 'Our Speakers', banner: 'Banner' };
+var mawBefore = page(bare('banner', 'banner', '<h1>HR Leaders Summit 2027</h1>') + bare('overview', 'overview', '<h2>Overview</h2><p>The design’s words.</p>') +
+  bare('key-topic', 'key-topic', '<h2>Key Discussion Points</h2><h3>Value</h3><p>What happens when AI can execute more of the work?</p>'));
+var mawAfter = mawBefore.replace('The design’s words.', 'Our own overview.').replace('What happens when AI', 'What changes when AI');
+var named = diffPages(mawBefore, mawAfter, { names: NAMES });
+ok(named.map(function (i) { return i.name; }).join('|') === 'Overview|Key Discussion Points' && places(named).join(', ') === 'Overview, Key Discussion Points',
+  'NEW-5 a template\'s sections by its names (template.json): "Key Discussion Points", not "Key topic"', JSON.stringify(named));
+ok(diffPages(mawBefore, mawAfter).map(function (i) { return i.name; }).join('|') === 'Overview|Key topic', 'NEW-5 without names: the key in words, as before (UX-112)');
+var copyKey = diffPages(page(bare('key-topic', 'key-topic-2', '<p>a</p>')), page(bare('key-topic', 'key-topic-2', '<p>b</p>')), { names: NAMES });
+ok(copyKey[0].name === 'Key Discussion Points', 'NEW-5 a copy of a section (its own key) goes by its type\'s name, as the check names it', JSON.stringify(copyKey));
+var keyNamed = diffPages(page(bare('generic', 'generic-2', '<h2>Old</h2>')), page(bare('generic', 'generic-2', '<h2>New</h2>')), { names: { 'generic-2': 'Partners’ pledge' } });
+ok(keyNamed[0].name === 'Partners’ pledge', 'NEW-5 a name given for the key wins over the type', JSON.stringify(keyNamed));
+
+/* the section the editor adds for the event's records, with its first record: "Agenda" — names or not, never "Auto sessions" */
+function sessionRow(id, title) {
+  return '<article class="rva-row" data-rv-repeat-template="sessions" data-rv-filled="" data-rv-id="' + id + '"><div class="rva-time" data-rv-field="time">10:00</div>' +
+    '<div class="rva-what"><h3 class="rva-name" data-rv-field="title">' + title + '</h3></div></article>';
+}
+var AGENDA_MODEL = '<article class="rva-row" data-rv-repeat-template="sessions"><div class="rva-time" data-rv-field="time">Time</div><div class="rva-what"><h3 class="rva-name" data-rv-field="title">Session title</h3></div></article>';
+var withAgenda = mawBefore.replace('</body>', bare('auto-sessions', 'auto-sessions', '<div class="rva-wrap"><h2 class="rva-title">Agenda</h2><div class="rva-list">' + AGENDA_MODEL + sessionRow('s1', 'Opening keynote') + '</div></div>', ' data-rv-auto="sessions" id="sessions"') + '</body>');
+[{ names: NAMES }, undefined].forEach(function (opts) {
+  var auto = diffPages(mawBefore, withAgenda, opts);
+  ok(types(auto) === 'added:auto-sessions,record-added:auto-sessions' && auto[0].name === 'Agenda' && auto[1].name === 'Session' && auto[1].place === 'Agenda' &&
+    places(auto).join(', ') === 'Agenda' && summarise(auto) === '1 added, content: 1 session added' && !/Auto sessions/i.test(JSON.stringify(auto)),
+    'NEW-5 the Agenda section the editor adds, with a session: "Agenda" (' + (opts ? 'with' : 'without') + ' names), and the session is in "Agenda", not in "Session"', JSON.stringify(auto));
+});
+var moreSessions = diffPages(withAgenda, withAgenda.replace(sessionRow('s1', 'Opening keynote'), sessionRow('s1', 'Opening keynote') + sessionRow('s2', 'Closing panel')), { names: NAMES });
+ok(types(moreSessions) === 'record-added:auto-sessions' && places(moreSessions).join() === 'Agenda', 'NEW-5 a session added in Content: the section that shows it, "Agenda"', JSON.stringify(moreSessions));
+var spkPlace = diffPages(page(bare('our-speakers', 'our-speakers', '<h2>Speakers</h2>' + spk('p1', 'Priya Sharma', 'https://x/a.jpg'))),
+  page(bare('our-speakers', 'our-speakers', '<h2>Speakers</h2>' + spk('p1', 'Priya Sharma', 'https://x/a.jpg') + spk('p2', 'Anita Rao', 'https://x/b.jpg'))), { names: NAMES });
+ok(spkPlace[0].place === 'Our Speakers' && places(spkPlace).join() === 'Our Speakers', 'NEW-5 a speaker is in the section the template names "Our Speakers"', JSON.stringify(spkPlace));
+
+/* a section the site's design does not name (one added from the gallery of designs): its first heading, as the check names it */
+var gallery = '<h2 hidden>Hidden title</h2><div data-rv-repeat-template="speakers"><h3>Speaker name</h3></div><h2>What our <b>attendees</b> say</h2><p>One.</p>';
+var byHeading = diffPages(page(bare('generic', 'generic', gallery)), page(bare('generic', 'generic', gallery.replace('One.', 'Two.'))), { names: NAMES });
+ok(byHeading[0].name === 'What our attendees say', 'NEW-5 a section the design does not name: its first heading a visitor reads (never a hidden one, nor a record\'s)', JSON.stringify(byHeading));
+var longHead = 'The future of work, leadership and the people who will build it all';
+var cut = diffPages(page(bare('generic', 'generic', '<h2>' + longHead + '</h2><p>a</p>')), page(bare('generic', 'generic', '<h2>' + longHead + '</h2><p>b</p>')), { names: NAMES })[0].name;
+ok(cut.length <= 60 && /…$/.test(cut) && longHead.indexOf(cut.slice(0, -1)) === 0 && !/\s…$/.test(cut), 'NEW-5 a long heading is cut at a word, within 60 letters (the check\'s cut)', cut);
+ok(diffPages(page(bare('generic', 'generic', '<p>a</p>')), page(bare('generic', 'generic', '<p>b</p>')), { names: NAMES })[0].name === 'Generic', 'NEW-5 no heading at all: the type in words, as the check says it');
+var chrome = diffPages(page(bare('nav', 'nav', '<a>Home</a>') + bare('hero', 'hero', '<h1>A</h1>') + bare('footer', 'footer', '<p>x</p>')),
+  page(bare('nav', 'nav', '<a>Start</a>') + bare('hero', 'hero', '<h1>B</h1>') + bare('footer', 'footer', '<p>y</p>')), { names: {} });
+ok(chrome.map(function (i) { return i.name; }).join('|') === 'Header|Banner|Footer', 'NEW-5 the header, banner and footer as such', JSON.stringify(chrome));
+ok(diffPages(page(bare('nav', 'nav', '<a>Home</a>')), page(bare('nav', 'nav', '<a>Start</a>')), { names: { nav: 'Top bar' } })[0].name === 'Top bar', 'NEW-5 …unless the site names them (an AI-designed site\'s "Top bar")');
+ok(diffPages(page(sec('faq', '<h2>FAQ</h2>')), page(sec('faq', '<h2>FAQs</h2>')), { names: NAMES })[0].name === 'FAQ', 'NEW-5 a page that still carries the editor\'s own name keeps it');
+ok(places(trendies).join() === 'SPEAKERS,FAQ' && places(big).join() === 'SPEAKERS' && places([{ type: 'design', name: 'Site colours' }, { type: 'more', count: 3 }, null]).join() === 'Site colours',
+  'NEW-5 places: each once, a record by its section, the site design by its name, the "more" item none', [places(trendies), places(big)]);
 
 ok(summarise(t) === '2 sections edited', 'summary of edits', summarise(t));
 ok(summarise(added.concat(moved, design)) === '1 added, 1 moved, site design changed', 'summary of a mix', summarise(added.concat(moved, design)));
