@@ -885,8 +885,10 @@
     return esc(s.text) + ' <a href="' + esc(editorAt(s.key)) + '">Open “' + esc(s.name) + '” in the site editor</a>';
   }
   /* The one step that puts a missing section on the site (NU-004): opening the site editor, which adds a section for
-     the records the site would show as it opens (SN.forTab add). Only offered when that would add it now. */
+     the records the site would show as it opens (SN.forTab add). Only offered when that would add it now. A site
+     never saved (SN.forTab unsaved, NU-004c) is offered the site editor itself, where Save puts it on the site. */
   function addSectionLink(notes){
+    if (notes.unsaved) return ' <a class="btn btn-secondary btn-sm sn-add" href="' + esc(editorUrl()) + '">Open the site editor</a>';
     if (!notes.add || !notes.add.ready) return '';
     return ' <a class="btn btn-secondary btn-sm sn-add" href="' + esc(editorUrl()) + '">Open the site editor to add the “' + esc(notes.add.name) + '” section</a>';
   }
@@ -2332,7 +2334,13 @@
     (items.filter(function(it){ return it.getAttribute('aria-checked') === 'true'; })[0] || items[0]).focus();
   }
 
-  /* the side panel of the three grouped tabs: one line per record, in the order the site lists them */
+  /* the side panel of the three grouped tabs: one line per record, in the order the site lists them. The count says
+     "on site" only when the site has a section that shows them (SN.glance, NEW-9); otherwise "Not on the site yet",
+     as the note above the tab says, and the foot speaks of the order the site will list them in. */
+  function glanceOf(tab, n, what){
+    var g = SN.glance(tab, OUTLINE, n, { award: isAwardEvent() });
+    return { count: g.text, foot: what + ', in the order the site ' + (g.on === false ? 'will list' : 'lists') + ' them.' };
+  }
   function glanceCard(cls, inner, count, foot){
     return '<div class="pvc oag">' +
         '<div class="pvc-head"><span class="eyebrow">Order at a glance</span>' +
@@ -3019,6 +3027,7 @@
       ' in ' + groups.length + (groups.length === 1 ? ' group' : ' groups') + '. ' +
       (isAwardEvent() ? 'The site shows the confirmed ones as its jury, in the order set here.'
         : 'The site shows the confirmed ones under their group headings, in the order set here.');
+    var gl = glanceOf('speakers', { total: all.length, shown: shown }, 'Confirmed ' + W.many);
 
     return vhead(W.title, sub,
         /* many at once: rows from a sheet, a folder of photos or a brochure (edit-event-speaker-tools.js) */
@@ -3053,7 +3062,7 @@
                   '<span class="num">' + n + '</span></div>';
             }).join('') +
           '</div>' +
-          glanceCard('spv', spkPreview(), shown + ' on site', 'Confirmed ' + W.many + ', in the order the site lists them.') +
+          glanceCard('spv', spkPreview(), gl.count, gl.foot) +
         '</aside>' : '') +
       '</div>';
   }
@@ -3978,6 +3987,7 @@
     var sub = all.length + (all.length === 1 ? ' session' : ' sessions') +
       ' across ' + groups.length + (groups.length === 1 ? ' day' : ' days') + '. ' +
       'The site lists them day by day, in the order set here.';
+    var gl = glanceOf('agenda', { total: all.length }, 'Sessions day by day');
 
     return vhead('Agenda', sub,
         '<button class="btn btn-secondary btn-sm" type="button" id="ag-addgroup">' +
@@ -3999,7 +4009,7 @@
             '<div class="pvc-head"><span class="eyebrow">Day at a glance</span></div>' +
             agGlance() +
           '</div>' +
-          glanceCard('agv', agPreview(), all.length + ' on site', 'Sessions day by day, in the order the site lists them.') +
+          glanceCard('agv', agPreview(), gl.count, gl.foot) +
         '</aside>' : '') +
       '</div>';
   }
@@ -4696,6 +4706,7 @@
     var sub = all.length + (all.length === 1 ? ' sponsor' : ' sponsors') +
       ' across ' + tiers.length + (tiers.length === 1 ? ' tier' : ' tiers') + '. ' +
       'The site shows the confirmed ones under their tier headings, in the order set here.';
+    var gl = glanceOf('sponsors', { total: all.length, shown: shown }, 'Confirmed sponsors');
 
     /* The red "N sponsors have no logo yet" banner is gone (UX-069): a logo still to come is normal, not a failure, and
        the count is already in Sponsor details, which now says what it means for the site. */
@@ -4737,7 +4748,7 @@
             }).join('') +
             (noLogo ? '<div class="pvc-foot">Without a logo the site shows the sponsor’s name as text. Open the row to add one.</div>' : '') +
           '</div>' +
-          glanceCard('ptv', ptPreview(), shown + ' on site', 'Confirmed sponsors, in the order the site lists them.') +
+          glanceCard('ptv', ptPreview(), gl.count, gl.foot) +
         '</aside>' : '') +
       '</div>';
   }
@@ -6607,6 +6618,16 @@
   /* what the site does with the Content lists (UX-066, UX-067): the same words as the tabs */
   CTX.siteNotes = SN;
   CTX.siteOutline = function(){ return OUTLINE; };
+  /* the check before going live, as the panel above the view read it (edit-event-site-check.js): the Dashboard's Site
+     row says what holds the site back and opens that list (NEW-11). Without the panel's script, the row goes by the
+     saved version alone. */
+  if (window.RevampSiteCheck){
+    CTX.siteCheck = function(){ return window.RevampSiteCheck.state(); };
+    CTX.showSiteCheck = function(){ return window.RevampSiteCheck.show(); };
+    CTX.recheckSite = function(){ window.RevampSiteCheck.reload(); };
+    /* each new reading draws the Dashboard again when it is on screen */
+    window.addEventListener('rv-site-check', function(){ if (EV && routeId() === 'dashboard') render(); });
+  }
   CTX.contentCounts = function(){
     return Promise.all([fetchTab('speakers'), fetchTab('agenda'), fetchTab('sponsors')]).then(function(){
       keepSaved();

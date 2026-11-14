@@ -41,6 +41,11 @@
                            Sponsors rows say what the site does with them (a section hidden until one is added, no
                            section at all, the previous edition's shown instead — UX-066, UX-067)
      ctx.log               { when(iso), who(by), action(a), detail(entry) }: the Activity log's own wording
+     ctx.siteCheck()       the check before going live as the panel above the view read it (edit-event-site-check.js
+                           RevampSiteCheck.state(): { status 'loading' | 'done' | 'failed', blocks, looks, live }), and
+                           ctx.showSiteCheck() opens that list: with both, the Site row says what holds the site back
+                           and leads to it (NEW-11); without them the row goes by the saved version alone
+     ctx.recheckSite()     reads that check again (Refresh)
    =========================================================================== */
 
 window.EditEventDashboard = (function(){
@@ -238,6 +243,26 @@ window.EditEventDashboard = (function(){
       '</div></div>';
   }
 
+  /* The Site row of Ready to publish. Saved is not ready when the check before going live holds it back (NEW-11: it
+     said "Saved in the site editor — Ready" under the panel's "2 things to put right"): then it is a thing to do, with
+     how many and the way to the list (check: true — the row opens the panel instead of the site editor). */
+  function siteRow(ctx, st){
+    var row = { label: 'Site', to: 'design/editor' };
+    if (!(st.savedVersion > 0)){ row.ok = false; row.text = 'Not saved yet: open the site editor and save it'; return row; }
+    var chk = typeof ctx.siteCheck === 'function' ? ctx.siteCheck() : null;
+    if (!chk || !chk.status){ row.ok = true; row.text = 'Saved in the site editor'; return row; }
+    if (chk.status === 'loading'){ row.ok = null; row.text = 'Saved in the site editor · checking it…'; return row; }
+    if (chk.status === 'failed'){ row.ok = null; row.badge = 'Not checked'; row.text = 'Saved in the site editor; it could not be checked just now. Refresh to try again'; return row; }
+    if (chk.blocks > 0){
+      row.ok = false; row.check = true;
+      row.text = (chk.blocks === 1 ? '1 thing' : chk.blocks + ' things') + ' to put right before ' + (chk.live ? 'the next version' : 'it') + ' can go live: see the list at the top';
+      return row;
+    }
+    row.ok = true;
+    row.text = 'Saved in the site editor' + (chk.looks ? ' · ' + (chk.looks === 1 ? '1 thing' : chk.looks + ' things') + ' to look at in the list at the top' : '');
+    return row;
+  }
+
   /* Ready to publish: read-only rows worked out from what is stored; each one leads to where it is done. */
   function readiness(ctx, st){
     var e = ctx.EV, esc = ctx.esc, comma = ctx.comma;
@@ -263,24 +288,27 @@ window.EditEventDashboard = (function(){
       contentRow(jury ? 'Jury' : 'Speakers', 'speakers', counts && counts.speakers, jury ? 'jury member' : 'speaker', jury ? 'jury members' : 'speakers'),
       contentRow('Agenda', 'agenda', counts && counts.agenda, 'session', 'sessions'),
       contentRow('Sponsors', 'sponsors', counts && counts.sponsors, 'sponsor', 'sponsors'),
-      { label: 'Site', ok: st.savedVersion > 0,
-        text: st.savedVersion ? 'Saved in the site editor' : 'Not saved yet: open the site editor and save it', to: 'design/editor' },
+      siteRow(ctx, st),
       { label: 'Registration', ok: forms ? forms.n > 0 && forms.open : null,
         text: forms ? (forms.n ? (forms.open ? 'Open' : 'Closed') + ' · ' + comma(forms.n) + (forms.n === 1 ? ' form' : ' forms') : 'No form yet') : 'Loading…',
         to: 'settings/form' }
     ];
     var ready = rows.filter(function(r){ return r.ok === true; }).length;
     var counted = rows.filter(function(r){ return r.ok !== 'na'; }).length;
+    /* the rows with no section are not things to get ready, so they are left out of the count — and the count says
+       so, or "3 of 4" stood over six rows (NEW-11) */
+    var na = rows.length - counted;
     return {
-      sub: ready + ' of ' + counted + ' ready',
+      sub: ready + ' of ' + counted + ' ready' + (na ? ' · ' + na + ' with no section' : ''),
       html: '<div class="check-list">' + rows.map(function(r){
         var tone = r.ok === true ? 'ok' : (r.ok === false ? 'warn' : 'mute');
-        return '<button class="check-row dash-ready" type="button" data-goto="' + esc(r.to) + '">' +
+        /* the Site row held back by the check opens the list of what to put right (the panel above), not the editor */
+        return '<button class="check-row dash-ready" type="button" ' + (r.check && typeof ctx.showSiteCheck === 'function' ? 'data-site-check="1"' : 'data-goto="' + esc(r.to) + '"') + '>' +
             '<span class="dash-dot dash-dot-' + tone + '" aria-hidden="true"></span>' +
             '<span class="ct">' + esc(r.label) +
               '<span class="dash-ready-sub">' + esc(r.text) + '</span></span>' +
             '<span class="dash-ready-state badge b-' + (tone === 'ok' ? 'ok' : tone === 'warn' ? 'warn' : 'mute') + '">' +
-              (r.ok === true ? 'Ready' : r.ok === false ? 'To do' : r.ok === 'na' ? 'No section' : '…') + '</span>' +
+              esc(r.badge || (r.ok === true ? 'Ready' : r.ok === false ? 'To do' : r.ok === 'na' ? 'No section' : '…')) + '</span>' +
           '</button>';
       }).join('') + '</div>'
     };
@@ -520,8 +548,14 @@ window.EditEventDashboard = (function(){
     if (again) again.onclick = function(){
       if (D && D.loading) return;
       load(ctx);
+      /* the check before going live too, so the Site row is read afresh (NEW-11) */
+      if (typeof ctx.recheckSite === 'function') ctx.recheckSite();
       ctx.render();
     };
+    /* the Site row the check holds back: opens the list of what to put right, at the top of the page (NEW-11) */
+    var root = ctx.$('dash-root');
+    var toCheck = root && root.querySelector ? root.querySelector('[data-site-check]') : null;
+    if (toCheck) toCheck.onclick = function(){ if (!ctx.showSiteCheck()) ctx.go('design/editor'); };
     /* 7 / 30 / 90 days: drawn again from what is already here (90 days are fetched), the focus kept on the choice */
     var over = ctx.$('dash-over');
     if (over && over.querySelectorAll) Array.prototype.forEach.call(over.querySelectorAll('[data-range]'), function(b){

@@ -565,7 +565,20 @@ ok(panel.opensOn('dashboard', { of: 'live', items: [{ level: 'warn', title: 't',
 ok(panel.summaryOf(st).title === 'Your live site: 1 thing to put right, 1 to look at',
   'NU-014 a live site\'s line says it is the live site', panel.summaryOf(st));
 ok(panel.summaryOf(st).lead === 'Version 10 can’t go live until it is put right.', 'NU-014 … and which version is held back', panel.summaryOf(st).lead);
+/* NEW-11: the Dashboard's Site row reads the same check (RevampSiteCheck.state), so it can never say Ready under "2 things to put right" */
+ok(JSON.stringify(panel.stateOf(SAMPLE_BLOCK)) === JSON.stringify({ status: 'done', blocks: 1, looks: 1, live: false }), 'NEW-11 the check as the Dashboard reads it: what holds it back and what to look at', panel.stateOf(SAMPLE_BLOCK));
+ok(panel.stateOf(st).blocks === 1 && panel.stateOf(st).live === true, 'NEW-11 … a live site: what holds the next version back (the saved one\'s count)', panel.stateOf(st));
+ok(panel.stateOf(null).status === 'loading' && panel.stateOf(null, true).status === 'failed' && panel.stateOf({ of: 'saved', items: [] }).blocks === 0,
+  'NEW-11 … being read, could not be read, nothing found');
 var PANEL_SRC = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'edit-event-site-check.js'), 'utf8');
+ok(/window\.RevampSiteCheck = \{/.test(PANEL_SRC) && /state: function \(\) \{ return stateOf\(failed \? null : lastCheck, failed\); \}/.test(PANEL_SRC) &&
+  /box\.open = true;/.test(PANEL_SRC) && /'rv-site-check'/.test(PANEL_SRC) && (PANEL_SRC.match(/told\(\);/g) || []).length >= 3,
+  'NEW-11 the panel shares its reading, opens its list on request, reads again on Refresh, and tells the page each time');
+var CONSOLE_SRC = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'edit-event.html'), 'utf8');
+ok(/CTX\.siteCheck = function\(\)\{ return window\.RevampSiteCheck\.state\(\); \};/.test(CONSOLE_SRC) && /CTX\.showSiteCheck = /.test(CONSOLE_SRC) && /CTX\.recheckSite = /.test(CONSOLE_SRC) &&
+  /window\.addEventListener\('rv-site-check', function\(\)\{ if \(EV && routeId\(\) === 'dashboard'\) render\(\); \}\);/.test(CONSOLE_SRC) &&
+  CONSOLE_SRC.indexOf('<script src="edit-event-site-check.js"></script>') < CONSOLE_SRC.indexOf('CTX.siteCheck'),
+  'NEW-11 the console hands the check to its Dashboard and draws it again when a new reading comes');
 ok(/'Put it right:'/.test(PANEL_SRC) && /a\.href = f\.href/.test(PANEL_SRC) && /location\.hash = f\.route/.test(PANEL_SRC), 'NU-014 every item carries its links to the place to put it right, as the publish window does');
 
 Promise.all(pending).then(function () {
