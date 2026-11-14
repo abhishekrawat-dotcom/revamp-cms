@@ -8141,6 +8141,8 @@ module.exports._testHooks = {
   replaceSiteSection: replaceSiteSection, etChromeFor: etChromeFor, searchVerdicts: searchVerdicts, handleSitemapXml: handleSitemapXml, handleSiteRepair: handleSiteRepair, handleSiteCheck: handleSiteCheck,
   publishTransform, ensureFormsRuntime, deliverPage, cachePage, cachedPage, HTML_TOOLS, acceptedEncoding, FORMS_RUNTIME_V, sitePagePass: function (html, o) { return siteA11y.pagePass(html, o, TOKEN_KIT); }, applyHeroVideo, heroVideoStamp, heroVideoPictures, rewriteOrigins, tokenizeHtml, cleanSettings, mergeSettings, eventStateOf,
   ownerLogoUnit, examineUnit, ownerLogoState, swapHeroUnit, saveOwnerUnit, ownerUnitInputs, briefYearTexts, readLogoPicture, moveYearInPng, yearOnly, inkOfText, cropToOwnUnit, ownUnitBox, cropSvgToOwnUnit, sameDrawing, LOGO_READ_SCHEMA, rasterTone, rasterise, yearCutColour, yearFont,
+  /* tools/award-logo-from-previous.js: an examined lock-up stored as the product stores a hero's unit */
+  storeLogoUnit: storeLogoUnit,
   /* published pages' UX (published-page-ux.test.js) */
   noSuchPageHtml: noSuchPageHtml, messagePage: messagePage, routeApi: routeApi, headingWords: headingWords, calendarHeaders: calendarHeaders,
   /* Settings › URL & SEO going live (seo-flow.test.js) */
