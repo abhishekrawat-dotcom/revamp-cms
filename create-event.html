@@ -8098,11 +8098,16 @@
     var locked = !S.pulledEdition;
     var caps = draftCaps();
     var onCount = TOGGLE_BLOCKS.filter(function(tb){ var sec = sectionByLib(tb.libId); return sec && secIncluded(sec); }).length;
-    /* an option, never the page's main action: secondary, whatever has been chosen */
+    /* an option, never the page's main action: secondary, whatever has been chosen. Its words fit beside the progress
+       rail at every width (NEW-8: "Add speakers & sponsors from a previo…" was cut at 1440 px): "Add past speakers &
+       sponsors", on a phone "Previous edition"; once an edition is chosen, its name (a long one cut), on a phone
+       "Previous edition" with the tick. The whole sentence is its tooltip and its name for a screen reader, and holds
+       the words shown, so it can be asked for by them. */
+    var editionTitle = locked ? 'Add past speakers & sponsors, from a previous edition of this portal' : 'Previous edition: ' + S.pulledEdition.name + ' (brought into your sections)';
     host.innerHTML =
-      '<button class="btn btn-secondary btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '">' +
-        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Add speakers &amp; sponsors from a previous edition</span><span class="nm-short">Previous edition</span></span>'
-                : IC.check + '<span class="nm">' + esc(S.pulledEdition.name) + '</span>') +
+      '<button class="btn btn-secondary btn-sm" id="btn-edition-menu" aria-haspopup="dialog" aria-expanded="' + editionPopOpen + '" title="' + esc(editionTitle) + '" aria-label="' + esc(editionTitle) + '">' +
+        (locked ? IC.spark + '<span class="nm"><span class="nm-long">Add past speakers &amp; sponsors</span><span class="nm-short">Previous edition</span></span>'
+                : IC.check + '<span class="nm"><span class="nm-long">' + esc(S.pulledEdition.name) + '</span><span class="nm-short">Previous edition</span></span>') +
         svg('<path d="M6 9l6 6 6-6"/>', 14) +
       '</button>' +
       '<div class="edition-pop" id="edition-pop" role="dialog" aria-label="Add speakers and sponsors from a previous edition"' + (editionPopOpen ? '' : ' hidden') + '>' +

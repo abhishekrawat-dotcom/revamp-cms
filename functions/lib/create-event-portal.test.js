@@ -754,6 +754,35 @@ async function main() {
   check('5. a draft keeps it, cleaned', JSON.stringify(p.ce('cleanFromEdition')({ id: 'x', name: 'X', portal: 'hr', counts: { speakers: '3', agenda: -1 }, carried: { to: 'e', done: {}, made: {} }, leftOut: 1 })) ===
     JSON.stringify({ id: 'x', name: 'X', portal: 'hr', counts: { speakers: 3, partners: 0, glimpses: 0, agenda: 0 }, carried: { to: 'e', done: {}, made: {} }, leftOut: false }) &&
     p.ce('cleanFromEdition')({ id: 5 }) === null && p.ce('cleanFromEdition')(null) === null && p.ce('cleanFromEdition')({ id: 'x', name: 'X', carried: { to: 'e', made: [] } }).carried === null);
+  /* NEW-8: the header button's words fit beside the progress rail at every width ("Add speakers & sponsors from a
+     previo…" was cut at 1440 px); the whole sentence is its tooltip and its name for a screen reader, holding the words shown */
+  p = load();
+  p.ce('S.step = 1; S.step1Phase = "details"; S.creationMethod = "template"; S.basics.portal = "hr"; S.template = "tech500"; busy = null;' +
+    'tplInfo.tech500 = { state: "ready", caps: { byLib: { speakers: { sectionId: "sp" } }, sections: [] } };' +
+    'document.querySelector = (function (q) { return function (sel) { return sel === "#step-1 #sec-list" ? {} : q(sel); }; })(document.querySelector);');
+  p.$('content-grp').hidden = false;
+  p.ce('S.pulledEdition = null; renderTogglePanel()');
+  var edBtn = (/<button class="btn btn-secondary btn-sm" id="btn-edition-menu"[^>]*>[\s\S]*?<\/button>/.exec(p.$('toggle-panel').innerHTML) || [''])[0];
+  var edTag = (/^<button[^>]*>/.exec(edBtn) || [''])[0];
+  var edTitle = (/ title="([^"]*)"/.exec(edTag) || [])[1], edAria = (/ aria-label="([^"]*)"/.exec(edTag) || [])[1];
+  var edLong = (/<span class="nm-long">([^<]*)<\/span>/.exec(edBtn) || [])[1], edShort = (/<span class="nm-short">([^<]*)<\/span>/.exec(edBtn) || [])[1];
+  function unesc(s) { return String(s || '').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
+  check('NEW-8 the button shows "Add past speakers & sponsors" (on a phone "Previous edition"), short enough for the room it has at every width',
+    p.$('toggle-panel').hidden === false && unesc(edLong) === 'Add past speakers & sponsors' && unesc(edShort) === 'Previous edition' && unesc(edLong).length <= 30 &&
+    edBtn.indexOf('from a previous edition</span>') === -1, edBtn);
+  check('NEW-8 …its tooltip and its name are the whole sentence, and hold both labels it shows (so it can be asked for by them)',
+    unesc(edTitle) === 'Add past speakers & sponsors, from a previous edition of this portal' && edAria === edTitle &&
+    unesc(edTitle).indexOf(unesc(edLong)) === 0 && unesc(edTitle).toLowerCase().indexOf(unesc(edShort).toLowerCase()) !== -1, edTag);
+  p.ce('S.pulledEdition = { id: "hr-old", name: "ETHRWorld Future of Work Summit 2025 — Bengaluru \\"edition\\"" }; renderTogglePanel()');
+  var chBtn = (/<button class="btn btn-secondary btn-sm" id="btn-edition-menu"[^>]*>[\s\S]*?<\/button>/.exec(p.$('toggle-panel').innerHTML) || [''])[0];
+  var chTag = (/^<button[^>]*>/.exec(chBtn) || [''])[0], chTitle = unesc((/ title="([^"]*)"/.exec(chTag) || [])[1]);
+  check('NEW-8 once an edition is chosen: its name (a long one cut, in full in the tooltip and name), on a phone "Previous edition" with the tick',
+    /<span class="nm-long">ETHRWorld Future of Work Summit 2025 — Bengaluru &quot;edition&quot;<\/span><span class="nm-short">Previous edition<\/span>/.test(chBtn) &&
+    chTitle === 'Previous edition: ETHRWorld Future of Work Summit 2025 — Bengaluru "edition" (brought into your sections)' &&
+    (/ aria-label="([^"]*)"/.exec(chTag) || [])[1] === (/ title="([^"]*)"/.exec(chTag) || [])[1], chBtn);
+  check('NEW-8 the button\'s words are cut with an ellipsis only where a name is too long (one line, never wrapped)',
+    /\.rail-tools > \.btn \.nm\{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; \}/.test(page) && /\.rail-tools > \.btn\{ max-width: 320px; \}/.test(page));
+
   /* a venue this edition has is kept */
   p = withEditions({ events: ITEMS });
   await p.ce('loadPortalRoster()');

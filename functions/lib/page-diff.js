@@ -1,6 +1,9 @@
 /* What changed between two saved versions of a site, in words a reviewer can read.
 
-     diffPages(beforeHtml, afterHtml) -> [ item ]
+     diffPages(beforeHtml, afterHtml, opts) -> [ item ]
+       opts.names (optional): { section id or key: name } — the names the site editor lists the site's sections by
+       (lib/api.js sectionNamesFor). With it, each section is named as the editor and the site check name it (see
+       sectionTitle); without it, by its key in words.
        item: { section, name, type, before, after, note }
          type "added" | "removed"      a section that is new, or gone            (after | before: its text)
               "text"                   wording changed in a section               (before / after: the lines that differ)
@@ -16,13 +19,15 @@
               "record-order"           the same records in another order (name: "Speakers", note says so)
               "more"                   last, only past the caps below: how many changes are not listed (count),
                                        what they are in words (note) and counted (left), so nothing is lost
-       A record's item also has kind (speakers, sessions, partners, glimpses, faq, contact) and name, the word
-       for one of them ("FAQ", "Speaker"). An unchanged site gives [].
+       A record's item also has kind (speakers, sessions, partners, glimpses, faq, contact), name, the word
+       for one of them ("FAQ", "Speaker"), and place, the name of the section that shows it ("Agenda"). An
+       unchanged site gives [].
 
      listed(items) -> the same list as it is kept: the caps applied, one "more" item at the end for the rest
      (a list already listed, or several put together, comes out with one "more" holding all of theirs).
      summarise(items) -> "2 sections edited, content: 54 speakers added, 4 FAQs added", counting the "more" too.
      changeCount(items) -> how many changes the list stands for, listed or not.
+     places(items) -> ["Overview", "Key Discussion Points"]: the sections the changes are in, by name, each once.
 
    A page is read as the editor saves it: sections are the elements carrying data-rv-section (their identity
    is data-rv-key, else data-rv-section; their name data-sec-name), the site-wide design is the inline style of
@@ -39,6 +44,7 @@ const { parseDocument } = require('htmlparser2');
 const render = require('dom-serializer').default;
 const domutils = require('domutils');
 const RR = require('../../templates/_shared/rv-records.js');
+const siteChecks = require('./site-checks');
 
 var MAX_LINES = 12;          // differing lines listed per section, each side
 var MAX_CHARS = 280;         // of one line
@@ -54,13 +60,49 @@ var MAX_LISTED = 300000;     // bytes the listed changes hold in all (a record a
 var BLOCK = /^(p|div|section|article|header|footer|main|aside|nav|h[1-6]|li|ul|ol|dl|dt|dd|tr|td|th|table|figure|figcaption|blockquote|details|summary|form|button|a|br|hr)$/;
 
 function attr(el, name) { return (el.attribs && el.attribs[name]) || ''; }
-/* A section's name as a person reads it. The saved page no longer carries the editor's own names (data-sec-name is an
-   editor mark, taken off when the page is saved), so the reviewer and the Activity log were shown the section's key:
-   "overview", "previous-agenda", "hero-2" (UX-112). Its key in words is what is left: "Overview", "Previous agenda",
-   "Hero 2". */
+function has(o, k) { return !!o && !!k && Object.prototype.hasOwnProperty.call(o, k); }
+/* A section's key in words: "overview", "previous-agenda", "hero-2" read "Overview", "Previous agenda", "Hero 2"
+   (UX-112). What a section is called when nothing better is known (no opts.names). */
 function sectionWords(key) {
   var w = String(key || '').replace(/#\d+$/, '').replace(/[-_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ').trim().toLowerCase();
   return w ? w.charAt(0).toUpperCase() + w.slice(1) : '';
+}
+/* A section's first heading as a visitor reads it (h1 to h3, never one hidden, a record's or in a <template>), cut at
+   60 letters as the site check cuts it (site-checks.js titleOf) — '' when it has none */
+var HEADING_SKIP = /^(script|style|template|noscript|svg|select|textarea|iframe|object)$/;
+var TITLE_MAX = 60;
+function headingOf(el) {
+  var found = '';
+  (function walk(n) {
+    if (found || n.type !== 'tag') return;
+    if (n !== el && (HEADING_SKIP.test(n.name) || isItem(n) || 'hidden' in n.attribs || 'data-rv-empty' in n.attribs ||
+      'data-rv-editor' in n.attribs || /(?:^|;)\s*display\s*:\s*none\b/i.test(attr(n, 'style')))) return;
+    if (/^h[1-3]$/.test(n.name)) {
+      var parts = [];
+      (function text(m) { if (m.type === 'text') parts.push(m.data || ''); (m.children || []).forEach(text); })(n);
+      var words = parts.join(' ').replace(/\s+/g, ' ').trim();
+      if (words) { found = words.length > TITLE_MAX ? words.slice(0, TITLE_MAX - 1).replace(/\s+\S*$/, '') + '…' : words; return; }
+    }
+    (n.children || []).forEach(walk);
+  })(el);
+  return found;
+}
+/* A section's name as a person reads it. The saved page no longer carries the editor's own names (data-sec-name is an
+   editor mark, taken off when the page is saved), so the reviewer and the Activity log were shown the section's key in
+   words — "Key topic" for the editor's "Key Discussion Points", "Auto sessions" for the "Agenda" the editor adds
+   (NEW-5). With names (lib/api.js sectionNamesFor) a section is named as the site editor lists it and as the site check
+   names it (site-checks.js titleOf): by its key, else by its type; the sections the editor adds for the event's records
+   ("Agenda", "Speakers"), the header, footer and banner as such; one the site's design does not name at all (added from
+   the gallery of designs) by its first heading. A section the editor adds for records is never "Auto sessions", names or
+   not; anything else without names is its key in words, as before. */
+function sectionTitle(el, key, type, names) {
+  var own = attr(el, 'data-sec-name');
+  if (own) return own;
+  if (/^auto-/.test(type)) return siteChecks.sectionName(type, names);
+  if (!names) return sectionWords(key || type);
+  if (has(names, key) && names[key]) return String(names[key]);
+  if (has(names, type) || /^(?:nav|footer|hero|imported)$/.test(type)) return siteChecks.sectionName(type, names);
+  return headingOf(el) || siteChecks.sectionName(type, names);
 }
 function ordinal(n) { var s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 
@@ -120,7 +162,7 @@ function shapeOf(node) {
 /* What names a record: the field that does on an AI-designed list item (a speaker's name, a question, a session's
    title…), else its first line, else its picture's file name */
 var NAME_FIELD = { speakers: ['n'], faq: ['t'], partners: ['name'], contact: ['name', 'label'], glimpses: ['caption'], sessions: ['title'] };
-function recordOf(el, sectionKey) {
+function recordOf(el, sectionKey, place) {
   var kind = attr(el, 'data-rv-repeat-template') || attr(el, 'data-rv-item');
   var label = '';
   (NAME_FIELD[kind] || []).some(function (field) {
@@ -131,11 +173,11 @@ function recordOf(el, sectionKey) {
   var lines = linesOf(el, { record: true }), pictures = picturesOf(el, { record: true });
   var links = domutils.findAll(function (e) { return e.name === 'a' && !!attr(e, 'href'); }, [el]).map(function (a) { return attr(a, 'href'); });
   if (!label) label = lines[0] || (pictures[0] ? fileName(pictures[0]) : '');
-  return { kind: kind, id: attr(el, 'data-rv-id'), label: label.slice(0, MAX_CHARS), lines: lines, pictures: pictures, links: links, section: sectionKey };
+  return { kind: kind, id: attr(el, 'data-rv-id'), label: label.slice(0, MAX_CHARS), lines: lines, pictures: pictures, links: links, section: sectionKey, place: place || '' };
 }
 /* the records shown on a page: an item a list drew from a record (data-rv-filled), or a card that carries its
-   record's id — never the design's own sample item, never one in a place marked empty */
-function recordsIn(node, sectionKey) {
+   record's id — never the design's own sample item, never one in a place marked empty. place: the section's name. */
+function recordsIn(node, sectionKey, place) {
   var out = [];
   domutils.findAll(function (e) {
     var kind = attr(e, 'data-rv-repeat-template') || attr(e, 'data-rv-item');
@@ -146,11 +188,13 @@ function recordsIn(node, sectionKey) {
       if (p.attribs && isItem(p) && attr(p, 'data-rv-id')) return false;           // inside another record
     }
     return !('data-rv-empty' in e.attribs);
-  }, [node]).forEach(function (e) { out.push(recordOf(e, sectionKey)); });
+  }, [node]).forEach(function (e) { out.push(recordOf(e, sectionKey, place)); });
   return out;
 }
 
-function readPage(html) {
+/* opts.names: as diffPages takes it */
+function readPage(html, opts) {
+  var names = opts && opts.names && typeof opts.names === 'object' ? opts.names : null;
   var doc = parseDocument(String(html || ''), { decodeEntities: true });
   var sections = [], seen = {}, records = [];
   domutils.findAll(function (e) { return !!attr(e, 'data-rv-section'); }, doc.children).forEach(function (el) {
@@ -162,7 +206,8 @@ function readPage(html) {
     var next = el.next;
     while (next && next.type !== 'tag') next = next.next;
     var css = next && next.name === 'style' && attr(next, 'data-rv-style') ? domutils.textContent(next).replace(/\s+/g, ' ').trim() : '';
-    records = records.concat(recordsIn(el, key));
+    var name = sectionTitle(el, attr(el, 'data-rv-key'), attr(el, 'data-rv-section'), names);
+    records = records.concat(recordsIn(el, key, name));
     var lines = linesOf(el), pictures = picturesOf(el);
     /* the layout without the records' items (the model or the cards drawn from records): a list that gained or
        lost a record has the same layout */
@@ -171,7 +216,7 @@ function readPage(html) {
     domutils.findAll(function (e) { return e.name === 'template' && !!e.attribs && 'data-rv-pristine' in e.attribs; }, [el]).forEach(function (t) { domutils.removeElement(t); });
     sections.push({
       key: key,
-      name: attr(el, 'data-sec-name') || sectionWords(attr(el, 'data-rv-key') || attr(el, 'data-rv-section')),
+      name: name,
       hidden: /(^|\s)is-hidden-sec(\s|$)/.test(attr(el, 'class')),
       lines: lines, pictures: pictures, shape: shapeOf(el), css: css
     });
@@ -221,8 +266,8 @@ function onlyIn(a, b) {
   return a.filter(function (l) { if (left[l]) { left[l]--; return false; } return true; });
 }
 
-function diffPages(beforeHtml, afterHtml) {
-  var A = readPage(beforeHtml), B = readPage(afterHtml), items = [];
+function diffPages(beforeHtml, afterHtml, opts) {
+  var A = readPage(beforeHtml, opts), B = readPage(afterHtml, opts), items = [];
   var a = {}, b = {};
   A.sections.forEach(function (s, i) { a[s.key] = s; s.at = i; });
   B.sections.forEach(function (s, i) { b[s.key] = s; s.at = i; });
@@ -340,22 +385,22 @@ function diffRecords(before, after) {
     pair(function (x, y) { return !!x.id && x.id === y.id; });
     pair(function (x, y) { return !!x.label && x.label === y.label && (!x.id || !y.id); });
     var one = capital(noun(kind, 1));
-    leftB.forEach(function (r) { items.push({ section: r.section, name: one, kind: kind, type: 'record-added', before: '', after: r.label, note: '' }); });
+    leftB.forEach(function (r) { items.push({ section: r.section, name: one, kind: kind, place: r.place, type: 'record-added', before: '', after: r.label, note: '' }); });
     pairs.forEach(function (p) {
       if (shown(p[0]) === shown(p[1])) return;
       var gone = onlyIn(p[0].lines, p[1].lines), come = onlyIn(p[1].lines, p[0].lines);
       var picsWas = onlyIn(p[0].pictures, p[1].pictures).map(fileName), picsNow = onlyIn(p[1].pictures, p[0].pictures).map(fileName);
       var linksWas = onlyIn(p[0].links, p[1].links), linksNow = onlyIn(p[1].links, p[0].links);
-      items.push({ section: p[1].section, name: one, kind: kind, type: 'record-changed',
+      items.push({ section: p[1].section, name: one, kind: kind, place: p[1].place, type: 'record-changed',
         before: gone.concat(picsWas, linksWas).slice(0, MAX_LINES).join('\n'), after: come.concat(picsNow, linksNow).slice(0, MAX_LINES).join('\n'),
         note: p[1].label && gone.indexOf(p[1].label) === -1 && come.indexOf(p[1].label) === -1 ? p[1].label : '' });
     });
-    leftA.forEach(function (r) { items.push({ section: r.section, name: one, kind: kind, type: 'record-removed', before: r.label, after: '', note: '' }); });
+    leftA.forEach(function (r) { items.push({ section: r.section, name: one, kind: kind, place: r.place, type: 'record-removed', before: r.label, after: '', note: '' }); });
     /* the records both pages show, in another order */
     var orderA = a.filter(function (r) { return pairs.some(function (p) { return p[0] === r; }); });
     var orderB = b.filter(function (r) { return pairs.some(function (p) { return p[1] === r; }); });
     if (orderB.some(function (r, i) { var p = pairs.filter(function (q) { return q[1] === r; })[0]; return orderA[i] !== p[0]; })) {
-      items.push({ section: orderB[0].section, name: capital(noun(kind, 2)), kind: kind, type: 'record-order', before: '', after: '', note: 'shown in a new order' });
+      items.push({ section: orderB[0].section, name: capital(noun(kind, 2)), kind: kind, place: orderB[0].place, type: 'record-order', before: '', after: '', note: 'shown in a new order' });
     }
   });
   return items;
@@ -443,5 +488,18 @@ function words(t) {
   return parts.join(', ') || 'no visible change';
 }
 
+/* The sections a list of changes is in, by name, each once and in order: what the Activity log names after a save's
+   summary ("2 sections edited (Overview, Key Discussion Points)"). A record's is the section that shows it ("Agenda"),
+   not the word for one of them ("Session"); the site design goes by its own name; the "more" item names none. */
+function places(items) {
+  var out = [];
+  (items || []).forEach(function (i) {
+    if (!i || i.type === 'more') return;
+    var n = String((/^record-/.test(i.type) ? i.place : i.name) || '').replace(/\s+/g, ' ').trim();
+    if (n && out.indexOf(n) === -1) out.push(n);
+  });
+  return out;
+}
+
 /* readPage is also how lib/promo.js reads a saved site's design (the body's variables and the editor's state) */
-module.exports = { diffPages, summarise, listed, changeCount, readPage };
+module.exports = { diffPages, summarise, listed, changeCount, readPage, places };
