@@ -66,7 +66,7 @@ function mean(stats, i) { return stats.channels[i].mean; }
   var ct = await edit.sharpOps(A, { change: 'more contrast' }), sc = await sharp(ct.bytes).stats();
   check(sc.channels[1].stdev > s0.channels[1].stdev + 3, 'more contrast: a wider spread of tones', [s0.channels[1].stdev, sc.channels[1].stdev]);
   var zm = await edit.sharpOps(A, { change: 'crop it tighter' });
-  var refs = require('./picture-refs');
+  var refs = require('./picture-refs'), n = 0;
   var dz = refs.distance(await refs.dHash(A), await refs.dHash(zm.bytes));
   check(zm.width === 800 && zm.height === 600 && dz > 0 && zm.line === 'A closer crop — the same picture, nothing else changed.', 'a closer crop: the same size, a closer view', [zm.width, zm.height, dz]);
   var fl = await edit.sharpOps(A, { change: 'flip it' });
@@ -84,7 +84,8 @@ function mean(stats, i) { return stats.channels[i].mean; }
   check(ex2 && ex2.aspect === '16:9' && ex2.width === 1067 && ex2.height === 600, 'wider: to 16:9, the model\'s own 16:9', ex2 && [ex2.width, ex2.height, ex2.aspect]);
   var ex3 = await edit.extendCanvas(A, 9 / 16);
   check(ex3 && ex3.aspect === '9:16' && ex3.width === 800 && ex3.height === 1422 && ex3.box.top === 411, 'taller: to 9:16, centred top to bottom', ex3 && [ex3.width, ex3.height, ex3.box]);
-  check((await edit.extendCanvas(A, 4 / 3)) === null && (await edit.extendCanvas(A, 0)) === null, 'already that shape: nothing to extend');
+  check((await edit.extendCanvas(A, 4 / 3)) === null && (await edit.extendCanvas(A, 0)) === null && (await edit.extendCanvas(await scene(0, 1536, 672), 1152 / 340)) === null,
+    'already that shape, or already as wide as the model makes them (21:9): nothing to extend');
 
   /* ======================= run ======================= */
   var files = {};
@@ -137,13 +138,24 @@ function mean(stats, i) { return stats.channels[i].mean; }
   var inMeta = await sharp(Buffer.from(c2.opts.image.data, 'base64')).metadata();
   check(r.how === 'model' && c2.opts.aspectRatio === '21:9' && inMeta.width === 1400 && inMeta.height === 600 && /placed in the middle of a wider canvas/.test(c2.prompt) && /Keep the middle part exactly as it is/.test(c2.prompt) &&
     r.line === 'The same picture, made wider to fill its frame; the middle is as it was.', '"make it wider": a 21:9 canvas, its margins filled by the model, the middle kept', { aspect: c2.opts.aspectRatio, w: inMeta.width, line: r.line });
+  /* already 21:9 (QA, 16 Nov 2026: the #53 picture in a 3.4:1 strip): no paid call for a few per cent; ETB2B AI's own picture
+     is made again in its frame's shape, the owner's photo left as it is and said */
+  files['events/' + EV + '/generated/wide.png'] = await scene(0, 1536, 672);
+  files['events/' + EV + '/media/wide.jpg'] = await sharp(await scene(0, 1536, 672)).jpeg().toBuffer();
+  n = calls.length;
+  r = await edit.run(job({ editOf: { url: OWN + 'generated/wide.png' }, change: 'make it wider', changeKind: 'extend', frame: '1152:340' }), CTX);
+  var r2 = await edit.run(job({ editOf: { url: OWN + 'media/wide.jpg' }, change: 'make it wider', changeKind: 'extend', frame: '1152:340' }), CTX);
+  check(r.code === 'not-supported' && r2.code === 'edit-wide' && /already as wide/.test(r2.error) && calls.length === n, 'wider, already 21:9: made again in its frame\'s shape, or (the owner\'s photo) said; nothing paid', [r.code, r2.code]);
+  answers.push(madeAnswer(made));
+  r = await edit.run(job({ change: 'make it wider', changeKind: 'extend', frame: '' }), CTX);
+  check(r.how === 'model' && calls[calls.length - 1].opts.aspectRatio === '16:9', 'wider with no frame known: the next shape a quarter wider (4:3 to 16:9)', calls[calls.length - 1].opts.aspectRatio);
   /* a re-fit starts from the picture as it was made (job.original), before its frame cut it */
   downloads = [];
   r = await edit.run(job({ change: 'crop it tighter', changeKind: 'crop', original: OWN + 'generated/1-hall-original.png' }), CTX);
   check(r.how === 'sharp' && downloads[0] === 'events/' + EV + '/generated/1-hall-original.png' && r.width === 1184, 'a closer crop starts from the picture as it was made', { d: downloads, w: r.width });
 
   /* the owner's own photos: light, colour, crop and background; faces never */
-  var n = calls.length;
+  n = calls.length;
   r = await edit.run(job({ editOf: { url: OWN + 'media/owner.jpg' }, change: 'remove the people', changeKind: 'remove' }), CTX);
   check(r.code === 'edit-own-photo' && r.status === 422 && /your own photo/.test(r.error) && /never the people in it/.test(r.error) && !/\bET\b/.test(r.error) && calls.length === n,
     'the owner\'s own photo: removing people is refused in plain words, before anything is paid for', r);

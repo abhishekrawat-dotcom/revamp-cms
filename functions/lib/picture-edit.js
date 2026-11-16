@@ -48,6 +48,7 @@ var SHARP_KINDS = ['tone', 'light', 'crop', 'focus'];
 var MODEL_KINDS = ['remove', 'replace', 'extend', 'style', 'season', 'fill'];
 var MAX_WIDE = 21 / 9;                  // the widest shape the picture model makes (gemini.js IMAGE_ASPECTS)
 var MIN_TALL = 9 / 16;
+var MIN_GAIN = 1.08;                    // a wider (or taller) canvas is made only when it adds at least 8%
 var TIMEOUT_MS = 90000;                 // one picture model call (chat-picture.js TIMEOUT_MS)
 var CHECK_RESERVE_MS = 20000;           // kept back from the deadline for the look at the edited picture
 var MIN_MODEL_MS = 25000;               // a model edit that cannot have this long is not started
@@ -61,6 +62,7 @@ var WORDS = {
   'edit-unreadable': 'I could not open that picture to change it. Nothing on your site changed — try again in a minute.',
   'edit-own-photo': 'This is your own photo, so I only change its light, colour, crop or background, and never the people in it. Nothing on your site changed.',
   'edit-time': 'There was not enough time left to change the picture. Nothing on your site changed — ask again.',
+  'edit-wide': 'Your photo is already as wide as I can extend it. Nothing on your site changed — the frame shows the middle of it.',
   'edit-none': 'I could not tell what to change in the picture. Nothing on your site changed — say what should look different.'
 };
 function refused(code, status) { return { code: code, status: status, error: WORDS[code] }; }
@@ -237,7 +239,8 @@ function extendCanvas(bytes, ratio) {
     var own = w / h, wider = ratio > own * 1.02, taller = ratio < own / 1.02;
     if (!wider && !taller) return null;
     var shapeTo = wider ? nearestShape(Math.min(ratio, MAX_WIDE), true) : nearestShape(Math.max(ratio, MIN_TALL), false);
-    if (wider ? shapeTo.ratio <= own * 1.02 : shapeTo.ratio >= own / 1.02) return null;
+    /* a few per cent more is no change worth a paid call (a 21:9 picture is as wide as the model makes them) */
+    if (wider ? shapeTo.ratio <= own * MIN_GAIN : shapeTo.ratio >= own / MIN_GAIN) return null;
     var cw = wider ? Math.round(h * shapeTo.ratio) : w, ch = wider ? h : Math.round(w / shapeTo.ratio);
     var box = { left: Math.floor((cw - w) / 2), top: Math.floor((ch - h) / 2), width: w, height: h };
     var upright = sharp(bytes, INPUT).rotate().flatten({ background: '#ffffff' });
@@ -325,10 +328,17 @@ function modelEdit(bytes, job, ctx, o) {
   var now = Date.now(), until = ctx.deadlineAt ? ctx.deadlineAt - CHECK_RESERVE_MS : now + TIMEOUT_MS + 5000;
   if (until - now < MIN_MODEL_MS) return Promise.resolve(refused('edit-time', 504));
   var type = pictureRefs.sniff(bytes);
-  var target = targetRatio(job);
-  var extend = o.kind === 'extend' && target > 0;
-  var start = extend ? extendCanvas(bytes, target) : Promise.resolve(null);
+  var extend = o.kind === 'extend';
+  /* wider: to the frame's shape; with no frame known, the next shape a quarter wider */
+  var start = !extend ? Promise.resolve(null) : measure(bytes).then(function (size) {
+    /* the frame it sits in (never the shape it was asked in: that is the picture's own) */
+    var target = targetRatio({ frame: job.frame }) || (size ? size.w / size.h * 1.25 : 0);
+    return target > 0 ? extendCanvas(bytes, target) : null;
+  });
   return start.then(function (canvas) {
+    /* already as wide as it can be made: a picture ETB2B AI made is made again in its frame's shape (as before);
+       the owner's own photo is left as it is, and said */
+    if (extend && !canvas) return o.own ? refused('edit-wide', 422) : Object.assign({}, NOT_SUPPORTED);
     var input = canvas ? { bytes: canvas.bytes, type: canvas.type } : { bytes: bytes, type: type };
     return measure(input.bytes).then(function (size) {
       var aspect = canvas ? canvas.aspect : size ? nearestShape(size.w / size.h, false).aspect : '';
