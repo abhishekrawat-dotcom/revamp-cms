@@ -109,7 +109,7 @@ function chatViewLimits(payload) {
   var left = Math.max(0, Math.min(999, parseInt(payload.viewLeftOut, 10) || 0));
   var undrawn = (Array.isArray(payload.viewUndrawn) ? payload.viewUndrawn : []).map(function (n) { return String(n || '').replace(/\s+/g, ' ').trim().slice(0, 60); }).filter(Boolean).slice(0, 12);
   var out = [];
-  if (left) out.push(left + ' picture' + (left === 1 ? ' is' : 's are') + ' left out of the screenshots and shown as hatched grey boxes marked "picture" (too many to draw) — visitors see the real pictures there');
+  if (left) out.push(left + ' picture' + (left === 1 ? ' is' : 's are') + ' left out of the screenshots and shown as hatched grey boxes marked "picture" (too many to draw, or not loaded in time) — visitors see the real pictures there, and a banner or section showing such a box HAS a picture');
   if (undrawn.length) out.push('the section' + (undrawn.length === 1 ? '' : 's') + ' ' + undrawn.map(function (n) { return '"' + n + '"'; }).join(', ') + (undrawn.length === 1 ? ' is' : ' are') + ' not in the screenshots (or shown as a grey block marked "could not be drawn")');
   return out.length ? ' LIMITS OF THE SCREENSHOTS, NOT OF THE PAGE: ' + out.join('; ') + '. Never report these as problems on the page or advise about them; judge those parts from the text below.' : '';
 }

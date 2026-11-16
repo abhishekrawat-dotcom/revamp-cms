@@ -373,6 +373,13 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
     check('D.7 … run: a made picture is swapped in, a held one and a rework\'s are not', placed.length === 1 && placed[0] === GEN, placed);
   })();
   check('D.7 … and its place step is marked not done, with why', /function withoutNewPicture\(because\) \{\s*if \(S\.picPlace\) S\.picPlace\.set\('fail', 'not done — ' \+ because\);/.test(SRC));
+  /* QA, 16 Nov 2026: what the AI is shown of the page drew a banner whose picture the proxy refused as blank, and the AI
+     called the banner empty. A picture that is refused or does not come is drawn as the box marked "picture", counted
+     with those left out, so the AI is told a picture is there. */
+  var see = body('seePage');
+  check('D.7 seePage: a picture the proxy refuses, or that fails, is drawn as the "picture" box and counted, never as nothing',
+    /\.then\(function \(r\) \{\s*free\(\);\s*if \(r && r\.ok\) return r;\s*leftOut\+\+;\s*return realFetch\.call\(win, LEFT_OUT\);\s*\}, function \(\) \{ free\(\); leftOut\+\+; return realFetch\.call\(win, LEFT_OUT\); \}\);/.test(see) &&
+    /leftOut: leftOut/.test(see), see.slice(see.indexOf('win.fetch = function'), see.indexOf('win.fetch = function') + 1200));
   var heldFn = body('pictureHeld'), without = body('withoutNewPicture');
   check('D.7 … its step says why, and every step that needed it is not done', /S\.picMake\.set\('fail', why\);/.test(heldFn) && /notDone\.push\(why\);/.test(heldFn) && /withoutNewPicture\('the new picture was kept off the page'\);/.test(heldFn) &&
     /S\.picPlace\.set\('fail', 'not done — ' \+ because\)/.test(without) && /edits\.splice\(i, 1\);/.test(without) && /jobSteps\.splice\(i, 1\);/.test(without), heldFn + without);

@@ -7506,9 +7506,16 @@
         if (!/^https:\/\//i.test(u) || u.indexOf(here) === 0 || /^https:\/\/fonts\.(googleapis|gstatic)\.com\//i.test(u)) return realFetch.apply(win, arguments);
         if (seen.indexOf(u) === -1) seen.push(u);
         if (stopped || !allowed[u]) { leftOut++; return realFetch.call(win, LEFT_OUT); }
+        /* a picture the proxy will not give (another event's file, one that is gone) or that does not come is drawn as a
+           box marked "picture", never as nothing: a banner drawn blank was read as an empty banner (QA, 16 Nov 2026) */
         return slot().then(function () {
           return realFetch.call(win, '/api/promo/image?eventId=' + encodeURIComponent(eventId) + '&w=' + SEE_PICTURE_W + '&url=' + encodeURIComponent(u), { headers: bearer ? { Authorization: 'Bearer ' + bearer } : {} });
-        }).then(function (r) { free(); return r; }, function (err) { free(); throw err; });
+        }).then(function (r) {
+          free();
+          if (r && r.ok) return r;
+          leftOut++;
+          return realFetch.call(win, LEFT_OUT);
+        }, function () { free(); leftOut++; return realFetch.call(win, LEFT_OUT); });
       };
       var bg = win.getComputedStyle(doc.body).backgroundColor || '#ffffff';
       function keep(n) {

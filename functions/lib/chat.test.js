@@ -231,6 +231,8 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'check it', sections: SECTIONS, view: [JPEG], viewWhat: 'page', viewLeftOut: 12, viewUndrawn: ['Sponsors'] });
   ok(/LIMITS OF THE SCREENSHOTS, NOT OF THE PAGE: 12 pictures are left out of the screenshots and shown as hatched grey boxes marked "picture"[^;]*; the section "Sponsors" is not in the screenshots \(or shown as a grey block marked "could not be drawn"\)\. Never report these as problems on the page/.test(prompts[prompts.length - 1]),
     'what the screenshots leave out is said, and never to be reported as a problem on the page');
+  ok(/marked "picture" \(too many to draw, or not loaded in time\) — visitors see the real pictures there, and a banner or section showing such a box HAS a picture;/.test(prompts[prompts.length - 1]),
+    'a box marked "picture" is a picture: a banner showing one is never "empty" (QA, 16 Nov 2026)');
   answers.push(reply('OK.'));
   await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'hi', sections: SECTIONS });
   ok(imagesSent[imagesSent.length - 1].length === 0 && /No screenshot of the page came with this message/.test(prompts[prompts.length - 1]) && /never say "I can't see the page"/.test(prompts[prompts.length - 1]), 'with no picture, the model answers from the text and never says it cannot see the page');
