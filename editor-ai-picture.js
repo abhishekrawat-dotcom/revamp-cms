@@ -65,6 +65,13 @@
        shape the picture was made in (frame 'W:H'): its box, or the box around it that holds nothing else, gets
        aspect-ratio W / H and no height of its own, the picture filling it with object-fit: cover; a layout that will
        not take the shape is put back and the picture only gets cover (shaped false). el: the frame's element
+   RevampAiPicture.frameBox(el) -> { w, h } of the frame el is shown in now, or null (read before a swap: the place
+       keeps that frame after it)
+   RevampAiPicture.shapeGap(w, h, pw, ph) -> how far a w x h frame is from a pw x ph picture's shape (|ln|; 0 = same)
+   RevampAiPicture.holdOwnFrames(root, sizeOf, h) -> [{ src, gap, shaped }]: in a section ETB2B AI reworked, each of
+       this event's own pictures whose frame is more than 5% off the picture's own shape gets that shape (fitFrame);
+       sizeOf(src) gives a size known before the picture loads, else its own is read
+   (describe's list entries carry nw, nh: the picture's own size, once it has loaded)
    RevampAiPicture.heroVeilCss(mode) -> the veil functions/lib/gen-design.js heroCss lays over a banner picture
    RevampAiPicture.unitState(doc) -> a string that is the same exactly when every logo unit on the page is the same
        (its pictures, its copy for a dark background, its note, its tone and its words): taken before a change and
@@ -475,10 +482,19 @@
     return (+list[bySize[0]].area || 0) >= 2 * (+list[bySize[1]].area || 0) ? bySize[0] : -1;
   }
   /* how the AI is shown one picture, so the owner's words ("the one of the hall", "the big one") can name it:
-     its alt text in plain words (page text, so the server cleans it again), else "picture k", and its size */
+     its alt text in plain words (page text, so the server cleans it again), else "picture k", its frame's size, and
+     the picture's own size once it has loaded (nw, nh): a frame far off the picture's own shape crops it to a strip
+     (owner, 16 Nov 2026, ET DAVOS 2027: "the image dimension issue is still not fixed"), and the AI is told so */
+  function naturalOf(el) {
+    var img = tagOf(el) === 'IMG' ? el : el && el.querySelector ? el.querySelector('img') : null;
+    var w = img ? +img.naturalWidth || 0 : 0, h = img ? +img.naturalHeight || 0 : 0;
+    return w > 0 && h > 0 ? { w: w, h: h } : null;
+  }
   function entryOf(c, i) {
     var t = words(attr(c.el, 'alt') || attr(c.el, 'aria-label') || attr(c.el, 'title')).slice(0, LABEL_MAX).trim();
-    return { label: t || 'picture ' + (i + 1), w: Math.round(c.w), h: Math.round(c.h) };
+    var out = { label: t || 'picture ' + (i + 1), w: Math.round(c.w), h: Math.round(c.h) }, own = naturalOf(c.el);
+    if (own) { out.nw = own.w; out.nh = own.h; }
+    return out;
   }
   function slotOf(sec, el, h) {
     if (!sec || !el) return 0;
@@ -714,6 +730,17 @@
     return { w: b.w - px(s.paddingLeft) - px(s.paddingRight) - px(s.borderLeftWidth) - px(s.borderRightWidth),
       h: b.h - px(s.paddingTop) - px(s.paddingBottom) - px(s.borderTopWidth) - px(s.borderBottomWidth) };
   }
+  /* the frame a picture is shown in now: its box on the page as it is laid out ({ w, h }, rounded), else null. Read
+     before a swap (on the desktop layout, as the slots were read), so the place keeps its frame afterwards */
+  function frameBox(el) {
+    if (!el || el.nodeType !== 1 || !connected(el)) return null;
+    var b = boxOf(el);
+    return b.w >= 1 && b.h >= 1 ? { w: Math.round(b.w), h: Math.round(b.h) } : null;
+  }
+  /* how far a frame of w x h is from a picture of pw x ph: |ln| of the two proportions (0 = the same shape) */
+  function shapeGap(w, h, pw, ph) {
+    return w > 0 && h > 0 && pw > 0 && ph > 0 ? Math.abs(Math.log((w / h) / (pw / ph))) : 0;
+  }
   function fitFrame(img, frame, h) {
     h = h || {};
     var out = { shaped: false, el: null };
@@ -759,6 +786,33 @@
     }
     var s0 = styleOf(img, h);
     if (!s0 || s0.objectFit !== 'cover') img.style.objectFit = 'cover';
+    return out;
+  }
+  /* Every picture of this event's own in a section ETB2B AI just reworked, its frame held to the picture's own shape
+     (owner, 16 Nov 2026, ET DAVOS 2027: "the image dimension issue is still not fixed. AI has created a square image
+     for a rectangular placeholder"): a rework may lay a 4:3 picture out as a band five times as wide as tall, which
+     crops it to a strip. sizeOf(src) -> { w, h } of a picture whose size is known before it loads (a document's, one
+     the section showed before the rework), else the picture's own once loaded; a picture whose size is not known yet
+     is passed over. Only a frame more than FIT_SLACK off its picture's shape is changed, by fitFrame (the frame keeps
+     its width; a layout that will not take the shape is left as it was, the picture filling it by cropping).
+     -> [{ src, gap, shaped }] for each frame it changed */
+  var FIT_SLACK = 0.05;
+  function holdOwnFrames(root, sizeOf, h) {
+    h = h || {};
+    var out = [];
+    if (!root || !root.querySelectorAll || !h.eventId) return out;
+    var own = new RegExp('^https://storage\\.googleapis\\.com/[^/?#]+/events/' + escRe(h.eventId) + '/');
+    each(Array.prototype.slice.call(root.querySelectorAll('img')), function (img) {
+      var src = attr(img, 'src'), sec = sectionOf(img);
+      /* a logo, the logo unit and Content's records keep their own frames (fitFrame leaves them too) */
+      if (!own.test(src) || isLogoImg(img) || (sec && within(img, sec, KEEP))) return;
+      var size = (typeof sizeOf === 'function' ? sizeOf(src) : null) || naturalOf(img);
+      if (!size || !(size.w > 0 && size.h > 0)) return;
+      var b = boxOf(img), gap = shapeGap(b.w, b.h, size.w, size.h);
+      if (!(b.w > 0 && b.h > 0) || gap <= FIT_SLACK) return;
+      var r = fitFrame(img, Math.round(size.w) + ':' + Math.round(size.h), h);
+      out.push({ src: src, gap: Math.round(gap * 100) / 100, shaped: r.shaped });
+    });
     return out;
   }
 
@@ -863,6 +917,9 @@
     target: target,
     place: place,
     fitFrame: fitFrame,
+    frameBox: frameBox,
+    shapeGap: shapeGap,
+    holdOwnFrames: holdOwnFrames,
     heroVeilCss: heroVeilCss,
     unitState: unitState,
     recordsState: recordsState

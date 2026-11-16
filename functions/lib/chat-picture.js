@@ -202,8 +202,20 @@ var SENTENCES = {
   heroPeople: 'The banner\'s picture never shows people — it is the event\'s key visual — so the new one shows the setting and the subject instead.',
   /* a background nobody described is decoration, which shows nobody (people only when the owner asks for them) */
   backgroundPeople: 'A background picture shows no people unless you ask for them, so this one shows the setting instead.',
-  started: 'The new picture could not be started — ask again.'
+  started: 'The new picture could not be started — ask again.',
+  /* a section visitors do not see (QA, 16 Nov 2026: a new picture, paid for, went into an Agenda with no sessions,
+     which the live page and the preview leave out) */
+  hidden: 'Visitors do not see {name} yet[[ — it shows once {label}]], so I did not make a picture for it. Choose a section visitors see, or name {name} if you want the picture there for later.',
+  hiddenNote: 'Visitors do not see {name} yet[[ — it shows once {label}]]; the new picture is there for then.'
 };
+/* when a section waiting for its records (the editor's data-rv-empty) is shown, for the sentences above */
+var SHOWS_WHEN = { sessions: 'its sessions are added in Content › Agenda', agenda: 'its sessions are added in Content › Agenda',
+  speakers: 'its speakers are added in Content › Speakers', partners: 'its partners are added in Content › Sponsors', sponsors: 'its partners are added in Content › Sponsors',
+  glimpses: 'its photos are added in Content › Gallery', faq: 'its questions are added in Content › FAQ', contact: 'its contact desks are added in Content › Contact' };
+function showsWhenOf(sec) {
+  var k = sec && typeof sec.showsWhen === 'string' ? sec.showsWhen : '';
+  return SHOWS_WHEN[k] || (sec && sec.hidden && !k ? 'you show it again (it is hidden)' : k ? 'its records are added under Content' : '');
+}
 /* vars: { name, perDay, what } (each with its default), and the optional { scene, section, sections, label, rest }: a
    [[ … ]] part of a sentence is kept only when each of its optional values is given, innermost part first */
 function sentence(key, vars) {
@@ -679,7 +691,12 @@ function cleanSectionFields(section, ownPrefix) {
     var label = typeof e === 'string' ? e : e && typeof e === 'object' ? (e.label || e.alt || e.text || '') : '';
     label = String(label).replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 60).trim() || 'picture ' + (i + 1);
     var o = e && typeof e === 'object' ? e : {};
-    return { label: label, w: int(o.w != null ? o.w : o.width, 0, 20000), h: int(o.h != null ? o.h : o.height, 0, 20000) };
+    var one = { label: label, w: int(o.w != null ? o.w : o.width, 0, 20000), h: int(o.h != null ? o.h : o.height, 0, 20000) };
+    /* the picture's own size, once it has loaded in the editor (editor-ai-picture.js entryOf): a frame far off it is
+       said in the prompt (promptFields) */
+    var nw = +o.nw, nh = +o.nh;
+    if (nw >= 1 && nw <= 20000 && nh >= 1 && nh <= 20000) { one.nw = Math.round(nw); one.nh = Math.round(nh); }
+    return one;
   });
   /* the place a new background or banner picture would fill, as the editor measured it (null when not sent) */
   var place = p.frame && typeof p.frame === 'object' ? shape.frameOf(p.frame.w, p.frame.h) : null;
@@ -687,7 +704,7 @@ function cleanSectionFields(section, ownPrefix) {
   var own = !prefix ? [] : (Array.isArray(p.own) ? p.own : []).map(function (u) { return String(u || '').trim(); }).filter(function (u) {
     return u.indexOf(prefix) === 0 && u.length < 600 && !/[?#]/.test(u.slice(prefix.length).replace(/\?v=\d+$/, ''));
   }).slice(0, 4);
-  return Object.assign({}, s, {
+  var out = Object.assign({}, s, {
     role: ROLES.indexOf(s.role) !== -1 ? s.role : '',
     video: s.video === true,
     heroMode: s.heroMode === 'dark' || s.heroMode === 'light' ? s.heroMode : '',
@@ -703,13 +720,38 @@ function cleanSectionFields(section, ownPrefix) {
       own: own
     }
   });
+  /* hidden: visitors do not see it — hidden by the owner, or waiting for its records (showsWhen: 'sessions', 'speakers'…,
+     what the editor's data-rv-empty says it waits for) */
+  delete out.hidden;
+  delete out.showsWhen;
+  if (s.hidden === true) {
+    out.hidden = true;
+    if (typeof s.showsWhen === 'string' && /^[a-z][a-z-]{0,30}$/.test(s.showsWhen)) out.showsWhen = s.showsWhen;
+  }
+  return out;
 }
 
 /* What the section JSON in the chat prompt gains for pictures. `own` is never shown. */
+/* how far a frame of w x h is from a picture of nw x nh (|ln| of the proportions; 0 = the same shape) */
+function frameGap(w, h, nw, nh) {
+  return w > 0 && h > 0 && nw > 0 && nh > 0 ? Math.abs(Math.log((w / h) / (nw / nh))) : 0;
+}
+var FRAME_OFF = 0.1;                  // a frame more than 10% off its picture's shape is said to be off it
+/* one picture as the prompt lists it: its label, its frame, and — once the editor knows it — the picture's own size,
+   with the share of it the frame shows when the two shapes differ (owner, 16 Nov 2026, ET DAVOS 2027: "the image
+   dimension issue is still not fixed. AI has created a square image for a rectangular placeholder") */
+function pictureEntry(e) {
+  var out = e.label + (e.w && e.h ? ' (' + e.w + '×' + e.h + ')' : '');
+  if (!(e.w && e.h && e.nw && e.nh)) return out;
+  var gap = frameGap(e.w, e.h, e.nw, e.nh);
+  if (gap <= FRAME_OFF) return out;
+  return out + ' — FRAME OFF ITS PICTURE\'S SHAPE: the picture itself is ' + e.nw + '×' + e.nh + ' (' + shape.nearest(e.nw, e.nh) + '), so this frame shows only ' +
+    Math.max(1, Math.round(Math.exp(-gap) * 100)) + '% of it';
+}
 function promptFields(section) {
   var s = section || {}, p = s.pics || {}, out = {};
   if (s.role) out.role = s.role;
-  if (Array.isArray(p.list) && p.list.length) out.pictures = p.list.map(function (e) { return e.label + (e.w && e.h ? ' (' + e.w + '×' + e.h + ')' : ''); });
+  if (Array.isArray(p.list) && p.list.length) out.pictures = p.list.map(pictureEntry);
   if (p.background) out.background = true;
   if (s.role === 'hero') out.banner = p.heroTarget || 'none';
   if (s.video) out.video = true;
@@ -760,6 +802,9 @@ function promptLines(payload) {
     'NEW PICTURES — you can make ONE new picture per message, ONLY when the owner\'s latest message asks for one (or, right after a picture you made, asks for another try: "make it brighter", "try another"). Put it in `newPictures`; leave it empty otherwise, and never give more than one. It is made and placed at once, and the owner can undo it like any other change.',
     '- `placement`: "hero" is the banner\'s picture at the top of the page; "background" is a picture behind a section\'s content; "picture" is the section\'s own picture — it replaces one of its pictures, or a rework of the section adds one when it has none or when the owner asks to add a picture (to the section, or to a part of it) beside the ones it has.',
     '- `slot`: which of the section\'s pictures (its `pictures` list below, 1 = the first) — only when the owner\'s words say which one, by its position or by what it shows; 0 otherwise.',
+    /* owner, 16 Nov 2026 (ET DAVOS 2027): "the image dimension issue is still not fixed. AI has created a square image
+       for a rectangular placeholder" — three pictures sat in bands four to five times as wide as tall */
+    '- A picture listed with "FRAME OFF ITS PICTURE\'S SHAPE" sits in a frame of another shape, so visitors see only part of it. When the owner says a picture is the wrong shape, cut off, squashed, has white space around it or does not fit its frame or placeholder ("the image dimension issue is still not fixed", "a square image in a rectangular placeholder"), fix each such picture the message is about — every one of them when it names none — with `sectionEdits` for its section: "give the picture “<its label>” a frame of its own shape, <W>:<H> (aspect-ratio: <W> / <H>), sized by its width with no height of its own, the picture filling it with object-fit: cover; change nothing else". That costs no new picture: make none for it. Say in `summary` which pictures now show whole.',
     /* owner, 16 Nov 2026: a picture added by a rework was made 4:3 and laid out as a band three times as wide */
     '- `frame`: for a picture a rework of the section ADDS (the section has no picture, or the owner asks to add one beside its own): the shape of its frame, chosen for where it goes — "21:9" a band across the section, "16:9" across the section above or below the text, "3:2" or "4:3" beside the text, "1:1" a square tile, "4:5" or "3:4" a tall picture beside the text. The picture is made in exactly that shape and the rework is told to give the frame that shape, so write nothing about the picture\'s size in `sectionEdits`. "" when the picture replaces one the section has, and for a banner or a background.',
     '- `kind`: "people" only for a section about people or the gathering (at most two sections of the site show people; the banner never does — it is the event\'s key visual); "place" for the venue or the city; "subject" for the field\'s own things, in detail; "graphic" for an illustration.' +
@@ -809,7 +854,9 @@ function promptLines(payload) {
   if (left !== null) {
     lines.push(left > 0
       ? '- New pictures left for this person today: ' + left + ' of ' + perDay + '.'
-      : '- New pictures left for this person today: 0 of ' + perDay + '. Make NO new picture: say "' + sentence('limit', { perDay: perDay }) + '" and offer to place a picture the owner attaches' +
+      /* said only to a message that asks for a new picture (QA, 16 Nov 2026: a request to fix a picture's frame was
+         answered with this sentence first) */
+      : '- New pictures left for this person today: 0 of ' + perDay + '. Make NO new picture. Only when the latest message asks for a new picture, say "' + sentence('limit', { perDay: perDay }) + '" and offer to place a picture the owner attaches' +
         /* owner, 16 Nov 2026: a re-creation asked for on a day with none left still has the document's own pictures */
         (numbered > own ? ' — and, when the owner asked to re-create the pictures taken out of a document, offer to put those pictures themselves, as they are, in the sections they suit (name each by its page and section).' : '.'));
   }
@@ -1553,6 +1600,13 @@ function planAsk(list, ctx) {
   sec = askedSec;
   if (!sec) return out(sentence('unclear', { sections: ex().sections }), 'unclear', keep({ confirmed: !offering }));
   if (sec.role === 'nav' || sec.role === 'footer') return out(sentence('navFooter'), 'navFooter');
+  /* 4a. a section visitors do not see (hidden, or waiting for its records: an agenda with no sessions) gets a picture
+     only when the owner's words name it or it is the one selected; it costs nothing to say so */
+  if (sec.hidden === true) {
+    var hidFocus = ctx.focus && typeof ctx.focus === 'object' && String(ctx.focus.sectionId || '') === sec.id;
+    if (!hidFocus && namedSections(said, sections, e.subject).indexOf(sec.id) === -1) return out(sentence('hidden', { name: nameRef(sec), label: showsWhenOf(sec) }), 'hidden');
+    notes.push(sentence('hiddenNote', { name: nameRef(sec), label: showsWhenOf(sec) }));
+  }
   var p = sec.pics || {};
   placement = PLACEMENTS.indexOf(e.placement) !== -1 ? e.placement : '';
   if (sec.role === 'hero') placement = 'hero';
@@ -2583,5 +2637,7 @@ module.exports = {
   /* owner, 16 Nov 2026 (ET DAVOS 2027): the shape a stored ask is made in, and where a frame of each shape goes */
   aspectOf: aspectOf, framePlace: framePlace,
   /* owner, 16 Nov 2026: pictures taken out of a document, numbered after the owner's, and re-created (lib/doc-pictures.js) */
-  MAX_NUMBERED: MAX_NUMBERED, referenceOf: referenceOf
+  MAX_NUMBERED: MAX_NUMBERED, referenceOf: referenceOf,
+  /* QA, 16 Nov 2026 (ET DAVOS 2027): a section visitors do not see, and a frame off its picture's shape */
+  namedSections: namedSections, showsWhenOf: showsWhenOf, frameGap: frameGap, pictureEntry: pictureEntry, FRAME_OFF: FRAME_OFF
 };

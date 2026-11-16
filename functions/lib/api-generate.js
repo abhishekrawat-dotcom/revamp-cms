@@ -3771,9 +3771,17 @@ function buildRedesignPrompt(payload) {
         /* its own size, when the editor knows it (a picture taken out of a document, lib/doc-pictures.js): its frame takes that shape */
         return 'attached picture ' + p.n + ' = ' + p.token + (p.w && p.h ? ' (' + docPictureShape(p.w, p.h) + ', ' + p.w + '×' + p.h + ')' : '');
       }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.' +
-        (payload.supplied.some(function (p) { return p.w && p.h && !p.frame; }) ? ' Where a picture\'s size is given, give its frame that shape (CSS aspect-ratio: width / height, e.g. aspect-ratio: 16 / 9) unless the request names another, so little of it is cropped; a picture always fills its frame by cropping (object-fit: cover) — never stretched or squashed, and never shown smaller inside its frame with bars around it (object-fit: contain).' : '')
+        /* the picture's own shape wins over a shape the request names (QA, 16 Nov 2026: a 949 x 556 photo was laid in a
+           strip 5.5 times as wide as tall); the editor holds it to that shape after (editor-ai-picture.js holdOwnFrames) */
+        (payload.supplied.some(function (p) { return p.w && p.h && !p.frame; }) ? ' Where a picture\'s size is given, give its frame exactly that shape (CSS aspect-ratio: width / height, e.g. aspect-ratio: 16 / 9), sized by its width with no height, min-height or max-height of its own — never a band or strip of another shape — so nothing of it is cut off; a picture always fills its frame (object-fit: cover) — never stretched or squashed, and never shown smaller inside its frame with bars around it (object-fit: contain).' : '')
       : '',
-    urls.length ? 'PICTURES: the section\'s own pictures — with any attached above, the only pictures you may use — by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : (payload.supplied || []).length ? 'Besides the attached ones, this section has no picture.' : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
+    urls.length ? 'PICTURES: the section\'s own pictures — with any attached above, the only pictures you may use — by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.map(function (t) {
+      /* a picture's own size, as the editor measured it: shown as an <img>, its frame takes that shape (owner, 16 Nov
+         2026, ET DAVOS 2027: "the image dimension issue is still not fixed" — a 1184 x 864 picture sat in a band of
+         1152 x 240) */
+      var s = (payload.ownSizes || {})[t];
+      return s ? t + ' (' + docPictureShape(s.w, s.h) + ', ' + s.w + '×' + s.h + ': as an <img>, its frame is exactly that shape — aspect-ratio: ' + s.w + ' / ' + s.h + ', sized by its width, with no height, min-height or max-height of its own — and it fills it with object-fit: cover)' : t;
+    }).join(' , ') + ((payload.ownSizes && Object.keys(payload.ownSizes).length) ? '. A picture shown as an <img> is never put in a band or strip of another shape: where the layout calls for a wide band, use a picture whose shape is wide, or lay the picture beside the text in its own shape.' : '') : (payload.supplied || []).length ? 'Besides the attached ones, this section has no picture.' : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
     'THE SITE\'S DESIGN — the section must sit naturally between its neighbours:',
     payload.generated === false
@@ -3848,10 +3856,18 @@ function handleRedesignSection(req, res) {
         if (frame) one.frame = pictureShape.frameText(frame);
         supplied.push(one);
       });
+      /* the own size of each of this event's pictures the section shows, as the editor measured it, by its token: the
+         prompt gives its frame that shape */
+      var ownSizes = {};
+      (Array.isArray(payload.ownSizes) ? payload.ownSizes : []).slice(0, 12).forEach(function (s) {
+        var url = String((s && s.url) || '').trim(), w = parseInt(s && s.w, 10), h = parseInt(s && s.h, 10);
+        if (url.indexOf(ownStore) !== 0 || !(w >= 1 && w <= 20000 && h >= 1 && h <= 20000)) return;
+        Object.keys(pictures).forEach(function (t) { if (pictures[t] === url && !/^rvimg:\/\/attached-/.test(t)) ownSizes[t] = { w: w, h: h }; });
+      });
       var mode = payload.mode === 'edit' || payload.mode === 'create' ? payload.mode : 'redesign';
       if (mode !== 'redesign' && !String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'Say what should change.' });
       var prompt = buildRedesignPrompt({
-        mode: mode, generated: payload.generated !== false, supplied: supplied,
+        mode: mode, generated: payload.generated !== false, supplied: supplied, ownSizes: ownSizes,
         pictureTokens: Object.keys(pictures).filter(function (t) { return !/^rvimg:\/\/attached-/.test(t); }),
         sectionId: sectionId, html: html, css: css, design: design, owner: (data.designPlan && data.designPlan.owner) || null,
         instruction: String(payload.instruction || '').trim(),

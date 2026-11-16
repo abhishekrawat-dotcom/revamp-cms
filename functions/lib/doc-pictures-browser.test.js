@@ -105,6 +105,11 @@ function makePptx(photoJpeg, logoPng) {
     { text: 'THE SWISS ARC 5 DAYS', draws: [{ img: 3, x: 100, y: 100, w: 600, h: 450 }, { img: 4, x: 1000, y: 0, w: 440, h: 782 }] },
     { text: 'THANK YOU', draws: [{ img: 5, x: 0, y: 0, w: 1440, h: 810 }] }
   ], images);
+  /* QA, 16 Nov 2026: a PDF that needs a password to open (the standard handler, a user password set: its check values are
+     not those of an empty password) and one that is not a readable PDF at all */
+  var LOCKED = Buffer.from(makePdf([{ text: 'LOCKED', draws: [{ img: 0, x: 0, y: 0, w: 1440, h: 810 }] }], [images[0]]).toString('latin1').replace(/\/Root (\d+) 0 R >>/,
+    '/Root $1 0 R /Encrypt << /Filter /Standard /V 1 /R 2 /O <' + 'a1'.repeat(32) + '> /U <' + '5c'.repeat(32) + '> /P -44 >> /ID [<' + '0f'.repeat(16) + '><' + '0f'.repeat(16) + '>] >>'), 'latin1');
+  var BROKEN = Buffer.concat([Buffer.from('%PDF-1.7\n%\xE2\xE3\xCF\xD3\n', 'latin1'), Buffer.from(Array.from({ length: 3000 }, function (x, i) { return (i * 37 + 11) % 251; }))]);
   var PPTX = await makePptx(await photo(1600, 1000, 3).jpeg({ quality: 85 }).toBuffer(), await flat(200, 120).png().toBuffer());
 
   var TYPES = { '.js': 'text/javascript; charset=utf-8', '.html': 'text/html; charset=utf-8' };
@@ -112,6 +117,8 @@ function makePptx(photoJpeg, logoPng) {
     var u = req.url.split('?')[0];
     if (u === '/') { res.writeHead(200, { 'Content-Type': 'text/html' }); return res.end('<!doctype html><html><head><meta charset="utf-8"><title>t</title><script src="/ai-docs-client.js"></script></head><body></body></html>'); }
     if (u === '/fixture.pdf') { res.writeHead(200, { 'Content-Type': 'application/pdf' }); return res.end(PDF); }
+    if (u === '/locked.pdf') { res.writeHead(200, { 'Content-Type': 'application/pdf' }); return res.end(LOCKED); }
+    if (u === '/broken.pdf') { res.writeHead(200, { 'Content-Type': 'application/pdf' }); return res.end(BROKEN); }
     if (u === '/fixture.pptx') { res.writeHead(200, { 'Content-Type': 'application/octet-stream' }); return res.end(PPTX); }
     var allowed = ['/ai-docs-client.js', '/pdf-reader.js', '/ai-doc-pictures.js', '/assets/vendor/jszip.min.js', '/assets/vendor/pdfjs/pdf-4.10.38.min.js', '/assets/vendor/pdfjs/pdf.worker-4.10.38.min.js'];
     if (allowed.indexOf(u) === -1) { res.writeHead(404); return res.end(); }
@@ -158,6 +165,15 @@ function makePptx(photoJpeg, logoPng) {
       var px = c.getContext('2d').getImageData(Math.round(c.width / 2), Math.round(c.height / 2), 1, 1).data;
       out.render = { w: c.width, h: c.height, centre: [px[0], px[1], px[2], px[3]], pages: pdf.numPages, version: R.VERSION };
       out.scripts = Array.prototype.map.call(document.querySelectorAll('script'), function (s) { return s.type === 'module' ? 'module' : s.getAttribute('src'); });
+      /* a PDF locked with a password, and a damaged one: refused with what to do, at any size, never sent */
+      async function refusedOf(url, name) { try { var d = await window.RevampAiDocs.read(await file(url, name, 'application/pdf'), { pictures: true }); return { sent: !!d.data, failed: !!d.picturesFailed }; } catch (e) { return { error: e.message }; } }
+      out.locked = await refusedOf('/locked.pdf', 'locked.pdf');
+      out.broken = await refusedOf('/broken.pdf', 'broken.pdf');
+      window.RevampAiDocs.CAPS.pdfBytes = 1000;
+      out.lockedBig = await refusedOf('/locked.pdf', 'locked.pdf');
+      window.RevampAiDocs.CAPS.pdfBytes = 10 * 1024 * 1024;
+      out.why = window.RevampAiDocs._test.unreadableWhy;
+      out.why = [out.why({ name: 'PasswordException', message: 'No password given' }), out.why({ name: 'InvalidPDFException', message: 'Invalid PDF structure.' }), out.why(new Error('The PDF reader could not be loaded.'))];
       return out;
     });
     ok(!errors.length, '0 no page errors', errors);
@@ -181,6 +197,10 @@ function makePptx(photoJpeg, logoPng) {
       '4 PDF.js (4.10.38, from this site) draws a page, as the speaker tools do with a brochure', r.render);
     ok(r.scripts.filter(function (s) { return s === '/pdf-reader.js'; }).length === 1 && r.scripts.filter(function (s) { return s === '/ai-doc-pictures.js'; }).length === 1 &&
       r.scripts.filter(function (s) { return s === 'module'; }).length === 1, '4 each script loaded once, the library by one module script', r.scripts);
+    ok(r.locked.error === '“locked.pdf” is protected with a password, so it cannot be read. Save a copy without the password and attach that.' &&
+      r.lockedBig.error === r.locked.error, '5 a PDF locked with a password is refused, at any size, with what to do — never sent, and never "attach a copy under 10 MB"', [r.locked, r.lockedBig]);
+    ok(r.broken.error === '“broken.pdf” could not be opened: the file looks damaged. Save or export it again as a PDF and attach the new copy.', '5 a damaged PDF is refused with what to do, never sent', r.broken);
+    ok(JSON.stringify(r.why) === '["password","broken",""]', '5 why a PDF could not be opened, by PDF.js\'s error', r.why);
   } catch (e) {
     ok(false, 'the browser run', e && e.stack || String(e));
   }

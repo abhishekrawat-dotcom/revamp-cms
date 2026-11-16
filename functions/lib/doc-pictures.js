@@ -286,14 +286,15 @@ function promptLines(list, o) {
   lines.push(
     'HOW TO USE THEM:',
     o.swaps
-      ? '- When the owner asks to use, add or place the document\'s pictures ("use the images from this PDF", "add the pictures from the deck"), place each where it fits best — by the section\'s subject and its page\'s words. Where a section already shows a picture (its `pictures` list below) or has a background picture (`background: true`), or for the banner, put it in that place with `pictureSwaps` ({ sectionId, placement "picture", "background" or "hero", slot: which of its pictures, 1 = the first, 0 when it has one; picture: its number; alt }): quick, and nothing else in the section changes; the place keeps its frame, so choose a picture whose shape suits it (its size is in the section\'s `pictures`): a wide band takes a wide landscape whose subject survives the crop, never a portrait one. Only where a section has no place for one, rework it with `sectionEdits` (or write a `newSections` entry): list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes and that its frame takes the picture\'s own shape, as listed below ("add attached picture 4 as this section\'s picture beside its text, in a 16:9 frame" for a landscape 16:9 picture; "use attached picture 2 as the section\'s background"). A section takes one picture; give each picture one place.'
+      ? '- When the owner asks to use, add or place the document\'s pictures ("use the images from this PDF", "add the pictures from the deck"), place each where it fits best — by the section\'s subject and its page\'s words. Where a section already shows a picture (its `pictures` list below) or has a background picture (`background: true`), or for the banner, put it in that place with `pictureSwaps` ({ sectionId, placement "picture", "background" or "hero", slot: which of its pictures, 1 = the first, 0 when it has one; picture: its number; alt }): quick, and nothing else in the section changes; the place keeps its frame, so choose a picture whose shape suits it (its size is in the section\'s `pictures`): a wide band takes a wide landscape whose subject survives the crop, never a portrait one; a picture more than a third off its place\'s shape (a portrait for a landscape frame) is never swapped in — rework that section with it instead. Only where a section has no place for one, rework it with `sectionEdits` (or write a `newSections` entry): list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes and that its frame takes the picture\'s own shape, as listed below ("add attached picture 4 as this section\'s picture beside its text, in a 16:9 frame" for a landscape 16:9 picture; "use attached picture 2 as the section\'s background"). A section takes one picture; give each picture one place.'
       : '- When the owner asks to use, add or place the document\'s pictures ("use the images from this PDF", "add the pictures from the deck"), place each where it fits best — by the section\'s subject and its page\'s words — through `sectionEdits` (or `newSections`): list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes and that its frame takes the picture\'s own shape, as listed below ("replace the section\'s picture with attached picture 7, in a 16:9 frame" for a landscape 16:9 picture, "add attached picture 4 as this section\'s picture beside its text, in a 3:4 frame" for a portrait 3:4 one, "use attached picture 2 as the section\'s background"). A section can take one; give each picture one place.',
     '- When the owner asks for more pictures on the site, give one to sections that have none (no `pictures` list above), as well as replacing those that have one, where a document picture fits them.',
-    '- People: a picture of people goes only in a people section (who should attend, speakers, testimonials, the delegates) — never the banner or another section; at most two sections of the site show people.',
+    '- People: a picture of people goes only in a people section (who should attend, speakers, testimonials, the delegates) — never the banner or another section; at most two sections of the site show people.' + (o.swaps ? ' List in `docPeople` the number of EVERY document picture your answer places (in `pictureSwaps`, `sectionEdits` or `newSections`) that shows any person or part of one — a face, a figure, hands, a crowd, a silhouette, small figures far off, a collage with one person in it: the editor keeps those out of every other section.' : ''),
+    '- A section with `hidden: true` is not seen by visitors (`showsWhen` says what it waits for, e.g. its sessions): put no picture there and make none for it, unless the owner names that section.',
     '- Leave out, unless the owner asks for that one by its page: a picture dominated by another company\'s logo or name (a shop front, a sponsor\'s pavilion), one showing a public figure (a politician, a celebrity), one whose main subject is a sign, a poster or other lettering, one whose lettering names another year or event, a chart, a slide of words, a screenshot. Say in `summary` which you left out and why, by page.',
     '- Never stretched or squashed: a picture fills its frame by cropping (object-fit: cover). Ask for a frame in the picture\'s own shape where the layout allows.',
-    '- RE-CREATING them: when the owner asks to re-create the document\'s pictures or to make pictures like them, make a NEW picture (`newPictures`) for the section, with `reference` set to the number of the document picture it follows, and a `subject` that describes that picture\'s scene in your own words — its kind of place or subject, light, season, time of day and mood — leaving out every name, logo, sign, lettering and person (people only in people sections). It is made new, never a copy. You make one new picture per message: do the section it suits best, and say which section you will re-create next ("say “yes, make it” for the next one"). You may place other document pictures as they are in the same answer.',
-    '- In `summary`, say which picture went where by its page ("page 9\'s cable car is now The Swiss Arc\'s picture"), which you left out and why, and that Undo takes it all back.'
+    '- RE-CREATING them: when the owner asks to re-create the document\'s pictures or to make pictures like them, make a NEW picture (`newPictures`) for the section, with `reference` set to the number of the document picture it follows, and a `subject` that describes that picture\'s scene in your own words — its kind of place or subject, light, season, time of day and mood — leaving out every name, logo, sign, lettering and person (people only in people sections). It is made new, never a copy. You make one new picture per message: do the section it suits best, and say which section you will re-create next ("say “yes, make it” for the next one"). Put no document picture in as it is in that answer unless the owner asks for that too: they asked for new pictures, not the old ones again.',
+    '- In `summary`, say which picture went where by its page — the page listed beside its number above, never its number as a page ("page 9\'s cable car is now The Swiss Arc\'s picture") — which you left out and why, and that Undo takes it all back.'
   );
   return lines.join('\n');
 }
@@ -388,15 +389,47 @@ function swapSchema(sectionIds) {
   if (Array.isArray(sectionIds) && sectionIds.length) item.properties.sectionId.enum = sectionIds.slice();
   return { type: 'ARRAY', description: 'pictures taken out of a document, each put in place of a picture or background a section already has, with nothing else changed; [] for none', items: item };
 }
+/* A section about people (who should attend, the delegates, speakers, testimonials, the gathering): the only kind
+   that takes a picture showing people (the owner's picture rules; gen-design's people sections) */
+var PEOPLE_SECTION_RE = /\b(?:who\b.{0,20}\battend\w*|attendees?|delegates?|participants?|speakers?|testimonials?|people|audiences?|community|networking|leaders|voices|faces|jury|juries|judges|winners|glimpses?|gallery|moments|meet\b.{0,20}\b(?:peers|leaders)|guests?|hosts?|team)\b/i;
+function peopleSection(sec) {
+  if (!isObj(sec)) return false;
+  return PEOPLE_SECTION_RE.test(String(sec.id || '').replace(/[-_]+/g, ' ') + ' ' + String(sec.name || '')) || sec.role === 'records';
+}
+var PEOPLE_MAX = 2;                 // sections showing people on one site (chat-picture.js MAX_PEOPLE_PICTURES)
+/* a document picture in a place of a very different shape is cut down too far by the crop: more than 1.35 times off
+   (QA, 16 Nov 2026: a 900 x 1600 portrait swapped into a 644 x 745 frame) */
+var SWAP_SHAPE_MAX = Math.log(1.35);
+/* the frame a swap would fill: one of the section's pictures, else its background's or the banner's place */
+function swapFrame(sec, placement, slot) {
+  var p = isObj(sec.pics) ? sec.pics : {};
+  if (placement === 'picture') {
+    var e = Array.isArray(p.list) ? p.list[slot - 1] : null;
+    return e && e.w > 0 && e.h > 0 ? { w: e.w, h: e.h } : null;
+  }
+  return isObj(p.frame) && p.frame.w > 0 && p.frame.h > 0 ? { w: p.frame.w, h: p.frame.h } : null;
+}
+/* chatResponseSchema's properties.docPeople (lib/api-chat.js): the document pictures the answer places that show people */
+function peopleSchema() {
+  return { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'the numbers of every picture taken out of a document that this answer places (pictureSwaps, sectionEdits or newSections) and that shows any person or part of one — a face, a figure, hands, a crowd, a silhouette, small figures far off; [] when none does' };
+}
 /* The model's swaps, checked. ctx: { sections (with the picture fields lib/chat-picture.js cleanSectionFields gave
    them), first and last (the document pictures' numbers), skip: { sectionId: true } for sections the same answer
-   reworks or gives the new picture (the rework puts its own pictures in) }. Each swap: a known section with that place
-   (one of its pictures, its background, the banner's picture), one of the document pictures, each place and each
-   picture once, at most 12. -> [{ sectionId, placement, slot, picture, alt }] */
+   reworks or gives the new picture (the rework puts its own pictures in), pictures: numbered() (their sizes), people:
+   { n: true } for the pictures the model says show people, dropped: [] to be told what was left out }. Each swap: a
+   known section with that place (one of its pictures, its background, the banner's picture), one of the document
+   pictures, each place and each picture once, at most 12; never in a section visitors do not see (hidden: an agenda
+   with no sessions yet), never a picture of people outside a people section, and never a picture whose shape is far
+   off its place's (that one is left for a rework, which gives the frame the picture's shape: ctx.dropped says so).
+   -> [{ sectionId, placement, slot, picture, alt }]; ctx.dropped gains { sectionId, picture, why: 'hidden' | 'people'
+   | 'shape', slot, placement } */
 function cleanSwaps(list, ctx) {
   ctx = ctx || {};
   var out = [], used = {}, places = {}, sections = Array.isArray(ctx.sections) ? ctx.sections : [], skip = ctx.skip || {};
   var first = int(ctx.first, 1, 1000) || 0, last = int(ctx.last, 1, 1000) || 0;
+  var sizes = {}, people = isObj(ctx.people) ? ctx.people : {}, dropped = Array.isArray(ctx.dropped) ? ctx.dropped : [];
+  var peopleUsed = int(ctx.peopleUsed, 0, 100) || 0;
+  (Array.isArray(ctx.pictures) ? ctx.pictures : []).forEach(function (p) { if (p && p.w > 0 && p.h > 0) sizes[p.n] = p; });
   (Array.isArray(list) ? list : []).forEach(function (s) {
     if (!isObj(s) || out.length >= 12 || !first) return;
     var sec = sections.filter(function (x) { return x && x.id === s.sectionId; })[0];
@@ -414,10 +447,89 @@ function cleanSwaps(list, ctx) {
     }
     var key = sec.id + '|' + placement + '|' + slot;
     if (places[key]) return;
+    if (sec.hidden === true && !(isObj(ctx.named) && ctx.named[sec.id])) { dropped.push({ sectionId: sec.id, picture: n, why: 'hidden', slot: slot, placement: placement }); return; }
+    if (people[n] && (role === 'hero' || placement === 'background' || !peopleSection(sec))) { dropped.push({ sectionId: sec.id, picture: n, why: 'people', slot: slot, placement: placement }); return; }
+    if (people[n] && peopleUsed >= PEOPLE_MAX) { dropped.push({ sectionId: sec.id, picture: n, why: 'people-max', slot: slot, placement: placement }); return; }
+    var frame = swapFrame(sec, placement, slot), size = sizes[n];
+    if (frame && size && Math.abs(Math.log((frame.w / frame.h) / (size.w / size.h))) > SWAP_SHAPE_MAX) {
+      dropped.push({ sectionId: sec.id, picture: n, why: 'shape', slot: slot, placement: placement, frame: frame, size: { w: size.w, h: size.h } });
+      return;
+    }
     places[key] = true;
     used[n] = true;
+    if (people[n]) peopleUsed++;
     out.push({ sectionId: sec.id, placement: placement, slot: slot, picture: n, alt: oneLine(s.alt, 150) });
   });
+  return out;
+}
+/* The rework that puts a document picture in where its swap was left out for its shape: the section's picture (its
+   slot's label), replaced by the document picture in a frame of that picture's own shape. -> { sectionId, instruction,
+   pictures } or null (a background or the banner is not reworked for it) */
+function shapeRework(d, sections) {
+  if (!isObj(d) || d.why !== 'shape' || d.placement !== 'picture' || !isObj(d.size)) return null;
+  var sec = (Array.isArray(sections) ? sections : []).filter(function (x) { return x && x.id === d.sectionId; })[0];
+  if (!sec) return null;
+  var e = isObj(sec.pics) && Array.isArray(sec.pics.list) ? sec.pics.list[d.slot - 1] : null;
+  var label = e && e.label && !/^picture \d+$/i.test(e.label) ? '“' + oneLine(e.label, 60) + '”' : 'picture ' + d.slot;
+  var w = d.size.w, h = d.size.h;
+  return { sectionId: sec.id, pictures: [d.picture],
+    instruction: 'Replace the section\'s picture ' + label + ' with attached picture ' + d.picture + ', in a frame of that picture\'s own shape, ' + shapeOf(w, h) + ' (aspect-ratio: ' + w + ' / ' + h + '), sized by its width with no height of its own, the picture filling it with object-fit: cover; lay the text beside or around it as suits that shape. Change nothing else.' };
+}
+/* What the answer says of the document pictures it left out, by page: -> sentences */
+function droppedLines(dropped, list, sections) {
+  var pages = {};
+  (Array.isArray(list) ? list : []).forEach(function (p) { if (p) pages[p.n] = p; });
+  return (Array.isArray(dropped) ? dropped : []).map(function (d) {
+    var p = pages[d.picture], sec = (Array.isArray(sections) ? sections : []).filter(function (x) { return x && x.id === d.sectionId; })[0];
+    var what = p ? 'Page ' + p.page + '\'s picture' : 'Picture ' + d.picture, where = '“' + oneLine((sec && (sec.name || sec.id)) || d.name || d.sectionId, 60) + '”';
+    if (d.why === 'hidden') return what + ' was not put in ' + where + ': visitors do not see that section yet.';
+    if (d.why === 'people') return what + ' shows people, so it was not put in ' + where + ': pictures of people go only in a people section, such as who should attend.';
+    if (d.why === 'people-max') return what + ' shows people, and the site already shows people in two sections — the most it should — so it was not put in ' + where + '.';
+    if (d.why === 'shape') return what + ' is ' + (p ? shapeOf(p.w, p.h) : 'another shape') + ', too far from the shape of its place in ' + where + ' to swap in' +
+      (d.reworked ? ', so ' + where + ' is reworked around it in its own shape.' : ' without cutting much of it off, so it was left out.');
+    return '';
+  }).filter(Boolean);
+}
+/* The reworks and new sections that would put a document picture where it must not go — a section visitors do not see
+   (unless the owner's words name it: ctx.named), or a picture of people outside a people section, or more than two
+   sections showing people — are left out whole (their brief is written around that picture). ctx: { sections, first,
+   last (the document pictures' numbers), people: { n: true }, named: { sectionId: true }, peopleUsed (people sections
+   the answer's swaps already fill), dropped: [] }. -> { edits, newSections } */
+function cleanReworks(edits, newSections, ctx) {
+  ctx = ctx || {};
+  var sections = Array.isArray(ctx.sections) ? ctx.sections : [], first = int(ctx.first, 1, 1000) || 0, last = int(ctx.last, 1, 1000) || 0;
+  var people = isObj(ctx.people) ? ctx.people : {}, named = isObj(ctx.named) ? ctx.named : {}, dropped = Array.isArray(ctx.dropped) ? ctx.dropped : [];
+  var peopleUsed = int(ctx.peopleUsed, 0, 100) || 0;
+  function docIn(e) { return (Array.isArray(e.pictures) ? e.pictures : []).filter(function (n) { return first && n >= first && n <= last; }); }
+  var keptEdits = (Array.isArray(edits) ? edits : []).filter(function (e) {
+    if (!isObj(e)) return false;
+    var nums = docIn(e);
+    if (!nums.length) return true;
+    var sec = sections.filter(function (x) { return x && x.id === e.sectionId; })[0] || {};
+    if (sec.hidden === true && !named[sec.id]) { dropped.push({ sectionId: e.sectionId, picture: nums[0], why: 'hidden' }); return false; }
+    var withPeople = nums.filter(function (n) { return people[n]; });
+    if (withPeople.length && (sec.role === 'hero' || !peopleSection(sec))) { dropped.push({ sectionId: e.sectionId, picture: withPeople[0], why: 'people' }); return false; }
+    if (withPeople.length && peopleUsed >= PEOPLE_MAX) { dropped.push({ sectionId: e.sectionId, picture: withPeople[0], why: 'people-max' }); return false; }
+    if (withPeople.length) peopleUsed++;
+    return true;
+  });
+  var keptNew = (Array.isArray(newSections) ? newSections : []).filter(function (s) {
+    if (!isObj(s)) return false;
+    var withPeople = docIn(s).filter(function (n) { return people[n]; });
+    if (!withPeople.length) return true;
+    if (!peopleSection({ id: '', name: s.name }) || peopleUsed >= PEOPLE_MAX) {
+      dropped.push({ sectionId: '', picture: withPeople[0], why: peopleSection({ name: s.name }) ? 'people-max' : 'people', name: s.name });
+      return false;
+    }
+    peopleUsed++;
+    return true;
+  });
+  return { edits: keptEdits, newSections: keptNew, peopleUsed: peopleUsed };
+}
+/* the model's list of the document pictures that show people, as { n: true } (the numbers checked) */
+function peopleSet(v, first, last) {
+  var out = {};
+  (Array.isArray(v) ? v : []).forEach(function (n) { n = int(n, 1, 1000); if (n && n >= first && n <= last) out[n] = true; });
   return out;
 }
 
@@ -433,6 +545,7 @@ function turnDocs(docs) {
 module.exports = {
   CAPS: CAPS, KEY_RE: KEY_RE, storeBatch: storeBatch, fromDocuments: fromDocuments, remember: remember, recall: recall, numbered: numbered,
   shapeOf: shapeOf, promptLines: promptLines, sheets: sheets, answerList: answerList, turnDocs: turnDocs, leftOutSentence: leftOutSentence,
-  swapSchema: swapSchema, cleanSwaps: cleanSwaps,
+  swapSchema: swapSchema, peopleSchema: peopleSchema, cleanSwaps: cleanSwaps, cleanReworks: cleanReworks, shapeRework: shapeRework, droppedLines: droppedLines, peopleSet: peopleSet,
+  peopleSection: peopleSection, PEOPLE_MAX: PEOPLE_MAX, SWAP_SHAPE_MAX: SWAP_SHAPE_MAX,
   _test: { ownPath: ownPath, badgeSvg: badgeSvg, jpegOf: jpegOf, cleanPictures: cleanPictures, SHEET_CACHE: SHEET_CACHE }
 };

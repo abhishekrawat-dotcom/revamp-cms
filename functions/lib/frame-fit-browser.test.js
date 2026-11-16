@@ -168,6 +168,63 @@ var PAGE = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>' +
     var plain = await measure('.kdp-img');
     ok(r7.shaped === false && plain.fit === 'cover' && !/aspect-ratio/.test(plain.frameStyle), 'without a shape to hold, the frame is left as it is and the picture drawn cover', { r: r7, plain: plain });
 
+    /* 1g. the owner's saved page (ET DAVOS 2027, 16 Nov 2026: "the image dimension issue is still not fixed"): What Awaits
+       You's 1184 x 864 picture in a band of 1152 x 240, Key Discussion Points' 1536 x 672 in 1152 x 210 — after a rework,
+       every picture of the event's own holds its own shape (holdOwnFrames); another site's picture and a logo are not
+       touched, and a frame already in its picture's shape is left as it is */
+    var OWN = 'https://storage.googleapis.com/test-bucket/events/qa-davos/';
+    await page.setContent('<!DOCTYPE html><html><head><style>*{box-sizing:border-box}body{margin:0}[data-rv-section]{padding:40px 0}' +
+      '.wrap{max-width:1200px;margin:0 auto;padding:0 24px}.band{width:100%;height:240px;overflow:hidden;border-radius:12px}.band img{display:block;width:100%;height:100%;object-fit:cover}' +
+      '.strip{height:210px}.ok{height:auto}.ok img{height:auto;aspect-ratio:16/9}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:24px}.cards div{height:120px;background:#eee}' +
+      '@media (max-width:640px){.band{height:160px}}</style></head><body>' +
+      '<section data-rv-section="what-awaits"><div class="wrap"><h2>What Awaits You</h2><div class="band"><img class="aw" src="' + OWN + 'generated/aw.png" alt="A promenade"></div>' +
+      '<div class="band strip"><img class="kdp" src="' + OWN + 'chat-docs/20261116060114-abc123/k-0123456789ab-p5.jpg" alt="A lounge"></div>' +
+      '<div class="band"><img class="other" src="https://elsewhere.example/x.png" alt="Not ours"></div>' +
+      '<div class="band ok"><img class="fine" src="' + OWN + 'generated/fine.png" alt="Already right"></div>' +
+      '<div class="band"><img class="logo-img" src="' + OWN + 'media/logo.png" alt="ET DAVOS logo"></div>' +
+      '<div class="cards"><div></div><div></div><div></div><div></div></div></div></section></body></html>', { waitUntil: 'load' });
+    await page.addScriptTag({ content: PICTURE_SRC });
+    var held = await page.evaluate(function (own) {
+      var sizes = {}; sizes[own + 'generated/aw.png'] = { w: 1184, h: 864 }; sizes[own + 'chat-docs/20261116060114-abc123/k-0123456789ab-p5.jpg'] = { w: 1536, h: 672 };
+      sizes[own + 'generated/fine.png'] = { w: 1600, h: 900 }; sizes['https://elsewhere.example/x.png'] = { w: 900, h: 1600 }; sizes[own + 'media/logo.png'] = { w: 300, h: 300 };
+      function box(sel) { var b = document.querySelector(sel).getBoundingClientRect(); return [Math.round(b.width), Math.round(b.height)]; }
+      var before = { aw: box('.aw'), kdp: box('.kdp'), other: box('.other'), fine: box('.fine') };
+      var out = window.RevampAiPicture.holdOwnFrames(document.querySelector('[data-rv-section]'), function (src) { return sizes[src] || null; }, { eventId: 'qa-davos' });
+      return { out: out, before: before, after: { aw: box('.aw'), kdp: box('.kdp'), other: box('.other'), fine: box('.fine'), logo: box('.logo-img') },
+        styles: { other: document.querySelector('.other').getAttribute('style') || '', fine: document.querySelector('.fine').getAttribute('style') || '', logo: document.querySelector('.logo-img').getAttribute('style') || '' } };
+    }, OWN);
+    ok(near(ratio(held.before.aw), 1152 / 240) && near(ratio(held.after.aw), 1184 / 864) && Math.abs(held.after.aw[0] - held.before.aw[0]) < 1.5,
+      'What Awaits You\'s 4:3 picture, in a band 4.8 times as wide as tall, gets a frame of its own shape at the same width', held);
+    ok(near(ratio(held.after.kdp), 1536 / 672) && held.out.length === 2 && held.out.every(function (x) { return x.shaped; }),
+      'and a document\'s picture in a 5.5:1 strip gets its own 16:7 shape; two frames changed', held.out);
+    ok(held.styles.other === '' && held.styles.fine === '' && held.styles.logo === '' && near(ratio(held.after.other), ratio(held.before.other)),
+      'another site\'s picture, a frame already in its picture\'s shape and a logo are left as they are', held.styles);
+    await page.setViewport({ width: 390, height: 844 });
+    var held390 = await page.evaluate(function () { var b = document.querySelector('.aw').getBoundingClientRect(); return [b.width, b.height]; });
+    ok(near(ratio(held390), 1184 / 864), '…and at 390 (the band\'s phone rule is overruled: the frame keeps the picture\'s shape)', held390);
+    await page.setViewport({ width: 1440, height: 900 });
+    /* 1h. a swap keeps its place's frame (QA, 16 Nov 2026: a 900 x 1600 portrait swapped into Overview grew its 644 x 745 frame
+       to 644 x 1145): the box is read before the swap (frameBox) and held after, the new picture filling it */
+    await page.setContent('<!DOCTYPE html><html><head><style>*{box-sizing:border-box}body{margin:0}.split{display:grid;grid-template-columns:1fr 1fr;gap:48px;max-width:1340px;margin:0 auto;padding:0 24px}' +
+      '.media img{display:block;width:100%;height:auto;border-radius:12px}</style></head><body><section data-rv-section="overview"><div class="split"><div><h2>Overview</h2><p>' + LONG + '</p></div>' +
+      '<div class="media"><img class="ov" src="' + pic(1288, 1490) + '" alt="Davos"></div></div></section></body></html>', { waitUntil: 'load' });
+    await page.addScriptTag({ content: PICTURE_SRC });
+    var swap = await page.evaluate(function (portrait) {
+      var P = window.RevampAiPicture, img = document.querySelector('.ov'), was = P.frameBox(img);
+      return new Promise(function (resolve) {
+        img.onload = function () {
+          var grown = img.getBoundingClientRect();
+          var gap = P.shapeGap(was.w, was.h, 900, 1600), r = P.fitFrame(img, was.w + ':' + was.h, {});
+          var b = img.getBoundingClientRect();
+          resolve({ was: was, grown: [grown.width, grown.height], gap: gap, shaped: r.shaped, now: [b.width, b.height], fit: getComputedStyle(img).objectFit });
+        };
+        img.src = portrait;
+      });
+    }, pic(900, 1600));
+    ok(swap.was && near(swap.was.w / swap.was.h, 1288 / 1490) && swap.grown[1] > swap.was.h * 1.3, 'with nothing done, the portrait swapped in takes the frame over (it grows)', swap);
+    ok(swap.shaped === true && Math.abs(swap.now[0] - swap.was.w) < 1.5 && Math.abs(swap.now[1] - swap.was.h) < 1.5 && swap.fit === 'cover' && swap.gap > 0.4,
+      'held to the box read before the swap, the frame stays as it was and the picture fills it by cropping', swap);
+
     /* 2. coverPicture: the owner's own picture in a box of another shape */
     await page.setContent('<!DOCTYPE html><html><head><style>.box img{width:400px;height:300px}.contain img{object-fit:contain}.covered img{object-fit:cover}</style></head><body>' +
       '<div class="box"><img id="squash" src="' + pic(1000, 1000) + '" alt="A square picture"></div>' +

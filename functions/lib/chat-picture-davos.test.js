@@ -383,6 +383,29 @@ var NUMBERS_PIC = { sectionId: 'by-the-numbers', placement: 'picture', slot: 0, 
   var off = cp.offerOf(KDP_OFFER, ctx.sections, ctx);
   ok(off && off.record.frame === '21:9', 'the server\'s own offer keeps the shape the model chose', off && off.record);
 
+  /* ===== QA, 16 Nov 2026: the Agenda with no sessions is not seen by visitors; frames off their picture's shape; the PDF
+     attached before the editor took pictures out ===== */
+  var hidCtx = Object.assign({}, arcCtx, { sections: arcCtx.sections.map(function (s) { return s.id === 'agenda' ? cp.cleanSectionFields(Object.assign({}, s, { hidden: true, showsWhen: 'sessions' }), '') : s; }) });
+  var hidAsk = cp.planAsk([{ sectionId: 'agenda', placement: 'picture', slot: 0, subject: 'a snowy Alpine resort street at twilight', plainSubject: '', kind: 'place', alt: '', frame: '4:5', reference: 0 }],
+    Object.assign({}, hidCtx, { instruction: 're-create the pictures from the pdf for the relevant sections' }));
+  ok(!hidAsk.ask && hidAsk.code === 'hidden' && hidAsk.reply === 'Visitors do not see “The Swiss Arc” yet — it shows once its sessions are added in Content › Agenda, so I did not make a picture for it. Choose a section visitors see, or name “The Swiss Arc” if you want the picture there for later.',
+    'a new picture is not made for a section visitors do not see unless it is named, and nothing is paid for', hidAsk);
+  var hidNamed = cp.planAsk([{ sectionId: 'agenda', placement: 'picture', slot: 0, subject: 'a red mountain train crossing a snowy viaduct', plainSubject: '', kind: 'place', alt: '', frame: '16:9', reference: 0 }],
+    Object.assign({}, hidCtx, { instruction: 'give the Swiss Arc a new picture' }));
+  ok(hidNamed.ask && hidNamed.ask.sectionId === 'agenda' && /Visitors do not see “The Swiss Arc” yet — it shows once its sessions are added in Content › Agenda; the new picture is there for then\./.test(hidNamed.note),
+    '...named, it is made, and the owner is told when visitors will see it', hidNamed.note);
+  resetChat();
+  var frameSecs = clone(SECTIONS).map(function (s) { return s.id === 'what-awaits' ? Object.assign({}, s, { pics: { slots: 1, list: [{ label: 'A snowy Alpine promenade at dusk', w: 1152, h: 240, nw: 1184, nh: 864 }] } }) : s; });
+  answers.push(edit('Giving What Awaits You\'s picture a frame of its own shape.', { sectionEdits: [{ sectionId: 'what-awaits', instruction: 'give the picture a frame of its own shape, 4:3', pictures: [] }] }));
+  c = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'the image dimension issue is still not fixed. AI has created a square image for a rectangular placeholder.', sections: frameSecs, canMakePictures: true, canPlaceDocPictures: true, design: { themeColor: '#d62d20' } });
+  var fp = lastPrompt();
+  ok(c.status === 200 && /"A snowy Alpine promenade at dusk \(1152×240\) — FRAME OFF ITS PICTURE'S SHAPE: the picture itself is 1184×864 \(4:3\), so this frame shows only 29% of it"/.test(fp) &&
+    /fix each such picture the message is about — every one of them when it names none — with `sectionEdits` for its section/.test(fp),
+    'the owner\'s words: the model sees which frame is off its picture\'s shape, and is told to rework it, not to make a picture', fp.slice(fp.indexOf('"what-awaits"'), fp.indexOf('"what-awaits"') + 400));
+  ok(/PICTURES IN A PDF OR DECK: the editor takes the photographs out of a PDF or PowerPoint deck attached to a message/.test(fp) && /ask them in a "reply" to attach that document again/.test(fp) && /earlier answers here that said so are out of date/.test(fp),
+    'with no PDF pictures kept (the owner\'s PDF was attached under the old code), the model asks for the PDF again instead of repeating that its pictures cannot be used');
+  ok(c.body.sectionEdits.length === 1 && !c.body.newPicture, '...and the rework is sent, with no new picture');
+
   if (failures.length) { console.error('chat-picture-davos: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - ')); process.exit(1); }
   console.log('chat-picture-davos: all ' + checks + ' checks passed');
   process.exit(0);

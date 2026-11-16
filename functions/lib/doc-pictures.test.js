@@ -210,6 +210,45 @@ function sections() {
   ok(DP.cleanSwaps([{ sectionId: 'hero', placement: 'hero', slot: 0, picture: 3, alt: 'x' }], { sections: secs, first: 3, last: 4 })[0].placement === 'hero' &&
     !DP.cleanSwaps([{ sectionId: 'hero', placement: 'hero', slot: 0, picture: 3 }], { sections: secs.map(function (s) { return s.id === 'hero' ? Object.assign({}, s, { video: true }) : s; }), first: 3, last: 4 }).length,
     '1 the banner takes one, unless it plays a video');
+  /* QA, 16 Nov 2026 (ET DAVOS 2027): the shape, hidden sections and people */
+  var sized = [{ n: 3, w: 1600, h: 900, page: 9 }, { n: 4, w: 900, h: 1600, page: 10 }];
+  var wide = secs.map(function (x) { return x.id === 'overview' ? Object.assign({}, x, { pics: Object.assign({}, x.pics, { list: [{ label: 'Davos in winter', w: 1152, h: 648 }] }) }) : x; });
+  var dropped = [];
+  var shaped = DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 4, alt: 'a portrait' }], { sections: wide, first: 3, last: 4, pictures: sized, dropped: dropped });
+  ok(!shaped.length && dropped.length === 1 && dropped[0].why === 'shape' && dropped[0].size.w === 900,
+    '1 a 900 x 1600 portrait is not swapped into a 1152 x 648 frame: too far off its shape', dropped);
+  var re = DP.shapeRework(dropped[0], wide);
+  ok(re && re.sectionId === 'overview' && JSON.stringify(re.pictures) === '[4]' && /Replace the section's picture “Davos in winter” with attached picture 4, in a frame of that picture's own shape, portrait 9:16 \(aspect-ratio: 900 \/ 1600\)/.test(re.instruction),
+    '1 ...it is reworked in instead, its frame in the picture\'s own shape', re);
+  ok(DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'a landscape' }], { sections: wide, first: 3, last: 4, pictures: sized }).length === 1,
+    '1 a 1600 x 900 landscape is swapped into the same 1152 x 648 frame (the same shape)');
+  dropped = [];
+  var hid = wide.map(function (x) { return x.id === 'overview' ? Object.assign({}, x, { hidden: true, showsWhen: 'sessions' }) : x; });
+  ok(!DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'x' }], { sections: hid, first: 3, last: 4, pictures: sized, dropped: dropped }).length && dropped[0].why === 'hidden' &&
+    DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'x' }], { sections: hid, first: 3, last: 4, pictures: sized, named: { overview: true } }).length === 1,
+    '1 a section visitors do not see takes no document picture, unless the owner names it', dropped);
+  dropped = [];
+  var who = wide.concat([{ id: 'who-should-attend', name: 'Who Should Attend', role: '', pics: { slots: 1, list: [{ label: 'leaders', w: 1152, h: 648 }], background: false, heroTarget: '', own: [] } }]);
+  var ppl = DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'people' }, { sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 3, alt: 'people' }],
+    { sections: who, first: 3, last: 4, pictures: sized, people: DP.peopleSet([3, 99], 3, 4), dropped: dropped });
+  ok(ppl.length === 1 && ppl[0].sectionId === 'who-should-attend' && dropped[0].why === 'people' && dropped[0].sectionId === 'overview',
+    '1 a document picture with people goes only in a people section', { ppl: ppl, dropped: dropped });
+  ok(DP.peopleSection({ id: 'who-should-attend', name: 'Who Should Attend' }) && DP.peopleSection({ id: 'x', name: 'Meet the delegates' }) && !DP.peopleSection({ id: 'why-join-us', name: 'Why Join Us' }) &&
+    !DP.peopleSection({ id: 'key-discussion-points', name: 'Key Discussion Points' }), '1 people sections by their name');
+  dropped = [];
+  var kr = DP.cleanReworks([{ sectionId: 'overview', instruction: 'add picture 3', pictures: [3] }, { sectionId: 'who-should-attend', instruction: 'add picture 3', pictures: [3] },
+    { sectionId: 'what-awaits', instruction: 'tighten it', pictures: [] }], [{ name: 'Why Join Us', instruction: 'with picture 3', pictures: [3] }],
+    { sections: who, first: 3, last: 4, people: { 3: true }, dropped: dropped });
+  ok(kr.edits.map(function (e) { return e.sectionId; }).join() === 'who-should-attend,what-awaits' && !kr.newSections.length && kr.peopleUsed === 1 && dropped.map(function (d) { return d.why; }).join() === 'people,people',
+    '1 a rework or a new section that would show people outside a people section is left out', { kr: kr, dropped: dropped });
+  dropped = [];
+  kr = DP.cleanReworks([{ sectionId: 'overview', instruction: 'add picture 4', pictures: [4] }], [], { sections: hid, first: 3, last: 4, dropped: dropped });
+  ok(!kr.edits.length && dropped[0].why === 'hidden', '1 a rework that would put a document picture in a section visitors do not see is left out');
+  var lines = DP.droppedLines([{ sectionId: 'overview', picture: 3, why: 'people' }, { sectionId: 'overview', picture: 4, why: 'hidden' }, { sectionId: 'overview', picture: 4, why: 'shape' }], sized, wide);
+  ok(lines.length === 3 && /^Page 9's picture shows people, so it was not put in “Overview”: pictures of people go only in a people section/.test(lines[0]) &&
+    /^Page 10's picture was not put in “Overview”: visitors do not see that section yet\.$/.test(lines[1]) && /^Page 10's picture is portrait 9:16, too far from the shape of its place in “Overview” to swap in without cutting much of it off, so it was left out\.$/.test(lines[2]),
+    '1 what was left out is said by page', lines);
+  ok(JSON.stringify(DP.peopleSchema().items) === '{"type":"INTEGER"}', '1 the people list\'s schema');
   var sw = DP.swapSchema(['overview', 'hero']);
   ok(sw.type === 'ARRAY' && JSON.stringify(sw.items.required) === '["sectionId","placement","slot","picture","alt"]' && JSON.stringify(sw.items.properties.sectionId.enum) === '["overview","hero"]' &&
     JSON.stringify(sw.items.properties.placement.enum) === '["picture","background","hero"]', '1 the swaps\' schema: every field required (strict mode), the page\'s sections only');
@@ -310,9 +349,16 @@ function sections() {
   ok(a1.schema.properties.pictureSwaps && a1.schema.required.indexOf('pictureSwaps') !== -1, '3 its answer may put them where a section has a picture (pictureSwaps)');
   ok(Array.isArray(out.body.docPictures) && out.body.docPictures.length === 3 && out.body.docPictures[0].n === 2 && out.body.docPictures[0].url === wirePics[0].url && out.body.docPictures[2].page === 7,
     '3 the editor is told which address each number is', out.body.docPictures);
-  ok((out.body.pictureSwaps || []).length === 1 && out.body.pictureSwaps[0].sectionId === 'overview' && out.body.pictureSwaps[0].picture === 2,
-    '3 swaps checked: one where the section has a picture; not in a section the answer reworks, nor where it has several and none is named', out.body);
-  ok(out.body.sectionEdits.length === 1 && JSON.stringify(out.body.sectionEdits[0].pictures) === '[3]', '3 a rework keeps a document picture\'s number');
+  /* Overview's frame is 640 x 745 and page 2's picture 1600 x 900: too far off to swap in (QA, 16 Nov 2026), so Overview is
+     reworked with it in a frame of its own shape; the agenda's and what-awaits' swaps are left out as before */
+  ok(!(out.body.pictureSwaps || []).length,
+    '3 swaps checked: not in a section the answer reworks, nor where it has several and none is named, nor where the picture\'s shape is far off its place\'s', out.body);
+  ok(out.body.sectionEdits.length === 2 && JSON.stringify(out.body.sectionEdits[0].pictures) === '[3]' && out.body.sectionEdits[1].sectionId === 'overview' &&
+    JSON.stringify(out.body.sectionEdits[1].pictures) === '[2]' && /with attached picture 2, in a frame of that picture's own shape, landscape 16:9 \(aspect-ratio: 1600 \/ 900\)/.test(out.body.sectionEdits[1].instruction) &&
+    !(out.body.skipped || []).some(function (l) { return /Overview/.test(l); }),
+    '3 a rework keeps a document picture\'s number, and the swap far off its place\'s shape is a rework that gives the frame the picture\'s own shape', out.body.sectionEdits);
+  ok(a1.schema.properties.docPeople && a1.schema.required.indexOf('docPeople') !== -1 && /List in `docPeople` the number of EVERY document picture/.test(a1.prompt) &&
+    /A section with `hidden: true` is not seen by visitors/.test(a1.prompt), '3 the model lists which document pictures it places show people, and is told hidden sections take none');
   var convDoc = FB.docs['events/' + EV + '/aiChats/u-meera'];
   await wait();
   ok(convDoc && convDoc.docPictures && convDoc.docPictures.docs[0].pictures.length === 3 && convDoc.docPictures.docs[0].name === 'ETDavos.pdf', '3 they are kept with the person\'s conversation', convDoc && convDoc.docPictures);
@@ -327,6 +373,20 @@ function sections() {
     (!sharp || a2.images.length >= 1) && !a2.files.length, '3 a later message has them, numbered from 1, shown again, with nothing attached and no PDF sent again', a2.prompt.slice(a2.prompt.indexOf('PICTURES TAKEN'), a2.prompt.indexOf('PICTURES TAKEN') + 300));
   ok(/\[With this message the owner attached “ETDavos\.pdf” \(3 pictures taken out\)\]/.test(a2.prompt) && /applied: “Overview”: picture 2 from page 2 of “ETDavos\.pdf” put in/.test(a2.prompt),
     '3 the conversation remembers which document brought them and what went where');
+  /* QA, 16 Nov 2026 (ET DAVOS 2027): an agenda with no sessions is not seen by visitors, and a picture of people goes only in
+     a people section — whatever the model answers, through the real router */
+  var hiddenSecs = sections().map(function (x) { return x.id === 'agenda' ? Object.assign({}, x, { hidden: true, showsWhen: 'sessions' }) : x; });
+  answers.push(edit({ summary: 'Page 2 is now beside The Swiss Arc and page 3 in What Awaits You.', sectionEdits: [{ sectionId: 'agenda', instruction: 'Add attached picture 1 beside its text, in a 16:9 frame.', pictures: [1] }],
+    pictureSwaps: [{ sectionId: 'what-awaits', placement: 'picture', slot: 1, picture: 2, alt: 'two people talking' }], docPeople: [2] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'use the pictures from the pdf', sections: hiddenSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
+  var a5 = asked[asked.length - 1];
+  ok(out.status === 200 && !out.body.sectionEdits.length && !(out.body.pictureSwaps || []).length && out.body.kind === 'reply' &&
+    /^Page 2's picture was not put in “The Swiss Arc”: visitors do not see that section yet\. Page 3's picture shows people, so it was not put in “What Awaits You”: pictures of people go only in a people section, such as who should attend\. Nothing on the page changed\.$/.test(out.body.summary),
+    '3 a document picture is never put in a section visitors do not see, nor one of people outside a people section; the answer says so by page', out.body);
+  ok(/"sectionId": "agenda",\s*"name": "The Swiss Arc",\s*"hidden": true,\s*"showsWhen": "sessions"/.test(a5.prompt), '3 the model is told the agenda is hidden until its sessions are added', a5.prompt.slice(a5.prompt.indexOf('"agenda"') - 20, a5.prompt.indexOf('"agenda"') + 120));
+  answers.push(edit({ summary: 'Placed.', sectionEdits: [{ sectionId: 'agenda', instruction: 'Add attached picture 1 beside its text, in a 16:9 frame.', pictures: [1] }], docPeople: [] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'put a pdf picture in the swiss arc section', sections: hiddenSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
+  ok(out.status === 200 && out.body.sectionEdits.length === 1 && out.body.sectionEdits[0].sectionId === 'agenda', '3 ...unless the owner names it', out.body);
   /* an editor from before: nothing of this reaches it */
   answers.push({ kind: 'reply', summary: 'ok', design: {}, textEdits: [], sectionEdits: [], sectionOps: [], newSections: [], newForms: [], ctaLinks: [], formEmbeds: [], goTo: '', intent: 'x' });
   await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'use the pictures from the pdf', sections: [{ id: 'overview', name: 'Overview', texts: ['x'] }], documents: docMsg.documents });
@@ -501,7 +561,7 @@ function sections() {
   /* the rework prompt: a supplied picture's frame takes its shape */
   var GEN = fs.readFileSync(path.join(__dirname, 'api-generate.js'), 'utf8');
   ok(/var one = w >= 1 && w <= 20000 && h >= 1 && h <= 20000 \? \{ n: n, token: token, w: w, h: h \} : \{ n: n, token: token \};\s*if \(frame\) one\.frame = pictureShape\.frameText\(frame\);\s*supplied\.push\(one\);/.test(GEN) &&
-    /Where a picture\\'s size is given, give its frame that shape \(CSS aspect-ratio: width \/ height/.test(GEN) && /never stretched or squashed/.test(GEN),
+    /Where a picture\\'s size is given, give its frame exactly that shape \(CSS aspect-ratio: width \/ height/.test(GEN) && /never stretched or squashed/.test(GEN),
     '5 a rework is told a document picture\'s size and gives its frame that shape, filled by cropping');
   /* merged with the frame-shape work: a new picture made for a frame the rework adds is told its exact shape; a document's
      picture with only its size is told its shape and size, with the rule to give its frame that shape */
@@ -509,7 +569,7 @@ function sections() {
     design: { mode: 'light' }, supplied: [{ n: 2, token: 'rvimg://attached-2', w: 1600, h: 900 }, { n: 4, token: 'rvimg://attached-4', w: 1536, h: 658, frame: '21:9' }] });
   ok(/attached picture 2 = rvimg:\/\/attached-2 \(landscape 16:9, 1600×900\)/.test(rp) &&
     /attached picture 4 = rvimg:\/\/attached-4 \(made in the shape 21:9: its frame is exactly that shape — aspect-ratio: 21 \/ 9/.test(rp) && !/attached-4 \(landscape/.test(rp) &&
-    /Where a picture's size is given, give its frame that shape/.test(rp), '5 the rework prompt: the new picture by its exact frame shape, the document picture by its shape and size', rp.slice(rp.indexOf('PICTURES THE OWNER'), rp.indexOf('PICTURES THE OWNER') + 900));
+    /Where a picture's size is given, give its frame exactly that shape/.test(rp) && !/unless the request names another/.test(rp), '5 the rework prompt: the new picture by its exact frame shape, the document picture by its shape and size', rp.slice(rp.indexOf('PICTURES THE OWNER'), rp.indexOf('PICTURES THE OWNER') + 900));
   var rpNew = hooks.buildRedesignPrompt({ mode: 'edit', instruction: 'Add attached picture 1', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light' },
     supplied: [{ n: 1, token: 'rvimg://attached-1', w: 1536, h: 864, frame: '16:9' }] });
   ok(/made in the shape 16:9/.test(rpNew) && !/Where a picture's size is given/.test(rpNew), '5 ...and with only a framed new picture, its exact shape alone is said');
