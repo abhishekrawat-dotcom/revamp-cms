@@ -346,6 +346,16 @@ var NUMBERS_PIC = { sectionId: 'by-the-numbers', placement: 'picture', slot: 0, 
   var what = cp.planAsk([{ sectionId: 'by-the-numbers', placement: 'picture', slot: 0, subject: '', plainSubject: '', kind: 'place', alt: '' }], Object.assign({}, ctx, { instruction: 'make a new picture for this section', focus: FOCUS_NUMBERS }));
   ok(what.code === 'what' && /for example “a snowy Alpine resort town in a high valley”/.test(what.reply) && what.pending && what.pending.sectionId === 'by-the-numbers',
     '(c) "what should it show?" gives this event\'s own scene as its example', what.reply);
+  /* a place word of a section's name ("The Swiss Arc") in the scene ("the Swiss Alps") is the scene, not that section;
+     the section's whole name, or its place word with no such scene, still names it */
+  var arcCtx = Object.assign({}, ctx, { sections: ctx.sections.map(function (s) { return s.id === 'agenda' ? Object.assign({}, s, { name: 'The Swiss Arc' }) : s; }) });
+  var alps = cp.planAsk([Object.assign({}, NUMBERS_PIC, { subject: 'the Swiss Alps above Davos at dawn' })], Object.assign({}, arcCtx, { instruction: 'make a new picture of the Swiss Alps for this section', focus: FOCUS_NUMBERS }));
+  ok(alps.ask && alps.ask.sectionId === 'by-the-numbers', '"a picture of the Swiss Alps for this section" goes in the section selected, not in "The Swiss Arc"', alps);
+  var arc = cp.planAsk([{ sectionId: 'agenda', placement: 'picture', slot: 0, subject: 'a red mountain train crossing a snowy viaduct', plainSubject: '', kind: 'place', alt: '' }], Object.assign({}, arcCtx, { instruction: 'give the Swiss Arc a new picture' }));
+  ok(arc.ask && arc.ask.sectionId === 'agenda', '"give the Swiss Arc a new picture" still names that section', arc);
+  var jaipurCtx = Object.assign({}, ctx, { sections: ctx.sections.concat([cp.cleanSectionFields({ id: 'jaipur', name: 'Jaipur', texts: ['The Pink City'], pics: { slots: 0 } }, '')]) });
+  var jaipur = cp.planAsk([{ sectionId: 'jaipur', placement: 'picture', slot: 0, subject: 'pink sandstone palace windows at dawn', plainSubject: '', kind: 'place', alt: '' }], Object.assign({}, jaipurCtx, { instruction: 'make a new picture for jaipur' }));
+  ok(jaipur.ask && jaipur.ask.sectionId === 'jaipur', 'a section named by a place ("Jaipur") is still named by it when the scene is another', jaipur);
   ['Swiss Alps at dawn', 'Lake Zurich', 'the Landwasser Viaduct in snow', 'Interlaken between its two lakes', 'St Moritz in winter', 'the Jungfrau above Interlaken', 'Zurich Old Town at dusk', 'the Davos Congress Centre lit at dusk'].forEach(function (t) {
     var r = cp.cleanSubject(t, { sections: ctx.sections, event: ctx.eventData, designPlan: ctx.designPlan });
     ok(r.ok, '(a) the event\'s own place and its region are places, never names: "' + t + '"', r);

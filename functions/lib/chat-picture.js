@@ -1014,12 +1014,14 @@ var NAME_STOP = ['section', 'sections', 'event', 'events', 'edition', 'editions'
   'graphic', 'graphics', 'illustration', 'artwork', 'hero', 'block', 'part', 'area', 'main'];
 function stem(w) { return w.length > 4 && /s$/.test(w) ? w.slice(0, -1) : w; }
 
-/* The sections the latest message names: by the words of their names and ids. A place word in a section's name ("The
-   Swiss Arc", "The Davos Experience") names it only with the rest of its name ("the Swiss Arc"): on its own it is most
-   often the scene (owner, 16 Nov 2026: "a picture of the Swiss Alps for this section" is not about "The Swiss Arc"). */
-function namedSections(instruction, sections) {
-  var said = {}, all = words(instruction);
+/* The sections the latest message names: by the words of their names and ids. scene: the picture's scene, when known.
+   A place word of a section's name ("The Swiss Arc", "The Davos Experience") that is also in the scene names the
+   section only with the rest of its name ("the Swiss Arc"): there it is the scene (owner, 16 Nov 2026: "a picture of
+   the Swiss Alps for this section" is not about "The Swiss Arc"). */
+function namedSections(instruction, sections, scene) {
+  var said = {}, all = words(instruction), inScene = {};
   all.forEach(function (w) { said[w] = 1; said[stem(w)] = 1; });
+  words(scene).forEach(function (w) { inScene[w] = 1; });
   var line = ' ' + all.join(' ') + ' ';
   var heroNamed = HERO_NAMED.test(String(instruction || ''));
   var out = [];
@@ -1029,7 +1031,7 @@ function namedSections(instruction, sections) {
     var phrase = ' ' + nameWords.join(' ') + ' ';
     if (nameWords.length && ((nameWords.length >= 2 && line.indexOf(phrase) !== -1) || line.indexOf(phrase + 'section ') !== -1)) { out.push(sec.id); return; }
     var own = nameWords.concat(words(String(sec.id || '').replace(/[-_]/g, ' ')));
-    if (own.some(function (w) { return w.length >= 4 && NAME_STOP.indexOf(w) === -1 && PLACE_NAMES[w] !== 1 && /\p{L}/u.test(w) && (said[w] || said[stem(w)]); })) out.push(sec.id);
+    if (own.some(function (w) { return w.length >= 4 && NAME_STOP.indexOf(w) === -1 && !(PLACE_NAMES[w] === 1 && inScene[w]) && /\p{L}/u.test(w) && (said[w] || said[stem(w)]); })) out.push(sec.id);
   });
   return out;
 }
@@ -1445,13 +1447,13 @@ function planAsk(list, ctx) {
   var offering = ctx.offering === true, pend = offering ? null : pendingOf(last);
   var bare = bareYes(said);
   var asked = offering || pictureAsked(said, attached, last);
-  if (!asked && pend && pend.next && namedSections(said, sections).some(function (id) { return pend.options.indexOf(id) !== -1; })) asked = true;
+  if (!asked && pend && pend.next && namedSections(said, sections, e.subject).some(function (id) { return pend.options.indexOf(id) !== -1; })) asked = true;
   if (!asked) return out(sentence('notAsked', { section: ex().section, scene: ex().scene }), 'notAsked');
   /* the message answers the offer or the question on the last turn: the owner has said yes to it */
   var answers = !!pend && answersPending(String(said).replace(NEG_RE, ' ').replace(FREE_RE, ' '), pend);
   /* a bare yes makes what was offered: its section, place and scene, as they were kept — unless it points at another
      section ("go ahead with this section", with By the Numbers selected) or names one */
-  var pointed = pointedAt(said, ctx.focus), namedNow = namedSections(said, sections);
+  var pointed = pointedAt(said, ctx.focus), namedNow = namedSections(said, sections, e.subject);
   var elsewhere = !!pend && ((pointed && pointed !== pend.sectionId) || (namedNow.length > 0 && namedNow.indexOf(pend.sectionId) === -1));
   if (answers && bare && pend.sectionId && !pend.next && !elsewhere) {
     var same = e.sectionId === pend.sectionId;
@@ -1475,7 +1477,7 @@ function planAsk(list, ctx) {
   var person = contentPerson(said, sections, nameCtx);
   if (person) return out(sentence('records', { name: nameRef(person) }), 'records');
   if (PERSON_PIC_RE.test(withoutKeeps(said.replace(NEG_RE, ' ')))) {
-    var recs = sections.filter(function (s) { return s.role === 'records'; }), namedIds = namedSections(said, sections);
+    var recs = sections.filter(function (s) { return s.role === 'records'; }), namedIds = namedSections(said, sections, e.subject);
     var shows = askedSec && askedSec.role === 'records' ? askedSec : recs.filter(function (s) { return namedIds.indexOf(s.id) !== -1; })[0] || recs[0];
     return out(shows ? sentence('records', { name: nameRef(shows) }) : sentence('person'), shows ? 'records' : 'person');
   }
@@ -1520,7 +1522,7 @@ function planAsk(list, ctx) {
   }
   /* 8. where it goes is clear: the owner's words name it, or it is the selected section, the last picture's place, or a
      place offered on the last turn (a plain yes to several takes the first) */
-  var named = namedSections(said, sections);
+  var named = namedSections(said, sections, e.subject);
   if (!offering) {
     if (named.length && named.indexOf(sec.id) === -1) return out(sentence('unclear', { sections: ex().sections }), 'unclear', keep({ sectionId: '', sectionName: '', placement: '', confirmed: true }));
     var focusId = ctx.focus && typeof ctx.focus === 'object' ? String(ctx.focus.sectionId || '') : '';
