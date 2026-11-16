@@ -227,7 +227,7 @@ function byId(list, id) { return list.filter(function (s) { return s.id === id; 
   /* ======================= 6. the prompt block, the slides, placing ======================= */
   var ok3 = DP.eligible(davos());
   var block = DP.promptLines(ok3, { sheets: 2, slideSheets: 1, titles: opts().titles, held: 12 });
-  ok(/THE DECK'S OWN PHOTOGRAPHS — 20 photos/.test(block) && /12 more were left for the owner/.test(block) && /design\.heroPhoto/.test(block) && /sections\[\]\.fromPages/.test(block),
+  ok(/THE DECK'S OWN PHOTOGRAPHS — 20 photos/.test(block) && /12 more were left out/.test(block) && /design\.heroPhoto/.test(block) && /sections\[\]\.fromPages/.test(block),
     '6 the prompt block: the eligible photos, the picks by number, the pages', block.slice(0, 300));
   ok(!/an ET@Davos sign|a poster with a leader|a man in a suit|departures/.test(block), '6 a held photo is never listed, so it cannot be picked');
   ok(/at most 2 made pictures on the whole page/.test(block), '6 the gap rule is said');
@@ -256,7 +256,7 @@ function byId(list, id) { return list.filter(function (s) { return s.id === id; 
     out = await DP.place(sec, {}, r, { ownPath: function (u) { return u.slice(OWN.length); }, download: function () { return Promise.reject(new Error('gone')); }, crop: pictureShape.crop, store: function () { return Promise.resolve('x'); }, dropPicture: dropPicture });
     ok(!out.heroUrl && out.failed.length >= 5 && !byId(sec, 'overview').imageUrl, '6 a photo that cannot be read is left out: the banner is then made', out.failed);
   } else ok(true, '6 (no picture library here: the slides and placing are not drawn)');
-  ok(/Checked 32 photos from “ETDavos 2027 Delegates\.pdf”: 20 can go on the site, 12 are left for you to choose \(/.test(DP.historyLine({ photos: davos().map(function (p) { return Object.assign(p, { held: DP.heldReason(p) }); }) }, 'ETDavos 2027 Delegates.pdf')),
+  ok(/Checked 32 photos from “ETDavos 2027 Delegates\.pdf”: 20 can go on the site, 12 are left out \(/.test(DP.historyLine({ photos: davos().map(function (p) { return Object.assign(p, { held: DP.heldReason(p) }); }) }, 'ETDavos 2027 Delegates.pdf')),
     '6 the History line', DP.historyLine({ photos: davos().map(function (p) { return Object.assign(p, { held: DP.heldReason(p) }); }) }, 'ETDavos 2027 Delegates.pdf'));
 
   if (failures.length) { console.error('deck-photos: ' + failures.length + ' of ' + checks + ' checks FAILED:\n  - ' + failures.join('\n  - ')); process.exit(1); }

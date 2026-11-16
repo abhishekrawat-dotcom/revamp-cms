@@ -9,7 +9,7 @@
    rules (assign) and cuts each placed photo to its frame (place).
 
    The owner's rules here (16 Nov 2026):
-     - a photo showing people (a few or a group) is HELD for the owner to choose in the editor, never placed by itself
+     - a photo showing people (a few or a group) is HELD (left out of the site; an editor chooser is not built yet), never placed by itself
        and never the banner (decision D2); one with only tiny distant figures is a place photo;
      - a public figure, another organisation's name or logo (a shop front, a pavilion, a sponsor's sign), a sign, a
        poster, a graphic, a photo that is mostly words or mostly a flag is held, always;
@@ -81,7 +81,7 @@ var HELD = {
   lettering: 'is mostly words',
   sign: 'is a sign, poster or graphic',
   flag: 'is mainly a flag',
-  people: 'shows people: left for you to choose'
+  people: 'shows people'
 };
 /* o.peopleOk: the owner said yes to placing deck photos of people (decision D2: no, by default) */
 function heldReason(p, o) {
@@ -209,7 +209,7 @@ function promptLines(list, o) {
   var shapeOf = require('./doc-pictures').shapeOf;
   var titles = o.titles || {};
   var lines = [
-    'THE DECK\'S OWN PHOTOGRAPHS — ' + list.length + (list.length === 1 ? ' photo' : ' photos') + ' from the owner\'s presentation that may go on the site, as they are' + (o.held ? ' (' + o.held + ' more were left for the owner to choose in the editor: other organisations\' names, public figures, people, signs)' : '') + '.',
+    'THE DECK\'S OWN PHOTOGRAPHS — ' + list.length + (list.length === 1 ? ' photo' : ' photos') + ' from the owner\'s presentation that may go on the site, as they are' + (o.held ? ' (' + o.held + ' more were left out: other organisations\' names, public figures, people, signs)' : '') + '.',
     o.sheets
       ? 'You can SEE them: the first ' + (o.sheets === 1 ? 'picture' : o.sheets + ' pictures') + ' with this message ' + (o.sheets === 1 ? 'is a contact sheet' : 'are contact sheets') + ' — each photo whole on a dark ground with its number in a white-on-black box at its top-left corner' +
         (Array.isArray(o.seen) && o.seen.length && o.seen.length < list.length ? ' (the sheets show photos ' + o.seen.join(', ') + '; judge the others from their lines below)' : '') + '.'
@@ -481,7 +481,7 @@ function summary(deck) {
   var held = photos.filter(function (p) { return p.held; }).map(function (p) { return { page: p.page, why: p.held }; });
   return { kept: photos.length - held.length, held: held };
 }
-/* "Checked 24 photos from your presentation: 18 can go on the site, 6 are left for you to choose (other
+/* "Checked 24 photos from your presentation: 18 can go on the site, 6 are left out (other
    organisations' names, a public figure)" */
 var WHY_SHORT = {};
 WHY_SHORT[HELD.unchecked] = 'not checked'; WHY_SHORT[HELD.publicFigure] = 'a public figure'; WHY_SHORT[HELD.brand] = 'other organisations\' names';
@@ -491,7 +491,7 @@ function historyLine(deck, fileName) {
   var whys = [];
   s.held.forEach(function (h) { var w = WHY_SHORT[h.why] || h.why; if (whys.indexOf(w) === -1) whys.push(w); });
   return 'Checked ' + total + (total === 1 ? ' photo' : ' photos') + ' from “' + oneLine(fileName, 120) + '”: ' + s.kept + ' can go on the site' +
-    (s.held.length ? ', ' + s.held.length + (s.held.length === 1 ? ' is' : ' are') + ' left for you to choose (' + whys.join(', ') + ')' : '');
+    (s.held.length ? ', ' + s.held.length + (s.held.length === 1 ? ' is' : ' are') + ' left out (' + whys.join(', ') + ')' : '');
 }
 
 module.exports = {

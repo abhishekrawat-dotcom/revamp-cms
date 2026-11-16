@@ -4301,7 +4301,7 @@
     $('gb-deck-hint').textContent = reading ? 'Looking for photos in ' + name + '…'
       : !on ? (failed ? DECK_UNREAD + ' ' : '') + 'ETB2B AI designs the site; the presentation is read for its content only.'
       : failed ? 'The site takes its colours, type and section order from ' + name + '. ' + (deckRead.error || DECK_UNREAD)
-      : n ? 'The site takes its colours, type and section order from ' + name + ' and uses its own photos (' + n + ' found). Photos showing people, another company’s name, a public figure or a poster are left for you to choose in the editor.'
+      : n ? 'The site takes its colours, type and section order from ' + name + ' and uses its own photos (' + n + ' found). Photos showing people, another company’s name, a public figure or a poster are not put on the site.'
       : 'The site takes its colours, type and section order from ' + name + '. No photos were found in it, so pictures will be made for the site.';
     $('gb-deck-ask').hidden = on || !window.CreateDeck || CreateDeck.wantsDeck(S.brief.instructions) !== 'on';
   }
@@ -7057,7 +7057,7 @@
         var send = function(url, init){ return apiFetch(url, Object.assign({ signal: runSignal(run) }, init || {})); };
         return CreateDeck.store(eventId, runId, run.briefId, d.result, { fetch: send, deckPages: run.deckPages }).then(function(resp){
           var kept = +resp.kept || 0, held = (resp.held || []).length, lo = CreateDeck.leftOutText(d.result.leftOut);
-          return { note: (kept === 1 ? '1 photo' : kept + ' photos') + ' kept' + (held ? ' · ' + held + ' left for you to choose in the editor' : '') + (lo ? ' · ' + lo : '') };
+          return { note: (kept === 1 ? '1 photo' : kept + ' photos') + ' kept' + (held ? ' · ' + held + ' not put on the site (people, a name or a poster)' : '') + (lo ? ' · ' + lo : '') };
         });
       });
     };

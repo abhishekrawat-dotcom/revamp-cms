@@ -49,8 +49,10 @@
             — the rules the bucket has now. `lifecycle set` REPLACES them all: if any are listed, add their entries
             to the "rule" list of the JSON file before the next command, and keep them;
           `gcloud storage objects list 'gs://revamp-cms.firebasestorage.app/**' --format='value(name,custom_time)'
-            | awk -F'\t' '$2 != ""' | grep -v '/chat-docs/'` — must print nothing: no object outside a chat-docs
-            folder has a Custom-Time (anything it prints would be deleted after 30 days).
+            | awk -F'\t' '$2 != ""' | grep -v -e '/chat-docs/' -e '/brief-photos/'` — must print nothing: no object
+            outside a chat-docs or brief-photos folder has a Custom-Time (anything it prints would be deleted after
+            30 days). A presentation's photos under brief-photos/ also go after 30 days; the ones placed on a site
+            are copies kept elsewhere, so only unplaced ones go.
         Then: `gcloud storage buckets update gs://revamp-cms.firebasestorage.app
         --lifecycle-file=tools/storage-lifecycle-chat-docs.json` (or `gsutil lifecycle set
         tools/storage-lifecycle-chat-docs.json gs://revamp-cms.firebasestorage.app`), and describe the bucket again:

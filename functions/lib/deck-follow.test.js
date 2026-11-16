@@ -317,7 +317,7 @@ function byId(list, id) { return (list || []).filter(function (s) { return s.id 
   ok(rec.deck && rec.deck.photos.length === 10 && rec.deck.slides.length === 3 && rec.deck.checked === true && !/storage\.googleapis/.test(JSON.stringify(rec.extracted)),
     '4 the list is kept beside the brief, never inside `extracted` (the prompts show that)', rec.deck && Object.keys(rec.deck));
   ok(rec.deck.slides.every(function (s) { return /^events\/qa-pdeck-run\/briefs\/[A-Za-z0-9]+\/slides\/p\d+\.jpg$/.test(s.path) && !made[s.path]; }) && Object.keys(made).length === made0, '4 the slides are private (never made public)', rec.deck.slides);
-  ok(Object.keys(FB.docs).some(function (k) { return k.indexOf('events/' + EV + '/activity/') === 0 && /Checked 10 photos from “ETDavos 2027 Delegates\.pdf”: 7 can go on the site, 3 are left for you to choose/.test(FB.docs[k].detail); }), '4 the History line says what was held');
+  ok(Object.keys(FB.docs).some(function (k) { return k.indexOf('events/' + EV + '/activity/') === 0 && /Checked 10 photos from “ETDavos 2027 Delegates\.pdf”: 7 can go on the site, 3 are left out/.test(FB.docs[k].detail); }), '4 the History line says what was held');
 
   /* ======================= 5. plan-structure follows the deck ======================= */
   scripted['plan-structure'] = [planAnswer()];
@@ -328,7 +328,7 @@ function byId(list, id) { return (list || []).filter(function (s) { return s.id 
   ok(pl.status === 200, '5 the plan is made', pl.body && (pl.body.error || pl.status));
   ok(/THE REFERENCE THIS SITE IS MODELLED ON — the owner's own presentation \(“ETDavos 2027 Delegates\.pdf”\)/.test(pa.prompt) && /Its words and photographs are the owner's own: keep them\./.test(pa.prompt) && !/INSPIRED BY — the owner/.test(pa.prompt),
     '5 the deck is the reference it is MODELLED ON (not "inspired by")');
-  ok(/THE DECK'S OWN PHOTOGRAPHS — 7 photos/.test(pa.prompt) && /3 more were left for the owner/.test(pa.prompt) && /ONE BACKGROUND/.test(pa.prompt) && !/SERIF DISPLAY/.test(pa.prompt) && !/PICTURES, AS ON ET'S OWN SITES/.test(pa.prompt),
+  ok(/THE DECK'S OWN PHOTOGRAPHS — 7 photos/.test(pa.prompt) && /3 more were left out/.test(pa.prompt) && /ONE BACKGROUND/.test(pa.prompt) && !/SERIF DISPLAY/.test(pa.prompt) && !/PICTURES, AS ON ET'S OWN SITES/.test(pa.prompt),
     '5 the photo lines and ONE BACKGROUND; no serif rule, no ETB2B picture rule', pa.prompt.length);
   ok(/Red dot grid in top-left corner; concentric arc rings/.test(pa.prompt) && /order the sections as the deck's pages run/.test(pa.prompt) && /p5 ET Studio — lounge photo left, red title right; photo: split/.test(pa.prompt), '5 the motifs, the order, the pages');
   ok(pa.images.length === 2 && pa.schema.properties.design.properties.heroPhoto && pa.schema.properties.sections.items.properties.fromPages, '5 a contact sheet of the photos and a sheet of the slides go with the plan; it picks by number', pa.images.length);
