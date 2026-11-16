@@ -1403,7 +1403,9 @@ function offeredRecord(o) {
   return { state: 'offered', sectionId: String(o.sectionId || ''), placement: PLACEMENTS.indexOf(o.placement) !== -1 ? o.placement : '', slot: int(o.slot, 0, 50),
     sectionName: o.sectionName ? cleanSectionName(o.sectionName) : '', subject: oneLine(o.subject, SUBJECT_CHARS), kind: genDesign.IMAGE_KINDS.indexOf(o.kind) !== -1 ? o.kind : '',
     alt: oneLine(o.alt, ALT_CHARS), options: (Array.isArray(o.options) ? o.options : []).map(String).filter(Boolean).slice(0, 4),
-    optionNames: (Array.isArray(o.optionNames) ? o.optionNames : []).map(function (x) { return cleanSectionName(x); }).slice(0, 4), confirmed: o.confirmed === true };
+    optionNames: (Array.isArray(o.optionNames) ? o.optionNames : []).map(function (x) { return cleanSectionName(x); }).slice(0, 4), confirmed: o.confirmed === true,
+    /* the shape of the frame a rework would add for it (lib/picture-shape.js), so the yes makes it in that shape too */
+    frame: shape.FRAME_SHAPES.indexOf(o.frame) !== -1 ? o.frame : '' };
 }
 /* the offer a reply's words make (OFFER_RE), with the sections they name; null when they offer no picture */
 function replyOfferOf(summary, sections) {
@@ -1425,7 +1427,8 @@ function offerInReply(entries, summary, ctx) {
     if (planned.ask) {
       var a = planned.ask, ids = [a.sectionId], names = [a.sectionName];
       (said ? said.options : []).forEach(function (id, i) { if (ids.indexOf(id) === -1) { ids.push(id); names.push(said.optionNames[i]); } });
-      return offeredRecord({ sectionId: a.sectionId, placement: a.placement, slot: a.slot, sectionName: a.sectionName, subject: a.subject, kind: a.kind, alt: a.alt, options: ids, optionNames: names });
+      return offeredRecord({ sectionId: a.sectionId, placement: a.placement, slot: a.slot, sectionName: a.sectionName, subject: a.subject, kind: a.kind, alt: a.alt, options: ids, optionNames: names,
+        frame: a.apply === 'rework' && a.placement === 'picture' ? a.aspect : '' });
     }
   }
   return said;
@@ -1448,7 +1451,8 @@ function takeOffer(last, ctx) {
   if (!sec) return null;
   var asOffered = sec.id === pend.sectionId;
   var entry = { sectionId: sec.id, placement: (asOffered && pend.placement) || placementFor(sec), slot: asOffered ? int(pend.slot, 0, 50) : 0,
-    subject: (asOffered && pend.subject) || '', plainSubject: '', kind: (asOffered && pend.kind) || kindFor(sec, ctx), alt: (asOffered && pend.alt) || '' };
+    subject: (asOffered && pend.subject) || '', plainSubject: '', kind: (asOffered && pend.kind) || kindFor(sec, ctx), alt: (asOffered && pend.alt) || '',
+    frame: (asOffered && pend.frame) || '' };
   var planned = planAsk([entry], Object.assign({}, ctx, { sectionEdits: [], newSections: [] }));
   return planned && planned.ask ? planned : null;
 }
@@ -1520,7 +1524,7 @@ function planAsk(list, ctx) {
     var ownCloseUp = pend.state === 'made' && pend.alternative === 'close-up' && same && !!oneLine(e.subject, SUBJECT_CHARS);
     e = Object.assign({}, e, { sectionId: pend.sectionId, placement: pend.placement || (same ? e.placement : ''), slot: pend.slot || (same ? e.slot : 0),
       subject: ownCloseUp ? e.subject : pend.subject || (same ? e.subject : ''), plainSubject: same ? e.plainSubject : '', kind: pend.kind || (same ? e.kind : ''),
-      alt: ownCloseUp ? e.alt : pend.alt || (same ? e.alt : '') });
+      alt: ownCloseUp ? e.alt : pend.alt || (same ? e.alt : ''), frame: (same && e.frame) || pend.frame || '' });
   }
   /* ... for the picture it offered or asked about, or with a yes for the section pointed at ("go ahead with this
      section"); a picture asked for another section in other words is a new ask, not that yes */
@@ -1838,7 +1842,7 @@ function offerOf(entry, sections, ctx) {
   if (!scene && (subj.code === 'name' || subj.code === 'person')) scene = namelessOf(entry, nameCtx, '', null);
   return { sentence: sentence('offer', { what: PLACEMENT_WORDS[placement], name: nameRef(sec), scene: scene ? shortScene(scene) : '' }),
     record: offeredRecord({ sectionId: sec.id, placement: placement, slot: entry.slot, sectionName: sec.name || sec.id, subject: scene,
-      kind: entry.kind, alt: scene ? cleanAlt(entry.alt, scene, nameCtx) : '', options: [sec.id], optionNames: [sec.name || sec.id] }) };
+      kind: entry.kind, alt: scene ? cleanAlt(entry.alt, scene, nameCtx) : '', options: [sec.id], optionNames: [sec.name || sec.id], frame: entry.frame }) };
 }
 
 /* ---------- the person's day ---------- */

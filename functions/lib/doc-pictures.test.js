@@ -503,6 +503,16 @@ function sections() {
   ok(/var one = w >= 1 && w <= 20000 && h >= 1 && h <= 20000 \? \{ n: n, token: token, w: w, h: h \} : \{ n: n, token: token \};\s*if \(frame\) one\.frame = pictureShape\.frameText\(frame\);\s*supplied\.push\(one\);/.test(GEN) &&
     /Where a picture\\'s size is given, give its frame that shape \(CSS aspect-ratio: width \/ height/.test(GEN) && /never stretched or squashed/.test(GEN),
     '5 a rework is told a document picture\'s size and gives its frame that shape, filled by cropping');
+  /* merged with the frame-shape work: a new picture made for a frame the rework adds is told its exact shape; a document's
+     picture with only its size is told its shape and size, with the rule to give its frame that shape */
+  var rp = hooks.buildRedesignPrompt({ mode: 'edit', instruction: 'Add attached picture 4 to this section as its picture', sectionId: 's', html: '<section id="s"></section>', css: '',
+    design: { mode: 'light' }, supplied: [{ n: 2, token: 'rvimg://attached-2', w: 1600, h: 900 }, { n: 4, token: 'rvimg://attached-4', w: 1536, h: 658, frame: '21:9' }] });
+  ok(/attached picture 2 = rvimg:\/\/attached-2 \(landscape 16:9, 1600×900\)/.test(rp) &&
+    /attached picture 4 = rvimg:\/\/attached-4 \(made in the shape 21:9: its frame is exactly that shape — aspect-ratio: 21 \/ 9/.test(rp) && !/attached-4 \(landscape/.test(rp) &&
+    /Where a picture's size is given, give its frame that shape/.test(rp), '5 the rework prompt: the new picture by its exact frame shape, the document picture by its shape and size', rp.slice(rp.indexOf('PICTURES THE OWNER'), rp.indexOf('PICTURES THE OWNER') + 900));
+  var rpNew = hooks.buildRedesignPrompt({ mode: 'edit', instruction: 'Add attached picture 1', sectionId: 's', html: '<section id="s"></section>', css: '', design: { mode: 'light' },
+    supplied: [{ n: 1, token: 'rvimg://attached-1', w: 1536, h: 864, frame: '16:9' }] });
+  ok(/made in the shape 16:9/.test(rpNew) && !/Where a picture's size is given/.test(rpNew), '5 ...and with only a framed new picture, its exact shape alone is said');
   var UI = fs.readFileSync(path.join(ROOT, 'editor-template-ui.js'), 'utf8');
   ok(/var s = sizes\[n\];\s*if \(s && s\.w && s\.h && !\(isNew && np\.placement === 'background'\)\) \{ one\.w = s\.w; one\.h = s\.h; \}/.test(UI) && /canPlaceDocPictures: true,/.test(UI) &&
     /aiPictureRules\.docPicturesOf\(result\.docPictures, attached\.length, eventId\)/.test(UI) && /if \(p\.w && p\.h\) sizes\[p\.n\] = \{ w: p\.w, h: p\.h \};/.test(UI),

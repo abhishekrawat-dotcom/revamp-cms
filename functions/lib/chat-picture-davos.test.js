@@ -365,6 +365,24 @@ var NUMBERS_PIC = { sectionId: 'by-the-numbers', placement: 'picture', slot: 0, 
   });
   Object.keys(cp.SENTENCES).forEach(function (k) { ok(!/seafront/i.test(cp.SENTENCES[k]), '(c) no sentence gives a seafront as its example: ' + k); });
 
+  /* ===== merged with the frame-shape work: an offer keeps the shape of the frame its rework would add, and the owner's
+     yes makes the picture in that shape (owner, 16 Nov 2026: "AI has created a square image for a rectangular placeholder") ===== */
+  var KDP_OFFER = { sectionId: 'key-discussion-points', placement: 'picture', slot: 0, subject: 'an empty interview set with two armchairs facing each other under soft studio lights',
+    plainSubject: 'an empty interview set with two armchairs under soft studio lights', kind: 'subject', alt: 'An empty interview set', frame: '21:9' };
+  var kept = cp.offerInReply([KDP_OFFER], 'I can create an image for Key Discussion Points. Would you like that?', ctx);
+  ok(kept && kept.state === 'offered' && kept.sectionId === 'key-discussion-points' && kept.frame === '21:9', 'an offer a reply makes keeps the frame shape its rework would add', kept);
+  var heldNo = cp.offerInReply([Object.assign({}, KDP_OFFER, { frame: '9:16' })], 'I can create an image for Key Discussion Points. Would you like that?', ctx);
+  ok(heldNo && heldNo.frame === '16:9', '...a shape no added frame takes is kept as the usual 16:9 one', heldNo);
+  var took = cp.takeOffer(kept, Object.assign({}, ctx, { instruction: 'yes', lastTurnPicture: kept }));
+  ok(took && took.ask && took.ask.apply === 'rework' && took.ask.aspect === '21:9' && /ONE frame of exactly 21:9[^]*aspect-ratio: 21 \/ 9 /.test(took.edits[0].instruction),
+    'a bare yes the model answered with a question makes the offer in the shape it was offered, and the rework gives the frame that shape', took && { ask: took.ask, edits: took.edits });
+  var yesNoShape = cp.planAsk([Object.assign({}, KDP_OFFER, { frame: '' })], Object.assign({}, ctx, { instruction: 'yes', lastTurnPicture: kept }));
+  ok(yesNoShape.ask && yesNoShape.ask.aspect === '21:9', 'a yes the model answers with no shape takes the offered one', yesNoShape.ask);
+  var yesOwnShape = cp.planAsk([Object.assign({}, KDP_OFFER, { frame: '4:3' })], Object.assign({}, ctx, { instruction: 'yes', lastTurnPicture: kept }));
+  ok(yesOwnShape.ask && yesOwnShape.ask.aspect === '4:3', '...and the model\'s own shape for it, when it gives one, comes first', yesOwnShape.ask);
+  var off = cp.offerOf(KDP_OFFER, ctx.sections, ctx);
+  ok(off && off.record.frame === '21:9', 'the server\'s own offer keeps the shape the model chose', off && off.record);
+
   if (failures.length) { console.error('chat-picture-davos: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - ')); process.exit(1); }
   console.log('chat-picture-davos: all ' + checks + ' checks passed');
   process.exit(0);
