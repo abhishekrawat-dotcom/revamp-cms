@@ -121,7 +121,10 @@ function storeBatch(fb, eventId, body, decoded, deps) {
   if (part === 1) key = newKey();
   var name = cleanName(body.doc);
   var shared = require('./api-events')._shared;
-  var folder = 'events/' + eventId + '/chat-docs/' + key;
+  /* a presentation read at Create Event for the site it makes (CREATE-FROM-DECK.md): kept beside the brief, under
+     brief-photos/, and checked once by POST /api/brief-photos */
+  var brief = body.purpose === 'brief';
+  var folder = 'events/' + eventId + '/' + (brief ? 'brief-photos' : 'chat-docs') + '/' + key;
   var actor = (decoded && (decoded.email || decoded.uid)) || '';
   return fb.db.collection('events').doc(eventId).get().then(function (snap) {
     if (!snap.exists || (snap.data() || {}).deletedAt) return { status: 404, body: { error: STORE_MSG.gone, code: 'no-event' } };
@@ -135,7 +138,8 @@ function storeBatch(fb, eventId, body, decoded, deps) {
       if (part === parts && typeof deps.logActivity === 'function') {
         var total = int(body.total, 1, 1000) || stored.length;
         try {
-          deps.logActivity(fb, eventId, decoded, 'ai-chat', 'Gave ETB2B AI ' + total + (total === 1 ? ' picture' : ' pictures') + ' taken out of “' + name + '”', { area: 'site' });
+          if (brief) deps.logActivity(fb, eventId, decoded, 'brief-updated', 'Took ' + total + (total === 1 ? ' photo' : ' photos') + ' out of “' + name + '” for the site', { area: 'content' });
+          else deps.logActivity(fb, eventId, decoded, 'ai-chat', 'Gave ETB2B AI ' + total + (total === 1 ? ' picture' : ' pictures') + ' taken out of “' + name + '”', { area: 'site' });
         } catch (err) { console.error('doc-pictures: the History line was not written — ' + (err && err.message)); }
       }
       return { status: 200, body: { key: key, pictures: stored } };
@@ -147,13 +151,15 @@ function storeBatch(fb, eventId, body, decoded, deps) {
 }
 
 /* ---------- the pictures a message names, checked ---------- */
-/* an address of this event's own stored document pictures: <ownPrefix>chat-docs/<key>/<file>.jpg -> its path in the
-   bucket, else '' */
-function ownPath(url, ownPrefix) {
+/* an address of this event's own stored document pictures: <ownPrefix>chat-docs/<key>/<file>.jpg, or a presentation's
+   photos kept at Create Event, <ownPrefix>brief-photos/<key>/<file>.jpg -> its path in the bucket, else ''. folders:
+   the folders allowed (default both) */
+var FOLDERS = ['chat-docs', 'brief-photos'];
+function ownPath(url, ownPrefix, folders) {
   url = typeof url === 'string' ? url.trim() : '';
   if (!ownPrefix || url.indexOf(ownPrefix) !== 0 || url.length > 400) return '';
   var rest = url.slice(ownPrefix.length).split('/');
-  if (rest.length !== 3 || rest[0] !== 'chat-docs' || !KEY_RE.test(rest[1]) || !FILE_RE.test(rest[2])) return '';
+  if (rest.length !== 3 || (Array.isArray(folders) ? folders : FOLDERS).indexOf(rest[0]) === -1 || !KEY_RE.test(rest[1]) || !FILE_RE.test(rest[2])) return '';
   var bucketPath = ownPrefix.replace(/^https:\/\/storage\.googleapis\.com\/[^/]+\//, '');
   return bucketPath + rest.join('/');
 }
@@ -166,11 +172,11 @@ function cleanLeftOut(v) {
   });
   return any ? out : null;
 }
-function cleanPictures(list, ownPrefix) {
+function cleanPictures(list, ownPrefix, folders) {
   var out = [], seen = {};
   (Array.isArray(list) ? list : []).forEach(function (p) {
     if (!isObj(p) || out.length >= CAPS.perDoc) return;
-    var path = ownPath(p.url, ownPrefix), thumbPath = ownPath(p.thumb, ownPrefix);
+    var path = ownPath(p.url, ownPrefix, folders), thumbPath = ownPath(p.thumb, ownPrefix, folders);
     if (!path || !thumbPath || seen[path]) return;
     seen[path] = true;
     var share = Number(p.share);
@@ -433,6 +439,6 @@ function turnDocs(docs) {
 module.exports = {
   CAPS: CAPS, KEY_RE: KEY_RE, storeBatch: storeBatch, fromDocuments: fromDocuments, remember: remember, recall: recall, numbered: numbered,
   shapeOf: shapeOf, promptLines: promptLines, sheets: sheets, answerList: answerList, turnDocs: turnDocs, leftOutSentence: leftOutSentence,
-  swapSchema: swapSchema, cleanSwaps: cleanSwaps,
+  swapSchema: swapSchema, cleanSwaps: cleanSwaps, ownPath: ownPath, badgeSvg: badgeSvg, cleanPictures: cleanPictures, oneLine: oneLine,
   _test: { ownPath: ownPath, badgeSvg: badgeSvg, jpegOf: jpegOf, cleanPictures: cleanPictures, SHEET_CACHE: SHEET_CACHE }
 };

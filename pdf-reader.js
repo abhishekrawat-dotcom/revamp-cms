@@ -17,6 +17,10 @@
          that answers CVE-2024-4367's kind of font bug), nothing is fetched from anywhere (the bytes are all it
          reads: no range or stream requests, no standard fonts or character maps, no XFA forms). extra may set only
          SAFE_EXTRA's options (disableFontFace).
+     RevampPdf.renderPage(page, px) -> Promise<HTMLCanvasElement>
+         a page (a PDFPageProxy) drawn whole on a new canvas whose long side is px — the one slide renderer: the
+         console's speaker tools draw a brochure's pages with it, and Create Event the key slides of a presentation it
+         follows (create-deck.js)
      RevampPdf.OPTIONS                the options open() always sets
 
    ES5 on purpose: it loads as a plain script on pages that are not bundled. The module build itself is imported by
@@ -83,5 +87,14 @@
     });
   }
 
-  root.RevampPdf = { VERSION: VERSION, LIB: LIB, WORKER: WORKER, OPTIONS: OPTIONS, load: load, open: open };
+  function renderPage(page, px) {
+    var doc = root.document;
+    var v = page.getViewport({ scale: 1 }), scale = (+px || 1280) / Math.max(v.width, v.height);
+    var vp = page.getViewport({ scale: scale });
+    var canvas = doc.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(vp.width)); canvas.height = Math.max(1, Math.round(vp.height));
+    return page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise.then(function () { return canvas; });
+  }
+
+  root.RevampPdf = { VERSION: VERSION, LIB: LIB, WORKER: WORKER, OPTIONS: OPTIONS, load: load, open: open, renderPage: renderPage };
 })(typeof window !== 'undefined' ? window : this);
