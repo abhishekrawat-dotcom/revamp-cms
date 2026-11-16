@@ -287,8 +287,12 @@ function assign(sections, deck, o) {
     var i = sections.indexOf(s);
     return !peopleKept.some(function (x) { return Math.abs(sections.indexOf(x) - i) === 1; });
   }
+  /* a photo with a flag in it goes only where the section is about the place (the Create run of 16 Nov 2026 put a
+     Swiss flag on a mountain platform into "What Awaits You"); the banner allows one, scoring it lower */
+  var PLACE_RE = /venue|city|place|location|travel|stay|destination|glance|country|region|getting-there/i;
   function usable(p, s, shape) {
-    return p && okN[p.n] && !used[p.n] && fits(p, shape) && (!hasPeople(p) || peopleAllowed(s));
+    return p && okN[p.n] && !used[p.n] && fits(p, shape) && (!hasPeople(p) || peopleAllowed(s)) &&
+      (!p.flag || PLACE_RE.test(String(s.id) + ' ' + (s.name || '') + ' ' + (s.purpose || '')));
   }
   function fallback(s, shape) {
     var pages = Array.isArray(s.fromPages) ? s.fromPages : [];

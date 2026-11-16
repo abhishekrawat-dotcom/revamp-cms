@@ -160,6 +160,12 @@ function byId(list, id) { return list.filter(function (s) { return s.id === id; 
     '3 the frame\'s shape: 55% kept, a band or full width 1200 px, a split 900 px');
   ok(Math.abs(DP.keeps(1600, 900, 4 / 3) - 0.75) < 0.001, '3 keeps: 16:9 in 4:3 keeps three quarters');
 
+  /* a photo with a flag in it: only in a section about the place */
+  sec = [{ id: 'what-awaits', name: 'What Awaits You', kind: 'custom', purpose: 'Moments of the week.', layout: 'photo left, text right', pick: 27 },
+    { id: 'switzerland', name: 'Switzerland', kind: 'custom', purpose: 'The country around the week.', layout: 'photo left, text right', pick: 27 }];
+  r = DP.assign(sec, { photos: davos() }, opts({ heroPhoto: 3 }));
+  ok(!(sec[0].deckPhoto && sec[0].deckPhoto.flag) && sec[1].deckPhoto && sec[1].deckPhoto.n === 27, '3 a flag photo is refused for what-awaits and taken where the section is about the place', sec.map(function (s) { return s.deckPhoto ? s.deckPhoto.n : 0; }));
+
   /* cards with fewer than two photos: typographic */
   sec = [{ id: 'what-awaits', name: 'What Awaits You', kind: 'custom', purpose: 'Four moments.', layout: 'a row of four tall photo cards', image: '', imageKind: '', picks: [7, 8, 5] }];
   r = DP.assign(sec, { photos: davos() }, opts({}));
