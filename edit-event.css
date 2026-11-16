@@ -1795,9 +1795,9 @@ a.ev-chip:hover{ border-color: currentColor; }
 
 /* seo2: shell — Settings › Search and sharing's frame (edit-event-seo.js view): one status line, the preview (the
    anchor), the checklist's one line, the two open panels, the closed Advanced fold (event details, speakers, FAQs and
-   reviews, the code search engines read, short links), the one save bar. One column at a reading width, the heading
-   (with its helper) ending where the column does; flat, no box inside a box. */
-#seo-root.seo2, .vhead:has(.seo2-hact){ max-width:980px; }
+   reviews, the code search engines read, short links), the one save bar. It fills the width, as every console screen
+   does (it was held to 980 px, which left half of a wide screen empty); flat, no box inside a box. From 1280 px it has
+   two columns (below). */
 /* the heading keeps room for its title and line: on a tablet its helper goes under them rather than squeeze them; the
    line under the title never leaves one word alone on its last line */
 .vhead-row:has(.seo2-hact) > .grow{ min-width:min(100%, 360px); }
@@ -1824,6 +1824,18 @@ html:has(#seo-savebar.on){ scroll-padding-bottom:96px; }
 .seo2-pv .mock{ background: var(--surface); }
 /* the shared link keeps the size it has side by side (as a phone shows it) when the two go one above the other */
 .seo2-pv .mock-og{ max-width:440px; }
+/* 1280 px and wider: the settings on the left; the two previews on the right, one above the other, kept in view under
+   the top bar while you type, so what Google and a shared link will show changes beside the field being written. The
+   status line runs across both; the save bar stays under the settings. Every other block goes in the left column, one
+   row each, and the previews span those rows (they are shorter than the settings, so no row grows for them). */
+@media (min-width:1280px){
+  #seo-root.seo2{ display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,420px); column-gap:28px; align-items:start; }
+  #seo-root.seo2 > *{ grid-column:1; min-width:0; }
+  #seo-root.seo2 > .seo2-status{ grid-column:1 / -1; }
+  #seo-root.seo2 > .seo2-pv{ grid-column:2; grid-row:2 / span 20; grid-template-columns:minmax(0,1fr); margin:0;
+    position:sticky; top:calc(var(--topbar-h) + 16px); }
+  #seo-root.seo2 > .seo2-pv .mock-og{ max-width:none; }
+}
 .seo2-adv{ margin:8px 0 16px; }
 .seo2-adv > summary{ list-style:none; cursor:pointer; display:flex; align-items:baseline; flex-wrap:wrap; gap:2px 10px; padding:14px 16px 14px 38px; position:relative;
   border:1px solid var(--border); border-radius:13px; background: var(--surface); }
