@@ -187,6 +187,24 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   check('D.3 "held" only when the server says true', R.outcome({ ok: true, status: 200, body: { url: GEN, held: 'yes' } }, madeHere).held === undefined);
 })();
 
+/* ======================= D.3b jobsOf: the pictures an answer asks for (the advanced picture assistant, Step 0) ======================= */
+(function () {
+  var one = { n: 1, sectionId: 'hero-1', placement: 'hero', slot: 0, apply: 'swap', kind: 'place', alt: 'a', subject: 's' };
+  var got = R.jobsOf({ newPicture: one });
+  check('D.3b an answer of one picture (every answer before jobs) is job 0, its fields as they are', got.length === 1 && got[0].k === 0 && got[0].sectionId === 'hero-1' && got[0].apply === 'swap' && one.k === undefined, got);
+  check('D.3b no picture: none', R.jobsOf({}).length === 0 && R.jobsOf(null).length === 0 && R.jobsOf({ newPicture: 'x' }).length === 0);
+  var many = R.jobsOf({ newPicture: one, pictureJobs: [Object.assign({}, one, { k: 0 }), Object.assign({}, one, { k: 1, sectionId: 'agenda-1' }), null, Object.assign({}, one, { k: 1, sectionId: 'dup' }),
+    Object.assign({}, one, { k: 2, sectionId: 'fifth' })] });
+  check('D.3b pictureJobs: the first 4 only, a number used twice kept once (the first)',
+    many.length === 2 && many[0].k === 0 && many[1].k === 1 && many[1].sectionId === 'agenda-1' && many.every(function (j) { return j.sectionId !== 'dup' && j.sectionId !== 'fifth'; }), many);
+  var numberless = R.jobsOf({ pictureJobs: [one, Object.assign({}, one, { sectionId: 'agenda-1', k: 'x' })] });
+  check('D.3b … one with no number takes its place in the list', numberless.length === 2 && numberless[0].k === 0 && numberless[1].k === 1, numberless);
+  check('D.3b the rules block says how many pictures one message makes (functions/lib/picture-job.js MAX_JOBS)', R.MAX_JOBS === require('./picture-job').MAX_JOBS, R.MAX_JOBS);
+  var req = (SRC.slice(SRC.indexOf('function requestPicture('), SRC.indexOf('function requestPicture(') + 900));
+  check('D.3b requestPicture names the job only past the first, so a turn of one picture asks as it always did',
+    /function requestPicture\(turnId, k\) \{/.test(req) && /var ask = \{ eventId: eventId, step: 'picture', turnId: turnId \};\s*if \(k > 0 && k < aiPictureRules\.MAX_JOBS\) ask\.job = k;/.test(req) && /body: JSON\.stringify\(ask\)/.test(req), req);
+})();
+
 /* ======================= D.4 a picture that could not be made: what is said ======================= */
 (function () {
   var why = 'The picture model answered without a picture. Nothing on your site changed — ask again.';
@@ -261,7 +279,8 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   }
   var req = body('requestPicture'), turn = body('runAiTurn'), hist = body('drawHistoryPicture'), keep = body('keepMadePicture');
   check('D.7 requestPicture asks through askUntilAnswered, with the panel\'s wait and poll', /aiPictureRules\.askUntilAnswered\(once, pause, function \(\) \{ return Date\.now\(\); \}, AI_PICTURE_WAIT_MS, AI_PICTURE_POLL_MS\)/.test(req), req.slice(-300));
-  check('D.7 requestPicture sends only the event, the step and the turn (no prompt from the browser)', /JSON\.stringify\(\{ eventId: eventId, step: 'picture', turnId: turnId \}\)/.test(req));
+  check('D.7 requestPicture sends only the event, the step and the turn — and which of its pictures, past the first (no prompt from the browser)',
+    /var ask = \{ eventId: eventId, step: 'picture', turnId: turnId \};\s*if \(k > 0 && k < aiPictureRules\.MAX_JOBS\) ask\.job = k;/.test(req) && /body: JSON\.stringify\(ask\)/.test(req) && (req.match(/ask\.\w+ =/g) || []).length === 1);
   check('D.7 runAiTurn checks the answer with checkAsk, before anything is paid for', /aiPictureRules\.checkAsk\(result\.newPicture, \{ loaded: !!P, eventId: eventId, turnId: turnId, attached: attached, known: known, edits: edits \}\)/.test(turn));
   check('D.7 checkAsk runs before the turn\'s checkpoint and before phase 2', turn.indexOf('aiPictureRules.checkAsk') !== -1 && turn.indexOf('aiPictureRules.checkAsk') < turn.indexOf('t.before = canvas.snapshot()') &&
     turn.indexOf('t.before = canvas.snapshot()') < turn.indexOf('var pictureMade = np ? makeNewPicture()'));
@@ -335,8 +354,32 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
     check('D.7 F3: a turn read back from the server (no picture said) writes no line about one', notes.length === n0, notes.slice(n0));
   })();
   /* a picture kept off the page by its check */
-  check('D.7 a held picture is kept in madePic for the tray, and nothing is put in with it', /if \(got\.url && got\.held\) \{\s*madePic = \{ url: got\.url, placed: false, offered: false \};\s*return pictureHeld\(got\.why\);\s*\}/.test(turn) &&
+  check('D.7 a held picture is kept in madePic for the tray, marked held, and nothing is put in with it', /if \(got\.url && got\.held\) \{\s*madePic = \{ url: got\.url, placed: false, offered: false, held: true \};\s*return pictureHeld\(got\.why\);\s*\}/.test(turn) &&
     turn.indexOf('if (got.url && got.held)') < turn.indexOf('attached[np.n - 1] = madePic.url'), turn.slice(turn.indexOf('function makeNewPicture'), turn.indexOf('function makeNewPicture') + 900));
+  /* QA, 16 Nov 2026 (baseline F1): the card said "I did not put it on the page" and the swap step put the held
+     picture, two people in it, in the Overview frame. A held picture is never placed; the card's place step says not
+     done (withoutNewPicture), and it waits in the tray. */
+  var swapCalls = turn.match(/placeNewPicture\(changedEls, done, said\);/g) || [];
+  check('D.7 a held picture is never placed: the one swap that puts a new picture in skips a held one',
+    swapCalls.length === 1 && /if \(madePic && !madePic\.held && np\.apply === 'swap'\) placeNewPicture\(changedEls, done, said\);/.test(turn), swapCalls);
+  (function () {
+    /* the decision itself, run: the swap line with a made picture and with a held one */
+    var line = (/(if \(madePic && !madePic\.held && np\.apply === 'swap'\) placeNewPicture\(changedEls, done, said\);)/.exec(turn) || [])[1] || 'throw new Error("no swap line")';
+    var placed = [];
+    function run(madePic, np) { var fn = new Function('madePic', 'np', 'placeNewPicture', 'changedEls', 'done', 'said', line); fn(madePic, np, function () { placed.push(madePic.url); }, [], [], []); }
+    run({ url: GEN, placed: false, offered: false }, { apply: 'swap' });
+    run({ url: GEN + '?held', placed: false, offered: false, held: true }, { apply: 'swap' });
+    run({ url: GEN + '?rework', placed: false, offered: false }, { apply: 'rework' });
+    check('D.7 … run: a made picture is swapped in, a held one and a rework\'s are not', placed.length === 1 && placed[0] === GEN, placed);
+  })();
+  check('D.7 … and its place step is marked not done, with why', /function withoutNewPicture\(because\) \{\s*if \(S\.picPlace\) S\.picPlace\.set\('fail', 'not done — ' \+ because\);/.test(SRC));
+  /* QA, 16 Nov 2026: what the AI is shown of the page drew a banner whose picture the proxy refused as blank, and the AI
+     called the banner empty. A picture that is refused or does not come is drawn as the box marked "picture", counted
+     with those left out, so the AI is told a picture is there. */
+  var see = body('seePage');
+  check('D.7 seePage: a picture the proxy refuses, or that fails, is drawn as the "picture" box and counted, never as nothing',
+    /\.then\(function \(r\) \{\s*free\(\);\s*if \(r && r\.ok\) return r;\s*leftOut\+\+;\s*return realFetch\.call\(win, LEFT_OUT\);\s*\}, function \(\) \{ free\(\); leftOut\+\+; return realFetch\.call\(win, LEFT_OUT\); \}\);/.test(see) &&
+    /leftOut: leftOut/.test(see), see.slice(see.indexOf('win.fetch = function'), see.indexOf('win.fetch = function') + 1200));
   var heldFn = body('pictureHeld'), without = body('withoutNewPicture');
   check('D.7 … its step says why, and every step that needed it is not done', /S\.picMake\.set\('fail', why\);/.test(heldFn) && /notDone\.push\(why\);/.test(heldFn) && /withoutNewPicture\('the new picture was kept off the page'\);/.test(heldFn) &&
     /S\.picPlace\.set\('fail', 'not done — ' \+ because\)/.test(without) && /edits\.splice\(i, 1\);/.test(without) && /jobSteps\.splice\(i, 1\);/.test(without), heldFn + without);

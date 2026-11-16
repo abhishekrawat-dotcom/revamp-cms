@@ -109,7 +109,7 @@ function chatViewLimits(payload) {
   var left = Math.max(0, Math.min(999, parseInt(payload.viewLeftOut, 10) || 0));
   var undrawn = (Array.isArray(payload.viewUndrawn) ? payload.viewUndrawn : []).map(function (n) { return String(n || '').replace(/\s+/g, ' ').trim().slice(0, 60); }).filter(Boolean).slice(0, 12);
   var out = [];
-  if (left) out.push(left + ' picture' + (left === 1 ? ' is' : 's are') + ' left out of the screenshots and shown as hatched grey boxes marked "picture" (too many to draw) — visitors see the real pictures there');
+  if (left) out.push(left + ' picture' + (left === 1 ? ' is' : 's are') + ' left out of the screenshots and shown as hatched grey boxes marked "picture" (too many to draw, or not loaded in time) — visitors see the real pictures there, and a banner or section showing such a box HAS a picture');
   if (undrawn.length) out.push('the section' + (undrawn.length === 1 ? '' : 's') + ' ' + undrawn.map(function (n) { return '"' + n + '"'; }).join(', ') + (undrawn.length === 1 ? ' is' : ' are') + ' not in the screenshots (or shown as a grey block marked "could not be drawn")');
   return out.length ? ' LIMITS OF THE SCREENSHOTS, NOT OF THE PAGE: ' + out.join('; ') + '. Never report these as problems on the page or advise about them; judge those parts from the text below.' : '';
 }
@@ -442,6 +442,13 @@ var CHAT_MAX_PICTURES = 6;          // what one model call takes (gemini.js / cl
    wires them into this chat. It is required here, not with the modules at the top of the file, so the chat's
    code stays in one place. */
 var chatPicture = require('./chat-picture');
+/* the advanced picture assistant (plan of 16 Nov 2026, Step 0): the plan of the pictures a message asks for
+   (lib/picture-plan.js), the switches each part runs behind (lib/picture-switches.js, config/aiPictures; all off =
+   today), the person's picture ledger (lib/picture-ledger.js), and the second steps that write the briefs
+   (lib/picture-brief.js) and fit a placed picture again (lib/picture-fit.js) */
+var picturePlan = require('./picture-plan');
+var pictureSwitches = require('./picture-switches');
+var pictureLedger = require('./picture-ledger');
 /* the prompt's lines about making a picture, placed right after the attachments' */
 function chatPictureLines(payload) {
   var text = String(chatPicture.promptLines(payload) || '').trim();
@@ -516,6 +523,8 @@ function handleChatEdit(req, res) {
   withAdminBody(req, res, BODY_LIMITS.aiDocs, function (fb, decoded, payload) {
     /* the second step of a new picture: make the picture a stored turn asked for */
     if (payload.step === 'picture') return handleChatPictureStep(fb, decoded, payload, res);
+    /* the advanced picture assistant's other second steps: the briefs of a turn's pictures, a placed picture fitted again */
+    if (payload.step === 'brief' || payload.step === 'fit') return handleChatPictureJobStep(fb, decoded, payload, res);
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
     /* The pictures the editor took out of those documents and stored with the event (lib/doc-pictures.js): this event's
        own only, read before the documents are taken off the payload. An editor that cannot place them (older code) is
@@ -550,7 +559,7 @@ function handleChatEdit(req, res) {
     /* the event must exist (its usage and its conversation are kept with it), and the conversation so far is read
        (with the person's new pictures left today, when the editor can place one, and the pictures taken out of a
        document earlier in the conversation, when this message brings none) */
-    var convData = null;
+    var convData = null, pictureSw = pictureSwitches.OFF, ledger = [];
     var ready = !eventId ? Promise.resolve(null) : eventDocRef(fb, eventId).get().then(function (snap) {
       if (!snap.exists) throw httpError(404, 'This event does not exist.', { code: 'no-event' });
       eventData = snap.data() || {};
@@ -563,8 +572,12 @@ function handleChatEdit(req, res) {
         docPicsOk && !docPicsNow.length ? userRef.get().then(function (s) { return s.exists ? s.data() : null; }, function (err) {
           console.error('chat-edit: the pictures kept with the conversation of ' + eventId + ' could not be read — ' + (err && err.message));
           return null;
-        }) : null
+        }) : null,
+        canPics ? pictureSwitches.read(fb) : null,
+        canPics ? pictureLedger.read(fb, eventId, uid) : null
       ]).then(function (got) {
+        if (got[3]) pictureSw = got[3];
+        if (Array.isArray(got[4])) ledger = got[4];
         if (got[1]) {
           payload.pictureQuota = got[1];
           payload.picturesLeft = got[1].left;
@@ -704,7 +717,9 @@ function handleChatEdit(req, res) {
         picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
         lastTurnPicture: lastPic, earlier: chatEarlierAsks(payload.turns),
         /* the pictures taken out of documents, numbered after the owner's: the new picture follows them, and may re-create one */
-        numbered: attached, docPictures: payload.docPictures || [], docFresh: payload.docFresh === true
+        numbered: attached, docPictures: payload.docPictures || [], docFresh: payload.docFresh === true,
+        /* the advanced picture assistant: its switches, and the pictures of this conversation (lib/picture-ledger.js) */
+        switches: pictureSw, ledger: ledger
       };
       function usePlanned(planned) {
         planned = planned || {};
@@ -736,7 +751,7 @@ function handleChatEdit(req, res) {
           pictureSay = chatPicture.sentence('started');
         }
       }
-      if (pictureWanted) usePlanned(chatPicture.planAsk(parsed.newPictures, Object.assign({ sectionEdits: sectionEdits }, planCtx)));
+      if (pictureWanted) usePlanned(picturePlan.planPictures(parsed.newPictures, Object.assign({ sectionEdits: sectionEdits }, planCtx)));
       /* A bare yes ("yes", "go ahead") to the offer on the last turn, which the model answered with another question or
          with nothing to make: the offer is made as it was kept — one yes is enough (owner, 16 Nov 2026: "yes" to three
          offers was answered "Which section would you like to start with?"). Only when the model changed nothing else. */
@@ -944,9 +959,13 @@ function handleChatPictureStep(fb, decoded, payload, res) {
     if (!snap.exists) return { status: 404, body: { error: 'This event does not exist.', code: 'no-event' } };
     /* the picture model's calls under chat-picture; the check of each picture made (a low-cost look for people, words
        and logos, lib/chat-picture.js checkPicture) under its own route */
-    return chatPicture.make({ record: aiUsageRecorder(fb, eventId, 'chat-picture') || function () {}, recordCheck: aiUsageRecorder(fb, eventId, 'chat-picture-check') || function () {}, logActivity: logActivity }, {
-      fb: fb, eventId: eventId, uid: uid, turnRef: chatUserRef(fb, eventId, uid).collection('turns').doc(turnId),
-      eventData: snap.data() || {}, decoded: decoded, now: Date.now()
+    return pictureSwitches.read(fb).then(function (sw) {
+      return chatPicture.make({ record: aiUsageRecorder(fb, eventId, 'chat-picture') || function () {}, recordCheck: aiUsageRecorder(fb, eventId, 'chat-picture-check') || function () {}, logActivity: logActivity }, {
+        fb: fb, eventId: eventId, uid: uid, turnRef: chatUserRef(fb, eventId, uid).collection('turns').doc(turnId),
+        eventData: snap.data() || {}, decoded: decoded, now: Date.now(),
+        /* which of the turn's pictures (lib/picture-job.js; 0 when the editor names none), and the switches */
+        job: chatPictureJob(payload.job), switches: sw
+      });
     });
   }).then(function (out) {
     if (!out || !out.status || !out.body) throw new Error('the picture step gave no answer');
@@ -955,6 +974,42 @@ function handleChatPictureStep(fb, decoded, payload, res) {
     if (err && err.status && err.body) return sendJson(res, err.status, err.body);
     console.error('chat-edit: the new picture of ' + eventId + ' failed — ' + (err && (err.stack || err.message)));
     sendJson(res, 500, { error: 'The picture could not be made. Nothing on your site changed — ask again.', code: 'chat-picture-failed', retryable: true });
+  });
+}
+
+/* which of a turn's pictures a second step is for: 0 to 3 (lib/picture-job.js MAX_JOBS), 0 when none is named; -1 for
+   anything else, which make() answers as no such picture */
+function chatPictureJob(v) {
+  if (v == null || v === '') return 0;
+  var k = typeof v === 'number' ? v : /^\d$/.test(String(v)) ? parseInt(v, 10) : -1;
+  return k >= 0 && k < require('./picture-job').MAX_JOBS && Math.floor(k) === k ? k : -1;
+}
+
+/* POST /api/chat-edit { eventId, step: 'brief', turnId } — the briefs of every new picture a turn plans, in one call
+   (lib/picture-brief.js briefStep, W2); { eventId, step: 'fit', turnId, job, frame: 'w:h' } — a placed picture cut again
+   from its kept original to a new frame, with no AI (lib/picture-fit.js fitStep, W4). As with the picture step, only
+   the turn's id (and which picture) comes from the browser, and the turn is the caller's own. */
+function handleChatPictureJobStep(fb, decoded, payload, res) {
+  var eventId = String(payload.eventId || '').trim(), turnId = String(payload.turnId || '').trim();
+  if (!isEventId(eventId) || !/^[A-Za-z0-9]{10,40}$/.test(turnId)) return sendJson(res, 400, { error: 'eventId and turnId are required.', code: 'bad-request' });
+  var uid = chatUid(decoded);
+  if (!chatRateOk(uid)) return sendJson(res, 429, { error: 'That is a lot of messages in a short time. Please wait a few minutes and try again.', code: 'chat-rate', retryable: true });
+  var step = payload.step;
+  eventDocRef(fb, eventId).get().then(function (snap) {
+    if (!snap.exists) return { status: 404, body: { error: 'This event does not exist.', code: 'no-event' } };
+    return pictureSwitches.read(fb).then(function (sw) {
+      var o = { fb: fb, eventId: eventId, uid: uid, turnRef: chatUserRef(fb, eventId, uid).collection('turns').doc(turnId),
+        eventData: snap.data() || {}, decoded: decoded, now: Date.now(), switches: sw };
+      if (step === 'brief') return require('./picture-brief').briefStep({ record: aiUsageRecorder(fb, eventId, 'picture-brief') || function () {}, logActivity: logActivity }, o);
+      return require('./picture-fit').fitStep({ logActivity: logActivity }, Object.assign(o, { job: chatPictureJob(payload.job), frame: String(payload.frame || '').slice(0, 20) }));
+    });
+  }).then(function (out) {
+    if (!out || !out.status || !out.body) throw new Error('the ' + step + ' step gave no answer');
+    sendJson(res, out.status, out.body);
+  }).catch(function (err) {
+    if (err && err.status && err.body) return sendJson(res, err.status, err.body);
+    console.error('chat-edit: the ' + step + ' step of ' + eventId + ' failed — ' + (err && (err.stack || err.message)));
+    sendJson(res, 500, { error: 'That could not be done. Nothing on your site changed — try again.', code: 'chat-step-failed', retryable: true });
   });
 }
 

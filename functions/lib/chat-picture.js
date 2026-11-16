@@ -80,6 +80,14 @@ var genDesign = require('./gen-design');
 /* a picture made for a frame has the frame's shape: asked for in the nearest shape the model takes, then cut to the
    frame's exact proportion (owner, 16 Nov 2026: "AI has created a square image for a rectangular placeholder") */
 var shape = require('./picture-shape');
+/* the advanced picture assistant (plan of 16 Nov 2026, Step 0): the job a turn holds, and the switches each part
+   runs behind (off = today). The runner's parts — the references, the brief, the Critic, the edit — are read when
+   first used, as each may read this file back. */
+var pictureJob = require('./picture-job');
+var pictureSwitches = require('./picture-switches');
+function parts() {
+  return { refs: require('./picture-refs'), brief: require('./picture-brief'), critic: require('./picture-critic'), edit: require('./picture-edit') };
+}
 
 /* ---------- limits ---------- */
 
@@ -2367,6 +2375,8 @@ function strictLine(flags) {
   if (flags.indexOf('logos') !== -1) parts.push('leave out every flag, badge, crest, emblem and mark, and any vehicle or product painted in a brand\'s colours');
   return 'LAST TRY, STRICTEST: ' + parts.join('; ') + '.';
 }
+/* a picture kept off the page for a reason the Critic gives in its own words, when it gives none */
+var HELD_PLAIN = 'The new picture did not pass its check, so I did not put it on the page.';
 /* the answer to a failure: gemini.js says whether its own failures may succeed later; ours are listed here */
 var RETRYABLE = ['chat-picture-stale', 'chat-picture-store', 'chat-picture-state', 'busy'];
 function errorBody(code, words) {
@@ -2386,13 +2396,18 @@ function moveQuota(raw, np, code, at) {
 /* Makes the picture a turn asked for, once. One transaction over the turn and the person's quota decides
    whether to: a made picture is answered again for free (a retry, a reload), one being made is not started
    twice, a failure is answered again without a new call, and only an 'asked' turn reserves one of the day's
-   pictures. Any failure after that gives the reservation back as a failed attempt and leaves the page as it is. */
+   pictures. Any failure after that gives the reservation back as a failed attempt and leaves the page as it is.
+   o.job: which of the turn's pictures (lib/picture-job.js; 0, the one a turn of one picture has, by default) — each
+   job is made, answered and counted on its own; o.switches: lib/picture-switches.js read() (all off when not given);
+   o.caller: who asks ('chat' by default; 'promo' for a social post's background) — a switch may leave a caller out. */
 function make(deps, o) {
   deps = deps || {};
   o = o || {};
   var fb = o.fb, eventId = String(o.eventId || ''), turnRef = o.turnRef;
   var now = typeof o.now === 'number' ? o.now : Date.now();
   var day = istDay(now), qRef;
+  var k = o.job == null || o.job === '' ? 0 : parseInt(o.job, 10);
+  if (!(k >= 0 && k < pictureJob.MAX_JOBS)) return Promise.resolve({ status: 404, body: errorBody('chat-picture-none') });
   try { qRef = quotaRef(fb.db, o.uid); } catch (err) { return Promise.resolve({ status: 500, body: errorBody('chat-picture-state') }); }
   var turnId = String((turnRef && turnRef.id) || '').replace(/[^A-Za-z0-9]/g, '');
 
@@ -2400,9 +2415,11 @@ function make(deps, o) {
     return fb.db.runTransaction(function (tx) {
       return Promise.all([tx.get(turnRef), tx.get(qRef)]).then(function (snaps) {
         var turn = snaps[0] && snaps[0].exists ? snaps[0].data() : null;
-        var np = turn && turn.newPicture && typeof turn.newPicture === 'object' ? turn.newPicture : null;
+        var np = pictureJob.jobOf(turn, k);
         /* phase 1 always stores a cleaned subject and a section: without them there is nothing to make */
         if (!np || !oneLine(np.subject, SUBJECT_CHARS) || !np.sectionId) return { out: { status: 404, body: errorBody('chat-picture-none') } };
+        /* job k written back whole: a turn of one picture keeps it in newPicture alone, as before jobs */
+        function put(job) { tx.update(turnRef, Object.assign(pictureJob.jobPatch(turn, k, job), { updatedAt: iso })); }
         var state = np.state || 'asked', iso = new Date(now).toISOString();
         if (state === 'made' && np.url) return { out: { status: 200, body: madeBody(np) } };
         if (state === 'failed') return { out: { status: np.failStatus || 502, body: errorBody(np.code || 'ai-unavailable', np.code === 'chat-picture-limit' ? sentence(np.limitWhy || 'limit') : '') } };
@@ -2410,7 +2427,7 @@ function make(deps, o) {
         if (state === 'making') {
           var at = Date.parse(np.makingAt || '');
           if (!isNaN(at) && now - at < STALE_MS) return { out: { status: 409, body: errorBody('busy') } };
-          tx.update(turnRef, { newPicture: failedNp(np, 'chat-picture-stale', 504, now), updatedAt: iso });
+          put(failedNp(np, 'chat-picture-stale', 504, now));
           var moved = moveQuota(rawQuota, np, 'chat-picture-stale', now);
           if (moved) tx.set(qRef, moved);
           return { out: { status: 504, body: errorBody('chat-picture-stale') } };
@@ -2418,18 +2435,18 @@ function make(deps, o) {
         var q = quotaOf(rawQuota, day);
         if (q.made >= PER_DAY || q.failed >= PER_DAY) {
           var why = q.made >= PER_DAY ? 'limit' : 'failLimit';
-          tx.update(turnRef, { newPicture: Object.assign(failedNp(np, 'chat-picture-limit', 429, now), { limitWhy: why }), updatedAt: iso });
+          put(Object.assign(failedNp(np, 'chat-picture-limit', 429, now), { limitWhy: why }));
           return { out: { status: 429, body: errorBody('chat-picture-limit', sentence(why)) } };
         }
         tx.set(qRef, { day: day, made: q.made + 1, failed: q.failed, updatedAt: iso });
         var making = Object.assign({}, np, { state: 'making', makingAt: iso, quotaDay: day });
-        tx.update(turnRef, { newPicture: making, updatedAt: iso });
-        return { go: making };
+        put(making);
+        return { go: making, jobs: pictureJob.hasJobs(turn) };
       });
     });
   }).then(function (r) {
     if (r.out) return r.out;
-    return makeIt(deps, fb, eventId, turnRef, turnId, qRef, r.go, o);
+    return makeIt(deps, fb, eventId, turnRef, turnId, qRef, r.go, Object.assign({}, o, { job: k, jobs: r.jobs === true }));
   }, function (err) {
     console.error('chat-picture: the picture of ' + eventId + '/' + turnId + ' could not be started — ' + (err && err.message));
     return { status: 500, body: errorBody('chat-picture-state') };
@@ -2443,13 +2460,15 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
   }
   /* any failure: the turn is marked failed and the reservation moves to failed, in one transaction; the
      answer is the plain sentence whether or not that could be written */
+  var k = o.job || 0;
   function fail(code, status) {
     var at = Date.now();
     return fb.db.runTransaction(function (tx) {
       return Promise.all([tx.get(turnRef), tx.get(qRef)]).then(function (snaps) {
         if (snaps[0] && snaps[0].exists) {
-          var cur = snaps[0].data() || {};
-          tx.update(turnRef, { newPicture: failedNp(cur.newPicture && typeof cur.newPicture === 'object' ? cur.newPicture : np, code, status, at), updatedAt: new Date(at).toISOString() });
+          var cur = snaps[0].data() || {}, job = pictureJob.jobOf(cur, k);
+          /* a turn whose job is gone (rewritten meanwhile) is left as it is */
+          if (job || !pictureJob.hasJobs(cur)) tx.update(turnRef, Object.assign(pictureJob.jobPatch(cur, job ? k : 0, failedNp(job || np, code, status, at)), { updatedAt: new Date(at).toISOString() }));
         }
         var moved = moveQuota(snaps[1] && snaps[1].exists ? snaps[1].data() : null, np, code, at);
         if (moved) tx.set(qRef, moved);
@@ -2464,19 +2483,31 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
     try { deps.recordCheck(usage); } catch (err) { console.error('chat-picture: check usage not recorded — ' + (err && err.message)); }
   }
 
+  /* The runner's parts (plan of 16 Nov 2026, Step 0), each behind its switch; with every switch off — and until each
+     part is built — this is the runner as it was: today's prompt, no reference shown, today's check, a stronger
+     remake and a strictest third, then kept off the page. */
+  var sw = o.switches || pictureSwitches.OFF, caller = o.caller || (np.area === 'promotions' ? 'promo' : 'chat');
+  var part = parts();
+  function on(name) { return pictureSwitches.on(sw, name, caller); }
   var prompt;
-  try { prompt = promptFor(np, o.eventData); } catch (err) {
+  try {
+    /* the Director's brief (lib/picture-brief.js), else today's prompt */
+    prompt = (np.brief && on('brief') && part.brief.promptFromBrief(np.brief, np, { eventId: eventId, eventData: o.eventData, switches: sw })) || promptFor(np, o.eventData);
+  } catch (err) {
     console.error('chat-picture: the prompt of ' + eventId + '/' + turnId + ' could not be built — ' + (err && err.message));
     return fail('ai-bad-output', 502);
   }
   var started = Date.now(), deadlineAt = started + DEADLINE_MS;
   var rule = peopleRule(np);
+  /* the reference pictures the picture model is shown with this job (lib/picture-refs.js): none while `refs` is off */
+  var refs = [];
   /* One call to the picture model. -> Promise<{ bytes, type } | { code, status }>, never rejects */
   /* the shape it is asked for (the nearest the model takes) and the exact proportion it is cut to before it is checked
      and stored: the frame's, else that shape's (the model's "4:3" is 1184 x 864) */
   var askShape = aspectOf(np), cutTo = shape.targetRatio({ frame: np.frame, aspect: askShape });
   function picture(text, until) {
     var opts = { route: 'chat-picture', eventId: eventId, timeoutMs: TIMEOUT_MS, deadlineAt: until, aspectRatio: askShape };
+    if (refs.length) opts.images = refs.slice(0, pictureJob.MAX_REFS);
     var call;
     try { call = Promise.resolve(gemini.callGeminiImage(text, opts)); } catch (err) { call = Promise.reject(err); }
     return call.then(function (r) {
@@ -2503,10 +2534,14 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
   }
   /* what each look found ({ people, text, logos }, or null when it could not look), for the turn */
   var looks = [];
+  /* One look at a picture made (lib/picture-critic.js review: today's check while `critic` is off)
+     -> Promise<review> with review.flags what the place does not allow */
   function look(pic) {
-    return checkPicture(pic.bytes, pic.type, rule, { eventId: eventId, deadlineAt: deadlineAt, record: recordCheck }).then(function (found) {
-      looks.push(found);
-      return refusedFor(found, rule);
+    return part.critic.review(pic, np, { rule: rule, eventId: eventId, deadlineAt: deadlineAt, record: recordCheck, switches: sw, caller: caller, refs: refs }).then(function (rev) {
+      rev = rev && typeof rev === 'object' ? rev : { flags: [], found: null };
+      if (!Array.isArray(rev.flags)) rev.flags = [];
+      looks.push(rev.found && typeof rev.found === 'object' ? rev.found : null);
+      return rev;
     });
   }
   /* A second picture for the same turn, reserved like the first; null when the day has none left. It is counted on
@@ -2547,37 +2582,62 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
     alternative = why === 'limit' ? '' : 'close-up';
     return heldSentence(flags, why, made) + ' ' + alternativeLine(flags, why);
   }
-  /* Found wanting: made once more with a stronger line, and a third time with the strictest (the view itself changed),
-     while the time and the person's day allow. prev: the last picture made; made: how many pictures were made;
-     calls: how many picture calls were paid for (a failed one too). */
-  function again(prev, flags, made, calls) {
-    if (deadlineAt - Date.now() < RETRY_NEEDS_MS) return store(prev, held(flags, 'time', made), calls);
+  /* What a look found decides what comes next (lib/picture-critic.js decide: one table): kept; made once more with a
+     stronger line, and a third time with the strictest (the view itself changed), while the time and the person's day
+     allow; or kept off the page. pic: the picture looked at; made: how many pictures were made; calls: how many
+     picture calls were paid for (a failed one too). */
+  function next(pic, rev, made, calls) {
+    var flags = rev.flags;
+    var d = part.critic.decide(rev, { calls: calls, made: made, maxTries: MAX_TRIES, timeLeftMs: deadlineAt - Date.now(), retryNeedsMs: RETRY_NEEDS_MS, switches: sw, caller: caller }) || {};
+    if (d.action === 'keep' || (!flags.length && d.action !== 'hold')) return store(pic, '', calls);
+    if (d.action !== 'remake' || !d.line) return store(pic, flags.length ? held(flags, d.why === 'time' ? 'time' : 'tries', made) : oneLine(rev.why, 600) || HELD_PLAIN, calls);
     return reserveAgain().then(function (reserved) {
-      if (!reserved) return store(prev, held(flags, 'limit', made), calls);
-      var text = prompt + ' ' + againLine(flags) + (calls + 1 >= MAX_TRIES ? ' ' + strictLine(flags) : '');
-      return picture(text, deadlineAt - CHECK_RESERVE_MS).then(function (next) {
-        if (next.code) return giveBack(reserved, next.code).then(function () { return store(prev, held(flags, 'failed', made), calls + 1); });
-        return look(next).then(function (found) {
-          if (!found.length) return store(next, '', calls + 1);
-          if (calls + 1 < MAX_TRIES) return again(next, found, made + 1, calls + 1);
-          return store(next, held(found, 'tries', made + 1), calls + 1);
-        });
+      if (!reserved) return store(pic, held(flags, 'limit', made), calls);
+      return picture(prompt + ' ' + d.line, deadlineAt - CHECK_RESERVE_MS).then(function (again) {
+        if (again.code) return giveBack(reserved, again.code).then(function () { return store(pic, held(flags, 'failed', made), calls + 1); });
+        return look(again).then(function (rev2) { return next(again, rev2, made + 1, calls + 1); });
       });
     });
   }
-  return picture(prompt, deadlineAt).then(function (first) {
-    if (first.code) return fail(first.code, first.status);
-    return look(first).then(function (flags) {
-      if (!flags.length) return store(first, '', 1);
-      return again(first, flags, 1, 1);
+  /* The first picture: an edit of the picture already there (lib/picture-edit.js, `edit` on, a job of mode 'edit'),
+     else — and whenever the edit answers 'not-supported' — a new one from the prompt, as before. */
+  function first() {
+    if (np.mode !== 'edit' || !on('edit')) return picture(prompt, deadlineAt);
+    return Promise.resolve().then(function () {
+      return part.edit.run(np, { fb: fb, eventId: eventId, deadlineAt: deadlineAt, record: record, switches: sw, refs: refs, caller: caller });
+    }).then(function (r) {
+      r = r || {};
+      if (r.code === 'not-supported') return picture(prompt, deadlineAt);
+      if (r.code || !r.bytes || !sniff(r.bytes)) return { code: r.code && gemini.FAILURES[r.code] ? r.code : 'ai-bad-output', status: r.status || 502 };
+      return shape.crop(r.bytes, cutTo, { label: 'the edited picture of ' + eventId + '/' + turnId }).then(function (cut) {
+        return { bytes: cut.bytes, type: sniff(cut.bytes) || sniff(r.bytes), width: cut.width, height: cut.height };
+      });
+    }, function (err) {
+      console.error('chat-picture: the edit of ' + eventId + '/' + turnId + ' failed — ' + (err && err.message));
+      return { code: 'ai-unavailable', status: 502 };
     });
+  }
+  return Promise.resolve().then(function () {
+    if (!on('refs')) return [];
+    return Promise.resolve().then(function () { return part.refs.load(np, { fb: fb, eventId: eventId, switches: sw, deadlineAt: deadlineAt, caller: caller }); })
+      .then(function (got) { return Array.isArray(got) ? got : []; }, function (err) {
+        console.error('chat-picture: the reference pictures of ' + eventId + '/' + turnId + ' were not loaded — ' + (err && err.message));
+        return [];
+      });
+  }).then(function (got) {
+    refs = got;
+    return first();
+  }).then(function (pic) {
+    if (pic.code) return fail(pic.code, pic.status);
+    return look(pic).then(function (rev) { return next(pic, rev, 1, 1); });
   });
 
   /* The picture that stands is stored and answered. heldWhy: why it is not to be put on the page ('' when it is). */
   function store(pic, heldWhy, tries) {
     var bytes = pic.bytes, type = pic.type;
     var stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
-    var storagePath = 'events/' + eventId + '/generated/' + stamp + '-chat-' + kindOf(np) + '-' + turnId.slice(0, 8) + '.' + EXT[type];
+    /* job k of a turn of several (lib/picture-job.js) is named for it: two made in the same second never share a file */
+    var storagePath = 'events/' + eventId + '/generated/' + stamp + '-chat-' + kindOf(np) + '-' + turnId.slice(0, 8) + (k > 0 ? '-' + k : '') + '.' + EXT[type];
     var url = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
     var file = fb.bucket.file(storagePath);
     /* a unique name, so it is cached for a year and gets WebP copies, like the generated site's pictures */
@@ -2594,7 +2654,19 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
           /* its size as stored, once cut to its frame ('' when it could not be read) */
           size: pic.width && pic.height ? pic.width + 'x' + pic.height : '' });
         if (heldWhy) { done.held = true; done.heldWhy = heldWhy; if (alternative) done.alternative = alternative; }
-        return Promise.resolve().then(function () { return turnRef.update({ newPicture: done, updatedAt: done.madeAt }); }).catch(function (err) {
+        /* a turn of one picture: its newPicture, as before; a turn of several (lib/picture-job.js): job k, read and
+           written in one transaction, as the turn's other pictures are being made beside it */
+        function keepOnTurn() {
+          if (!o.jobs) return turnRef.update({ newPicture: done, updatedAt: done.madeAt });
+          return fb.db.runTransaction(function (tx) {
+            return tx.get(turnRef).then(function (snap) {
+              var cur = snap && snap.exists ? snap.data() : null;
+              if (!pictureJob.jobOf(cur, k)) throw new Error('the turn no longer has picture ' + k);
+              tx.update(turnRef, Object.assign(pictureJob.jobPatch(cur, k, done), { updatedAt: done.madeAt }));
+            });
+          });
+        }
+        return Promise.resolve().then(keepOnTurn).catch(function (err) {
           /* the picture is stored and is answered; the turn is left "making" and is read as lost after STALE_MS */
           console.error('chat-picture: the made picture of ' + eventId + '/' + turnId + ' was not recorded on its turn — ' + (err && err.message));
         }).then(function () {
@@ -2625,6 +2697,8 @@ module.exports = {
   quotaId: quotaId, promptFor: promptFor, ownerPlace: ownerPlace, make: make, NO_FIGURES: NO_FIGURES, NO_FIGURE_SHAPES: NO_FIGURE_SHAPES,
   peopleRule: peopleRule, wideOf: wideOf, decorative: decorative, calmCues: calmCues, DECOR: DECOR, EMPTY_PLACES: EMPTY_PLACES, WIDE_ASPECT: WIDE_ASPECT,
   checkPicture: checkPicture, checkPrompt: checkPrompt, CHECK_SCHEMA: CHECK_SCHEMA, refusedFor: refusedFor, againLine: againLine, heldSentence: heldSentence,
+  /* the advanced picture assistant's Critic (lib/picture-critic.js decide) words the third try with it */
+  strictLine: strictLine, HELD_PLAIN: HELD_PLAIN,
   RETRY_NEEDS_MS: RETRY_NEEDS_MS, CHECK_RESERVE_MS: CHECK_RESERVE_MS,
   /* for lib/ai-hero.js, which makes the dashboard's first hero picture and checks it with this same check */
   sniff: sniff, foundText: foundText,
