@@ -502,6 +502,9 @@ function handleChatEdit(req, res) {
           var owner = eventData.designPlan && eventData.designPlan.owner;
           payload.ownerGraphics = !!(owner && owner.pictures === 'graphics');
         }
+        /* the event's own place and the page's sections, for the picture lines: its place is a place, described by the
+           AI itself, and every example it gives comes from this event (owner, 16 Nov 2026) */
+        if (canPics) Object.assign(payload, chatPicture.promptContext(eventData, eventData.designPlan, payload.sections));
         return got[0];
       });
     });
@@ -596,15 +599,18 @@ function handleChatEdit(req, res) {
       /* A new picture (lib/chat-picture.js planAsk): only for an edit, from an editor that can place one, and
          only one. planAsk checks that the owner asked for it, where it goes, what it shows and the day's limit;
          a refusal or a question costs nothing. */
-      var pictureAsk = null, pictureSay = '', pictureUnasked = false;
+      var pictureAsk = null, pictureSay = '', pictureUnasked = false, picturePending = null, pictureTaken = false;
       var pictureWanted = canPics && parsed.kind !== 'reply' && parsed.kind !== 'undo' && Array.isArray(parsed.newPictures) && parsed.newPictures.length > 0;
-      if (pictureWanted) {
-        var planned = chatPicture.planAsk(parsed.newPictures, {
-          canMakePictures: true, eventId: eventId, sections: payload.sections || [], focus: chatPictureFocus(payload.focus),
-          instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: attached,
-          picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
-          lastTurnPicture: chatLastPicture(payload.turns), earlier: chatEarlierAsks(payload.turns), sectionEdits: sectionEdits
-        }) || {};
+      /* what planAsk reads: the page, the owner's words, the day's count, and the picture (or the offer) on the last turn */
+      var lastPic = canPics ? chatLastPicture(payload.turns) : null;
+      var planCtx = {
+        canMakePictures: true, eventId: eventId, sections: payload.sections || [], focus: chatPictureFocus(payload.focus),
+        instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: attached,
+        picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
+        lastTurnPicture: lastPic, earlier: chatEarlierAsks(payload.turns)
+      };
+      function usePlanned(planned) {
+        planned = planned || {};
         pictureAsk = planned.ask && typeof planned.ask === 'object' ? planned.ask : null;
         if (pictureAsk && (pictureAsk.n !== newN || knownSectionIds.indexOf(pictureAsk.sectionId) === -1)) {
           console.error('chat-edit: a new picture was planned as number ' + pictureAsk.n + ' for "' + chatLine(pictureAsk.sectionId, 60) + '" (expected ' + newN + ') — not made');
@@ -613,7 +619,9 @@ function handleChatEdit(req, res) {
         pictureSay = pictureAsk ? '' : chatLine(planned.reply, 600);
         /* "your message did not ask for one" is said only when nothing else was asked for either: beside another
            change, a picture the owner never asked for is dropped without a word */
-        pictureUnasked = !pictureAsk && planned.reply === chatPicture.sentence('notAsked');
+        pictureUnasked = !pictureAsk && planned.code === 'notAsked';
+        /* a question about the picture (where, which, without the name…): kept on the turn, so its answer makes it */
+        picturePending = !pictureAsk && planned.pending && typeof planned.pending === 'object' ? planned.pending : null;
         if (pictureAsk && planned.note) skipped.push(chatLine(planned.note, 600));
         /* planAsk's list: the rework that places the picture added (or merged into the model's), its number nowhere else */
         if (pictureAsk && Array.isArray(planned.edits)) {
@@ -629,6 +637,20 @@ function handleChatEdit(req, res) {
           console.error('chat-edit: the rework that places a new picture in "' + chatLine(pictureAsk.sectionId, 60) + '" is missing — not made');
           pictureAsk = null;
           pictureSay = chatPicture.sentence('started');
+        }
+      }
+      if (pictureWanted) usePlanned(chatPicture.planAsk(parsed.newPictures, Object.assign({ sectionEdits: sectionEdits }, planCtx)));
+      /* A bare yes ("yes", "go ahead") to the offer on the last turn, which the model answered with another question or
+         with nothing to make: the offer is made as it was kept — one yes is enough (owner, 16 Nov 2026: "yes" to three
+         offers was answered "Which section would you like to start with?"). Only when the model changed nothing else. */
+      var modelOther = Object.keys(design).length || textEdits.length || sectionEdits.some(function (e) { return e.pictures.indexOf(newN) === -1; }) ||
+        ['sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].some(function (k) { return Array.isArray(parsed[k]) && parsed[k].length; });
+      if (canPics && eventId && newN && !pictureAsk && parsed.kind !== 'undo' && !modelOther) {
+        var taken = chatPicture.takeOffer(lastPic, Object.assign({ sectionEdits: [] }, planCtx));
+        if (taken) {
+          sectionEdits = [];
+          usePlanned(taken);
+          if (pictureAsk) { pictureWanted = true; pictureTaken = true; picturePending = null; }
         }
       }
       /* A rework the model planned around the new picture cannot be done as briefed while no picture is being
@@ -671,11 +693,21 @@ function handleChatEdit(req, res) {
          answer is the server's sentence, since the model's summary promised a picture; else the sentence is
          one of the things not done, and the rest is applied. */
       var pictureReply = pictureWanted && !pictureAsk && !hasOther;
-      /* the words did not clearly ask for the picture the model meant to make: ETB2B AI asks, and a short yes next
-         makes it (owner, 10 Nov 2026: "can we use the sun temple and chandaka jungle combo in the header?") */
-      var pictureOffer = pictureReply && pictureUnasked ? chatPicture.offerOf(parsed.newPictures[0], payload.sections || []) : null;
+      /* the words did not clearly ask for the picture the model meant to make: ETB2B AI asks once, saying what it would
+         make, and the owner's yes next makes exactly that (owner, 10 Nov 2026: "can we use the sun temple and chandaka
+         jungle combo in the header?"; one yes is enough: 16 Nov 2026) */
+      var pictureOffer = pictureReply && pictureUnasked ? chatPicture.offerOf(parsed.newPictures[0], payload.sections || [], planCtx) : null;
       if (pictureReply) summary = pictureOffer ? pictureOffer.sentence : pictureSay || chatPicture.sentence('notAsked');
       else if (pictureWanted && !pictureAsk && pictureSay && !pictureUnasked) skipped.push(pictureSay);
+      /* the offer taken on a bare yes: the model's words were a question, so the answer says what is being made */
+      if (pictureTaken && pictureAsk) {
+        summary = chatPicture.sentence('takeOffer', { name: '“' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”', scene: chatLine(pictureAsk.subject, 200),
+          rest: (pictureAsk.restNames || []).map(function (x) { return '“' + chatLine(x, 60) + '”'; }).join(' or ') });
+      }
+      /* A "reply" that offers a picture (the model's own `newPictures`, else its words: "I can create an image for What
+         Awaits You, …"): kept on the turn, so the owner's yes makes it (owner, 16 Nov 2026) */
+      var replyOffer = canPics && eventId && !pictureAsk && !pictureOffer && !picturePending && parsed.kind === 'reply'
+        ? chatPicture.offerInReply(parsed.newPictures, summary, planCtx) : null;
       /* the model asked for no picture but briefed a rework around one: said in the server's words, as the
          answer when nothing else changes, else as a thing not done */
       var asEdit = parsed.kind !== 'reply' && parsed.kind !== 'undo';
@@ -692,7 +724,7 @@ function handleChatEdit(req, res) {
         sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
         return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: 'ai-bad-output', parsed: parsed });
       }
-      var kind = pictureReply || lostReply ? 'reply' : parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
+      var kind = pictureTaken && pictureAsk ? 'edit' : pictureReply || lostReply ? 'reply' : parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
       if (!summary && pictureAsk) summary = 'I\'m making a new picture for “' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”; it takes about half a minute.';
       if (!summary && goTo) summary = CHAT_GO_TO_SAY[goTo];
       var answer = { kind: kind, summary: summary || 'Done.', design: design, textEdits: textEdits,
@@ -712,9 +744,12 @@ function handleChatEdit(req, res) {
         pictures: Math.max(0, Math.min(6, (payload.attachments || []).length || 0)), at: now, updatedAt: now };
       /* the Content page or Forms panel the answer sends the owner to, so the replay offers it again */
       if (goTo) turn.goTo = goTo;
-      /* what the second step makes the picture from: never anything the browser sends then */
+      /* what the second step makes the picture from: never anything the browser sends then. With no picture made, the
+         offer or the question about one, so the owner's answer to it makes it (chatPicture.pendingOf) */
       if (answer.newPicture) turn.newPicture = chatPicture.turnRecord(pictureAsk, payload.design);
       else if (pictureOffer) turn.newPicture = pictureOffer.record;
+      else if (picturePending && kind !== 'undo') turn.newPicture = picturePending;
+      else if (replyOffer && kind === 'reply') turn.newPicture = replyOffer;
       return Promise.all([
         userRef.set({ uid: uid, email: String(decoded.email || ''), name: chatName(decoded), lastAt: now }, { merge: true }),
         turnRef.set(turn)

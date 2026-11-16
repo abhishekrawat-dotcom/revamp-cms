@@ -332,13 +332,17 @@ var CONV = 'events/' + MAIN + '/aiChats/u-asha';
   var PIC_SECTIONS = [{ id: 'hero', name: 'Hero', texts: ['QA AIE Main'], role: 'hero', pics: { slots: 0, list: [], background: true, heroTarget: 'background', wide: true } },
     { id: 'overview', name: 'Overview', texts: ['Where retail meets tech'], role: '', pics: { slots: 1, list: [{ label: 'hall', w: 800, h: 600 }] } }];
   c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'can we use the sun temple and chandaka jungle combo in the header?', sections: PIC_SECTIONS, canMakePictures: true });
-  check('S.11 the unclear ask is answered with an offer, not "did not ask"', c.status === 200 && c.body.kind === 'reply' && c.body.summary === 'Do you want me to make a new banner picture for “Hero”? Say “yes, make it” and I will.' && !c.body.newPicture, c.body);
+  /* owner, 16 Nov 2026: the offer says what it would make, and keeps it for the yes */
+  check('S.11 the unclear ask is answered with an offer, not "did not ask", saying what it would make', c.status === 200 && c.body.kind === 'reply' &&
+    c.body.summary === 'Do you want me to make a new banner picture for “Hero”: A carved stone chariot wheel in front of a lush green forest canopy? Say yes and I\'ll make it — or tell me what it should show instead.' && !c.body.newPicture, c.body);
   await wait();
   var offerTurn = FB.docs[CONV + '/turns/' + c.body.turnId];
-  check('S.11 the turn keeps the offer (state "offered"), with nothing to make yet', offerTurn && offerTurn.newPicture && offerTurn.newPicture.state === 'offered' && offerTurn.newPicture.sectionId === 'hero' && !offerTurn.newPicture.subject, offerTurn && offerTurn.newPicture);
+  check('S.11 the turn keeps the offer (state "offered") with its scene, nothing made yet', offerTurn && offerTurn.newPicture && offerTurn.newPicture.state === 'offered' && offerTurn.newPicture.sectionId === 'hero' &&
+    offerTurn.newPicture.subject === PIC.subject && offerTurn.newPicture.placement === 'hero', offerTurn && offerTurn.newPicture);
   scripted['chat-edit'].push(editAnswer({ kind: 'edit', summary: 'Making the banner picture now.', newPictures: [PIC] }));
   c = await call('POST', '/api/chat-edit', { eventId: MAIN, instruction: 'yes, make it', sections: PIC_SECTIONS, canMakePictures: true });
-  check('S.11 "yes, make it" next: the picture is asked for', c.status === 200 && c.body.kind === 'edit' && c.body.newPicture && c.body.newPicture.placement === 'hero', c.body);
+  check('S.11 "yes, make it" next: the picture offered is asked for, its scene the owner\'s choice now', c.status === 200 && c.body.kind === 'edit' && c.body.newPicture && c.body.newPicture.placement === 'hero' &&
+    c.body.newPicture.subject === PIC.subject && FB.docs[CONV + '/turns/' + c.body.turnId].newPicture.ownerSubject === true, c.body);
 
   /* ===== S.12 refused with pictures: asked once more without them (owner, 10 Nov 2026) ===== */
   var SHOT = 'data:image/jpeg;base64,' + Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0]), Buffer.alloc(400, 1)]).toString('base64');

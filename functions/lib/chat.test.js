@@ -305,7 +305,9 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   ok(heroTurn.newPicture.ownerSubject === true, 'the owner named the scene ("the Mumbai skyline at dusk"): the turn says so, for a subject-led picture', JSON.stringify(heroTurn.newPicture));
   ok(p1.indexOf('What you still cannot do: put words, logos or a real person into a picture you make; add or edit') !== -1 && p1.indexOf('make a new picture yourself') === -1,
     'the prompt no longer says the AI cannot make a picture, and says what it still cannot put in one');
-  var lines = chatPicture.promptLines({ canMakePictures: true, hasEvent: true, eventId: EVP, picturesLeft: 20, picturesPerDay: 20, ownerGraphics: false, attachmentCount: 0, sections: picSections() });
+  /* with what the route adds for the picture lines: the event's own place and the page's sections (owner, 16 Nov 2026) */
+  var lines = chatPicture.promptLines(Object.assign({ canMakePictures: true, hasEvent: true, eventId: EVP, picturesLeft: 20, picturesPerDay: 20, ownerGraphics: false, attachmentCount: 0, sections: picSections() },
+    chatPicture.promptContext(FB.docs['events/' + EVP], null, picSections())));
   lines = (Array.isArray(lines) ? lines.join('\n') : String(lines)).trim();
   ok(lines && p1.indexOf(lines) !== -1 && p1.indexOf(lines) < p1.indexOf('The site\'s current design settings:'), 'the picture lines are in the prompt, before the design settings');
   ok(/New pictures left for this person today: 20 of 20/.test(p1), 'the prompt says how many new pictures this person has left today');
@@ -461,19 +463,25 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   answers.push(edit('I\'m making a new banner picture of Mukesh Ambani welcoming delegates.', { newPictures: [{ sectionId: 'hero', placement: 'hero', slot: 0, subject: 'Mukesh Ambani welcoming delegates at the entrance', kind: 'people', alt: 'Mukesh Ambani' }] }));
   out = await chatPic({ instruction: 'make a new hero picture of Mukesh Ambani welcoming delegates' });
   var ambaniTurn = turnById(EVP, 'u-meera', out.body.turnId);
-  ok(out.status === 200 && out.body.kind === 'reply' && !out.body.newPicture && out.body.summary === chatPicture.sentence('name') && ambaniTurn && !ambaniTurn.newPicture && ambaniTurn.status === 'answered' && imageCalls.length === callsAtReview,
-    '"Mukesh Ambani welcoming delegates" is refused in plain words: no picture is asked for, nothing is made', JSON.stringify(out.body));
+  /* owner, 16 Nov 2026: the name is kept out and the nameless scene is proposed (written by ETB2B AI, never asked of the
+     owner); the turn keeps it, so a yes makes it */
+  ok(out.status === 200 && out.body.kind === 'reply' && !out.body.newPicture && out.body.summary === chatPicture.sentence('name', { scene: 'welcoming delegates at the entrance' }) &&
+    ambaniTurn && ambaniTurn.newPicture && ambaniTurn.newPicture.state === 'offered' && ambaniTurn.newPicture.subject === 'welcoming delegates at the entrance' && !/ambani/i.test(JSON.stringify(ambaniTurn.newPicture)) &&
+    ambaniTurn.status === 'answered' && imageCalls.length === callsAtReview,
+    '"Mukesh Ambani welcoming delegates" is never made: the scene without the name is proposed, nothing is made yet', JSON.stringify(out.body));
   /* a name written on a section that is not Content's records, or in the event's own fields, is a real person too */
   var namedSecs = picSections();
   namedSecs[2].texts = ['Inaugural address by Nitin Gadkari, Union Minister'];
   FB.docs['events/' + EVP].description = 'Chief guest: Kavita Menon, on the future of work.';
-  var NAMED_SUBJECTS = [['Nitin Gadkari delivering the inaugural address to a packed hall', 'name'], ['nitin gadkari delivering the inaugural address to a packed hall', 'person'],
-    ['Gadkari delivering the inaugural address to a packed hall', 'person'], ['kavita menon cutting the ribbon in the hall', 'person']];
+  var NAMED_SUBJECTS = [['Nitin Gadkari delivering the inaugural address to a packed hall', 'delivering the inaugural address to a packed hall'],
+    ['nitin gadkari delivering the inaugural address to a packed hall', 'delivering the inaugural address to a packed hall'],
+    ['Gadkari delivering the inaugural address to a packed hall', 'delivering the inaugural address to a packed hall'], ['kavita menon cutting the ribbon in the hall', 'cutting the ribbon in the hall']];
   for (var ns = 0; ns < NAMED_SUBJECTS.length; ns++) {
     answers.push(edit('I\'m making a new picture for the overview.', { newPictures: [{ sectionId: 'overview', placement: 'picture', slot: 0, subject: NAMED_SUBJECTS[ns][0], kind: 'people', alt: '' }] }));
-    out = await chatPic({ instruction: 'make a new picture for the overview', sections: namedSecs });
-    ok(out.body.kind === 'reply' && !out.body.newPicture && out.body.summary === chatPicture.sentence(NAMED_SUBJECTS[ns][1]) && imageCalls.length === callsAtReview,
-      'a name taken from the page\'s Overview or the event\'s description is refused: "' + NAMED_SUBJECTS[ns][0] + '"', JSON.stringify(out.body));
+    /* each by a person of their own: the same words again after a proposal would be the owner's yes to it */
+    out = await chatPic({ instruction: 'make a new picture for the overview', sections: namedSecs }, 'namecheck' + ns);
+    ok(out.body.kind === 'reply' && !out.body.newPicture && out.body.summary === chatPicture.sentence('name', { scene: NAMED_SUBJECTS[ns][1] }) && imageCalls.length === callsAtReview,
+      'a name taken from the page\'s Overview or the event\'s description is kept out, and the scene without it proposed: "' + NAMED_SUBJECTS[ns][0] + '"', JSON.stringify(out.body));
   }
   delete FB.docs['events/' + EVP].description;
   /* a rework briefed around a new picture the model never asked for is not sent, and the summary that promised
