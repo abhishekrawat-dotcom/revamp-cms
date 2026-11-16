@@ -2155,8 +2155,9 @@ function alternativeLine(flags, why) {
 function strictLine(flags) {
   var parts = [];
   if (flags.indexOf('people') !== -1) parts.push('change the view so that no one can be in it: the place deserted at first light, before it opens, seen wide and from a little above, with every walkway, seat, shore, window and vehicle empty');
-  if (flags.indexOf('text') !== -1) parts.push('leave every sign, screen, banner and label blank and plain, or out of the picture');
-  if (flags.indexOf('logos') !== -1) parts.push('leave out every flag, badge, crest, emblem and mark');
+  /* QA, 16 Nov 2026: a train's carriage made three times kept a small destination screen with words on it */
+  if (flags.indexOf('text') !== -1) parts.push('leave out of the picture everything that carries writing — signs, screens and display boards, banners, labels, number plates and a vehicle\'s livery — rather than showing any of it blank');
+  if (flags.indexOf('logos') !== -1) parts.push('leave out every flag, badge, crest, emblem and mark, and any vehicle or product painted in a brand\'s colours');
   return 'LAST TRY, STRICTEST: ' + parts.join('; ') + '.';
 }
 /* the answer to a failure: gemini.js says whether its own failures may succeed later; ours are listed here */

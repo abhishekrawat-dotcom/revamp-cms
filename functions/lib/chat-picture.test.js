@@ -1129,7 +1129,7 @@ function entry(sectionId, placement, extra) {
   check(res.body.heldWhy === 'I made the new picture three times, and the last one still had people and words or letters in it, but this place shows no people, and pictures I make carry no words or logos, so I did not put it on the page. I can make it instead as a close-up of one object in the same scene, with nobody in it — say yes and I\'ll make it — or attach a picture of your own and I\'ll put it in.',
     'the owner is told plainly, and offered a close-up or a picture of their own', res.body.heldWhy);
   var third = imageCalls[callsAt + 2] || {};
-  check(/SECOND TRY, STRICT: the picture first made from these words had people and words or letters in it[^]*LAST TRY, STRICTEST: change the view so that no one can be in it[^]*leave every sign, screen, banner and label blank/.test(third.prompt || '') &&
+  check(/SECOND TRY, STRICT: the picture first made from these words had people and words or letters in it[^]*LAST TRY, STRICTEST: change the view so that no one can be in it[^]*leave out of the picture everything that carries writing — signs, screens and display boards, banners, labels, number plates and a vehicle's livery/.test(third.prompt || '') &&
     third.opts && third.opts.deadlineAt <= (imageCalls[callsAt].opts.deadlineAt - cp.CHECK_RESERVE_MS),
     'the third is asked with the strictest line, which changes the view itself', String(third.prompt).slice(-500));
   check(FB.docs[ref.path].newPicture.state === 'made' && FB.docs[ref.path].newPicture.held === true && FB.docs[ref.path].newPicture.alternative === 'close-up' && FB.docs[ref.path].newPicture.tries === 3 &&
