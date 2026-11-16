@@ -2623,7 +2623,7 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
   function cutOf(whole, focus) {
     return shape.crop(whole.bytes, cutTo, { label: 'the picture of ' + eventId + '/' + turnId, focus: focus }).then(function (cut) {
       var pic = { bytes: cut.bytes, type: cut.cropped ? sniff(cut.bytes) || whole.type : whole.type, width: cut.width, height: cut.height };
-      if (critic) { pic.original = whole; pic.cut = cut; }
+      if (advanced) { pic.original = whole; pic.cut = cut; }
       return pic;
     });
   }

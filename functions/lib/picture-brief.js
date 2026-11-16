@@ -49,6 +49,13 @@ function obj(v) { return v && typeof v === 'object' && !Array.isArray(v) ? v : n
 function oneLine(v, max) { return String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max || 200); }
 function on(sw, name, caller) { return pictureSwitches.on(sw, name, caller || 'chat'); }
 function sentenceEnd(s) { s = String(s || '').trim(); return s && !/[.!?]$/.test(s) ? s + '.' : s; }
+/* the event's name never reaches the picture model (it would be drawn as lettering): said as "the event" wherever the
+   Director's words or the event's own description carry it */
+function withoutName(text, ev) {
+  var name = oneLine(obj(ev) && ev.name, 120);
+  if (!name || name.length < 3) return String(text || '');
+  return String(text || '').split(new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'), 'gi')).join('the event');
+}
 
 /* ---------- colours in words ---------- */
 var NAMED = [
@@ -115,7 +122,7 @@ function eventFacts(ev) {
   ev = obj(ev) || {};
   var plan = obj(ev.designPlan) || {}, d = obj(plan.design) || {}, brief = obj(ev.brief) || {}, place = obj(d.place) || {};
   var lines = [];
-  var theme = oneLine(brief.theme || ev.description, 400);
+  var theme = withoutName(oneLine(brief.theme || ev.description, 400), ev);
   if (theme) lines.push('What the event is about: ' + noHex(theme) + '.');
   if (ev.portal || ev.portalName) lines.push('Its field: ' + oneLine(ev.portalName || ev.portal, 60) + '.');
   if (brief.audience) lines.push('Its audience: ' + oneLine(brief.audience, 200) + '.');
@@ -211,7 +218,8 @@ function writeBriefs(jobs, ctx) {
     }
     var byK = {};
     list.forEach(function (b, i) { b = obj(b); if (b) byK[b.k == null ? i : +b.k] = b; });
-    var out = jobs.map(function (job, i) { return cleanBrief(byK[job.k == null ? i : job.k] || (list.length === jobs.length ? list[i] : null), job); });
+    var named = function (b) { b = obj(b); if (!b) return b; var c = {}; Object.keys(b).forEach(function (f) { c[f] = typeof b[f] === 'string' ? withoutName(b[f], ctx.eventData) : b[f]; }); return c; };
+    var out = jobs.map(function (job, i) { return cleanBrief(named(byK[job.k == null ? i : job.k] || (list.length === jobs.length ? list[i] : null)), job); });
     out.styleCard = cleanCard(p.styleCard);
     /* the alt text the Director wrote, kept beside the brief for the job that has none */
     out.alts = jobs.map(function (job, i) { var b = byK[job.k == null ? i : job.k]; return b ? oneLine(b.alt, 150) : ''; });

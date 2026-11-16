@@ -95,6 +95,12 @@ function answer(briefs, card) {
     /The site's colours: crimson and gold, on a light page\./.test(call.prompt) && /Who may be in it: nobody at all/.test(call.prompt) && /Who may be in it: people may be shown: made-up Indian people, with women among them/.test(call.prompt) &&
     /about 2\.4 times as wide as tall \(1440 x 600 px on a computer\); the event's name, date and buttons are set over its middle/.test(call.prompt) && !/#[0-9a-f]{6}/i.test(call.prompt),
     'the Director is told the event (never its name), the owner\'s words, the place, the colours in words, who may be in each, and each frame', call.prompt.slice(0, 600));
+  /* the event's name never reaches the picture model: not from its description, not from the Director's words */
+  llmCalls.length = 0;
+  briefAnswers.push(answer([Object.assign({ k: 0 }, BRIEF, { scene: SCENE + ' A frosted glass wall reads ET Davos 2027 in the snow light.' })]));
+  var named = await pb.writeBriefs([hero], { eventId: EV, eventData: Object.assign({}, EVENT, { description: 'ET DAVOS 2027 is a curated India week in Davos during the World Economic Forum' }), switches: BRIEF_ON });
+  check(named && !/davos 2027/i.test(J(named[0])) && /reads the event in the snow light/.test(named[0].scene) && llmCalls[0].prompt.indexOf('ET DAVOS 2027') === -1 && /What the event is about: the event is a curated India week/.test(llmCalls[0].prompt),
+    'the event\'s name is said as "the event", in what the Director is told and in what it writes', named && named[0].scene.slice(-80));
   briefAnswers.push(answer([Object.assign({ k: 5 }, BRIEF)]));
   var byIndex = await pb.writeBriefs([hero], { eventId: EV, eventData: EVENT, switches: BRIEF_ON });
   check(byIndex && byIndex[0] && byIndex[0].scene === SCENE, 'one brief for one picture is read as its own, whatever k it says');
