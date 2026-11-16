@@ -37,8 +37,10 @@
   /* Every sentence a person reads from this file. The product is ETB2B EventSphere (owner decision 6) and the
      assistant ETB2B AI; no sentence here names the product's old names. */
   var TEXT = {
+    /* what it can do with pictures is said as the capability list says it (functions/lib/picture-capabilities.js
+       MANIFEST, the parts that need no switch; picture-capabilities.test.js checks the two agree) */
     welcome: function (eventName) {
-      return 'I change this page when you ask, make new pictures for it, answer questions about ' + (eventName || 'this event') +
+      return 'I change this page when you ask, make new pictures for it (each in the shape of its frame), use the photos inside a PDF or deck you attach, answer questions about ' + (eventName || 'this event') +
         ' and open its other pages. Every change has an Undo. Press Save to keep your changes; nothing goes live until you publish.';
     },
     /* they only start the message (UX-095): each is cheap and safe on any site page */
