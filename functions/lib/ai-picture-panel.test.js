@@ -415,6 +415,70 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   }
 })();
 
+/* ======================= D.11 the picture's chips (builder C, 16 Nov 2026) =======================
+   Brighter · Warmer · Wider · Remove people · Another version under the newest picture ETB2B AI made, and "3 options"
+   only when that switch is on; each sends its words as the owner's own message. Run as written, over a small DOM. */
+(function () {
+  var from = SRC.indexOf('var PICTURE_CHIPS = ['), fnAt = SRC.indexOf('function drawPictureChips(');
+  var open = SRC.indexOf('{', fnAt), depth = 0, end = -1;
+  for (var j = open; j < SRC.length && fnAt !== -1; j++) {
+    if (SRC[j] === '{') depth++;
+    else if (SRC[j] === '}' && --depth === 0) { end = j + 1; break; }
+  }
+  check('D.11 the chips are written once, beside drawMadePicture', from !== -1 && fnAt > from && end > fnAt && SRC.indexOf('var PICTURE_CHIPS = [', from + 1) === -1);
+  if (from === -1 || end === -1) return;
+  function El(tag) { this.tagName = tag.toUpperCase(); this.children = []; this.attrs = {}; this.listeners = {}; this.parentNode = null; this.className = ''; this.textContent = ''; }
+  El.prototype.setAttribute = function (k, v) { this.attrs[k] = String(v); };
+  El.prototype.getAttribute = function (k) { return this.attrs[k] == null ? null : this.attrs[k]; };
+  El.prototype.appendChild = function (c) { c.parentNode = this; this.children.push(c); return c; };
+  El.prototype.removeChild = function (c) { this.children.splice(this.children.indexOf(c), 1); c.parentNode = null; return c; };
+  El.prototype.addEventListener = function (t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); };
+  El.prototype.click = function () { (this.listeners.click || []).forEach(function (f) { f({}); }); };
+  El.prototype.querySelectorAll = function (sel) {
+    var cls = sel.replace(/^\./, ''), out = [];
+    (function walk(n) { n.children.forEach(function (c) { if ((' ' + c.className + ' ').indexOf(' ' + cls + ' ') !== -1) out.push(c); walk(c); }); })(this);
+    return out;
+  };
+  var thread = new El('div'), asked = [];
+  var sb = { document: { createElement: function (t) { return new El(t); } }, asked: asked, thread: thread, aiWorking: false, sending: null,
+    chatView: { ask: function (t) { asked.push(t); return { then: function () {} }; } } };
+  sb.chatThread = function () { return sb.thread; };
+  sb.viewCan = function (n) { return !!(sb.chatView && typeof sb.chatView[n] === 'function'); };
+  var vctx = vm.createContext(sb);
+  vm.runInContext(SRC.slice(from, end) + '\nthis.drawPictureChips = drawPictureChips; this.notePictureAbilities = notePictureAbilities; this.PICTURE_CHIPS = PICTURE_CHIPS;', vctx, { filename: 'editor-template-ui.js#chips' });
+  var b1 = new El('div'); thread.appendChild(b1);
+  check('D.11 off unless the server says this person\'s picture edits are on: nothing drawn', vctx.drawPictureChips(b1, { url: 'https://x/a.png' }) === null && !b1.children.length);
+  vctx.notePictureAbilities({ kind: 'edit', pictureEdits: true });
+  var row = vctx.drawPictureChips(b1, { url: 'https://x/a.png', about: 'a hall' });
+  var labels = row ? row.children.map(function (c) { return c.textContent; }) : [];
+  check('D.11 on: Brighter · Warmer · Wider · Remove people · Another version, as buttons in a labelled group', labels.join(' · ') === 'Brighter · Warmer · Wider · Remove people · Another version' &&
+    row.attrs.role === 'group' && row.attrs['aria-label'] === 'Change this picture' && row.children.every(function (c) { return c.tagName === 'BUTTON' && c.type === 'button'; }), labels);
+  row.children[1].click();
+  check('D.11 a chip sends its words as the owner\'s message', asked.length === 1 && asked[0] === 'Make the last picture you made warmer; change nothing else.', asked);
+  sb.sending = {};
+  row.children[0].click();
+  check('D.11 … never while a message is being answered', asked.length === 1);
+  sb.sending = null;
+  vctx.notePictureAbilities({ kind: 'reply' });
+  check('D.11 an answer that says nothing of it keeps what the last one said', vctx.drawPictureChips(b1, { url: 'https://x/a.png' }) !== null);
+  vctx.notePictureAbilities({ pictureEdits: true, pictureVariants: true });
+  var b2 = new El('div'); thread.appendChild(b2);
+  var row2 = vctx.drawPictureChips(b2, { url: 'https://x/b.png' });
+  check('D.11 "3 options" only when that switch is on; only the newest picture has chips', row2 && row2.children.length === 6 && row2.children[5].textContent === '3 options' &&
+    thread.querySelectorAll('.chat-pic-chips').length === 1 && b2.children[0] === row2 && !b1.children.length, row2 && row2.children.map(function (c) { return c.textContent; }));
+  vctx.notePictureAbilities({ pictureEdits: false, pictureVariants: false });
+  check('D.11 switched off again: none', vctx.drawPictureChips(new El('div'), { url: 'https://x/c.png' }) === null);
+  var words = vctx.PICTURE_CHIPS.map(function (c) { return c.label + ' ' + c.say; }).join(' ');
+  check('D.11 the words are plain, and never a bare "ET"', !/\bET\b/.test(words) && /last picture you made/.test(words));
+  /* the chips' words read as the edits they mean, on the server (functions/lib/picture-edit.js) */
+  var pe = require('./picture-edit');
+  var kinds = vctx.PICTURE_CHIPS.slice(0, 4).map(function (c) { return pe.kindOf(c.say); });
+  check('D.11 Brighter, Warmer, Wider and Remove people read as light, tone, extend and remove', kinds.join() === 'light,tone,extend,remove', kinds);
+  var dm = (function () { var i = SRC.indexOf('function drawMadePicture('); return SRC.slice(i, SRC.indexOf('\n  }\n', i)); })();
+  check('D.11 drawMadePicture draws them, once, only for the picture made while the owner waits', (dm.match(/drawPictureChips\(/g) || []).length === 1 && /if \(follow\) drawPictureChips\(bubble, \{ url: url, about: about \}\);/.test(dm), dm.slice(-300));
+  check('D.11 each answer says what the person\'s picture edits may do, before it is applied', /notePictureAbilities\(body\);\s*if \(body\.kind === 'undo'\)/.test(SRC));
+})();
+
 }).then(function () {
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

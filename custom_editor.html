@@ -474,6 +474,11 @@
   .chat-made-pic{ display:block; width:100%; max-width:240px; margin-top:8px; border-radius:10px; overflow:hidden; border:1px solid var(--rvc-border, var(--border)); background: var(--rvc-surface-2, var(--surface-2)); }
   img.chat-made-pic, .chat-made-pic img{ display:block; width:100%; height:auto; max-height:200px; object-fit:contain; }
   .chat-use-pic{ margin-top:8px; }
+  /* what can be changed in the newest picture ETB2B AI made, one click each (editor-template-ui.js drawPictureChips) */
+  .chat-pic-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-width:100%; }
+  .chat-pic-chip{ min-height:28px; margin:0; padding:0 10px; border-radius:999px; border:1px solid var(--rvc-border, var(--border)); background: var(--rvc-surface, var(--surface)); color: inherit; font: inherit; font-size:12px; line-height:1; cursor:pointer; }
+  .chat-pic-chip:hover{ border-color: var(--rvc-accent, var(--accent)); color: var(--rvc-accent-strong, var(--accent)); }
+  .chat-pic-chip:focus-visible{ outline:2px solid var(--rvc-accent, var(--accent)); outline-offset:2px; }
 
   /* ---------- design-panel toggle switch ---------- */
   .dp-section-title{

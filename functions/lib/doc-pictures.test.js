@@ -257,10 +257,21 @@ function sections() {
   /* kept with the conversation, and read back checked again */
   var conv = FB.db.collection('events').doc(EV).collection('aiChats').doc('u-x');
   await DP.remember(conv, docs, '2026-11-16T10:00:00.000Z');
-  var back = DP.recall(FB.docs['events/' + EV + '/aiChats/u-x'], OWN);
+  /* recall is given the time (owner, 16 Nov 2026: a document's pictures are kept 30 days), so this never depends on today */
+  var AT_KEY = Date.UTC(2026, 10, 16, 12, 30, 0);
+  var back = DP.recall(FB.docs['events/' + EV + '/aiChats/u-x'], OWN, AT_KEY);
   ok(back.length === 1 && back[0].pictures.length === 2 && FB.docs['events/' + EV + '/aiChats/u-x'].docPictures.at === '2026-11-16T10:00:00.000Z', '1 kept with the person\'s conversation and read back', back);
   FB.docs['events/' + EV + '/aiChats/u-x'].docPictures.docs[0].pictures.push({ url: 'https://evil.example/a.jpg', thumb: 'https://evil.example/b.jpg', page: 1 });
-  ok(DP.recall(FB.docs['events/' + EV + '/aiChats/u-x'], OWN)[0].pictures.length === 2, '1 what is read back is checked again: an address that is not the event\'s own is dropped');
+  ok(DP.recall(FB.docs['events/' + EV + '/aiChats/u-x'], OWN, AT_KEY)[0].pictures.length === 2, '1 what is read back is checked again: an address that is not the event\'s own is dropped');
+  /* D.11 (builder C, owner 16 Nov 2026): kept 30 days — the conversation no longer offers a document's pictures once
+     they are older (the ones not placed are deleted by the bucket's rule then, lib/chat-docs-keep.js) */
+  var DAY = 24 * 3600 * 1000;
+  ok(DP.recall(FB.docs['events/' + EV + '/aiChats/u-x'], OWN, AT_KEY + 29 * DAY)[0].pictures.length === 2 && DP.recall(FB.docs['events/' + EV + '/aiChats/u-x'], OWN, AT_KEY + 31 * DAY).length === 0,
+    '1 a document\'s pictures are offered again for 30 days after they were stored, never after');
+  var mixed = JSON.parse(JSON.stringify(FB.docs['events/' + EV + '/aiChats/u-x']));
+  mixed.docPictures.docs[0].pictures[0].url = mixed.docPictures.docs[0].pictures[0].url.replace(KEY, '20261001090000-a1b2c3');
+  mixed.docPictures.docs[0].pictures[0].thumb = mixed.docPictures.docs[0].pictures[0].thumb.replace(KEY, '20261001090000-a1b2c3');
+  ok(DP.recall(mixed, OWN, AT_KEY)[0].pictures.length === 1 && DP.recall(mixed, OWN, AT_KEY)[0].pictures[0].url.indexOf(KEY) !== -1, '1 … each picture by the day its own folder says it was stored');
   await DP.remember({ set: function () { return Promise.reject(new Error('down')); } }, docs);
   ok(true, '1 remember never rejects');
 
@@ -298,6 +309,10 @@ function sections() {
     ok(got.every(function (g) { return DP._test.ownPath(g.url, OWN) && DP._test.ownPath(g.thumb, OWN); }) &&
       Object.keys(FB.files).filter(function (k) { return k.indexOf('events/' + EV + '/chat-docs/' + key + '/') === 0; }).length === 4 &&
       Object.keys(FB.files).every(function (k) { return FB.files[k].public; }), '2 under events/<id>/chat-docs/<key>/, public, each with its small copy', Object.keys(FB.files));
+    /* D.11: every object written has a Custom-Time (when it was stored), which the bucket's 30-day rule counts from */
+    var docFiles = Object.keys(FB.files).filter(function (k) { return k.indexOf('events/' + EV + '/chat-docs/' + key + '/') === 0; });
+    ok(docFiles.length && docFiles.every(function (k) { var t = Date.parse(FB.files[k].metadata.customTime || ''); return t > Date.now() - 120000 && t <= Date.now(); }),
+      '2 each stored picture and its small copy carry a Custom-Time of when they were stored', docFiles.map(function (k) { return FB.files[k].metadata.customTime; }));
     ok(!(FB.docs['events/' + EV + '/activity'] || null) && !Object.keys(FB.docs).some(function (k) { return k.indexOf('events/' + EV + '/activity/') === 0; }), '2 no History line before the last part');
     r = await call('POST', '/api/chat/doc-pictures', { eventId: EV, doc: 'ETDavos.pdf', key: key, part: 2, parts: 2, total: 3, pictures: [{ page: 7, full: J1, thumb: T1 }] });
     await wait();

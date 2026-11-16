@@ -168,6 +168,28 @@ async function run() {
   ok(editParts.length === 2 && editParts[0].text === 'make the sky darker' && editParts[1].inlineData.mimeType === 'image/jpeg' && editParts[1].inlineData.data === '/9j/4AAQ',
     'image: a picture to edit travels next to the words', JSON.stringify(editParts));
   ok(img.base64 === 'ZWRpdGVk' && img.mimeType === 'image/png' && img.provider === 'gemini' && img.model === GEMINI_IMAGE_MODEL, 'image: same answer shape, with provider and model', JSON.stringify(img));
+  /* reference pictures (builder C, 16 Nov 2026): each after its own label, the picture to change first; none, as before */
+  var IMG_OK = { status: 200, body: { candidates: [{ content: { parts: [{ inlineData: { mimeType: 'image/png', data: 'ZWRpdGVk' } }] }, finishReason: 'STOP' }] } };
+  script = [IMG_OK]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a quiet promenade', { aspectRatio: '16:9', images: [{ mimeType: 'image/jpeg', data: '/9j/AAAA', label: 'Reference 1, STYLE ONLY: match its colour grade', kind: 'site', hash: 'x' },
+    { mimeType: 'image/jpeg', data: '/9j/BBBB', label: '  Reference 2, SUBJECT:\n the scene  ' }] }); } finally { releaseLogs(); }
+  var refParts = seen[0] && seen[0].body.contents[0].parts;
+  ok(refParts && refParts.length === 5 && refParts[0].text === 'a quiet promenade' && refParts[1].text === 'Reference 1, STYLE ONLY: match its colour grade' && refParts[2].inlineData.data === '/9j/AAAA' &&
+    refParts[3].text === 'Reference 2, SUBJECT: the scene' && refParts[4].inlineData.mimeType === 'image/jpeg' && JSON.stringify(refParts[2]) === JSON.stringify({ inlineData: { mimeType: 'image/jpeg', data: '/9j/AAAA' } }) &&
+    seen[0].body.generationConfig.imageConfig.aspectRatio === '16:9' && img.base64 === 'ZWRpdGVk',
+    'image: each reference travels after its label (one plain line), and only its picture is sent', JSON.stringify(refParts));
+  script = [IMG_OK]; seen = []; captureLogs();
+  try { img = await callGeminiImage('make it warmer', { image: { mimeType: 'image/png', data: 'iVBORw0K' }, images: [{ mimeType: 'image/webp', data: 'UklGRg' }] }); } finally { releaseLogs(); }
+  refParts = seen[0] && seen[0].body.contents[0].parts;
+  ok(refParts && refParts.length === 4 && refParts[1].inlineData.data === 'iVBORw0K' && refParts[2].text === 'Reference 1:' && refParts[3].inlineData.mimeType === 'image/webp',
+    'image: an edit\'s picture comes first, then the references; one with no label is "Reference k:"', JSON.stringify(refParts));
+  script = [IMG_OK]; seen = []; captureLogs();
+  try { img = await callGeminiImage('a background', { images: [] }); } finally { releaseLogs(); }
+  ok(seen[0] && JSON.stringify(seen[0].body) === JSON.stringify({ contents: [{ parts: [{ text: 'a background' }] }], generationConfig: { responseModalities: ['IMAGE'] } }), 'image: no references, the request is exactly as before', JSON.stringify(seen[0] && seen[0].body));
+  var threwRefs = 0; seen = [];
+  try { callGeminiImage('p', { images: [1, 2, 3, 4].map(function () { return { mimeType: 'image/jpeg', data: 'AAAA' }; }) }); } catch (e) { threwRefs++; }
+  try { callGeminiImage('p', { images: [{ mimeType: 'image/svg+xml', data: 'AAAA' }] }); } catch (e) { threwRefs++; }
+  ok(threwRefs === 2 && seen.length === 0 && require('./gemini').MAX_REFERENCES === 3, 'image: more than 3 references, or one that is not a picture, is refused before any request');
   var threwEdit = false; seen = [];
   try { callGeminiImage('p', { image: { mimeType: 'application/pdf', data: 'AAAA' } }); } catch (e) { threwEdit = true; }
   ok(threwEdit && seen.length === 0, 'image: a file that is not a picture is refused before any request');

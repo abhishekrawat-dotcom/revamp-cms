@@ -8,7 +8,8 @@
    opts: { inlineFile: { mimeType, data (base64) }, inlineFiles: [the same] (at most 3 in all), timeoutMs = 60000, retry = true, deadlineAt (ms epoch),
            maxOutputTokens, route, eventId, user }      — route / eventId / user only label the log line.
      callGeminiJson also takes  images: [{ mimeType, data (base64) }]  — up to 6 pictures for the model to look at.
-     callGeminiImage also takes image: { mimeType, data (base64) }     — a picture to EDIT rather than start from nothing.
+     callGeminiImage also takes image: { mimeType, data (base64) }     — a picture to EDIT rather than start from nothing,
+                     and images: [{ mimeType, data, label }]  — up to 3 reference pictures, each sent after its label.
 
    FAILURES and failure(code, extra) are exported so the other provider's client (claude.js) answers with
    the same codes, statuses and sentences: a page cannot tell, and need not know, which one failed.
@@ -232,12 +233,28 @@ function callGeminiJson(prompt, schema, opts) {
    answers a square (1024 x 1024). Only a caller that names one gets it (opts.aspectRatio, e.g. '16:9' for a wide
    banner); every other call is sent exactly as before. */
 var IMAGE_ASPECTS = ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'];
+/* the reference pictures one picture call may carry beside its words (gemini-2.5-flash-image follows up to three well) */
+var MAX_REFERENCES = 3;
+/* a reference's label as one plain line: what the caller wrote, else "Reference k:" */
+function referenceLabel(image, i) {
+  var t = String((image && image.label) || '').replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400);
+  return t || 'Reference ' + (i + 1) + ':';
+}
 
 function callGeminiImage(prompt, opts) {
   opts = opts || {};
   var parts = [{ text: String(prompt) }];
   /* a picture to change: the model gets it next to the words and answers with the edited picture */
   if (opts.image) parts.push(imagePart(opts.image, 'callGeminiImage'));
+  /* reference pictures (lib/picture-refs.js, plan of 16 Nov 2026 §6): each after its own label, so the model knows
+     what each is for ("Reference 1, STYLE ONLY: …"); none given, the request is exactly as before */
+  if (opts.images && opts.images.length) {
+    if (opts.images.length > MAX_REFERENCES) throw new Error('callGeminiImage: at most ' + MAX_REFERENCES + ' reference pictures, not ' + opts.images.length + '.');
+    opts.images.forEach(function (image, i) {
+      parts.push({ text: referenceLabel(image, i) });
+      parts.push(imagePart(image, 'callGeminiImage'));
+    });
+  }
   var aspect = IMAGE_ASPECTS.indexOf(opts.aspectRatio) !== -1 ? opts.aspectRatio : '';
   function bodyFor(withAspect) {
     var generationConfig = { responseModalities: ['IMAGE'] };
@@ -261,4 +278,4 @@ function callGeminiImage(prompt, opts) {
   });
 }
 
-module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES, IMAGE_ASPECTS, forGemini, fromGemini, NONE_CHOICE };
+module.exports = { callGeminiJson, callGeminiImage, GEMINI_TEXT_MODEL, GEMINI_IMAGE_MODEL, FAILURES, failure, DEFAULT_TIMEOUT_MS, RETRY_PAUSE_MS, IMAGE_TYPES, MAX_IMAGES, MAX_REFERENCES, IMAGE_ASPECTS, forGemini, fromGemini, NONE_CHOICE };

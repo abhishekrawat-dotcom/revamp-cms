@@ -40,6 +40,21 @@
         --format='value(spec.template.spec.timeoutSeconds)'` says 300, the request limit lib/http.js records (BE-061).
      7. `node tools/release-check.js smoke --url <app> --event <a published event>` against production, and by
         hand in a signed-out browser: /e/<event> loads, a registration goes through and appears in the console.
+     8. Once, by the owner (16 Nov 2026: ETB2B AI's chat documents and the photos taken out of them are kept 30 days;
+        photos put on the page are kept): the bucket rule tools/storage-lifecycle-chat-docs.json, which deletes an
+        object 30 days after its Custom-Time. Only objects with a Custom-Time are touched, and only
+        lib/doc-pictures.js storeBatch gives one (lib/chat-docs-keep.js moves a placed photo's far ahead). Dry run
+        first, which changes nothing:
+          `gcloud storage buckets describe gs://revamp-cms.firebasestorage.app --format='json(lifecycle_config)'`
+            — the rules the bucket has now. `lifecycle set` REPLACES them all: if any are listed, add their entries
+            to the "rule" list of the JSON file before the next command, and keep them;
+          `gcloud storage objects list 'gs://revamp-cms.firebasestorage.app/**' --format='value(name,custom_time)'
+            | awk -F'\t' '$2 != ""' | grep -v '/chat-docs/'` — must print nothing: no object outside a chat-docs
+            folder has a Custom-Time (anything it prints would be deleted after 30 days).
+        Then: `gcloud storage buckets update gs://revamp-cms.firebasestorage.app
+        --lifecycle-file=tools/storage-lifecycle-chat-docs.json` (or `gsutil lifecycle set
+        tools/storage-lifecycle-chat-docs.json gs://revamp-cms.firebasestorage.app`), and describe the bucket again:
+        the rule is listed. Pictures stored before this release have no Custom-Time and are kept.
    ETB2B EventSphere. Node 20, no dependencies beyond this repository's own. */
 'use strict';
 const fs = require('fs');

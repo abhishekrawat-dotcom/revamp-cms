@@ -4176,6 +4176,9 @@ function handleSitePut(req, res) {
         }).then(function () { return true; });
       }).then(function (stored) {
         if (!stored) return;
+        /* a picture taken out of a chat document that the page now shows is kept for good (lib/chat-docs-keep.js);
+           never waited on, never fails the save */
+        require('./chat-docs-keep').keepInPage(fb, eventId, pageHtml);
         /* a save is somebody pressing Save: every one is a kept version, on staging, with its own line in
            the history saying what changed */
         return recordSave(fb, eventId, decoded, version, beforeHtml, pageHtml, body.note, { kind: automatic ? 'automatic' : '', event: { templateId: templateId, designPlan: data.designPlan } }).then(function (rec) {

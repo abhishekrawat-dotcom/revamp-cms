@@ -489,7 +489,9 @@ function insideUnit(el) { return !!(el && el.closest && el.closest('[data-rv-log
 
   var venue = d('venue');
   check('C.4 venue: one slot (the icon is small, the svg is an icon)', venue.role === '' && venue.pics.slots === 1 && venue.pics.list.length === 1, venue.pics);
-  check('C.4 venue: the list entry is its alt text in words, and its size', JSON.stringify(venue.pics.list[0]) === JSON.stringify({ label: 'The hall at night seen from the stage', w: 640, h: 400 }), venue.pics.list);
+  /* builder C, 16 Nov 2026 (ETB2B AI edits the picture you point at): an entry also carries the address it may be
+     changed from, when it is this event's own picture */
+  check('C.4 venue: the list entry is its alt text in words, its size, and its own picture\'s address', JSON.stringify(venue.pics.list[0]) === JSON.stringify({ label: 'The hall at night seen from the stage', w: 640, h: 400, src: STORE + 'generated/1-venue.png' }), venue.pics.list);
   check('C.4 venue: no background, no banner fields', venue.pics.background === false && venue.pics.heroTarget === '' && venue.heroMode === '' && venue.video === false);
   check('C.4 venue: own has its generated picture first and only this event\'s', venue.pics.own[0] === STORE + 'generated/1-venue.png' && venue.pics.own.every(function (u) { return u.indexOf(STORE) === 0; }), venue.pics.own);
 
@@ -624,10 +626,28 @@ function insideUnit(el) { return !!(el && el.closest && el.closest('[data-rv-log
     if (!cp.cleanSectionFields) return true;
     var x = d('why-attend'), y = cp.cleanSectionFields(JSON.parse(JSON.stringify(x)), STORE);
     var hx = d('hero'), hy = cp.cleanSectionFields(JSON.parse(JSON.stringify(hx)), STORE);
+    /* an entry's src (an edit's source) is the server's to keep or leave out (builder A, with its own check) */
+    var bare = function (list) { return JSON.stringify(list.map(function (e) { var o = Object.assign({}, e); delete o.src; return o; })); };
     return y.role === x.role && y.pics.slots === x.pics.slots && y.pics.background === x.pics.background &&
-      JSON.stringify(y.pics.list) === JSON.stringify(x.pics.list) && JSON.stringify(y.pics.own) === JSON.stringify(x.pics.own) &&
+      bare(y.pics.list) === bare(x.pics.list) && JSON.stringify(y.pics.own) === JSON.stringify(x.pics.own) &&
       hy.role === 'hero' && hy.heroMode === 'dark' && hy.pics.heroTarget === 'background' && hy.video === false;
   })());
+  /* builder C, 16 Nov 2026: the addresses a picture may be changed from (an edit's source): this event's own pictures that
+     a new picture may replace, never a logo, the logo unit, Content's photos, another event's or another host's */
+  (function () {
+    var wa = d('why-attend'), hero = d('hero'), about = d('about'), sp = d('speakers');
+    check('C.4 edit source: a picture from another host has none', wa.pics.list.every(function (e) { return !e.src || e.src.indexOf(STORE) === 0; }) &&
+      !wa.pics.list.some(function (e) { return /img\.etb2bimg\.com|qa-other/.test(e.src || ''); }), wa.pics.list);
+    check('C.4 edit source: the banner\'s own background picture, never its logo unit', hero.pics.backgroundSrc === STORE + 'generated/1-hero-bg.png' && hero.pics.list.length === 0, hero.pics);
+    check('C.4 edit source: a background behind a gradient veil', about.pics.backgroundSrc === STORE + 'generated/1-about.png', about.pics);
+    check('C.4 edit source: a records section\'s free picture has one; its records\' photos are never listed', sp.pics.list.length === 1 && sp.pics.list[0].src === STORE + 'generated/1-deco.png', sp.pics.list);
+    check('C.4 edit source: the selected picture\'s (srcOf), never a speaker\'s photo, a logo or a template\'s', P.srcOf(q(g, 'img.venue-pic'), null, h) === STORE + 'generated/1-venue.png' &&
+      P.srcOf(q(g, 'img.sp-1'), null, h) === '' && P.srcOf(q(g, 'img.about-brand'), null, h) === '' && P.srcOf(q(g, 'img.reg-shared'), null, h) === '' && P.srcOf(q(g, 'img.wa-2'), null, h) === '' &&
+      P.srcOf(q(g, 'img.venue-pic'), null, { canvas: g.canvas }) === '', [P.srcOf(q(g, 'img.venue-pic'), null, h), P.srcOf(q(g, 'img.sp-1'), null, h)]);
+    var lw = page('<section data-rv-section="s" data-rv-key="s" data-t-box="1440 900"><img src="' + STORE + 'generated/7-logo-unit.png" alt="x" data-t-box="600 400"><img src="' + STORE + 'media/a.svg" alt="y" data-t-box="600 400"><img src="' + STORE + 'media/b.jpg?x=1" alt="z" data-t-box="600 400"></section>');
+    var lx = P.describe(sec(lw, 's'), H(lw));
+    check('C.4 edit source: none for a logo by its name, a drawing (SVG) or an address with more than ?v= after it', lx.pics.list.every(function (e) { return !e.src; }), lx.pics.list);
+  })();
   check('C.4 describe answers plain data (it is sent to the server as JSON)', (function () {
     var x = d('why-attend');
     return JSON.stringify(JSON.parse(JSON.stringify(x))) === JSON.stringify(x) && Object.keys(x).join() === 'role,video,heroMode,pics' &&
@@ -1084,7 +1104,7 @@ var RECS = [
   }
   check('C.9 one global, RevampAiPicture, with the agreed calls', (function () {
     var own = Object.keys(ctx).filter(function (k) { return ['console', 'window'].indexOf(k) === -1; });
-    return own.join() === 'RevampAiPicture' && Object.keys(P).sort().join() === ['chooseSlot', 'describe', 'fitFrame', 'frameBox', 'heroVeilCss', 'holdOwnFrames', 'isProtected', 'place', 'recordsState', 'shapeGap', 'slotOf', 'target', 'unitState'].join();
+    return own.join() === 'RevampAiPicture' && Object.keys(P).sort().join() === ['chooseSlot', 'describe', 'fitFrame', 'frameBox', 'heroVeilCss', 'holdOwnFrames', 'isProtected', 'place', 'recordsState', 'shapeGap', 'slotOf', 'srcOf', 'target', 'unitState'].join();
   })(), Object.keys(P));
   check('C.9 asks no server and calls no AI (no fetch, XMLHttpRequest or authedFetch)', !/\bfetch\s*\(|XMLHttpRequest|authedFetch|sendBeacon/.test(code));
   check('C.9 writes no markup (no innerHTML, outerHTML, insertAdjacentHTML or document.write)', !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(code));

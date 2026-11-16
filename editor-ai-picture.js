@@ -49,6 +49,10 @@
                       a new background or banner picture is made in its shape and cut to it,
                  own: up to 4 of this event's own Storage pictures shown in it (the server counts people
                       pictures with them; they are never shown to the model) } }
+       Each list entry also has src, and pics has backgroundSrc (the background's, or the banner's picture), when
+       that picture is this event's own and may be changed (an edit's source, ETB2B AI's "make it warmer": never a
+       logo, the logo unit or Content's photos); left out otherwise.
+   RevampAiPicture.srcOf(el, sec, h) -> the address el's picture may be changed from (the selected picture's), or ''
    RevampAiPicture.slotOf(sec, el, h) -> el's 1-based number among those pictures (the chat's focus.slot), else 0
    RevampAiPicture.isProtected(el, sec) -> true when el must never get a made picture
    RevampAiPicture.chooseSlot(list, wanted) -> the index in list of the picture to replace, or -1.
@@ -559,13 +563,36 @@
     return gen.concat(rest).slice(0, OWN_MAX);
   }
 
+  /* The address a picture may be changed from (ETB2B AI's edits, plan of 16 Nov 2026 §6.2: "make it warmer" changes
+     THAT picture): this event's own Storage picture, shown in el, when el is one a new picture may replace
+     (isProtected allows it). Never the logo unit or its dark copy, the ETB2B logo, the banner's logo unit, a logo by
+     its name or Content's own photos (those are protected, or not this event's own); '' otherwise. The server checks
+     the address again (functions/lib/picture-refs.js ownOnly). */
+  var EDIT_SRC_MAX = 600;
+  function editSrc(el, L, raw) {
+    var h = L.h || {};
+    if (!h.eventId || !el || protectedIn(el, L.sec, L.role)) return '';
+    var u = String(raw != null ? raw : shownSrc(el) || '').trim();
+    var own = new RegExp('^https://storage\\.googleapis\\.com/[^/?#]+/events/' + escRe(h.eventId) + '/[^?#]+\\.(?:jpe?g|png|webp)(?:\\?v=\\d+)?$', 'i');
+    if (!own.test(u) || u.length > EDIT_SRC_MAX || /logo/i.test(u.split(/[?#]/)[0].split('/events/')[1] || '')) return '';
+    return u;
+  }
+  function srcOf(el, sec, h) {
+    sec = sec || sectionOf(el);
+    if (!sec || !el) return '';
+    return editSrc(el, look(sec, h || {}));
+  }
   function describe(sec, h) {
     h = h || {};
     var out = { role: roleOf(sec), video: false, heroMode: '', pics: { slots: 0, list: [], background: false, heroTarget: '', wide: false, frame: null, own: [] } };
     if (!sec || out.role === 'nav' || out.role === 'footer') return out;      // nothing there is offered for a new picture
     var L = look(sec, h), free = usable(candidates(L));
     out.pics.slots = free.length;
-    out.pics.list = free.slice(0, LIST_MAX).map(entryOf);
+    out.pics.list = free.slice(0, LIST_MAX).map(function (c, i) {
+      var e = entryOf(c, i), src = editSrc(c.el, L);
+      if (src) e.src = src;
+      return e;
+    });
     var host = hostOf(L);
     out.pics.background = !!host;
     /* the shape a new background would fill: the background's own element, or the section a rework would put it on */
@@ -582,6 +609,10 @@
     var place = spot && spot.el ? boxOf(spot.el) : box;
     out.pics.frame = place.w >= 1 && place.h >= 1 ? { w: Math.round(place.w), h: Math.round(place.h) } : null;
     out.pics.own = ownPictures(L);
+    /* the background's picture (for the banner, its picture), when it may be changed: an edit's source */
+    var bgEl = spot ? spot.el : host, bgSrc = '';
+    if (bgEl) bgSrc = spot && spot.kind === 'fullbleed' ? editSrc(bgEl, L) : editSrc(bgEl, L, h.canvas && h.canvas.backgroundOf ? h.canvas.backgroundOf(bgEl) : '');
+    if (bgSrc) out.pics.backgroundSrc = bgSrc;
     return out;
   }
 
@@ -911,6 +942,7 @@
 
   global.RevampAiPicture = {
     describe: describe,
+    srcOf: srcOf,
     slotOf: slotOf,
     isProtected: isProtected,
     chooseSlot: chooseSlot,
