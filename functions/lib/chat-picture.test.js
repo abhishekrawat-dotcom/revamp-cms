@@ -102,6 +102,9 @@ function entry(sectionId, placement, extra) {
 }
 
 (async function () {
+  /* the sentences that give an example take it from the page (owner, 16 Nov 2026: never "a seafront at dusk"): with this
+     page and no event to take a scene from, its first sections */
+  var NOT_ASKED = cp.sentence('notAsked', { section: 'Overview' }), UNCLEAR = cp.sentence('unclear', { sections: '“Overview” or “Agenda”' });
   /* ---------- cleanSubject: what reaches the picture model ---------- */
   var r = cp.cleanSubject('Mumbai\'s skyline at dusk, with "Future of HR 2027" overhead, see https://example.com/x or www.et.in, mail a@b.com, @ethrworld #HR2027 and 2027 lights', {});
   check(r.ok && r.subject.indexOf('Mumbai\'s skyline at dusk') === 0 && !/Future of HR|https?:|www\.|a@b\.com|@ethrworld|#HR|2027/.test(r.subject),
@@ -131,7 +134,7 @@ function entry(sectionId, placement, extra) {
   r = cp.cleanSubject('Taj Lands End at night', { sections: SECS, event: EVENT_NAMES });
   check(r.ok, 'the event\'s own venue, a run of capitals, may be named', J(r));
   r = cp.cleanSubject('Taj Lands End at night', { sections: SECS });
-  check(!r.ok && r.code === 'name' && r.reply === cp.SENTENCES.name, 'the same run of capitals, not the event\'s own words, is kept out as a name', J(r));
+  check(!r.ok && r.code === 'name' && r.reply === cp.SENTENCES.nameAsk, 'the same run of capitals, not the event\'s own words, is kept out as a name', J(r));
   r = cp.cleanSubject('the Leela Ambience ballroom at night', { event: { name: 'Retail Summit', venue: 'The Leela Ambience', city: 'Gurugram' } });
   check(r.ok, 'any venue the event names may be named', J(r));
   r = cp.cleanSubject('the Golconda Fort skyline at dusk', { designPlan: { design: { place: { city: 'Golconda Fort' } } } });
@@ -240,7 +243,7 @@ function entry(sectionId, placement, extra) {
   /* ---------- the schema entry and the prompt lines ---------- */
   var sch = cp.schemaItem(['hero', 'agenda']);
   check(sch.type === 'ARRAY' && J(sch.items.properties.sectionId.enum) === J(['hero', 'agenda']) && J(sch.items.properties.placement.enum) === J(['hero', 'background', 'picture']) &&
-    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'kind', 'alt']) && sch.items.properties.slot.type === 'INTEGER',
+    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'plainSubject', 'kind', 'alt']) && sch.items.properties.slot.type === 'INTEGER',
     'newPictures: sectionId limited to the page\'s sections, the three placements, the site\'s picture kinds', J(sch));
   check(!cp.schemaItem([]).items.properties.sectionId.enum, 'with no sections there is no empty enum');
   var lines = cp.promptLines({ eventId: EV, attachmentCount: 2, picturesLeft: 7, picturesPerDay: 20 });
@@ -257,8 +260,8 @@ function entry(sectionId, placement, extra) {
   /* QA 3 Nov 2026: told "no proper names except the event's own city", the model answered the owner's own example
      ("the Mumbai skyline at dusk", for an event in Amritsar) with a nameless "coastal city skyline". A place is not
      a person: the model keeps it, and the server's check lets it through. */
-  check(/kept in the subject as the owner named it \("the Mumbai skyline at dusk"/.test(lines) && !/no proper names at all/.test(lines) &&
-    /a city, region or well-known place the owner asks for is named as the owner said it/.test(JSON.stringify(cp.schemaItem(['hero']))),
+  check(/kept in the subject as the owner named it \("the Mumbai skyline at dusk"/.test(lines) && !/`subject`[^\n]*no proper names at all/.test(lines) &&
+    /a city, region or well-known place the owner asks for[^"]*is named and described by what makes it recognisable/.test(JSON.stringify(cp.schemaItem(['hero']))),
     'the model keeps a place the owner named in the subject (prompt and schema)', lines);
   var placedSubject = cp.cleanSubject('The Mumbai skyline at dusk, seen across the water', { event: { name: 'HR Conclave', city: 'Amritsar' } });
   check(placedSubject.ok && /Mumbai skyline/.test(placedSubject.subject), 'and the server keeps it', J(placedSubject));
@@ -282,7 +285,7 @@ function entry(sectionId, placement, extra) {
   check(p.ask && p.ask.sectionId === 'hero' && p.note === cp.SENTENCES.one, 'only the first is made, and the owner is told one per message', J(p));
   /* 3. the owner asked */
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'make the buttons green', focus: { sectionId: 'hero', name: 'Hero banner' } }));
-  check(p.ask === null && p.reply === cp.SENTENCES.notAsked, '"make the buttons green" with the banner selected makes no picture, whatever the model returned', J(p));
+  check(p.ask === null && p.reply === NOT_ASKED, '"make the buttons green" with the banner selected makes no picture, whatever the model returned', J(p));
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'try another', lastTurnPicture: { sectionId: 'hero', placement: 'hero', state: 'made' } }));
   check(p.ask && p.ask.sectionId === 'hero', '"try another" right after a picture is a new picture for the same place', J(p));
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'try another' }));
@@ -290,7 +293,7 @@ function entry(sectionId, placement, extra) {
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'make it a little brighter and warmer, with more depth, softer light and a calmer sky overall please', lastTurnPicture: { sectionId: 'hero' } }));
   check(p.ask === null, 'a long message without picture words is not read as a follow-up');
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'use this picture as the agenda background', attachmentCount: 1 }));
-  check(p.ask === null && p.reply === cp.SENTENCES.notAsked, 'with a picture attached, "use this picture" places the attachment: no new picture is made', J(p));
+  check(p.ask === null && p.reply === NOT_ASKED, 'with a picture attached, "use this picture" places the attachment: no new picture is made', J(p));
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make a new background picture for the agenda in this mood', attachmentCount: 1 }));
   check(p.ask && p.ask.n === 2, 'with a picture attached, "make a new background picture" makes one, numbered after the attachment', J(p.ask));
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'हीरो के लिए नई तस्वीर बनाओ', focus: { sectionId: 'hero' } }));
@@ -304,19 +307,19 @@ function entry(sectionId, placement, extra) {
   ].forEach(function (t) {
     [null, MADE_BEFORE].forEach(function (last) {
       var x = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: t, focus: { sectionId: 'agenda', name: 'Agenda' }, lastTurnPicture: last }));
-      check(x.ask === null && x.reply === cp.SENTENCES.notAsked, 'no picture for "' + t + '"' + (last ? ' (right after a picture)' : ''), J(x));
+      check(x.ask === null && x.reply === NOT_ASKED, 'no picture for "' + t + '"' + (last ? ' (right after a picture)' : ''), J(x));
     });
   });
   /* the second review's samples, against the section each one names (a colour and a text change, never a picture) */
   p = cp.planAsk([entry('agenda', 'background', { subject: 'a deep navy abstract texture' })], ctxOf({ instruction: 'change the agenda background colour to navy' }));
-  check(p.ask === null && p.reply === cp.SENTENCES.notAsked, '"change the agenda background colour to navy" makes no picture', J(p));
+  check(p.ask === null && p.reply === NOT_ASKED, '"change the agenda background colour to navy" makes no picture', J(p));
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'make the banner text bigger' }));
-  check(p.ask === null && p.reply === cp.SENTENCES.notAsked, '"make the banner text bigger" makes no picture', J(p));
+  check(p.ask === null && p.reply === NOT_ASKED, '"make the banner text bigger" makes no picture', J(p));
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make the headline less bold', focus: { sectionId: 'agenda' }, lastTurnPicture: { sectionId: 'agenda', placement: 'background', state: 'failed' } }));
-  check(p.ask === null && p.reply === cp.SENTENCES.notAsked, '"make the headline less bold" after a picture that failed makes none', J(p));
+  check(p.ask === null && p.reply === NOT_ASKED, '"make the headline less bold" after a picture that failed makes none', J(p));
   ['replace the agenda background with this picture', 'use this as the new hero banner'].forEach(function (t) {
     var x = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: t, attachmentCount: 1, focus: { sectionId: 'agenda' } }));
-    check(x.ask === null && x.reply === cp.SENTENCES.notAsked, 'with a picture attached, "' + t + '" places the attachment: no new picture', J(x));
+    check(x.ask === null && x.reply === NOT_ASKED, 'with a picture attached, "' + t + '" places the attachment: no new picture', J(x));
   });
   /* owner, 10 Nov 2026: with a picture attached, a clear making word asks for a new picture, even with no "a" or "new"
      ("create hero background image using sun temple wheel and the attached jungle view" was answered "your message
@@ -333,7 +336,7 @@ function entry(sectionId, placement, extra) {
     'replace the hero image with the attached one', 'make the banner text bigger', 'design the banner text in bold', 'make the hero background navy'
   ].forEach(function (t) {
     var x = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: t, attachmentCount: 1, focus: { sectionId: 'hero' } }));
-    check(x.ask === null && x.reply === cp.SENTENCES.notAsked, 'with a picture attached, "' + t + '" makes no new picture', J(x));
+    check(x.ask === null && x.reply === NOT_ASKED, 'with a picture attached, "' + t + '" makes no new picture', J(x));
   });
   /* the ways of asking that do make one */
   [['make a new background for the agenda', null], ['give the agenda a new background', null], ['create a background image here', null],
@@ -349,14 +352,14 @@ function entry(sectionId, placement, extra) {
   check(p.ask === null, 'after a picture that failed only a retry follows it ("again"), not "brighter"', J(p));
   /* 4. a known section that can take a picture */
   p = cp.planAsk([entry('sponsors', 'picture')], ctxOf({ instruction: 'make a new picture', focus: { sectionId: 'sponsors' } }));
-  check(p.ask === null && p.reply === cp.SENTENCES.unclear, 'an unknown section: the where-question', J(p));
+  check(p.ask === null && p.reply === UNCLEAR, 'an unknown section: the where-question', J(p));
   ['nav', 'footer'].forEach(function (id) {
     var x = cp.planAsk([entry(id, 'background')], ctxOf({ instruction: 'give the ' + id + ' a background picture', focus: { sectionId: id } }));
     check(x.ask === null && x.reply === cp.SENTENCES.navFooter, 'the ' + id + ' never gets a picture', J(x));
   });
   /* 5. the banner */
   p = cp.planAsk([entry('agenda', 'hero')], ctxOf({ instruction: 'make a new picture here', focus: { sectionId: 'agenda' } }));
-  check(p.ask === null && p.reply === cp.SENTENCES.unclear, 'a banner placement on a section that is not the banner: the where-question', J(p));
+  check(p.ask === null && p.reply === UNCLEAR, 'a banner placement on a section that is not the banner: the where-question', J(p));
   p = cp.planAsk([entry('hero', 'background')], ctxOf({ instruction: 'give the banner a new background picture' }));
   check(p.ask && p.ask.placement === 'hero' && p.ask.apply === 'swap' && p.ask.heroMode === 'dark', 'a background on the banner is the banner\'s picture, swapped, with the banner\'s tone', J(p.ask));
   var videoSecs = SECS.map(function (s) { return s.id === 'hero' ? Object.assign({}, s, { video: true }) : s; });
@@ -464,7 +467,7 @@ function entry(sectionId, placement, extra) {
     ['change Rohan Mehta\'s DP to a new one', 'jury', 'picture'], ['make a new portrait of Rohan Mehta', 'jury', 'picture'],
     ['make a new headshot for the jury', 'jury', 'picture'], ['make new DPs for the jury', 'jury', 'background']].forEach(function (c) {
     var x = recAt(c[0], c[1], c[2], c[1] === 'overview' ? { sectionId: 'overview' } : null);
-    check(x.ask === null && x.reply === JURY_NO && x.reply !== cp.SENTENCES.notAsked, 'a person\'s own picture is asked for, and refused with the records sentence (' + c[1] + ' ' + c[2] + '): "' + c[0] + '"', J(x));
+    check(x.ask === null && x.reply === JURY_NO && x.reply !== NOT_ASKED, 'a person\'s own picture is asked for, and refused with the records sentence (' + c[1] + ' ' + c[2] + '): "' + c[0] + '"', J(x));
   });
   ['make a new headshot', 'make a new profile photo here', 'give this section a new DP'].forEach(function (t) {
     var x = recAt(t, 'overview', 'picture', { sectionId: 'overview' });
@@ -485,7 +488,7 @@ function entry(sectionId, placement, extra) {
 
   /* 7. which picture */
   p = cp.planAsk([entry('venue', 'picture')], ctxOf({ instruction: 'replace the venue photo with a new picture' }));
-  check(p.ask === null && p.reply === cp.sentence('several', { name: '“Venue & Travel”' }), 'several pictures and none said: which one?', J(p));
+  check(p.ask === null && p.reply === cp.sentence('several', { name: '“Venue & Travel”', label: 'the lobby' }) && /“the one of the lobby”/.test(p.reply), 'several pictures and none said: which one? (its example is one of its own pictures)', J(p));
   p = cp.planAsk([entry('venue', 'picture')], ctxOf({ instruction: 'replace this photo with a new picture', focus: { sectionId: 'venue', element: { kind: 'image' }, slot: 2 } }));
   check(p.ask && p.ask.slot === 2 && p.ask.apply === 'swap', 'the picture the owner selected is the one replaced', J(p.ask));
   p = cp.planAsk([entry('venue', 'picture', { slot: 3 })], ctxOf({ instruction: 'replace the ballroom photo in the venue section with a new picture' }));
@@ -496,7 +499,7 @@ function entry(sectionId, placement, extra) {
   check(p.ask && p.ask.slot === 1, 'a section with one picture: that one', J(p.ask));
   /* 8. where it goes is clear */
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make a new hero picture', focus: { sectionId: 'agenda', name: 'Agenda' } }));
-  check(p.ask === null && p.reply === cp.SENTENCES.unclear, 'the agenda selected, "make a new hero picture", the model chose the agenda: the AI asks', J(p));
+  check(p.ask === null && p.reply === UNCLEAR, 'the agenda selected, "make a new hero picture", the model chose the agenda: the AI asks', J(p));
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make a new background picture here', focus: { sectionId: 'agenda' } }));
   check(p.ask && p.ask.sectionId === 'agenda', 'the selected section, with no other named, is clear', J(p.ask));
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'give the agenda section a background picture' }));
@@ -504,7 +507,7 @@ function entry(sectionId, placement, extra) {
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make it warmer', lastTurnPicture: { sectionId: 'agenda', placement: 'background', state: 'made' } }));
   check(p.ask && p.ask.sectionId === 'agenda', 'the place of the picture made just before is clear for a follow-up', J(p.ask));
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make a picture' }));
-  check(p.ask === null && p.reply === cp.SENTENCES.unclear, '"make a picture" with nothing selected or named: the where-question', J(p));
+  check(p.ask === null && p.reply === UNCLEAR, '"make a picture" with nothing selected or named: the where-question', J(p));
   p = cp.planAsk([entry('speakers', 'background')], ctxOf({ instruction: 'give the top speakers section a background picture' }));
   check(p.ask && p.ask.sectionId === 'speakers', '"top" alone does not name the banner ("top speakers")', J(p));
   /* 9. the subject */
@@ -1113,18 +1116,25 @@ function entry(sectionId, placement, extra) {
   check(FB.docs[QPATH].made === 3 && FB.docs[QPATH].failed === 0 && recorded.length === recAt + 2 && recorded.slice(-2).every(function (u) { return u.pictures === 1; }),
     'both pictures count in the person\'s day and in the event\'s usage', J(FB.docs[QPATH]));
   check(FB.docs[ref.path].newPicture.tries === 2 && J(FB.docs[ref.path].newPicture.checks) === J([{ people: true, text: false, logos: false }, { people: false, text: false, logos: false }]), 'the turn keeps both looks', J(FB.docs[ref.path].newPicture));
-  /* found wanting twice: kept off the page, in the tray, said plainly */
+  /* found wanting three times (owner, 16 Nov 2026: a third try with the strictest line, then another way offered —
+     never only a failure): kept off the page, in the tray, said plainly, with the close-up offered */
   ref = turnOf(askOf('agenda', 'background', { kind: 'graphic', subject: 'flowing lines of light like a timeline' }));
-  imageAnswers.push(picture(), picture(PNG2));
-  checkAnswers.push(found(true), found(true, true));
+  imageAnswers.push(picture(), picture(), picture(PNG2));
+  checkAnswers.push(found(true), found(true, true), found(true, true));
   callsAt = imageCalls.length;
   res = await run(ref);
-  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['people', 'text'], 'twice') && /^https:\/\/storage\.googleapis\.com\/test-bucket\/events\/qa-pic\/generated\//.test(res.body.url) && savedOf(res).bytes === BYTES2,
-    'still wanting after the second: stored (for the tray) and answered as held, with why', J(res));
-  check(res.body.heldWhy === 'I made the new picture twice, and the second one still had people and words or letters in it, but this place shows no people, and pictures I make carry no words or logos, so I did not put it on the page.',
-    'the owner is told plainly', res.body.heldWhy);
-  check(FB.docs[ref.path].newPicture.state === 'made' && FB.docs[ref.path].newPicture.held === true && FB.docs[QPATH].made === 5 && /kept it off the page \(it did not pass its check\)/.test(activity[activity.length - 1].detail),
-    'the turn says so, both pictures are counted, and the History says it was kept off the page', J(activity[activity.length - 1]));
+  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['people', 'text'], 'tries', 3) + ' ' + cp.alternativeLine(['people', 'text'], 'tries') &&
+    /^https:\/\/storage\.googleapis\.com\/test-bucket\/events\/qa-pic\/generated\//.test(res.body.url) && savedOf(res).bytes === BYTES2 && imageCalls.length === callsAt + 3,
+    'still wanting after the third: stored (for the tray) and answered as held, with why and what is offered instead', J(res));
+  check(res.body.heldWhy === 'I made the new picture three times, and the last one still had people and words or letters in it, but this place shows no people, and pictures I make carry no words or logos, so I did not put it on the page. I can make it instead as a close-up of one object in the same scene, with nobody in it — say yes and I\'ll make it — or attach a picture of your own and I\'ll put it in.',
+    'the owner is told plainly, and offered a close-up or a picture of their own', res.body.heldWhy);
+  var third = imageCalls[callsAt + 2] || {};
+  check(/SECOND TRY, STRICT: the picture first made from these words had people and words or letters in it[^]*LAST TRY, STRICTEST: change the view so that no one can be in it[^]*leave every sign, screen, banner and label blank/.test(third.prompt || '') &&
+    third.opts && third.opts.deadlineAt <= (imageCalls[callsAt].opts.deadlineAt - cp.CHECK_RESERVE_MS),
+    'the third is asked with the strictest line, which changes the view itself', String(third.prompt).slice(-500));
+  check(FB.docs[ref.path].newPicture.state === 'made' && FB.docs[ref.path].newPicture.held === true && FB.docs[ref.path].newPicture.alternative === 'close-up' && FB.docs[ref.path].newPicture.tries === 3 &&
+    FB.docs[QPATH].made === 6 && /kept it off the page \(it did not pass its check\)/.test(activity[activity.length - 1].detail),
+    'the turn says so (with the close-up offered), all three pictures are counted, and the History says it was kept off the page', J(activity[activity.length - 1]));
   check(/^\[New picture made for “Agenda” \(background\) but kept off the page — it did not pass its check[^\]]*waits in the tray: flowing lines of light/.test(cp.historyLine(FB.docs[ref.path].newPicture)) &&
     /^\[New picture made for “Agenda” \(background\): /.test(cp.historyLine(Object.assign({}, FB.docs[ref.path].newPicture, { held: false }))),
     'the chat model remembers that it was kept off the page and waits in the tray', cp.historyLine(FB.docs[ref.path].newPicture));
@@ -1159,16 +1169,17 @@ function entry(sectionId, placement, extra) {
   checkAnswers.push(found(false, false, true));
   callsAt = imageCalls.length;
   res = await run(ref);
-  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['logos'], 'limit') && imageCalls.length === callsAt + 1 && FB.docs[QPATH].made === 20,
+  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['logos'], 'limit') + ' ' + cp.alternativeLine(['logos'], 'limit') && imageCalls.length === callsAt + 1 && FB.docs[QPATH].made === 20,
     'no picture left for a second try: the first is kept off the page, and why is said', J(res));
-  check(res.body.heldWhy === 'The new picture had a logo in it, but pictures I make carry no words or logos, so I did not put it on the page — a second try would have gone past your new pictures for today.', 'in plain words', res.body.heldWhy);
+  check(res.body.heldWhy === 'The new picture had a logo in it, but pictures I make carry no words or logos, so I did not put it on the page — a second try would have gone past your new pictures for today. You can attach a picture of your own, and I\'ll put it in.' &&
+    !FB.docs[ref.path].newPicture.alternative, 'in plain words, and with no picture left today only the owner\'s own is offered', res.body.heldWhy);
   /* the second could not be made: its reservation moves to failed, the first goes to the tray */
   FB.docs[QPATH] = { day: TODAY, made: 0, failed: 0 };
   ref = turnOf(askOf('hero', 'hero'));
   imageAnswers.push(picture(), refusal('ai-blocked'));
   checkAnswers.push(found(true));
   res = await run(ref);
-  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['people'], 'failed') && savedOf(res).bytes === BYTES1 && FB.docs[QPATH].made === 1 && FB.docs[QPATH].failed === 1,
+  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['people'], 'failed') + ' ' + cp.alternativeLine(['people'], 'failed') && savedOf(res).bytes === BYTES1 && FB.docs[QPATH].made === 1 && FB.docs[QPATH].failed === 1,
     'a second picture that could not be made: counted as failed, the first kept off the page', J(res) + ' ' + J(FB.docs[QPATH]));
   /* no time left for a second */
   var realNow = Date.now, shift = 0, stubImage = gemini.callGeminiImage;
@@ -1179,7 +1190,7 @@ function entry(sectionId, placement, extra) {
   checkAnswers.push(found(true));
   callsAt = imageCalls.length;
   try { res = await run(ref); } finally { Date.now = realNow; gemini.callGeminiImage = stubImage; }
-  check(res.body.held === true && res.body.heldWhy === cp.heldSentence(['people'], 'time') && imageCalls.length === callsAt + 1, 'no time left for a second try: the first is kept off the page, and why is said', J(res));
+  check(res.body.held === true && res.body.heldWhy === cp.heldSentence(['people'], 'time') + ' ' + cp.alternativeLine(['people'], 'time') && imageCalls.length === callsAt + 1, 'no time left for a second try: the first is kept off the page, and why is said', J(res));
   /* the check could not look: the picture is placed as before, and the turn says it was not checked */
   ref = turnOf(askOf('hero', 'hero'));
   imageAnswers.push(picture());
@@ -1215,10 +1226,13 @@ function entry(sectionId, placement, extra) {
   });
   /* an offer, then a yes */
   var off = cp.offerOf({ sectionId: 'hero', placement: 'hero' }, SECS);
-  check(off && off.sentence === 'Do you want me to make a new banner picture for “' + (SECS.filter(function (x) { return x.id === 'hero'; })[0].name) + '”? Say “yes, make it” and I will.' &&
-    off.record.state === 'offered' && off.record.sectionId === 'hero' && !('subject' in off.record), 'an unclear ask is offered, not refused; nothing to make is stored', J(off));
+  check(off && off.sentence === 'Do you want me to make a new banner picture for “' + (SECS.filter(function (x) { return x.id === 'hero'; })[0].name) + '”? Say yes and I\'ll make it — or tell me what it should show instead.' &&
+    off.record.state === 'offered' && off.record.sectionId === 'hero' && off.record.subject === '', 'an unclear ask is offered, not refused; with no scene, none is stored', J(off));
+  var offScene = cp.offerOf(entry('hero', 'hero', { subject: 'a carved stone chariot wheel in front of a lush forest canopy' }), SECS);
+  check(offScene.sentence === 'Do you want me to make a new banner picture for “Hero banner”: a carved stone chariot wheel in front of a lush forest canopy? Say yes and I\'ll make it — or tell me what it should show instead.' &&
+    offScene.record.subject === 'a carved stone chariot wheel in front of a lush forest canopy', 'with the model\'s scene, the offer says what it would make, and keeps it for the yes', J(offScene));
   check(cp.offerOf({ sectionId: 'nope', placement: 'hero' }, SECS) === null && cp.offerOf({ sectionId: 'hero', placement: 'x' }, SECS) === null, 'no offer for a section or place that is not there');
-  check(/You asked whether to make a new picture for/.test(cp.historyLine(off.record)), 'the model remembers it asked');
+  check(/^\[You offered to make a new picture for “Hero banner” \(banner picture\); a yes, the scene or the place from the owner makes it now — never ask for another yes\]$/.test(cp.historyLine(off.record)), 'the model remembers it offered, and that a yes makes it', cp.historyLine(off.record));
   var OFFERED = { sectionId: 'hero', placement: 'hero', state: 'offered' }, MADE = { sectionId: 'agenda', placement: 'background', state: 'made' };
   ['yes', 'yes, make it', 'Yes please', 'ok go ahead', 'sure', 'haan', 'create it', 'you can create like that?', 'make it'].forEach(function (t) {
     var x = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: t, lastTurnPicture: OFFERED }));
