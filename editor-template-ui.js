@@ -6146,8 +6146,35 @@
       });
       return out;
     }
+    /* The pictures an answer asks to make (the advanced picture assistant, functions/lib/picture-job.js): its
+       pictureJobs, at most MAX_JOBS, each with its own number k (0 to 3, each once; else its place in the list), else
+       its one newPicture as job 0; [] with none. Each is then checked as one picture always is (checkAsk).
+       -> [ask with k] */
+    var MAX_JOBS = 4;
+    function jobsOf(answer) {
+      var a = answer && typeof answer === 'object' ? answer : {}, out = [], used = {};
+      if (Array.isArray(a.pictureJobs) && a.pictureJobs.length) {
+        a.pictureJobs.slice(0, MAX_JOBS).forEach(function (j, i) {
+          if (!j || typeof j !== 'object') return;
+          /* a number given twice: the first keeps it, the other is dropped */
+          var k = typeof j.k === 'number' && j.k >= 0 && j.k < MAX_JOBS && Math.floor(j.k) === j.k ? j.k : i;
+          if (used[k]) return;
+          used[k] = true;
+          var one = {};
+          Object.keys(j).forEach(function (f) { one[f] = j[f]; });
+          one.k = k;
+          out.push(one);
+        });
+        return out;
+      }
+      if (!a.newPicture || typeof a.newPicture !== 'object') return out;
+      var only = {};
+      Object.keys(a.newPicture).forEach(function (f) { only[f] = a.newPicture[f]; });
+      only.k = 0;
+      return [only];
+    }
     return { WHERE: WHERE, RECORDS_CHANGED: RECORDS_CHANGED, usesPicture: usesPicture, checkAsk: checkAsk, nextRequest: nextRequest, askUntilAnswered: askUntilAnswered, outcome: outcome,
-      failedLine: failedLine, shows: shows, offerAgain: offerAgain, docPicturesOf: docPicturesOf, MAX_NUMBERED: MAX_NUMBERED };
+      failedLine: failedLine, shows: shows, offerAgain: offerAgain, docPicturesOf: docPicturesOf, MAX_NUMBERED: MAX_NUMBERED, jobsOf: jobsOf, MAX_JOBS: MAX_JOBS };
   })();
   /* aiPictureRules:end */
 
@@ -6224,17 +6251,20 @@
     return out;
   }
   function pause(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
-  /* POST /api/chat-edit { step: 'picture', turnId }: the turn's picture made and stored, or the one already made for
-     it. With no answer at all (the connection dropped, or an error page from in front of the API) it is asked once
+  /* POST /api/chat-edit { step: 'picture', turnId[, job] }: the turn's picture made and stored, or the one already made
+     for it. With no answer at all (the connection dropped, or an error page from in front of the API) it is asked once
      more: the server answers a picture it already made without making another [C9]. While the server says it is
-     still being made (409), it is asked again every few seconds, which costs nothing.
+     still being made (409), it is asked again every few seconds, which costs nothing. k: which of the turn's pictures
+     (aiPictureRules.jobsOf; the request names it only past the first, so a turn of one picture asks as it always did).
      -> Promise<{ ok, status, body } | null> — null: no answer */
-  function requestPicture(turnId) {
+  function requestPicture(turnId, k) {
     if (!window.RevampAuth || !RevampAuth.authedFetch) return Promise.resolve(null);
+    var ask = { eventId: eventId, step: 'picture', turnId: turnId };
+    if (k > 0 && k < aiPictureRules.MAX_JOBS) ask.job = k;
     function once() {
       return RevampAuth.authedFetch('/api/chat-edit', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: eventId, step: 'picture', turnId: turnId })
+        body: JSON.stringify(ask)
       }).then(function (res) {
         return res.text().then(function (text) {
           var body = null;
@@ -6572,9 +6602,11 @@
         // stopped while it was being made: the server still finishes it, and the conversation offers it after a reload
         if (r === STOPPED) { stopStep(S.picMake); return; }
         var got = aiPictureRules.outcome(r, madeHere);
-        /* made, but kept off the page by its check: it waits in the tray, nothing is put in with it, and why is said */
+        /* made, but kept off the page by its check: it waits in the tray, nothing is put in with it, and why is said.
+           held: never swapped in later either (QA, 16 Nov 2026: the card said "I did not put it on the page" while the
+           swap step put it in the Overview frame, two people in a no-people picture) */
         if (got.url && got.held) {
-          madePic = { url: got.url, placed: false, offered: false };
+          madePic = { url: got.url, placed: false, offered: false, held: true };
           return pictureHeld(got.why);
         }
         if (got.url) {
@@ -6755,7 +6787,8 @@
         }
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
-      if (madePic && np.apply === 'swap') placeNewPicture(changedEls, done, said);
+      /* a picture its check kept off the page is never put in: it waits in the tray (keepMadePicture) */
+      if (madePic && !madePic.held && np.apply === 'swap') placeNewPicture(changedEls, done, said);
       swaps.forEach(function (s, i) { placeDocPicture(s, S['swap' + i], changedEls, done, said); });
 
       /* sections reworked or written by the AI: asked for side by side (each takes a while), then ONE undo step.
