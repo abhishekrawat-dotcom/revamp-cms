@@ -147,6 +147,11 @@ function chatHistoryText(payload) {
       /* a picture the AI made (or could not make): the model remembers what and where, so "make it brighter"
          or "try another" can mean that picture */
       var picLine = t.newPicture ? chatPicture.historyLine(t.newPicture) : '';
+      /* a turn of several pictures (lib/picture-job.js): a line for each; the plan offered for a yes (turn.offer) */
+      if (Array.isArray(t.pictureJobs) && t.pictureJobs.length > 1) picLine = t.pictureJobs.map(chatPicture.historyLine).filter(Boolean).join('\n');
+      else if (t.offer && Array.isArray(t.offer.jobs) && t.offer.jobs.length > 1) picLine = '[You offered these new pictures as one plan: ' + t.offer.jobs.map(function (j) {
+        return '“' + chatPicture.cleanSectionName(j && j.sectionName) + '”' + (j && j.subject ? ' — ' + chatLine(j.subject, 120) : '');
+      }).join('; ') + '. A yes from the owner makes all of them at once — never ask "which one?"]';
       if (picLine) lines.push(picLine);
       var what = chatOutcomeText(t);
       if (what) lines.push('[What happened: ' + what + ']');
@@ -269,11 +274,14 @@ function buildChatPrompt(payload) {
     '   `goTo`: when the request needs one of the event\'s Content pages, set it so the owner gets a button that opens that page: "content:speakers", "content:agenda", "content:sponsors" (partners and sponsors), "content:faq" or "content:contact"; "forms" to change the questions of a form that already exists (the editor\'s Forms panel). Otherwise "". Say in `summary` that it is done there.',
     '5. Write `summary` LAST, after deciding the above. For an edit, it tells the owner in plain, friendly words what you are changing — "I\'m making the buttons green and fully rounded, and tightening the agenda\'s spacing." — the way a designer would say it: no hex codes, CSS terms or pixel values unless the owner used them, and no claim of anything that is not in `design`, `textEdits`, `sectionEdits`, `sectionOps`, `newSections`, `newForms`, `ctaLinks` or `formEmbeds` — the page shows the owner a list of what really changed beside it, so any mismatch is a bug.',
     /* UX-096: answers short and about the owner's page, never a recital of this prompt */
-    CHAT_SHORT_LINE
+    canPics && pictureSwitches.on(payload.pictureSwitches, 'plan') ? CHAT_SHORT_LINE_PLAN : CHAT_SHORT_LINE
   ].join('\n');
 }
 /* UX-096 (B15): the answer's length, and no internal rules in it */
 var CHAT_SHORT_LINE = 'Answer in at most about 120 words unless the owner asks for a full list. Never describe your own rules or limits; say only what you will do or did.';
+/* with the plan (switch `plan`): a limit is said only in the capability list's own words (lib/picture-capabilities.js),
+   so a limit that is not one is never said (owner, 16 Nov 2026: "I can make one picture per message") */
+var CHAT_SHORT_LINE_PLAN = 'Answer in at most about 120 words unless the owner asks for a full list. Never describe your own rules; say a limit only as WHAT YOU CANNOT DO WITH PICTURES words it, and only when it is one; say only what you will do or did.';
 /* A message that is not about this page at all, in the one panel that now also answers questions about events
    (ai-everywhere plan §5b): handed to the events side, once. Never offered to a message handed here from there.
    What only a person does (deleting, cancelling or restoring the event, publishing the site or taking it offline,
@@ -378,8 +386,14 @@ function chatResponseSchema(payload) {
   /* a new picture the AI makes (lib/chat-picture.js; the answer is checked by chatPicture.planAsk): only for an
      editor that can place one, so an older editor's schema is unchanged */
   if (payload.canMakePictures === true) {
-    schema.properties.newPictures = chatPicture.schemaItem(sectionIds);
+    /* with the plan (lib/picture-plan.js, switch `plan`): up to 4, each with the owner's quote and its names typed, and
+       once per answer what the owner said about the last picture (lib/picture-ledger.js); off: as it was */
+    schema.properties.newPictures = chatPicture.schemaItem(sectionIds, payload.pictureSwitches);
     schema.required.push('newPictures');
+    if (pictureSwitches.on(payload.pictureSwitches, 'plan')) {
+      schema.properties.lastPictureFeedback = require('./picture-job').FEEDBACK_PROP.lastPictureFeedback;
+      schema.required.push('lastPictureFeedback');
+    }
   }
   /* a picture taken out of a document put where a section already has one (lib/doc-pictures.js; the answer is checked
      by its cleanSwaps): only for an editor that puts them in, and only while there are such pictures */
@@ -478,7 +492,41 @@ function chatPictureFocus(focus) {
 function chatLastPicture(turns) {
   var own = (Array.isArray(turns) ? turns : []).filter(function (t) { return !(t && (t.brain === 'dash' || t.brain === 'promo')); });
   var last = own.length ? own[own.length - 1] : null;
-  return last && last.newPicture && typeof last.newPicture === 'object' ? last.newPicture : null;
+  var np = last && last.newPicture && typeof last.newPicture === 'object' ? last.newPicture : null;
+  /* the plan of several pictures kept for a yes (lib/picture-plan.js takeOffer): with its first picture's record */
+  if (np && last.offer && Array.isArray(last.offer.jobs) && last.offer.jobs.length > 1) return Object.assign({}, np, { offerJobs: last.offer.jobs.slice(0, 4) });
+  return np;
+}
+/* the newest stored turn of this chat's own (not the events side's, nor the post and mailer editors'), or null */
+function chatLastOwnTurn(turns) {
+  var own = (Array.isArray(turns) ? turns : []).filter(function (t) { return t && !(t.brain === 'dash' || t.brain === 'promo'); });
+  return own.length ? own[own.length - 1] : null;
+}
+/* The answer the chat model would give to a bare yes to the pictures offered on the last turn (switch `plan`): nothing
+   of its own, so the plan kept on the turn is made (picturePlan.takeOffer) — no model call is made for it */
+function chatYesAnswer() {
+  return { kind: 'edit', summary: '', design: {}, textEdits: [], sectionEdits: [], sectionOps: [], newSections: [], newForms: [], ctaLinks: [], formEmbeds: [],
+    goTo: '', intent: 'make offered pictures', newPictures: [], pictureSwaps: [], docPeople: [], lastPictureFeedback: '' };
+}
+/* What the page itself shows, from the editor's own reading of each section (sectionsContext: `shows`, the pictures it
+   draws, and `logoUnit`) — deterministic, so the AI never calls a banner with its picture empty because a screenshot
+   left the picture out (owner, 16 Nov 2026; baseline R1, M1, V1). -> { line, bannerPicture: true | false | null } */
+function chatPageFacts(sections) {
+  var out = [], bannerPicture = null;
+  (Array.isArray(sections) ? sections : []).slice(0, 40).forEach(function (s) {
+    if (!s || typeof s !== 'object' || s.role === 'nav' || s.role === 'footer' || s.hidden === true) return;
+    var n = parseInt(s.shows, 10);
+    if (!(n >= 0 && n <= 999)) return;
+    var name = '“' + chatPicture.cleanSectionName(s.name || s.id) + '”';
+    var unit = s.logoUnit && typeof s.logoUnit === 'object' && s.logoUnit.present === true;
+    var reads = unit ? chatLine(s.logoUnit.text, 60).replace(/["“”]/g, '') : '';
+    if (s.role === 'hero') bannerPicture = n > 0;
+    out.push((s.role === 'hero' ? 'the banner ' + name : name) + ': ' + (n === 0 ? 'no picture' : n === 1 ? '1 picture' : n + ' pictures') +
+      (unit ? ', and the logo unit' + (reads ? ' (it reads “' + reads + '”)' : '') : ''));
+  });
+  if (!out.length) return { line: '', bannerPicture: null };
+  return { line: 'PAGE FACTS (read from the page itself, not from the screenshots — trust them over what a screenshot seems to show): ' + out.slice(0, 24).join('; ') +
+    '. A banner or section listed with a picture HAS that picture; never call it empty, bare or plain. The logo unit already carries the event\'s name: a new picture never needs it.', bannerPicture: bannerPicture };
 }
 /* the owner's own messages in the two newest stored turns, oldest first: a scene named there ("make a picture of
    the Gateway of India") and placed in this message is still the owner's (chatPicture.planAsk ownerSubject) */
@@ -515,7 +563,11 @@ function learnEdit(req, fb, decoded, payload, eventId, eventData, o) {
     L.recordTurn(fb, { brain: 'edit', decoded: decoded, eventId: eventId, eventName: eventData && eventData.name, eventKind: eventData && eventData.category,
       page: 'editor', intent: o.parsed && o.parsed.intent,
       fallback: f.fallback, words: payload.instruction, did: f.did, outcome: f.outcome, rule: f.rule, turnId: o.turnId, handedFrom: payload.handedFrom,
-      ua: req.headers['user-agent'], screen: payload.screen });
+      ua: req.headers['user-agent'], screen: payload.screen,
+      /* the advanced picture assistant: whether this message corrects the change just before it (ai-learn.js
+         correctionOf), the pictures it planned, and what became of them when that is known now */
+      afterChange: o.afterChange === true, prevQuestion: o.prevQuestion || '', prevTurnId: o.prevTurnId || '', pictures: o.pictures || null,
+      pictureOutcome: o.pictureRefused && o.pictures ? 'refused' : o.falseClaim ? 'false-claim' : '' });
   } catch (err) { console.error('chat-edit: the turn was not recorded — ' + (err && err.message)); }
 }
 
@@ -589,9 +641,40 @@ function handleChatEdit(req, res) {
            AI itself, and every example it gives comes from this event (owner, 16 Nov 2026) */
         if (canPics) Object.assign(payload, chatPicture.promptContext(eventData, eventData.designPlan, payload.sections));
         convData = got[2];
+        /* the advanced picture assistant (switch `plan`): the switches for the prompt and the schema, the sections that
+           take people, what the page itself shows (page facts: the banner HAS its picture), and the pictures of this
+           conversation (the ledger, with what became of the newest turn's pictures) */
+        if (canPics) {
+          payload.pictureSwitches = pictureSw;
+          if (pictureSwitches.on(pictureSw, 'plan')) {
+            lastOwnTurn = chatLastOwnTurn(got[0]);
+            ledger = pictureLedger.clean(ledger.concat(pictureLedger.fromTurn(lastOwnTurn, lastOwnTurn && lastOwnTurn.id)));
+            payload.peopleMap = picturePlan.peopleMap(payload.sections, { designPlan: eventData.designPlan, eventData: eventData });
+            pageFacts = chatPageFacts(payload.sections);
+            payload.pageFacts = pageFacts.line;
+            payload.ledgerLines = pictureLedger.promptLines(ledger);
+          }
+        }
         return got[0];
       });
     });
+    var lastOwnTurn = null, pageFacts = { line: '', bannerPicture: null };
+    /* what the plan of pictures reads (lib/picture-plan.js, and chatPicture.planAsk under it): the page, the owner's
+       words, the day's count, the picture (or the offer) on the last turn, the numbered pictures, the switches */
+    function planCtxOf() {
+      var ownAtt = Math.max(0, Math.min(6, parseInt(payload.attachmentCount, 10) || 0));
+      return {
+        canMakePictures: true, eventId: eventId, sections: payload.sections || [], focus: chatPictureFocus(payload.focus),
+        instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: ownAtt,
+        picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
+        lastTurnPicture: chatLastPicture(payload.turns), earlier: chatEarlierAsks(payload.turns),
+        /* the pictures taken out of documents, numbered after the owner's: the new picture follows them, and may re-create one */
+        numbered: ownAtt + (payload.docPictures || []).length, docPictures: payload.docPictures || [], docFresh: payload.docFresh === true,
+        /* the advanced picture assistant: its switches, and the pictures of this conversation (lib/picture-ledger.js) */
+        switches: pictureSw, ledger: ledger,
+        design: payload.design, ownPrefix: ownPrefix, attachmentUrls: Array.isArray(payload.attachments) ? payload.attachments.slice(0, 6) : []
+      };
+    }
     /* the team's past requests here that worked (lib/ai-habits.js), as examples in the prompt; at most a short wait */
     var examples = teamExamples(fb, { brain: 'edit', page: 'editor' });
     ready.then(function (turns) {
@@ -632,6 +715,12 @@ function handleChatEdit(req, res) {
       function ask() {
         return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined,
           inlineFiles: docs.files.length ? docs.files : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
+      }
+      /* A bare yes to the pictures offered on the last turn (switch `plan`): the plan kept there is made as it was, with no
+         model call (owner, 16 Nov 2026: "yes" was asked again three times; it also saves about $0.045 and 15-30 s) */
+      if (canPics && eventId && pictureSwitches.on(pictureSw, 'plan') && !docs.list.length && !docPicsNow.length && !(Array.isArray(payload.attachments) && payload.attachments.length) &&
+        picturePlan.takeOffer(chatLastPicture(payload.turns), Object.assign({ sectionEdits: [], newSections: [] }, planCtxOf()))) {
+        return { parsed: chatYesAnswer(), shortcut: true };
       }
       return ask().then(function (r) {
         /* Both models refused the request itself (owner, 10 Nov 2026: "adapt the theme for this website from this
@@ -692,6 +781,10 @@ function handleChatEdit(req, res) {
       /* a new picture is number attached + 1; a rework may list it only while the picture is really asked
          for (planAsk below), so it is let through here and taken out again after */
       var newN = canPics && eventId ? attached + 1 : 0;
+      /* with the plan (switch `plan`), up to 4 new pictures, numbered newN, newN + 1, … in the order of newPictures */
+      var planOn = canPics && pictureSwitches.on(pictureSw, 'plan');
+      var topN = newN ? newN + (planOn ? require('./picture-job').MAX_JOBS - 1 : 0) : 0;
+      function isNewN(n) { return !!newN && n >= newN && n <= topN; }
       function picturesOf(v, upTo) {
         var out = [], top = upTo || attached;
         (Array.isArray(v) ? v : []).forEach(function (n) { n = parseInt(n, 10); if (n >= 1 && n <= top && out.indexOf(n) === -1) out.push(n); });
@@ -701,33 +794,39 @@ function handleChatEdit(req, res) {
       (parsed.sectionEdits || []).forEach(function (e) {
         if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || edited[e.sectionId] || !brief(e.instruction)) return;
         edited[e.sectionId] = true;
-        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, newN) });
+        sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, topN) });
       });
 
       /* A new picture (lib/chat-picture.js planAsk): only for an edit, from an editor that can place one, and
          only one. planAsk checks that the owner asked for it, where it goes, what it shows and the day's limit;
          a refusal or a question costs nothing. */
       var pictureAsk = null, pictureSay = '', pictureUnasked = false, picturePending = null, pictureTaken = false;
+      /* with the plan: every picture planned (pictureAsk is the first), its stored job, and what the plan line says */
+      var pictureAsks = [], pictureJobsNow = [], pictureLine = '', pictureSignals = null;
       var pictureWanted = canPics && parsed.kind !== 'reply' && parsed.kind !== 'undo' && Array.isArray(parsed.newPictures) && parsed.newPictures.length > 0;
       /* what planAsk reads: the page, the owner's words, the day's count, and the picture (or the offer) on the last turn */
       var lastPic = canPics ? chatLastPicture(payload.turns) : null;
-      var planCtx = {
-        canMakePictures: true, eventId: eventId, sections: payload.sections || [], focus: chatPictureFocus(payload.focus),
-        instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: ownAttached,
-        picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
-        lastTurnPicture: lastPic, earlier: chatEarlierAsks(payload.turns),
-        /* the pictures taken out of documents, numbered after the owner's: the new picture follows them, and may re-create one */
-        numbered: attached, docPictures: payload.docPictures || [], docFresh: payload.docFresh === true,
-        /* the advanced picture assistant: its switches, and the pictures of this conversation (lib/picture-ledger.js) */
-        switches: pictureSw, ledger: ledger
-      };
+      var planCtx = planCtxOf();
       function usePlanned(planned) {
         planned = planned || {};
-        pictureAsk = planned.ask && typeof planned.ask === 'object' ? planned.ask : null;
-        if (pictureAsk && (pictureAsk.n !== newN || knownSectionIds.indexOf(pictureAsk.sectionId) === -1)) {
-          console.error('chat-edit: a new picture was planned as number ' + pictureAsk.n + ' for "' + chatLine(pictureAsk.sectionId, 60) + '" (expected ' + newN + ') — not made');
-          pictureAsk = null;
-        }
+        var asks = planOn && Array.isArray(planned.asks) ? planned.asks : planned.ask ? [planned.ask] : [];
+        var jobs = planOn && Array.isArray(planned.jobs) ? planned.jobs : [];
+        var seenN = {}, keptAsks = [], keptJobs = [];
+        asks.forEach(function (a, i) {
+          if (!a || typeof a !== 'object') return;
+          if (!isNewN(a.n) || seenN[a.n] || knownSectionIds.indexOf(a.sectionId) === -1) {
+            console.error('chat-edit: a new picture was planned as number ' + a.n + ' for "' + chatLine(a.sectionId, 60) + '" (expected ' + (planOn ? newN + ' to ' + topN : newN) + ') — not made');
+            return;
+          }
+          seenN[a.n] = true;
+          keptAsks.push(a);
+          if (jobs[i]) keptJobs.push(jobs[i]);
+        });
+        pictureAsk = keptAsks[0] || null;
+        pictureAsks = keptAsks;
+        pictureJobsNow = keptJobs.length === keptAsks.length ? keptJobs : [];
+        pictureLine = planned.planLine || '';
+        if (planned.signals) pictureSignals = planned.signals;
         pictureSay = pictureAsk ? '' : chatLine(planned.reply, 600);
         /* "your message did not ask for one" is said only when nothing else was asked for either: beside another
            change, a picture the owner never asked for is dropped without a word */
@@ -742,45 +841,62 @@ function handleChatEdit(req, res) {
             if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || plannedFor[e.sectionId] || !brief(e.instruction)) return false;
             plannedFor[e.sectionId] = true;
             return true;
-          }).map(function (e) { return { sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, newN) }; });
+          }).map(function (e) { return { sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, topN) }; });
         }
-        /* a rework that places the new picture must list it, or the picture would be paid for and never shown */
-        if (pictureAsk && pictureAsk.apply === 'rework' && !sectionEdits.some(function (e) { return e.sectionId === pictureAsk.sectionId && e.pictures.indexOf(newN) !== -1; })) {
-          console.error('chat-edit: the rework that places a new picture in "' + chatLine(pictureAsk.sectionId, 60) + '" is missing — not made');
-          pictureAsk = null;
-          pictureSay = chatPicture.sentence('started');
+        /* a rework that places a new picture must list it, or the picture would be paid for and never shown */
+        var placed = [], placedJobs = [];
+        pictureAsks.forEach(function (a, i) {
+          if (a.apply === 'rework' && !sectionEdits.some(function (e) { return e.sectionId === a.sectionId && e.pictures.indexOf(a.n) !== -1; })) {
+            console.error('chat-edit: the rework that places a new picture in "' + chatLine(a.sectionId, 60) + '" is missing — not made');
+            return;
+          }
+          placed.push(a);
+          if (pictureJobsNow[i]) placedJobs.push(pictureJobsNow[i]);
+        });
+        if (placed.length < pictureAsks.length) {
+          pictureAsks = placed;
+          pictureJobsNow = placedJobs.length === placed.length ? placedJobs : [];
+          pictureAsk = placed[0] || null;
+          if (!pictureAsk) pictureSay = chatPicture.sentence('started');
+          /* the plan line names what is made, so it is said again for what is left */
+          if (planOn) pictureLine = picturePlan.planLineOf(placed, planCtx, pictureJobsNow);
         }
       }
       if (pictureWanted) usePlanned(picturePlan.planPictures(parsed.newPictures, Object.assign({ sectionEdits: sectionEdits }, planCtx)));
       /* A bare yes ("yes", "go ahead") to the offer on the last turn, which the model answered with another question or
          with nothing to make: the offer is made as it was kept — one yes is enough (owner, 16 Nov 2026: "yes" to three
-         offers was answered "Which section would you like to start with?"). Only when the model changed nothing else. */
-      var modelOther = Object.keys(design).length || textEdits.length || sectionEdits.some(function (e) { return e.pictures.indexOf(newN) === -1; }) ||
+         offers was answered "Which section would you like to start with?"). Only when the model changed nothing else.
+         With the plan, a yes to several pictures offered makes them all (lib/picture-plan.js takeOffer). */
+      var modelOther = Object.keys(design).length || textEdits.length || sectionEdits.some(function (e) { return !e.pictures.some(isNewN); }) ||
         ['sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'pictureSwaps'].some(function (k) { return Array.isArray(parsed[k]) && parsed[k].length; });
       if (canPics && eventId && newN && !pictureAsk && parsed.kind !== 'undo' && !modelOther) {
-        var taken = chatPicture.takeOffer(lastPic, Object.assign({ sectionEdits: [] }, planCtx));
+        var taken = picturePlan.takeOffer(lastPic, Object.assign({ sectionEdits: [] }, planCtx));
         if (taken) {
           sectionEdits = [];
           usePlanned(taken);
           if (pictureAsk) { pictureWanted = true; pictureTaken = true; picturePending = null; }
         }
       }
-      /* A rework the model planned around the new picture cannot be done as briefed while no picture is being
-         made — refused, never asked for, or left out of `newPictures` altogether (the model listed number newN
-         in a rework and asked for no picture). Sent on, the redesign would put the section's old picture, or
-         none, where the brief says the new one goes, and the summary would promise a picture never made. */
+      /* A rework the model planned around a new picture cannot be done as briefed while that picture is not being
+         made — refused, never asked for, or left out of `newPictures` altogether (the model listed its number in a
+         rework and asked for no picture). Sent on, the redesign would put the section's old picture, or none, where
+         the brief says the new one goes, and the summary would promise a picture never made. */
       var reworkLost = [];
-      if (newN && !pictureAsk) {
+      var madeN = {};
+      pictureAsks.forEach(function (a) { madeN[a.n] = a; });
+      if (newN) {
         sectionEdits = sectionEdits.filter(function (e) {
-          if (e.pictures.indexOf(newN) === -1) return true;
+          if (!e.pictures.some(function (n) { return isNewN(n) && !madeN[n]; })) return true;
+          /* with the plan, a rework that also places a picture that is made keeps it, and only the lost number goes */
+          if (planOn && e.pictures.some(function (n) { return madeN[n] && madeN[n].sectionId === e.sectionId; })) return true;
           reworkLost.push(e.sectionId);
           return false;
         });
       }
-      /* the new picture's number is kept only by a rework of the section it goes in (never the banner, which is
-         not reworked), and by nothing else */
+      /* a new picture's number is kept only by a rework of the section it goes in (never the banner, which is not
+         reworked), and by nothing else */
       sectionEdits.forEach(function (e) {
-        e.pictures = e.pictures.filter(function (n) { return n <= attached || (pictureAsk && pictureAsk.placement !== 'hero' && e.sectionId === pictureAsk.sectionId && n === newN); });
+        e.pictures = e.pictures.filter(function (n) { return n <= attached || (!!madeN[n] && madeN[n].placement !== 'hero' && e.sectionId === madeN[n].sectionId); });
       });
       var sectionOps = (parsed.sectionOps || []).map(function (o) {
         if (!o || CHAT_SECTION_OPS.indexOf(o.op) === -1 || knownSectionIds.indexOf(o.sectionId) === -1) return null;
@@ -811,7 +927,7 @@ function handleChatEdit(req, res) {
       }
       var skipSwap = {};
       sectionEdits.forEach(function (e) { skipSwap[e.sectionId] = true; });
-      if (pictureAsk) skipSwap[pictureAsk.sectionId] = true;
+      pictureAsks.forEach(function (a) { skipSwap[a.sectionId] = true; });
       var pictureSwaps = payload.docSwaps ? docPictures.cleanSwaps(parsed.pictureSwaps, { sections: payload.sections || [], first: docFirst, last: attached, skip: skipSwap,
         pictures: payload.docPictures || [], people: docPeople, named: namedIds, peopleUsed: keptRe.peopleUsed, dropped: docDropped }) : [];
       /* a swap left out for its shape: the section is reworked with it instead, its frame in the picture's shape */
@@ -854,13 +970,32 @@ function handleChatEdit(req, res) {
       else if (pictureWanted && !pictureAsk && pictureSay && !pictureUnasked) skipped.push(pictureSay);
       /* the offer taken on a bare yes: the model's words were a question, so the answer says what is being made */
       if (pictureTaken && pictureAsk) {
-        summary = chatPicture.sentence('takeOffer', { name: '“' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”', scene: chatLine(pictureAsk.subject, 200),
+        summary = planOn && pictureLine ? pictureLine : chatPicture.sentence('takeOffer', { name: '“' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”', scene: chatLine(pictureAsk.subject, 200),
           rest: (pictureAsk.restNames || []).map(function (x) { return '“' + chatLine(x, 60) + '”'; }).join(' or ') });
+      } else if (planOn && pictureAsk && pictureLine) {
+        /* the plan line (lib/picture-plan.js): which pictures, where, and how many are left today — said in the server's
+           words; the model's summary stays only for the other changes it made */
+        var picturesOnly = !Object.keys(design).length && !textEdits.length && !sectionOps.length && !newSections.length && !formOps.newForms.length &&
+          !formOps.ctaLinks.length && !formOps.formEmbeds.length && !pictureSwaps.length && sectionEdits.every(function (e) { return e.pictures.some(function (n) { return !!madeN[n]; }); });
+        summary = picturesOnly || !summary ? pictureLine : pictureLine + ' ' + summary;
       }
       /* A "reply" that offers a picture (the model's own `newPictures`, else its words: "I can create an image for What
-         Awaits You, …"): kept on the turn, so the owner's yes makes it (owner, 16 Nov 2026) */
-      var replyOffer = canPics && eventId && !pictureAsk && !pictureOffer && !picturePending && parsed.kind === 'reply'
-        ? chatPicture.offerInReply(parsed.newPictures, summary, planCtx) : null;
+         Awaits You, …"): kept on the turn, so the owner's yes makes it (owner, 16 Nov 2026). With the plan, every picture
+         offered is kept, and a yes makes them all (turn.offer). */
+      var offerKept = canPics && eventId && !pictureAsk && !pictureOffer && !picturePending && parsed.kind === 'reply'
+        ? picturePlan.offerPlan(parsed.newPictures, summary, planCtx) : null;
+      var replyOffer = offerKept ? offerKept.record : null;
+      /* A limit claimed that is not one ("I can't see the pictures inside your PDF", "one picture per message", "the
+         banner is empty" while it has its picture): the sentence is replaced by the true line (lib/picture-capabilities.js) */
+      var falseClaim = '';
+      if (planOn) {
+        var claim = require('./picture-capabilities').claimCheck(summary, pictureSw, pageFacts);
+        if (!claim.ok) {
+          console.error('chat-edit: a false claim in the answer was put right (' + claim.codes.join(', ') + ')');
+          summary = claim.summary;
+          falseClaim = claim.codes.join(',');
+        }
+      }
       /* the model asked for no picture but briefed a rework around one: said in the server's words, as the
          answer when nothing else changes, else as a thing not done */
       var asEdit = parsed.kind !== 'reply' && parsed.kind !== 'undo';
@@ -887,13 +1022,19 @@ function handleChatEdit(req, res) {
       if (kind !== 'edit') answer.design = {};
       /* the picture is made in a second step from the stored turn, so it needs an event to keep the turn under */
       if (kind === 'edit' && pictureAsk && userRef) answer.newPicture = chatPicture.answerOf(pictureAsk);
+      /* with the plan, every picture of the plan (lib/picture-job.js answerJob), each asked for by its k */
+      var pictureJob = require('./picture-job');
+      if (answer.newPicture && planOn && pictureJobsNow.length) answer.pictureJobs = pictureJobsNow.map(pictureJob.answerJob);
       /* which address each number taken out of a document is, so the editor puts the right picture in, and those put
          where a section already has a picture (lib/doc-pictures.js) */
       if (kind === 'edit' && (payload.docPictures || []).length) {
         answer.docPictures = docPictures.answerList(payload.docPictures);
         answer.pictureSwaps = pictureSwaps;
       }
-      var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply };
+      var prevTurn = chatLastOwnTurn(payload.turns);
+      var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply, falseClaim: falseClaim,
+        afterChange: !!prevTurn && prevTurn.kind === 'edit', prevQuestion: prevTurn ? String(prevTurn.question || '').slice(0, 300) : '', prevTurnId: prevTurn ? prevTurn.id : '',
+        pictures: planOn ? { planned: pictureAsks.length, signalRegex: !!(pictureSignals && pictureSignals.regex), signalNameRun: !!(pictureSignals && pictureSignals.nameRun), shortcut: r.shortcut === true } : null };
       if (!userRef) { sendJson(res, 200, answer); return learnEdit(req, fb, decoded, payload, eventId, eventData, learnt); }
       /* kept under the person who asked: a reply is finished; a change is "applying" until the editor says how it went */
       var now = new Date().toISOString(), turnRef = userRef.collection('turns').doc();
@@ -908,10 +1049,19 @@ function handleChatEdit(req, res) {
       if (docPicsNow.length) turn.docs = docPictures.turnDocs(docPicsNow);
       /* what the second step makes the picture from: never anything the browser sends then. With no picture made, the
          offer or the question about one, so the owner's answer to it makes it (chatPicture.pendingOf) */
-      if (answer.newPicture) turn.newPicture = chatPicture.turnRecord(pictureAsk, payload.design);
+      if (answer.newPicture) {
+        /* with the plan: each job as lib/picture-job.js keeps it; a turn of several has pictureJobs, job 0 also as
+           newPicture; a turn of one keeps only newPicture */
+        if (planOn && pictureJobsNow.length > 1) { turn.pictureJobs = pictureJobsNow; turn.newPicture = pictureJobsNow[0]; }
+        else turn.newPicture = planOn && pictureJobsNow.length ? pictureJobsNow[0] : chatPicture.turnRecord(pictureAsk, payload.design);
+      }
       else if (pictureOffer) turn.newPicture = pictureOffer.record;
       else if (picturePending && kind !== 'undo') turn.newPicture = picturePending;
-      else if (replyOffer && kind === 'reply') turn.newPicture = replyOffer;
+      else if (replyOffer && kind === 'reply') {
+        turn.newPicture = replyOffer;
+        /* the plan of several offered: a yes makes them all (lib/picture-plan.js takeOffer) */
+        if (planOn && offerKept && offerKept.jobs.length > 1) turn.offer = { jobs: offerKept.jobs, at: now };
+      }
       return Promise.all([
         userRef.set({ uid: uid, email: String(decoded.email || ''), name: chatName(decoded), lastAt: now }, { merge: true }),
         turnRef.set(turn)
@@ -919,6 +1069,9 @@ function handleChatEdit(req, res) {
         answer.turnId = turnRef.id;
         sendJson(res, 200, answer);
         learnEdit(req, fb, decoded, payload, eventId, eventData, Object.assign(learnt, { turnId: turnRef.id }));
+        /* the pictures of this conversation: what became of the newest turn's, and what the owner said about the last one
+           (lib/picture-ledger.js; after the answer, so it never holds it up) */
+        if (planOn) pictureLedger.record(fb, eventId, uid, pictureLedger.fromTurn(lastOwnTurn, lastOwnTurn && lastOwnTurn.id), chatLine(parsed.lastPictureFeedback, 120));
         if (kind !== 'edit') logActivity(fb, eventId, decoded, 'ai-chat', 'Asked ETB2B AI: “' + chatLine(turn.question) + '”' + (kind === 'undo' ? ' — undo' : ' — answered'), { area: 'site' });
       }, function (err) {
         /* the answer is not withheld because it could not be kept: the owner is told the conversation was not saved */
@@ -928,7 +1081,8 @@ function handleChatEdit(req, res) {
            rework that would have placed it */
         if (answer.newPicture) {
           delete answer.newPicture;
-          answer.sectionEdits = answer.sectionEdits.filter(function (e) { return e.pictures.indexOf(newN) === -1; });
+          delete answer.pictureJobs;
+          answer.sectionEdits = answer.sectionEdits.filter(function (e) { return !e.pictures.some(isNewN); });
           if (chatAnswerChanges(answer)) answer.skipped.push(chatPicture.sentence('started'));
           else {
             answer.kind = 'reply';
@@ -1138,4 +1292,4 @@ function handleChatHistory(req, res) {
 
 module.exports = { wire, handleChatEdit, handleChatTurn, handleChatHistory, handleDocPictures };
 /* what lib/api.js's _testHooks hands the tests and tools/ from this file (read there on first use) */
-module.exports._testHooks = { buildChatPrompt, chatView, chatLastPicture, chatHistoryText, chatResponseSchema };
+module.exports._testHooks = { buildChatPrompt, chatView, chatLastPicture, chatHistoryText, chatResponseSchema, chatPageFacts, chatYesAnswer };

@@ -363,7 +363,10 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'brief', turnId: heroTurnId }, 'meera');
   ok(out.status === 200 && out.body.briefs === 0 && imageCalls.length === 1 && JSON.stringify(turnById(EVP, 'u-meera', heroTurnId)) === turnBefore, 'the brief step (not built yet) writes no brief and pays for nothing', JSON.stringify(out.body));
   out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'fit', turnId: heroTurnId, job: 0, frame: '16:9' }, 'meera');
-  ok(out.status === 501 && out.body.code === 'not-supported' && JSON.stringify(turnById(EVP, 'u-meera', heroTurnId)) === turnBefore, 'the fit step (not built yet) says so and changes nothing', JSON.stringify(out.body));
+  /* builder A, 16 Nov 2026: the fit step is built (lib/picture-fit.js, picture-fit.test.js); here the stand-in Storage
+     cannot give the picture back, so it says so in plain words, changes nothing and pays for nothing */
+  ok(out.status >= 400 && out.body.retryable === false && /Nothing on your site changed/.test(out.body.error) && imageCalls.length === 1 && JSON.stringify(turnById(EVP, 'u-meera', heroTurnId)) === turnBefore,
+    'the fit step, with a picture it cannot read, says so and changes nothing', JSON.stringify(out.body));
   out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'brief', turnId: 'bad' }, 'meera');
   ok(out.status === 400, 'a brief step with a turn id that is not one is refused', out.status);
   out = await call('POST', '/api/chat-edit', { eventId: 'qa-no-such-event', step: 'fit', turnId: heroTurnId }, 'meera');

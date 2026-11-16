@@ -260,6 +260,8 @@ function editFacts(answer, o) {
   var outcome = kind === 'edit' ? 'pending' : kind === 'undo' ? 'done' : 'answered', rule = '';
   if (kind === 'reply' && o.pictureRefused) { outcome = 'refused'; rule = 'picture'; }
   else if (kind === 'reply' && answer.goTo) { outcome = 'could-not'; rule = 'sent to ' + str(answer.goTo); }
+  /* a limit the answer claimed that is not one, put right before it was sent (lib/picture-capabilities.js claimCheck) */
+  if (!rule && o.falseClaim) rule = 'false-claim';
   var fallback = kind === 'edit' ? 'change ' + (parts[0] || 'page').replace(/-/g, ' ') : kind === 'undo' ? 'undo change' : 'question';
   return { did: { kind: kind, target: parts.join(',') || (answer.goTo ? 'go:' + answer.goTo : '') }, outcome: outcome, rule: rule, fallback: fallback };
 }
@@ -348,6 +350,41 @@ var COMPLAINT_RE = /\b(?:(?:does\s*n[o'’]?t|is\s*n[o'’]?t|are\s*n[o'’]?t|w
 var HYPOTHETICAL_RE = /\b(?:what\s+(?:happens|would\s+happen|will\s+happen|should\s+happen)\s+(?:if|when)|what\s+if|in\s+case)\b[^.?!\n]*/gi;
 function isComplaint(text) { return COMPLAINT_RE.test(str(text).replace(HYPOTHETICAL_RE, ' ')); }
 
+/* A CORRECTION: the person's next message says the change just made (a picture, most often) is not right. The owner's
+   own words on 16 Nov 2026, none of which the complaint words above caught: "still not fixed", "still it is not fixed",
+   "the response is not acceptable", "you have created a square image and placeholder is rectangular", "this image not
+   seems relevant", "hero section background is completely blank now", "… is not appropriate", "… distorted …",
+   "there are white spaces in the side of images" — and the same ask sent again. A fixed match, never a model; only
+   for a message right after a change (correctionOf's o.afterChange), so a first request is never one.
+   -> the kind ('still-wrong', 'not-acceptable', 'not-relevant', 'shape', 'distorted', 'white-space', 'blank',
+   'repeat') or '' */
+var CORRECTIONS = [
+  ['still-wrong', /\bstill\b[^.?!]{0,30}\b(?:not|n['’]?t|wrong|same|there|showing|broken|bad)\b|\b(?:not|is\s*n['’]?t|was\s*n['’]?t|has\s*n['’]?t\s+been|have\s*n['’]?t)\s+(?:yet\s+|been\s+)?(?:fixed|solved|resolved|corrected|changed)\b|\bsame\s+(?:issue|problem|mistake|thing\s+again)\b/i],
+  ['not-acceptable', /\bnot\s+(?:acceptable|good\s+enough|what\s+i\s+(?:asked|wanted|meant|said))\b|\bunacceptable\b|\bthat['’]?s\s+wrong\b|\bthis\s+is\s+wrong\b/i],
+  ['not-relevant', /\b(?:not|isn['’]?t|doesn['’]?t)\s+(?:seems?\s+|look\s+|looks\s+)?(?:relevant|related|appropriate|suitable|fitting|matching)\b|\birrelevant\b|\binappropriate\b/i],
+  ['shape', /\byou\s+(?:have\s+)?(?:created|made|generated|put)\b[^.?!]{0,60}\b(?:square|rectangular|round|tall|wide)\b[^.?!]{0,40}\b(?:placeholder|frame|box|space|rectangular|square)\b|\b(?:cut\s+off|badly\s+cropped|stretched|squashed|squished)\b/i],
+  ['distorted', /\bdistort(?:ed|ion|s|ing)?\b|\bpixell?ated\b|\bmelted\b|\bbroken\s+(?:image|picture|layout)\b/i],
+  ['white-space', /\bwhite\s+(?:spaces?|bands?|borders?|bars?|gaps?|areas?|edges?)\b|\b(?:empty|blank)\s+(?:spaces?|bands?|gaps?|edges?)\b/i],
+  ['blank', /\b(?:completely|totally|fully|now|has\s+gone|went|is)\s+(?:blank|empty|white)\b/i]
+];
+function wordsOf(s) { return (str(s).toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).join(' '); }
+function correctionOf(text, o) {
+  o = o || {};
+  if (!o.afterChange) return '';
+  var s = str(text).replace(HYPOTHETICAL_RE, ' ');
+  for (var i = 0; i < CORRECTIONS.length; i++) if (CORRECTIONS[i][1].test(s)) return CORRECTIONS[i][0];
+  /* the same ask again, word for word (at least three words: "yes" twice is not a correction) */
+  var now = wordsOf(s), before = wordsOf(o.prevQuestion);
+  if (now && now === before && now.split(' ').length >= 3) return 'repeat';
+  return '';
+}
+/* what became of a picture turn, for the report: one of these, or '' */
+var PICTURE_OUTCOMES = ['placed-first-try', 'repaired', 'held', 'refused', 'false-claim', 'corrected', 'undone'];
+function cleanPictures(v) {
+  if (!isObj(v)) return null;
+  return { planned: Math.max(0, Math.min(4, Math.floor(Number(v.planned) || 0))), signalRegex: v.signalRegex === true, signalNameRun: v.signalNameRun === true, shortcut: v.shortcut === true };
+}
+
 /* The entry kept for one turn (pure: tested as it is). t: the turn as recordTurn takes it. */
 function entryOf(t, nowMs) {
   t = isObj(t) ? t : {};
@@ -370,7 +407,27 @@ function entryOf(t, nowMs) {
     complaint: isComplaint(t.words),
     at: iso(nowMs), updatedAt: iso(nowMs), expireAt: new Date(nowMs + CAPS.keepDays * DAY_MS)
   };
+  /* the advanced picture assistant (16 Nov 2026): a message that says the change before it was not right, the pictures
+     this turn planned, and what became of them */
+  var correction = correctionOf(t.words, { afterChange: t.afterChange === true, prevQuestion: t.prevQuestion });
+  if (correction) { entry.correction = correction; entry.complaint = true; }
+  var pics = cleanPictures(t.pictures);
+  if (pics) entry.pictures = pics;
+  if (PICTURE_OUTCOMES.indexOf(t.pictureOutcome) !== -1) entry.pictureOutcome = t.pictureOutcome;
   return entry;
+}
+/* the turn a correction is about (the person's own, just before): marked corrected, with the kind and by which turn.
+   -> Promise, never rejects */
+function markCorrected(fb, brain, prevTurnId, uid, by) {
+  if (!BRAINS[brain] || !TURN_ID_RE.test(str(prevTurnId))) return Promise.resolve(null);
+  return fb.db.collection(RECORD).where('turnKey', '==', brain + ':' + prevTurnId).limit(1).get().then(function (snap) {
+    var doc = snap && snap.docs && snap.docs[0];
+    var e = doc ? doc.data() || {} : null;
+    if (!e || e.uid !== uid) return null;
+    var patch = { correctedBy: { turnId: str(by.turnId).slice(0, 40), kind: line(by.kind, 20) }, updatedAt: iso(clock.now()) };
+    if (e.pictures || /new-picture/.test(str(e.did && e.did.target))) patch.pictureOutcome = 'corrected';
+    return doc.ref.update(patch).then(function () { tell({ type: 'outcome', id: str(doc.id), turnKey: brain + ':' + prevTurnId, patch: patch }); return patch; });
+  }).then(null, function (err) { warn('correction', 'a correction was not recorded — ' + (err && err.message)); return null; });
 }
 function ringKeyOf(entry) { return personKey(entry.uid) + '~' + (entry.eventId || '_'); }
 /* The entry takes the next slot of the person's ring for its event: the oldest is replaced once the ring is full. */
@@ -440,6 +497,7 @@ function recordTurn(fb, t) {
     var entry = entryOf(Object.assign({}, t, { known: list }), nowMs);
     return writeEntry(fb, entry).then(function (id) {
       tell({ type: 'entry', id: str(id), entry: entry });
+      if (entry.correction && t.prevTurnId) markCorrected(fb, entry.brain, t.prevTurnId, entry.uid, { turnId: t.turnId, kind: entry.correction });
       if (!entry.complaint) return entry;
       return writeNote(fb, noteOf('complaint', {
         decoded: t.decoded, brain: entry.brain, eventId: entry.eventId, eventName: entry.eventName, page: entry.page, tab: entry.tab,
@@ -491,6 +549,8 @@ function recordOutcome(fb, o) {
         if ((outcome === 'failed' || outcome === 'refused') && why) patch.rule = strip(why, { hereId: e.eventId, max: CAPS.ruleChars });
         var at = Date.parse(e.at);
         if (outcome === 'undone' && !isNaN(at)) patch.undoneAfterSec = Math.max(0, Math.round((nowMs - at) / 1000));
+        /* a picture turn undone: the report counts it with the pictures that went wrong */
+        if (outcome === 'undone' && (e.pictures || /new-picture/.test(str(e.did && e.did.target)))) patch.pictureOutcome = 'undone';
         tx.update(doc.ref, patch);
       });
     }).then(function () {
@@ -636,7 +696,7 @@ var RULE_WORDS = {
   delete: 'deleting an event', cancel: 'cancelling an event', publish: 'publishing', unpublish: 'taking a site offline', approve: 'approving',
   restore: 'restoring an event', send: 'sending mail', pay: 'payment', 'edit-site': 'changing the site from outside the editor',
   'set-portal': 'changing an event\'s portal', 'other-event': 'another event (locked to the event)', other: 'something it may not do',
-  picture: 'a picture it would not make', 'not-found': 'an event it could not find', 'unknown-event': 'an event it could not find',
+  picture: 'a picture it would not make', 'false-claim': 'a limit it claimed that was not one (put right before it was sent)', 'not-found': 'an event it could not find', 'unknown-event': 'an event it could not find',
   'unknown-template': 'a template it does not have', 'unknown-kind': 'an answer it could not use', 'totals-unavailable': 'numbers it could not read',
   'totals-timeout': 'numbers that took too long', 'ai-unavailable': 'the AI did not answer', 'ai-bad-output': 'the AI\'s answer could not be used',
   'ai-timeout': 'the AI took too long'
@@ -737,13 +797,25 @@ function buildReport(entries, notes, o) {
   }).sort(function (a, b) { return (a.status === 'resolved') - (b.status === 'resolved') || b.count - a.count; }).slice(0, CAPS.groups);
 
   var changes = list.filter(function (e) { return CHANGES[e.outcome]; }).length, undone = list.filter(function (e) { return e.outcome === 'undone'; }).length;
+  /* the pictures (the advanced picture assistant, 16 Nov 2026): every turn that asked for or made one, and how many went
+     wrong — refused, a limit claimed that was not one, put right by the person's next message, undone */
+  var picTurns = list.filter(function (e) { return e.pictures || /new-picture/.test(str(e.did && e.did.target)) || e.rule === 'picture' || e.pictureOutcome; });
+  var corrected = list.filter(function (e) { return e.correctedBy || e.pictureOutcome === 'corrected'; });
+  var pictures = { turns: picTurns.length, planned: picTurns.reduce(function (n, e) { return n + (e.pictures ? e.pictures.planned || 0 : 0); }, 0),
+    refused: picTurns.filter(function (e) { return e.outcome === 'refused' && e.rule === 'picture'; }).length,
+    falseClaims: list.filter(function (e) { return e.rule === 'false-claim'; }).length,
+    corrected: corrected.length, undone: picTurns.filter(function (e) { return e.outcome === 'undone' || e.pictureOutcome === 'undone'; }).length,
+    yesWithoutModel: picTurns.filter(function (e) { return e.pictures && e.pictures.shortcut; }).length,
+    corrections: groupBy(list.filter(function (e) { return e.correction; }), function (e) { return e.correction; }).map(function (g) {
+      return { kind: g.key, count: g.items.length, examples: examplesOf(g.items, who) };
+    }).sort(function (a, b) { return b.count - a.count; }) };
   return {
     range: o.range || null, names: !!o.names, tests: !!o.tests, capped: !!o.capped,
     totals: { turns: list.length, people: countPeople(list), events: uniq(list.map(function (e) { return e.eventId; }).filter(Boolean)).length,
       changes: changes, undone: undone, undoRate: changes ? Math.round(undone / changes * 100) : 0,
       gaps: list.filter(function (e) { return GAPS[e.outcome]; }).length, qaNotes: qaList.length },
     leftOut: o.tests ? 0 : tests.length + (allNotes.length - qaList.length),
-    top: top, gaps: gaps, wrong: wrong, qa: qa
+    top: top, gaps: gaps, wrong: wrong, qa: qa, pictures: pictures
   };
 }
 
@@ -888,6 +960,7 @@ module.exports._test = {
   strip: strip, cleanIntent: cleanIntent, entryOf: entryOf, noteOf: noteOf, groupOf: groupOf, noteGate: noteGate, resetGate: resetGate,
   buildReport: buildReport, rangeOf: rangeOf, outcomeOf: outcomeOf, isComplaint: isComplaint, browserOf: browserOf, cleanScreen: cleanScreen,
   phoneLike: phoneLike, nameVariants: nameVariants, whyNot: whyNot, maskContact: maskContact, whereOf: whereOf, normError: normError,
+  correctionOf: correctionOf, markCorrected: markCorrected, PICTURE_OUTCOMES: PICTURE_OUTCOMES,
   writeEntry: writeEntry, ringKeyOf: ringKeyOf, gateSize: function () { return Object.keys(gate.seen).length; }, knownEvents: knownEvents, sweep: sweep, clock: clock, PAGES: PAGES,
   resetCaches: function () { namesCache = { at: 0, list: null, pending: null }; compiled = { key: '', items: [] }; lastSweep = 0; warned = {}; resetGate(); },
   listeners: function () { return listeners; }
