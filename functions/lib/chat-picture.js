@@ -1455,8 +1455,12 @@ function planAsk(list, ctx) {
   var elsewhere = !!pend && ((pointed && pointed !== pend.sectionId) || (namedNow.length > 0 && namedNow.indexOf(pend.sectionId) === -1));
   if (answers && bare && pend.sectionId && !pend.next && !elsewhere) {
     var same = e.sectionId === pend.sectionId;
+    /* the close-up offered after a picture was kept off the page: the model's own words for it come first (they name
+       the one object to show), else the scene kept (QA, 16 Nov 2026) */
+    var ownCloseUp = pend.state === 'made' && pend.alternative === 'close-up' && same && !!oneLine(e.subject, SUBJECT_CHARS);
     e = Object.assign({}, e, { sectionId: pend.sectionId, placement: pend.placement || (same ? e.placement : ''), slot: pend.slot || (same ? e.slot : 0),
-      subject: pend.subject || (same ? e.subject : ''), plainSubject: same ? e.plainSubject : '', kind: pend.kind || (same ? e.kind : ''), alt: pend.alt || (same ? e.alt : '') });
+      subject: ownCloseUp ? e.subject : pend.subject || (same ? e.subject : ''), plainSubject: same ? e.plainSubject : '', kind: pend.kind || (same ? e.kind : ''),
+      alt: ownCloseUp ? e.alt : pend.alt || (same ? e.alt : '') });
   }
   /* ... for the picture it offered or asked about, or with a yes for the section pointed at ("go ahead with this
      section"); a picture asked for another section in other words is a new ask, not that yes */
@@ -1663,7 +1667,7 @@ function historyLine(np) {
   /* one its check kept off the page waits in the tray: the owner may say where it goes next, or take the close-up offered */
   if (np.state === 'made' && np.held === true) {
     return '[New picture made for ' + where + ' but kept off the page — it did not pass its check (people, words or a logo where that place takes none) and waits in the tray: ' + oneLine(np.subject, SUBJECT_CHARS) +
-      (np.alternative === 'close-up' ? '. You offered to make the same scene as a close-up of one object in it, with nobody and no writing in it: a yes from the owner makes that now — never ask again' : '') + ']';
+      (np.alternative === 'close-up' ? '. You offered to make the same scene as a close-up of one object in it, with nobody and no writing in it: a yes from the owner makes that now — write its `subject` as that one object, one with no writing, livery or logo on it (a lamp, a window, a railing, a glass, snow on a branch, a material), never a vehicle or a sign, and never ask again' : '') + ']';
   }
   if (np.state === 'made') {
     return '[New picture made for ' + where + ': ' + oneLine(np.subject, SUBJECT_CHARS) +
@@ -1864,6 +1868,10 @@ function siteRules(opts) {
 function subjectPrompt(np, design, kind, level, plan) {
   var hero = np.placement === 'hero', graphic = kind === 'graphic', dark = design.mode === 'dark';
   var subject = oneLine(np.subject, SUBJECT_CHARS).replace(/[\s.!?;,]+$/, '');
+  /* the close-up offered when a picture of the scene kept coming back with what its place does not take: ONE object or
+     detail of the scene, never the scene itself (QA, 16 Nov 2026: told only "show it as a close-up" after the whole
+     scene, the model drew the wide valley again) */
+  var close = np.closeUp === true && !hero;
   var lines = [
     hero
       ? (graphic
@@ -1871,16 +1879,21 @@ function subjectPrompt(np, design, kind, level, plan) {
         : 'Create the wide picture for the hero banner of a professional Economic Times event website: the scene below, which the owner asked for, as a polished, premium key visual — a photograph or a 3-D render, rich in colour, depth and light.')
       : graphic
         ? 'Create one refined graphic illustration (not a photograph) for a section of a professional event website, of the scene below, which the owner asked for. It is artwork, not a diagram: nothing in it is labelled.'
-        : 'Create one editorial photograph for a section of a professional event website, of the scene below, which the owner asked for.',
-    'Scene: ' + subject + '. This scene leads the picture: show it first, concretely and in detail, as the main subject — not as a backdrop to something else — and add nothing to it from any other place or from the event\'s field.'
+        : close
+          ? 'Create one editorial close-up photograph for a section of a professional event website: ONE object or detail taken from the scene below, which the owner asked for, framed tight — never the whole scene.'
+          : 'Create one editorial photograph for a section of a professional event website, of the scene below, which the owner asked for.',
+    close
+      ? 'The scene it comes from: ' + subject + '.'
+      : 'Scene: ' + subject + '. This scene leads the picture: show it first, concretely and in detail, as the main subject — not as a backdrop to something else — and add nothing to it from any other place or from the event\'s field.'
   ];
+  if (np.closeUp === true) lines.push(CLOSE_UP);
   /* nobody in it from the first try where the place takes nobody, or only tiny distant figures (owner, 16 Nov 2026: "a
      seafront at dusk" for By the Numbers came back with people twice, and nothing was put on the page) */
-  if (peopleRule(np) !== 'allowed' && !graphic) lines.push(kind === 'place' ? EMPTY_PLACE : EMPTY_SCENE);
-  if (np.closeUp === true) lines.push(CLOSE_UP);
-  var look = placeLook(subject, plan);
+  if (peopleRule(np) !== 'allowed' && !graphic) lines.push(kind === 'place' && !close ? EMPTY_PLACE : EMPTY_SCENE);
+  /* a close-up is of one thing: no city to draw recognisably */
+  var look = close ? '' : placeLook(subject, plan);
   if (look) lines.push(look);
-  if (look || namesPlace(subject)) lines.push('A city, place or landmark the scene names is drawn true to its real shape, skyline and setting — recognisably that place, never a generic look-alike, and never mixed with another city\'s buildings.');
+  if (!close && (look || namesPlace(subject))) lines.push('A city, place or landmark the scene names is drawn true to its real shape, skyline and setting — recognisably that place, never a generic look-alike, and never mixed with another city\'s buildings.');
   if (hero) lines.push('The event\'s name, date and buttons will be set over the middle, so keep the main forms towards the left and right sides and the lower part, and the centre calmer, softly washed out in a ' + (dark ? 'dark' : 'light') + ' tone for the words.');
   if (np.placement === 'background') lines.push('It sits behind the section\'s text under a veil: calm, soft detail, no strong focal point in the middle.');
   if (!hero && !graphic) lines.push(design.imageStyle ? 'Visual style: ' + String(design.imageStyle).slice(0, 300) + '.' : 'Visual style: high-end editorial photography, natural light, shallow depth of field.');
@@ -2003,7 +2016,7 @@ var EMPTY_PLACES = 'Any landmark, street or public place in it is shown empty, a
 var EMPTY_PLACE = 'Nobody is in it: show the place empty and quiet in a wide view, at an early hour before anyone arrives — no one on its walkways, promenades, steps, shores, seats or streets, and no figure in a window, a boat or a vehicle.';
 var EMPTY_SCENE = 'Nobody is in it: show the scene empty, at an early hour before anyone arrives — no one sitting, standing or passing by, no hands or figures at its edges, and no one in a window, on a screen or in a reflection.';
 /* the other way offered when a picture kept coming back with what its place does not take */
-var CLOSE_UP = 'Show it as a close-up of one object or detail of this scene — its light, a material, a lamp, a railing, a glass or a texture in it — framed tight, so that there is no room for any person, sign or writing.';
+var CLOSE_UP = 'CLOSE-UP: show only one object or detail of this scene — a lamp, a window, a railing, a glass, a wooden beam, snow on a branch, a material or its light — filling the frame, with the rest of the scene at most a soft blur behind it, so that there is no room for any person, sign, livery or writing.';
 /* gen-design's NO PEOPLE rule allows "at most a few small figures far in the distance"; decoration allows none */
 var DISTANT_FIGURES = 'at most a few small figures far in the distance, no face visible.';
 var NOT_EVEN_DISTANT = 'not even small figures far in the distance.';

@@ -303,7 +303,28 @@ var NUMBERS_PIC = { sectionId: 'by-the-numbers', placement: 'picture', slot: 0, 
   ok(c.body.kind === 'edit' && c.body.newPicture && cu.newPicture.closeUp === true && cu.newPicture.subject === SEAFRONT.subject, '(d) the owner\'s yes makes the close-up, even when the model asked again', cu.newPicture);
   callsAt = imageCalls.length;
   mk = await make(c.body.turnId);
-  ok(mk.status === 200 && !mk.body.held && (imageCalls[callsAt] || {}).prompt.indexOf(cp.CLOSE_UP) !== -1, '(d) …made as a close-up of one object in the scene', (imageCalls[callsAt] || {}).prompt);
+  var closePrompt = (imageCalls[callsAt] || {}).prompt || '';
+  /* QA in the browser, 16 Nov 2026: told only "show it as a close-up" after the whole scene and "a wide view", the model
+     drew the wide valley again; a close-up is now asked for as one object, and nothing in its words asks for the view */
+  ok(mk.status === 200 && !mk.body.held && closePrompt.indexOf('Create one editorial close-up photograph for a section of a professional event website: ONE object or detail taken from the scene below') === 0 &&
+    closePrompt.indexOf('The scene it comes from: ' + SEAFRONT.subject + '.') !== -1 && closePrompt.indexOf(cp.CLOSE_UP) !== -1 && closePrompt.indexOf(cp.EMPTY_PLACE) === -1 &&
+    closePrompt.indexOf(cp.EMPTY_SCENE) !== -1 && !/in a wide view|drawn true to its real shape|This scene leads the picture/.test(closePrompt),
+    '(d) …made as a close-up of ONE object of the scene: no wide view, no landmark to draw, nobody in it', closePrompt);
+  await wait();
+  /* the model's own words for the close-up come first on a yes: they name the one object to show */
+  resetChat();
+  answers.push(edit('I\'m making a seafront at dusk for By the Numbers.', { newPictures: [SEAFRONT] }));
+  c = await say('make a picture of a seafront at dusk for this section', { focus: FOCUS_NUMBERS });
+  var sea2 = c.body.turnId;
+  checkAnswers.push({ people: true, text: false, logos: false }, { people: true, text: false, logos: false }, { people: true, text: false, logos: false });
+  mk = await make(sea2);
+  await call('POST', '/api/chat/turn', { eventId: EV, turnId: sea2, status: 'failed', notDone: [mk.body.heldWhy] });
+  await wait();
+  var LAMP = 'a close-up of one brass lantern on a wet stone railing at dusk, warm light on the water blurred behind it';
+  answers.push(edit('I\'m making the close-up: a lantern on the railing.', { newPictures: [Object.assign({}, SEAFRONT, { subject: LAMP, plainSubject: LAMP, alt: 'A brass lantern on a railing at dusk' })] }));
+  c = await say('yes', { focus: FOCUS_NUMBERS });
+  ok(mk.body.held === true && c.body.kind === 'edit' && turn(c.body.turnId).newPicture.closeUp === true && turn(c.body.turnId).newPicture.subject === LAMP,
+    '(d) a yes to the close-up takes the model\'s own words for it (the one object), not the wide scene again', turn(c.body.turnId).newPicture);
   await wait();
   /* the second try passes: no third */
   resetChat();
