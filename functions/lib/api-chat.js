@@ -563,7 +563,11 @@ function learnEdit(req, fb, decoded, payload, eventId, eventData, o) {
     L.recordTurn(fb, { brain: 'edit', decoded: decoded, eventId: eventId, eventName: eventData && eventData.name, eventKind: eventData && eventData.category,
       page: 'editor', intent: o.parsed && o.parsed.intent,
       fallback: f.fallback, words: payload.instruction, did: f.did, outcome: f.outcome, rule: f.rule, turnId: o.turnId, handedFrom: payload.handedFrom,
-      ua: req.headers['user-agent'], screen: payload.screen });
+      ua: req.headers['user-agent'], screen: payload.screen,
+      /* the advanced picture assistant: whether this message corrects the change just before it (ai-learn.js
+         correctionOf), the pictures it planned, and what became of them when that is known now */
+      afterChange: o.afterChange === true, prevQuestion: o.prevQuestion || '', prevTurnId: o.prevTurnId || '', pictures: o.pictures || null,
+      pictureOutcome: o.pictureRefused && o.pictures ? 'refused' : o.falseClaim ? 'false-claim' : '' });
   } catch (err) { console.error('chat-edit: the turn was not recorded — ' + (err && err.message)); }
 }
 
@@ -1027,7 +1031,9 @@ function handleChatEdit(req, res) {
         answer.docPictures = docPictures.answerList(payload.docPictures);
         answer.pictureSwaps = pictureSwaps;
       }
-      var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply, falseClaim: falseClaim, afterPicture: !!lastPic && (lastPic.state === 'made' || lastPic.state === 'failed'),
+      var prevTurn = chatLastOwnTurn(payload.turns);
+      var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply, falseClaim: falseClaim,
+        afterChange: !!prevTurn && prevTurn.kind === 'edit', prevQuestion: prevTurn ? String(prevTurn.question || '').slice(0, 300) : '', prevTurnId: prevTurn ? prevTurn.id : '',
         pictures: planOn ? { planned: pictureAsks.length, signalRegex: !!(pictureSignals && pictureSignals.regex), signalNameRun: !!(pictureSignals && pictureSignals.nameRun), shortcut: r.shortcut === true } : null };
       if (!userRef) { sendJson(res, 200, answer); return learnEdit(req, fb, decoded, payload, eventId, eventData, learnt); }
       /* kept under the person who asked: a reply is finished; a change is "applying" until the editor says how it went */
