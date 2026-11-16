@@ -877,6 +877,26 @@ function insideUnit(el) { return !!(el && el.closest && el.closest('[data-rv-log
   check('C.7 an element removed meanwhile: false', P.place(goneSpot, NEW_PIC, '', h2) === false && gone.getAttribute('src') !== NEW_PIC);
 })();
 
+/* ======================= C.7b the focus point (W2, 16 Nov 2026) =======================
+   The Critic says what a new picture is about (functions/lib/picture-critic.js); the picture is cut around it, and the
+   page keeps that point in view in its frame (object-fit: cover) and on a phone's taller frame: place() sets
+   object-position on a picture, and background-position on a background with no gradient over it or on the banner. */
+(function () {
+  var g = page(GEN), h = H(g, { focus: { x: 0.2, y: 0.75 } });
+  var t = P.target(sec(g, 'venue'), { placement: 'picture' }, null, h);
+  check('C.7b a picture placed with a focus: its object-position is that point', P.place(t, NEW_PIC, 'a hall', h) === true && q(g, 'img.venue-pic').style.objectPosition === '20% 75%', q(g, 'img.venue-pic').style.objectPosition);
+  var t2 = P.target(sec(g, 'about'), { placement: 'background' }, null, h);
+  P.place(t2, NEW_PIC, '', h);
+  check('C.7b a background under a gradient keeps its position (the gradient is laid out with it)', !q(g, '.about-bg').style.backgroundPosition, q(g, '.about-bg').style.backgroundPosition);
+  var g2 = page(GEN), h2 = H(g2);
+  var t3 = P.target(sec(g2, 'venue'), { placement: 'picture' }, null, h2);
+  P.place(t3, NEW_PIC, 'a hall', h2);
+  check('C.7b no focus (every switch off): nothing set, as before', !q(g2, 'img.venue-pic').style.objectPosition);
+  var g3 = page(GEN), h3 = H(g3, { focus: { x: 3, y: -1 } });
+  P.place(P.target(sec(g3, 'venue'), { placement: 'picture' }, null, h3), NEW_PIC, 'a hall', h3);
+  check('C.7b a focus out of the picture is not used', !q(g3, 'img.venue-pic').style.objectPosition);
+})();
+
 /* ======================= C.8 unitState ======================= */
 (function () {
   var g = page(GEN), s0 = P.unitState(g.doc);

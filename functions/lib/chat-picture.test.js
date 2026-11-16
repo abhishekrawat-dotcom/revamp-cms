@@ -1123,8 +1123,10 @@ function entry(sectionId, placement, extra) {
   check(String(secondCall.prompt).indexOf(firstCall.prompt + ' SECOND TRY, STRICT: the picture first made from these words had people in it, which this place does not allow. This one must have not one person, figure or human shape anywhere') === 0,
     'the second is asked with the same words and a stronger line, last, naming what the first had', String(secondCall.prompt).slice(-400));
   check(secondCall.opts && secondCall.opts.deadlineAt <= firstCall.opts.deadlineAt - cp.CHECK_RESERVE_MS && secondCall.opts.aspectRatio === '16:9', 'the second keeps time back for its own check', J(secondCall.opts));
-  check(FB.docs[QPATH].made === 3 && FB.docs[QPATH].failed === 0 && recorded.length === recAt + 2 && recorded.slice(-2).every(function (u) { return u.pictures === 1; }),
-    'both pictures count in the person\'s day and in the event\'s usage', J(FB.docs[QPATH]));
+  /* owner, 16 Nov 2026: a remake of the same picture does not use one of the day's 20 pictures; it counts toward the
+     day's ceiling of tries that did not pass (before: both counted as pictures made, made 3) */
+  check(FB.docs[QPATH].made === 2 && FB.docs[QPATH].failed === 1 && recorded.length === recAt + 2 && recorded.slice(-2).every(function (u) { return u.pictures === 1 && u.usd === 0.039; }),
+    'the first counts as one of the person\'s pictures, the remake as a try toward the day\'s ceiling; both in the event\'s usage, each with its price', J(FB.docs[QPATH]));
   check(FB.docs[ref.path].newPicture.tries === 2 && J(FB.docs[ref.path].newPicture.checks) === J([{ people: true, text: false, logos: false }, { people: false, text: false, logos: false }]), 'the turn keeps both looks', J(FB.docs[ref.path].newPicture));
   /* found wanting three times (owner, 16 Nov 2026: a third try with the strictest line, then another way offered —
      never only a failure): kept off the page, in the tray, said plainly, with the close-up offered */
@@ -1143,8 +1145,8 @@ function entry(sectionId, placement, extra) {
     third.opts && third.opts.deadlineAt <= (imageCalls[callsAt].opts.deadlineAt - cp.CHECK_RESERVE_MS),
     'the third is asked with the strictest line, which changes the view itself', String(third.prompt).slice(-500));
   check(FB.docs[ref.path].newPicture.state === 'made' && FB.docs[ref.path].newPicture.held === true && FB.docs[ref.path].newPicture.alternative === 'close-up' && FB.docs[ref.path].newPicture.tries === 3 &&
-    FB.docs[QPATH].made === 6 && /kept it off the page \(it did not pass its check\)/.test(activity[activity.length - 1].detail),
-    'the turn says so (with the close-up offered), all three pictures are counted, and the History says it was kept off the page', J(activity[activity.length - 1]));
+    FB.docs[QPATH].made === 3 && FB.docs[QPATH].failed === 3 && /kept it off the page \(it did not pass its check\)/.test(activity[activity.length - 1].detail),
+    'the turn says so (with the close-up offered), the first counts as a picture and the two remakes as tries (owner, 16 Nov 2026), and the History says it was kept off the page', J(activity[activity.length - 1]) + ' ' + J(FB.docs[QPATH]));
   check(/^\[New picture made for “Agenda” \(background\) but kept off the page — it did not pass its check[^\]]*waits in the tray: flowing lines of light/.test(cp.historyLine(FB.docs[ref.path].newPicture)) &&
     /^\[New picture made for “Agenda” \(background\): /.test(cp.historyLine(Object.assign({}, FB.docs[ref.path].newPicture, { held: false }))),
     'the chat model remembers that it was kept off the page and waits in the tray', cp.historyLine(FB.docs[ref.path].newPicture));
@@ -1172,17 +1174,26 @@ function entry(sectionId, placement, extra) {
   res = await run(ref);
   check(/people: true if any person can be seen who is more than a tiny figure far in the distance[^]*false if there is nobody, or only a few tiny figures far away/.test(checkCalls[checkCalls.length - 1].prompt),
     'the owner\'s place scene is checked against its own rule: a few tiny distant figures pass', checkCalls[checkCalls.length - 1].prompt);
-  /* the day used up by the first: no second picture */
+  /* the day's ceiling of tries that did not pass reached by a remake (owner, 16 Nov 2026: a remake does not use one of the
+     day's pictures, so a person on their 20th picture still gets its remake; the ceiling of 20 failed tries stops it) */
   FB.docs[QPATH] = { day: TODAY, made: 19, failed: 0 };
   ref = turnOf(askOf('hero', 'hero'));
-  imageAnswers.push(picture());
-  checkAnswers.push(found(false, false, true));
+  imageAnswers.push(picture(), picture(PNG2));
+  checkAnswers.push(found(false, false, true), found(false, false, false));
   callsAt = imageCalls.length;
   res = await run(ref);
-  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['logos'], 'limit') + ' ' + cp.alternativeLine(['logos'], 'limit') && imageCalls.length === callsAt + 1 && FB.docs[QPATH].made === 20,
-    'no picture left for a second try: the first is kept off the page, and why is said', J(res));
-  check(res.body.heldWhy === 'The new picture had a logo in it, but pictures I make carry no words or logos, so I did not put it on the page — a second try would have gone past your new pictures for today. You can attach a picture of your own, and I\'ll put it in.' &&
-    !FB.docs[ref.path].newPicture.alternative, 'in plain words, and with no picture left today only the owner\'s own is offered', res.body.heldWhy);
+  check(res.status === 200 && !res.body.held && imageCalls.length === callsAt + 2 && savedOf(res).bytes === BYTES2 && FB.docs[QPATH].made === 20 && FB.docs[QPATH].failed === 1,
+    'the 20th picture of the day still gets its remake: it does not use one of the 20', J(res) + ' ' + J(FB.docs[QPATH]));
+  FB.docs[QPATH] = { day: TODAY, made: 0, failed: 19 };
+  ref = turnOf(askOf('hero', 'hero'));
+  imageAnswers.push(picture(), picture());
+  checkAnswers.push(found(false, false, true), found(false, false, true));
+  callsAt = imageCalls.length;
+  res = await run(ref);
+  check(res.status === 200 && res.body.held === true && res.body.heldWhy === cp.heldSentence(['logos'], 'limit', 2) + ' ' + cp.alternativeLine(['logos'], 'limit') && imageCalls.length === callsAt + 2 && FB.docs[QPATH].made === 1 && FB.docs[QPATH].failed === 20,
+    'no try left for a third: the second is kept off the page, and why is said', J(res) + ' ' + J(FB.docs[QPATH]));
+  check(res.body.heldWhy === 'I made the new picture twice, and the second one still had a logo in it, but pictures I make carry no words or logos, so I did not put it on the page — today\'s tries for pictures that did not pass their check are used up. You can attach a picture of your own, and I\'ll put it in.' &&
+    !FB.docs[ref.path].newPicture.alternative, 'in plain words, and with no try left today only the owner\'s own is offered', res.body.heldWhy);
   /* the second could not be made: its reservation moves to failed, the first goes to the tray */
   FB.docs[QPATH] = { day: TODAY, made: 0, failed: 0 };
   ref = turnOf(askOf('hero', 'hero'));

@@ -33,11 +33,16 @@
      shapeForLayout(text)    -> the shape of a section's picture from the words of its planned layout: a band or a strip
                              21:9, a picture across the section 16:9, else 4:3 (site generation, before its code is
                              written; the code is then told to give the frame that shape)
-     crop(bytes, ratio, o)   -> Promise<{ bytes, width, height, cropped }>: the picture cut, centred, to exactly that
-                                proportion, in its own format (PNG stays lossless). It never rejects: the picture comes
-                                back as it was when it needs no cut or cannot be cut (no sharp on the machine, bytes
-                                that are not a PNG, JPEG or WebP it can read), and the frame's object-fit: cover does
-                                the rest. o.label names the picture in the log line (never its bytes).
+     crop(bytes, ratio, o)   -> Promise<{ bytes, width, height, cropped, left, top, sourceWidth, sourceHeight }>: the
+                                picture cut to exactly that proportion, in its own format (PNG stays lossless): centred,
+                                or around o.focus { x, y } (0 to 1 across the picture, the point the Critic says the
+                                picture is about: lib/picture-critic.js), held inside the picture. It never rejects: the
+                                picture comes back as it was when it needs no cut or cannot be cut (no sharp on the
+                                machine, bytes that are not a PNG, JPEG or WebP it can read), and the frame's
+                                object-fit: cover does the rest. o.label names the picture in the log line (never its
+                                bytes). left / top: where the cut starts in the picture it was cut from.
+     focusIn(focus, cut)     -> the focus point as it falls in the cut picture ({ x, y }, 0 to 1), or null: what the page's
+                                object-position is set from (editor-ai-picture.js place), so a phone frame keeps it too
    sharp is an optional native module (lib/pictures.js uses it the same way): looked up once, on first use. */
 'use strict';
 
@@ -123,6 +128,20 @@ function loadSharp() {
   return sharpModule;
 }
 
+/* a focus point, cleaned: { x, y } each from 0 to 1, or null */
+function focusOf(v) {
+  if (!v || typeof v !== 'object') return null;
+  var x = +v.x, y = +v.y;
+  return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x: x, y: y } : null;
+}
+/* the focus of the picture a cut came from, as it falls in the cut: object-position's percentages */
+function focusIn(focus, cut) {
+  var f = focusOf(focus);
+  if (!f || !cut || !(cut.sourceWidth > 0 && cut.sourceHeight > 0 && cut.width > 0 && cut.height > 0)) return null;
+  function at(v) { return Math.round(Math.max(0, Math.min(1, v)) * 1000) / 1000; }
+  return { x: at((f.x * cut.sourceWidth - (cut.left || 0)) / cut.width), y: at((f.y * cut.sourceHeight - (cut.top || 0)) / cut.height) };
+}
+
 function crop(bytes, ratio, o) {
   o = o || {};
   var same = { bytes: bytes, width: 0, height: 0, cropped: false };
@@ -138,13 +157,18 @@ function crop(bytes, ratio, o) {
     var turned = (meta.orientation || 1) >= 5;
     var w = turned ? meta.height : meta.width, h = turned ? meta.width : meta.height;
     if (!(w > 0 && h > 0)) return same;
-    if (Math.abs(Math.log((w / h) / ratio)) <= TOLERANCE) return { bytes: bytes, width: w, height: h, cropped: false };
+    if (Math.abs(Math.log((w / h) / ratio)) <= TOLERANCE) return { bytes: bytes, width: w, height: h, cropped: false, left: 0, top: 0, sourceWidth: w, sourceHeight: h };
     var cw = w, ch = h;
     if (w / h > ratio) cw = Math.max(1, Math.min(w, Math.round(h * ratio)));
     else ch = Math.max(1, Math.min(h, Math.round(w / ratio)));
-    var pipe = sharp(bytes, input).rotate().extract({ left: Math.floor((w - cw) / 2), top: Math.floor((h - ch) / 2), width: cw, height: ch });
+    /* centred, or around the focus point, never past the picture's own edges */
+    var f = focusOf(o.focus);
+    var left = f ? Math.round(f.x * w - cw / 2) : Math.floor((w - cw) / 2), top = f ? Math.round(f.y * h - ch / 2) : Math.floor((h - ch) / 2);
+    left = Math.max(0, Math.min(w - cw, left));
+    top = Math.max(0, Math.min(h - ch, top));
+    var pipe = sharp(bytes, input).rotate().extract({ left: left, top: top, width: cw, height: ch });
     pipe = meta.format === 'jpeg' ? pipe.jpeg({ quality: 92 }) : meta.format === 'webp' ? pipe.webp({ quality: 92 }) : pipe.png();
-    return pipe.toBuffer().then(function (out) { return { bytes: out, width: cw, height: ch, cropped: true }; });
+    return pipe.toBuffer().then(function (out) { return { bytes: out, width: cw, height: ch, cropped: true, left: left, top: top, sourceWidth: w, sourceHeight: h }; });
   }).catch(function (err) {
     console.error('picture-shape: ' + (o.label || 'a picture') + ' could not be cut to its frame — ' + (err && err.message));
     return same;
@@ -155,5 +179,7 @@ module.exports = {
   ASPECTS: ASPECTS, WORDS: WORDS, LANDSCAPE: LANDSCAPE, FRAME_SHAPES: FRAME_SHAPES, DEFAULT_ASPECT: DEFAULT_ASPECT,
   NEW_FRAME_ASPECT: NEW_FRAME_ASPECT, TOLERANCE: TOLERANCE,
   isAspect: isAspect, ratioOf: ratioOf, nearest: nearest, frameOf: frameOf, frameText: frameText, frameFromText: frameFromText,
-  cssRatio: cssRatio, targetRatio: targetRatio, crop: crop, SITE_SHAPES: SITE_SHAPES, shapeForLayout: shapeForLayout
+  cssRatio: cssRatio, targetRatio: targetRatio, crop: crop, SITE_SHAPES: SITE_SHAPES, shapeForLayout: shapeForLayout,
+  /* the advanced picture assistant (W2, 16 Nov 2026): a cut around the Critic's focus point */
+  focusOf: focusOf, focusIn: focusIn
 };

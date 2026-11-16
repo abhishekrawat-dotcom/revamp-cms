@@ -2360,6 +2360,11 @@ function madeBody(np) {
   var body = { url: np.url, n: np.n, sectionId: np.sectionId, placement: np.placement, slot: np.slot || 0, apply: np.apply, alt: np.alt || '', kind: np.kind };
   /* made, but not to be put on the page: the editor puts it in the tray and says why */
   if (np.held === true) { body.held = true; body.heldWhy = String(np.heldWhy || 'The new picture did not pass its check, so I did not put it on the page.'); }
+  /* the advanced picture assistant (W2, its switches on): where the picture is about (object-position on the page), one
+     true line of what happened, and for a picture kept off the page what "Fix it" asks for */
+  if (np.focus && typeof np.focus === 'object') body.focus = { x: np.focus.x, y: np.focus.y };
+  if (np.line) body.line = String(np.line);
+  if (np.held === true && np.fix) body.fix = String(np.fix);
   return body;
 }
 
@@ -2456,7 +2461,9 @@ function heldSentence(flags, why, tries) {
   var rule = people && marks ? 'this place shows no people, and pictures I make carry no words or logos' : people ? 'this place shows no people' : 'pictures I make carry no words or logos';
   var lead = n >= 2 ? 'I made the new picture ' + TIMES[n] + ', and the ' + (n === 2 ? 'second' : 'last') + ' one still had ' + found + ' in it' : 'The new picture had ' + found + ' in it';
   var another = n >= 2 ? 'another try' : 'a second try';
-  var tail = why === 'limit' ? ' — ' + another + ' would have gone past your new pictures for today'
+  /* 'limit': a remake or a repair does not use one of the day's pictures, but counts toward its ceiling of tries that did
+     not pass (owner, 16 Nov 2026) — that ceiling is what stops another */
+  var tail = why === 'limit' ? ' — today\'s tries for pictures that did not pass their check are used up'
     : why === 'time' ? ' — there was no time left for ' + another
     : why === 'failed' ? ' — ' + another + ' could not be made' : '';
   return lead + ', but ' + rule + ', so I did not put it on the page' + tail + '.';
@@ -2543,21 +2550,60 @@ function make(deps, o) {
         tx.set(qRef, { day: day, made: q.made + 1, failed: q.failed, updatedAt: iso });
         var making = Object.assign({}, np, { state: 'making', makingAt: iso, quotaDay: day });
         put(making);
-        return { go: making, jobs: pictureJob.hasJobs(turn) };
+        /* the owner's words of the turn: what the Director reads the ask from (lib/picture-brief.js) */
+        return { go: making, jobs: pictureJob.hasJobs(turn), question: turn && typeof turn.question === 'string' ? turn.question : '' };
       });
     });
   }).then(function (r) {
     if (r.out) return r.out;
-    return makeIt(deps, fb, eventId, turnRef, turnId, qRef, r.go, Object.assign({}, o, { job: k, jobs: r.jobs === true }));
+    return makeIt(deps, fb, eventId, turnRef, turnId, qRef, r.go, Object.assign({}, o, { job: k, jobs: r.jobs === true, question: r.question }));
   }, function (err) {
     console.error('chat-picture: the picture of ' + eventId + '/' + turnId + ' could not be started — ' + (err && err.message));
     return { status: 500, body: errorBody('chat-picture-state') };
   });
 }
 
+/* ---------- the runner's own words and prices (the advanced picture assistant, W2) ---------- */
+/* what one picture of the picture model costs, by model (Google's list price, 16 Nov 2026: 1,290 output tokens at
+   $30 a million): written on its usage row, which gemini.js leaves without a price, so the event's AI usage shows what
+   pictures cost (plan §5: about $0.15-0.18 a picture with the brief, the Critic and a repair's share) */
+var IMAGE_USD = { 'gemini-2.5-flash-image': 0.039 };
+/* a job given more time, when the Director or the Critic works on it: a brief, a repair and a remake each with their
+   look, inside the platform's 300 s (lib/http.js); today's path, and the other features that share DEADLINE_MS
+   (ai-hero, share-still, phone-banner), keep 180 s */
+var ADVANCED_DEADLINE_MS = 240000;
+/* the rules a picture's prompt ends with for its place: site generation's STRICT words, and who may be in it */
+function strictRules(np) {
+  np = np || {};
+  var hero = np.placement === 'hero', kind = kindOf(np), graphic = kind === 'graphic';
+  var rule = peopleRule(np);
+  var rules = siteRules(hero ? (graphic ? { hero: true, graphic: true } : { hero: true, keyVisual: true }) : { kind: kind, graphic: graphic });
+  return rule === 'none' ? rules + ' ' + NO_FIGURES : rule === 'distant' ? rules + ' ' + NO_FIGURE_SHAPES : rules;
+}
+/* the edit that repairs what the Critic found: that picture, changed only where it is wrong */
+function repairPrompt(change, np) {
+  return 'Edit this picture. ' + oneLine(change, 300).replace(/[.;\s]+$/, '') + '. Keep everything else exactly as it is — the same scene, composition, viewpoint, light, colours and style — and keep it a full-bleed picture that fills its whole canvas, edge to edge, with no border, frame or mat. ' + strictRules(np);
+}
+/* what a clean picture's one true line says it was checked for */
+function checkedLine(rule, rev) {
+  if (!rev || !rev.found) return 'I could not check this picture, so look it over before you publish.';
+  if (rule === 'allowed') return 'I checked it before putting it in: no words or logos in it' + (rev.indianWomen === 'ok' ? ', and the people in it are Indian, with women among them' : '') + '.';
+  return 'I checked it before putting it in: ' + (rule === 'distant' ? 'no one close up' : 'nobody in it') + ', and no words or logos.';
+}
+function capFirst(s) { s = String(s || ''); return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+/* why a picture the Critic kept off the page is not there, in its own plain words */
+function heldCritic(words, why) {
+  var tail = why === 'limit' ? ' — today\'s tries for pictures that did not pass their check are used up'
+    : why === 'time' ? ' — there was no time left for another try'
+    : why === 'failed' ? ' — the fix could not be made' : '';
+  return capFirst(words.replace(/[.\s]+$/, '')) + ', so I did not put it on the page' + tail + '.';
+}
+
 function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
   function record(usage) {
     if (!usage || typeof deps.record !== 'function') return;
+    /* the picture model's price on its row (gemini.js gives none), so the event's AI usage shows what pictures cost */
+    if (usage.pictures > 0 && usage.usd == null && IMAGE_USD[usage.model || gemini.GEMINI_IMAGE_MODEL]) usage = Object.assign({}, usage, { usd: IMAGE_USD[usage.model || gemini.GEMINI_IMAGE_MODEL] * usage.pictures });
     try { deps.record(usage); } catch (err) { console.error('chat-picture: usage not recorded — ' + (err && err.message)); }
   }
   /* any failure: the turn is marked failed and the reservation moves to failed, in one transaction; the
@@ -2585,31 +2631,66 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
     try { deps.recordCheck(usage); } catch (err) { console.error('chat-picture: check usage not recorded — ' + (err && err.message)); }
   }
 
-  /* The runner's parts (plan of 16 Nov 2026, Step 0), each behind its switch; with every switch off — and until each
-     part is built — this is the runner as it was: today's prompt, no reference shown, today's check, a stronger
-     remake and a strictest third, then kept off the page. */
+  /* The runner's parts (plan of 16 Nov 2026), each behind its switch; with every switch off this is the runner as it
+     was: today's prompt, no reference shown, today's check, a stronger remake and a strictest third, then kept off the
+     page. With the Director (`brief`) or the Critic (`critic`) on, a job also writes its stage as it goes, keeps its
+     uncut picture and the point it is about, and ends with one true line of what happened (`advanced`). */
   var sw = o.switches || pictureSwitches.OFF, caller = o.caller || (np.area === 'promotions' ? 'promo' : 'chat');
   var part = parts();
   function on(name) { return pictureSwitches.on(sw, name, caller); }
-  var prompt;
-  try {
-    /* the Director's brief (lib/picture-brief.js), else today's prompt */
-    prompt = (np.brief && on('brief') && part.brief.promptFromBrief(np.brief, np, { eventId: eventId, eventData: o.eventData, switches: sw })) || promptFor(np, o.eventData);
-  } catch (err) {
-    console.error('chat-picture: the prompt of ' + eventId + '/' + turnId + ' could not be built — ' + (err && err.message));
-    return fail('ai-bad-output', 502);
-  }
-  var started = Date.now(), deadlineAt = started + DEADLINE_MS;
+  var advanced = on('brief') || on('critic');
+  var critic = on('critic');
+  var started = Date.now(), deadlineAt = started + (advanced ? ADVANCED_DEADLINE_MS : DEADLINE_MS);
   var rule = peopleRule(np);
+  var ev = o.eventData && typeof o.eventData === 'object' ? o.eventData : {};
+  var prompt;
   /* the reference pictures the picture model is shown with this job (lib/picture-refs.js): none while `refs` is off */
   var refs = [];
-  /* One call to the picture model. -> Promise<{ bytes, type } | { code, status }>, never rejects */
   /* the shape it is asked for (the nearest the model takes) and the exact proportion it is cut to before it is checked
      and stored: the frame's, else that shape's (the model's "4:3" is 1184 x 864) */
   var askShape = aspectOf(np), cutTo = shape.targetRatio({ frame: np.frame, aspect: askShape });
-  function picture(text, until) {
+  /* this job's own course: what was done to it, for its one true line; trims, repairs and remakes made */
+  var st = { trimmed: false, repairs: 0, remakes: 0, notes: [], repairsDone: [] };
+
+  /* where the job is, written on it as it goes (the card shows it); never in the way of the picture */
+  function stage(s) {
+    if (!advanced) return Promise.resolve();
+    return fb.db.runTransaction(function (tx) {
+      return tx.get(turnRef).then(function (snap) {
+        var cur = snap && snap.exists ? snap.data() : null, job = pictureJob.jobOf(cur, k);
+        if (!job || job.state !== 'making') return;
+        pictureJob.writeJob(tx, turnRef, k, { stage: s }, cur);
+      });
+    }).catch(function (err) { console.error('chat-picture: the stage of ' + eventId + '/' + turnId + ' was not written — ' + (err && err.message)); });
+  }
+
+  /* the Director's brief (lib/picture-brief.js): written by the brief step for every new picture of a message; a job
+     that has none (a turn of one picture, an editor that sent no brief step) gets its own here, inside its deadline */
+  function briefIt() {
+    if (!on('brief') || np.brief || np.mode === 'edit' || np.mode === 'place') return Promise.resolve();
+    return stage('brief').then(function () {
+      return part.brief.writeBriefs([np], { fb: fb, eventId: eventId, eventData: ev, ownerWords: o.question || '', styleCard: ev.pictureStyle || null,
+        switches: sw, caller: caller, deadlineAt: Math.min(deadlineAt - 120000, Date.now() + 45000), record: deps.recordBrief || deps.recordCheck || null });
+    }).then(function (briefs) {
+      var b = Array.isArray(briefs) ? pictureJob.briefOf(briefs[0]) : null;
+      if (b) np = Object.assign({}, np, { brief: b });
+      /* the site's look, kept for its next pictures when it has none yet */
+      if (b && briefs.styleCard && !ev.pictureStyle) return part.brief.writeStyleCard({ fb: fb, eventId: eventId, eventData: ev, card: briefs.styleCard });
+    }).catch(function (err) { console.error('chat-picture: the brief of ' + eventId + '/' + turnId + ' was not written — ' + (err && err.message)); });
+  }
+  function buildPrompt() {
+    /* the Director's brief (lib/picture-brief.js), else today's prompt */
+    prompt = (np.brief && on('brief') && part.brief.promptFromBrief(np.brief, np, { eventId: eventId, eventData: o.eventData, switches: sw })) || promptFor(np, o.eventData);
+  }
+
+  /* One call to the picture model. -> Promise<pic | { code, status }>, never rejects. pic: { bytes, type, width,
+     height } cut to its frame, and with the Critic on also original (the uncut picture, its flat border trimmed: what
+     the Critic looks at, and what a focus cut and a later re-fit start from) and cut (where the cut fell). base: a
+     picture to edit (a repair) instead of making one. */
+  function picture(text, until, base) {
     var opts = { route: 'chat-picture', eventId: eventId, timeoutMs: TIMEOUT_MS, deadlineAt: until, aspectRatio: askShape };
-    if (refs.length) opts.images = refs.slice(0, pictureJob.MAX_REFS);
+    if (refs.length && !base) opts.images = refs.slice(0, pictureJob.MAX_REFS);
+    if (base) opts.image = { mimeType: base.type, data: base.bytes.toString('base64') };
     var call;
     try { call = Promise.resolve(gemini.callGeminiImage(text, opts)); } catch (err) { call = Promise.reject(err); }
     return call.then(function (r) {
@@ -2625,30 +2706,48 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
         console.error('chat-picture: the picture model answered ' + bytes.length + ' bytes that are not a PNG, JPEG or WebP');
         return { code: 'ai-bad-output', status: 502 };
       }
-      /* cut to its frame's exact proportion: what is checked and stored is what the frame shows */
-      return shape.crop(bytes, cutTo, { label: 'the picture of ' + eventId + '/' + turnId }).then(function (cut) {
-        return { bytes: cut.bytes, type: cut.cropped ? sniff(cut.bytes) || type : type, width: cut.width, height: cut.height };
-      });
+      return shaped(bytes, type);
     }, function (err) {
       console.error('chat-picture: the picture call of ' + eventId + '/' + turnId + ' failed — ' + (err && err.message));
       return { code: 'ai-unavailable', status: 502 };
     });
   }
+  /* a picture made (or edited) as it is checked and stored: cut to its frame's exact proportion, so what is checked and
+     stored is what the frame shows; with the Critic on, a flat border the model drew into it trimmed first (free) */
+  function shaped(bytes, type) {
+    var trim = critic ? part.critic.trimBorders(bytes, { label: 'the picture of ' + eventId + '/' + turnId }) : Promise.resolve(null);
+    return trim.then(function (t) {
+      var whole = t && t.bytes ? { bytes: t.bytes, type: sniff(t.bytes) || type, width: t.width, height: t.height } : { bytes: bytes, type: type };
+      if (t && t.bytes && st.notes.indexOf(TRIM_NOTE) === -1) st.notes.push(TRIM_NOTE);
+      return cutOf(whole, null);
+    });
+  }
+  function cutOf(whole, focus) {
+    return shape.crop(whole.bytes, cutTo, { label: 'the picture of ' + eventId + '/' + turnId, focus: focus }).then(function (cut) {
+      var pic = { bytes: cut.bytes, type: cut.cropped ? sniff(cut.bytes) || whole.type : whole.type, width: cut.width, height: cut.height };
+      if (advanced) { pic.original = whole; pic.cut = cut; }
+      return pic;
+    });
+  }
   /* what each look found ({ people, text, logos }, or null when it could not look), for the turn */
-  var looks = [];
+  var looks = [], lastReview = null;
   /* One look at a picture made (lib/picture-critic.js review: today's check while `critic` is off)
-     -> Promise<review> with review.flags what the place does not allow */
-  function look(pic) {
-    return part.critic.review(pic, np, { rule: rule, eventId: eventId, deadlineAt: deadlineAt, record: recordCheck, switches: sw, caller: caller, refs: refs }).then(function (rev) {
+     -> Promise<review> with review.flags what the place does not allow. before: the picture before a repair. */
+  function look(pic, before) {
+    return part.critic.review(pic, np, { rule: rule, eventId: eventId, deadlineAt: deadlineAt, record: recordCheck, switches: sw, caller: caller, refs: refs,
+      before: before || null, place: placeLook(np.subject, ev.designPlan), styleWords: styleWords(ev) }).then(function (rev) {
       rev = rev && typeof rev === 'object' ? rev : { flags: [], found: null };
       if (!Array.isArray(rev.flags)) rev.flags = [];
       looks.push(rev.found && typeof rev.found === 'object' ? rev.found : null);
+      lastReview = rev;
       return rev;
     });
   }
-  /* A second picture for the same turn, reserved like the first; null when the day has none left. It is counted on
-     the day the quota document is on now: the first's (np.quotaDay), or a later one if midnight has passed and
-     another message has started that day meanwhile. */
+  /* Another picture for the same job (a remake, or a repair of the one made), reserved before it is paid for. It does
+     not use one of the person's pictures for the day — the job already has — but it counts toward the day's ceiling of
+     tries that did not pass (owner, 16 Nov 2026): null when that ceiling is reached. Counted on the day the quota
+     document is on now: the first's (np.quotaDay), or a later one if midnight has passed and another message has
+     started that day meanwhile. */
   function reserveAgain() {
     var at = Date.now();
     return fb.db.runTransaction(function (tx) {
@@ -2656,8 +2755,8 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
         var raw = snap && snap.exists ? snap.data() : null;
         var day = raw && typeof raw.day === 'string' && raw.day ? raw.day : (np.quotaDay || istDay(at));
         var q = quotaOf(raw, day);
-        if (q.made >= PER_DAY || q.failed >= PER_DAY) return null;
-        tx.set(qRef, { day: day, made: q.made + 1, failed: q.failed, updatedAt: new Date(at).toISOString() });
+        if (q.failed >= PER_DAY) return null;
+        tx.set(qRef, { day: day, made: q.made, failed: q.failed + 1, updatedAt: new Date(at).toISOString() });
         return { quotaDay: day };
       });
     }).catch(function (err) {
@@ -2665,42 +2764,108 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
       return null;
     });
   }
-  /* the second picture could not be made: its reservation moves to failed, as a failed first one's does */
-  function giveBack(reserved, code) {
-    var at = Date.now();
-    return fb.db.runTransaction(function (tx) {
-      return tx.get(qRef).then(function (snap) {
-        var moved = moveQuota(snap && snap.exists ? snap.data() : null, reserved, code, at);
-        if (moved) tx.set(qRef, moved);
+
+  /* What a picture kept off the page is answered with: why, and what is offered instead (alternativeLine). The
+     Critic's own words when it gave them ("two people walk down the street, and this place takes nobody"). */
+  var alternative = '';
+  function held(flags, why, made, rev) {
+    alternative = why === 'limit' ? '' : 'close-up';
+    var words = rev && rev.source === 'critic' ? part.critic.plainWhy(rev) : '';
+    return (words ? heldCritic(words, why) : heldSentence(flags, why, made)) + ' ' + alternativeLine(flags, why);
+  }
+  /* What a look found decides what comes next (lib/picture-critic.js decide: one table): kept; trimmed; repaired (the
+     picture edited where it is wrong); made once more; or kept off the page. pic: the picture looked at; made: how many
+     pictures were made; calls: how many picture calls were paid for (a failed one too). */
+  function next(pic, rev, made, calls) {
+    var flags = rev.flags;
+    var d = part.critic.decide(rev, { calls: calls, made: made, maxTries: MAX_TRIES, timeLeftMs: deadlineAt - Date.now(), retryNeedsMs: RETRY_NEEDS_MS, switches: sw, caller: caller,
+      trimmed: st.trimmed, repairs: st.repairs, remakes: st.remakes }) || {};
+    if (d.action === 'keep' || (!flags.length && d.action !== 'hold')) return keep(pic, rev, calls);
+    if (d.action === 'trim') return trimmed(pic, rev, made, calls);
+    if (d.action === 'repair' && d.change) return repaired(pic, rev, made, calls, d.change);
+    if (d.action !== 'remake' || !d.line) {
+      var whyWords = flags.length ? held(flags, d.why === 'time' ? 'time' : 'tries', made, rev) : oneLine(rev.why, 600) || HELD_PLAIN;
+      return store(pic, whyWords, calls);
+    }
+    return reserveAgain().then(function (reserved) {
+      if (!reserved) return store(pic, held(flags, 'limit', made, rev), calls);
+      return stage('picture').then(function () { return picture(prompt + ' ' + d.line, deadlineAt - CHECK_RESERVE_MS); }).then(function (again) {
+        /* a remake that could not be made: its try is counted already (reserveAgain); the first goes to the tray */
+        if (again.code) return store(pic, held(flags, 'failed', made, rev), calls + 1);
+        st.remakes++;
+        var because = rev.source === 'critic' ? part.critic.plainWhy(rev) : '';
+        st.notes.push('the first try ' + (because ? 'was not right (' + because.charAt(0).toLowerCase() + because.slice(1) + ')' : 'had ' + foundText(flags.filter(function (f) { return FOUND_WORDS[f]; })) + ' in it') + ', so I made it again');
+        return stage('check').then(function () { return look(again); }).then(function (rev2) { return next(again, rev2, made + 1, calls + 1); });
       });
-    }).catch(function (err) {
-      console.error('chat-picture: the failed second picture of ' + eventId + '/' + turnId + ' could not be recorded — ' + (err && err.message));
+    });
+  }
+  /* a flat border: cut off with sharp, no AI; then what else the look found is decided again */
+  function trimmed(pic, rev, made, calls) {
+    st.trimmed = true;
+    var whole = pic.original || pic;
+    return part.critic.trimBorders(whole.bytes, { force: true, edges: rev.border || null, label: 'the picture of ' + eventId + '/' + turnId }).then(function (t) {
+      if (!t || !t.bytes) return next(pic, rev, made, calls);
+      if (st.notes.indexOf(TRIM_NOTE) === -1) st.notes.push(TRIM_NOTE);
+      return cutOf({ bytes: t.bytes, type: sniff(t.bytes) || whole.type, width: t.width, height: t.height }, null).then(function (cut) {
+        var rest = Object.assign({}, rev, { flags: rev.flags.filter(function (f) { return f !== 'border'; }), border: null });
+        return next(cut, rest, made, calls);
+      });
+    });
+  }
+  /* One repair: the picture edited where the Critic says it is wrong (lib/picture-edit.js run, the edit's own
+     contract, when `edit` is on; else the picture model given the picture to edit), then looked at again beside the
+     picture before. A repair that changed the scene (or a face) is not used: the picture before stands. */
+  function repaired(pic, rev, made, calls, change) {
+    var base = pic.original || pic;
+    return reserveAgain().then(function (reserved) {
+      if (!reserved) return store(pic, held(rev.flags, 'limit', made, rev), calls);
+      st.repairs++;
+      return stage('repair').then(function () { return edited(base, change, rev); }).then(function (fixed) {
+        if (fixed.code) return store(pic, held(rev.flags, 'failed', made, rev), calls + 1);
+        st.repairsDone.push({ what: oneLine(change, 200), at: new Date().toISOString() });
+        return stage('check').then(function () { return look(fixed, base); }).then(function (rev2) {
+          if (rev2.flags.indexOf('scene') !== -1 || rev2.flags.indexOf('face') !== -1) {
+            st.notes.push('my fix of the first try changed more than it should have, so I left it out');
+            lastReview = rev;
+            return next(pic, rev, made, calls + 1);
+          }
+          if (rev2.flags.filter(function (f) { return rev.flags.indexOf(f) !== -1; }).length < rev.flags.length || !rev2.flags.length) {
+            var what = repairedWhat(rev);
+            st.notes.push('the first try had ' + what + '; I fixed it');
+          }
+          return next(fixed, rev2, made + 1, calls + 1);
+        });
+      });
+    });
+  }
+  function edited(base, change, rev) {
+    var direct = function () { return picture(repairPrompt(change, np), deadlineAt - CHECK_RESERVE_MS, base); };
+    if (!on('edit')) return direct();
+    return Promise.resolve().then(function () {
+      return part.edit.run(Object.assign({}, np, { mode: 'edit', change: change, changeKind: 'remove' }), { fb: fb, eventId: eventId, deadlineAt: deadlineAt - CHECK_RESERVE_MS, record: record,
+        switches: sw, refs: refs, caller: caller, review: rev, repair: true, image: { mimeType: base.type, data: base.bytes.toString('base64') }, bytes: base.bytes });
+    }).then(function (r) {
+      r = r || {};
+      /* nothing was tried (not built, or no picture it can edit): the picture model is given the picture itself */
+      if (r.code === 'not-supported' || r.code === 'no-base') return direct();
+      if (r.code || !r.bytes || !sniff(r.bytes)) return { code: r.code && gemini.FAILURES[r.code] ? r.code : 'ai-bad-output', status: r.status || 502 };
+      return shaped(r.bytes, sniff(r.bytes));
+    }, function (err) {
+      console.error('chat-picture: the repair of ' + eventId + '/' + turnId + ' failed — ' + (err && err.message));
+      return { code: 'ai-unavailable', status: 502 };
+    });
+  }
+  /* kept: with the Critic's focus, cut again around it (the subject stays in the frame, and the page's
+     object-position keeps it on a phone too) */
+  function keep(pic, rev, calls) {
+    var f = rev && rev.source === 'critic' ? rev.focus : null;
+    if (!f || !pic.original) return store(pic, '', calls);
+    return cutOf(pic.original, f).then(function (cut) {
+      cut.focus = shape.focusIn(f, cut.cut);
+      return store(cut, '', calls);
     });
   }
 
-  /* What a picture kept off the page is answered with: why, and what is offered instead (alternativeLine). */
-  var alternative = '';
-  function held(flags, why, made) {
-    alternative = why === 'limit' ? '' : 'close-up';
-    return heldSentence(flags, why, made) + ' ' + alternativeLine(flags, why);
-  }
-  /* What a look found decides what comes next (lib/picture-critic.js decide: one table): kept; made once more with a
-     stronger line, and a third time with the strictest (the view itself changed), while the time and the person's day
-     allow; or kept off the page. pic: the picture looked at; made: how many pictures were made; calls: how many
-     picture calls were paid for (a failed one too). */
-  function next(pic, rev, made, calls) {
-    var flags = rev.flags;
-    var d = part.critic.decide(rev, { calls: calls, made: made, maxTries: MAX_TRIES, timeLeftMs: deadlineAt - Date.now(), retryNeedsMs: RETRY_NEEDS_MS, switches: sw, caller: caller }) || {};
-    if (d.action === 'keep' || (!flags.length && d.action !== 'hold')) return store(pic, '', calls);
-    if (d.action !== 'remake' || !d.line) return store(pic, flags.length ? held(flags, d.why === 'time' ? 'time' : 'tries', made) : oneLine(rev.why, 600) || HELD_PLAIN, calls);
-    return reserveAgain().then(function (reserved) {
-      if (!reserved) return store(pic, held(flags, 'limit', made), calls);
-      return picture(prompt + ' ' + d.line, deadlineAt - CHECK_RESERVE_MS).then(function (again) {
-        if (again.code) return giveBack(reserved, again.code).then(function () { return store(pic, held(flags, 'failed', made), calls + 1); });
-        return look(again).then(function (rev2) { return next(again, rev2, made + 1, calls + 1); });
-      });
-    });
-  }
   /* The first picture: an edit of the picture already there (lib/picture-edit.js, `edit` on, a job of mode 'edit'),
      else — and whenever the edit answers 'not-supported' — a new one from the prompt, as before. */
   function first() {
@@ -2711,15 +2876,17 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
       r = r || {};
       if (r.code === 'not-supported') return picture(prompt, deadlineAt);
       if (r.code || !r.bytes || !sniff(r.bytes)) return { code: r.code && gemini.FAILURES[r.code] ? r.code : 'ai-bad-output', status: r.status || 502 };
-      return shape.crop(r.bytes, cutTo, { label: 'the edited picture of ' + eventId + '/' + turnId }).then(function (cut) {
-        return { bytes: cut.bytes, type: sniff(cut.bytes) || sniff(r.bytes), width: cut.width, height: cut.height };
-      });
+      return shaped(r.bytes, sniff(r.bytes));
     }, function (err) {
       console.error('chat-picture: the edit of ' + eventId + '/' + turnId + ' failed — ' + (err && err.message));
       return { code: 'ai-unavailable', status: 502 };
     });
   }
-  return Promise.resolve().then(function () {
+  return briefIt().then(function () {
+    try { buildPrompt(); } catch (err) {
+      console.error('chat-picture: the prompt of ' + eventId + '/' + turnId + ' could not be built — ' + (err && err.message));
+      return { code: 'ai-bad-output', status: 502, prompt: true };
+    }
     if (!on('refs')) return [];
     return Promise.resolve().then(function () { return part.refs.load(np, { fb: fb, eventId: eventId, switches: sw, deadlineAt: deadlineAt, caller: caller }); })
       .then(function (got) { return Array.isArray(got) ? got : []; }, function (err) {
@@ -2727,11 +2894,12 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
         return [];
       });
   }).then(function (got) {
+    if (got && got.prompt) return got;
     refs = got;
-    return first();
+    return stage('picture').then(first);
   }).then(function (pic) {
     if (pic.code) return fail(pic.code, pic.status);
-    return look(pic).then(function (rev) { return next(pic, rev, 1, 1); });
+    return stage('check').then(function () { return look(pic); }).then(function (rev) { return next(pic, rev, 1, 1); });
   });
 
   /* The picture that stands is stored and answered. heldWhy: why it is not to be put on the page ('' when it is). */
@@ -2739,12 +2907,26 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
     var bytes = pic.bytes, type = pic.type;
     var stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
     /* job k of a turn of several (lib/picture-job.js) is named for it: two made in the same second never share a file */
-    var storagePath = 'events/' + eventId + '/generated/' + stamp + '-chat-' + kindOf(np) + '-' + turnId.slice(0, 8) + (k > 0 ? '-' + k : '') + '.' + EXT[type];
+    var base = 'events/' + eventId + '/generated/' + stamp + '-chat-' + kindOf(np) + '-' + turnId.slice(0, 8) + (k > 0 ? '-' + k : '');
+    var storagePath = base + '.' + EXT[type];
     var url = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
     var file = fb.bucket.file(storagePath);
+    /* the uncut picture, kept beside it when it was cut or trimmed (the Director or the Critic on): a later re-fit to a
+       new frame (lib/picture-fit.js) and an edit start from it, never from the cut */
+    var whole = advanced && pic.original && pic.original.bytes && pic.original.bytes !== bytes ? pic.original : null;
+    var originalPath = whole ? base + '-orig.' + EXT[whole.type || sniff(whole.bytes)] : '';
+    var originalUrl = whole && EXT[whole.type] ? 'https://storage.googleapis.com/' + fb.bucket.name + '/' + originalPath : '';
     /* a unique name, so it is cached for a year and gets WebP copies, like the generated site's pictures */
-    return Promise.resolve().then(function () { return file.save(bytes, { metadata: { contentType: type, cacheControl: pictures.CACHE } }); })
+    return Promise.resolve().then(function () { return stage('store'); })
+      .then(function () { return file.save(bytes, { metadata: { contentType: type, cacheControl: pictures.CACHE } }); })
       .then(function () { return file.makePublic(); })
+      .then(function () {
+        if (!originalUrl) return;
+        var of = fb.bucket.file(originalPath);
+        return Promise.resolve().then(function () { return of.save(whole.bytes, { metadata: { contentType: whole.type, cacheControl: pictures.CACHE } }); })
+          .then(function () { return of.makePublic(); })
+          .catch(function (err) { originalUrl = ''; console.error('chat-picture: the uncut picture of ' + storagePath + ' was not kept — ' + (err && err.message)); });
+      })
       .then(function () {
         return Promise.resolve().then(function () { return pictures.storeVariants(fb, storagePath, bytes, { budgetMs: VARIANTS_BUDGET_MS }); })
           .catch(function (err) { console.error('chat-picture: the WebP copies of ' + storagePath + ' were not made — ' + (err && err.message)); });
@@ -2756,6 +2938,19 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
           /* its size as stored, once cut to its frame ('' when it could not be read) */
           size: pic.width && pic.height ? pic.width + 'x' + pic.height : '' });
         if (heldWhy) { done.held = true; done.heldWhy = heldWhy; if (alternative) done.alternative = alternative; }
+        if (advanced) {
+          /* what the job keeps of its course (lib/picture-job.js): the last look (no boxes, no pictures), the repairs,
+             the uncut picture, the point it is about, and one true line of what happened */
+          done.stage = 'store';
+          done.review = pictureJob.reviewOf(lastReview);
+          done.repairs = st.repairsDone.slice(0, 3);
+          if (originalUrl) done.original = originalUrl;
+          if (pic.focus) done.focus = pic.focus;
+          done.line = heldWhy ? oneLine(heldWhy.split(/(?<=\.)\s/)[0], 300)
+            : st.notes.length ? capFirst(st.notes.join('; ')) + '.' : checkedLine(rule, lastReview);
+          /* the Critic's repair for a picture kept off the page: what "Fix it" asks for (editor-template-ui.js) */
+          if (heldWhy && lastReview && lastReview.source === 'critic' && lastReview.repair) done.fix = oneLine(lastReview.repair, 300);
+        }
         /* a turn of one picture: its newPicture, as before; a turn of several (lib/picture-job.js): job k, read and
            written in one transaction, as the turn's other pictures are being made beside it */
         function keepOnTurn() {
@@ -2788,6 +2983,25 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
       });
   }
 }
+/* the one note a trim leaves in a job's line */
+var TRIM_NOTE = 'the picture came with a plain border drawn around it; I trimmed it off';
+/* what a repair fixed, in plain words: the Critic's own ("two small figures at lower left"), else what it found */
+function repairedWhat(rev) {
+  var w = rev && rev.what && typeof rev.what === 'object' ? rev.what : {};
+  var said = ['people', 'text', 'logos', 'artefacts'].filter(function (f) { return rev.flags.indexOf(f) !== -1 && w[f]; }).map(function (f) { return oneLine(w[f], 120); });
+  if (said.length) return joinAnd(said) + ' in it';
+  if (rev.flags.indexOf('place') !== -1) return 'the wrong landmark in it';
+  var found = foundText(rev.flags.filter(function (f) { return FOUND_WORDS[f]; }));
+  return found ? found + ' in it' : 'something wrong in it';
+}
+/* the site's look in words, for the Critic's tone: the style card the Director wrote, else the design's own words */
+function styleWords(ev) {
+  var card = ev && ev.pictureStyle && typeof ev.pictureStyle === 'object' ? ev.pictureStyle : null;
+  if (card) return [card.palette, card.light, card.medium, card.finish].map(function (x) { return oneLine(x, 120); }).filter(Boolean).join('; ');
+  var plan = ev && ev.designPlan && typeof ev.designPlan === 'object' ? ev.designPlan : {};
+  var d = plan.design && typeof plan.design === 'object' ? plan.design : {};
+  return oneLine(d.imageStyle, 300);
+}
 
 module.exports = {
   PER_DAY: PER_DAY, TIMEOUT_MS: TIMEOUT_MS, STALE_MS: STALE_MS, DEADLINE_MS: DEADLINE_MS, PLACEMENTS: PLACEMENTS, ROLES: ROLES,
@@ -2802,6 +3016,11 @@ module.exports = {
   /* the advanced picture assistant's Critic (lib/picture-critic.js decide) words the third try with it */
   strictLine: strictLine, HELD_PLAIN: HELD_PLAIN,
   RETRY_NEEDS_MS: RETRY_NEEDS_MS, CHECK_RESERVE_MS: CHECK_RESERVE_MS,
+  /* the advanced picture assistant's Director and Critic (W2, plan of 16 Nov 2026): a job's longer deadline, the
+     picture model's price, the rules a prompt ends with, a repair's words, the place a scene names, and the largest
+     picture a look is sent */
+  ADVANCED_DEADLINE_MS: ADVANCED_DEADLINE_MS, IMAGE_USD: IMAGE_USD, strictRules: strictRules, repairPrompt: repairPrompt, placeLook: placeLook,
+  CHECK_MAX_BYTES: CHECK_MAX_BYTES, kindOf: kindOf, styleWords: styleWords,
   /* for lib/ai-hero.js, which makes the dashboard's first hero picture and checks it with this same check */
   sniff: sniff, foundText: foundText,
   /* owner, 10 Nov 2026 (CISO Secufest): an offer instead of "did not ask", and a picture in its frame's shape */

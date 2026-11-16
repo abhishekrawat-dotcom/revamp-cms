@@ -404,6 +404,103 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
     /^left as it was — putting the new picture in would have changed what it shows from Content \(a name, a role, a photo, a logo or a link\)$/.test(R.RECORDS_CHANGED), R.RECORDS_CHANGED);
 })();
 
+/* ======================= D.10 the Director and the Critic, the panel's half (builder B, W2, 16 Nov 2026) =======================
+   The answer of a picture the Critic looked at carries the point it is about (the page keeps it in view) and, for a
+   picture kept off the page, the edit that would fix it. A held picture's card offers Fix it, Use it anyway and Try a
+   different scene, each only on the owner's click: Use it anyway puts it in its place with its own Undo. */
+(function () {
+  function body(name) {
+    var i = SRC.indexOf('function ' + name + '(');
+    if (i === -1) return '';
+    var open = SRC.indexOf('{', i), depth = 0;
+    for (var j = open; j < SRC.length; j++) {
+      if (SRC[j] === '{') depth++;
+      else if (SRC[j] === '}' && --depth === 0) return SRC.slice(i, j + 1);
+    }
+    return '';
+  }
+  var GEN = 'https://storage.googleapis.com/b/events/ev-1/generated/x.png';
+  function madeHere(u) { return u === GEN; }
+  var f = R.outcome({ ok: true, status: 200, body: { url: GEN, focus: { x: 0.25, y: 0.6 }, line: 'I checked it.' } }, madeHere);
+  check('D.10 outcome: a made picture carries its focus point', f.url === GEN && f.focus && f.focus.x === 0.25 && f.focus.y === 0.6 && !f.held && f.fix === undefined, f);
+  var h = R.outcome({ ok: true, status: 200, body: { url: GEN, held: true, heldWhy: 'Two people walk down the street, and this place takes nobody, so I did not put it on the page.', fix: '  Remove the two small figures; change nothing else. ' } }, madeHere);
+  check('D.10 outcome: a held picture carries the fix its Critic said', h.held === true && h.fix === 'Remove the two small figures; change nothing else.' && /so I did not put it on the page/.test(h.why), h);
+  var bad = R.outcome({ ok: true, status: 200, body: { url: GEN, focus: { x: 2, y: 'a' }, fix: 'not held' } }, madeHere);
+  check('D.10 outcome: a focus out of the picture, or a fix on a picture that was not held, is not used', bad.focus === undefined && bad.fix === undefined, bad);
+  var waitMs = +((/var AI_PICTURE_WAIT_MS = (\d+);/.exec(SRC) || [])[1] || 0);
+  check('D.10 the editor waits as long as a job the Director or the Critic works on may take (chat-picture.js ADVANCED_DEADLINE_MS)', waitMs >= require('./chat-picture').ADVANCED_DEADLINE_MS + 20000, waitMs);
+  var turn = body('runAiTurn'), placeSrc = body('placeNewPicture'), keep = body('keepMadePicture');
+  check('D.10 the made picture keeps its focus, and the swap gives it to place()',
+    /madePic = \{ url: got\.url, placed: false, offered: false, focus: got\.focus \|\| null \};/.test(turn) && /var help = aiPictureHelpers\(\);\s*if \(madePic\.focus\) help\.focus = madePic\.focus;/.test(placeSrc), placeSrc.slice(0, 500));
+  check('D.10 a held picture\'s fix is kept for its card, and the card is drawn once, with where it was for',
+    /heldFix = got\.held && got\.fix \? got\.fix : '';/.test(turn) && /if \(madePic\.held && !madePic\.heldDrawn && np\) \{\s*madePic\.heldDrawn = true;\s*drawHeldPicture\(bubble, \{ url: madePic\.url, sectionId: np\.sectionId,[^]*fix: heldFix \}\);/.test(keep) &&
+    keep.indexOf('drawHeldPicture') < keep.indexOf('offerPicture('), keep.slice(0, 700));
+
+  /* the card and its three ways, run */
+  var held = body('drawHeldPicture'), asker = body('chatAskAsOwner'), use = body('useHeldPicture');
+  function el(tag) {
+    var e = { tag: tag, children: [], listeners: {}, textContent: '', title: '', className: '', disabled: false, parentNode: null,
+      appendChild: function (c) { c.parentNode = e; e.children.push(c); return c; },
+      replaceChild: function (n, o) { var i = e.children.indexOf(o); if (i !== -1) { e.children[i] = n; n.parentNode = e; } return o; },
+      addEventListener: function (t, fn) { (e.listeners[t] = e.listeners[t] || []).push(fn); },
+      cloneNode: function () { var c = el(tag); c.textContent = e.textContent; c.title = e.title; c.className = e.className; return c; },
+      click: function () { (e.listeners.click || []).forEach(function (fn) { fn(); }); } };
+    return e;
+  }
+  var said = [], toasts = [], placed = [], restored = [], commits = 0, undos = 0;
+  var unit = 'unit-1', snap = 0;
+  var fakeSec = { contains: function () { return true; } };
+  var target = { el: { nodeType: 1, tagName: 'IMG', closest: function () { return null; } }, how: 'picture' };
+  var fx = vm.createContext({
+    document: { createElement: el }, window: { console: { error: function () {} } }, Math: Math, JSON: JSON, String: String,
+    chatView: { ask: function (t) { said.push(t); } }, aiWorking: false, remounting: false,
+    viewCan: function (n) { return n === 'ask'; }, showToast: function (t) { toasts.push(t); }, sectionLabel: function () { return 'Overview'; },
+    aiPictures: function () { return { target: function () { return target; }, place: function (tg, url) { placed.push(url); unit = fx.breakUnit ? 'unit-2' : unit; return true; }, unitState: function () { return unit; },
+      frameBox: function () { return { w: 644, h: 745 }; }, fitFrame: function () {} }; },
+    canvas: { sectionByKey: function () { return fakeSec; }, snapshot: function () { return { n: ++snap }; }, restore: function (s) { restored.push(s); }, sameSnapshot: function (a, b) { return !!a && !!b && a.n === b.n; }, doc: {} },
+    isLive: function () { return true; }, deselect: function () {}, flush: function () {}, aiPictureHelpers: function () { return {}; }, onDesktop: function (fn) { return fn(); },
+    sameLogoUnit: function (a, b) { return a === b; }, restoreOpts: function () { return {}; }, commitNow: function () { commits++; fx.undoPtr++; }, undoPtr: 4,
+    undo: function () { undos++; }, workSafety: { undoQuestion: function () { return { title: 't', text: 'x' }; } }, ask: function () { return Promise.resolve('keep'); }
+  });
+  vm.runInContext(held + '\n' + asker + '\n' + use + '\nthis.drawHeldPicture = drawHeldPicture;', fx);
+  var bubble = el('div');
+  var spec = { url: GEN, sectionId: 'overview', label: 'Overview', placement: 'picture', slot: 1, apply: 'swap', alt: 'a chalet street', fix: 'Remove the two small figures at lower left; change nothing else.' };
+  fx.drawHeldPicture(bubble, spec);
+  var box = bubble.children[0] || { children: [] }, buttons = box.children.map(function (b) { return b.textContent; });
+  check('D.10 the held card: Fix it · Use it anyway · Try a different scene, under the message', box.className === 'chat-held-pic' && buttons.join(' · ') === 'Fix it · Use it anyway · Try a different scene', buttons);
+  check('D.10 nothing is placed or sent until the owner clicks', placed.length === 0 && said.length === 0 && commits === 0);
+  box.children[0].click();
+  check('D.10 Fix it sends the Critic\'s fix as the owner\'s message', said[0] === 'Fix the new picture for “Overview” that you kept off the page: Remove the two small figures at lower left; change nothing else.', said);
+  box.children[2].click();
+  check('D.10 Try a different scene asks for that place again', said[1] === 'Make the picture for “Overview” again with a different scene.', said);
+  box.children[1].click();
+  var undoBtn = box.children[1];
+  check('D.10 Use it anyway: put in its place on the click, one change on the undo stack, an Undo of its own', placed.length === 1 && placed[0] === GEN && commits === 1 && undoBtn.textContent === 'Undo' && /Undo under the message takes it out again/.test(toasts[toasts.length - 1]), [placed, commits, undoBtn.textContent]);
+  undoBtn.click();
+  check('D.10 … its Undo, while it is the newest change: the editor\'s own undo', undos === 1 && undoBtn.disabled === true && undoBtn.textContent === 'Taken out', [undos, undoBtn.textContent]);
+  /* the logo unit would read differently: put back, the owner told */
+  fx.breakUnit = true;
+  var b2 = el('div');
+  fx.drawHeldPicture(b2, spec);
+  b2.children[0].children[1].click();
+  check('D.10 Use it anyway never changes the logo unit: put back as it was, and why is said', restored.length === 1 && commits === 1 && /would have altered the logo unit/.test(toasts[toasts.length - 1]), toasts[toasts.length - 1]);
+  fx.breakUnit = false;
+  /* while ETB2B AI is applying a change: nothing */
+  fx.aiWorking = true;
+  var b3 = el('div');
+  fx.drawHeldPicture(b3, spec);
+  var placedAt = placed.length, saidAt = said.length;
+  b3.children[0].children[1].click(); b3.children[0].children[0].click();
+  check('D.10 while ETB2B AI is busy: nothing placed or sent, said so', placed.length === placedAt && said.length === saidAt && /One moment/.test(toasts[toasts.length - 1]));
+  fx.aiWorking = false;
+  /* a panel that cannot send a message: only Use it anyway */
+  fx.viewCan = function () { return false; };
+  var b4 = el('div');
+  fx.drawHeldPicture(b4, spec);
+  check('D.10 a panel that cannot send messages offers Use it anyway alone', b4.children[0].children.map(function (b) { return b.textContent; }).join() === 'Use it anyway');
+  check('D.10 the card\'s words never say a bare "ET"', !/\bET\b/.test(held.replace(/\/\*[\s\S]*?\*\//g, '')) && !/\bET\b/.test(use.replace(/\/\*[\s\S]*?\*\//g, '')));
+})();
+
 /* ======================= D.8 ES5 ======================= */
 (function () {
   var esbuild = null;
