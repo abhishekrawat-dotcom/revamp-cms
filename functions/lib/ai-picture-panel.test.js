@@ -61,11 +61,15 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   check('D.1 no event: said', !noEvent.ask && /could not be started/.test(noEvent.note), noEvent);
   check('D.1 not loaded is said first, even for an answer that is not usable', /could not load/.test(R.checkAsk({ n: 0 }, ctxOf({ loaded: false })).note));
 
-  [0, 8, -1, 'x', null, 2.5].forEach(function (n) {
+  /* the number follows the numbered pictures: six attached at most, then up to 32 taken out of documents (40 with room) */
+  [0, 42, -1, 'x', null, 2.5].forEach(function (n) {
     var r = R.checkAsk(Object.assign({}, swap, { n: n }), ctxOf());
     check('D.1 number ' + show(n) + ' is not usable', n === 2.5 ? !!r.ask && r.ask.n === 2 : !r.ask && /could not be used/.test(r.note), r);
   });
   check('D.1 number 7 (after six attached pictures) is used', !!R.checkAsk(Object.assign({}, swap, { n: 7 }), ctxOf({ attached: ['a', 'b', 'c', 'd', 'e', 'f'] })).ask);
+  var thirty = []; for (var k = 0; k < 30; k++) thirty.push('u' + k);
+  check('D.1 number 31 (after six attached and 24 taken out of a document, of the 32 it may hold) is used', !!R.checkAsk(Object.assign({}, swap, { n: 31 }), ctxOf({ attached: thirty })).ask);
+  check('D.1 …and a number one of those has is not', !R.checkAsk(Object.assign({}, swap, { n: 12 }), ctxOf({ attached: thirty })).ask);
   var clash = R.checkAsk(swap, ctxOf({ attached: ['https://storage.googleapis.com/b/events/' + EVENT + '/chat/1.png'] }));
   check('D.1 a number an attached picture already has is not usable', !clash.ask && /could not be used/.test(clash.note), clash);
   check('D.1 the number after the attached ones is used', !!R.checkAsk(Object.assign({}, swap, { n: 2 }), ctxOf({ attached: ['u1'] })).ask);
@@ -264,13 +268,20 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   check('D.7 one undo step for the whole change, recorded only when something took effect', /var changed = done\.length \? commitNow\(\) : false;/.test(turn) && (turn.match(/commitNow\(\)/g) || []).length === 1);
   // the rework that puts the new picture in
   check('D.7 a rework counts the picture as put in only when the rewritten section draws it',
-    /var picShown = withPic && aiPictureRules\.shows\(fresh\.outerHTML \+ '\\n' \+ \(code\.cssIsOwn && canvas\.sectionCss \? canvas\.sectionCss\(fresh\) : ''\), madePic\.url\);/.test(turn) &&
+    /var drawn = fresh\.outerHTML \+ '\\n' \+ \(code\.cssIsOwn && canvas\.sectionCss \? canvas\.sectionCss\(fresh\) : ''\);\s*var picShown = withPic && aiPictureRules\.shows\(drawn, madePic\.url\);/.test(turn) &&
     /if \(picShown\) madePic\.placed = true;/.test(turn) && !/if \(withPic\) madePic\.placed = true/.test(turn));
-  check('D.7 ... and says "with the new picture" only then', /'reworked' \+ \(picShown \? ' with the new picture' : ''\)/.test(turn) && !/'reworked' \+ \(withPic/.test(turn));
+  check('D.7 ... and says "with the new picture" only then', /\(job\.edit \? 'reworked' : 'added'\) \+ \(picShown \? ' with the new picture' : docShown\.length \? ' with ' \+ pictureWords\(docShown\) : ''\)/.test(turn) && !/'reworked' \+ \(withPic/.test(turn));
+  /* owner, 16 Nov 2026: a picture taken out of a document is said to be in only when the section draws it, and one left out is said */
+  check('D.7 ... a document\'s picture likewise: said to be in only when drawn, and one left out said',
+    /docShown = docIn\.filter\(function \(x\) \{ return aiPictureRules\.shows\(drawn, x\.url\); \}\)/.test(turn) &&
+    /if \(docMissed\.length\) said\.push\(/.test(turn));
   check('D.7 ... a rework that left it out: said, and the picture kept', /var unused = withPic && !picShown \? keepMadePicture\('It'\) : '';/.test(turn) &&
     /said\.push\('“' \+ job\.label \+ '” was reworked, but the new picture was not used in it\. ' \+ unused\);/.test(turn));
   check('D.7 the Undo note names the picture only when it was put in', /if \(madePic && madePic\.placed && t\.status !== 'failed'\) \{\s*card\.note\(/.test(turn));
-  check('D.7 the logo unit is compared before and after the swap and the rework', (turn.match(/sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)/g) || []).length === 2);
+  /* the new picture's swap, its rework, and a document picture's swap (owner, 16 Nov 2026) */
+  check('D.7 the logo unit is compared before and after the swap and the rework', (turn.match(/sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)/g) || []).length === 3);
+  check('D.7 a document picture put where a section has one: the same target, logo-unit check and put-back as the new picture\'s swap',
+    /function placeDocPicture\(s, step, changedEls, done, said\) \{[\s\S]{0,1600}P\.target\(sec, \{ placement: s\.placement, slot: s\.slot \}, null, help\)[\s\S]{0,1600}if \(!sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)\) \{\s*putPictureElsBack\(kept\);/.test(turn));
   check('D.7 a made picture not on the page is kept: the tray, quietly, else "Use this picture"', /offerPicture\(madePic\.url, true\)/.test(keep) && /drawUsePicture\(bubble, madePic\.url\)/.test(keep) && /if \(!madePic \|\| madePic\.placed\) return '';/.test(keep));
   check('D.7 every place a made picture may be left out keeps it', (turn.match(/keepMadePicture\('(It|The new picture)'\)/g) || []).length >= 4 && !/offerPicture\(madePic\.url\)(?!, true)/.test(turn));
   check('D.7 the history offers "Use this picture" by offerAgain, reading the page for a "partly" change', /aiPictureRules\.offerAgain\(h\.status, onPage\)/.test(hist) && /aiPictureRules\.shows\(canvas\.doc\.documentElement\.outerHTML, pic\.url\)/.test(hist));

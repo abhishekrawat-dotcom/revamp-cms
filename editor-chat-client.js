@@ -8,7 +8,8 @@
      - the edit brain: a message sent, Stop, "undo that" with no AI call, the event's conversation read back;
      - the place: the welcome, suggestions and quick ideas for a site page; the "Selected" chip (what is selected
        on the page goes with the message); pictures attached the editor's own way, numbered as the AI is told
-       them; the panel docked as a column beside the canvas in "Edit myself" (every width above a phone's) and
+       them; a PDF or deck read for its words, with the photos inside it taken out and kept with the event
+       (ai-docs-client.js read + storePictures), which ETB2B AI numbers after the attached pictures; the panel docked as a column beside the canvas in "Edit myself" (every width above a phone's) and
        beside the live view in "Edit with AI" from 1100 px (NU-020), a half sheet on a phone's "Edit with AI", and
        floating below the tools rail on an "Edit with AI" between the two; leaving the editor only
        through its own guard for unsaved work (RevampTemplateUI.leave);
@@ -55,7 +56,7 @@
        not true in the editor: here it changes and can remove parts of the page, each change with its Undo */
     footNote: 'ETB2B AI changes this page when you ask, and every change has an Undo. It never saves, publishes, deletes an event or approves anything.',
     attachLabel: 'Attach a picture, a PDF or a PowerPoint deck',
-    attachHint: 'Pictures go on this page where you say (“use this as the hero background”); I read PDFs and decks to use their words (“write the overview from this deck”).',
+    attachHint: 'Pictures go on this page where you say (“use this as the hero background”). I read PDFs and decks to use their words (“write the overview from this deck”), and take their photos out to put on the page (“use the pictures from this PDF”).',
     needWords: 'Say what the file is for, for example “use this as the hero background” or “write the overview from this PDF”.',
     notPicture: 'Here I can use pictures, PDFs and PowerPoint decks. Save a Word file as a PDF and attach it again.',
     tooManyDocs: 'Attach at most 3 documents to one message.',
@@ -420,14 +421,30 @@
      anything), then stored the editor's own way, which checks it again */
   var docSeq = 0;
   function isDocRec(r) { return !!r && r.kind === 'doc' && !!r.doc; }
-  function attachAdd(file) {
+  function attachAdd(file, hooks) {
     var U = ui(), D = docsApi();
-    /* a PDF or a deck: read here (its bytes, or a deck's words), sent with the message, never numbered as a picture */
+    var progress = hooks && isFn(hooks.progress) ? hooks.progress : function () {};
+    /* A PDF or a deck: read here (its bytes, or a deck's words), sent with the message, never itself numbered as a
+       picture. The pictures inside it are taken out (photographs only) and kept with the event first, so ETB2B AI can
+       see them and put them on the page by their numbers, now and later in the conversation (owner, 16 Nov 2026: "use
+       the images from this pdf and try to well accommodate them in this website"); a PDF over 10 MB is read here and
+       sent as its words. Without an event to keep them with, a document is read as before. */
     if (D && D.kindOf(file)) {
       var held = chatRef && isFn(chatRef.attachments) ? chatRef.attachments().filter(isDocRec).length : 0;
       if (held >= MAX_DOCS) return Promise.reject(new Error(TEXT.tooManyDocs));
-      return D.read(file).then(function (doc) {
-        return { id: 'doc-' + (++docSeq), kind: 'doc', name: doc.name, size: doc.size, type: doc.kind === 'pdf' ? 'application/pdf' : 'pptx', doc: doc };
+      var eventId = eventIdHere(), A = root.RevampAuth;
+      var keep = !!eventId && isFn(D.storePictures) && !!A && isFn(A.authedFetch);
+      return D.read(file, keep ? { pictures: true, onProgress: progress } : undefined).then(function (doc) {
+        if (!keep || !isArr(doc.pictures) || !doc.pictures.length) return doc;
+        return D.storePictures(eventId, doc, { fetch: A.authedFetch, onProgress: progress }).then(null, function (err) {
+          warn('the pictures of “' + doc.name + '” could not be kept: ' + (err && err.message));
+          doc.pictures = [];
+          doc.picturesFailed = true;
+          return doc;
+        });
+      }).then(function (doc) {
+        return { id: 'doc-' + (++docSeq), kind: 'doc', name: doc.name, size: doc.size, type: doc.kind === 'pdf' ? 'application/pdf' : 'pptx', doc: doc,
+          note: isFn(D.pictureNote) ? D.pictureNote(doc) : '' };
       });
     }
     if (!isPicture(file)) return Promise.reject(new Error(TEXT.notPicture));

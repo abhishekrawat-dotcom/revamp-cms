@@ -3730,7 +3730,11 @@ function buildRedesignPrompt(payload) {
     payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-rv-logo-note, data-register-cta, data-rv-form, data-rv-form-embed, data-rv-form-title, data-rv-carousel, data-rv-carousel-track. The logo unit (the element with data-rv-logo-unit) stays exactly as it is, with every picture in it — its second picture with the class rv-lu-dark is its copy for a dark background, never remove it. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go. An element with data-rv-form-embed stays exactly as it is, with its contents (it is a form the site draws in place); keep it in the section.',
     'Every button whose action is to register gets data-register-cta and href="#register".',
     (payload.supplied || []).length
-      ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) { return 'attached picture ' + p.n + ' = ' + p.token; }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
+      ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) {
+        /* its own size, when the editor knows it (a picture taken out of a document, lib/doc-pictures.js): its frame takes that shape */
+        return 'attached picture ' + p.n + ' = ' + p.token + (p.w && p.h ? ' (' + docPictureShape(p.w, p.h) + ', ' + p.w + '×' + p.h + ')' : '');
+      }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.' +
+        (payload.supplied.some(function (p) { return p.w && p.h; }) ? ' Where a picture\'s size is given, give its frame that shape (CSS aspect-ratio: width / height, e.g. aspect-ratio: 16 / 9) unless the request names another, so little of it is cropped; a picture always fills its frame by cropping (object-fit: cover) — never stretched or squashed, and never shown smaller inside its frame with bars around it (object-fit: contain).' : '')
       : '',
     urls.length ? 'PICTURES: the section\'s own pictures — with any attached above, the only pictures you may use — by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : (payload.supplied || []).length ? 'Besides the attached ones, this section has no picture.' : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
@@ -3760,6 +3764,11 @@ function buildRedesignPrompt(payload) {
     'Its CSS (shown as stored: the "[data-rv-section=…]" prefix on each rule is added by the server, do not write it):', String(payload.css)
   ];
   return lines.join('\n');
+}
+
+/* "landscape 16:9", "portrait 3:4", "square": a supplied picture's shape, for the rework's prompt (lib/doc-pictures.js) */
+function docPictureShape(w, h) {
+  try { return require('./doc-pictures').shapeOf(w, h) || 'its own shape'; } catch (e) { return 'its own shape'; }
 }
 
 function handleRedesignSection(req, res) {
@@ -3793,7 +3802,9 @@ function handleRedesignSection(req, res) {
         if (url.indexOf(ownStore) !== 0 || !(n >= 1) || pictures[genDesign.pictureToken('attached-' + n)]) return;
         var token = genDesign.pictureToken('attached-' + n);
         pictures[token] = url;
-        supplied.push({ n: n, token: token });
+        /* its size, when the editor sends it (a picture taken out of a document): the prompt asks for a frame of its shape */
+        var w = parseInt(p && p.w, 10), h = parseInt(p && p.h, 10);
+        supplied.push(w >= 1 && w <= 20000 && h >= 1 && h <= 20000 ? { n: n, token: token, w: w, h: h } : { n: n, token: token });
       });
       var mode = payload.mode === 'edit' || payload.mode === 'create' ? payload.mode : 'redesign';
       if (mode !== 'redesign' && !String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'Say what should change.' });

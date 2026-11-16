@@ -240,8 +240,9 @@ function entry(sectionId, placement, extra) {
   /* ---------- the schema entry and the prompt lines ---------- */
   var sch = cp.schemaItem(['hero', 'agenda']);
   check(sch.type === 'ARRAY' && J(sch.items.properties.sectionId.enum) === J(['hero', 'agenda']) && J(sch.items.properties.placement.enum) === J(['hero', 'background', 'picture']) &&
-    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'kind', 'alt']) && sch.items.properties.slot.type === 'INTEGER',
-    'newPictures: sectionId limited to the page\'s sections, the three placements, the site\'s picture kinds', J(sch));
+    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'kind', 'alt', 'reference']) && sch.items.properties.slot.type === 'INTEGER' &&
+    sch.items.properties.reference.type === 'INTEGER',
+    'newPictures: sectionId limited to the page\'s sections, the three placements, the site\'s picture kinds, and the document picture it re-creates (0 for none)', J(sch));
   check(!cp.schemaItem([]).items.properties.sectionId.enum, 'with no sections there is no empty enum');
   var lines = cp.promptLines({ eventId: EV, attachmentCount: 2, picturesLeft: 7, picturesPerDay: 20 });
   check(/ONE new picture per message, ONLY when the owner's latest message asks for one/.test(lines) && /list 3 in that section's `sectionEdits` `pictures`/.test(lines) &&

@@ -102,7 +102,8 @@
 //                          POST /api/generate-content, GET /api/generate/status, POST /api/generate/cancel,
 //                          POST /api/redesign-section, GET /api/draft, GET /api/generated-template,
 //                          GET /api/generated-section — see generateHelpers() for what it is handed.
-//     lib/api-chat.js      ETB2B AI, the editor's chat: POST /api/chat-edit, POST /api/chat/turn, GET /api/chat/history
+//     lib/api-chat.js      ETB2B AI, the editor's chat: POST /api/chat-edit, POST /api/chat/turn, GET /api/chat/history,
+//                          POST /api/chat/doc-pictures
 //                          — see aiChatHelpers().
 //     lib/api-import.js    the Lovable import pipeline (a live site's own URL -> a third template kind, 'imported-<id>'):
 //                          POST /api/import-lovable, GET /api/imported-template, GET /api/imported-section — see
@@ -279,7 +280,8 @@ var BODY_LIMITS = {
   site: 12 * MB,          // PUT /api/event/site, and a publish / stage request that still carries the page
   tiny: 16 * KB,          // { eventId } and nothing else
   assist: 22 * MB,        // POST /api/dash-bot: a message, the page's place, up to four ≤160 KB picture thumbnails and PDFs of up to 15 MB in all (base64; lib/ai-docs.js)
-  aiDocs: 24 * MB         // POST /api/chat-edit and /api/promo/ai-edit: a page's sections or a post, with PDFs of up to 15 MB in all (base64)
+  aiDocs: 24 * MB,        // POST /api/chat-edit and /api/promo/ai-edit: a page's sections or a post, with PDFs of up to 15 MB in all (base64)
+  docPictures: 8 * MB     // POST /api/chat/doc-pictures: up to six pictures taken out of a document (at most 2 MB each, and a small copy), base64
 };
 
 /* The most a model call may write, so an answer that runs away is cut off (and reported as unusable)
@@ -7838,6 +7840,7 @@ var ROUTES = {
   'POST /api/chat-edit': aiChat('handleChatEdit'),
   'POST /api/chat/turn': aiChat('handleChatTurn'),
   'GET /api/chat/history': aiChat('handleChatHistory'),
+  'POST /api/chat/doc-pictures': aiChat('handleDocPictures'),   // pictures taken out of a document attached to ETB2B AI (lib/doc-pictures.js)
   'POST /api/dash-bot': dashBot('handleChat'),                // ETB2B AI on the events dashboard (lib/dash-bot.js)
   'POST /api/dash-bot/turn': dashBot('handleTurn'),
   'GET /api/dash-bot/history': dashBot('handleHistory'),

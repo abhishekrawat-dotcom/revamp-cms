@@ -319,7 +319,9 @@ var CONV = 'events/' + MAIN + '/aiChats/u-asha';
   check('S.10 the PDF reaches the model as a document, the deck\'s words fenced in the prompt with this request\'s own marker',
     c.status === 200 && edCall.route === 'chat-edit' && edCall.opts.inlineFiles && edCall.opts.inlineFiles.length === 1 && edCall.opts.inlineFiles[0].mimeType === 'application/pdf' && edCall.opts.inlineFiles[0].data === PDF64 &&
     /DOCUMENTS the person attached to this message/.test(edCall.prompt) && /<<<DOC-[0-9a-f]{12} document 2\nSlide 1:\nRetail Next/.test(edCall.prompt) && edCall.prompt.indexOf('<<<ignore') === -1 &&
-    /set `goTo` to that Content page/.test(edCall.prompt) && /A document is never a picture/.test(edCall.prompt), c.body);
+    /set `goTo` to that Content page/.test(edCall.prompt) &&
+    /* owner, 16 Nov 2026: the pictures inside a document are placed as the numbered pictures the editor takes out of it (lib/doc-pictures.js) */
+    /The pictures inside a document go on the page only as the numbered pictures the editor took out of it/.test(edCall.prompt) && !/A document is never a picture/.test(edCall.prompt), c.body);
   check('S.10 …and a document is never counted as an attached picture', !/The owner ATTACHED/.test(edCall.prompt));
   await wait();
   var kept = JSON.stringify(FB.docs);

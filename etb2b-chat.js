@@ -47,9 +47,12 @@
                   (hover: none|hover), joined by commas. The device width is what tells a phone on a page with
                   no viewport meta (the editor's), which a phone lays out 980 px wide.
        attach     the attach button (with drag and drop onto the open panel, and paste into the box). The kit
-                  calls add(file) once per file; it resolves with {id, name, kind:'image'|'doc', thumb?, size}
-                  or rejects with an Error whose message says why, in a sentence (shown on the chip). The page
-                  decides what may be attached and what it is for; hint says it in a line.
+                  calls add(file, {progress}) once per file; it resolves with {id, name, kind:'image'|'doc', thumb?,
+                  size, note?} or rejects with an Error whose message says why, in a sentence (shown on the chip).
+                  progress(text) puts a few words of how it goes on the chip while it is being added (a document
+                  whose pictures are taken out takes a while); a rec's note is what the chip says once it is ready
+                  ("24 pictures taken out"). The page decides what may be attached and what it is for; hint says it
+                  in a line.
    chat: open(), close(), isOpen(), isFolded(), focusInput(), setBusy(on, text?, {onStop}?), divider(label),
          fold(label, onUndo), unfold(), user(text, {at?, attachments?, context?}) -> node,
          ai(content, {error?, at?, asOf?, plain?}) -> Bubble, custom(role, node, {at?}) -> Bubble|node,
@@ -1545,7 +1548,7 @@
       it.nameEl.textContent = it.name;
       it.nameEl.setAttribute('title', it.name);
       it.rm.setAttribute('aria-label', TEXT.removeName(it.name));
-      it.stateEl.textContent = state === 'adding' ? TEXT.adding : state === 'error' ? it.error : '';
+      it.stateEl.textContent = state === 'adding' ? TEXT.adding : state === 'error' ? it.error : state === 'ready' && it.rec && trim(it.rec.note) ? trim(it.rec.note).slice(0, 80) : '';
       if (state === 'ready') it.stateEl.appendChild(el('span', 'rvc-sr', TEXT.attachedState));
       paintPic(it);
       paintTray();
@@ -1595,7 +1598,9 @@
       putItem(it, false);
       paintTray();
       var p;
-      try { p = attachCfg.add(file); } catch (e) { p = Promise.reject(e); }
+      /* how it goes, in a few words on the chip, while it is still being added */
+      var progress = function (text) { if (!it.removed && it.state === 'adding') it.stateEl.textContent = trim(text).slice(0, 80) || TEXT.adding; };
+      try { p = attachCfg.add(file, { progress: progress }); } catch (e) { p = Promise.reject(e); }
       Promise.resolve(p).then(function (rec) {
         if (it.removed) { if (rec && attachCfg.remove) safe(attachCfg.remove, rec); return; }
         if (!isObj(rec)) throw new Error('');
@@ -1805,7 +1810,9 @@
           ic.setAttribute('aria-hidden', 'true');
           ic.innerHTML = ICON_DOC;
           item.appendChild(ic);
-          item.appendChild(el('span', 'rvc-sent-name', name));
+          /* a document's note ("24 pictures taken out") goes with its name */
+          var note = trim(r.note).slice(0, 80);
+          item.appendChild(el('span', 'rvc-sent-name', name + (note ? ' · ' + note : '')));
         }
         strip.appendChild(item);
       }
