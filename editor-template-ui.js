@@ -5635,6 +5635,10 @@
       texts.sort(function (a, b) { return all.indexOf(a) - all.indexOf(b); });
       var out = { id: id, name: sec.getAttribute('data-sec-name') || id, texts: texts };
       if (sec.classList.contains('is-hidden-sec')) out.hidden = true;
+      /* a section with no record to show yet (data-rv-empty: an agenda with no sessions) is not on the live page or
+         the preview either: the AI must not put pictures there unasked (QA, 16 Nov 2026: a new picture, paid for, went
+         into an Agenda visitors never see). showsWhen: what it waits for ('sessions', 'speakers'…) */
+      else if (sec.hasAttribute('data-rv-empty')) { out.hidden = true; out.showsWhen = String(sec.getAttribute('data-rv-empty') || '').slice(0, 40); }
       var buttons = sectionButtonLabels(sec).slice(0, 8).map(short);
       if (buttons.length) out.buttons = buttons;
       if (hasImageHeadline(sec)) out.imageHeadline = true;
@@ -6606,6 +6610,49 @@
         });
       } catch (err) { if (window.console) console.error('[ETB2B AI] the new picture\'s frame could not be shaped:', err); }
     }
+    /* Every picture of this event's in a reworked section, its frame held to the picture's own shape (owner, 16 Nov
+       2026, ET DAVOS 2027: "the image dimension issue is still not fixed"): a document's picture (its size is in the
+       answer), one the section showed before (measured then: before), the new picture (the shape it was made in), or
+       any other once it has loaded. Done at once for the sizes known, and again once the section's pictures have
+       loaded (at most FRAME_LOAD_MS): -> Promise, never rejected. */
+    var FRAME_LOAD_MS = 5000;
+    function holdFrames(fresh, before) {
+      if (!P || typeof P.holdOwnFrames !== 'function' || !fresh) return Promise.resolve();
+      var known = {};
+      Object.keys(docPics).forEach(function (n) { var s = sizes[n]; if (s && s.w && s.h) known[docPics[n].url] = s; });
+      Object.keys(before || {}).forEach(function (u) { if (!known[u]) known[u] = before[u]; });
+      if (madePic && np && np.frame) {
+        var m = /^(\d{1,5}):(\d{1,5})$/.exec(String(np.frame));
+        if (m) known[madePic.url] = { w: +m[1], h: +m[2] };
+      }
+      function once() {
+        if (!isLive(fresh)) return;
+        try {
+          var held = onDesktop(function () { return P.holdOwnFrames(fresh, function (src) { return known[src] || null; }, aiPictureHelpers()); });
+          if (held && held.length && window.console) console.info('[ETB2B AI] picture frames held to their pictures\' shape:', held);
+        } catch (err) { if (window.console) console.error('[ETB2B AI] a picture\'s frame could not be shaped:', err); }
+      }
+      once();
+      var waiting = Array.prototype.filter.call(fresh.querySelectorAll('img'), function (img) { return !img.complete && isOwnPicture(img.getAttribute('src')); });
+      if (!waiting.length) return Promise.resolve();
+      return Promise.race([
+        Promise.all(waiting.map(function (img) {
+          return new Promise(function (resolve) { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }); });
+        })),
+        pause(FRAME_LOAD_MS)
+      ]).then(once, once);
+    }
+    /* the natural size of each of this event's own pictures a section shows now, by address: a rework is told them, so
+       their frames take their shape, and they are held to it after (holdFrames) */
+    function ownSizesOf(sec) {
+      var out = {};
+      if (!sec || !sec.querySelectorAll) return out;
+      Array.prototype.forEach.call(sec.querySelectorAll('img'), function (img) {
+        var src = img.getAttribute('src');
+        if (isOwnPicture(src) && img.naturalWidth > 0 && img.naturalHeight > 0 && !out[src]) out[src] = { w: img.naturalWidth, h: img.naturalHeight };
+      });
+      return out;
+    }
     /* A picture that could not be made: its sentence (aiPictureRules.failedLine words it for a message that changes
        other things too), and the steps that needed the picture are not done. */
     function pictureFailed(why) {
@@ -6665,7 +6712,7 @@
       var touched = [tg.el];
       Object.keys(tg).forEach(function (k) { if (tg[k] && tg[k].nodeType === 1) touched.push(tg[k]); });
       Array.prototype.forEach.call(sec.querySelectorAll('.hero-veil'), function (v) { touched.push(v); });
-      var kept = keepPictureEls(touched), unitBefore = P.unitState(canvas.doc), put = false;
+      var kept = keepPictureEls(touched), unitBefore = P.unitState(canvas.doc), put = false, frameBefore = swapFrameOf(tg);
       // place() answers false, having changed nothing, for a place or an address it may not use
       try { put = P.place(tg, madePic.url, np.alt, help) === true; } catch (err) { if (window.console) console.error(err); }
       if (!put) {
@@ -6678,9 +6725,27 @@
         return step.set('fail', 'left as it was — the change would have altered the logo unit');
       }
       madePic.placed = true;
+      var m = /^(\d{1,5}):(\d{1,5})$/.exec(String(np.frame || ''));
+      keepSwapFrame(tg, frameBefore, m ? { w: +m[1], h: +m[2] } : null);
       changedEls.push(tg.el);
       done.push('New picture made and put in “' + label + '” (' + AI_PICTURE_WHERE[np.placement] + ')');
       step.set('done');
+    }
+    /* The frame a picture is shown in, read before a swap on the desktop layout (as the slots were read), so the place
+       keeps it: where the frame's height came from its old picture (height: auto), a picture of another shape would
+       otherwise take the frame over (QA, 16 Nov 2026: a 900 x 1600 portrait swapped into Overview grew its 644 x 745
+       frame to 644 x 1145, with empty space under the text). Only for one of a section's pictures (an <img>). */
+    function swapFrameOf(tg) {
+      if (!tg || tg.how !== 'picture' || !tg.el || tg.el.tagName !== 'IMG' || !P || typeof P.frameBox !== 'function') return null;
+      try { return onDesktop(function () { return P.frameBox(tg.el); }); } catch (err) { return null; }
+    }
+    /* after the swap: the frame held to that box's shape (fitFrame, with the picture filling it by cropping), unless the
+       new picture is known to have that shape already */
+    function keepSwapFrame(tg, box, size) {
+      if (!box || !tg || !tg.el || typeof P.fitFrame !== 'function') return;
+      if (size && size.w && size.h && P.shapeGap(box.w, box.h, size.w, size.h) <= 0.02) return;
+      try { onDesktop(function () { P.fitFrame(tg.el, box.w + ':' + box.h, aiPictureHelpers()); }); }
+      catch (err) { if (window.console) console.error('[ETB2B AI] the picture\'s frame could not be kept:', err); }
     }
     /* A picture taken out of a document, put where a section already has one: the same target and the same checks as
        a new picture's swap (never the logo unit, nor anything Content owns; put back if the logo unit would read
@@ -6700,7 +6765,7 @@
       var touched = [tg.el];
       Object.keys(tg).forEach(function (k) { if (tg[k] && tg[k].nodeType === 1) touched.push(tg[k]); });
       Array.prototype.forEach.call(sec.querySelectorAll('.hero-veil'), function (v) { touched.push(v); });
-      var kept = keepPictureEls(touched), unitBefore = P.unitState(canvas.doc), put = false;
+      var kept = keepPictureEls(touched), unitBefore = P.unitState(canvas.doc), put = false, frameBefore = swapFrameOf(tg);
       try { put = P.place(tg, attached[s.picture - 1], s.alt, help) === true; } catch (err) { if (window.console) console.error(err); }
       if (!put) {
         putPictureElsBack(kept);
@@ -6710,6 +6775,9 @@
         putPictureElsBack(kept);
         return lost('the change would have altered the logo unit');
       }
+      /* the place keeps its frame; the picture fills it by cropping (the server let through only a picture close to its
+         shape: lib/doc-pictures.js cleanSwaps) */
+      keepSwapFrame(tg, frameBefore, sizes[s.picture] || null);
       changedEls.push(tg.el);
       done.push('“' + label + '”: ' + words + ' put in' + swapWhere(s));
       step.set('done');
@@ -6775,7 +6843,10 @@
         job.step.set('run');
         // the rework that puts the new picture in (a background or a picture for a section that has no place for one)
         var withPic = !!job.edit && !!madePic && usesNew(job.edit);
-        var asked = requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add));
+        /* the section's own pictures and their own sizes, as they are now: the rework gives each frame its picture's
+           shape, and holdFrames makes sure of it after */
+        var ownBefore = job.edit ? ownSizesOf(job.sec) : {};
+        var asked = requestSectionCode(job.sec, job.edit ? 'edit' : 'create', (job.edit || job.add).instruction, picturesFor(job.edit || job.add), ownBefore);
         /* The section is locked on the canvas while it is rewritten (the request above has already read it), and its
            words are noted: an answer that comes back after they changed is not put over them (QA, UX-092). Stop
            lets go of a rework still on its way: its answer, when it comes, is not put on the page (UX-097). */
@@ -6819,6 +6890,8 @@
             /* the frame the rework made for it holds the shape it was made in (owner, 16 Nov 2026: "AI has created a
                square image for a rectangular placeholder") */
             if (picShown && np.placement === 'picture' && np.frame) fitNewFrame(fresh);
+            /* and every other picture of this event's in it, the document's and its own, holds its own shape */
+            var framesHeld = holdFrames(fresh, ownBefore);
             changedEls.push(fresh);
             /* a document's picture is said to be in only when the rewritten section really draws it */
             var docIn = docPicturesIn(job.edit || job.add), docShown = docIn.filter(function (x) { return aiPictureRules.shows(drawn, x.url); });
@@ -6835,6 +6908,7 @@
               if (job.add && job.step.setKey) job.step.setKey(fresh.getAttribute('data-rv-key') || '');
               job.step.set('done', docMissed.length ? pictureWords(docMissed) + ' not used in it' : '');
             }
+            return framesHeld;
           });
         }).then(null, function (err) {
           lockSection(job.sec, false);
@@ -6924,7 +6998,11 @@
              the card ended with only "Nothing on the page changed.") — unless a step already says where it is. */
           finishAiCard(t, madePic && !madePic.told ? keepMadePicture('The new picture') : '');
           if (madePic && madePic.placed && t.status !== 'failed') {
-            card.note(np.apply === 'swap' ? 'Undo brings the old picture back.' : 'Undo puts “' + np.label + '” back as it was, without the new picture.');
+            /* Undo takes back the whole change: said so when the picture was not all of it (QA, 16 Nov 2026: the card
+               said only "Undo puts “Agenda” back" while Undo took back nine changes) */
+            var more = done.length > 1;
+            card.note(more ? 'Undo takes back all of this change, the new picture with it.'
+              : np.apply === 'swap' ? 'Undo brings the old picture back.' : 'Undo puts “' + np.label + '” back as it was, without the new picture.');
           }
           if (t.stopAsked && t.status === 'partly') card.note(CHAT_TEXT.stoppedAfter(card.steps().filter(function (st) { return st.state === 'done'; }).length, card.count()));
           setAiWorking(false);
@@ -7181,13 +7259,16 @@
      applySectionCode puts an answer on the page: on a site whose section CSS is its own the section's
      stylesheet is replaced; elsewhere the CSS is added inside the section. The caller records the undo step. */
   var aiWorking = false;
-  function requestSectionCode(sec, mode, instruction, addPictures) {
+  /* ownSizes: { address: { w, h } } of this event's own pictures the section shows (their own sizes): the rework gives
+     each one's frame that shape (functions/lib/api-generate.js buildRedesignPrompt) */
+  function requestSectionCode(sec, mode, instruction, addPictures, ownSizes) {
     var secs = canvas.sections(), at = secs.indexOf(sec), src = devSource(sec);
+    var sized = Object.keys(ownSizes || {}).slice(0, 12).map(function (u) { return { url: u, w: ownSizes[u].w, h: ownSizes[u].h }; });
     return RevampAuth.authedFetch('/api/redesign-section', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         eventId: eventId, sectionId: sec.getAttribute('data-rv-section'), mode: mode, instruction: instruction,
-        html: src.html, css: src.css, generated: /^gen-/.test(canvas.template.id || ''), addPictures: addPictures || [],
+        html: src.html, css: src.css, generated: /^gen-/.test(canvas.template.id || ''), addPictures: addPictures || [], ownSizes: sized,
         above: sectionOutline(secs[at - 1]), below: sectionOutline(secs[at + 1])
       })
     }).then(function (res) {

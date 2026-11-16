@@ -281,7 +281,7 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
     /if \(docMissed\.length\) said\.push\(/.test(turn));
   check('D.7 ... a rework that left it out: said, and the picture kept', /var unused = withPic && !picShown \? keepMadePicture\('It'\) : '';/.test(turn) &&
     /said\.push\('“' \+ job\.label \+ '” was reworked, but the new picture was not used in it\. ' \+ unused\);/.test(turn));
-  check('D.7 the Undo note names the picture only when it was put in', /if \(madePic && madePic\.placed && t\.status !== 'failed'\) \{\s*card\.note\(/.test(turn));
+  check('D.7 the Undo note names the picture only when it was put in, and says the whole change when there was more', /if \(madePic && madePic\.placed && t\.status !== 'failed'\) \{[^}]*var more = done\.length > 1;\s*card\.note\(more \? 'Undo takes back all of this change, the new picture with it\.'/.test(turn));
   /* the new picture's swap, its rework, and a document picture's swap (owner, 16 Nov 2026) */
   check('D.7 the logo unit is compared before and after the swap and the rework', (turn.match(/sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)/g) || []).length === 3);
   check('D.7 a document picture put where a section has one: the same target, logo-unit check and put-back as the new picture\'s swap',

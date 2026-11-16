@@ -111,6 +111,11 @@
         }
         return doc;
       }, function (err) {
+        /* A PDF that needs a password to open, or one that is not a readable PDF at all, is said so, at any size, and
+           not sent: the model cannot read it either, and "attach a copy under 10 MB" would not help (QA, 16 Nov 2026) */
+        var why = unreadableWhy(err);
+        if (why === 'password') throw new Error('“' + name + '” is protected with a password, so it cannot be read. Save a copy without the password and attach that.');
+        if (why === 'broken') throw new Error('“' + name + '” could not be opened: the file looks damaged. Save or export it again as a PDF and attach the new copy.');
         /* the pictures could not be taken out: a PDF that fits still goes as the file, which the model reads */
         if (!big) { doc.pictures = []; doc.picturesFailed = true; return doc; }
         var m = err && err.message;
@@ -119,6 +124,15 @@
     });
   }
   function say(o, text) { if (o && typeof o.onProgress === 'function') { try { o.onProgress(text); } catch (e) { /* the page's own */ } } }
+  /* why PDF.js could not open a PDF, by the error it gave: 'password' (it needs a password to open: PasswordException),
+     'broken' (not a readable PDF: InvalidPDFException, a cross-reference table it cannot find), '' otherwise (the
+     reader did not load, a picture failed: the file itself may still be read by the model) */
+  function unreadableWhy(err) {
+    var name = String((err && err.name) || ''), msg = String((err && err.message) || '');
+    if (name === 'PasswordException' || /\bpassword\b/i.test(msg) && !/^“/.test(msg)) return 'password';
+    if (name === 'InvalidPDFException' || /Invalid PDF structure|Invalid XRef|startxref|Invalid root reference|PDF header/i.test(msg)) return 'broken';
+    return '';
+  }
 
   /* a script of this site's, once: resolves when `global` is on the window */
   var scripts = {};
@@ -449,5 +463,5 @@
   }
 
   root.RevampAiDocs = { ACCEPT: ACCEPT, CAPS: CAPS, kindOf: kindOf, read: read, wire: wire, storePictures: storePictures, pictureNote: pictureNote,
-    _test: { wordsOf: wordsOf, base64Of: base64Of } };
+    _test: { wordsOf: wordsOf, base64Of: base64Of, unreadableWhy: unreadableWhy } };
 })(typeof window !== 'undefined' ? window : this);

@@ -182,11 +182,16 @@ function chatDocsLines(payload) {
 /* The pictures taken out of documents (lib/doc-pictures.js) — this message's, or those kept with the conversation —
    numbered after the owner's attached pictures, with a line for an attached document none could be taken from. '' with
    neither. */
+/* With no document pictures in hand, for an editor that takes them out: the conversation may hold this chat's own earlier
+   answers that a PDF's pictures could not be used (owner, ET DAVOS 2027, 16 Nov 2026 — said before the editor took them
+   out). Those answers are out of date: the owner is asked to attach the document again, never told it cannot be done. */
+var CHAT_DOC_AGAIN = 'PICTURES IN A PDF OR DECK: the editor takes the photographs out of a PDF or PowerPoint deck attached to a message, and you can then see them and place them or re-create them. None are kept for this conversation now. If the owner asks for the pictures in a document (one attached earlier, or "the images in the pdf"), ask them in a "reply" to attach that document again to their message (the attach button by the message box), then you will place them — never say that pictures cannot be taken out of a PDF or that you cannot see them; earlier answers here that said so are out of date.';
 function chatDocPictureLines(payload) {
   var block = docPictures.promptLines(payload.docPictures, { sheets: payload.docSheets || 0, seen: payload.docSeen || [], fresh: payload.docFresh === true, docs: payload.docSet || [],
     swaps: payload.docSwaps === true });
   var notes = Array.isArray(payload.docNotes) ? payload.docNotes : [];
-  var text = [block].concat(notes).filter(Boolean).join('\n');
+  var again = !block && payload.canPlaceDocPictures === true && !(Array.isArray(payload.docList) && payload.docList.length) ? CHAT_DOC_AGAIN : '';
+  var text = [block, again].concat(notes).filter(Boolean).join('\n');
   return text ? text + '\n' : '';
 }
 /* An attached document none of whose pictures could be placed, said in one line: none could be taken out this time,
@@ -233,10 +238,11 @@ function buildChatPrompt(payload) {
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
     '',
-    'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it; buttons: the labels of the buttons in it):',
+    'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it — showsWhen: what it waits for to be shown, e.g. "sessions" for an agenda with none yet — so put no picture there and make none for it unless the owner names it; buttons: the labels of the buttons in it):',
     JSON.stringify(sections.map(function (s) {
       var buttons = (Array.isArray(s.buttons) ? s.buttons : []).map(function (b) { return String(b || '').replace(/\s+/g, ' ').trim().slice(0, 80); }).filter(Boolean).slice(0, 8);
-      var row = { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, texts: s.texts || [], buttons: buttons.length ? buttons : undefined };
+      var row = { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, showsWhen: s.hidden && typeof s.showsWhen === 'string' && /^[a-z][a-z-]{0,30}$/.test(s.showsWhen) ? s.showsWhen : undefined,
+        texts: s.texts || [], buttons: buttons.length ? buttons : undefined };
       /* with pictures: its role, its replaceable pictures, a background, the banner's slot, a video (never `own`) */
       return canPics ? Object.assign(row, chatPicture.promptFields(s)) : row;
     }), null, 2),
@@ -380,6 +386,10 @@ function chatResponseSchema(payload) {
   if (payload.docSwaps === true) {
     schema.properties.pictureSwaps = docPictures.swapSchema(sectionIds);
     schema.required.push('pictureSwaps');
+    /* which of the document pictures it places show people: kept out of every section but a people section (QA, 16 Nov
+       2026: a collage with people in it went into Why Join Us) */
+    schema.properties.docPeople = docPictures.peopleSchema();
+    schema.required.push('docPeople');
   }
   return schema;
 }
@@ -768,10 +778,38 @@ function handleChatEdit(req, res) {
       }).filter(Boolean).slice(0, 4);
       /* pictures taken out of a document, each put where a section already has one, with nothing else changed
          (lib/doc-pictures.js cleanSwaps): never in a section this answer reworks or gives the new picture */
+      /* The document pictures are held to the site's picture rules here, whatever the model wrote (QA, 16 Nov 2026, ET
+         DAVOS 2027): never in a section visitors do not see unless the owner's words name it (an agenda with no
+         sessions), a picture of people only in a people section and in at most two, and a swap only where the
+         picture's shape is close to its place's — a picture far off it is put in by a rework that gives its frame the
+         picture's own shape. What is left out is said, by page. */
+      var docDropped = [], docFirst = ownAttached + 1;
+      if (payload.docSwaps) {
+        var docPeople = docPictures.peopleSet(parsed.docPeople, docFirst, attached);
+        var namedIds = {};
+        chatPicture.namedSections(String(payload.instruction || ''), payload.sections || [], '').forEach(function (id) { namedIds[id] = true; });
+        var focusId = payload.focus && typeof payload.focus === 'object' ? String(payload.focus.sectionId || '') : '';
+        if (focusId) namedIds[focusId] = true;
+        var keptRe = docPictures.cleanReworks(sectionEdits, newSections, { sections: payload.sections || [], first: docFirst, last: attached, people: docPeople, named: namedIds, dropped: docDropped });
+        sectionEdits = keptRe.edits;
+        newSections = keptRe.newSections;
+      }
       var skipSwap = {};
       sectionEdits.forEach(function (e) { skipSwap[e.sectionId] = true; });
       if (pictureAsk) skipSwap[pictureAsk.sectionId] = true;
-      var pictureSwaps = payload.docSwaps ? docPictures.cleanSwaps(parsed.pictureSwaps, { sections: payload.sections || [], first: ownAttached + 1, last: attached, skip: skipSwap }) : [];
+      var pictureSwaps = payload.docSwaps ? docPictures.cleanSwaps(parsed.pictureSwaps, { sections: payload.sections || [], first: docFirst, last: attached, skip: skipSwap,
+        pictures: payload.docPictures || [], people: docPeople, named: namedIds, peopleUsed: keptRe.peopleUsed, dropped: docDropped }) : [];
+      /* a swap left out for its shape: the section is reworked with it instead, its frame in the picture's shape */
+      docDropped.forEach(function (d) {
+        if (d.why !== 'shape' || skipSwap[d.sectionId] || sectionEdits.length >= 10) return;
+        var re = docPictures.shapeRework(d, payload.sections || []);
+        if (!re) return;
+        sectionEdits.push({ sectionId: re.sectionId, instruction: brief(re.instruction), pictures: re.pictures });
+        skipSwap[d.sectionId] = true;
+        d.reworked = true;
+      });
+      /* (a swap turned into a rework is a step of its own on the card: only what was left out is said) */
+      docPictures.droppedLines(docDropped.filter(function (d) { return !d.reworked; }), payload.docPictures || [], payload.sections || []).forEach(function (line) { skipped.push(line); });
 
       /* forms: each new form checked as a form the routes would store, every link and placement checked
          against the page and the forms it names (lib/forms.js cleanAiFormOps) */
@@ -782,6 +820,13 @@ function handleChatEdit(req, res) {
       var hasOther = Object.keys(design).length || textEdits.length || sectionEdits.length || sectionOps.length || newSections.length ||
         formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length || pictureSwaps.length;
       var hasChange = hasOther || !!pictureAsk;
+      /* everything the answer would have done put document pictures where the site's rules keep them out: the answer is
+         what was left out and why, not the model's summary of a change that is not made */
+      var docLeftOnly = !hasChange && docDropped.length > 0 && parsed.kind !== 'reply' && parsed.kind !== 'undo';
+      if (docLeftOnly) {
+        summary = docPictures.droppedLines(docDropped, payload.docPictures || [], payload.sections || []).join(' ') + ' Nothing on the page changed.';
+        skipped = skipped.filter(function (l) { return summary.indexOf(l) === -1; });
+      }
       /* A picture that is not made (refused, unclear, or never asked for): when it was the only change, the
          answer is the server's sentence, since the model's summary promised a picture; else the sentence is
          one of the things not done, and the rest is applied. */

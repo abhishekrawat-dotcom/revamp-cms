@@ -600,6 +600,24 @@ function insideUnit(el) { return !!(el && el.closest && el.closest('[data-rv-log
     var w = page('<section data-rv-section="hero" data-rv-key="hero" data-t-box="1440 800"><div class="rv-lu rv-lu-on-dark" data-rv-logo-unit></div></section>');
     return P.describe(sec(w, 'hero'), H(w)).heroMode === 'dark';
   })());
+  /* QA, 16 Nov 2026 (ET DAVOS 2027): a picture's own size goes with its frame's, and the prompt says when they differ */
+  check('C.4 a picture\'s own size (nw, nh) is kept by the server and said when its frame is far off it', (function () {
+    var cp;
+    try { cp = require('./chat-picture'); } catch (e) { return true; }
+    if (!cp.cleanSectionFields || !cp.promptFields) return true;
+    var y = cp.cleanSectionFields({ id: 'what-awaits', role: '', pics: { slots: 1, list: [{ label: 'A promenade', w: 1152, h: 240, nw: 1184, nh: 864 }, { label: 'b', w: 800, h: 450, nw: 1600, nh: 900 }, { label: 'c', w: 640, h: 400 }] } }, STORE);
+    var f = cp.promptFields(y);
+    return y.pics.list[0].nw === 1184 && y.pics.list[0].nh === 864 && !('nw' in y.pics.list[2]) &&
+      /^A promenade \(1152×240\) — FRAME OFF ITS PICTURE'S SHAPE: the picture itself is 1184×864 \(4:3\), so this frame shows only 29% of it$/.test(f.pictures[0]) &&
+      f.pictures[1] === 'b (800×450)' && f.pictures[2] === 'c (640×400)';
+  })());
+  check('C.4 a section visitors do not see is sent as hidden, with what it waits for, and kept so by the server', (function () {
+    var cp;
+    try { cp = require('./chat-picture'); } catch (e) { return true; }
+    var y = cp.cleanSectionFields({ id: 'agenda', hidden: true, showsWhen: 'sessions', pics: {} }, STORE), z = cp.cleanSectionFields({ id: 'x', showsWhen: 'sessions', pics: {} }, STORE);
+    var w = cp.cleanSectionFields({ id: 'agenda', hidden: true, showsWhen: '<b>', pics: {} }, STORE);
+    return y.hidden === true && y.showsWhen === 'sessions' && !('hidden' in z) && !('showsWhen' in z) && w.hidden === true && !('showsWhen' in w);
+  })());
   check('C.4 the server\'s cleaner (chat-picture.js cleanSectionFields) keeps what describe sends', (function () {
     var cp;
     try { cp = require('./chat-picture'); } catch (e) { return true; }      // built beside this file; checked once it is there
@@ -1066,7 +1084,7 @@ var RECS = [
   }
   check('C.9 one global, RevampAiPicture, with the agreed calls', (function () {
     var own = Object.keys(ctx).filter(function (k) { return ['console', 'window'].indexOf(k) === -1; });
-    return own.join() === 'RevampAiPicture' && Object.keys(P).sort().join() === ['chooseSlot', 'describe', 'fitFrame', 'heroVeilCss', 'isProtected', 'place', 'recordsState', 'slotOf', 'target', 'unitState'].join();
+    return own.join() === 'RevampAiPicture' && Object.keys(P).sort().join() === ['chooseSlot', 'describe', 'fitFrame', 'frameBox', 'heroVeilCss', 'holdOwnFrames', 'isProtected', 'place', 'recordsState', 'shapeGap', 'slotOf', 'target', 'unitState'].join();
   })(), Object.keys(P));
   check('C.9 asks no server and calls no AI (no fetch, XMLHttpRequest or authedFetch)', !/\bfetch\s*\(|XMLHttpRequest|authedFetch|sendBeacon/.test(code));
   check('C.9 writes no markup (no innerHTML, outerHTML, insertAdjacentHTML or document.write)', !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(code));
