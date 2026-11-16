@@ -58,6 +58,13 @@ var PROFILES = {
   /* the check of a picture ETB2B AI made (lib/chat-picture.js): three yes/no answers about one picture — are there
      people, words, a logo in it — is looking, not writing: Haiku, a fraction of a cent a picture */
   'picture-check': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 30000, maxOutputTokens: 2000 },
+  /* the advanced picture assistant (plan of 16 Nov 2026, W2; switches `brief` and `critic`, lib/picture-switches.js):
+     the Director writes one brief per picture a message plans, in one call, from the event, the sections' own words
+     and the site's look — writing, so Sonnet at medium effort; the Critic looks at each picture made (people, words,
+     logos, borders, the place, the brief) and says what to fix — looking, at low effort, inside the picture's own
+     deadline. Their failure falls back to today's prompt and today's Haiku check (lib/chat-picture.js). */
+  'picture-brief': { model: CLAUDE_SONNET, effort: 'medium', timeoutMs: 45000, maxOutputTokens: 6000 },
+  'picture-critic': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 30000, maxOutputTokens: 3000 },
   /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
   'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
   /* ETB2B AI in the post and mailer editors (lib/promo-ai.js): reads a request against one post or mail and writes

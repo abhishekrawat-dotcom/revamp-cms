@@ -6094,7 +6094,15 @@
     var HELD = 'The new picture did not pass its check, so I did not put it on the page.';
     function outcome(r, madeHere) {
       var url = r && r.ok && r.body && typeof r.body.url === 'string' ? r.body.url : '';
-      if (url && madeHere(url)) return r.body.held === true ? { url: url, held: true, why: String(r.body.heldWhy || '').replace(/\s+/g, ' ').trim().slice(0, 400) || HELD } : { url: url };
+      if (url && madeHere(url)) {
+        var got = r.body.held === true ? { url: url, held: true, why: String(r.body.heldWhy || '').replace(/\s+/g, ' ').trim().slice(0, 400) || HELD } : { url: url };
+        /* the advanced picture assistant (W2): the point the picture is about, for the page's object-position; for a
+           picture kept off the page, the edit its Critic says would fix it ("Fix it" asks for it) */
+        var f = r.body.focus;
+        if (f && typeof f === 'object' && +f.x >= 0 && +f.x <= 1 && +f.y >= 0 && +f.y <= 1) got.focus = { x: +f.x, y: +f.y };
+        if (got.held && typeof r.body.fix === 'string' && r.body.fix.replace(/\s+/g, '')) got.fix = r.body.fix.replace(/\s+/g, ' ').trim().slice(0, 300);
+        return got;
+      }
       return { why: url ? 'The picture came back from an address that is not this event’s own, so it was not used. Nothing on your site changed — ask again.'
         : r && r.body && r.body.error ? String(r.body.error)
         : r ? 'The picture could not be made (error ' + r.status + '). Nothing on your site changed — ask again.'
@@ -6184,8 +6192,9 @@
 
   var AI_PICTURE_WHERE = aiPictureRules.WHERE;
   /* how long a picture the server is still making is waited for: the server may make a second one when the first
-     fails its check (functions/lib/chat-picture.js, all within its 180 s deadline), then store it */
-  var AI_PICTURE_WAIT_MS = 240000;
+     fails its check (functions/lib/chat-picture.js, all within its 180 s deadline; 240 s when the Director or the
+     Critic works on it, ADVANCED_DEADLINE_MS, with a repair), then store it */
+  var AI_PICTURE_WAIT_MS = 280000;
   var AI_PICTURE_POLL_MS = 5000;
   function aiPictures() {
     var P = window.RevampAiPicture;
@@ -6557,6 +6566,7 @@
        forms: a button or an embed can only point at a form that exists. If one cannot be made, those already made
        are deleted again and nothing on the page changes. */
     var madePic = null;               // { url, placed } once the new picture is made
+    var heldFix = '';                 // for a picture kept off the page: the edit its Critic says would fix it
     var pictureMade = np ? makeNewPicture() : Promise.resolve();
     var formsMade = pictureMade.then(function () {
       if (t.stopAsked) throw STOPPED;
@@ -6606,6 +6616,7 @@
         // stopped while it was being made: the server still finishes it, and the conversation offers it after a reload
         if (r === STOPPED) { stopStep(S.picMake); return; }
         var got = aiPictureRules.outcome(r, madeHere);
+        heldFix = got.held && got.fix ? got.fix : '';
         /* made, but kept off the page by its check: it waits in the tray, nothing is put in with it, and why is said.
            held: never swapped in later either (QA, 16 Nov 2026: the card said "I did not put it on the page" while the
            swap step put it in the Overview frame, two people in a no-people picture) */
@@ -6614,7 +6625,7 @@
           return pictureHeld(got.why);
         }
         if (got.url) {
-          madePic = { url: got.url, placed: false, offered: false };
+          madePic = { url: got.url, placed: false, offered: false, focus: got.focus || null };
           attached[np.n - 1] = madePic.url;        // a rework that uses it finds it by its number (picturesFor)
           S.picMake.set('done');
           drawMadePicture(bubble, madePic.url, np.alt || np.subject, true);
@@ -6717,6 +6728,12 @@
        -> the sentence that says where it is; '' when it is on the page or none was made */
     function keepMadePicture(lead) {
       if (!madePic || madePic.placed) return '';
+      /* a picture kept off the page by its check: shown with its reason and what the owner may do with it, once */
+      if (madePic.held && !madePic.heldDrawn && np) {
+        madePic.heldDrawn = true;
+        drawHeldPicture(bubble, { url: madePic.url, sectionId: np.sectionId, label: np.label, placement: np.placement, slot: np.slot, apply: np.apply,
+          kind: np.kind, alt: np.alt, subject: np.subject, frame: np.frame, n: np.n, fix: heldFix });
+      }
       if (offerPicture && offerPicture(madePic.url, true)) return lead + ' is in the tray above the message box: tell me where it goes.';
       if (!madePic.offered) { madePic.offered = true; drawUsePicture(bubble, madePic.url); }
       return lead + ' is under my message: “Use this picture” puts it in the tray, then tell me where it goes.';
@@ -6736,6 +6753,7 @@
       }
       if (!isLive(sec)) return lost('the section is no longer on the page');
       var help = aiPictureHelpers();
+      if (madePic.focus) help.focus = madePic.focus;          // the point it is about stays in view (object-position)
       var focusEl = sent.pictureEl && sent.pictureEl.isConnected && sec.contains(sent.pictureEl) ? sent.pictureEl : null;
       var tg = null;
       try { tg = onDesktop(function () { return P.target(sec, np, focusEl, help); }); } catch (err) { if (window.console) console.error(err); }
@@ -7440,6 +7458,100 @@
       try { onPage = aiPictureRules.shows(canvas.doc.documentElement.outerHTML, pic.url); } catch (e) { onPage = null; }
     }
     if (aiPictureRules.offerAgain(h.status, onPage)) drawUsePicture(bubble, pic.url);
+  }
+  /* A picture ETB2B AI made but kept off the page by its check (the advanced picture assistant, plan of 16 Nov 2026,
+     W2): under its message, three ways on, each only on the owner's click —
+       Fix it               asks ETB2B AI, in the owner's words, for the edit its Critic says would fix it;
+       Use it anyway        puts it in its place as it is, with its own Undo (the owner's choice, never automatic);
+       Try a different scene asks ETB2B AI for that place again with another scene.
+     Fix it and Try a different scene are messages like any other (the conversation, the checks, Undo). spec: the
+     picture's address and where it was for (its section, placement, slot, alt, frame), and its fix ('' for none). */
+  function drawHeldPicture(bubble, spec) {
+    if (!bubble || !spec || !spec.url) return;
+    var box = document.createElement('div');
+    box.className = 'chat-held-pic';
+    var label = spec.label || sectionLabel(spec.sectionId) || 'this section';
+    function button(text, title, fn) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-secondary btn-sm';
+      b.textContent = text;
+      b.title = title;
+      b.addEventListener('click', function () { fn(b); });
+      box.appendChild(b);
+      return b;
+    }
+    if (viewCan('ask')) {
+      button('Fix it', 'Ask ETB2B AI to fix this picture and put it in “' + label + '”', function () {
+        chatAskAsOwner('Fix the new picture for “' + label + '” that you kept off the page' + (spec.fix ? ': ' + spec.fix.replace(/[.\s]+$/, '') + '.' : ', so that it follows that place\'s picture rules.'));
+      });
+    }
+    button('Use it anyway', 'Put this picture in “' + label + '” as it is — Undo takes it out again', function (b) { useHeldPicture(spec, b); });
+    if (viewCan('ask')) {
+      button('Try a different scene', 'Ask ETB2B AI for a new picture with another scene for “' + label + '”', function () {
+        chatAskAsOwner('Make the picture for “' + label + '” again with a different scene.');
+      });
+    }
+    bubble.appendChild(box);
+  }
+  /* a message sent as if the owner had typed it (a held picture's Fix it or Try a different scene) */
+  function chatAskAsOwner(text) {
+    if (!viewCan('ask')) return;
+    if (aiWorking) { showToast('One moment — ETB2B AI is still applying a change.'); return; }
+    try { chatView.ask(text); } catch (err) { if (window.console) console.error(err); }
+  }
+  /* "Use it anyway": the held picture put in its place as it is, on the owner's click only, with an Undo of its own. It
+     goes where the picture was for, and only there (RevampAiPicture.target and place, as a picture ETB2B AI made always
+     does): never in the logo unit, and put back if the logo unit would read differently. */
+  function useHeldPicture(spec, btn) {
+    var P = aiPictures();
+    if (aiWorking || !canvas || remounting) { showToast('One moment — ETB2B AI is still applying a change.'); return; }
+    var sec = P ? canvas.sectionByKey(spec.sectionId) : null;
+    function cannot(why) {
+      showToast('The picture could not be put in “' + (spec.label || 'that section') + '” — ' + why + '. Use this picture puts it in the tray: then say where it goes.', { kind: 'error' });
+    }
+    if (!P) return cannot('this editor could not load the part that puts pictures in');
+    if (!isLive(sec)) return cannot('the section is no longer on the page');
+    deselect();
+    flush();
+    var before = canvas.snapshot(), help = aiPictureHelpers(), tg = null, put = false;
+    try { tg = onDesktop(function () { return P.target(sec, spec, null, help); }); } catch (err) { if (window.console) console.error(err); }
+    if (!tg || tg.none || !tg.el || tg.el.nodeType !== 1 || !sec.contains(tg.el) || tg.el.closest('[data-rv-logo-unit], [data-rv-logo], [data-rv-etnav]')) return cannot(String((tg && tg.none) || 'it has no place for a picture now'));
+    var unitBefore = P.unitState(canvas.doc), box = tg.how === 'picture' && tg.el.tagName === 'IMG' && typeof P.frameBox === 'function' ? onDesktop(function () { return P.frameBox(tg.el); }) : null;
+    try { put = P.place(tg, spec.url, spec.alt, help) === true; } catch (err) { if (window.console) console.error(err); }
+    if (!put || !sameLogoUnit(unitBefore, P.unitState(canvas.doc))) {
+      canvas.restore(before, restoreOpts());
+      return cannot(put ? 'it would have altered the logo unit' : 'the picture could not be set there');
+    }
+    /* the frame keeps the shape it had (its old picture's), the picture filling it */
+    if (box && typeof P.fitFrame === 'function') { try { onDesktop(function () { P.fitFrame(tg.el, box.w + ':' + box.h, aiPictureHelpers()); }); } catch (err) { if (window.console) console.error(err); } }
+    commitNow();
+    var ptr = undoPtr, after = canvas.snapshot();
+    showToast('The picture is in “' + (spec.label || 'the section') + '”. Undo under the message takes it out again.');
+    if (!btn) return;
+    btn.textContent = 'Undo';
+    btn.title = 'Take this picture out of “' + (spec.label || 'the section') + '” again';
+    var fresh = btn.cloneNode(true);
+    btn.parentNode.replaceChild(fresh, btn);
+    fresh.addEventListener('click', function () {
+      if (aiWorking || !canvas || remounting) { showToast('One moment — ETB2B AI is still applying a change.'); return; }
+      deselect();
+      flush();
+      function done() { fresh.disabled = true; fresh.textContent = 'Taken out'; }
+      if (undoPtr === ptr) { undo(); return done(); }
+      var now = canvas.snapshot();
+      /* the top bar's Undo took it out already */
+      if (canvas.sameSnapshot && canvas.sameSnapshot(now, before)) return done();
+      if (canvas.sameSnapshot && canvas.sameSnapshot(now, after)) { canvas.restore(before, restoreOpts()); commitNow(); return done(); }
+      var q = workSafety.undoQuestion(0, Math.max(1, undoPtr - ptr));
+      ask({ title: q.title, text: q.text, actions: [
+        { key: 'keep', label: 'Keep my edits', kind: 'secondary', autofocus: true },
+        { key: 'undo', label: 'Undo all of it', kind: 'danger' }
+      ] }).then(function (a) {
+        if (a !== 'undo' || !canvas || remounting || aiWorking) return;
+        canvas.restore(before, restoreOpts()); commitNow(); done();
+      });
+    });
   }
   /* "Use this picture" under a picture ETB2B AI made: puts it in the tray above the message box */
   function drawUsePicture(bubble, url) {

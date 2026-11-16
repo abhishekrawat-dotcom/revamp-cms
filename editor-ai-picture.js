@@ -647,20 +647,32 @@
   function cleanAlt(alt) {
     return String(alt || '').replace(/\b(?:https?:\/\/|www\.)\S*/gi, ' ').replace(/[\u0000-\u001f<>]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, ALT_MAX).trim();
   }
+  /* The point a new picture is about (functions/lib/picture-critic.js: the Critic's focus, mapped into the picture as it
+     was cut, { x, y } from 0 to 1), as CSS: the frame's object-fit: cover, and a phone's taller frame, keep that point in
+     view instead of the middle (plan of 16 Nov 2026, W2). '' for none. */
+  function focusCss(f) {
+    if (!f || typeof f !== 'object') return '';
+    var x = +f.x, y = +f.y;
+    if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return '';
+    return Math.round(x * 1000) / 10 + '% ' + Math.round(y * 1000) / 10 + '%';
+  }
   function place(spot, url, alt, h) {
     h = h || {};
     var c = h.canvas;
     if (!spot || !spot.el || !c || !usableUrl(url, h) || !connected(spot.el)) return false;
-    var el = spot.el, sec = sectionOf(el), role = roleOf(sec);
+    var el = spot.el, sec = sectionOf(el), role = roleOf(sec), at = focusCss(h.focus);
     if (spot.how === 'background') {
       // a background belongs to a box, never to a picture or an icon
       if (within(el, sec, KEEP) || isPictureEl(el) || !c.setBackgroundPicture) return false;
       c.setBackgroundPicture(el, url);
+      // one picture in the background (no gradient laid over it): its position follows the focus
+      if (at && String(el.style.backgroundImage || '').split('url(').length === 2 && !/gradient\(/.test(el.style.backgroundImage)) el.style.backgroundPosition = at;
       return true;
     }
     if (spot.how === 'picture') {
       if (protectedIn(el, sec, role) || !(tagOf(el) === 'IMG' || attr(el, 'data-editable') === 'image') || !c.setPicture) return false;
       c.setPicture(el, url);
+      if (at && tagOf(el) === 'IMG') el.style.objectPosition = at;
       // a <picture>'s sources would be shown instead of the new src
       var holder = el.parentElement;
       if (tagOf(el) === 'IMG' && tagOf(holder) === 'PICTURE') {
@@ -676,7 +688,7 @@
       if (!veil || !el.contains(veil) || protectedIn(el, sec, role) || within(veil, sec, KEEP)) return false;
       el.style.backgroundImage = 'url("' + url + '")';
       el.style.backgroundSize = 'cover';
-      el.style.backgroundPosition = 'center';
+      el.style.backgroundPosition = at || 'center';
       veil.style.background = heroVeilCss(spot.heroMode || heroModeOf(sec, h));
       return true;
     }

@@ -174,7 +174,10 @@ function ask(sectionId, extra) {
     '… and its one ask is job 0', J(planned.jobs));
   var none = plan.planPictures([], clone(ctx));
   check(none.ask === null && none.jobs.length === 0, 'no entry: no job');
-  check((await brief.writeBriefs([n0], {})) === null && brief.promptFromBrief({ scene: 'x' }, n0, {}) === '' && (await brief.writeStyleCard({})) === null, 'the Director writes nothing yet');
+  /* builder B (W2, 16 Nov 2026): the Director is built; with `brief` off it writes nothing, and a brief gives a prompt
+     that ends with site generation's STRICT rules (picture-brief.test.js has the rest) */
+  check((await brief.writeBriefs([n0], {})) === null && brief.promptFromBrief({}, n0, {}) === '' && /STRICT: /.test(brief.promptFromBrief({ scene: 'x' }, n0, {})) && (await brief.writeStyleCard({})) === null,
+    'the Director writes nothing while `brief` is off; a brief gives a prompt, an empty one none');
   var bs = await brief.briefStep({}, {});
   check(bs.status === 200 && bs.body.briefs === 0, 'the brief step answers that there is nothing to do', J(bs));
   var er = await edit.run(n0, {});

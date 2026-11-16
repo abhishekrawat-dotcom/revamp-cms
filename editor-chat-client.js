@@ -287,6 +287,8 @@
       focusInput: function () { chat.focusInput(); },
       reveal: function (node) { if (isFn(chat.reveal)) chat.reveal(node); },
       markUndone: function (fn) { chat.markUndone(fn); },
+      /* a message sent as the owner's own (a held picture's Fix it and Try a different scene, editor-template-ui.js) */
+      ask: function (text) { return isFn(chat.ask) ? chat.ask(str(text)) : Promise.resolve({ ok: false }); },
       /* "Show" on a step: in "Edit with AI" the live view goes to it and outlines it; else the canvas does */
       show: function (key) {
         var M = modes();
