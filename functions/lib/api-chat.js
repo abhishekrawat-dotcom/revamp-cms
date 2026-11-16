@@ -3,6 +3,8 @@
 //   POST /api/chat-edit        custom_editor.html's "Ask AI to edit" chat panel (template mode only)
 //   POST /api/chat/turn        what became of a chat answer (done, undone, failed), kept in the person's conversation
 //   GET  /api/chat/history     the person's own conversation for the event
+//   POST /api/chat/doc-pictures  the pictures the editor took out of an attached document, stored with the event
+//                              (lib/doc-pictures.js; no model call)
 //
 // When a model call fails the route answers { error, code, retryable } as every AI route does (lib/api.js's header).
 //
@@ -15,6 +17,9 @@
 const crypto = require('crypto');
 /* the documents a person attaches to an ETB2B AI message: PDFs and PowerPoint decks (owner decision 14) */
 const aiDocs = require('./ai-docs');
+/* the pictures the editor takes out of those documents, kept with the conversation and placed by number (owner, 16 Nov
+   2026: "use the images from this pdf and try to well accommodate them in this website") */
+const docPictures = require('./doc-pictures');
 const { getFirebase } = require('./firebase');
 const { sendJson, isEventId } = require('./http');
 const { logActivity } = require('./activity');
@@ -134,6 +139,11 @@ function chatHistoryText(payload) {
       /* a turn of the post and mailer editors' ETB2B AI (lib/promo-ai.js, brain 'promo'): about a post or a mail, never this page */
       if (t && t.brain === 'promo') return '[The owner asked ETB2B AI in the post or mailer editor: “' + chatLine(t.question, 300) + '” — that was about a post or a mail; nothing on this page changed]';
       var lines = ['User: ' + String(t.question || '').slice(0, 2000), 'You: ' + String(t.answer || '').slice(0, 1500)];
+      /* the documents that message brought pictures from (lib/doc-pictures.js; the pictures themselves are listed above) */
+      var brought = (Array.isArray(t.docs) ? t.docs : []).filter(function (d) { return d && d.pictures > 0; }).map(function (d) {
+        return '“' + chatLine(d.name, 80) + '” (' + d.pictures + (d.pictures === 1 ? ' picture' : ' pictures') + ' taken out)';
+      });
+      if (brought.length) lines.splice(1, 0, '[With this message the owner attached ' + brought.join(' and ') + ']');
       /* a picture the AI made (or could not make): the model remembers what and where, so "make it brighter"
          or "try another" can mean that picture */
       var picLine = t.newPicture ? chatPicture.historyLine(t.newPicture) : '';
@@ -163,10 +173,35 @@ function chatOutcomeText(t) {
    there (goTo). '' with none. */
 var CHAT_DOCS_USE = 'In the site editor, use what the documents say where the person asks: their words for the page\'s own text (the hero\'s line, the overview, a section\'s text, a new section) through `textEdits`, `sectionEdits` or `newSections`. ' +
   'Speakers, the agenda, partners and sponsors, FAQs and contacts come from the event\'s Content and appear on the page by themselves: when the person asks to fill those from a document, list in `summary` what the document has for them (names, titles, times and dates exactly as written) and set `goTo` to that Content page. ' +
-  'A document is never a picture: only attached pictures are placed on the page, by their numbers; a picture inside a document is not. ' +
+  /* owner, 16 Nov 2026: the pictures inside a PDF are the owner's own and go on the page (lib/doc-pictures.js) */
+  'The pictures inside a document go on the page only as the numbered pictures the editor took out of it — listed under PICTURES TAKEN OUT OF THE DOCUMENTS, which you can see — never as a page or a slide of the document itself; a document with none listed there has no picture you can place (a line about it says why). ' +
   'When the person asks to take the site\'s look or theme from a deck, use its look: its main colour as the theme colour, a second strong one as the accent, light or dark as its slides are, its fonts for headings and body text — in `design` — and the same colours in the sections\' own rework where they set their own; say in `summary` which colours and fonts you took.';
 function chatDocsLines(payload) {
   return aiDocs.docsBlock(payload.docList, payload.docMarker, CHAT_DOCS_USE);
+}
+/* The pictures taken out of documents (lib/doc-pictures.js) — this message's, or those kept with the conversation —
+   numbered after the owner's attached pictures, with a line for an attached document none could be taken from. '' with
+   neither. */
+function chatDocPictureLines(payload) {
+  var block = docPictures.promptLines(payload.docPictures, { sheets: payload.docSheets || 0, seen: payload.docSeen || [], fresh: payload.docFresh === true, docs: payload.docSet || [],
+    swaps: payload.docSwaps === true });
+  var notes = Array.isArray(payload.docNotes) ? payload.docNotes : [];
+  var text = [block].concat(notes).filter(Boolean).join('\n');
+  return text ? text + '\n' : '';
+}
+/* An attached document none of whose pictures could be placed, said in one line: none could be taken out this time,
+   or it holds no photographs (only what ai-doc-pictures.js leaves out). raw: the message's documents as sent. */
+function chatDocNotes(raw, withPictures) {
+  var have = {};
+  (withPictures || []).forEach(function (d) { have[d.name] = true; });
+  return (Array.isArray(raw) ? raw : []).slice(0, aiDocs.CAPS.docs).map(function (d) {
+    if (!d || typeof d !== 'object' || (d.kind !== 'pdf' && d.kind !== 'pptx') || !Array.isArray(d.pictures) || d.pictures.length) return '';
+    var name = chatLine(String(d.name || 'the document').split(/[\\/]/).pop(), 80).replace(/[<>"`]/g, '');
+    if (have[name]) return '';
+    if (d.picturesFailed === true) return 'No picture could be taken out of “' + name + '” this time, so none of its pictures can be placed: say so if the owner asks for them, and that attaching it again tries once more.';
+    var left = docPictures.leftOutSentence(d.leftOut, 0);
+    return '“' + name + '” holds no photographs to place' + (left ? ' (' + left.replace(/\.$/, '') + ')' : '') + ': say so if the owner asks for its pictures.';
+  }).filter(Boolean);
 }
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
@@ -188,7 +223,7 @@ function buildChatPrompt(payload) {
         (payload.seenPictures ? 'You can SEE ' + (payload.seenPictures === payload.attachmentCount ? 'them' : 'pictures ' + payload.seenNumbers.join(', ')) + ': they come with this message as images, in that order. Look at them properly. When the owner asks for the look of a picture (its colours, its mood, its layout), read it from the picture itself and give real values — colours as hex codes (e.g. "#0b1f3a deep navy, #c9a227 gold accent"). Never say you cannot see an attached picture you were given. ' : 'You cannot see them; the owner\'s words say what they are for. ') +
         (payload.unseenNote ? payload.unseenNote + ' ' : '') +
         'To place a picture on the page, the owner\'s words say what it is for. To put one on the page, use `sectionEdits` (or `newSections`) for the section it belongs in, list its number in that entry\'s `pictures`, and say in the instruction exactly where it goes (e.g. "replace the section\'s picture with attached picture 1", "use attached picture 1 as the section\'s background"). If the message does not say where a picture goes, ask in a "reply" instead of guessing.\n'
-      : '') + (canPics ? chatPictureLines(payload) : ''),
+      : '') + chatDocPictureLines(payload) + (canPics ? chatPictureLines(payload) : ''),
     chatDocsLines(payload),
     /* the team's past requests here that worked, with the tools that did them (lib/ai-habits.js): data, not orders */
     (Array.isArray(payload.teamExamples) && payload.teamExamples.length ? teamExamplesBlock(payload.teamExamples) + '\n' : ''),
@@ -340,6 +375,12 @@ function chatResponseSchema(payload) {
     schema.properties.newPictures = chatPicture.schemaItem(sectionIds);
     schema.required.push('newPictures');
   }
+  /* a picture taken out of a document put where a section already has one (lib/doc-pictures.js; the answer is checked
+     by its cleanSwaps): only for an editor that puts them in, and only while there are such pictures */
+  if (payload.docSwaps === true) {
+    schema.properties.pictureSwaps = docPictures.swapSchema(sectionIds);
+    schema.required.push('pictureSwaps');
+  }
   return schema;
 }
 
@@ -403,6 +444,12 @@ function chatPictureSections(fb, eventId, sections) {
   var own = eventId && fb && fb.bucket && fb.bucket.name ? 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/' : '';
   return (Array.isArray(sections) ? sections : []).map(function (s) { return s && typeof s === 'object' ? chatPicture.cleanSectionFields(s, own) : s; });
 }
+/* This event's own Storage addresses begin with this ('' for no event): pictures taken out of documents are read only
+   from under it (lib/doc-pictures.js) */
+function chatOwnPrefix(fb, eventId) {
+  eventId = String(eventId || '');
+  return isEventId(eventId) && fb && fb.bucket && fb.bucket.name ? 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/' : '';
+}
 /* what the owner had selected, for planAsk, with which of the section's pictures it is (slot, 1-based; 0 = none) */
 function chatPictureFocus(focus) {
   if (!focus || typeof focus !== 'object') return null;
@@ -424,7 +471,7 @@ function chatEarlierAsks(turns) {
 /* whether an answer still changes anything on the page */
 function chatAnswerChanges(answer) {
   return !!(Object.keys(answer.design || {}).length || answer.newPicture ||
-    ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].some(function (k) { return (answer[k] || []).length; }));
+    ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'pictureSwaps'].some(function (k) { return (answer[k] || []).length; }));
 }
 /* stopped: the owner pressed Stop (UX-097) before the answer was applied, or between its steps */
 var CHAT_STATUSES = ['answered', 'applying', 'applied', 'partly', 'failed', 'undone', 'stopped'];
@@ -460,6 +507,13 @@ function handleChatEdit(req, res) {
     /* the second step of a new picture: make the picture a stored turn asked for */
     if (payload.step === 'picture') return handleChatPictureStep(fb, decoded, payload, res);
     if (!String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'No instruction given.' });
+    /* The pictures the editor took out of those documents and stored with the event (lib/doc-pictures.js): this event's
+       own only, read before the documents are taken off the payload. An editor that cannot place them (older code) is
+       given none — neither this message's nor those kept with the conversation. */
+    var docPicsOk = payload.canPlaceDocPictures === true;
+    var ownPrefix = chatOwnPrefix(fb, payload.eventId);
+    var docPicsNow = docPicsOk ? docPictures.fromDocuments(payload.documents, ownPrefix) : [];
+    var docNotes = docPicsOk ? chatDocNotes(payload.documents, docPicsNow) : [];
     /* PDFs and PowerPoint decks to read (owner decision 14, lib/ai-docs.js): checked before anything is spent, and
        taken off the payload so their contents are never kept with the turn */
     var docs = aiDocs.cleanDocs(payload.documents);
@@ -484,7 +538,9 @@ function handleChatEdit(req, res) {
     }
 
     /* the event must exist (its usage and its conversation are kept with it), and the conversation so far is read
-       (with the person's new pictures left today, when the editor can place one) */
+       (with the person's new pictures left today, when the editor can place one, and the pictures taken out of a
+       document earlier in the conversation, when this message brings none) */
+    var convData = null;
     var ready = !eventId ? Promise.resolve(null) : eventDocRef(fb, eventId).get().then(function (snap) {
       if (!snap.exists) throw httpError(404, 'This event does not exist.', { code: 'no-event' });
       eventData = snap.data() || {};
@@ -493,7 +549,11 @@ function handleChatEdit(req, res) {
           console.error('chat-edit: the conversation of ' + eventId + ' could not be read — ' + (err && err.message));
           return [];
         }),
-        canPics ? chatPicture.readLeft(fb.db, uid, Date.now()) : null
+        canPics ? chatPicture.readLeft(fb.db, uid, Date.now()) : null,
+        docPicsOk && !docPicsNow.length ? userRef.get().then(function (s) { return s.exists ? s.data() : null; }, function (err) {
+          console.error('chat-edit: the pictures kept with the conversation of ' + eventId + ' could not be read — ' + (err && err.message));
+          return null;
+        }) : null
       ]).then(function (got) {
         if (got[1]) {
           payload.pictureQuota = got[1];
@@ -505,6 +565,7 @@ function handleChatEdit(req, res) {
         /* the event's own place and the page's sections, for the picture lines: its place is a place, described by the
            AI itself, and every example it gives comes from this event (owner, 16 Nov 2026) */
         if (canPics) Object.assign(payload, chatPicture.promptContext(eventData, eventData.designPlan, payload.sections));
+        convData = got[2];
         return got[0];
       });
     });
@@ -512,19 +573,39 @@ function handleChatEdit(req, res) {
     var examples = teamExamples(fb, { brain: 'edit', page: 'editor' });
     ready.then(function (turns) {
       if (turns && turns.length) payload.turns = turns;
-      return Promise.all([chatPictures(eventId, payload.attachments), examples]);
+      /* The pictures taken out of documents: this message's (kept with the conversation for the messages after it),
+         else the conversation's. They are numbered after the owner's attached pictures, so the new picture's number
+         and every check of a picture number count them too (payload.numbered), and drawn on contact sheets. */
+      var own = Math.max(0, Math.min(6, parseInt(payload.attachmentCount, 10) || 0));
+      var docSet = eventId ? (docPicsNow.length ? docPicsNow : docPictures.recall(convData, ownPrefix)) : [];
+      payload.docSet = docSet;
+      payload.docFresh = docPicsNow.length > 0;
+      payload.docPictures = docPictures.numbered(docSet, own);
+      payload.numbered = own + payload.docPictures.length;
+      payload.docNotes = docNotes;
+      /* put where a section already has a picture, with no rework: the sections' picture fields are there (canPics) */
+      payload.docSwaps = canPics && payload.docPictures.length > 0;
+      if (docPicsNow.length && userRef) docPictures.remember(userRef, docPicsNow, new Date().toISOString());
+      var sheets = !payload.docPictures.length ? Promise.resolve([]) : docPictures.sheets(payload.docPictures, { ownPrefix: ownPrefix, max: docPictures.CAPS.sheets,
+        download: function (path) { return fb.bucket.file(path).download().then(function (got) { return got[0]; }); } });
+      return Promise.all([chatPictures(eventId, payload.attachments), examples, sheets]);
     }).then(function (both) {
       var seen = both[0];
       payload.teamExamples = both[1];
       payload.seenPictures = seen.images.length;
       payload.seenNumbers = seen.numbers;
       payload.unseenNote = seen.skipped.length ? seen.skipped.join(' ') + ' Tell the owner so if it matters for the answer.' : '';
-      /* the page as it looks, after the owner's own pictures (a model takes six pictures at most) */
-      var view = chatView(payload, CHAT_MAX_PICTURES - seen.images.length - docs.images.length);
+      /* the documents' contact sheets come right after the owner's own pictures (a model takes six pictures at most) */
+      var room = CHAT_MAX_PICTURES - seen.images.length - docs.images.length;
+      var sheets = (both[2] || []).slice(0, Math.max(0, room));
+      payload.docSheets = sheets.length;
+      payload.docSeen = sheets.reduce(function (all, s) { return all.concat(s.numbers || []); }, []);
+      /* the page as it looks, after those */
+      var view = chatView(payload, room - sheets.length);
       payload.viewCount = view.length;
       payload.viewWhat = CHAT_VIEW_WHAT[payload.viewWhat] ? payload.viewWhat : 'visible';
       /* a deck's slide pictures go last, as the documents' lines say (lib/ai-docs.js docsBlock) */
-      var images = seen.images.concat(view, docs.images);
+      var images = seen.images.concat(sheets.map(function (s) { return { mimeType: s.mimeType, data: s.data }; }), view, docs.images);
       function ask() {
         return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined,
           inlineFiles: docs.files.length ? docs.files : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
@@ -539,6 +620,8 @@ function handleChatEdit(req, res) {
         console.error('chat-edit: the request was refused with ' + images.length + ' picture(s); asked again without them');
         images = [];
         payload.viewCount = 0;
+        payload.docSheets = 0;
+        payload.docSeen = [];
         if (payload.seenPictures) { payload.unseenNote = 'The attached pictures could not be shown to you this time; say so if it matters for the answer.'; payload.seenPictures = 0; }
         payload.docList = (payload.docList || []).map(function (d) { return d.look ? Object.assign({}, d, { look: Object.assign({}, d.look, { previews: 0 }) }) : d; });
         return ask();
@@ -580,7 +663,9 @@ function handleChatEdit(req, res) {
       }).filter(Boolean);
 
       function brief(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 1500); }
-      var attached = Math.max(0, Math.min(6, parseInt(payload.attachmentCount, 10) || 0));
+      /* the numbered pictures: the owner's attached ones, then those taken out of documents (lib/doc-pictures.js) */
+      var ownAttached = Math.max(0, Math.min(6, parseInt(payload.attachmentCount, 10) || 0));
+      var attached = ownAttached + (payload.docPictures || []).length;
       /* a new picture is number attached + 1; a rework may list it only while the picture is really asked
          for (planAsk below), so it is let through here and taken out again after */
       var newN = canPics && eventId ? attached + 1 : 0;
@@ -605,9 +690,11 @@ function handleChatEdit(req, res) {
       var lastPic = canPics ? chatLastPicture(payload.turns) : null;
       var planCtx = {
         canMakePictures: true, eventId: eventId, sections: payload.sections || [], focus: chatPictureFocus(payload.focus),
-        instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: attached,
+        instruction: String(payload.instruction || '').trim().slice(0, 2000), attachmentCount: ownAttached,
         picturesLeft: payload.picturesLeft, quota: payload.pictureQuota || null, designPlan: (eventData && eventData.designPlan) || null, eventData: eventData || null,
-        lastTurnPicture: lastPic, earlier: chatEarlierAsks(payload.turns)
+        lastTurnPicture: lastPic, earlier: chatEarlierAsks(payload.turns),
+        /* the pictures taken out of documents, numbered after the owner's: the new picture follows them, and may re-create one */
+        numbered: attached, docPictures: payload.docPictures || [], docFresh: payload.docFresh === true
       };
       function usePlanned(planned) {
         planned = planned || {};
@@ -644,7 +731,7 @@ function handleChatEdit(req, res) {
          with nothing to make: the offer is made as it was kept — one yes is enough (owner, 16 Nov 2026: "yes" to three
          offers was answered "Which section would you like to start with?"). Only when the model changed nothing else. */
       var modelOther = Object.keys(design).length || textEdits.length || sectionEdits.some(function (e) { return e.pictures.indexOf(newN) === -1; }) ||
-        ['sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].some(function (k) { return Array.isArray(parsed[k]) && parsed[k].length; });
+        ['sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'pictureSwaps'].some(function (k) { return Array.isArray(parsed[k]) && parsed[k].length; });
       if (canPics && eventId && newN && !pictureAsk && parsed.kind !== 'undo' && !modelOther) {
         var taken = chatPicture.takeOffer(lastPic, Object.assign({ sectionEdits: [] }, planCtx));
         if (taken) {
@@ -679,6 +766,12 @@ function handleChatEdit(req, res) {
         if (!n || !brief(n.instruction)) return null;
         return { afterSectionId: knownSectionIds.indexOf(n.afterSectionId) !== -1 ? n.afterSectionId : '', name: String(n.name || 'New section').trim().slice(0, 60) || 'New section', instruction: brief(n.instruction), pictures: picturesOf(n.pictures) };
       }).filter(Boolean).slice(0, 4);
+      /* pictures taken out of a document, each put where a section already has one, with nothing else changed
+         (lib/doc-pictures.js cleanSwaps): never in a section this answer reworks or gives the new picture */
+      var skipSwap = {};
+      sectionEdits.forEach(function (e) { skipSwap[e.sectionId] = true; });
+      if (pictureAsk) skipSwap[pictureAsk.sectionId] = true;
+      var pictureSwaps = payload.docSwaps ? docPictures.cleanSwaps(parsed.pictureSwaps, { sections: payload.sections || [], first: ownAttached + 1, last: attached, skip: skipSwap }) : [];
 
       /* forms: each new form checked as a form the routes would store, every link and placement checked
          against the page and the forms it names (lib/forms.js cleanAiFormOps) */
@@ -687,7 +780,7 @@ function handleChatEdit(req, res) {
 
       var summary = String(parsed.summary || '').trim().slice(0, CHAT_ANSWER_CHARS);
       var hasOther = Object.keys(design).length || textEdits.length || sectionEdits.length || sectionOps.length || newSections.length ||
-        formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length;
+        formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length || pictureSwaps.length;
       var hasChange = hasOther || !!pictureAsk;
       /* A picture that is not made (refused, unclear, or never asked for): when it was the only change, the
          answer is the server's sentence, since the model's summary promised a picture; else the sentence is
@@ -734,6 +827,12 @@ function handleChatEdit(req, res) {
       if (kind !== 'edit') answer.design = {};
       /* the picture is made in a second step from the stored turn, so it needs an event to keep the turn under */
       if (kind === 'edit' && pictureAsk && userRef) answer.newPicture = chatPicture.answerOf(pictureAsk);
+      /* which address each number taken out of a document is, so the editor puts the right picture in, and those put
+         where a section already has a picture (lib/doc-pictures.js) */
+      if (kind === 'edit' && (payload.docPictures || []).length) {
+        answer.docPictures = docPictures.answerList(payload.docPictures);
+        answer.pictureSwaps = pictureSwaps;
+      }
       var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply };
       if (!userRef) { sendJson(res, 200, answer); return learnEdit(req, fb, decoded, payload, eventId, eventData, learnt); }
       /* kept under the person who asked: a reply is finished; a change is "applying" until the editor says how it went */
@@ -744,6 +843,9 @@ function handleChatEdit(req, res) {
         pictures: Math.max(0, Math.min(6, (payload.attachments || []).length || 0)), at: now, updatedAt: now };
       /* the Content page or Forms panel the answer sends the owner to, so the replay offers it again */
       if (goTo) turn.goTo = goTo;
+      /* the documents this message brought pictures from (their names and how many; the pictures are kept with the
+         conversation, doc-pictures.js remember) */
+      if (docPicsNow.length) turn.docs = docPictures.turnDocs(docPicsNow);
       /* what the second step makes the picture from: never anything the browser sends then. With no picture made, the
          offer or the question about one, so the owner's answer to it makes it (chatPicture.pendingOf) */
       if (answer.newPicture) turn.newPicture = chatPicture.turnRecord(pictureAsk, payload.design);
@@ -808,6 +910,22 @@ function handleChatPictureStep(fb, decoded, payload, res) {
     if (err && err.status && err.body) return sendJson(res, err.status, err.body);
     console.error('chat-edit: the new picture of ' + eventId + ' failed — ' + (err && (err.stack || err.message)));
     sendJson(res, 500, { error: 'The picture could not be made. Nothing on your site changed — ask again.', code: 'chat-picture-failed', retryable: true });
+  });
+}
+
+/* POST /api/chat/doc-pictures { eventId, doc, key, part, parts, total, pictures: [{ page, full, thumb }] } — the
+   pictures the site editor took out of a document attached to ETB2B AI (ai-doc-pictures.js), stored with the event a
+   few at a time, before the message that names them is sent (lib/doc-pictures.js storeBatch: each a JPEG by its own
+   bytes, sized, measured, under events/<id>/chat-docs/<key>/). -> { key, pictures: [{ url, thumb, w, h, page }] }.
+   Nothing here calls a model. */
+var DOC_PICTURES_BODY = 8 * 1024 * 1024;    // four pictures of at most 2 MB, with their small copies, base64-encoded
+function handleDocPictures(req, res) {
+  withAdminBody(req, res, BODY_LIMITS.docPictures || DOC_PICTURES_BODY, function (fb, decoded, body) {
+    var eventId = String(body.eventId || '').trim();
+    if (!isEventId(eventId)) return sendJson(res, 400, { error: 'eventId is required.', code: 'bad-request' });
+    docPictures.storeBatch(fb, eventId, body, decoded, { logActivity: logActivity }).then(function (out) {
+      sendJson(res, out.status, out.body);
+    }).catch(function (err) { sendFailure(res, 'doc pictures', err, 'The pictures from the document could not be kept. Attach it again.'); });
   });
 }
 
@@ -918,6 +1036,6 @@ function handleChatHistory(req, res) {
   });
 }
 
-module.exports = { wire, handleChatEdit, handleChatTurn, handleChatHistory };
+module.exports = { wire, handleChatEdit, handleChatTurn, handleChatHistory, handleDocPictures };
 /* what lib/api.js's _testHooks hands the tests and tools/ from this file (read there on first use) */
 module.exports._testHooks = { buildChatPrompt, chatView, chatLastPicture, chatHistoryText, chatResponseSchema };

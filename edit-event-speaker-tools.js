@@ -12,7 +12,7 @@
 
    ADD PHOTOS. Photos picked one by one or a whole folder: each file is matched to a speaker by its name ("naven-singh.
    jpg", "Naven Singh 2.png", "Dr Naven Singh.jpeg"), only where exactly one speaker fits; any other file asks whose it
-   is. Or a brochure (PDF): its pages are drawn here with PDF.js (assets/vendor/pdfjs), only those whose words name a
+   is. Or a brochure (PDF): its pages are drawn here with PDF.js (pdf-reader.js), only those whose words name a
    speaker (twelve at most, six to a request), and ETB2B AI marks where each named speaker's own photo is
    (POST /api/event/speaker-photos/find); each photo is cut out of the full-size page here. Every photo is shown
    before anything is saved: the person ticks what to keep. A speaker who already has a photo keeps it unless the
@@ -94,27 +94,28 @@
   }
 
   /* ---------- the brochure ---------- */
-  var pdfjs = null;
-  function loadPdfJs() {
-    if (root.pdfjsLib) return Promise.resolve(root.pdfjsLib);
-    if (pdfjs) return pdfjs;
-    pdfjs = new Promise(function (resolve, reject) {
+  /* PDF.js through pdf-reader.js (window.RevampPdf): the vendored library, loaded once, which opens a PDF with no
+     code compiled from it and nothing fetched (RevampPdf.OPTIONS) */
+  var reader = null;
+  function pdfReader() {
+    if (root.RevampPdf) return Promise.resolve(root.RevampPdf);
+    if (reader) return reader;
+    reader = new Promise(function (resolve, reject) {
       var s = doc.createElement('script');
-      s.src = '/assets/vendor/pdfjs/pdf.min.js';
+      s.src = '/pdf-reader.js';
       s.onload = function () {
-        if (!root.pdfjsLib) { pdfjs = null; reject(new Error('The brochure reader could not start.')); return; }
-        root.pdfjsLib.GlobalWorkerOptions.workerSrc = '/assets/vendor/pdfjs/pdf.worker.min.js';
-        resolve(root.pdfjsLib);
+        if (!root.RevampPdf) { reader = null; reject(new Error('The brochure reader could not start.')); return; }
+        resolve(root.RevampPdf);
       };
-      s.onerror = function () { pdfjs = null; reject(new Error('The brochure reader could not be loaded. Check your connection and try again.')); };
+      s.onerror = function () { reader = null; reject(new Error('The brochure reader could not be loaded. Check your connection and try again.')); };
       doc.head.appendChild(s);
     });
-    return pdfjs;
+    return reader;
   }
   function bytesOf(b64) { var bin = atob(b64), out = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i); return out; }
   /* -> Promise<[{ speaker, data, page }]> and says how it goes through say(text) */
   function photosFromPdf(bytes, speakers, say) {
-    return loadPdfJs().then(function (lib) { return lib.getDocument({ data: bytes }).promise; }).then(function (pdf) {
+    return pdfReader().then(function (R) { return R.open(bytes); }).then(function (pdf) {
       var n = Math.min(pdf.numPages, 60), pages = [];
       say('Reading the brochure’s ' + n + (n === 1 ? ' page' : ' pages') + '…');
       var reads = [];

@@ -3767,8 +3767,11 @@ function buildRedesignPrompt(payload) {
       ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) {
         /* a picture made for a frame this change adds: the frame takes the picture's exact shape (owner, 16 Nov 2026) */
         var css = p.frame ? pictureShape.cssRatio(p.frame) : '';
-        return 'attached picture ' + p.n + ' = ' + p.token + (css ? ' (made in the shape ' + css.replace(' / ', ':') + ': its frame is exactly that shape — aspect-ratio: ' + css + ', sized by its width, with no height, min-height or max-height of its own — and the picture fills it with object-fit: cover)' : '');
-      }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
+        if (css) return 'attached picture ' + p.n + ' = ' + p.token + ' (made in the shape ' + css.replace(' / ', ':') + ': its frame is exactly that shape — aspect-ratio: ' + css + ', sized by its width, with no height, min-height or max-height of its own — and the picture fills it with object-fit: cover)';
+        /* its own size, when the editor knows it (a picture taken out of a document, lib/doc-pictures.js): its frame takes that shape */
+        return 'attached picture ' + p.n + ' = ' + p.token + (p.w && p.h ? ' (' + docPictureShape(p.w, p.h) + ', ' + p.w + '×' + p.h + ')' : '');
+      }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.' +
+        (payload.supplied.some(function (p) { return p.w && p.h && !p.frame; }) ? ' Where a picture\'s size is given, give its frame that shape (CSS aspect-ratio: width / height, e.g. aspect-ratio: 16 / 9) unless the request names another, so little of it is cropped; a picture always fills its frame by cropping (object-fit: cover) — never stretched or squashed, and never shown smaller inside its frame with bars around it (object-fit: contain).' : '')
       : '',
     urls.length ? 'PICTURES: the section\'s own pictures — with any attached above, the only pictures you may use — by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : (payload.supplied || []).length ? 'Besides the attached ones, this section has no picture.' : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
@@ -3798,6 +3801,11 @@ function buildRedesignPrompt(payload) {
     'Its CSS (shown as stored: the "[data-rv-section=…]" prefix on each rule is added by the server, do not write it):', String(payload.css)
   ];
   return lines.join('\n');
+}
+
+/* "landscape 16:9", "portrait 3:4", "square": a supplied picture's shape, for the rework's prompt (lib/doc-pictures.js) */
+function docPictureShape(w, h) {
+  try { return require('./doc-pictures').shapeOf(w, h) || 'its own shape'; } catch (e) { return 'its own shape'; }
 }
 
 function handleRedesignSection(req, res) {
@@ -3831,9 +3839,14 @@ function handleRedesignSection(req, res) {
         if (url.indexOf(ownStore) !== 0 || !(n >= 1) || pictures[genDesign.pictureToken('attached-' + n)]) return;
         var token = genDesign.pictureToken('attached-' + n);
         pictures[token] = url;
-        /* the shape a new picture was made in, for the frame this change adds for it ('16:9'; nothing else is read) */
+        /* its size, when the editor sends it (a picture taken out of a document, or the new picture once made): the prompt
+           asks for a frame of its shape; and the shape a new picture was made in, for the frame this change adds for it
+           ('16:9'; nothing else is read), which is said instead */
+        var w = parseInt(p && p.w, 10), h = parseInt(p && p.h, 10);
         var frame = pictureShape.frameFromText(p && typeof p.frame === 'string' ? p.frame : '');
-        supplied.push(frame ? { n: n, token: token, frame: pictureShape.frameText(frame) } : { n: n, token: token });
+        var one = w >= 1 && w <= 20000 && h >= 1 && h <= 20000 ? { n: n, token: token, w: w, h: h } : { n: n, token: token };
+        if (frame) one.frame = pictureShape.frameText(frame);
+        supplied.push(one);
       });
       var mode = payload.mode === 'edit' || payload.mode === 'create' ? payload.mode : 'redesign';
       if (mode !== 'redesign' && !String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'Say what should change.' });

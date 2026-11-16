@@ -6018,6 +6018,8 @@
      two aiPictureRules marks in node, so nothing in it may use the rest of this file. */
   var aiPictureRules = (function () {
     var WHERE = { hero: 'banner picture', background: 'background', picture: 'picture' };
+    /* the pictures one message numbers: six attached, then up to 32 taken out of documents, with room (chat-picture.js) */
+    var MAX_NUMBERED = 40;
     var UNUSABLE = 'The new picture — the answer about it could not be used. Ask again';
     /* A section of Content's records reworked to take the new picture (a background it did not have) is kept only
        if each of its records comes out as it was (RevampAiPicture.recordsState); otherwise it is put back and this
@@ -6037,8 +6039,9 @@
        -> { ask } to make and put in, or { note } said in its place (nothing is made) */
     function checkAsk(ask, c) {
       var n = parseInt(ask && ask.n, 10), attached = c.attached || [];
-      // its number follows the pictures attached to the message (at most 6), and is none of theirs
-      var shaped = !!ask && typeof ask === 'object' && n >= 1 && n <= 7 && !attached[n - 1] &&
+      // its number follows the pictures attached to the message (at most 6) and those taken out of documents (at most
+      // 32, docPicturesOf), and is none of theirs
+      var shaped = !!ask && typeof ask === 'object' && n >= 1 && n <= MAX_NUMBERED + 1 && !attached[n - 1] &&
         typeof ask.placement === 'string' && has(WHERE, ask.placement) && (ask.apply === 'swap' || ask.apply === 'rework');
       if (!c.loaded) return { note: 'The new picture — this editor could not load the part that puts pictures in. Reload the editor and ask again' };
       if (!c.eventId || !c.turnId) return { note: 'The new picture could not be started — ask again' };
@@ -6126,8 +6129,25 @@
       if (status === 'partly') return onPage !== true;
       return true;
     }
+    /* The pictures taken out of documents (functions/lib/doc-pictures.js answerList), as the answer numbers them after
+       the `after` pictures attached to the message: each { n, url, page, doc, w, h } kept only when its number is past
+       those and its address is one of this event's own document pictures (…/events/<eventId>/chat-docs/<key>/<file>.jpg).
+       -> [{ n, url, page, doc, w, h }] */
+    function docPicturesOf(list, after, theEvent) {
+      var out = [], seen = {}, own = 'https://storage.googleapis.com/';
+      var re = new RegExp('^' + escRe(own) + '[a-z0-9._-]+/events/' + escRe(String(theEvent || '')) + '/chat-docs/\\d{14}-[a-z0-9]{6}/[a-z0-9-]+\\.jpg$');
+      if (!theEvent) return out;
+      (Array.isArray(list) ? list : []).forEach(function (p) {
+        var n = parseInt(p && p.n, 10), url = p && typeof p.url === 'string' ? p.url : '';
+        if (!(n > after && n <= MAX_NUMBERED) || seen[n] || !re.test(url)) return;
+        seen[n] = true;
+        out.push({ n: n, url: url, page: Math.max(1, parseInt(p.page, 10) || 1), doc: String(p.doc || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+          w: Math.max(0, parseInt(p.w, 10) || 0), h: Math.max(0, parseInt(p.h, 10) || 0) });
+      });
+      return out;
+    }
     return { WHERE: WHERE, RECORDS_CHANGED: RECORDS_CHANGED, usesPicture: usesPicture, checkAsk: checkAsk, nextRequest: nextRequest, askUntilAnswered: askUntilAnswered, outcome: outcome,
-      failedLine: failedLine, shows: shows, offerAgain: offerAgain };
+      failedLine: failedLine, shows: shows, offerAgain: offerAgain, docPicturesOf: docPicturesOf, MAX_NUMBERED: MAX_NUMBERED };
   })();
   /* aiPictureRules:end */
 
@@ -6225,6 +6245,18 @@
     }
     return aiPictureRules.askUntilAnswered(once, pause, function () { return Date.now(); }, AI_PICTURE_WAIT_MS, AI_PICTURE_POLL_MS);
   }
+  /* a picture's own size, read by loading it: -> Promise<{ w, h } | null>, never rejected, at most PICTURE_SIZE_MS */
+  var PICTURE_SIZE_MS = 6000;
+  function pictureSize(url) {
+    return new Promise(function (resolve) {
+      var img = new Image(), done = false;
+      function end(v) { if (done) return; done = true; clearTimeout(t); img.onload = img.onerror = null; resolve(v); }
+      var t = setTimeout(function () { end(null); }, PICTURE_SIZE_MS);
+      img.onload = function () { end(img.naturalWidth > 0 && img.naturalHeight > 0 ? { w: img.naturalWidth, h: img.naturalHeight } : null); };
+      img.onerror = function () { end(null); };
+      img.src = url;
+    });
+  }
   /* the picture ETB2B AI made, small, under its message. follow: it arrives while the owner waits for the change,
      so the conversation is kept at its end as it grows (unless the owner has scrolled up to read something) */
   function drawMadePicture(bubble, url, about, follow) {
@@ -6279,14 +6311,34 @@
     // a copy: the new picture takes its number in it once made, for the rework that uses it (picturesFor)
     attached = (attached || []).slice();
     sent = sent || {};
-    /* the pictures an entry names by number, as { n, url } for the request that reworks its section — the new picture a
-       rework adds as the section's picture with the shape it was made in (frame 'W:H'), which the rework gives its
-       frame (a background covers the section: no frame) */
+    /* the pictures taken out of a document (owner, 16 Nov 2026: "use the images from this pdf"), numbered after the
+       attached ones: the answer says which address each number is, its page and its size */
+    var docPics = {}, sizes = {};
+    aiPictureRules.docPicturesOf(result.docPictures, attached.length, eventId).forEach(function (p) {
+      attached[p.n - 1] = p.url;
+      docPics[p.n] = p;
+      if (p.w && p.h) sizes[p.n] = { w: p.w, h: p.h };
+    });
+    /* the pictures an entry names by number, as { n, url } for the request that reworks its section — with the size of
+       a document's picture or of the new picture once made, so its frame takes its shape (never stretched: the frame
+       crops it); the new picture a rework adds as the section's picture also with the shape it was made in (frame
+       'W:H'), which the rework gives its frame. A background covers the section: no frame, so no shape or size. */
     function picturesFor(entry) {
       return (entry.pictures || []).map(function (n) {
         if (!attached[n - 1]) return null;
-        return np && n === np.n && np.apply === 'rework' && np.placement === 'picture' && np.frame ? { n: n, url: attached[n - 1], frame: np.frame } : { n: n, url: attached[n - 1] };
+        var isNew = !!np && n === np.n, one = { n: n, url: attached[n - 1] };
+        if (isNew && np.apply === 'rework' && np.placement === 'picture' && np.frame) one.frame = np.frame;
+        var s = sizes[n];
+        if (s && s.w && s.h && !(isNew && np.placement === 'background')) { one.w = s.w; one.h = s.h; }
+        return one;
       }).filter(Boolean);
+    }
+    /* "attached picture 2", or "picture 7 from page 9 of “deck.pdf”", for the change's card */
+    function pictureWords(list) {
+      return list.map(function (x) {
+        var d = docPics[x.n];
+        return d ? 'picture ' + x.n + ' from page ' + d.page + (d.doc ? ' of “' + d.doc + '”' : '') : 'attached picture ' + x.n;
+      }).join(', ');
     }
     var design = {}, notes = [];
     Object.keys(result.design || {}).forEach(function (k) {
@@ -6308,6 +6360,14 @@
 
     /* a new picture to make: checked against this page before anything is paid for */
     var P = aiPictures(), np = null;
+    /* pictures taken out of a document, each put where a section already has a picture (the server checked the place
+       against what this editor told it; editor-ai-picture.js finds the element and puts the picture in: no rework) */
+    var swaps = (result.pictureSwaps || []).filter(function (s) { return s && known(s.sectionId) && !!docPics[s.picture]; });
+    if (swaps.length && !P) {
+      notes.push('The pictures from the document — this editor could not load the part that puts pictures in. Reload the editor and ask again');
+      swaps = [];
+    }
+    var swapWhere = function (s) { return s.placement === 'background' ? ' as its background' : s.placement === 'hero' ? ' as the banner picture' : ''; };
     var usesNew = function (e) { return !!np && aiPictureRules.usesPicture(e, np.n); };
     if (result.newPicture) {
       var checked = aiPictureRules.checkAsk(result.newPicture, { loaded: !!P, eventId: eventId, turnId: turnId, attached: attached, known: known, edits: edits });
@@ -6330,10 +6390,11 @@
       }))
       .concat(edits.map(function (e) {
         return escHtml(sectionLabel(e.sectionId)) + ' — rework: ' + escHtml(e.instruction) +
-          (picturesFor(e).length ? ' <em>(uses attached picture ' + picturesFor(e).map(function (x) { return x.n; }).join(', ') + ')</em>' : '') +
+          (picturesFor(e).length ? ' <em>(uses ' + escHtml(pictureWords(picturesFor(e))) + ')</em>' : '') +
           (usesNew(e) ? ' <em>(uses the new picture)</em>' : '');
       }))
-      .concat(additions.map(function (n) { return 'New section &ldquo;' + escHtml(n.name) + '&rdquo;' + (n.afterSectionId && known(n.afterSectionId) ? ' after ' + escHtml(sectionLabel(n.afterSectionId)) : '') + ' — ' + escHtml(n.instruction); }));
+      .concat(additions.map(function (n) { return 'New section &ldquo;' + escHtml(n.name) + '&rdquo;' + (n.afterSectionId && known(n.afterSectionId) ? ' after ' + escHtml(sectionLabel(n.afterSectionId)) : '') + ' — ' + escHtml(n.instruction); }))
+      .concat(swaps.map(function (s) { return escHtml(sectionLabel(s.sectionId)) + ' — put in ' + escHtml(pictureWords([{ n: s.picture }])) + swapWhere(s); }));
 
     /* forms: new ones made first, then buttons that open them and forms put in the page (the server checked
        the shapes; what this page can no longer find is said, never silently left out) */
@@ -6409,7 +6470,13 @@
     });
     var OP_STEP = { hide: 'Hide', show: 'Show', remove: 'Remove', move: 'Move' };
     ops.forEach(function (o, i) { S['op' + i] = card.step(OP_STEP[o.op] + ' “' + sectionLabel(o.sectionId) + '”', null, { key: o.op === 'remove' ? '' : o.sectionId }); });
-    var jobSteps = edits.map(function (e) { return card.step('Rework “' + sectionLabel(e.sectionId) + '”' + (usesNew(e) ? ' with the new picture' : ''), null, { key: e.sectionId }); })
+    swaps.forEach(function (s, i) { S['swap' + i] = card.step('Put ' + pictureWords([{ n: s.picture }]) + ' in “' + sectionLabel(s.sectionId) + '”' + swapWhere(s), null, { key: s.sectionId }); });
+    /* the pictures from a document an entry puts in */
+    var docPicturesIn = function (entry) { return picturesFor(entry).filter(function (x) { return !!docPics[x.n]; }); };
+    var jobSteps = edits.map(function (e) {
+      var fromDoc = docPicturesIn(e);
+      return card.step('Rework “' + sectionLabel(e.sectionId) + '”' + (usesNew(e) ? ' with the new picture' : fromDoc.length ? ' with ' + pictureWords(fromDoc) : ''), null, { key: e.sectionId });
+    })
       .concat(additions.map(function (n) { return card.step('Add the section “' + n.name + '”'); }));
     if (ctaLinks.length || formEmbeds.length) S.formOps = card.step(ctaLinks.length && formEmbeds.length ? 'Link buttons to forms and place forms on the page'
       : ctaLinks.length ? 'Link ' + (ctaLinks.length === 1 ? 'a button' : ctaLinks.length + ' buttons') + ' to ' + (ctaLinks.length === 1 ? 'its form' : 'their forms')
@@ -6515,7 +6582,9 @@
           attached[np.n - 1] = madePic.url;        // a rework that uses it finds it by its number (picturesFor)
           S.picMake.set('done');
           drawMadePicture(bubble, madePic.url, np.alt || np.subject, true);
-          return;
+          /* its own size, so a rework that puts it in gives its frame the picture's shape (owner, 16 Nov 2026: "AI has
+             created a square image for a rectangular placeholder"); a picture that cannot be measured goes without */
+          return pictureSize(madePic.url).then(function (s) { if (s) sizes[np.n] = s; });
         }
         pictureFailed(got.why);
       }, function (err) {
@@ -6613,6 +6682,38 @@
       done.push('New picture made and put in “' + label + '” (' + AI_PICTURE_WHERE[np.placement] + ')');
       step.set('done');
     }
+    /* A picture taken out of a document, put where a section already has one: the same target and the same checks as
+       a new picture's swap (never the logo unit, nor anything Content owns; put back if the logo unit would read
+       differently). The frame stays as the section was designed, and the picture fills it by cropping. */
+    function placeDocPicture(s, step, changedEls, done, said) {
+      var label = sectionLabel(s.sectionId), sec = canvas.sectionByKey(s.sectionId), words = pictureWords([{ n: s.picture }]);
+      function lost(why) {
+        said.push(words.charAt(0).toUpperCase() + words.slice(1) + ' was not put in “' + label + '” — ' + why + '.');
+        step.set('fail', why);
+      }
+      if (!isLive(sec)) return lost('the section is no longer on the page');
+      var help = aiPictureHelpers(), tg = null;
+      /* on the desktop layout, as the slot numbers the AI was told were read (sectionsContext) */
+      try { tg = onDesktop(function () { return P.target(sec, { placement: s.placement, slot: s.slot }, null, help); }); } catch (err) { if (window.console) console.error(err); }
+      if (!tg || tg.none || !tg.el || tg.el.nodeType !== 1 || !sec.contains(tg.el)) return lost(String((tg && tg.none) || 'it has no place for a picture now'));
+      if (tg.el.closest('[data-rv-logo-unit], [data-rv-logo], [data-rv-etnav]')) return lost('that place belongs to the logo');
+      var touched = [tg.el];
+      Object.keys(tg).forEach(function (k) { if (tg[k] && tg[k].nodeType === 1) touched.push(tg[k]); });
+      Array.prototype.forEach.call(sec.querySelectorAll('.hero-veil'), function (v) { touched.push(v); });
+      var kept = keepPictureEls(touched), unitBefore = P.unitState(canvas.doc), put = false;
+      try { put = P.place(tg, attached[s.picture - 1], s.alt, help) === true; } catch (err) { if (window.console) console.error(err); }
+      if (!put) {
+        putPictureElsBack(kept);
+        return lost('the picture could not be set there');
+      }
+      if (!sameLogoUnit(unitBefore, P.unitState(canvas.doc))) {
+        putPictureElsBack(kept);
+        return lost('the change would have altered the logo unit');
+      }
+      changedEls.push(tg.el);
+      done.push('“' + label + '”: ' + words + ' put in' + swapWhere(s));
+      step.set('done');
+    }
 
     function applyPage(made) {
       var formIds = (made.forms || []).map(function (f) { return f.id; });
@@ -6655,6 +6756,7 @@
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
       if (madePic && np.apply === 'swap') placeNewPicture(changedEls, done, said);
+      swaps.forEach(function (s, i) { placeDocPicture(s, S['swap' + i], changedEls, done, said); });
 
       /* sections reworked or written by the AI: asked for side by side (each takes a while), then ONE undo step.
          A new section's empty place is made first, in order, so two after the same section keep their order. */
@@ -6711,13 +6813,18 @@
             /* The new picture is put in only if the rewritten section really draws it: the model may leave out the
                picture it was given, and the server does not say so. Then the rework stands (Undo takes it back), the
                card does not claim the picture, and the picture, made and paid for, waits in the tray. */
-            var picShown = withPic && aiPictureRules.shows(fresh.outerHTML + '\n' + (code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(fresh) : ''), madePic.url);
+            var drawn = fresh.outerHTML + '\n' + (code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(fresh) : '');
+            var picShown = withPic && aiPictureRules.shows(drawn, madePic.url);
             if (picShown) madePic.placed = true;
             /* the frame the rework made for it holds the shape it was made in (owner, 16 Nov 2026: "AI has created a
                square image for a rectangular placeholder") */
             if (picShown && np.placement === 'picture' && np.frame) fitNewFrame(fresh);
             changedEls.push(fresh);
-            done.push('“' + job.label + '” ' + (job.edit ? 'reworked' + (picShown ? ' with the new picture' : '') : 'added'));
+            /* a document's picture is said to be in only when the rewritten section really draws it */
+            var docIn = docPicturesIn(job.edit || job.add), docShown = docIn.filter(function (x) { return aiPictureRules.shows(drawn, x.url); });
+            var docMissed = docIn.filter(function (x) { return docShown.indexOf(x) === -1; });
+            done.push('“' + job.label + '” ' + (job.edit ? 'reworked' : 'added') + (picShown ? ' with the new picture' : docShown.length ? ' with ' + pictureWords(docShown) : ''));
+            if (docMissed.length) said.push('“' + job.label + '” was ' + (job.edit ? 'reworked' : 'added') + ', but ' + pictureWords(docMissed) + (docMissed.length === 1 ? ' was' : ' were') + ' not used in it.');
             var unused = withPic && !picShown ? keepMadePicture('It') : '';
             if (unused) {
               said.push('“' + job.label + '” was reworked, but the new picture was not used in it. ' + unused);
@@ -6726,7 +6833,7 @@
             } else {
               // a section written new has its key only now: its "Show" can find it
               if (job.add && job.step.setKey) job.step.setKey(fresh.getAttribute('data-rv-key') || '');
-              job.step.set('done');
+              job.step.set('done', docMissed.length ? pictureWords(docMissed) + ' not used in it' : '');
             }
           });
         }).then(null, function (err) {
@@ -7615,9 +7722,12 @@
             forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [],
             // ETB2B AI may make a new picture only for an editor that can put one in (an older one is never offered it)
             canMakePictures: !!aiPictures(),
+            // this editor puts in the pictures taken out of a document by their numbers (runAiTurn, answer.docPictures)
+            canPlaceDocPictures: true,
             // handed over by the events side: this answer is the last word, never handed back
             handedFrom: handedFrom || undefined,
-            // PDFs and PowerPoint decks to read (owner decision 14, lib/ai-docs.js): never numbered with the pictures
+            // PDFs and PowerPoint decks to read (owner decision 14, lib/ai-docs.js): a document is never numbered with the
+            // pictures, but the pictures taken out of it are, after them (lib/doc-pictures.js; the answer's docPictures)
             documents: Array.isArray(o.documents) && o.documents.length ? o.documents.slice(0, 3) : undefined })
         }).then(function (res) {
           return res.text().then(function (txt) {

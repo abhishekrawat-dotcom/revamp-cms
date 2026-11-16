@@ -244,8 +244,9 @@ function entry(sectionId, placement, extra) {
   var sch = cp.schemaItem(['hero', 'agenda']);
   function lines0() { return cp.promptLines({ eventId: EV, attachmentCount: 0, picturesLeft: 7, picturesPerDay: 20 }); }
   check(sch.type === 'ARRAY' && J(sch.items.properties.sectionId.enum) === J(['hero', 'agenda']) && J(sch.items.properties.placement.enum) === J(['hero', 'background', 'picture']) &&
-    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'plainSubject', 'kind', 'alt', 'frame']) && sch.items.properties.slot.type === 'INTEGER',
-    'newPictures: sectionId limited to the page\'s sections, the three placements, the site\'s picture kinds', J(sch));
+    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'plainSubject', 'kind', 'alt', 'frame', 'reference']) && sch.items.properties.slot.type === 'INTEGER' &&
+    sch.items.properties.reference.type === 'INTEGER',
+    'newPictures: sectionId limited to the page\'s sections, the three placements, the site\'s picture kinds, and the document picture it re-creates (0 for none)', J(sch));
   /* owner, 16 Nov 2026: the shape of a frame a rework adds is chosen with the picture, always answered */
   check(J(sch.items.properties.frame.enum) === J(['', '21:9', '16:9', '3:2', '4:3', '1:1', '4:5', '3:4']) && /the shape of the frame it gets/.test(sch.items.properties.frame.description) &&
     /`frame`: for a picture a rework of the section ADDS[^]*so write nothing about the picture's size in `sectionEdits`/.test(lines0()),
