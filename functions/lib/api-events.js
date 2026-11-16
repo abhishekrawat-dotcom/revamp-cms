@@ -291,18 +291,20 @@ function storeImageFile(fb, folder, buffer, contentType, fileName, actor, opts) 
   return file.save(buffer, {
     resumable: false,
     gzip: pictures.gzipWorthIt(contentType, buffer),     // an SVG is stored gzipped: sent compressed (pictures.js)
-    metadata: {
+    metadata: Object.assign({
       contentType: contentType,
       cacheControl: 'public, max-age=31536000, immutable',
       metadata: { uploadedBy: String(actor || ''), originalName: String(fileName || '').replace(/[^\x20-\x7E]/g, '_').slice(0, 120) }
-    }
+    /* opts.customTime: a picture the bucket's lifecycle rule may delete later (lib/chat-docs-keep.js; only a chat
+       document's pictures carry one) */
+    }, opts.customTime ? { customTime: String(opts.customTime) } : {})
   }).then(function () {
     return file.makePublic().catch(function (err) {
       // an object nobody can load must not be left behind looking like a successful upload
       return file.delete().catch(function () { /* best effort */ }).then(function () { throw err; });
     });
   }).then(function () {
-    return opts.variants === false ? null : pictures.storeVariants(fb, storagePath, buffer, { budgetMs: 20000 });
+    return opts.variants === false ? null : pictures.storeVariants(fb, storagePath, buffer, opts.customTime ? { budgetMs: 20000, customTime: opts.customTime } : { budgetMs: 20000 });
   }).then(function (made) {
     var answer = { url: publicUrl(fb, storagePath), path: storagePath, contentType: contentType, size: buffer.length };
     if (made) { answer.width = made.width; answer.height = made.height; }

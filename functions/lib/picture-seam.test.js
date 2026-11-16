@@ -65,7 +65,10 @@ function fakeFb() {
         }
         return attempt(5);
       } },
-    bucket: { name: 'test-bucket', file: function (path) { return { save: function (buf) { saved[path] = buf.length; return Promise.resolve(); }, makePublic: function () { return Promise.resolve(); } }; } } };
+    /* what the edits and references read (builder C): fb.stored[path] = bytes */
+    stored: {},
+    bucket: { name: 'test-bucket', file: function (path) { return { save: function (buf) { saved[path] = buf.length; return Promise.resolve(); }, makePublic: function () { return Promise.resolve(); },
+      download: function () { return fb.stored[path] ? Promise.resolve([fb.stored[path]]) : Promise.reject(new Error('No such object')); } }; } } };
   return fb;
 }
 
@@ -180,9 +183,12 @@ function ask(sectionId, extra) {
     'the Director writes nothing while `brief` is off; a brief gives a prompt, an empty one none');
   var bs = await brief.briefStep({}, {});
   check(bs.status === 200 && bs.body.briefs === 0, 'the brief step answers that there is nothing to do', J(bs));
+  /* builder C (16 Nov 2026): edits and references are built; with nothing to work from they still answer today's way */
   var er = await edit.run(n0, {});
-  check(er.code === 'not-supported' && edit.classify('tone') === '' && (await edit.sharpOps(PNG, n0)) === null, 'an edit is not supported yet', J(er));
-  check(J(await refs.load(n0, {})) === '[]' && refs.ownOnly('https://x', {}) === '' && (await refs.dHash(PNG)) === null && refs.nearCopy('a', 'a') === false && refs.COPY_DISTANCE === 10, 'no reference is loaded yet');
+  check(er.code === 'not-supported' && edit.classify('tone') === 'sharp' && edit.classify('remove') === 'model' && (await edit.sharpOps(PNG, n0)) === null,
+    'a new picture is not an edit (the runner makes it as today); light and colour are exact edits, the rest the model\'s', J(er));
+  check(J(await refs.load(n0, {})) === '[]' && refs.ownOnly('https://x', {}) === '' && (await refs.dHash(PNG)) === null && refs.nearCopy('a', 'a') === false && refs.COPY_DISTANCE === 10,
+    'no Storage, no address, no picture: no reference and no hash');
   /* builder A (16 Nov 2026): the ledger is filled; with no store it reads empty and keeps nothing (picture-ledger.test.js) */
   check(J(await ledger.read(null, EV, 'u')) === '[]' && J(await ledger.record(null, EV, 'u', [])) === '[]' && ledger.promptLines([]) === '' && ledger.LEDGER_MAX === 20, 'the ledger with no store reads empty and keeps nothing');
   var fs0 = await fit.fitStep({}, {});
@@ -268,6 +274,17 @@ function ask(sectionId, extra) {
   var t3 = stored(r3);
   check(out.status >= 500 && t3.pictureJobs[1].state === 'failed' && t3.pictureJobs[0].state === 'asked' && t3.newPicture.state === 'asked', 'a failed job is recorded on that job alone', J(t3.pictureJobs.map(function (j) { return j.state; })));
 
+  /* refs on, the real registry (builder C): a document picture this job re-creates goes to the picture model as its SUBJECT,
+     labelled, after the prompt */
+  if (sharpLib) {
+    FB.stored['events/' + EV + '/chat-docs/20261116120000-a1b2c3/mw1-0123456789ab-p3.jpg'] = await sharpLib({ create: { width: 640, height: 480, channels: 3, background: '#aa6633' } }).jpeg().toBuffer();
+    i0 = imageCalls.length;
+    await run(turnOf({ newPicture: ask('overview', { refs: [{ id: 'n3', kind: 'document', use: 'subject', url: 'https://storage.googleapis.com/test-bucket/events/qa-seam/chat-docs/20261116120000-a1b2c3/mw1-0123456789ab-p3.jpg' },
+      { id: 'x', kind: 'document', use: 'subject', url: 'https://storage.googleapis.com/test-bucket/events/qa-other/chat-docs/20261116120000-a1b2c3/mw1-0123456789ab-p3.jpg' }] }) }), { switches: switches.normalise({ refs: true }) });
+    var im = imageCalls[i0] && imageCalls[i0].opts.images;
+    check(im && im.length === 1 && im[0].mimeType === 'image/jpeg' && /^Reference 1, SUBJECT: /.test(im[0].label) && im[0].kind === 'document' && /^[0-9a-f]{16}$/.test(im[0].hash),
+      '`refs` on: the job\'s document picture is shown as its subject, labelled; another event\'s never', J(im && im.map(function (x) { return [x.kind, x.label.slice(0, 24)]; })));
+  }
   /* refs on: the references the registry loads go to the picture model; off, it is never asked */
   var realLoad = refs.load, loads = [];
   refs.load = function (job, c) { loads.push({ job: job.sectionId, eventId: c.eventId }); return Promise.resolve([{ mimeType: 'image/jpeg', data: 'AAAA', label: 'Reference 1, STYLE ONLY', kind: 'site', use: 'style' }]); };
@@ -295,10 +312,22 @@ function ask(sectionId, extra) {
   check(imageCalls[i0].prompt === cp.promptFor(ask('overview'), EVENT), 'a brief that gives no prompt: today\'s prompt');
   brief.promptFromBrief = realPfb;
 
-  /* edit on: the stub's not-supported makes a new picture as today; an edit that answers bytes is stored with no picture call */
+  /* edit on (builder C): "warmer" on a picture of this event is that picture warmed with sharp — stored, no picture call;
+     an edit with no picture to change makes a new one, as today */
+  var sharpLib = null;
+  try { sharpLib = require('sharp'); } catch (e) { sharpLib = null; }
+  if (sharpLib) {
+    FB.stored['events/' + EV + '/generated/a.png'] = await sharpLib({ create: { width: 400, height: 300, channels: 3, background: '#6688aa' } }).png().toBuffer();
+    i0 = imageCalls.length;
+    var rw = turnOf({ newPicture: ask('overview', { mode: 'edit', editOf: { url: 'https://storage.googleapis.com/test-bucket/events/qa-seam/generated/a.png' }, change: 'make it warmer', changeKind: 'tone' }) });
+    out = await run(rw, { switches: switches.normalise({ edit: true }) });
+    check(out.status === 200 && imageCalls.length === i0 && stored(rw).newPicture.state === 'made' && /-chat-/.test(out.body.url), '`edit` on: "make it warmer" warms that picture (sharp), stored, no picture call', J(out.body));
+  }
   i0 = imageCalls.length;
-  out = await run(turnOf({ newPicture: ask('overview', { mode: 'edit', editOf: { url: 'https://storage.googleapis.com/test-bucket/events/qa-seam/generated/a.png' }, change: 'warmer', changeKind: 'tone' }) }), { switches: switches.normalise({ edit: true }) });
-  check(out.status === 200 && imageCalls.length === i0 + 1, '`edit` on, not built yet: a new picture is made, as today');
+  out = await run(turnOf({ newPicture: ask('overview', { mode: 'edit', change: 'warmer', changeKind: 'tone' }) }), { switches: switches.normalise({ edit: true }) });
+  check(out.status === 200 && imageCalls.length === i0 + 1, '`edit` on, no picture to change: a new picture is made, as today');
+  out = await run(turnOf({ newPicture: ask('overview', { mode: 'edit', editOf: { url: 'https://storage.googleapis.com/test-bucket/events/qa-other/generated/a.png' }, change: 'warmer', changeKind: 'tone' }) }), { switches: switches.normalise({ edit: true }) });
+  check(out.status >= 400 && imageCalls.length === i0 + 1, '`edit` on: another event\'s picture is never changed, and nothing is remade blind', J(out));
   var realRun = edit.run, runs = [];
   edit.run = function (job, c) { runs.push(job.changeKind); return Promise.resolve({ bytes: PNG, type: 'image/png', width: 4, height: 3, how: 'sharp', line: 'Warmer light on the same picture.' }); };
   i0 = imageCalls.length;

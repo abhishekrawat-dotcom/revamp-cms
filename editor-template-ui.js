@@ -6357,8 +6357,59 @@
     im.src = url;
     box.appendChild(im);
     bubble.appendChild(box);
+    /* the newest picture, made while the owner waits: what can be changed in it, one click each */
+    if (follow) drawPictureChips(bubble, { url: url, about: about });
     if (wasAtEnd) thread.scrollTop = thread.scrollHeight;
     return box;
+  }
+  /* ETB2B AI's edits of the picture it just made (plan of 16 Nov 2026 §6.7): Brighter · Warmer · Wider · Remove people ·
+     Another version under the newest picture, and "3 options" when that switch is on (owner, 16 Nov 2026: off unless
+     turned on). A chip sends its words as the owner's own message, so it goes through the same checks as any message
+     and is its own change, with its own Undo. Shown only when the server says this person's picture edits are on (the
+     answer's pictureEdits; pictureVariants for the options), and only under the newest picture: the words say "the last
+     picture you made". */
+  var PICTURE_CHIPS = [
+    { key: 'brighter', label: 'Brighter', say: 'Make the last picture you made a little brighter; change nothing else.' },
+    { key: 'warmer', label: 'Warmer', say: 'Make the last picture you made warmer; change nothing else.' },
+    { key: 'wider', label: 'Wider', say: 'Make the last picture you made wider so it fills its frame; keep the middle as it is.' },
+    { key: 'no-people', label: 'Remove people', say: 'Remove the people from the last picture you made; change nothing else.' },
+    { key: 'another', label: 'Another version', say: 'Make another version of the last picture you made, for the same place.' },
+    { key: 'options', label: '3 options', say: 'Show me 3 options for the last picture you made, for the same place.', variants: true }
+  ];
+  var pictureAbilities = { edits: false, variants: false };
+  /* what the server said this person's ETB2B AI may do with pictures, from each answer (kept until the next says) */
+  function notePictureAbilities(answer) {
+    if (!answer || typeof answer !== 'object') return;
+    if (typeof answer.pictureEdits === 'boolean') pictureAbilities.edits = answer.pictureEdits;
+    if (typeof answer.pictureVariants === 'boolean') pictureAbilities.variants = answer.pictureVariants;
+  }
+  function drawPictureChips(bubble, job) {
+    if (!bubble || !job || !job.url || !viewCan('ask')) return null;
+    var list = PICTURE_CHIPS.filter(function (c) { return c.variants ? pictureAbilities.variants : pictureAbilities.edits; });
+    if (!list.length) return null;
+    /* one row, under the newest picture */
+    var where = chatThread() || document;
+    Array.prototype.slice.call(where.querySelectorAll('.chat-pic-chips')).forEach(function (old) { if (old.parentNode) old.parentNode.removeChild(old); });
+    var row = document.createElement('div');
+    row.className = 'chat-pic-chips';
+    row.setAttribute('role', 'group');
+    row.setAttribute('aria-label', 'Change this picture');
+    list.forEach(function (c) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chat-pic-chip';
+      b.setAttribute('data-chip', c.key);
+      b.textContent = c.label;
+      b.title = c.say;
+      b.addEventListener('click', function () {
+        /* while a message is being answered or applied, a chip waits for the owner's next click */
+        if (aiWorking || sending || !viewCan('ask')) return;
+        chatView.ask(c.say);
+      });
+      row.appendChild(b);
+    });
+    bubble.appendChild(row);
+    return row;
   }
   /* The elements a picture is put on, as they were, so a placement that has to be taken back is taken back exactly.
      What a placement may change inside an element is kept too: an <svg> icon's drawing, and the <source>s of the
@@ -8312,6 +8363,7 @@
         setChatStatus('ready');
         if (!eventId) pushLocal('user', instruction + (sent.length ? ' [' + sent.length + ' picture' + (sent.length === 1 ? '' : 's') + ' attached]' : ''));
         if (body.notKept) appendChatMsg('ai error', CHAT_TEXT.notKept);
+        notePictureAbilities(body);
         if (body.kind === 'undo') {
           /* "undo that": the page goes back exactly, at no cost — never a guess at the old look */
           var last = lastAiTurn();

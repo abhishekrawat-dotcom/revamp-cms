@@ -23,7 +23,8 @@
      storeBatch(fb, eventId, body, decoded, deps) -> Promise<{ status, body }>  (deps: { logActivity })
      fromDocuments(raw, ownPrefix)  -> [{ name, kind, pages, leftOut, pictures: [{ url, thumb, page, w, h, share, words }] }]
      remember(userRef, docs, nowIso) -> Promise (never rejects)
-     recall(data, ownPrefix)        -> docs, as fromDocuments, from the conversation's record
+     recall(data, ownPrefix, now)   -> docs, as fromDocuments, from the conversation's record (none stored more than 30
+                                       days ago: they are kept 30 days, lib/chat-docs-keep.js)
      numbered(docs, after)          -> [{ n, doc, page, url, thumb, w, h, share, words }]  (at most CAPS.total)
      shapeOf(w, h)                  -> 'landscape 16:9' | 'portrait 3:4' | 'square' …
      promptLines(list, o)           -> the prompt block ('' with none); o: { sheets, seen: [n], fresh, docs, swaps (the
@@ -123,12 +124,15 @@ function storeBatch(fb, eventId, body, decoded, deps) {
   var shared = require('./api-events')._shared;
   var folder = 'events/' + eventId + '/chat-docs/' + key;
   var actor = (decoded && (decoded.email || decoded.uid)) || '';
+  /* kept 30 days unless put on the page (owner, 16 Nov 2026): every object written here has a Custom-Time, which the
+     bucket's lifecycle rule counts from (lib/chat-docs-keep.js) */
+  var keep = require('./chat-docs-keep').storeOpts(new Date().toISOString());
   return fb.db.collection('events').doc(eventId).get().then(function (snap) {
     if (!snap.exists || (snap.data() || {}).deletedAt) return { status: 404, body: { error: STORE_MSG.gone, code: 'no-event' } };
     return Promise.all(pics.map(function (p) {
       return Promise.all([
-        shared.storeImageFile(fb, folder, p.full, 'image/jpeg', 'p' + p.page, actor),
-        shared.storeImageFile(fb, folder, p.thumb, 'image/jpeg', 'p' + p.page + '-small', actor, { variants: false })
+        shared.storeImageFile(fb, folder, p.full, 'image/jpeg', 'p' + p.page, actor, keep),
+        shared.storeImageFile(fb, folder, p.thumb, 'image/jpeg', 'p' + p.page + '-small', actor, Object.assign({ variants: false }, keep))
       ]).then(function (got) { return { url: got[0].url, thumb: got[1].url, w: p.w, h: p.h, page: p.page }; });
     })).then(function (stored) {
       /* one line in the event's History for the document, when its last pictures are in */
@@ -207,10 +211,21 @@ function remember(userRef, docs, nowIso) {
     return userRef.set({ docPictures: { at: nowIso || new Date().toISOString(), docs: keep } }, { merge: true });
   }).then(null, function (err) { console.error('doc-pictures: the pictures were not kept with the conversation — ' + (err && err.message)); });
 }
-/* the conversation's record (events/<id>/aiChats/<uid>), its kept pictures checked again as a message's are */
-function recall(data, ownPrefix) {
+/* the conversation's record (events/<id>/aiChats/<uid>), its kept pictures checked again as a message's are, and none
+   stored more than KEEP_DAYS ago (owner, 16 Nov 2026: a document's pictures are kept 30 days; the ones not placed are
+   gone by then, lib/chat-docs-keep.js). now: ms, for tests. */
+var KEEP_MS = 30 * 24 * 3600 * 1000;
+function storedAt(url) {
+  var m = /\/chat-docs\/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-[a-z0-9]{6}\//.exec(String(url || ''));
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : NaN;
+}
+function recall(data, ownPrefix, now) {
   var kept = isObj(data) && isObj(data.docPictures) ? data.docPictures : null;
-  return kept ? fromDocuments(kept.docs, ownPrefix) : [];
+  if (!kept) return [];
+  var after = (typeof now === 'number' ? now : Date.now()) - KEEP_MS;
+  return fromDocuments(kept.docs, ownPrefix).map(function (d) {
+    return Object.assign({}, d, { pictures: d.pictures.filter(function (p) { var at = storedAt(p.url); return !(at < after); }) });
+  }).filter(function (d) { return d.pictures.length; });
 }
 /* numbered after the `after` pictures the owner attached to this message, document by document, page by page */
 function numbered(docs, after) {

@@ -210,7 +210,8 @@ function storeVariants(fb, path, buffer, opts) {
       var file = fb.bucket.file(variantName(path, made.hash, made.width, made.height, v.width));
       return file.save(v.buffer, {
         resumable: false, predefinedAcl: 'publicRead',
-        metadata: { contentType: 'image/webp', cacheControl: CACHE, metadata: { rvSource: path } }
+        /* opts.customTime: the copies of a picture the bucket's lifecycle rule may delete go with it (lib/chat-docs-keep.js) */
+        metadata: Object.assign({ contentType: 'image/webp', cacheControl: CACHE, metadata: { rvSource: path } }, opts.customTime ? { customTime: String(opts.customTime) } : {})
       });
     })).then(function () {
       forgetDir(dirOf(path));
