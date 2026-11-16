@@ -167,6 +167,11 @@ check(!plan.verifyQuote('agenda the why', MSG), 'words of the message out of the
   var five = e.concat([entry('overview', 'picture', 'a calm overview scene', { ownerQuote: 'add pictures across the site' })]);
   var p5 = plan.planPictures(clone(five), ctxOf({ instruction: 'add pictures across the site' }));
   check(p5.asks.length === 4 && /up to 4 new pictures in one message, so “Overview” can be asked for next/.test(p5.note), 'five asked: four made, the fifth said', [p5.asks.length, p5.note]);
+  var recs = clone(SECTIONS).concat([cp.cleanSectionFields({ id: 'speakers', name: 'Speakers', texts: ['Asha Verma'], role: 'records', pics: { slots: 0, list: [], background: false, heroTarget: '', own: [] } }, OWN)]);
+  var rp = plan.planPictures([entry('what-awaits', 'picture', 'a promenade', { ownerQuote: 'add pictures across the site' }), entry('speakers', 'background', 'soft alpine light on snow', { ownerQuote: 'add pictures across the site' })],
+    ctxOf({ instruction: 'add pictures across the site', sections: recs }));
+  check(rp.asks.length === 1 && /“Speakers” shows Content's records, so its new background is made in a message of its own/.test(rp.note) && !rp.edits.some(function (x) { return x.sectionId === 'speakers'; }),
+    'a records section is reworked around a picture only as the plan\'s first (its records are checked for that one)', [rp.asks.length, rp.note]);
   var twice = plan.planPictures([entry('what-awaits', 'picture', 'a promenade', { ownerQuote: 'add pictures across the site' }), entry('what-awaits', 'picture', 'a table', { ownerQuote: 'add pictures across the site' })],
     ctxOf({ instruction: 'add pictures across the site' }));
   check(twice.asks.length === 1 && /“What Awaits You” gets one new picture in this message/.test(twice.note), 'two for one section: one', twice.note);

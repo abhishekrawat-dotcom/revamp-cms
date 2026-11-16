@@ -225,6 +225,8 @@ var SENTENCES = {
   planCap: 'I make up to 4 new pictures in one message, so {skipped} can be asked for next.',
   /* two pictures for the same place: one is made */
   sameSection: '{name} gets one new picture in this message.',
+  /* a records section reworked around a new background: only as the plan's first picture (its records are checked) */
+  recordsLater: '{name} shows Content\'s records, so its new background is made in a message of its own — ask for it next.',
   /* the model named a real person (typed as a person): the nameless scene is offered, a yes makes it */
   entityPerson: 'I don\'t put real people in pictures I make. I\'ll make it without them: {scene}. Say yes and I\'ll make it — or tell me what it should show instead.',
   /* a company or a brand in the scene: left out at once */

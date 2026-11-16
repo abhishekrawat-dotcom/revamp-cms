@@ -311,6 +311,12 @@ function planPictures(entries, ctx) {
       return skip();
     }
     if (asks.length >= q.left && q.left > 0) { skippedQuota.push(chatPicture.nameRef(sec || { id: raw.sectionId })); return skip(); }
+    /* a section of Content's records is reworked around a new picture only as the plan's first: the editor checks its
+       records come out unchanged for that one (editor-template-ui.js recordsState); a later one is asked for alone */
+    if (asks.length && sec && sec.role === 'records' && !(raw.placement === 'background' && sec.pics && sec.pics.background === true)) {
+      notes.push(chatPicture.sentence('recordsLater', { name: chatPicture.nameRef(sec) }));
+      return skip();
+    }
     var gate = gateEntities(x.entities, ctx), e = Object.assign({}, raw);
     var confirming = accepted || (!!pend && chatPicture.bareYes(said));
     if (gate.person.length) {
@@ -382,6 +388,8 @@ function takeOffer(last, ctx) {
     var one = Object.assign({}, rec, { state: 'offered', options: [rec.sectionId], optionNames: [rec.sectionName || ''] });
     var taken = chatPicture.takeOffer(one, Object.assign({}, ctx, { numbered: numbered + i, lastTurnPicture: one }));
     if (!taken || !taken.ask || asks.some(function (a) { return a.sectionId === taken.ask.sectionId; })) return;
+    var tsec = sectionOf(ctx, taken.ask.sectionId);
+    if (asks.length && tsec && tsec.role === 'records' && taken.ask.apply === 'rework') { notes.push(chatPicture.sentence('recordsLater', { name: chatPicture.nameRef(tsec) })); return; }
     (taken.edits || []).forEach(function (e) { if (e && !edits.some(function (x) { return x.sectionId === e.sectionId; })) edits.push(e); });
     if (taken.note) notes.push(taken.note);
     asks.push(taken.ask); xs.push(pictureJob.entryOf({ basedOn: 'accepted-offer' })); raws.push(rec);
