@@ -17,6 +17,13 @@ var SCHEMA = { type: 'OBJECT', properties: { goTo: { type: 'STRING', enum: ['con
 var g = G.forGemini(SCHEMA);
 check('every empty choice is sent as "(none)", nested ones too; the rest unchanged', JSON.stringify(g.properties.goTo.enum) === '["content:speakers","forms","(none)"]' &&
   JSON.stringify(g.properties.list.items.properties.dir.enum) === '["asc","desc","(none)"]' && JSON.stringify(g.required) === '["goTo","list","name"]' && g.properties.name.type === 'STRING', g);
+var NUM = G.forGemini({ type: 'OBJECT', properties: { variants: { type: 'INTEGER', enum: [0], description: 'always 0' }, n: { type: 'INTEGER', enum: [1, 3] } }, required: ['variants'] });
+check('a number field\'s choices go to Gemini as its lowest and highest value, never as an enum (eval of 16 Nov 2026: 400 on variants enum [0])',
+  !('enum' in NUM.properties.variants) && NUM.properties.variants.minimum === 0 && NUM.properties.variants.maximum === 0 && NUM.properties.n.minimum === 1 && NUM.properties.n.maximum === 3 && NUM.properties.variants.type === 'INTEGER', NUM);
+var PLAN = require('./chat-picture');
+function allEnums(s, out) { out = out || []; if (Array.isArray(s)) s.forEach(function (x) { allEnums(x, out); }); else if (s && typeof s === 'object') Object.keys(s).forEach(function (k) { if (k === 'enum' && Array.isArray(s.enum)) out.push(s.enum); else allEnums(s[k], out); }); return out; }
+var planSchema = typeof PLAN.schemaItem === 'function' ? PLAN.schemaItem(['overview', 'banner'], { plan: true, variants: false, exclude: [] }) : null;
+check('the picture plan\'s schema, as Gemini gets it, has only text choices', planSchema && allEnums(G.forGemini(planSchema)).every(function (e) { return e.every(function (v) { return typeof v === 'string'; }); }), planSchema && allEnums(G.forGemini(planSchema)));
 check('the schema given is left as it was (a copy is sent)', SCHEMA.properties.goTo.enum[2] === '');
 var back = G.fromGemini({ goTo: '(none)', list: [{ dir: '(none)' }, { dir: 'asc' }], name: 'x' });
 check('"(none)" in the answer is "" again, wherever it is', back.goTo === '' && back.list[0].dir === '' && back.list[1].dir === 'asc' && back.name === 'x', back);

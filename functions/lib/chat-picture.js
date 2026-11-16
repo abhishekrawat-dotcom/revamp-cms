@@ -837,7 +837,7 @@ function planSchemaItem(sectionIds, switches) {
   var one = schemaItemOff(sectionIds).items;
   var extra = pictureJob.phase1Props();
   /* "Show 3 options" only while its switch is on (owner, 16 Nov 2026: off by default) */
-  if (!pictureSwitches.on(switches, 'variants')) extra.variants = { type: 'INTEGER', enum: [0], description: 'always 0' };
+  if (!pictureSwitches.on(switches, 'variants')) extra.variants = { type: 'INTEGER', minimum: 0, maximum: 0, description: 'always 0' };
   Object.keys(extra).forEach(function (k) { one.properties[k] = extra[k]; });
   one.required = one.required.concat(Object.keys(extra));
   one.properties.reference.description = 'the number of a picture taken out of a document that this new picture re-creates (also listed in `refs` with use "subject"); 0 for none';

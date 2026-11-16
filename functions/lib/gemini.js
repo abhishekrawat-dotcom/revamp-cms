@@ -183,7 +183,14 @@ function forGemini(schema) {
   if (Array.isArray(schema)) return schema.map(forGemini);
   if (!schema || typeof schema !== 'object') return schema;
   var out = {};
+  /* Gemini takes choices only as text: a number field's choices (variants: enum [0]) were refused with a 400, so the
+     fallback failed every time (eval of 16 Nov 2026). They are sent as the field's lowest and highest value instead. */
+  var numeric = Array.isArray(schema.enum) && schema.enum.length && schema.enum.every(function (v) { return typeof v === 'number'; });
   Object.keys(schema).forEach(function (k) {
+    if (k === 'enum' && numeric) {
+      out.minimum = Math.min.apply(null, schema.enum); out.maximum = Math.max.apply(null, schema.enum);
+      return;
+    }
     out[k] = k === 'enum' && Array.isArray(schema.enum) ? schema.enum.map(function (v) { return v === '' ? NONE_CHOICE : v; }) : forGemini(schema[k]);
   });
   return out;

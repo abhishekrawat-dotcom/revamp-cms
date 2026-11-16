@@ -6691,6 +6691,9 @@
        are deleted again and nothing on the page changes. */
     var madePic = null;               // { url, placed } once the new picture is made
     var heldFix = '';                 // for a picture kept off the page: the edit its Critic says would fix it
+    /* set before makeNewPicture() runs: the function's `return formsMade…` below comes before any later var (eval of 16 Nov 2026:
+       with `plan` on no picture was ever started, and the card said Stop was pressed) */
+    var AI_PICTURES_AT_ONCE = 2, AI_BRIEF_WAIT_MS = 60000;
     var pictureMade = np ? makeNewPicture() : Promise.resolve();
     var formsMade = pictureMade.then(function () {
       if (t.stopAsked) throw STOPPED;
@@ -6770,7 +6773,6 @@
        time — the first through makeFirstPicture as always, each later one through makeExtra (the job loop, CONTRACT
        runJobs). A turn of one picture with no plan asks exactly as it always did. Resolves either way: a picture that
        cannot be made is a step not done. */
-    var AI_PICTURES_AT_ONCE = 2, AI_BRIEF_WAIT_MS = 60000;
     function makeNewPicture() {
       var planned = Array.isArray(result.pictureJobs) && result.pictureJobs.length > 0;
       if (!planned) return makeFirstPicture();
