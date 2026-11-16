@@ -8171,7 +8171,7 @@ module.exports._testHooks.isoOf = isoOf;
     'drawnLogoUnit', 'darkCopyOfUnit', 'classifyGlimpses', 'unstyledSectionIds', 'emptyPictureBox', 'dropPicture',
     'usableLogoPicture', 'runStatusOf', 'RUN_ACTIVE_MS', 'SOURCE_FRESH_MS', 'buildGeneratedDesign', 'confirmEtPick',
     'pageKey', 'otherPortalOf', 'siteOfPortal', 'extractThemeFromPreviousEditionSources', 'editionLookLines',
-    'placeDirection', 'readEditionLook', 'keptKeyVisual', 'ingestSchemaFor', 'buildSectionImage', 'fetchSourceCss',
+    'placeDirection', 'readEditionLook', 'keptKeyVisual', 'ingestSchemaFor', 'buildSectionImage', 'buildHeroImage', 'HERO_SHAPE', 'fetchSourceCss',
     'buildRedesignPrompt', 'stripEditorMarks', 'generatedPageIds', 'sanitizeDesignPlanSections',
     'fewerPeoplePictures', 'awardPlanSections', 'withAwardRecords', 'etPictureRules', 'newStandardPictures',
     'MAX_SECTION_IMAGES', 'awardForSite', 'writeAwardPages', 'awardPageContent', 'seedAwardFaqs', 'seedAwardJury',

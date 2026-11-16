@@ -242,9 +242,14 @@ function entry(sectionId, placement, extra) {
 
   /* ---------- the schema entry and the prompt lines ---------- */
   var sch = cp.schemaItem(['hero', 'agenda']);
+  function lines0() { return cp.promptLines({ eventId: EV, attachmentCount: 0, picturesLeft: 7, picturesPerDay: 20 }); }
   check(sch.type === 'ARRAY' && J(sch.items.properties.sectionId.enum) === J(['hero', 'agenda']) && J(sch.items.properties.placement.enum) === J(['hero', 'background', 'picture']) &&
-    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'plainSubject', 'kind', 'alt']) && sch.items.properties.slot.type === 'INTEGER',
+    J(sch.items.properties.kind.enum) === J(genDesign.IMAGE_KINDS) && J(sch.items.required) === J(['sectionId', 'placement', 'slot', 'subject', 'plainSubject', 'kind', 'alt', 'frame']) && sch.items.properties.slot.type === 'INTEGER',
     'newPictures: sectionId limited to the page\'s sections, the three placements, the site\'s picture kinds', J(sch));
+  /* owner, 16 Nov 2026: the shape of a frame a rework adds is chosen with the picture, always answered */
+  check(J(sch.items.properties.frame.enum) === J(['', '21:9', '16:9', '3:2', '4:3', '1:1', '4:5', '3:4']) && /the shape of the frame it gets/.test(sch.items.properties.frame.description) &&
+    /`frame`: for a picture a rework of the section ADDS[^]*so write nothing about the picture's size in `sectionEdits`/.test(lines0()),
+    'newPictures: the frame a rework adds — its shape chosen from those the picture model makes, and the model told how', J(sch.items.properties.frame));
   check(!cp.schemaItem([]).items.properties.sectionId.enum, 'with no sections there is no empty enum');
   var lines = cp.promptLines({ eventId: EV, attachmentCount: 2, picturesLeft: 7, picturesPerDay: 20 });
   check(/ONE new picture per message, ONLY when the owner's latest message asks for one/.test(lines) && /list 3 in that section's `sectionEdits` `pictures`/.test(lines) &&
@@ -546,8 +551,9 @@ function entry(sectionId, placement, extra) {
   p = cp.planAsk([entry('agenda', 'picture', { alt: 'A "quiet" hall at https://x.io dawn' })], ctxOf({ instruction: 'add a new picture to the agenda section',
     sectionEdits: [{ sectionId: 'agenda', instruction: 'Turn the agenda into a timeline.', pictures: [] }] }));
   agendaEdit = p.edits.filter(function (x) { return x.sectionId === 'agenda'; })[0];
-  check(p.edits.length === 1 && /^Turn the agenda into a timeline\. Add attached picture 1 to this section as its picture, in a sized frame beside or above its text, object-fit cover, alt text "A quiet hall at dawn"\./.test(agendaEdit.instruction) && J(agendaEdit.pictures) === '[1]',
-    'a rework the model already wrote for that section gets the picture merged in (alt cleaned)', J(p.edits));
+  /* owner, 16 Nov 2026: the frame a rework adds is given the shape the picture is made in (16:9 when the chat chose none) */
+  check(p.edits.length === 1 && /^Turn the agenda into a timeline\. Add attached picture 1 to this section as its picture, in ONE frame of exactly 16:9 placed where the brief above puts it, else across the section, above or below its text, at the full width of its container: the frame is sized by its width, with aspect-ratio: 16 \/ 9 and no height, min-height or max-height of its own, and the picture fills it \(display: block; width: 100%; height: 100%; object-fit: cover\), alt text "A quiet hall at dawn"\. The picture is made in exactly that shape, so the frame keeps it at every screen width\./.test(agendaEdit.instruction) && J(agendaEdit.pictures) === '[1]',
+    'a rework the model already wrote for that section gets the picture merged in (alt cleaned), in a frame of the shape it is made in', J(p.edits));
   ['Anita Desai, CHRO of Tata Steel, delivering the keynote', 'Ratan Tata greeting delegates', 'anita desai on stage', 'a sign reading Welcome over the hall', 'the CEO of Infosys at the podium'].forEach(function (a) {
     var x = cp.planAsk([entry('agenda', 'background', { alt: a, subject: 'a calm conference hall at dawn' })], ctxOf({ instruction: 'give the agenda a new background picture' }));
     check(x.ask && x.ask.alt === 'a calm conference hall at dawn', 'an alt text that names a person or claims words is the subject instead: "' + a + '"', J(x.ask));
@@ -560,7 +566,10 @@ function entry(sectionId, placement, extra) {
   p = cp.planAsk([entry('agenda', 'picture')], ctxOf({ instruction: 'add a new picture to the agenda section', sectionEdits: [{ sectionId: 'agenda', instruction: 'x'.repeat(1500), pictures: [] }] }));
   check(p.edits[0].instruction.length <= 1500 && /Change nothing else that was not asked\.$/.test(p.edits[0].instruction), 'the merged brief still fits what the redesign reads (1500)', p.edits[0].instruction.length);
   p = cp.planAsk([entry('venue', 'background')], ctxOf({ instruction: 'give the venue a new background picture and make it a carousel', sectionEdits: [{ sectionId: 'venue', instruction: 'Make it a carousel; use attached picture 1 as the background.', pictures: [1] }, { sectionId: 'agenda', instruction: 'y', pictures: [1] }] }));
-  check(p.ask && p.ask.apply === 'swap' && J(p.edits[0].pictures) === '[1]' && J(p.edits[1].pictures) === '[]', 'a swap: the section\'s own rework may use the new picture; no other entry does', J(p.edits));
+  /* owner, 16 Nov 2026 (ET DAVOS 2027): a picture swapped in AND listed by the section's rework was on the page twice */
+  check(p.ask && p.ask.apply === 'swap' && J(p.edits[0].pictures) === '[]' && J(p.edits[1].pictures) === '[]' &&
+    /The new picture is already in the section, in place of its old background: keep it where it is, once, and add no other copy of it\.$/.test(p.edits[0].instruction) && p.edits[1].instruction === 'y',
+    'a swap: the swap alone puts the new picture in — the section\'s own rework is told it is in place, and no entry lists it', J(p.edits));
   p = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'make a new hero picture', sectionEdits: [{ sectionId: 'hero', instruction: 'z', pictures: [1] }] }));
   check(p.ask && J(p.edits[0].pictures) === '[]', 'the banner is never reworked: no entry keeps the new picture there', J(p.edits));
   p = cp.planAsk([entry('agenda', 'background')], ctxOf({ instruction: 'make a picture', sectionEdits: [{ sectionId: 'agenda', instruction: 'z', pictures: [1] }] }));
@@ -572,7 +581,7 @@ function entry(sectionId, placement, extra) {
   /* what the editor and the turn get */
   p = cp.planAsk([entry('hero', 'hero', { subject: 'a wide view of the Mumbai skyline at dusk, ' + Array(30).join('glowing towers ') })], ctxOf({ instruction: 'make a new hero picture' }));
   var ans = cp.answerOf(p.ask);
-  check(ans.subject.length <= 140 && /…$/.test(ans.subject) && p.ask.subject.length > 140 && J(Object.keys(ans).sort()) === J(['alt', 'apply', 'kind', 'n', 'placement', 'sectionId', 'slot', 'subject']),
+  check(ans.subject.length <= 140 && /…$/.test(ans.subject) && p.ask.subject.length > 140 && J(Object.keys(ans).sort()) === J(['alt', 'apply', 'frame', 'kind', 'n', 'placement', 'sectionId', 'slot', 'subject']),
     'the editor gets the ask with its subject shortened for display', J(ans));
   var rec = cp.turnRecord(p.ask, { themeColor: '#C8102E', mode: 'light', bgImage: 'url(x)' });
   check(rec.state === 'asked' && rec.subject === p.ask.subject && rec.sectionName === 'Hero banner' && rec.heroMode === 'dark' && J(rec.design) === J({ themeColor: '#c8102e', mode: 'light' }),
@@ -1252,6 +1261,118 @@ function entry(sectionId, placement, extra) {
   check(fa.ask && fa.ask.aspect === '21:9' && cp.turnRecord(fa.ask, {}).aspect === '21:9', 'a picture taking a wide frame\'s place is made in that shape', J(fa.ask));
   /* no shields or badges asked for */
   check(/never shields, badges, crests, seals, coats of arms, padlock or shield icons/.test(cp.promptLines({ eventId: EV, picturesLeft: 3, picturesPerDay: 20 })), 'the model is told no logo-like shapes');
+
+  /* ---------- owner, 16 Nov 2026 (ET DAVOS 2027): "the image dimension issue is still not fixed. AI has created a square
+     image for a rectangular placeholder" — a picture made for a frame has the frame's shape, whichever way it gets there ---------- */
+  var KDP_RAW = { id: 'key-discussion-points', name: 'Key Discussion Points', texts: ['INDIA @ DAVOS', 'ET STUDIO', 'Your leadership conversation'], pics: { slots: 0, background: false, frame: { w: 1440, h: 1890 } } };
+  var KDP_BAND = Object.assign({}, KDP_RAW, { pics: { slots: 1, list: [{ label: 'Two empty armchairs in a warmly lit lounge', w: 1152, h: 380 }], background: false } });
+  var davosSecs = function (raw) { return SECS.concat([cp.cleanSectionFields(raw, OWN)]); };
+  var LOUNGE = 'an empty, elegant lounge with two armchairs angled toward each other, warm lamp light and a window onto snow-covered peaks at dusk';
+  /* turn 8 as the owner sent it, the section selected; the model reworks the section with the picture as a band */
+  var t8 = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: LOUNGE, alt: 'Two empty armchairs in a lounge', frame: '21:9' })],
+    ctxOf({ instruction: 'generate a relevant image for this section and add that to make it more apealiing.', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_RAW),
+      sectionEdits: [{ sectionId: 'key-discussion-points', instruction: 'Show the new picture as a wide band at the top of the section, above the heading.', pictures: [1] }] }));
+  var t8edit = t8.edits.filter(function (x) { return x.sectionId === 'key-discussion-points'; })[0] || {};
+  check(t8.ask && t8.ask.apply === 'rework' && t8.ask.slot === 0 && t8.ask.aspect === '21:9' && t8.ask.frame === '21:9' && J(t8edit.pictures) === '[1]',
+    'turn 8: the frame the rework adds is given the shape the chat chose before the picture is made, and the picture is made in it', J(t8));
+  check(/^Show the new picture as a wide band at the top of the section, above the heading\. Add attached picture 1 to this section as its picture, in ONE frame of exactly 21:9 placed where the brief above puts it, else across the section, above or below its text, at the full width of its container: the frame is sized by its width, with aspect-ratio: 21 \/ 9 and no height, min-height or max-height of its own, and the picture fills it \(display: block; width: 100%; height: 100%; object-fit: cover\)/.test(t8edit.instruction) &&
+    /The picture is made in exactly that shape, so the frame keeps it at every screen width\. Change nothing else that was not asked\.$/.test(t8edit.instruction),
+    'the rework is told the frame\'s exact shape, as CSS, with nothing that could change it', t8edit.instruction);
+  var t8rec = cp.turnRecord(t8.ask, {});
+  check(t8rec.aspect === '21:9' && t8rec.frame === '21:9' && cp.answerOf(t8.ask).frame === '21:9', 'the turn keeps the shape for the picture step, and the editor is told it to hold the frame to', J(t8rec));
+  ['', '9:16', '2:3', 'wide', 7].forEach(function (f) {
+    var x = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: LOUNGE, frame: f })],
+      ctxOf({ instruction: 'generate a relevant image for this section', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_RAW) }));
+    check(x.ask && x.ask.aspect === '16:9' && x.ask.frame === '16:9' && /ONE frame of exactly 16:9/.test(x.edits[0].instruction), 'a frame a rework adds with no shape chosen (or one it may not take: ' + J(f) + ') is 16:9', J(x.ask));
+  });
+  check(/in ONE frame of exactly 16:9 placed across the section, above or below its text/.test(cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: LOUNGE, frame: '16:9' })],
+    ctxOf({ instruction: 'add a picture to this section', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_RAW) })).edits[0].instruction),
+    'with no brief of the model\'s own for the section, where the frame goes is said outright');
+  [['add a picture to the ET Studio part and change its heading to Your conversation', 'rework'], ['add a second picture for the studio panel', 'rework'],
+    ['replace the picture with a studio set', 'swap'], ['change this image to a studio set', 'swap'], ['make a picture of a studio set instead', 'swap'], ['make a new picture for this section and make the heading red', 'swap']].forEach(function (c) {
+    var x = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: 'an empty interview set with two armchairs', frame: '4:3' })],
+      ctxOf({ instruction: c[0], focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_BAND), sectionEdits: [{ sectionId: 'key-discussion-points', instruction: 'Use the new picture.', pictures: [1] }] }));
+    check(x.ask && x.ask.apply === c[1], '"' + c[0] + '": ' + (c[1] === 'rework' ? 'a picture added in a frame of its own' : 'the section\'s picture replaced'), J(x.ask));
+  });
+  var squareTile = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: LOUNGE, frame: '1:1' })],
+    ctxOf({ instruction: 'add a picture to this section', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_RAW) }));
+  check(squareTile.ask.aspect === '1:1' && /ONE frame of exactly 1:1 placed beside the text in a split, as a square tile: [^]*aspect-ratio: 1 \/ 1 /.test(squareTile.edits[0].instruction) &&
+    /tall picture beside the text/.test(cp.framePlace('4:5')) && /beside the text in a split \(one column of it\)/.test(cp.framePlace('4:3')), 'where a frame of each shape is placed: a wide one across the section, the others beside the text', squareTile.edits[0].instruction);
+  /* turn 9: the section now has one picture (the band); "add … for the ETStudio sub-section" and the model's rework puts the
+     new picture in the ET Studio card — a rework that adds a frame, never a swap of the band's picture as well */
+  var t9 = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: 'an empty interview set with two armchairs facing each other and soft studio lights', frame: '4:3' })],
+    ctxOf({ instruction: 'add a relevant image according to content for the ETStudio sub-section of this section', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_BAND),
+      sectionEdits: [{ sectionId: 'key-discussion-points', instruction: 'Put the new picture in the ET Studio panel, beside its text. The lounge picture at the top stays.', pictures: [1] }] }));
+  check(t9.ask && t9.ask.apply === 'rework' && t9.ask.slot === 0 && t9.ask.aspect === '4:3' && t9.ask.frame === '4:3' && J(t9.edits[0].pictures) === '[1]' && /ONE frame of exactly 4:3/.test(t9.edits[0].instruction),
+    'turn 9: "add … for the ETStudio sub-section" adds a frame of the shape the chat chose; the band\'s picture is not swapped as well', J(t9));
+  /* the same section, the owner replacing the band's picture: swapped in the band's measured shape, and the model's rework
+     that listed it is told it is already in place (it was on the page twice) */
+  var t9r = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: 'an empty interview set with two armchairs and soft studio lights', frame: '4:3' })],
+    ctxOf({ instruction: 'replace the picture of this section with an empty interview set', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_BAND),
+      sectionEdits: [{ sectionId: 'key-discussion-points', instruction: 'Use the new picture at the top.', pictures: [1] }] }));
+  check(t9r.ask && t9r.ask.apply === 'swap' && t9r.ask.slot === 1 && t9r.ask.frame === '1152:380' && t9r.ask.aspect === '21:9' && J(t9r.edits[0].pictures) === '[]' &&
+    /^Use the new picture at the top\. The new picture is already in the section, in place of its old one: keep it where it is, once, and add no other copy of it\.$/.test(t9r.edits[0].instruction),
+    'a picture that replaces one is made in that frame\'s measured shape and swapped in by itself; the section\'s rework keeps it once', J(t9r));
+  var notAdd = cp.planAsk([entry('key-discussion-points', 'picture', { kind: 'subject', subject: 'an empty interview set' })],
+    ctxOf({ instruction: 'make a new picture for this section', focus: { sectionId: 'key-discussion-points' }, sections: davosSecs(KDP_BAND),
+      sectionEdits: [{ sectionId: 'key-discussion-points', instruction: 'Use the new picture.', pictures: [1] }] }));
+  check(notAdd.ask && notAdd.ask.apply === 'swap' && notAdd.ask.slot === 1 && J(notAdd.edits[0].pictures) === '[]', 'without words that ask to add one, a section\'s one picture is replaced, once', J(notAdd.ask));
+  var several = cp.planAsk([entry('venue', 'picture', { kind: 'place', subject: 'a calm lobby' })],
+    ctxOf({ instruction: 'add another picture to the venue section', sections: SECS, sectionEdits: [{ sectionId: 'venue', instruction: 'Add the new picture beside the text.', pictures: [1] }] }));
+  check(several.ask && several.ask.apply === 'rework' && several.ask.aspect === '16:9', 'a section of several pictures takes an added one without asking which to replace', J(several.ask));
+  var noRework = cp.planAsk([entry('venue', 'picture', { kind: 'place', subject: 'a calm lobby' })], ctxOf({ instruction: 'add another picture to the venue section', sections: SECS }));
+  check(noRework.ask === null && noRework.code === 'several' && noRework.reply === cp.sentence('several', { name: '“Venue & Travel”', label: 'the lobby' }), 'with no rework to place it, "add" in a section of several pictures still asks which', J(noRework));
+  /* the banner and a background: the place the editor measured */
+  var placed = function (id, frame) { return SECS.map(function (x) { return x.id === id ? cp.cleanSectionFields(Object.assign({}, RAW_SECTIONS.filter(function (r0) { return r0.id === id; })[0], { pics: Object.assign({}, RAW_SECTIONS.filter(function (r0) { return r0.id === id; })[0].pics, { frame: frame }) }), OWN) : x; }); };
+  check(J(placed('hero', { w: 1440.4, h: 600 }).filter(function (x) { return x.id === 'hero'; })[0].pics.frame) === J({ w: 1440, h: 600 }) &&
+    cp.cleanSectionFields({ pics: { frame: { w: -3, h: 'x' } } }, OWN).pics.frame === null && cp.cleanSectionFields({ pics: {} }, OWN).pics.frame === null, 'the place\'s measured size is kept as whole numbers, or not at all');
+  var wideHero = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'make a new hero picture', sections: placed('hero', { w: 1440, h: 600 }) })).ask;
+  check(wideHero.aspect === '21:9' && wideHero.frame === '1440:600' && cp.turnRecord(wideHero, {}).frame === '1440:600', 'a banner as wide as 2.4:1 is made 21:9 and cut to its place', J(wideHero));
+  var tallCanvas = cp.planAsk([entry('hero', 'hero')], ctxOf({ instruction: 'make a new hero picture', sections: placed('hero', { w: 390, h: 800 }) })).ask;
+  check(tallCanvas.aspect === '' && tallCanvas.frame === '' && cp.aspectOf(cp.turnRecord(tallCanvas, {})) === '16:9', 'a banner measured on a phone-width canvas keeps the usual 16:9 (a banner is always wide)', J(tallCanvas));
+  var bgVenue = cp.planAsk([entry('venue', 'background', { kind: 'place', subject: 'a calm lobby' })], ctxOf({ instruction: 'make a new background picture for the venue section', sections: placed('venue', { w: 1440, h: 820 }) })).ask;
+  check(bgVenue.aspect === '16:9' && bgVenue.frame === '1440:820', 'a background is made in its place\'s nearest shape and cut to it', J(bgVenue));
+  check(cp.aspectOf({ placement: 'picture' }) === '4:3' && cp.aspectOf({ placement: 'hero' }) === '16:9' && cp.aspectOf({ placement: 'background', wide: true }) === '16:9' && cp.aspectOf({ placement: 'picture', aspect: '3:4' }) === '3:4',
+    'the shape asked for: the stored one, else 16:9 for a wide place, else 4:3');
+  /* the words say the shape asked for */
+  var heroWords = cp.promptFor(cp.turnRecord(wideHero, {}), EVENT);
+  check(/Wide panorama, 21:9\./.test(heroWords) && !/Landscape, 16:9\./.test(heroWords), 'a 21:9 banner is described as one, not as 16:9', heroWords.slice(-700));
+  var bandWords = cp.promptFor(cp.turnRecord(t9r.ask, {}), EVENT);
+  check(/Wide panorama, 21:9\./.test(bandWords) && !/Landscape, 4:3\./.test(bandWords), 'and so is a section\'s picture made for a 21:9 band', bandWords.slice(-600));
+  /* make(): asked in the nearest shape, cut to the frame's exact proportion before it is checked and stored */
+  var sharpLib = null;
+  try { sharpLib = require('sharp'); } catch (e) { sharpLib = null; }
+  if (!sharpLib) console.log('chat-picture: sharp is not on this machine, so the cut is not checked here (the picture is kept whole)');
+  else {
+    var keptBytes = {}, realFile = FB.bucket.file;
+    FB.bucket.file = function (path) { var f = realFile(path), save = f.save; f.save = function (buf, opts) { keptBytes[path] = buf; return save(buf, opts); }; return f; };
+    var solid = function (w, h) { return sharpLib({ create: { width: w, height: h, channels: 3, background: { r: 190, g: 40, b: 30 } } }).png().toBuffer(); };
+    var cutCases = [
+      { label: 'turn 9\'s band (1152 x 380): asked 21:9, the model\'s 1536 x 672 cut to 1536 x 507', np: cp.turnRecord(t9r.ask, {}), made: [1536, 672], ask: '21:9', size: [1536, 507] },
+      { label: 'a frame a rework adds (21:9): cut to exactly 21:9', np: t8rec, made: [1536, 672], ask: '21:9', size: [1536, 658] },
+      { label: 'a 4:3 frame (800 x 600): asked 4:3, the model\'s 1184 x 864 cut to exactly 4:3', np: askOf('overview', 'picture'), made: [1184, 864], ask: '4:3', size: [1152, 864] },
+      { label: 'no frame known: asked 4:3 and cut to it', np: Object.assign(askOf('overview', 'picture'), { frame: '', aspect: '' }), made: [1184, 864], ask: '4:3', size: [1152, 864] },
+      { label: 'the banner 2.4:1: asked 21:9, cut to 1440:600', np: cp.turnRecord(wideHero, {}), made: [1536, 672], ask: '21:9', size: [1536, 640] },
+      { label: 'a picture already in its frame\'s proportion is kept whole', np: Object.assign(askOf('overview', 'picture'), { frame: '1536:672', aspect: '21:9' }), made: [1536, 672], ask: '21:9', size: [1536, 672] }
+    ];
+    for (var ci = 0; ci < cutCases.length; ci++) {
+      var cc0 = cutCases[ci];
+      FB.docs[QPATH] = { day: TODAY, made: 0, failed: 0 };
+      checkAnswers.length = 0;
+      var bytes0 = await solid(cc0.made[0], cc0.made[1]);
+      imageAnswers.push(picture(bytes0.toString('base64')));
+      var checksBefore = checkCalls.length;
+      var r0ref = turnOf(cc0.np);
+      var r0 = await run(r0ref);
+      var path0 = String(r0.body.url || '').replace('https://storage.googleapis.com/test-bucket/', '');
+      var meta0 = keptBytes[path0] ? await sharpLib(keptBytes[path0]).metadata() : {};
+      var looked = checkCalls[checksBefore] && checkCalls[checksBefore].opts.images[0];
+      check(r0.status === 200 && imageCalls[imageCalls.length - 1].opts.aspectRatio === cc0.ask && meta0.width === cc0.size[0] && meta0.height === cc0.size[1] && meta0.format === 'png' &&
+        looked && looked.data === keptBytes[path0].toString('base64') && FB.docs[r0ref.path].newPicture.size === cc0.size[0] + 'x' + cc0.size[1],
+        cc0.label + ' — the check sees and the page gets the cut picture', J({ status: r0.status, asked: imageCalls[imageCalls.length - 1].opts.aspectRatio, got: [meta0.width, meta0.height], size: FB.docs[r0ref.path].newPicture.size }));
+    }
+    FB.bucket.file = realFile;
+  }
 
   if (failures.length) { console.error('chat-picture: ' + failures.length + ' of ' + checks + ' checks FAILED\n  - ' + failures.join('\n  - ')); process.exit(1); }
   console.log('chat-picture: all ' + checks + ' checks passed');

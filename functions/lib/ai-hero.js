@@ -67,6 +67,7 @@ const activity = require('./activity');
 const etEvents = require('./et-events');
 /* the editor's picture check, and its rules for who may be in a banner (one check for every picture ETB2B AI makes) */
 const chatPicture = require('./chat-picture');
+const pictureShape = require('./picture-shape');   // the picture cut to exactly 16:9 (owner, 16 Nov 2026)
 /* what each portal's events are about (the picture's field when the person gave no words of their own): one table
    that Create Event's line reads too, so what the person is told and what is made agree */
 const fields = require('../../portal-fields.js');
@@ -349,7 +350,10 @@ function make(fb, decoded, eventId, eventRef, dayRef, ev, subject, own, started,
         console.error('ai-hero: the picture model answered ' + bytes.length + ' bytes that are not a PNG, JPEG or WebP');
         return { ai: Object.assign(gemini.failure('ai-bad-output'), { provider: 'gemini' }) };
       }
-      return { bytes: bytes, type: type };
+      /* cut to exactly 16:9 (the model's "16:9" is 1344 x 768), as the editor's banner pictures are (lib/picture-shape.js) */
+      return pictureShape.crop(bytes, pictureShape.ratioOf(chatPicture.WIDE_ASPECT), { label: 'the hero picture of ' + eventId }).then(function (cut) {
+        return { bytes: cut.bytes, type: cut.cropped ? chatPicture.sniff(cut.bytes) || type : type };
+      });
     }, function (err) {
       console.error('ai-hero: the picture call for ' + eventId + ' failed — ' + (err && err.message));
       return { ai: Object.assign(gemini.failure('ai-unavailable'), { provider: 'gemini' }) };

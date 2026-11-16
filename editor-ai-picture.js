@@ -45,6 +45,8 @@
                  heroTarget: for the banner, where its picture goes: 'background' | 'fullbleed' | 'veil' | '',
                  wide: true when its background's place (the background's element, else the section itself) is at
                       least WIDE_RATIO times as wide as it is tall: a new background there is made 16:9,
+                 frame: { w, h } of that place (for the banner, of its picture's place: heroTarget's element), or null:
+                      a new background or banner picture is made in its shape and cut to it,
                  own: up to 4 of this event's own Storage pictures shown in it (the server counts people
                       pictures with them; they are never shown to the model) } }
    RevampAiPicture.slotOf(sec, el, h) -> el's 1-based number among those pictures (the chat's focus.slot), else 0
@@ -59,6 +61,10 @@
        section that is reworked with the picture goes through the section rewrite instead.
    RevampAiPicture.place(spot, url, alt, h) -> true when the picture was put in; false and nothing changed when the
        spot, the address or the element is not one it may use
+   RevampAiPicture.fitFrame(img, frame, h) -> { shaped, el }: the new picture's frame that a rework added, held to the
+       shape the picture was made in (frame 'W:H'): its box, or the box around it that holds nothing else, gets
+       aspect-ratio W / H and no height of its own, the picture filling it with object-fit: cover; a layout that will
+       not take the shape is put back and the picture only gets cover (shaped false). el: the frame's element
    RevampAiPicture.heroVeilCss(mode) -> the veil functions/lib/gen-design.js heroCss lays over a banner picture
    RevampAiPicture.unitState(doc) -> a string that is the same exactly when every logo unit on the page is the same
        (its pictures, its copy for a dark background, its note, its tone and its words): taken before a change and
@@ -539,20 +545,26 @@
 
   function describe(sec, h) {
     h = h || {};
-    var out = { role: roleOf(sec), video: false, heroMode: '', pics: { slots: 0, list: [], background: false, heroTarget: '', wide: false, own: [] } };
+    var out = { role: roleOf(sec), video: false, heroMode: '', pics: { slots: 0, list: [], background: false, heroTarget: '', wide: false, frame: null, own: [] } };
     if (!sec || out.role === 'nav' || out.role === 'footer') return out;      // nothing there is offered for a new picture
     var L = look(sec, h), free = usable(candidates(L));
     out.pics.slots = free.length;
     out.pics.list = free.slice(0, LIST_MAX).map(entryOf);
-    out.pics.background = !!hostOf(L);
+    var host = hostOf(L);
+    out.pics.background = !!host;
     /* the shape a new background would fill: the background's own element, or the section a rework would put it on */
-    var box = boxOf(hostOf(L) || sec);
+    var box = boxOf(host || sec);
     out.pics.wide = box.w > 0 && box.h > 0 && box.w >= WIDE_RATIO * box.h;
-    if (L.role === 'hero') {
+    var spot = L.role === 'hero' ? heroSpot(L) : null;
+    if (spot) {
       out.video = heroVideoOn(sec, h);
       out.heroMode = heroModeOf(sec, h);
-      out.pics.heroTarget = heroSpot(L).kind;
+      out.pics.heroTarget = spot.kind;
     }
+    /* that place's size (for the banner, its picture's place): a new background or banner picture is made in its
+       shape and cut to it (functions/lib/picture-shape.js) */
+    var place = spot && spot.el ? boxOf(spot.el) : box;
+    out.pics.frame = place.w >= 1 && place.h >= 1 ? { w: Math.round(place.w), h: Math.round(place.h) } : null;
     out.pics.own = ownPictures(L);
     return out;
   }
@@ -655,6 +667,101 @@
     return false;
   }
 
+  /* ---------- a frame a rework added for the new picture, held to the picture's shape ----------
+     The owner, 16 Nov 2026 (ET DAVOS 2027): "AI has created a square image for a rectangular placeholder". A picture
+     made 4:3 for a frame a rework adds was laid out by the rework as a band three times as wide as tall; the next, put
+     in a card by a rework, had white above and below it. The rework is now told the frame's exact shape, decided before
+     the picture is made (functions/lib/chat-picture.js planAsk); this makes sure of it on the page, where the layout is
+     known. The frame is the picture's own box, or the box around it that holds nothing else (up to three levels, an
+     overlay laid over it aside): it gets aspect-ratio W / H and no height of its own, and the picture fills it with
+     object-fit: cover. Inline, so it holds whatever the section's stylesheet says, at every screen width. A picture laid
+     as a layer over the section (absolutely positioned) is a background in all but name, and a layout that will not
+     take the shape (a row that stretches it, a frame with a mat around the picture) is put back as the rework had it:
+     either way the picture gets cover, so it is never squashed or letterboxed. */
+  var SHAPE_SLACK = 0.02;           // a frame within 2% of the picture's proportion holds its shape
+  function styleOf(el, h) {
+    var win = winOf(el, h);
+    try { return win && win.getComputedStyle ? win.getComputedStyle(el) : null; } catch (e) { return null; }
+  }
+  /* parent shows nothing but child: no words, and no other element but an overlay laid over it or one not shown */
+  function onlyHolds(parent, child, h) {
+    for (var n = parent.firstChild; n; n = n.nextSibling) {
+      if (n === child) continue;
+      if (n.nodeType === 3) { if (/\S/.test(n.nodeValue || '')) return false; continue; }
+      if (n.nodeType !== 1 || /^(SCRIPT|STYLE|TEMPLATE)$/.test(tagOf(n))) continue;
+      var s = styleOf(n, h);
+      if (s && s.display === 'none') continue;
+      if (s && (s.position === 'absolute' || s.position === 'fixed') && !/\S/.test(n.textContent || '') && !n.querySelector('img, video, svg')) continue;
+      return false;
+    }
+    return true;
+  }
+  function rectOf(el) {
+    try { var r = el.getBoundingClientRect(); return { w: r.width || 0, h: r.height || 0, left: r.left || 0, right: (r.left || 0) + (r.width || 0) }; } catch (e) { return { w: 0, h: 0, left: 0, right: 0 }; }
+  }
+  /* el's content box on the page: its box less its padding and borders */
+  function contentRect(el, h) {
+    var r = rectOf(el), s = styleOf(el, h);
+    if (!s) return r;
+    function px(v) { return parseFloat(v) || 0; }
+    var left = r.left + px(s.paddingLeft) + px(s.borderLeftWidth), right = r.right - px(s.paddingRight) - px(s.borderRightWidth);
+    return { w: right - left, h: r.h, left: left, right: right };
+  }
+  function contentBox(el, h) {
+    var b = boxOf(el), s = styleOf(el, h);
+    if (!s) return b;
+    function px(v) { return parseFloat(v) || 0; }
+    return { w: b.w - px(s.paddingLeft) - px(s.paddingRight) - px(s.borderLeftWidth) - px(s.borderRightWidth),
+      h: b.h - px(s.paddingTop) - px(s.paddingBottom) - px(s.borderTopWidth) - px(s.borderBottomWidth) };
+  }
+  function fitFrame(img, frame, h) {
+    h = h || {};
+    var out = { shaped: false, el: null };
+    if (!img || tagOf(img) !== 'IMG' || !connected(img)) return out;
+    var sec = sectionOf(img);
+    if (!sec || within(img, sec, KEEP) || isLogoImg(img)) return out;
+    var m = /^(\d{1,5}):(\d{1,5})$/.exec(String(frame || '')), ratio = m && +m[1] > 0 && +m[2] > 0 ? +m[1] / +m[2] : 0;
+    var box = img;
+    for (var i = 0; i < 3; i++) {
+      var up = box.parentElement;
+      if (!up || up === sec || !sec.contains(up) || !onlyHolds(up, box, h)) break;
+      box = up;
+    }
+    out.el = box;
+    var layered = [img, box].some(function (el) { var s = styleOf(el, h); return !!s && (s.position === 'absolute' || s.position === 'fixed'); });
+    var before = rectOf(box), holder = box.parentElement, room = holder ? contentRect(holder, h) : null;
+    if (ratio && !layered && before.w > 0 && room) {
+      var kept = [box, img].map(function (el) { return { el: el, style: el.getAttribute('style') }; });
+      var css = m[1] + ' / ' + m[2];
+      box.style.aspectRatio = css;
+      box.style.height = 'auto';
+      box.style.minHeight = '0';
+      box.style.maxHeight = 'none';
+      if (box !== img) { img.style.display = 'block'; img.style.width = '100%'; img.style.height = '100%'; }
+      img.style.objectFit = 'cover';
+      /* in a row (a grid, a flex row) it is not stretched to the row's height: a frame stretched there would take
+         its width from that height and run into the words beside it. In a grid it keeps its column's width, whatever
+         the picture's own size (it may not have arrived yet) */
+      var hs = styleOf(holder, h), grid = !!hs && /grid/.test(hs.display), row = !!hs && /flex/.test(hs.display) && !/column/.test(hs.flexDirection || '');
+      if (grid || row) box.style.alignSelf = 'start';
+      if (grid) box.style.justifySelf = 'stretch';
+      var after = rectOf(box);
+      var holds = after.w > 0 && after.h > 0 && Math.abs(Math.log((after.w / after.h) / ratio)) <= SHAPE_SLACK;
+      /* the frame keeps the width the layout gave it, inside the box it stands in: only its height changes */
+      var stays = after.w <= before.w + 1.5 && after.left >= room.left - 1.5 && after.right <= room.right + 1.5;
+      var fills = true;
+      if (box !== img) {
+        var a = boxOf(img), c = contentBox(box, h);
+        fills = Math.abs(a.w - c.w) <= 2 && Math.abs(a.h - c.h) <= 2;
+      }
+      if (holds && stays && fills) { out.shaped = true; return out; }
+      kept.forEach(function (k) { if (k.style == null) k.el.removeAttribute('style'); else k.el.setAttribute('style', k.style); });
+    }
+    var s0 = styleOf(img, h);
+    if (!s0 || s0.objectFit !== 'cover') img.style.objectFit = 'cover';
+    return out;
+  }
+
   /* ---------- the logo unit, before and after ---------- */
   function unitState(doc) {
     if (!doc || !doc.querySelectorAll) return '';
@@ -755,6 +862,7 @@
     chooseSlot: chooseSlot,
     target: target,
     place: place,
+    fitFrame: fitFrame,
     heroVeilCss: heroVeilCss,
     unitState: unitState,
     recordsState: recordsState
