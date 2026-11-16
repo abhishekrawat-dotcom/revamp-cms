@@ -163,10 +163,8 @@
   }
   /* a page drawn full size (for cutting photos out) and smaller (for ETB2B AI to look at) */
   function draw(page) {
-    var v = page.getViewport({ scale: 1 }), scale = 1800 / Math.max(v.width, v.height);
-    var vp = page.getViewport({ scale: scale });
-    var big = doc.createElement('canvas'); big.width = Math.round(vp.width); big.height = Math.round(vp.height);
-    return page.render({ canvasContext: big.getContext('2d'), viewport: vp }).promise.then(function () {
+    /* drawn by pdf-reader.js renderPage, the one slide renderer (Create Event draws a presentation's slides with it too) */
+    return root.RevampPdf.renderPage(page, 1800).then(function (big) {
       var f = 1280 / Math.max(big.width, big.height), sm = doc.createElement('canvas');
       sm.width = Math.round(big.width * f); sm.height = Math.round(big.height * f);
       sm.getContext('2d').drawImage(big, 0, 0, sm.width, sm.height);

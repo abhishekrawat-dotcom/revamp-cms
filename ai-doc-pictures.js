@@ -20,7 +20,7 @@
    Each picture kept: a JPEG at most 1600 px on its long side, for placing on the page; a small JPEG (at most 400 px)
    for ETB2B AI to look at; its page, how much of the page it covers, and that page's first words.
 
-     RevampDocPictures.fromPdf(bytes, o) -> Promise<{ pages, text, cut, pictures, leftOut, pagesRead }>
+     RevampDocPictures.fromPdf(bytes, o) -> Promise<{ pages, text, cut, pictures, leftOut, pagesRead, pageW, pageH (the first page's size) }>
          bytes: a Uint8Array (PDF.js takes it over: pass a copy you still need). o: { onProgress(text), words: true to
          read every page's words too (a document too large to send as a file), name: for the progress lines }
          text: 'Page 1:\n…\n\nPage 2:\n…' (words: true) — cut: true when it was cut to CAPS.textChars
@@ -316,7 +316,7 @@
     var R = root.RevampPdf;
     if (!R || typeof R.open !== 'function') return Promise.reject(new Error('The PDF reader is not loaded on this page. Reload the page and attach the PDF again.'));
     var lib = null, pdf = null;
-    var lo = emptyLeftOut(), cands = [], seen = {}, texts = [], textLen = 0, cut = false, order = 0;
+    var lo = emptyLeftOut(), cands = [], seen = {}, texts = [], textLen = 0, cut = false, order = 0, pageW = 0, pageH = 0;
     return R.load().then(function (L) { lib = L; return R.open(bytes); }).then(function (d) {
       pdf = d;
       var n = pdf.numPages, picPages = Math.min(n, CAPS.pages), textPages = o.words ? Math.min(n, CAPS.textPages) : picPages;
@@ -332,6 +332,8 @@
             }
             if (num > picPages) return null;
             var vp = page.getViewport({ scale: 1 }), short = oneLine(words, CAPS.pictureWords);
+            /* the first page's size: Create Event tells a designed (landscape) presentation by it (create-deck.js) */
+            if (num === 1) { pageW = Math.round(vp.width); pageH = Math.round(vp.height); }
             return page.getOperatorList().then(function (ops) {
               var painted = paintedImages(ops.fnArray || [], ops.argsArray || [], lib.OPS || {}, vp.width, vp.height);
               return painted.reduce(function (p, pi) {
@@ -357,7 +359,7 @@
         var pick = choose(cands, CAPS.keep);
         lo.over = pick.over.length;
         return {
-          pages: n, pagesRead: picPages, text: texts.join('\n\n'), cut: cut || (o.words && textPages < n),
+          pages: n, pagesRead: picPages, pageW: pageW, pageH: pageH, text: texts.join('\n\n'), cut: cut || (o.words && textPages < n),
           pictures: pick.kept.map(publicOf), leftOut: lo
         };
       });

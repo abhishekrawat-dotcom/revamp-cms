@@ -95,6 +95,10 @@ const etFooter = require('./et-footer');
 const pictures = require('./pictures');
 /* a picture made for a frame has the frame's shape (owner, 16 Nov 2026: "AI has created a square image for a rectangular placeholder") */
 const pictureShape = require('./picture-shape');
+/* Create Event following the owner's own presentation (CREATE-FROM-DECK.md): the design hooks and its photos */
+const deckFollow = require('./deck-follow');
+const deckPhotos = require('./deck-photos');
+const docPictures = require('./doc-pictures');
 const editionLook = require('./edition-look');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-markup');
@@ -310,10 +314,29 @@ var BRIEF_SCHEMA = {
         imagery: { type: 'STRING', description: 'What its pictures show and how (e.g. "sunset city skylines, a glowing rising arrow, warm golden light").' },
         motifs: { type: 'STRING', description: 'Recurring graphic devices (e.g. "navy rounded panels, thin gold rules, circular icon badges, number tabs").' },
         ipName: { type: 'STRING', description: 'The name the deck brands the property with, if it shows one as a logo/lock-up (e.g. "ET Next Billion Blueprint"), else empty.' },
-        ipTagline: { type: 'STRING', description: 'The line set with that name (e.g. "New markets. New models. New growth."), else empty.' }
+        ipTagline: { type: 'STRING', description: 'The line set with that name (e.g. "New markets. New models. New growth."), else empty.' },
+        /* read as a designer reads a website (SOURCE_SECTIONS_SCHEMA.design), so a deck the owner asks the site to follow
+           can be its design reference (CREATE-FROM-DECK.md §6.1) */
+        design: { type: 'OBJECT', description: 'ONLY for a designed presentation: how it is DESIGNED, page by page, as a designer would describe a website to rebuild it. Empty strings and an empty list for a plain document.', properties: {
+          layoutStyle: { type: 'STRING', description: '1-2 sentences: its overall layout character (e.g. "full-bleed photographs under dark veils, big condensed italic titles bottom-left, white text").' },
+          heroStyle: { type: 'STRING', description: 'One sentence: how its cover page is built.' },
+          sectionPattern: { type: 'ARRAY', items: { type: 'STRING' }, description: 'One entry per content page, in order: "<page title> — <how it is laid out>".' },
+          imageryStyle: { type: 'STRING', description: 'One sentence: what its photographs show and how they are used.' },
+          typography: { type: 'STRING', description: 'One sentence: its heading and text character.' },
+          density: { type: 'STRING', description: '"airy", "balanced" or "dense".' }
+        }, required: ['layoutStyle', 'heroStyle', 'sectionPattern', 'imageryStyle', 'typography', 'density'] },
+        headingFont: { type: 'STRING', description: 'ONLY for a designed presentation: the real Google Fonts family closest to its headings (e.g. "Barlow Condensed" for a bold condensed sans), else empty.' },
+        bodyFont: { type: 'STRING', description: 'ONLY for a designed presentation: the real Google Fonts family closest to its body text, else empty.' }
       },
-      required: ['designed', 'colours', 'mode', 'headingStyle', 'bodyStyle', 'imagery', 'motifs', 'ipName', 'ipTagline']
+      required: ['designed', 'colours', 'mode', 'headingStyle', 'bodyStyle', 'imagery', 'motifs', 'ipName', 'ipTagline', 'design', 'headingFont', 'bodyFont']
     },
+    deckPages: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+      page: { type: 'INTEGER', description: 'its page number, from 1' },
+      kind: { type: 'STRING', enum: ['cover', 'content', 'divider', 'appendix', 'closing'] },
+      title: { type: 'STRING', description: 'its own title, as written' },
+      layout: { type: 'STRING', description: 'one sentence, at most 200 characters: how the page is laid out (e.g. "full-bleed dusk photo, red condensed italic title bottom-left, white text on a dark veil")' },
+      photo: { type: 'STRING', enum: ['full-bleed', 'split', 'grid', 'inset', 'none'], description: 'how a photograph is used on it' }
+    }, required: ['page', 'kind', 'title', 'layout', 'photo'] }, description: 'ONLY for a designed presentation: EVERY page in order, at most 40. Empty list for a plain document.' },
     deckSections: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
       title: { type: 'STRING' }, items: { type: 'ARRAY', items: { type: 'STRING' } }
     }, required: ['title', 'items'] }, description: 'ONLY for a designed presentation: its content pages in order, each with its own title and its points as written (short, verbatim where possible). Leave out cover, thank-you and pure-logo pages, and any page that only lists prospective sponsors. Empty list for a plain document.' },
@@ -337,7 +360,7 @@ var BRIEF_SCHEMA = {
       required: ['tagline', 'usp', 'audience', 'industry', 'level', 'format', 'mainAction', 'scale', 'look', 'mustAvoid']
     }
   },
-  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory', 'visualIdentity', 'deckSections', 'ownerPoints']
+  required: ['theme', 'audience', 'tone', 'tracks', 'speakerHints', 'sponsorHints', 'keyMessages', 'inferredCategory', 'visualIdentity', 'deckSections', 'deckPages', 'ownerPoints']
 };
 
 /* The visual identity of a brief, or null. It counts only when the brief is a PDF (a typed description
@@ -355,11 +378,35 @@ function deckIdentity(mimeType, v) {
   });
   if (colours.length < 2 || !colours.some(function (c) { return c.role === 'primary'; })) return null;
   function line(x, n) { return String(x || '').replace(/\s+/g, ' ').trim().slice(0, n); }
-  return {
+  var look = {
     designed: 'yes', colours: colours.slice(0, 6), mode: ['light', 'dark', 'mixed'].indexOf(v.mode) !== -1 ? v.mode : '',
     headingStyle: line(v.headingStyle, 200), bodyStyle: line(v.bodyStyle, 200), imagery: line(v.imagery, 300),
     motifs: line(v.motifs, 300), ipName: line(v.ipName, 80), ipTagline: line(v.ipTagline, 120)
   };
+  /* its design, read as a website's is (the reference a followed deck gives), and the Google Fonts families closest
+     to its type — a family Google Fonts does not know is dropped */
+  if (v.design && typeof v.design === 'object') {
+    var design = sanitizeSourceDesign(v.design);
+    if (design.layoutStyle || design.sectionPattern.length) look.design = design;
+  }
+  ['headingFont', 'bodyFont'].forEach(function (k) {
+    var f = line(v[k], 60);
+    if (f && googleFonts.categoryOf(f)) look[k] = googleFonts.googleOnly(f, '');
+    if (!look[k]) delete look[k];
+  });
+  return look;
+}
+/* a designed deck's pages, as the brief keeps them (at most 40) */
+var DECK_PAGE_KINDS = ['cover', 'content', 'divider', 'appendix', 'closing'], DECK_PHOTO_USES = ['full-bleed', 'split', 'grid', 'inset', 'none'];
+function deckPagesOf(list) {
+  var seen = {};
+  return (Array.isArray(list) ? list : []).map(function (p) {
+    var n = Number(p && p.page);
+    if (!Number.isInteger(n) || n < 1 || n > 1000 || seen[n]) return null;
+    seen[n] = 1;
+    return { page: n, kind: DECK_PAGE_KINDS.indexOf(p.kind) !== -1 ? p.kind : 'content', title: String(p.title || '').replace(/\s+/g, ' ').trim().slice(0, 120),
+      layout: String(p.layout || '').replace(/\s+/g, ' ').trim().slice(0, 200), photo: DECK_PHOTO_USES.indexOf(p.photo) !== -1 ? p.photo : 'none' };
+  }).filter(Boolean).slice(0, 40);
 }
 /* the deck's colour for a role, or '' */
 function deckColour(look, role) {
@@ -367,7 +414,10 @@ function deckColour(look, role) {
   return c ? c.hex : '';
 }
 
-function buildExtractBriefPrompt(eventMeta, ownerText) {
+/* o: { designNotes (what the owner typed under Instructions for the AI), followDeck (the switch "Follow this
+   presentation's look and photos" is ticked) } */
+function buildExtractBriefPrompt(eventMeta, ownerText, o) {
+  o = o || {};
   var meta = Object.assign({}, eventMeta || {});
   if (ownerText) delete meta.description;                         // given below, as material
   return [
@@ -377,6 +427,8 @@ function buildExtractBriefPrompt(eventMeta, ownerText) {
     JSON.stringify(meta, null, 2),
     '',
     ownerText ? 'THE OWNER\'S OWN DESCRIPTION, typed beside the attached document — it is part of the material, and where it and the document differ, the owner\'s description is right:\n---\n' + ownerText + '\n---\n' : null,
+    o.designNotes ? 'THE OWNER\'S INSTRUCTIONS FOR THE SITE: “' + String(o.designNotes).replace(/\s+/g, ' ').trim().slice(0, 1500) + '”\n' : null,
+    o.followDeck ? 'The owner wants the website to follow THIS presentation\'s look, structure and photos: read it as a design reference, page by page.\n' : null,
     'The document is attached. Read it and extract ONLY what it actually says or clearly implies. Never invent a',
     'track, speaker, sponsor or claim that isn\'t in the document — an empty array/field is correct when the',
     'document simply doesn\'t cover that, better than a plausible-sounding guess.',
@@ -391,7 +443,10 @@ function buildExtractBriefPrompt(eventMeta, ownerText) {
     'visualIdentity and deckSections: LOOK at the pages. Only when the document is a designed presentation with',
     'its own deliberate look, set designed "yes", read its colours as hex codes from the pages with their roles,',
     'and describe its type, imagery and graphic motifs; and list its content pages as deckSections. A plain or',
-    'unstyled document is designed "no" with empty colours and an empty deckSections list. Sponsor names shown as',
+    'unstyled document is designed "no" with empty colours and an empty deckSections list. For a designed presentation,',
+    'also fill visualIdentity.design (how it is laid out, page by page, as a designer would describe a website),',
+    'headingFont and bodyFont (the closest real Google Fonts families to its type), and deckPages (every page in',
+    'order, with its kind, title, layout and how a photograph is used on it). Sponsor names shown as',
     'a "potential" or "prospective" list are prospects, not partners: never put them in sponsorHints as confirmed.',
     '',
     'ownerPoints: each one only as the material states it, in its own words; an empty string for any it does not state. Read them from everything you were given — the document as well as the owner\'s description: a heading the owner left blank (e.g. "Industry:" with nothing after it) is not a statement, so take that point from the document when the document states it.'
@@ -452,13 +507,17 @@ function handleExtractBrief(req, res) {
     /* what the owner typed in "Describe the event": the document itself when there is no other, else sent
        beside it (briefText). Its filled-in headings are the owner's brief (owner-brief.js). */
     var ownerText = String(payload.briefText || (mimeType === 'text/plain' ? buffer.toString('utf8') : '') || eventMeta.description || '').slice(0, 8000);
+    /* the owner's Instructions for the AI, and the switch "Follow this presentation's look and photos" (Create Event;
+       it starts unticked, and only a tick follows the deck: CREATE-FROM-DECK.md, owner decision 16 Nov 2026) */
+    var designNotes = String(payload.designNotes || '').replace(/\s+/g, ' ').trim().slice(0, 1500);
+    var followDeck = typeof payload.followDeck === 'boolean' ? payload.followDeck && mimeType === 'application/pdf' : null;
 
     var watch = null;
     /* the event must exist (BE-021): watchEvent refuses one that does not with 404 before the model is asked */
     watchEvent(fb, eventId)
       .then(function (w) {
         watch = w;
-        return llm.callJson(buildExtractBriefPrompt(eventMeta, mimeType === 'application/pdf' ? ownerText : ''), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, onUsage: aiUsageRecorder(fb, eventId, 'extract-brief'), maxOutputTokens: AI_OUTPUT_TOKENS.small });
+        return llm.callJson(buildExtractBriefPrompt(eventMeta, mimeType === 'application/pdf' ? ownerText : '', { designNotes: designNotes, followDeck: followDeck === true }), BRIEF_SCHEMA, { inlineFile: { mimeType: mimeType, data: docBase64 }, route: 'extract-brief', eventId: eventId, onUsage: aiUsageRecorder(fb, eventId, 'extract-brief'), maxOutputTokens: AI_OUTPUT_TOKENS.small });
       })
       .then(function (r) {
         /* nothing is stored for a brief that could not be read */
@@ -486,6 +545,8 @@ function handleExtractBrief(req, res) {
           extracted.deckSections = (Array.isArray(r.parsed.deckSections) ? r.parsed.deckSections : []).slice(0, 16).map(function (d) {
             return { title: String((d && d.title) || '').replace(/\s+/g, ' ').trim().slice(0, 120), items: (d && Array.isArray(d.items) ? d.items : []).slice(0, 12).map(function (t) { return String(t).replace(/\s+/g, ' ').trim().slice(0, 240); }).filter(Boolean) };
           }).filter(function (d) { return d.title && d.items.length; });
+          var pages = deckPagesOf(r.parsed.deckPages);
+          if (pages.length) extracted.deckPages = pages;
         }
 
         var now = new Date().toISOString();
@@ -502,6 +563,8 @@ function handleExtractBrief(req, res) {
             var brief = { sourceFileName: shownName, mimeType: mimeType, storagePath: storagePath,
               extracted: extracted, model: r.model || GEMINI_TEXT_MODEL, createdAt: now, createdBy: actorOf(req.user) };
             if (runId) brief.runId = runId;
+            /* the switch as the owner left it, beside `extracted` (a retry from an older page reads it: deck-follow.js) */
+            if (followDeck !== null) brief.followDeck = followDeck;
             return briefRef.set(brief);
           })
           .then(function () {
@@ -647,7 +710,8 @@ var SOURCE_SECTIONS_SCHEMA = {
 var SOURCE_TYPE_LABELS = {
   previousEdition: 'this same event\'s previous edition',
   currentEdition: 'this same event\'s current edition (the live page this generation will replace)',
-  competitor: 'a competitor\'s event'
+  competitor: 'a competitor\'s event',
+  ownDeck: 'the owner\'s own presentation'
 };
 
 /* With the edition's banner picture attached (keyVisualOf), the model also says, in words, what it shows and
@@ -1335,19 +1399,85 @@ function bottomColour(buffer, mimeType) {
   }
   return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null;
 }
+/* The same for any banner picture (CREATE-FROM-DECK.md F6): a PNG as above, a JPEG or WebP through sharp, so a real
+   photo's banner (a followed deck's, a previous edition's) gets its run-on colour too. -> Promise<[r, g, b] | null> */
+function bottomColourOf(buffer, mimeType) {
+  var type = String(mimeType || '');
+  if (/png/i.test(type)) { try { return Promise.resolve(bottomColour(buffer, type)); } catch (e) { return Promise.resolve(null); } }
+  if (!/jpe?g|webp/i.test(type) || !Buffer.isBuffer(buffer) || !buffer.length) return Promise.resolve(null);
+  var sharp;
+  try { sharp = require('sharp'); } catch (e) { return Promise.resolve(null); }
+  return Promise.resolve().then(function () {
+    return sharp(buffer, { limitInputPixels: 60000000, failOn: 'error' }).rotate().removeAlpha().resize(160, 90, { fit: 'fill' }).raw().toBuffer({ resolveWithObject: true });
+  }).then(function (got) {
+    var w = got.info.width, h = got.info.height, ch = got.info.channels, d = got.data, y0 = Math.max(0, Math.floor(h * 0.94)), n = 0, r = 0, g = 0, b = 0;
+    for (var y = y0; y < h; y++) for (var x = 0; x < w; x++) { var o = (y * w + x) * ch; r += d[o]; g += d[o + 1]; b += d[o + 2]; n++; }
+    return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null;
+  }).then(null, function () { return null; });
+}
+
+/* Every picture Create Event makes is looked at once before it is kept (CREATE-FROM-DECK.md F7): chat-picture.js
+   checkPicture — are there people, words or a logo in it — and made once more with the stronger line (againLine) when
+   it has what its place forbids, while there is time; one still refused is not used (its section is then laid out
+   without it). A check that cannot be made keeps the picture, as the editor's ETB2B AI does. THE ONE HOOK: the
+   picture-AI critic (picture-critic.js, PLAN.md W2) takes the place of checkPicture here once it is proven — site
+   generation's pictures are its follow-up — so there is never a second checker. make(text) -> Promise<{ bytes } |
+   { error }>; rule: 'none' | 'distant' | 'allowed' (people). -> Promise<{ bytes, checked } | { error, refused }> */
+var CHECK_CREATE_PICTURES = true;
+var REMAKE_NEEDS_MS = 60000;
+function checkedPicture(fb, eventId, make, prompt, rule, deadlineAt, label) {
+  return make(prompt).then(function (got) {
+    if (!got || got.error || !CHECK_CREATE_PICTURES) return got;
+    var cp = require('./chat-picture');
+    function look(bytes) {
+      return cp.checkPicture(bytes, sniffPicture(bytes), rule, { eventId: eventId, deadlineAt: deadlineAt, record: aiUsageRecorder(fb, eventId, 'picture-check') })
+        .then(function (found) { return found ? cp.refusedFor(found, rule) : null; }, function () { return null; });
+    }
+    return look(got.bytes).then(function (flags) {
+      if (!flags || !flags.length) { got.checked = !!flags; return got; }
+      if (deadlineAt && deadlineAt - Date.now() < REMAKE_NEEDS_MS) return { error: label + ' had ' + flags.join(' and ') + ' in it, and there was no time to make it again', refused: flags };
+      console.warn('plan-structure: ' + label + ' of ' + eventId + ' had ' + flags.join(' and ') + ' in it; made once more');
+      return make(prompt + ' ' + cp.againLine(flags)).then(function (again) {
+        if (!again || again.error) return again || { error: 'not made' };
+        return look(again.bytes).then(function (flags2) {
+          if (flags2 && flags2.length) return { error: label + ' had ' + flags2.join(' and ') + ' in it twice', refused: flags2 };
+          again.checked = !!flags2;
+          return again;
+        });
+      });
+    });
+  });
+}
+/* a picture of the site, stored public under the event's generated/ folder with its WebP copies (the name carries the
+   run's stamp, so it is cached for a year). -> Promise<{ url, path }> */
+function storeGenerated(fb, eventId, name, bytes) {
+  var type = sniffPicture(bytes), path = 'events/' + eventId + '/generated/' + name, file = fb.bucket.file(path);
+  return file.save(bytes, { metadata: { contentType: type, cacheControl: pictures.CACHE } })
+    .then(function () { return file.makePublic(); })
+    .then(function () { return pictures.storeVariants(fb, path, bytes); })
+    .then(function () { return { url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + path, path: path }; });
+}
 /* The banner is wide (its words say "Landscape, 16:9."): asked for 16:9 and cut to exactly that, never the square the
    picture model answers when it is not told a shape (owner, 16 Nov 2026: "AI has created a square image for a
    rectangular placeholder" — ET DAVOS 2027's banner was 1024 x 1024). */
 var HERO_SHAPE = '16:9';
-function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
-  return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId, aspectRatio: HERO_SHAPE }).then(function (r) {
-    var record = aiUsageRecorder(fb, eventId, 'pictures');
-    if (record) record(r.usage);
-    if (r.error) {
-      console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
-      return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
+/* o: { deadlineAt, rule (people in it: checkedPicture; 'distant' by default) } */
+function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp, o) {
+  o = o || {};
+  function make(text) {
+    return callGeminiImage(text, { route: 'plan-structure', eventId: eventId, aspectRatio: HERO_SHAPE }).then(function (r) {
+      var record = aiUsageRecorder(fb, eventId, 'pictures');
+      if (record) record(r.usage);
+      if (r.error) return { error: r.error };
+      return pictureShape.crop(Buffer.from(r.base64, 'base64'), pictureShape.ratioOf(HERO_SHAPE), { label: 'the banner of ' + eventId }).then(function (cut) { return { bytes: cut.bytes }; });
+    });
+  }
+  return checkedPicture(fb, eventId, make, prompt || buildHeroImagePrompt(brief, themeColor), o.rule || 'distant', o.deadlineAt, 'the banner').then(function (got) {
+    if (got.error) {
+      console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + got.error);
+      return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: got.refused ? 'The banner picture had ' + got.refused.join(' and ') + ' in it, so it was not used.' : got.error };
     }
-    return pictureShape.crop(Buffer.from(r.base64, 'base64'), pictureShape.ratioOf(HERO_SHAPE), { label: 'the banner of ' + eventId }).then(function (cut) { return keepHero(cut.bytes); });
+    return keepHero(got.bytes);
   }).catch(function (err) {
     console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + (err && err.stack || err));
     return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'The banner picture could not be made.' };
@@ -1368,9 +1498,9 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
       .then(function () { return pictures.storeVariants(fb, storagePath, buffer); })
       .then(function () {
         var heroImageUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
-        var bottom = null;
-        try { bottom = bottomColour(buffer, r.mimeType); } catch (e) { bottom = null; }
-        return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null, heroBottom: bottom };
+        return bottomColourOf(buffer, r.mimeType).then(function (bottom) {
+          return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null, heroBottom: bottom };
+        });
       })
       .catch(function (err) {
         console.error('plan-structure: hero image generated but Storage save/publish failed, degrading to no hero image — ' + err.message);
@@ -1392,15 +1522,25 @@ function sniffPicture(buf) {
 /* shape: the picture's shape, from its section's planned layout (pictureShape.shapeForLayout; 4:3 when not given): it is
    asked for in that shape and cut to exactly it, and the section's code is told to give its frame that shape
    (buildSectionCodePrompt) — never the square the model answers untold (owner, 16 Nov 2026, ET DAVOS 2027) */
-function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level, kind, shape) {
+/* o: { deadlineAt } — the picture is checked (checkedPicture): people allowed in a picture of people, only tiny distant
+   figures in a place or a subject, none in a graphic */
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level, kind, shape, o) {
+  o = o || {};
   shape = pictureShape.SITE_SHAPES.indexOf(shape) !== -1 ? shape : pictureShape.DEFAULT_ASPECT;
   var prompt = genDesign.imagePrompt(subject, design, { context: context, about: about, level: level, kind: kind });
   if (shape !== pictureShape.DEFAULT_ASPECT) prompt = prompt.replace(pictureShape.WORDS[pictureShape.DEFAULT_ASPECT], pictureShape.WORDS[shape]);
-  return callGeminiImage(prompt, { route: 'plan-structure', eventId: eventId, aspectRatio: shape }).then(function (r) {
-    var record = aiUsageRecorder(fb, eventId, 'pictures');
-    if (record) record(r.usage);
-    if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
-    return pictureShape.crop(Buffer.from(r.base64, 'base64'), pictureShape.ratioOf(shape), { label: 'the picture for "' + sectionId + '" of ' + eventId }).then(function (cut) {
+  function make(text) {
+    return callGeminiImage(text, { route: 'plan-structure', eventId: eventId, aspectRatio: shape }).then(function (r) {
+      var record = aiUsageRecorder(fb, eventId, 'pictures');
+      if (record) record(r.usage);
+      if (r.error) return { error: r.error };
+      return pictureShape.crop(Buffer.from(r.base64, 'base64'), pictureShape.ratioOf(shape), { label: 'the picture for "' + sectionId + '" of ' + eventId }).then(function (cut) { return { bytes: cut.bytes }; });
+    });
+  }
+  var rule = kind === 'people' ? 'allowed' : kind === 'graphic' ? 'none' : 'distant';
+  return checkedPicture(fb, eventId, make, prompt, rule, o.deadlineAt, 'the picture for "' + sectionId + '"').then(function (got) {
+    if (got.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + got.error); return null; }
+    return Promise.resolve(got).then(function (cut) {
       var bytes = cut.bytes, type = sniffPicture(bytes);
       var ext = type === 'image/jpeg' ? 'jpg' : type === 'image/webp' ? 'webp' : 'png';
       var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
@@ -1553,14 +1693,45 @@ function usableDesign(s) {
   var d = s && s.design;
   return !!(d && (d.sectionPattern || []).length >= 2 && d.layoutStyle);
 }
-function designReference(sourceDocs) {
+/* deckRef: { briefId, fileName, design } — the owner's own presentation when its switch is ticked and it reads as a
+   design (CREATE-FROM-DECK.md §6.2): it comes first, and every page goes to the others, where its ideas still count */
+function designReference(sourceDocs, deckRef) {
   var basis = null;
+  if (deckRef && usableDesign(deckRef)) basis = { type: 'ownDeck', url: '', briefId: deckRef.briefId || '', fileName: deckRef.fileName || '', design: deckRef.design };
   REFERENCE_ORDER.forEach(function (type) {
     if (basis) return;
     basis = (sourceDocs || []).filter(function (s) { return s && s.type === type && usableDesign(s); })[0] || null;
   });
   var others = (sourceDocs || []).filter(function (s) { return s !== basis && usableDesign(s); });
   return { basis: basis, others: others };
+}
+
+/* The plan's answer when the owner's own presentation is followed: the deck photos it picks by number — the banner's
+   (design.heroPhoto), a section's (photo), a row of cards' (photos) — and the deck pages each section comes from
+   (fromPages); its banner, when made, is a photograph in the deck's style. Without the deck the schema is as before. */
+function designPlanSchema(follow) {
+  if (!follow) return DESIGN_PLAN_SCHEMA;
+  var s = JSON.parse(JSON.stringify(DESIGN_PLAN_SCHEMA));
+  var d = s.properties.design, item = s.properties.sections.items;
+  d.properties.heroImage.description = 'Used only when none of the deck\'s own photos fits the banner: one or two sentences describing a PHOTOGRAPH in the deck\'s own imagery style — a wide place or landscape, calm in the middle for the name, no people, no text, no logos, no flags. Never a 3-D render, a collage or a key visual.';
+  d.properties.heroPhoto = { type: 'INTEGER', description: 'The number of the deck photo for the banner (a wide place photo with no people and no lettering); 0 when none fits.' };
+  d.required = d.required.concat(['heroPhoto']);
+  item.properties.photo = { type: 'INTEGER', description: 'The number of the deck photo for this section; 0 for none.' };
+  item.properties.photos = { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'For a row of cards (e.g. what-awaits): one deck photo number per card, in card order; [] otherwise.' };
+  item.properties.fromPages = { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'The deck pages this section\'s content comes from; [] for none.' };
+  item.required = item.required.concat(['photo', 'photos', 'fromPages']);
+  return s;
+}
+/* the model's deck picks kept on a planned section as numbers (pick, picks, fromPages) — never as addresses, and
+   never under `photos`, which holds a card row's addresses once they are placed */
+function withPicks(entry, s) {
+  function ints(v, max) { return (Array.isArray(v) ? v : []).map(Number).filter(function (n) { return Number.isInteger(n) && n > 0 && n <= 1000; }).slice(0, max); }
+  var n = Number(s && s.photo);
+  if (Number.isInteger(n) && n > 0 && n <= 1000) entry.pick = n;
+  var picks = ints(s && s.photos, 8), pages = ints(s && s.fromPages, 12);
+  if (picks.length) entry.picks = picks;
+  if (pages.length) entry.fromPages = pages;
+  return entry;
 }
 
 /* About two fifths of a generated page is pictures: the hero's, and one for most of the sections the model
@@ -1633,7 +1804,8 @@ function buildDesignPlanPrompt(payload) {
     lines.push(
       inspiredByEdition
         ? 'THE REFERENCE THIS SITE IS INSPIRED BY — ' + SOURCE_TYPE_LABELS[ref.basis.type] + ' (' + ref.basis.url + '). This is the core requirement: the new site must be recognisably inspired by this reference\'s structure and visual character, then improved — a fresh design of its own, not an unrelated one and not a copy.'
-        : 'THE REFERENCE THIS SITE IS MODELLED ON — ' + SOURCE_TYPE_LABELS[ref.basis.type] + ' (' + ref.basis.url + '). This is the core requirement: the new site must be recognisably built on this reference\'s structure and visual language, then improved — not an unrelated design.',
+        : 'THE REFERENCE THIS SITE IS MODELLED ON — ' + SOURCE_TYPE_LABELS[ref.basis.type] + (ref.basis.type === 'ownDeck' ? (ref.basis.fileName ? ' (“' + ref.basis.fileName + '”)' : '') : ' (' + ref.basis.url + ')') + '. This is the core requirement: the new site must be recognisably built on this reference\'s structure and visual language, then improved — not an unrelated design.' +
+          (ref.basis.type === 'ownDeck' ? ' Its words and photographs are the owner\'s own: keep them.' : ''),
       JSON.stringify(ref.basis.design, null, 2),
       ref.basis.tone ? 'Its page background is ' + ref.basis.tone + '.' : '',
       '',
@@ -1652,15 +1824,19 @@ function buildDesignPlanPrompt(payload) {
       art.label + ': ' + art.note
     );
   }
+  /* the owner's own presentation, followed (its switch ticked: deck-follow.js) — its type, motifs, order, words and
+     photos, in place of the colour-and-type lines of a deck that is not followed */
+  var followed = !!(deck && payload.followDeck);
+  if (followed) lines.push.apply(lines, deckFollow.planLines({ look: deck, deckPages: payload.brief.deckPages, siteMode: payload.siteMode, headingFont: deck.headingFont, bodyFont: deck.bodyFont, photos: payload.deckPhotoCount || 0 }));
   if (deck) {
     lines.push('',
-      'THE BRIEF IS A DESIGNED PRESENTATION WITH ITS OWN VISUAL IDENTITY — this site must look like it belongs to that deck. This is binding' + (ref.basis ? ' for colour, type and imagery (the reference page above still gives the structure)' : '') + ':',
-      '- colours (design.themeColor = its primary, design.accentColor = its accent or highlight, and the page background its background when it has one): ' + deck.colours.map(function (c) { return c.hex + ' ' + c.role; }).join(', '),
+      followed ? null : 'THE BRIEF IS A DESIGNED PRESENTATION WITH ITS OWN VISUAL IDENTITY — this site must look like it belongs to that deck. This is binding' + (ref.basis ? ' for colour, type and imagery (the reference page above still gives the structure)' : '') + ':',
+      followed ? null : '- colours (design.themeColor = its primary, design.accentColor = its accent or highlight, and the page background its background when it has one): ' + deck.colours.map(function (c) { return c.hex + ' ' + c.role; }).join(', '),
       deck.mode && deck.mode !== 'mixed' ? '- its pages are mostly ' + deck.mode + ': design.mode "' + deck.mode + '" unless the owner asked otherwise below.' : '- its pages mix light and dark: choose the mode that carries its primary colour best.',
-      '- type: headings "' + deck.headingStyle + '", body "' + deck.bodyStyle + '" — pick the two real Google Fonts families that are closest to that.',
-      '- imagery: ' + deck.imagery + ' — design.imageStyle and design.heroImage must come from this, so the pictures look like the deck\'s.',
-      '- graphic motifs to carry into the layout: ' + deck.motifs + ' (a deck\'s page numbers are not a motif: the site\'s sections are never numbered).',
-      deck.ipName ? '- the deck brands the property as "' + deck.ipName + '"' + (deck.ipTagline ? ' with the line "' + deck.ipTagline + '"' : '') + ': use that line (or the strongest line of the deck) for design.heroTagline when it fits.' : '',
+      followed ? null : '- type: headings "' + deck.headingStyle + '", body "' + deck.bodyStyle + '" — pick the two real Google Fonts families that are closest to that.',
+      followed ? null : '- imagery: ' + deck.imagery + ' — design.imageStyle and design.heroImage must come from this, so the pictures look like the deck\'s.',
+      followed ? null : '- graphic motifs to carry into the layout: ' + deck.motifs + ' (a deck\'s page numbers are not a motif: the site\'s sections are never numbered).',
+      !followed && deck.ipName ? '- the deck brands the property as "' + deck.ipName + '"' + (deck.ipTagline ? ' with the line "' + deck.ipTagline + '"' : '') + ': use that line (or the strongest line of the deck) for design.heroTagline when it fits.' : '',
       (payload.brief.deckSections || []).length
         ? '- its content pages are listed in the brief as deckSections. Each one carries real content the owner put in front of you: carry EVERY one of them into the site with its points — as its own section, or inside the section it belongs to (' + (payload.siteMode === 'standard' ? 'this is a standard site, so inside the matching standard section: e.g. its benefits and "why" pages go into why-join-us, its thesis into overview, its questions and pillars into key-discussion-points, its audience groups — all of them — into who-should-attend' : 'its own section where it has substance') + '). Do not drop or merge away any of their points.'
         : ''
@@ -1697,11 +1873,11 @@ function buildDesignPlanPrompt(payload) {
     'Set each section\'s kind to "custom" unless it is really one of 6 specific data-bound types, each backed by real records the ET ops team manages by hand, never your invention: "speakers" (real speaker bios), "sessions" (the real agenda), "faq" (real FAQs), "partners" (real sponsor/partner logos), "contact" (real contacts), "glimpses" (a real photo gallery).' + (payload.siteMode === 'standard' ? '' : ' Only use one of those when the material genuinely supports that this event will have real data of that kind.') + (payload.siteMode === 'award' ? ' On an award site, "speakers" is never used: the jury is built from records.' : ''),
     '',
     'LAYOUT: give every section its own layout (sections[].layout) and make neighbouring sections differ — a page of identical centred-heading-plus-card-grid sections is a failure. Mix: picture/text splits, full-width bands, large-number rows, timelines, quote blocks, card grids, lists, and a carousel (a sideways-scrolling row with previous/next buttons — say "carousel" in the layout) where a section has many items of one kind, such as speakers, partner logos, photos or testimonials, or where the reference uses one.',
-    (NEW_ET_STANDARD
+    (deck && payload.followDeck ? deckFollow.standardLine() : NEW_ET_STANDARD
       ? 'ET\'S NEWER STANDARD (its upcoming event sites, 23 Oct 2026) — build the page this way: right under the hero a band of big numbers (by-the-numbers: 4 to 6 figures — delegates, speakers, sessions, exhibitors, networking minutes, days — from the material); a "What awaits you" band (what-awaits: 3 or 4 tall photo cards, numbered, one per format or moment of the day — the conference, boardrooms, networking, the expo floor, an awards night — each with a short caption); a closing call to act (closing-cta) on a full-width photo, with the main buttons; and every other section as the list allows. Headlines are editorial — a short statement, not the section\'s label ("Region Rewriting How It Learns.", "Four scenes, one day.") — under a small numbered eyebrow ("01  OVERVIEW"). design.headingFont is a SERIF DISPLAY face (Playfair Display, Fraunces, DM Serif Display or Cormorant Garamond) with a clean sans for the body. ONE BACKGROUND: every section sits on the page\'s own background or its soft surface tint — no deep or dark bands between light sections, no chessboard of light and dark (the owner, 10 Nov 2026: "for a smooth website single/similar background of sections are recommended"); sections differ by layout and pictures, and the closing call to act is told apart by its full-width photo, not by a dark band.'
       : 'ONE TONE: the page keeps its mode (design.mode) from the first section under the hero to the footer — a light site is light all the way down, a dark site dark all the way down. Sections differ by layout, pictures and the surface colour, never by switching between light and dark bands.'),
     '',
-    'PICTURES, AS ON ET\'S OWN SITES: an ET event or award site has few pictures made for its sections — a median of one or two, a third of them none. The hero has its key visual (design.heroImage). Of the sections, ONLY these carry a picture (sections[].image), at most ' + MAX_SECTION_IMAGES + ' in all: a venue or city section (the venue or the city itself, no people); "how our awards work" on an award site (an evaluation scene: a chart on a boardroom table, entries under review); why attend / why enter (the experience of the day; the previous edition\'s real photos are used here when there are any); the themes or discussion points (ONE picture of the subject itself, no people); the overview only when none of those have one. Every other section has no picture: give it a strong typographic layout with simple line icons (inline SVG, drawn in the brand colour), large numerals, cards and brand-colour panels — never an empty-looking section. Who should attend / enter, the recognition, the benefits and reasons are icon cards, never pictures. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
+    payload.deckPhotoBlock ? payload.deckPhotoBlock : 'PICTURES, AS ON ET\'S OWN SITES: an ET event or award site has few pictures made for its sections — a median of one or two, a third of them none. The hero has its key visual (design.heroImage). Of the sections, ONLY these carry a picture (sections[].image), at most ' + MAX_SECTION_IMAGES + ' in all: a venue or city section (the venue or the city itself, no people); "how our awards work" on an award site (an evaluation scene: a chart on a boardroom table, entries under review); why attend / why enter (the experience of the day; the previous edition\'s real photos are used here when there are any); the themes or discussion points (ONE picture of the subject itself, no people); the overview only when none of those have one. Every other section has no picture: give it a strong typographic layout with simple line icons (inline SVG, drawn in the brand colour), large numerals, cards and brand-colour panels — never an empty-looking section. Who should attend / enter, the recognition, the benefits and reasons are icon cards, never pictures. Data-bound sections (speakers, sessions, partners, glimpses, faq, contact) show real records and get no generated picture.',
     'Each picture must be about ITS OWN section: name the concrete thing that section talks about (for a section on battery supply chains: "rows of lithium battery cell modules on a factory line"; for one on a gala dinner: "a long banquet table set with glassware under warm pendant lights") — never a generic "abstract technology background", never a metaphor made of unrelated objects (glass blocks, light trails, a server rack for a marketing event), and never the same subject twice on one page. RELEVANCE IS THE TEST: someone shown the picture alone should be able to say what kind of event this is and what it is about. No text or logos in any picture (screens and signs are blank or blurred). Where the event is tied to a place (a city, a country), let that place show.',
     'PICTURE KINDS — a page of photographs of people, section after section, is dull and reads as one picture repeated. Give each section\'s picture the KIND (sections[].imageKind) that suits what the section says:',
     '- "people": a photograph whose subject is people — ONLY for why attend / why enter (the experience of the day: a packed hall, delegates networking, an expo floor), never for any other section. The people are Indian professionals, women and men in about equal numbers, women in leading roles too; never a real or named person.',
@@ -1773,6 +1949,32 @@ function buildDesignPlanPrompt(payload) {
   return lines.filter(function (l) { return l != null; }).join('\n');
 }
 
+/* A followed deck's pictures for the plan: its checked photos on numbered contact sheets (doc-pictures.js sheets, from
+   their small copies under brief-photos/) and its key slides on a sheet (deck-photos.js slideSheet, from the private
+   renders beside the brief). Never fails: -> Promise<{ photos: [sheet], slides: [sheet] }> */
+function deckSheets(fb, eventId, deck, ok, ownPrefix) {
+  function download(path) { return fb.bucket.file(path).download().then(function (r) { return r[0]; }); }
+  var photoSheets = ok.length ? docPictures.sheets(ok.map(function (p) { return { n: p.n, thumb: p.thumb }; }), { download: download, ownPrefix: ownPrefix, max: 2 }) : Promise.resolve([]);
+  var slides = deck && Array.isArray(deck.slides) ? deck.slides.filter(function (s) { return s && typeof s.path === 'string' && s.path.indexOf('events/' + eventId + '/briefs/') === 0; }) : [];
+  var slideSheets = slides.length ? deckPhotos.slideSheet(slides, { download: download, max: 2 }) : Promise.resolve([]);
+  return Promise.all([photoSheets, slideSheets]).then(function (r) { return { photos: r[0] || [], slides: r[1] || [] }; }, function () { return { photos: [], slides: [] }; });
+}
+/* designPlan.deckPhotos, for the editor and the owner (CREATE-FROM-DECK.md §6.2): which deck photo went where, which
+   were held and why, which gaps were made, and the eligible photos left over (the overview can take one later:
+   fillSparseOverview) — numbers, pages and the stored addresses, nothing else */
+function deckRecord(plan, sections, ok, placed) {
+  var failed = {};
+  ((placed && placed.failed) || []).forEach(function (n) { failed[n] = 1; });
+  var used = plan.used.filter(function (u) { return !failed[u.n]; }), usedN = {};
+  plan.used.forEach(function (u) { usedN[u.n] = 1; });
+  return {
+    used: used.slice(0, 40),
+    held: plan.held.slice(0, 40),
+    generated: plan.generated.map(function (id) { var s = sections.filter(function (x) { return x.id === id; })[0]; return { sectionId: id, made: !!(s && s.imageUrl) }; }),
+    spare: ok.filter(function (p) { return !usedN[p.n]; }).slice(0, 12).map(function (p) { return { n: p.n, page: p.page, url: p.url, w: p.w, h: p.h, about: p.about || '' }; })
+  };
+}
+
 var RESERVED_DESIGN_SECTION_IDS = ['nav', 'hero', 'footer'];
 function sanitizeDesignPlanSections(parsed, siteMode) {
   var seen = {};
@@ -1799,7 +2001,7 @@ function sanitizeDesignPlanSections(parsed, siteMode) {
     var image = kind === 'custom' ? String(s.image || '').trim().slice(0, 300) : '';
     if (image && ++pictures > MAX_SECTION_IMAGES) image = '';
     var imageKind = genDesign.IMAGE_KINDS.indexOf(s.imageKind) !== -1 ? s.imageKind : (image ? 'subject' : '');
-    out.push({ id: id, name: std ? std.name : '', kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image, imageKind: image ? imageKind : '' });
+    out.push(withPicks({ id: id, name: std ? std.name : '', kind: kind, purpose: String(s.purpose || '').trim().slice(0, 500), layout: String(s.layout || '').trim().slice(0, 300), image: image, imageKind: image ? imageKind : '' }, s));
   });
   return fewerPeoplePictures(out);
 }
@@ -1979,11 +2181,44 @@ function newStandardPictures(sections, glimpses, design) {
       if (n > 1) s.photos = got;
       return;
     }
-    /* no real photo: a generated one only for the overview (the subject) and the cards (the moments of the day) */
-    if (s.image && (s.id === 'overview' || s.id === 'what-awaits')) { s.imageKind = s.id === 'overview' ? 'subject' : 'people'; return; }
+    /* no real photo: a generated one only for the overview (the subject) and the cards (the moments of the day). The
+       cards keep the model's kind when it is people, place or subject (F2: ET DAVOS 2027's what-awaits was forced to
+       "people" while its scene said "no people"); the kind and the scene are made to agree (settleKind) */
+    if (s.image && s.id === 'overview') { settleKind(s, 'subject', ['subject', 'place', 'graphic']); return; }
+    if (s.image && s.id === 'what-awaits') { settleKind(s, ['people', 'place', 'subject'].indexOf(s.imageKind) !== -1 ? s.imageKind : 'people', ['people', 'place', 'subject']); return; }
     dropPicture(s);
   });
   return sections;
+}
+
+/* A picture's kind and its scene agree (CREATE-FROM-DECK.md F2). When the server sets a section picture's kind, a
+   scene that says "no people", "empty" or "deserted" under kind people — or names people under a kind without them —
+   is a mismatch the picture model cannot satisfy (ET DAVOS 2027's what-awaits failed this way). The kind follows the
+   scene when that kind is allowed in the section; else the scene is said again from the section's purpose, for the
+   kind. allowed: the kinds the section may take. -> s, changed in place */
+var SCENE_NO_PEOPLE = /\b(?:no|without|empty of|free of)\s+(?:any\s+|other\s+)?(?:people|persons?|figures|crowds?|delegates|visitors|one)\b|\b(?:deserted|unpeopled|empty streets?|nobody)\b/i;
+var SCENE_PEOPLE = /\b(?:people|delegates?|audiences?|attendees?|crowds?|guests?|speakers?|women|men|professionals|leaders|executives|networking|panell?ists)\b/i;
+var PLACE_SCENE = /\b(?:street|town|city|promenade|venue|hall|lounge|room|valley|mountains?|lake|landscape|skyline|village|square|buildings?|harbour|coast|campus|resort)s?\b/i;
+function sceneSays(scene) {
+  var t = String(scene || '');
+  if (SCENE_NO_PEOPLE.test(t)) return 'none';
+  return SCENE_PEOPLE.test(t) ? 'people' : '';
+}
+function settleKind(s, kind, allowed) {
+  allowed = Array.isArray(allowed) && allowed.length ? allowed : genDesign.IMAGE_KINDS;
+  var said = sceneSays(s.image), to = kind;
+  if (kind === 'people' && said === 'none') {
+    to = allowed.indexOf('place') !== -1 && PLACE_SCENE.test(s.image) ? 'place' : allowed.indexOf('subject') !== -1 ? 'subject' : allowed[0];
+  } else if (kind !== 'people' && said === 'people') {
+    if (allowed.indexOf('people') !== -1) to = 'people';
+    else {
+      s.image = (kind === 'place' ? 'the setting of this section itself, its place and its light, with no people: ' : 'what this section is about, shown through its own objects, tools and setting, with no people: ') + String(s.purpose || '').slice(0, 220);
+      console.warn('plan-structure: the scene of "' + s.id + '" named people under the kind ' + kind + '; said again from its purpose');
+    }
+  }
+  if (to !== kind) console.warn('plan-structure: the picture of "' + s.id + '" was to be ' + kind + ' but its scene says ' + (said === 'none' ? 'no people' : 'people') + '; it is ' + to);
+  s.imageKind = to;
+  return s;
 }
 
 /* A section keeps a picture only where ET's own sites put one (PICTURE_SECTIONS: venue, how the awards work,
@@ -2397,8 +2632,18 @@ function handlePlanStructure(req, res) {
       if (String(stored.category || '').toLowerCase() === 'awards' || payload.siteMode === 'award') siteMode = 'award';
       var sources = sourceDocs.map(function (v) { return { type: v.type, url: v.url, extractedSections: v.extractedSections, sectionPictures: v.type === 'previousEdition' ? v.sectionPictures || [] : [] }; });
       var themeInfo = extractThemeFromPreviousEditionSources(sourceDocs);
-      var reference = designReference(sourceDocs);
+      /* the owner's own presentation, followed when its switch is ticked (CREATE-FROM-DECK.md; deck-follow.js): it is
+         the design reference, ahead of a previous edition, and its checked photos are the site's own pictures */
+      var follow = deckFollow.followDeckFor(payload, read.briefMeta);
+      var deckLook = brief && brief.visualIdentity && brief.visualIdentity.designed === 'yes' ? brief.visualIdentity : null;
+      var deckRef = deckLook && read.briefMeta ? { briefId: read.briefMeta.id, fileName: read.briefMeta.fileName, design: deckLook.design && usableDesign({ design: deckLook.design }) ? deckLook.design : null } : null;
+      var reference = designReference(sourceDocs, follow && deckRef && deckRef.design ? deckRef : null);
       var artDirection = genDesign.artDirectionFor(eventId);
+      var deckRec = follow && read.briefDeck && Array.isArray(read.briefDeck.photos) ? read.briefDeck : null;
+      var deckOk = deckRec ? deckPhotos.eligible(deckRec.photos) : [];
+      var ownPrefix = 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/';
+      var deckTitles = {}, deckKinds = {};
+      ((brief && brief.deckPages) || []).forEach(function (p) { if (p && p.page) { deckTitles[p.page] = p.title; deckKinds[p.page] = p.kind; } });
 
       /* A previous-edition link given: the site is INSPIRED BY it, and carries its city in creative terms —
          this edition's venue, else the previous edition's, never a mix (edition-look.js venueForDesign).
@@ -2406,7 +2651,9 @@ function handlePlanStructure(req, res) {
       var prevSource = sourceDocs.filter(function (d) { return d.type === 'previousEdition'; })[0] || null;
       var venue = prevSource ? editionLook.venueForDesign(eventMeta, brief, prevSource.previous) : null;
       var place = venue && venue.venue ? venue : null;
-      var prompt = buildDesignPlanPrompt({ eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode, place: place, onRecord: onRecord });
+      var planInputs = { eventMeta: eventMeta, brief: brief, sources: sources, themeInfo: themeInfo, reference: reference, artDirection: artDirection, themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode, place: place, onRecord: onRecord };
+      if (follow) { planInputs.followDeck = true; planInputs.deckPhotoCount = deckOk.length; }
+      var prompt = buildDesignPlanPrompt(planInputs);
       /* The logo unit — the owner's upload, else the previous edition's lock-up — needs nothing of the plan:
          it is fetched and read while the plan is written, so that its readings (20 to 30 s each, measured)
          have the time they need rather than what the plan leaves (foundLogoUnit). */
@@ -2416,7 +2663,16 @@ function handlePlanStructure(req, res) {
       /* the previous edition's photos, sorted by what they show (classifyGlimpses), read beside the plan */
       var glimpseSrc = sourceDocs.filter(function (d) { return d.type === 'previousEdition' && d.previous; })[0];
       var glimpseRead = NEW_ET_STANDARD && glimpseSrc ? classifyGlimpses(fb, eventId, glimpseSrc.previous.glimpses, deadlineAt) : Promise.resolve(null);
-      return Promise.all([llm.callJson(prompt, DESIGN_PLAN_SCHEMA, { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') }), glimpseRead]).then(function (both) {
+      var planOpts = { route: 'plan-structure', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, deadlineAt: deadlineAt, onUsage: aiUsageRecorder(fb, eventId, 'plan-structure') };
+      /* a followed deck: its photos on numbered contact sheets and its key slides on a sheet go with the plan (four
+         pictures at most; a sheet that cannot be drawn is left out, and the plan picks from the photo lines) */
+      var planCall = !follow ? llm.callJson(prompt, DESIGN_PLAN_SCHEMA, planOpts) : deckSheets(fb, eventId, deckRec, deckOk, ownPrefix).then(function (imgs) {
+        planInputs.deckPhotoBlock = deckPhotos.promptLines(deckOk, { sheets: imgs.photos.length, seen: [].concat.apply([], imgs.photos.map(function (x) { return x.numbers || []; })),
+          slideSheets: imgs.slides.length, titles: deckTitles, held: deckRec ? deckRec.photos.length - deckOk.length : 0 });
+        var images = imgs.photos.concat(imgs.slides).map(function (x) { return { mimeType: x.mimeType, data: x.data }; });
+        return llm.callJson(buildDesignPlanPrompt(planInputs), designPlanSchema(true), images.length ? Object.assign({ images: images }, planOpts) : planOpts);
+      });
+      return Promise.all([planCall, glimpseRead]).then(function (both) {
         var r = both[0], glimpseKinds = both[1];
         if (r.error) return sendAiFailure(res, r);
         var sections = sanitizeDesignPlanSections(r.parsed, siteMode);
@@ -2467,8 +2723,15 @@ function handlePlanStructure(req, res) {
            (the theme switcher still offers light) */
         if (siteMode === 'award' && themeMode === 'auto' && r.parsed && r.parsed.design) r.parsed.design.mode = 'dark';
         var design = sanitizeDesignPlanDesign(r.parsed, themeMode, eventMeta.name);
-        /* ET's newer sites set their headlines in a serif display face */
-        if (NEW_ET_STANDARD && googleFonts.categoryOf(design.headingFont) !== 'serif') design.headingFont = 'Playfair Display';
+        /* ET's newer sites set their headlines in a serif display face — unless the owner's own presentation is
+           followed: its type wins (the model's family when it is of the deck's kind, else the one read from the deck) */
+        var followLook = follow && look ? look : null;
+        if (followLook) {
+          var deckFont = deckFollow.headingFontFor({ model: design.headingFont, reader: look.headingFont, style: look.headingStyle, categoryOf: googleFonts.categoryOf });
+          if (deckFont) design.headingFont = deckFont;
+          else if (deckFollow.deckTypeKind(look.headingStyle, look.headingFont, googleFonts.categoryOf) === 'sans' && googleFonts.categoryOf(design.headingFont) === 'serif') design.headingFont = 'Barlow Condensed';
+          if (look.bodyFont && !googleFonts.categoryOf(((r.parsed && r.parsed.design) || {}).bodyFont)) design.bodyFont = look.bodyFont;
+        } else if (NEW_ET_STANDARD && googleFonts.categoryOf(design.headingFont) !== 'serif') design.headingFont = 'Playfair Display';
         /* the city as the model named and pictured it (no city is known to the code) */
         if (place) {
           var pd = r.parsed.design || {};
@@ -2483,7 +2746,19 @@ function handlePlanStructure(req, res) {
         var owner = brief && brief.owner ? brief.owner : null;
         if (owner && owner.tagline) design.heroTagline = owner.tagline;
         var graphic = !!(owner && owner.pictures === 'graphics');
-        if (graphic) sections.forEach(function (s) { s.image = ''; });
+        var deckPlan = null;
+        if (graphic) sections.forEach(function (s) { s.image = ''; delete s.pick; delete s.picks; });
+        /* a followed deck: its own checked photos, by the model's picks held to the owner's rules (deck-photos.js
+           assign); made pictures only for the gaps, at most two with the banner, each kind agreeing with its scene */
+        else if (follow) {
+          deckPlan = deckPhotos.assign(sections, deckRec || { photos: [] }, { heroPhoto: ((r.parsed && r.parsed.design) || {}).heroPhoto, pageKinds: deckKinds, titles: deckTitles,
+            shapeFor: pictureShape.shapeForLayout, peopleSection: PEOPLE_SECTION, dropPicture: dropPicture, glimpses: glimpseKinds || [] });
+          sections.forEach(function (s) {
+            if (!s.image) return;
+            var aboutPeople = PEOPLE_SECTION.test(s.id + ' ' + (s.name || '') + ' ' + s.purpose);
+            settleKind(s, genDesign.IMAGE_KINDS.indexOf(s.imageKind) !== -1 && (aboutPeople || s.imageKind !== 'people') ? s.imageKind : 'subject', aboutPeople ? genDesign.IMAGE_KINDS : ['place', 'subject', 'graphic']);
+          });
+        }
         /* the previous edition's real photos where ET's newer sites put theirs; generated pictures only where
            there are none (newStandardPictures) — else, the earlier rules (etPictureRules) */
         /* only photos that were looked at are placed: unread ones could be a close-up or a screen of names */
@@ -2506,16 +2781,37 @@ function handlePlanStructure(req, res) {
         var about = [eventMeta.name, (brief && brief.theme) || eventMeta.description, [eventMeta.venue, eventMeta.city].filter(Boolean).join(', ')]
           .map(function (v) { return String(v || '').replace(/\s+/g, ' ').trim(); }).filter(Boolean).join(' — ').slice(0, 400);
         var level = owner && owner.level ? owner.level : '';
-        var heroPrompt = genDesign.imagePrompt(design.heroImage, design, { hero: true, about: about, level: level, graphic: graphic });
+        /* a followed deck's banner is a photograph — its own, else one made in its style — never a 3-D key visual */
+        var heroPrompt = genDesign.imagePrompt(design.heroImage, design, follow ? { hero: true, keyVisual: false, kind: 'place', about: about, level: level, graphic: graphic } : { hero: true, about: about, level: level, graphic: graphic });
         /* the banner on the previous edition's real photo (newStandardPictures), else a generated one */
         var heroReal = design.heroImageReal;
         delete design.heroImageReal;
-        var jobs = [heroReal ? Promise.resolve({ heroImageUrl: heroReal, heroImageStoragePath: null, heroImageError: null }) : buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp)].concat(
+        /* a followed deck's photos are cut to their frames and stored first (deck-photos.js place); the banner is then
+           its photo, or made when none fits or it could not be placed */
+        var deckPaths = {}, placedDeck = null;
+        var placing = deckPlan ? deckPhotos.place(sections, design, deckPlan, {
+          ownPath: function (u) { return docPictures.ownPath(u, ownPrefix, ['brief-photos']); },
+          download: function (path) { return fb.bucket.file(path).download().then(function (x) { return x[0]; }); },
+          crop: pictureShape.crop, heroShape: HERO_SHAPE, dropPicture: dropPicture,
+          store: function (bytes, name) { return storeGenerated(fb, eventId, stamp + '-' + name + '.jpg', bytes).then(function (got) { deckPaths[got.url] = got.path; return got.url; }); }
+        }) : Promise.resolve(null);
+        var heroJob = placing.then(function (placed) {
+          placedDeck = placed;
+          if (placed && placed.heroUrl) {
+            design.heroImageSource = 'owner-deck'; design.heroImagePage = placed.heroPage;
+            return bottomColourOf(placed.heroBytes, 'image/jpeg').then(function (bottom) {
+              return { heroImageUrl: placed.heroUrl, heroImageStoragePath: deckPaths[placed.heroUrl] || null, heroImageError: null, heroBottom: bottom };
+            });
+          }
+          if (heroReal) return { heroImageUrl: heroReal, heroImageStoragePath: null, heroImageError: null };
+          return buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp, { deadlineAt: deadlineAt, rule: graphic ? 'none' : 'distant' });
+        });
+        var jobs = [heroJob].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
             /* in the shape its layout gives it (a band, across the section, beside the words): its frame is then that shape */
-            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level, s.imageKind, pictureShape.shapeForLayout(s.layout));
+            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level, s.imageKind, pictureShape.shapeForLayout(s.layout), { deadlineAt: deadlineAt });
           })
         );
         /* the logo unit is made alongside them: the logo the owner uploaded, else the previous edition's own,
@@ -2527,6 +2823,8 @@ function handlePlanStructure(req, res) {
           design.logoUnitFrom = unit.from; design.logoUnitWidth = unit.width; design.logoUnitHeight = unit.height;
           design.logoUnitPlate = unit.plate; design.logoUnitNote = unit.note; design.logoUnitHeroMode = unit.heroMode || '';
           delete design.logoUnitDarkUrl; delete design.logoUnitDarkStoragePath; delete design.logoUnitDarkOf;
+          /* the deck shows the event's own lock-up, and no logo was uploaded: the deck is never a logo source, so say how */
+          if (followLook && look.ipName && unit.source !== 'owner') design.logoUnitNote = [design.logoUnitNote, 'Your presentation shows the event\'s own logo. Upload it under Logo as a transparent PNG and the banner will show it.'].filter(Boolean).join(' ');
           var heroImage = made[0];
           /* the hero picture's name carries the run (buildHeroImage) */
           design.heroImageUrl = heroImage.heroImageUrl || null;
@@ -2534,15 +2832,21 @@ function handlePlanStructure(req, res) {
           design.heroImageError = heroImage.heroImageError;
           /* the page runs on from the banner: its background is the colour the banner picture ends in, as light (or
              dark) as the site is, and the banner's foot fades into it (genDesign.heroCss) — the owner, 10 Nov 2026 */
-          var runOn = heroImage.heroBottom ? genDesign.pageColoursFrom(heroImage.heroBottom, design.mode, design.textColor) : null;
+          /* … except where a followed deck gives the page its own background: the banner's foot fades into that */
+          var keepDeckGround = !!(followLook && deckColour(look, 'background'));
+          var runOn = heroImage.heroBottom && !keepDeckGround ? genDesign.pageColoursFrom(heroImage.heroBottom, design.mode, design.textColor) : null;
           if (runOn) { design.backgroundColor = runOn.backgroundColor; design.surfaceColor = runOn.surfaceColor; design.pageFromHero = true; }
           var images = made.slice(1).filter(Boolean);
           sections.forEach(function (s) {
-            if (!s.image && s.imageSource === 'previous-edition') return;      // a real photo, set by etPictureRules
+            /* a real photo: the previous edition's (etPictureRules, newStandardPictures) or the owner's presentation's */
+            if (!s.image && (s.imageSource === 'previous-edition' || s.imageSource === 'owner-deck')) return;
             var img = images.filter(function (i) { return i.sectionId === s.id; })[0];
+            var planned = !!s.image;
             s.imageUrl = img ? img.url : '';
             /* the shape it was made in and cut to, for the frame its code gives it (buildSectionCodePrompt) */
             if (img && img.shape) s.imageShape = img.shape; else delete s.imageShape;
+            /* a planned picture that did not come back: its layout is told, so no empty picture box is written (F4) */
+            if (planned && !img) { console.warn('plan-structure: the picture planned for "' + s.id + '" of ' + eventId + ' did not come; laid out without one'); dropPicture(s); }
           });
           /* A lock-up on a light banner gets a copy for a dark one (only the black lettering made white: ET's logo
              rule). A dark site's banner is then dark as the site is — never a pale banner on a dark site; a light
@@ -2563,10 +2867,12 @@ function handlePlanStructure(req, res) {
             /* generatedBy: who asked for this design (BE-058: every write names who made it) */
             sections: sections, design: design, generatedAt: now, generatedBy: actorOf(req.user), themeMode: themeMode, ownerNotes: ownerNotes, siteMode: siteMode,
             owner: owner,
-            reference: reference.basis
-              ? { type: reference.basis.type, url: reference.basis.url, design: reference.basis.design }
-              : { type: 'none', artDirection: artDirection.id }
+            /* what the site was modelled on, as it was (F5): the owner's own presentation, a page, a deck's colours, or
+               the art direction — this last only when it was in the prompt */
+            reference: deckFollow.referenceRecord({ follow: follow, deckRef: deckRef, basis: reference.basis && reference.basis.type !== 'ownDeck' ? reference.basis : null, artDirection: artDirection, artUsed: !reference.basis && !look }),
+            followDeck: follow
           };
+          if (deckPlan) designPlan.deckPhotos = deckRecord(deckPlan, sections, deckOk, placedDeck);
           /* the event's description, written from the brief and the previous edition — only where it is empty or
              still the owner's raw brief; one the owner wrote by hand is kept (event-description.js) */
           var described = eventDescription.patch(r.parsed && r.parsed.eventDescription, stored, (payload.eventMeta || {}).description);
@@ -2812,7 +3118,7 @@ function runGenerateContent(res, fb, payload, eventId, templateId, sourceEventId
 var SECTION_CODE_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    positioningNotes: { type: 'STRING', description: 'Internal only. Name the ONE specific thing adapted from a competitor (or "no competitor material was given") and the ONE thing deliberately NOT carried over from this event\'s own previous edition.' },
+    positioningNotes: { type: 'STRING', description: 'Internal only. Name the ONE specific thing adapted from a competitor (or "no competitor material was given") and the ONE thing deliberately NOT carried over from this event\'s previous-edition WEBSITE (or "no previous edition was given"). The owner\'s own documents and instructions are never a previous edition.' },
     sections: {
       type: 'ARRAY',
       items: {
@@ -2920,7 +3226,14 @@ function buildSectionCodePrompt(payload) {
     '- CAROUSELS: any section with a row of more items than fit may be a carousel — speakers, partner logos, photos, testimonials, and also discussion topics, tracks or reasons to attend when there are many — but only where it suits the content; a short list is better laid out in full. Mark the wrapper with data-rv-carousel and the element that directly holds the items with data-rv-carousel-track. MOVING ON ITS OWN (data-rv-carousel="auto") is for logos and photos only, and at most one in what you write: many things moving at once tires a visitor (the server keeps no more than two on a page, never in neighbouring sections). Give each item a width (e.g. flex: 0 0 min(360px, 82vw)). The page makes the track scroll sideways and adds the previous/next buttons itself — never draw arrows, dots or a scrollbar of your own, and never write animation to move the items.'
   ];
 
-  if (reference.type && reference.type !== 'none' && reference.design) {
+  /* the owner's own presentation, followed (deck-follow.js): its words kept, its type and its pages said to the writer */
+  var deckLook = designPlan.followDeck && payload.brief && payload.brief.visualIdentity && payload.brief.visualIdentity.designed === 'yes' ? payload.brief.visualIdentity : null;
+  if (reference.type === 'ownDeck' && reference.design) {
+    lines.push('', 'THE REFERENCE this site is modelled on (' + SOURCE_TYPE_LABELS.ownDeck + (reference.fileName ? ', “' + reference.fileName + '”' : '') + ') — the plan below was built on it:', JSON.stringify(reference.design, null, 2));
+    lines.push.apply(lines, deckFollow.writerLines({ look: deckLook || {}, deckPages: payload.brief && payload.brief.deckPages, sections: designPlan.sections, write: payload.write }));
+  } else if (deckLook) {
+    lines.push.apply(lines, [''].concat(deckFollow.writerLines({ look: deckLook, deckPages: payload.brief && payload.brief.deckPages, sections: designPlan.sections, write: payload.write })));
+  } else if (reference.type && reference.type !== 'none' && reference.design) {
     lines.push('', 'THE REFERENCE this site is modelled on (' + SOURCE_TYPE_LABELS[reference.type] + ', ' + reference.url + ') — the plan below was built on it; keep its structure and character recognisable in what you write, improved, never copied word for word:',
       JSON.stringify(reference.design, null, 2));
   }
@@ -2955,6 +3268,8 @@ function buildSectionCodePrompt(payload) {
   lines.push('', 'PICTURES — the site must not be text only:');
   var pictured = fullList.filter(function (s) { return s.imageUrl; });
   pictured.forEach(function (s) {
+    /* the owner's own presentation's photos (a followed deck): real, in the shape they were cut to */
+    if (s.imageSource === 'owner-deck') { lines.push(ownerPhotoLine(s)); return; }
     if (s.photos && s.photos.length > 1) {
       lines.push('- Section "' + s.id + '" has ' + s.photos.length + ' REAL photos from the previous edition, one per card: ' + s.photos.map(function (u, i) { return genDesign.pictureToken('photo-' + s.id + '-' + (i + 1)); }).join(' , ') + '. Make each a tall photo card (about 3:4, object-fit: cover) with a dark gradient at its foot carrying a small number ("01"), the card\'s title in the serif and one line under it; in a row that scrolls sideways on a phone.');
       return;
@@ -2979,7 +3294,7 @@ function buildSectionCodePrompt(payload) {
       '- about-vertical: one centred paragraph under its heading.');
   }
   if (NEW_ET_STANDARD) {
-    lines.push('- NO DECORATION WITHOUT CONTENT: never draw illustrations, line art, clip-art, monuments, outlines of buildings or vehicles, or decorative patterns in SVG or CSS; never a box, frame, panel or card that holds no real picture and no real text (a coloured block "standing in" for a picture is a blank box — leave it out and let the text use the width). Icons are allowed only as small line icons (about 24px) beside a card\'s title.');
+    lines.push(deckLook ? deckFollow.decorationLine(deckLook) : '- NO DECORATION WITHOUT CONTENT: never draw illustrations, line art, clip-art, monuments, outlines of buildings or vehicles, or decorative patterns in SVG or CSS; never a box, frame, panel or card that holds no real picture and no real text (a coloured block "standing in" for a picture is a blank box — leave it out and let the text use the width). Icons are allowed only as small line icons (about 24px) beside a card\'s title.');
     lines.push('- PHOTOS OF PEOPLE: object-fit: cover with object-position: center 25% so heads and faces stay in frame; a picture frame is never taller than the photo allows (no head cut off at the top).');
     lines.push('- SPACING: every section has the same vertical padding, clamp(48px, 5vw, 72px) top and bottom, and no empty spacer blocks; a section that is only a heading and a button is not a section.');
     lines.push('- A section with one of the data-bound kinds (speakers/sessions/faq/partners/contact/glimpses) holds ONLY its heading block and its list — no button, call to act or side panel: when the event has no records of that kind the whole section is hidden, and nothing may be left standing.');
@@ -3035,9 +3350,42 @@ function buildSectionCodePrompt(payload) {
     'HTML rules, every section: ONE root element carrying id="<section id>", no <html>/<body>/<head> wrapper, no <script> tags, no inline event handler attributes, no javascript: URIs, no <iframe>/<object>/<embed>.',
     'CSS rules, every section: write plain class selectors for the classes you used in that section\'s html, including one for the root element itself (its background, padding and layout belong on the root\'s own class). Prefix every class with the section id so that names never collide between sections. Do NOT write [data-rv-section] in any selector and do not style html, body or :root — the server confines every rule to its section, and the root element is the positioning context for anything absolutely positioned inside it. No @import, no url(javascript:...), no CSS behaviors.',
     '',
-    'positioningNotes: internal only, never shown on the site. Name the ONE specific thing you adapted FROM a competitor (or state "no competitor material was given" if none was provided) and the ONE specific thing you deliberately did NOT just carry over from this event\'s own previous edition. Be concrete (name the competitor/section), not generic.'
+    /* F1: the previous-edition half has its opt-out, as the competitor half has (ET DAVOS 2027 had no previous
+       edition, and the writer called the owner's deck one) */
+    'positioningNotes: internal only, never shown on the site. Name the ONE specific thing you adapted FROM a competitor (or state "no competitor material was given" if none was provided) and ' +
+      ((payload.sources || []).some(function (s) { return s.type === 'previousEdition'; })
+        ? 'the ONE specific thing you deliberately did NOT just carry over from this event\'s previous-edition WEBSITE'
+        : 'for the previous edition write exactly "no previous edition was given" — none was given') +
+      '. The owner\'s own documents and instructions are never a previous edition. Be concrete (name the competitor/section), not generic.'
   );
   return lines.join('\n');
+}
+
+/* the writer's line for a section with the owner's own presentation's photo, or a card row of them: real photos, cut
+   to their frame's shape, which the frame keeps at every width */
+function ownerPhotoLine(s) {
+  var css = pictureShape.cssRatio(s.imageShape);
+  var frame = css ? ' — its frame keeps that shape at every screen width (aspect-ratio: ' + css + ', sized by its width, with no height, min-height or max-height of its own), and the photo fills it (width: 100%; height: 100%; object-fit: cover)' : ', object-fit: cover';
+  if (s.photos && s.photos.length > 1) {
+    return '- Section "' + s.id + '" has ' + s.photos.length + ' REAL photos from the owner\'s presentation, one per card (pages ' + (s.photoPages || []).join(', ') + ', each cut ' + s.imageShape + '): ' +
+      s.photos.map(function (u, i) { return genDesign.pictureToken('photo-' + s.id + '-' + (i + 1)); }).join(' , ') + '. Make each a photo card' + frame + ', with the card\'s small number, its title and one line under it; any further card in the row is a brand-colour panel with its number and title; the row scrolls sideways on a phone.';
+  }
+  return '- Section "' + s.id + '" has a REAL photo from the owner\'s presentation (page ' + s.imagePage + ', made ' + s.imageShape + '): ' + genDesign.pictureToken(s.id) + (s.imageAbout ? ' (it shows: ' + s.imageAbout + ')' : '') +
+    '. Use it with <img src="' + genDesign.pictureToken(s.id) + '" alt="…" loading="lazy">, placed as that section\'s layout says, with real presence' + frame + '.';
+}
+/* an eligible deck photo left over, cut to a frame and stored, for a section that needs one after all -> Promise<{ url,
+   shape, page, about } | null> */
+function spareDeckPhoto(fb, eventId, p, shape, stamp) {
+  var ownPrefix = 'https://storage.googleapis.com/' + fb.bucket.name + '/events/' + eventId + '/';
+  var path = docPictures.ownPath(p.url, ownPrefix, ['brief-photos']);
+  if (!path) return Promise.resolve(null);
+  return fb.bucket.file(path).download().then(function (r) {
+    return pictureShape.crop(r[0], pictureShape.ratioOf(shape), { label: 'deck photo page ' + p.page });
+  }).then(function (cut) { return storeGenerated(fb, eventId, stamp + '-overview-p' + p.page + '.jpg', cut.bytes); })
+    .then(function (got) { return { url: got.url, shape: shape, page: p.page, about: p.about || '' }; }, function (err) {
+      console.error('generate-content: the deck photo of page ' + p.page + ' could not be placed for ' + eventId + ' — ' + (err && err.message));
+      return null;
+    });
 }
 
 /* A written section's styles shorter than this are none at all: its words would show as bare text */
@@ -3211,13 +3559,17 @@ function fillSparseOverview(fb, eventId, answers, designPlan, ctx) {
   console.warn('generate-content: ' + eventId + ' — the overview is sparse (' + text.length + ' characters, no picture): a picture is made for it');
   /* beside the words, as the rewritten layout below says: 4:3 (pictureShape.shapeForLayout) */
   var overviewShape = pictureShape.shapeForLayout('picture and text side by side');
-  return buildSectionImage(fb, eventId, 'overview', subject, design, stamp, 'It illustrates the overview of the event\'s website (for your understanding only — none of these words may be written in the picture).', about, level, kind, overviewShape).then(function (made) {
+  /* a followed deck: one of its own photos left over, before a picture is made */
+  var spare = designPlan.followDeck && designPlan.deckPhotos ? (designPlan.deckPhotos.spare || []).filter(function (p) { return deckPhotos.fits(p, overviewShape); })[0] : null;
+  var making = spare ? spareDeckPhoto(fb, eventId, spare, overviewShape, stamp) : buildSectionImage(fb, eventId, 'overview', subject, design, stamp, 'It illustrates the overview of the event\'s website (for your understanding only — none of these words may be written in the picture).', about, level, kind, overviewShape);
+  return making.then(function (made) {
     if (!made) return { answers: answers, designPlan: designPlan };
     var plan = Object.assign({}, designPlan, { sections: designPlan.sections.map(function (s) {
       if (s.id !== 'overview') return s;
       return Object.assign({}, s, { image: 'the event\'s field, as the overview describes it', imageKind: kind, imageUrl: made.url, imageShape: made.shape || overviewShape,
         layout: String(s.layout || '').trim() + ' The picture fills the side of the section that its words leave empty; nothing stands alone in a half-empty column.' });
     }) });
+    if (made.page) plan.sections.forEach(function (s) { if (s.id === 'overview') { s.image = ''; s.imageKind = 'photo'; s.imageSource = 'owner-deck'; s.imagePage = made.page; s.imageAbout = made.about || ''; } });
     var prompt = buildSectionCodePrompt(Object.assign({}, ctx.prompt, { designPlan: plan, write: ['overview'] }));
     return llm.callJson(prompt, SECTION_CODE_SCHEMA, { timeoutMs: 100000, route: 'generate-content', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.site, onUsage: aiUsageRecorder(fb, eventId, 'generate-content') }).then(function (r) {
       var again = r && !r.error && r.parsed && Array.isArray(r.parsed.sections)
@@ -4448,4 +4800,4 @@ function watchEvent(fb, eventId) {
 
 module.exports = { wire, handleSuggestDesign, handleExtractBrief, handleIngestSource, handlePlanStructure, handleGenerateContent, handleGenerateStatus, handleGenerateCancel, handleRedesignSection, handleGetDraft, handleGeneratedTemplate, handleGeneratedSection };
 /* what lib/api.js's _testHooks hands the tests and tools/ from this file (read there on first use) */
-module.exports._testHooks = { drawnLogoUnit, darkCopyOfUnit, classifyGlimpses, unstyledSectionIds, emptyPictureBox, dropPicture, usableLogoPicture, runStatusOf, RUN_ACTIVE_MS, SOURCE_FRESH_MS, buildGeneratedDesign, confirmEtPick, pageKey, otherPortalOf, siteOfPortal, extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, buildHeroImage, HERO_SHAPE, fetchSourceCss, buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES, buildDesignPlanPrompt, buildExtractBriefPrompt, buildIngestSourcePrompt, buildSectionCodePrompt, designReference, buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, repeatedHeadingIds, takenHeadings, keepRootBackground, cssUrlQuotes, bottomColour, briefFacts, watchEvent, missingSectionIds, earlierPipelineSite, runIdOf, handleExtractBrief, handleGenerateContent, handleGeneratedSection };
+module.exports._testHooks = { settleKind, sceneSays, designPlanSchema, withPicks, deckRecord, deckSheets, ownerPhotoLine, bottomColourOf, checkedPicture, deckIdentity, deckPagesOf, BRIEF_SCHEMA, drawnLogoUnit, darkCopyOfUnit, classifyGlimpses, unstyledSectionIds, emptyPictureBox, dropPicture, usableLogoPicture, runStatusOf, RUN_ACTIVE_MS, SOURCE_FRESH_MS, buildGeneratedDesign, confirmEtPick, pageKey, otherPortalOf, siteOfPortal, extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, buildHeroImage, HERO_SHAPE, fetchSourceCss, buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES, buildDesignPlanPrompt, buildExtractBriefPrompt, buildIngestSourcePrompt, buildSectionCodePrompt, designReference, buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, repeatedHeadingIds, takenHeadings, keepRootBackground, cssUrlQuotes, bottomColour, briefFacts, watchEvent, missingSectionIds, earlierPipelineSite, runIdOf, handleExtractBrief, handleGenerateContent, handleGeneratedSection };

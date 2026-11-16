@@ -65,6 +65,9 @@ var PROFILES = {
      deadline. Their failure falls back to today's prompt and today's Haiku check (lib/chat-picture.js). */
   'picture-brief': { model: CLAUDE_SONNET, effort: 'medium', timeoutMs: 45000, maxOutputTokens: 6000 },
   'picture-critic': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 30000, maxOutputTokens: 3000 },
+  /* the photos of an owner's presentation, each looked at once at Create Event (lib/deck-photos.js classify): six to a
+     call — what each shows, people, names and logos, lettering, a flag — looking, not writing: Haiku */
+  'deck-photos': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 45000, maxOutputTokens: 4000 },
   /* a caption, five subject lines, a paragraph: short copy from a fact sheet (lib/promo.js) */
   'promo-write': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
   /* ETB2B AI in the post and mailer editors (lib/promo-ai.js): reads a request against one post or mail and writes

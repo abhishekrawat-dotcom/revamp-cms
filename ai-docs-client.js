@@ -16,8 +16,9 @@
                                      o.onProgress(text): how the reading goes, in a few words.
      RevampAiDocs.storePictures(eventId, doc, o) -> Promise<doc>   the pictures taken out, stored with the event
                                      (POST /api/chat/doc-pictures, a few at a time): doc.pictures becomes
-                                     [{ url, thumb, page, w, h, share, words }]; o: { fetch (RevampAuth.authedFetch),
-                                     onProgress }. A picture that could not be stored is left out and counted
+                                     [{ url, thumb, page, w, h, share, words }] and doc.key their folder; o: { fetch
+                                     (RevampAuth.authedFetch), onProgress, purpose: 'brief' with briefId and runId
+                                     (Create Event's presentation, create-deck.js) }. A picture that could not be stored is left out and counted
                                      (doc.leftOut.unstored); rejects only when none could be.
      RevampAiDocs.wire(doc)       what the server is sent for it (lib/ai-docs.js cleanDocs; the stored pictures for
                                   lib/doc-pictures.js)
@@ -386,8 +387,10 @@
       return Promise.all(batch.map(function (pic) { return Promise.all([blobBase64(pic.full), blobBase64(pic.thumb)]); })).then(function (data) {
         return send('/api/chat/doc-pictures', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ eventId: eventId, doc: doc.name, key: key, part: b + 1, parts: batches.length, total: list.length,
-            pictures: batch.map(function (pic, k) { return { page: pic.page, full: data[k][0], thumb: data[k][1] }; }) })
+          body: JSON.stringify(Object.assign({ eventId: eventId, doc: doc.name, key: key, part: b + 1, parts: batches.length, total: list.length,
+            pictures: batch.map(function (pic, k) { return { page: pic.page, full: data[k][0], thumb: data[k][1] }; }) },
+            /* Create Event's presentation (create-deck.js): kept beside its brief, under brief-photos/ */
+            o.purpose === 'brief' ? { purpose: 'brief', briefId: String(o.briefId || ''), runId: String(o.runId || '') } : {}))
         });
       }).then(function (res) {
         return res.text().then(function (t) {
@@ -423,6 +426,7 @@
       got.forEach(function (list2) { (list2 || []).forEach(function (s) { if (s) stored.push(s); }); });
       if (!stored.length) throw new Error(lastWhy || 'The pictures in “' + doc.name + '” could not be kept with your event. Attach it again.');
       doc.pictures = stored;
+      doc.key = key;                       // the folder they were kept in (POST /api/brief-photos names it)
       if (failed) { doc.leftOut = doc.leftOut || {}; doc.leftOut.unstored = failed; }
       return doc;
     });

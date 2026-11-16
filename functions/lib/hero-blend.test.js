@@ -29,7 +29,9 @@ var bytes = png.encode({ width: w, height: h, data: data });
 check('the bottom edge\'s colour is read from a PNG; a JPEG is left alone', JSON.stringify(H.bottomColour(bytes, 'image/png')) === '[40,90,50]' && H.bottomColour(bytes, 'image/jpeg') === null, H.bottomColour(bytes, 'image/png'));
 /* lib/api.js and the route modules moved out of it as they were (BE-017): the AI site generation, the editor's chat, the Lovable import */
 var API = ['api.js', 'api-generate.js', 'api-chat.js', 'api-import.js'].map(function (f) { return fs.readFileSync(path.join(__dirname, f), 'utf8'); }).join('\n');
-check('a new site\'s page and cards take the banner\'s colour', /var runOn = heroImage\.heroBottom \? genDesign\.pageColoursFrom\(heroImage\.heroBottom, design\.mode, design\.textColor\) : null;/.test(API) &&
+/* … except where a followed presentation gives the page its own background (CREATE-FROM-DECK.md §6.3) */
+check('a new site\'s page and cards take the banner\'s colour', /var runOn = heroImage\.heroBottom && !keepDeckGround \? genDesign\.pageColoursFrom\(heroImage\.heroBottom, design\.mode, design\.textColor\) : null;/.test(API) &&
+  /var keepDeckGround = !!\(followLook && deckColour\(look, 'background'\)\);/.test(API) &&
   /if \(runOn\) \{ design\.backgroundColor = runOn\.backgroundColor; design\.surfaceColor = runOn\.surfaceColor; design\.pageFromHero = true; \}/.test(API));
 
 /* 4. the banner overlay by hand (Theme › Banner overlay) and through ETB2B AI */

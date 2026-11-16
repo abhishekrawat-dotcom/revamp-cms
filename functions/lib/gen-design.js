@@ -626,6 +626,40 @@ function placeLine(place, hero, keyVisual) {
     : 'Place: the event is in ' + city + '. Where the scene allows, let the city show in its setting — ' + how + ' — subtly and believably, never as a postcard.';
 }
 
+/* A scene never contradicts the rules it is sent with (CREATE-FROM-DECK.md F3). ET DAVOS 2027's banner scene named
+   "red Swiss flags" under the key visual's "no flags", and What Awaits You's "flags along the street" under the
+   section rules' "no flags": a picture told both draws one or fails. Each clause of the scene that names what the
+   rules then forbid is taken out — flags, logos and brands, signs and lettering, and people where the picture has
+   none — unless it says that thing is absent ("no people", "without signs"). A scene left with nothing is kept as it
+   was (the rules still forbid it). rules: { flags, logos, lettering, people } (true: forbidden).
+   -> { scene, removed: [clauses] } */
+var SCRUB_SPLIT = /(,\s*|;\s*|\s+and\s+|\s+with\s+|\s+beside\s+|\s+under\s+|\s+lined by\s+)/i;
+var SCRUB_ABSENT = /\b(?:no|without|free of|empty of|never|none|not)\b/i;
+var SCRUB = {
+  flags: /\bflags?\b|\bbunting\b/i,
+  logos: /\blogos?\b|\bbrand(?:s|ed|ing)?\b|\bemblems?\b|\bcrests?\b|\btrademarks?\b/i,
+  lettering: /\bsigns?\b|\bsignage\b|\bsignboards?\b|\bposters?\b|\bbillboards?\b|\blettering\b|\bletters\b|\bwords?\b|\btext\b|\bcaptions?\b|\bheadlines?\b|\bneon\b/i,
+  people: /\b(?:people|persons?|crowds?|delegates?|audiences?|attendees?|visitors?|pedestrians?|passers-by|figures?|men|women|man|woman|speakers?|guests?|skiers?|hikers?|tourists?|shoppers?|professionals?|leaders?|executives?|participants?|hosts?|staff)\b/i
+};
+function scrubScene(scene, rules) {
+  var text = String(scene == null ? '' : scene);
+  rules = rules || {};
+  var parts = text.split(SCRUB_SPLIT), kept = [], removed = [], negated = false;
+  for (var i = 0; i < parts.length; i += 2) {
+    /* a clause that says something is absent ("no screens") carries on through the list it opens ("…, signs, boards") */
+    var clause = parts[i], listed = i > 0 && /^,/.test(parts[i - 1]);
+    var absent = SCRUB_ABSENT.test(clause) || (negated && listed);
+    negated = absent;
+    var bad = !absent && Object.keys(SCRUB).some(function (k) { return rules[k] && SCRUB[k].test(clause); });
+    if (bad) { removed.push(clause.replace(/^[\s.]+|[\s.]+$/g, '')); continue; }
+    if (kept.length) kept.push(parts[i - 1]);
+    kept.push(clause);
+  }
+  var out = kept.join('').replace(/\s+/g, ' ').replace(/^[\s,;]+/, '').trim();
+  if (!removed.length || !out.replace(/[\s.,;]+/g, '')) return { scene: text, removed: [] };
+  return { scene: /[.!?]$/.test(text.trim()) && !/[.!?]$/.test(out) ? out + '.' : out, removed: removed };
+}
+
 /* opts: { hero, about, context, level: 'global'|…  (an owner's "global" event shows an international mix),
    graphic: true (the owner asked for graphics, not photographs), place: { city, cues } (where it happens; else
    design.place, which plan-structure sets), kind: a section picture's IMAGE_KINDS entry ('people' when not
@@ -641,6 +675,13 @@ function imagePrompt(subject, design, opts) {
      host city's landmarks, artwork to the sides, the centre calm for the name, in the brand colours; 74% have no
      person and 75% no word. A photograph of an audience and a stage is the exception (6%). */
   var keyVisual = !!opts.hero && !graphic && opts.keyVisual !== false;
+  /* the scene, rid of what the rules below forbid (scrubScene): flags, logos, lettering always; people where it has none */
+  /* a banner photograph shows the event with its people, unless it is a place (a followed deck's banner: kind 'place') */
+  var heroPeople = !!opts.hero && (!opts.kind || opts.kind === 'people');
+  var peopleIn = !keyVisual && !graphic && (heroPeople || (!opts.hero && kind === 'people'));
+  var scrubbed = scrubScene(subject, { flags: true, logos: true, lettering: true, people: !peopleIn });
+  if (scrubbed.removed.length) console.warn('gen-design: the picture\'s scene named what its rules forbid; taken out: ' + scrubbed.removed.map(function (c) { return '"' + c.slice(0, 80) + '"'; }).join(', '));
+  subject = subject ? scrubbed.scene : subject;
   var lines = [
     opts.hero
       ? (keyVisual
@@ -653,7 +694,7 @@ function imagePrompt(subject, design, opts) {
       : kind === 'subject' ? 'Create one editorial photograph of the SUBJECT for a section of a professional event website: the technology, products, materials or working environment the section is about, shot as a still-life or industrial photographer would — the things themselves, in detail.'
       : 'Create one editorial photograph for a section of a professional event website.',
     'Scene: ' + String(subject || 'a large business conference in session, an Indian audience of women and men facing a lit stage where a woman is speaking').slice(0, 500) + '.',
-    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic || keyVisual ? ' and the forms in it.' : kind === 'people' || opts.hero ? ', the people at work and the objects in view.' : ' and the objects in view.') : '',
+    opts.about ? 'The event: ' + String(opts.about).slice(0, 400) + '. The picture must belong to this event and its field — recognisably, through the setting' + (graphic || keyVisual ? ' and the forms in it.' : peopleIn ? ', the people at work and the objects in view.' : ' and the objects in view.') : '',
     /* an illustration told what its section says draws those words in as labels: it gets the scene alone */
     opts.context && !(graphic && !opts.hero) ? String(opts.context).slice(0, 500) + ' The picture must be recognisably about that — a real scene, not a generic backdrop and not a metaphor made of unrelated objects.' : '',
     placeLine(opts.place || design.place, opts.hero, keyVisual),
@@ -666,7 +707,7 @@ function imagePrompt(subject, design, opts) {
     'Every picture on this site shares this one style, so that they read as a set.',
     /* the model paints the event's name into a hero it is told the name will sit over: said outright */
     opts.hero ? 'The picture itself carries no words at all — never the event\'s name, its date or its place, no title card, no lettering on stage screens or banners: the site sets the name and the buttons over it. Landscape, 16:9.' : 'Landscape, 4:3.',
-    keyVisual ? KEY_VISUAL_RULES : graphic ? GRAPHIC_RULES : 'STRICT: ' + (opts.hero || kind === 'people' ? (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) : NO_PEOPLE_RULES) + IMAGE_TAIL
+    keyVisual ? KEY_VISUAL_RULES : graphic ? GRAPHIC_RULES : 'STRICT: ' + (peopleIn ? (opts.level === 'global' ? PEOPLE_RULES_GLOBAL : PEOPLE_RULES) : NO_PEOPLE_RULES) + IMAGE_TAIL
   ];
   return lines.filter(Boolean).join(' ');
 }
@@ -675,5 +716,5 @@ module.exports = {
   pageColoursFrom: pageColoursFrom, contrastOf: function (a, b) { return pcContrast(pcFromHex(a), pcFromHex(b)); },
   MIN_LABEL_PX, BASE_TEXT_PX, ART_DIRECTIONS, MODE_DEFAULTS,
   markupSkeleton, fontFamilies, pageTone, artDirectionFor, normaliseMode, palette, clampFontSizes, capHeadingSizes, headingClasses: rvType.headingClasses, HEADING_SCALE, MOBILE_RULES,
-  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, placeLine, PEOPLE_RULES, IMAGE_KINDS, ctaAttrs, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
+  ensureLogo, ensureEtLogo, etLogoHtml, capNavLinks, NAV_LINKS, motionBudget, ET_LOGO, imagePrompt, scrubScene, placeLine, PEOPLE_RULES, IMAGE_KINDS, ctaAttrs, logoUnitParts, logoUnitHtml, logoUnitImageHtml, heroHtml, heroCss, dateLabel, pictureToken, restorePictures, luminance, contrast, colourOf
 };

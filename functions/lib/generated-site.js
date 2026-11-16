@@ -154,8 +154,14 @@ function inputs(fb, eventId, runId) {
   var sources = runId ? ref.collection('sources').where('runId', '==', runId).get() : ref.collection('sources').get();
   return Promise.all([briefs, sources]).then(function (r) {
     var b = r[0].empty ? null : newest(r[0].docs);
+    var bd = b ? b.data() || {} : {};
     return {
-      brief: b ? ((b.data() || {}).extracted || null) : null,
+      brief: b ? (bd.extracted || null) : null,
+      /* the brief's own record beside what was read from it (CREATE-FROM-DECK.md): its id and file, the switch "Follow
+         this presentation's look and photos" as it was left, and its deck photos (never inside `extracted`, which the
+         prompts show) */
+      briefMeta: b ? { id: b.id, fileName: String(bd.sourceFileName || ''), followDeck: bd.followDeck === true } : null,
+      briefDeck: b && bd.deck && typeof bd.deck === 'object' ? bd.deck : null,
       /* the filter repeats the query: a store that ignores where() must still give this run's pages only */
       sourceDocs: r[1].docs.map(function (d) { return d.data() || {}; }).filter(function (v) { return !runId || v.runId === runId; })
     };

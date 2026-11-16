@@ -275,6 +275,12 @@
   .gb-more[open] > summary::before{ content:'–'; }
   .gb-more > .gb-grid{ margin-top: 12px; }
   .gb-more-note{ font-weight:500; color: var(--text-muted); font-size:12px; }
+  /* the owner's presentation, followed only when ticked (create-deck.js) */
+  .gb-deck{ margin-top:10px; padding:10px 12px; border:1px solid var(--border); border-radius:10px; background: var(--surface-2); }
+  .gb-deck-switch{ display:flex; align-items:flex-start; gap:8px; font-size:13px; font-weight:600; color: var(--text); cursor:pointer; }
+  .gb-deck-switch input{ margin-top:2px; flex: 0 0 auto; }
+  .gb-deck .hint{ margin:6px 0 0; }
+  .gb-deck-ask{ color: var(--warn); }
   /* the lines under a control: what a date reads as, a warning that does not block, what is wrong */
   .field-note{ margin: 6px 0 0; font-size: 12px; line-height: 1.4; }
   .field-note[hidden]{ display: none; }
@@ -2328,6 +2334,13 @@
                   </button>
                 </div>
                 <p class="hint" id="gb-doc-note"></p>
+                <!-- a presentation the site can follow (create-deck.js): shown once a PDF is chosen; it starts unticked -->
+                <div class="gb-deck" id="gb-deck" hidden>
+                  <label class="gb-deck-switch"><input type="checkbox" id="gb-deck-follow"><span id="gb-deck-label">Follow this presentation’s look and photos</span></label>
+                  <p class="hint" id="gb-deck-hint" aria-live="polite"></p>
+                  <p class="hint gb-deck-ask" id="gb-deck-ask" hidden>Your instructions ask to follow the presentation. Turn this on to use its look and photos.</p>
+                  <p class="hint" id="gb-deck-rights">Photos from your presentation can appear on the public site. Use only photos you may publish.</p>
+                </div>
                 <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
               </div>
               <!-- the previous edition, picked from the event's own portal's ET events (wireEtPicker); its address is kept in #gb-previous -->
@@ -2468,6 +2481,7 @@
 <script src="portal-fields.js"></script>
 <script src="create-drafts.js"></script>
 <script src="create-event-prefill.js"></script>
+<script src="create-deck.js"></script>
 <script>
 (function(){
   'use strict';
@@ -3041,7 +3055,7 @@
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
     fromEdition: null,          // {id, name, portal, counts, carried} the previous edition chosen with "Start from a previous edition" (openCloneDesignModal): what it has that no section here shows comes into the event's Content at the hand-off (carryEdition); carried: what that has done so far ({ to, done, made })
-    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
+    brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null, followDeck: false },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
     designIntake: { vibe: '', notes: '' },   // structured design intake — vibe: one of VIBE_OPTIONS' labels, notes: free text; steers a "Redesign with AI" request (see requestAiDesign())
@@ -3587,7 +3601,7 @@
       delete S.catPicked;
       /* what earlier versions of this page kept in the draft and nothing reads any more */
       ['path', 'templatePick', 'templateExcluded', 'sourceKind', 'sourceValue', 'detectPhase', 'detectDecisions', 'detectedBannerTheme'].forEach(function(k){ delete S[k]; });
-      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null };
+      var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null, followDeck: false };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
       S.useBannerTheme = S.useBannerTheme === true;
       S.aiHero = cleanAiHero(S.aiHero);
@@ -4258,6 +4272,39 @@
   ];
   var URL_HINT = 'Enter a full web address, e.g. https://example.com';
   var briefDoc = null;        // the PDF chosen for the brief. A page cannot keep a file across a reload: the draft remembers only its name (S.brief.docName)
+  /* The chosen PDF's photos, taken out in the background as soon as it is picked (create-deck.js): { file, state:
+     'reading' | 'done' | 'failed', result, error, promise }. The switch "Follow this presentation's look and photos"
+     starts unticked (owner decision, 16 Nov 2026): the presentation is followed only when the owner ticks it, and the
+     choice is kept with the draft (S.brief.followDeck). Instructions that ask for it only point to the switch. */
+  var deckRead = null;
+  var DECK_UNREAD = 'Its photos could not be read here; pictures will be made for the site.';
+  function startDeckRead(file){
+    if (!file){ deckRead = null; showDeck(); return; }
+    if (!window.CreateDeck){ deckRead = { file: file, state: 'failed', result: null, error: DECK_UNREAD }; showDeck(); return; }
+    var mine = deckRead = { file: file, state: 'reading', result: null, error: '' };
+    mine.promise = CreateDeck.read(file).then(function(r){ mine.state = 'done'; mine.result = r; return r; },
+      function(err){ mine.state = 'failed'; mine.error = (err && err.message) || DECK_UNREAD; return null; })
+      .then(function(r){ if (deckRead === mine) showDeck(); return r; });
+    showDeck();
+  }
+  function deckPhotoCount(d){ d = d || deckRead; return d && d.result ? (d.result.pictures || []).length : 0; }
+  function showDeck(){
+    var box = $('gb-deck');
+    if (!box) return;
+    box.hidden = !briefDoc;
+    if (!briefDoc) return;
+    var on = S.brief.followDeck === true, n = deckPhotoCount();
+    var reading = !!(deckRead && deckRead.state === 'reading'), failed = !!(deckRead && deckRead.state === 'failed');
+    $('gb-deck-follow').checked = on;
+    $('gb-deck-label').textContent = n || reading ? 'Follow this presentation’s look and photos' : 'Follow this presentation’s look';
+    var name = '“' + briefDoc.name + '”';
+    $('gb-deck-hint').textContent = reading ? 'Looking for photos in ' + name + '…'
+      : !on ? (failed ? DECK_UNREAD + ' ' : '') + 'ETB2B AI designs the site; the presentation is read for its content only.'
+      : failed ? 'The site takes its colours, type and section order from ' + name + '. ' + (deckRead.error || DECK_UNREAD)
+      : n ? 'The site takes its colours, type and section order from ' + name + ' and uses its own photos (' + n + ' found). Photos showing people, another company’s name, a public figure or a poster are left for you to choose in the editor.'
+      : 'The site takes its colours, type and section order from ' + name + '. No photos were found in it, so pictures will be made for the site.';
+    $('gb-deck-ask').hidden = on || !window.CreateDeck || CreateDeck.wantsDeck(S.brief.instructions) !== 'on';
+  }
   var briefDocError = '';     // why the last file chosen was not taken; stays until another is chosen or it is dismissed
 
   /* A web address as people type it -> the full address, or '' when it is not one. A bare domain gets
@@ -5342,7 +5389,9 @@
     theme.onchange = function(){ S.brief.themeMode = theme.value; save(); };
     var notes = $('gb-instructions');
     notes.value = S.brief.instructions || '';
-    notes.oninput = function(){ S.brief.instructions = notes.value; save(); moreNote(); };
+    notes.oninput = function(){ S.brief.instructions = notes.value; save(); moreNote(); showDeck(); };
+    var follow = $('gb-deck-follow');
+    follow.onchange = function(){ S.brief.followDeck = follow.checked; save(); showDeck(); };
     /* Standard (the usual ET sections) or Advanced (the AI chooses) */
     Array.prototype.forEach.call(document.querySelectorAll('input[name="gb-mode"]'), function(radio){
       radio.checked = radio.value === (S.brief.siteMode === 'advanced' ? 'advanced' : 'standard');
@@ -5375,6 +5424,8 @@
       briefDoc = null;
       briefDocError = '';
       S.brief.docName = '';
+      S.brief.followDeck = false;
+      startDeckRead(null);
       save(); showDoc(); renderFoot();
     };
     doc.onchange = function(){
@@ -5384,9 +5435,11 @@
       briefDocError = briefDocIssue(chosen);
       briefDoc = briefDocError ? null : chosen;
       S.brief.docName = briefDoc ? chosen.name : '';
+      startDeckRead(briefDoc);
       save(); showDoc(); renderFoot();
     };
     showDoc();
+    showDeck();
     wireEtPicker();
   }
 
@@ -6820,6 +6873,7 @@
   function briefStepDoing(key, inputs){
     if (key === 'plan') return 'Working out which sections ' + briefSourceWords(inputs) + ' can fill and how the page should look.';
     if (key === 'generate') return 'Writing every section from ' + briefSourceWords(inputs) + '. This is the longest step.';
+    if (key === 'photos') return 'Keeping your presentation’s photos with the event and checking each one once.';
     return '';
   }
 
@@ -6867,11 +6921,17 @@
     var inputs = run.inputs = { text: briefAnswers(S.brief.text), file: briefDoc, urls: {}, future: !!S.brief.future,
       themeMode: ['light', 'dark'].indexOf(S.brief.themeMode) !== -1 ? S.brief.themeMode : 'auto' };
     BRIEF_URL_FIELDS.forEach(function(f){ inputs.urls[f.key] = normalUrl(S.brief[f.key]); });
+    /* the presentation followed (its switch ticked): fixed for the run, and picked up with it after a reload */
+    inputs.followDeck = resume ? resume.followDeck === true : !!(briefDoc && S.brief.followDeck === true);
+    inputs.deck = inputs.followDeck && !resume ? deckRead : null;
 
     var was = (resume && resume.steps) || {};
     /* (a run picked up again says what it did when it started: made the event, or updated one that was there) */
     var steps = [{ key: 'create', label: (resume ? !resume.createdEvent : !!S.createdEventId) ? 'Updating your event' : 'Creating your event' }];
     if (inputs.file || inputs.text || was.brief) steps.push({ key: 'brief' });
+    /* the presentation's photos, kept with the brief and checked once (create-deck.js, POST /api/brief-photos): only
+       when its switch is ticked and the reading found photos (or is still looking) */
+    if (inputs.followDeck && (was.photos || (inputs.deck && (inputs.deck.state === 'reading' || deckPhotoCount(inputs.deck) > 0)))) steps.push({ key: 'photos', label: 'Taking the photos out of your presentation' });
     BRIEF_URL_FIELDS.forEach(function(f){
       if (inputs.urls[f.key]) steps.push({ key: 'source-' + f.key, field: f });
     });
@@ -6901,7 +6961,7 @@
         if (s.status === 'done') took[s.key] = Math.max(0, (s.endedAt || 0) - (s.startedAt || 0));
         if (s.status === 'error') causes[s.key] = String(s.cause || '').slice(0, 300);
       });
-      S.genRun = { runId: runId, eventId: eventId, startedAt: startedAt, replace: !!replace, createdEvent: !!run.createdEvent, at: Date.now(), steps: at, took: took, causes: causes };
+      S.genRun = { runId: runId, eventId: eventId, startedAt: startedAt, replace: !!replace, createdEvent: !!run.createdEvent, at: Date.now(), steps: at, took: took, causes: causes, followDeck: !!inputs.followDeck };
       save();
     }
     function forget(){
@@ -6974,7 +7034,31 @@
         : Promise.resolve({ fileName: 'description.txt', mimeType: 'text/plain', docBase64: btoa(unescape(encodeURIComponent(text))) });
       return doc.then(function(body){
         if (text) body.briefText = text;
-        return postJson('/api/extract-brief', body);
+        /* the owner's instructions are read with the document, and the switch says whether it is followed */
+        var notes = String(S.brief.instructions || '').trim();
+        if (notes) body.designNotes = notes;
+        if (file) body.followDeck = !!inputs.followDeck;
+        return postJson('/api/extract-brief', body).then(function(resp){
+          run.briefId = (resp && resp.briefId) || '';
+          run.deckPages = (resp && resp.extracted && resp.extracted.deckPages) || null;
+          return resp;
+        });
+      });
+    };
+    /* the presentation's photos (a followed deck): kept with the event, a render of each key slide beside them, each
+       photo checked once on the server. Not a failure when there are none: the row is skipped, and says why. */
+    runners.photos = function(){
+      var d = inputs.deck;
+      var gone = 'Its photos were not taken out: files are not kept when the page reloads. Choose the file again to use them.';
+      if (!d || !window.CreateDeck) return Promise.resolve({ skipped: true, note: gone });
+      return Promise.resolve(d.promise).then(function(){
+        if (!deckPhotoCount(d)) return { skipped: true, note: d.error || 'No photos were found in your presentation; pictures will be made for the site.' };
+        if (!run.briefId) return { skipped: true, note: gone };
+        var send = function(url, init){ return apiFetch(url, Object.assign({ signal: runSignal(run) }, init || {})); };
+        return CreateDeck.store(eventId, runId, run.briefId, d.result, { fetch: send, deckPages: run.deckPages }).then(function(resp){
+          var kept = +resp.kept || 0, held = (resp.held || []).length, lo = CreateDeck.leftOutText(d.result.leftOut);
+          return { note: (kept === 1 ? '1 photo' : kept + ' photos') + ' kept' + (held ? ' · ' + held + ' left for you to choose in the editor' : '') + (lo ? ' · ' + lo : '') };
+        });
       });
     };
     steps.filter(isSource).forEach(function(s){
@@ -7022,7 +7106,7 @@
     Object.keys(was).forEach(function(k){ if (was[k] === 'running') askFirst[k] = true; });
     /* read when the row runs, like the other inputs: instructions corrected before a retry are what is sent */
     runners.plan = function(){
-      function ask(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim(), siteMode: S.brief.siteMode === 'advanced' ? 'advanced' : 'standard' }); }
+      function ask(){ return postJson('/api/plan-structure', { themeMode: inputs.themeMode, designNotes: String(S.brief.instructions || '').trim(), siteMode: S.brief.siteMode === 'advanced' ? 'advanced' : 'standard', followDeck: !!inputs.followDeck }); }
       if (!askFirst.plan) return ask();
       return whenServerIdle('plan').then(function(st){
         askFirst.plan = false;
@@ -7116,6 +7200,7 @@
       if (said) return said;
       if (s.key === 'brief') return inputs.file ? 'Couldn’t read ' + inputs.file.name + '. Choose another file, or retry.' : 'Couldn’t read your description. Edit it, or retry.';
       if (s.key === 'plan') return 'The site structure could not be designed. Retry — the steps already done are kept.';
+      if (s.key === 'photos') return 'The photos from your presentation could not be kept. Retry, or make the site without them.';
       return 'The content could not be written. Retry — the steps already done are kept.';
     }
 
@@ -7126,9 +7211,11 @@
       /* the event exists from the first row on: from then on a reload picks this run up (S.genRun) */
       if (s.key !== 'create' || S.createdEventId === eventId) remember();
       render();
-      runners[s.key]().then(function(){
+      runners[s.key]().then(function(out){
         if (!isCurrent(run)) return;
-        s.status = 'done'; s.endedAt = Date.now();
+        /* a row may finish by being skipped, with the reason (the presentation's photos when there are none) */
+        s.status = out && out.skipped === true ? 'skipped' : 'done'; s.endedAt = Date.now();
+        s.note = out && typeof out.note === 'string' ? out.note : '';
         if (s.key !== 'open') remember();
         render();
         runStep(i + 1);
@@ -7189,7 +7276,7 @@
     }
     function skipStep(key){
       var s = stepBy(key);
-      if (!s || !isSource(s) || s.status !== 'error') return;      // only a link can be left out
+      if (!s || !(isSource(s) || s.key === 'photos') || s.status !== 'error') return;      // only a link, or the presentation's photos, can be left out
       s.status = 'skipped';
       remember();
       render();
@@ -7239,6 +7326,8 @@
         if (!s.fixError){
           inputs.file = briefDoc = chosen;
           S.brief.docName = chosen.name;
+          startDeckRead(chosen);
+          if (inputs.followDeck) inputs.deck = deckRead;
           save();
         }
         render();
@@ -7382,6 +7471,9 @@
                 (s.editing ? '' : '<button type="button" class="gb-skip-link" data-step-edit="brief">' + (inputs.text ? 'Edit description' : 'Add a description') + '</button>') +
                 (inputs.file && inputs.text ? '<button type="button" class="gb-skip-link" data-step-nofile="brief">Use only my description</button>' : '') +
                 '<input type="file" accept="application/pdf,.pdf" data-step-file="brief" hidden>';
+            } else if (s.key === 'photos'){
+              fix = '<button type="button" class="btn btn-secondary btn-xs" data-step-retry="photos">Retry</button>' +
+                '<button type="button" class="gb-skip-link" data-step-skip="photos">Make the site without them</button>';
             } else if (s.key === 'create' && s.slug){
               /* nothing has been generated yet (creating the event is the first row): going back costs nothing */
               fix = '<button type="button" class="btn btn-primary btn-xs" data-step-slugback="create">Back to my details</button>';
@@ -7404,6 +7496,7 @@
               '<div class="gb-step-sub" data-step-calm="' + key + '"' + (now - s.startedAt < BRIEF_REASSURE_MS ? ' hidden' : '') + '>' +
                 '<span class="gb-step-cause">Still working — this step can take a few minutes.</span></div>';
           }
+          if ((s.status === 'done' || s.status === 'skipped') && s.note) sub = '<div class="gb-step-sub"><span class="gb-step-cause">' + esc(s.note) + '</span></div>';
           return '<li class="gb-step gb-step-' + s.status + '" data-step="' + key + '"><div class="gb-step-row">' + icon +
             '<span class="gb-step-label">' + esc(s.label) + '</span>' + time + '</div>' + sub + '</li>';
         }).join('') + '</ul>' +
@@ -12682,7 +12775,7 @@
       items.push('Your description: ' + (pts.filled ? pts.filled + ' of ' + pts.of + ' points written' : 'your own words') +
         (pts.filled && pts.own ? ', and more in your own words' : '') + '.');
     } else items.push('No description.');
-    items.push(briefDoc ? 'Your document: ' + briefDoc.name + '.' : 'No document.');
+    items.push(briefDoc ? 'Your document: ' + briefDoc.name + '.' + (S.brief.followDeck === true ? ' Following its look and photos.' : '') : 'No document.');
     var et = br.etEvent, prevLink = normalUrl(br.previous);
     if (et && et.title) items.push('Previous edition: ' + et.title + ' — the site is modelled on it, then improved.');
     else if (prevLink) items.push('Previous edition: ' + prevLink + ' — the site is modelled on it, then improved.');
@@ -12871,7 +12964,7 @@
   function aiDraftKey(){
     var br = S.brief || {};
     return JSON.stringify([S.basics, br.text === BRIEF_TEMPLATE ? '' : br.text, br.current, br.previous, br.comp1, br.comp2, br.future,
-      br.docName, br.themeMode, br.instructions, br.siteMode, br.etEvent, S.sections, S.template, S.creationMethod, S.excludedSections,
+      br.docName, br.themeMode, br.instructions, br.siteMode, br.etEvent, br.followDeck === true, S.sections, S.template, S.creationMethod, S.excludedSections,
       S.pulledEdition, S.designIntake, S.sectionOrder, S.aiDesign, S.useBannerTheme, S.createdEventId, S.aiHero]);
   }
   /* The note over step 1. It is redrawn only when what it says changes (renderFoot runs on every keystroke, and a

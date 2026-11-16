@@ -77,7 +77,7 @@ async function run() {
   var want = {
     'plan-structure': [CLAUDE_OPUS, 'medium', 120000, 20000], 'generate-content': [CLAUDE_OPUS, 'low', 120000, 28000], 'redesign-section': [CLAUDE_SONNET, 'low', 120000, 28000],
     'chat-edit': [CLAUDE_SONNET, 'low', 75000, 12000], 'suggest-design': [CLAUDE_SONNET, 'low', 75000, 12000], 'extract-brief': [CLAUDE_HAIKU, 'low', 90000, 12000],
-    'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000], 'picture-check': [CLAUDE_HAIKU, 'low', 30000, 2000],
+    'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000], 'picture-check': [CLAUDE_HAIKU, 'low', 30000, 2000], 'deck-photos': [CLAUDE_HAIKU, 'low', 45000, 4000],
     /* the advanced picture assistant's Director and Critic (plan of 16 Nov 2026, W2) */
     'picture-brief': [CLAUDE_SONNET, 'medium', 45000, 6000], 'picture-critic': [CLAUDE_SONNET, 'low', 30000, 3000],
     'promo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'promo-edit': [CLAUDE_SONNET, 'low', 55000, 6000], 'promo-ai-fast': [CLAUDE_HAIKU, 'low', 60000, 12000], 'promo-ai-deep': [CLAUDE_OPUS, 'high', 150000, 32000], 'event-description': [CLAUDE_SONNET, 'low', 60000, 4000], 'dash-bot': [CLAUDE_HAIKU, 'low', 45000, 6000], 'site-heading': [CLAUDE_SONNET, 'low', 45000, 3000], 'seo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'photo-find': [CLAUDE_SONNET, 'low', 70000, 6000], 'people-about': [CLAUDE_SONNET, 'low', 45000, 3000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
