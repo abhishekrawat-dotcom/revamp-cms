@@ -243,7 +243,7 @@ check(!plan.verifyQuote('agenda the why', MSG), 'words of the message out of the
   check(off === offNull && off.indexOf('maxItems') === -1 && off.indexOf('ownerQuote') === -1 && /at most ONE new picture/.test(off), 'switch off: the schema is as it was');
   var on = cp.schemaItem(ids, ON);
   check(on.maxItems === 4 && pictureJob.PHASE1_FIELDS.every(function (f) { return on.items.properties[f] && on.items.required.indexOf(f) !== -1; }), 'plan on: up to 4, every phase-1 field required', on.items.required);
-  check(JSON.stringify(on.items.properties.variants.enum) === '[0]' && JSON.stringify(cp.schemaItem(ids, ALL).items.properties.variants.enum) === '[0,3]', '… options only with their switch');
+  check(on.items.properties.variants.minimum === 0 && on.items.properties.variants.maximum === 0 && !('enum' in on.items.properties.variants) && JSON.stringify(cp.schemaItem(ids, ALL).items.properties.variants.enum) === '[0,3]', '… options only with their switch');
   var payload = { eventId: 'qa-plan', attachmentCount: 0, numbered: 0, picturesLeft: 17, picturesPerDay: 20, picturePlace: 'Davos', pictureSections: ['What Awaits You'] };
   var pOff = cp.promptLines(Object.assign({}, payload)), pOff2 = cp.promptLines(Object.assign({ pictureSwitches: switches.OFF }, payload));
   check(pOff === pOff2 && /you can make ONE new picture per message/.test(pOff), 'switch off: the prompt is as it was');
