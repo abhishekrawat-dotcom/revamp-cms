@@ -51,7 +51,11 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   var swap = { n: 1, sectionId: 'hero-1', placement: 'hero', slot: 0, apply: 'swap', kind: 'place', alt: 'Mumbai skyline at dusk', subject: 'The Mumbai skyline at dusk, calm sea' };
   var ok = R.checkAsk(swap, ctxOf());
   check('D.1 a well-formed swap is used', ok.ask && !ok.note && ok.ask.n === 1 && ok.ask.sectionId === 'hero-1' && ok.ask.placement === 'hero' && ok.ask.apply === 'swap', ok);
-  check('D.1 it carries only its own fields (no label: the panel names the section)', ok.ask && Object.keys(ok.ask).sort().join() === 'alt,apply,kind,n,placement,sectionId,slot,subject', ok.ask && Object.keys(ok.ask));
+  check('D.1 it carries only its own fields (no label: the panel names the section)', ok.ask && Object.keys(ok.ask).sort().join() === 'alt,apply,frame,kind,n,placement,sectionId,slot,subject', ok.ask && Object.keys(ok.ask));
+  /* owner, 16 Nov 2026: the shape the picture is made in comes with it, as 'W:H' only, for the frame a rework adds */
+  check('D.1 the shape it is made in is kept as W:H', R.checkAsk(Object.assign({}, swap, { frame: '16:9' }), ctxOf()).ask.frame === '16:9' &&
+    R.checkAsk(Object.assign({}, swap, { frame: '1152:380' }), ctxOf()).ask.frame === '1152:380' && ok.ask.frame === '' &&
+    R.checkAsk(Object.assign({}, swap, { frame: '16:9;height:9999px' }), ctxOf()).ask.frame === '' && R.checkAsk(Object.assign({}, swap, { frame: { w: 4, h: 3 } }), ctxOf()).ask.frame === '');
 
   var notLoaded = R.checkAsk(swap, ctxOf({ loaded: false }));
   check('D.1 the placing part not loaded: said, nothing made', !notLoaded.ask && /could not load the part that puts pictures in/.test(notLoaded.note), notLoaded);
@@ -330,6 +334,17 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   check('D.7 the editor waits as long as the server may take for a picture, a second one included', waitMs >= require('./chat-picture').DEADLINE_MS + 20000, waitMs);
   var plain = body('plainPictureInfo');
   check('D.7 the section\'s "wide" (a wide place takes a 16:9 picture) is sent to the server', /wide: p\.wide === true,/.test(plain), plain);
+  /* owner, 16 Nov 2026 (ET DAVOS 2027): "AI has created a square image for a rectangular placeholder" */
+  check('D.7 the place a new background or banner picture fills is sent with its size', /frame: p\.frame && \+p\.frame\.w > 0 && \+p\.frame\.h > 0 \? \{ w: Math\.round\(\+p\.frame\.w\), h: Math\.round\(\+p\.frame\.h\) \} : null,/.test(plain), plain);
+  var ctxSrc = body('sectionsContext'), slotSrc = body('pictureSlotOf'), placeSrc = body('placeNewPicture'), forSrc = body('picturesFor'), fitSrc = body('fitNewFrame');
+  check('D.7 every picture is measured on the desktop layout, whatever device the canvas shows: what the AI is told, the picture selected and the place a swap takes',
+    /var picInfo = P \? onDesktop\(function \(\) \{[^]*P\.describe\(sec, help\)/.test(ctxSrc) && /onDesktop\(function \(\) \{ return P\.slotOf\(/.test(slotSrc) &&
+    /onDesktop\(function \(\) \{ return P\.target\(sec, np, focusEl, help\); \}\)/.test(placeSrc) && /canvas\.atDesktop\(fn\)/.test(body('onDesktop')), [ctxSrc.slice(0, 200), slotSrc, placeSrc.slice(0, 200)]);
+  check('D.7 the rework that adds the new picture is told the shape it was made in — a picture of the section, never a background',
+    /np && n === np\.n && np\.apply === 'rework' && np\.placement === 'picture' && np\.frame \? \{ n: n, url: attached\[n - 1\], frame: np\.frame \}/.test(forSrc), forSrc);
+  check('D.7 once the rework shows it, its frame is held to that shape on the desktop layout (RevampAiPicture.fitFrame)',
+    /if \(picShown && np\.placement === 'picture' && np\.frame\) fitNewFrame\(fresh\);/.test(SRC) && /onDesktop\(function \(\) \{[^]*img\.getAttribute\('src'\) === madePic\.url\) P\.fitFrame\(img, np\.frame, aiPictureHelpers\(\)\)/.test(fitSrc) &&
+    /typeof P\.fitFrame !== 'function'/.test(fitSrc), fitSrc);
   check('D.7 what the owner is told: left as it was, because it would have changed what it shows from Content',
     /^left as it was — putting the new picture in would have changed what it shows from Content \(a name, a role, a photo, a logo or a link\)$/.test(R.RECORDS_CHANGED), R.RECORDS_CHANGED);
 })();

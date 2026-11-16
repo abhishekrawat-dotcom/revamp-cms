@@ -229,7 +229,7 @@ var HEADING_SCALE = { section: rvType.SECTION_HEADING, sub: rvType.SUB_HEADING, 
    ask for a section that needs none of that. */
 var MOBILE_RULES = [
   '- PHONES (most visitors read on a phone; every section is checked at 360px wide, where the container leaves 312px for content):',
-  '  · Under 820px every grid, split and row of cards is ONE column in reading order (a band of numbers may keep two per row). A picture beside text goes above or below it at full width with a fixed height (aspect-ratio 16/10, or 220–320px) — never a min-height over 340px on a phone.',
+  '  · Under 820px every grid, split and row of cards is ONE column in reading order (a band of numbers may keep two per row). A picture beside text goes above or below it at full width with a fixed height (the aspect-ratio its frame was given, else 16/10, or 220–320px) — never a min-height over 340px on a phone.',
   '  · Under 640px: the section\'s vertical padding is 56–64px; the container keeps padding 0 24px; cards have padding 20–24px; gaps 16–24px.',
   '  · Calls to action under 640px: every button is the full width of the container (display:flex; width:100%; justify-content:center; text-align:center), at least 48px tall, its label free to wrap; two buttons stack with a 12px gap. Give each button a class that ends in -btn.',
   '  · Alignment: a section is either centred or left-aligned throughout — its heading, its text and its buttons the same way; never a centred heading over left-aligned buttons.',

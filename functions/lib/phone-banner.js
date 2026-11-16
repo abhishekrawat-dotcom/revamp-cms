@@ -47,6 +47,7 @@ const gemini = require('./gemini');
 const pictures = require('./pictures');
 const safeFetch = require('./safe-fetch');
 const chatPicture = require('./chat-picture');
+const pictureShape = require('./picture-shape');   // the picture cut to exactly 9:16 (owner, 16 Nov 2026)
 
 var H = null;
 var NEEDS = ['withAdminBody', 'sendJson', 'sendFailure', 'sendAiFailure', 'BODY_LIMITS', 'chatUid', 'isEventId', 'aiUsageRecorder', 'logActivity', 'ET_LOGO_COLOUR_RULE'];
@@ -258,7 +259,10 @@ function make(fb, decoded, eventId, src, held, started) {
         console.error('phone-banner: the picture model answered ' + bytes.length + ' bytes that are not a PNG, JPEG or WebP');
         return { ai: Object.assign(gemini.failure('ai-bad-output'), { provider: 'gemini' }) };
       }
-      return { bytes: bytes, type: type };
+      /* cut to exactly 9:16 (the model's "9:16" is 768 x 1344): a phone's banner has a phone's shape (lib/picture-shape.js) */
+      return pictureShape.crop(bytes, pictureShape.ratioOf(ASPECT), { label: 'the phone banner of ' + eventId }).then(function (cut) {
+        return { bytes: cut.bytes, type: cut.cropped ? chatPicture.sniff(cut.bytes) || type : type };
+      });
     }, function (err) {
       console.error('phone-banner: the picture call for ' + eventId + ' failed — ' + (err && err.message));
       return { ai: Object.assign(gemini.failure('ai-unavailable'), { provider: 'gemini' }) };

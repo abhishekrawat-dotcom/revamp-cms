@@ -35,6 +35,10 @@
      NO_FIGURES / NO_FIGURE_SHAPES      -> what promptFor adds after the STRICT rules where people may not show
      peopleRule(np)                     -> 'none' | 'distant' | 'allowed': who the placement's rules let into the picture
      wideOf(np)                         -> true for a wide place (the banner, a wide section background): made 16:9
+     aspectOf(np)                       -> the shape a stored ask is made in: its own (the frame's nearest), else 16:9
+                                           for a wide place, else 4:3; make() cuts the picture to np.frame's exact
+                                           proportion (lib/picture-shape.js) before it is checked and stored
+     framePlace(aspect)                 -> where the brief puts a frame of that shape that a rework adds
      checkPicture(bytes, type, rule, o) -> Promise<{ people, text, logos } | null>: one look at a made picture by a
                                            low-cost model (llm.js route 'picture-check'); null when it could not look
      refusedFor(found, rule) / againLine(flags) / foundText(flags) / sniff(bytes)
@@ -55,6 +59,9 @@ var gemini = require('./gemini');
 var llm = require('./llm');
 var pictures = require('./pictures');
 var genDesign = require('./gen-design');
+/* a picture made for a frame has the frame's shape: asked for in the nearest shape the model takes, then cut to the
+   frame's exact proportion (owner, 16 Nov 2026: "AI has created a square image for a rectangular placeholder") */
+var shape = require('./picture-shape');
 
 /* ---------- limits ---------- */
 
@@ -73,17 +80,32 @@ var WIDE_ASPECT = '16:9';             // the shape asked for where the place is 
 /* a social post's own shapes (lib/promo-ai.js aspectOf), and how the prompt says each */
 var POST_ASPECTS = { '1:1': 'Square, 1:1.', '4:5': 'Portrait, 4:5.', '9:16': 'Tall portrait, 9:16.', '16:9': 'Landscape, 16:9.' };
 /* every shape the picture model takes (gemini.js IMAGE_ASPECTS) and how the prompt says it: a section's picture is
-   made in its frame's own shape (owner, 10 Nov 2026: "you have created a square image and placeholder is rectangular") */
-var ASPECT_WORDS = { '1:1': 'Square, 1:1.', '5:4': 'Landscape, 5:4.', '4:3': 'Landscape, 4:3.', '3:2': 'Landscape, 3:2.', '16:9': 'Landscape, 16:9.',
-  '21:9': 'Wide panorama, 21:9.', '4:5': 'Portrait, 4:5.', '3:4': 'Portrait, 3:4.', '2:3': 'Portrait, 2:3.', '9:16': 'Tall portrait, 9:16.' };
-var DEFAULT_ASPECT = '4:3';            // what the picture prompt has always said ("Landscape, 4:3."), now asked for too
+   made in its frame's own shape (owner, 10 Nov 2026: "you have created a square image and placeholder is rectangular";
+   16 Nov 2026: a frame a rework adds too, and cut to the frame's exact proportion — lib/picture-shape.js) */
+var ASPECT_WORDS = shape.WORDS;
+var DEFAULT_ASPECT = shape.DEFAULT_ASPECT;   // what the picture prompt has always said ("Landscape, 4:3."), now asked for too
 /* the shape nearest a frame's width and height, '' with no size */
-function frameAspect(w, h) {
-  w = +w; h = +h;
-  if (!(w > 0 && h > 0)) return '';
-  var r = Math.log(w / h), best = '', gap = Infinity;
-  Object.keys(ASPECT_WORDS).forEach(function (a) { var x = a.split(':'), d = Math.abs(Math.log(+x[0] / +x[1]) - r); if (d < gap) { gap = d; best = a; } });
-  return best;
+function frameAspect(w, h) { return shape.nearest(w, h); }
+/* the shape a picture is asked for: its stored shape, else 16:9 for a wide place, else 4:3 */
+function aspectOf(np) {
+  np = np || {};
+  if (shape.isAspect(np.aspect)) return np.aspect;
+  return wideOf(np) ? WIDE_ASPECT : DEFAULT_ASPECT;
+}
+/* "Add" words: the owner wants a picture beside the section's own (owner, 16 Nov 2026: "add a relevant image according
+   to content for the ETStudio sub-section of this section" — made for the section's one picture's frame, put in by the
+   rework into the ET Studio card as well, and so in two places, the second of the wrong shape) */
+var ADD_PICTURE_RE = /\b(?:add|adding|another|extra|additional|insert|include)\b|\b(?:one\s+more|a\s+second)\b|जोड़/i;
+/* …and words that replace one: about a picture ("replace the picture", "change this image", "a new one instead"), not
+   "change the heading" said beside an added picture */
+var REPLACE_PICTURE_RE = /\b(?:replace|replacing|swap|swapping|change|changing|update|refresh|redo|regenerate)\b[^.?!]{0,30}\b(?:pictures?|pics?|photos?|photographs?|images?|visuals?|it|this|that)\b|\binstead\b|\bnew\s+one\b/i;
+/* where the brief puts a frame of each shape: a wide one across the section, a narrower one in a column beside the text */
+function framePlace(aspect) {
+  var r = shape.ratioOf(aspect);
+  if (r >= 1.7) return 'across the section, above or below its text, at the full width of its container';
+  if (r > 1.05) return 'beside the text in a split (one column of it), or above the text';
+  if (r >= 0.95) return 'beside the text in a split, as a square tile';
+  return 'as a tall picture beside the text in a split';
 }
 var WIDE_RATIO = 1.3;                 // a section background at least this much wider than tall is a wide place
 var STALE_MS = 5 * 60 * 1000;         // a picture "being made" for longer than this was lost (the process died)
@@ -559,6 +581,8 @@ function cleanSectionFields(section, ownPrefix) {
     var o = e && typeof e === 'object' ? e : {};
     return { label: label, w: int(o.w != null ? o.w : o.width, 0, 20000), h: int(o.h != null ? o.h : o.height, 0, 20000) };
   });
+  /* the place a new background or banner picture would fill, as the editor measured it (null when not sent) */
+  var place = p.frame && typeof p.frame === 'object' ? shape.frameOf(p.frame.w, p.frame.h) : null;
   var prefix = String(ownPrefix || '');
   var own = !prefix ? [] : (Array.isArray(p.own) ? p.own : []).map(function (u) { return String(u || '').trim(); }).filter(function (u) {
     return u.indexOf(prefix) === 0 && u.length < 600 && !/[?#]/.test(u.slice(prefix.length).replace(/\?v=\d+$/, ''));
@@ -574,6 +598,8 @@ function cleanSectionFields(section, ownPrefix) {
       heroTarget: HERO_TARGETS.indexOf(p.heroTarget) !== -1 ? p.heroTarget : '',
       /* its background's place (or, with none, the section) is wide: a new background there is made 16:9 */
       wide: p.wide === true,
+      /* that place's size (the banner's picture for the banner): a new background or banner is made in its shape */
+      frame: place,
       own: own
     }
   });
@@ -601,13 +627,17 @@ function schemaItem(sectionIds) {
     type: 'OBJECT',
     properties: {
       sectionId: { type: 'STRING', description: 'the section the new picture goes in' },
-      placement: { type: 'STRING', enum: PLACEMENTS.slice(), description: 'hero: the banner\'s picture; background: a picture behind a section\'s content; picture: the section\'s own picture (replaced, or added when it has none)' },
+      placement: { type: 'STRING', enum: PLACEMENTS.slice(), description: 'hero: the banner\'s picture; background: a picture behind a section\'s content; picture: the section\'s own picture (replaced, or added by reworking the section when it has none or the owner asks to add one)' },
       slot: { type: 'INTEGER', minimum: 0, description: 'which of the section\'s pictures (1 = the first in its pictures list), only when the owner\'s words say which; 0 otherwise' },
+      /* the shape of a frame a rework adds is decided here, before the picture is made, and the picture is made in it
+         (owner, 16 Nov 2026: "AI has created a square image for a rectangular placeholder") */
+      frame: { type: 'STRING', enum: [''].concat(shape.FRAME_SHAPES), description: 'only for a picture a rework of the section adds (placement "picture" in a section with no picture, or one the owner asks to add): the shape of the frame it gets — "21:9" a wide band across the section, "16:9" across the section above or below the text, "3:2" or "4:3" beside the text in a split, "1:1" a square tile, "4:5" or "3:4" a tall picture beside the text. The picture is made in that shape and the rework gives the frame exactly that shape. "" otherwise' },
       subject: { type: 'STRING', description: 'one plain sentence in English, at most 40 words: the scene the picture shows, from what the owner asked; no words, numbers, logos, signs or real or named people, and no names of people, companies or brands; a city, region or well-known place the owner asks for is named as the owner said it and described by what makes it recognisable ("the Mumbai skyline at dusk: Marine Drive\'s curving sea front with its string of lights, high-rises along the bay"); the scene the owner named comes first, with nothing of the event\'s own city or field added to it' },
       kind: { type: 'STRING', enum: genDesign.IMAGE_KINDS.slice(), description: 'people only for a section about people or the gathering, never the banner; place, subject or graphic otherwise' },
       alt: { type: 'STRING', description: 'a short description of the picture for screen readers' }
     },
-    required: ['sectionId', 'placement', 'slot', 'subject', 'kind', 'alt']
+    /* frame is always answered ("" when it does not apply), so the shape of a frame a rework adds is never left to chance */
+    required: ['sectionId', 'placement', 'slot', 'subject', 'kind', 'alt', 'frame']
   };
   if (Array.isArray(sectionIds) && sectionIds.length) item.properties.sectionId.enum = sectionIds.slice();
   return { type: 'ARRAY', description: 'at most ONE new picture, only when the owner asks for one; empty otherwise', items: item };
@@ -623,8 +653,10 @@ function promptLines(payload) {
   var left = typeof payload.picturesLeft === 'number' ? Math.max(0, Math.min(perDay, payload.picturesLeft)) : null;
   var lines = [
     'NEW PICTURES — you can make ONE new picture per message, ONLY when the owner\'s latest message asks for one (or, right after a picture you made, asks for another try: "make it brighter", "try another"). Put it in `newPictures`; leave it empty otherwise, and never give more than one. It is made and placed at once, and the owner can undo it like any other change.',
-    '- `placement`: "hero" is the banner\'s picture at the top of the page; "background" is a picture behind a section\'s content; "picture" is the section\'s own picture — it replaces it, or adds one when the section has none.',
+    '- `placement`: "hero" is the banner\'s picture at the top of the page; "background" is a picture behind a section\'s content; "picture" is the section\'s own picture — it replaces one of its pictures, or a rework of the section adds one when it has none or when the owner asks to add a picture (to the section, or to a part of it) beside the ones it has.',
     '- `slot`: which of the section\'s pictures (its `pictures` list below, 1 = the first) — only when the owner\'s words say which one, by its position or by what it shows; 0 otherwise.',
+    /* owner, 16 Nov 2026: a picture added by a rework was made 4:3 and laid out as a band three times as wide */
+    '- `frame`: for a picture a rework of the section ADDS (the section has no picture, or the owner asks to add one beside its own): the shape of its frame, chosen for where it goes — "21:9" a band across the section, "16:9" across the section above or below the text, "3:2" or "4:3" beside the text, "1:1" a square tile, "4:5" or "3:4" a tall picture beside the text. The picture is made in exactly that shape and the rework is told to give the frame that shape, so write nothing about the picture\'s size in `sectionEdits`. "" when the picture replaces one the section has, and for a banner or a background.',
     '- `kind`: "people" only for a section about people or the gathering (at most two sections of the site show people; the banner never does — it is the event\'s key visual); "place" for the venue or the city; "subject" for the field\'s own things, in detail; "graphic" for an illustration.' +
       (payload.ownerGraphics ? ' The owner\'s brief asked for graphics, not photographs: use "graphic" unless the owner now asks for a photograph.' : ''),
     '- `alt`: a short description of the picture for screen readers.',
@@ -646,7 +678,7 @@ function promptLines(payload) {
     '- Content\'s own photos and logos (speaker headshots, partner and sponsor logos, the jury\'s and winners\' photos, the previous edition\'s photos and the gallery) are never replaced: they are left out of every section\'s `pictures` list. A section with role "records" holds them; it takes a new picture only in a place its `pictures` list offers, or as its background: a background it has (`background: true`) is replaced, and one it does not have is added by reworking the section around the new picture — the editor keeps that rework only if every record in it (each name, role, photo, logo and link) comes out exactly as it was, and otherwise leaves the section as it was and keeps the picture for the owner to place. If the owner asks to replace one of those photos or logos (a person\'s photo by name, "new headshots for the speakers", "replace the partner logos"), make NO picture: say they are Content\'s own, and offer the section a background picture instead.',
     '- WHERE: the place must be the section the owner has selected, a section the owner names, the banner, or the place of the picture you made just before. If two of those disagree, or none holds, make NO picture and ask in a "reply", offering two or three places. If the section has several pictures and none is selected or named, ask which one.',
     '- THE BANNER (role "hero"; `banner` says what a new picture there replaces, and "none" means it cannot take one: say to upload one in Design › Banner): if it plays a video (video: true), say a new picture would not be seen. If the screenshot shows the banner\'s picture has the event\'s name, date or logo drawn into it (a designed banner), say that a new picture will not carry them, and ask before replacing it.',
-    '- To use the new picture inside a rework of the same section, list ' + n + ' in that section\'s `sectionEdits` `pictures` (the new picture is number ' + n + ').',
+    '- To add the new picture through a rework of the same section, list ' + n + ' in that section\'s `sectionEdits` `pictures` (the new picture is number ' + n + '). A picture that replaces one of the section\'s pictures is swapped in by itself: do not list it in a rework as well, or it would be on the page twice.',
     '- `summary`: say what picture you are making and where, and that it takes about half a minute. "Make it brighter", "try another" or the like after a picture of yours is a new picture for the same place, and the summary says it replaces yours.'
   ];
   if (left !== null) {
@@ -1033,13 +1065,24 @@ function planAsk(list, ctx) {
   if (sec.role === 'records' && ((placement === 'picture' && !slots) || recordsMeant(said, sec, sections, ctx.focus, nameCtx, placement))) {
     return out(null, sentence('records', { name: nameRef(sec) }));
   }
-  /* 7. which picture, when the section has several */
+  /* 7. which picture, when the section has several — or none of them: the owner asked to ADD a picture and the
+     model reworks the section around it (owner, 16 Nov 2026: "add a relevant image according to content for the
+     ETStudio sub-section of this section" was swapped into the section's one picture AND put in the ET Studio card
+     by the rework, made in the first one's shape) */
+  var adds = false;
   if (placement === 'picture') {
     var focus = ctx.focus && typeof ctx.focus === 'object' ? ctx.focus : {};
     var wanted = int(e.slot, 0, 50), focused = focus.sectionId === sec.id ? int(focus.slot, 0, 50) : 0;
-    if (slots === 1) slot = 1;
+    var named0 = wanted >= 1 && wanted <= slots ? wanted : focused >= 1 && focused <= slots ? focused : 0;
+    var reworksWithIt = (Array.isArray(ctx.sectionEdits) ? ctx.sectionEdits : []).some(function (x) {
+      return x && x.sectionId === sec.id && Array.isArray(x.pictures) && x.pictures.indexOf(n) !== -1;
+    });
+    var plain = said.replace(NEG_RE, ' ');
+    adds = slots >= 1 && !named0 && reworksWithIt && ADD_PICTURE_RE.test(plain) && !REPLACE_PICTURE_RE.test(plain);
+    if (adds) slot = 0;
+    else if (slots === 1) slot = 1;
     else if (slots > 1) {
-      slot = wanted >= 1 && wanted <= slots ? wanted : focused >= 1 && focused <= slots ? focused : 0;
+      slot = named0;
       if (!slot) return out(null, sentence('several', { name: nameRef(sec) }));
     }
   }
@@ -1070,17 +1113,42 @@ function planAsk(list, ctx) {
     kind = 'place';
     notes.push(sentence('people'));
   }
-  /* 12. swapped in place where the section has a picture to swap; else the section is reworked around it */
-  var apply = placement === 'hero' || (placement === 'background' && p.background) || (placement === 'picture' && slots >= 1) ? 'swap' : 'rework';
+  /* 12. swapped in place where the section has a picture to swap (and the owner did not ask to add one); else the
+     section is reworked around it */
+  var apply = placement === 'hero' || (placement === 'background' && p.background) || (placement === 'picture' && slots >= 1 && !adds) ? 'swap' : 'rework';
   var alt = cleanAlt(e.alt, subj.subject, nameCtx);
+  /* 12b. the shape it is made in, known before it is made (lib/picture-shape.js): the frame it takes the place of as
+     the editor measured it; the banner's or the background's place; for a frame a rework adds, the shape the chat
+     chose for it (16:9 when it chose none), which the brief then gives the frame */
+  var frame = null, aspect = '';
+  if (placement === 'picture' && apply === 'swap') {
+    var at = Array.isArray(p.list) ? p.list[slot - 1] : null;
+    frame = at ? shape.frameOf(at.w, at.h) : null;
+    aspect = frame ? shape.nearest(frame.w, frame.h) : '';
+  } else if (placement === 'picture') {
+    aspect = shape.FRAME_SHAPES.indexOf(e.frame) !== -1 ? e.frame : shape.NEW_FRAME_ASPECT;
+    frame = shape.frameFromText(aspect);
+  } else {
+    frame = p.frame && typeof p.frame === 'object' ? shape.frameOf(p.frame.w, p.frame.h) : null;
+    /* a banner is always wide: one measured narrower (a canvas the width of a phone) keeps the usual 16:9, and a wide
+       one is made in the nearest of the wide shapes */
+    if (placement === 'hero' && frame && frame.w < frame.h * WIDE_RATIO) frame = null;
+    aspect = frame ? shape.nearest(frame.w, frame.h, placement === 'hero' ? shape.LANDSCAPE : null) : '';
+  }
   var edits = ctx.sectionEdits;
   if (apply === 'rework') {
     /* a records section may be reworked around a new background (finding B), but its records are Content's: the
        editor keeps the rework only if each of them comes out as it was, and the brief says so */
     var keepRecords = sec.role === 'records' ? ' Keep every record in it exactly as it is — each name, role, photo, logo and link from Content, and the elements and attributes that hold them.' : '';
+    var css = shape.cssRatio(frame);
+    /* where it goes is the model's own brief when it wrote one for the section ("in the ET Studio panel, beside its
+       text"); the frame's shape is always said */
+    var ownBrief = (Array.isArray(edits) ? edits : []).some(function (x) { return x && x.sectionId === sec.id && String(x.instruction || '').trim(); });
     var add = placement === 'background'
       ? 'Use attached picture ' + n + ' as this section\'s background picture: behind all of its content, background-size cover, centred, under a veil in the page\'s background colour strong enough that every text stays readable.' + keepRecords + ' Change nothing else that was not asked.'
-      : 'Add attached picture ' + n + ' to this section as its picture, in a sized frame beside or above its text, object-fit cover, alt text "' + alt + '". Change nothing else that was not asked.';
+      : 'Add attached picture ' + n + ' to this section as its picture, in ONE frame of exactly ' + aspect + ' placed ' + (ownBrief ? 'where the brief above puts it, else ' : '') + framePlace(aspect) +
+        ': the frame is sized by its width, with aspect-ratio: ' + css + ' and no height, min-height or max-height of its own, and the picture fills it (display: block; width: 100%; height: 100%; object-fit: cover), alt text "' + alt +
+        '". The picture is made in exactly that shape, so the frame keeps it at every screen width. Change nothing else that was not asked.';
     var merged = false;
     edits = (Array.isArray(edits) ? edits : []).map(function (x) {
       if (!x || x.sectionId !== sec.id || merged) return x;
@@ -1091,18 +1159,29 @@ function planAsk(list, ctx) {
       return Object.assign({}, x, { instruction: (before ? before + ' ' : '') + add, pictures: pics });
     });
     if (!merged) edits.push({ sectionId: sec.id, instruction: add, pictures: [n] });
+  } else if (placement !== 'hero') {
+    /* swapped in before the section's own rework runs: that rework (the model's, listing the new picture or not) sees
+       it already in place and is told to keep it there, once */
+    var KEEP_SWAPPED = ' The new picture is already in the section, in place of its old ' + (placement === 'background' ? 'background' : 'one') + ': keep it where it is, once, and add no other copy of it.';
+    edits = (Array.isArray(edits) ? edits : []).map(function (x) {
+      if (!x || x.sectionId !== sec.id || !(Array.isArray(x.pictures) && x.pictures.indexOf(n) !== -1)) return x;
+      var room = BRIEF_CHARS - KEEP_SWAPPED.length;
+      return Object.assign({}, x, { instruction: String(x.instruction || '').trim().slice(0, Math.max(0, room)).trim() + KEEP_SWAPPED });
+    });
   }
-  /* 13. its number: one past the attachments. It stays only in this section's rework (the one added above, or
-     one the model wrote for it); the banner is never reworked, so there it stays nowhere. */
+  /* 13. its number: one past the attachments. It stays only in this section's rework when the rework puts it in (the
+     one added above, or one the model wrote for it). A picture swapped in is put in by the swap alone — a rework that
+     listed it too would put it on the page twice — and the banner is never reworked: there it stays nowhere. */
   var ask = { n: n, sectionId: sec.id, placement: placement, slot: slot, apply: apply, kind: kind, alt: alt, subject: subj.subject,
     sectionName: cleanSectionName(sec.name || sec.id), contextName: contextName(sec.name || sec.id, nameCtx),
     heroMode: placement === 'hero' ? (sec.heroMode || '') : '',
     ownerSubject: ownerSubject,
     /* a wide place (the banner; a background the editor measured as wide) is made 16:9 */
     wide: placement === 'hero' || (placement === 'background' && p.wide === true),
-    /* a picture that takes a frame's place is made in the frame's shape */
-    aspect: placement === 'picture' && slot >= 1 && Array.isArray(p.list) && p.list[slot - 1] ? frameAspect(p.list[slot - 1].w, p.list[slot - 1].h) : '' };
-  var keepFor = placement === 'hero' ? '' : sec.id;
+    /* the shape it is asked for, and the frame's exact size it is cut to (lib/picture-shape.js) */
+    aspect: aspect,
+    frame: shape.frameText(frame) };
+  var keepFor = apply === 'rework' ? sec.id : '';
   return { ask: ask, reply: '', note: notes.join(' '), edits: stripNumber(edits, n, keepFor), newSections: stripNumber(ctx.newSections, n, '') };
 }
 
@@ -1111,7 +1190,10 @@ function answerOf(ask) {
   if (!ask) return null;
   var subject = String(ask.subject || '');
   if (subject.length > 140) subject = subject.slice(0, 139).replace(/\s+\S*$/, '') + '…';
-  return { n: ask.n, sectionId: ask.sectionId, placement: ask.placement, slot: ask.slot, apply: ask.apply, kind: ask.kind, alt: ask.alt, subject: subject };
+  /* frame: the shape the picture is made in and cut to ('16:9' for a frame a rework adds, '1152:380' for one it takes
+     the place of): the editor holds a frame it adds to that shape (editor-ai-picture.js fitFrame) */
+  return { n: ask.n, sectionId: ask.sectionId, placement: ask.placement, slot: ask.slot, apply: ask.apply, kind: ask.kind, alt: ask.alt, subject: subject,
+    frame: shape.frameText(shape.frameFromText(ask.frame)) };
 }
 /* the turn's newPicture: the full cleaned subject, the section's cleaned name, the banner's tone and the
    editor's colours (for a site the AI did not design), state 'asked' until phase 2 makes it */
@@ -1125,6 +1207,8 @@ function turnRecord(ask, design) {
     ownerSubject: ask.ownerSubject === true,
     wide: ask.wide === true,
     aspect: ASPECT_WORDS[ask.aspect] ? ask.aspect : '',
+    /* the frame's exact size ('1152:380'), which the picture is cut to; '' when only its shape is known */
+    frame: shape.frameText(shape.frameFromText(ask.frame)),
     design: { themeColor: hexColour(design.themeColor), mode: design.mode === 'dark' || design.mode === 'light' ? design.mode : '' },
     state: 'asked' };
 }
@@ -1363,11 +1447,11 @@ function promptFor(np, eventData) {
      decides what the picture check refuses */
   var rule = peopleRule(np);
   var noPeople = rule === 'none' ? NO_FIGURES : rule === 'distant' ? NO_FIGURE_SHAPES : '';
-  /* a wide place gets a wide picture (make() asks the model for 16:9), and the words say the same */
-  /* a post's background (lib/promo-ai.js) is made in the post's own shape, and the words say so */
+  /* the words say the shape make() asks the model for (aspectOf): the frame's own (a banner as wide as its place, a
+     section's picture as its frame, a post's background as the post), a wide place 16:9, else 4:3 */
   function shaped(prompt) {
-    if (!hero && ASPECT_WORDS[np.aspect]) return lastReplaced(prompt, 'Landscape, 4:3.', ASPECT_WORDS[np.aspect]);
-    return wideOf(np) && !hero ? lastReplaced(prompt, 'Landscape, 4:3.', 'Landscape, 16:9.') : prompt;
+    var said = hero ? 'Landscape, 16:9.' : 'Landscape, 4:3.', want = ASPECT_WORDS[aspectOf(np)];
+    return want && want !== said ? lastReplaced(prompt, said, want) : prompt;
   }
   function ending(prompt) { prompt = shaped(prompt); return noPeople ? prompt + ' ' + noPeople : prompt; }
   /* the owner named the scene: it leads, and the event's field, venue, city and previous banner stay out */
@@ -1682,11 +1766,11 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
   var started = Date.now(), deadlineAt = started + DEADLINE_MS;
   var rule = peopleRule(np);
   /* One call to the picture model. -> Promise<{ bytes, type } | { code, status }>, never rejects */
+  /* the shape it is asked for (the nearest the model takes) and the exact proportion it is cut to before it is checked
+     and stored: the frame's, else that shape's (the model's "4:3" is 1184 x 864) */
+  var askShape = aspectOf(np), cutTo = shape.targetRatio({ frame: np.frame, aspect: askShape });
   function picture(text, until) {
-    var opts = { route: 'chat-picture', eventId: eventId, timeoutMs: TIMEOUT_MS, deadlineAt: until };
-    if (wideOf(np)) opts.aspectRatio = WIDE_ASPECT;
-    else if (ASPECT_WORDS[np.aspect]) opts.aspectRatio = np.aspect;
-    else opts.aspectRatio = DEFAULT_ASPECT;
+    var opts = { route: 'chat-picture', eventId: eventId, timeoutMs: TIMEOUT_MS, deadlineAt: until, aspectRatio: askShape };
     var call;
     try { call = Promise.resolve(gemini.callGeminiImage(text, opts)); } catch (err) { call = Promise.reject(err); }
     return call.then(function (r) {
@@ -1702,7 +1786,10 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
         console.error('chat-picture: the picture model answered ' + bytes.length + ' bytes that are not a PNG, JPEG or WebP');
         return { code: 'ai-bad-output', status: 502 };
       }
-      return { bytes: bytes, type: type };
+      /* cut to its frame's exact proportion: what is checked and stored is what the frame shows */
+      return shape.crop(bytes, cutTo, { label: 'the picture of ' + eventId + '/' + turnId }).then(function (cut) {
+        return { bytes: cut.bytes, type: cut.cropped ? sniff(cut.bytes) || type : type, width: cut.width, height: cut.height };
+      });
     }, function (err) {
       console.error('chat-picture: the picture call of ' + eventId + '/' + turnId + ' failed — ' + (err && err.message));
       return { code: 'ai-unavailable', status: 502 };
@@ -1781,7 +1868,9 @@ function makeIt(deps, fb, eventId, turnRef, turnId, qRef, np, o) {
       .then(function () {
         var done = Object.assign({}, np, { state: 'made', url: url, storagePath: storagePath, madeAt: new Date().toISOString(), tries: tries,
           /* what the check found each time (null: it could not look, and the picture was placed unchecked) */
-          checks: looks.map(function (f) { return f ? { people: f.people, text: f.text, logos: f.logos } : null; }) });
+          checks: looks.map(function (f) { return f ? { people: f.people, text: f.text, logos: f.logos } : null; }),
+          /* its size as stored, once cut to its frame ('' when it could not be read) */
+          size: pic.width && pic.height ? pic.width + 'x' + pic.height : '' });
         if (heldWhy) { done.held = true; done.heldWhy = heldWhy; }
         return Promise.resolve().then(function () { return turnRef.update({ newPicture: done, updatedAt: done.madeAt }); }).catch(function (err) {
           /* the picture is stored and is answered; the turn is left "making" and is read as lost after STALE_MS */
@@ -1818,5 +1907,7 @@ module.exports = {
   /* for lib/ai-hero.js, which makes the dashboard's first hero picture and checks it with this same check */
   sniff: sniff, foundText: foundText,
   /* owner, 10 Nov 2026 (CISO Secufest): an offer instead of "did not ask", and a picture in its frame's shape */
-  offerOf: offerOf, frameAspect: frameAspect, ASPECT_WORDS: ASPECT_WORDS, DEFAULT_ASPECT: DEFAULT_ASPECT
+  offerOf: offerOf, frameAspect: frameAspect, ASPECT_WORDS: ASPECT_WORDS, DEFAULT_ASPECT: DEFAULT_ASPECT,
+  /* owner, 16 Nov 2026 (ET DAVOS 2027): the shape a stored ask is made in, and where a frame of each shape goes */
+  aspectOf: aspectOf, framePlace: framePlace
 };

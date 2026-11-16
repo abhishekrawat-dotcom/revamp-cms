@@ -613,7 +613,16 @@ function insideUnit(el) { return !!(el && el.closest && el.closest('[data-rv-log
   check('C.4 describe answers plain data (it is sent to the server as JSON)', (function () {
     var x = d('why-attend');
     return JSON.stringify(JSON.parse(JSON.stringify(x))) === JSON.stringify(x) && Object.keys(x).join() === 'role,video,heroMode,pics' &&
-      Object.keys(x.pics).join() === 'slots,list,background,heroTarget,wide,own';
+      Object.keys(x.pics).join() === 'slots,list,background,heroTarget,wide,frame,own';
+  })());
+  /* owner, 16 Nov 2026 (ET DAVOS 2027): the place a new background or banner picture fills is measured and sent, so it is
+     made in that shape and cut to it (functions/lib/picture-shape.js) */
+  check('C.4 frame: a background element 1440 x 600 is sent as its size', JSON.stringify(d('about').pics.frame) === '{"w":1440,"h":600}', d('about').pics);
+  check('C.4 frame: a section with no background is sent as the section, the place a rework puts one', JSON.stringify(d('agenda').pics.frame) === '{"w":1440,"h":900}', d('agenda').pics);
+  check('C.4 frame: the banner is sent as its picture\'s place', d('hero').pics.heroTarget === 'background' && JSON.stringify(d('hero').pics.frame) === '{"w":1440,"h":800}', d('hero').pics);
+  check('C.4 frame: the server keeps it as sent', (function () {
+    var cp2 = require('./chat-picture');
+    return JSON.stringify(cp2.cleanSectionFields(JSON.parse(JSON.stringify(d('about'))), STORE).pics.frame) === '{"w":1440,"h":600}';
   })());
   /* a wide place takes a wide picture (chat-picture.js asks the model for 16:9): the shape of the background's own
      element, else of the section a rework would put a background on */
@@ -1057,7 +1066,7 @@ var RECS = [
   }
   check('C.9 one global, RevampAiPicture, with the agreed calls', (function () {
     var own = Object.keys(ctx).filter(function (k) { return ['console', 'window'].indexOf(k) === -1; });
-    return own.join() === 'RevampAiPicture' && Object.keys(P).sort().join() === ['chooseSlot', 'describe', 'heroVeilCss', 'isProtected', 'place', 'recordsState', 'slotOf', 'target', 'unitState'].join();
+    return own.join() === 'RevampAiPicture' && Object.keys(P).sort().join() === ['chooseSlot', 'describe', 'fitFrame', 'heroVeilCss', 'isProtected', 'place', 'recordsState', 'slotOf', 'target', 'unitState'].join();
   })(), Object.keys(P));
   check('C.9 asks no server and calls no AI (no fetch, XMLHttpRequest or authedFetch)', !/\bfetch\s*\(|XMLHttpRequest|authedFetch|sendBeacon/.test(code));
   check('C.9 writes no markup (no innerHTML, outerHTML, insertAdjacentHTML or document.write)', !/innerHTML|outerHTML|insertAdjacentHTML|document\.write/.test(code));

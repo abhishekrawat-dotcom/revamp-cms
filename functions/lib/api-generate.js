@@ -93,6 +93,8 @@ const generatedSite = require('./generated-site');
 const etNav = require('./et-nav');
 const etFooter = require('./et-footer');
 const pictures = require('./pictures');
+/* a picture made for a frame has the frame's shape (owner, 16 Nov 2026: "AI has created a square image for a rectangular placeholder") */
+const pictureShape = require('./picture-shape');
 const editionLook = require('./edition-look');
 const rvTheme = require('../../templates/_shared/rv-theme.js');
 const { scopeSectionCss, sectionRootInfo, mobileSafeCss } = require('./gen-markup');
@@ -1333,15 +1335,25 @@ function bottomColour(buffer, mimeType) {
   }
   return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null;
 }
+/* The banner is wide (its words say "Landscape, 16:9."): asked for 16:9 and cut to exactly that, never the square the
+   picture model answers when it is not told a shape (owner, 16 Nov 2026: "AI has created a square image for a
+   rectangular placeholder" — ET DAVOS 2027's banner was 1024 x 1024). */
+var HERO_SHAPE = '16:9';
 function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
-  return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+  return callGeminiImage(prompt || buildHeroImagePrompt(brief, themeColor), { route: 'plan-structure', eventId: eventId, aspectRatio: HERO_SHAPE }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
     if (record) record(r.usage);
     if (r.error) {
       console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + r.error);
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: r.error };
     }
-    var buffer = Buffer.from(r.base64, 'base64');
+    return pictureShape.crop(Buffer.from(r.base64, 'base64'), pictureShape.ratioOf(HERO_SHAPE), { label: 'the banner of ' + eventId }).then(function (cut) { return keepHero(cut.bytes); });
+  }).catch(function (err) {
+    console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + (err && err.stack || err));
+    return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'The banner picture could not be made.' };
+  });
+  function keepHero(buffer) {
+    var r = { mimeType: sniffPicture(buffer) };
     /* named after the run (stamp), like every other generated picture: what one name holds never changes,
        so it can be cached for a year and get WebP copies (pictures.js) */
     var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
@@ -1364,29 +1376,41 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp) {
         console.error('plan-structure: hero image generated but Storage save/publish failed, degrading to no hero image — ' + err.message);
         return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'The banner picture could not be saved.' };
       });
-  }).catch(function (err) {
-    console.error('plan-structure: hero image generation threw unexpectedly, degrading to no hero image — ' + (err && err.stack || err));
-    return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: 'The banner picture could not be made.' };
-  });
+  }
+}
+/* a picture's type by its first bytes: the cut keeps the model's format, and the model's word for it is not needed */
+function sniffPicture(buf) {
+  if (buf && buf.length > 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf && buf.length > 11 && buf.slice(0, 4).toString('latin1') === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  return 'image/png';
 }
 
 /* One picture for one section of a generated site: made, stored under the event and answered as
    { sectionId, url, subject } — or null when it could not be made, which costs the site that one picture
    and nothing else. `stamp` keeps a re-run's pictures apart from the last run's (a cached old picture under
    the same address would otherwise be shown for the new site). */
-function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level, kind) {
-  return callGeminiImage(genDesign.imagePrompt(subject, design, { context: context, about: about, level: level, kind: kind }), { route: 'plan-structure', eventId: eventId }).then(function (r) {
+/* shape: the picture's shape, from its section's planned layout (pictureShape.shapeForLayout; 4:3 when not given): it is
+   asked for in that shape and cut to exactly it, and the section's code is told to give its frame that shape
+   (buildSectionCodePrompt) — never the square the model answers untold (owner, 16 Nov 2026, ET DAVOS 2027) */
+function buildSectionImage(fb, eventId, sectionId, subject, design, stamp, context, about, level, kind, shape) {
+  shape = pictureShape.SITE_SHAPES.indexOf(shape) !== -1 ? shape : pictureShape.DEFAULT_ASPECT;
+  var prompt = genDesign.imagePrompt(subject, design, { context: context, about: about, level: level, kind: kind });
+  if (shape !== pictureShape.DEFAULT_ASPECT) prompt = prompt.replace(pictureShape.WORDS[pictureShape.DEFAULT_ASPECT], pictureShape.WORDS[shape]);
+  return callGeminiImage(prompt, { route: 'plan-structure', eventId: eventId, aspectRatio: shape }).then(function (r) {
     var record = aiUsageRecorder(fb, eventId, 'pictures');
     if (record) record(r.usage);
     if (r.error) { console.error('plan-structure: picture for "' + sectionId + '" failed — ' + r.error); return null; }
-    var ext = /jpe?g/i.test(r.mimeType) ? 'jpg' : /webp/i.test(r.mimeType) ? 'webp' : 'png';
-    var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
-    var file = fb.bucket.file(storagePath), bytes = Buffer.from(r.base64, 'base64');
-    /* the run's stamp makes the name unique: cached for a year, with WebP copies (pictures.js) */
-    return file.save(bytes, { metadata: { contentType: r.mimeType, cacheControl: pictures.CACHE } })
-      .then(function () { return file.makePublic(); })
-      .then(function () { return pictures.storeVariants(fb, storagePath, bytes); })
-      .then(function () { return { sectionId: sectionId, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath, subject: subject }; });
+    return pictureShape.crop(Buffer.from(r.base64, 'base64'), pictureShape.ratioOf(shape), { label: 'the picture for "' + sectionId + '" of ' + eventId }).then(function (cut) {
+      var bytes = cut.bytes, type = sniffPicture(bytes);
+      var ext = type === 'image/jpeg' ? 'jpg' : type === 'image/webp' ? 'webp' : 'png';
+      var storagePath = 'events/' + eventId + '/generated/' + stamp + '-' + sectionId + '.' + ext;
+      var file = fb.bucket.file(storagePath);
+      /* the run's stamp makes the name unique: cached for a year, with WebP copies (pictures.js) */
+      return file.save(bytes, { metadata: { contentType: type, cacheControl: pictures.CACHE } })
+        .then(function () { return file.makePublic(); })
+        .then(function () { return pictures.storeVariants(fb, storagePath, bytes); })
+        .then(function () { return { sectionId: sectionId, url: 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath, subject: subject, shape: shape }; });
+    });
   }).catch(function (err) {
     console.error('plan-structure: picture for "' + sectionId + '" failed — ' + err.message);
     return null;
@@ -2490,7 +2514,8 @@ function handlePlanStructure(req, res) {
           sections.filter(function (s) { return s.image; }).map(function (s) {
             /* what the section is for, so the picture is about that section and not only the event at large */
             var context = 'It illustrates the section of the event\'s website that is about this (for your understanding only — none of these words may be written in the picture): ' + s.purpose;
-            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level, s.imageKind);
+            /* in the shape its layout gives it (a band, across the section, beside the words): its frame is then that shape */
+            return buildSectionImage(fb, eventId, s.id, s.image, design, stamp, context, about, level, s.imageKind, pictureShape.shapeForLayout(s.layout));
           })
         );
         /* the logo unit is made alongside them: the logo the owner uploaded, else the previous edition's own,
@@ -2516,6 +2541,8 @@ function handlePlanStructure(req, res) {
             if (!s.image && s.imageSource === 'previous-edition') return;      // a real photo, set by etPictureRules
             var img = images.filter(function (i) { return i.sectionId === s.id; })[0];
             s.imageUrl = img ? img.url : '';
+            /* the shape it was made in and cut to, for the frame its code gives it (buildSectionCodePrompt) */
+            if (img && img.shape) s.imageShape = img.shape; else delete s.imageShape;
           });
           /* A lock-up on a light banner gets a copy for a dark one (only the black lettering made white: ET's logo
              rule). A dark site's banner is then dark as the site is — never a pale banner on a dark site; a light
@@ -2932,7 +2959,12 @@ function buildSectionCodePrompt(payload) {
       lines.push('- Section "' + s.id + '" has ' + s.photos.length + ' REAL photos from the previous edition, one per card: ' + s.photos.map(function (u, i) { return genDesign.pictureToken('photo-' + s.id + '-' + (i + 1)); }).join(' , ') + '. Make each a tall photo card (about 3:4, object-fit: cover) with a dark gradient at its foot carrying a small number ("01"), the card\'s title in the serif and one line under it; in a row that scrolls sideways on a phone.');
       return;
     }
-    lines.push('- Section "' + s.id + '" has a picture, already made. Its address is exactly ' + genDesign.pictureToken(s.id) + ' (it shows: ' + s.image + '). Use it with <img src="' + genDesign.pictureToken(s.id) + '" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band, at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.');
+    /* made in a shape of its own and cut to it (owner, 16 Nov 2026: "AI has created a square image for a rectangular
+       placeholder"): its frame keeps that shape at every screen width */
+    var css = pictureShape.SITE_SHAPES.indexOf(s.imageShape) !== -1 ? pictureShape.cssRatio(s.imageShape) : '';
+    lines.push('- Section "' + s.id + '" has a picture, already made. Its address is exactly ' + genDesign.pictureToken(s.id) + ' (it shows: ' + s.image + '). Use it with <img src="' + genDesign.pictureToken(s.id) + '" alt="…" loading="lazy"> and give it real presence — half the section\'s width or more in a split, or the full container width (or the full width of the page) as a plate or band' +
+      (css ? ' — placed as that section\'s layout says. It was made ' + s.imageShape + ': its frame is exactly that shape at every screen width (aspect-ratio: ' + css + ', sized by its width, with no height, min-height or max-height of its own), and the picture fills it (width: 100%; height: 100%; object-fit: cover).'
+        : ', at least 460px tall on desktop, object-fit: cover — placed as that section\'s layout says.'));
   });
   lines.push('- Pictures should fill roughly 40% of the page: make them large — tall splits, full-width bands — never thumbnails.');
   /* ET's award sites (seven read on 28 Oct 2026): the sections the model writes match the ones the server builds */
@@ -3177,11 +3209,13 @@ function fillSparseOverview(fb, eventId, answers, designPlan, ctx) {
   var stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
   var level = designPlan.owner && designPlan.owner.level ? designPlan.owner.level : '';
   console.warn('generate-content: ' + eventId + ' — the overview is sparse (' + text.length + ' characters, no picture): a picture is made for it');
-  return buildSectionImage(fb, eventId, 'overview', subject, design, stamp, 'It illustrates the overview of the event\'s website (for your understanding only — none of these words may be written in the picture).', about, level, kind).then(function (made) {
+  /* beside the words, as the rewritten layout below says: 4:3 (pictureShape.shapeForLayout) */
+  var overviewShape = pictureShape.shapeForLayout('picture and text side by side');
+  return buildSectionImage(fb, eventId, 'overview', subject, design, stamp, 'It illustrates the overview of the event\'s website (for your understanding only — none of these words may be written in the picture).', about, level, kind, overviewShape).then(function (made) {
     if (!made) return { answers: answers, designPlan: designPlan };
     var plan = Object.assign({}, designPlan, { sections: designPlan.sections.map(function (s) {
       if (s.id !== 'overview') return s;
-      return Object.assign({}, s, { image: 'the event\'s field, as the overview describes it', imageKind: kind, imageUrl: made.url,
+      return Object.assign({}, s, { image: 'the event\'s field, as the overview describes it', imageKind: kind, imageUrl: made.url, imageShape: made.shape || overviewShape,
         layout: String(s.layout || '').trim() + ' The picture fills the side of the section that its words leave empty; nothing stands alone in a half-empty column.' });
     }) });
     var prompt = buildSectionCodePrompt(Object.assign({}, ctx.prompt, { designPlan: plan, write: ['overview'] }));
@@ -3730,7 +3764,11 @@ function buildRedesignPrompt(payload) {
     payload.mode === 'create' ? '' : 'KEEP THESE ATTRIBUTES exactly as they are on the elements that carry them: data-rv-repeat-template, data-rv-field, data-rv-bind, data-rv-bound, data-rv-auto, data-rv-logo, data-rv-logo-unit, data-rv-logo-note, data-register-cta, data-rv-form, data-rv-form-embed, data-rv-form-title, data-rv-carousel, data-rv-carousel-track. The logo unit (the element with data-rv-logo-unit) stays exactly as it is, with every picture in it — its second picture with the class rv-lu-dark is its copy for a dark background, never remove it. An element with data-rv-repeat-template stays the single template item it is — never write more copies of it, and never remove it unless the owner asked for the list to go. An element with data-rv-form-embed stays exactly as it is, with its contents (it is a form the site draws in place); keep it in the section.',
     'Every button whose action is to register gets data-register-cta and href="#register".',
     (payload.supplied || []).length
-      ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) { return 'attached picture ' + p.n + ' = ' + p.token; }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
+      ? 'PICTURES THE OWNER ATTACHED for this change — use them exactly as the request says, by these addresses: ' + payload.supplied.map(function (p) {
+        /* a picture made for a frame this change adds: the frame takes the picture's exact shape (owner, 16 Nov 2026) */
+        var css = p.frame ? pictureShape.cssRatio(p.frame) : '';
+        return 'attached picture ' + p.n + ' = ' + p.token + (css ? ' (made in the shape ' + css.replace(' / ', ':') + ': its frame is exactly that shape — aspect-ratio: ' + css + ', sized by its width, with no height, min-height or max-height of its own — and the picture fills it with object-fit: cover)' : '');
+      }).join(' , ') + '. As an <img> give it alt text and object-fit: cover in a sized frame; as a background use background-image with cover and centre, keeping any veil that keeps text readable.'
       : '',
     urls.length ? 'PICTURES: the section\'s own pictures — with any attached above, the only pictures you may use — by exactly these addresses (they begin "rvimg://"; the server turns them into the real ones — never write an http address) — keep using them, larger if anything: ' + urls.join(' , ') : (payload.supplied || []).length ? 'Besides the attached ones, this section has no picture.' : 'This section has no picture and you cannot add one: build its visual interest from CSS (shapes, large numerals, rules, gradients) and inline SVG icons you draw yourself.',
     '',
@@ -3793,7 +3831,9 @@ function handleRedesignSection(req, res) {
         if (url.indexOf(ownStore) !== 0 || !(n >= 1) || pictures[genDesign.pictureToken('attached-' + n)]) return;
         var token = genDesign.pictureToken('attached-' + n);
         pictures[token] = url;
-        supplied.push({ n: n, token: token });
+        /* the shape a new picture was made in, for the frame this change adds for it ('16:9'; nothing else is read) */
+        var frame = pictureShape.frameFromText(p && typeof p.frame === 'string' ? p.frame : '');
+        supplied.push(frame ? { n: n, token: token, frame: pictureShape.frameText(frame) } : { n: n, token: token });
       });
       var mode = payload.mode === 'edit' || payload.mode === 'create' ? payload.mode : 'redesign';
       if (mode !== 'redesign' && !String(payload.instruction || '').trim()) return sendJson(res, 400, { error: 'Say what should change.' });
@@ -4379,4 +4419,4 @@ function watchEvent(fb, eventId) {
 
 module.exports = { wire, handleSuggestDesign, handleExtractBrief, handleIngestSource, handlePlanStructure, handleGenerateContent, handleGenerateStatus, handleGenerateCancel, handleRedesignSection, handleGetDraft, handleGeneratedTemplate, handleGeneratedSection };
 /* what lib/api.js's _testHooks hands the tests and tools/ from this file (read there on first use) */
-module.exports._testHooks = { drawnLogoUnit, darkCopyOfUnit, classifyGlimpses, unstyledSectionIds, emptyPictureBox, dropPicture, usableLogoPicture, runStatusOf, RUN_ACTIVE_MS, SOURCE_FRESH_MS, buildGeneratedDesign, confirmEtPick, pageKey, otherPortalOf, siteOfPortal, extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, fetchSourceCss, buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES, buildDesignPlanPrompt, buildExtractBriefPrompt, buildIngestSourcePrompt, buildSectionCodePrompt, designReference, buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, repeatedHeadingIds, takenHeadings, keepRootBackground, cssUrlQuotes, bottomColour, briefFacts, watchEvent, missingSectionIds, earlierPipelineSite, runIdOf, handleExtractBrief, handleGenerateContent, handleGeneratedSection };
+module.exports._testHooks = { drawnLogoUnit, darkCopyOfUnit, classifyGlimpses, unstyledSectionIds, emptyPictureBox, dropPicture, usableLogoPicture, runStatusOf, RUN_ACTIVE_MS, SOURCE_FRESH_MS, buildGeneratedDesign, confirmEtPick, pageKey, otherPortalOf, siteOfPortal, extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, buildHeroImage, HERO_SHAPE, fetchSourceCss, buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES, buildDesignPlanPrompt, buildExtractBriefPrompt, buildIngestSourcePrompt, buildSectionCodePrompt, designReference, buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, repeatedHeadingIds, takenHeadings, keepRootBackground, cssUrlQuotes, bottomColour, briefFacts, watchEvent, missingSectionIds, earlierPipelineSite, runIdOf, handleExtractBrief, handleGenerateContent, handleGeneratedSection };

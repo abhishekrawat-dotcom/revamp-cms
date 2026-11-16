@@ -5611,7 +5611,16 @@
     var secs = canvas.sections();
     var share = Math.max(1500, Math.floor(CHAT_TEXTS_BUDGET / Math.max(1, secs.length)));
     var P = aiPictures(), help = P ? aiPictureHelpers() : null;
-    return secs.map(function (sec) {
+    /* each section's pictures (RevampAiPicture.describe), all read on the desktop layout in one go whatever device the
+       canvas shows, as the picture is made for it (owner, 16 Nov 2026: a picture made for a frame has its shape). A
+       section that cannot be read is sent without them: the message is never held back for it. */
+    var picInfo = P ? onDesktop(function () {
+      return secs.map(function (sec) {
+        try { return plainPictureInfo(P.describe(sec, help)); }
+        catch (err) { if (window.console) console.warn('[ETB2B AI] the pictures of a section could not be read:', err); return null; }
+      });
+    }) : [];
+    return secs.map(function (sec, at) {
       // the key, not the type: an edit must reach the one section it was proposed for, copies included
       var id = sec.getAttribute('data-rv-key');
       var short = function (t) { return t.slice(0, 200); };
@@ -5633,12 +5642,8 @@
          Content's own records), which of its pictures can be replaced and whether it has a background to take
          one — so the AI asks instead of guessing, and the server checks the same facts. A section that cannot be
          read is sent without them: the message is never held back for it. */
-      if (P) {
-        try {
-          var pic = plainPictureInfo(P.describe(sec, help));
-          Object.keys(pic).forEach(function (k) { out[k] = pic[k]; });
-        } catch (err) { if (window.console) console.warn('[ETB2B AI] the pictures of a section could not be read:', err); }
-      }
+      var pic = picInfo[at];
+      if (pic) Object.keys(pic).forEach(function (k) { out[k] = pic[k]; });
       return out;
     });
   }
@@ -6044,7 +6049,9 @@
       return { ask: {
         n: n, sectionId: ask.sectionId, placement: ask.placement, slot: Math.max(0, parseInt(ask.slot, 10) || 0), apply: ask.apply,
         kind: String(ask.kind || ''), alt: String(ask.alt || '').replace(/\s+/g, ' ').trim().slice(0, 150),
-        subject: String(ask.subject || '').replace(/\s+/g, ' ').trim().slice(0, 140)
+        subject: String(ask.subject || '').replace(/\s+/g, ' ').trim().slice(0, 140),
+        /* the shape it is made in ('16:9'; a frame's size '1152:380'): a frame a rework adds is held to it (fitFrame) */
+        frame: /^\d{1,5}:\d{1,5}$/.test(String(ask.frame || '')) ? String(ask.frame) : ''
       } };
     }
     /* Phase 2 again, or not? r: its last answer, { ok, status, body } or null (no answer at all).
@@ -6144,6 +6151,12 @@
   function aiPictureHelpers() {
     return { canvas: canvas, eventId: eventId, videoOn: heroVideoOn() };
   }
+  /* fn() measured on the desktop layout (editor-canvas.js atDesktop): what the AI is told of the pictures, which one a
+     new picture takes the place of and the frame it is made for are all read on the same layout, whatever device the
+     canvas shows */
+  function onDesktop(fn) {
+    return canvas && typeof canvas.atDesktop === 'function' ? canvas.atDesktop(fn) : fn();
+  }
   /* Storage's public address of a file kept with this event (events/<id>/…), as RevampCore.uploadImage and the
      server store them. This page does not know the bucket's name, so any bucket name is accepted there. */
   function ownPictureRe(rest) {
@@ -6159,7 +6172,7 @@
   function pictureSlotOf(sec, el) {
     var P = aiPictures();
     if (!P || !sec || !el) return 0;
-    try { return Math.max(0, parseInt(P.slotOf(sec, el, aiPictureHelpers()), 10) || 0); }
+    try { return Math.max(0, parseInt(onDesktop(function () { return P.slotOf(sec, el, aiPictureHelpers()); }), 10) || 0); }
     catch (err) { if (window.console) console.warn('[ETB2B AI] the selected picture could not be found among its section\'s pictures:', err); }
     return 0;
   }
@@ -6183,6 +6196,8 @@
         background: !!p.background,
         heroTarget: String(p.heroTarget || ''),
         wide: p.wide === true,
+        /* the size of the place a new background or banner picture would fill: it is made in that shape */
+        frame: p.frame && +p.frame.w > 0 && +p.frame.h > 0 ? { w: Math.round(+p.frame.w), h: Math.round(+p.frame.h) } : null,
         own: (Array.isArray(p.own) ? p.own : []).filter(isOwnPicture).slice(0, 4)
       };
     }
@@ -6264,9 +6279,14 @@
     // a copy: the new picture takes its number in it once made, for the rework that uses it (picturesFor)
     attached = (attached || []).slice();
     sent = sent || {};
-    /* the pictures an entry names by number, as { n, url } for the request that reworks its section */
+    /* the pictures an entry names by number, as { n, url } for the request that reworks its section — the new picture a
+       rework adds as the section's picture with the shape it was made in (frame 'W:H'), which the rework gives its
+       frame (a background covers the section: no frame) */
     function picturesFor(entry) {
-      return (entry.pictures || []).map(function (n) { return attached[n - 1] ? { n: n, url: attached[n - 1] } : null; }).filter(Boolean);
+      return (entry.pictures || []).map(function (n) {
+        if (!attached[n - 1]) return null;
+        return np && n === np.n && np.apply === 'rework' && np.placement === 'picture' && np.frame ? { n: n, url: attached[n - 1], frame: np.frame } : { n: n, url: attached[n - 1] };
+      }).filter(Boolean);
     }
     var design = {}, notes = [];
     Object.keys(result.design || {}).forEach(function (k) {
@@ -6504,6 +6524,19 @@
         pictureFailed('The picture could not be made. Nothing on your site changed — ask again.');
       });
     }
+    /* The new picture's frame in a reworked section, held to the shape the picture was made in (RevampAiPicture.fitFrame,
+       on the desktop layout): every <img> of the section that shows it. A layout that will not take the shape keeps
+       the rework's own, and the picture still fills it (object-fit: cover). */
+    function fitNewFrame(fresh) {
+      if (!P || typeof P.fitFrame !== 'function') return;
+      try {
+        onDesktop(function () {
+          Array.prototype.forEach.call(fresh.querySelectorAll('img'), function (img) {
+            if (img.getAttribute('src') === madePic.url) P.fitFrame(img, np.frame, aiPictureHelpers());
+          });
+        });
+      } catch (err) { if (window.console) console.error('[ETB2B AI] the new picture\'s frame could not be shaped:', err); }
+    }
     /* A picture that could not be made: its sentence (aiPictureRules.failedLine words it for a message that changes
        other things too), and the steps that needed the picture are not done. */
     function pictureFailed(why) {
@@ -6557,7 +6590,7 @@
       var help = aiPictureHelpers();
       var focusEl = sent.pictureEl && sent.pictureEl.isConnected && sec.contains(sent.pictureEl) ? sent.pictureEl : null;
       var tg = null;
-      try { tg = P.target(sec, np, focusEl, help); } catch (err) { if (window.console) console.error(err); }
+      try { tg = onDesktop(function () { return P.target(sec, np, focusEl, help); }); } catch (err) { if (window.console) console.error(err); }
       if (!tg || tg.none || !tg.el || tg.el.nodeType !== 1 || !sec.contains(tg.el)) return lost(String((tg && tg.none) || 'it has no place for a picture now'));
       if (tg.el.closest('[data-rv-logo-unit], [data-rv-logo], [data-rv-etnav]')) return lost('that place belongs to the logo');
       var touched = [tg.el];
@@ -6680,6 +6713,9 @@
                card does not claim the picture, and the picture, made and paid for, waits in the tray. */
             var picShown = withPic && aiPictureRules.shows(fresh.outerHTML + '\n' + (code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(fresh) : ''), madePic.url);
             if (picShown) madePic.placed = true;
+            /* the frame the rework made for it holds the shape it was made in (owner, 16 Nov 2026: "AI has created a
+               square image for a rectangular placeholder") */
+            if (picShown && np.placement === 'picture' && np.frame) fitNewFrame(fresh);
             changedEls.push(fresh);
             done.push('“' + job.label + '” ' + (job.edit ? 'reworked' + (picShown ? ' with the new picture' : '') : 'added'));
             var unused = withPic && !picShown ? keepMadePicture('It') : '';

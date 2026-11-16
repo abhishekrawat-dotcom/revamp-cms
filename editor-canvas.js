@@ -57,7 +57,10 @@
      canvas.openItem(el)                     opens the accordion item around el (template.json → sections[].toggle)
                                              so its hidden part can be edited; editor-only, never saved
      canvas.itemAround(el)                   the accordion item (or native <details>) el sits in, else null
-     canvas.setPicture(el, url)              a new picture in an image slot: <img>, <svg> icon, or image box
+     canvas.setPicture(el, url)              a new picture in an image slot: <img>, <svg> icon, or image box; an <img>
+                                             that is not a logo then fills its frame (object-fit: cover)
+     canvas.coverPicture(img)                that last step on its own: true when it changed the picture's fit
+     canvas.atDesktop(fn)                    fn() run with the page laid out at desktop width (the AI's measurements)
      canvas.pictureOf(el)                    the URL it shows now ('' for a drawn icon)
      canvas.duplicateSection(sec, name)      copy placed right after the original, already adopted: same type, own key
      canvas.removeSection(sec)               removes it with any CSS made for it
@@ -1013,6 +1016,7 @@
         el.setAttribute('src', url);
         el.removeAttribute('srcset');
         el.removeAttribute('sizes');
+        coverPicture(el);
         return;
       }
       if (isSvg(el)) {
@@ -1034,6 +1038,38 @@
       el.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
       el.style.backgroundSize = 'cover';
       el.style.backgroundPosition = 'center';
+    }
+    /* A picture in a frame fills it: object-fit: cover, so a picture of another shape is neither squashed (the default,
+       fill) nor letterboxed (contain) — the owner's own pictures too (owner, 16 Nov 2026: "AI has created a square image
+       for a rectangular placeholder"; ET DAVOS 2027's frames showed white bands beside their pictures). A picture whose
+       box follows its own shape is not changed by it. Logos keep their own fit: the logo unit, the ET logos, the nav's
+       and the footer's, and any picture that says it is a logo. */
+    var LOGO_PLACE = '[data-rv-logo-unit], [data-rv-logo], [data-rv-et-logo], [data-rv-etnav], [data-rv-et-footer]';
+    function coverPicture(img) {
+      if (!img || img.tagName !== 'IMG' || (img.closest && img.closest(LOGO_PLACE))) return false;
+      var file = String(img.getAttribute('src') || '').split(/[?#]/)[0].split('/').pop();
+      if (/logo/i.test((img.getAttribute('class') || '') + ' ' + img.id + ' ' + (img.getAttribute('alt') || '') + ' ' + file)) return false;
+      var fit = '';
+      try { fit = win.getComputedStyle(img).objectFit; } catch (e) { fit = ''; }
+      if (fit === 'cover') return false;
+      img.style.objectFit = 'cover';
+      return true;
+    }
+    /* fn() with the page laid out as on a desktop (the frame DEVICES.desktop wide), whatever device the canvas shows:
+       what ETB2B AI is told of a section's pictures, and the frames a new picture is made for, are measured on the
+       layout the site is designed for — a phone-width canvas would make a banner's picture tall. Nothing is painted in
+       between: the frame is back as it was before this returns. -> what fn returns */
+    function atDesktop(fn) {
+      if (device === 'desktop') return fn();
+      var w = iframe.style.width, h = iframe.style.height;
+      iframe.style.width = DEVICES.desktop + 'px';
+      iframe.style.height = '900px';
+      void iframe.offsetWidth;                  // the frame takes its new size before anything inside it is measured
+      try { return fn(); } finally {
+        iframe.style.width = w;
+        iframe.style.height = h;
+        void iframe.offsetWidth;
+      }
     }
     /* the picture an image slot shows now (for the Replace popover's URL field); '' for a drawn icon or a data: URL */
     function pictureOf(el) {
@@ -1497,6 +1533,8 @@
       design: makeDesign(doc, win, template.design),
       setDevice: function (name) { device = DEVICES[name] ? name : 'desktop'; fit(); },
       fit: fit,
+      atDesktop: atDesktop,                               // fn() measured on the desktop layout, whatever device is shown
+      coverPicture: coverPicture,                         // a picture in a frame drawn with object-fit: cover (not a logo)
       scale: function () { return scale; },
       screenRect: screenRect,
       inView: inView,
