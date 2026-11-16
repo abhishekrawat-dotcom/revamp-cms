@@ -415,6 +415,100 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   }
 })();
 
+/* ======================= D.9 builder A: the plan's pictures in the editor (16 Nov 2026) =======================
+   Several pictures in one message (functions/lib/picture-plan.js, switch `plan`): the first keeps its own path (D.7),
+   each later one is checked the same way, made beside it two at a time after the briefs, placed in its own place
+   (never held, never an option waiting), its rework checked as the first's; the card's last line from picture-facts.js;
+   what each section shows for the server's page facts; the AI's view fetching its pictures early; the fit check. */
+return (function () {
+  function body(name) {
+    var i = SRC.indexOf('function ' + name + '(');
+    if (i === -1) return '';
+    var j = SRC.indexOf('{', i), depth = 0;
+    for (; j < SRC.length; j++) { if (SRC[j] === '{') depth++; else if (SRC[j] === '}' && --depth === 0) return SRC.slice(i, j + 1); }
+    return '';
+  }
+  var turn = body('runAiTurn');
+  /* checkAsk: the later pictures take the numbers after the first's */
+  var swap = { n: 44, sectionId: 'hero-1', placement: 'hero', slot: 0, apply: 'swap', kind: 'place', alt: 'a', subject: 'a valley' };
+  var known = function (id) { return id === 'hero-1'; };
+  var c = { loaded: true, eventId: EVENT, turnId: 'TurnAbc1234', attached: [], known: known, edits: [] };
+  check('D.9 a later picture of the plan may take the numbers after the first\'s (up to 3 more)', !!R.checkAsk(swap, Object.assign({ extraNumbers: 3 }, c)).ask &&
+    !R.checkAsk(Object.assign({}, swap, { n: 45 }), Object.assign({ extraNumbers: 3 }, c)).ask && !R.checkAsk(Object.assign({}, swap, { n: 42 }), c).ask &&
+    !R.checkAsk(swap, Object.assign({ extraNumbers: 9 }, c)).ask);
+  check('D.9 each later job is read with jobsOf and checked as the first is, its numbers after the first\'s',
+    /aiPictureRules\.jobsOf\(result\)\.forEach\(function \(j\) \{\s*if \(!j \|\| !\(j\.k > 0\)\) return;\s*var c2 = aiPictureRules\.checkAsk\(j, \{ loaded: !!P, eventId: eventId, turnId: turnId, attached: attached, known: known, edits: edits, extraNumbers: aiPictureRules\.MAX_JOBS - 1 \}\);/.test(turn), turn.slice(turn.indexOf('var extras = []'), turn.indexOf('var extras = []') + 600));
+  check('D.9 … and a rework for one that is not used goes with it', /if \(extraLost\.some\(function \(n\) \{ return aiPictureRules\.usesPicture\(edits\[lostAt\], n\); \}\)\) edits\.splice\(lostAt, 1\);/.test(turn));
+  check('D.9 a later picture is placed only when made, not held, a swap, and not an option waiting',
+    /extras\.forEach\(function \(J\) \{ if \(J\.madePic && !J\.madePic\.held && J\.np\.apply === 'swap' && !J\.option\) placeExtra\(J, changedEls, done, said\); \}\);/.test(turn));
+  check('D.9 it is asked for by its own k, and a held one is never given a number to be put in by',
+    /untilStopped\(requestPicture\(t\.turnId, J\.k\)\)/.test(body('makeExtra')) && body('makeExtra').indexOf('return extraHeld(J, got.why)') < body('makeExtra').indexOf('attached[J.np.n - 1] = J.madePic.url'));
+  check('D.9 its rework: the logo unit and the old section kept for it too, and it is said only when the rewrite draws it',
+    /var guard = withPic \|\| !!withEx;/.test(turn) && /var unitBefore = guard \? P\.unitState\(canvas\.doc\) : null;/.test(turn) && /if \(guard && !sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)\) putBack/.test(turn) &&
+    /var exShown = !!withEx && aiPictureRules\.shows\(drawn, withEx\.madePic\.url\);\s*if \(exShown\) withEx\.madePic\.placed = true;/.test(turn));
+
+  /* the runner, run: the briefs first, then two at a time; Stop leaves the rest not started */
+  var runs = (function () {
+    var src = body('makeNewPicture');
+    var log = [], running = 0, most = 0, steps = [];
+    function step(name) { var st = { state: 'wait', name: name, set: function (s, why) { st.state = s; st.why = why; } }; steps.push(st); return st; }
+    function task(name, ms) { return function () { log.push('start ' + name); running++; most = Math.max(most, running); return new Promise(function (r) { setTimeout(function () { running--; log.push('end ' + name); r(); }, ms); }); }; }
+    function sandbox(stopAfter) {
+      var t = { turnId: 'TurnAbc1234', stopAsked: false };
+      var extras = [1, 2, 3].map(function (k) { return { k: k, step: { make: step('job ' + k) } }; });
+      var fx = vm.createContext({ result: { pictureJobs: [{ k: 0 }, { k: 1 }, { k: 2 }, { k: 3 }] }, extras: extras, t: t, eventId: EVENT, S: { picMake: step('job 0') }, Promise: Promise, setTimeout: setTimeout,
+        makeFirstPicture: task('job 0', 20), makeExtra: function (J) { if (stopAfter && J.k === stopAfter) t.stopAsked = true; return task('job ' + J.k, J.k === 1 ? 5 : 15)(); },
+        setChatStatus: function () {}, card: { note: function () {} }, untilStopped: function (p) { return p; }, stopStep: function (st) { st.set('fail', 'stopped'); },
+        requestStep: function (b) { log.push('brief ' + b.step); return Promise.resolve({ ok: true, status: 200, body: { briefs: 0 } }); }, window: {}, console: console });
+      vm.runInContext('var AI_PICTURES_AT_ONCE = 2, AI_BRIEF_WAIT_MS = 60000;\n' + src + '\nthis.run = makeNewPicture;', fx);
+      return { run: fx.run, extras: extras };
+    }
+    var one = sandbox();
+    return one.run().then(function () {
+      check('D.9 run: the briefs are asked for first, then every picture', log[0] === 'brief brief' && log.filter(function (l) { return /^end /.test(l); }).length === 4, log);
+      check('D.9 run: never more than two at once', most === 2, most);
+      check('D.9 run: the first picture starts first', log[1] === 'start job 0', log);
+      log.length = 0; running = 0; most = 0;
+      var two = sandbox(2);
+      return two.run().then(function () {
+        check('D.9 run: Stop — the pictures not started are not made, each a step not done', log.indexOf('start job 3') === -1 && two.extras[2].step.make.state === 'fail', [log, two.extras[2].step.make]);
+      });
+    }).then(function () {
+      var lone = vm.createContext({ result: { newPicture: {} }, makeFirstPicture: function () { return 'first'; }, extras: [] });
+      vm.runInContext('var AI_PICTURES_AT_ONCE = 2, AI_BRIEF_WAIT_MS = 60000;\n' + src + '\nthis.run = makeNewPicture;', lone);
+      check('D.9 run: an answer with no plan makes its one picture as always (no brief step)', lone.run() === 'first');
+    });
+  })().then(function () {
+    /* placeExtra: placeNewPicture run for the job, the first picture's own state put back after, even on an error */
+    var src = body('placeExtra'), seen = [];
+    var fx = vm.createContext({ np: { n: 1 }, madePic: { url: 'first' }, S: { picPlace: 'first step' }, window: {},
+      placeNewPicture: function () { seen.push([fx.np.n, fx.madePic.url, fx.S.picPlace]); fx.madePic.told = true; if (seen.length === 2) throw new Error('boom'); } });
+    vm.runInContext(src + '\nthis.placeExtra = placeExtra;', fx);
+    var J = { np: { n: 2 }, madePic: { url: 'second' }, step: { place: 'second step' } };
+    fx.placeExtra(J, [], [], []);
+    fx.placeExtra({ np: { n: 3 }, madePic: { url: 'third' }, step: { place: 'third step' } }, [], [], []);
+    check('D.9 placeExtra: the job\'s own picture, step and place while it runs; the first\'s after, even when it throws',
+      JSON.stringify(seen) === JSON.stringify([[2, 'second', 'second step'], [3, 'third', 'third step']]) && fx.np.n === 1 && fx.madePic.url === 'first' && fx.S.picPlace === 'first step' && J.told === true, seen);
+    var swaps = turn.match(/placeNewPicture\(changedEls, done, said\);/g) || [];
+    check('D.9 … and the first picture is still swapped in by its one line (D.7)', swaps.length === 1);
+  });
+  check('D.9 the card\'s last line for several pictures comes from picture-facts.js, after the Undo note',
+    /if \(extras\.length\) \{[^]*var facts = pictureFactsLine\(\);\s*if \(facts\) card\.note\(facts/.test(turn) && /window\.RevampPictureFacts/.test(body('pictureFactsLine')) &&
+    turn.indexOf('var facts = pictureFactsLine()') > turn.indexOf("card.note(more ? 'Undo takes back all of this change, the new picture with it.'"));
+  check('D.9 what each section shows goes to the server (its pictures and the logo unit), never the logo unit\'s own pictures as the section\'s',
+    /var facts = pageFactsOf\(sec\);\s*if \(facts\) \{ out\.shows = facts\.shows; if \(facts\.logoUnit\) out\.logoUnit = facts\.logoUnit; \}/.test(body('sectionsContext')) &&
+    /img\.closest\(logoSel\)/.test(body('pageFactsOf')) && /\[data-rv-logo-unit\], \[data-rv-logo\], \[data-rv-etnav\]/.test(body('pageFactsOf')));
+  var see = body('seePage');
+  check('D.9 the AI\'s view asks for its pictures at once (side by side with the fonts) and keeps them for the session',
+    /Object\.keys\(allowed\)\.forEach\(function \(u\) \{ seeEarly\(u\); \}\);/.test(see) && see.indexOf('seeEarly(u); });') < see.indexOf('var work = fontCssFor(h2i, doc)') &&
+    /if \(early\[u\]\) return early\[u\]\.then/.test(see) && /keepSeen\(u, b\)/.test(see) && /var SEE_KEEP = 40/.test(SRC));
+  var fitSrc = body('fitPlaced');
+  check('D.9 the fit check: only for an answer with a plan, this event\'s own picture only, inside the change',
+    /if \(!Array\.isArray\(result\.pictureJobs\) \|\| !result\.pictureJobs\.length/.test(fitSrc) && /step: 'fit'/.test(fitSrc) && /!madeHere\(url\)/.test(fitSrc) &&
+    /untilStopped\(fitPlaced\(done\)\)/.test(turn) && turn.indexOf('fitPlaced(done)') < turn.indexOf('var changed = done.length ? commitNow() : false;'));
+  return runs;
+})();
+
 }).then(function () {
   console.log(passed + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);

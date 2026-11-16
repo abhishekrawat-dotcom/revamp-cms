@@ -183,7 +183,8 @@ function ask(sectionId, extra) {
   /* builder A (16 Nov 2026): the ledger is filled; with no store it reads empty and keeps nothing (picture-ledger.test.js) */
   check(J(await ledger.read(null, EV, 'u')) === '[]' && J(await ledger.record(null, EV, 'u', [])) === '[]' && ledger.promptLines([]) === '' && ledger.LEDGER_MAX === 20, 'the ledger with no store reads empty and keeps nothing');
   var fs0 = await fit.fitStep({}, {});
-  check(fs0.status === 501 && fs0.body.code === 'not-supported' && /Nothing on your site changed/.test(fs0.body.error) && !/\bET\b/.test(fs0.body.error), 'the fit step says it is not available, in plain words', J(fs0));
+  /* builder A (16 Nov 2026): the fit step is filled (picture-fit.test.js); with nothing to fit it refuses in plain words */
+  check(fs0.status === 400 && fs0.body.retryable === false && /Nothing on your site changed/.test(fs0.body.error) && !/\bET\b/.test(fs0.body.error), 'the fit step with nothing to fit refuses, in plain words', J(fs0));
   /* builder A (16 Nov 2026): the manifest is filled; it is read only with `plan` on (picture-capabilities.test.js) */
   check(caps.claimCheck('I can\'t see the pictures inside your PDF', switches.OFF).ok === false && caps.claimCheck('I made the banner warmer.', switches.OFF).ok === true &&
     /WHAT YOU CAN DO WITH PICTURES/.test(caps.promptBlock(switches.OFF)) && !/up to 4/.test(caps.promptBlock(switches.OFF)) && /real or named people/.test(caps.sentence('real-people')) &&
