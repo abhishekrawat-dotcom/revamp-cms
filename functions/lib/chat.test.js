@@ -231,6 +231,8 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'check it', sections: SECTIONS, view: [JPEG], viewWhat: 'page', viewLeftOut: 12, viewUndrawn: ['Sponsors'] });
   ok(/LIMITS OF THE SCREENSHOTS, NOT OF THE PAGE: 12 pictures are left out of the screenshots and shown as hatched grey boxes marked "picture"[^;]*; the section "Sponsors" is not in the screenshots \(or shown as a grey block marked "could not be drawn"\)\. Never report these as problems on the page/.test(prompts[prompts.length - 1]),
     'what the screenshots leave out is said, and never to be reported as a problem on the page');
+  ok(/marked "picture" \(too many to draw, or not loaded in time\) — visitors see the real pictures there, and a banner or section showing such a box HAS a picture;/.test(prompts[prompts.length - 1]),
+    'a box marked "picture" is a picture: a banner showing one is never "empty" (QA, 16 Nov 2026)');
   answers.push(reply('OK.'));
   await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'hi', sections: SECTIONS });
   ok(imagesSent[imagesSent.length - 1].length === 0 && /No screenshot of the page came with this message/.test(prompts[prompts.length - 1]) && /never say "I can't see the page"/.test(prompts[prompts.length - 1]), 'with no picture, the model answers from the text and never says it cannot see the page');
@@ -349,6 +351,23 @@ FB.docs['events/' + EV] = { name: 'QA Chat', createdAt: '2026-10-28T00:00:00Z' }
   ok(out.status === 400 && imageCalls.length === 1, 'a turn id that is not one is refused', out.status);
   out = await picStep(heroTurnId, 'meera', 'qa-no-such-event');
   ok(out.status === 404 && imageCalls.length === 1, 'so is an event that does not exist', out.status);
+  /* the advanced picture assistant (plan of 16 Nov 2026, Step 0): a second step names which of the turn's pictures; a
+     turn of one picture has only the first, and the brief and fit steps answer without changing anything */
+  out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'picture', turnId: heroTurnId, job: 0 }, 'meera');
+  ok(out.status === 200 && out.body.url === made.url && imageCalls.length === 1, 'job 0 is the turn\'s one picture, answered again for free', out.status);
+  out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'picture', turnId: heroTurnId, job: 1 }, 'meera');
+  ok(out.status === 404 && out.body.code === 'chat-picture-none' && imageCalls.length === 1, 'a turn of one picture has no job 1', JSON.stringify(out.body));
+  out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'picture', turnId: heroTurnId, job: '1; drop' }, 'meera');
+  ok(out.status === 404 && imageCalls.length === 1, 'a job that is not a number 0 to 3 is no picture', out.status);
+  var turnBefore = JSON.stringify(turnById(EVP, 'u-meera', heroTurnId));
+  out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'brief', turnId: heroTurnId }, 'meera');
+  ok(out.status === 200 && out.body.briefs === 0 && imageCalls.length === 1 && JSON.stringify(turnById(EVP, 'u-meera', heroTurnId)) === turnBefore, 'the brief step (not built yet) writes no brief and pays for nothing', JSON.stringify(out.body));
+  out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'fit', turnId: heroTurnId, job: 0, frame: '16:9' }, 'meera');
+  ok(out.status === 501 && out.body.code === 'not-supported' && JSON.stringify(turnById(EVP, 'u-meera', heroTurnId)) === turnBefore, 'the fit step (not built yet) says so and changes nothing', JSON.stringify(out.body));
+  out = await call('POST', '/api/chat-edit', { eventId: EVP, step: 'brief', turnId: 'bad' }, 'meera');
+  ok(out.status === 400, 'a brief step with a turn id that is not one is refused', out.status);
+  out = await call('POST', '/api/chat-edit', { eventId: 'qa-no-such-event', step: 'fit', turnId: heroTurnId }, 'meera');
+  ok(out.status === 404, 'a fit step for an event that does not exist is refused', out.status);
 
   /* the history and the model's memory carry the picture made */
   await call('POST', '/api/chat/turn', { eventId: EVP, turnId: heroTurnId, status: 'applied', done: ['New picture made and put in “Hero banner” (banner picture)'] }, 'meera');
