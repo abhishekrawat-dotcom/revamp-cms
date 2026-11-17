@@ -1060,6 +1060,11 @@
   function goNow(route, byUser){
     var dest = resolveRoute(route);
     if (dest.url){
+      /* a page of a section this person was not given (its buttons are hidden, auth.js): stay here */
+      if (window.RevampAuth && RevampAuth.urlOk && !RevampAuth.urlOk(dest.url)){
+        notifyError((RevampAuth.sectionLabel(RevampAuth.sectionOfUrl(dest.url)) || 'That part') + ' is not in your access. Ask an admin if you need it.');
+        return;
+      }
       if (byUser) location.assign(dest.url); else location.replace(dest.url);
       return;
     }

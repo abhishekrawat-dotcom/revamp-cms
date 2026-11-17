@@ -2235,7 +2235,9 @@
   }
   function contentHref(kind) {
     var tab = window.RevampRecords && RevampRecords.TABS[kind];
-    return tab && eventId ? '/edit-event.html?event=' + encodeURIComponent(eventId) + '#' + tab.route : '';
+    var href = tab && eventId ? '/edit-event.html?event=' + encodeURIComponent(eventId) + '#' + tab.route : '';
+    /* no way to a Content tab this person was not given (Settings › Access sections) */
+    return href && window.RevampAuth && RevampAuth.urlOk && !RevampAuth.urlOk(href) ? '' : href;
   }
   function recordPill(rec) {
     var t = rec.tab, href = contentHref(rec.kind);

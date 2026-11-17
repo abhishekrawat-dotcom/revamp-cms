@@ -436,6 +436,28 @@ function g(email, extra) { return Object.assign({ email: email, email_verified: 
   check('6 the pages: auth.js hides what leads to a section not given and covers its page; the console keeps to the sections given',
     /data-rv-nosec/.test(AUTH6) && /function coverPage/.test(AUTH6) && /sectionOk: sectionOk/.test(AUTH6) && /'rv-sections'/.test(AUTH6) &&
     /var VIEW_SECTION = \{/.test(EE6) && /RevampAuth\.sectionOk\(id\)/.test(EE6) && /is not in your access/.test(EE6));
+  /* the CTAs of a section not given are not shown (the owner, 17 Nov 2026), and the ones that act from script refuse */
+  var sandbox6 = { window: {}, document: { readyState: 'complete', addEventListener: function () {}, querySelectorAll: function () { return []; },
+    getElementById: function () { return null; }, documentElement: { setAttribute: function () {} }, cookie: '' },
+    location: { pathname: '/Event_Listing.html', search: '', hash: '' }, navigator: {}, setTimeout: setTimeout, clearTimeout: clearTimeout,
+    setInterval: function () { return 0; }, clearInterval: function () {}, console: console, URLSearchParams: URLSearchParams, Promise: Promise };
+  sandbox6.window = sandbox6; sandbox6.self = sandbox6; sandbox6.addEventListener = function () {}; sandbox6.removeEventListener = function () {};
+  sandbox6.document.createElement = function () { return { setAttribute: function () {}, appendChild: function () {}, style: {} }; };
+  sandbox6.document.head = { appendChild: function () {} }; sandbox6.document.body = { appendChild: function () {} };
+  var RA6 = null;
+  try { require('vm').runInNewContext(AUTH6, sandbox6); RA6 = sandbox6.RevampAuth; } catch (e) { RA6 = null; }
+  check('6 auth.js: the section of an address and of a console route', RA6 && RA6.sectionOfUrl('/edit-event.html?event=x#content/speakers') === 'speakers' &&
+    RA6.sectionOfUrl('marketing.html?event=x&tab=mailers') === 'marketing' && RA6.sectionOfUrl('/create-event.html?new=1') === 'create' &&
+    RA6.sectionOfUrl('/edit-event.html?event=x') === null && RA6.sectionOfUrl('/preview/x?draft=1') === null &&
+    RA6.sectionOfRoute('audience/insights') === 'dashboard' && RA6.sectionOfRoute('audience/reg') === 'audience' && RA6.sectionOfRoute('settings/history') === 'activity' &&
+    RA6.sectionOfRoute('design/editor') === 'design' && RA6.urlOk('/marketing.html?event=x') === true, RA6 && Object.keys(RA6));
+  check('6 auth.js hides every kind of CTA: links, the console\'s buttons (data-goto), the events list\'s row buttons, Create Event\'s drafts',
+    /'\[data-goto\^="content\/speakers"\]'/.test(AUTH6) && /'\[data-goto\^="design"\]'/.test(AUTH6) && /'\[data-row-action="reports"\]'/.test(AUTH6) &&
+    /'\[data-row-action="duplicate"\]'/.test(AUTH6) && /'#create-drafts'/.test(AUTH6) && /'\[data-goto\^="marketing"\]'/.test(AUTH6));
+  var DB6 = read('dash-bot-client.js'), ETU6 = read('editor-template-ui.js'), ECC6 = read('editor-chat-client.js');
+  check('6 the CTAs that act from script refuse a section not given: the console\'s routes, ETB2B AI\'s pages, the editor\'s record links',
+    /RevampAuth\.urlOk\(dest\.url\)/.test(EE6) && /function sectionRefusal\(url\)/.test(DB6) && /if \(sectionRefusal\(url\)\) return failed/.test(DB6) &&
+    /RevampAuth\.urlOk\(href\) \? '' : href/.test(ETU6) && /A\.urlOk\(url\) \? '' : url/.test(ECC6));
   check('6 Settings › Access: sections they can open, All sections, the presets', /Sections they can open/.test(SA6) && /All sections/.test(SA6) && /data-preset/.test(SA6) &&
     /In each event/.test(SA6) && /Main pages/.test(SA6));
 

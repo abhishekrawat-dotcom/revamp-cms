@@ -986,7 +986,7 @@
   function leave(p, url) {
     if (p.done) return;
     settleNav(p);
-    if (!NAV_OK.test(url)) return;                       // checked again at the last moment
+    if (!NAV_OK.test(url) || sectionRefusal(url)) return;       // checked again at the last moment
     markReopen();
     goWhenReady(p, url);
   }
@@ -1042,9 +1042,16 @@
     return p;
   }
   function pictures(recs) { return (isArr(recs) ? recs : []).filter(function (r) { return r && r.kind === 'image'; }); }
+  /* a page of a section this person was not given (Settings › Access sections): never opened nor offered */
+  function sectionRefusal(url) {
+    var A = window.RevampAuth;
+    if (!A || !A.urlOk || A.urlOk(url)) return '';
+    return (A.sectionLabel(A.sectionOfUrl(url)) || 'That part') + ' is not in your access, so ETB2B AI can’t open it for you. Ask an admin if you need it.';
+  }
   function runNavigate(action, bubble, ctx) {
     var url = str(action.url);
     if (!NAV_OK.test(url)) return failed(bubble, ctx, 'That isn’t a page ETB2B AI may open.');
+    if (sectionRefusal(url)) return failed(bubble, ctx, sectionRefusal(url));
     started(ctx);
     var label = labelOf(action.label, 'the page');
     /* pictures attached inside an event, for its site editor: they go with the words, unsent (the server says
@@ -1146,6 +1153,7 @@
     if (!TURN_ID.test(id) || url !== '/create-event.html?new=1&prefill=' + id || !NAV_OK.test(url)) {
       return failed(bubble, ctx, 'The details for Create Event did not come through. Ask again.');
     }
+    if (sectionRefusal(url)) return failed(bubble, ctx, sectionRefusal(url));
     var prefill = action.prefill && typeof action.prefill === 'object' ? action.prefill : {};
     /* exactly the server's cleaned details, and who they are from; Create Event checks every field again */
     var record = {};

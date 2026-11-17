@@ -1558,6 +1558,8 @@ a.ev-chip:hover{ border-color: currentColor; }
 /* four tiles: one row on a wide screen, two on a tablet, one under the other on a phone (the tiles used to
    carry an inline four-column rule that beat these, and squeezed four tiles into a phone's width) */
 .stat-grid.dash-tiles{ grid-template-columns: repeat(4, 1fr); }
+/* Registrations leads to Reporting: without that section (Settings › Access) its tile is hidden and the row closes up */
+@media (min-width:901px){ html[data-rv-nosec~="audience"] .stat-grid.dash-tiles{ grid-template-columns: repeat(3, 1fr); } }
 /* a tile that leads somewhere is a <button>, which centres its text: every tile reads from the left */
 .dash-tiles .stat{ text-align:left; }
 @media (max-width:900px){ .stat-grid.dash-tiles{ grid-template-columns: repeat(2, 1fr); } }

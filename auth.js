@@ -38,6 +38,8 @@
                                              Access sections); true until their access is known. The page
                                              gets a 'rv-sections' event on document once it is
      .sectionLabel(id)                   -> the section's name
+     .sectionOfUrl(url), .sectionOfRoute(route) -> the section an address or a console route belongs to, or null
+     .urlOk(url)                         -> may this person follow that address (true when it is no section's)
 
    Access: company Google accounts (ALLOWED_DOMAIN) and the Google accounts an admin invited in Settings ›
    Access, never one an admin blocked. The server decides it (functions/lib/access.js and access-control.js —
@@ -838,18 +840,28 @@
     settings: 'Settings', create: 'Create Event', library: 'Speaker & sponsor library',
     'all-activity': 'Activity log (all events)', 'app-settings': 'Settings (access and approvals)'
   };
-  /* what leads to each section, besides the rail's [data-section] items and anything marked data-needs-section */
+  /* Every call to action that leads to a section or does its work (the owner, 17 Nov 2026: "If a section is not
+     assigned then CTA of that will not be displayed to the user"), besides the rail's [data-section] items and
+     anything marked data-needs-section: links by where they lead; the console's buttons by their route
+     (data-goto, edit-event.html resolveRoute: audience/insights is the Dashboard, audience/payments Payment,
+     settings/history the Activity log); the events list's row buttons (data-row-action); Create Event's unfinished
+     drafts on the events list. */
   var SECTION_LINKS = {
-    dashboard: ['a[href*="#dashboard"]'],
-    content: ['a[href*="#content/basics"]', 'a[href*="#content/gallery"]', 'a[href*="#content/faq"]', 'a[href*="#content/contact"]'],
-    speakers: ['a[href*="#content/speakers"]'], agenda: ['a[href*="#content/agenda"]'], sponsors: ['a[href*="#content/sponsors"]'],
-    design: ['a[href*="custom_editor.html"]'],
-    payment: ['a[href*="#payment"]'],
-    marketing: ['a[href*="marketing.html"]', 'a[href*="promo-mailer-studio.html"]', 'a[href*="promo-social-studio.html"]', 'a[href*="mailer-performance.html"]'],
-    audience: ['a[href*="audience-registrations.html"]'],
-    activity: ['a[href*="#activity"]'],
-    settings: ['a[href*="#settings/"]', '[data-goto^="settings/"]'],
-    create: ['a[href*="create-event.html"]'],
+    dashboard: ['a[href*="#dashboard"]', '[data-goto="dashboard"]', '[data-goto="audience/insights"]'],
+    content: ['a[href*="#content/basics"]', 'a[href*="#content/gallery"]', 'a[href*="#content/faq"]', 'a[href*="#content/contact"]',
+      '[data-goto="content"]', '[data-goto^="content/basics"]', '[data-goto^="content/gallery"]', '[data-goto^="content/faq"]', '[data-goto^="content/contact"]'],
+    speakers: ['a[href*="#content/speakers"]', '[data-goto^="content/speakers"]'],
+    agenda: ['a[href*="#content/agenda"]', '[data-goto^="content/agenda"]'],
+    sponsors: ['a[href*="#content/sponsors"]', '[data-goto^="content/sponsors"]'],
+    design: ['a[href*="custom_editor.html"]', 'a[href*="#design"]', '[data-goto^="design"]', '[data-row-action="edit"]', '[data-row-action="design"]'],
+    payment: ['a[href*="#payment"]', '[data-goto^="payment"]', '[data-goto="audience/payments"]'],
+    marketing: ['a[href*="marketing.html"]', 'a[href*="promo-mailer-studio.html"]', 'a[href*="promo-social-studio.html"]', 'a[href*="mailer-performance.html"]',
+      '[data-goto^="marketing"]'],
+    audience: ['a[href*="audience-registrations.html"]', '[data-goto^="audience"]:not([data-goto="audience/insights"]):not([data-goto="audience/payments"])',
+      '[data-row-action="reports"]'],
+    activity: ['a[href*="#activity"]', 'a[href*="#settings/history"]', '[data-goto="activity"]', '[data-goto="settings/history"]'],
+    settings: ['a[href*="#settings/"]:not([href*="#settings/history"])', '[data-goto^="settings/"]:not([data-goto="settings/history"])'],
+    create: ['a[href*="create-event.html"]', '[data-row-action="duplicate"]', '#create-drafts'],
     library: ['a[href*="people.html"]'],
     'all-activity': ['a[href*="activity-log.html"]'],
     'app-settings': ['a[href*="settings.html"]']
@@ -861,6 +873,24 @@
     'audience-registrations.html': 'audience', 'create-event.html': 'create', 'people.html': 'library',
     'activity-log.html': 'all-activity', 'settings.html': 'app-settings'
   };
+  /* the section a console route (edit-event.html: dashboard, content/<tab>, settings/<tab>, design, marketing,
+     audience…) or an address belongs to, or null for one that is no section of its own */
+  function sectionOfRoute(route) {
+    var parts = String(route || '').replace(/^#/, '').split('/'), sec = parts[0], tab = parts[1] || '';
+    if (sec === 'content') return { speakers: 'speakers', agenda: 'agenda', sponsors: 'sponsors' }[tab] || 'content';
+    if (sec === 'audience') return tab === 'insights' ? 'dashboard' : (tab === 'payments' ? 'payment' : 'audience');
+    if (sec === 'settings') return tab === 'history' ? 'activity' : 'settings';
+    return { dashboard: 1, design: 1, marketing: 1, activity: 1, payment: 1 }[sec] ? sec : null;
+  }
+  function sectionOfUrl(url) {
+    var m = /^(?:[a-z]+:\/\/[^\/]+)?\/?([^?#]*)(?:\?[^#]*)?(?:#(.*))?$/i.exec(String(url || ''));
+    if (!m) return null;
+    var page = m[1].replace(/^.*\//, '');
+    if (page === 'edit-event.html') return m[2] ? sectionOfRoute(m[2]) : null;
+    return PAGE_SECTION[page] || null;
+  }
+  /* may this person follow that address (true for one that is no section's) */
+  function urlOk(url) { var id = sectionOfUrl(url); return !id || sectionOk(id); }
   var mySections = null;
   function sectionOk(id) {
     if (!mySections) return true;
@@ -922,6 +952,9 @@
     access: access,
     sectionOk: sectionOk,
     sectionLabel: function (id) { return SECTION_LABELS[id] || id; },
+    sectionOfUrl: sectionOfUrl,
+    sectionOfRoute: sectionOfRoute,
+    urlOk: urlOk,
     signInWithGoogle: signInWithGoogle,
     signOutUser: signOutUser,
     signOutAndLeave: signOutAndLeave,

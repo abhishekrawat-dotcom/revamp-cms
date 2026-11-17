@@ -143,7 +143,10 @@
   function contentUrl(eventId, target) {
     var id = str(eventId), tab = /^content:([a-z]+)$/.exec(str(target));
     if (!tab || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(id)) return '';
-    return '/edit-event.html?event=' + id + '#content/' + tab[1];
+    var url = '/edit-event.html?event=' + id + '#content/' + tab[1];
+    /* never a way to a section this person was not given (Settings › Access sections) */
+    var A = typeof window !== 'undefined' ? window.RevampAuth : null;
+    return A && A.urlOk && !A.urlOk(url) ? '' : url;
   }
   /* what the "Selected" chip says: the section, and the text (or picture) selected in it */
   function focusLabel(f) {
