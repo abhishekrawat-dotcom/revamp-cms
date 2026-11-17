@@ -26,7 +26,9 @@
                                      footer's "What's Happening" (et-footer.js). o.now() for tests.
      clearCache()
 
-   EVENT = { id, kind: 'event' | 'award', title, start, end, dateLabel, link, logo, speakers, past, upcoming }
+   EVENT = { id, kind: 'event' | 'award', title, start, end, dateLabel, link, slug, logo, speakers, action, registrations, past, upcoming }
+           (action: its button's words, "Register Now"; registrations: how many registered — both for edition-brief.js)
+           (slug: ET's own address segment for the microsite, '' when it is not a plain one)
            (an award also carries awardId)
    fetchJson(url, headers) -> Promise<json>; it may reject, or resolve null, for a bad answer.
    A portal not on the roster is refused (error.code 'unknown-portal') before anything is asked of ET, so
@@ -119,6 +121,14 @@ function https(u) {
   if (/^http:\/\//i.test(s)) s = 'https://' + s.slice(7);
   return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : '';
 }
+/* the microsite's own address segment: ET's slug field, else the last part of its link (Create Event keeps it for the
+   next edition, owner 17 Nov 2026); only lowercase letters, digits and hyphens, so it can never carry anything else */
+function slugOfRow(row) {
+  var s = str(row && row.slug).trim().toLowerCase();
+  if (!s) { var m = /^https?:\/\/[^\/?#]+\/([^?#]*)/i.exec(str(row && row.link)); s = m ? (m[1].split('/').filter(Boolean).pop() || '') : ''; }
+  s = s.toLowerCase();
+  return /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(s) && s.length <= 80 ? s : '';
+}
 function stamp(v) { var s = str(v).trim(); return /^\d{4}-\d{2}-\d{2}/.test(s) && !/^0000/.test(s) ? s.slice(0, 19) : ''; } // ET writes 0000-00-00 for no date
 
 /* one listing row -> EVENT, or null when it is not one of ET's own events (or has no id or title) */
@@ -128,8 +138,9 @@ function compact(row, past) {
   if (!/^\d{1,9}$/.test(id) || !title) return null;
   return {
     id: id, kind: 'event', title: title, start: stamp(row.event_start_date), end: stamp(row.event_end_date),
-    dateLabel: text(row.date_str || row.date_time).slice(0, 60), link: https(row.link), logo: https(row.small_logo),
+    dateLabel: text(row.date_str || row.date_time).slice(0, 60), link: https(row.link), slug: slugOfRow(row), logo: https(row.small_logo),
     speakers: Math.max(0, parseInt(row.speakers_cnt, 10) || 0),
+    action: text(row.action_name).slice(0, 40), registrations: Math.max(0, parseInt(row.total_registrations, 10) || 0),
     past: !!past || +row.is_past === 1, upcoming: !past && +row.is_upcoming === 1
   };
 }
@@ -146,7 +157,7 @@ function compactAward(row, past) {
   if (!when && unix > 0) when = new Date(unix * 1000).toISOString().slice(0, 19).replace('T', ' ');
   return {
     id: id, kind: 'award', awardId: awardId, title: title, start: when, end: when,
-    dateLabel: text(row.date_str || row.date_time).slice(0, 60), link: https(row.link), logo: https(row.small_logo || row.medium_logo),
+    dateLabel: text(row.date_str || row.date_time).slice(0, 60), link: https(row.link), slug: slugOfRow(row), logo: https(row.small_logo || row.medium_logo),
     speakers: 0, past: !!past || +row.is_past === 1, upcoming: !past && +row.is_upcoming === 1
   };
 }

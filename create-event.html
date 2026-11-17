@@ -744,9 +744,6 @@
   .sheet .logo-row-cta{ font-size: 14px; font-weight: 500; color: var(--text); }
   .sheet .logo-meta{ font-weight: 400; }
 
-  /* registration on this platform is free: a note, not a field */
-  .sheet #payment-note{ display: flex; align-items: center; min-height: var(--f-h); padding: 0 14px; border-radius: var(--f-r);
-    background: var(--surface-2); color: var(--text-muted) !important; font-size: 13px !important; }
   .sheet .dt-preview .lb{ font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 12px; }
 
   /* Site type: a segmented control the height of a field; the chosen one's meaning below it */
@@ -781,7 +778,7 @@
   .sheet .inp[aria-invalid="true"]{ border-color: var(--crit); }
   .sheet .inp[aria-invalid="true"]:focus{ box-shadow: 0 0 0 4px var(--crit-soft); }
   .sheet #f-venue{ padding-left: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ED1C24' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 21s-7-6.2-7-11.5a7 7 0 0114 0C19 14.8 12 21 12 21z'/%3E%3Ccircle cx='12' cy='9.5' r='2.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 14px center; }
-  .sheet #gb-previous, .sheet #gb-comp1, .sheet #gb-comp2, .sheet #gb-current{ padding-left: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ED1C24' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7'/%3E%3Cpath d='M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 14px center; }
+  .sheet #gb-previous, .sheet #gb-comp1, .sheet #gb-comp2{ padding-left: 40px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23ED1C24' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7'/%3E%3Cpath d='M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: left 14px center; }
   .sheet .logo-row:hover{ border-color: color-mix(in srgb, var(--accent) 35%, var(--f-edge)); }
   .sheet .logo-row-icon{ background: var(--accent-soft); color: var(--accent); border-right-color: transparent; }
   .sheet .gb-seg input:checked + span{ background: var(--surface); box-shadow: 0 1px 3px rgba(30,26,10,.12), inset 0 -2px 0 var(--accent); }
@@ -2229,6 +2226,40 @@
 
         <div class="sheet">
 
+          <!-- the previous edition comes first (owner, 17 Nov 2026): picking one of ETB2B's fills in the name and the web
+               address below (fillFromEdition); shown for S.creationMethod === 'brief', as the picker is that method's -->
+          <div class="grp" id="prev-grp" hidden>
+            <div class="grp-h"><h4><span class="grp-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>Start from the previous edition</h4><span class="ln"></span><span class="grp-tag">Optional</span></div>
+            <p class="hint" id="prev-grp-hint" style="margin:6px 0 12px;">Pick last edition and the event name, web address and description are filled in from it. You can change any of them.</p>
+            <div class="frow">
+              <!-- the previous edition, picked from the event's own portal's ET events (wireEtPicker); its address is kept in #gb-previous -->
+              <div class="field c6 et-pick" id="gb-et">
+                <span class="flabel" id="gb-et-label">Previous edition</span>
+                <div class="et-chip" id="gb-et-chip" hidden>
+                  <span class="et-chip-ico" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
+                  <span class="et-chip-txt"><b id="gb-et-chip-title"></b><small id="gb-et-chip-sub"></small></span>
+                  <button class="et-chip-btn" type="button" id="gb-et-change" aria-describedby="gb-et-chip-title">Change</button>
+                  <button class="et-chip-btn" type="button" id="gb-et-remove" aria-describedby="gb-et-chip-title">Remove</button>
+                </div>
+                <div class="et-pick-row" id="gb-et-pickers">
+                  <div class="cbx">
+                    <input class="inp cbx-inp" id="gb-et-event" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-event-list" aria-label="Previous edition" placeholder="Choose this event’s portal first" autocomplete="off" spellcheck="false" disabled>
+                    <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ETB2B events" hidden></ul>
+                  </div>
+                </div>
+                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-cancel" hidden>Keep the event picked before</button>
+                <!-- ET's list is not the only way in: a client's or custom event's last site, or any page when ET's list
+                     cannot be read, is given by its link (etPick.linkMode) -->
+                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-paste">Paste the link instead</button>
+                <div class="et-link" id="gb-prev-link" hidden>
+                  <input class="inp" id="gb-previous" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… (the previous edition’s site)" aria-labelledby="gb-et-label">
+                  <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-list">Choose from ETB2B’s list instead</button>
+                </div>
+                <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
+              </div>
+            </div>
+          </div>
+
           <div class="grp">
             <div class="grp-h"><h4><span class="grp-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="9" cy="10.5" r="2"/><path d="M14.5 9.5h3M14.5 13h3M6.5 16h11"/></svg></span>Event information</h4><span class="ln"></span></div>
             <div class="frow" id="identity-row">
@@ -2298,7 +2329,7 @@
           <!-- shown for S.creationMethod === 'brief' — kept in S.brief (wireBriefInputs) -->
           <div class="grp" id="brief-grp" hidden>
             <div class="grp-h"><h4><span class="grp-ico" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg></span>Tell ETB2B AI about the event</h4><span class="ln"></span><span class="grp-tag">Add at least one: a description, a document or a link</span></div>
-            <p class="hint" style="margin:6px 0 12px;">Modelled on the previous edition when you give its link, then improved. The AI writes the content, makes the pictures and places your logo.</p>
+            <p class="hint" style="margin:6px 0 12px;">Modelled on the previous edition picked above, then improved. The AI writes the content, makes the pictures and places your logo.</p>
             <div class="gb-grid">
               <div class="field"><span class="flabel" id="gb-mode-label">Site type</span>
                 <div class="gb-seg" role="radiogroup" aria-labelledby="gb-mode-label">
@@ -2321,6 +2352,9 @@
                     <span>Guide</span></button>
                 </div>
                 <textarea class="inp" id="gb-brief-text" rows="9" maxlength="4000" placeholder="What is this event, who is it for, what makes it worth attending…"></textarea>
+                <!-- filled in from the previous edition picked above (fillBriefFromEdition); the button when the owner has written in it -->
+                <p class="hint et-pick-status" id="gb-brief-status" role="status" aria-live="polite"></p>
+                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-brief-fill" hidden>Fill from the previous edition</button>
               </div>
               <div class="gb-stack">
               <div class="field"><span class="flabel" id="gb-doc-label">Overview document (PDF)</span>
@@ -2343,31 +2377,6 @@
                 </div>
                 <input id="gb-doc" type="file" accept="application/pdf,.pdf" hidden>
               </div>
-              <!-- the previous edition, picked from the event's own portal's ET events (wireEtPicker); its address is kept in #gb-previous -->
-              <div class="field et-pick" id="gb-et">
-                <span class="flabel" id="gb-et-label">Previous edition</span>
-                <div class="et-chip" id="gb-et-chip" hidden>
-                  <span class="et-chip-ico" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg></span>
-                  <span class="et-chip-txt"><b id="gb-et-chip-title"></b><small id="gb-et-chip-sub"></small></span>
-                  <button class="et-chip-btn" type="button" id="gb-et-change" aria-describedby="gb-et-chip-title">Change</button>
-                  <button class="et-chip-btn" type="button" id="gb-et-remove" aria-describedby="gb-et-chip-title">Remove</button>
-                </div>
-                <div class="et-pick-row" id="gb-et-pickers">
-                  <div class="cbx">
-                    <input class="inp cbx-inp" id="gb-et-event" type="text" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="gb-et-event-list" aria-label="Previous edition" placeholder="Choose this event’s portal first" autocomplete="off" spellcheck="false" disabled>
-                    <ul class="cbx-list" id="gb-et-event-list" role="listbox" aria-label="ETB2B events" hidden></ul>
-                  </div>
-                </div>
-                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-cancel" hidden>Keep the event picked before</button>
-                <!-- ET's list is not the only way in: a client's or custom event's last site, or any page when ET's list
-                     cannot be read, is given by its link (etPick.linkMode) -->
-                <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-paste">Paste the link instead</button>
-                <div class="et-link" id="gb-prev-link" hidden>
-                  <input class="inp" id="gb-previous" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… (the previous edition’s site)" aria-labelledby="gb-et-label">
-                  <button class="et-chip-btn et-pick-cancel" type="button" id="gb-et-list">Choose from ETB2B’s list instead</button>
-                </div>
-                <p class="hint et-pick-status" id="gb-et-status" role="status" aria-live="polite"></p>
-              </div>
               <div class="field"><label class="flabel" for="gb-comp1">Competitor event URL</label>
                 <input class="inp" id="gb-comp1" type="url" placeholder="https://…">
               </div>
@@ -2376,11 +2385,6 @@
             <details class="gb-more" id="gb-more">
               <summary>More options <span class="gb-more-note" id="gb-more-note"></span></summary>
               <div class="gb-grid">
-                <div class="field"><label class="flabel" for="gb-current">This edition’s own URL, if it already has one</label>
-                  <input class="inp" id="gb-current" type="url" placeholder="https://…">
-                  <!-- shown under the warning when the page is another portal's (checkCurrentLink) -->
-                  <button class="et-chip-btn gb-portal-change" type="button" id="gb-current-change" hidden>Change this event’s portal</button>
-                </div>
                 <div class="field"><label class="flabel" for="gb-comp2">A second competitor URL</label>
                   <input class="inp" id="gb-comp2" type="url" placeholder="https://…">
                 </div>
@@ -3055,6 +3059,7 @@
     active: null,               // active section id
     pulledEdition: null,        // {id, name} of the past edition selected via "Use a previous edition's content"
     fromEdition: null,          // {id, name, portal, counts, carried} the previous edition chosen with "Start from a previous edition" (openCloneDesignModal): what it has that no section here shows comes into the event's Content at the hand-off (carryEdition); carried: what that has done so far ({ to, done, made })
+    prevFill: { name: '', slug: '', brief: '' },   // what the previous edition filled in (fillFromEdition, fillBriefFromEdition): a field still holding it is not the owner's
     brief: { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null, followDeck: false },   // the "Generate from a brief" inputs (wireBriefInputs); docName only names the chosen PDF — a browser cannot keep the file
     useBannerTheme: false,       // the banner's main colour is laid over the design as its theme colour (draftDesign)
     aiDesign: null,              // an accepted "Redesign with AI" proposal — real canvas.design field values applied to the mounted Gen-2 template; only meaningful when the active template has a real port (tpl.site)
@@ -3399,7 +3404,7 @@
     if (!d || d.assembled === true) return false;
     var b = d.basics || {}, br = d.brief || {};
     if (d.createdEventId || String(b.name || '').trim() || String(b.slug || '').trim() || b.logo) return true;
-    if (['text', 'current', 'previous', 'comp1', 'comp2', 'docName'].some(function(k){ return String(br[k] || '').trim() && !(k === 'text' && br[k] === BRIEF_TEMPLATE); })) return true;
+    if (['text', 'previous', 'comp1', 'comp2', 'docName'].some(function(k){ return String(br[k] || '').trim() && !(k === 'text' && br[k] === BRIEF_TEMPLATE); })) return true;
     return (d.sections || []).some(function(sec){
       if (!sec || !sec.data) return false;
       if (sec.libId === 'hero' && !asIs) cleanHeroData(sec.data);
@@ -3603,6 +3608,9 @@
       ['path', 'templatePick', 'templateExcluded', 'sourceKind', 'sourceValue', 'detectPhase', 'detectDecisions', 'detectedBannerTheme'].forEach(function(k){ delete S[k]; });
       var defBrief = { text: '', current: '', previous: '', comp1: '', comp2: '', future: false, docName: '', themeMode: 'auto', instructions: '', siteMode: 'standard', etEvent: null, followDeck: false };
       S.brief = Object.assign(defBrief, (S.brief && typeof S.brief === 'object') ? S.brief : {});
+      /* an older draft's "This edition's own URL": the box left the screen (owner, 17 Nov 2026), so nothing unseen is sent */
+      S.brief.current = '';
+      S.prevFill = { name: String((S.prevFill && S.prevFill.name) || ''), slug: String((S.prevFill && S.prevFill.slug) || ''), brief: String((S.prevFill && S.prevFill.brief) || '') };
       S.useBannerTheme = S.useBannerTheme === true;
       S.aiHero = cleanAiHero(S.aiHero);
       S.fromEdition = cleanFromEdition(S.fromEdition);
@@ -4183,7 +4191,7 @@
   var SLUG_MIN = 3;
   var YEAR_MIN = 2024, YEAR_MAX = 2035;           // the bounds of the Year box
   var PROBLEM_FIELDS = ['f-name', 'f-slug', 'logo-drop', 'f-client', 'f-start', 'f-end', 'f-month', 'f-year', 'f-nomOpen', 'f-nomClose', 'f-shortlist',
-    'gb-brief-text', 'gb-doc-pick', 'gb-current', 'gb-previous', 'gb-comp1', 'gb-comp2'];
+    'gb-brief-text', 'gb-doc-pick', 'gb-previous', 'gb-comp1', 'gb-comp2'];
   var DATE_FIELDS = ['f-start', 'f-end', 'f-nomOpen', 'f-nomClose', 'f-shortlist'];
   var detailsChecked = false; // Continue was pressed with something still wrong: problems are now shown on their fields
 
@@ -4265,7 +4273,6 @@
   /* ---------- the brief form's own inputs ---------- */
   var BRIEF_DOC_MAX_BYTES = 15 * 1024 * 1024;         // what the server takes for a brief document
   var BRIEF_URL_FIELDS = [
-    { key: 'current',  id: 'gb-current',  type: 'currentEdition',  what: 'this edition’s page' },
     { key: 'previous', id: 'gb-previous', type: 'previousEdition', what: 'the previous edition' },
     { key: 'comp1',    id: 'gb-comp1',    type: 'competitor',      what: 'competitor' },
     { key: 'comp2',    id: 'gb-comp2',    type: 'competitor',      what: 'competitor' }
@@ -4503,7 +4510,6 @@
     /* the city has a field of its own (it was typed into the venue's, and the event never had one): beside the venue
        when the date takes one field, at the start of the next row beside the note when it takes two with times */
     var citySpan = exact ? 'c4' : 'c3';
-    var paymentSpan = exact ? (C.venue ? 'c8' : 'c4') : C.venue ? 'c12' : (twoUp ? 'c6' : 'c7');
 
     h += '<div class="field c2">' +
            '<label for="f-datemode">Date Format</label>' +
@@ -4539,11 +4545,7 @@
              '<div class="flabel-row"><label for="f-city">City</label><span class="pill-opt">Optional</span></div>' +
              '<input class="inp" id="f-city" type="text" placeholder="e.g. Mumbai" value="' + esc(b.city) + '"></div>';
     }
-    /* every event is free to register for: there is no online payment to offer yet, on any path */
-    h += '<div class="field ' + paymentSpan + '" id="payment-cell">' +
-           '<span class="flabel" id="lbl-payment">' + (C.nomination ? 'Entry fee' : 'Registration') + '</span>' +
-           '<p class="hint" id="payment-note" style="margin:0;font-size:12px;line-height:1.4;color:var(--text-muted)">' +
-             (C.nomination ? 'Entry is free.' : 'Registration is free.') + ' Online payment is not available yet.</p></div>';
+    /* the Registration note (free to register, no online payment yet) left the schedule (owner, 17 Nov 2026) */
 
     host.innerHTML = '<div class="frow">' + h + '</div>';
 
@@ -4892,7 +4894,6 @@
          changes which rows start off: the list and its count are drawn again (the form beside it is left alone) */
       if ($('sec-list')){ renderSecList(); refreshProgress(); }
       wireEtPicker();
-      checkCurrentLink();
     }
     nameAiNotePortal();
     guardDraftPortal(true);
@@ -5050,27 +5051,6 @@
     note.hidden = !text;
   }
 
-  /* "This edition's own URL" names this event's own page, so an ET page of another portal is said at once.
-     A check only: the server refuses such a page too (other-portal), and its sentence shows on the run's row.
-     A page served by the other name of the event's own site (etSiteOf) is the event's own, as it is there. */
-  function currentLinkIssue(value){
-    var page = etPortalOfUrl(normalUrl(value)), own = S.basics.portal;
-    if (!page || !own || etSiteOf(page) === etSiteOf(own) || !isRosterPortal(page)) return '';
-    var ownName = portalName(own);
-    return 'This is ' + withArticle(portalName(page)) + ' page, but this event is on ' + ownName + '. Use this event’s own ' + ownName + ' page' +
-      (portalLocked() ? '.' : ', or change the event’s portal.');
-  }
-  function checkCurrentLink(){
-    var el = $('gb-current'), btn = $('gb-current-change');
-    if (!el) return;
-    var text = currentLinkIssue(el.value);
-    setFieldNote('gb-current', 'warn', text);
-    if (!btn) return;
-    btn.hidden = !text || portalLocked();
-    var warn = $('gb-current-warn');
-    if (warn && warn.nextSibling !== btn) warn.parentNode.insertBefore(btn, warn.nextSibling);
-  }
-
   /* ---------- phase 1 : the portal and category picker screen ---------- */
   function renderCatPicker(){
     renderPortalStep();
@@ -5161,7 +5141,8 @@
     nameEl.value = b.name;
     nameEl.oninput = function(){
       b.name = nameEl.value;
-      if (!b.slugTouched && !S.createdEventId){
+      /* the previous edition's own address stays while the name is changed (fillFromEdition) */
+      if (!b.slugTouched && !S.createdEventId && !(S.prevFill && S.prevFill.slug && b.slug === S.prevFill.slug)){
         var made = slugify(b.name);
         if (made !== b.slug){ b.slug = made; $('f-slug').value = made; slugChanged(); }
       }
@@ -5267,6 +5248,7 @@
        expanded now — the method choice already happened), the brief-collection fields for the AI method. */
     var briefGrp = $('brief-grp'), contentGrp = $('content-grp');
     if (briefGrp) briefGrp.hidden = S.creationMethod !== 'brief';
+    if ($('prev-grp')) $('prev-grp').hidden = S.creationMethod !== 'brief';
     if (contentGrp) contentGrp.hidden = S.creationMethod !== 'template';
     wireBriefInputs();
     wireBriefGuide();
@@ -5276,7 +5258,8 @@
      and written back as they change. The PDF is the exception — a page cannot hold on to a file across a
      reload — so it is held in briefDoc while the page lives, and the draft remembers its name and asks
      for it again. */
-  var BRIEF_INPUTS = { 'gb-brief-text': 'text', 'gb-current': 'current', 'gb-previous': 'previous', 'gb-comp1': 'comp1', 'gb-comp2': 'comp2' };
+  /* "This edition's own URL" left the screen (owner, 17 Nov 2026): the previous edition, picked first, stands for the event */
+  var BRIEF_INPUTS = { 'gb-brief-text': 'text', 'gb-previous': 'previous', 'gb-comp1': 'comp1', 'gb-comp2': 'comp2' };
   /* The points that make a generated site exact, as headings already in "Describe the event" for the owner
      to fill in. A heading left empty is no description: it never counts as one and is not sent to the AI
      (briefAnswers). */
@@ -5294,6 +5277,60 @@
   var BRIEF_TEMPLATE = BRIEF_HEADINGS.map(function(h){ return h + ': '; }).join('\n');
   function headingKey(s){ return String(s || '').replace(/\s+/g, ' ').replace(/\s*:\s*$/, '').trim().toLowerCase(); }
   var BRIEF_HEADING_KEYS = BRIEF_HEADINGS.map(headingKey);
+  /* ---------- "Describe the event" from the previous edition (owner, 17 Nov 2026) ----------
+     Picking one of ETB2B's editions (or pasting the link to one on its list) fills the headings from ETB2B's own
+     records of it (GET /api/et/edition-brief, lib/edition-brief.js: no AI call). Only a box that is empty or still
+     the bare headings is filled; one the owner has written in gets the "Fill from the previous edition" button
+     instead. A line ETB2B has nothing for stays empty after its heading; "Must avoid" is always left to the owner.
+     A failed read leaves the box as it was, with a plain line saying so. */
+  var BRIEF_LINE_KEYS = ['tagline', 'why', 'audience', 'industry', 'level', 'action', 'scale', 'look', ''];
+  var briefFill = { seq: 0, ev: null };
+  function briefIsBare(text){ return !String(text || '').trim() || !briefAnswers(text).trim(); }
+  /* the box may be filled: empty, the bare headings, or still what an earlier pick filled in (S.prevFill.brief) */
+  function briefOpen(text){ return briefIsBare(text) || (!!(S.prevFill && S.prevFill.brief) && String(text) === S.prevFill.brief); }
+  function briefFromLines(lines){
+    return BRIEF_HEADINGS.map(function(h, i){
+      var k = BRIEF_LINE_KEYS[i], v = k && lines && typeof lines[k] === 'string' ? lines[k].replace(/\s+/g, ' ').trim() : '';
+      return h + ': ' + v;
+    }).join('\n').slice(0, 4000);
+  }
+  function briefStatus(text, bad){
+    var el = $('gb-brief-status');
+    if (!el) return;
+    el.textContent = text || '';
+    el.classList.toggle('is-error', !!bad);
+  }
+  function showBriefFill(){
+    var btn = $('gb-brief-fill');
+    if (btn) btn.hidden = !(briefFill.ev && S.brief.etEvent && !briefOpen(S.brief.text));
+  }
+  /* force: the owner asked with the button, over what they wrote */
+  function fillBriefFromEdition(ev, force){
+    briefFill.ev = ev || null;
+    if (!ev || !S.basics.portal){ showBriefFill(); return Promise.resolve(false); }
+    if (!force && !briefOpen(S.brief.text)){ briefStatus(''); showBriefFill(); return Promise.resolve(false); }
+    var seq = ++briefFill.seq, kind = ev.kind === 'award' ? 'award' : 'event';
+    briefStatus('Filling in from the previous edition…');
+    $('gb-brief-fill').hidden = true;
+    return etGet('/api/et/edition-brief?portal=' + encodeURIComponent(S.basics.portal) + '&id=' + encodeURIComponent(ev.id) + (kind === 'award' ? '&kind=award' : '')).then(function(body){
+      if (seq !== briefFill.seq) return false;
+      if (!body || !body.lines || typeof body.lines !== 'object') throw new Error('no lines');
+      /* written in meanwhile: the owner's text stays, and the button offers the fill */
+      if (!force && !briefOpen(S.brief.text)){ briefStatus(''); showBriefFill(); return false; }
+      var text = briefFromLines(body.lines), box = $('gb-brief-text');
+      S.brief.text = text;
+      S.prevFill = Object.assign({}, S.prevFill, { brief: text });
+      if (box) box.value = text;
+      briefStatus(briefIsBare(text) ? 'ETB2B has no description of the previous edition to fill in from. Write it in below.' : 'Filled in from the previous edition. Check each line and change what is different this year.');
+      showBriefFill(); renderFoot(); save();
+      return true;
+    }).then(null, function(){
+      if (seq !== briefFill.seq) return false;
+      briefStatus('The description could not be filled in from the previous edition. Write it in, or pick the edition again later.', true);
+      showBriefFill();
+      return false;
+    });
+  }
   /* the description as the AI should read it: what the owner wrote, without the headings left empty */
   function briefAnswers(text){
     return String(text || '').split(/\r?\n/).filter(function(line){
@@ -5369,11 +5406,9 @@
         S.brief[key] = el.value;
         /* an address typed by hand is no longer the event picked from ET's list */
         if (key === 'previous' && S.brief.etEvent && !sameLink(S.brief.etEvent.link, el.value)){ S.brief.etEvent = null; showEtPick(); }
-        /* what this edition's page belongs to is said again once the box is left (checkCurrentLink), not mid-typing */
-        if (key === 'current' && $('gb-current-warn') && !$('gb-current-warn').hidden){ setFieldNote('gb-current', 'warn', ''); $('gb-current-change').hidden = true; }
         renderFoot(); save();
       };
-      if (id === 'gb-brief-text') return;
+      if (id === 'gb-brief-text'){ el.addEventListener('input', function(){ if (!briefOpen(el.value)) briefStatus(''); showBriefFill(); }); return; }
       /* leaving a link box writes the address out in full, so what is sent is what is shown */
       el.onchange = function(){
         var full = normalUrl(el.value);
@@ -5399,17 +5434,12 @@
     });
     /* what is filled in under "More options" is said on the closed fold, and the fold opens when it holds something */
     function moreNote(){
-      var n = ['current', 'comp2', 'instructions'].filter(function(k){ return String(S.brief[k] || '').trim(); }).length + (S.brief.future ? 1 : 0);
+      var n = ['comp2', 'instructions'].filter(function(k){ return String(S.brief[k] || '').trim(); }).length + (S.brief.future ? 1 : 0);
       $('gb-more-note').textContent = n ? '(' + n + ' filled in)' : '';
       return n;
     }
     if (moreNote()) $('gb-more').open = true;
-    ['gb-current', 'gb-comp2'].forEach(function(id){ $(id).addEventListener('input', moreNote); });
-    /* this edition's own page on another portal than the event's: said when the box is left, and again
-       whenever the form is drawn, so it follows a portal changed since */
-    $('gb-current').onblur = checkCurrentLink;
-    $('gb-current-change').onclick = changeCategory;
-    checkCurrentLink();
+    $('gb-comp2').addEventListener('input', moreNote);
     future.addEventListener('change', moreNote);
     function showDoc(){
       pick.textContent = briefDoc ? briefDoc.name + ' · ' + fileSize(briefDoc.size) : 'Choose a PDF';
@@ -5440,6 +5470,8 @@
     };
     showDoc();
     showDeck();
+    $('gb-brief-fill').onclick = function(){ if (briefFill.ev) fillBriefFromEdition(briefFill.ev, true); };
+    showBriefFill();
     wireEtPicker();
   }
 
@@ -5715,6 +5747,48 @@
        lists come straight back), so a type changed to or from Awards shows that kind's list, not the other's */
     if (S.creationMethod === 'brief') loadEtEvents();
   }
+  /* ---------- the previous edition fills in the name and the web address (owner, 17 Nov 2026) ----------
+     The next edition's name is the edition's title with its year moved on by one ("Brand World Summit 2026" ->
+     "Brand World Summit 2027"); a title with no year is used as it is. The web address is the edition's own,
+     unchanged ("the slug will remain the same"), through the page's own rules (slugify) and availability check:
+     a taken one is shown as taken, never changed by itself. Only a field the owner has not typed in is filled:
+     an empty one, or one still holding what an earlier pick filled in (S.prevFill), so picking another edition
+     replaces only those. Changing or removing the pick leaves the fields as they are. */
+  function nextEditionName(title){
+    return String(title || '').replace(/\s+/g, ' ').trim().replace(/\b(20\d{2})\b/g, function(y){ return String(+y + 1); });
+  }
+  function fillFromEdition(ev){
+    if (!ev || S.createdEventId) return;
+    var b = S.basics, was = S.prevFill || { name: '', slug: '', brief: '' }, now = { name: was.name, slug: was.slug, brief: was.brief || '' };
+    var name = nextEditionName(ev.title), slug = slugify(ev.slug || '');
+    var nameOpen = !String(b.name || '').trim() || (was.name && b.name === was.name);
+    var slugOpen = !b.slug || !b.slugTouched || (was.slug && b.slug === was.slug);
+    if (name && nameOpen){
+      b.name = name; now.name = name;
+      if ($('f-name')) $('f-name').value = name;
+    }
+    if (slug && slugOpen){
+      var changed = slug !== b.slug;
+      b.slug = slug; now.slug = slug;
+      /* not the owner's typing: a later pick may still replace it, and the name no longer redraws it (nameEl.oninput) */
+      b.slugTouched = false;
+      if ($('f-slug')) $('f-slug').value = slug;
+      if (changed) slugChanged();
+    } else if (name && nameOpen && !b.slugTouched && !(was.slug && b.slug === was.slug)){
+      /* no address of the edition's own: the one made from the name follows the new name, as typing it would */
+      var made = slugify(b.name);
+      if (made !== b.slug){ b.slug = made; if ($('f-slug')) $('f-slug').value = made; slugChanged(); }
+    }
+    S.prevFill = now;
+    renderSlugAI(); renderFoot(); save();
+  }
+  /* a pasted link that is one of ETB2B's own listed editions is read as that edition (its title and slug are ETB2B's
+     record); any other page's name and address are not known reliably, so nothing is filled */
+  function listedEditionOf(link){
+    var key = etKind() + ':' + (S.basics.portal || ''), list = etPick.events[key] || [];
+    for (var i = 0; i < list.length; i++) if (sameLink(list[i].link, link)) return list[i];
+    return null;
+  }
   function wireEtPicker(){
     var eventInp = $('gb-et-event');
     if (!eventInp) return;
@@ -5737,6 +5811,8 @@
         $('gb-previous').value = link;
         etPick.showPickers = false;
         showEtPick();
+        fillFromEdition(ev);
+        fillBriefFromEdition(ev);
         renderFoot(); save();
         $('gb-et-change').focus();
       } });
@@ -5746,6 +5822,7 @@
         $('gb-et-change').focus();
       };
       $('gb-et-remove').onclick = function(){
+        briefFill.seq++; briefFill.ev = null; briefStatus(''); showBriefFill();
         S.brief.etEvent = null;
         S.brief.previous = '';
         $('gb-previous').value = '';
@@ -5774,6 +5851,16 @@
       /* leaving a whole link shows it as the chosen edition, as a pick from the list is shown */
       $('gb-previous').addEventListener('change', function(){
         if (!normalUrl(S.brief.previous)) return;
+        var listed = listedEditionOf(S.brief.previous);
+        fillFromEdition(listed);
+        /* a listed edition's link stands for its pick, so the run reads ETB2B's records of it */
+        if (listed && !S.brief.etEvent){
+          S.brief.etEvent = { portal: S.basics.portal, kind: listed.kind === 'award' ? 'award' : 'event', id: listed.id, title: String(listed.title), link: normalUrl(listed.link), dateLabel: listed.dateLabel || '' };
+          S.brief.previous = normalUrl(listed.link);
+          $('gb-previous').value = S.brief.previous;
+          save();
+        }
+        fillBriefFromEdition(listed);
         etPick.linkMode = false;
         etPick.linkNote = '';
         etPick.showPickers = false;

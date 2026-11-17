@@ -46,7 +46,12 @@ ee.fetchIpEvents('brandequity', fakeFetch).then(function (events) {
   var ids = events.map(function (e) { return e.id; });
   check('only ET\'s own events (ownership 1, number or text), once each, newest first, what is coming first', JSON.stringify(ids) === '["11","10","1","4","3"]', JSON.stringify(ids));
   var e1 = events.filter(function (e) { return e.id === '1'; })[0], e11 = events[0];
-  check('compact rows', JSON.stringify(Object.keys(e1).sort()) === JSON.stringify(['dateLabel', 'end', 'id', 'kind', 'link', 'logo', 'past', 'speakers', 'start', 'title', 'upcoming']));
+  /* slug, action and registrations added 17 Nov 2026: Create Event keeps the previous edition's own address for the
+     next one, and fills "Describe the event" from it (owner) */
+  check('compact rows', JSON.stringify(Object.keys(e1).sort()) === JSON.stringify(['action', 'dateLabel', 'end', 'id', 'kind', 'link', 'logo', 'past', 'registrations', 'slug', 'speakers', 'start', 'title', 'upcoming']));
+  check('slug from the link when ET sends none', e1.slug === 'e1', e1.slug);
+  check('ET\'s slug field wins', ee.compact({ ownership_type: 1, entity_id: 7, title: 'T', link: 'https://brandequity.economictimes.indiatimes.com/x', slug: 'Brand-World-Summit' }).slug === 'brand-world-summit');
+  check('a slug that is not plain is dropped', ee.compact({ ownership_type: 1, entity_id: 7, title: 'T', link: 'https://a.b/x', slug: 'a b/<c>' }).slug === '');
   check('row fields', e1.title === 'Event 1' && e1.start === '2026-09-01 09:00:00' && e1.dateLabel === 'Day 1' && e1.link === 'https://brandequity.economictimes.indiatimes.com/e1' && e1.logo === 'https://img.etb2bimg.com/l1.jpg' && e1.speakers === 3 && e1.past === true && e1.upcoming === false);
   check('upcoming marked', e11.upcoming === true && e11.past === false);
   check('a complete read is not partial', !events.partial);

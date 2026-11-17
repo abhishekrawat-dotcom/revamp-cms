@@ -133,6 +133,7 @@ const svgYear = require('./svg-year');
 const ownerBrief = require('./owner-brief');
 const etPrevious = require('./et-previous');
 const etEvents = require('./et-events');
+const editionBrief = require('./edition-brief');
 const accessControl = require('./access-control');
 /* the rules of Content › Basics' three details for posts and mailers (pure: no Firebase, no model) */
 const promoDetails = require('./promo-details');
@@ -483,6 +484,31 @@ function handleEtEvents(req, res) {
     }, function (err) {
       console.error('et/events: ' + portal + (kind === 'award' ? ' awards' : '') + ' — ' + (err && err.message));
       sendJson(res, 502, { error: 'ETB2B\'s ' + (kind === 'award' ? 'award' : 'event') + ' list could not be read right now. Please try again in a few minutes.', code: 'et-down' });
+    });
+  });
+}
+
+/* ---------- GET /api/et/edition-brief?portal=<slug>&id=<id>[&kind=award] — "Describe the event" from the previous edition ----------
+   The lines of Create Event's description, from ETB2B's own records of one of the portal's listed editions
+   (lib/edition-brief.js): no AI call. Only an edition on the portal's own list is read, so no caller's id reaches
+   ETB2B unchecked; one not on it is 404 not-listed. */
+function handleEditionBrief(req, res) {
+  withAdmin(req, res, function () {
+    var q = queryOf(req), portal = String(q.get('portal') || '').trim(), id = String(q.get('id') || '').trim();
+    var kind = String(q.get('kind') || 'event');
+    if (!etEvents.isPortal(portal)) return sendJson(res, 400, { error: 'Unknown portal "' + portal.slice(0, 40) + '".', code: 'unknown-portal' });
+    if (kind !== 'event' && kind !== 'award') return sendJson(res, 400, { error: 'kind must be "event" or "award".', code: 'bad-kind' });
+    if (!/^\d{1,9}$/.test(id)) return sendJson(res, 400, { error: 'id must be an ETB2B event id.', code: 'bad-id' });
+    (kind === 'award' ? etEvents.listAwards : etEvents.listIpEvents)(portal, etJson).then(function (events) {
+      var ev = (events || []).filter(function (e) { return e && String(e.id) === id; })[0];
+      if (!ev) { sendJson(res, 404, { error: 'That edition is not on ' + portalNameOf(portal) + '’s list of ETB2B ' + (kind === 'award' ? 'awards' : 'events') + '.', code: 'not-listed' }); return null; }
+      return editionBrief.readEditionBrief(portal, id, kind, etJson, { title: ev.title, speakers: ev.speakers, action: ev.action, registrations: ev.registrations }).then(function (lines) {
+        if (!lines) return sendJson(res, 502, { error: 'ETB2B\'s record of this edition could not be read right now.', code: 'et-down' });
+        sendJson(res, 200, { portal: portal, id: id, kind: kind, lines: lines });
+      });
+    }).then(null, function (err) {
+      console.error('et/edition-brief: ' + portal + ' ' + id + ' — ' + (err && err.message));
+      if (!res.headersSent) sendJson(res, 502, { error: 'ETB2B\'s record of this edition could not be read right now.', code: 'et-down' });
     });
   });
 }
@@ -7864,6 +7890,7 @@ var ROUTES = {
   'POST /api/ingest-source': generate('handleIngestSource'),
   'GET /api/et/portals': handleEtPortals,
   'GET /api/et/events': handleEtEvents,
+  'GET /api/et/edition-brief': handleEditionBrief,
   'POST /api/plan-structure': generate('handlePlanStructure'),
   'POST /api/generate-content': generate('handleGenerateContent'),
   'GET /api/generate/status': generate('handleGenerateStatus'),

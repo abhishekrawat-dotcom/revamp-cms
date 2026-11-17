@@ -47,8 +47,9 @@ var initSrc = (/\n  function init\(\)\{[\s\S]*?\n  \}\n/.exec(SRC) || [''])[0];
 check('1.1 init() reads ?portal= before history.replaceState tidies the address', initSrc.indexOf("params.get('portal')") !== -1 &&
   initSrc.indexOf("params.get('portal')") < initSrc.indexOf('history.replaceState'));
 check('1.1 the per-browser clone registry is no longer written', SRC.indexOf('registerEventTemplate(') === -1);
-check('1.1 the template card has its portal note, the current-URL field its Change button',
-  /<p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden><\/p>/.test(page) && /id="gb-current-change" hidden>Change this event’s portal<\/button>/.test(page));
+/* the current-URL field and its Change button left the screen (owner, 17 Nov 2026): section 6 */
+check('1.1 the template card has its portal note',
+  /<p class="hint tpl-carousel-portal-note" id="tpl-carousel-portal-note" hidden><\/p>/.test(page));
 /* the brief run: an ETB2B page read fixes the portal; another portal's page refused by the server says so on its row */
 var briefSrc = SRC.slice(SRC.indexOf('function startGenerateFromBrief('), SRC.indexOf('function renderBriefProgress('));
 check('1.1 a previous or current edition read from ET marks the draft (etPageRead)', /postJson\('\/api\/ingest-source', body\)\.then\(function\(resp\)\{[\s\S]{0,260}if \(s\.field\.type !== 'competitor' && \(body\.etEvent \|\| etPortalOfUrl\(body\.url\)\)\)\{ S\.etPageRead = true; save\(\); \}/.test(briefSrc));
@@ -853,67 +854,16 @@ async function main() {
     p.log.modals[0].sub === 'Bring an earlier ETHRWorld event’s speakers, sponsors, agenda and glimpses into this one, on the template it used.' && p.log.fetchedEvents === 1);
 
   /* =====================================================================================================
-     6. This edition's own URL on another portal
+     6. This edition's own URL: gone from the screen (owner, 17 Nov 2026 — the previous edition, picked first,
+        stands for the event). The server still takes currentEdition from older requests; the page never sends it.
      ===================================================================================================== */
   p = load();
-  await p.ce('loadPortalRoster()');
-  p.ce('S.basics.portal = "hr"');
-  check('6. a cio page on an hr event gives the sentence', p.ce('currentLinkIssue')(CIO_LINK) === 'This is an ETCIO page, but this event is on ETHRWorld. Use this event’s own ETHRWorld page, or change the event’s portal.');
-  check('6. …written without https:// too', p.ce('currentLinkIssue')('cio.economictimes.indiatimes.com/x') !== '');
-  check('6. hr on hr, www, techgig.com and example.com give nothing', [HR_LINK, 'https://www.economictimes.indiatimes.com/x', 'https://economictimes.indiatimes.com/x',
-    'https://www.techgig.com/x', 'https://example.com/x', '', 'not a link'].every(function (u) { return p.ce('currentLinkIssue')(u) === ''; }));
-  check('6. a TechMonk page reads "a TechMonk page"', p.ce('currentLinkIssue')('https://techmonk.economictimes.indiatimes.com/x').indexOf('This is a TechMonk page,') === 0);
-  check('6. an ET host that is not a roster portal gives nothing (the server decides)', p.ce('currentLinkIssue')('https://zzz.economictimes.indiatimes.com/x') === '');
-  /* ET runs one site under two names (startup.* is ET Entrepreneur's site): the page's rule is the server's
-     own siteOfPortal (api-generate.js, moved out of api.js as it was: BE-017), read from its source and run over the same
-     et-footer / et-previous / et-events */
-  var siteSrc = /function siteOfPortal\(slug\) \{[\s\S]*?\n\}/.exec(read('functions/lib/api-generate.js'));
-  check('6. api-generate.js has its siteOfPortal', !!siteSrc);
-  var serverSiteOf = vm.runInNewContext('(' + (siteSrc ? siteSrc[0] : 'function(s){ return s; }') + ')',
-    { etFooter: require('./et-footer'), etPrevious: require('./et-previous'), etEvents: etEvents });
-  check('6. (the server serves startup as entrepreneur)', serverSiteOf('startup') === 'entrepreneur' && serverSiteOf('entrepreneur') === 'entrepreneur');
-  var siteDiffers = [];
-  ROSTER.forEach(function (a) {
-    ROSTER.forEach(function (b) {
-      var url = 'https://' + b.slug + '.economictimes.indiatimes.com/x-summit-2027';
-      p.ce('S.basics.portal = "' + a.slug + '"');
-      var flagged = p.ce('currentLinkIssue')(url) !== '', refused = serverSiteOf(a.slug) !== serverSiteOf(b.slug);
-      if (flagged !== refused) siteDiffers.push(a.slug + ' event, ' + b.slug + ' page');
-    });
-  });
-  check('6. for every pair of roster portals, the page flags exactly the ET pages the server would refuse as another site\'s', siteDiffers.length === 0, siteDiffers);
-  p.ce('S.basics.portal = "startup"');
-  check('6. an ET Startup event, an entrepreneur.* page: nothing said', p.ce('currentLinkIssue')('https://entrepreneur.economictimes.indiatimes.com/startup-summit-2027') === '');
-  p.$('gb-current').value = CIO_LINK;
-  p.ce('checkCurrentLink()');
-  check('6. (an ETCIO page there shows the warning and the button)', p.$('gb-current-warn').hidden === false && p.$('gb-current-change').hidden === false);
-  p.$('gb-current').value = 'https://entrepreneur.economictimes.indiatimes.com/startup-summit-2027';
-  p.ce('checkCurrentLink()');
-  check('6. …corrected to the entrepreneur.* page: no warning under the box, and no "Change this event\'s portal" button', p.$('gb-current-warn').hidden === true && p.$('gb-current-change').hidden === true);
-  check('6. …while an ETCIO page on that event is still said', p.ce('currentLinkIssue')(CIO_LINK) === 'This is an ETCIO page, but this event is on ET Startup. Use this event’s own ET Startup page, or change the event’s portal.');
-  p.ce('S.basics.portal = "entrepreneur"');
-  check('6. an ET Entrepreneur event, a startup.* page: nothing said', p.ce('currentLinkIssue')('https://startup.economictimes.indiatimes.com/founders-meet') === '');
-  p.$('gb-current').value = CIO_LINK;
-  p.ce('checkCurrentLink()');
-  p.$('gb-current').value = 'https://startup.economictimes.indiatimes.com/founders-meet';
-  p.ce('checkCurrentLink()');
-  check('6. …and after an ETCIO page, the startup.* page takes the warning and the button down there too', p.$('gb-current-warn').hidden === true && p.$('gb-current-change').hidden === true);
+  check('6. no "This edition\'s own URL" box, no "Change this event\'s portal" button and no check of it', SRC.indexOf('gb-current') === -1 &&
+    SRC.indexOf('This edition’s own URL') === -1 && SRC.indexOf('checkCurrentLink') === -1 && SRC.indexOf('currentLinkIssue') === -1 && !p.$('gb-current'));
+  check('6. the brief sends no current edition: not an input, not a source', SRC.indexOf("type: 'currentEdition'") === -1 && !/BRIEF_INPUTS = \{[^}]*current/.test(SRC));
+  check('6. an older draft\'s current-edition link is dropped, so nothing unseen is sent', /S\.brief\.current = '';/.test(SRC));
   check('6. the site table is not a portal of its own (etSiteOf of anything else is itself; never __proto__)', p.ce('etSiteOf("cio")') === 'cio' &&
     p.ce('etSiteOf("__proto__")') === '__proto__' && p.ce('etSiteOf("toString")') === 'toString');
-  p.ce('S.basics.portal = "hr"');
-  p.$('gb-current').value = CIO_LINK;
-  p.ce('checkCurrentLink()');
-  check('6. on leaving the box: the warning under it, then the Change button', p.$('gb-current-warn').textContent.indexOf('This is an ETCIO page') === 0 && p.$('gb-current-warn').hidden === false &&
-    p.$('gb-current-change').hidden === false && p.$('gb-current-warn').nextSibling === p.$('gb-current-change') &&
-    (p.$('gb-current').getAttribute('aria-describedby') || '').indexOf('gb-current-warn') !== -1);
-  p.$('gb-current').value = HR_LINK;
-  p.ce('checkCurrentLink()');
-  check('6. corrected to its own portal\'s page: both go', p.$('gb-current-warn').hidden === true && p.$('gb-current-change').hidden === true);
-  p.ce('S.etPageRead = true');
-  p.$('gb-current').value = CIO_LINK;
-  p.ce('checkCurrentLink()');
-  check('6. with the portal fixed, no "change the portal" and no button', p.$('gb-current-warn').textContent === 'This is an ETCIO page, but this event is on ETHRWorld. Use this event’s own ETHRWorld page.' &&
-    p.$('gb-current-change').hidden === true);
   check('6. competitor links are not checked', SRC.indexOf("$('gb-comp1').onblur") === -1 && SRC.indexOf("$('gb-comp2').onblur") === -1);
 
   /* =====================================================================================================
@@ -989,6 +939,139 @@ async function main() {
   evBox.focus(); evBox.value = 'next'; p.fire(evBox, 'input'); p.fire(evBox, 'keydown', { key: 'Enter' });
   check('a pick records the event\'s own portal', p.ce('S.brief.etEvent.portal') === 'hr' && p.ce('S.brief.etEvent.id') === '4865' && p.ce('S.brief.previous') === HR_LINK);
   check('…and its chip reads "ETHRWorld · May 2026"', p.$('gb-et-chip-sub').textContent === 'ETHRWorld · May 2026' && p.$('gb-et-chip').hidden === false);
+
+  /* =====================================================================================================
+     The previous edition comes first, and fills in the name and the web address (owner, 17 Nov 2026)
+     ===================================================================================================== */
+  check('prev: the picker is the first group of the form, above Event information, with its line', page.indexOf('id="prev-grp"') !== -1 &&
+    page.indexOf('id="prev-grp"') < page.indexOf('Event information</h4>') && page.indexOf('id="gb-et"') < page.indexOf('id="f-name"') &&
+    /id="prev-grp-hint"[^>]*>Pick last edition and the event name, web address and description are filled in from it\. You can change any of them\.<\/p>/.test(page));
+  check('prev: the Registration note is gone from the schedule', SRC.indexOf('payment-cell') === -1 && SRC.indexOf('Registration is free.') === -1 && SRC.indexOf('Entry is free.') === -1);
+  check('prev: the year moves on by one; no year, as it is', p.ce('nextEditionName("Brand World Summit 2026")') === 'Brand World Summit 2027' &&
+    p.ce('nextEditionName("Brand World Summit South 2026")') === 'Brand World Summit South 2027' && p.ce('nextEditionName("MPL Marketers Premier League")') === 'MPL Marketers Premier League' &&
+    p.ce('nextEditionName("2026 CX Symposium")') === '2027 CX Symposium' && p.ce('nextEditionName("Summit 1999")') === 'Summit 1999');
+  var BWS = { id: '4708', kind: 'event', title: 'Brand World Summit 2026', slug: 'brand-world-summit-south', link: 'https://brandequity.economictimes.indiatimes.com/brand-world-summit-south', dateLabel: 'Sep 2026' };
+  var MES = { id: '4995', kind: 'event', title: 'Media & Entertainment Summit 2026', slug: 'media-entertainment-summit', link: 'https://brandequity.economictimes.indiatimes.com/media-entertainment-summit', dateLabel: 'Mar 2026' };
+  var taken = {};
+  function prevPage() {
+    var q = load({ etEvents: { '/api/et/events?portal=brandequity': [BWS, MES] }, core: {
+      slugAvailable: function (slug) { return Promise.resolve(taken[slug] ? { available: false, reason: 'taken', suggestion: slug + '-2', message: 'That address is already used by another event.' } : { available: true, suggestion: slug, reason: '' }); } } });
+    return q;
+  }
+  async function pickEdition(q, text) {
+    var box = q.$('gb-et-event');
+    if (q.$('gb-et-chip').hidden === false) q.$('gb-et-change').onclick();
+    await tick();
+    box.focus(); box.value = text; q.fire(box, 'input'); q.fire(box, 'keydown', { key: 'Enter' });
+    await tick();
+  }
+  p = prevPage();
+  await p.ce('loadPortalRoster()');
+  p.ce('S.basics.portal = "brandequity"; S.basics.category = "IP"; S.creationMethod = "brief"; S.step = 1; S.step1Phase = "details"; S.basics.name = ""; S.basics.slug = ""; S.basics.slugTouched = false; initStep1()');
+  await tick();
+  check('prev: the group shows on the AI path', p.$('prev-grp').hidden === false);
+  await pickEdition(p, 'brand world');
+  check('prev: a pick fills the name with the year moved on', p.ce('S.basics.name') === 'Brand World Summit 2027' && p.$('f-name').value === 'Brand World Summit 2027');
+  check('prev: …and the web address with the edition\'s own, unchanged', p.ce('S.basics.slug') === 'brand-world-summit-south' && p.$('f-slug').value === 'brand-world-summit-south' && p.ce('S.basics.slugTouched') === false);
+  p.$('f-name').value = 'Brand World Summit South 2027'; p.$('f-name').oninput();
+  check('prev: changing the name afterwards keeps the edition\'s address', p.ce('S.basics.slug') === 'brand-world-summit-south');
+  await pickEdition(p, 'media');
+  check('prev: another pick keeps a name the owner typed', p.ce('S.basics.name') === 'Brand World Summit South 2027');
+  check('prev: …and replaces the address it filled in itself', p.ce('S.basics.slug') === 'media-entertainment-summit');
+  p.$('gb-et-remove').onclick();
+  await tick();
+  check('prev: removing the pick leaves the fields as they are', p.ce('S.basics.name') === 'Brand World Summit South 2027' && p.ce('S.basics.slug') === 'media-entertainment-summit');
+
+  p = prevPage();
+  await p.ce('loadPortalRoster()');
+  p.ce('S.basics.portal = "brandequity"; S.basics.category = "IP"; S.creationMethod = "brief"; S.step = 1; S.step1Phase = "details"; S.basics.name = "My Own Summit"; S.basics.slug = "my-own"; S.basics.slugTouched = true; initStep1()');
+  await tick();
+  await pickEdition(p, 'brand world');
+  check('prev: a name and an address the owner typed are kept', p.ce('S.basics.name') === 'My Own Summit' && p.ce('S.basics.slug') === 'my-own' && p.$('f-slug').value === 'my-own');
+
+  taken['brand-world-summit-south'] = true;
+  p = prevPage();
+  await p.ce('loadPortalRoster()');
+  p.ce('S.basics.portal = "brandequity"; S.basics.category = "IP"; S.creationMethod = "brief"; S.step = 1; S.step1Phase = "details"; S.basics.name = ""; S.basics.slug = ""; S.basics.slugTouched = false; initStep1()');
+  await tick();
+  await pickEdition(p, 'brand world');
+  await p.ce('checkSlugNow()');
+  check('prev: an address already taken in EventSphere is shown as taken, not changed', p.ce('S.basics.slug') === 'brand-world-summit-south' &&
+    p.$('slug-status').className === 'slug-status bad' && p.$('slug-status').innerHTML.indexOf('Use brand-world-summit-south-2') !== -1, p.$('slug-status').innerHTML);
+  delete taken['brand-world-summit-south'];
+
+  p = prevPage();
+  await p.ce('loadPortalRoster()');
+  p.ce('S.basics.portal = "brandequity"; S.basics.category = "IP"; S.creationMethod = "brief"; S.step = 1; S.step1Phase = "details"; S.basics.name = ""; S.basics.slug = ""; S.basics.slugTouched = false; initStep1()');
+  await tick();
+  p.ce('loadEtEvents()'); await tick();
+  p.ce('openPrevLink("")');
+  p.$('gb-previous').value = 'https://example.com/some-summit'; p.$('gb-previous').oninput(); p.fire(p.$('gb-previous'), 'change');
+  check('prev: a pasted page that is not one of ETB2B\'s listed editions fills nothing', p.ce('S.basics.name') === '' && p.ce('S.basics.slug') === '');
+  p.ce('openPrevLink("")');
+  p.$('gb-previous').value = 'brandequity.economictimes.indiatimes.com/brand-world-summit-south'; p.$('gb-previous').oninput(); p.fire(p.$('gb-previous'), 'change');
+  check('prev: a pasted link to a listed edition fills from ETB2B\'s record', p.ce('S.basics.name') === 'Brand World Summit 2027' && p.ce('S.basics.slug') === 'brand-world-summit-south');
+
+  /* "Describe the event" from the previous edition: only an empty box, the bare headings, or what a pick filled in */
+  var LINES = { '4708': { tagline: 'The Biggest Congregation of Marketers in South India', why: 'Meet the brand leaders of the South', audience: 'CEOs, CMOs', industry: 'Marketing, advertising and media',
+    level: 'regional', action: 'register', scale: 'Last edition: about 365 registrations, 28 speakers, 12 partners', look: 'Last edition: a light site, set in Inter' },
+    '4995': { tagline: 'Media at a defining moment', why: '', audience: '', industry: 'Marketing, advertising and media', level: '', action: 'register', scale: '', look: '' } };
+  var briefAsked = [], briefFails = false;
+  function briefPage() {
+    var events = [BWS, MES];
+    return load({ core: {
+      authedFetch: function (url) {
+        url = String(url);
+        var m = /^\/api\/et\/edition-brief\?portal=brandequity&id=(\d+)$/.exec(url);
+        if (m) briefAsked.push(m[1]);
+        var body = m ? (briefFails ? null : { lines: LINES[m[1]] }) : { events: url === '/api/et/events?portal=brandequity' ? events : [] };
+        return Promise.resolve(body ? { ok: true, status: 200, json: function () { return Promise.resolve(body); } }
+          : { ok: false, status: 502, json: function () { return Promise.resolve({ error: 'ETB2B\'s record of this edition could not be read right now.' }); } });
+      },
+      slugAvailable: function (slug) { return Promise.resolve({ available: true, suggestion: slug, reason: '' }); } } });
+  }
+  async function briefReady(q, text) {
+    await q.ce('loadPortalRoster()');
+    q.ce('S.basics.portal = "brandequity"; S.basics.category = "IP"; S.creationMethod = "brief"; S.step = 1; S.step1Phase = "details"; S.basics.name = ""; S.basics.slug = ""; S.basics.slugTouched = false; S.brief.text = ' + JSON.stringify(text) + '; initStep1()');
+    await tick();
+  }
+  p = briefPage();
+  await briefReady(p, '');
+  check('desc: a new box is the bare headings', p.$('gb-brief-text').value === p.ce('BRIEF_TEMPLATE'));
+  await pickEdition(p, 'brand world');
+  await tick(); await tick();
+  var filled = p.$('gb-brief-text').value;
+  check('desc: a pick fills the headings from ETB2B\'s record', briefAsked.indexOf('4708') !== -1 && filled.indexOf('Tagline / theme: The Biggest Congregation of Marketers in South India') === 0 &&
+    filled.indexOf('\nAudience: CEOs, CMOs\n') !== -1 && filled.indexOf('\nExpected scale (delegates, speakers, partners): Last edition: about 365 registrations, 28 speakers, 12 partners\n') !== -1 &&
+    p.ce('S.brief.text') === filled, filled);
+  check('desc: "Must avoid" is left empty', /\nMust avoid: $/.test(filled));
+  check('desc: …said under the box', p.$('gb-brief-status').textContent === 'Filled in from the previous edition. Check each line and change what is different this year.');
+  await pickEdition(p, 'media');
+  await tick(); await tick();
+  check('desc: another pick replaces what the first filled in; an unknown line stays empty after its heading', p.$('gb-brief-text').value.indexOf('Tagline / theme: Media at a defining moment\nWhy attend (what sets it apart): \n') === 0, p.$('gb-brief-text').value);
+  var box = p.$('gb-brief-text');
+  box.value = 'Tagline / theme: My own words\n' + box.value.split('\n').slice(1).join('\n'); box.oninput(); p.fire(box, 'input');
+  var mine = box.value;
+  await pickEdition(p, 'brand world');
+  await tick(); await tick();
+  check('desc: the owner\'s writing is kept on another pick, and the button offers the fill', p.$('gb-brief-text').value === mine && p.$('gb-brief-fill').hidden === false);
+  p.$('gb-brief-fill').onclick();
+  check('desc: the button says it is filling in', p.$('gb-brief-status').textContent === 'Filling in from the previous edition…');
+  await tick(); await tick();
+  check('desc: …and fills when asked', p.$('gb-brief-text').value.indexOf('Tagline / theme: The Biggest Congregation') === 0 && p.$('gb-brief-fill').hidden === true);
+
+  p = briefPage(); briefFails = true;
+  await briefReady(p, '');
+  await pickEdition(p, 'brand world');
+  await tick(); await tick();
+  check('desc: a failed read leaves the headings as they were, with a plain line', p.$('gb-brief-text').value === p.ce('BRIEF_TEMPLATE') &&
+    p.$('gb-brief-status').textContent === 'The description could not be filled in from the previous edition. Write it in, or pick the edition again later.');
+  briefFails = false;
+  p = briefPage(); briefAsked = [];
+  await briefReady(p, 'We are a two-day summit for marketers.');
+  await pickEdition(p, 'brand world');
+  await tick(); await tick();
+  check('desc: a box the owner wrote in before the pick is not overwritten, and not even read for', p.$('gb-brief-text').value === 'We are a two-day summit for marketers.' && briefAsked.length === 0 && p.$('gb-brief-fill').hidden === false);
 
   /* =====================================================================================================
      The details chip, the footer note and init()

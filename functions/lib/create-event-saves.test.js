@@ -198,8 +198,9 @@ async function main() {
   check('UX-049 Starts: a date and a time box; Ends the same, marked optional', /<input class="inp" id="f-start" type="date" value="">/.test(sched) && /id="f-start-time" type="time"/.test(sched) &&
     /<label for="f-end">Ends<\/label><span class="pill-opt">Optional<\/span>/.test(sched), sched);
   check('UX-049 each takes three columns, and the venue the rest of the row', /field c3 dt-cell/.test(sched) && /<div class="field c4" id="venue-cell">/.test(sched) &&
-    /* WZ-054: the city has a field of its own, at the start of the next row beside the registration note */
-    /<div class="field c4" id="city-cell">/.test(sched) && /class="field c8" id="payment-cell"/.test(sched));
+    /* WZ-054: the city has a field of its own, at the start of the next row; the Registration note beside it
+       left the schedule (owner, 17 Nov 2026) */
+    /<div class="field c4" id="city-cell">/.test(sched) && !/payment-cell|payment-note|Registration is free|Entry is free|Online payment/.test(sched));
   var d = p.$('f-start'), t = p.$('f-start-time');
   d.value = '2027-02-10'; d.oninput();
   check('UX-049 a date alone is a whole start: 09:00, shown in its box', t.value === '09:00' && p.ce('S.basics.start') === '2027-02-10T09:00');
