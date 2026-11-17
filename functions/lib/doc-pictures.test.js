@@ -204,46 +204,87 @@ function sections() {
     { sectionId: 'overview', placement: 'picture', slot: 1, picture: 9, alt: 'no such number' },
     { sectionId: 'speakers', placement: 'background', slot: 0, picture: 3, alt: 'reworked anyway' },
     { sectionId: 'gone', placement: 'picture', slot: 1, picture: 3 }
-  ], { sections: secs, first: 3, last: 4, skip: { speakers: true } });
+  ], { sections: secs, first: 3, last: 4, skip: { speakers: true }, people: {} });
   ok(swaps.length === 2 && swaps[0].sectionId === 'overview' && swaps[0].slot === 1 && swaps[0].picture === 3 && swaps[1].sectionId === 'what-awaits' && swaps[1].slot === 2 && swaps[1].picture === 4,
     '1 swaps kept only where the section has that place (the only picture, a named one of several), each picture once, never the nav, a place it lacks, the owner\'s own attachment, a number past them or a section reworked', swaps);
-  ok(DP.cleanSwaps([{ sectionId: 'hero', placement: 'hero', slot: 0, picture: 3, alt: 'x' }], { sections: secs, first: 3, last: 4 })[0].placement === 'hero' &&
+  ok(DP.cleanSwaps([{ sectionId: 'hero', placement: 'hero', slot: 0, picture: 3, alt: 'x' }], { sections: secs, first: 3, last: 4, people: {} })[0].placement === 'hero' &&
     !DP.cleanSwaps([{ sectionId: 'hero', placement: 'hero', slot: 0, picture: 3 }], { sections: secs.map(function (s) { return s.id === 'hero' ? Object.assign({}, s, { video: true }) : s; }), first: 3, last: 4 }).length,
     '1 the banner takes one, unless it plays a video');
   /* QA, 16 Nov 2026 (ET DAVOS 2027): the shape, hidden sections and people */
   var sized = [{ n: 3, w: 1600, h: 900, page: 9 }, { n: 4, w: 900, h: 1600, page: 10 }];
   var wide = secs.map(function (x) { return x.id === 'overview' ? Object.assign({}, x, { pics: Object.assign({}, x.pics, { list: [{ label: 'Davos in winter', w: 1152, h: 648 }] }) }) : x; });
   var dropped = [];
-  var shaped = DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 4, alt: 'a portrait' }], { sections: wide, first: 3, last: 4, pictures: sized, dropped: dropped });
+  var shaped = DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 4, alt: 'a portrait' }], { sections: wide, first: 3, last: 4, pictures: sized, dropped: dropped, people: {} });
   ok(!shaped.length && dropped.length === 1 && dropped[0].why === 'shape' && dropped[0].size.w === 900,
     '1 a 900 x 1600 portrait is not swapped into a 1152 x 648 frame: too far off its shape', dropped);
   var re = DP.shapeRework(dropped[0], wide);
   ok(re && re.sectionId === 'overview' && JSON.stringify(re.pictures) === '[4]' && /Replace the section's picture “Davos in winter” with attached picture 4, in a frame of that picture's own shape, portrait 9:16 \(aspect-ratio: 900 \/ 1600\)/.test(re.instruction),
     '1 ...it is reworked in instead, its frame in the picture\'s own shape', re);
-  ok(DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'a landscape' }], { sections: wide, first: 3, last: 4, pictures: sized }).length === 1,
+  ok(DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'a landscape' }], { sections: wide, first: 3, last: 4, pictures: sized, people: {} }).length === 1,
     '1 a 1600 x 900 landscape is swapped into the same 1152 x 648 frame (the same shape)');
   dropped = [];
   var hid = wide.map(function (x) { return x.id === 'overview' ? Object.assign({}, x, { hidden: true, showsWhen: 'sessions' }) : x; });
   ok(!DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'x' }], { sections: hid, first: 3, last: 4, pictures: sized, dropped: dropped }).length && dropped[0].why === 'hidden' &&
-    DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'x' }], { sections: hid, first: 3, last: 4, pictures: sized, named: { overview: true } }).length === 1,
+    DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'x' }], { sections: hid, first: 3, last: 4, pictures: sized, named: { overview: true }, people: {} }).length === 1,
     '1 a section visitors do not see takes no document picture, unless the owner names it', dropped);
   dropped = [];
   var who = wide.concat([{ id: 'who-should-attend', name: 'Who Should Attend', role: '', pics: { slots: 1, list: [{ label: 'leaders', w: 1152, h: 648 }], background: false, heroTarget: '', own: [] } }]);
+  var offered = [];
   var ppl = DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'people' }, { sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 3, alt: 'people' }],
-    { sections: who, first: 3, last: 4, pictures: sized, people: DP.peopleSet([3, 99], 3, 4), dropped: dropped });
-  ok(ppl.length === 1 && ppl[0].sectionId === 'who-should-attend' && dropped[0].why === 'people' && dropped[0].sectionId === 'overview',
-    '1 a document picture with people goes only in a people section', { ppl: ppl, dropped: dropped });
+    { sections: who, first: 3, last: 4, pictures: sized, people: DP.peopleSet([3, 99], 3, 4), dropped: dropped, offers: offered });
+  ok(!ppl.length && dropped[0].why === 'people' && dropped[0].sectionId === 'overview' && offered.length === 1 && offered[0].sectionId === 'who-should-attend' &&
+    offered[0].placement === 'picture' && offered[0].slot === 1 && offered[0].picture === 3 && offered[0].why === 'people',
+    '1 a document picture with people goes only in a people section — and even there it is offered, never placed (owner, 17 Nov 2026)', { ppl: ppl, dropped: dropped, offered: offered });
   ok(DP.peopleSection({ id: 'who-should-attend', name: 'Who Should Attend' }) && DP.peopleSection({ id: 'x', name: 'Meet the delegates' }) && !DP.peopleSection({ id: 'why-join-us', name: 'Why Join Us' }) &&
     !DP.peopleSection({ id: 'key-discussion-points', name: 'Key Discussion Points' }), '1 people sections by their name');
   dropped = [];
   var kr = DP.cleanReworks([{ sectionId: 'overview', instruction: 'add picture 3', pictures: [3] }, { sectionId: 'who-should-attend', instruction: 'add picture 3', pictures: [3] },
     { sectionId: 'what-awaits', instruction: 'tighten it', pictures: [] }], [{ name: 'Why Join Us', instruction: 'with picture 3', pictures: [3] }],
-    { sections: who, first: 3, last: 4, people: { 3: true }, dropped: dropped });
-  ok(kr.edits.map(function (e) { return e.sectionId; }).join() === 'who-should-attend,what-awaits' && !kr.newSections.length && kr.peopleUsed === 1 && dropped.map(function (d) { return d.why; }).join() === 'people,people',
-    '1 a rework or a new section that would show people outside a people section is left out', { kr: kr, dropped: dropped });
+    { sections: who, first: 3, last: 4, people: { 3: true }, dropped: dropped, offers: (offered = []) });
+  ok(kr.edits.map(function (e) { return e.sectionId; }).join() === 'what-awaits' && !kr.newSections.length && kr.peopleUsed === 1 && dropped.map(function (d) { return d.why; }).join() === 'people,people' &&
+    offered.length === 1 && offered[0].sectionId === 'who-should-attend' && offered[0].placement === 'picture' && offered[0].slot === 1 && offered[0].rework === true,
+    '1 a rework or a new section that would show people outside a people section is left out; the people section\'s rework is not given the photo: it is offered for that section\'s picture', { kr: kr, dropped: dropped, offered: offered });
   dropped = [];
   kr = DP.cleanReworks([{ sectionId: 'overview', instruction: 'add picture 4', pictures: [4] }], [], { sections: hid, first: 3, last: 4, dropped: dropped });
   ok(!kr.edits.length && dropped[0].why === 'hidden', '1 a rework that would put a document picture in a section visitors do not see is left out');
+  /* the owner, 17 Nov 2026: a document photo that shows people is never placed by itself, in any section — offered;
+     a photo whose people check is missing is offered too (fail closed); a photo without people is placed as before */
+  (function () {
+    var off = [], swapIn = [{ sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 3, alt: 'leaders' }];
+    var placed = DP.cleanSwaps(swapIn, { sections: who, first: 3, last: 4, pictures: sized, people: {}, peopleKnown: true, offers: off });
+    ok(placed.length === 1 && placed[0].picture === 3 && !off.length, '1 a swap of a photo without people is placed as before', { placed: placed, off: off });
+    placed = DP.cleanSwaps(swapIn, { sections: who, first: 3, last: 4, pictures: sized, people: {}, peopleKnown: false, offers: (off = []) });
+    ok(!placed.length && off.length === 1 && off[0].why === 'unknown' && off[0].sectionId === 'who-should-attend' && off[0].alt === 'leaders',
+      '1 a swap whose people check is missing is offered, not placed', { placed: placed, off: off });
+    placed = DP.cleanSwaps([{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 3, alt: 'a landscape' }], { sections: wide, first: 3, last: 4, pictures: sized, offers: (off = []) });
+    ok(!placed.length && off.length === 1 && off[0].why === 'unknown', '1 with no people list given at all, a swap is offered (fails closed)', { placed: placed, off: off });
+    var kr2 = DP.cleanReworks([{ sectionId: 'overview', instruction: 'redesign it with picture 3 beside the text', pictures: [3] }], [],
+      { sections: wide, first: 3, last: 4, people: {}, peopleKnown: true, offers: (off = []) });
+    ok(kr2.edits.length === 1 && JSON.stringify(kr2.edits[0].pictures) === '[3]' && !off.length, '1 a rework given a photo without people goes on as before', { kr: kr2, off: off });
+    kr2 = DP.cleanReworks([{ sectionId: 'overview', instruction: 'redesign it with picture 3 beside the text', pictures: [3] }], [],
+      { sections: wide, first: 3, last: 4, people: {}, peopleKnown: false, offers: (off = []) });
+    ok(!kr2.edits.length && off.length === 1 && off[0].why === 'unknown' && off[0].sectionId === 'overview' && off[0].placement === 'picture' && off[0].slot === 1,
+      '1 a rework whose photo\'s people check is missing is not given it: the photo is offered for the section\'s picture', { kr: kr2, off: off });
+    var whoBg = who.map(function (x) { return x.id === 'who-should-attend' ? Object.assign({}, x, { pics: { slots: 0, list: [], background: true, heroTarget: '', own: [] } }) : x; });
+    kr2 = DP.cleanReworks([{ sectionId: 'who-should-attend', instruction: 'use picture 3 and picture 4 as its two pictures', pictures: [3, 4] }], [],
+      { sections: whoBg, first: 3, last: 4, people: { 3: true }, peopleKnown: true, offers: (off = []) });
+    ok(kr2.edits.length === 1 && JSON.stringify(kr2.edits[0].pictures) === '[4]' && /Attached picture 3 is not given to you: make no place for it\.$/.test(kr2.edits[0].instruction) &&
+      off.length === 1 && off[0].picture === 3 && off[0].why === 'people' && off[0].placement === 'background',
+      '1 a rework with a photo of people and one without: it goes on with the one without, and the photo of people is offered for its place', { kr: kr2, off: off });
+    var noPlace = who.map(function (x) { return x.id === 'who-should-attend' ? Object.assign({}, x, { pics: { slots: 0, list: [], background: false, heroTarget: '', own: [] } }) : x; });
+    kr2 = DP.cleanReworks([{ sectionId: 'who-should-attend', instruction: 'add picture 3', pictures: [3] }], [{ name: 'Meet the delegates', instruction: 'a gallery with picture 4', pictures: [4] }],
+      { sections: noPlace, first: 3, last: 4, people: { 3: true, 4: true }, peopleKnown: true, offers: (off = []) });
+    ok(!kr2.edits.length && kr2.newSections.length === 1 && !kr2.newSections[0].pictures.length && /make no place for it\.$/.test(kr2.newSections[0].instruction) &&
+      off.length === 2 && off[0].placement === '' && off[1].sectionId === '' && off[1].name === 'Meet the delegates' && off[1].placement === '',
+      '1 a section with no place for one, and a new section: the photo is offered for the tray, and the new section is still written without it', { kr: kr2, off: off });
+    var said = DP.offerLines([{ sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 3, why: 'people' }, { sectionId: '', name: 'Meet the delegates', placement: '', picture: 4, why: 'unknown' }], sized, who);
+    ok(said.length === 2 && said[0] === 'Page 9\'s photo shows people, so I offered it for “Who Should Attend” instead of putting it there: it waits under my message, with a button that puts it in.' &&
+      said[1] === 'I could not check whether page 10\'s photo shows people, so I offered it for “Meet the delegates” instead of putting it there: it waits under my message — “Use this picture” puts it in the tray, then tell me where it goes.' &&
+      !/\bET\b/.test(said.join(' ')), '1 the answer says each photo was offered, not placed, by page', said);
+    var blk = DP.promptLines(list, { sheets: 1, docs: docs, swaps: true });
+    ok(/never put on the page by you, in any section: the editor OFFERS it to the owner/.test(blk) && /never that you put it in/.test(blk) && /offered to the owner, never put on the page by themselves/.test(DP.peopleSchema().description),
+      '1 the model is told a photo of people is offered, never placed');
+  })();
   var lines = DP.droppedLines([{ sectionId: 'overview', picture: 3, why: 'people' }, { sectionId: 'overview', picture: 4, why: 'hidden' }, { sectionId: 'overview', picture: 4, why: 'shape' }], sized, wide);
   ok(lines.length === 3 && /^Page 9's picture shows people, so it was not put in “Overview”: pictures of people go only in a people section/.test(lines[0]) &&
     /^Page 10's picture was not put in “Overview”: visitors do not see that section yet\.$/.test(lines[1]) && /^Page 10's picture is portrait 9:16, too far from the shape of its place in “Overview” to swap in without cutting much of it off, so it was left out\.$/.test(lines[2]),
@@ -350,7 +391,7 @@ function sections() {
   answers.push(edit({ summary: 'Page 2\'s town is now the Overview picture; page 3\'s goes beside The Swiss Arc. Undo takes it all back.',
     sectionEdits: [{ sectionId: 'agenda', instruction: 'Add attached picture 3 as this section\'s picture beside its text, in a 16:9 frame.', pictures: [3] }],
     pictureSwaps: [{ sectionId: 'overview', placement: 'picture', slot: 1, picture: 2, alt: 'Davos in snow' }, { sectionId: 'agenda', placement: 'picture', slot: 1, picture: 4, alt: 'reworked anyway' },
-      { sectionId: 'what-awaits', placement: 'picture', slot: 0, picture: 4, alt: 'which one?' }] }));
+      { sectionId: 'what-awaits', placement: 'picture', slot: 0, picture: 4, alt: 'which one?' }], docPeople: [] }));
   var out = await call('POST', '/api/chat-edit', docMsg);
   var a1 = asked[asked.length - 1];
   ok(out.status === 200 && out.body.kind === 'edit', '3 the message is answered', out);
@@ -402,6 +443,32 @@ function sections() {
   answers.push(edit({ summary: 'Placed.', sectionEdits: [{ sectionId: 'agenda', instruction: 'Add attached picture 1 beside its text, in a 16:9 frame.', pictures: [1] }], docPeople: [] }));
   out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'put a pdf picture in the swiss arc section', sections: hiddenSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
   ok(out.status === 200 && out.body.sectionEdits.length === 1 && out.body.sectionEdits[0].sectionId === 'agenda', '3 ...unless the owner names it', out.body);
+  /* the owner, 17 Nov 2026: a document photo that shows people is never placed by itself, in any section — offered under
+     the message with a button that puts it in; the rest of the message's changes still happen; a photo whose people
+     check is missing is offered too; one without people is placed as before. Through the real router. */
+  var whoSecs = sections().concat([{ id: 'who-should-attend', name: 'Who Should Attend', texts: ['CXOs and founders'], role: '', pics: { slots: 1, list: [{ label: 'leaders', w: 1152, h: 648 }], background: false, heroTarget: '', own: [] } }]);
+  var whoSwap = [{ sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 2, alt: 'a businessman' }];
+  answers.push(edit({ summary: 'I put page 3\'s photo in Who Should Attend and hid What Awaits You.', sectionOps: [{ op: 'hide', sectionId: 'what-awaits' }], pictureSwaps: whoSwap, docPeople: [2] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'use the pdf photos and hide what awaits you', sections: whoSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
+  ok(out.status === 200 && out.body.kind === 'edit' && !(out.body.pictureSwaps || []).length && out.body.sectionOps.length === 1 &&
+    JSON.stringify(out.body.docOffers) === JSON.stringify([{ sectionId: 'who-should-attend', name: '', placement: 'picture', slot: 1, picture: 2, alt: 'a businessman', why: 'people' }]) &&
+    Array.isArray(out.body.docPictures) && out.body.docPictures.length === 3,
+    '3 a swap of a photo of people into a people section is offered, not placed; the rest of the message still happens', out.body);
+  answers.push(edit({ summary: 'Placed.', pictureSwaps: whoSwap }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'use the pdf photos', sections: whoSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
+  ok(out.status === 200 && out.body.kind === 'reply' && out.body.docOffers && out.body.docOffers.length === 1 && out.body.docOffers[0].why === 'unknown' &&
+    /^I could not check whether page 3's photo shows people, so I offered it for “Who Should Attend” instead of putting it there: it waits under my message, with a button that puts it in\. Nothing on the page changed\.$/.test(out.body.summary) &&
+    out.body.docPictures.length === 3 && !(out.body.pictureSwaps || []).length,
+    '3 an answer with no people check (no docPeople): the photo is offered, and the reply says so, not "placed"', out.body);
+  answers.push(edit({ summary: 'Placed.', sectionEdits: [{ sectionId: 'who-should-attend', instruction: 'Rework it around attached picture 2 beside its text, in a 16:9 frame.', pictures: [2] }], docPeople: [2] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'redesign who should attend with the pdf photo', sections: whoSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
+  ok(out.status === 200 && out.body.kind === 'reply' && !out.body.sectionEdits.length && out.body.docOffers && out.body.docOffers.length === 1 &&
+    out.body.docOffers[0].sectionId === 'who-should-attend' && out.body.docOffers[0].placement === 'picture' && out.body.docOffers[0].why === 'people' && /offered it for “Who Should Attend”/.test(out.body.summary),
+    '3 a rework is never given a photo of people to put in by itself: offered for that section instead', out.body);
+  answers.push(edit({ summary: 'Placed.', pictureSwaps: whoSwap, docPeople: [] }));
+  out = await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'use the pdf photos', sections: whoSecs, canMakePictures: true, canPlaceDocPictures: true, attachmentCount: 0, attachments: [] });
+  ok(out.status === 200 && out.body.kind === 'edit' && out.body.pictureSwaps.length === 1 && out.body.pictureSwaps[0].sectionId === 'who-should-attend' && !out.body.docOffers,
+    '3 a photo without people is placed as before', out.body);
   /* an editor from before: nothing of this reaches it */
   answers.push({ kind: 'reply', summary: 'ok', design: {}, textEdits: [], sectionEdits: [], sectionOps: [], newSections: [], newForms: [], ctaLinks: [], formEmbeds: [], goTo: '', intent: 'x' });
   await call('POST', '/api/chat-edit', { eventId: EV, instruction: 'use the pictures from the pdf', sections: [{ id: 'overview', name: 'Overview', texts: ['x'] }], documents: docMsg.documents });

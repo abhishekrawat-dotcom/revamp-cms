@@ -501,6 +501,104 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
   check('D.10 the card\'s words never say a bare "ET"', !/\bET\b/.test(held.replace(/\/\*[\s\S]*?\*\//g, '')) && !/\bET\b/.test(use.replace(/\/\*[\s\S]*?\*\//g, '')));
 })();
 
+/* ======================= D.12 document photos of people: offered, never placed (owner, 17 Nov 2026) =======================
+   A document photo that shows people (or whose people check is missing) is never put on the page by ETB2B AI itself, in
+   any section: the server sends it as an offer (docOffers, lib/doc-pictures.js), and the panel draws it under the
+   message — the photo, where it would go, and "Put it in" (useHeldPicture: one click, its own Undo) — and the card's
+   last line says it was offered (picture-facts.js offeredLine). Run as written, over a small DOM; the wiring read from
+   the source. */
+(function () {
+  function body(name) {
+    var i = SRC.indexOf('function ' + name + '(');
+    if (i === -1) return '';
+    var open = SRC.indexOf('{', i), depth = 0;
+    for (var j = open; j < SRC.length; j++) {
+      if (SRC[j] === '{') depth++;
+      else if (SRC[j] === '}' && --depth === 0) return SRC.slice(i, j + 1);
+    }
+    return '';
+  }
+  var offersOf = body('docOffersOf'), drawOffer = body('drawOfferedPicture'), replyOffers = body('drawReplyOffers'), use = body('useHeldPicture'), usePic = body('drawUsePicture');
+  check('D.12 the offer is drawn by its own function, and puts the photo in through useHeldPicture (the held card\'s "Use it anyway")',
+    !!offersOf && !!drawOffer && !!replyOffers && /useHeldPicture\(spec, b\)/.test(drawOffer) && /drawUsePicture\(box, spec\.url\)/.test(drawOffer));
+  var DOCURL = 'https://storage.googleapis.com/b/events/ev-1/chat-docs/20261117101500-abc123/p3.jpg';
+  function el(tag) {
+    var e = { tag: tag, children: [], listeners: {}, textContent: '', title: '', className: '', disabled: false, parentNode: null, alt: '', src: '',
+      appendChild: function (c) { c.parentNode = e; e.children.push(c); return c; },
+      replaceChild: function (n, o) { var i = e.children.indexOf(o); if (i !== -1) { e.children[i] = n; n.parentNode = e; } return o; },
+      addEventListener: function (t, fn) { (e.listeners[t] = e.listeners[t] || []).push(fn); },
+      cloneNode: function () { var c = el(tag); c.textContent = e.textContent; c.title = e.title; c.className = e.className; return c; },
+      click: function () { (e.listeners.click || []).forEach(function (fn) { fn(); }); } };
+    return e;
+  }
+  var toasts = [], placed = [], commits = 0, undos = 0, tray = [], targets = [];
+  var fakeSec = { contains: function () { return true; } };
+  var target = { el: { nodeType: 1, tagName: 'IMG', closest: function () { return null; } }, how: 'picture' };
+  var fx = vm.createContext({
+    document: { createElement: el }, window: { console: { error: function () {} } }, Math: Math, JSON: JSON, String: String, parseInt: parseInt, Array: Array,
+    chatView: { ask: function () {}, focusInput: function () {} }, aiWorking: false, remounting: false, eventId: 'ev-1',
+    viewCan: function () { return true; }, showToast: function (t) { toasts.push(t); }, sectionLabel: function (id) { return id === 'who-should-attend' ? 'Who Should Attend' : id; },
+    offerPicture: function (u) { tray.push(u); return true; },
+    aiPictures: function () { return { target: function (sec, spec) { targets.push({ placement: spec.placement, slot: spec.slot }); return target; }, place: function (tg, url) { placed.push(url); return true; }, unitState: function () { return 'unit'; },
+      frameBox: function () { return { w: 1152, h: 648 }; }, fitFrame: function () {} }; },
+    canvas: { sectionByKey: function () { return fakeSec; }, snapshot: function () { return { n: 1 }; }, restore: function () {}, sameSnapshot: function () { return false; }, doc: {} },
+    isLive: function () { return true; }, deselect: function () {}, flush: function () {}, aiPictureHelpers: function () { return {}; }, onDesktop: function (fn) { return fn(); },
+    sameLogoUnit: function (a, b) { return a === b; }, restoreOpts: function () { return {}; }, commitNow: function () { commits++; fx.undoPtr++; }, undoPtr: 7,
+    undo: function () { undos++; }, workSafety: { undoQuestion: function () { return { title: 't', text: 'x' }; } }, ask: function () { return Promise.resolve('keep'); },
+    aiPictureRules: R
+  });
+  vm.runInContext([offersOf, drawOffer, replyOffers, use, usePic].join('\n') + '\nthis.docOffersOf = docOffersOf; this.drawOfferedPicture = drawOfferedPicture; this.drawReplyOffers = drawReplyOffers;', fx);
+  var docPics = { 3: { n: 3, url: DOCURL, page: 3, doc: 'ETDavos.pdf' } };
+  var offers = fx.docOffersOf([{ sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 3, alt: 'a businessman', why: 'people' },
+    { sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 3, why: 'people' }, { sectionId: 'x', placement: 'picture', picture: 9, why: 'people' },
+    { sectionId: '', name: 'Meet the delegates', placement: '', picture: 3, why: 'odd' }], docPics);
+  check('D.12 docOffersOf: each offered photo once, only a number the answer has, named by its section, with its page', offers.length === 1 && offers[0].url === DOCURL &&
+    offers[0].label === 'Who Should Attend' && offers[0].placement === 'picture' && offers[0].slot === 1 && offers[0].why === 'people' && offers[0].page === 3 && offers[0].doc === 'ETDavos.pdf', offers);
+  var noPlace = fx.docOffersOf([{ sectionId: '', name: 'Meet the delegates', placement: '', picture: 3, why: 'odd' }], docPics)[0];
+  check('D.12 docOffersOf: a new section\'s offer has no place, and a people check it does not know reads as unknown', noPlace && noPlace.placement === '' && noPlace.sectionId === '' &&
+    noPlace.label === 'Meet the delegates' && noPlace.why === 'unknown', noPlace);
+  var bubble = el('div');
+  fx.drawOfferedPicture(bubble, offers[0]);
+  var img = bubble.children[0] && bubble.children[0].children[0], note = bubble.children[1], box = bubble.children[2] || { children: [] };
+  var buttons = box.children.map(function (b) { return b.textContent; });
+  check('D.12 the offer: the photo, where it would go and why, then Put it in · Use this picture', img && img.src === DOCURL && /offered for “Who Should Attend”/.test(img.alt) &&
+    note && note.textContent === 'Page 3 of “ETDavos.pdf”, for “Who Should Attend”: it shows people, so it was offered, not placed.' && buttons.join(' · ') === 'Put it in · Use this picture', { buttons: buttons, note: note && note.textContent });
+  check('D.12 nothing is placed until the owner clicks', placed.length === 0 && commits === 0 && tray.length === 0);
+  box.children[0].click();
+  var undoBtn = box.children[0];
+  check('D.12 Put it in: the photo in the place offered, on the click, one change on the undo stack, an Undo of its own',
+    placed.length === 1 && placed[0] === DOCURL && targets[0].placement === 'picture' && targets[0].slot === 1 && commits === 1 && undoBtn.textContent === 'Undo' &&
+    /is in “Who Should Attend”\. Undo under the message takes it out again/.test(toasts[toasts.length - 1]), { placed: placed, targets: targets, commits: commits, btn: undoBtn.textContent, toast: toasts[toasts.length - 1] });
+  undoBtn.click();
+  check('D.12 … and its Undo takes it out again', undos === 1 && undoBtn.textContent === 'Taken out' && undoBtn.disabled === true, [undos, undoBtn.textContent]);
+  box.children[1].click();
+  check('D.12 Use this picture puts the photo in the tray', tray.length === 1 && tray[0] === DOCURL, tray);
+  var b2 = el('div');
+  fx.drawOfferedPicture(b2, noPlace);
+  check('D.12 an offer with no place: only Use this picture, and the unknown check said plainly', b2.children[2].children.map(function (b) { return b.textContent; }).join() === 'Use this picture' &&
+    /I could not check whether it shows people, so it was offered, not placed\./.test(b2.children[1].textContent), b2.children[1].textContent);
+  var b3 = el('div'), placedAt = placed.length;
+  fx.drawReplyOffers(b3, { docOffers: [{ sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 1, why: 'unknown' }],
+    docPictures: [{ n: 1, url: DOCURL, page: 3, doc: 'ETDavos.pdf', w: 1600, h: 900 }] }, 0);
+  check('D.12 a reply that only offered photos draws them the same way (numbers after the attached pictures), and places nothing; its words say "offered", so no second line',
+    b3.children.length === 3 && placed.length === placedAt && /could not check whether it shows people/.test(b3.children[1].textContent), b3.children.length);
+  fx.window.RevampPictureFacts = require('../../picture-facts.js');
+  var b4 = el('div');
+  fx.drawReplyOffers(b4, { summary: 'I can make a new picture for the banner.', docOffers: [{ sectionId: 'who-should-attend', placement: 'picture', slot: 1, picture: 1, why: 'people' }],
+    docPictures: [{ n: 1, url: DOCURL, page: 3, doc: 'ETDavos.pdf', w: 1600, h: 900 }] }, 0);
+  check('D.12 a reply whose words do not say "offered" ends with the offered line', b4.children.length === 4 && /^Offered, not placed: page 3's photo for “Who Should Attend” \(it shows people\)\./.test(b4.children[3].textContent), b4.children.length);
+  /* the wiring: runAiTurn offers what the answer offered, says so on the card's last line and with the turn, and the
+     reply path draws them too; the swaps it places are only the answer's pictureSwaps, which never carry an offer */
+  var turn = body('runAiTurn');
+  check('D.12 runAiTurn reads the offers, draws each after the change, ends the card with offeredLine, and keeps that line with the turn',
+    /var docOffers = docOffersOf\(result\.docOffers, docPics\);/.test(turn) && /PFacts\.offeredLine\(docOffers\.map\(function \(o\) \{ return \{ label: o\.label, page: o\.page, why: o\.why, place: !!o\.placement \}; \}\)\)/.test(turn) &&
+    /reportTurn\(t\.turnId, t\.status, done, offerLine \? notAll\.concat\(\[offerLine\]\) : notAll\);/.test(turn) &&
+    /docOffers\.forEach\(function \(o\) \{ drawOfferedPicture\(bubble, o\); \}\);\s*if \(offerLine\) card\.note\(offerLine\);/.test(turn) &&
+    /var swaps = \(result\.pictureSwaps \|\| \[\]\)/.test(turn) && !/docOffers[^\n]*placeDocPicture|placeDocPicture[^\n]*docOffers/.test(turn), turn.length);
+  check('D.12 the reply path draws a reply\'s offers', /drawGoTo\(said, body\);\s*\/\*[^*]*\*\/\s*drawReplyOffers\(said, body, sent\.length\);/.test(SRC));
+  check('D.12 the offer\'s words never say a bare "ET"', !/\bET\b/.test(drawOffer.replace(/\/\*[\s\S]*?\*\//g, '')) && !/\bET\b/.test(offersOf.replace(/\/\*[\s\S]*?\*\//g, '')));
+})();
+
 /* ======================= D.8 ES5 ======================= */
 (function () {
   var esbuild = null;

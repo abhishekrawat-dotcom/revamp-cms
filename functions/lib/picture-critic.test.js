@@ -98,7 +98,7 @@ function fakeFb() {
     bucket: { name: 'test-bucket', file: function (p) { return { save: function (buf) { saved[p] = buf; return Promise.resolve(); }, makePublic: function () { return Promise.resolve(); } }; } } };
   return fb;
 }
-var QPATH = 'aiQuota/u-asha', TODAY = cp.istDay(Date.now());
+var QPATH = 'aiQuota/u-asha', TODAY = cp.istDay(NOW);   // the day of NOW, the time every make() is run at (not today's date: the test broke on 17 Nov 2026)
 
 (async function () {
   var NOISE = await raw(1184, 888, scene);

@@ -27,6 +27,20 @@ check(F.closingLine([{ label: 'A', outcome: 'placed' }, { label: 'B', outcome: '
 check(F.closingLine([{ label: 'A', outcome: 'placed' }, { label: 'A', outcome: 'option', where: 'Use this picture under my message puts it in the tray' }], {}) === 'The new picture is on the page: “A” placed; another option for “A” — use this picture under my message puts it in the tray.', 'an option waiting is not counted as made', F.closingLine([{ label: 'A', outcome: 'placed' }, { label: 'A', outcome: 'option', where: 'Use this picture under my message puts it in the tray' }], {}));
 check(F.closingLine([], {}) === '' && F.closingLine(null) === '', 'no jobs: no line');
 
+/* the owner, 17 Nov 2026: a document photo that shows people (or whose people check is missing) is offered, never
+   placed: the last line says "offered", never "placed", and how to put it in */
+var off1 = F.offeredLine([{ label: 'Who Should Attend', page: 3, why: 'people', place: true }]);
+check(off1 === 'Offered, not placed: page 3\'s photo for “Who Should Attend” (it shows people). It is not on the page: “Put it in” under my message puts it there, and Undo takes it out again.',
+  'one photo of people offered: said word for word', off1);
+var off2 = F.offeredLine([{ label: 'Who Should Attend', page: 3, why: 'people', place: true }, { label: 'Meet the delegates', page: 5, why: 'unknown', place: false }]);
+check(/^Offered, not placed: page 3's photo for “Who Should Attend” \(it shows people\); page 5's photo for “Meet the delegates” \(I could not check whether it shows people\)\. None of them is on the page: /.test(off2) &&
+  /“Use this picture” puts it in the tray\.$/.test(off2), 'two offered, one with no place: each said, and how each goes in', off2);
+check(F.offeredLine([{ label: 'X', page: 2, why: 'unknown', place: false }]) === 'Offered, not placed: page 2\'s photo for “X” (I could not check whether it shows people). It is not on the page: “Use this picture” under my message puts it in the tray: then tell me where it goes.',
+  'an unknown people check, no place: offered for the tray', F.offeredLine([{ label: 'X', page: 2, why: 'unknown', place: false }]));
+[off1, off2].forEach(function (l) { check(/offered/i.test(l) && !/\bplaced\b(?! *[^:]*:)/.test(l.replace('Offered, not placed:', '')) && !/\bET\b/.test(l), 'the line never calls an offered photo placed, and has no bare "ET"', l); });
+check(F.offeredLine([]) === '' && F.offeredLine(null) === '', 'none offered: no line');
+check(F.lineOf({ label: 'Who Should Attend', outcome: 'offered', why: 'It shows people' }) === '“Who Should Attend” offered, not placed — it shows people', 'lineOf: an offered photo', F.lineOf({ label: 'Who Should Attend', outcome: 'offered', why: 'It shows people' }));
+
 /* ES5, loaded by the editor before editor-template-ui.js, and served */
 var src = fs.readFileSync(path.join(ROOT, 'picture-facts.js'), 'utf8');
 var esbuild = null; try { esbuild = require('esbuild'); } catch (e) { /* checked below */ }

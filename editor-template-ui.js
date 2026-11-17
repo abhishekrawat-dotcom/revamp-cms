@@ -6507,6 +6507,10 @@
       notes.push('The pictures from the document — this editor could not load the part that puts pictures in. Reload the editor and ask again');
       swaps = [];
     }
+    /* document photos offered, not placed (a photo that shows people, or one whose people check is missing: the owner,
+       17 Nov 2026 — never put on the page by ETB2B AI itself, in any section): drawn under the message once the change
+       is done, each with "Put it in" (one click, its own Undo), and the card's last line says they were offered */
+    var docOffers = docOffersOf(result.docOffers, docPics);
     var swapWhere = function (s) { return s.placement === 'background' ? ' as its background' : s.placement === 'hero' ? ' as the banner picture' : ''; };
     var usesNew = function (e) { return !!np && aiPictureRules.usesPicture(e, np.n); };
     if (result.newPicture) {
@@ -7358,7 +7362,11 @@
         var onlyWords = !ops.length && !jobs.length && !formIds.length && !ctaLinks.length && !formEmbeds.length && !(madePic && madePic.placed) &&
           !extras.some(function (J) { return J.madePic && J.madePic.placed; });
         t.inverse = changed && onlyWords ? { design: Object.keys(designSet).filter(function (k) { return slipped.indexOf(k) === -1; }), text: textChanges } : null;
-        reportTurn(t.turnId, t.status, done, notAll);
+        /* the photos offered, not placed: said on the card's last line and kept with the turn (never called placed) */
+        var PFacts = window.RevampPictureFacts;
+        var offerLine = docOffers.length && PFacts && typeof PFacts.offeredLine === 'function'
+          ? PFacts.offeredLine(docOffers.map(function (o) { return { label: o.label, page: o.page, why: o.why, place: !!o.placement }; })) : '';
+        reportTurn(t.turnId, t.status, done, offerLine ? notAll.concat([offerLine]) : notAll);
         if (t.status !== 'failed' && t.status !== 'stopped') keepCheckpoint(t); else t.before = null;
         var first = changedEls.filter(function (el) { return el && el.isConnected; })[0];
         if (first) {
@@ -7391,6 +7399,9 @@
             var facts = pictureFactsLine();
             if (facts) card.note(facts + (placedAll && t.status !== 'failed' ? ' Undo takes back all of this change, ' + (placedAll === 1 ? 'the new picture' : 'the new pictures') + ' with it.' : ''));
           }
+          /* the document photos offered, not placed: each under the message with "Put it in", and the last line */
+          docOffers.forEach(function (o) { drawOfferedPicture(bubble, o); });
+          if (offerLine) card.note(offerLine);
           if (t.stopAsked && t.status === 'partly') card.note(CHAT_TEXT.stoppedAfter(card.steps().filter(function (st) { return st.state === 'done'; }).length, card.count()));
           setAiWorking(false);
           // the card's foot, with its Undo, in sight once a long change ends (UX-096)
@@ -7889,6 +7900,74 @@
       });
     });
   }
+  /* The document photos an answer offered and did not place (lib/doc-pictures.js cleanSwaps / cleanReworks: a photo that
+     shows people, or one whose people check is missing, is never put on the page by ETB2B AI itself, in any section —
+     the owner, 17 Nov 2026), each with its photo from the answer's numbered document pictures (docPics: { n: { url,
+     page, doc } }, aiPictureRules.docPicturesOf): only those the answer names by a number it has, each once. An offer
+     with a place (one of the section's pictures, its background, the banner's) gets "Put it in"; one without (the
+     section has no place for one, or it is a new section) only "Use this picture".
+     -> [{ url, sectionId, label, placement, slot, alt, why: 'people' | 'unknown', page, doc }] */
+  function docOffersOf(list, docPics) {
+    var seen = {};
+    docPics = docPics || {};
+    return (Array.isArray(list) ? list : []).map(function (o) {
+      var d = o && typeof o === 'object' ? docPics[o.picture] : null;
+      if (!d || !d.url || seen[o.picture]) return null;
+      seen[o.picture] = true;
+      var place = !!o.sectionId && ['picture', 'background', 'hero'].indexOf(o.placement) !== -1;
+      var label = o.sectionId ? sectionLabel(String(o.sectionId)) : String(o.name || '').replace(/\s+/g, ' ').trim().slice(0, 60) || 'the new section';
+      return { url: d.url, sectionId: place ? String(o.sectionId) : '', label: label, placement: place ? o.placement : '', slot: Math.max(0, parseInt(o.slot, 10) || 0),
+        alt: String(o.alt || '').slice(0, 150), why: o.why === 'people' ? 'people' : 'unknown', page: d.page, doc: d.doc || '' };
+    }).filter(Boolean);
+  }
+  /* One offered photo under the message: the photo, where it would go and why it was not put there, then "Put it in"
+     (useHeldPicture, as a held picture's "Use it anyway": that place only, never the logo unit, one click, its own
+     Undo) and "Use this picture" (the tray). Nothing is placed until the owner clicks. */
+  function drawOfferedPicture(bubble, spec) {
+    if (!bubble || !spec || !spec.url) return;
+    var label = spec.label || 'this section', from = 'Page ' + (spec.page || 1) + (spec.doc ? ' of “' + spec.doc + '”' : '');
+    var pic = document.createElement('div');
+    pic.className = 'chat-made-pic';
+    var im = document.createElement('img');
+    im.alt = 'Photo from ' + from.charAt(0).toLowerCase() + from.slice(1) + ', offered for “' + label + '”';
+    im.src = spec.url;
+    pic.appendChild(im);
+    bubble.appendChild(pic);
+    var say = document.createElement('p');
+    say.className = 'ai-task-note';
+    say.textContent = from + ', for “' + label + '”: ' + (spec.why === 'people' ? 'it shows people' : 'I could not check whether it shows people') + ', so it was offered, not placed.';
+    bubble.appendChild(say);
+    var box = document.createElement('div');
+    box.className = 'chat-held-pic';
+    if (spec.placement && spec.sectionId) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-secondary btn-sm';
+      b.textContent = 'Put it in';
+      b.title = 'Put this photo in “' + label + '” — Undo takes it out again';
+      b.addEventListener('click', function () { useHeldPicture(spec, b); });
+      box.appendChild(b);
+    }
+    drawUsePicture(box, spec.url);
+    bubble.appendChild(box);
+  }
+  /* a reply whose answer only offered photos: drawn under it the same way (after: the pictures attached to the message,
+     which the document pictures are numbered after) */
+  function drawReplyOffers(bubble, body, after) {
+    if (!body || !Array.isArray(body.docOffers) || !body.docOffers.length) return;
+    var docPics = {};
+    aiPictureRules.docPicturesOf(body.docPictures, after, eventId).forEach(function (p) { docPics[p.n] = p; });
+    var offers = docOffersOf(body.docOffers, docPics);
+    offers.forEach(function (o) { drawOfferedPicture(bubble, o); });
+    /* the reply's own words say they were offered; when they do not (another sentence took their place), the last line does */
+    var PFacts = window.RevampPictureFacts;
+    if (offers.length && !/\boffered\b/i.test(String(body.summary || '')) && PFacts && typeof PFacts.offeredLine === 'function') {
+      var line = document.createElement('p');
+      line.className = 'ai-task-note';
+      line.textContent = PFacts.offeredLine(offers.map(function (o) { return { label: o.label, page: o.page, why: o.why, place: !!o.placement }; }));
+      bubble.appendChild(line);
+    }
+  }
   /* "Use this picture" under a picture ETB2B AI made: puts it in the tray above the message box */
   function drawUsePicture(bubble, url) {
     if (!bubble || !url) return;
@@ -8381,6 +8460,8 @@
         if (body.kind === 'reply') {
           var said = appendChatMsg('ai', body.summary);
           drawGoTo(said, body);
+          /* photos offered, not placed, when that was all the answer did (its words say so: lib/doc-pictures.js offerLines) */
+          drawReplyOffers(said, body, sent.length);
           if (!eventId) pushLocal('assistant', body.summary);
           me.resolve({ kind: 'reply', turnId: body.turnId || '', status: 'answered' });
           return;

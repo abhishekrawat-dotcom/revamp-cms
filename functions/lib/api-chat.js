@@ -914,14 +914,19 @@ function handleChatEdit(req, res) {
          sessions), a picture of people only in a people section and in at most two, and a swap only where the
          picture's shape is close to its place's — a picture far off it is put in by a rework that gives its frame the
          picture's own shape. What is left out is said, by page. */
-      var docDropped = [], docFirst = ownAttached + 1;
-      if (payload.docSwaps) {
-        var docPeople = docPictures.peopleSet(parsed.docPeople, docFirst, attached);
-        var namedIds = {};
+      /* … and a photo that shows people is never placed by itself, in any section: it is offered under the message, with
+         a button that puts it in (the owner, 17 Nov 2026). The people check is the model's docPeople; when it is missing
+         (never asked: an editor that cannot swap; or not in the answer), every document photo it places is offered. */
+      var docDropped = [], docOffers = [], docFirst = ownAttached + 1;
+      var docPeopleKnown = payload.docSwaps === true && Array.isArray(parsed.docPeople);
+      var docPeople = {}, namedIds = {}, keptRe = { peopleUsed: 0 };
+      if ((payload.docPictures || []).length) {
+        docPeople = docPictures.peopleSet(parsed.docPeople, docFirst, attached);
         chatPicture.namedSections(String(payload.instruction || ''), payload.sections || [], '').forEach(function (id) { namedIds[id] = true; });
         var focusId = payload.focus && typeof payload.focus === 'object' ? String(payload.focus.sectionId || '') : '';
         if (focusId) namedIds[focusId] = true;
-        var keptRe = docPictures.cleanReworks(sectionEdits, newSections, { sections: payload.sections || [], first: docFirst, last: attached, people: docPeople, named: namedIds, dropped: docDropped });
+        keptRe = docPictures.cleanReworks(sectionEdits, newSections, { sections: payload.sections || [], first: docFirst, last: attached, people: docPeople, peopleKnown: docPeopleKnown,
+          named: namedIds, dropped: docDropped, offers: docOffers });
         sectionEdits = keptRe.edits;
         newSections = keptRe.newSections;
       }
@@ -929,7 +934,7 @@ function handleChatEdit(req, res) {
       sectionEdits.forEach(function (e) { skipSwap[e.sectionId] = true; });
       pictureAsks.forEach(function (a) { skipSwap[a.sectionId] = true; });
       var pictureSwaps = payload.docSwaps ? docPictures.cleanSwaps(parsed.pictureSwaps, { sections: payload.sections || [], first: docFirst, last: attached, skip: skipSwap,
-        pictures: payload.docPictures || [], people: docPeople, named: namedIds, peopleUsed: keptRe.peopleUsed, dropped: docDropped }) : [];
+        pictures: payload.docPictures || [], people: docPeople, peopleKnown: docPeopleKnown, named: namedIds, peopleUsed: keptRe.peopleUsed, dropped: docDropped, offers: docOffers }) : [];
       /* a swap left out for its shape: the section is reworked with it instead, its frame in the picture's shape */
       docDropped.forEach(function (d) {
         if (d.why !== 'shape' || skipSwap[d.sectionId] || sectionEdits.length >= 10) return;
@@ -953,9 +958,10 @@ function handleChatEdit(req, res) {
       var hasChange = hasOther || !!pictureAsk;
       /* everything the answer would have done put document pictures where the site's rules keep them out: the answer is
          what was left out and why, not the model's summary of a change that is not made */
-      var docLeftOnly = !hasChange && docDropped.length > 0 && parsed.kind !== 'reply' && parsed.kind !== 'undo';
+      var docLeftOnly = !hasChange && (docDropped.length > 0 || docOffers.length > 0) && parsed.kind !== 'reply' && parsed.kind !== 'undo';
       if (docLeftOnly) {
-        summary = docPictures.droppedLines(docDropped, payload.docPictures || [], payload.sections || []).join(' ') + ' Nothing on the page changed.';
+        summary = docPictures.droppedLines(docDropped, payload.docPictures || [], payload.sections || [])
+          .concat(docPictures.offerLines(docOffers, payload.docPictures || [], payload.sections || [])).join(' ') + ' Nothing on the page changed.';
         skipped = skipped.filter(function (l) { return summary.indexOf(l) === -1; });
       }
       /* A picture that is not made (refused, unclear, or never asked for): when it was the only change, the
@@ -1030,6 +1036,14 @@ function handleChatEdit(req, res) {
       if (kind === 'edit' && (payload.docPictures || []).length) {
         answer.docPictures = docPictures.answerList(payload.docPictures);
         answer.pictureSwaps = pictureSwaps;
+      }
+      /* the photos offered, not placed (a photo of people, or one whose people check is missing): drawn under the
+         message, each with a button that puts it in — also under a reply, when they were all the answer did */
+      if (docOffers.length && (kind === 'edit' || docLeftOnly)) {
+        answer.docPictures = docPictures.answerList(payload.docPictures || []);
+        answer.docOffers = docOffers.map(function (o) {
+          return { sectionId: o.sectionId, name: o.name || '', placement: o.placement, slot: o.slot, picture: o.picture, alt: o.alt || '', why: o.why };
+        });
       }
       var prevTurn = chatLastOwnTurn(payload.turns);
       var learnt = { answer: answer, parsed: parsed, pictureRefused: pictureReply || lostReply, falseClaim: falseClaim,
