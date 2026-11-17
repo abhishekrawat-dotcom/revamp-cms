@@ -7327,7 +7327,10 @@ function handlePreviewPage(req, res, eventId, slug) {
         return Promise.all([formsRead, pictures.prepare(fb, html)]).then(function (got) {
           var formsPayload = got[0];
           return withHeroVideo(fb, publishTransform(html, {
-            eventId: eventId, event: data, mode: 'preview', publicBase: '', editButton: !wantVersion, forms: formsPayload, pictures: got[1],
+            eventId: eventId, event: data, mode: 'preview', publicBase: '',
+            /* "Edit with AI" only for someone given ETB2B AI and the Site editor (Settings › Access sections) */
+            editButton: !wantVersion && !(user.access && (!accessControl.sectionOk(user.access, 'ai') || !accessControl.sectionOk(user.access, 'design'))),
+            forms: formsPayload, pictures: got[1],
             templateId: (data.site && data.site.templateId) || data.templateId,
             noTools: !!wantVersion, noRibbon: framed, ribbonText: previewRibbon(data, wantVersion, got0.from)
           }), data);

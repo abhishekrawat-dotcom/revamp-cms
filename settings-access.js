@@ -147,7 +147,7 @@
       '<label class="pa-check"><input type="checkbox" id="ac-sec-all"' + (all ? ' checked' : '') + '><span><b>All sections</b>, including ones added later</span></label>' +
       '<div id="ac-sec-pick"' + (all ? ' hidden' : '') + '>' +
         (presets ? '<p class="hint" style="margin:6px 0">Ready-made: ' + presets + '</p>' : '') +
-        group('event', 'In each event') + group('main', 'Main pages') +
+        group('event', 'In each event') + group('main', 'Main pages') + group('ai', 'Assistant') +
         '<p class="hint">The sections not ticked are hidden from them, and the server refuses them too.</p></div></fieldset>';
   }
   function logBox() {

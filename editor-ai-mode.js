@@ -97,7 +97,10 @@
      Edit myself need a big screen, while the live view and ETB2B AI's sheet along the bottom are made for a phone
      (UX-002). An address that asks for a mode (?mode=) still wins. Opening this way is for this visit only: the mode
      remembered for this person is left as it is, for their next visit on a bigger screen. */
+  /* ETB2B AI not given to this person (Settings › Access): "Edit myself" only */
+  function aiAllowed() { return !(window.RevampAuth && RevampAuth.sectionOk && !RevampAuth.sectionOk('ai')); }
   function startMode(asked, saved, isNarrow) {
+    if (!aiAllowed()) return 'manual';
     if (asked === 'ai' || asked === 'manual') return asked;
     if (isNarrow) return 'ai';
     return saved === 'ai' || saved === 'manual' ? saved : 'manual';
@@ -600,6 +603,7 @@
   function setMode(next, opts) {
     opts = opts || {};
     if (next !== 'ai' && next !== 'manual') return;
+    if (next === 'ai' && !aiAllowed()) return;
     var c = UI && UI.canvas();
     if (!isReady || !c) return;
     if (next === mode) {
@@ -676,6 +680,11 @@
       if (sec) c.scrollToSection(sec);
     }
   }
+
+  /* the person's access arrives after the editor may have opened in "Edit with AI" (a phone, a remembered mode):
+     without ETB2B AI it goes back to "Edit myself" */
+  if (typeof document.addEventListener === 'function') document.addEventListener('rv-sections', function () { if (mode === 'ai' && !aiAllowed()) setModeManualNow(); });
+  function setModeManualNow() { if (isReady) setMode('manual', { keep: true }); }
 
   window.RevampEditorMode = {
     ready: ready,

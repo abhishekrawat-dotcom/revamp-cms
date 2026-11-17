@@ -148,7 +148,9 @@
         (s.state ? '<span class="ed-step-state' + (s.done ? ' ok' : '') + '">' + esc(s.state) + '</span>' : '') + '</span>' +
         '<span class="ed-step-text">' + esc(s.text) + '</span></span></li>';
     }).join('') + '</ol>';
-    html += '<p class="ed-steps-foot">' + esc(st.phone ? TEXT.footPhone : TEXT.foot) + '</p>';
+    /* "Edit with AI" only for someone given ETB2B AI (Settings › Access sections) */
+    var noAi = typeof window !== 'undefined' && window.RevampAuth && RevampAuth.sectionOk && !RevampAuth.sectionOk('ai');
+    html += '<p class="ed-steps-foot">' + esc(st.phone || noAi ? TEXT.footPhone : TEXT.foot) + '</p>';
     return html;
   }
   /* the dialog; first: the first-time welcome, remembered as seen once the person has closed it (not when another of

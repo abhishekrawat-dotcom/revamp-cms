@@ -1561,7 +1561,7 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: '{{autotech-2026}} has {{autotech-2026.registrations}} registrations so far.' }, sc);
   check('S.7 …with the Dashboard (the Developer preset) the figure is given', (a.parts || []).some(function (p) { return p.metric === 'registrations'; }), a.parts);
   check('S.8 the prompt says what is not theirs; nothing for someone with every part',
-    /^ACCESS: this person's access does not include Payment, Promotions, Reporting, Create Event, Speaker & sponsor library, Activity log \(all events\), Settings \(access and approvals\)\./.test(T.accessLine(sc)) &&
+    /^ACCESS: this person's access does not include Payment, Promotions, Reporting, Create Event, Speaker & sponsor library, Activity log \(all events\), Settings \(access and approvals\), ETB2B AI\./.test(T.accessLine(sc)) &&
     T.accessLine(await ctxWith('hi')) === '' && T.buildPrompt(sc).indexOf('ACCESS: this person') !== -1, T.accessLine(sc));
   a = await T.cleanAnswer({ kind: 'open', events: ['autotech-2026'], open: { target: 'promotions', tab: 'mailers' }, text: 'Opening its mailers.' }, sc);
   check('S.9 through cleanAnswer: opening Promotions without it is the fixed sentence', a.kind === 'refuse' && /^Promotions is not in your access/.test(a.parts[0].v), a);

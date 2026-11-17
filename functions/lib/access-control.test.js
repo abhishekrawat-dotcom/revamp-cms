@@ -458,6 +458,17 @@ function g(email, extra) { return Object.assign({ email: email, email_verified: 
   check('6 the CTAs that act from script refuse a section not given: the console\'s routes, ETB2B AI\'s pages, the editor\'s record links',
     /RevampAuth\.urlOk\(dest\.url\)/.test(EE6) && /function sectionRefusal\(url\)/.test(DB6) && /if \(sectionRefusal\(url\)\) return failed/.test(DB6) &&
     /RevampAuth\.urlOk\(href\) \? '' : href/.test(ETU6) && /A\.urlOk\(url\) \? '' : url/.test(ECC6));
+  /* ETB2B AI itself is given or not (the owner, 17 Nov 2026: "I want to show AI bot on access based") */
+  check('6 ETB2B AI is a section; the Developer preset leaves it out; its routes are known', AC.SECTION_IDS.indexOf('ai') !== -1 && DEV.sections.indexOf('ai') === -1 &&
+    AC.aiRoute('/api/dash-bot') && AC.aiRoute('/api/chat-edit') && AC.aiRoute('/api/redesign-section') && AC.aiRoute('/api/event/live-view') && !AC.aiRoute('/api/event/speakers'));
+  r = await call('POST', '/api/dash-bot', 'dev', { message: 'hello' });
+  check('6 through the router: the assistant for someone not given ETB2B AI — 403 no-section, in words', r.status === 403 && r.body.code === 'no-section' && /does not include ETB2B AI/.test(r.body.error), r.body);
+  r = await call('GET', '/api/chat/history?eventId=ac-dev-1', 'dev');
+  check('6 …the editor chat\'s history too', r.status === 403 && r.body.code === 'no-section', r.body);
+  var EAM6 = read('editor-ai-mode.js'), API6 = read('functions/lib/api.js');
+  check('6 the pages: the assistant, the editor\'s mode switch and Redesign with AI hidden; the editor stays in Edit myself; no Edit with AI on the preview',
+    /ai: \['\.rvc', '#ed-mode-toggle', '\[data-action="redesign-section"\]'/.test(AUTH6) && /function aiAllowed\(\)/.test(EAM6) && /if \(!aiAllowed\(\)\) return 'manual'/.test(EAM6) &&
+    /if \(next === 'ai' && !aiAllowed\(\)\) return;/.test(EAM6) && /accessControl\.sectionOk\(user\.access, 'ai'\)/.test(API6) && /group\('ai', 'Assistant'\)/.test(SA6));
   check('6 Settings › Access: sections they can open, All sections, the presets', /Sections they can open/.test(SA6) && /All sections/.test(SA6) && /data-preset/.test(SA6) &&
     /In each event/.test(SA6) && /Main pages/.test(SA6));
 

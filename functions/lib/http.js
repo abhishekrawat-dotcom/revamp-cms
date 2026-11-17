@@ -131,6 +131,7 @@ function checkCaller(req, res, token, cb) {
       /* the parts of the app an admin gave this person (Settings › Access, sections) */
       var secs = AC.sectionsFor(req.method, path);
       if (secs && !secs.some(function (id) { return AC.sectionOk(access, id); })) return sendJson(res, 403, { error: AC.sectionSentence(secs), code: 'no-section', sections: secs });
+      if (AC.aiRoute(path) && !AC.sectionOk(access, 'ai')) return sendJson(res, 403, { error: AC.sectionSentence(['ai']), code: 'no-section', sections: ['ai'] });
       var go = function () { if (aiRateOk(req, res, path, decoded)) cb(fb, decoded); };
       if (AC.everywhere(access)) return go();
       if (AC.everywhereOnly(path)) return sendJson(res, 403, { error: AC.everywhereSentence(), code: 'not-your-portal' });

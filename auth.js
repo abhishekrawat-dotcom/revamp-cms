@@ -838,7 +838,7 @@
     dashboard: 'Dashboard', content: 'Content', speakers: 'Speakers', agenda: 'Agenda', sponsors: 'Sponsors',
     design: 'Site editor', payment: 'Payment', marketing: 'Promotions', audience: 'Reporting', activity: 'Activity log',
     settings: 'Settings', create: 'Create Event', library: 'Speaker & sponsor library',
-    'all-activity': 'Activity log (all events)', 'app-settings': 'Settings (access and approvals)'
+    'all-activity': 'Activity log (all events)', 'app-settings': 'Settings (access and approvals)', ai: 'ETB2B AI'
   };
   /* Every call to action that leads to a section or does its work (the owner, 17 Nov 2026: "If a section is not
      assigned then CTA of that will not be displayed to the user"), besides the rail's [data-section] items and
@@ -864,7 +864,10 @@
     create: ['a[href*="create-event.html"]', '[data-row-action="duplicate"]', '#create-drafts'],
     library: ['a[href*="people.html"]'],
     'all-activity': ['a[href*="activity-log.html"]'],
-    'app-settings': ['a[href*="settings.html"]']
+    'app-settings': ['a[href*="settings.html"]'],
+    /* the assistant (the owner, 17 Nov 2026: "I want to show AI bot on access based"): its button and panel (the chat
+       kit, .rvc), the editor's "Edit with AI | Edit myself" switch and its Redesign with AI */
+    ai: ['.rvc', '#ed-mode-toggle', '[data-action="redesign-section"]', '.ai-live-tag']
   };
   /* the page itself, for the pages that are one section (the console's views are checked by the console) */
   var PAGE_SECTION = {
@@ -901,7 +904,9 @@
       var on = 'html[data-rv-nosec~="' + id + '"] ';
       return ['[data-section="' + id + '"]', '[data-needs-section~="' + id + '"]'].concat(SECTION_LINKS[id] || [])
         .map(function (sel) { return on + sel; }).join(',\n') + '{display:none !important}';
-    }).join('\n');
+    }).join('\n') +
+      /* the site editor keeps no room for an assistant column it does not show */
+      '\nhtml[data-rv-nosec~="ai"].rvc-docked .ed-main{margin-right:0 !important}';
   }
   function coverPage(id) {
     if (document.getElementById('rv-no-section')) return;

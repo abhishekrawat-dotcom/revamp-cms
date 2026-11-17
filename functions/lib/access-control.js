@@ -38,6 +38,7 @@
      sectionOk(access, id)              -> boolean: may this person open section id (SECTIONS)
      sectionsFor(method, path)          -> [section id] any one of which a request needs, or null (no section)
      sectionSentence(id)                -> what a request refused for its section answers
+     aiRoute(path)                      -> true for the assistant's own routes, which need section 'ai' as well
      sectionOfUrl(url), sectionOfRoute(route), sectionLabel(id) -> the section an address or a console route
                                            belongs to (null for none), and its name (auth.js has the same rules)
      can(access, need)                  -> boolean (need: viewer < editor < approver < admin)
@@ -85,7 +86,10 @@ var SECTIONS = [
   { id: 'create', label: 'Create Event', group: 'main' },
   { id: 'library', label: 'Speaker & sponsor library', group: 'main' },
   { id: 'all-activity', label: 'Activity log (all events)', group: 'main' },
-  { id: 'app-settings', label: 'Settings (access and approvals)', group: 'main' }
+  { id: 'app-settings', label: 'Settings (access and approvals)', group: 'main' },
+  /* the assistant itself (the owner, 17 Nov 2026: "I want to show AI bot on access based"): its button and panel on
+     every page, the editor's "Edit with AI" and "Redesign with AI" (AI_ROUTES) */
+  { id: 'ai', label: 'ETB2B AI', group: 'ai' }
 ];
 var SECTION_IDS = SECTIONS.map(function (x) { return x.id; });
 /* ready-made choices in Settings › Access (the owner's list for the developers, 17 Nov 2026) */
@@ -272,6 +276,14 @@ function sectionOfUrl(url) {
   if (page === 'edit-event.html') return m[2] ? sectionOfRoute(m[2]) : null;
   return PAGE_SECTION[page] || null;
 }
+/* the assistant's own routes: they need ETB2B AI as well as whatever section they belong to (the editor's chat and
+   its reworks also need the Site editor) */
+var AI_ROUTES = {
+  '/api/dash-bot': 1, '/api/dash-bot/turn': 1, '/api/dash-bot/history': 1, '/api/chat-edit': 1, '/api/chat/turn': 1,
+  '/api/chat/history': 1, '/api/chat/doc-pictures': 1, '/api/ai-habits': 1, '/api/ai-habits/shortcuts': 1,
+  '/api/event/live-view': 1, '/api/redesign-section': 1
+};
+function aiRoute(path) { return !!AI_ROUTES[String(path || '').split('?')[0]]; }
 function sectionSentence(ids) {
   ids = Array.isArray(ids) ? ids : [ids];
   return 'Your access does not include ' + ids.map(sectionLabel).join(' or ') + '. Ask an admin if you need it.';
@@ -436,7 +448,7 @@ module.exports = {
   needFor: needFor, everywhereOnly: everywhereOnly, refusedSentence: refusedSentence, outsideSentence: outsideSentence,
   everywhereSentence: everywhereSentence, portalNames: portalNames,
   SECTIONS: SECTIONS, SECTION_IDS: SECTION_IDS, PRESETS: PRESETS, sectionOk: sectionOk, sectionsFor: sectionsFor, sectionSentence: sectionSentence,
-  sectionLabel: sectionLabel, sectionOfUrl: sectionOfUrl, sectionOfRoute: sectionOfRoute,
+  sectionLabel: sectionLabel, sectionOfUrl: sectionOfUrl, sectionOfRoute: sectionOfRoute, aiRoute: aiRoute,
   setMember: setMember, removeMember: removeMember, setDefaultRole: setDefaultRole, readLog: readLog,
   _test: { normalise: normalise, startingPoint: startingPoint, cleanPortals: cleanPortals, cleanSections: cleanSections, docPath: docPath }
 };
