@@ -378,6 +378,67 @@ function g(email, extra) { return Object.assign({ email: email, email_verified: 
   }
   check('5 the old page rule (access.js) keeps one source of the sentences', /no longer has access/.test(access.deniedMessage('blocked')) && typeof access.accessFor === 'function');
 
+  /* ================= 6. sections (the owner, 17 Nov 2026: share only some sections with the developers) ================= */
+  var DEV = AC.PRESETS.filter(function (p) { return p.id === 'developer'; })[0];
+  check('6 the Developer preset is the owner\'s eight sections', DEV && JSON.stringify(DEV.sections) === '["dashboard","content","speakers","agenda","sponsors","design","activity","settings"]', DEV);
+  var cfg6 = AC._test.normalise({ members: {
+    'dev@timesinternet.in': { role: 'editor', portals: ['*'], sections: ['speakers', 'nonsense', 'design'] },
+    'old@timesinternet.in': { role: 'editor', portals: ['*'] },
+    'boss2@timesinternet.in': { role: 'admin', sections: ['speakers'] },
+    'none@timesinternet.in': { role: 'editor', sections: [] },
+    'every@timesinternet.in': { role: 'viewer', sections: AC.SECTION_IDS } } });
+  check('6 stored sections are read safely: unknown ones dropped, missing = all, an admin has all, all ticked = all',
+    JSON.stringify(cfg6.members['dev@timesinternet.in'].sections) === '["speakers","design"]' && JSON.stringify(cfg6.members['old@timesinternet.in'].sections) === '["*"]' &&
+    JSON.stringify(cfg6.members['boss2@timesinternet.in'].sections) === '["*"]' && JSON.stringify(cfg6.members['none@timesinternet.in'].sections) === '["*"]' &&
+    JSON.stringify(cfg6.members['every@timesinternet.in'].sections) === '["*"]', cfg6.members);
+  a = AC.accessOf(cfg6, g('dev@timesinternet.in'));
+  check('6 accessOf carries the sections; a company account not on the list has all', JSON.stringify(a.sections) === '["speakers","design"]' &&
+    JSON.stringify(AC.accessOf(cfg6, g('newbie@timesinternet.in')).sections) === '["*"]', a);
+  check('6 sectionOk: theirs yes, others no, an admin everything', AC.sectionOk(a, 'speakers') && !AC.sectionOk(a, 'marketing') && AC.sectionOk({ role: 'admin', sections: ['speakers'] }, 'marketing') &&
+    !AC.sectionOk({ denied: 'blocked' }, 'speakers'));
+  var sf = function (m, p) { return JSON.stringify(AC.sectionsFor(m, p)); };
+  check('6 sectionsFor: writes by the screen that makes them, sensitive reads, shared routes none',
+    sf('POST', '/api/event/speakers') === '["speakers"]' && sf('GET', '/api/event/speakers') === 'null' && sf('DELETE', '/api/event/sessions') === '["agenda"]' &&
+    sf('GET', '/api/event/registrations') === '["audience"]' && sf('POST', '/api/promo/mailer/render') === '["marketing"]' && sf('GET', '/api/promo/image') === '["marketing","design"]' &&
+    sf('POST', '/api/event') === '["create"]' && sf('PATCH', '/api/event') === 'null' && sf('GET', '/api/event') === 'null' && sf('POST', '/api/event/upload') === 'null' &&
+    sf('PUT', '/api/event/site') === '["design"]' && sf('POST', '/api/event/forms') === '["settings","design"]' && sf('GET', '/api/activity/all') === '["all-activity"]' &&
+    sf('POST', '/api/people/speakers/merge') === '["library"]' && sf('GET', '/api/access/me') === 'null' && sf('PUT', '/api/settings/approvals') === '["app-settings"]');
+  makeEvent('ac-dev-1', { name: 'Dev Event', portal: 'cio' });
+  setList({ 'sachitanand.rai@timesinternet.in': M('admin'), 'dev@timesinternet.in': { role: 'editor', portals: ['*'], sections: DEV.sections } });
+  r = await call('GET', '/api/event/registrations?eventId=ac-dev-1', 'dev');
+  check('6 through the router: a developer reading registrants (Reporting) — 403 no-section, in words', r.status === 403 && r.body.code === 'no-section' && /does not include Reporting/.test(r.body.error), r.body);
+  r = await call('POST', '/api/promo/write', 'dev', { eventId: 'ac-dev-1' });
+  check('6 …a promotion — 403 no-section', r.status === 403 && r.body.code === 'no-section', r.body);
+  r = await call('POST', '/api/event', 'dev', { eventId: 'ac-dev-new', name: 'New' });
+  check('6 …making a new event (Create Event not given) — 403 no-section, nothing written', r.status === 403 && r.body.code === 'no-section' && !FB.docs['events/ac-dev-new'], r.body);
+  r = await call('GET', '/api/event?eventId=ac-dev-1', 'dev');
+  check('6 …the event itself: 200', r.status === 200 && r.body.name === 'Dev Event', r.text.slice(0, 200));
+  r = await call('PATCH', '/api/event', 'dev', { eventId: 'ac-dev-1', name: 'Dev Event 2027' }, { stream: true });
+  check('6 …its details (shared): not refused for a section', r.status === 200 && FB.docs['events/ac-dev-1'].name === 'Dev Event 2027', r.body);
+  r = await call('GET', '/api/event/history?eventId=ac-dev-1', 'dev');
+  check('6 …its Activity log (given): not refused for a section', !(r.body && r.body.code === 'no-section'), r.body);
+  r = await call('GET', '/api/event/registrations?eventId=ac-dev-1', 'sachitanand.rai');
+  check('6 …an admin reading registrants: not refused for a section', !(r.body && r.body.code === 'no-section'), r.body);
+  r = await call('GET', '/api/access/me', 'dev');
+  check('6 GET /api/access/me: your sections, every section and the presets', r.status === 200 && JSON.stringify(r.body.you.sections) === JSON.stringify(DEV.sections) &&
+    r.body.sections.length === AC.SECTION_IDS.length && r.body.presets[0].id === 'developer', r.body);
+  r = await call('POST', '/api/access/member', 'sachitanand.rai', { email: 'dev2@timesinternet.in', role: 'editor', portals: ['*'], sections: ['speakers', 'agenda'] });
+  check('6 an admin gives someone two sections; the log says so', r.status === 200 && JSON.stringify(FB.docs['config/access'].members['dev2@timesinternet.in'].sections) === '["speakers","agenda"]' &&
+    (r.body.log || []).some(function (h) { return h.email === 'dev2@timesinternet.in' && h.action === 'added' && h.after && JSON.stringify(h.after.sections) === '["speakers","agenda"]'; }),
+    FB.docs['config/access'].members['dev2@timesinternet.in']);
+  r = await call('POST', '/api/access/member', 'sachitanand.rai', { email: 'dev2@timesinternet.in', role: 'viewer', portals: ['*'] });
+  check('6 …a change that leaves sections out keeps them', r.status === 200 && FB.docs['config/access'].members['dev2@timesinternet.in'].role === 'viewer' &&
+    JSON.stringify(FB.docs['config/access'].members['dev2@timesinternet.in'].sections) === '["speakers","agenda"]', FB.docs['config/access'].members['dev2@timesinternet.in']);
+  r = await call('POST', '/api/access/member', 'sachitanand.rai', { email: 'dev2@timesinternet.in', role: 'viewer', portals: ['*'], sections: ['nothing-real'] });
+  check('6 …no real section chosen: 400 no-sections, nothing changed', r.status === 400 && r.body.code === 'no-sections' &&
+    JSON.stringify(FB.docs['config/access'].members['dev2@timesinternet.in'].sections) === '["speakers","agenda"]', r.body);
+  var AUTH6 = read('auth.js'), EE6 = read('edit-event.html'), SA6 = read('settings-access.js');
+  check('6 the pages: auth.js hides what leads to a section not given and covers its page; the console keeps to the sections given',
+    /data-rv-nosec/.test(AUTH6) && /function coverPage/.test(AUTH6) && /sectionOk: sectionOk/.test(AUTH6) && /'rv-sections'/.test(AUTH6) &&
+    /var VIEW_SECTION = \{/.test(EE6) && /RevampAuth\.sectionOk\(id\)/.test(EE6) && /is not in your access/.test(EE6));
+  check('6 Settings › Access: sections they can open, All sections, the presets', /Sections they can open/.test(SA6) && /All sections/.test(SA6) && /data-preset/.test(SA6) &&
+    /In each event/.test(SA6) && /Main pages/.test(SA6));
+
   process.stdout.write('access-control: ' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);
 })().catch(function (e) { process.stderr.write('CRASH ' + (e && e.stack || e) + '\n'); process.exit(1); });

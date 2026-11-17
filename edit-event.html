@@ -6746,10 +6746,37 @@
     'payment':              viewPayment
   };
 
+  /* The section each view belongs to (Settings › Access can give someone only some sections; the server refuses
+     the rest, auth.js hides the rail items). A view outside them moves to the first one they have, in rail order. */
+  var VIEW_SECTION = {
+    'dashboard': 'dashboard', 'content/basics': 'content', 'content/gallery': 'content', 'content/faq': 'content',
+    'content/contact': 'content', 'content/speakers': 'speakers', 'content/agenda': 'agenda', 'content/sponsors': 'sponsors',
+    'settings/form': 'settings', 'settings/seo': 'settings', 'settings/visibility': 'settings', 'activity': 'activity', 'payment': 'payment'
+  };
+  var SECTION_HOME = [['dashboard', 'dashboard'], ['content', 'content/basics'], ['speakers', 'content/speakers'], ['agenda', 'content/agenda'],
+    ['sponsors', 'content/sponsors'], ['activity', 'activity'], ['settings', 'settings/form']];
+  function sectionAllowed(id){ return !id || !window.RevampAuth || !RevampAuth.sectionOk || RevampAuth.sectionOk(id); }
+  function noSectionHTML(id){
+    var name = window.RevampAuth && RevampAuth.sectionLabel ? RevampAuth.sectionLabel(id) : id;
+    return '<div class="panel" style="margin-top:14px"><div class="panel-body"><h3 style="margin:0 0 6px">' + esc(name) + ' is not in your access</h3>' +
+      '<p style="margin:0">An admin has given you some parts of this event, and this is not one of them. Ask an admin if you need it.</p></div></div>';
+  }
+  document.addEventListener('rv-sections', function(){
+    if (typeof cur !== 'undefined' && cur && cur.sec && !sectionAllowed(VIEW_SECTION[routeId()])) render();
+  });
+
   function render(){
     var r = routeId();
     /* a menu belongs to a row that is about to be redrawn */
     closePillMenu(false);
+
+    if (!sectionAllowed(VIEW_SECTION[r])){
+      var home = SECTION_HOME.filter(function(h){ return sectionAllowed(h[0]); })[0];
+      if (home && home[1] !== r){ go(home[1]); return; }
+      LEAVE = NOT_DIRTY;
+      $('view').innerHTML = noSectionHTML(VIEW_SECTION[r]);
+      return;
+    }
 
     var subKey = SUB_ROUTE_KEY[r];
     if (subKey && !SUB[subKey]){

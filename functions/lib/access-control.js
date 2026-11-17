@@ -10,12 +10,19 @@
                    editor    creates and edits events, sites and promotions, and sends them for approval
                    viewer    sees everything it may, changes nothing
      SCOPE         each person works in the ET portals chosen for them; an admin sees every portal
+     SECTIONS      (the owner, 17 Nov 2026: "Add option to allocate functions of this platform like I want to share
+                   below sections only with the developers") each person opens only the parts of the app chosen for
+                   them — the event's own sections (Dashboard … Settings, the rail) and the main pages' functions
+                   (Create Event, the speaker & sponsor library, the all-events Activity log, Settings) — all of them
+                   unless an admin chooses otherwise; a "Developer" preset holds the owner's list. The server refuses
+                   a request for a section someone does not have (sectionsFor), the pages hide it (auth.js).
      FIRST ADMIN   sachitanand.rai@timesinternet.in
 
    The list lives in ACCESS_DOC (config/access):
      { defaultRole: 'editor' | 'viewer',
-       members: { '<email>': { role: admin|approver|editor|viewer|blocked, portals: ['*'] | [slug…], name, addedBy,
-                               addedAt, updatedBy, updatedAt } },
+       members: { '<email>': { role: admin|approver|editor|viewer|blocked, portals: ['*'] | [slug…],
+                               sections: ['*'] | [section id…] (SECTIONS; missing = all), name, addedBy, addedAt,
+                               updatedBy, updatedAt } },
        updatedAt, updatedBy }
    and every change in its `log` subcollection: { at, by, action, email, before, after }.
    Until the first change is saved the document does not exist, and the list is read as its starting point: the first
@@ -27,7 +34,10 @@
    on every portal, nobody from outside), so an outage of the database never locks the team out nor lets anyone in.
 
      readConfig(fb)                     -> Promise<cfg>
-     accessOf(cfg, decoded)             -> { email, role, portals, member } | { denied: 'blocked' | 'outside' | 'signin' }
+     accessOf(cfg, decoded)             -> { email, role, portals, sections, member } | { denied: 'blocked' | 'outside' | 'signin' }
+     sectionOk(access, id)              -> boolean: may this person open section id (SECTIONS)
+     sectionsFor(method, path)          -> [section id] any one of which a request needs, or null (no section)
+     sectionSentence(id)                -> what a request refused for its section answers
      can(access, need)                  -> boolean (need: viewer < editor < approver < admin)
      portalOk(access, portal)           -> boolean
      eventOk(access, eventData)         -> boolean (eventData: the event document, or null for one that does not exist)
@@ -38,7 +48,8 @@
      everywhereOnly(path)               -> true for the reports over every portal
      refusedSentence, outsideSentence, everywhereSentence -> what a refused request answers
      publicView(cfg, access)            -> what GET /api/access answers (all of it for an admin, one's own for others)
-     setMember(fb, actor, input)        -> Promise<cfg>  (input: { email, role, portals, name })
+     setMember(fb, actor, input)        -> Promise<cfg>  (input: { email, role, portals, sections, name }; sections
+                                           left out keeps what the person had)
      removeMember(fb, actor, email)     -> Promise<cfg>
      setDefaultRole(fb, actor, role)    -> Promise<cfg>
      readLog(fb, n)                     -> Promise<[entry]>
@@ -55,6 +66,39 @@ var CACHE_MS = 15000;
 var MAX_MEMBERS = 500;
 var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 var LABELS = { admin: 'Admin', approver: 'Approver', editor: 'Editor', viewer: 'Viewer', blocked: 'No access' };
+/* The parts of the app an admin can give or withhold. 'event' ones are the event rail's items (sidebar.js
+   RAIL_SECTIONS, same ids); 'main' ones are the main pages' functions. */
+var SECTIONS = [
+  { id: 'dashboard', label: 'Dashboard', group: 'event' },
+  { id: 'content', label: 'Content', group: 'event' },
+  { id: 'speakers', label: 'Speakers', group: 'event' },
+  { id: 'agenda', label: 'Agenda', group: 'event' },
+  { id: 'sponsors', label: 'Sponsors', group: 'event' },
+  { id: 'design', label: 'Site editor', group: 'event' },
+  { id: 'payment', label: 'Payment', group: 'event' },
+  { id: 'marketing', label: 'Promotions', group: 'event' },
+  { id: 'audience', label: 'Reporting', group: 'event' },
+  { id: 'activity', label: 'Activity log', group: 'event' },
+  { id: 'settings', label: 'Settings', group: 'event' },
+  { id: 'create', label: 'Create Event', group: 'main' },
+  { id: 'library', label: 'Speaker & sponsor library', group: 'main' },
+  { id: 'all-activity', label: 'Activity log (all events)', group: 'main' },
+  { id: 'app-settings', label: 'Settings (access and approvals)', group: 'main' }
+];
+var SECTION_IDS = SECTIONS.map(function (x) { return x.id; });
+/* ready-made choices in Settings › Access (the owner's list for the developers, 17 Nov 2026) */
+var PRESETS = [
+  { id: 'developer', label: 'Developer', sections: ['dashboard', 'content', 'speakers', 'agenda', 'sponsors', 'design', 'activity', 'settings'] }
+];
+function sectionLabel(id) { var x = SECTIONS.filter(function (s) { return s.id === id; })[0]; return x ? x.label : id; }
+function cleanSections(v) {
+  if (v == null) return [ALL];
+  var list = Array.isArray(v) ? v : [v];
+  if (list.indexOf(ALL) !== -1) return [ALL];
+  var out = [];
+  SECTION_IDS.forEach(function (id) { if (list.indexOf(id) !== -1) out.push(id); });
+  return out.length === SECTION_IDS.length ? [ALL] : out;
+}
 
 function docPath() { return String(process.env.ACCESS_CONFIG_DOC || 'config/access'); }
 function docRef(fb) { var p = docPath().split('/'); return fb.db.collection(p[0]).doc(p[1]); }
@@ -80,7 +124,8 @@ function normalise(raw) {
     var role = ROLES.indexOf(m.role) !== -1 || m.role === 'blocked' ? m.role : '';
     if (!role) return;
     var portals = role === 'admin' || role === 'blocked' ? [ALL] : cleanPortals(m.portals);
-    members[e] = { role: role, portals: portals.length ? portals : [ALL], name: String(m.name || '').slice(0, 120),
+    var sections = role === 'admin' || role === 'blocked' ? [ALL] : cleanSections(m.sections);
+    members[e] = { role: role, portals: portals.length ? portals : [ALL], sections: sections.length ? sections : [ALL], name: String(m.name || '').slice(0, 120),
       addedBy: String(m.addedBy || ''), addedAt: m.addedAt || null, updatedBy: String(m.updatedBy || ''), updatedAt: m.updatedAt || null };
   });
   return { defaultRole: DEFAULT_ROLES.indexOf(raw.defaultRole) !== -1 ? raw.defaultRole : 'editor', members: members,
@@ -128,9 +173,10 @@ function accessOf(cfg, decoded) {
   var email = decoded.email.toLowerCase(), m = cfg && cfg.members ? cfg.members[email] : null;
   if (m) {
     if (m.role === 'blocked') return { denied: 'blocked' };
-    return { email: email, role: m.role, portals: m.role === 'admin' ? [ALL] : m.portals, member: true };
+    return { email: email, role: m.role, portals: m.role === 'admin' ? [ALL] : m.portals,
+      sections: m.role === 'admin' ? [ALL] : (m.sections || [ALL]), member: true };
   }
-  if (isCompany(email)) return { email: email, role: (cfg && cfg.defaultRole) || 'editor', portals: [ALL], member: false };
+  if (isCompany(email)) return { email: email, role: (cfg && cfg.defaultRole) || 'editor', portals: [ALL], sections: [ALL], member: false };
   return { denied: 'outside' };
 }
 function can(access, need) { return !!access && !access.denied && (RANK[access.role] || 0) >= (RANK[need] || 99); }
@@ -144,6 +190,66 @@ function eventOk(access, ev) {
   if (!ev || !ev.createdAt) return true;
   if (ev.portal) return portalOk(access, ev.portal);
   return String(ev.createdBy || '').toLowerCase() === String(access.email || '');
+}
+function sectionOk(access, id) {
+  if (!access || access.denied) return false;
+  if (access.role === 'admin') return true;
+  var list = access.sections || [ALL];
+  return list.indexOf(ALL) !== -1 || list.indexOf(id) !== -1;
+}
+/* ---------- which section a request belongs to ----------
+   A request that changes something belongs to the section whose screen makes it; a few reads carry what only that
+   section shows (registrants, promotion audiences, the event's history, the all-events log). Routes several
+   sections use (the event's own record, uploads, share links, the site's records, previews) belong to none, so
+   every section that needs them keeps working. A list means any one of them will do. */
+var WRITE_SECTIONS = {
+  '/api/event/speakers': ['speakers'], '/api/event/speaker-groups': ['speakers'], '/api/event/speaker-photos/find': ['speakers'],
+  '/api/event/sessions': ['agenda'], '/api/event/agenda-groups': ['agenda'],
+  '/api/event/partners': ['sponsors'], '/api/event/partner-tiers': ['sponsors'],
+  '/api/event/gallery': ['content'], '/api/event/faqs': ['content'], '/api/event/contacts': ['content'],
+  '/api/event/site': ['design'], '/api/event/theme': ['design'], '/api/event/section-edges': ['design'],
+  '/api/event/phone-banner': ['design'], '/api/event/live-view': ['design'], '/api/chat-edit': ['design'],
+  '/api/chat/turn': ['design'], '/api/chat/doc-pictures': ['design'], '/api/redesign-section': ['design'],
+  '/api/suggest-design': ['design'],
+  '/api/event/logo-unit': ['design', 'content'], '/api/event/logo-unit-dark': ['design', 'content'],
+  '/api/event/hero-video': ['design', 'content'], '/api/event/hero-video/upload': ['design', 'content'],
+  '/api/event/hero-video/check': ['design', 'content'],
+  '/api/event/site/repair': ['design', 'dashboard'],
+  '/api/event/forms': ['settings', 'design'], '/api/event/forms/default': ['settings', 'design'], '/api/event/forms/order': ['settings', 'design'],
+  '/api/event/seo': ['settings'], '/api/event/seo/write': ['settings'], '/api/event/unpublish': ['settings'],
+  '/api/event/promo-templates': ['marketing'], '/api/event/promo-audiences': ['marketing'], '/api/event/leads/bulk': ['marketing'],
+  '/api/event/registrations': ['audience'], '/api/event/registrations/status': ['audience'], '/api/event/registrations/export': ['audience'],
+  '/api/extract-brief': ['create'], '/api/ingest-source': ['create'], '/api/plan-structure': ['create'],
+  '/api/generate-content': ['create'], '/api/generate/cancel': ['create'], '/api/brief-photos': ['create'],
+  '/api/me/create-draft': ['create'], '/api/me/create-draft/file': ['create'], '/api/import-lovable': ['create'],
+  '/api/event/clone': ['create'], '/api/event/ai-hero': ['create'],
+  '/api/library/build': ['library'],
+  '/api/settings/approvals': ['app-settings']
+};
+var READ_SECTIONS = {
+  '/api/event/registrations': ['audience'], '/api/event/registrations/export': ['audience'],
+  '/api/insights': ['audience', 'dashboard'], '/api/event/dashboard-stats': ['dashboard'],
+  '/api/event/promo-templates': ['marketing'], '/api/event/promo-audiences': ['marketing'],
+  '/api/event/history': ['activity'], '/api/event/seo': ['settings'], '/api/event/seo/previous': ['settings'],
+  '/api/activity/all': ['all-activity']
+};
+function sectionsFor(method, path) {
+  method = String(method || 'GET').toUpperCase(); path = String(path || '').split('?')[0];
+  var read = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
+  /* two promotion routes other sections read: the editor's picture copies (promo/image) and Content › Basics'
+     details for posts and mailers (promo/details) */
+  if (read && path === '/api/promo/image') return ['marketing', 'design'];
+  if (read && path === '/api/promo/details') return ['marketing', 'content'];
+  if (path.indexOf('/api/promo/') === 0) return ['marketing'];
+  if (read) return READ_SECTIONS[path] || null;
+  /* POST /api/event makes a new event (Create Event); PATCH and DELETE on it are shared */
+  if (path === '/api/event') return method === 'POST' ? ['create'] : null;
+  if (path.indexOf('/api/people/') === 0) return ['library'];
+  return WRITE_SECTIONS[path] || null;
+}
+function sectionSentence(ids) {
+  ids = Array.isArray(ids) ? ids : [ids];
+  return 'Your access does not include ' + ids.map(sectionLabel).join(' or ') + '. Ask an admin if you need it.';
 }
 function approverEmails(cfg) {
   var m = (cfg && cfg.members) || {};
@@ -200,8 +306,10 @@ function outsideSentence(access, portal) {
 function everywhereSentence() { return 'This covers every portal, so it is for people who work on all portals. Ask an admin if you need it.'; }
 
 function publicView(cfg, access) {
-  var you = access && !access.denied ? { email: access.email, role: access.role, label: LABELS[access.role], portals: access.portals, member: !!access.member } : null;
+  var you = access && !access.denied ? { email: access.email, role: access.role, label: LABELS[access.role], portals: access.portals,
+    sections: access.role === 'admin' ? [ALL] : (access.sections || [ALL]), member: !!access.member } : null;
   var out = { you: you, roles: ROLES.concat('blocked').map(function (r) { return { id: r, label: LABELS[r] }; }), canManage: can(access, 'admin'), defaultRole: cfg.defaultRole,
+    sections: SECTIONS, presets: PRESETS,
     domain: ALLOWED_DOMAIN, stored: !!cfg.stored,
     /* who to ask */
     admins: Object.keys(cfg.members).filter(function (e) { return cfg.members[e].role === 'admin'; }).sort() };
@@ -253,14 +361,20 @@ function setMember(fb, actor, input) {
   if (!role) return Promise.reject(httpErr(400, 'Choose a role: Admin, Approver, Editor, Viewer or No access.', 'bad-role'));
   var portals = role === 'admin' || role === 'blocked' ? [ALL] : cleanPortals(input.portals);
   if (!portals.length) return Promise.reject(httpErr(400, 'Choose the portals this person works in, or All portals.', 'no-portals'));
+  var given = input.sections === undefined ? null : (role === 'admin' || role === 'blocked' ? [ALL] : cleanSections(input.sections));
+  if (given && !given.length) return Promise.reject(httpErr(400, 'Choose the sections this person can open, or All sections.', 'no-sections'));
   return change(fb, actor, function (next, cfg, now, by) {
     var before = next.members[email] || null;
     if (email === by && role !== 'admin') throw httpErr(400, 'You can\'t take away your own admin access. Ask another admin.', 'self');
-    var m = { role: role, portals: portals, name: String(input.name != null ? input.name : (before && before.name) || '').trim().slice(0, 120),
+    var sections = role === 'admin' || role === 'blocked' ? [ALL] : (given || (before && before.sections) || [ALL]);
+    var m = { role: role, portals: portals, sections: sections, name: String(input.name != null ? input.name : (before && before.name) || '').trim().slice(0, 120),
       addedBy: before ? before.addedBy : by, addedAt: before ? before.addedAt : now, updatedBy: by, updatedAt: now };
-    if (before && before.role === m.role && JSON.stringify(before.portals) === JSON.stringify(m.portals) && before.name === m.name) return null;
+    if (before && before.role === m.role && JSON.stringify(before.portals) === JSON.stringify(m.portals) &&
+      JSON.stringify(before.sections || [ALL]) === JSON.stringify(m.sections) && before.name === m.name) return null;
     next.members[email] = m;
-    return { action: before ? 'changed' : 'added', email: email, before: before ? { role: before.role, portals: before.portals } : null, after: { role: m.role, portals: m.portals } };
+    return { action: before ? 'changed' : 'added', email: email,
+      before: before ? { role: before.role, portals: before.portals, sections: before.sections || [ALL] } : null,
+      after: { role: m.role, portals: m.portals, sections: m.sections } };
   });
 }
 function removeMember(fb, actor, email) {
@@ -296,6 +410,7 @@ module.exports = {
   approverEmails: approverEmails, approversWith: approversWith, publicView: publicView, deniedSentence: deniedSentence, isCompany: isCompany,
   needFor: needFor, everywhereOnly: everywhereOnly, refusedSentence: refusedSentence, outsideSentence: outsideSentence,
   everywhereSentence: everywhereSentence, portalNames: portalNames,
+  SECTIONS: SECTIONS, SECTION_IDS: SECTION_IDS, PRESETS: PRESETS, sectionOk: sectionOk, sectionsFor: sectionsFor, sectionSentence: sectionSentence,
   setMember: setMember, removeMember: removeMember, setDefaultRole: setDefaultRole, readLog: readLog,
-  _test: { normalise: normalise, startingPoint: startingPoint, cleanPortals: cleanPortals, docPath: docPath }
+  _test: { normalise: normalise, startingPoint: startingPoint, cleanPortals: cleanPortals, cleanSections: cleanSections, docPath: docPath }
 };

@@ -34,6 +34,10 @@
      .isAllowedEmail(email)              -> boolean  — a @timesinternet.in address (ALLOWED_DOMAIN)
      .access()                           -> Promise<{ you, canManage, … } | null>  the signed-in person's
                                              access (GET /api/access/me), asked once a page
+     .sectionOk(id)                      -> boolean  may this person open that part of the app (Settings ›
+                                             Access sections); true until their access is known. The page
+                                             gets a 'rv-sections' event on document once it is
+     .sectionLabel(id)                   -> the section's name
 
    Access: company Google accounts (ALLOWED_DOMAIN) and the Google accounts an admin invited in Settings ›
    Access, never one an admin blocked. The server decides it (functions/lib/access.js and access-control.js —
@@ -807,6 +811,7 @@
         var role = a && a.you && a.you.role;
         if (!role) return;
         document.documentElement.setAttribute('data-rv-role', role);
+        applySections(a);
         if (role !== 'viewer' || document.getElementById('rv-view-only')) return;
         var note = document.createElement('div');
         note.id = 'rv-view-only';
@@ -821,9 +826,102 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', markRole);
   else markRole();
 
+  /* ---------------------------------------------------------------- the parts of the app this person may open
+     Settings › Access can give someone only some sections (functions/lib/access-control.js SECTIONS, same ids and
+     names; the owner, 17 Nov 2026: share only some sections with the developers). The server refuses the rest
+     (lib/http.js); here every page hides the links that lead to them — the event rail's items, the main pages'
+     links — and covers a page that is not theirs. The event console (edit-event.html) keeps its own views to the
+     sections allowed, with sectionOk() and the 'rv-sections' event. Until the access is known, everything shows. */
+  var SECTION_LABELS = {
+    dashboard: 'Dashboard', content: 'Content', speakers: 'Speakers', agenda: 'Agenda', sponsors: 'Sponsors',
+    design: 'Site editor', payment: 'Payment', marketing: 'Promotions', audience: 'Reporting', activity: 'Activity log',
+    settings: 'Settings', create: 'Create Event', library: 'Speaker & sponsor library',
+    'all-activity': 'Activity log (all events)', 'app-settings': 'Settings (access and approvals)'
+  };
+  /* what leads to each section, besides the rail's [data-section] items and anything marked data-needs-section */
+  var SECTION_LINKS = {
+    dashboard: ['a[href*="#dashboard"]'],
+    content: ['a[href*="#content/basics"]', 'a[href*="#content/gallery"]', 'a[href*="#content/faq"]', 'a[href*="#content/contact"]'],
+    speakers: ['a[href*="#content/speakers"]'], agenda: ['a[href*="#content/agenda"]'], sponsors: ['a[href*="#content/sponsors"]'],
+    design: ['a[href*="custom_editor.html"]'],
+    payment: ['a[href*="#payment"]'],
+    marketing: ['a[href*="marketing.html"]', 'a[href*="promo-mailer-studio.html"]', 'a[href*="promo-social-studio.html"]', 'a[href*="mailer-performance.html"]'],
+    audience: ['a[href*="audience-registrations.html"]'],
+    activity: ['a[href*="#activity"]'],
+    settings: ['a[href*="#settings/"]', '[data-goto^="settings/"]'],
+    create: ['a[href*="create-event.html"]'],
+    library: ['a[href*="people.html"]'],
+    'all-activity': ['a[href*="activity-log.html"]'],
+    'app-settings': ['a[href*="settings.html"]']
+  };
+  /* the page itself, for the pages that are one section (the console's views are checked by the console) */
+  var PAGE_SECTION = {
+    'custom_editor.html': 'design', 'marketing.html': 'marketing', 'promo-mailer-studio.html': 'marketing',
+    'promo-social-studio.html': 'marketing', 'mailer-performance.html': 'marketing',
+    'audience-registrations.html': 'audience', 'create-event.html': 'create', 'people.html': 'library',
+    'activity-log.html': 'all-activity', 'settings.html': 'app-settings'
+  };
+  var mySections = null;
+  function sectionOk(id) {
+    if (!mySections) return true;
+    return mySections.indexOf('*') !== -1 || mySections.indexOf(id) !== -1;
+  }
+  function sectionCss() {
+    return Object.keys(SECTION_LABELS).map(function (id) {
+      var on = 'html[data-rv-nosec~="' + id + '"] ';
+      return ['[data-section="' + id + '"]', '[data-needs-section~="' + id + '"]'].concat(SECTION_LINKS[id] || [])
+        .map(function (sel) { return on + sel; }).join(',\n') + '{display:none !important}';
+    }).join('\n');
+  }
+  function coverPage(id) {
+    if (document.getElementById('rv-no-section')) return;
+    var box = document.createElement('div');
+    box.id = 'rv-no-section';
+    box.setAttribute('role', 'alertdialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-labelledby', 'rv-no-section-t');
+    box.style.cssText = 'position:fixed;inset:0;z-index:2147483001;display:flex;align-items:center;justify-content:center;padding:16px;' +
+      'background:rgba(15,23,42,.72);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif';
+    var card = document.createElement('div');
+    card.style.cssText = 'max-width:420px;width:100%;background:#fff;color:#111827;border-radius:12px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,.3)';
+    var h = document.createElement('h2');
+    h.id = 'rv-no-section-t';
+    h.style.cssText = 'margin:0 0 8px;font-size:18px';
+    h.textContent = (SECTION_LABELS[id] || 'This part') + ' is not in your access';
+    var p = document.createElement('p');
+    p.style.cssText = 'margin:0 0 18px;color:#374151';
+    p.textContent = 'An admin has given you some parts of ETB2B EventSphere, and this is not one of them. Ask an admin if you need it.';
+    var a = document.createElement('a');
+    a.href = '/Event_Listing.html';
+    a.textContent = 'Go to events';
+    a.style.cssText = 'display:inline-block;background:#ED1A3B;color:#fff;text-decoration:none;font-weight:600;padding:9px 16px;border-radius:8px';
+    card.appendChild(h); card.appendChild(p); card.appendChild(a);
+    box.appendChild(card);
+    document.body.appendChild(box);
+    a.focus();
+  }
+  function applySections(a) {
+    var you = a && a.you;
+    if (!you) return;
+    mySections = you.role === 'admin' ? ['*'] : (Array.isArray(you.sections) && you.sections.length ? you.sections : ['*']);
+    var off = Object.keys(SECTION_LABELS).filter(function (id) { return !sectionOk(id); });
+    document.documentElement.setAttribute('data-rv-nosec', off.join(' '));
+    if (off.length && !document.getElementById('rv-nosec-style')) {
+      var st = document.createElement('style');
+      st.id = 'rv-nosec-style';
+      st.textContent = sectionCss();
+      document.head.appendChild(st);
+    }
+    try { document.dispatchEvent(new CustomEvent('rv-sections', { detail: { sections: mySections.slice() } })); } catch (e) { /* an old browser: the console asks sectionOk itself */ }
+    var here = PAGE_SECTION[location.pathname.replace(/^.*\//, '')];
+    if (here && !sectionOk(here)) coverPage(here);
+  }
+
   window.RevampAuth = {
     authedFetch: authedFetch,
     access: access,
+    sectionOk: sectionOk,
+    sectionLabel: function (id) { return SECTION_LABELS[id] || id; },
     signInWithGoogle: signInWithGoogle,
     signOutUser: signOutUser,
     signOutAndLeave: signOutAndLeave,

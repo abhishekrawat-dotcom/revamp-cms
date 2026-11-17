@@ -95,7 +95,8 @@ function sessionCookieToken(req) {
    lets in (lib/access-control.js: a company account at the default role, or someone an admin invited, and nobody
    blocked) — with the role the request needs (a Viewer reads, an Editor changes things, an Admin changes who has
    access) and, for someone who works in chosen portals only, an event of one of those portals.
-   cb(fb, decoded), with decoded.access = { email, role, portals, member }. */
+   It also refuses a request for a part of the app this person was not given (access-control.js sectionsFor).
+   cb(fb, decoded), with decoded.access = { email, role, portals, sections, member }. */
 function requireAdmin(req, res, cb) {
   var token = bearerToken(req);
   if (!token) return sendJson(res, 401, { error: 'Sign in required — missing Authorization: Bearer <token> header.' });
@@ -127,6 +128,9 @@ function checkCaller(req, res, token, cb) {
       decoded.access = access;
       var path = String(req.url || '').split('?')[0], need = AC.needFor(req.method, path);
       if (!AC.can(access, need)) return sendJson(res, 403, { error: AC.refusedSentence(access, need), code: need === 'admin' ? 'not-admin' : 'view-only', role: access.role });
+      /* the parts of the app an admin gave this person (Settings › Access, sections) */
+      var secs = AC.sectionsFor(req.method, path);
+      if (secs && !secs.some(function (id) { return AC.sectionOk(access, id); })) return sendJson(res, 403, { error: AC.sectionSentence(secs), code: 'no-section', sections: secs });
       var go = function () { if (aiRateOk(req, res, path, decoded)) cb(fb, decoded); };
       if (AC.everywhere(access)) return go();
       if (AC.everywhereOnly(path)) return sendJson(res, 403, { error: AC.everywhereSentence(), code: 'not-your-portal' });
