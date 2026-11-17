@@ -116,6 +116,13 @@
    kept, with the kind of answer that did them (lib/ai-habits.js examplesFor: words that name no event or person),
    read beside the conversation and waited for at most 400 ms.
 
+   SECTIONS (the owner, 17 Nov 2026: "keep the AI also access based"). Settings › Access can give a person only some
+   parts of the app (lib/access-control.js SECTIONS). ETB2B AI keeps to them, here on the server: the prompt says what
+   is not theirs; an answer that would open, start or add to one of those parts (a page of it, Create Event, the
+   Speakers or Sponsors records) is replaced by one fixed sentence (sectionGate); no link in an answer leads to one;
+   and their figures are never given: registrations and visits need the Dashboard or Reporting, mailer opens and
+   clicks need Promotions. dash-bot-client.js checks every action again in the browser.
+
    COST. The editor chat's rate bucket is shared (chatRateOk: 60 messages in 10 minutes per person), and each
    person has CAPS.dayTurns messages and US$CAPS.dayUsd a day (India days), claimed in a transaction before the
    model is asked. One model call per message (route 'dash-bot' in lib/llm.js), 6,000 output tokens, a 55 s
@@ -131,6 +138,7 @@ const lifecycle = require('../../event-lifecycle');
 /* Getting started (help-guide.js at the repo's root, the dashboard's Help window): a how-to question is answered with
    one of its topics, word for word (HOW-TO below) */
 const helpGuide = require('../../help-guide');
+const AC = require('./access-control');
 
 /* ---------- helpers from lib/api.js ---------- */
 
@@ -650,7 +658,9 @@ function contextFor(o) {
     /* a message the site editor's ETB2B AI handed here answers here: never handed back (plan §5b) */
     handedFrom: o.handedFrom === 'edit' ? 'edit' : '',
     /* a Viewer (Settings › Access) changes nothing: kind "records" is answered with a sentence instead */
-    viewOnly: !!(decoded.access && decoded.access.role === 'viewer')
+    viewOnly: !!(decoded.access && decoded.access.role === 'viewer'),
+    /* the parts of the app this person was given (Settings › Access sections); everything when that is not known */
+    sectionOk: function (id) { return !decoded.access || AC.sectionOk(decoded.access, id); }
   };
   arr(o.docs).forEach(function (doc) {
     if (!doc || typeof doc.id !== 'string' || !/^[a-z0-9][a-z0-9-]{0,79}$/.test(doc.id) || ctx.byId[doc.id]) return;
@@ -1165,7 +1175,19 @@ function teamExamples(fb, place) {
   } catch (e) { return Promise.resolve([]); }
 }
 
+/* what this person's access does not include, for the prompt (Settings › Access sections) */
+function accessLine(ctx) {
+  if (!ctx.sectionOk) return '';
+  var off = AC.SECTION_IDS.filter(function (id) { return !ctx.sectionOk(id); });
+  if (!off.length) return '';
+  return 'ACCESS: this person\'s access does not include ' + off.map(AC.sectionLabel).join(', ') + '. Never offer, open, start or add to ' +
+    'any of those, and never give their figures; if they ask, say in one sentence that it is not in their access and that an admin can give it.';
+}
 function buildPrompt(ctx) {
+  var base = buildPromptFor(ctx), line = accessLine(ctx);
+  return line ? base + '\n\n' + line : base;
+}
+function buildPromptFor(ctx) {
   /* a page of one event has its own prompt: that event only (owner decision 10) */
   if (ctx.place && ctx.place.eventId) return buildScopedPrompt(ctx);
   var sel = promptRows(ctx), name = ctx.firstName, portal = portalLine(ctx);
@@ -1608,6 +1630,10 @@ function tokenParts(tok, ctx, state, notes, unknownSeen) {
     /* an event with no portal is said to have none, never given one */
     if (f === 'portal') return [{ t: 'text', v: ev.portal ? portalNameOf(ev.portal, ev) : 'no portal yet' }];
   }
+  /* figures only from the parts of the app this person was given: a token that is not theirs comes to nothing, and
+     its sentence goes with it */
+  if (METRICS.indexOf(f) !== -1 && ctx.sectionOk && !ctx.sectionOk('dashboard') && !ctx.sectionOk('audience')) { notes.push('section-figures'); return []; }
+  if (MAILER_FIELDS.indexOf(f) !== -1 && ctx.sectionOk && !ctx.sectionOk('marketing')) { notes.push('section-figures'); return []; }
   if (METRICS.indexOf(f) !== -1) {
     var t = ctx.totals[ev.id];
     if (!t) { notes.push('totals-unavailable'); return [{ t: 'missing', v: MSG.unavailable }]; }
@@ -2512,7 +2538,38 @@ function cleanRecords(raw, ctx, notes) {
    { kind, parts, answerRaw, list, action, choices, events, notes, asOf, memo }
    memo is what the memory says was done (happened()): the action's label with events as {{<id>}} tokens. It is
    stored with the turn's action and never sent to the page. */
+/* SECTIONS: an answer never opens, starts or adds to a part of the app this person was not given, and no link in it
+   leads there. The action's part: a page by its address (AC.sectionOfUrl, as the browser reads it), Create Event,
+   the Speakers or Sponsors records. */
+function actionSection(action) {
+  if (!isObj(action)) return null;
+  if (action.type === 'create') return 'create';
+  if (action.type === 'records') return action.what === 'sponsors' ? 'sponsors' : 'speakers';
+  if (action.type === 'navigate') return AC.sectionOfUrl(action.url);
+  return null;
+}
+var SECTION_VERB = { create: 'start', records: 'add to' };
+function sectionGate(a, ctx) {
+  if (!isObj(a) || !ctx || !ctx.sectionOk) return a;
+  var urlOk = function (u) { var id = AC.sectionOfUrl(u); return !id || ctx.sectionOk(id); };
+  var need = actionSection(a.action);
+  if (need && !ctx.sectionOk(need)) {
+    var text = AC.sectionLabel(need) + ' is not in your access, so I can\'t ' + (SECTION_VERB[a.action.type] || 'open') + ' it for you. Ask an admin if you need it.';
+    return { kind: 'refuse', parts: [{ t: 'text', v: text }], answerRaw: text, list: null, choices: null,
+      action: { type: 'refuse', what: 'section', pointer: { text: '' } }, events: arr(a.events), notes: uniq(arr(a.notes).concat(['section-' + need])),
+      asOf: a.asOf || new Date(clock.now()).toISOString(), memo: '' };
+  }
+  /* links in the words, and a refusal's pointer: none to a part not given */
+  a.parts = arr(a.parts).map(function (p) { return isObj(p) && p.href && !urlOk(p.href) ? { t: 'text', v: String(p.name || '') } : p; });
+  if (isObj(a.action) && isObj(a.action.pointer) && a.action.pointer.href && !urlOk(a.action.pointer.href)) {
+    delete a.action.pointer.href; delete a.action.pointer.hrefLabel;
+  }
+  return a;
+}
 function cleanAnswer(parsed, ctx) {
+  return cleanAnswerFor(parsed, ctx).then(function (a) { return sectionGate(a, ctx); });
+}
+function cleanAnswerFor(parsed, ctx) {
   parsed = isObj(parsed) ? parsed : {};
   var place = ctx.place || { page: 'dashboard', eventId: '', tab: '' }, inEditor = place.page === 'editor';
   var notes = arr(ctx.notes).slice(), tail = [], asked = kindOf(parsed), kind = KINDS.indexOf(asked) !== -1 ? asked : 'reply';
@@ -3230,6 +3287,7 @@ function handleHistory(req, res) {
 
 module.exports = { wire: wire, handleChat: handleChat, handleTurn: handleTurn, handleHistory: handleHistory };
 module.exports._test = {
+  sectionGate: sectionGate, actionSection: actionSection, accessLine: accessLine,
   SCHEMA: SCHEMA, buildPrompt: buildPrompt, cleanAnswer: cleanAnswer, resolveText: resolveText, guardText: guardText, guardFor: guardFor,
   urlFor: urlFor, runList: runList, cleanFilter: cleanFilter, cleanCreate: cleanCreate, grounded: grounded, saidWords: saidWords, cleanCell: cleanCell,
   memoryText: memoryText, harmOf: harmOf,

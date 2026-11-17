@@ -38,6 +38,8 @@
      sectionOk(access, id)              -> boolean: may this person open section id (SECTIONS)
      sectionsFor(method, path)          -> [section id] any one of which a request needs, or null (no section)
      sectionSentence(id)                -> what a request refused for its section answers
+     sectionOfUrl(url), sectionOfRoute(route), sectionLabel(id) -> the section an address or a console route
+                                           belongs to (null for none), and its name (auth.js has the same rules)
      can(access, need)                  -> boolean (need: viewer < editor < approver < admin)
      portalOk(access, portal)           -> boolean
      eventOk(access, eventData)         -> boolean (eventData: the event document, or null for one that does not exist)
@@ -247,6 +249,29 @@ function sectionsFor(method, path) {
   if (path.indexOf('/api/people/') === 0) return ['library'];
   return WRITE_SECTIONS[path] || null;
 }
+/* the section an address belongs to, as the pages see it (auth.js sectionOfUrl, the same rules): a page that is one
+   section, or a view of the event console by its route; null for one that is no section's (the console's own
+   address, a preview, a live site, the events list) */
+var PAGE_SECTION = {
+  'custom_editor.html': 'design', 'marketing.html': 'marketing', 'promo-mailer-studio.html': 'marketing',
+  'promo-social-studio.html': 'marketing', 'mailer-performance.html': 'marketing',
+  'audience-registrations.html': 'audience', 'create-event.html': 'create', 'people.html': 'library',
+  'activity-log.html': 'all-activity', 'settings.html': 'app-settings'
+};
+function sectionOfRoute(route) {
+  var parts = String(route || '').replace(/^#/, '').split('/'), sec = parts[0], tab = parts[1] || '';
+  if (sec === 'content') return { speakers: 'speakers', agenda: 'agenda', sponsors: 'sponsors' }[tab] || 'content';
+  if (sec === 'audience') return tab === 'insights' ? 'dashboard' : (tab === 'payments' ? 'payment' : 'audience');
+  if (sec === 'settings') return tab === 'history' ? 'activity' : 'settings';
+  return { dashboard: 1, design: 1, marketing: 1, activity: 1, payment: 1 }[sec] ? sec : null;
+}
+function sectionOfUrl(url) {
+  var m = /^(?:[a-z]+:\/\/[^\/]+)?\/?([^?#]*)(?:\?[^#]*)?(?:#(.*))?$/i.exec(String(url || ''));
+  if (!m) return null;
+  var page = m[1].replace(/^.*\//, '');
+  if (page === 'edit-event.html') return m[2] ? sectionOfRoute(m[2]) : null;
+  return PAGE_SECTION[page] || null;
+}
 function sectionSentence(ids) {
   ids = Array.isArray(ids) ? ids : [ids];
   return 'Your access does not include ' + ids.map(sectionLabel).join(' or ') + '. Ask an admin if you need it.';
@@ -411,6 +436,7 @@ module.exports = {
   needFor: needFor, everywhereOnly: everywhereOnly, refusedSentence: refusedSentence, outsideSentence: outsideSentence,
   everywhereSentence: everywhereSentence, portalNames: portalNames,
   SECTIONS: SECTIONS, SECTION_IDS: SECTION_IDS, PRESETS: PRESETS, sectionOk: sectionOk, sectionsFor: sectionsFor, sectionSentence: sectionSentence,
+  sectionLabel: sectionLabel, sectionOfUrl: sectionOfUrl, sectionOfRoute: sectionOfRoute,
   setMember: setMember, removeMember: removeMember, setDefaultRole: setDefaultRole, readLog: readLog,
   _test: { normalise: normalise, startingPoint: startingPoint, cleanPortals: cleanPortals, cleanSections: cleanSections, docPath: docPath }
 };

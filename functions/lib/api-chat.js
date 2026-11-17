@@ -750,6 +750,14 @@ function handleChatEdit(req, res) {
       }
       if (parsed && parsed.kind === 'handoff') parsed = Object.assign({}, parsed, { kind: 'reply', summary: String(parsed.summary || '').trim() || CHAT_NOT_HANDED_BACK });
       var goTo = parsed && CHAT_GO_TO.indexOf(parsed.goTo) !== -1 ? parsed.goTo : '';
+      /* SECTIONS (the owner, 17 Nov 2026: "keep the AI also access based"): never a button to a Content page this
+         person was not given (Settings › Access); the summary says so instead */
+      var goToSection = { 'content:speakers': 'speakers', 'content:agenda': 'agenda', 'content:sponsors': 'sponsors', 'content:faq': 'content', 'content:contact': 'content' }[goTo];
+      if (goToSection && decoded.access && !require('./access-control').sectionOk(decoded.access, goToSection)) {
+        var noPart = require('./access-control').sectionLabel(goToSection) + ' is not in your access, so I can\'t take you there. Ask an admin if you need it.';
+        parsed = Object.assign({}, parsed, { summary: (String(parsed.summary || '').trim() ? String(parsed.summary).trim() + ' ' : '') + noPart });
+        goTo = '';
+      }
 
       /* the prompt tells the model to only describe in `summary` what design/textEdits actually contain, but
          that's not enforceable — this tracks anything the model TRIED to set that got dropped by validation

@@ -1536,6 +1536,35 @@ function idsOf(list) { return (list && list.items || []).map(function (i) { retu
   } catch (e) { loaded = 'threw: ' + e.message; }
   check('loads with no environment and no side effects (it exits at once)', /^wire,handleChat,handleTurn,handleHistory,_test\|\d+$/.test(loaded), loaded);
 
+  /* ---------- SECTIONS (the owner, 17 Nov 2026: "keep the AI also access based") ---------- */
+  var DEVS = ['dashboard', 'content', 'speakers', 'agenda', 'sponsors', 'design', 'activity', 'settings'];
+  function ctxSec(message, sections) {
+    return ctxWith(message, { decoded: Object.assign(decodedFor('asha'), { access: { role: 'editor', portals: ['*'], sections: sections } }) });
+  }
+  var sc = await ctxSec('open its registrations', DEVS);
+  a = T.sectionGate({ kind: 'open', parts: [{ t: 'text', v: 'Opening it.' }], action: { type: 'navigate', url: '/audience-registrations.html?event=autotech-2026', target: 'registrations' }, events: ['autotech-2026'], notes: [] }, sc);
+  check('S.1 a page of a part not given (Reporting): one fixed sentence, no action', a.kind === 'refuse' && a.action.type === 'refuse' && a.action.what === 'section' &&
+    /^Reporting is not in your access, so I can't open it for you\. Ask an admin if you need it\.$/.test(a.parts[0].v) && !a.action.url, a);
+  a = T.sectionGate({ kind: 'create', parts: [], action: { type: 'create', url: '/create-event.html?new=1&prefill=t1', prefillId: 't1' }, notes: [] }, sc);
+  check('S.2 Create Event not given: refused, "start"', a.kind === 'refuse' && /^Create Event is not in your access, so I can't start it/.test(a.parts[0].v), a);
+  a = T.sectionGate({ kind: 'open', parts: [], action: { type: 'navigate', url: '/edit-event.html?event=autotech-2026#content/speakers' }, notes: [] }, sc);
+  check('S.3 a part given (Speakers): the action stays', a.kind === 'open' && a.action.type === 'navigate', a);
+  var sc2 = await ctxSec('add these sponsors', ['speakers']);
+  a = T.sectionGate({ kind: 'records', parts: [], action: { type: 'records', what: 'sponsors', eventId: 'autotech-2026' }, notes: [] }, sc2);
+  check('S.4 adding sponsors without Sponsors: refused, "add to"', a.kind === 'refuse' && /^Sponsors is not in your access, so I can't add to it/.test(a.parts[0].v), a);
+  a = T.sectionGate({ kind: 'reply', parts: [{ t: 'text', v: 'Counted on ' }, { t: 'event', id: 'autotech-2026', name: 'its Mailer performance', href: '/marketing.html?event=autotech-2026&tab=mailers' }], action: null, notes: [] }, sc);
+  check('S.5 a link in the words to a part not given becomes plain words', a.parts[1].t === 'text' && a.parts[1].v === 'its Mailer performance' && !a.parts[1].href, a.parts);
+  var sc3 = await ctxSec('registrations?', ['speakers']);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: 'Sure. {{autotech-2026}} has {{autotech-2026.registrations}} registrations so far.' }, sc3);
+  check('S.6 figures need the Dashboard or Reporting: the sentence with the number is dropped', !(a.parts || []).some(function (p) { return p.metric; }) &&
+    (a.notes || []).indexOf('section-figures') !== -1, a);
+  a = await T.cleanAnswer({ kind: 'reply', events: ['autotech-2026'], text: '{{autotech-2026}} has {{autotech-2026.registrations}} registrations so far.' }, sc);
+  check('S.7 …with the Dashboard (the Developer preset) the figure is given', (a.parts || []).some(function (p) { return p.metric === 'registrations'; }), a.parts);
+  check('S.8 the prompt says what is not theirs; nothing for someone with every part',
+    /^ACCESS: this person's access does not include Payment, Promotions, Reporting, Create Event, Speaker & sponsor library, Activity log \(all events\), Settings \(access and approvals\)\./.test(T.accessLine(sc)) &&
+    T.accessLine(await ctxWith('hi')) === '' && T.buildPrompt(sc).indexOf('ACCESS: this person') !== -1, T.accessLine(sc));
+  a = await T.cleanAnswer({ kind: 'open', events: ['autotech-2026'], open: { target: 'promotions', tab: 'mailers' }, text: 'Opening its mailers.' }, sc);
+  check('S.9 through cleanAnswer: opening Promotions without it is the fixed sentence', a.kind === 'refuse' && /^Promotions is not in your access/.test(a.parts[0].v), a);
   console.log((realLifecycle ? 'event-lifecycle.js: the real one' : 'event-lifecycle.js: a stand-in (Unit B\'s file is not there yet)') + '; ' +
     (realTotals ? 'insightTotals: the real one' : 'insightTotals: a stand-in (not exported yet)'));
   console.log('dash-bot: ' + passed + ' passed, ' + failed + ' failed');
