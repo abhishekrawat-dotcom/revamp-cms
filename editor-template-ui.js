@@ -2287,10 +2287,10 @@
         '<button class="icon-only" data-action="align-right" title="Align right" aria-label="Align right">' + TB_ICON.alignRight + '</button>' +
         (link ? '<span class="tpl-tb-sep"></span>' + link : '');
     } else if (type === 'button') {
-      html += look + (look && link ? '<span class="tpl-tb-sep"></span>' : '') + link;
+      html += look + (look && link ? '<span class="tpl-tb-sep"></span>' : '') + link + '<span class="tpl-tb-sep"></span>' + alignButtons('button');
     } else if (type === 'image') {
       html += '<button data-action="replace-image" title="Replace image">Replace image</button>' +
-        '<button data-action="alt-text" title="Alt text">Alt text</button>' + link;
+        '<button data-action="alt-text" title="Alt text">Alt text</button>' + link + '<span class="tpl-tb-sep"></span>' + alignButtons('picture');
     } else if (el.hasAttribute('data-rv-form-embed')) {
       var hidesTitle = el.getAttribute('data-rv-form-title') === 'hide';
       var around = formBlockSiblings(el), pos = around.indexOf(el);
@@ -2310,6 +2310,8 @@
         '<button class="icon-only" data-action="item-later" title="Move this item later" aria-label="Move this item later"' + (at === around.length - 1 ? ' disabled' : '') + '>&#8594;</button>' +
         '<button data-action="item-remove" title="Remove this item">Remove item</button>';
     }
+    /* a plain box (a column, a card, the banner's content): it and what it holds line up together */
+    if (!type && !el.hasAttribute('data-rv-form-embed') && !recordOf(el)) html += (html ? '<span class="tpl-tb-sep"></span>' : '') + alignButtons('box');
     if (parentBoxOf(el)) html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
       '<button data-action="select-parent" title="Select the box this sits in (a card, a column) to move, copy or delete it whole">Box around it</button>';
     html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
@@ -2423,7 +2425,7 @@
       clearAiGenerated(selectedEl);
       commitNow();
     } else if (action === 'align-left' || action === 'align-center' || action === 'align-right') {
-      selectedEl.style.textAlign = action.slice(6);
+      alignSelection(selectedEl, action.slice(6));
       clearAiGenerated(selectedEl);
       commitNow();
     } else if (action === 'link') {
@@ -3496,6 +3498,97 @@
       var cs = canvas.win.getComputedStyle(c);
       return cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed';
     });
+  }
+  /* ---------- alignment of anything ----------
+     The owner, 18 Nov 2026 (the banner of "Your AI is Scaling. Is Your Security?"): "if i want to align this logo unit
+     or the entire center elements to left right, currently I can't". Left, centre and right are on every selection: a
+     text lines up its words and, when it is narrower than the box it sits in, itself; a picture (the logo unit), a
+     button or an icon moves itself; a plain box ("Box around it": a column, a card, the banner's content) moves itself
+     and lines up everything it holds — rows of facts and buttons, headings held in the middle by their margins. */
+  var ALIGN_FLEX = { left: 'flex-start', center: 'center', right: 'flex-end' };
+  var ALIGN_GRID = { left: 'start', center: 'center', right: 'end' };
+  var ALIGN_ICON = { left: 'alignLeft', center: 'alignCenter', right: 'alignRight' };
+  function alignButtons(what) {
+    return ['left', 'center', 'right'].map(function (side) {
+      var t = 'Align this ' + what + ' ' + (side === 'center' ? 'in the centre' : 'to the ' + side);
+      return '<button class="icon-only" data-action="align-' + side + '" title="' + t + '" aria-label="' + t + '">' + TB_ICON[ALIGN_ICON[side]] + '</button>';
+    }).join('');
+  }
+  /* what moves when a picture moves: the outermost box of its own size around it (the logo unit's frame) */
+  function alignTarget(el) {
+    var t = el, sec = el.closest('[data-rv-section]');
+    while (t.parentElement && t.parentElement !== sec && !t.parentElement.classList.contains('hero-root')) {
+      var p = t.parentElement, a = t.getBoundingClientRect(), b = p.getBoundingClientRect();
+      if (Math.abs(a.width - b.width) > 6 || visibleKids(p).length !== 1) break;
+      t = p;
+    }
+    return t;
+  }
+  /* a box, in the box around it: by the layout that holds it (a column of flex, a grid, a row, plain flow) */
+  function placeIn(el, side) {
+    var p = el.parentElement;
+    if (!p) return;
+    var pcs = canvas.win.getComputedStyle(p), cs = canvas.win.getComputedStyle(el);
+    var flex = /flex/.test(pcs.display), grid = /grid/.test(pcs.display), column = flex && /column/.test(pcs.flexDirection);
+    if (column) { el.style.alignSelf = ALIGN_FLEX[side]; return; }
+    if (grid) { el.style.justifySelf = ALIGN_GRID[side]; return; }
+    if (!flex && /^inline/.test(cs.display)) {
+      el.style.display = 'block';
+      if (!/^(IMG|SVG|VIDEO|CANVAS|PICTURE)$/i.test(el.tagName)) el.style.width = 'fit-content';
+    }
+    el.style.marginLeft = side === 'left' ? '0' : 'auto';
+    el.style.marginRight = side === 'right' ? '0' : 'auto';
+  }
+  /* a picture fitted whole into a wider frame is drawn in the frame's middle: move the drawing with the frame */
+  function fitSide(img, side) {
+    if (!/^(IMG|VIDEO)$/i.test(img.tagName)) return;
+    var fit = canvas.win.getComputedStyle(img).objectFit;
+    if (fit !== 'contain' && fit !== 'scale-down' && !img.style.objectPosition) return;
+    img.style.objectPosition = side === 'center' ? '' : side + ' center';
+  }
+  /* the logo unit holds one picture for light banners and one for dark: both move together */
+  function alignLogoUnit(lu, side) {
+    Array.prototype.forEach.call(lu.querySelectorAll('.rv-lu-img'), function (img) {
+      img.style.marginLeft = side === 'left' ? '0' : 'auto';
+      img.style.marginRight = side === 'right' ? '0' : 'auto';
+      img.style.objectPosition = side === 'center' ? '' : side + ' center';
+    });
+  }
+  /* everything a box holds, lined up to one side */
+  function alignContents(box, side) {
+    box.style.textAlign = side;
+    [box].concat(Array.prototype.slice.call(box.querySelectorAll('*'))).forEach(function (n) {
+      if (n.closest('[data-rv-editor], svg') && n !== box || /^(SCRIPT|STYLE|TEMPLATE)$/.test(n.tagName)) return;
+      var cs = canvas.win.getComputedStyle(n);
+      if (/flex/.test(cs.display)) {
+        if (/column/.test(cs.flexDirection)) { if (n === box || cs.alignItems === 'center' || cs.alignItems === 'flex-end' || cs.alignItems === 'end') n.style.alignItems = ALIGN_FLEX[side]; }
+        else if (n === box || /center|end/.test(cs.justifyContent)) n.style.justifyContent = ALIGN_FLEX[side];
+      }
+      if (n !== box && /center|right|end/.test(cs.textAlign) && !/^inline/.test(cs.display)) n.style.textAlign = side;
+      /* a box held in the middle by equal margins (a heading with a max width) */
+      var ml = parseFloat(cs.marginLeft), mr = parseFloat(cs.marginRight);
+      if (n !== box && cs.display === 'block' && ml > 1 && Math.abs(ml - mr) < 2) { n.style.marginLeft = side === 'left' ? '0' : 'auto'; n.style.marginRight = side === 'right' ? '0' : 'auto'; }
+      if (n !== box && cs.alignSelf === 'center') n.style.alignSelf = ALIGN_FLEX[side];
+      fitSide(n, side);
+    });
+    (box.matches('.rv-lu') ? [box] : []).concat(Array.prototype.slice.call(box.querySelectorAll('.rv-lu'))).forEach(function (lu) { alignLogoUnit(lu, side); });
+  }
+  function alignSelection(el, side) {
+    var type = el.getAttribute('data-editable');
+    if (type === 'text') {
+      el.style.textAlign = side;
+      var p = el.parentElement;
+      if (p && el.getBoundingClientRect().width < p.getBoundingClientRect().width - 8) placeIn(el, side);
+      return;
+    }
+    if (type === 'image' || type === 'button' || /^(IMG|SVG|VIDEO|A|BUTTON)$/i.test(el.tagName)) {
+      placeIn(alignTarget(el), side);
+      var lu = el.closest('.rv-lu');
+      if (lu) alignLogoUnit(lu, side); else fitSide(el, side);
+      return;
+    }
+    alignContents(el, side);
+    placeIn(el, side);
   }
   /* the box a click on a plain part of the page selects, or null (the section is selected then) */
   function plainBoxOf(target, sec) {

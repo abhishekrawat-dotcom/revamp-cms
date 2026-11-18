@@ -50,5 +50,15 @@ check('a delete closes up: empty boxes go, and the last column takes the whole r
   /box\.style\.gridTemplateColumns = 'minmax\(0, 1fr\)'/.test(ED) && /only\.style\.flex = '1 1 100%'/.test(ED) && /d\.style\.maxWidth = 'none'/.test(ED));
 var CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'editor-canvas.css'), 'utf8');
 check('a plain selection is outlined (dashed)', /\.ed-selected:not\(\[data-editable\]\):not\(\[data-rv-item\]\):not\(\[data-rv-repeat-template\]\)\{ outline:2px dashed #ED1C24/.test(CSS));
+/* alignment of anything (the owner, 18 Nov 2026: "if i want to align this logo unit or the entire center elements to left
+   right, currently I can't") */
+check('pictures (the logo unit), buttons and plain boxes have left, centre and right too', /alignButtons\('picture'\)/.test(ED) && /alignButtons\('button'\)/.test(ED) && /alignButtons\('box'\)/.test(ED));
+check('a picture moves with the frame of its own size around it (alignTarget), by the layout that holds it (placeIn)', /placeIn\(alignTarget\(el\), side\)/.test(ED) &&
+  /if \(column\) \{ el\.style\.alignSelf = ALIGN_FLEX\[side\]; return; \}/.test(ED) && /if \(grid\) \{ el\.style\.justifySelf = ALIGN_GRID\[side\]; return; \}/.test(ED));
+check('a picture fitted whole in a wider frame is drawn at the same side (object-position), and both logo-unit pictures (light and dark) move together',
+  /img\.style\.objectPosition = side === 'center' \? '' : side \+ ' center'/.test(ED) && /lu\.querySelectorAll\('\.rv-lu-img'\)/.test(ED) &&
+  /if \(lu\) alignLogoUnit\(lu, side\); else fitSide\(el, side\);/.test(ED) && /forEach\(function \(lu\) \{ alignLogoUnit\(lu, side\); \}\)/.test(ED));
+check('a box moves itself and lines up all it holds; a narrow text moves itself as well as its words', /alignContents\(el, side\);\n    placeIn\(el, side\);/.test(ED) &&
+  /el\.getBoundingClientRect\(\)\.width < p\.getBoundingClientRect\(\)\.width - 8\) placeIn\(el, side\)/.test(ED) && /alignSelection\(selectedEl, action\.slice\(6\)\)/.test(ED));
 process.stdout.write('editor-delete: ' + passed + ' passed, ' + failed + ' failed\n');
 process.exit(failed ? 1 : 0);
