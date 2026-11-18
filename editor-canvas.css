@@ -65,6 +65,9 @@ html[data-rv-editing] [data-rv-item][data-rv-id]:hover{ outline:1.5px dashed #8a
 html[data-rv-editing] [data-rv-repeat-template].ed-selected,
 html[data-rv-editing] [data-rv-item].ed-selected,
 html[data-rv-editing] [data-rv-empty-state].ed-selected{ outline:2px solid #ED1C24 !important; outline-offset:3px; }
+/* any other part of the page, selected to delete, copy or step out to the box around it (editor-template-ui.js
+   plainBoxOf, "Box around it"): a dashed outline, as it is not a text, picture or button */
+html[data-rv-editing] [data-rv-section] .ed-selected:not([data-editable]):not([data-rv-item]):not([data-rv-repeat-template]){ outline:2px dashed #ED1C24 !important; outline-offset:2px; }
 html[data-rv-editing] [data-rv-empty-state] [data-rv-content-link]{ text-decoration:underline; text-underline-offset:3px; font-weight:600; }
 
 /* A hidden section is not on the live site. Here it stays where it was as a slim bar, so it can be found and shown

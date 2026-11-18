@@ -2310,6 +2310,8 @@
         '<button class="icon-only" data-action="item-later" title="Move this item later" aria-label="Move this item later"' + (at === around.length - 1 ? ' disabled' : '') + '>&#8594;</button>' +
         '<button data-action="item-remove" title="Remove this item">Remove item</button>';
     }
+    if (parentBoxOf(el)) html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
+      '<button data-action="select-parent" title="Select the box this sits in (a card, a column) to move, copy or delete it whole">Box around it</button>';
     html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
       '<button class="icon-only" data-action="duplicate" title="Duplicate" aria-label="Duplicate">' + TB_ICON.duplicate + '</button>' +
       '<button class="icon-only danger" data-action="delete" title="Delete" aria-label="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
@@ -2448,6 +2450,9 @@
       onFormBlockAction(action.slice(5), selectedEl);
     } else if (action === 'delete') {
       deleteElement(selectedEl);
+    } else if (action === 'select-parent') {
+      var around = parentBoxOf(selectedEl);
+      if (around) { if (editingEl) exitEdit(editingEl); selectElement(around); }
     } else if (action === 'deselect') {
       deselect();
     } else if (action.indexOf('item-') === 0) {
@@ -3436,9 +3441,124 @@
     if (item === el) return item;
     var cfg = repeatConfigFor(el.closest('[data-rv-section]'));
     // ":self": the item is its own label (a button), already answered above
-    return cfg.label && cfg.label !== ':self' && item.querySelector(cfg.label) === el ? item : null;
+    if (cfg && cfg.label) return cfg.label !== ':self' && item.querySelector(cfg.label) === el ? item : null;
+    /* An item found by how it is built (an AI-designed or imported site: looseItemOf), which has no configuration.
+       Delete threw here for every one of them, so the trash button did nothing (the owner, 18 Nov 2026, on Brand
+       World Summit South 2026: "If I want to remove any element from a section is not possible"). Deleting what
+       holds an item's words takes the whole item when nothing of it would be left but its numbering or an icon:
+       "Digital teams" goes with its "07" and its rule, not leaving them behind. */
+    return onlyContentOf(item, el) ? item : null;
+  }
+  /* is el all there is to read or see in item, its numbering ("07", "3.", "iv") and its icons aside? */
+  var NUMBERING = /^[\s\d.()#ivxlIVXL-]{1,4}$/;
+  function onlyContentOf(item, el) {
+    return !Array.prototype.some.call(item.querySelectorAll('[data-editable]'), function (e) {
+      if (e === el || el.contains(e) || e.contains(el)) return false;
+      if (e.getAttribute('data-editable') === 'image') return !/^svg$/i.test(e.tagName);
+      var t = (e.textContent || '').trim();
+      return !!t && !NUMBERING.test(t);
+    });
   }
 
+  /* ---------- any element: selected, deleted, and the layout closing up behind it ----------
+     The owner, 18 Nov 2026 (DigiPlus Fest 2027's Overview): "delete option should be available to all elements. If I
+     have deleted all the left side of elements, then the right side content should be automatically switched to
+     full width." A click on what is not a text, picture, button or form selects the smallest box around it that shows
+     something (a pattern, a bar, a fill, a frame) or is a column of the layout; "Box around it" steps up from any
+     selection; after a delete, a box left with nothing in it goes too, and the last column of a two-column layout
+     takes the whole width. ETB2B's top bar, footer and logo, the banner's own frame and the event's records stay as
+     they are. */
+  var PLAIN_KEEP = '[data-rv-etnav], [data-rv-logo-unit], [data-rv-logo], [data-rv-repeat-template], [data-rv-bound], [data-rv-auto], [data-rv-editor], .hero-veil';
+  function pinnedSection(sec) {
+    var key = sec.getAttribute('data-rv-section') || '';
+    return key === 'nav' || key === 'footer' || sec.hasAttribute('data-rv-etnav') || !!sec.querySelector(':scope > [data-rv-etnav]');
+  }
+  function showsSelf(el) {
+    if (/^(IMG|SVG|VIDEO|CANVAS|HR|PICTURE|IFRAME)$/i.test(el.tagName)) return true;
+    var cs = canvas.win.getComputedStyle(el);
+    if (/url\(|gradient\(/.test(cs.backgroundImage)) return true;
+    if (cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent') return true;
+    return ['Top', 'Right', 'Bottom', 'Left'].some(function (side) { return parseFloat(cs['border' + side + 'Width']) > 0 && cs['border' + side + 'Style'] !== 'none'; }) || cs.boxShadow !== 'none';
+  }
+  function isColumn(el) {
+    var parent = el.parentElement;
+    if (!parent || !el.getBoundingClientRect) return false;
+    var pcs = canvas.win.getComputedStyle(parent), cs = canvas.win.getComputedStyle(el);
+    if (cs.position === 'absolute' || cs.position === 'fixed' || /^inline/.test(cs.display)) return false;
+    var row = /grid/.test(pcs.display) || (/flex/.test(pcs.display) && !/column/.test(pcs.flexDirection));
+    if (!row || visibleKids(parent).length < 2) return false;
+    var w = el.getBoundingClientRect().width, pw = parent.getBoundingClientRect().width;
+    return pw > 0 && w >= pw * 0.2 && w < pw * 0.95;
+  }
+  function visibleKids(box) {
+    return Array.prototype.filter.call(box.children, function (c) {
+      if (c.hasAttribute('data-rv-editor') || /^(SCRIPT|STYLE|TEMPLATE)$/.test(c.tagName)) return false;
+      var cs = canvas.win.getComputedStyle(c);
+      return cs.display !== 'none' && cs.position !== 'absolute' && cs.position !== 'fixed';
+    });
+  }
+  /* the box a click on a plain part of the page selects, or null (the section is selected then) */
+  function plainBoxOf(target, sec) {
+    if (pinnedSection(sec) || target.closest(PLAIN_KEEP)) return null;
+    var whole = sec.getBoundingClientRect(), area = whole.width * whole.height;
+    for (var n = target; n && n !== sec && sec.contains(n); n = n.parentElement) {
+      if (n.nodeType !== 1 || n.closest('svg') !== n && n.closest('svg')) continue;     // a part of an icon: the icon
+      var r = n.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) continue;
+      if (r.width * r.height >= area * 0.85) return null;                                 // the section's own frame
+      if (n.classList && n.classList.contains('hero-root')) return null;
+      if (showsSelf(n) || isColumn(n)) return n;
+    }
+    return null;
+  }
+  /* "Box around it": the box a selection sits in, as a click there would pick it, or null */
+  function parentBoxOf(el) {
+    var sec = el.closest('[data-rv-section]');
+    if (!sec || pinnedSection(sec)) return null;
+    var whole = sec.getBoundingClientRect(), area = whole.width * whole.height;
+    for (var n = el.parentElement; n && n !== sec; n = n.parentElement) {
+      if (n.closest(PLAIN_KEEP) || (n.classList && n.classList.contains('hero-root'))) return null;
+      var r = n.getBoundingClientRect();
+      if (r.width * r.height >= area * 0.85) return null;
+      if (r.width < 4 || r.height < 4) continue;
+      var kids = visibleKids(n);
+      if (showsSelf(n) || isColumn(n) || kids.length >= 2) return n;
+    }
+    return null;
+  }
+  /* is anything left in it to read or see: words, a picture, an icon, a form, a pattern or picture behind */
+  function hasContent(box) {
+    if (/^(IMG|SVG|VIDEO|CANVAS|IFRAME|HR|PICTURE|INPUT|SELECT|TEXTAREA|BUTTON)$/i.test(box.tagName)) return true;
+    if ((box.textContent || '').trim()) return true;
+    if (box.querySelector('img, svg, video, canvas, iframe, hr, picture, input, select, textarea, button, [data-rv-form-embed]')) return true;
+    return [box].concat(Array.prototype.slice.call(box.querySelectorAll('*'))).some(function (x) {
+      return /url\(|gradient\(/.test(canvas.win.getComputedStyle(x).backgroundImage);
+    });
+  }
+  /* After el has left box: every box left with nothing in it goes too, up to the section; when what went was a column
+     and one column is left, that column takes the whole row (a grid of one track, or the whole flex line). */
+  function closeUpAfter(box, sec, wasColumn) {
+    var lastWasColumn = wasColumn;
+    while (box && box !== sec && sec.contains(box) && !hasContent(box)) {
+      var up = box.parentElement;
+      lastWasColumn = isColumn(box);
+      box.remove();
+      box = up;
+    }
+    if (!box || !lastWasColumn || !box.isConnected) return;
+    var kids = visibleKids(box);
+    if (kids.length !== 1 || /^(A|SPAN|BUTTON|IMG|SVG)$/i.test(kids[0].tagName)) return;
+    var only = kids[0], cs = canvas.win.getComputedStyle(box);
+    if (/grid/.test(cs.display)) { box.style.gridTemplateColumns = 'minmax(0, 1fr)'; only.style.gridColumn = '1 / -1'; }
+    else if (/flex/.test(cs.display)) { only.style.flex = '1 1 100%'; only.style.width = '100%'; }
+    only.style.maxWidth = 'none';
+    /* and what it holds: words kept to the old column's width would still stop where the column used to end */
+    var wide = only.getBoundingClientRect().width;
+    Array.prototype.forEach.call(only.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, blockquote, div'), function (d) {
+      var mw = parseFloat(canvas.win.getComputedStyle(d).maxWidth);
+      if (mw && mw < wide * 0.9 && (d.textContent || '').trim()) d.style.maxWidth = 'none';
+    });
+  }
   function deleteElement(el) {
     var sec = el.closest('[data-rv-section]');
     var item = repeatItemLabelled(el);
@@ -3448,7 +3568,9 @@
       if (!removeRepeatItem(sec, item)) return;
     } else {
       clearAiGenerated(el);    // closest() needs it still attached — before remove(), not after
+      var box = el.parentElement, wasColumn = isColumn(el);
       el.remove();
+      closeUpAfter(box, sec, wasColumn);
       commitNow();
     }
     offerUndo(what + ' deleted.');
@@ -5043,6 +5165,10 @@
         return;
       }
       var sec = target.closest('[data-rv-section]');
+      /* anything else on the page is selectable too, and so deletable (the owner, 18 Nov 2026: "delete option should
+         be available to all elements" — a dot pattern, a quote's bar, a column) */
+      var plain = sec ? plainBoxOf(target, sec) : null;
+      if (plain) { if (editingEl) exitEdit(editingEl); selectElement(plain); return; }
       if (sec) { selectSectionOnly(sec); return; }
       deselect();
     }, true);
