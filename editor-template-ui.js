@@ -344,6 +344,7 @@
       loadSiteInfo().then(saveFirstVersion);
       ownerLogoOffer();
       logoUnitNotice();
+      heroPictureNotice();
       setOpening(null);
       focusAskedSection();
       /* ETB2B AI's hero picture, last: the event's records are part of the first step by now (drawRecords bakes
@@ -3219,6 +3220,54 @@
      still gives it its WebP copy and its preload (functions/lib/pictures.js). With a banner video it is the video's
      still, as before — unless the video has a still of its own, which takes its place as the page is served. */
   function bannerImg(sec) { return canvas && canvas.backgroundImg ? canvas.backgroundImg(sec) : null; }
+  /* A generated banner with no picture (the plan's was refused, or none was made): it still has its veil, so a picture
+     can go behind it the way ETB2B AI puts one there (RevampAiPicture's "veil" spot: the picture on .hero-root, the veil
+     laid over it so the words stay readable). The owner, 18 Nov 2026: MarTech+ and DigiPlus opened with an empty
+     banner, and the banner had no Background picture to add one. -> the spot, or null */
+  function emptyBannerSpot(sec) {
+    if (!sec || canvas.backgroundHost(sec) || bannerImg(sec)) return null;
+    var P = aiPictures();
+    if (!P) return null;
+    var tg = null;
+    try { tg = P.target(sec, { placement: 'hero' }, null, aiPictureHelpers()); } catch (e) { tg = null; }
+    return tg && tg.how === 'veil' ? tg : null;
+  }
+  function addBannerPicture(sec) {
+    openPictureDialog('Background picture', '', function (url) {
+      var spot = isLive(sec) ? emptyBannerSpot(sec) : null, P = aiPictures(), put = false;
+      if (spot && P) { try { put = P.place(spot, url, '', aiPictureHelpers()) === true; } catch (e) { put = false; } }
+      if (!put) { showToast('The picture could not be put behind the banner. Upload it from your computer, so it is stored with the event.'); return; }
+      commitNow();
+      heroPictureNotice();
+      if (window.RevampPhoneBanner && phoneBannerFor(sec)) setTimeout(function () { if (isLive(sec) && !aiWorking) openPhoneBanner(sec, { fresh: true }); }, 350);
+    }, 'Picture put behind the banner. Save to keep it.');
+  }
+  /* The banner has no picture: said once the site is open, with the way to add one (the owner, 18 Nov 2026: "both hero
+     background banner was blank" — the generator had left them so, and nothing said why). Also when the plain banner
+     stood in for the planned one. */
+  function heroPictureNotice() {
+    var d = currentEvent && currentEvent.designPlan && currentEvent.designPlan.design;
+    var hero = canvas && canvas.doc ? canvas.doc.querySelector('[data-rv-section="hero"]') : null;
+    var empty = !!hero && !!emptyBannerSpot(hero);
+    if (!d || !hero || (!empty && !d.heroImagePlain)) { if (host && host.clearNotice) host.clearNotice('hero-picture'); return; }
+    /* the plain banner is said once (per browser); an empty banner every time, until it has a picture */
+    var seenKey = 'rv.heroPlainSaid.' + eventId;
+    if (!empty) {
+      try { if (localStorage.getItem(seenKey)) return; localStorage.setItem(seenKey, '1'); } catch (e) { /* said again next time */ }
+    }
+    var why = empty ? String(d.heroImageError || '').trim() : '';
+    showNotice('hero-picture', {
+      kind: 'info', dismissible: true,
+      text: empty
+        ? 'The banner has no picture. ' + (why ? why + ' ' : '') + 'Add one: select the banner, then Background picture.'
+        : 'The banner shows a plain picture: the one planned had words in it, so a simpler one was made. Replace it any time: select the banner, then Background picture.',
+      actions: [{ label: empty ? 'Add a picture' : 'Replace it', onClick: function () {
+        if (!isLive(hero)) return;
+        selectSectionOnly(hero); canvas.scrollToSection(hero);
+        if (emptyBannerSpot(hero)) addBannerPicture(hero);
+      } }]
+    });
+  }
   function replaceBannerPicture(img) {
     if (!img || !img.isConnected) return;
     openPictureDialog('Background picture', canvas.pictureOf(img), function (url) {
@@ -4076,7 +4125,8 @@
           /* a list the wizard left empty: its first item, from the design's own model (NU-018) */
           : listModelOf(sec) && !listModelOf(sec).list.children.length ? '<button data-action="add-first-item" title="Add an item to this section">+ Item</button>' : '') +
         (canvas.canRedesign(sec) ? '<button data-action="redesign-section" title="Have the AI design this section again, keeping its content">&#10024; Redesign with AI</button>' : '') +
-        (canvas.backgroundHost(sec) || bannerImg(sec) ? '<button data-action="section-background" title="Change the picture behind this section">Background picture</button>' : '') +
+        (canvas.backgroundHost(sec) || bannerImg(sec) || emptyBannerSpot(sec) ? '<button data-action="section-background" title="' +
+          (emptyBannerSpot(sec) ? 'Put a picture behind the banner' : 'Change the picture behind this section') + '">Background picture</button>' : '') +
         (phoneBannerFor(sec) ? '<button data-action="phone-banner" title="A banner of its own for phones: made by ETB2B AI from this one, or uploaded">Phone banner</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
@@ -4149,6 +4199,8 @@
       openRedesignDialog(sec);
     } else if (action === 'section-background' && !canvas.backgroundHost(sec) && bannerImg(sec)) {
       replaceBannerPicture(bannerImg(sec));
+    } else if (action === 'section-background' && emptyBannerSpot(sec)) {
+      addBannerPicture(sec);
     } else if (action === 'section-background') {
       var bgEl = canvas.backgroundHost(sec);
       var PB = window.RevampPhoneBanner, hadPhone = !!(PB && PB.read(sec));

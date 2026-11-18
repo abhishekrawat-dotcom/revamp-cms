@@ -1462,8 +1462,40 @@ function storeGenerated(fb, eventId, name, bytes) {
    rectangular placeholder" — ET DAVOS 2027's banner was 1024 x 1024). */
 var HERO_SHAPE = '16:9';
 /* o: { deadlineAt, rule (people in it: checkedPicture; 'distant' by default) } */
+/* the plain banner made when the planned one was refused: time it needs left before the plan's deadline */
+var FALLBACK_BANNER_MS = 45000;
+/* The plain banner: the site's colours as light and glass, the host city faint along the foot when one is known, and
+   nothing that could carry a word. */
+/* a colour in words ("deep violet"): a code such as #5B2A86 in a picture prompt can come back drawn as text */
+function colourWords(hex) {
+  var m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+  if (!m) return '';
+  var r = parseInt(m[1], 16) / 255, g = parseInt(m[2], 16) / 255, b = parseInt(m[3], 16) / 255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2, d = max - min;
+  var sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  var tone = l < 0.3 ? 'deep ' : (l > 0.72 ? 'soft ' : '');
+  if (l > 0.88) return 'ivory';
+  if (sat < 0.15) return l < 0.3 ? 'charcoal' : (l > 0.75 ? 'pearl white' : 'silver grey');
+  var h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h = (h * 60 + 360) % 360;
+  var names = [[15, 'red'], [40, 'orange'], [55, 'gold'], [70, 'yellow'], [160, 'green'], [190, 'teal'], [235, 'blue'], [255, 'indigo'],
+    [285, 'violet'], [320, 'magenta'], [345, 'pink'], [360, 'red']];
+  for (var i = 0; i < names.length; i++) if (h < names[i][0]) return tone + names[i][1];
+  return tone + 'red';
+}
+function plainBannerPrompt(design) {
+  design = design || {};
+  var colours = [design.themeColor, design.accentColor].map(colourWords).filter(function (c, i, a) { return c && a.indexOf(c) === i; });
+  var place = typeof design.place === 'string' ? design.place.trim().slice(0, 80) : '';
+  return 'A wide, abstract key visual for the banner of an event website: soft flowing ribbons of light, layered translucent glass ' +
+    'and brushed-metal forms and gentle bokeh over a deep, calm background' + (colours.length ? ', in ' + colours.join(' and ') + ' with darker shades of them' : '') +
+    (place ? ', with a faint, distant silhouette of ' + place + ' along the bottom edge' : '') + '. Cinematic and uncluttered, with an open, quiet centre ' +
+    'where words will be set over it. NOTHING in it carries writing: no screens, devices, signs, papers, symbols or marks; no people, no text, no letters, ' +
+    'no numbers, no logos. Landscape, 16:9.';
+}
 function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp, o) {
   o = o || {};
+  var plainBanner = false;
   function make(text) {
     return callGeminiImage(text, { route: 'plan-structure', eventId: eventId, aspectRatio: HERO_SHAPE }).then(function (r) {
       var record = aiUsageRecorder(fb, eventId, 'pictures');
@@ -1473,6 +1505,18 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp, o) {
     });
   }
   return checkedPicture(fb, eventId, make, prompt || buildHeroImagePrompt(brief, themeColor), o.rule || 'distant', o.deadlineAt, 'the banner').then(function (got) {
+    /* A banner refused twice (words, people or logos in it) is not left empty (owner, 18 Nov 2026: "both hero background
+       banner was blank"): one more, plain banner is made from the site's own colours and place, with nothing in it
+       that could carry words, when there is still time for it. */
+    if (got.error && got.refused && o.fallback && (!o.deadlineAt || o.deadlineAt - Date.now() >= FALLBACK_BANNER_MS)) {
+      console.warn('plan-structure: the banner of ' + eventId + ' was refused (' + got.refused.join(', ') + '); making the plain banner');
+      return checkedPicture(fb, eventId, make, o.fallback, 'none', o.deadlineAt, 'the plain banner').then(function (plain) {
+        if (plain && !plain.error && plain.bytes) { plainBanner = true; return plain; }
+        return got;
+      });
+    }
+    return got;
+  }).then(function (got) {
     if (got.error) {
       console.error('plan-structure: hero image generation failed, degrading to no hero image — ' + got.error);
       return { heroImageUrl: null, heroImageStoragePath: null, heroImageError: got.refused ? 'The banner picture had ' + got.refused.join(' and ') + ' in it, so it was not used.' : got.error };
@@ -1499,7 +1543,7 @@ function buildHeroImage(fb, eventId, brief, themeColor, prompt, stamp, o) {
       .then(function () {
         var heroImageUrl = 'https://storage.googleapis.com/' + fb.bucket.name + '/' + storagePath;
         return bottomColourOf(buffer, r.mimeType).then(function (bottom) {
-          return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null, heroBottom: bottom };
+          return { heroImageUrl: heroImageUrl, heroImageStoragePath: storagePath, heroImageError: null, heroBottom: bottom, heroImagePlain: plainBanner || undefined };
         });
       })
       .catch(function (err) {
@@ -1660,7 +1704,11 @@ var DESIGN_PLAN_SCHEMA = {
         placeCity: { type: 'STRING', description: 'When THE PLACE is given below: the city of that venue, as its own name (e.g. from "Hotel X, Juhu, <city>, <state>" the city). An empty string when no place is given.' },
         placeCues: { type: 'STRING', description: 'When THE PLACE is given below: one sentence, the visual cues of that city a local would recognise at once (its architecture, landscape, light, crafts and textiles), for its pictures to carry — tasteful, never a postcard. An empty string when no place is given.' },
         placeMotif: { type: 'STRING', description: 'When THE PLACE is given below: one graphic motif drawn from that city\'s own crafts or architecture that a designer can draw in simple lines (a pattern, a border, an outline). An empty string when no place is given.' },
-        heroImage: { type: 'STRING', description: 'One or two sentences: the KEY VISUAL of the hero banner, as ET\'s own event sites have it — a rich, full-colour designed composition (a photo-real 3-D render, a detailed illustration or a photo-collage — never thin line art or a wireframe, never a photograph of an audience and a stage) of the objects, machines, infrastructure and symbols of THIS event\'s own field (for automotive technology: an EV battery pack, ADAS sensors, a software-defined car in cutaway; for ports: container ships and cranes; for pharma: molecules, vials, a lab), together with the landmarks of the host city when one is known. No people, no text, no logos.' }
+        heroImage: { type: 'STRING', description: 'One or two sentences: the KEY VISUAL of the hero banner, as ET\'s own event sites have it — a rich, full-colour designed composition (a photo-real 3-D render, a detailed illustration or a photo-collage — never thin line art or a wireframe, never a photograph of an audience and a stage) of the objects, machines, infrastructure and symbols of THIS event\'s own field (for automotive technology: an EV battery pack, ADAS sensors, a software-defined car in cutaway; for ports: container ships and cranes; for pharma: molecules, vials, a lab), together with the landmarks of the host city when one is known. No people, no text, no logos. ' +
+          'NOTHING THAT CARRIES WRITING: never a screen, monitor, TV, phone, tablet, laptop, dashboard, chart, billboard, sign, poster, ' +
+          'banner, document, book, ticket or packaging — the picture model fills every such surface with made-up words, and a banner with words ' +
+          'in it is thrown away (MarTech+ and DigiPlus 2027, 17 Nov 2026, were left with an empty banner). Show a digital, media or marketing ' +
+          'field through shapes, light, materials, objects without displays and the host city instead.' }
       },
       required: ['mood', 'mode', 'themeColor', 'accentColor', 'backgroundColor', 'surfaceColor', 'textColor', 'mutedColor', 'headingFont', 'bodyFont', 'layout', 'cornerRadius', 'imageStyle', 'logoUnit', 'heroTagline', 'placeCity', 'placeCues', 'placeMotif', 'heroImage']
     },
@@ -1674,7 +1722,7 @@ var DESIGN_PLAN_SCHEMA = {
           kind: { type: 'STRING', enum: DESIGN_SECTION_KINDS, description: '"custom" for anything editorial/static that you write yourself; one of the others ONLY when this section is really that specific data-bound type (see below).' },
           purpose: { type: 'STRING', description: 'one sentence: what real, grounded content this section will hold and why it belongs on this specific event\'s site.' },
           layout: { type: 'STRING', description: 'one sentence: how THIS section is laid out (e.g. "picture left, text right, three ticked points under the text", "one band of four large numbers", "three-column cards with an icon each", "a vertical timeline"). Neighbouring sections must not share a layout.' },
-          image: { type: 'STRING', description: 'What the picture in this section shows, in one concrete sentence, of the KIND given in imageKind: the real thing THIS section is about (not a generic backdrop, and different from every other picture on the page). people: the gathering — delegates in conversation, an audience, an awards table; place: the venue or the city itself; subject: the field\'s own technology, products, materials or workplace, in detail, no people; graphic: an illustration drawn from the subject. People appear only in a "people" picture: Indian, women and men in about equal numbers, women in leading roles too; never a real or named person. No text or logos. Empty string only for a section that carries no generated picture.' },
+          image: { type: 'STRING', description: 'Never a screen, phone, dashboard, chart, billboard, sign, poster or document in it: those come out with made-up words and the picture is dropped. What the picture in this section shows, in one concrete sentence, of the KIND given in imageKind: the real thing THIS section is about (not a generic backdrop, and different from every other picture on the page). people: the gathering — delegates in conversation, an audience, an awards table; place: the venue or the city itself; subject: the field\'s own technology, products, materials or workplace, in detail, no people; graphic: an illustration drawn from the subject. People appear only in a "people" picture: Indian, women and men in about equal numbers, women in leading roles too; never a real or named person. No text or logos. Empty string only for a section that carries no generated picture.' },
 
           imageKind: { type: 'STRING', enum: genDesign.IMAGE_KINDS, description: 'The KIND of that picture (see PICTURE KINDS): "people" only where the section is about people or the gathering; "place", "subject" or "graphic" otherwise. Any value when the section has no picture.' }
         },
@@ -2804,7 +2852,8 @@ function handlePlanStructure(req, res) {
             });
           }
           if (heroReal) return { heroImageUrl: heroReal, heroImageStoragePath: null, heroImageError: null };
-          return buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp, { deadlineAt: deadlineAt, rule: graphic ? 'none' : 'distant' });
+          return buildHeroImage(fb, eventId, brief, design.themeColor, heroPrompt, stamp, { deadlineAt: deadlineAt, rule: graphic ? 'none' : 'distant',
+            fallback: plainBannerPrompt(design) });
         });
         var jobs = [heroJob].concat(
           sections.filter(function (s) { return s.image; }).map(function (s) {
@@ -2830,6 +2879,8 @@ function handlePlanStructure(req, res) {
           design.heroImageUrl = heroImage.heroImageUrl || null;
           design.heroImageStoragePath = heroImage.heroImageStoragePath;
           design.heroImageError = heroImage.heroImageError;
+          /* the plain banner stood in for the one planned: said in the editor (heroPictureNotice) */
+          if (heroImage.heroImagePlain) design.heroImagePlain = true; else delete design.heroImagePlain;
           /* the page runs on from the banner: its background is the colour the banner picture ends in, as light (or
              dark) as the site is, and the banner's foot fades into it (genDesign.heroCss) — the owner, 10 Nov 2026 */
           /* … except where a followed deck gives the page its own background: the banner's foot fades into that */
@@ -4800,4 +4851,4 @@ function watchEvent(fb, eventId) {
 
 module.exports = { wire, handleSuggestDesign, handleExtractBrief, handleIngestSource, handlePlanStructure, handleGenerateContent, handleGenerateStatus, handleGenerateCancel, handleRedesignSection, handleGetDraft, handleGeneratedTemplate, handleGeneratedSection };
 /* what lib/api.js's _testHooks hands the tests and tools/ from this file (read there on first use) */
-module.exports._testHooks = { settleKind, sceneSays, designPlanSchema, withPicks, deckRecord, deckSheets, ownerPhotoLine, bottomColourOf, checkedPicture, deckIdentity, deckPagesOf, BRIEF_SCHEMA, drawnLogoUnit, darkCopyOfUnit, classifyGlimpses, unstyledSectionIds, emptyPictureBox, dropPicture, usableLogoPicture, runStatusOf, RUN_ACTIVE_MS, SOURCE_FRESH_MS, buildGeneratedDesign, confirmEtPick, pageKey, otherPortalOf, siteOfPortal, extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, buildHeroImage, HERO_SHAPE, fetchSourceCss, buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES, buildDesignPlanPrompt, buildExtractBriefPrompt, buildIngestSourcePrompt, buildSectionCodePrompt, designReference, buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, repeatedHeadingIds, takenHeadings, keepRootBackground, cssUrlQuotes, bottomColour, briefFacts, watchEvent, missingSectionIds, earlierPipelineSite, runIdOf, handleExtractBrief, handleGenerateContent, handleGeneratedSection };
+module.exports._testHooks = { plainBannerPrompt, colourWords, FALLBACK_BANNER_MS, settleKind, sceneSays, designPlanSchema, withPicks, deckRecord, deckSheets, ownerPhotoLine, bottomColourOf, checkedPicture, deckIdentity, deckPagesOf, BRIEF_SCHEMA, drawnLogoUnit, darkCopyOfUnit, classifyGlimpses, unstyledSectionIds, emptyPictureBox, dropPicture, usableLogoPicture, runStatusOf, RUN_ACTIVE_MS, SOURCE_FRESH_MS, buildGeneratedDesign, confirmEtPick, pageKey, otherPortalOf, siteOfPortal, extractThemeFromPreviousEditionSources, editionLookLines, placeDirection, readEditionLook, keptKeyVisual, ingestSchemaFor, buildSectionImage, buildHeroImage, HERO_SHAPE, fetchSourceCss, buildRedesignPrompt, stripEditorMarks, generatedPageIds, sanitizeDesignPlanSections, fewerPeoplePictures, awardPlanSections, withAwardRecords, etPictureRules, newStandardPictures, MAX_SECTION_IMAGES, awardForSite, writeAwardPages, awardPageContent, seedAwardFaqs, seedAwardJury, sparseOverviewText, SPARSE_OVERVIEW_CHARS, readAwardRecord, awardPickByLink, readSectionPictures, MAX_PEOPLE_PICTURES, buildDesignPlanPrompt, buildExtractBriefPrompt, buildIngestSourcePrompt, buildSectionCodePrompt, designReference, buildLogoUnit, foundLogoUnit, logoUnitInTime, previousUnitNote, previousEditionUnit, unitSources, sectionCodeBatches, DESIGN_PLAN_SCHEMA, SECTION_CODE_SCHEMA, repeatedHeadingIds, takenHeadings, keepRootBackground, cssUrlQuotes, bottomColour, briefFacts, watchEvent, missingSectionIds, earlierPipelineSite, runIdOf, handleExtractBrief, handleGenerateContent, handleGeneratedSection };

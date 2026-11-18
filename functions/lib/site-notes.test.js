@@ -269,7 +269,7 @@ check('the core asks GET /api/event/site-outline', /api\('GET', '\/api\/event\/s
 
 /* the site editor opens at the section the console names, once the site is up and its opening state is over (B14) */
 var ed = read('editor-template-ui.js');
-check('the editor selects ?section= once the site is up', /function focusAskedSection\(\)/.test(ed) && /logoUnitNotice\(\);\s*setOpening\(null\);\s*focusAskedSection\(\);/.test(ed) &&
+check('the editor selects ?section= once the site is up', /function focusAskedSection\(\)/.test(ed) && /logoUnitNotice\(\);\s*heroPictureNotice\(\);\s*setOpening\(null\);\s*focusAskedSection\(\);/.test(ed) &&
   /get\('section'\)/.test(ed) && /selectSection\(sec\)/.test(ed));
 
 /* ---------- the Dashboard, in a vm over the real core, with the notes ---------- */

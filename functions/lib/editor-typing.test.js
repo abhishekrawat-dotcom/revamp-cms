@@ -139,7 +139,7 @@ check('3.2 …the section\'s own picture is found, the editor\'s and a nested se
 sec.list = [];
 check('3.3 …none: null, and a missing section is null', BI(sec) === null && BI(null) === null);
 var tb = body('buildSecToolbar');
-check('3.4 the banner\'s menu offers "Background picture" for that picture too', /canvas\.backgroundHost\(sec\) \|\| bannerImg\(sec\) \? '<button data-action="section-background"/.test(tb), tb.slice(0, 300));
+check('3.4 the banner\'s menu offers "Background picture" for that picture too', /canvas\.backgroundHost\(sec\) \|\| bannerImg\(sec\) \|\| emptyBannerSpot\(sec\) \? '<button data-action="section-background"/.test(tb), tb.slice(0, 300));
 var click = body('onSecToolbarClick');
 check('3.5 …which opens the picture dialog for it (a CSS background still goes the way it went)',
   /action === 'section-background' && !canvas\.backgroundHost\(sec\) && bannerImg\(sec\)\) \{\s*replaceBannerPicture\(bannerImg\(sec\)\);/.test(click) &&
