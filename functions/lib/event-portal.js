@@ -178,9 +178,13 @@ var REGIONS = {
   mea: ['mea', 'middle east', 'the middle east', 'middle east and africa', 'middle east africa']
 };
 /* one portal's own forms (above), without the regional ones */
+/* a portal's earlier name, still in event names made under it: TechGig was named TechMonk on the roster until
+   19 Nov 2026 (the owner: "The Official name of TechMonk portal is TechGig") */
+var FORMER_NAMES = { techmonk: ['TechMonk'] };
 function ownFormsOf(slug) {
-  var name = etEvents.PORTALS[slug];
-  return distinct(variantsOf(words(name).split(' ')).concat(variantsOf(words(camelWords(name)).split(' ')), [slug, 'et' + slug, 'et ' + slug]).filter(Boolean));
+  var names = [etEvents.PORTALS[slug]].concat(FORMER_NAMES[slug] || []), forms = [];
+  names.forEach(function (name) { forms = forms.concat(variantsOf(words(name).split(' ')), variantsOf(words(camelWords(name)).split(' '))); });
+  return distinct(forms.concat([slug, 'et' + slug, 'et ' + slug]).filter(Boolean));
 }
 /* -> { slug, parent, region } for each regional portal: a slug that is another roster slug plus a region's ending,
    whose name is that portal's name plus more ("ETHRWorld Southeast Asia" on "ETHRWorld"), so a slug that only

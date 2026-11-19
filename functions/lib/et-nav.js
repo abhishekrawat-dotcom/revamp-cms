@@ -83,7 +83,7 @@ function pngSize(file) {
 }
 
 /* Where the portal's logo links: the portal's own home. et-footer.js has it for the portals it knows, among them
-   the few that are not at <slug>.economictimes.indiatimes.com (TechMonk is techgig.com, ET Startup is ET
+   the few that are not at <slug>.economictimes.indiatimes.com (TechGig, key techmonk, is techgig.com, ET Startup is ET
    Entrepreneur's site); a portal it has no row for keeps that usual address, because et-footer's info() would
    give ET B2B's home for it. */
 function homeOf(slug) {

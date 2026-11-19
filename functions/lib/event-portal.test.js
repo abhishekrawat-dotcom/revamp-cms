@@ -90,7 +90,7 @@ check('"Retail Leadership Summit" on ETRetail evidence: certain', v.certain && v
 v = E({ name: 'Retail Leadership Summit' }, [prevSrc('hr')]);
 check('"Retail Leadership Summit" on ETHRWorld evidence: blocked', !v.certain && v.portal === '' && same(v.blockers, ['name-mentions:retail']), v);
 [['et cio', 'cio'], ['ET-CIO Summit', 'cio'], ['The ETBrandEquity Show', 'brandequity'], ['ET Brand Equity Awards', 'brandequity'], ['BrandEquity Awards', 'brandequity'],
- ['ETHR Awards', 'hr'], ['ET HR Awards', 'hr'], ['HR Excellence', 'hr'], ['ETHR World Forum', 'hr'], ['Supply Chain Summit', 'supplychain'], ['ETCFO', 'cfo'], ['TechMonk Day', 'techmonk'],
+ ['ETHR Awards', 'hr'], ['ET HR Awards', 'hr'], ['HR Excellence', 'hr'], ['ETHR World Forum', 'hr'], ['Supply Chain Summit', 'supplychain'], ['ETCFO', 'cfo'], ['TechMonk Day', 'techmonk'], ['TechGig Pro', 'techmonk'],
  ['Tech Monk Day', 'techmonk'], ['ET Enterprise AI Summit', 'enterpriseai'], ['Leadership Summit 2027', null], ['Agentic AI Summit', null], ['ET Immersion', null]].forEach(function (c) {
   var m = T.mentionsIn(c[0]);
   check('the name "' + c[0] + '" names ' + (c[1] || 'no portal'), c[1] ? m.indexOf(c[1]) !== -1 : !m.length, m);

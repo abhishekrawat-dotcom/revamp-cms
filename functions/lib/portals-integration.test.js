@@ -314,7 +314,7 @@ function pickerPage(who) {
   var roster = await page.RP.list();
   check('3 portal-picker.js reads the real roster through GET /api/et/portals', roster.length === etEvents.portalList().length &&
     JSON.stringify(roster) === JSON.stringify(etEvents.portalList()), roster.length);
-  check('3 … and names a portal from it', page.RP.nameOf('hr') === 'ETHRWorld' && page.RP.nameOf('techmonk') === 'TechMonk' && page.RP.nameOf('hrworld') === '');
+  check('3 … and names a portal from it', page.RP.nameOf('hr') === 'ETHRWorld' && page.RP.nameOf('techmonk') === 'TechGig' && page.RP.nameOf('hrworld') === '');
   check('3 … its options mark the current portal', /<option value="hr" selected>ETHRWorld<\/option>/.test(page.RP.optionsHtml('hr', 'Choose a portal')));
   var w = await page.RP.working();
   check('3 working(): the server\'s choice ("hr"), now cached in this browser for the first paint', w === 'hr' && page.RP.cachedWorking() === 'hr' && /"portal":"hr"/.test(page.store['rv.workingPortal.u-maker'] || ''), [w, page.store]);

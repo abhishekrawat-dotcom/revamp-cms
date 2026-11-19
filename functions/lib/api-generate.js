@@ -831,7 +831,7 @@ function etPickOf(v) {
    names. startup.economictimes.indiatimes.com is ET Entrepreneur's site under another name (et-footer.js gives
    'startup' the entrepreneur.economictimes… home), yet 'startup' and 'entrepreneur' are both on the roster, so an
    address on either host is the same site to both. Read from et-footer.js's homes, so the pair is kept in one
-   place; a portal it does not know, or whose home is not an ET portal address (techmonk: techgig.com), is its own. */
+   place; a portal it does not know, or whose home is not an ET portal address (techmonk, TechGig: techgig.com), is its own. */
 function siteOfPortal(slug) {
   var home = etFooter.isKnown(slug) ? etPrevious.portalOf(etFooter.info(slug).home) : '';
   return etEvents.isPortal(home) ? home : slug;

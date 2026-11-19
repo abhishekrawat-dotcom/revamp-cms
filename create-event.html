@@ -4744,7 +4744,7 @@
     try { name = window.RevampPortals && typeof RevampPortals.nameOf === 'function' ? String(RevampPortals.nameOf(slug) || '') : ''; } catch(e){ name = ''; }
     return name || String(slug || '');
   }
-  /* "an ETCIO page", "a TechMonk page" */
+  /* "an ETCIO page", "a TechGig page" */
   function withArticle(name){ return (/^(ET|[AEIOU])/i.test(name) ? 'an ' : 'a ') + name; }
   /* the portal an ET microsite's address belongs to: https://cio.economictimes.indiatimes.com/… -> 'cio'
      (et-previous.js portalOf); '' for any other address */

@@ -1288,7 +1288,7 @@ var PORTALS = [
   { portal: "pharma", name: "ETPharma", configured: false },
   { portal: "gcc", name: "ET GCC", configured: false },
   { portal: "enterpriseai", name: "ET EnterpriseAI", configured: false },
-  { portal: "techmonk", name: "TechMonk", configured: false },
+  { portal: "techmonk", name: "TechGig", configured: false },
   { portal: "entrepreneur", name: "ET Entrepreneur", configured: false },
   { portal: "datacenters", name: "ET Data Centers", configured: false },
   { portal: "electronics", name: "ET Electronics", configured: false },

@@ -263,7 +263,7 @@ var kitChecks = consentChecks.then(function () { return kitOf('qa-k-hr'); }).the
 }).then(function (kits) {
   check('kit: a stored "hrworld" (off the roster) gives none', kits[0].brand.portal === null, kits[0].brand.portal);
   check('kit: "__proto__" gives none', kits[1].brand.portal === null, kits[1].brand.portal);
-  check('kit: a portal on another host (TechMonk) is named from the roster', kits[2].brand.portal && kits[2].brand.portal.slug === 'techmonk' && kits[2].brand.portal.name === 'TechMonk', kits[2].brand.portal);
+  check('kit: a portal on another host (TechGig, key techmonk) is named from the roster', kits[2].brand.portal && kits[2].brand.portal.slug === 'techmonk' && kits[2].brand.portal.name === 'TechGig', kits[2].brand.portal);
   check('kit: no model was asked and nothing was fetched but font checks', LLM_CALLS === 0 && FETCHED.every(function (u) { return /^https:\/\/fonts\.googleapis\.com\//.test(u); }), FETCHED);
 });
 

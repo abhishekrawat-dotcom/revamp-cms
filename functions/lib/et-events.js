@@ -75,7 +75,7 @@ var PORTALS = {
   pharma: 'ETPharma',
   gcc: 'ET GCC',
   enterpriseai: 'ET EnterpriseAI',
-  techmonk: 'TechMonk',
+  techmonk: 'TechGig',              // the portal's official name (the owner, 19 Nov 2026); its key stays techmonk
   entrepreneur: 'ET Entrepreneur',
   datacenters: 'ET Data Centers',
   electronics: 'ET Electronics',
