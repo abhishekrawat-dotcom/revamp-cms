@@ -60,5 +60,18 @@ check('a picture fitted whole in a wider frame is drawn at the same side (object
   /if \(lu\) alignLogoUnit\(lu, side\); else fitSide\(el, side\);/.test(ED) && /forEach\(function \(lu\) \{ alignLogoUnit\(lu, side\); \}\)/.test(ED));
 check('a box moves itself and lines up all it holds; a narrow text moves itself as well as its words', /alignContents\(el, side\);\n    placeIn\(el, side\);/.test(ED) &&
   /el\.getBoundingClientRect\(\)\.width < p\.getBoundingClientRect\(\)\.width - 8\) placeIn\(el, side\)/.test(ED) && /alignSelection\(selectedEl, action\.slice\(6\)\)/.test(ED));
+check('a button beside other buttons moves with its row (the row is only as wide as they are)', /var row = buttonRowOf\(el\);\n      if \(row\) \{ row\.style\.justifyContent = ALIGN_FLEX\[side\]; placeIn\(alignTarget\(row\), side\); return; \}/.test(ED) &&
+  /function buttonRowOf\(el\)/.test(ED));
+/* several things at once (the owner, 19 Nov 2026: "can we enable multiple selection by pressing shift/cmd + Select that item?") */
+check('Shift, Cmd or Ctrl-click adds a thing to the selection or takes it out, but not inside the text being typed in',
+  /if \(\(e\.shiftKey \|\| e\.metaKey \|\| e\.ctrlKey\) && !\(editingEl && editingEl\.contains\(target\)\)\)/.test(ED) && /if \(pick\) toggleInGroup\(pick\);/.test(ED) &&
+  /if \(at !== -1\) all\.splice\(at, 1\); else all\.push\(el\);/.test(ED));
+check('a plain click, Escape, Undo or a fresh canvas lets go of the whole group', /if \(selectedEl !== el \|\| groupSel\.length\) clearElementSelection\(\);/.test(ED) &&
+  /groupSel\.forEach\(function \(n\) \{ unmark\(n, 'ed-selected'\); \}\);\n    groupSel = \[\];/.test(ED) && /currentItem = null; groupSel = \[\];/.test(ED));
+check('with two or more, the toolbar aligns, duplicates and deletes them all as ONE undo step', /if \(groupSel\.length && action !== 'deselect'\) \{ onGroupAction\(action\); return; \}/.test(ED) &&
+  /roots\.forEach\(function \(n\) \{ alignSelection\(n, action\.slice\(6\)\); clearAiGenerated\(n\); \}\);\n      commitNow\(\);/.test(ED) &&
+  /var gone = roots\.filter\(function \(n\) \{ return !!removeFromPage\(n\); \}\)\.length;\n      if \(!gone\) return;\n      commitNow\(\);/.test(ED) &&
+  /function removeRepeatItem\(sec, item, later\)/.test(ED) && /if \(!later\) commitNow\(\);/.test(ED));
+check('…what sits inside another selected thing goes with it, not twice', /o !== n && o\.contains\(n\)/.test(ED));
 process.stdout.write('editor-delete: ' + passed + ' passed, ' + failed + ' failed\n');
 process.exit(failed ? 1 : 0);

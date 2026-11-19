@@ -95,6 +95,7 @@
   var undoStack = [], undoPtr = -1, commitTimer = null;
   var typingTimer = null, typingPtr = -1;     // the undo step the text being typed is recorded in (-1: none yet)
   var selectedEl = null, activeSectionEl = null, editingEl = null;
+  var groupSel = [];            // two or more things selected together (Shift / Cmd / Ctrl-click), selectedEl the last
   var selToolbar = null, secToolbar = null, selWatch = null;
   var mountOpts = null, remounting = false, deviceName = 'desktop', aiMarkersOn = false;
 
@@ -2141,6 +2142,8 @@
     closeLinkPop();
     var had = selectedEl;
     if (selectedEl) unmark(selectedEl, 'ed-selected');
+    groupSel.forEach(function (n) { unmark(n, 'ed-selected'); });
+    groupSel = [];
     markCurrentItem(null);
     selectedEl = null;
     if (selWatch) selWatch.disconnect();
@@ -2179,7 +2182,7 @@
 
   function selectElement(el) {
     if (editingEl && editingEl !== el) exitEdit(editingEl);
-    if (selectedEl !== el) clearElementSelection();
+    if (selectedEl !== el || groupSel.length) clearElementSelection();
     var sec = el.closest('[data-rv-section]');
     if (sec) setActiveSection(sec); else clearActiveSection();
     selectedEl = el; el.classList.add('ed-selected');
@@ -2193,6 +2196,86 @@
     }
     positionToolbars();
     selectionChanged();
+  }
+
+  /* ---------- several things at once (the owner, 19 Nov 2026: "can we enable multiple selection by pressing shift/cmd +
+     Select that item?") ----------
+     Shift-, Cmd- or Ctrl-click adds a thing to what is selected, or takes it out again. With two or more selected, the
+     toolbar holds what works on all of them together (align, duplicate, delete), each as ONE undo step. selectedEl is
+     the one picked last: the toolbar sits by it. The event's records and whole sections are not taken into a group. */
+  var MULTI_KEYS = (function () {
+    var p = '';
+    try { p = String((navigator && (navigator.platform || navigator.userAgent)) || ''); } catch (e) { p = ''; }
+    return /Mac|iPhone|iPad|iPod/i.test(p) ? 'Shift or ⌘' : 'Shift or Ctrl';
+  })();
+  function toggleInGroup(el) {
+    if (editingEl) exitEdit(editingEl);
+    var all = groupSel.length ? groupSel.slice() : (selectedEl && selectedEl.isConnected && !recordOf(selectedEl) ? [selectedEl] : []);
+    var at = all.indexOf(el);
+    if (at !== -1) all.splice(at, 1); else all.push(el);
+    setGroup(all);
+  }
+  function setGroup(all) {
+    all = all.filter(function (n) { return n && n.isConnected; });
+    clearElementSelection();
+    if (!all.length) { if (activeSectionEl) positionToolbars(); return; }
+    if (all.length === 1) { selectElement(all[0]); return; }
+    groupSel = all;
+    all.forEach(function (n) { n.classList.add('ed-selected'); });
+    var last = all[all.length - 1], sec = last.closest('[data-rv-section]');
+    if (sec) setActiveSection(sec); else clearActiveSection();
+    selectedEl = last;
+    buildGroupToolbar();
+    if (canvas.win.ResizeObserver) {
+      if (selWatch) selWatch.disconnect();
+      selWatch = new canvas.win.ResizeObserver(repositionToolbars);
+      selWatch.observe(last);
+    }
+    positionToolbars();
+    selectionChanged();
+  }
+  /* the group without what sits inside another of its own (a card and its title): those go with the card */
+  function groupRoots() {
+    return groupSel.filter(function (n) {
+      return n.isConnected && !groupSel.some(function (o) { return o !== n && o.contains(n); });
+    });
+  }
+  function buildGroupToolbar() {
+    var n = groupSel.length;
+    selToolbar.innerHTML =
+      '<span class="tpl-tb-text" title="' + MULTI_KEYS + '-click a thing to add it or take it out">' + n + ' selected</span><span class="tpl-tb-sep"></span>' +
+      alignButtons(n + ' selected', true) + '<span class="tpl-tb-sep"></span>' +
+      '<button class="icon-only" data-action="group-duplicate" title="Duplicate all ' + n + '" aria-label="Duplicate all ' + n + '">' + TB_ICON.duplicate + '</button>' +
+      '<button class="icon-only danger" data-action="group-delete" title="Delete all ' + n + '" aria-label="Delete all ' + n + '"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
+      '<button class="icon-only" data-action="deselect" title="Close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
+  }
+  function onGroupAction(action) {
+    var roots = groupRoots();
+    if (!roots.length) { deselect(); return; }
+    if (action === 'align-left' || action === 'align-center' || action === 'align-right') {
+      roots.forEach(function (n) { alignSelection(n, action.slice(6)); clearAiGenerated(n); });
+      commitNow();
+    } else if (action === 'group-duplicate') {
+      var copies = roots.map(function (n) {
+        var clone = n.cloneNode(true);
+        clone.classList.remove('ed-selected');
+        if (!clone.getAttribute('class')) clone.removeAttribute('class');
+        n.after(clone);
+        canvas.adoptElement(clone);
+        canvas.retag(clone);
+        clearAiGenerated(n);
+        return clone;
+      });
+      commitNow();
+      setGroup(copies);
+      if (copies.some(function (c) { return c.hasAttribute('data-rv-form-embed'); })) drawFormPreviews(false);
+    } else if (action === 'group-delete') {
+      deselect();
+      var gone = roots.filter(function (n) { return !!removeFromPage(n); }).length;
+      if (!gone) return;
+      commitNow();
+      offerUndo(gone === 1 ? '1 thing deleted.' : gone + ' things deleted.');
+    }
   }
 
   var TEXT_FORMAT_ACTIONS = { bold: 1, italic: 1, underline: 1, strikethrough: 1 };
@@ -2316,7 +2399,7 @@
       '<button data-action="select-parent" title="Select the box this sits in (a card, a column) to move, copy or delete it whole">Box around it</button>';
     html += (html ? '<span class="tpl-tb-sep"></span>' : '') +
       '<button class="icon-only" data-action="duplicate" title="Duplicate" aria-label="Duplicate">' + TB_ICON.duplicate + '</button>' +
-      '<button class="icon-only danger" data-action="delete" title="Delete" aria-label="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
+      '<button class="icon-only danger" data-action="delete" title="Delete. ' + MULTI_KEYS + '-click other things to select several and delete or align them together" aria-label="Delete"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
       '<button class="icon-only" data-action="deselect" title="Close" aria-label="Close"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg></button>';
     selToolbar.innerHTML = html;
   }
@@ -2405,6 +2488,7 @@
     if (aiWorking) { busyToast(); return; }
     var action = btn.getAttribute('data-action');
     if (action !== 'link') closeLinkPop();
+    if (groupSel.length && action !== 'deselect') { onGroupAction(action); return; }
     if (TEXT_FORMAT_ACTIONS[action]) {
       /* Words the owner has selected take the format. With no words selected — the text was only clicked, or
          only the caret is in it — the whole text does; the caret is then left at its end, so that typing on
@@ -3508,9 +3592,9 @@
   var ALIGN_FLEX = { left: 'flex-start', center: 'center', right: 'flex-end' };
   var ALIGN_GRID = { left: 'start', center: 'center', right: 'end' };
   var ALIGN_ICON = { left: 'alignLeft', center: 'alignCenter', right: 'alignRight' };
-  function alignButtons(what) {
+  function alignButtons(what, all) {
     return ['left', 'center', 'right'].map(function (side) {
-      var t = 'Align this ' + what + ' ' + (side === 'center' ? 'in the centre' : 'to the ' + side);
+      var t = 'Align ' + (all ? 'all ' : 'this ') + what + ' ' + (side === 'center' ? 'in the centre' : 'to the ' + side);
       return '<button class="icon-only" data-action="align-' + side + '" title="' + t + '" aria-label="' + t + '">' + TB_ICON[ALIGN_ICON[side]] + '</button>';
     }).join('');
   }
@@ -3523,6 +3607,18 @@
       t = p;
     }
     return t;
+  }
+  /* a button beside other buttons (the banner's two calls to action) moves with its row: the row is only as wide as
+     they are, so one button alone has nowhere to go */
+  function buttonRowOf(el) {
+    var p = el.parentElement;
+    if (!p || el.getAttribute('data-editable') !== 'button') return null;
+    var cs = canvas.win.getComputedStyle(p);
+    if (!/flex/.test(cs.display) || /column/.test(cs.flexDirection)) return null;
+    var kids = visibleKids(p);
+    return kids.length > 1 && kids.every(function (k) {
+      return k.getAttribute('data-editable') === 'button' || (!!k.querySelector('[data-editable="button"]') && !k.querySelector('[data-editable="text"], [data-editable="image"]'));
+    }) ? p : null;
   }
   /* a box, in the box around it: by the layout that holds it (a column of flex, a grid, a row, plain flow) */
   function placeIn(el, side) {
@@ -3582,6 +3678,8 @@
       return;
     }
     if (type === 'image' || type === 'button' || /^(IMG|SVG|VIDEO|A|BUTTON)$/i.test(el.tagName)) {
+      var row = buttonRowOf(el);
+      if (row) { row.style.justifyContent = ALIGN_FLEX[side]; placeIn(alignTarget(row), side); return; }
       placeIn(alignTarget(el), side);
       var lu = el.closest('.rv-lu');
       if (lu) alignLogoUnit(lu, side); else fitSide(el, side);
@@ -3652,20 +3750,25 @@
       if (mw && mw < wide * 0.9 && (d.textContent || '').trim()) d.style.maxWidth = 'none';
     });
   }
-  function deleteElement(el) {
+  /* one thing off the page, the layout closing up behind it; the caller records the step -> what it was, or '' when
+     nothing went (gone already, or the last item of a list) */
+  function removeFromPage(el) {
+    if (!el.isConnected) return '';
     var sec = el.closest('[data-rv-section]');
     var item = repeatItemLabelled(el);
     var what = item ? 'Item' : el.hasAttribute('data-rv-form-embed') ? KIND_NAMES.form : (KIND_NAMES[el.getAttribute('data-editable')] || 'Element');
+    if (item) return removeRepeatItem(sec, item, true) ? what : '';
+    clearAiGenerated(el);    // closest() needs it still attached — before remove(), not after
+    var box = el.parentElement, wasColumn = isColumn(el);
+    el.remove();
+    closeUpAfter(box, sec, wasColumn);
+    return what;
+  }
+  function deleteElement(el) {
     deselect();
-    if (item) {
-      if (!removeRepeatItem(sec, item)) return;
-    } else {
-      clearAiGenerated(el);    // closest() needs it still attached — before remove(), not after
-      var box = el.parentElement, wasColumn = isColumn(el);
-      el.remove();
-      closeUpAfter(box, sec, wasColumn);
-      commitNow();
-    }
+    var what = removeFromPage(el);
+    if (!what) return;
+    commitNow();
     offerUndo(what + ' deleted.');
   }
 
@@ -5165,13 +5268,13 @@
     return clone;
   }
 
-  function removeRepeatItem(sec, item) {
+  function removeRepeatItem(sec, item, later) {      // later: the caller records the step (a group delete)
     var items = groupOf(sec, item);
     if (items.indexOf(item) === -1) return false;
     if (items.length <= 1) { showToast('At least one item is required'); return false; }
     item.remove();
     clearAiGenerated(sec);
-    commitNow();
+    if (!later) commitNow();
     return true;
   }
 
@@ -5237,6 +5340,16 @@
       /* the buttons of a section's "nothing here yet" note (drawEmptyNotes, NU-018) */
       var noteAct = target.closest('[data-rv-ed-act]');
       if (noteAct) { onNoteAction(noteAct.getAttribute('data-rv-ed-act'), noteAct.closest('[data-rv-section]')); return; }
+      /* Shift, Cmd or Ctrl held: the thing clicked joins what is selected, or leaves it (groupSel). Shift-click inside
+         the text being typed in stays the browser's: it stretches the words selected. */
+      if ((e.shiftKey || e.metaKey || e.ctrlKey) && !(editingEl && editingEl.contains(target))) {
+        if (recordOf(target)) { showToast('The event’s speakers, sessions and partners are selected one at a time.'); return; }
+        var one = target.closest('[data-editable]'), inSec = target.closest('[data-rv-section]');
+        if (one && !inSec) one = null;
+        var pick = one || (inSec ? plainBoxOf(target, inSec) : null);
+        if (pick) toggleInGroup(pick);
+        return;
+      }
       if (canvas.openItem(target)) { repositionToolbars(); return; }
       /* the event's records: selected whole, and the toolbar says where they are edited (recordOf) */
       var rec = recordOf(target);
@@ -5307,7 +5420,7 @@
     clearTimeout(commitTimer); commitTimer = null;
     clearTimeout(typingTimer); typingTimer = null;
     editingEl = null; editingBeforeText = null; typingPtr = -1;
-    selectedEl = null; activeSectionEl = null; currentItem = null;
+    selectedEl = null; activeSectionEl = null; currentItem = null; groupSel = [];
     if (selWatch) selWatch.disconnect();
     closeLinkPop();
     selToolbar.hidden = true; secToolbar.hidden = true;
