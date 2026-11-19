@@ -36,6 +36,7 @@
      then <type>-2, <type>-3 …. Anything that means one particular section uses the key.
      canvas.library()                        the template's own sections as they were when it loaded
      canvas.createLibrarySection(id)         a fresh copy of one of them, ready to insert
+     canvas.createSectionFrom(html, name)    a section from markup of its own (the template gallery), not yet placed
      canvas.createGenericSection(name, html, siteCss)
                                              one of the editor's generic sections, dressed in the template's tokens
      canvas.insertSection(el, afterSec)      puts a new section on the page after afterSec (at the end when null),
@@ -1550,6 +1551,17 @@
         var tmp = doc.createElement('div');
         tmp.innerHTML = item.html;
         return prepare(tmp.firstElementChild, item.name);
+      },
+      /* a section from markup of its own (the template gallery, editor-template-ui.js galleryElement): named, keyed and
+         its editable parts marked as a copy from the library is; the caller places it (insertSection) and adopts it
+         there (adopt: fresh ids where the page has them already). -> the section, or null for markup that is not one
+         element */
+      createSectionFrom: function (html, name) {
+        var t = doc.createElement('template');
+        t.innerHTML = String(html || '').trim();
+        var el = t.content.firstElementChild;
+        if (!el || t.content.children.length !== 1) return null;
+        return prepare(doc.importNode(el, true), name);
       },
       createGenericSection: function (name, html, siteCss) {
         ensureGenericStyle(siteCss);

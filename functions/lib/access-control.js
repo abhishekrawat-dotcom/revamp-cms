@@ -216,7 +216,7 @@ var WRITE_SECTIONS = {
   '/api/event/site': ['design'], '/api/event/theme': ['design'], '/api/event/section-edges': ['design'],
   '/api/event/phone-banner': ['design'], '/api/event/live-view': ['design'], '/api/chat-edit': ['design'],
   '/api/chat/turn': ['design'], '/api/chat/doc-pictures': ['design'], '/api/redesign-section': ['design'],
-  '/api/suggest-design': ['design'],
+  '/api/suggest-design': ['design'], '/api/section-gallery': ['design'], '/api/section-gallery/use': ['design'],
   '/api/event/logo-unit': ['design', 'content'], '/api/event/logo-unit-dark': ['design', 'content'],
   '/api/event/hero-video': ['design', 'content'], '/api/event/hero-video/upload': ['design', 'content'],
   '/api/event/hero-video/check': ['design', 'content'],

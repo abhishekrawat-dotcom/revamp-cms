@@ -2802,6 +2802,220 @@
     }
   }
 
+  /* ---------- the template gallery (the owner, 19 Nov 2026: "Add an option in each section to add to template gallary,
+     and when a user is trying to add duplicate template it should be avoided. By adding a section to the template
+     gallary, that section will be available globally and easily can be accommodated in any site.") ----------
+     A section is saved as the Developer zone shows it (devSource) and kept once per design (functions/lib/
+     section-gallery.js). It is added to a site from Add section › Template gallery (custom_editor.html): an AI-designed
+     section to any AI-designed site, where it takes that site's theme and records; a section of a design kept as files
+     (Tech500…) to sites of that design; a ready-made design to any site. */
+  /* the family of designs this site's sections fit: 'gen' for an AI-designed site, a template's id, '' for an
+     imported site (its CSS is its own and nobody else's) */
+  function galleryFamily() {
+    var id = (canvas && canvas.template && canvas.template.id) || templateId || '';
+    if (!id || /^imported-/.test(id)) return '';
+    return /^gen-/.test(id) ? 'gen' : id;
+  }
+  function galleryFamilyOf(sec) {
+    return sec.getAttribute('data-rv-section') === 'generic' ? 'generic' : galleryFamily();
+  }
+  /* the banner (each event's own, with its logo), ETB2B's top bar and footer, a hidden section and one holding one of
+     this event's forms stay with the event */
+  function canAddToGallery(sec) {
+    if (!sec || !galleryFamily() || pinnedSection(sec) || sec.classList.contains('is-hidden-sec')) return false;
+    if (sec.getAttribute('data-rv-section') === 'hero' || sec.classList.contains('hero-root') || sec.querySelector('.hero-root, [data-rv-logo-unit]')) return false;
+    return !sec.querySelector('[data-rv-form-embed]');
+  }
+  function galleryFits(item) {
+    return !!item && (item.family === 'generic' || (!!galleryFamily() && item.family === galleryFamily()));
+  }
+  function galleryCall(method, url, body) {
+    return RevampAuth.authedFetch(url, body === undefined ? { method: method } : {
+      method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(function (res) {
+      return res.text().then(function (text) {
+        var data = null;
+        try { data = JSON.parse(text); } catch (e) { /* an error page from in front of the API */ }
+        return { ok: res.ok, status: res.status, body: data || {} };
+      });
+    }, function () { return { ok: false, status: 0, body: { error: 'Could not reach the server. Check your connection and try again.' } }; });
+  }
+  function galleryError(r, fallback) {
+    var e = new Error((r.body && r.body.error) || fallback);
+    e.status = r.status; e.body = r.body;
+    return e;
+  }
+  function galleryList() {
+    return galleryCall('GET', '/api/section-gallery').then(function (r) {
+      if (!r.ok) throw galleryError(r, 'The template gallery could not be loaded. Please try again.');
+      return r.body.items || [];
+    });
+  }
+  var galleryItems = {};
+  function galleryItem(id) {
+    if (galleryItems[id]) return galleryItems[id];
+    galleryItems[id] = galleryCall('GET', '/api/section-gallery/item?id=' + encodeURIComponent(id)).then(function (r) {
+      if (!r.ok) { delete galleryItems[id]; throw galleryError(r, 'This section could not be loaded.'); }
+      return r.body.item;
+    });
+    return galleryItems[id];
+  }
+  function galleryDelete(id) {
+    return galleryCall('DELETE', '/api/section-gallery?id=' + encodeURIComponent(id)).then(function (r) {
+      if (!r.ok) throw galleryError(r, 'The section could not be taken out of the gallery. Please try again.');
+      delete galleryItems[id];
+      return r.body;
+    });
+  }
+  /* Adds a gallery section below afterEl: its pictures are copied into this event's files first (the server), so the
+     site owns what it shows. -> Promise of the new section */
+  function addFromGallery(id, afterEl) {
+    if (!canvas || remounting) return Promise.reject(new Error('The page is not ready yet.'));
+    if (aiWorking) return Promise.reject(new Error(workSafety.busyLine('working') + '. Try again when it is done.'));
+    return galleryCall('POST', '/api/section-gallery/use', { eventId: eventId, id: id }).then(function (r) {
+      if (!r.ok) throw galleryError(r, 'The section could not be added. Please try again.');
+      if (aiWorking) throw new Error(workSafety.busyLine('working') + '. Try again when it is done.');
+      var el = insertSection({ gallery: r.body.item }, isLive(afterEl) ? afterEl : null);
+      if (!el) throw new Error('The section could not be put on this page.');
+      return el;
+    });
+  }
+  /* the section as the gallery keeps it, made this site's: a type of its own (an AI-designed site's CSS is kept by
+     type, so it never shares one with a section already here), its CSS scoped to that type, its script; null when it
+     does not fit this site */
+  function galleryElement(item) {
+    var t = canvas.doc.createElement('template');
+    t.innerHTML = String(item.html || '').trim();
+    var root = t.content.firstElementChild;
+    if (!root || t.content.children.length !== 1) return null;
+    function addJs(el) {
+      if (!item.js) return;
+      var holder = canvas.doc.createElement('script');
+      holder.setAttribute('type', 'text/plain');
+      holder.setAttribute('data-rv-js', '');
+      holder.textContent = item.js;
+      el.appendChild(holder);
+    }
+    if (item.family === 'generic' || root.getAttribute('data-rv-section') === 'generic') {
+      var g = canvas.createGenericSection(item.name, root.innerHTML, restoreOpts().siteCss);
+      if (root.getAttribute('style')) g.setAttribute('style', root.getAttribute('style'));
+      addJs(g);
+      return g;
+    }
+    if (!galleryFits(item)) return null;
+    ['data-rv-page', 'data-rv-key', 'data-sec-name', 'data-ai-generated'].forEach(function (a) { root.removeAttribute(a); });
+    var styleEl = null;
+    if (canvas.keepsOwnCss) {
+      var old = root.getAttribute('data-rv-section') || 'section';
+      /* never "<type>-<number>": a page saved with that is read as a copy of <type> (canvas restore) */
+      var base = old.replace(/-g[a-z0-9]{4}$/, '').slice(0, 40), type = '';
+      while (!type || canvas.doc.querySelector('[data-rv-section="' + type + '"], style[data-rv-style="' + type + '"]')) {
+        var r = '';
+        while (r.length < 4) r += 'abcdefghijklmnopqrstuvwxyz0123456789'.charAt(Math.floor(Math.random() * 36));
+        type = base + '-g' + r;
+      }
+      root.setAttribute('data-rv-section', type);
+      var scope = new RegExp('\\[data-rv-section\\s*=\\s*(["\']?)' + old.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\1\\s*\\]', 'g');
+      styleEl = canvas.doc.createElement('style');
+      styleEl.setAttribute('data-rv-style', type);
+      styleEl.textContent = String(item.css || '').replace(scope, '[data-rv-section="' + type + '"]');
+    } else if (item.css) {
+      var own = canvas.doc.createElement('style');
+      own.setAttribute('data-rv-custom-css', '');
+      own.textContent = item.css;
+      root.appendChild(own);
+    }
+    addJs(root);
+    var el = canvas.createSectionFrom(root.outerHTML, item.name);
+    if (el && styleEl) el.__rvGalleryStyle = styleEl;
+    return el;
+  }
+  /* A whole page to draw a gallery section in, out of the editor's way (Add section's cards): this site's stylesheets,
+     colours and fonts, the section and its CSS, inside the same boxes the site puts its sections in. No script runs. */
+  function galleryPreviewDoc(item) {
+    if (!canvas || !canvas.doc) return '';
+    var d = canvas.doc, head = '';
+    Array.prototype.forEach.call(d.querySelectorAll('head link[rel~="stylesheet"], head style'), function (n) { head += n.outerHTML; });
+    var root = canvas.contentRoot(), open = '', close = '';
+    for (var n = root; n && n !== d.body; n = n.parentElement) {
+      var tag = n.tagName.toLowerCase();
+      open = '<' + tag + (n.id ? ' id="' + escHtml(n.id) + '"' : '') + (n.getAttribute('class') ? ' class="' + escHtml(n.getAttribute('class')) + '"' : '') + '>' + open;
+      close += '</' + tag + '>';
+    }
+    var css = String(item.css || '');
+    var sectionCss = item.family === 'generic' ? '' : (canvas.keepsOwnCss ? css : '');
+    var html = String(item.html || '').replace(/<script\b[\s\S]*?<\/script\s*>/gi, '');
+    if (!canvas.keepsOwnCss && css) html = html.replace(/<\/(\w+)>\s*$/, '<style>' + css.replace(/<\/style/gi, '') + '</style></$1>');
+    return '<!doctype html><html' + (d.documentElement.getAttribute('style') ? ' style="' + escHtml(d.documentElement.getAttribute('style')) + '"' : '') +
+      (d.documentElement.getAttribute('class') ? ' class="' + escHtml(d.documentElement.getAttribute('class')) + '"' : '') + '><head><meta charset="utf-8"><base href="' + escHtml(d.baseURI) + '">' + head +
+      (sectionCss ? '<style>' + sectionCss.replace(/<\/style/gi, '') + '</style>' : '') +
+      '<style>html,body{margin:0!important;overflow:hidden!important}</style></head><body' + (d.body.getAttribute('class') ? ' class="' + escHtml(d.body.getAttribute('class')) + '"' : '') +
+      (d.body.getAttribute('style') ? ' style="' + escHtml(d.body.getAttribute('style')) + '"' : '') + '>' + open + html + close + '</body></html>';
+  }
+  /* "Add to gallery", on a section's pill: the name it is listed by, then the save — or the design already there */
+  var gallerySaving = false;
+  function openGallerySave(sec) {
+    if (!isLive(sec) || gallerySaving || !canAddToGallery(sec)) return;
+    if (editingEl) exitEdit(editingEl);
+    var name = sec.getAttribute('data-sec-name') || 'Section', fam = galleryFamilyOf(sec);
+    var where = fam === 'generic' ? 'any site' : fam === 'gen' ? 'any AI-designed site' : 'any site of this design';
+    var handle = host.openDialog({
+      title: 'Add “' + name + '” to the template gallery',
+      bodyHtml:
+        '<p style="margin:0 0 10px;font-size:13px;opacity:.8;">Anyone on the team can then add this design to ' + where + ', from Add section › Template gallery. ' +
+        (fam === 'gen' ? 'It takes that site’s colours and fonts. ' : '') +
+        'A list of speakers, sessions or partners shows that event’s own; the words come along marked as samples to replace, and the pictures are copied.</p>' +
+        '<label for="rv-gal-name" style="display:block;font-size:12px;font-weight:600;margin:0 0 4px;">Name in the gallery</label>' +
+        '<input id="rv-gal-name" type="text" maxlength="80" style="width:100%;" value="' + escHtml(name) + '">' +
+        '<p id="rv-gal-error" role="alert" style="margin:8px 0 0;font-size:12px;color:var(--crit,#c0392b);" hidden></p>',
+      actions: [
+        { label: 'Cancel', kind: 'secondary' },
+        { label: 'Add to gallery', kind: 'primary', onClick: function () { run(); return false; } }
+      ]
+    });
+    var input = document.getElementById('rv-gal-name'), problem = document.getElementById('rv-gal-error');
+    if (!input) return;
+    input.focus(); input.select();
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+    function button() { return Array.prototype.filter.call(document.querySelectorAll('.ed-dialog .btn'), function (b) { return /Add to gallery|Adding/.test(b.textContent); })[0]; }
+    function run() {
+      if (gallerySaving) return;
+      var nm = input.value.replace(/\s+/g, ' ').trim();
+      if (!nm) { problem.textContent = 'Give it a name, so it can be found in the gallery.'; problem.hidden = false; input.focus(); return; }
+      if (!isLive(sec)) { problem.textContent = 'This section is no longer on the page.'; problem.hidden = false; return; }
+      problem.hidden = true;
+      gallerySaving = true;
+      var b = button();
+      if (b) { b.disabled = true; b.textContent = 'Adding…'; }
+      var src = devSource(sec);
+      /* a button that opened one of this event's own forms opens the default form of whichever site it is added to */
+      var holder = document.createElement('template');
+      holder.innerHTML = src.html;
+      Array.prototype.forEach.call(holder.content.querySelectorAll('[data-rv-form]'), function (a) { a.removeAttribute('data-rv-form'); a.setAttribute('data-register-cta', ''); });
+      galleryCall('POST', '/api/section-gallery', {
+        eventId: eventId, name: nm, kind: name, family: fam, srcType: sec.getAttribute('data-rv-section') || '',
+        html: holder.innerHTML, css: src.css || '', js: src.js || '', records: !!src.records
+      }).then(function (r) {
+        gallerySaving = false;
+        var open = document.contains(input);
+        if (r.ok) {
+          if (open && handle && handle.close) handle.close();
+          showToast('“' + nm + '” is in the template gallery. Add it to any site from Add section › Template gallery.');
+          return;
+        }
+        var text = r.status === 409 && r.body.existing
+          ? 'This design is in the gallery already, as “' + r.body.existing.name + '”' + (r.body.existing.savedByName ? ', added by ' + r.body.existing.savedByName : '') +
+            (r.body.existing.savedAt ? ' on ' + new Date(r.body.existing.savedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '') +
+            '. Only a section that is laid out or styled differently is added as a design of its own.'
+          : (r.body.error || 'The section could not be added to the gallery. Please try again.');
+        if (!open) { showToast(text, { kind: 'error' }); return; }
+        var again = button();
+        if (again) { again.disabled = false; again.textContent = 'Add to gallery'; }
+        problem.textContent = text; problem.hidden = false;
+      });
+    }
+  }
+
   /* ---------- developer zone ----------
      One section's own HTML, CSS and JS, for what the editor's controls do not reach. Apply puts the three back
      on the page as ONE undo step.
@@ -4625,6 +4839,7 @@
         (canvas.backgroundHost(sec) || bannerImg(sec) || emptyBannerSpot(sec) ? '<button data-action="section-background" title="' +
           (emptyBannerSpot(sec) ? 'Put a picture behind the banner' : 'Change the picture behind this section') + '">Background picture</button>' : '') +
         (phoneBannerFor(sec) ? '<button data-action="phone-banner" title="A banner of its own for phones: made by ETB2B AI from this one, or uploaded">Phone banner</button>' : '') +
+        (canAddToGallery(sec) ? '<button data-action="gallery-add" title="Save this section’s design to the template gallery, where anyone on the team can add it to another site">Add to gallery</button>' : '') +
         '<button data-action="duplicate-section" title="Duplicate section">Duplicate</button>' +
         '<button data-action="toggle-hide" title="Keep this section but leave it off the site">Hide</button>';
     }
@@ -4694,6 +4909,8 @@
       addFirstItem(sec);
     } else if (action === 'redesign-section') {
       openRedesignDialog(sec);
+    } else if (action === 'gallery-add') {
+      openGallerySave(sec);
     } else if (action === 'section-background' && !canvas.backgroundHost(sec) && bannerImg(sec)) {
       replaceBannerPicture(bannerImg(sec));
     } else if (action === 'section-background' && emptyBannerSpot(sec)) {
@@ -4847,6 +5064,10 @@
       if (!item) { showToast('That section is not part of this site’s design, so it could not be added.', { kind: 'error' }); return null; }
       el = canvas.createLibrarySection(item.id);
       name = item.name;
+    } else if (spec.gallery) {
+      el = galleryElement(spec.gallery);
+      if (!el) { showToast('This section was made for sites of another design, so it could not be added here.', { kind: 'error' }); return null; }
+      name = spec.gallery.name;
     } else {
       /* A design for something the event keeps records of (speakers, agenda, partners…) is added as the
          section that shows those records, unless the page has one already: a sample with invented people
@@ -4870,11 +5091,24 @@
     }
     // a ready-made design comes with sample words and empty picture boxes, marked until they are replaced
     var samples = spec.libraryId ? 0 : markPlaceholders(el);
+    /* a section from the gallery: its words are another event's, so they are samples too; a list of the event's
+       records is drawn from this event's Content instead */
+    if (spec.gallery) {
+      Array.prototype.forEach.call(el.querySelectorAll('[data-rv-repeat-template] [data-rv-placeholder], [data-rv-repeat-template][data-rv-placeholder], [data-rv-auto] [data-rv-placeholder]'), function (n) { n.removeAttribute('data-rv-placeholder'); });
+      // a number or a sign (a list's "1", "2", "→") is the design's, not the other event's words
+      Array.prototype.forEach.call(el.querySelectorAll('[data-rv-placeholder]'), function (n) { if (!/[A-Za-z\u00C0-\uFFFF]/.test(n.textContent)) n.removeAttribute('data-rv-placeholder'); });
+      samples = el.querySelectorAll('[data-rv-placeholder]').length;
+    }
     canvas.insertSection(el, isLive(afterEl) ? afterEl : activeSectionEl);
+    if (spec.gallery) {
+      if (el.__rvGalleryStyle) { el.after(el.__rvGalleryStyle); delete el.__rvGalleryStyle; }   // saved and moved with it (canvas withStyles)
+      canvas.adopt(el);                // ids the page uses already get fresh ones, with their CSS
+    }
     commitNow();
     selectSectionOnly(el);
     canvas.scrollToSection(el);
-    showToast('Added "' + name + '".' + (samples ? ' Its sample text has a dashed amber outline until you write this event’s own over it.' : ''));
+    if (spec.gallery && spec.gallery.records) drawRecords(false);
+    showToast('Added "' + name + '"' + (spec.gallery ? ' from the template gallery.' : '.') + (samples ? ' Its ' + (spec.gallery ? 'words from the other event have' : 'sample text has') + ' a dashed amber outline until you write this event’s own over ' + (spec.gallery ? 'them' : 'it') + '.' : ''));
     return el;
   }
 
@@ -10475,6 +10709,8 @@
     currentPage: function () { return currentPage; }, showPage: function (slug) { return showPage(slug); },
     setHidden: whenPageFree(setHidden), duplicateSection: whenPageFree(duplicateSection), deleteSection: whenPageFree(deleteSection), renameSection: whenPageFree(renameSection),
     insertSection: whenPageFree(insertSection), addBlock: whenPageFree(addBlock),
+    galleryFamily: galleryFamily, galleryFits: galleryFits, galleryList: galleryList, galleryItem: galleryItem,
+    galleryPreviewDoc: galleryPreviewDoc, galleryDelete: galleryDelete, addFromGallery: addFromGallery,
     /* forms (editor-forms.js): formsChanged() after the event's forms changed — previews drawn again and the
        live view told (onFormsChange(fn)); unlinkForm(id) before a form is deleted; placeFormSection(id, afterEl);
        revealElement(el) selects and shows a button or embed */

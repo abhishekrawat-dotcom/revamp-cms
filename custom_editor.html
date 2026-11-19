@@ -890,6 +890,17 @@
     opacity:0; transition:opacity .12s ease; z-index:2; cursor:pointer;
   }
   .variant-card:hover .variant-thumb-expand{ opacity:1; }
+  /* the Template gallery's cards: each section drawn in a frame of its own with this site's stylesheets, 1180px wide */
+  .gal-card .gal-thumb{ background:#fff; }
+  .gal-thumb-frame{ position:absolute; top:0; left:0; width:1180px; height:1400px; border:0; transform-origin:top left; pointer-events:none; }
+  .gal-card .gal-remove:hover{ background:#ED1C24; }
+  .gal-card.is-arming{ border-color:#ED1C24; }
+  .gal-card.is-arming .gal-remove{ opacity:1; background:#ED1C24; }
+  .gal-card.is-busy{ opacity:.7; cursor:progress; }
+  .gal-card.is-elsewhere{ cursor:default; }
+  .gal-card.is-elsewhere .gal-thumb{ opacity:.55; }
+  .gal-card.is-elsewhere:hover{ border-color: var(--border); box-shadow:none; transform:none; }
+  .gal-card.is-elsewhere .variant-card-use{ color: var(--text-muted); }
   .variant-card-body{ padding:11px 13px 13px; display:flex; flex-direction:column; gap:3px; }
   .variant-card-body strong{ font-size:13px; }
   .variant-card-body span{ font-size:11.5px; color:var(--text-muted); line-height:1.4; }
@@ -2251,8 +2262,8 @@
       '</div></div>';
     var afterName = afterEl && afterEl.isConnected ? afterEl.getAttribute('data-sec-name') : '';
     scrim.querySelector('.variant-note').textContent = afterName
-      ? 'It is added below “' + afterName + '”. Pick one of this site’s own sections, or a ready-made design.'
-      : 'It is added at the end of the page. Pick one of this site’s own sections, or a ready-made design.';
+      ? 'It is added below “' + afterName + '”. Pick one of this site’s own sections, one from the template gallery, or a ready-made design.'
+      : 'It is added at the end of the page. Pick one of this site’s own sections, one from the template gallery, or a ready-made design.';
     document.body.appendChild(scrim);
 
     var tabsEl = scrim.querySelector('#variant-tabs');
@@ -2268,7 +2279,9 @@
       tab.addEventListener('click', function(){ setActiveTab(key); });
     }
     var FORMS = ':forms', formsApi = window.RevampEditorForms || null;
+    var GALLERY = ':gallery', hasGallery = typeof api.galleryList === 'function';
     if (own.length) addTab(OWN, 'From this site');
+    if (hasGallery) addTab(GALLERY, 'Template gallery');
     if (formsApi) addTab(FORMS, 'Form');
     categories.forEach(function(key){ addTab(key, sectionTemplates[key].name); });
     /* where the tabs scroll (a phone; elsewhere they wrap onto a second row), the edge with more tabs behind it
@@ -2303,6 +2316,92 @@
       make.querySelector('.variant-card-use').innerHTML = 'Open Forms &rarr;';
       gridEl.appendChild(make);
     }
+    /* the Template gallery tab: sections saved from any site (editor-template-ui.js, functions/lib/section-gallery.js),
+       each drawn as it would look on this site; one made for sites of another design is shown but cannot be added */
+    function galleryShown(){ return document.contains(gridEl) && !!tabsEl.querySelector('.variant-tab.active[data-tab-key="' + GALLERY + '"]'); }
+    function galleryNote(text){
+      gridEl.innerHTML = '';
+      var p = document.createElement('p');
+      p.className = 'hint'; p.style.gridColumn = '1/-1'; p.textContent = text;
+      gridEl.appendChild(p);
+    }
+    function drawGalleryCards(){
+      galleryNote('Loading the template gallery…');
+      api.galleryList().then(function(items){
+        if (!galleryShown()) return;
+        if (!items.length){ galleryNote('The gallery is empty. To add a section to it, select the section on the page and choose “Add to gallery” in its menu.'); return; }
+        gridEl.innerHTML = '';
+        items.slice().sort(function(a, b){ return (api.galleryFits(b) ? 1 : 0) - (api.galleryFits(a) ? 1 : 0); }).forEach(function(item){ gridEl.appendChild(buildGalleryCard(item)); });
+      }, function(err){ if (galleryShown()) galleryNote(err && err.message ? err.message : 'The template gallery could not be loaded. Please try again.'); });
+    }
+    function buildGalleryCard(item){
+      var fits = api.galleryFits(item);
+      var card = document.createElement('div');
+      card.className = 'variant-card gal-card' + (fits ? '' : ' is-elsewhere');
+      var when = item.savedAt ? new Date(item.savedAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' }) : '';
+      var from = item.fromEvent && item.fromEvent.name ? 'From ' + item.fromEvent.name : '';
+      var meta = [from, item.savedByName ? 'added by ' + item.savedByName : '', when].filter(Boolean).join(', ');
+      card.innerHTML =
+        '<span class="variant-thumb gal-thumb"></span>' +
+        '<span class="variant-card-body"><strong>' + escHtml(item.name) + '</strong>' +
+        '<span>' + escHtml(meta) + (item.records ? escHtml('. Shows this event’s own records from Content.') : '') + '</span>' +
+        '<span class="variant-card-use">' + (fits ? 'Add this section &rarr;' : escHtml(item.family === 'gen' ? 'Made for AI-designed sites' : 'Made for sites of another design')) + '</span></span>';
+      var thumb = card.querySelector('.gal-thumb'), use = card.querySelector('.variant-card-use');
+      api.galleryItem(item.id).then(function(full){
+        if (!document.contains(thumb)) return;
+        var frame = document.createElement('iframe');
+        frame.className = 'gal-thumb-frame';
+        frame.setAttribute('sandbox', 'allow-same-origin');
+        frame.setAttribute('aria-hidden', 'true');
+        frame.tabIndex = -1;
+        frame.srcdoc = api.galleryPreviewDoc(full);
+        thumb.appendChild(frame);
+        function fit(){ var w = thumb.clientWidth; if (w) frame.style.transform = 'scale(' + (w / 1180) + ')'; }
+        fit(); requestAnimationFrame(fit);
+      }, function(){ thumb.classList.add('gal-thumb-none'); });
+      if (item.canDelete){
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'variant-thumb-expand gal-remove';
+        remove.title = 'Take this section out of the gallery';
+        remove.setAttribute('aria-label', 'Take “' + item.name + '” out of the gallery');
+        remove.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>';
+        thumb.appendChild(remove);
+        var armed = 0;
+        remove.addEventListener('click', function(e){
+          e.stopPropagation();
+          /* a second click within a few seconds takes it out: sites that used it keep their copy */
+          if (!armed){
+            armed = setTimeout(function(){ armed = 0; use.innerHTML = fits ? 'Add this section &rarr;' : use.textContent; card.classList.remove('is-arming'); }, 4000);
+            card.classList.add('is-arming');
+            use.textContent = 'Click the bin again to take it out of the gallery (sites that use it keep it)';
+            return;
+          }
+          clearTimeout(armed); armed = 0;
+          use.textContent = 'Taking it out…';
+          api.galleryDelete(item.id).then(function(){ card.remove(); if (!gridEl.querySelector('.gal-card')) galleryNote('The gallery is empty. To add a section to it, select the section on the page and choose “Add to gallery” in its menu.'); },
+            function(err){ card.classList.remove('is-arming'); use.textContent = err && err.message ? err.message : 'It could not be taken out. Please try again.'; });
+        });
+      }
+      if (!fits){ card.setAttribute('aria-disabled', 'true'); card.title = 'This section was made for ' + (item.family === 'gen' ? 'AI-designed sites' : 'sites of another design') + ', so it cannot be added to this one.'; return card; }
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      var busy = false;
+      function go(){
+        if (busy) return;
+        busy = true;
+        card.classList.add('is-busy');
+        use.textContent = 'Adding…';
+        api.addFromGallery(item.id, afterEl).then(function(){ close(); }, function(err){
+          busy = false;
+          card.classList.remove('is-busy');
+          use.textContent = err && err.message ? err.message : 'It could not be added. Please try again.';
+        });
+      }
+      card.addEventListener('click', go);
+      card.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
+      return card;
+    }
     function setActiveTab(key){
       tabsEl.querySelectorAll('.variant-tab').forEach(function(t){
         var active = t.getAttribute('data-tab-key') === key;
@@ -2313,6 +2412,7 @@
       syncTabFade();
       gridEl.innerHTML = '';
       if (key === FORMS){ drawFormCards(); return; }
+      if (key === GALLERY){ drawGalleryCards(); return; }
       if (key === OWN){
         own.forEach(function(item){
           gridEl.appendChild(buildLibraryCard(item, function(){ use({ libraryId: item.id }); }));

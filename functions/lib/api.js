@@ -7618,6 +7618,8 @@ var eventPortal = function (handler) { return portalModuleRoute('event-portal', 
 var workingPortal = function (handler) { return portalModuleRoute('working-portal', handler); };
 /* lib/create-drafts.js (Create Event's unfinished drafts, kept with the person's account: UX-048) takes the same few helpers */
 var createDrafts = function (handler) { return portalModuleRoute('create-drafts', handler); };
+/* lib/section-gallery.js (the template gallery: sections saved from any site, for every site) takes the same few helpers */
+var sectionGallery = function (handler) { return portalModuleRoute('section-gallery', handler); };
 
 /* lib/promo.js needs a few of this file's helpers. They are handed to it (wire()) on each call instead of
    it requiring this file, which would be a require cycle; a module that fails to load still costs only its
@@ -7924,6 +7926,12 @@ var ROUTES = {
   'DELETE /api/me/create-draft': createDrafts('handleDelete'),
   'POST /api/me/create-draft/file': createDrafts('handleFilePut'),
   'GET /api/me/create-draft/file': createDrafts('handleFileGet'),
+  /* the template gallery (lib/section-gallery.js): a section saved from one site, added to any other */
+  'GET /api/section-gallery': sectionGallery('handleList'),
+  'GET /api/section-gallery/item': sectionGallery('handleGet'),
+  'POST /api/section-gallery': sectionGallery('handleSave'),
+  'POST /api/section-gallery/use': sectionGallery('handleUse'),
+  'DELETE /api/section-gallery': sectionGallery('handleDelete'),
   'GET /api/event/slug-available': events('handleSlugAvailable'),
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),
