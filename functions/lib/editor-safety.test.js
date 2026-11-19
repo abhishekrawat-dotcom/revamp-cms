@@ -253,7 +253,7 @@ check('1 thinking: "still working on your request"', W.busyLine('thinking') === 
   check('7 UX-090 (B04 verify): selecting from the side panels waits too (Layers → a name, Forms → Show on page, the live view)',
     /selectSection: whenPageFree\(selectSection\)/.test(SRC) && /revealElement: whenPageFree\(revealElement\)/.test(SRC) && !/selectSection: selectSection[,\s]/.test(SRC));
   var pos = body('positionToolbars');
-  check('7 UX-090 (B04 verify): neither pill shows while ETB2B AI applies a change, and they come back after', /if \(aiWorking\) \{ selToolbar\.hidden = true; secToolbar\.hidden = true; return; \}/.test(pos) &&
+  check('7 UX-090 (B04 verify): neither pill shows while ETB2B AI applies a change, and they come back after', /if \(aiWorking\) \{ selToolbar\.hidden = true; secToolbar\.hidden = true; (placeResizeHandles\(null\); )?return; \}/.test(pos) &&
     pos.indexOf('if (aiWorking)') < pos.indexOf('selToolbar.hidden = false') && pos.indexOf('if (aiWorking)') < pos.indexOf('secToolbar.hidden = false') && /if \(!on\) repositionToolbars\(\);/.test(body('setAiWorking')));
   var del = body('confirmDeleteSection');
   check('7 UX-090 (B04 verify): Delete and Hide instead, asked while ETB2B AI was still thinking, wait in their dialog once it applies the change',

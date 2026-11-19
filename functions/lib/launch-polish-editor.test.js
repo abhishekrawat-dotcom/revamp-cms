@@ -255,7 +255,7 @@ function tick() { return new Promise(function (r) { setTimeout(r, 0); }); }
   /* ======================= 8 ED-061 a press on the canvas ======================= */
   (function () {
     check('8.1 the canvas tells the page of a press on the site, before anything on the site handles it',
-      /canvas\.doc\.addEventListener\('mousedown', function \(\) \{ if \(host && host\.closeFloating\) host\.closeFloating\(\); \}, true\);/.test(body('wireCanvasEvents')));
+      /canvas\.doc\.addEventListener\('mousedown', function \(e?\) \{\s*if \(host && host\.closeFloating\) host\.closeFloating\(\);/.test(body('wireCanvasEvents')));
     check('8.2 one closer for the tools row\'s menu, the Layers menu and the Theme / style pop-over',
       /var floatingClosers = \[\];\s*function closeFloating\(\)\{/.test(INLINE) && /floatingClosers\.push\(function\(\)\{ close\(false\); \}\);/.test(INLINE) &&
       /floatingClosers\.push\(function\(\)\{ if \(!lyrCtxMenu\.hidden\) closeLyrMenu\(\); \}\);/.test(INLINE) && /floatingClosers\.push\(closeGtStylePop\);/.test(INLINE) &&

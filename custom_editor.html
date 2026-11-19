@@ -298,7 +298,7 @@
   body.ed-mode-ai #rail-more-menu,
   body.ed-mode-ai #panel-add, body.ed-mode-ai #panel-layers, body.ed-mode-ai #panel-design, body.ed-mode-ai #panel-forms, body.ed-mode-ai #lyr-ctx-menu,
   body.ed-mode-ai .ed-workspace > .rail,
-  body.ed-mode-ai .tpl-sel-toolbar, body.ed-mode-ai .tpl-sec-toolbar, body.ed-mode-ai .tpl-pop, body.ed-mode-ai .tpl-sample-tag,
+  body.ed-mode-ai .tpl-sel-toolbar, body.ed-mode-ai .tpl-sec-toolbar, body.ed-mode-ai .tpl-pop, body.ed-mode-ai .tpl-sample-tag, body.ed-mode-ai .tpl-rz,
   body.ed-mode-ai .ed-notice[data-notice="samples"],
   body.ed-mode-ai #gt-style-pop{ display:none !important; }
   body.ed-mode-ai .stage{ padding:0; }
@@ -666,6 +666,19 @@
   .tpl-sel-toolbar button:hover, .tpl-sec-toolbar button:hover{ background:rgba(255,255,255,.18); }
   .tpl-sel-toolbar button.danger:hover, .tpl-sec-toolbar button.danger:hover{ background:#ED1C24; }
   .tpl-sel-toolbar button:disabled, .tpl-sec-toolbar button:disabled{ opacity:.45; cursor:default; background:none; }
+  /* several things selected (Shift / Cmd / Ctrl-click): one bar at the top of the page for all of them */
+  .tpl-sel-toolbar.is-group{ padding:6px 8px; font-size:13px; box-shadow:0 8px 28px rgba(0,0,0,.35); }
+  .tpl-sel-toolbar .tpl-tb-hint{ opacity:.62; font-size:11.5px; margin-left:6px; }
+  .tpl-sel-toolbar.is-docked{ position:fixed; z-index:60; padding:3px 6px; box-shadow:none; }
+  .ed-rail.has-group .rail-tools, .ed-rail.has-group .rail-scroll{ visibility:hidden; }
+  /* resize: the selected thing's handles, dragged to make it wider, taller or (a picture) bigger */
+  .tpl-rz{ position:absolute; z-index:39; width:12px; height:12px; margin:-6px 0 0 -6px; background:#fff; border:2px solid #ED1C24; border-radius:3px; box-shadow:0 1px 3px rgba(0,0,0,.3); }
+  .tpl-rz[data-rz="e"]{ width:8px; height:22px; margin:-11px 0 0 -4px; cursor:ew-resize; }
+  .tpl-rz[data-rz="s"]{ width:22px; height:8px; margin:-4px 0 0 -11px; cursor:ns-resize; }
+  .tpl-rz[data-rz="se"]{ cursor:nwse-resize; }
+  .tpl-rz:hover{ background:#ED1C24; }
+  .tpl-rz-size{ position:absolute; z-index:41; padding:3px 7px; border-radius:5px; background:#241B1A; color:#fff; font-size:11.5px; pointer-events:none; white-space:nowrap; }
+  .tpl-rz-shield{ position:fixed; inset:0; z-index:2147483000; }
   .tpl-sel-toolbar .tpl-tb-sep, .tpl-sec-toolbar .tpl-tb-sep{ width:1px; height:16px; background:rgba(255,255,255,.25); margin:0 2px; }
   /* a record from Content: where it is edited, instead of tools (editor-template-ui.js recordPill) */
   .tpl-sel-toolbar .tpl-tb-text{ padding:4px 6px; color:rgba(255,255,255,.86); font-size:12.5px; }

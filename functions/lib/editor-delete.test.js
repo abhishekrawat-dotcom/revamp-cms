@@ -59,7 +59,7 @@ check('a picture fitted whole in a wider frame is drawn at the same side (object
   /img\.style\.objectPosition = side === 'center' \? '' : side \+ ' center'/.test(ED) && /lu\.querySelectorAll\('\.rv-lu-img'\)/.test(ED) &&
   /if \(lu\) alignLogoUnit\(lu, side\); else fitSide\(el, side\);/.test(ED) && /forEach\(function \(lu\) \{ alignLogoUnit\(lu, side\); \}\)/.test(ED));
 check('a box moves itself and lines up all it holds; a narrow text moves itself as well as its words', /alignContents\(el, side\);\n    placeIn\(el, side\);/.test(ED) &&
-  /el\.getBoundingClientRect\(\)\.width < p\.getBoundingClientRect\(\)\.width - 8\) placeIn\(el, side\)/.test(ED) && /alignSelection\(selectedEl, action\.slice\(6\)\)/.test(ED));
+  /el\.getBoundingClientRect\(\)\.width < p\.getBoundingClientRect\(\)\.width - 8\) placeIn\(alignTarget\(el\), side\)/.test(ED) && /alignSelection\(selectedEl, action\.slice\(6\)\)/.test(ED));
 check('a button beside other buttons moves with its row (the row is only as wide as they are)', /var row = buttonRowOf\(el\);\n      if \(row\) \{ row\.style\.justifyContent = ALIGN_FLEX\[side\]; placeIn\(alignTarget\(row\), side\); return; \}/.test(ED) &&
   /function buttonRowOf\(el\)/.test(ED));
 /* several things at once (the owner, 19 Nov 2026: "can we enable multiple selection by pressing shift/cmd + Select that item?") */
@@ -73,5 +73,23 @@ check('with two or more, the toolbar aligns, duplicates and deletes them all as 
   /var gone = roots\.filter\(function \(n\) \{ return !!removeFromPage\(n\); \}\)\.length;\n      if \(!gone\) return;\n      commitNow\(\);/.test(ED) &&
   /function removeRepeatItem\(sec, item, later\)/.test(ED) && /if \(!later\) commitNow\(\);/.test(ED));
 check('…what sits inside another selected thing goes with it, not twice', /o !== n && o\.contains\(n\)/.test(ED));
+/* the owner, 19 Nov 2026, on Brand World Summit South: the date and venue did not move with the rest; the group's bar should
+   be in one place; and "Can we add resize option to the elements, by where click and drag will resize the elements?" */
+check('a thing in a row only as wide as what it holds (a date beside its icon) moves the row, never a card or column',
+  /function roomIn\(p, t\)/.test(ED) && /if \(!\(row \|\| frameOnly\) \|\| roomIn\(p, t\) > 6\) break;/.test(ED) &&
+  /placeIn\(alignTarget\(el\), side\);\n      return;/.test(ED) && /if \(flex && visibleKids\(p\)\.length > 1\) \{\n      p\.style\.justifyContent = ALIGN_FLEX\[side\];/.test(ED));
+check('several selected: one bar at the top of the page, no section tools, and no words highlighted by the picking',
+  /selBox = \{ left: Math\.max\(6, \(fr\.width - gw\) \/ 2\), top: 12, width: gw, height: gh \};/.test(ED) && /clearActiveSection\(\);                \/\/ the group may span sections/.test(ED) &&
+  /if \(\(e\.shiftKey \|\| e\.metaKey \|\| e\.ctrlKey\) && t && !\(editingEl && editingEl\.contains\(t\)\)\) e\.preventDefault\(\);/.test(ED));
+check('resize: handles by kind (a picture its corner, keeping its shape; a text its right edge; a box all three)',
+  /if \(isPictureEl\(el\)\) return \['se'\];/.test(ED) && /if \(el\.getAttribute\('data-editable'\) === 'text'\) return \['e'\];/.test(ED) && /return \['e', 's', 'se'\];/.test(ED));
+check('…never wider than its box, still fits a phone, a picture keeps its shape, one undo step, Escape puts it back',
+  /w = Math\.max\(16, Math\.min\(room, w\)\);/.test(ED) && /n\.style\.maxWidth = '100%';/.test(ED) && /n\.style\.aspectRatio = String\(\+ratio\.toFixed\(4\)\);/.test(ED) &&
+  /\} else if \(changed\) \{\n        clearAiGenerated\(el\);\n        commitNow\(\);/.test(ED) && /if \(ev\.key === 'Escape'\) \{ ev\.preventDefault\(\); ev\.stopPropagation\(\); end\(true\); \}/.test(ED));
+var HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'custom_editor.html'), 'utf8');
+check('the handles are styled, and hidden while editing with ETB2B AI', /\.tpl-rz\{ position:absolute;/.test(HTML) && /body\.ed-mode-ai \.tpl-rz,/.test(HTML));
+check('…the group\'s bar takes the place of the tools row (Add element … More), and a press on it keeps the group',
+  /function dockGroupBar\(on\)/.test(ED) && /rail\.classList\.add\('has-group'\);/.test(ED) && /selToolbar\.setAttribute\('data-keep-selection', ''\);/.test(ED) &&
+  /\.ed-rail\.has-group \.rail-tools, \.ed-rail\.has-group \.rail-scroll\{ visibility:hidden; \}/.test(HTML) && /\.tpl-sel-toolbar\.is-docked\{ position:fixed;/.test(HTML));
 process.stdout.write('editor-delete: ' + passed + ' passed, ' + failed + ' failed\n');
 process.exit(failed ? 1 : 0);

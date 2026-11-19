@@ -96,7 +96,7 @@
   var typingTimer = null, typingPtr = -1;     // the undo step the text being typed is recorded in (-1: none yet)
   var selectedEl = null, activeSectionEl = null, editingEl = null;
   var groupSel = [];            // two or more things selected together (Shift / Cmd / Ctrl-click), selectedEl the last
-  var selToolbar = null, secToolbar = null, selWatch = null;
+  var selToolbar = null, secToolbar = null, selWatch = null, rzHandles = [];
   var mountOpts = null, remounting = false, deviceName = 'desktop', aiMarkersOn = false;
 
   function showToast(msg, opts) { return host && host.showToast ? host.showToast(msg, opts) : null; }
@@ -2095,6 +2095,7 @@
     selToolbar.id = 'tpl-sel-toolbar';
     selToolbar.className = 'tpl-sel-toolbar';
     selToolbar.hidden = true;
+    selToolbar.setAttribute('data-keep-selection', '');   // docked in the tools row (a group), a press on it keeps the group
     frame.appendChild(selToolbar);
 
     secToolbar = document.createElement('div');
@@ -2104,6 +2105,7 @@
     frame.appendChild(secToolbar);
 
     buildSampleTag();
+    buildResizeHandles();
 
     linkPop = document.createElement('div');
     linkPop.id = 'tpl-link-pop';
@@ -2148,6 +2150,8 @@
     selectedEl = null;
     if (selWatch) selWatch.disconnect();
     selToolbar.hidden = true;
+    if (selToolbar.classList.contains('is-docked')) dockGroupBar(false);
+    placeResizeHandles(null);
     if (had) selectionChanged();
   }
 
@@ -2210,6 +2214,7 @@
   })();
   function toggleInGroup(el) {
     if (editingEl) exitEdit(editingEl);
+    try { canvas.win.getSelection().removeAllRanges(); } catch (e) { /* nothing selected */ }
     var all = groupSel.length ? groupSel.slice() : (selectedEl && selectedEl.isConnected && !recordOf(selectedEl) ? [selectedEl] : []);
     var at = all.indexOf(el);
     if (at !== -1) all.splice(at, 1); else all.push(el);
@@ -2222,8 +2227,8 @@
     if (all.length === 1) { selectElement(all[0]); return; }
     groupSel = all;
     all.forEach(function (n) { n.classList.add('ed-selected'); });
-    var last = all[all.length - 1], sec = last.closest('[data-rv-section]');
-    if (sec) setActiveSection(sec); else clearActiveSection();
+    var last = all[all.length - 1];
+    clearActiveSection();                // the group may span sections: no one section's tools
     selectedEl = last;
     buildGroupToolbar();
     if (canvas.win.ResizeObserver) {
@@ -2240,10 +2245,30 @@
       return n.isConnected && !groupSel.some(function (o) { return o !== n && o.contains(n); });
     });
   }
+  /* The group's bar takes the place of the tools row above the page (Add element … More), so it is always in the same
+     place and covers nothing on the page; on a screen too narrow for that it sits at the top of the page instead. */
+  function dockGroupBar(on) {
+    var rail = document.querySelector('.ed-rail'), tools = rail && rail.querySelector('.rail-tools');
+    var room = tools && tools.getBoundingClientRect();
+    if (on && room && room.width > 240 && room.height > 0) {
+      if (selToolbar.parentNode !== document.body) document.body.appendChild(selToolbar);
+      selToolbar.classList.add('is-docked');
+      rail.classList.add('has-group');
+      var r = rail.getBoundingClientRect();
+      selToolbar.style.left = Math.round(room.left) + 'px';
+      selToolbar.style.top = Math.round(r.top + (r.height - selToolbar.offsetHeight) / 2) + 'px';
+      return true;
+    }
+    if (rail) rail.classList.remove('has-group');
+    selToolbar.classList.remove('is-docked');
+    if (selToolbar.parentNode !== frame) frame.appendChild(selToolbar);
+    return false;
+  }
   function buildGroupToolbar() {
     var n = groupSel.length;
+    selToolbar.classList.add('is-group');
     selToolbar.innerHTML =
-      '<span class="tpl-tb-text" title="' + MULTI_KEYS + '-click a thing to add it or take it out">' + n + ' selected</span><span class="tpl-tb-sep"></span>' +
+      '<span class="tpl-tb-text">' + n + ' selected</span><span class="tpl-tb-hint">' + MULTI_KEYS + '-click to add or remove</span><span class="tpl-tb-sep"></span>' +
       alignButtons(n + ' selected', true) + '<span class="tpl-tb-sep"></span>' +
       '<button class="icon-only" data-action="group-duplicate" title="Duplicate all ' + n + '" aria-label="Duplicate all ' + n + '">' + TB_ICON.duplicate + '</button>' +
       '<button class="icon-only danger" data-action="group-delete" title="Delete all ' + n + '" aria-label="Delete all ' + n + '"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg></button>' +
@@ -2345,6 +2370,7 @@
     duplicate: TB_SVG + '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>'
   };
   function buildToolbar(el) {
+    selToolbar.classList.remove('is-group');
     var rec = recordOf(el);
     if (rec) {
       selToolbar.innerHTML = recordPill(rec) + '<span class="tpl-tb-sep"></span>' +
@@ -2404,6 +2430,122 @@
     selToolbar.innerHTML = html;
   }
 
+  /* ---------- resize by dragging (the owner, 19 Nov 2026: "Can we add resize option to the elements, by where click and
+     drag will resize the elements?") ----------
+     The one thing selected shows handles at its edges: a picture one at its corner, which keeps its shape; a box or a
+     button its right edge (wider or narrower), bottom edge (taller) and corner; a text its right edge. Dragging sets
+     the width in pixels, never past the box around it, and max-width 100% so it still fits a phone; a picture keeps
+     its shape with aspect-ratio. The size is shown while dragging, Escape puts it back, and a drag is ONE undo step.
+     The logo unit's light and dark pictures are resized together. */
+  function buildResizeHandles() {
+    rzHandles = ['e', 's', 'se'].map(function (dir) {
+      var h = document.createElement('div');
+      h.className = 'tpl-rz';
+      h.setAttribute('data-rz', dir);
+      h.title = dir === 'e' ? 'Drag to make it wider or narrower' : dir === 's' ? 'Drag to make it taller or shorter' : 'Drag to resize';
+      h.hidden = true;
+      h.addEventListener('mousedown', function (e) { startResize(e, dir); });
+      frame.appendChild(h);
+      return h;
+    });
+  }
+  function isPictureEl(el) { return el.getAttribute('data-editable') === 'image' || /^(IMG|VIDEO|PICTURE|SVG)$/i.test(el.tagName); }
+  function resizeDirs(el) {
+    if (!el || !el.isConnected || groupSel.length || recordOf(el) || el.hasAttribute('data-rv-form-embed')) return [];
+    var sec = el.closest('[data-rv-section]');
+    if (!sec || el === sec || pinnedSection(sec) || el.classList.contains('hero-root')) return [];
+    if (canvas.win.getComputedStyle(el).display === 'inline') return [];       // words inside a line: no box of their own
+    if (isPictureEl(el)) return ['se'];
+    if (el.getAttribute('data-editable') === 'text') return ['e'];
+    return ['e', 's', 'se'];
+  }
+  function placeResizeHandles(r, fr) {
+    var dirs = r && !resizing ? resizeDirs(selectedEl) : resizing ? rzDirsNow : [];
+    rzHandles.forEach(function (h) {
+      var dir = h.getAttribute('data-rz');
+      if (!r || dirs.indexOf(dir) === -1) { h.hidden = true; return; }
+      h.hidden = false;
+      var x = dir === 's' ? r.left + r.width / 2 : r.right, y = dir === 'e' ? r.top + r.height / 2 : r.bottom;
+      h.style.left = Math.round(x - fr.left) + 'px';
+      h.style.top = Math.round(y - fr.top) + 'px';
+    });
+  }
+  var resizing = null, rzDirsNow = [];
+  function startResize(e, dir) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var el = selectedEl;
+    if (!el || !el.isConnected || groupSel.length || resizing) return;
+    if (aiWorking) { busyToast(); return; }
+    var own = el.getBoundingClientRect(), scr = canvas.screenRect(el);
+    var scale = own.width ? scr.width / own.width : 1;
+    var pic = isPictureEl(el);
+    var lu = pic && el.closest('.rv-lu');
+    var targets = lu ? Array.prototype.slice.call(lu.querySelectorAll('.rv-lu-img')) : [el];
+    if (targets.indexOf(el) === -1) targets.push(el);
+    var kept = targets.map(function (n) { return { n: n, style: n.getAttribute('style') }; });
+    var p = el.parentElement, pcs = p ? canvas.win.getComputedStyle(p) : null;
+    var room = p ? p.getBoundingClientRect().width - (parseFloat(pcs.paddingLeft) || 0) - (parseFloat(pcs.paddingRight) || 0) : Infinity;
+    var inRow = pcs && /flex/.test(pcs.display) && !/column/.test(pcs.flexDirection);
+    var w0 = own.width, h0 = own.height, ratio = h0 ? w0 / h0 : 1, x0 = e.clientX, y0 = e.clientY, changed = false;
+    var shield = document.createElement('div');
+    shield.className = 'tpl-rz-shield';
+    shield.style.cursor = dir === 'e' ? 'ew-resize' : dir === 's' ? 'ns-resize' : 'nwse-resize';
+    document.body.appendChild(shield);
+    var tag = document.createElement('div');
+    tag.className = 'tpl-rz-size';
+    frame.appendChild(tag);
+    resizing = el; rzDirsNow = [dir];
+    function size(w, h) {
+      targets.forEach(function (n) {
+        if (dir !== 's' || pic) {
+          n.style.width = Math.round(w) + 'px';
+          n.style.maxWidth = '100%';
+          if (inRow && n === el) n.style.flex = '0 0 auto';
+        }
+        if (pic) { n.style.height = 'auto'; n.style.aspectRatio = String(+ratio.toFixed(4)); n.style.maxHeight = 'none'; }
+        else if (dir !== 'e') n.style.minHeight = Math.round(h) + 'px';
+      });
+    }
+    function move(ev) {
+      var dx = (ev.clientX - x0) / scale, dy = (ev.clientY - y0) / scale;
+      var w = dir === 's' ? w0 : w0 + dx, h = dir === 'e' ? h0 : h0 + dy;
+      if (pic && Math.abs(dy) * ratio > Math.abs(dx)) w = h * ratio;           // a picture: whichever way pulls more
+      w = Math.max(16, Math.min(room, w));
+      if (pic) h = w / ratio;
+      size(w, Math.max(8, h));
+      changed = true;
+      var now = el.getBoundingClientRect(), sr = canvas.screenRect(el), fr = frame.getBoundingClientRect();
+      tag.textContent = Math.round(now.width) + ' × ' + Math.round(now.height);
+      tag.style.left = Math.round(sr.right - fr.left + 10) + 'px';
+      tag.style.top = Math.round(sr.bottom - fr.top + 10) + 'px';
+      repositionToolbars();
+    }
+    function end(putBack) {
+      document.removeEventListener('mousemove', move, true);
+      document.removeEventListener('mouseup', up, true);
+      document.removeEventListener('keydown', key, true);
+      if (canvas && canvas.doc) canvas.doc.removeEventListener('keydown', key, true);
+      shield.remove();
+      tag.remove();
+      resizing = null; rzDirsNow = [];
+      if (putBack) {
+        kept.forEach(function (k) { if (k.style == null) k.n.removeAttribute('style'); else k.n.setAttribute('style', k.style); });
+      } else if (changed) {
+        clearAiGenerated(el);
+        commitNow();
+      }
+      positionToolbars();
+    }
+    function up() { end(false); }
+    function key(ev) { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); end(true); } }
+    document.addEventListener('mousemove', move, true);
+    document.addEventListener('mouseup', up, true);
+    document.addEventListener('keydown', key, true);
+    canvas.doc.addEventListener('keydown', key, true);
+  }
+
   /* ---------- where the two pills sit ----------
      Both are positioned in #frame's own coordinates from the selection's place on screen (canvas.screenRect
      allows for the canvas being scaled), and are placed again whenever that place can have changed: the canvas
@@ -2431,12 +2573,24 @@
     if (!canvas || remounting || !selToolbar) return;
     /* while ETB2B AI is applying a change neither pill shows: their tools would change the page under it (UX-090).
        Anything still selected gets its pills back when the change is on the page (setAiWorking). */
-    if (aiWorking) { selToolbar.hidden = true; secToolbar.hidden = true; return; }
+    if (aiWorking) { selToolbar.hidden = true; secToolbar.hidden = true; placeResizeHandles(null); return; }
     var fr = frame.getBoundingClientRect();
     var selBox = null, elBox = null;
+    if (!groupSel.length && selToolbar.classList.contains('is-docked')) dockGroupBar(false);
 
-    if (selectedEl && selectedEl.isConnected && canvas.inView(selectedEl)) {
+    if (groupSel.length) {
+      /* several selected: one bar for all of them, always in the same place at the top of the page, not by the one
+         picked last (the owner, 19 Nov 2026: "the control bar should appear globally") */
+      selToolbar.hidden = false;
+      if (!dockGroupBar(true)) {
+        var gw = selToolbar.offsetWidth, gh = selToolbar.offsetHeight;
+        selBox = { left: Math.max(6, (fr.width - gw) / 2), top: 12, width: gw, height: gh };
+        place(selToolbar, selBox);
+      }
+      placeResizeHandles(null);
+    } else if (selectedEl && selectedEl.isConnected && canvas.inView(selectedEl)) {
       var r = canvas.screenRect(selectedEl);
+      placeResizeHandles(r, fr);
       elBox = { left: r.left - fr.left, top: r.top - fr.top, width: r.width, height: r.height };
       selToolbar.hidden = false;
       var w = selToolbar.offsetWidth, h = selToolbar.offsetHeight;
@@ -2449,6 +2603,7 @@
       if (!linkPop.hidden) positionLinkPop(selBox, fr);
     } else {
       selToolbar.hidden = true;
+      placeResizeHandles(null);
       if (!selectedEl || !selectedEl.isConnected) closeLinkPop();
       else linkPop.style.visibility = linkPop.hidden ? '' : 'hidden';      // scrolled away with its element
     }
@@ -3599,11 +3754,28 @@
     }).join('');
   }
   /* what moves when a picture moves: the outermost box of its own size around it (the logo unit's frame) */
+  /* The room a thing has to move across in the box around it: the box's inner width less the line the thing sits on
+     (it and whatever sits beside it). A row only as wide as what it holds (a date beside its icon, two buttons) has none. */
+  function roomIn(p, t) {
+    var cs = canvas.win.getComputedStyle(p), b = p.getBoundingClientRect(), a = t.getBoundingClientRect();
+    var inner = b.width - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0) - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0);
+    var l = a.left, r = a.right;
+    visibleKids(p).forEach(function (k) {
+      var kr = k.getBoundingClientRect();
+      if (kr.bottom > a.top + 1 && kr.top < a.bottom - 1) { l = Math.min(l, kr.left); r = Math.max(r, kr.right); }
+    });
+    return inner - (r - l);
+  }
+  /* What moves when a thing moves: it, or the row or frame around it when that has no room for it to move in (the
+     banner's date beside its icon in a row of date and venue: the row of both moves). Only rows and frames of the
+     thing's own size are climbed, never a card or a column, so a picture in a card never moves the page's container. */
   function alignTarget(el) {
     var t = el, sec = el.closest('[data-rv-section]');
     while (t.parentElement && t.parentElement !== sec && !t.parentElement.classList.contains('hero-root')) {
-      var p = t.parentElement, a = t.getBoundingClientRect(), b = p.getBoundingClientRect();
-      if (Math.abs(a.width - b.width) > 6 || visibleKids(p).length !== 1) break;
+      var p = t.parentElement, pcs = canvas.win.getComputedStyle(p);
+      var row = /flex/.test(pcs.display) && !/column/.test(pcs.flexDirection);
+      var frameOnly = Math.abs(t.getBoundingClientRect().width - p.getBoundingClientRect().width) <= 6 && visibleKids(p).length === 1;
+      if (!(row || frameOnly) || roomIn(p, t) > 6) break;
       t = p;
     }
     return t;
@@ -3628,6 +3800,13 @@
     var flex = /flex/.test(pcs.display), grid = /grid/.test(pcs.display), column = flex && /column/.test(pcs.flexDirection);
     if (column) { el.style.alignSelf = ALIGN_FLEX[side]; return; }
     if (grid) { el.style.justifySelf = ALIGN_GRID[side]; return; }
+    /* one of several in a row: the row lines up (an auto margin on one would push its neighbours apart) */
+    if (flex && visibleKids(p).length > 1) {
+      p.style.justifyContent = ALIGN_FLEX[side];
+      if (el.style.marginLeft === 'auto') el.style.marginLeft = '';
+      if (el.style.marginRight === 'auto') el.style.marginRight = '';
+      return;
+    }
     if (!flex && /^inline/.test(cs.display)) {
       el.style.display = 'block';
       if (!/^(IMG|SVG|VIDEO|CANVAS|PICTURE)$/i.test(el.tagName)) el.style.width = 'fit-content';
@@ -3674,7 +3853,7 @@
     if (type === 'text') {
       el.style.textAlign = side;
       var p = el.parentElement;
-      if (p && el.getBoundingClientRect().width < p.getBoundingClientRect().width - 8) placeIn(el, side);
+      if (p && el.getBoundingClientRect().width < p.getBoundingClientRect().width - 8) placeIn(alignTarget(el), side);
       return;
     }
     if (type === 'image' || type === 'button' || /^(IMG|SVG|VIDEO|A|BUTTON)$/i.test(el.tagName)) {
@@ -5326,7 +5505,12 @@
   function wireCanvasEvents() {
     /* a press on the site closes the editor's open menus and pop-overs (ED-061): the canvas is a frame, so the press
        never reaches the editor's own document, where each of them listens for a press outside it */
-    canvas.doc.addEventListener('mousedown', function () { if (host && host.closeFloating) host.closeFloating(); }, true);
+    canvas.doc.addEventListener('mousedown', function (e) {
+      if (host && host.closeFloating) host.closeFloating();
+      /* Shift / Cmd / Ctrl held picks things (the click below): the press must not also highlight words on the way */
+      var t = e.target && (e.target.nodeType === 1 ? e.target : e.target.parentElement);
+      if ((e.shiftKey || e.metaKey || e.ctrlKey) && t && !(editingEl && editingEl.contains(t))) e.preventDefault();
+    }, true);
     canvas.doc.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
