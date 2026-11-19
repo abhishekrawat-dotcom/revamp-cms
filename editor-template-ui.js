@@ -2806,7 +2806,7 @@
      and when a user is trying to add duplicate template it should be avoided. By adding a section to the template
      gallary, that section will be available globally and easily can be accommodated in any site.") ----------
      A section is saved as the Developer zone shows it (devSource) and kept once per design (functions/lib/
-     section-gallery.js). It is added to a site from Add section › Template gallery (custom_editor.html): an AI-designed
+     section-gallery.js). It is added to a site from Add section, under the tab of its own kind (custom_editor.html): an AI-designed
      section to any AI-designed site, where it takes that site's theme and records; a section of a design kept as files
      (Tech500…) to sites of that design; a ready-made design to any site. */
   /* the family of designs this site's sections fit: 'gen' for an AI-designed site, a template's id, '' for an
@@ -2828,6 +2828,37 @@
   }
   function galleryFits(item) {
     return !!item && (item.family === 'generic' || (!!galleryFamily() && item.family === galleryFamily()));
+  }
+  /* Where a gallery section is offered in Add section: under the tab of its own kind, never in a tab of its own for the
+     gallery (the owner, 19 Nov 2026: "If I am adding any overview section to the template then it should be added under
+     Overview section only. similarly for all. If there is no relevant sections create a section for that"). Read from
+     the section's type, else its name. -> { key, label }: key is one of Add section's kinds ('overview', 'why'…, the
+     picker's own keys), or '' for a kind it does not have, which gets a tab named label. */
+  var GALLERY_TABS = [
+    ['why', 'Why Join', 'why'],
+    ['waits', 'What awaits you', 'awaits?|expect'],
+    ['attend', 'Who Should Attend', 'who-should-attend|who-should|attend|attendees|audience'],
+    ['discussion', 'Discussion points', 'discussion|discussions|talking-points|themes?|topics?'],
+    ['stats', 'Stats', 'stats?|numbers|figures|metrics'],
+    ['contact', 'Contact us', 'contacts?|get-in-touch|reach-us'],
+    ['faq', 'FAQ', 'faqs?|questions'],
+    ['sponsors', 'Sponsors', 'sponsors?|partners?'],
+    ['agenda', 'Agenda', 'agenda|schedule|programme|program|sessions?'],
+    ['glimpses', 'Glimpses', 'glimpses?|gallery|photos?|moments'],
+    ['speaker', 'Speaker', 'speakers?|jury|juries|panelists?|panellists?'],
+    ['overview', 'Overview', 'overview|about|introduction|intro']
+  ].map(function (t) { return { key: t[0], label: t[1], re: new RegExp('(^|-)(' + t[2] + ')(-|$)') }; });
+  function galleryTabOf(item) {
+    if (!item) return { key: '', label: '' };
+    var words = function (v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); };
+    var type = words(String(item.srcType || '').replace(/-g[a-z0-9]{4}$/i, '').replace(/-\d+$/, ''));
+    var tries = [type, words(item.kind), words(item.name)];
+    for (var i = 0; i < tries.length; i++) {
+      if (!tries[i]) continue;
+      for (var j = 0; j < GALLERY_TABS.length; j++) if (GALLERY_TABS[j].re.test(tries[i])) return { key: GALLERY_TABS[j].key, label: GALLERY_TABS[j].label };
+    }
+    var label = String(item.kind || item.name || '').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Saved sections';
+    return { key: '', label: label.charAt(0).toUpperCase() + label.slice(1) };
   }
   function galleryCall(method, url, body) {
     return RevampAuth.authedFetch(url, body === undefined ? { method: method } : {
@@ -2962,7 +2993,7 @@
     var handle = host.openDialog({
       title: 'Add “' + name + '” to the template gallery',
       bodyHtml:
-        '<p style="margin:0 0 10px;font-size:13px;opacity:.8;">Anyone on the team can then add this design to ' + where + ', from Add section › Template gallery. ' +
+        '<p style="margin:0 0 10px;font-size:13px;opacity:.8;">Anyone on the team can then add this design to ' + where + ', from Add section › ' + escHtml(galleryTabOf({ srcType: sec.getAttribute('data-rv-section') || '', kind: name }).label) + '. ' +
         (fam === 'gen' ? 'It takes that site’s colours and fonts. ' : '') +
         'A list of speakers, sessions or partners shows that event’s own; the words come along marked as samples to replace, and the pictures are copied.</p>' +
         '<label for="rv-gal-name" style="display:block;font-size:12px;font-weight:600;margin:0 0 4px;">Name in the gallery</label>' +
@@ -3000,7 +3031,7 @@
         var open = document.contains(input);
         if (r.ok) {
           if (open && handle && handle.close) handle.close();
-          showToast('“' + nm + '” is in the template gallery. Add it to any site from Add section › Template gallery.');
+          showToast('“' + nm + '” is in the template gallery. Add it to any site from Add section › ' + galleryTabOf({ srcType: sec.getAttribute('data-rv-section') || '', kind: name, name: nm }).label + '.');
           return;
         }
         var text = r.status === 409 && r.body.existing
@@ -10709,7 +10740,7 @@
     currentPage: function () { return currentPage; }, showPage: function (slug) { return showPage(slug); },
     setHidden: whenPageFree(setHidden), duplicateSection: whenPageFree(duplicateSection), deleteSection: whenPageFree(deleteSection), renameSection: whenPageFree(renameSection),
     insertSection: whenPageFree(insertSection), addBlock: whenPageFree(addBlock),
-    galleryFamily: galleryFamily, galleryFits: galleryFits, galleryList: galleryList, galleryItem: galleryItem,
+    galleryFamily: galleryFamily, galleryFits: galleryFits, galleryTabOf: galleryTabOf, galleryList: galleryList, galleryItem: galleryItem,
     galleryPreviewDoc: galleryPreviewDoc, galleryDelete: galleryDelete, addFromGallery: addFromGallery,
     /* forms (editor-forms.js): formsChanged() after the event's forms changed — previews drawn again and the
        live view told (onFormsChange(fn)); unlinkForm(id) before a form is deleted; placeFormSection(id, afterEl);

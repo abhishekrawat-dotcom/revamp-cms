@@ -863,6 +863,9 @@
   }
   .variant-tab:hover{ background:var(--surface-2); color:var(--text); }
   .variant-tab.active{ background:var(--accent-soft); color:var(--accent-strong); border-color:var(--accent); }
+  /* how many template gallery designs a tab holds */
+  .variant-tab .tab-count{ display:inline-block; min-width:18px; margin-left:6px; padding:0 5px; border-radius:999px; background:var(--accent); color:#fff; font-size:11px; line-height:18px; text-align:center; font-weight:600; }
+  .variant-group{ margin:2px 0 -6px; font-size:12.5px; font-weight:600; color:var(--text-muted); }
   /* two to a row, each drawn at the page's own width and cut to its top, so its words can be read (UX-081) */
   /* each row as tall as its cards (grid-auto-rows:max-content): an auto row counts a card that clips its content
      (overflow:hidden, for its round corners) as able to shrink to nothing, so once the cards were taller than the
@@ -2262,8 +2265,8 @@
       '</div></div>';
     var afterName = afterEl && afterEl.isConnected ? afterEl.getAttribute('data-sec-name') : '';
     scrim.querySelector('.variant-note').textContent = afterName
-      ? 'It is added below “' + afterName + '”. Pick one of this site’s own sections, one from the template gallery, or a ready-made design.'
-      : 'It is added at the end of the page. Pick one of this site’s own sections, one from the template gallery, or a ready-made design.';
+      ? 'It is added below “' + afterName + '”. Pick one of this site’s own sections, a design from the template gallery or a ready-made design. Gallery designs are under the tab of their kind.'
+      : 'It is added at the end of the page. Pick one of this site’s own sections, a design from the template gallery or a ready-made design. Gallery designs are under the tab of their kind.';
     document.body.appendChild(scrim);
 
     var tabsEl = scrim.querySelector('#variant-tabs');
@@ -2279,9 +2282,13 @@
       tab.addEventListener('click', function(){ setActiveTab(key); });
     }
     var FORMS = ':forms', formsApi = window.RevampEditorForms || null;
-    var GALLERY = ':gallery', hasGallery = typeof api.galleryList === 'function';
+    /* The template gallery's designs (editor-template-ui.js, functions/lib/section-gallery.js), each under the tab of its
+       own kind (api.galleryTabOf) — never a tab of their own (the owner, 19 Nov 2026: "If I am adding any overview
+       section to the template then it should be added under Overview section only. similarly for all. If there is no
+       relevant sections create a section for that"): a kind with no tab here gets one, after the others. */
+    var KIND = ':kind:', hasGallery = typeof api.galleryList === 'function' && typeof api.galleryTabOf === 'function';
+    var gal = { state: hasGallery ? 'loading' : 'none', byTab: {}, labels: {}, error: '' };
     if (own.length) addTab(OWN, 'From this site');
-    if (hasGallery) addTab(GALLERY, 'Template gallery');
     if (formsApi) addTab(FORMS, 'Form');
     categories.forEach(function(key){ addTab(key, sectionTemplates[key].name); });
     /* where the tabs scroll (a phone; elsewhere they wrap onto a second row), the edge with more tabs behind it
@@ -2316,25 +2323,67 @@
       make.querySelector('.variant-card-use').innerHTML = 'Open Forms &rarr;';
       gridEl.appendChild(make);
     }
-    /* the Template gallery tab: sections saved from any site (editor-template-ui.js, functions/lib/section-gallery.js),
-       each drawn as it would look on this site; one made for sites of another design is shown but cannot be added */
-    function galleryShown(){ return document.contains(gridEl) && !!tabsEl.querySelector('.variant-tab.active[data-tab-key="' + GALLERY + '"]'); }
-    function galleryNote(text){
-      gridEl.innerHTML = '';
+    /* the template gallery's designs: the tab each goes under, its count on the tab, and the hint lines in the grid */
+    function galleryTabKey(item){
+      var t = api.galleryTabOf(item) || {};
+      if (t.key && categories.indexOf(t.key) !== -1) return t.key;
+      var key = KIND + (String(t.label || 'Saved sections').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'saved');
+      if (!gal.labels[key]) gal.labels[key] = String(t.label || 'Saved sections');
+      return key;
+    }
+    function tabEl(key){ return tabsEl.querySelector('.variant-tab[data-tab-key="' + key + '"]'); }
+    function activeKey(){ var t = tabsEl.querySelector('.variant-tab.active'); return t ? t.getAttribute('data-tab-key') : ''; }
+    function markCount(key){
+      var tab = tabEl(key);
+      if (!tab) return;
+      var n = (gal.byTab[key] || []).length, badge = tab.querySelector('.tab-count');
+      if (!n){ if (badge) badge.remove(); tab.removeAttribute('title'); return; }
+      if (!badge){ badge = document.createElement('span'); badge.className = 'tab-count'; tab.appendChild(badge); }
+      badge.textContent = String(n);
+      tab.title = n + (n === 1 ? ' design' : ' designs') + ' from the template gallery';
+    }
+    function gridLine(text, cls){
       var p = document.createElement('p');
-      p.className = 'hint'; p.style.gridColumn = '1/-1'; p.textContent = text;
+      p.className = cls || 'hint'; p.style.gridColumn = '1/-1'; p.textContent = text;
       gridEl.appendChild(p);
+      return p;
     }
-    function drawGalleryCards(){
-      galleryNote('Loading the template gallery…');
-      api.galleryList().then(function(items){
-        if (!galleryShown()) return;
-        if (!items.length){ galleryNote('The gallery is empty. To add a section to it, select the section on the page and choose “Add to gallery” in its menu.'); return; }
-        gridEl.innerHTML = '';
-        items.slice().sort(function(a, b){ return (api.galleryFits(b) ? 1 : 0) - (api.galleryFits(a) ? 1 : 0); }).forEach(function(item){ gridEl.appendChild(buildGalleryCard(item)); });
-      }, function(err){ if (galleryShown()) galleryNote(err && err.message ? err.message : 'The template gallery could not be loaded. Please try again.'); });
+    /* the designs saved for this tab, first, under their own heading; a design made for sites of another design is shown
+       but cannot be added, after those that can */
+    function drawSaved(key, only){
+      if (gal.state === 'error'){ gridLine(gal.error); return 0; }
+      var list = (gal.byTab[key] || []).slice().sort(function(a, b){ return (api.galleryFits(b) ? 1 : 0) - (api.galleryFits(a) ? 1 : 0); });
+      if (!list.length){
+        if (only) gridLine(gal.state === 'loading' ? 'Loading the template gallery…' : 'Nothing is left under this tab: its designs were taken out of the template gallery.');
+        return 0;
+      }
+      gridLine('From the template gallery', 'variant-group');
+      list.forEach(function(item){ gridEl.appendChild(buildGalleryCard(item, key)); });
+      return list.length;
     }
-    function buildGalleryCard(item){
+    function forgetGalleryItem(item, key){
+      gal.byTab[key] = (gal.byTab[key] || []).filter(function(x){ return x.id !== item.id; });
+      markCount(key);
+      if (activeKey() === key) drawTab(key);
+    }
+    if (hasGallery) api.galleryList().then(function(items){
+      gal.state = 'ready';
+      items.forEach(function(item){ var key = galleryTabKey(item); (gal.byTab[key] = gal.byTab[key] || []).push(item); });
+      /* a kind with no tab here gets one, after the others, in the order of their names */
+      Object.keys(gal.byTab).filter(function(key){ return key.indexOf(KIND) === 0; })
+        .sort(function(a, b){ return gal.labels[a].localeCompare(gal.labels[b]); })
+        .forEach(function(key){ if (!tabEl(key)) addTab(key, gal.labels[key]); });
+      Object.keys(gal.byTab).forEach(markCount);
+      syncTabFade();
+      var now = activeKey();
+      if (document.contains(gridEl) && now && gal.byTab[now]) drawTab(now);
+    }, function(err){
+      gal.state = 'error';
+      gal.error = (err && err.message ? err.message : 'The template gallery could not be loaded.') + ' Close this and open Add section again to see its designs.';
+      var now = activeKey();
+      if (document.contains(gridEl) && categories.indexOf(now) !== -1) drawTab(now);
+    });
+    function buildGalleryCard(item, key){
       var fits = api.galleryFits(item);
       var card = document.createElement('div');
       card.className = 'variant-card gal-card' + (fits ? '' : ' is-elsewhere');
@@ -2379,7 +2428,7 @@
           }
           clearTimeout(armed); armed = 0;
           use.textContent = 'Taking it out…';
-          api.galleryDelete(item.id).then(function(){ card.remove(); if (!gridEl.querySelector('.gal-card')) galleryNote('The gallery is empty. To add a section to it, select the section on the page and choose “Add to gallery” in its menu.'); },
+          api.galleryDelete(item.id).then(function(){ card.remove(); forgetGalleryItem(item, key); },
             function(err){ card.classList.remove('is-arming'); use.textContent = err && err.message ? err.message : 'It could not be taken out. Please try again.'; });
         });
       }
@@ -2410,15 +2459,20 @@
         if (active) t.scrollIntoView({block:'nearest', inline:'nearest'});
       });
       syncTabFade();
+      drawTab(key);
+    }
+    function drawTab(key){
       gridEl.innerHTML = '';
       if (key === FORMS){ drawFormCards(); return; }
-      if (key === GALLERY){ drawGalleryCards(); return; }
       if (key === OWN){
         own.forEach(function(item){
           gridEl.appendChild(buildLibraryCard(item, function(){ use({ libraryId: item.id }); }));
         });
         return;
       }
+      /* a kind of section only the gallery has: its designs alone */
+      if (key.indexOf(KIND) === 0){ drawSaved(key, true); return; }
+      if (drawSaved(key, false)) gridLine('Ready-made designs', 'variant-group');
       sectionVariants[key].forEach(function(variant){
         gridEl.appendChild(buildVariantCard(variant, function(){ use({ name: variant.name, html: variant.html }); }));
       });
