@@ -1403,7 +1403,15 @@ function examineUnit(fb, eventId, picture, ctx) {
   var years = ctx.years || { from: '', to: '' }, owner = ctx.origin === 'owner';
   var notes = [], tone = '', changed = false, stuck = '', unread = false, seen = '', extrasLeft = false;
   var it = owner ? 'your logo' : 'the logo unit';
-  function read(pic, decoded) { return readLogoPicture(eventId, pic, decoded, ctx.deadlineAt, ctx.eventName); }
+  /* blank: the first reading found no lettering at all — a photograph or a banner's background, not a lock-up
+     (TechGig Pro, 19 Nov 2026: the previous edition page's skyline became its "logo"). The caller decides. */
+  var readings = 0, blank = false, lettering = '';
+  function read(pic, decoded) {
+    return readLogoPicture(eventId, pic, decoded, ctx.deadlineAt, ctx.eventName).then(function (r) {
+      if (r && !readings++) { lettering = String(r.allText || ''); blank = !/[A-Za-z0-9\u00C0-\uFFFF]/.test(lettering); }
+      return r;
+    });
+  }
   /* a year it shows is an earlier edition's when the page said so, or it is a recent one: "Since 2015" is not
      a year to move. Compared in code, on the four-digit year, whatever form it is written in.
      named: the reading named it as the edition's year — then a later one is not this edition's either (a
@@ -1679,7 +1687,7 @@ function examineUnit(fb, eventId, picture, ctx) {
       return move(r, 1);
     });
   }
-  function result() { return { picture: picture, changed: changed, notes: notes, tone: tone, stuck: stuck, unread: unread, seen: seen, extrasLeft: extrasLeft }; }
+  function result() { return { picture: picture, changed: changed, notes: notes, tone: tone, stuck: stuck, unread: unread, seen: seen, extrasLeft: extrasLeft, blank: blank, lettering: lettering }; }
 }
 
 function heroModeOf(tone) { return tone === 'for-dark' ? 'dark' : tone === 'for-light' ? 'light' : ''; }

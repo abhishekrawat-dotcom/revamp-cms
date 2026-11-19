@@ -285,8 +285,15 @@ function ruledOut(el, chain, url, page) {
 
   /* "2nd Edition", "2025": a badge beside the unit, reported by editionHints, never the unit itself */
   if (/edition|year/i.test(cls)) return 'an edition badge';
+  /* the banner's picture behind it: TechGig Pro's previous edition page (techgig.com/devnext, 19 Nov 2026) has its
+     skyline as img.hero__background-image, the first picture in the hero, and it was taken for the logo over the
+     real one (finallogodevnext.svg). A picture whose own class, or its box's, says it is a background or a cover is
+     not the lock-up — unless that class also says logo. */
+  var own = cls + ' ' + (chain[0] ? attr(chain[0], 'class') : '');
+  if (BACKGROUND_CLASS.test(own) && !hasToken(el, LOGO_CLASS_LOOSE) && !hasToken(el, LOGO_CLASS_STRONG)) return 'the banner\'s background picture';
   return '';
 }
+var BACKGROUND_CLASS = /(^|[\s_-])(bg|background|backdrop|cover-image|hero-image|banner-image|parallax)([\s_-]|$)/i;
 
 var LOGO_CLASS_STRONG = /^(event-logo|logo-unit|lockup|lock-up|brand-logo|custom-logo|navbar-brand|site-logo|hero-logo)$/i;
 var LOGO_CLASS_LOOSE = /(^|[-_])logo([-_]|$)/i;
@@ -1472,6 +1479,7 @@ module.exports = {
   shownYear, yearAs, yearsShownIn,
   imageInfo, plausibleUnit, stackedUnit,
   svgIsActive, svgLayers, svgTexts, svgTone, svgReplaceYear,
+  distinctiveWords, sharesWord,
   fontMetrics, textWidth, googleFontCssUrl, fontUrlFromCss,
   buildLogoUnitSvg
 };

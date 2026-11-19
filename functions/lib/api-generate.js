@@ -2424,7 +2424,8 @@ function previousEditionUnit(fb, eventId, o) {
      more when Gemini is slow, and a site made again would otherwise risk the event's name in its place. Kept on
      the previous edition's record; only a unit used after a finished examination is kept — never one read short,
      and never a year that could not be moved (where a reading places the year varies: the next may move it). */
-  var cacheKey = candidates.map(function (c) { return c.url || (c.svg ? 'inline:' + crypto.createHash('sha1').update(String(c.svg)).digest('hex') : ''); }).join(',') + '|' + years.to + '|' + String(o.eventMeta.name || '');
+  /* 'v2': units examined before a picture with no lettering was refused (TechGig Pro's skyline) are examined again */
+  var cacheKey = 'v2|' + candidates.map(function (c) { return c.url || (c.svg ? 'inline:' + crypto.createHash('sha1').update(String(c.svg)).digest('hex') : ''); }).join(',') + '|' + years.to + '|' + String(o.eventMeta.name || '');
   var cached = source.examinedUnit && source.examinedUnit.key === cacheKey ? source.examinedUnit.unit : null;
   if (cached && cached.url) return Promise.resolve(cached);
   var finished = false;
@@ -2443,15 +2444,30 @@ function previousEditionUnit(fb, eventId, o) {
   function pick(i) {
     if (i >= candidates.length) return Promise.resolve(null);
     return fetchLogoCandidate(candidates[i]).then(function (picture) {
-      if (picture && !picture.refused) return picture;
+      if (picture && !picture.refused) return { picture: picture, at: i };
       refusals.push((picture && picture.refused) || 'its picture could not be had');
       return pick(i + 1);
     });
   }
-  return pick(0).then(function (picture) {
+  /* a candidate read as having no lettering at all is a photograph, not the lock-up: the next one is examined */
+  function examineFrom(i) {
+    return pick(i).then(function (got) {
+      if (!got) return { none: true };
+      return examineUnit(fb, eventId, got.picture, { years: years, origin: 'previous-edition', eventName: o.eventMeta.name, deadlineAt: o.deadlineAt }).then(function (ex) {
+        if (ex.blank && !ex.unread) {
+          console.error('logo unit: candidate ' + (got.at + 1) + ' of ' + eventId + ' has no lettering (a photograph or background), the next is tried — ' + (candidates[got.at].url || 'inline svg'));
+          refusals.push('the picture taken for it has no lettering at all — a photograph or the banner\'s background, not a logo');
+          return examineFrom(got.at + 1);
+        }
+        return { picture: got.picture, ex: ex };
+      });
+    });
+  }
+  return examineFrom(0).then(function (found) {
     /* the reason the best candidate (the first) was refused is the one that matters */
-    if (!picture) return failed(refusals[0] || 'no picture was found on its page');
-    return examineUnit(fb, eventId, picture, { years: years, origin: 'previous-edition', eventName: o.eventMeta.name, deadlineAt: o.deadlineAt }).then(function (ex) {
+    if (found.none) return failed(refusals[0] || 'no picture was found on its page');
+    var picture = found.picture, ex = found.ex;
+    return Promise.resolve().then(function () {
       finished = !ex.unread;
       /* never used showing an earlier edition's year: the event's name stands in its place, and the owner
          is told why */
@@ -2470,6 +2486,14 @@ function previousEditionUnit(fb, eventId, o) {
         tallOwn = true;
       }
       var notes = ex.notes.slice();
+      /* a previous edition that is another event (TechGig Pro was given DevNext's page): its lock-up is used, and the
+         owner is told when its lettering does not name this event — said, never refused, as a lock-up may name it
+         otherwise (Digiplus Awards' reads "DG+ '26") */
+      var nameWords = logoUnit.distinctiveWords(o.eventMeta.name || '');
+      if (ex.lettering && nameWords.length && !logoUnit.sharesWord(ex.lettering, nameWords)) {
+        notes.push('The logo taken from the previous edition\'s page reads “' + String(ex.lettering).replace(/\s+/g, ' ').trim().slice(0, 80) + '”, which does not name ' + o.eventMeta.name +
+          '. If it is another event\'s, upload this event\'s logo under Event logo in the event\'s Basics, or select it and use Replace image.');
+      }
       if (tallOwn) notes.push('The previous edition\'s logo is taller than it is wide; nothing in it was read as a sponsor\'s mark, so it is used whole. If it does carry one, upload this year\'s logo under Event logo in the event\'s Basics, or select it and use Replace image.');
       /* used unread: its year and any sponsor's mark in it went unchecked, and the owner is told */
       if (ex.unread) {
