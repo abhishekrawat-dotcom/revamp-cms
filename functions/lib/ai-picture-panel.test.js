@@ -302,7 +302,9 @@ function madeHere(url) { return String(url).indexOf('https://storage.googleapis.
     /said\.push\('“' \+ job\.label \+ '” was reworked, but the new picture was not used in it\. ' \+ unused\);/.test(turn));
   check('D.7 the Undo note names the picture only when it was put in, and says the whole change when there was more', /if \(madePic && madePic\.placed && t\.status !== 'failed'\) \{[^}]*var more = done\.length > 1;\s*card\.note\(more \? 'Undo takes back all of this change, the new picture with it\.'/.test(turn));
   /* the new picture's swap, its rework, and a document picture's swap (owner, 16 Nov 2026) */
-  check('D.7 the logo unit is compared before and after the swap and the rework', (turn.match(/sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)/g) || []).length === 3);
+  /* the rework's check now runs on every rework of a section with the logo unit (owner, 19 Nov 2026: logoUnitsState) */
+  check('D.7 the logo unit is compared before and after the swap and the rework', (turn.match(/sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)/g) || []).length === 2 &&
+    /if \(unitGuard && !sameLogoUnit\(unitBefore, logoUnitsState\(\)\)\) putBack\(/.test(turn));
   check('D.7 a document picture put where a section has one: the same target, logo-unit check and put-back as the new picture\'s swap',
     /function placeDocPicture\(s, step, changedEls, done, said\) \{[\s\S]{0,1600}P\.target\(sec, \{ placement: s\.placement, slot: s\.slot \}, null, help\)[\s\S]{0,1600}if \(!sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)\) \{\s*putPictureElsBack\(kept\);/.test(turn));
   check('D.7 a made picture not on the page is kept: the tray, quietly, else "Use this picture"', /offerPicture\(madePic\.url, true\)/.test(keep) && /drawUsePicture\(bubble, madePic\.url\)/.test(keep) && /if \(!madePic \|\| madePic\.placed\) return '';/.test(keep));
@@ -703,7 +705,8 @@ return (function () {
   check('D.9 it is asked for by its own k, and a held one is never given a number to be put in by',
     /untilStopped\(requestPicture\(t\.turnId, J\.k\)\)/.test(body('makeExtra')) && body('makeExtra').indexOf('return extraHeld(J, got.why)') < body('makeExtra').indexOf('attached[J.np.n - 1] = J.madePic.url'));
   check('D.9 its rework: the logo unit and the old section kept for it too, and it is said only when the rewrite draws it',
-    /var guard = withPic \|\| !!withEx;/.test(turn) && /var unitBefore = guard \? P\.unitState\(canvas\.doc\) : null;/.test(turn) && /if \(guard && !sameLogoUnit\(unitBefore, P\.unitState\(canvas\.doc\)\)\) putBack/.test(turn) &&
+    /var guard = withPic \|\| !!withEx;/.test(turn) && /var unitGuard = guard \|\| !!job\.sec\.querySelector\('\[data-rv-logo-unit\]'\);/.test(turn) &&
+    /var unitBefore = unitGuard \? logoUnitsState\(\) : null;/.test(turn) && /if \(unitGuard && !sameLogoUnit\(unitBefore, logoUnitsState\(\)\)\) putBack/.test(turn) &&
     /var exShown = !!withEx && aiPictureRules\.shows\(drawn, withEx\.madePic\.url\);\s*if \(exShown\) withEx\.madePic\.placed = true;/.test(turn));
 
   /* the runner, run: the briefs first, then two at a time; Stop leaves the rest not started */

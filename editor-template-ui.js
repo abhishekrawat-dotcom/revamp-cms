@@ -6469,6 +6469,8 @@
       // back in page order, which is how the section reads
       texts.sort(function (a, b) { return all.indexOf(a) - all.indexOf(b); });
       var out = { id: id, name: sec.getAttribute('data-sec-name') || id, texts: texts };
+      /* ETB2B's top bar and footer: never changed by ETB2B AI (functions/lib/api-chat.js chatShared) */
+      if (pinnedSection(sec)) out.shared = true;
       if (sec.classList.contains('is-hidden-sec')) out.hidden = true;
       /* a section with no record to show yet (data-rv-empty: an agenda with no sessions) is not on the live page or
          the preview either: the AI must not put pictures there unasked (QA, 16 Nov 2026: a new picture, paid for, went
@@ -6514,11 +6516,13 @@
           if (!seen[u]) { seen[u] = true; n++; }
         });
       });
+      /* the logo unit: its picture's address and the banner's tone — never its alt text, which is not what it shows
+         (TechGig Pro, 19 Nov 2026: a skyline photo with the alt "TechGig Pro"); the server shows the AI the picture itself */
       var unit = sec.querySelector('[data-rv-logo-unit]'), logoUnit = null;
       if (unit) {
-        var im = unit.tagName === 'IMG' ? unit : unit.querySelector('img');
-        var said = (im && im.getAttribute('alt')) || unit.getAttribute('aria-label') || unit.textContent || '';
-        logoUnit = { present: true, text: String(said).replace(/\s+/g, ' ').trim().slice(0, 60) };
+        var im = unit.querySelector('img.rv-lu-img:not(.rv-lu-dark)') || (unit.tagName === 'IMG' ? unit : unit.querySelector('img'));
+        var hero = unit.closest('.hero-root');
+        logoUnit = { present: true, src: im ? String(im.currentSrc || im.getAttribute('src') || '').slice(0, 2000) : '', tone: hero && hero.classList.contains('hero-on-dark') ? 'dark' : 'light' };
       }
       return { shows: Math.min(999, n), logoUnit: logoUnit };
     } catch (err) {
@@ -7269,6 +7273,14 @@
     });
   }
   function sameLogoUnit(a, b) { try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; } }
+  /* every logo unit on the page, as editor-ai-picture.js reads it (unitState); the pictures in each where that part is not loaded */
+  function logoUnitsState() {
+    var P = aiPictures();
+    if (P && P.unitState) return P.unitState(canvas.doc);
+    return Array.prototype.map.call(canvas.doc.querySelectorAll('[data-rv-logo-unit]'), function (u) {
+      return Array.prototype.map.call(u.querySelectorAll('img'), function (img) { return (img.classList.contains('rv-lu-dark') ? 'dark=' : '') + (img.getAttribute('src') || ''); }).join(' ') + '|' + String(u.textContent || '').replace(/\s+/g, ' ').trim();
+    }).join('\n');
+  }
 
   /* An AI answer of kind "edit", applied at once (the owner, 28 Oct 2026: no proposal to accept). Its message is the
      AI's own sentence; under it, while it works, what is being done; then what really changed and what could not
@@ -7320,8 +7332,13 @@
       if (canvas.design.supports(k)) design[k] = result.design[k];
       else notes.push(escHtml(designLabel(k) + ' — ' + unsupportedReason(k)));
     });
+    /* ETB2B's top bar and footer are never changed by ETB2B AI (the server leaves them out too: functions/lib/api-chat.js
+       chatShared); what still names them is left out here, and said once */
+    var sharedLeft = false;
+    var sharedSec = function (id) { var sec = id && canvas.sectionByKey(id); return !!sec && pinnedSection(sec); };
+    var notShared = function (x) { if (x && sharedSec(x.sectionId)) { sharedLeft = true; return false; } return true; };
     var textEdits = [];
-    (result.textEdits || []).forEach(function (t) {
+    (result.textEdits || []).filter(notShared).forEach(function (t) {
       if (locateTextEdit(t)) textEdits.push(t);
       else notes.push(escHtml(sectionLabel(t.sectionId)) + ' — &ldquo;' + escHtml(t.find) + '&rdquo; is not a text visitors can see in this section');
     });
@@ -7329,15 +7346,15 @@
 
     /* what goes beyond a setting or a wording: sections reworked, hidden, removed, moved or added */
     var known = function (id) { return !!(id && canvas.sectionByKey(id)); };
-    var edits = (result.sectionEdits || []).filter(function (e) { return e && known(e.sectionId) && e.instruction; });
-    var ops = (result.sectionOps || []).filter(function (o) { return o && known(o.sectionId); });
+    var edits = (result.sectionEdits || []).filter(function (e) { return e && known(e.sectionId) && e.instruction; }).filter(notShared);
+    var ops = (result.sectionOps || []).filter(function (o) { return o && known(o.sectionId); }).filter(notShared);
     var additions = (result.newSections || []).filter(function (n) { return n && n.instruction; });
 
     /* a new picture to make: checked against this page before anything is paid for */
     var P = aiPictures(), np = null;
     /* pictures taken out of a document, each put where a section already has a picture (the server checked the place
        against what this editor told it; editor-ai-picture.js finds the element and puts the picture in: no rework) */
-    var swaps = (result.pictureSwaps || []).filter(function (s) { return s && known(s.sectionId) && !!docPics[s.picture]; });
+    var swaps = (result.pictureSwaps || []).filter(function (s) { return s && known(s.sectionId) && !!docPics[s.picture]; }).filter(notShared);
     if (swaps.length && !P) {
       notes.push('The pictures from the document — this editor could not load the part that puts pictures in. Reload the editor and ask again');
       swaps = [];
@@ -7414,12 +7431,14 @@
         return;
       }
       if (!c.buttonText && !String(c.newButtonLabel || '').trim()) return;
+      if (!c.buttonText && sharedSec(c.sectionId)) { sharedLeft = true; return; }
       ctaLinks.push(c);
     });
     (fApi ? result.formEmbeds || [] : []).forEach(function (e) {
       if (!e) return;
       if (!nameOfForm(e.form)) { notes.push('A form to embed that does not exist'); return; }
       if (e.sectionId && !known(e.sectionId)) { notes.push('The form &ldquo;' + escHtml(nameOfForm(e.form)) + '&rdquo; — the section to put it in is no longer on the page'); return; }
+      if (e.sectionId && sharedSec(e.sectionId)) { sharedLeft = true; return; }
       formEmbeds.push(e);
     });
     if (!fApi && ((result.newForms || []).length || (result.ctaLinks || []).length || (result.formEmbeds || []).length)) {
@@ -7439,6 +7458,12 @@
       return 'New section ' + (e.afterSectionId && known(e.afterSectionId) ? 'after &ldquo;' + escHtml(sectionLabel(e.afterSectionId)) + '&rdquo;' : 'before the footer') +
         ' with the form &ldquo;' + escHtml(nameOfForm(e.form)) + '&rdquo;';
     }));
+    if (sharedLeft) notes.push('ETB2B’s top bar and footer — they are the same on every ETB2B event site, so ETB2B AI does not change them');
+    /* the new logo the server made and stored (functions/lib/chat-logo.js): put in the banner's logo unit (placeChatLogo) */
+    var logo = result.logoUnit && typeof result.logoUnit === 'object' && /^https:\/\//i.test(String(result.logoUnit.url || '')) ? result.logoUnit : null;
+    if (logo && !canvas.doc.querySelector('[data-rv-logo-unit]')) { notes.push('The new logo — the banner no longer has a logo in it, so it was not put in'); logo = null; }
+    var logoWords = logo ? String(logo.words || '').replace(/\s+/g, ' ').trim().slice(0, 40) : '';
+    if (logo) items.push('The banner’s logo — the new logo' + (logoWords ? ' with &ldquo;' + escHtml(logoWords) + '&rdquo; in it' : '') + ', a copy kept with the event');
     if (np) items.push('New picture for &ldquo;' + escHtml(np.label) + '&rdquo; (' + AI_PICTURE_WHERE[np.placement] + '): ' + escHtml(np.subject));
     extras.forEach(function (J) { items.push((J.option ? 'Another option for &ldquo;' : 'New picture for &ldquo;') + escHtml(J.np.label) + '&rdquo; (' + AI_PICTURE_WHERE[J.np.placement] + '): ' + escHtml(J.np.subject)); });
     var cannot = (Array.isArray(result.unsupported) ? result.unsupported : []).map(function (u) { return String(u).trim(); }).filter(Boolean);
@@ -7466,6 +7491,10 @@
       if (J.np.apply === 'swap' && !J.option) J.step.place = card.step('Put it in “' + J.np.label + '” as its ' + AI_PICTURE_WHERE[J.np.placement], null, { key: J.np.sectionId });
     });
     if (newForms.length) S.forms = card.step(newForms.length === 1 ? 'Create the form “' + refNames[newForms[0].ref] + '”' : 'Create ' + newForms.length + ' forms');
+    if (logo) {
+      var logoSec = canvas.doc.querySelector('[data-rv-logo-unit]').closest('[data-rv-section]');
+      S.logo = card.step('Put the new logo in the banner' + (logoWords ? ' with “' + logoWords + '”' : ''), null, { key: logoSec ? logoSec.getAttribute('data-rv-key') || '' : '' });
+    }
     if (Object.keys(design).length) S.design = card.step('Update the design', null, { lines: Object.keys(design).map(function (k) { return designLine(k, design[k]); }) });
     var textBy = {};
     textEdits.forEach(function (te) { (textBy[te.sectionId] = textBy[te.sectionId] || []).push(te); });
@@ -7984,6 +8013,37 @@
       step.set('done');
     }
 
+    /* the new logo in the banner's logo unit, as one picture (never boxed: out of a plate), the event's name its
+       description; its copy for a dark background is asked for once the change is done (darkCopyFor) */
+    function placeChatLogo(changedEls, done, said) {
+      var unit = canvas.doc.querySelector('[data-rv-logo-unit]');
+      if (!unit) { S.logo.set('fail', 'the banner no longer has a logo'); said.push('The new logo was not put in: the banner no longer has a logo.'); return; }
+      var pic = unit.querySelector('img.rv-lu-img:not(.rv-lu-dark)');
+      if (!pic) {
+        while (unit.firstChild) unit.removeChild(unit.firstChild);
+        pic = canvas.doc.createElement('img');
+        pic.className = 'rv-lu-img';
+        pic.setAttribute('decoding', 'async');
+        unit.appendChild(pic);
+        unit.classList.add('rv-lu-pic');
+      } else if (pic.parentNode !== unit) {
+        unit.replaceChild(pic, pic.parentNode);
+      }
+      canvas.setPicture(pic, logo.url);
+      Array.prototype.forEach.call(unit.querySelectorAll('img.rv-lu-dark'), function (d) { d.remove(); });
+      pic.setAttribute('alt', (currentEvent && currentEvent.name) || pic.getAttribute('alt') || '');
+      if (+logo.width > 0 && +logo.height > 0) { pic.setAttribute('width', Math.round(logo.width)); pic.setAttribute('height', Math.round(logo.height)); }
+      else { pic.removeAttribute('width'); pic.removeAttribute('height'); }
+      /* the note was about the logo that is gone */
+      unit.removeAttribute('data-rv-logo-note');
+      clearAiGenerated(pic);
+      changedEls.push(pic);
+      done.push('The banner’s logo replaced' + (logoWords ? ', with “' + logoWords + '” in it' : ''));
+      if (logo.note) said.push(String(logo.note));
+      S.logo.set('done', logo.note ? String(logo.note) : '');
+      logoUnitNotice();
+      whenAiIdle(function () { var u = canvas && canvas.doc && canvas.doc.querySelector('[data-rv-logo-unit]'); if (u) darkCopyFor(u); });
+    }
     function applyPage(made) {
       var formIds = (made.forms || []).map(function (f) { return f.id; });
       var leftOut = applyAiDesignToCanvas(canvas, design);
@@ -8024,6 +8084,8 @@
         }
       });
       if (canvas.retag) canvas.sections().forEach(function (sec) { canvas.retag(sec); });
+      /* the new logo, before any rework: a rework of the banner then keeps it as it is */
+      if (logo) placeChatLogo(changedEls, done, said);
       /* a picture its check kept off the page is never put in: it waits in the tray (keepMadePicture) */
       if (madePic && !madePic.held && np.apply === 'swap') placeNewPicture(changedEls, done, said);
       /* the plan's later pictures, each in its own place — never a held one, nor an option waiting to be chosen */
@@ -8067,9 +8129,12 @@
           if (sectionWords(job.sec) !== wordsBefore) throw new Error('you edited it meanwhile, so it was left as you had it');
           /* the logo unit is never the new picture's to change: a rewrite that leaves it reading differently is
              taken back, section and CSS */
-          var unitBefore = guard ? P.unitState(canvas.doc) : null;
-          var oldHtml = guard ? canvas.copyOf(job.sec).outerHTML : '';
-          var oldCss = guard && code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(job.sec) : null;
+          /* … nor any rework's: a rework of the banner keeps its logo exactly as it is (owner, 19 Nov 2026: the TechGig Pro
+             banner was reworked with another site's logo file and "Pro" typed beside it). The logo changes by the logo tool. */
+          var unitGuard = guard || !!job.sec.querySelector('[data-rv-logo-unit]');
+          var unitBefore = unitGuard ? logoUnitsState() : null;
+          var oldHtml = unitGuard ? canvas.copyOf(job.sec).outerHTML : '';
+          var oldCss = unitGuard && code.cssIsOwn && canvas.sectionCss ? canvas.sectionCss(job.sec) : null;
           /* the section's records from Content (a section of records, or one holding Content's items), as they are
              before the rework: '' when it shows none */
           var recordsBefore = withPic ? P.recordsState(job.sec) : '';
@@ -8080,7 +8145,7 @@
             if (canvas.retag) canvas.sections().forEach(function (s) { canvas.retag(s); });
             throw new Error(why);
           }
-          if (guard && !sameLogoUnit(unitBefore, P.unitState(canvas.doc))) putBack('left as it was — the change would have altered the logo unit');
+          if (unitGuard && !sameLogoUnit(unitBefore, logoUnitsState())) putBack(guard ? 'left as it was — the change would have altered the logo unit' : 'left as it was — it would have changed the banner’s logo. To change the logo, ask for that by itself, for example “use this logo” with the picture attached');
           /* A section of records reworked around the new picture is kept only if every record in it comes out as it
              was: its records are drawn into the rewrite first (the AI writes one example item; fillRecords draws them
              without touching the undo history), then read again. Records that could not be drawn count as changed. */
@@ -9240,6 +9305,8 @@
             forms: formsApi() ? formsApi().list().map(function (f) { return { id: f.id, name: f.name, purpose: f.purpose, fields: (f.fields || []).map(function (x) { return x.label; }) }; }) : [],
             // ETB2B AI may make a new picture only for an editor that can put one in (an older one is never offered it)
             canMakePictures: !!aiPictures(),
+            /* the logo tool (functions/lib/chat-logo.js): this editor puts a new logo in the banner (placeChatLogo) */
+            canPlaceLogo: true,
             // this editor puts in the pictures taken out of a document by their numbers (runAiTurn, answer.docPictures)
             canPlaceDocPictures: true,
             // handed over by the events side: this answer is the last word, never handed back

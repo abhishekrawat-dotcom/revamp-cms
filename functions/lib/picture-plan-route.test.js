@@ -179,7 +179,7 @@ var UID = 'u-meera';
   out = await chatPic({ instruction: said });
   var schemaOn = schemas[schemas.length - 1], promptOn = prompts[prompts.length - 1];
   ok(prompts.length === before + 1 && schemaOn.properties.newPictures.maxItems === 4 && schemaOn.required.indexOf('lastPictureFeedback') !== -1, 'switch on: up to 4, and the feedback field', schemaOn.required.join());
-  ok(/up to 4 new pictures in one message/.test(promptOn) && /PAGE FACTS \(read from the page itself/.test(promptOn) && /the banner “Hero banner”: 1 picture, and the logo unit \(it reads “ET DAVOS 2027”\)/.test(promptOn) &&
+  ok(/up to 4 new pictures in one message/.test(promptOn) && /PAGE FACTS \(read from the page itself/.test(promptOn) && /the banner “Hero banner”: 1 picture, and the logo unit;/.test(promptOn) && !/it reads “ET DAVOS 2027”/.test(promptOn) &&
     /“Agenda”: no picture/.test(promptOn) && /"Who Should Attend" people allowed/.test(promptOn) && /say a limit only as WHAT YOU CANNOT DO WITH PICTURES words it/.test(promptOn),
     '… the prompt: several at once, the page facts (the banner HAS its picture), the people sections, limits in the manifest\'s words', promptOn.slice(promptOn.indexOf('PAGE FACTS'), promptOn.indexOf('PAGE FACTS') + 300));
   var b = out.body;

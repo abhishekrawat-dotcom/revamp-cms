@@ -29,6 +29,8 @@ const logoUnit = require('./logo-unit');
 /* registration forms: their shape, the public definitions, the AI chat's form changes (pure) */
 const formsLib = require('./forms');
 const { safeFetch } = require('./safe-fetch');
+/* the logo tool: "logo" means the banner's logo unit; a linked or attached picture becomes it, words drawn in (owner, 19 Nov 2026) */
+const chatLogo = require('./chat-logo');
 
 /* What lib/api.js hands this file on every call (wire(); see aiChatHelpers() there): the helpers and settings
    that its own routes use too. Each is kept here under its own name, so the code below reads exactly as it did there.
@@ -50,6 +52,7 @@ function wire(helpers) {
     NAME_RULE, aiUsageRecorder, approvalsConfig, chatName, chatRateOk, chatUid, chatUserRef, eventDocRef, httpError,
     queryOf, sanitizeDesignField, sendAiFailure, sendFailure, sendStepFailure, withAdmin, withAdminBody
   } = helpers);
+  chatLogo.wire(helpers.logoTools || null);
 }
 
 
@@ -213,6 +216,20 @@ function chatDocNotes(raw, withPictures) {
     return '“' + name + '” holds no photographs to place' + (left ? ' (' + left.replace(/\.$/, '') + ')' : '') + ': say so if the owner asks for its pictures.';
   }).filter(Boolean);
 }
+/* ETB2B's top bar and footer: the same on every ETB2B event site, so ETB2B AI never changes them (owner, 19 Nov 2026: a
+   message about the event's logo reworked the top bar on a test copy of TechGig Pro). The editor marks them (`shared`,
+   its pinned sections); the navigation and footer roles and keys say so too. */
+function chatShared(s) {
+  return !!s && (s.shared === true || s.role === 'nav' || s.role === 'footer' || s.id === 'nav' || s.id === 'footer');
+}
+function chatSharedIds(sections) {
+  var out = {};
+  (Array.isArray(sections) ? sections : []).forEach(function (s) { if (s && s.id && chatShared(s)) out[s.id] = true; });
+  return out;
+}
+var CHAT_SHARED_SAY = 'ETB2B\'s top bar and footer are the same on every ETB2B event site, so ETB2B AI does not change them.';
+var CHAT_SHARED_LINE = 'ETB2B\'S TOP BAR AND FOOTER (sections marked "etb2bShared": true) are the same on every ETB2B event site: never change them with any tool — no textEdits, sectionEdits, sectionOps, pictures, buttons or forms there. Their links follow the page\'s sections by themselves. If the owner asks to change them, say they are ETB2B\'s own and stay as they are.';
+
 function buildChatPrompt(payload) {
   var sections = (payload.sections || []).filter(function (s) { return s && s.id; });
   var history = chatHistoryText(payload);
@@ -239,6 +256,9 @@ function buildChatPrompt(payload) {
     (Array.isArray(payload.teamExamples) && payload.teamExamples.length ? teamExamplesBlock(payload.teamExamples) + '\n' : ''),
     ET_LOGO_COLOUR_RULE,
     NAME_RULE,
+    CHAT_SHARED_LINE,
+    (payload.logoOffered ? chatLogo.promptLines() + '\n' : '"The logo" means the event\'s own logo in the banner (the logo unit), never ETB2B\'s logo in the top bar. A rework keeps the logo unit exactly as it is; to change it, the owner selects it and uses Replace image.\n') +
+      (payload.logoShown ? 'Just before the screenshots of the page comes one more picture: the banner\'s logo unit as it is now, on a plain grey ground that is not part of it. What the logo shows and reads is what you see in that picture — never take it from its description or its file name.\n' : ''),
     '',
     'The site\'s current design settings:',
     JSON.stringify(payload.design || {}, null, 2),
@@ -246,7 +266,7 @@ function buildChatPrompt(payload) {
     'The site\'s real sections right now, in page order (sectionId -> its own current text, verbatim; hidden: true means visitors do not see it — showsWhen: what it waits for to be shown, e.g. "sessions" for an agenda with none yet — so put no picture there and make none for it unless the owner names it; buttons: the labels of the buttons in it):',
     JSON.stringify(sections.map(function (s) {
       var buttons = (Array.isArray(s.buttons) ? s.buttons : []).map(function (b) { return String(b || '').replace(/\s+/g, ' ').trim().slice(0, 80); }).filter(Boolean).slice(0, 8);
-      var row = { sectionId: s.id, name: s.name, hidden: s.hidden ? true : undefined, showsWhen: s.hidden && typeof s.showsWhen === 'string' && /^[a-z][a-z-]{0,30}$/.test(s.showsWhen) ? s.showsWhen : undefined,
+      var row = { sectionId: s.id, name: s.name, etb2bShared: chatShared(s) ? true : undefined, hidden: s.hidden ? true : undefined, showsWhen: s.hidden && typeof s.showsWhen === 'string' && /^[a-z][a-z-]{0,30}$/.test(s.showsWhen) ? s.showsWhen : undefined,
         texts: s.texts || [], buttons: buttons.length ? buttons : undefined };
       /* with pictures: its role, its replaceable pictures, a background, the banner's slot, a video (never `own`) */
       return canPics ? Object.assign(row, chatPicture.promptFields(s)) : row;
@@ -383,6 +403,11 @@ function chatResponseSchema(payload) {
     schema.properties.sectionOps.items.properties.sectionId.enum = sectionIds;
     schema.properties.ctaLinks.items.properties.sectionId.enum = sectionIds;
   }
+  /* the logo tool (lib/chat-logo.js): only for an editor that can put the new logo in, on a page with a logo unit */
+  if (payload.logoOffered) {
+    schema.properties.logoUnit = chatLogo.schemaProp();
+    schema.required.push('logoUnit');
+  }
   /* a new picture the AI makes (lib/chat-picture.js; the answer is checked by chatPicture.planAsk): only for an
      editor that can place one, so an older editor's schema is unchanged */
   if (payload.canMakePictures === true) {
@@ -518,15 +543,16 @@ function chatPageFacts(sections) {
     var n = parseInt(s.shows, 10);
     if (!(n >= 0 && n <= 999)) return;
     var name = '“' + chatPicture.cleanSectionName(s.name || s.id) + '”';
+    /* what the logo unit reads is never said here: its alt text is not what it shows (TechGig Pro, 19 Nov 2026: a skyline
+       photo with the alt "TechGig Pro"). The model is shown the picture itself when the message is about the logo. */
     var unit = s.logoUnit && typeof s.logoUnit === 'object' && s.logoUnit.present === true;
-    var reads = unit ? chatLine(s.logoUnit.text, 60).replace(/["“”]/g, '') : '';
     if (s.role === 'hero') bannerPicture = n > 0;
     out.push((s.role === 'hero' ? 'the banner ' + name : name) + ': ' + (n === 0 ? 'no picture' : n === 1 ? '1 picture' : n + ' pictures') +
-      (unit ? ', and the logo unit' + (reads ? ' (it reads “' + reads + '”)' : '') : ''));
+      (unit ? ', and the logo unit' : ''));
   });
   if (!out.length) return { line: '', bannerPicture: null };
   return { line: 'PAGE FACTS (read from the page itself, not from the screenshots — trust them over what a screenshot seems to show): ' + out.slice(0, 24).join('; ') +
-    '. A banner or section listed with a picture HAS that picture; never call it empty, bare or plain. The logo unit already carries the event\'s name: a new picture never needs it.', bannerPicture: bannerPicture };
+    '. A banner or section listed with a picture HAS that picture; never call it empty, bare or plain. The logo unit is the event\'s own logo: a new picture never carries the event\'s name or logo.', bannerPicture: bannerPicture };
 }
 /* the owner's own messages in the two newest stored turns, oldest first: a scene named there ("make a picture of
    the Gateway of India") and placed in this message is still the owner's (chatPicture.planAsk ownerSubject) */
@@ -535,7 +561,7 @@ function chatEarlierAsks(turns) {
 }
 /* whether an answer still changes anything on the page */
 function chatAnswerChanges(answer) {
-  return !!(Object.keys(answer.design || {}).length || answer.newPicture ||
+  return !!(Object.keys(answer.design || {}).length || answer.newPicture || answer.logoUnit ||
     ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds', 'pictureSwaps'].some(function (k) { return (answer[k] || []).length; }));
 }
 /* stopped: the owner pressed Stop (UX-097) before the answer was applied, or between its steps */
@@ -593,6 +619,16 @@ function handleChatEdit(req, res) {
     payload.docList = docs.list;
     payload.docMarker = 'DOC-' + crypto.randomBytes(6).toString('hex');
     var eventId = isEventId(String(payload.eventId || '')) ? String(payload.eventId) : '';
+    /* the banner's logo unit as the editor read it ({ src, tone }), and the logo tool, offered to an editor that can put a
+       new logo in on a page that has one (lib/chat-logo.js) */
+    var logoNow = (function () {
+      var sec = (Array.isArray(payload.sections) ? payload.sections : []).filter(function (s) { return s && s.logoUnit && s.logoUnit.present === true; })[0];
+      var u = sec ? sec.logoUnit : {};
+      return { src: /^https:\/\//i.test(String(u.src || '')) ? String(u.src).slice(0, 2000) : '', tone: u.tone === 'dark' ? 'dark' : 'light' };
+    })();
+    payload.logoOffered = chatLogo.offered(Object.assign({}, payload, { eventId: eventId }));
+    /* the logo itself is shown to the model when the message is about it: what it reads is never taken from its alt text */
+    var showLogo = !!logoNow.src && (chatLogo.aboutLogo(payload.instruction) || (payload.focus && typeof payload.focus === 'object' && chatLogo.aboutLogo(payload.focus.name)));
     /* a message the events side of ETB2B AI handed here (plan §5b): answered here, never handed back */
     payload.handedFrom = payload.handedFrom === 'dash' ? 'dash' : '';
     var uid = chatUid(decoded);
@@ -694,7 +730,7 @@ function handleChatEdit(req, res) {
       if (docPicsNow.length && userRef) docPictures.remember(userRef, docPicsNow, new Date().toISOString());
       var sheets = !payload.docPictures.length ? Promise.resolve([]) : docPictures.sheets(payload.docPictures, { ownPrefix: ownPrefix, max: docPictures.CAPS.sheets,
         download: function (path) { return fb.bucket.file(path).download().then(function (got) { return got[0]; }); } });
-      return Promise.all([chatPictures(eventId, payload.attachments), examples, sheets]);
+      return Promise.all([chatPictures(eventId, payload.attachments), examples, sheets, showLogo ? chatLogo.readCurrent(logoNow.src, { ownPrefix: ownPrefix }) : null]);
     }).then(function (both) {
       var seen = both[0];
       payload.teamExamples = both[1];
@@ -706,12 +742,15 @@ function handleChatEdit(req, res) {
       var sheets = (both[2] || []).slice(0, Math.max(0, room));
       payload.docSheets = sheets.length;
       payload.docSeen = sheets.reduce(function (all, s) { return all.concat(s.numbers || []); }, []);
+      /* the banner's logo unit, just before the screenshots, when the message is about it */
+      var logoPic = both[3] && room - sheets.length > 0 ? [both[3]] : [];
+      payload.logoShown = logoPic.length > 0;
       /* the page as it looks, after those */
-      var view = chatView(payload, room - sheets.length);
+      var view = chatView(payload, room - sheets.length - logoPic.length);
       payload.viewCount = view.length;
       payload.viewWhat = CHAT_VIEW_WHAT[payload.viewWhat] ? payload.viewWhat : 'visible';
       /* a deck's slide pictures go last, as the documents' lines say (lib/ai-docs.js docsBlock) */
-      var images = seen.images.concat(sheets.map(function (s) { return { mimeType: s.mimeType, data: s.data }; }), view, docs.images);
+      var images = seen.images.concat(sheets.map(function (s) { return { mimeType: s.mimeType, data: s.data }; }), logoPic, view, docs.images);
       function ask() {
         return llm.callJson(buildChatPrompt(payload), chatResponseSchema(payload), { route: 'chat-edit', eventId: eventId, maxOutputTokens: AI_OUTPUT_TOKENS.small, images: images.length ? images : undefined,
           inlineFiles: docs.files.length ? docs.files : undefined, onUsage: aiUsageRecorder(null, eventId, 'chat-edit') });
@@ -732,11 +771,24 @@ function handleChatEdit(req, res) {
         console.error('chat-edit: the request was refused with ' + images.length + ' picture(s); asked again without them');
         images = [];
         payload.viewCount = 0;
+        payload.logoShown = false;
         payload.docSheets = 0;
         payload.docSeen = [];
         if (payload.seenPictures) { payload.unseenNote = 'The attached pictures could not be shown to you this time; say so if it matters for the answer.'; payload.seenPictures = 0; }
         payload.docList = (payload.docList || []).map(function (d) { return d.look ? Object.assign({}, d, { look: Object.assign({}, d.look, { previews: 0 }) }) : d; });
         return ask();
+      });
+    }).then(function (r) {
+      /* the logo tool (lib/chat-logo.js): the new logo is made and stored before the answer is sent, so the editor puts
+         in a picture that is there; what could not be used is said in plain words */
+      if (!r || r.error || !r.parsed || !payload.logoOffered || r.parsed.kind !== 'edit') return r;
+      var asked = chatLogo.cleanAsk(r.parsed.logoUnit, { instruction: String(payload.instruction || ''), earlier: chatEarlierAsks(payload.turns),
+        attachments: Array.isArray(payload.attachments) ? payload.attachments : [], ownAttached: payload.attachmentCount, ownPrefix: ownPrefix, current: logoNow.src });
+      if (!asked) return r;
+      if (asked.reply) { r.logoSay = asked.reply; return r; }
+      return chatLogo.make(asked.ask, { fb: fb, eventId: eventId, design: payload.design || {}, tone: logoNow.tone }).then(function (m) {
+        if (m.logo) r.logoMade = m.logo; else r.logoSay = m.reply;
+        return r;
       });
     }).then(function (r) {
       if (r.error) { sendAiFailure(res, r); return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: r.code || 'ai-unavailable' }); }
@@ -773,14 +825,19 @@ function handleChatEdit(req, res) {
       });
 
       var knownSectionIds = (payload.sections || []).map(function (s) { return s.id; });
+      /* ETB2B's top bar and footer are never changed (chatShared): what the answer meant to do there is left out, and said
+         once — not for a word changed everywhere ("2026 to 2027") that is changed in the event's own sections */
+      var sharedIds = chatSharedIds(payload.sections), sharedHit = false, sharedText = [];
       var textEdits = (parsed.textEdits || []).map(function (t) {
         if (!t) return null;
         if (knownSectionIds.indexOf(t.sectionId) === -1) { skipped.push('a text edit for an unknown section'); return null; }
+        if (sharedIds[t.sectionId]) { sharedText.push(String(t.find || '').trim()); return null; }
         var find = String(t.find || '').trim().slice(0, 300);
         var replace = String(t.replace || '').slice(0, 300);
         if (!find) return null;
         return { sectionId: t.sectionId, find: find, replace: replace };
       }).filter(Boolean);
+      if (sharedText.some(function (f) { return !textEdits.some(function (t) { return t.find === f; }); })) sharedHit = true;
 
       function brief(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 1500); }
       /* the numbered pictures: the owner's attached ones, then those taken out of documents (lib/doc-pictures.js) */
@@ -801,6 +858,7 @@ function handleChatEdit(req, res) {
       var sectionEdits = [], edited = {};
       (parsed.sectionEdits || []).forEach(function (e) {
         if (!e || knownSectionIds.indexOf(e.sectionId) === -1 || edited[e.sectionId] || !brief(e.instruction)) return;
+        if (sharedIds[e.sectionId]) { sharedHit = true; return; }
         edited[e.sectionId] = true;
         sectionEdits.push({ sectionId: e.sectionId, instruction: brief(e.instruction), pictures: picturesOf(e.pictures, topN) });
       });
@@ -908,6 +966,7 @@ function handleChatEdit(req, res) {
       });
       var sectionOps = (parsed.sectionOps || []).map(function (o) {
         if (!o || CHAT_SECTION_OPS.indexOf(o.op) === -1 || knownSectionIds.indexOf(o.sectionId) === -1) return null;
+        if (sharedIds[o.sectionId]) { sharedHit = true; return null; }
         var before = knownSectionIds.indexOf(o.beforeSectionId) !== -1 ? o.beforeSectionId : '';
         return o.op === 'move' ? { op: 'move', sectionId: o.sectionId, beforeSectionId: before } : { op: o.op, sectionId: o.sectionId };
       }).filter(Boolean).slice(0, 12);
@@ -959,10 +1018,15 @@ function handleChatEdit(req, res) {
          against the page and the forms it names (lib/forms.js cleanAiFormOps) */
       var formOps = formsLib.cleanAiFormOps(parsed, { sections: payload.sections || [], forms: chatForms(payload) });
       skipped = skipped.concat(formOps.skipped);
+      /* in the top bar or footer: no new button and no form put in (a button already there may still open a form) */
+      formOps.ctaLinks = formOps.ctaLinks.filter(function (c) { if (sharedIds[c.sectionId] && !c.buttonText) { sharedHit = true; return false; } return true; });
+      formOps.formEmbeds = formOps.formEmbeds.filter(function (e) { if (e.sectionId && sharedIds[e.sectionId]) { sharedHit = true; return false; } return true; });
+      pictureSwaps = pictureSwaps.filter(function (w) { if (sharedIds[w.sectionId]) { sharedHit = true; return false; } return true; });
+      if (sharedHit) skipped.push(CHAT_SHARED_SAY);
 
       var summary = String(parsed.summary || '').trim().slice(0, CHAT_ANSWER_CHARS);
       var hasOther = Object.keys(design).length || textEdits.length || sectionEdits.length || sectionOps.length || newSections.length ||
-        formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length || pictureSwaps.length;
+        formOps.newForms.length || formOps.ctaLinks.length || formOps.formEmbeds.length || pictureSwaps.length || !!r.logoMade;
       var hasChange = hasOther || !!pictureAsk;
       /* everything the answer would have done put document pictures where the site's rules keep them out: the answer is
          what was left out and why, not the model's summary of a change that is not made */
@@ -1022,16 +1086,25 @@ function handleChatEdit(req, res) {
         });
         skipped.push(chatPicture.sentence('notMadePart', { name: lostNames.join(', ') }));
       }
+      /* the logo tool: what could not be used is the answer when nothing else changes, else a thing not done */
+      if (r.logoSay && !hasChange && asEdit) { summary = r.logoSay; skipped = skipped.filter(function (l) { return l !== r.logoSay; }); }
+      else if (r.logoSay) skipped.push(r.logoSay);
+      if (r.logoMade && !summary) summary = 'I\'ve put the new logo in the banner.';
+      /* everything the answer meant to do was in ETB2B's top bar or footer: said so, never the model's summary of it */
+      if (sharedHit && !hasChange && asEdit && !r.logoSay) { summary = CHAT_SHARED_SAY + ' Nothing on the page changed.'; skipped = skipped.filter(function (l) { return l !== CHAT_SHARED_SAY; }); }
       if (!summary && !hasChange && !goTo) {
         sendJson(res, 502, { error: 'The AI gave an answer we could not use. Try again.', code: 'ai-bad-output', retryable: true });
         return learnEdit(req, fb, decoded, payload, eventId, eventData, { code: 'ai-bad-output', parsed: parsed });
       }
       var kind = pictureTaken && pictureAsk ? 'edit' : pictureReply || lostReply ? 'reply' : parsed.kind === 'reply' ? 'reply' : parsed.kind === 'undo' ? 'undo' : hasChange ? 'edit' : 'reply';
+      /* the new logo, made and stored (lib/chat-logo.js make): the editor puts it in the banner's logo unit */
+      var logoAnswer = kind === 'edit' && r.logoMade ? { url: r.logoMade.url, width: r.logoMade.width, height: r.logoMade.height, from: r.logoMade.from, words: r.logoMade.words, note: r.logoMade.note || '' } : null;
       if (!summary && pictureAsk) summary = 'I\'m making a new picture for “' + chatLine(pictureAsk.sectionName || pictureAsk.sectionId, 60) + '”; it takes about half a minute.';
       if (!summary && goTo) summary = CHAT_GO_TO_SAY[goTo];
       var answer = { kind: kind, summary: summary || 'Done.', design: design, textEdits: textEdits,
         sectionEdits: sectionEdits, sectionOps: sectionOps, newSections: newSections,
         newForms: formOps.newForms, ctaLinks: formOps.ctaLinks, formEmbeds: formOps.formEmbeds, skipped: skipped, goTo: goTo };
+      if (logoAnswer) answer.logoUnit = logoAnswer;
       if (kind !== 'edit') ['textEdits', 'sectionEdits', 'sectionOps', 'newSections', 'newForms', 'ctaLinks', 'formEmbeds'].forEach(function (k) { answer[k] = []; });
       if (kind !== 'edit') answer.design = {};
       /* the picture is made in a second step from the stored turn, so it needs an event to keep the turn under */

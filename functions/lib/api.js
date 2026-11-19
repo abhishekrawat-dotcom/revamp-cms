@@ -7814,7 +7814,9 @@ function aiChatHelpers() {
   return {
     AI_OUTPUT_TOKENS, BODY_LIMITS, DESIGN_ENUM_FIELDS, DESIGN_FIELDS, DESIGN_NUMERIC_FIELDS, ET_LOGO_COLOUR_RULE,
     NAME_RULE, aiUsageRecorder, approvalsConfig, chatName, chatRateOk, chatUid, chatUserRef, eventDocRef, httpError,
-    queryOf, sanitizeDesignField, sendAiFailure, sendFailure, sendStepFailure, withAdmin, withAdminBody
+    queryOf, sanitizeDesignField, sendAiFailure, sendFailure, sendStepFailure, withAdmin, withAdminBody,
+    /* the chat's logo tool (lib/chat-logo.js): draws and stores a new logo picture the way the logo unit is made */
+    logoTools: { rasterise: rasterise, storePublicPicture: storePublicPicture, fetchUnitFont: fetchUnitFont, svgCouldRun: svgCouldRun }
   };
 }
 function importHelpers() {
