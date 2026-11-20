@@ -14,6 +14,15 @@
      - the owner's editor preview (site/drafts/…) is left alone: it shows the old page until the owner opens
        the editor again and presses Preview.
    --dry  captures and builds the import in memory, says what it would write, writes nothing.
+   --replace-saved  also for an event whose saved site is still the one Create Event saved (version 1, saved
+          within two minutes of the event being made, never published): nobody has worked on it, so a new import
+          loses nothing (the owner, 20 Nov 2026, on ETDavos Immersions: the import was right but the Lovable site was
+          republished after it — "Re-import into this event"). That saved site is kept first, whole, under
+          events/<id>/site-replaced/<stamp>/ with the event's site record (event-site.json); then the event uses the
+          new import and has no saved site, so the editor builds the page from the import — the owner presses Save.
+   --template imported-<id>  use an import made already instead of capturing (with --replace-saved).
+   node tools/reimport-lovable.js --event <id> --restore-saved <stamp>               (put a replaced site back)
+          what the event has now is kept the same way first, so nothing is lost either way.
    Credentials: the main checkout's tools/.env.local (FIREBASE_* as for tools/serve.js), never printed. */
 'use strict';
 const fs = require('fs');
@@ -35,15 +44,21 @@ const EVENT = arg('--event');
 const URL_ARG = arg('--url');
 const HTML_ARG = arg('--html');
 const SET_TEMPLATE = arg('--set-template');
-if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(EVENT) || (SET_TEMPLATE && !/^imported-[a-z0-9][a-z0-9-]{0,59}$/.test(SET_TEMPLATE))) {
-  console.error('usage: node tools/reimport-lovable.js --event <id> [--url <lovable url>] [--html <captured.html>] [--dry]\n' +
-    '       node tools/reimport-lovable.js --event <id> --set-template imported-<import id>');
+const REPLACE = args.indexOf('--replace-saved') !== -1;
+const USE_TEMPLATE = arg('--template');
+const RESTORE = arg('--restore-saved');
+if (!/^[a-z0-9][a-z0-9-]{0,99}$/.test(EVENT) || (SET_TEMPLATE && !/^imported-[a-z0-9][a-z0-9-]{0,59}$/.test(SET_TEMPLATE)) ||
+    (USE_TEMPLATE && (!REPLACE || !/^imported-[a-z0-9][a-z0-9-]{0,59}$/.test(USE_TEMPLATE))) || (RESTORE && !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9-]{8,16}Z$/.test(RESTORE))) {
+  console.error('usage: node tools/reimport-lovable.js --event <id> [--url <lovable url>] [--html <captured.html>] [--replace-saved [--template imported-<id>]] [--dry]\n' +
+    '       node tools/reimport-lovable.js --event <id> --set-template imported-<import id>\n' +
+    '       node tools/reimport-lovable.js --event <id> --restore-saved <stamp>');
   process.exit(2);
 }
 
 const { getFirebase } = require('../functions/lib/firebase');
 const api = require('../functions/lib/api');
 const pictures = require('../functions/lib/pictures');
+const { logActivity } = require('../functions/lib/activity');
 const importStore = require('../functions/lib/import-store');
 const H = api._testHooks;
 
@@ -64,6 +79,55 @@ async function capture(url) {
   if (bad) throw new Error(bad);
   const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-first-run'] });
   try { return await scraper.capturePage(await browser.newPage(), url); } finally { await browser.close(); }
+}
+
+/* ---------- a saved site kept aside, and put back (--replace-saved, --restore-saved) ---------- */
+const FIRST_SAVE_MS = 2 * 60 * 1000;
+function sitePrefix(id) { return 'events/' + id + '/site/'; }
+function keptPrefix(id, stamp) { return 'events/' + id + '/site-replaced/' + stamp + '/'; }
+function stampNow() { return new Date().toISOString().replace(/[:.]/g, '-'); }
+/* why the saved site is someone's work (so it is not replaced), or '' when it is still the one Create Event saved */
+function notUntouched(ev) {
+  if (ev.published) return 'it is published';
+  var site = ev.site || {}, version = +site.version || 0;
+  if (version !== 1) return 'it has ' + version + ' saved versions';
+  var made = Date.parse(ev.createdAt || ''), saved = Date.parse(site.updatedAt || '');
+  if (!(saved - made >= 0 && saved - made <= FIRST_SAVE_MS)) return 'it was saved at ' + site.updatedAt + ', later than when the event was made (' + ev.createdAt + ')';
+  return '';
+}
+/* copies every file of the event's saved site, and its site record, under site-replaced/<stamp>/; each copy is
+   checked before anything is removed -> { stamp, names } */
+async function keepSite(fb, id, ev) {
+  const stamp = stampNow(), from = sitePrefix(id), to = keptPrefix(id, stamp);
+  const [files] = await fb.bucket.getFiles({ prefix: from });
+  for (const f of files) await f.copy(fb.bucket.file(to + f.name.slice(from.length)));
+  await fb.bucket.file(to + 'event-site.json').save(JSON.stringify({ site: ev.site || null, templateId: ev.templateId || null, keptAt: new Date().toISOString(), files: files.map(function (f) { return f.name.slice(from.length); }) }, null, 1),
+    { resumable: false, metadata: { contentType: 'application/json' } });
+  for (const f of files) {
+    const [there] = await fb.bucket.file(to + f.name.slice(from.length)).exists();
+    if (!there) throw new Error('the copy of ' + f.name + ' is not there: nothing was removed (kept so far under ' + to + ')');
+  }
+  return { stamp: stamp, names: files.map(function (f) { return f.name; }) };
+}
+async function dropFiles(fb, names) { for (const n of names) await fb.bucket.file(n).delete({ ignoreNotFound: true }); }
+/* the firebase-admin that lib/firebase.js uses (functions/node_modules): another copy's FieldValue is refused by its Firestore */
+function fieldDelete() { return require(require.resolve('firebase-admin', { paths: [path.join(__dirname, '..', 'functions')] })).firestore.FieldValue.delete(); }
+
+async function restoreSite(fb, ref, ev) {
+  const from = keptPrefix(EVENT, RESTORE);
+  const [rec] = await fb.bucket.file(from + 'event-site.json').download().catch(function () { return [null]; });
+  if (!rec) throw new Error('nothing kept under ' + from);
+  const kept = JSON.parse(rec.toString('utf8'));
+  if (!kept.site || !/^imported-/.test(String(kept.templateId || ''))) throw new Error(from + 'event-site.json has no saved site to put back');
+  if (DRY) { console.log('would keep what ' + EVENT + ' has now, then put back ' + kept.files.length + ' files and site version ' + kept.site.version + ' with ' + kept.templateId); return; }
+  const now = await keepSite(fb, EVENT, ev);
+  console.log('what ' + EVENT + ' had (' + now.names.length + ' files) is kept under ' + keptPrefix(EVENT, now.stamp));
+  await dropFiles(fb, now.names);
+  for (const n of kept.files) await fb.bucket.file(from + n).copy(fb.bucket.file(sitePrefix(EVENT) + n));
+  await ref.update({ templateId: kept.templateId, site: kept.site, updatedAt: new Date().toISOString() });
+  await logActivity(fb, EVENT, 'tools/reimport-lovable.js', 'site-designed', 'The site saved before the new Lovable import was put back (version ' + kept.site.version + ')', { area: 'design' });
+  console.log('put back: ' + kept.files.length + ' files, site version ' + kept.site.version + ', template ' + kept.templateId + '.');
+  console.log('to undo this: node tools/reimport-lovable.js --event ' + EVENT + ' --restore-saved ' + now.stamp);
 }
 
 function count(html, re) { return (html.replace(/<script\b[\s\S]*?<\/script>/gi, '').match(re) || []).length; }
@@ -90,7 +154,19 @@ async function main() {
     return;
   }
 
-  if (saved || pageThere || published) throw new Error('"' + EVENT + '" has a saved or published site: its page is the owner\'s work, not the import — refusing');
+  if (RESTORE) return restoreSite(fb, ref, ev);
+  if (saved || pageThere || published) {
+    if (!REPLACE) throw new Error('"' + EVENT + '" has a saved or published site: its page is the owner\'s work, not the import — refusing (--replace-saved for a site nobody has worked on)');
+    const why = notUntouched(ev);
+    if (why) throw new Error('"' + EVENT + '": ' + why + ' — its page is someone\'s work, not the import: refusing even with --replace-saved');
+    console.log('its saved site is still the one Create Event saved: it is kept aside, then replaced');
+  }
+  if (USE_TEMPLATE) {
+    const got = await importStore.readRecord(fb, USE_TEMPLATE.slice(9));
+    if (!got.data) throw new Error('no import ' + USE_TEMPLATE);
+    if (DRY) { console.log('would keep the saved site aside and set templateId ' + oldTemplate + ' -> ' + USE_TEMPLATE); return; }
+    return useImport(fb, ref, ev, oldTemplate, USE_TEMPLATE, saved || pageThere);
+  }
   const oldImport = await importStore.readRecord(fb, oldTemplate.slice(9));
   const url = URL_ARG || (oldImport.data && oldImport.data.sourceUrl) || '';
   if (!/^https?:\/\//.test(url)) throw new Error('no Lovable address: pass --url');
@@ -117,10 +193,27 @@ async function main() {
     console.log('would set ' + EVENT + ' templateId ' + oldTemplate + ' -> ' + result.templateId + ' (nothing written)');
     return;
   }
+  if (saved || pageThere) return useImport(fb, ref, ev, oldTemplate, result.templateId, true);
   await ref.update({ templateId: result.templateId, updatedAt: new Date().toISOString() });
   console.log('imported as ' + result.templateId + '; ' + EVENT + ' now uses it (was ' + oldTemplate + ').');
   console.log('to put it back: node tools/reimport-lovable.js --event ' + EVENT + ' --set-template ' + oldTemplate);
   console.log('the owner opens the editor (it builds the page from the new import), then Preview, to refresh /preview/' + EVENT + '?draft=1');
+}
+
+/* the event on an import; a saved site (the one Create Event saved: notUntouched) kept aside first, then taken off,
+   so the editor builds the page from the import */
+async function useImport(fb, ref, ev, oldTemplate, templateId, hadSite) {
+  let kept = null;
+  if (hadSite) {
+    kept = await keepSite(fb, EVENT, ev);
+    console.log('the saved site (' + kept.names.length + ' files, version ' + ((ev.site && ev.site.version) || 0) + ') is kept under ' + keptPrefix(EVENT, kept.stamp));
+  }
+  await ref.update(Object.assign({ templateId: templateId, updatedAt: new Date().toISOString() }, hadSite ? { site: fieldDelete() } : {}));
+  if (kept) await dropFiles(fb, kept.names);
+  await logActivity(fb, EVENT, 'tools/reimport-lovable.js', 'site-designed', 'The site was imported again from Lovable' + (kept ? ' (the earlier saved site is kept)' : ''), { area: 'design' });
+  console.log(EVENT + ' now uses ' + templateId + ' (was ' + oldTemplate + ')' + (kept ? ' and has no saved site: the editor builds the page from the import, and the owner presses Save' : '') + '.');
+  if (kept) console.log('to put it back: node tools/reimport-lovable.js --event ' + EVENT + ' --restore-saved ' + kept.stamp);
+  else console.log('to put it back: node tools/reimport-lovable.js --event ' + EVENT + ' --set-template ' + oldTemplate);
 }
 
 main().then(function () { process.exit(0); }, function (err) { console.error('reimport-lovable: ' + (err && err.message)); process.exit(1); });
