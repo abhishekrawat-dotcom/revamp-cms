@@ -7946,6 +7946,7 @@ var ROUTES = {
   'POST /api/event/restore': events('handleEventRestore'),
   'POST /api/event/clone': events('handleEventClone'),
   'POST /api/event/upload': events('handleUpload'),
+  'POST /api/event/embed-code': events('handleEmbedCode'),   // the copy's common code, too big for ETB2B's global section
   'GET /api/event/hero-video': heroVideo('handleHeroVideoGet'),
   'PUT /api/event/hero-video': heroVideo('handleHeroVideoSave'),
   'POST /api/event/ai-hero': aiHeroRoute('handleHero'),       // ETB2B AI's first hero picture for an event it started (lib/ai-hero.js)

@@ -3384,11 +3384,55 @@
         });
         if (c.error) return c;
         // the boxes already hold their <style> / <script> tags
-        return { isCommon: true, html: '', css: c.css, js: c.js, all: c.css + (c.js ? '\n' + c.js : ''), count: c.sections };
+        return { isCommon: true, html: '', css: c.css, js: c.js, all: c.css + (c.js ? '\n' + c.js : ''), count: c.sections, text: c.text,
+          plan: RevampDevExport.globalPlan ? RevampDevExport.globalPlan(c.css, c.js) : null };
       } catch (err) {
         if (window.console) console.error('[RevampTemplateUI] developer zone common copy:', err);
         return { error: 'The common CSS & JS could not be made (' + ((err && err.message) || 'unknown error') + ').' };
       }
+    }
+    /* The common part too big for ETB2B's global section (65,535 bytes for its CSS and JS together; the owner, 20 Nov
+       2026: "the global css and JS that I have added are being cropped"): the part globalPlan names is kept with the
+       event as a file (POST /api/event/embed-code) and its box holds a few lines that load it. Never rejects: what could
+       not be kept is said (hostError), and the code is shown whole. */
+    function kbOf(n) { return Math.round(n / 1024) + ' KB'; }
+    function hostCommon(x) {
+      var kinds = x.plan.host;
+      if (!eventId || !window.RevampAuth || !RevampAuth.authedFetch) return Promise.resolve(Object.assign({}, x, { hostError: 'open the site from its event to copy it' }));
+      return Promise.all(kinds.map(function (kind) {
+        return RevampAuth.authedFetch('/api/event/embed-code', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: eventId, kind: kind, text: x.text[kind] })
+        }).then(function (r) {
+          return r.json().then(null, function () { return {}; }).then(function (j) {
+            if (r.ok && j && j.url) return j.url;
+            throw new Error(j && j.error ? String(j.error) : 'the server did not answer');
+          });
+        });
+      })).then(function (urls) {
+        var by = {};
+        kinds.forEach(function (k, i) { by[k] = urls[i]; });
+        var boxes = RevampDevExport.hostedBoxes(by, { css: x.css, js: x.js });
+        return Object.assign({}, x, { css: boxes.css, js: boxes.js, all: boxes.css + (boxes.js ? '\n' + boxes.js : ''), hosted: kinds,
+          after: RevampDevExport.globalPlan(boxes.css, boxes.js) });
+      }).then(null, function (err) {
+        return Object.assign({}, x, { hostError: (err && err.message) || 'unknown error' });
+      });
+    }
+    function commonNote(x) {
+      var p = x.plan, room = p ? kbOf(p.limit) : '64 KB';
+      var paste = 'Paste this CSS and JS once on the page — into the CMS’s global section, which applies to every section. Every section copied from this site uses it (' + x.count + ' on this page). There is no HTML. After changing the Theme or the Section edges, paste it again, with every section.';
+      if (!p) return paste;
+      if (x.hosted) {
+        var what = x.hosted.length > 1 ? 'the CSS and the script are' : (x.hosted[0] === 'js' ? 'the script is' : 'the CSS is');
+        return 'This site’s common CSS & JS is ' + kbOf(p.bytes) + ', more than the ' + room + ' ETB2B’s global section holds, so ' + what +
+          ' kept with the event as a file and the box below loads it: ' + kbOf(x.after.bytes) + ' to paste. ' + paste + ' Copy it again after changing the site: the new copy loads the new code.';
+      }
+      if (x.hostError) {
+        return 'This site’s common CSS & JS is ' + kbOf(p.bytes) + ', more than the ' + room + ' ETB2B’s global section holds, and it could not be kept with the event just now (' +
+          x.hostError + '). Pasted into ETB2B as it is, it is cut short and the sections do not work: switch to “Edit this section” and back to try again. For a website without that limit, this is the whole code.';
+      }
+      return paste + ' Size: ' + kbOf(p.bytes) + ' of the ' + room + ' ETB2B’s global section holds.';
     }
     function showCopy() {
       var box = $('rv-dev-copy-notes'), mine = ++copySeq;
@@ -3405,7 +3449,7 @@
           setVal('html', '');
           setVal('css', exported.css);
           setVal('js', exported.js);
-          box.textContent = 'Paste this CSS and JS once on the page — into the CMS’s global section, which applies to every section. Every section copied from this site uses it (' + exported.count + ' on this page). There is no HTML. After changing the Theme or the Section edges, paste it again, with every section.';
+          box.textContent = commonNote(exported);
           buttons(true);
           if (tab === 'html') tab = 'css';
         } else {
@@ -3429,6 +3473,14 @@
       stagePage().then(function (frame) { return themeFrame(frame, theme); }).then(function (frame) {
         if (mine !== copySeq || mode !== 'copy' || sec !== target || common !== wanted || theme !== copyTheme || !document.contains(scrim)) return;
         exported = common ? exportCommon(frame) : exportFrom(frame, target);
+        if (exported.isCommon && exported.plan && exported.plan.host.length) {
+          box.textContent = 'This site’s common CSS & JS is ' + kbOf(exported.plan.bytes) + ', more than the ' + kbOf(exported.plan.limit) + ' ETB2B’s global section holds. Keeping it with the event…';
+          return hostCommon(exported).then(function (done) {
+            if (mine !== copySeq || mode !== 'copy' || common !== wanted || theme !== copyTheme || !document.contains(scrim)) return;
+            exported = done;
+            draw();                          // a hostError is tried again on the next visit (setMode clears exported)
+          });
+        }
         draw();
       }, function (err) {
         if (mine !== copySeq || mode !== 'copy' || !document.contains(scrim) || (err && err.message === 'cancelled')) return;

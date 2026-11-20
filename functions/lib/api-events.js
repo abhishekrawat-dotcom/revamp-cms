@@ -8,8 +8,10 @@
 //                                                              is removed for good and its address freed
 //   POST   /api/event/restore           handleEventRestore    undo of the above
 //   POST   /api/event/clone             handleEventClone      a new, unpublished event copied from another
+//   POST   /api/event/embed-code        handleEmbedCode       the Developer zone copy's common CSS or JS, too big for
+//                                                              the other website's global section, kept as a file
 //
-// All five are admin routes (lib/http.js's requireAdmin). lib/api.js's router sends them here. Deleting and
+// All six are admin routes (lib/http.js's requireAdmin). lib/api.js's router sends them here. Deleting and
 // restoring are for approvers only (see "WHO MAY DELETE AND RESTORE" below).
 //
 // Two rules hold for everything in this file, for the reason lib/http.js gives at its top: a handler
@@ -901,9 +903,63 @@ function handleEventClone(req, res) {
   });
 }
 
-module.exports = { handleUpload, handleSlugAvailable, handleEventDelete, handleEventRestore, handleEventClone };
+/* =====================================================================================================
+   POST /api/event/embed-code { eventId, kind: 'css' | 'js', text }  ->  200 { url, path, size, stored }
+
+   The site editor's Developer zone › "Copy for another website" makes a common CSS & JS that is pasted once into
+   the other website's global section. ETB2B's CMS keeps that section in 65,535 bytes and cuts the rest (the owner,
+   20 Nov 2026: "the global css and JS that I have added are being cropped due to exceeding the content limit in
+   ETB2B Global JS CSS Section"). When the copy is bigger (editor-dev-export.js globalPlan), it keeps that code here
+   with the event, as a public file, and the box holds one line that loads it.
+   The file is named by what it holds (events/<id>/embed/common-<sha-256>.css|js): the same code is one file, stored
+   once; changed code is a new file, so a page that loads an older one keeps it as it was, and the edge may keep each
+   for a year. It is code the editor already puts on the event's own site (the Developer zone writes the site's
+   CSS and JS), so this gives no one anything new; it is held to the event's own folder, CSS or a script, and 4 MB.
+   ===================================================================================================== */
+var EMBED_TYPES = { css: 'text/css; charset=utf-8', js: 'text/javascript; charset=utf-8' };
+var MAX_EMBED_BYTES = 4 * 1024 * 1024;
+function handleEmbedCode(req, res) {
+  requireAdmin(req, res, function (fb, decoded) {
+    parseJsonBody(req, res, function (body) {
+      guard(res, 'embed-code', function () {
+        var eventId = readEventIdFrom(body.eventId);
+        if (!eventId) return sendJson(res, 400, { error: 'A valid eventId is required.' });
+        var kind = typeof body.kind === 'string' ? body.kind : '';
+        if (!Object.prototype.hasOwnProperty.call(EMBED_TYPES, kind)) return sendJson(res, 400, { error: 'kind must be css or js.' });
+        var text = typeof body.text === 'string' ? body.text : '';
+        if (!text.trim()) return sendJson(res, 400, { error: 'There is no code to keep.' });
+        // the code itself, never a box with its tags (the box that loads it is written by the copy)
+        if (/^\s*<(style|script)\b/i.test(text)) return sendJson(res, 400, { error: 'Send the code without its <style> or <script> tags.' });
+        var buffer = Buffer.from(text, 'utf8');
+        if (buffer.length > MAX_EMBED_BYTES) return sendJson(res, 413, { error: 'The common ' + kind.toUpperCase() + ' is ' + (buffer.length / 1048576).toFixed(1) + ' MB; it can be up to 4 MB.' });
+        var storagePath = 'events/' + eventId + '/embed/common-' + crypto.createHash('sha256').update(buffer).digest('hex').slice(0, 32) + '.' + kind;
+        var file = fb.bucket.file(storagePath), stored = false;
+        eventRef(fb, eventId).get().then(function (snap) {
+          if (!snap.exists || (snap.data() || {}).deletedAt) throw reject(404, 'This event does not exist, or it has been deleted.');
+          return file.exists();
+        }).then(function (r) {
+          if (r && r[0]) return null;                               // the same code, kept before
+          stored = true;
+          return file.save(buffer, {
+            resumable: false, gzip: true,
+            metadata: { contentType: EMBED_TYPES[kind], cacheControl: 'public, max-age=31536000, immutable', metadata: { uploadedBy: String(actorOf(decoded) || '') } }
+          }).then(function () {
+            return file.makePublic().catch(function (err) {
+              // a file nobody can load must not be left behind looking like a success
+              return file.delete().catch(function () { /* best effort */ }).then(function () { throw err; });
+            });
+          });
+        }).then(function () {
+          sendJson(res, 200, { url: publicUrl(fb, storagePath), path: storagePath, size: buffer.length, stored: stored });
+        }).catch(function (err) { fail(res, 'embed-code', err, 'The common code could not be kept with the event. Please try again.'); });
+      });
+    }, MAX_EMBED_BYTES * 2, 'The common code is too large: it can be up to 4 MB.');
+  });
+}
+
+module.exports = { handleUpload, handleSlugAvailable, handleEventDelete, handleEventRestore, handleEventClone, handleEmbedCode };
 
 // Exported for tests and for the other backend modules to share ONE definition of each (the address rule,
 // "this event exists", what an image is, which SVG is unsafe; lib/create-drafts.js keeps a draft's pictures by them)
-// instead of growing a second copy. Routing uses only the five above.
+// instead of growing a second copy. Routing uses only the six above.
 module.exports._shared = { isTaken, slugify, suggestFreeSlug, reservedMessage, sniffImage, svgIsActive, imageProblem, storeImageFile, referenceRewriter, UPLOAD_KINDS, CONTENT_COLLECTIONS };

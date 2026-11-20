@@ -53,7 +53,9 @@
      pageUrl    the event's public page (RevampCore.publicUrl)
    -> { id, html, css, js, common: { css, js }, all, page, records, hidden, forms, ownJs, notes: [text] }
      page   a whole test page holding "all", to open in a browser
-   RevampDevExport.buildCommon({ doc, win, sections, pageUrl, eventName }) -> { css, js, sections } | { error }
+   RevampDevExport.buildCommon({ doc, win, sections, pageUrl, eventName }) -> { css, js, text: { css, js }, sections } | { error }
+   RevampDevExport.globalPlan(cssBox, jsBox), .hostedBoxes(urls, boxes): ETB2B's global section holds 65,535 bytes;
+     a common part that is bigger is kept with the event as files, the boxes loading them (see "the global section's size")
 
    RevampDevExport._test holds the pure helpers (functions/lib/editor-dev-export.test.js). */
 (function (root) {
@@ -1545,7 +1547,64 @@
     });
     var css = commonCss(doc, win, models, base, remPx, ctx, ownText);
     var title = o.eventName || 'This event';
-    return { css: styleBox(css), js: scriptBox(commonJs({ title: title, pageUrl: o.pageUrl, scripts: withEdges(scriptsFor(doc, models, base), o.edges, base), edges: o.edges })), sections: models.length };
+    var js = commonJs({ title: title, pageUrl: o.pageUrl, scripts: withEdges(scriptsFor(doc, models, base), o.edges, base), edges: o.edges });
+    // text: the same code without its tags, for the files the copy keeps with the event when it is too big (globalPlan)
+    return { css: styleBox(css), js: scriptBox(js), text: { css: bareCss(String(css || '')), js: js }, sections: models.length };
+  }
+
+  /* ---------- the global section's size ----------
+     ETB2B's CMS keeps its global section — the CSS and the JS pasted into it, together — in 65,535 bytes, and cuts
+     what is longer without a word. The owner, 20 Nov 2026, on ETB2B DAVOS Immersions: "the global css and JS that I
+     have added are being cropped due to exceeding the content limit in ETB2B Global JS CSS Section". Its page held
+     65,534 bytes of the 68,600: the whole CSS (60,367) and the script up to "!sec.__rvS", so the script stopped with
+     "Unexpected token 'var'" and nothing on the page started.
+     globalPlan(cssBox, jsBox) -> { bytes, limit, fits, host: [] | ['js'] | ['css'] | ['js', 'css'] }
+       what of the common part is kept with the event as a file, the box holding one short line that loads it
+       (hostedBoxes): the script first — the CSS on the page itself shows the sections at once, as before — then the
+       CSS, when it is too big even alone. Counted as UTF-8 with every line end as two bytes (a CMS may store CR LF),
+       with room left for what the CMS adds.
+     hostedBoxes(urls, boxes) -> { css, js }: the boxes with a file's line in place of the code it holds
+       CSS  <style>@import url('…');</style>: a <style> the CMS takes as it takes the CSS (a <link> it might drop)
+       JS   a script that adds the file once and, while it comes, marks the page as the common script does (rv-anim);
+            should the file not come, the mark goes again, so the sections still show */
+  var GLOBAL_LIMIT = 65535, GLOBAL_ROOM = 1024, HOSTED_LINE = 600;
+  function boxBytes(s) {
+    s = String(s || '');
+    var n = 0;
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c < 0x80) n += c === 10 ? 2 : 1;
+      else if (c < 0x800) n += 2;
+      else if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.length) { n += 4; i++; }
+      else n += 3;
+    }
+    return n;
+  }
+  function globalPlan(cssBox, jsBox) {
+    var css = boxBytes(cssBox), js = boxBytes(jsBox), room = GLOBAL_LIMIT - GLOBAL_ROOM;
+    var plan = { bytes: css + js, limit: GLOBAL_LIMIT, fits: css + js <= room, host: [] };
+    if (plan.fits) return plan;
+    if (js && css + HOSTED_LINE <= room) plan.host = ['js'];             // the script out: the CSS stays on the page
+    else if (css && js + HOSTED_LINE <= room) plan.host = ['css'];
+    else plan.host = ['js', 'css'].filter(function (k) { return k === 'js' ? js : css; });
+    return plan;
+  }
+  function hostedUrlOk(u) { return typeof u === 'string' && /^https:\/\/[^\s'"<>\\()]+$/.test(u); }
+  function hostedBoxes(urls, boxes) {
+    var out = { css: boxes.css, js: boxes.js };
+    if (urls.css) {
+      if (!hostedUrlOk(urls.css)) throw new Error('the stored CSS has an address that cannot be used');
+      out.css = '<style>\n@import url(\'' + urls.css + '\');\n</style>';
+    }
+    if (urls.js) {
+      if (!hostedUrlOk(urls.js)) throw new Error('the stored script has an address that cannot be used');
+      out.js = '<script>\n(function (d, u) {\n  var r = d.documentElement;\n' +
+        '  if (d.querySelector(\'script[data-rv-common="\' + u + \'"]\')) return;\n' +
+        '  r.classList.add(\'rv-anim\');\n  var s = d.createElement(\'script\');\n  s.src = u;\n  s.setAttribute(\'data-rv-common\', u);\n' +
+        '  s.onerror = function () { r.classList.remove(\'rv-anim\'); };\n  (d.head || r).appendChild(s);\n' +
+        '})(document, \'' + urls.js + '\');\n</script>';
+    }
+    return out;
   }
 
   /* ---------- motion: what moves on the event's page moves in the copy ----------
@@ -1766,10 +1825,14 @@
   root.RevampDevExport = {
     build: build,
     buildCommon: buildCommon,
+    globalPlan: globalPlan,
+    hostedBoxes: hostedBoxes,
+    GLOBAL_LIMIT: GLOBAL_LIMIT,
     loadPage: loadPage,
     _test: { splitTop: splitTop, compoundsOf: compoundsOf, joinCompounds: joinCompounds, simplesOf: simplesOf, testable: testable,
       absolute: absolute, absoluteUrls: absoluteUrls, remToPx: remToPx, varsUsed: varsUsed, familiesUsed: familiesUsed,
-      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, singleQuoted: singleQuoted, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE, bare: bare, bareCss: bareCss, fontFacesFor: fontFacesFor, rangeHits: rangeHits, withEdges: withEdges }
+      fontFamiliesOfUrl: fontFamiliesOfUrl, important: important, htmlOf: htmlOf, singleQuoted: singleQuoted, inheritFrom: inheritFrom, styleBox: styleBox, scriptBox: scriptBox, commonJs: commonJs, sectionJs: sectionJs, embedLoader: embedLoader, jsString: jsString, resetCss: resetCss, scopeId: scopeId, RUNTIME_MADE: RUNTIME_MADE, bare: bare, bareCss: bareCss, fontFacesFor: fontFacesFor, rangeHits: rangeHits, withEdges: withEdges,
+      boxBytes: boxBytes, hostedUrlOk: hostedUrlOk }
   };
   // the motion helpers, for functions/lib/editor-dev-export.test.js (section 2h)
   root.RevampDevExport._test.motion = { name: motionName, names: motionNames, keyframes: motionKeyframes, softens: motionSoftens, pseudo: motionPseudo,
