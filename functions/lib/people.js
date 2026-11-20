@@ -35,8 +35,10 @@
    hand through the QA server after a release that changes the matching.
 
    PUBLIC (no sign-in; lib/access.js isPublic, server.js):
-     GET /speakers/<slug>[?from=<eventId>]   the page; from: the event the visitor came from ("Back to <event>")
-     GET /sponsors/<slug>[?from=<eventId>]
+     GET /speakers/<slug>[?from=<eventId>[&via=<path>]]   the page; from: the event the visitor came from — the page
+                                             takes that event site's look, and has "Back to <event>"; via: the page
+                                             of it they came from (/e/…, /preview/…, /s/…), which the way back goes to
+     GET /sponsors/<slug>[?from=<eventId>[&via=<path>]]
      GET /speakers/go?e=<eventId>&r=<recordId> | ?n=<name>&c=<company>&e=<eventId>   302 to the page (event sites:
          templates/_shared/rv-popups.js); a person not found answers a small page back to the event
      GET /sponsors/go?e=&r= | ?n=&e=
@@ -711,12 +713,71 @@ function changeRefusal(access) {
 }
 
 /* ---------- public: the pages ---------- */
-function backOf(fb, eventId) {
+/* The event the visitor came from (the owner, 19 Nov 2026: "Can we keep the theme of speaker/sponsor page same from where
+   the user is being navigated. Also there is no option to go back to that particular event page again from the speaker
+   profile page"). The way back goes to the page they came from (via: the live site /e/<event>…, its preview
+   /preview/<event>…, or a share link /s/<token>…; a path of this host, never another's), else the live site. A live
+   event is named ("Back to <event>"); one that is not (a draft seen in its preview or by a share link, a dummy event)
+   only when the visitor came from it, and then not by name ("Back to the event"), so an address made up with a draft's
+   id says nothing of it. The look (lookOf) is the event site's either way: colours and fonts say nothing.
+   -> { name, href, query, eventId, look } | null */
+var VIA_RE = /^\/(e|preview|s)\/[A-Za-z0-9._~%\-\/]{1,300}$/;
+function viaOk(via, eventId) {
+  via = str(via);
+  if (!VIA_RE.test(via) || via.indexOf('//') !== -1 || /%2f|%5c/i.test(via)) return '';
+  var m = /^\/(e|preview|s)\/([^\/]+)/.exec(via);
+  if ((m[1] === 'e' || m[1] === 'preview') && m[2] !== eventId) return '';
+  return via;
+}
+function backOf(fb, eventId, via) {
   if (!H.isEventId(eventId)) return Promise.resolve(null);
   return readEvent(fb, eventId).then(function (ev) {
-    if (whyNotPublic(ev)) return null;
-    return { name: oneLine(ev.name, 120), href: '/e/' + eventId };
+    if (!ev || ev.deletedAt || ev.discardingAt || !ev.createdAt) return null;
+    var live = !whyNotPublic(ev), v = viaOk(via, eventId);
+    if (!live && !v) return null;
+    return lookOf(fb, eventId, ev).then(function (look) {
+      return { name: live ? oneLine(ev.name, 120) : '', href: v || '/e/' + eventId, eventId: eventId, look: look,
+        query: '?from=' + encodeURIComponent(eventId) + (v ? '&via=' + encodeURIComponent(v) : '') };
+    });
   }, function () { return null; });
+}
+/* An event site's look, as its saved page has it: the colours and fonts on its <body> (the site's variables: --theme-color,
+   --rv-bg, --rv-surface, --rv-text, --rv-muted, --heading-font-family, --body-font-family; lib/site-a11y.js palette reads
+   them), and the Google Fonts links it loads; a site never saved, its design plan's. Ten minutes per event.
+   -> { theme, accent, bg, surface, text, muted, heading, body, fonts: [href] } | null */
+var lookCache = {}, LOOK_MS = 10 * 60 * 1000;
+function cssFamily(v) { v = str(v).replace(/\s+/g, ' ').trim(); return /^[A-Za-z0-9 ,'"-]{1,160}$/.test(v) ? v : ''; }
+function lookOf(fb, eventId, ev) {
+  var c = lookCache[eventId];
+  if (c && c.db === fb.db && Date.now() - c.at < LOOK_MS) return Promise.resolve(c.look);
+  function keep(look) { lookCache[eventId] = { db: fb.db, at: Date.now(), look: look }; return look; }
+  var plan = ev && ev.designPlan && ev.designPlan.design && typeof ev.designPlan.design === 'object' ? ev.designPlan.design : {};
+  function fromPlan() {
+    var hex = function (v) { return /^#[0-9a-f]{6}$/i.test(str(v)) ? str(v).toLowerCase() : ''; };
+    var dark = plan.mode === 'dark';
+    var look = { theme: hex(plan.themeColor), accent: hex(plan.accentColor), bg: hex(plan.bgColor) || (dark ? '#111214' : ''), surface: hex(plan.surfaceColor), text: hex(plan.textColor) || (dark ? '#f4f4f6' : ''), muted: '',
+      heading: plan.headingFont ? cssFamily('"' + str(plan.headingFont).replace(/["\\]/g, '') + '", sans-serif') : '', body: plan.bodyFont ? cssFamily('"' + str(plan.bodyFont).replace(/["\\]/g, '') + '", sans-serif') : '', fonts: [] };
+    return look.theme || look.heading || look.bg ? look : null;
+  }
+  if (!fb.bucket || typeof fb.bucket.file !== 'function') return Promise.resolve(keep(fromPlan()));
+  return fb.bucket.file('events/' + eventId + '/site/page.html').download().then(function (got) {
+    var html = String(got[0] || '');
+    var m = /<body\b[^>]*?\sstyle\s*=\s*"([^"]*)"/i.exec(html) || /<body\b[^>]*?\sstyle\s*=\s*'([^']*)'/i.exec(html);
+    var style = m ? m[1].replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&') : '';
+    var p = require('./site-a11y').palette(style);
+    var fonts = [];
+    (html.slice(0, 200000).match(/<link\b[^>]*href\s*=\s*["'](https:\/\/fonts\.googleapis\.com\/css2?\?[^"'<>\s]+)["']/gi) || []).forEach(function (tag) {
+      var u = /href\s*=\s*["']([^"']+)["']/i.exec(tag)[1].replace(/&amp;/g, '&');
+      if (fonts.length < 3 && fonts.indexOf(u) === -1 && !/[<>"'\\]/.test(u)) fonts.push(u);
+    });
+    var look = { theme: p.theme || '', accent: p.accent || '', bg: p.bg || '', surface: p.surface || '', text: p.text || '', muted: p.muted || '',
+      heading: cssFamily(p.vars['--heading-font-family']), body: cssFamily(p.vars['--body-font-family']), fonts: fonts };
+    if (!look.theme && !look.heading && !look.bg) return keep(fromPlan());
+    var planLook = fromPlan();
+    /* a template's page names its body font only: the plan's heading font, else the body's */
+    if (!look.heading) look.heading = (planLook && planLook.heading) || look.body;
+    return keep(look);
+  }, function () { return keep(fromPlan()); });
 }
 function sendPage(req, res, status, html, cache) {
   /* the photo and the logos from our own address, which the hosting's CDN keeps (lib/picture-cdn.js; its link preview
@@ -728,20 +789,20 @@ function sendPage(req, res, status, html, cache) {
 }
 function notHere(req, res, kind, back) {
   sendPage(req, res, 404, H.messagePage(kind === 'sponsors' ? 'This sponsor page is not available' : 'This profile is not available',
-    'It may have been removed, or the address may be mistyped.', back ? { href: back.href, label: 'Back to ' + back.name } : null), 'no-store');
+    'It may have been removed, or the address may be mistyped.', back ? { href: back.href, label: back.name ? 'Back to ' + back.name : 'Back to the event' } : null), 'no-store');
 }
 function handlePage(kind, req, res, slug) {
   var fb = H.firebase();
   if (fb.error) return sendPage(req, res, 503, H.messagePage('Please try again in a moment', 'This page could not be loaded just now.'), 'no-store');
   var qs = new URLSearchParams(String(req.url || '').split('?')[1] || '');
-  var from = str(qs.get('from')).slice(0, 120);
-  Promise.all([readIndex(fb, kind), backOf(fb, from)]).then(function (r) {
+  var from = str(qs.get('from')).slice(0, 120), via = str(qs.get('via')).slice(0, 320);
+  Promise.all([readIndex(fb, kind), backOf(fb, from, via)]).then(function (r) {
     var idx = r[0], back = r[1];
     if (!SLUG_OK(slug)) return notHere(req, res, kind, back);
     var entry = idx.people[slug];
     if (!entry) {
       var moved = finalSlug(idx, idx.alias[slug] || '');
-      if (moved) { res.writeHead(301, { Location: '/' + kind + '/' + moved + (back ? '?from=' + encodeURIComponent(from) : ''), 'Cache-Control': 'public, max-age=300' }); return res.end(); }
+      if (moved) { res.writeHead(301, { Location: '/' + kind + '/' + moved + (back ? back.query : ''), 'Cache-Control': 'public, max-age=300' }); return res.end(); }
       return notHere(req, res, kind, back);
     }
     return pageRef(fb, kind, slug).get().then(function (snap) {
@@ -811,9 +872,9 @@ function handleGo(kind, req, res) {
       }).then(function (s) { goLimit[kind] = { running: false, at: Date.now() }; return s; }, function (err) { goLimit[kind] = { running: false, at: Date.now() }; throw err; });
     });
   }).then(function (slug) {
-    return backOf(fb, e).then(function (back) {
+    return backOf(fb, e, str(qs.get('via')).slice(0, 320)).then(function (back) {
       if (!slug) return notHere(req, res, kind, back);
-      res.writeHead(302, { Location: '/' + kind + '/' + slug + (back ? '?from=' + encodeURIComponent(e) : ''), 'Cache-Control': 'no-store' });
+      res.writeHead(302, { Location: '/' + kind + '/' + slug + (back ? back.query : ''), 'Cache-Control': 'no-store' });
       res.end();
     });
   }).catch(function (err) {
@@ -831,10 +892,12 @@ function hashOf(text) { return parseInt(crypto.createHash('md5').update(text).di
 function similarOf(idx, slug, max) {
   var me = idx && idx.people[slug], mine = (me && me.p) || [];
   if (!mine.length) return [];
+  /* never someone of the same name: another page of this person not joined yet (Yasmin Taj's page listed a Yasmin Taj) */
+  var myName = PM.nameKey(me.n);
   var out = [];
   Object.keys(idx.people).forEach(function (s) {
     var e = idx.people[s];
-    if (s === slug || !e || e.h || !str(e.n) || !(e.k || []).some(function (k) { return k.indexOf('e~') === 0; })) return;
+    if (s === slug || !e || e.h || !str(e.n) || PM.nameKey(e.n) === myName || !(e.k || []).some(function (k) { return k.indexOf('e~') === 0; })) return;
     var theirs = e.p || [], shared = theirs.filter(function (p) { return mine.indexOf(p) !== -1; }).length;
     if (!shared) return;
     var score = shared * 10 + (theirs.indexOf(mine[0]) !== -1 ? 6 : 0) + (e.ph ? 5 : 0) + (e.d && e.c ? 2 : 0) + Math.min(6, +e.ev || 0) * 0.5;

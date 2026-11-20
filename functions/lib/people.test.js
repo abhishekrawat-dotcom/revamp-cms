@@ -242,7 +242,7 @@ function page(url) {
   check('4 …counts: events, sessions, award juries, the first year, the portals', /<b>4<\/b>ETB2B events/.test(html) && /<b>2<\/b>sessions/.test(html) && /<b>1<\/b>award jury/.test(html) && /<b>2024<\/b>first with ETB2B/.test(html), (html.match(/<ul class="stats"[\s\S]*?<\/ul>/) || [''])[0]);
   check('4 …their role at each edition, the award they judged, never a session\'s description (owner, 19 Nov 2026), who shared it (a link to their page), the whole bio',
     /<span class="tier">Keynote Address<\/span>/.test(html) && /ETCISO Awards 2024/.test(html) && /<span class="tier">Grand Jury<\/span>/.test(html) && !/How banks verify every request\./.test(html) && !/class="sa"/.test(html) &&
-    /With <a href="\/speakers\/naven-singh-globex">Naven Singh<\/a>/.test(html) && /three banks\. He has led/.test(html), (html.match(/Journey with[\s\S]{0,1600}/) || [''])[0]);
+    /With <a href="\/speakers\/naven-singh-globex\?from=ciso-secufest-summit-2027">Naven Singh<\/a>/.test(html) && /three banks\. He has led/.test(html), (html.match(/Journey with[\s\S]{0,1600}/) || [''])[0]);
   check('4 …never a bare "ET" in what a visitor reads (ETB2B, The Economic Times Business Verticals)', !/\bET\b/.test(html.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<[^>]+>/g, ' ')) && /The Economic Times Business Verticals/.test(html));
   r = await page('/speakers/naven-singh?from=draft-x');
   check('4 …no way back to an event that is not live', r.status === 200 && !/class="back"/.test(r.text));
@@ -314,7 +314,19 @@ function page(url) {
   check('6 …its questions saved (an empty one dropped) and at the foot of the page, with their structured data', put.body.page.faqs.length === 1 &&
     /<section class="faq"[\s\S]*Frequently asked questions[\s\S]*<details><summary>Where does Naven speak next\?<\/summary>/.test(r.text) && /"@type":"FAQPage"/.test(r.text) &&
     r.text.indexOf('class="sim"') < r.text.indexOf('class="faq"') && r.text.indexOf('class="faq"') < r.text.indexOf('<footer'), put.body.page.faqs);
-  check('6 …speakers of the same industry: others on the same verticals, linked to their pages', /Speakers in the same industry/.test(r.text) && /<a href="\/speakers\/naven-singh-globex">/.test((r.text.match(/<section class="sim"[\s\S]*?<\/section>/) || [''])[0]));
+  /* speakers of the same industry (lib/people.js similarOf): the same verticals, most shared and the main one first, a photo
+     before none; never hidden, never only on EventSphere's events, never someone of the same name (another page of them) */
+  var simIdx = { people: {
+    me: { n: 'Asha Rao', p: ['ciso', 'cio'], k: ['e~ciso~a'] },
+    both: { n: 'Ravi Kumar', p: ['cio', 'ciso'], k: ['e~cio~b'], ph: 'https://x/b.jpg', d: 'CIO', c: 'Acme' },
+    one: { n: 'Meera Iyer', p: ['ciso'], k: ['e~ciso~c'] },
+    other: { n: 'Kiran Shah', p: ['hr'], k: ['e~hr~d'], ph: 'https://x/d.jpg' },
+    twin: { n: 'Asha Rao', p: ['ciso'], k: ['e~ciso~e'], ph: 'https://x/e.jpg' },
+    gone: { n: 'Hidden Person', p: ['ciso'], k: ['e~ciso~f'], h: true },
+    own: { n: 'Own Only', p: ['ciso'], k: ['o~draft-x~g'] } }, alias: {} };
+  var sim = T.similarOf(simIdx, 'me').map(function (x) { return x.slug; });
+  check('6 speakers of the same industry: most verticals shared first; never another vertical, hidden, EventSphere-only or the same name', sim.join() === 'both,one', sim);
+  check('6 …at the page\'s foot, before the questions', r.text.indexOf('class="faq"') > 0 && (r.text.indexOf('class="sim"') === -1 || r.text.indexOf('class="sim"') < r.text.indexOf('class="faq"')));
   var half = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: 1, page: Object.assign({}, put.body.page, { faqs: [{ q: 'Half a question?', a: '' }] }) });
   check('6 a question with no answer is refused, in words', half.status === 400 && /has no answer yet/.test(half.body.error), half.body);
   /* the event site's side panel (rv-popups.js): what the page shows, as JSON any site may read */
@@ -324,6 +336,25 @@ function page(url) {
     cardR.status === 200 && cardB && cardB.name === 'Naven Singh' && cardB.href === '/speakers/naven-singh?from=ciso-secufest-summit-2027' && /Naven leads security/.test(cardB.about) &&
     cardR.headers['access-control-allow-origin'] === '*', [cardR.status, cardR.text.slice(0, 300), cardR.headers]);
   check('6 …the events to come, never the one the visitor is on', Array.isArray(cardB && cardB.upcoming) && !cardB.upcoming.some(function (u) { return /CISO Secufest Summit 2027/.test(u.title); }), cardB && cardB.upcoming);
+  /* the event the visitor came from (owner, 19 Nov 2026: "keep the theme of speaker/sponsor page same from where the user is
+     being navigated … there is no option to go back to that particular event page again"): its look and the way back */
+  FB.bucket = { name: 'test', file: function (path) { return { download: function () {
+    return path === 'events/draft-x/site/page.html' ? Promise.resolve([Buffer.from('<html><head><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:wght@700&amp;family=Manrope&amp;display=swap"></head>' +
+      '<body style="--theme-color:#0a7f5a;--rv-bg:#0c1210;--rv-surface:#16201c;--rv-text:#eef4f1;--rv-muted:#9fb3aa;--heading-font-family:&quot;Fraunces&quot;, serif;--body-font-family:Manrope, sans-serif"><p>x</p></body></html>')]) : Promise.reject(new Error('No such object'));
+  } }; } };
+  var live = await page('/speakers/naven-singh?from=ciso-secufest-summit-2027&via=%2Fe%2Fciso-secufest-summit-2027%2Fspeakers');
+  check('6 from a live event: "Back to <event>", to the page they came from', /<a class="back" href="\/e\/ciso-secufest-summit-2027\/speakers">[\s\S]*?Back to CISO Secufest Summit 2027/.test(live.text), (live.text.match(/<header[\s\S]*?<\/header>/) || [''])[0]);
+  var draft = await page('/speakers/naven-singh?from=draft-x&via=%2Fpreview%2Fdraft-x');
+  check('6 from a draft\'s preview: "Back to the event" (never its name), to the preview, in the site\'s colours and fonts; dark: the mark drawn for a dark ground',
+    /<a class="back" href="\/preview\/draft-x">[\s\S]*?Back to the event/.test(draft.text) && !/Draft Summit/.test(draft.text) && /--paper:#0c1210;--ink:#eef4f1/.test(draft.text) && /--red:#0a7f5a/.test(draft.text) &&
+    /font-family:"Fraunces", serif/.test(draft.text) && /href="https:\/\/fonts\.googleapis\.com\/css2\?family=Fraunces:wght@700&amp;family=Manrope&amp;display=swap"/.test(draft.text) &&
+    /et-business-verticals-on-dark\.svg/.test(draft.text), (draft.text.match(/<style>[\s\S]{0,40}/) || [''])[0] + (draft.text.match(/:root\{--paper[^}]*\}/) || [''])[0]);
+  var stray = await Promise.all(['/speakers/naven-singh?from=draft-x', '/speakers/naven-singh?from=draft-x&via=%2Fpreview%2Fciso-secufest-summit-2027', '/speakers/naven-singh?from=draft-x&via=%2F%2Fevil.example%2Fe%2Fx', '/speakers/naven-singh?from=draft-x&via=https%3A%2F%2Fevil.example%2F'].map(page));
+  check('6 …a draft by its id alone, a way back to another event, another site or a full address: no way back, no look',
+    stray.every(function (x) { return x.status === 200 && !/class="back"/.test(x.text) && !/--paper:#0c1210/.test(x.text); }), stray.map(function (x) { return (x.text.match(/<a class="back"[^>]*>/) || ['none'])[0]; }));
+  var goVia = await page('/speakers/go?e=ciso-secufest-summit-2027&r=s1&via=%2Fe%2Fciso-secufest-summit-2027');
+  check('6 …/speakers/go keeps the way back', goVia.status === 302 && goVia.headers.location === '/speakers/naven-singh?from=ciso-secufest-summit-2027&via=%2Fe%2Fciso-secufest-summit-2027', [goVia.status, goVia.headers]);
+  delete FB.bucket;
   var noCard = await page('/speakers/card?n=Nobody%20Atall');
   check('6 …a speaker with no page: 404, said in words', noCard.status === 404 && /no profile page/.test(noCard.text), [noCard.status, noCard.text]);
   put = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: 0, page: { about: 'stale' } });

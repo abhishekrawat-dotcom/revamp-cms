@@ -91,7 +91,7 @@ var ICON = {
 };
 
 var CSS = [
-  ':root{--red:#ED1A3B;--red-ink:#C21A33;--ink:#1A1C21;--soft:#4F5562;--muted:#6B7180;--rule:#E4E6EB;--wash:#FDEDEF;--ground:#F6F7F9;--paper:#FFFFFF}',
+  ':root{--red:#ED1A3B;--red-ink:#C21A33;--on-red:#FFFFFF;--ink:#1A1C21;--soft:#4F5562;--muted:#6B7180;--rule:#E4E6EB;--wash:#FDEDEF;--ground:#F6F7F9;--paper:#FFFFFF}',
   '*{box-sizing:border-box}',
   'html{-webkit-text-size-adjust:100%}',
   'body{margin:0;background:var(--paper);color:var(--ink);font:400 17px/1.6 "Schibsted Grotesk",-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-feature-settings:"ss01" 1}',
@@ -104,9 +104,10 @@ var CSS = [
   '.top{border-bottom:1px solid var(--rule)}',
   '.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:64px}',
   '.mark{flex:0 0 auto}.mark img{display:block;height:28px;width:auto}',
-  '.back{display:inline-flex;align-items:center;gap:6px;min-height:44px;min-width:0;padding:0 4px;color:var(--ink);font-size:15px;font-weight:600;text-decoration:none}',
+  '.back{display:inline-flex;align-items:center;gap:6px;min-height:40px;min-width:0;padding:0 16px 0 10px;border:1.5px solid var(--red);border-radius:999px;color:var(--red-ink);font-size:15px;font-weight:700;text-decoration:none}',
+  '.back:hover{background:var(--red);color:var(--on-red)}',
   '.back span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-  '.back:hover span{text-decoration:underline}',
+  '.back:hover span{text-decoration:none}',
   /* the person */
   '.who{padding:48px 0 36px}',
   '.who .wrap{display:grid;grid-template-columns:240px minmax(0,1fr);gap:44px;align-items:end}',
@@ -123,7 +124,7 @@ var CSS = [
   '.co-logo{display:inline-block;vertical-align:middle;height:26px;max-width:96px;margin:0 0 0 10px;object-fit:contain}',
   '.acts{display:flex;flex-wrap:wrap;gap:8px;margin:22px 0 0}',
   '.btn{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 16px;border-radius:999px;border:1.5px solid var(--ink);color:var(--ink);font-size:15px;font-weight:700;text-decoration:none}',
-  '.btn:hover{background:var(--ink);color:#fff}',
+  '.btn:hover{background:var(--ink);color:var(--paper)}',
   '.credit{margin:8px 0 0;font-size:13px;color:var(--muted)}',
   /* the one bold thing: a year at a time */
   '.years{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);background:var(--ground)}',
@@ -187,7 +188,7 @@ var CSS = [
   '.list .c{color:var(--muted);font-variant-numeric:tabular-nums}',
   '.share{display:flex;flex-wrap:wrap;gap:8px}',
   '.share a{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 14px;border-radius:999px;background:var(--ground);color:var(--ink);font-size:14px;font-weight:600;text-decoration:none}',
-  '.share a:hover{background:var(--ink);color:#fff}',
+  '.share a:hover{background:var(--ink);color:var(--paper)}',
   '.links a{font-weight:600}',
   /* the speaker's next event, beside their name (the owner, 19 Nov 2026: "Show the immediate upcoming event in right side of
      the speaker name with an upcoming ticker"): the one thing on the page that moves, a dot that pulses — still for those
@@ -221,7 +222,7 @@ var CSS = [
   'details.more{margin-top:8px}',
   'details.more>summary,details.more-s>summary{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border-radius:999px;border:1.5px solid var(--ink);font-size:15px;font-weight:700;cursor:pointer;list-style:none}',
   'details.more>summary::-webkit-details-marker,details.more-s>summary::-webkit-details-marker{display:none}',
-  'details.more>summary:hover,details.more-s>summary:hover{background:var(--ink);color:#fff}',
+  'details.more>summary:hover,details.more-s>summary:hover{background:var(--ink);color:var(--paper)}',
   'details.more>summary:focus-visible,details.more-s>summary:focus-visible,.qs summary:focus-visible{outline:3px solid var(--ink);outline-offset:3px}',
   'details.more[open]>summary{margin-bottom:8px}',
   'details[open]>summary .c,details:not([open])>summary .o{display:none}',
@@ -292,15 +293,58 @@ function head(o) {
     '<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">' +
     '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;600;700;800&amp;display=swap">' +
-    '<style>' + CSS + '</style>' +
+    ((o.look && o.look.fonts) || []).filter(function (u) { return /^https:\/\/fonts\.googleapis\.com\/css2?\?[^"'<>\s\\]+$/.test(str(u)); }).slice(0, 3).map(function (u) { return '<link rel="stylesheet" href="' + esc(u) + '">'; }).join('') +
+    '<style>' + CSS + lookCss(o.look) + '</style>' +
     '<script type="application/ld+json">' + jsonLd(o.ld) + '</script></head>';
 }
-function topBar(back) {
-  var b = back && link(back.href) ? '<a class="back" href="' + esc(back.href) + '">' + ICON.back + '<span>Back to ' + esc(back.name) + '</span></a>' : '';
-  return '<header class="top"><div class="wrap"><span class="mark"><img src="/assets/et-b2b-logo.svg" width="171" height="28" alt="ETB2B"></span>' + b + '</div></header>';
+function topBar(back, dark) {
+  var b = back && link(back.href) ? '<a class="back" href="' + esc(back.href) + '">' + ICON.back + '<span>' + (back.name ? 'Back to ' + esc(back.name) : 'Back to the event') + '</span></a>' : '';
+  /* on a dark site the mark drawn for a dark ground: its lettering white, the red ET square as it is (ETB2B's logo rule) */
+  return '<header class="top"><div class="wrap"><span class="mark"><img src="' + (dark ? '/templates/_shared/img/et-business-verticals-on-dark.svg' : '/assets/et-b2b-logo.svg') + '" width="171" height="28" alt="ETB2B"></span>' + b + '</div></header>';
 }
 function footer() {
-  return '<footer><div class="wrap"><span>ETB2B, The Economic Times Business Verticals</span><img src="/assets/et-b2b-wordmark.svg" alt="" width="152" height="22"></div></footer>';
+  return '<footer><div class="wrap"><span>ETB2B, The Economic Times Business Verticals</span><img class="wm" src="/assets/et-b2b-wordmark.svg" alt="" width="152" height="22"></div></footer>';
+}
+
+/* ---------- the event site's look (the owner, 19 Nov 2026: "Can we keep the theme of speaker/sponsor page same from where
+   the user is being navigated") ----------
+   A visitor who came from an event's site sees this page in that site's colours and fonts (lib/people.js lookOf): its
+   background and text, its theme colour where ETB2B's red marks things (the year bars, a rule, the dot, the tags), a
+   deeper or lighter shade of it where it is text, so it reads; its heading font for headings, its body font for the rest.
+   The ETB2B mark keeps its own colours (on a dark site, the copy drawn for a dark ground). Links to other speakers'
+   pages keep the look and the way back (KEEP.q). */
+var KEEP = { q: '' };
+function hexOk(v) { return /^#[0-9a-f]{6}$/i.test(str(v)) ? str(v).toLowerCase() : ''; }
+function rgbOf(h) { var n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function hexOfRgb(c) { return '#' + c.map(function (n) { return ('0' + Math.max(0, Math.min(255, Math.round(n))).toString(16)).slice(-2); }).join(''); }
+function mixHex(a, b, t) { var x = rgbOf(a), y = rgbOf(b); return hexOfRgb([0, 1, 2].map(function (i) { return x[i] * t + y[i] * (1 - t); })); }
+function lum(h) { return rgbOf(h).map(function (v) { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce(function (s, v, i) { return s + v * [0.2126, 0.7152, 0.0722][i]; }, 0); }
+function contrastOf(a, b) { var x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
+/* the colour moved towards the ink of its ground until it reads there (min: 4.5 for text) */
+function readableOn(colour, ground, min) {
+  var toward = lum(ground) > 0.4 ? '#000000' : '#ffffff';
+  for (var t = 1; t >= 0.2; t -= 0.05) { var c = mixHex(colour, toward, t); if (contrastOf(c, ground) >= min) return c; }
+  return toward === '#000000' ? '#1a1c21' : '#f4f4f6';
+}
+function lookCss(look) {
+  if (!look) return '';
+  var paper = hexOk(look.bg) || '#ffffff', dark = lum(paper) < 0.2;
+  var ink = hexOk(look.text) && contrastOf(look.text, paper) >= 4.5 ? hexOk(look.text) : (dark ? '#f4f4f6' : '#1a1c21');
+  var theme = hexOk(look.theme) || hexOk(look.accent) || '';
+  var surface = hexOk(look.surface) && hexOk(look.surface) !== paper ? hexOk(look.surface) : mixHex(ink, paper, 0.04);
+  var muted = hexOk(look.muted) && contrastOf(look.muted, paper) >= 4.5 ? hexOk(look.muted) : readableOn(mixHex(ink, paper, 0.6), paper, 4.5);
+  var v = { '--paper': paper, '--ink': ink, '--soft': readableOn(mixHex(ink, paper, 0.78), paper, 4.5), '--muted': muted, '--rule': mixHex(ink, paper, 0.14), '--ground': surface };
+  if (theme) {
+    v['--red'] = theme;
+    v['--red-ink'] = contrastOf(theme, paper) >= 4.5 ? theme : readableOn(theme, paper, 4.5);
+    v['--wash'] = mixHex(theme, paper, 0.1);
+    v['--on-red'] = contrastOf('#ffffff', theme) >= contrastOf('#1a1c21', theme) ? '#ffffff' : '#1a1c21';
+  }
+  var css = ':root{' + Object.keys(v).map(function (k) { return k + ':' + v[k]; }).join(';') + '}';
+  if (look.body) css += 'body{font-family:' + look.body + ',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-feature-settings:normal}';
+  if (look.heading) css += 'h1,h2,h3,h4,.t,.tally b,.dt b,.bars .n,.sim-list b,.qs summary{font-family:' + look.heading + ',-apple-system,"Segoe UI",Roboto,Arial,sans-serif}';
+  if (dark) css += 'footer img.wm{filter:invert(1)}.ph.logo,.sim-list a{background:var(--ground)}';
+  return css;
 }
 
 /* the journey's editions that a visitor reads (the team may leave one off; one not public is never here) */
@@ -359,7 +403,7 @@ function eventItem(j, person, sponsor) {
       var who = (s.with || []).filter(function (w) { return w && w.name; });
       return '<li>' + ICON.mic + '<span><span class="st">' + (t ? '<time>' + esc(t) + '</time>' : '') + esc(s.title) + '</span>' +
         (who.length ? '<span class="sw">With ' + who.map(function (w) {
-          return w.slug ? '<a href="/speakers/' + esc(w.slug) + '">' + esc(w.name) + '</a>' : esc(w.name);
+          return w.slug ? '<a href="/speakers/' + esc(w.slug) + esc(KEEP.q) + '">' + esc(w.name) + '</a>' : esc(w.name);
         }).join(', ') + '</span>' : '') + '</span></li>';
     };
     var first = j.sessions.slice(0, SESSIONS_SHOWN), rest = j.sessions.slice(SESSIONS_SHOWN);
@@ -458,7 +502,7 @@ function alongsideHtml(list) {
   if (!out.length) return '';
   out.sort(function (a, b) { return b.n - a.n || (a.name < b.name ? -1 : 1); });
   return '<section aria-labelledby="h-along"><h2 id="h-along">Shared the stage with</h2><ul class="list">' + out.slice(0, 8).map(function (p) {
-    return '<li><span>' + (p.slug ? '<a href="/speakers/' + esc(p.slug) + '">' + esc(p.name) + '</a>' : esc(p.name)) + '</span>' + (p.n > 1 ? '<span class="c">' + plural(p.n, 'session', 'sessions') + '</span>' : '') + '</li>';
+    return '<li><span>' + (p.slug ? '<a href="/speakers/' + esc(p.slug) + esc(KEEP.q) + '">' + esc(p.name) + '</a>' : esc(p.name)) + '</span>' + (p.n > 1 ? '<span class="c">' + plural(p.n, 'session', 'sessions') + '</span>' : '') + '</li>';
   }).join('') + '</ul></section>';
 }
 function PMname(n) { return str(n).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim(); }
@@ -518,7 +562,7 @@ function similarHtml(list) {
   if (!list.length) return '';
   return '<section class="sim" aria-labelledby="h-sim"><div class="wrap"><h2 class="h" id="h-sim">Speakers in the same industry</h2><ul class="sim-list">' + list.map(function (x) {
     var ph = picture(x.photo), role = [x.designation, x.company].filter(Boolean).join(', ');
-    return '<li><a href="/speakers/' + esc(x.slug) + '"><figure>' + (ph ? '<img src="' + esc(ph) + '" alt="" loading="lazy" width="280" height="210">' : '<span aria-hidden="true">' + esc(initials(x.name)) + '</span>') + '</figure>' +
+    return '<li><a href="/speakers/' + esc(x.slug) + esc(KEEP.q) + '"><figure>' + (ph ? '<img src="' + esc(ph) + '" alt="" loading="lazy" width="280" height="210">' : '<span aria-hidden="true">' + esc(initials(x.name)) + '</span>') + '</figure>' +
       '<b>' + esc(x.name) + '</b>' + (role ? '<small>' + esc(role) + '</small>' : '') + '</a></li>';
   }).join('') + '</ul></div></section>';
 }
@@ -571,8 +615,8 @@ function renderSpeaker(p, o) {
   var main = (about ? '<section aria-labelledby="h-about"><h2 class="h" id="h-about">About</h2><div class="prose">' + paras(about) + '</div></section>' : '') +
     wikiHtml(p) + extrasHtml(p) + journeyHtml(p, o);
   var side = upcomingHtml(coming.slice(1)) + portalsHtml(shown, false) + alongsideHtml(shown) + linksHtml(p) + shareHtml(canonical, p.name);
-  return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'profile', ld: ld }) +
-    '<body>' + topBar(o.back) + who + yearsHtml(p, past, 'speakers') +
+  return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'profile', ld: ld, look: o.look }) +
+    '<body>' + topBar(o.back, darkLook(o.look)) + who + yearsHtml(p, past, 'speakers') +
     '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + similarHtml(p.similar) + faqHtml(faqs) + footer() + '</body></html>\n';
 }
 
@@ -604,11 +648,18 @@ function renderSponsor(p, o) {
   var side = (tierList.length ? '<section aria-labelledby="h-tiers"><h2 id="h-tiers">Partnered as</h2><ul class="list">' + tierList.slice(0, 8).map(function (t) {
       return '<li><span>' + esc(t.name) + '</span><span class="c">' + plural(t.n, 'time', 'times') + '</span></li>';
     }).join('') + '</ul></section>' : '') + portalsHtml(shown, true) + linksHtml(p) + shareHtml(canonical, p.name);
-  return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'website', ld: ld }) +
-    '<body>' + topBar(o.back) + who + yearsHtml(p, shown, 'sponsors') +
+  return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'website', ld: ld, look: o.look }) +
+    '<body>' + topBar(o.back, darkLook(o.look)) + who + yearsHtml(p, shown, 'sponsors') +
     '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + footer() + '</body></html>\n';
 }
 
-function render(person, o) { return person.kind === 'sponsors' ? renderSponsor(person, o || {}) : renderSpeaker(person, o || {}); }
+function render(person, o) {
+  o = o || {};
+  /* the event the visitor came from: its look, and the way back kept on links to other speakers' pages */
+  KEEP.q = o.back && /^\?from=[A-Za-z0-9-]+(&via=[A-Za-z0-9._~%-]+)?$/.test(str(o.back.query)) ? str(o.back.query) : '';
+  o.look = o.back && o.back.look ? o.back.look : null;
+  try { return person.kind === 'sponsors' ? renderSponsor(person, o) : renderSpeaker(person, o); } finally { KEEP.q = ''; }
+}
+function darkLook(look) { var bg = look && hexOk(look.bg); return !!bg && lum(bg) < 0.2; }
 
 module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear } };

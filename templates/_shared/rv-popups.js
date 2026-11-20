@@ -446,12 +446,21 @@
   function eventId(n) { var p = pageOf(n); return p ? String(p.getAttribute('data-rv-event-id') || '') : ''; }
   function awardsSite(n) { var p = pageOf(n); return !!(p && p.hasAttribute('data-rv-awards')); }
   function inJury(n) { return !!(n.closest && n.closest('[data-rv-section-id^="award-"], [data-rv-page^="award-"], section[id^="award-"]')); }
+  /* the page the visitor is on — the live site, its preview or a share link — for the person's page's way back to it and
+     its look (the owner, 19 Nov 2026: "there is no option to go back to that particular event page again"); none on
+     another website (a copied section), whose address is not ours */
+  function viaPath() {
+    if (HOME) return '';
+    var p = String(location.pathname || '');
+    return /^\/(e|preview|s)\/[A-Za-z0-9._~%\-\/]{1,300}$/.test(p) && p.indexOf('//') === -1 ? p : '';
+  }
   function goHref(kind, o, n) {
-    var q = [], e = eventId(n);
+    var q = [], e = eventId(n), via = viaPath();
     if (e) q.push('e=' + encodeURIComponent(e));
     if (o.r) q.push('r=' + encodeURIComponent(o.r));
     if (o.n) q.push('n=' + encodeURIComponent(o.n.slice(0, 120)));
     if (o.c) q.push('c=' + encodeURIComponent(o.c.slice(0, 160)));
+    if (e && via) q.push('via=' + encodeURIComponent(via));
     return HOME + '/' + kind + '/go?' + q.join('&');
   }
   function outside(n) { return !n || n === doc.body || !!(n.closest && n.closest('template, header, nav, footer, [data-rv-popup]')); }
@@ -653,7 +662,7 @@
       if (httpsLink(c.linkedin)) links.push({ href: httpsLink(c.linkedin), what: 'LinkedIn' });
       if (httpsLink(c.x)) links.push({ href: httpsLink(c.x), what: 'X' });
       if (links.length) sideLinks(parts, who.n, links);
-      if (/^\/speakers\/[a-z0-9-]+/.test(String(c.href || ''))) u.cta.href = HOME + c.href;
+      if (/^\/speakers\/[a-z0-9-]+/.test(String(c.href || ''))) u.cta.href = HOME + c.href + (/\?from=/.test(c.href) && viaPath() ? '&via=' + encodeURIComponent(viaPath()) : '');
     };
     if (window.fetch) {
       window.fetch(url, { credentials: 'omit' }).then(function (r) {
