@@ -189,10 +189,72 @@ var CSS = [
   '.share a{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:0 14px;border-radius:999px;background:var(--ground);color:var(--ink);font-size:14px;font-weight:600;text-decoration:none}',
   '.share a:hover{background:var(--ink);color:#fff}',
   '.links a{font-weight:600}',
+  /* the speaker's next event, beside their name (the owner, 19 Nov 2026: "Show the immediate upcoming event in right side of
+     the speaker name with an upcoming ticker"): the one thing on the page that moves, a dot that pulses — still for those
+     who ask for less motion */
+  '.who .wrap.has-up{grid-template-columns:240px minmax(0,1fr) 300px}',
+  '.up-now{position:relative;align-self:end;padding:18px 20px 18px 22px;background:var(--wash);border-radius:6px}',
+  '.up-now:before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--red);border-radius:6px 0 0 6px}',
+  '.tick{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:14px;font-weight:700;color:var(--red-ink)}',
+  '.tick .dot{position:relative;width:10px;height:10px;border-radius:50%;background:var(--red)}',
+  '.tick .dot:after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--red);animation:pulse 1.6s ease-out infinite}',
+  '@keyframes pulse{from{transform:scale(1);opacity:.7}to{transform:scale(2.6);opacity:0}}',
+  '.tick .in{margin-left:auto;font-weight:600;color:var(--soft)}',
+  '.up-now .t{display:block;font-size:20px;font-weight:800;line-height:1.25;color:var(--ink);text-decoration:none;overflow-wrap:anywhere}',
+  'a.t:hover{text-decoration:underline}',
+  '.up-now p.m{margin:6px 0 0;font-size:15px;color:var(--soft)}',
+  '.up-now .tier{margin-top:10px}',
+  '.up-ss{list-style:none;margin:10px 0 0;padding:0;font-size:15px;line-height:1.4}',
+  '.up-ss li{padding:4px 0 0;font-weight:600}',
+  '.up-ss li.n,.ups .up-ss li.n{font-weight:400;color:var(--muted)}',
+  '.up-ss time{font-weight:700;color:var(--red-ink)}',
+  '.ups .up-ss{margin-top:4px;font-size:14px}',
+  /* the other events to come, in the side */
+  '.ups{list-style:none;margin:0;padding:0}',
+  '.ups li{padding:12px 0;border-top:1px solid var(--rule)}',
+  '.ups li:first-child{border-top:0;padding-top:0}',
+  '.ups a,.ups b{display:block;font-size:16px;font-weight:700;line-height:1.35;color:var(--ink);text-decoration:none}',
+  '.ups a:hover{text-decoration:underline}',
+  '.ups span{display:block;margin-top:2px;font-size:14px;color:var(--muted)}',
+  /* "View more" (the owner, 19 Nov 2026: "For some of speakers the profile page is being too long"): the rest of the journey
+     and of a long list of sessions, opened in place — no script */
+  'details.more{margin-top:8px}',
+  'details.more>summary,details.more-s>summary{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border-radius:999px;border:1.5px solid var(--ink);font-size:15px;font-weight:700;cursor:pointer;list-style:none}',
+  'details.more>summary::-webkit-details-marker,details.more-s>summary::-webkit-details-marker{display:none}',
+  'details.more>summary:hover,details.more-s>summary:hover{background:var(--ink);color:#fff}',
+  'details.more>summary:focus-visible,details.more-s>summary:focus-visible,.qs summary:focus-visible{outline:3px solid var(--ink);outline-offset:3px}',
+  'details.more[open]>summary{margin-bottom:8px}',
+  'details[open]>summary .c,details:not([open])>summary .o{display:none}',
+  'details.more-s{margin-top:8px}',
+  'details.more-s>summary{min-height:36px;padding:0 14px;border-width:1px;font-size:14px}',
+  /* speakers of the same industry */
+  '.sim{border-top:1px solid var(--rule);background:var(--ground)}',
+  '.sim .wrap{padding-top:44px;padding-bottom:48px}',
+  '.sim-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}',
+  '.sim-list a{display:block;height:100%;padding:0 0 14px;background:var(--paper);border-radius:6px;overflow:hidden;color:var(--ink);text-decoration:none;box-shadow:0 0 0 1px var(--rule)}',
+  '.sim-list a:hover{box-shadow:0 0 0 2px var(--ink)}',
+  '.sim-list figure{position:relative;margin:0 0 12px;aspect-ratio:4/3;background:var(--wash);overflow:hidden}',
+  '.sim-list img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}',
+  '.sim-list figure span{position:absolute;inset:0;display:grid;place-items:center;font-size:34px;font-weight:800;color:var(--red-ink)}',
+  '.sim-list b{display:block;padding:0 14px;font-size:17px;line-height:1.3;overflow-wrap:anywhere}',
+  '.sim-list small{display:block;padding:4px 14px 0;font-size:14px;line-height:1.4;color:var(--soft)}',
+  /* the page's questions, at its foot */
+  '.faq .wrap{padding-top:44px;padding-bottom:56px}',
+  '.qs{max-width:820px;border-top:2px solid var(--ink)}',
+  '.qs details{border-bottom:1px solid var(--rule)}',
+  '.qs summary{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:56px;padding:12px 0;font-size:18px;font-weight:700;line-height:1.4;cursor:pointer;list-style:none}',
+  '.qs summary::-webkit-details-marker{display:none}',
+  '.qs summary:after{content:"+";flex:0 0 auto;font-size:26px;font-weight:400;line-height:1;color:var(--red-ink)}',
+  '.qs details[open] summary:after{content:"\\2212"}',
+  '.qs .prose{padding:0 0 18px}',
+  '@media (prefers-reduced-motion:reduce){.tick .dot:after{animation:none}}',
   'footer{border-top:1px solid var(--rule)}',
   'footer .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:72px;font-size:14px;color:var(--muted)}',
   'footer img{height:22px;width:auto;display:block}',
   '@media (max-width:900px){',
+  '.who .wrap.has-up{grid-template-columns:200px minmax(0,1fr)}',
+  '.who .wrap.has-up .up-now{grid-column:2}',
+  '.sim-list{grid-template-columns:repeat(2,minmax(0,1fr))}',
   '.page .wrap{grid-template-columns:minmax(0,1fr);gap:48px}',
   '.years .wrap{flex-wrap:wrap;gap:16px 28px}',
   '.tally{margin-left:0}',
@@ -202,11 +264,16 @@ var CSS = [
   '.mark img{height:22px}',
   '.back{font-size:14px}',
   '.who{padding:28px 0 26px}',
-  '.who .wrap{grid-template-columns:minmax(0,1fr);gap:22px}',
+  '.who .wrap,.who .wrap.has-up{grid-template-columns:minmax(0,1fr);gap:22px}',
+  '.who .wrap.has-up .up-now{grid-column:auto}',
+  '.sim-list{gap:12px}',
+  '.sim-list b{font-size:15px}',
+  '.qs summary{font-size:16px}',
   '.ph{width:150px}',
   '.ph span{font-size:44px}',
   '.role{font-size:18px}',
   '.years h2{max-width:none}',
+  '.tally{flex-wrap:wrap;gap:14px 22px}',
   '.ev>li{grid-template-columns:56px minmax(0,1fr);gap:12px}',
   '.dt b{font-size:20px}',
   '.yr h3{font-size:28px}',
@@ -284,16 +351,21 @@ function eventItem(j, person, sponsor) {
   if (!sponsor && j.company && person.company && !PM.sameCompany(PM.companyForm(j.company), PM.companyForm(person.company))) {
     out += '<p class="was">Then ' + (j.designation ? esc(j.designation) + ' at ' : 'at ') + esc(j.company) + '</p>';
   }
+  /* each session's title, time and who shared it — never its description (the owner, 19 Nov 2026: "Remove the session
+     description from the sessions in which the speaker spoken"); past SESSIONS_SHOWN, the rest behind "View more" */
   if (!sponsor && j.sessions && j.sessions.length) {
-    out += '<ul class="ss" aria-label="Sessions">' + j.sessions.map(function (s) {
+    var one = function (s) {
       var t = timeLabel(s.start);
       var who = (s.with || []).filter(function (w) { return w && w.name; });
       return '<li>' + ICON.mic + '<span><span class="st">' + (t ? '<time>' + esc(t) + '</time>' : '') + esc(s.title) + '</span>' +
-        (s.about ? '<span class="sa">' + esc(s.about) + '</span>' : '') +
         (who.length ? '<span class="sw">With ' + who.map(function (w) {
           return w.slug ? '<a href="/speakers/' + esc(w.slug) + '">' + esc(w.name) + '</a>' : esc(w.name);
         }).join(', ') + '</span>' : '') + '</span></li>';
-    }).join('') + '</ul>';
+    };
+    var first = j.sessions.slice(0, SESSIONS_SHOWN), rest = j.sessions.slice(SESSIONS_SHOWN);
+    out += '<ul class="ss" aria-label="Sessions">' + first.map(one).join('') + '</ul>';
+    if (rest.length) out += '<details class="more-s"><summary><span class="c">View ' + plural(rest.length, 'more session', 'more sessions') + '</span><span class="o">Show fewer sessions</span></summary>' +
+      '<ul class="ss" aria-label="More sessions">' + rest.map(one).join('') + '</ul></details>';
   }
   return out + '</div></li>';
 }
@@ -306,24 +378,44 @@ function nextHtml(list, sponsor) {
     (href ? '<a class="t" href="' + esc(href) + '">' + esc(j.title) + '</a>' : '<span class="t">' + esc(j.title) + '</span>') +
     '<p>' + esc([when, j.portalName].filter(Boolean).join(', ')) + (list.length > 1 ? ', and ' + plural(list.length - 1, 'more event', 'more events') + ' to come' : '') + '</p></section>';
 }
+/* A long journey is cut (the owner, 19 Nov 2026: "For some of speakers the profile page is being too long, we can use view
+   more button to show more events and session"): the first EVENTS_SHOWN events, the rest behind "View more", opened in
+   place; a year's bar still leads to its year (a browser opens the part it is in). A speaker's events to come are not
+   here: they are beside the name and the About (upcomingHtml). */
+var EVENTS_SHOWN = 5, SESSIONS_SHOWN = 3;
 function journeyHtml(person, o) {
   var today = str(o.today), sponsor = person.kind === 'sponsors';
   var shown = shownOf(person);
   if (!shown.length) return '';
   var coming = shown.filter(function (j) { return isComing(j, today); });
   var past = shown.filter(function (j) { return coming.indexOf(j) === -1; });
-  var html = '';
-  if (past.length || coming.length) {
-    var years = [], at = {};
-    coming.concat(past).forEach(function (j) { var y = str(j.year) || 'Earlier'; if (!at[y]) { at[y] = []; years.push(y); } at[y].push(j); });
-    years.sort(function (a, b) { return a === 'Earlier' ? 1 : b === 'Earlier' ? -1 : (a < b ? 1 : -1); });
-    html += '<section aria-labelledby="h-journey"><h2 class="h" id="h-journey">' + (sponsor ? 'Partnerships with ETB2B' : 'Journey with ETB2B') + '</h2>' +
-      years.map(function (y) {
-        return '<div class="yr" id="y' + esc(y) + '"><h3>' + esc(y) + '</h3><span>' + plural(at[y].length, sponsor ? 'event' : 'appearance', sponsor ? 'events' : 'appearances') + '</span></div>' +
-          '<ul class="ev">' + at[y].map(function (j) { return eventItem(j, person, sponsor); }).join('') + '</ul>';
-      }).join('') + '</section>';
+  var list = sponsor ? coming.concat(past) : past;
+  if (!list.length) return '';
+  var count = {};
+  list.forEach(function (j) { var y = str(j.year) || 'Earlier'; count[y] = (count[y] || 0) + 1; });
+  /* in order: years newest first, 'Earlier' last; within a year as the journey has them */
+  var years = Object.keys(count).sort(function (a, b) { return a === 'Earlier' ? 1 : b === 'Earlier' ? -1 : (a < b ? 1 : -1); });
+  var ordered = [];
+  years.forEach(function (y) { list.forEach(function (j) { if ((str(j.year) || 'Earlier') === y) ordered.push(j); }); });
+  function block(items, continued) {
+    var html = '', y0 = null, open = false;
+    items.forEach(function (j, i) {
+      var y = str(j.year) || 'Earlier';
+      if (y !== y0) {
+        if (open) html += '</ul>';
+        var again = continued && i === 0;
+        html += '<div class="yr"' + (again ? '' : ' id="y' + esc(y) + '"') + '><h3>' + esc(y) + '</h3><span>' + (again ? 'continued' : plural(count[y], sponsor ? 'event' : 'appearance', sponsor ? 'events' : 'appearances')) + '</span></div><ul class="ev">';
+        y0 = y; open = true;
+      }
+      html += eventItem(j, person, sponsor);
+    });
+    return open ? html + '</ul>' : html;
   }
-  return html;
+  var first = ordered.slice(0, EVENTS_SHOWN), rest = ordered.slice(EVENTS_SHOWN);
+  var cont = rest.length && first.length && (str(rest[0].year) || 'Earlier') === (str(first[first.length - 1].year) || 'Earlier');
+  return '<section aria-labelledby="h-journey"><h2 class="h" id="h-journey">' + (sponsor ? 'Partnerships with ETB2B' : 'Journey with ETB2B') + '</h2>' + block(first, false) +
+    (rest.length ? '<details class="more"><summary><span class="c">View ' + plural(rest.length, sponsor ? 'more event' : 'more event', 'more events') + (sponsor ? '' : ' and sessions') + '</span><span class="o">Show fewer</span></summary>' + block(rest, cont) + '</details>' : '') +
+    '</section>';
 }
 function extrasHtml(person) {
   var html = '';
@@ -347,7 +439,8 @@ function portalsHtml(list, sponsor) {
   list.forEach(function (j) { var p = str(j.portalName); if (!p) return; if (!at[p]) { at[p] = { name: p, n: 0 }; out.push(at[p]); } at[p].n++; });
   if (!out.length) return '';
   out.sort(function (a, b) { return b.n - a.n || (a.name < b.name ? -1 : 1); });
-  return '<section aria-labelledby="h-portals"><h2 id="h-portals">' + (sponsor ? 'With these portals' : 'On these portals') + '</h2><ul class="list">' +
+  /* a speaker's: "Speaking on more verticals" (the owner, 19 Nov 2026: "Rename - On these portals to Speaking on More verticals") */
+  return '<section aria-labelledby="h-portals"><h2 id="h-portals">' + (sponsor ? 'With these portals' : 'Speaking on more verticals') + '</h2><ul class="list">' +
     out.map(function (p) { return '<li><span>' + esc(p.name) + '</span><span class="c">' + plural(p.n, 'event', 'events') + '</span></li>'; }).join('') + '</ul></section>';
 }
 function alongsideHtml(list) {
@@ -385,6 +478,59 @@ function linksHtml(person) {
   }).join('') + '</ul></section>';
 }
 
+/* What is still to come (the owner, 19 Nov 2026: "Show the immideate upcoming event in right side of the speaker name with an
+   upcoming ticker and rest upcoming events will be displayed in the right side of bio before On these portals section"):
+   the nearest beside the name, with how far off it is; the others in the side, nearest first. */
+function daysTo(date, today) {
+  var a = /^(\d{4})-(\d{2})-(\d{2})/.exec(str(date)), b = /^(\d{4})-(\d{2})-(\d{2})/.exec(str(today));
+  if (!a || !b) return null;
+  return Math.round((Date.UTC(+a[1], +a[2] - 1, +a[3]) - Date.UTC(+b[1], +b[2] - 1, +b[3])) / 86400000);
+}
+function inDays(n) { return n == null || n < 0 ? '' : n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : n < 60 ? 'In ' + n + ' days' : ''; }
+function whenOf(j) { var dp = dayParts(j.date); return dp ? dp.day + ' ' + dp.month + ' ' + str(j.date).slice(0, 4) : str(j.year); }
+/* the sessions they will speak in there: the first two, with how many more */
+function comingSessions(j, max) {
+  var list = (j.sessions || []).filter(function (x) { return x && str(x.title).trim(); });
+  if (!list.length) return '';
+  return '<ul class="up-ss" aria-label="Sessions">' + list.slice(0, max).map(function (x) {
+    var t = timeLabel(x.start);
+    return '<li>' + (t ? '<time>' + esc(t) + '</time> ' : '') + esc(x.title) + '</li>';
+  }).join('') + (list.length > max ? '<li class="n">and ' + plural(list.length - max, 'more session', 'more sessions') + '</li>' : '') + '</ul>';
+}
+function upNowHtml(j, today) {
+  if (!j) return '';
+  var href = link(j.link), role = shownRole(j), soon = inDays(daysTo(j.date, today));
+  return '<aside class="up-now" aria-labelledby="h-upnow"><p class="tick"><span class="dot" aria-hidden="true"></span><span id="h-upnow">Upcoming</span>' + (soon ? '<span class="in">' + esc(soon) + '</span>' : '') + '</p>' +
+    (href ? '<a class="t" href="' + esc(href) + '">' + esc(j.title) + '</a>' : '<span class="t">' + esc(j.title) + '</span>') +
+    '<p class="m">' + esc([whenOf(j), j.portalName].filter(Boolean).join(', ')) + '</p>' + (role ? '<span class="tier">' + esc(role) + '</span>' : '') + comingSessions(j, 2) + '</aside>';
+}
+function upcomingHtml(list) {
+  if (!list.length) return '';
+  return '<section aria-labelledby="h-ups"><h2 id="h-ups">' + (list.length === 1 ? 'Also coming up' : 'More upcoming events') + '</h2><ul class="ups">' + list.map(function (j) {
+    var href = link(j.link), role = shownRole(j);
+    return '<li>' + (href ? '<a href="' + esc(href) + '">' + esc(j.title) + '</a>' : '<b>' + esc(j.title) + '</b>') +
+      '<span>' + esc([whenOf(j), j.portalName, role].filter(Boolean).join(', ')) + '</span>' + comingSessions(j, 1) + '</li>';
+  }).join('') + '</ul></section>';
+}
+/* speakers of the same industry (lib/people.js similarOf), before the questions */
+function similarHtml(list) {
+  list = (list || []).filter(function (x) { return x && x.slug && x.name; });
+  if (!list.length) return '';
+  return '<section class="sim" aria-labelledby="h-sim"><div class="wrap"><h2 class="h" id="h-sim">Speakers in the same industry</h2><ul class="sim-list">' + list.map(function (x) {
+    var ph = picture(x.photo), role = [x.designation, x.company].filter(Boolean).join(', ');
+    return '<li><a href="/speakers/' + esc(x.slug) + '"><figure>' + (ph ? '<img src="' + esc(ph) + '" alt="" loading="lazy" width="280" height="210">' : '<span aria-hidden="true">' + esc(initials(x.name)) + '</span>') + '</figure>' +
+      '<b>' + esc(x.name) + '</b>' + (role ? '<small>' + esc(role) + '</small>' : '') + '</a></li>';
+  }).join('') + '</ul></div></section>';
+}
+/* the page's questions (the team writes them in the console's page editor), at its foot */
+function faqHtml(list) {
+  list = (list || []).filter(function (f) { return f && str(f.q).trim() && str(f.a).trim(); });
+  if (!list.length) return '';
+  return '<section class="faq" aria-labelledby="h-faq"><div class="wrap"><h2 class="h" id="h-faq">Frequently asked questions</h2><div class="qs">' + list.map(function (f) {
+    return '<details><summary>' + esc(f.q) + '</summary><div class="prose">' + paras(f.a) + '</div></details>';
+  }).join('') + '</div></div></section>';
+}
+
 function renderSpeaker(p, o) {
   var base = str(o.base).replace(/\/+$/, ''), canonical = base ? base + '/speakers/' + p.slug : '';
   var role = [p.designation, p.company].filter(Boolean).join(', ');
@@ -404,6 +550,8 @@ function renderSpeaker(p, o) {
   if (p.about || p.bio) person.description = cut(p.about || p.bio, 300);
   var ld = { '@context': 'https://schema.org', '@type': 'ProfilePage', mainEntity: person };
   if (canonical) ld.url = canonical;
+  var faqs = (p.faqs || []).filter(function (f) { return f && str(f.q).trim() && str(f.a).trim(); });
+  if (faqs.length) ld = [ld, { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map(function (f) { return { '@type': 'Question', name: str(f.q), acceptedAnswer: { '@type': 'Answer', text: str(f.a) } }; }) }];
   var acts = [];
   if (/^https:\/\//.test(str(p.linkedin))) acts.push('<a class="btn" href="' + esc(p.linkedin) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on LinkedIn (opens in a new tab)">' + ICON.li + 'LinkedIn</a>');
   if (/^https:\/\//.test(str(p.x))) acts.push('<a class="btn" href="' + esc(p.x) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on X (opens in a new tab)">' + ICON.x + 'X</a>');
@@ -411,19 +559,21 @@ function renderSpeaker(p, o) {
   var credit = p.photoCredit && /^https:\/\//.test(str(p.photoCredit.href)) && photo === p.photo
     ? '<p class="credit">Photo: <a href="' + esc(p.photoCredit.href) + '" target="_blank" rel="noopener">' + esc(p.photoCredit.label || 'Wikimedia Commons') + '</a></p>' : '';
   var sinceLine = st.since ? (st.events ? 'Speaker at ETB2B events since ' + st.since : 'With ETB2B since ' + st.since) : 'Speaker at ETB2B events';
-  var who = '<section class="who" aria-labelledby="h-name"><div class="wrap">' +
+  /* what is to come, nearest first: the first beside the name, the rest in the side */
+  var coming = shown.filter(function (j) { return isComing(j, today); }).sort(function (a, b) { var x = a.date || a.year, y = b.date || b.year; return x < y ? -1 : x > y ? 1 : 0; });
+  var past = shown.filter(function (j) { return coming.indexOf(j) === -1; });
+  var who = '<section class="who" aria-labelledby="h-name"><div class="wrap' + (coming.length ? ' has-up' : '') + '">' +
     '<div><figure class="ph">' + (photo ? '<img src="' + esc(photo) + '" alt="' + esc(p.name) + '" width="240" height="300">' : '<span aria-hidden="true">' + esc(initials(p.name)) + '</span>') + '</figure>' + credit + '</div>' +
     '<div><p class="since">' + esc(sinceLine) + '</p><h1 id="h-name">' + esc(p.name) + '</h1>' +
     (role ? '<p class="role">' + esc(p.designation) + (p.designation && p.company ? ', ' : '') + (p.company ? '<span class="co">' + esc(p.company) + '</span>' : '') + (logo ? '<img class="co-logo" src="' + esc(logo) + '" alt="">' : '') + '</p>' : '') +
-    (acts.length ? '<div class="acts">' + acts.join('') + '</div>' : '') + '</div></div></section>';
-  var coming = shown.filter(function (j) { return isComing(j, today); });
+    (acts.length ? '<div class="acts">' + acts.join('') + '</div>' : '') + '</div>' + upNowHtml(coming[0], today) + '</div></section>';
   var about = p.about || p.bio;
-  var main = nextHtml(coming, false) + (about ? '<section aria-labelledby="h-about"><h2 class="h" id="h-about">About</h2><div class="prose">' + paras(about) + '</div></section>' : '') +
+  var main = (about ? '<section aria-labelledby="h-about"><h2 class="h" id="h-about">About</h2><div class="prose">' + paras(about) + '</div></section>' : '') +
     wikiHtml(p) + extrasHtml(p) + journeyHtml(p, o);
-  var side = portalsHtml(shown, false) + alongsideHtml(shown) + linksHtml(p) + shareHtml(canonical, p.name);
+  var side = upcomingHtml(coming.slice(1)) + portalsHtml(shown, false) + alongsideHtml(shown) + linksHtml(p) + shareHtml(canonical, p.name);
   return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'profile', ld: ld }) +
-    '<body>' + topBar(o.back) + who + yearsHtml(p, shown, 'speakers') +
-    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + footer() + '</body></html>\n';
+    '<body>' + topBar(o.back) + who + yearsHtml(p, past, 'speakers') +
+    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + similarHtml(p.similar) + faqHtml(faqs) + footer() + '</body></html>\n';
 }
 
 function renderSponsor(p, o) {

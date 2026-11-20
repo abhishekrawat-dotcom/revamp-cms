@@ -347,6 +347,17 @@
       }).join('') +
       ((d.links || []).length < 10 ? '<button class="btn btn-secondary btn-sm" type="button" id="pp-add-link"' + dis + '>Add a link</button>' : '') + '</div></section>';
 
+    /* a speaker's questions and answers, shown at the foot of their page (the owner, 19 Nov 2026: "Add FAQs section which will
+       be displayed in the bottom of the page. can be managed from edit speaker section") */
+    if (SP) html += '<section class="panel"><div class="panel-head"><h3>Questions and answers</h3><span class="sub">Shown at the foot of the page as “Frequently asked questions”. Up to 12.</span></div><div class="panel-body">' +
+      (d.faqs || []).map(function (f, i) {
+        return '<div class="pp-sec"><div class="frow">' + field('pp-fq-' + i, 'Question', f.q, '', { max: 200, c: 'c12', placeholder: 'e.g. Where will ' + (p.name || 'they') + ' speak next?' }) +
+          field('pp-fa-' + i, 'Answer', f.a, '', { area: true, rows: 3, c: 'c12', max: 1500 }) + '</div>' +
+          '<div class="pp-sec-acts">' + (i > 0 ? '<button class="btn btn-ghost btn-sm" type="button" data-fup="' + i + '"' + dis + '>Move up</button>' : '') +
+          '<button class="btn btn-ghost btn-sm" type="button" data-del-faq="' + i + '"' + dis + '>Remove this question</button></div></div>';
+      }).join('') +
+      ((d.faqs || []).length < 12 ? '<button class="btn btn-secondary btn-sm" type="button" id="pp-add-faq"' + dis + '>Add a question</button>' : '') + '</div></section>';
+
     /* Wikipedia, for the well-known: used only when it names their company (or the team confirms it is them) */
     html += wikiPanel(p, ro);
 
@@ -411,6 +422,7 @@
     d.about = val('pp-about').trim();
     d.sections = (d.sections || []).map(function (s, i) { return { heading: val('pp-sh-' + i), text: val('pp-st-' + i) }; });
     d.links = (d.links || []).map(function (l, i) { return { label: val('pp-ll-' + i), url: val('pp-lu-' + i) }; });
+    if (SP) d.faqs = (d.faqs || []).map(function (f, i) { return { q: val('pp-fq-' + i), a: val('pp-fa-' + i) }; });
   }
   function noteDirty() {
     var n = document.getElementById('pp-dirty'), on = dirty() && state.view.canChange && !state.busy;
@@ -470,7 +482,7 @@
   }
   function setView(v) {
     if (!state.view || state.view.slug !== v.slug) { state.aboutMode = 'me'; state.aiDone = ''; state.aiNoteText = ''; }
-    state.view = v; state.draft = clone(v.page); if (!state.draft.hideEvents) state.draft.hideEvents = [];
+    state.view = v; state.draft = clone(v.page); if (!state.draft.hideEvents) state.draft.hideEvents = []; if (!state.draft.faqs) state.draft.faqs = [];
   }
   function wireOne() {
     var v = state.view, d = state.draft;
@@ -534,6 +546,10 @@
     Array.prototype.forEach.call(root.querySelectorAll('[data-del-sec]'), function (b) { b.addEventListener('click', function () { readInputs(); d.sections.splice(+b.getAttribute('data-del-sec'), 1); renderOne(); }); });
     Array.prototype.forEach.call(root.querySelectorAll('[data-up]'), function (b) { b.addEventListener('click', function () { readInputs(); var i = +b.getAttribute('data-up'); var x = d.sections[i]; d.sections[i] = d.sections[i - 1]; d.sections[i - 1] = x; renderOne(); }); });
     Array.prototype.forEach.call(root.querySelectorAll('[data-del-link]'), function (b) { b.addEventListener('click', function () { readInputs(); d.links.splice(+b.getAttribute('data-del-link'), 1); renderOne(); }); });
+    var addFaq = document.getElementById('pp-add-faq');
+    if (addFaq) addFaq.addEventListener('click', function () { readInputs(); (d.faqs = d.faqs || []).push({ q: '', a: '' }); renderOne(); var n = document.getElementById('pp-fq-' + (d.faqs.length - 1)); if (n) n.focus(); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-del-faq]'), function (b) { b.addEventListener('click', function () { readInputs(); d.faqs.splice(+b.getAttribute('data-del-faq'), 1); renderOne(); }); });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-fup]'), function (b) { b.addEventListener('click', function () { readInputs(); var i = +b.getAttribute('data-fup'); var x = d.faqs[i]; d.faqs[i] = d.faqs[i - 1]; d.faqs[i - 1] = x; renderOne(); }); });
     Array.prototype.forEach.call(root.querySelectorAll('[data-ev]'), function (c) {
       c.addEventListener('change', function () {
         var k = c.getAttribute('data-ev'), at = d.hideEvents.indexOf(k);

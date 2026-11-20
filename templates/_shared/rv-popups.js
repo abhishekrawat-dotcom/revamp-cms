@@ -9,8 +9,15 @@
    &c=<company>, which sends the visitor to the person's page (and from it, back here); a click anywhere on the card
    follows it. A sponsor's logo — Content › Sponsors ([data-rv-repeat-template="partners"][data-rv-filled]) or the
    previous edition's ([data-rv-section="previous-sponsors"]) — leads to /sponsors/go?… the same way: its link to
-   the sponsor's website now goes to the sponsor's page, which links to the website. The speaker pop-up is not used
-   on an event site any more. On an awards site the people are the jury: their cards open their profile as before.
+   the sponsor's website now goes to the sponsor's page, which links to the website. On an awards site the people are
+   the jury: their cards open their profile as before.
+
+   A speaker's side panel (the owner, 19 Nov 2026: "We need to show the speaker profile first in a pop-up with immidiate
+   informations and by clicking on view complete profile button in the pop-up should navigate to detail page"): on an
+   event site a speaker's card (and its "View profile") opens a panel from the side first — photo, name, company,
+   designation, About, upcoming events, LinkedIn / X — with "View complete profile" to their page. What the card shows
+   is there at once; the rest comes from GET /speakers/card (lib/people.js handleCard). Ctrl / Cmd-click still opens
+   the page in a new tab.
 
    Loaded by the page's runtime block (functions/lib/api.js publishTransform), so only on /preview/… and the
    live page — never in the editor, where a click picks an element to edit. A page that still has
@@ -96,7 +103,8 @@
     p.setAttribute('d', path); s.appendChild(p);
     return s;
   }
-  var ICON = { close: 'M6 6l12 12M18 6L6 18', prev: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7', out: 'M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4' };
+  var ICON = { close: 'M6 6l12 12M18 6L6 18', prev: 'M15 5l-7 7 7 7', next: 'M9 5l7 7-7 7', out: 'M14 5h5v5M19 5l-8 8M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4',
+    cal: 'M7 3v3M17 3v3M4 9h16M5 5h14a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z' };
 
   /* ---------- styles: travel with the script, written in the page's variables ---------- */
   var CSS = [
@@ -175,7 +183,41 @@
     '.rv-lb-count{bottom:26px}',
     '.rv-lb-close{top:10px;right:10px}',
     '}',
-    '@media (prefers-reduced-motion:reduce){.rv-pop,.rv-pop-panel,.rv-lb,.rv-lb-img,.rv-profile-cue{transition:none}}'
+    /* a speaker's side panel */
+    '.rv-side{position:fixed;inset:0;z-index:2147483600;background:rgba(10,12,16,.5);opacity:0;transition:opacity .2s ease;--rv-keep:1}',
+    '.rv-side.rv-open{opacity:1}',
+    '.rv-side[hidden]{display:none}',
+    '.rv-side-panel{position:absolute;top:0;right:0;bottom:0;box-sizing:border-box;width:min(440px,100%);display:flex;flex-direction:column;background:var(--rv-surface,#ffffff);color:var(--rv-text,#16181d);font-family:var(--body-font-family,Arial,sans-serif);box-shadow:-20px 0 60px rgba(0,0,0,.25);transform:translateX(100%);transition:transform .28s ease}',
+    '.rv-side.rv-open .rv-side-panel{transform:none}',
+    '.rv-side-scroll{flex:1 1 auto;overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:28px 28px 20px}',
+    '.rv-side-ph{margin:0 0 18px;width:132px;aspect-ratio:1/1;border-radius:50%;overflow:hidden;background:var(--rv-bg,#eef0f3);box-shadow:0 0 0 4px var(--rv-surface,#ffffff),0 0 0 6px var(--theme-color,#186bf9)}',
+    '.rv-side-ph img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block}',
+    '.rv-side-ph span{display:grid;place-items:center;width:100%;height:100%;font-family:var(--heading-font-family,inherit);font-size:2.5rem;font-weight:700;color:var(--theme-color,#186bf9)}',
+    '.rv-side-name{margin:0;padding-right:40px;font-family:var(--heading-font-family,inherit);font-size:1.625rem;line-height:1.2;overflow-wrap:anywhere}',
+    '.rv-side-co{margin:8px 0 0;font-size:1.0625rem;font-weight:700;line-height:1.4}',
+    '.rv-side-role{margin:2px 0 0;font-size:1rem;line-height:1.5;color:var(--rv-muted,#5b6270)}',
+    '.rv-side-h{margin:24px 0 10px;padding-top:18px;border-top:1px solid color-mix(in srgb,var(--rv-text,#16181d) 12%,transparent);font-family:var(--heading-font-family,inherit);font-size:1rem;font-weight:700}',
+    '.rv-side-about p{margin:0 0 10px;font-size:.9688rem;line-height:1.65}',
+    '.rv-side-wait{display:block;height:12px;margin:0 0 10px;border-radius:6px;background:color-mix(in srgb,var(--rv-text,#16181d) 9%,transparent)}',
+    '.rv-side-wait:nth-child(2){width:86%}.rv-side-wait:nth-child(3){width:64%}',
+    '.rv-side-ups{list-style:none;margin:0;padding:0}',
+    '.rv-side-ups li{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;padding:10px 0;border-top:1px solid color-mix(in srgb,var(--rv-text,#16181d) 9%,transparent)}',
+    '.rv-side-ups li:first-child{border-top:0;padding-top:0}',
+    '.rv-side-ups svg{width:18px;height:18px;margin-top:2px;color:var(--theme-color,#186bf9)}',
+    '.rv-side-ups a,.rv-side-ups b{display:block;font-size:1rem;font-weight:700;line-height:1.35;color:var(--rv-text,#16181d);text-decoration:none}',
+    '.rv-side-ups a:hover{text-decoration:underline}',
+    '.rv-side-ups small{display:block;margin-top:2px;font-size:.875rem;color:var(--rv-muted,#5b6270)}',
+    '.rv-side-links{display:flex;flex-wrap:wrap;gap:10px}',
+    '.rv-side-foot{flex:0 0 auto;padding:16px 28px 20px;border-top:1px solid color-mix(in srgb,var(--rv-text,#16181d) 10%,transparent);background:var(--rv-surface,#ffffff)}',
+    '.rv-side-cta{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;box-sizing:border-box;padding:0 20px;border-radius:999px;background:var(--theme-color,#186bf9);color:#ffffff;font-weight:700;font-size:1rem;text-decoration:none}',
+    '.rv-side-cta:hover{filter:brightness(.92)}',
+    '.rv-side-cta svg{width:18px;height:18px}',
+    '.rv-side-cta[hidden]{display:none}',
+    '.rv-side-close{position:absolute;top:14px;right:14px;z-index:2;width:44px;height:44px;padding:0;border:0;border-radius:50%;display:grid;place-items:center;cursor:pointer;background:var(--rv-bg,#f1f2f4);color:var(--rv-text,#16181d)}',
+    '.rv-side-close:focus-visible,.rv-side-cta:focus-visible,.rv-side-ups a:focus-visible{outline:3px solid var(--theme-color,#186bf9);outline-offset:2px}',
+    '.rv-side [hidden]{display:none!important}',
+    '@media (max-width:560px){.rv-side-scroll{padding:22px 20px 16px}.rv-side-foot{padding:14px 20px 18px}.rv-side-ph{width:108px}}',
+    '@media (prefers-reduced-motion:reduce){.rv-pop,.rv-pop-panel,.rv-lb,.rv-lb-img,.rv-profile-cue,.rv-side,.rv-side-panel{transition:none}}'
   ].join('\n');
   function addCss() {
     if (doc.querySelector('style[data-rv-popups-css]') || !doc.head) return;
@@ -442,9 +484,11 @@
       a.href = goHref('speakers', p, card);
       a.setAttribute('data-rv-person-link', '');
       a.setAttribute('aria-label', 'View profile: ' + p.n);
+      a.setAttribute('aria-haspopup', 'dialog');
       a.appendChild(svg(ICON.next, 14));
       card.appendChild(a);
       card.setAttribute('data-rv-person-ready', '');
+      card.setAttribute('data-rv-person-kind', 'speakers');
     });
   }
   function sponsorTiles(scope) {
@@ -485,12 +529,138 @@
   function followPerson(e) {
     var t = e.target, card = t && t.closest && t.closest('[data-rv-person-ready]');
     if (!card || editing()) return false;
-    if (interactive(t, card)) return false;
+    /* the card's own "View profile" link counts as the card; any other control in it does what it does */
+    var own = t.closest('a[data-rv-person-link]');
+    if (interactive(t, card) && !(own && card.contains(own))) return false;
     var link = card.querySelector('a[data-rv-person-link]');
     if (!link) return false;
+    /* a speaker: the side panel first (its "View complete profile" goes to the page); Ctrl / Cmd: the page in a new tab */
+    if (card.getAttribute('data-rv-person-kind') === 'speakers' && !(e.metaKey || e.ctrlKey)) {
+      if (openSide(card)) { e.preventDefault(); return true; }
+    }
     e.preventDefault();
     if (e.metaKey || e.ctrlKey) window.open(link.href, '_blank', 'noopener');
     else location.assign(link.href);
+    return true;
+  }
+
+  /* ---------- a speaker's side panel (see the top) ---------- */
+  var side = null;
+  function buildSide() {
+    if (side) return side;
+    var layer = el('div', 'rv-side');
+    layer.hidden = true;
+    layer.setAttribute('data-rv-popup', '');
+    var panel = el('div', 'rv-side-panel');
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-modal', 'true');
+    panel.setAttribute('aria-labelledby', 'rv-side-name');
+    panel.tabIndex = -1;
+    var close = el('button', 'rv-side-close');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Close');
+    close.appendChild(svg(ICON.close));
+    close.addEventListener('click', function () { hide(); });
+    var scroll = el('div', 'rv-side-scroll');
+    var parts = {
+      ph: el('figure', 'rv-side-ph'), name: el('h2', 'rv-side-name'), co: el('p', 'rv-side-co'), role: el('p', 'rv-side-role'),
+      aboutH: el('h3', 'rv-side-h', 'About'), about: el('div', 'rv-side-about'),
+      upsH: el('h3', 'rv-side-h', 'Upcoming events'), ups: el('ul', 'rv-side-ups'),
+      linksH: el('h3', 'rv-side-h', 'Social'), links: el('div', 'rv-side-links')
+    };
+    parts.name.id = 'rv-side-name';
+    ['ph', 'name', 'co', 'role', 'aboutH', 'about', 'upsH', 'ups', 'linksH', 'links'].forEach(function (k) { scroll.appendChild(parts[k]); });
+    var foot = el('div', 'rv-side-foot'), cta = el('a', 'rv-side-cta');
+    cta.appendChild(el('span', '', 'View complete profile'));
+    cta.appendChild(svg(ICON.next, 18));
+    foot.appendChild(cta);
+    panel.appendChild(close); panel.appendChild(scroll); panel.appendChild(foot);
+    layer.appendChild(panel);
+    layer.addEventListener('click', function (e) { if (e.target === layer) hide(); });
+    doc.body.appendChild(layer);
+    side = { layer: layer, panel: panel, scroll: scroll, close: close, cta: cta, parts: parts, asked: 0 };
+    return side;
+  }
+  function sideLinks(parts, name, list) {
+    parts.links.textContent = '';
+    list.forEach(function (l) {
+      var a = el('a', 'rv-pop-link');
+      a.href = l.href; a.target = '_blank'; a.rel = 'noopener noreferrer';
+      a.appendChild(el('span', '', l.what));
+      a.appendChild(svg(ICON.out, 16));
+      a.setAttribute('aria-label', name + ' on ' + l.what + ' (opens in a new tab)');
+      parts.links.appendChild(a);
+    });
+    parts.links.hidden = parts.linksH.hidden = !list.length;
+  }
+  function sideAbout(parts, text) {
+    parts.about.textContent = '';
+    String(text || '').split(/\n\s*\n|\r?\n/).forEach(function (line) { line = line.replace(/\s+/g, ' ').trim(); if (line) parts.about.appendChild(el('p', '', line)); });
+    parts.about.hidden = parts.aboutH.hidden = !parts.about.firstChild;
+  }
+  function openSide(card) {
+    var who = personOfCard(card);
+    if (!who.n) return false;
+    var u = buildSide(), parts = u.parts, ask = ++u.asked;
+    /* at once, what the card shows (and its template: the text and the links an awards card or a previous edition's carries) */
+    var t = profileOf(card) || {};
+    var photoEl = card.querySelector('[data-rv-field="photo"]') || card.querySelector('img');
+    var photo = pictureUrl(photoEl && photoEl.tagName === 'IMG' ? (photoEl.currentSrc || photoEl.getAttribute('src') || '') : '', true);
+    function setPhoto(src, name) {
+      parts.ph.textContent = '';
+      if (src) { var img = el('img'); img.alt = name; img.src = src; img.addEventListener('error', function () { setPhoto('', name); }); parts.ph.appendChild(img); }
+      else parts.ph.appendChild(el('span', '', String(name || '').split(/\s+/).filter(Boolean).map(function (w) { return w.charAt(0); }).join('').slice(0, 2).toUpperCase()));
+    }
+    function setText(n, v) { n.textContent = v || ''; n.hidden = !v; }
+    setPhoto(photo, who.n);
+    parts.name.textContent = who.n;
+    setText(parts.co, who.c);
+    setText(parts.role, textOf(first(card, ['[data-rv-profile-role]', '[data-rv-field="r"]'])));
+    sideAbout(parts, (t.bio || []).join('\n'));
+    /* while the rest comes: a few grey lines where the About goes */
+    if (parts.about.hidden) { parts.about.hidden = parts.aboutH.hidden = false; for (var i = 0; i < 3; i++) parts.about.appendChild(el('span', 'rv-side-wait')); }
+    parts.ups.textContent = ''; parts.ups.hidden = parts.upsH.hidden = true;
+    sideLinks(parts, who.n, (t.links || []).map(function (l) { return { href: l.href, what: l.what }; }));
+    u.cta.href = goHref('speakers', who, card);
+    u.cta.hidden = false;
+    u.cta.setAttribute('aria-label', 'View complete profile: ' + who.n);
+    u.scroll.scrollTop = 0;
+    show(u.layer, card, null, u.close);
+    /* then what their page shows (lib/people.js handleCard) */
+    var url = u.cta.href.replace('/speakers/go?', '/speakers/card?');
+    var done = function (c) {
+      if (ask !== u.asked || !open || open.layer !== u.layer) return;
+      if (!c) { if (parts.about.querySelector('.rv-side-wait')) sideAbout(parts, ''); return; }
+      if (c.missing) { u.cta.hidden = true; if (parts.about.querySelector('.rv-side-wait')) sideAbout(parts, ''); return; }
+      if (pictureUrl(c.photo, false) && !photo) setPhoto(pictureUrl(c.photo, false), who.n);
+      if (c.company && !who.c) setText(parts.co, c.company);
+      if (c.designation && parts.role.hidden) setText(parts.role, c.designation);
+      sideAbout(parts, c.about || (t.bio || []).join('\n'));
+      parts.ups.textContent = '';
+      (c.upcoming || []).forEach(function (j) {
+        var li = el('li');
+        li.appendChild(svg(ICON.cal, 18));
+        var box = el('div'), href = /^\/e\//.test(String(j.link || '')) ? HOME + j.link : httpsLink(j.link);
+        var title = el(href ? 'a' : 'b', '', j.title || '');
+        if (href) title.href = href;
+        box.appendChild(title);
+        box.appendChild(el('small', '', [j.when, j.portal, j.role].filter(Boolean).join(', ')));
+        li.appendChild(box);
+        parts.ups.appendChild(li);
+      });
+      parts.ups.hidden = parts.upsH.hidden = !parts.ups.firstChild;
+      var links = [];
+      if (httpsLink(c.linkedin)) links.push({ href: httpsLink(c.linkedin), what: 'LinkedIn' });
+      if (httpsLink(c.x)) links.push({ href: httpsLink(c.x), what: 'X' });
+      if (links.length) sideLinks(parts, who.n, links);
+      if (/^\/speakers\/[a-z0-9-]+/.test(String(c.href || ''))) u.cta.href = HOME + c.href;
+    };
+    if (window.fetch) {
+      window.fetch(url, { credentials: 'omit' }).then(function (r) {
+        if (r.status === 404) return { missing: true };
+        return r.ok ? r.json() : null;
+      }).then(done, function () { done(null); });
+    } else done(null);
     return true;
   }
 
@@ -674,5 +844,5 @@
   // photos sized only once the stylesheets and pictures are in
   window.addEventListener('load', function () { if (!editing()) markGalleries(); });
 
-  window.RevampPopups = { openProfile: openProfile, openPhoto: openPhoto, close: function () { hide(); }, refresh: start };
+  window.RevampPopups = { openProfile: openProfile, openSide: openSide, openPhoto: openPhoto, close: function () { hide(); }, refresh: start };
 })();

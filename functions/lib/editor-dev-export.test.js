@@ -419,8 +419,8 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   RUNTIME.replace(/className\s*=\s*'([a-z0-9-]+)/g, function (m, c) { if (fromRuntime.indexOf(c) === -1) fromRuntime.push(c); });
   var fromPopups = [];
   POPUPS.replace(/el\('[a-z]+',\s*'(rv-[a-z0-9-]+)'/g, function (m, c) { if (fromPopups.indexOf(c) === -1) fromPopups.push(c); });
-  // the pop-ups and the photo viewer go on <body>, outside any section: the reset never reaches them
-  var inSections = fromRuntime.concat(fromPopups.filter(function (c) { return !/^rv-(pop|lb)(-|$)/.test(c); }));
+  // the pop-ups, the speaker's side panel and the photo viewer go on <body>, outside any section: the reset never reaches them
+  var inSections = fromRuntime.concat(fromPopups.filter(function (c) { return !/^rv-(pop|lb|side)(-|$)/.test(c); }));
   // a day tab and its two lines stand inside the row of day tabs (et-runtime.js sessionDays): ".rv-day-tabs *" covers them
   var inside = { 'rv-day-tab': 'rv-day-tabs', 'rv-day-tab-n': 'rv-day-tabs', 'rv-day-tab-d': 'rv-day-tabs' };
   check('3.5a the day tabs are put inside their row', /bar\.className = 'rv-day-tabs';[\s\S]{0,900}b\.className = 'rv-day-tab';[\s\S]{0,600}bar\.appendChild\(b\);/.test(RUNTIME));

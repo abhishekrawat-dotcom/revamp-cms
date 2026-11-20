@@ -40,6 +40,7 @@
      GET /speakers/go?e=<eventId>&r=<recordId> | ?n=<name>&c=<company>&e=<eventId>   302 to the page (event sites:
          templates/_shared/rv-popups.js); a person not found answers a small page back to the event
      GET /sponsors/go?e=&r= | ?n=&e=
+     GET /speakers/card?e=&r=&n=&c=          JSON for the event site's side panel (handleCard)
      GET /sitemap-people.xml                 every page there is to find (lib/site-seo.js robots.txt names it)
    A page shows only what is public: ET's past editions (their pages show these people) and EventSphere events that
    are live — not removed, published, not a test and not one of the owner's dummy events (DUMMY_EVENTS). A
@@ -77,7 +78,7 @@ function qaCounts() { return process.env.PEOPLE_INCLUDE_QA === '1'; }
 var KINDS = { speakers: { shards: 16, pages: colName('speakerPages'), records: 'speakers', one: 'speaker' }, sponsors: { shards: 4, pages: colName('sponsorPages'), records: 'partners', one: 'sponsor' } };
 var INDEX_COL = colName('peopleIndex');
 var INDEX_MS = 60 * 1000, EVENT_MS = 5 * 60 * 1000, AGENDA_MS = 10 * 60 * 1000;
-var RESERVED = { go: 1, index: 1, search: 1, sitemap: 1, new: 1, edit: 1 };
+var RESERVED = { go: 1, card: 1, index: 1, search: 1, sitemap: 1, new: 1, edit: 1 };
 var SHARD_BYTES = 950 * 1024;
 var ET_PICS = 'https://img.etb2bimg.com/files/';
 function photoUrl(ph) { ph = str(ph); return ph.indexOf('ET:') === 0 ? ET_PICS + ph.slice(3) : ph; }
@@ -85,7 +86,7 @@ function photoUrl(ph) { ph = str(ph); return ph.indexOf('ET:') === 0 ? ET_PICS +
    their sites can be shown, but no real person speaks at them */
 var DUMMY_EVENTS = { 'agentic-summit-2027': 1, 'national-data-center-symposium': 1, 'cyber-premier-league': 1, 'cio-awards': 1 };
 var CAPS = { name: 120, designation: 200, company: 160, bio: 4000, about: 4000, sections: 8, heading: 120, text: 4000, links: 10, label: 80, url: 500,
-  photo: 400 * 1024, list: 60, query: 80, log: 30, sameName: 8, hideEvents: 200 };
+  photo: 400 * 1024, list: 60, query: 80, log: 30, sameName: 8, hideEvents: 200, faqs: 12, question: 200, answer: 1500, similar: 8 };
 
 function str(v) { return typeof v === 'string' ? v : v == null ? '' : String(v); }
 function kindOk(kind) { return Object.prototype.hasOwnProperty.call(KINDS, kind); }
@@ -601,6 +602,7 @@ function personOf(fb, kind, slug, entry, page, o) {
     person.about = str(page && page.about);
     person.sections = (page && page.sections) || [];
     person.links = (page && page.links) || [];
+    person.faqs = kind === 'speakers' ? ((page && page.faqs) || []) : [];
     var shown = journey.filter(function (j) { return !j.hidden && !j.why; });
     var sessions = 0, years = [];
     shown.forEach(function (j) { sessions += j.sessions.length; if (j.year) years.push(j.year); });
@@ -624,11 +626,13 @@ function httpsUrl(v, hostRe) {
 }
 var PHOTO_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 /* PAGE = { set: { name, designation, company, photo, bio, linkedin, x, logo, website }, about, sections: [{ heading, text }],
-            links: [{ label, url }], hideEvents: [journey key] } — only what is filled is kept; -> { page } | { error } */
+            links: [{ label, url }], hideEvents: [journey key], faqs: [{ q, a }] } — only what is filled is kept;
+   -> { page } | { error }. faqs: the page's questions and answers, shown at its foot (the owner, 19 Nov 2026: "Add FAQs
+   section which will be displayed in the bottom of the page. can be managed from edit speaker section") */
 function cleanPage(kind, input) {
   input = input && typeof input === 'object' ? input : {};
   var set = input.set && typeof input.set === 'object' ? input.set : {};
-  var out = { set: {}, about: longText(input.about, CAPS.about), sections: [], links: [], hideEvents: [] };
+  var out = { set: {}, about: longText(input.about, CAPS.about), sections: [], links: [], hideEvents: [], faqs: [] };
   var text = kind === 'speakers' ? { name: CAPS.name, designation: CAPS.designation, company: CAPS.company } : { name: CAPS.name };
   Object.keys(text).forEach(function (f) { var v = oneLine(set[f], text[f]); if (v) out.set[f] = v; });
   if (kind === 'speakers' && str(set.bio).trim()) out.set.bio = longText(set.bio, CAPS.bio);
@@ -661,6 +665,14 @@ function cleanPage(kind, input) {
     out.links.push({ label: label || new URL(lu2).hostname.replace(/^www\./, ''), url: lu2 });
   });
   if (bad) return { error: bad };
+  var halfFaq = '';
+  (Array.isArray(input.faqs) ? input.faqs : []).slice(0, CAPS.faqs).forEach(function (f) {
+    var q = oneLine(f && f.q, CAPS.question), a = longText(f && f.a, CAPS.answer);
+    if (!q && !a) return;
+    if (!q || !a) { halfFaq = halfFaq || (q ? 'The question "' + q.slice(0, 60) + '" has no answer yet.' : 'An answer has no question yet.'); return; }
+    out.faqs.push({ q: q, a: a });
+  });
+  if (halfFaq) return { error: halfFaq + ' Fill in both, or remove it.' };
   (Array.isArray(input.hideEvents) ? input.hideEvents : []).slice(0, CAPS.hideEvents).forEach(function (k) { k = oneLine(k, 200); if (/^(et|own):/.test(k) && out.hideEvents.indexOf(k) === -1) out.hideEvents.push(k); });
   return { page: out };
 }
@@ -685,7 +697,7 @@ function storePagePicture(fb, kind, slug, ref, page, by, base) {
     return IP.storeFields(fb, set, folders, was, { labels: { photo: 'The photo', logo: 'The logo' }, actor: by });
   });
 }
-function pageFields(p) { p = p || {}; return { set: p.set || {}, about: p.about || '', sections: p.sections || [], links: p.links || [], hideEvents: p.hideEvents || [] }; }
+function pageFields(p) { p = p || {}; return { set: p.set || {}, about: p.about || '', sections: p.sections || [], links: p.links || [], hideEvents: p.hideEvents || [], faqs: p.faqs || [] }; }
 function samePage(a, b) { return JSON.stringify(pageFields(a)) === JSON.stringify(pageFields(b)); }
 
 /* who may change this person: an editor in one of their portals (an admin: anyone) */
@@ -741,6 +753,8 @@ function handlePage(kind, req, res, slug) {
       return personOf(fb, kind, slug, entry, page, { idx: idx });
     }).then(function (person) {
       if (!person || !person.hasPage) return notHere(req, res, kind, back);
+      /* speakers of the same industry, before the questions (similarOf) */
+      if (kind === 'speakers') person.similar = similarOf(idx, slug);
       var base = H.publicBaseFor(req, '');
       var html = require('./people-page').render(person, { base: base, back: back, today: today() });
       sendPage(req, res, 200, html, 'public, max-age=60');
@@ -807,6 +821,81 @@ function handleGo(kind, req, res) {
     sendPage(req, res, 503, H.messagePage('Please try again in a moment', 'This page could not be loaded just now.'), 'no-store');
   });
 }
+/* Speakers of the same industry (the owner, 19 Nov 2026: "Add one more section with similar industry speakers which will be
+   showcased before FAQ section"): those who speak on the same verticals — the portals this person spoke on — most
+   verticals shared first, their main one counting most, then one with a photo, then the most seen. Among equals the
+   order is the page's own (a hash of the two slugs), so each page shows its own set, never the same eight everywhere.
+   Only pages anyone may see: not hidden, with an edition in ETB2B's records (an EventSphere-only speaker may be on an
+   event that is not live). -> [{ slug, name, designation, company, photo }] */
+function hashOf(text) { return parseInt(crypto.createHash('md5').update(text).digest('hex').slice(0, 8), 16); }
+function similarOf(idx, slug, max) {
+  var me = idx && idx.people[slug], mine = (me && me.p) || [];
+  if (!mine.length) return [];
+  var out = [];
+  Object.keys(idx.people).forEach(function (s) {
+    var e = idx.people[s];
+    if (s === slug || !e || e.h || !str(e.n) || !(e.k || []).some(function (k) { return k.indexOf('e~') === 0; })) return;
+    var theirs = e.p || [], shared = theirs.filter(function (p) { return mine.indexOf(p) !== -1; }).length;
+    if (!shared) return;
+    var score = shared * 10 + (theirs.indexOf(mine[0]) !== -1 ? 6 : 0) + (e.ph ? 5 : 0) + (e.d && e.c ? 2 : 0) + Math.min(6, +e.ev || 0) * 0.5;
+    out.push({ s: s, score: score, tie: hashOf(slug + '|' + s) });
+  });
+  out.sort(function (a, b) { return b.score - a.score || a.tie - b.tie; });
+  return out.slice(0, max || CAPS.similar).map(function (x) {
+    var e = idx.people[x.s];
+    return { slug: x.s, name: str(e.n), designation: str(e.d), company: str(e.c), photo: photoUrl(e.ph) };
+  });
+}
+
+/* GET /speakers/card?e=&r=&n=&c= — what an event site's side panel shows of a speaker (templates/_shared/rv-popups.js; the
+   owner, 19 Nov 2026: "show the speaker profile first in a pop-up with immediate informations and by clicking on view
+   complete profile button in the pop-up should navigate to detail page"), found as /speakers/go finds them:
+   200 { href, name, designation, company, photo, about, linkedin, x, upcoming: [{ title, date, when, portal, link, role }] }
+   — only what their page shows; upcoming: the events still to come, nearest first, the one the visitor is on left out —
+   or 404 { error } for a speaker with no page. Any site may read it (the section copied onto another website reads it
+   from there): it is what the public page shows anyway. */
+function sendCard(res, status, body, cache) {
+  H.sendJson(res, status, body, { 'Access-Control-Allow-Origin': '*', 'Cache-Control': cache || 'no-store' });
+}
+function cardOf(person, slug, from, now) {
+  var shown = (person.journey || []).filter(function (j) { return !j.hidden && !j.why; });
+  var coming = shown.filter(function (j) { return (j.upcoming || (j.date && j.date > now)) && j.key !== 'own:' + from; })
+    .sort(function (a, b) { var x = a.date || a.year, y = b.date || b.year; return x < y ? -1 : x > y ? 1 : 0; }).slice(0, 4);
+  var page = require('./people-page');
+  var about = str(person.about || person.bio || (person.wiki && person.wiki.extract));
+  return {
+    href: '/speakers/' + slug + (from ? '?from=' + encodeURIComponent(from) : ''), name: str(person.name), designation: str(person.designation), company: str(person.company),
+    photo: /^https:\/\//.test(str(person.photo)) ? str(person.photo) : '', about: page._test.cut(about, 600),
+    linkedin: /^https:\/\//.test(str(person.linkedin)) ? str(person.linkedin) : '', x: /^https:\/\//.test(str(person.x)) ? str(person.x) : '',
+    upcoming: coming.map(function (j) {
+      return { title: str(j.title), date: str(j.date), when: page._test.dayLabel(j.date) || str(j.year), portal: str(j.portalName), link: /^https:\/\/|^\/e\//.test(str(j.link)) ? str(j.link) : '', role: page._test.shownRole(j) };
+    })
+  };
+}
+function handleCard(req, res) {
+  var fb = H.firebase();
+  var qs = new URLSearchParams(String(req.url || '').split('?')[1] || '');
+  var from = str(qs.get('e')).slice(0, 120);
+  if (!H.isEventId(from)) from = '';
+  if (fb.error) return sendCard(res, 503, { error: 'This profile could not be loaded just now.' });
+  readIndex(fb, 'speakers').then(function (idx) {
+    return findSlug(fb, 'speakers', idx, qs).then(function (slug) {
+      if (!slug) return null;
+      return pageRef(fb, 'speakers', slug).get().then(function (snap) {
+        var page = snap.exists ? snap.data() || {} : null, entry = idx.people[slug];
+        if (!entry || (page && typeof page.hidden === 'boolean' ? page.hidden : !!entry.h)) return null;
+        return personOf(fb, 'speakers', slug, entry, page, { idx: idx }).then(function (person) { return person && person.hasPage ? cardOf(person, slug, from, today()) : null; });
+      });
+    });
+  }).then(function (card) {
+    if (!card) return sendCard(res, 404, { error: 'This speaker has no profile page yet.' }, 'public, max-age=60');
+    sendCard(res, 200, card, 'public, max-age=120');
+  }).catch(function (err) {
+    console.error('people: /speakers/card failed — ' + (err && err.stack || err));
+    sendCard(res, 503, { error: 'This profile could not be loaded just now.' });
+  });
+}
+
 /* every page there is to find: a person with a row from ET (ET's editions are public) or from a live event */
 var sitemapCache = null;
 function sitemapEntries(fb, base) {
@@ -845,6 +934,7 @@ function routePublic(req, res, kind, rest) {
   var slug = '';
   try { slug = decodeURIComponent(rest); } catch (e) { slug = ''; }
   if (slug === 'go') return handleGo(kind, req, res);
+  if (slug === 'card' && kind === 'speakers') return handleCard(req, res);
   return handlePage(kind, req, res, slug);
 }
 
@@ -1368,7 +1458,7 @@ module.exports = {
   wire: wire, reconcile: reconcile, reconcileAll: reconcileAll, soon: soon, routePublic: routePublic, handleSitemap: handleSitemap,
   handleList: handleList, handleOne: handleOne, handleMerge: handleMerge, handleSplit: handleSplit, handleUndo: handleUndo, handleAbout: handleAbout, handleWiki: handleWiki, wikiLookup: wikiLookup, personOf: personOf, readIndex: readIndex,
   picturesFolder: picturesFolder,
-  _test: { place: place, newSlug: newSlug, summarise: summarise, joinInto: joinInto, finalSlug: finalSlug, withLookups: withLookups, cleanPage: cleanPage,
+  _test: { similarOf: similarOf, cardOf: cardOf, place: place, newSlug: newSlug, summarise: summarise, joinInto: joinInto, finalSlug: finalSlug, withLookups: withLookups, cleanPage: cleanPage,
     personOf: personOf, whyNotPublic: whyNotPublic, findSlug: findSlug, mayChange: mayChange, shardOf: shardOf, readIndex: readIndex, forget: forget,
     sitemapEntries: sitemapEntries, rowsOf: rowsOf, groupsOf: groupsOf, completeOf: completeOf, missingOf: missingOf, FIELDS: FIELDS, DUMMY_EVENTS: DUMMY_EVENTS, KINDS: KINDS, CAPS: CAPS, factsOf: factsOf, aboutPrompt: aboutPrompt, cleanAbout: cleanAbout }
 };

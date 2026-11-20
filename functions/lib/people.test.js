@@ -95,7 +95,7 @@ var H = {
   sendHtml: function (req, res, status, html, cache) { res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': cache }); res.end(html); },
   messagePage: function (t, m, link) { return '<!DOCTYPE html><meta name="robots" content="noindex"><h1>' + t + '</h1><p>' + m + '</p>' + (link ? '<a href="' + link.href + '">' + link.label + '</a>' : ''); },
   sendText: function (req, res, status, type, text, cache) { res.writeHead(status, { 'Content-Type': type, 'Cache-Control': cache }); res.end(text); },
-  sendJson: function (res, status, body) { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); },
+  sendJson: function (res, status, body, extra) { res.writeHead(status, Object.assign({ 'Content-Type': 'application/json' }, extra || {})); res.end(JSON.stringify(body)); },
   publicBaseFor: function () { return 'https://sites.test'; },
   requireAdmin: function (req, res, cb) { cb(FB, { email: req.user.email, access: req.user }); },
   withAdminBody: function (req, res, max, cb) { cb(FB, { email: req.user.email, access: req.user }, req.body || {}); },
@@ -231,16 +231,17 @@ function page(url) {
   var r = await page('/speakers/naven-singh?from=ciso-secufest-summit-2027');
   var html = r.text;
   check('4 GET /speakers/<slug>: 200, the newest details (the team\'s record on a live event), ET\'s photo', r.status === 200 && /<h1 id="h-name">Naven Singh<\/h1>/.test(html) && /Group CISO &amp; DPO/.test(html) && /naven\.jpg|naven-cio\.jpg/.test(html), html.slice(0, 400));
-  check('4 …the journey: the live event first ("Speaking next"), each ET edition by year, sessions under each, the CIO portal\'s edition too',
-    /Speaking next/.test(html) && /CISO Secufest Summit 2027/.test(html) && /Keynote: Cyber resilience/.test(html) && /ETCISO Annual Conclave 2026/.test(html) && /Zero trust in BFSI/.test(html) && /11:30 am/.test(html) &&
+  /* the event to come beside the name, with its sessions; the past by year (owner, 19 Nov 2026) */
+  check('4 …the live event to come beside the name ("Upcoming", its sessions), each ET edition by year, sessions under each, the CIO portal\'s edition too',
+    /<aside class="up-now"[^>]*><p class="tick">[\s\S]*?Upcoming[\s\S]*?CISO Secufest Summit 2027[\s\S]*?class="up-ss"/.test(html) && /CISO Secufest Summit 2027/.test(html) && /Keynote: Cyber resilience/.test(html) && /ETCISO Annual Conclave 2026/.test(html) && /Zero trust in BFSI/.test(html) && /11:30 am/.test(html) &&
     /ETCIO Annual 2025/.test(html) && /ETCISO Decrypt 2025/.test(html) && !/Someone else/.test(html), html);
   check('4 …never a dummy event, an awards jury, an email or a phone', !/National Data Center/.test(html) && !/Digiplus/.test(html) && !/naven\.private|99999/.test(html));
   check('4 …the way back to the event, the canonical address, the person\'s structured data, no script but that',
     /<a class="back" href="\/e\/ciso-secufest-summit-2027">/.test(html) && /<link rel="canonical" href="https:\/\/sites\.test\/speakers\/naven-singh">/.test(html) && /"@type":"ProfilePage"/.test(html) && /"@type":"Person"/.test(html) &&
     (html.match(/<script/g) || []).length === 1 && /<script type="application\/ld\+json">/.test(html));
   check('4 …counts: events, sessions, award juries, the first year, the portals', /<b>4<\/b>ETB2B events/.test(html) && /<b>2<\/b>sessions/.test(html) && /<b>1<\/b>award jury/.test(html) && /<b>2024<\/b>first with ETB2B/.test(html), (html.match(/<ul class="stats"[\s\S]*?<\/ul>/) || [''])[0]);
-  check('4 …their role at each edition, the award they judged, a session\'s description, who shared it (a link to their page), the whole bio',
-    /<span class="tier">Keynote Address<\/span>/.test(html) && /ETCISO Awards 2024/.test(html) && /<span class="tier">Grand Jury<\/span>/.test(html) && /How banks verify every request\./.test(html) &&
+  check('4 …their role at each edition, the award they judged, never a session\'s description (owner, 19 Nov 2026), who shared it (a link to their page), the whole bio',
+    /<span class="tier">Keynote Address<\/span>/.test(html) && /ETCISO Awards 2024/.test(html) && /<span class="tier">Grand Jury<\/span>/.test(html) && !/How banks verify every request\./.test(html) && !/class="sa"/.test(html) &&
     /With <a href="\/speakers\/naven-singh-globex">Naven Singh<\/a>/.test(html) && /three banks\. He has led/.test(html), (html.match(/Journey with[\s\S]{0,1600}/) || [''])[0]);
   check('4 …never a bare "ET" in what a visitor reads (ETB2B, The Economic Times Business Verticals)', !/\bET\b/.test(html.replace(/<script[\s\S]*?<\/script>/g, ' ').replace(/<[^>]+>/g, ' ')) && /The Economic Times Business Verticals/.test(html));
   r = await page('/speakers/naven-singh?from=draft-x');
@@ -303,11 +304,28 @@ function page(url) {
   var put = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'hr', { slug: 'naven-singh', base: 0, page: { about: 'x' } });
   check('6 an editor of another portal cannot change it', put.status === 403);
   put = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: 0, page: { set: { designation: 'Chief Information Security Officer' }, about: 'Naven leads security at Acme Bank.',
-    sections: [{ heading: 'Recognition', text: 'CISO of the Year 2025' }], links: [{ label: 'Keynote video', url: 'https://youtube.com/watch?v=1' }], hideEvents: ['et:800'] } });
+    sections: [{ heading: 'Recognition', text: 'CISO of the Year 2025' }], links: [{ label: 'Keynote video', url: 'https://youtube.com/watch?v=1' }], hideEvents: ['et:800'],
+    faqs: [{ q: 'Where does Naven speak next?', a: 'At CISO Secufest Summit 2027.' }, { q: '', a: '' }] } });
   check('6 an editor of the portal changes it; it is logged', put.status === 200 && put.body.version === 1 && put.body.log[0].action === 'edit' && put.body.page.set.designation === 'Chief Information Security Officer', put.body);
   r = await page('/speakers/naven-singh');
   check('6 …and the page shows it at once: the team\'s designation, About, section, link; an event left off', /Chief Information Security Officer/.test(r.text) && /Naven leads security/.test(r.text) && /CISO of the Year 2025/.test(r.text) &&
     /Keynote video/.test(r.text) && !/ETCISO Decrypt 2025/.test(r.text));
+  /* the page's questions (owner, 19 Nov 2026), saved from the console, at its foot, after the speakers of the same industry */
+  check('6 …its questions saved (an empty one dropped) and at the foot of the page, with their structured data', put.body.page.faqs.length === 1 &&
+    /<section class="faq"[\s\S]*Frequently asked questions[\s\S]*<details><summary>Where does Naven speak next\?<\/summary>/.test(r.text) && /"@type":"FAQPage"/.test(r.text) &&
+    r.text.indexOf('class="sim"') < r.text.indexOf('class="faq"') && r.text.indexOf('class="faq"') < r.text.indexOf('<footer'), put.body.page.faqs);
+  check('6 …speakers of the same industry: others on the same verticals, linked to their pages', /Speakers in the same industry/.test(r.text) && /<a href="\/speakers\/naven-singh-globex">/.test((r.text.match(/<section class="sim"[\s\S]*?<\/section>/) || [''])[0]));
+  var half = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: 1, page: Object.assign({}, put.body.page, { faqs: [{ q: 'Half a question?', a: '' }] }) });
+  check('6 a question with no answer is refused, in words', half.status === 400 && /has no answer yet/.test(half.body.error), half.body);
+  /* the event site's side panel (rv-popups.js): what the page shows, as JSON any site may read */
+  var cardR = await page('/speakers/card?e=ciso-secufest-summit-2027&r=s1');
+  var cardB = null; try { cardB = JSON.parse(cardR.text); } catch (e) { /* not json */ }
+  check('6 GET /speakers/card: the speaker found by their record, their page\'s address back to the event, About, LinkedIn; open to any site',
+    cardR.status === 200 && cardB && cardB.name === 'Naven Singh' && cardB.href === '/speakers/naven-singh?from=ciso-secufest-summit-2027' && /Naven leads security/.test(cardB.about) &&
+    cardR.headers['access-control-allow-origin'] === '*', [cardR.status, cardR.text.slice(0, 300), cardR.headers]);
+  check('6 …the events to come, never the one the visitor is on', Array.isArray(cardB && cardB.upcoming) && !cardB.upcoming.some(function (u) { return /CISO Secufest Summit 2027/.test(u.title); }), cardB && cardB.upcoming);
+  var noCard = await page('/speakers/card?n=Nobody%20Atall');
+  check('6 …a speaker with no page: 404, said in words', noCard.status === 404 && /no profile page/.test(noCard.text), [noCard.status, noCard.text]);
   put = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: 0, page: { about: 'stale' } });
   check('6 a change made on an old copy is refused (someone changed it since)', put.status === 409);
   put = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: 1, hidden: true });
@@ -319,7 +337,7 @@ function page(url) {
   check('6 Undo: shown again', un.status === 200 && un.body.hidden === false && r.status === 200, un.body);
   un = await call(P.handleUndo, 'POST', '/api/people/speakers/undo', 'ciso', { slug: 'naven-singh' });
   r = await page('/speakers/naven-singh');
-  check('6 …Undo again: the edit is undone too', un.status === 200 && !/Naven leads security/.test(r.text) && /ETCISO Decrypt 2025/.test(r.text));
+  check('6 …Undo again: the edit is undone too, its questions with it', un.status === 200 && !/Naven leads security/.test(r.text) && /ETCISO Decrypt 2025/.test(r.text) && !/class="faq"/.test(r.text));
   var mg = await call(P.handleMerge, 'POST', '/api/people/speakers/merge', 'ciso', { slug: 'naven-singh', other: 'naven-singh-globex' });
   r = await page('/speakers/naven-singh-globex');
   check('6 join: the other page\'s records come here, its address redirects (301)', mg.status === 200 && mg.body.person.rows.length === 5 && r.status === 301 && r.headers.location === '/speakers/naven-singh', [mg.status, r.status, r.headers]);
