@@ -61,6 +61,11 @@ check('0 RevampDevExport is there with build, loadPage and its helpers', !!(X &&
   check('2.1 url(…) relative to its stylesheet becomes a full address; data:, # and full ones are left', T.absoluteUrls('a{background:url(../img/a.png)} b{background:url("data:image/png;base64,AA")} c{mask:url(#m)} d{background:url(\'https://x.y/z.png\')}', base) ===
     'a{background:url("https://h.example/templates/tech500/img/a.png")} b{background:url("data:image/png;base64,AA")} c{mask:url(#m)} d{background:url(\'https://x.y/z.png\')}', T.absoluteUrls('a{background:url(../img/a.png)}', base));
   check('2.2 rem as px (16 to the rem), in clamp() and negative', T.remToPx('a{font-size:.875rem;margin:-0.5rem 0 clamp(1.75rem,3vw,2.375rem)}', 16) === 'a{font-size:14px;margin:-8px 0 clamp(28px,3vw,38px)}', T.remToPx('a{font-size:.875rem;margin:-0.5rem 0 clamp(1.75rem,3vw,2.375rem)}', 16));
+  (function () {
+    var css = '.text-\\[0\\.98rem\\]{font-size:0.98rem}.p-\\[2rem\\]{padding:2rem}@media (min-width:40rem){.mt-\\[1\\.5rem\\]{margin-top:1.5rem}}@keyframes k{0%{transform:translateY(1rem)}}';
+    var want = '.text-\\[0\\.98rem\\]{font-size:15.68px}.p-\\[2rem\\]{padding:32px}@media (min-width:640px){.mt-\\[1\\.5rem\\]{margin-top:24px}}@keyframes k{0%{transform:translateY(16px)}}';
+    check('2.3b a selector stays as written (Tailwind\'s text-[0.98rem] made .text-\\[015.68px\\] styled nothing: ETDavos Immersions); declarations, @media and keyframes in px', T.remToPx(css, 16) === want, T.remToPx(css, 16));
+  })();
   check('2.3 …never inside a word or a name', T.remToPx('.x2rem{--gap-1rem:1;}', 16) === '.x2rem{--gap-1rem:1;}', T.remToPx('.x2rem{--gap-1rem:1;}', 16));
   check('2.4 the variables a text uses, once each', show(T.varsUsed('a{color:var(--rv-text);background:var( --rv-bg , var(--rv-text))}')) === show(['--rv-text', '--rv-bg']));
   check('2.5 the font families a text names (quoted, in variables too)', show(T.familiesUsed('h1{font-family:"Fraunces", Arial, serif}--heading-font-family:"Work Sans", sans-serif;')) === show(['fraunces', 'arial', 'serif', 'work sans', 'sans-serif']), T.familiesUsed('h1{font-family:"Fraunces", Arial, serif}--heading-font-family:"Work Sans", sans-serif;'));

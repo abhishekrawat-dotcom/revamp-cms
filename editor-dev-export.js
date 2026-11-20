@@ -216,12 +216,28 @@
     });
   }
   /* rem as px: the other website's root font size need not be the 16px this site's rules were written for */
+  /* rem in a stylesheet's declarations (and an @media's condition) as px; a selector is left as it is written — a
+     Tailwind class such as text-[0.98rem] is .text-\[0\.98rem\] there, and made .text-\[015.68px\] it styled nothing
+     (ETDavos Immersions' "Join us at Davos" text: 16px on ETB2B's page against 15.68px on the event's, a line more).
+     Text with no { } is declarations only (a style attribute, the page's look). */
   function remToPx(css, px) {
     px = px || 16;
-    return String(css || '').replace(/(^|[^\w.#-])(-?\d*\.?\d+)rem\b/g, function (m, pre, n) {
-      var v = Math.round(parseFloat(n) * px * 1000) / 1000;
-      return pre + v + 'px';
-    });
+    function values(t) {
+      return t.replace(/(^|[^\w.#\\-])(-?\d*\.?\d+)rem\b/g, function (m, pre, n) {
+        var v = Math.round(parseFloat(n) * px * 1000) / 1000;
+        return pre + v + 'px';
+      });
+    }
+    var text = String(css || '');
+    if (!/[{}]/.test(text)) return values(text);
+    var out = '', last = 0, re = /[{}]/g, m;
+    while ((m = re.exec(text))) {
+      var seg = text.slice(last, m.index);
+      // before a {: a selector (left as written) or an at-rule's condition; before a }: declarations
+      out += (m[0] === '}' || /^\s*@/.test(seg) ? values(seg) : seg) + m[0];
+      last = m.index + 1;
+    }
+    return out + values(text.slice(last));
   }
   /* Every declaration made !important — as ETB2B's own CMS sections are written: ETB2B's page CSS sets plain elements
      with !important (strong, p, li, a… — hundreds of rules), which outweighs any rule that is not, however specific.
