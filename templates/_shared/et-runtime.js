@@ -428,7 +428,10 @@
       }
     }
     var next = btn.nextElementSibling;
-    return next && !/^(BUTTON|A)$/.test(next.tagName) ? next : null;
+    if (next && !/^(BUTTON|A)$/.test(next.tagName)) return next;
+    /* a row whose whole face is the button, its text that opens inside it as a grid row of no height (ETDavos
+       Immersions' "Davos ET Immersions Experience": number, title, arrow and the opening text in one button) */
+    return btn.querySelector('[class*="grid-rows-[0fr]"], [class*="grid-rows-[1fr]"]');
   }
 
   /* the row: the closest element holding both the button and its panel */
@@ -456,14 +459,116 @@
     p.removeAttribute('hidden');
     /* a panel its classes keep closed as a grid row of no height (grid-rows-[0fr] opacity-0): opened by giving
        it its full row; closed by handing it back to its classes (which may open it on hover) */
-    if (/(^|\s)grid-rows-\[0fr\](\s|$)/.test(p.getAttribute('class') || '')) {
+    var cls = p.getAttribute('class') || '';
+    if (/(^|\s)grid-rows-\[0fr\](\s|$)/.test(cls)) {
       p.style.gridTemplateRows = on ? '1fr' : '';
       p.style.opacity = on ? '1' : '';
+      return;
+    }
+    /* one its classes keep open (the row open as the page came): closed as a grid row of no height */
+    if (/(^|\s)grid-rows-\[1fr\](\s|$)/.test(cls)) {
+      p.style.gridTemplateRows = on ? '' : '0fr';
+      p.style.opacity = on ? '' : '0';
       return;
     }
     p.style.height = on ? 'auto' : '0px';
     p.style.opacity = on ? '1' : '0';
     p.style.overflow = 'hidden';
+  }
+
+  /* The look of an open row, learned from the page as it came, when the capture recorded none (data-rv-open-class):
+     the row open then and a closed one, element by element (the same elements in the same order), differ by the
+     classes that make a row look open — its number and title coloured, its arrow shown, a bar beside it drawn, its
+     text's grid row opened. Swapping them lets the page's own transitions play (ETDavos Immersions, 20 Nov 2026:
+     "if you refer to the lovable there will be a accordian", "No animation is imported"). Learned once per list,
+     before its first change; null when there is nothing to learn (no row open, or rows built differently). */
+  function ownClasses(el) { return (el.getAttribute('class') || '').split(/\s+/).filter(function (c) { return c && !/^rv-/.test(c); }); }
+  function rowEls(row) { return [row].concat(Array.prototype.slice.call(row.querySelectorAll('*'))); }
+  function learnLooks(list, rows) {
+    if (list.__rvLooks !== undefined) return list.__rvLooks;
+    var open = rows.filter(function (r) { return r.b.getAttribute('aria-expanded') === 'true'; })[0];
+    var shut = rows.filter(function (r) { return r.b.getAttribute('aria-expanded') !== 'true'; })[0];
+    var looks = null;
+    if (open && shut && !rows.some(function (r) { return r.b.querySelector('[data-rv-open-class], [data-rv-open-text]') || r.b.hasAttribute('data-rv-open-class'); })) {
+      var eo = rowEls(rowOf(open.b, open.p)), es = rowEls(rowOf(shut.b, shut.p));
+      if (eo.length === es.length && eo.every(function (e, i) { return e.tagName === es[i].tagName; })) {
+        looks = eo.map(function (e, i) {
+          var a = ownClasses(e), z = ownClasses(es[i]);
+          return { on: a.filter(function (c) { return z.indexOf(c) === -1; }), off: z.filter(function (c) { return a.indexOf(c) === -1; }) };
+        });
+        if (!looks.some(function (l) { return l.on.length || l.off.length; })) looks = null;
+      }
+    }
+    /* a closed row's text marked shown before (rv-shown, kept in a page saved from the editor) would open without
+       fading in: its classes say how it looks from now on */
+    if (looks) rows.forEach(function (r) { if (r.p) r.p.classList.remove('rv-shown'); });
+    list.__rvLooks = looks;
+    return looks;
+  }
+  /* -> true when the row took the learned look (its panel opened or closed by its classes too) */
+  function lookRow(looks, row, panel, on) {
+    var els = rowEls(row);
+    if (!looks || els.length !== looks.length) return false;
+    els.forEach(function (e, i) {
+      var l = looks[i];
+      (on ? l.off : l.on).forEach(function (c) { e.classList.remove(c); });
+      (on ? l.on : l.off).forEach(function (c) { e.classList.add(c); });
+    });
+    var pi = els.indexOf(panel);
+    if (pi === -1 || !(looks[pi].on.length || looks[pi].off.length)) return false;
+    panel.removeAttribute('hidden');
+    panel.style.gridTemplateRows = ''; panel.style.opacity = ''; panel.style.height = ''; panel.style.overflow = '';
+    panel.classList.remove('rv-shown');
+    return true;
+  }
+  /* A picture beside the list that shows the open row's own picture (the same file), and words beside it that are
+     the open row's title: they follow the row that opens, the picture fading across. Learned with the looks. */
+  function learnPicture(list, rows) {
+    if (list.__rvPic !== undefined) return list.__rvPic;
+    var pic = null, open = rows.filter(function (r) { return r.b.getAttribute('aria-expanded') === 'true'; })[0];
+    var sec = list.closest('section, [data-rv-section]') || list.parentElement;
+    if (open && sec) {
+      var row = rowOf(open.b, open.p), mine = Array.prototype.slice.call(row.querySelectorAll('img'));
+      var srcs = mine.map(function (im) { return im.getAttribute('src'); });
+      Array.prototype.forEach.call(sec.querySelectorAll('img'), function (im) {
+        if (pic || list.contains(im)) return;
+        var k = srcs.indexOf(im.getAttribute('src'));
+        if (k !== -1) pic = { img: im, k: k, words: [] };
+      });
+      if (pic) {
+        var leaves = rowEls(row).filter(function (e) { return !e.children.length && (e.textContent || '').trim().length >= 3; });
+        Array.prototype.forEach.call(sec.querySelectorAll('*'), function (e) {
+          if (e.children.length || list.contains(e)) return;
+          var t = (e.textContent || '').trim();
+          if (t.length < 3) return;
+          var at = -1;
+          leaves.forEach(function (l, i) { if (at === -1 && (l.textContent || '').trim() === t) at = rowEls(row).indexOf(l); });
+          if (at !== -1) pic.words.push({ el: e, at: at });
+        });
+      }
+    }
+    list.__rvPic = pic;
+    return pic;
+  }
+  function showPicture(pic, row) {
+    if (!pic) return;
+    var imgs = row.querySelectorAll('img'), from = imgs[pic.k], els = rowEls(row);
+    pic.words.forEach(function (w) { var s = els[w.at]; if (s && !s.children.length) w.el.textContent = s.textContent; });
+    if (!from || from.getAttribute('src') === pic.img.getAttribute('src')) return;
+    var im = pic.img, was = im.__rvWasOpacity !== undefined ? im.__rvWasOpacity : (im.__rvWasOpacity = im.style.opacity);
+    var turn = (im.__rvTurn || 0) + 1;
+    im.__rvTurn = turn;
+    im.style.transition = 'opacity 0.25s ease';
+    im.style.opacity = '0';
+    setTimeout(function () {
+      if (im.__rvTurn !== turn) return;
+      /* the row picture's own copies (a WebP srcset, lib/pictures.js) come with it: the browser takes srcset first */
+      ['srcset', 'sizes'].forEach(function (k) { if (from.hasAttribute(k)) im.setAttribute(k, from.getAttribute(k)); else im.removeAttribute(k); });
+      im.setAttribute('src', from.getAttribute('src'));
+      if (from.getAttribute('alt') != null) im.setAttribute('alt', from.getAttribute('alt'));
+      var back = function () { if (im.__rvTurn === turn) im.style.opacity = was; };
+      if (im.complete) back(); else { im.addEventListener('load', back, { once: true }); setTimeout(back, 1200); }
+    }, 250);
   }
 
   /* a button with aria-expanded and the panel it opens; one open at a time among the rows of its list */
@@ -486,13 +591,23 @@
       });
     });
     if (list) { if (turn) list.__rvTurn = turn; else turn = list.__rvTurn; }
+    var learned = list ? learnLooks(list, rows) : null, pic = list ? learnPicture(list, rows) : null;
     var open = btn.getAttribute('aria-expanded') !== 'true';
+    /* rows a picture follows always have one open, as on the original page: the open row stays open */
+    if (!open && pic) return true;
     rows.forEach(function (r) {
       var b = r.b, on = b === btn ? open : false;
       if (b !== btn && b.getAttribute('aria-expanded') !== 'true') return;    // a closed row stays as it is
       b.setAttribute('aria-expanded', on ? 'true' : 'false');
+      var row = rowOf(b, r.p);
+      if (learned && row && lookRow(learned, row, r.p, on)) {               // the page's own open look, and its transitions
+        moreLess(b, on);
+        if (on) showPicture(pic, row);
+        return;
+      }
       setPanel(r.p, on);
       moreLess(b, on);
+      if (on && row) showPicture(pic, row);
       /* the look the button had open on the original page (data-rv-open-class, lovable-scraper-service) */
       var looks = [b].concat(Array.prototype.slice.call(b.querySelectorAll('[data-rv-open-class], [data-rv-open-text]'))).filter(function (x) {
         return x.hasAttribute('data-rv-open-class') || x.hasAttribute('data-rv-open-text');
@@ -776,6 +891,9 @@
         });
         return;
       }
+      /* a row's text closed by its grid row (grid-rows-[0fr] opacity-0) is a closed panel, not content stuck unseen:
+         left as it is, so it fades in as it opens (toggleRow) */
+      if (/(^|\s)grid-rows-\[0fr\](\s|$)/.test(c.getAttribute('class') || '')) return;
       var cs = getComputedStyle(c);
       if (cs.display === 'none') return;
       var hidden = cs.visibility !== 'visible';

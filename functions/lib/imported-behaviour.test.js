@@ -43,6 +43,8 @@ var CSS = '@layer theme, base, components, utilities;' +
   '@layer utilities{.h-full{height:100%}.fixed{position:fixed}.top-0{top:0}.inset-x-0{left:0;right:0}.bg-clear{background:transparent}' +
   '.floaty{background:rgb(255,255,255);border-radius:999px;max-width:600px;margin:0 auto}.dim{opacity:.4}.bright{opacity:1}' +
   '.grid{display:grid}.grid-rows-\\[0fr\\]{grid-template-rows:0fr}.opacity-0{opacity:0}.overflow-hidden{overflow:hidden}' +
+  '.grid-rows-\\[1fr\\]{grid-template-rows:1fr}.opacity-100{opacity:1}.mt-3{margin-top:12px}.text-accent{color:rgb(200,0,0)}.text-muted{color:rgb(100,100,100)}' +
+  '.scale-y-0{transform:scaleY(0)}.scale-y-100{transform:scaleY(1)}.trans{transition:all .5s}' +
   '.prog{display:block;height:2px;background:red;animation:prog 10s linear forwards}@keyframes prog{from{transform:scaleX(0)}to{transform:scaleX(1)}}}' +
   'html{scroll-behavior:auto}body{margin:0;font:16px sans-serif}section{min-height:700px}';
 var LIVE = '<!doctype html><html><head><style>' + CSS + '</style></head><body><div id="root">' +
@@ -56,6 +58,18 @@ var LIVE = '<!doctype html><html><head><style>' + CSS + '</style></head><body><d
   /* the same, with the region itself scrolling a row wider than it (Lovable's "You may also be interested in") */
   '<section id="also2"><header><h2>Also</h2><div><button aria-label="Previous programmes">‹</button><button aria-label="Next programmes">›</button></div></header>' +
   '<div role="region" style="width:600px;overflow-x:auto"><div style="display:flex;gap:16px;width:max-content"><article style="width:280px;height:50px">A</article><article style="width:280px;height:50px">B</article><article style="width:280px;height:50px">C</article><article style="width:280px;height:50px">D</article></div></div></section>' +
+  /* ETDavos Immersions' "Davos ET Immersions Experience" (20 Nov 2026): each row one button — number, title, arrow and
+     the text that opens inside it as a grid row — the first open, a picture and its caption beside the list showing
+     the open row's own picture and title */
+  '<section id="imm"><ul id="imm-list">' + [['01', 'Presence', '#a', true], ['02', 'Promenade', '#b', false], ['03', 'Studio', '#c', false]].map(function (r) {
+    var on = r[3];
+    return '<li class="relative"><span class="trans ' + (on ? 'scale-y-100' : 'scale-y-0') + '"></span><button class="row" aria-expanded="' + on + '">' +
+      '<span class="num trans ' + (on ? 'text-accent' : 'text-muted') + '">' + r[0] + '</span><span class="flex-1"><span class="t">' + r[1] + '</span>' +
+      '<span class="trans ' + (on ? 'opacity-100' : 'opacity-0') + '" aria-hidden="true">↗</span>' +
+      '<span class="grid trans ' + (on ? 'mt-3 grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0') + '"><span class="overflow-hidden"><span>' + r[1] + ' text</span>' +
+      '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==' + r[2] + '" alt="' + r[1] + '"></span></span></span></button></li>';
+  }).join('') + '</ul><div><img id="imm-side" src="data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==#a" alt="Presence" style="opacity:1">' +
+  '<span id="imm-cap">Presence</span></div></section>' +
   '<section id="what"><div class="card"><h3>Card</h3><button type="button" aria-expanded="false" aria-controls="hb-1">Read more</button><div id="hb-1" class="grid grid-rows-[0fr] opacity-0"><div class="overflow-hidden"><p>Body text</p></div></div></div></section>' +
   '</div><script>' +
   'var TABS=[["Legacy","Legacy body"],["Craft","Bohemian glass"],["Brands","Brand trust"]],cur=0;' +
@@ -143,6 +157,36 @@ var LIVE = '<!doctype html><html><head><style>' + CSS + '</style></head><body><d
     await sleep(50);
     var more = await page.evaluate(function () { var b = document.querySelector('#what button[aria-expanded]'); var p = document.getElementById('hb-1'); return { label: b.textContent, h: p.getBoundingClientRect().height, op: getComputedStyle(p).opacity }; });
     ok(more.label === 'Read less' && more.h > 0 && more.op === '1', '"Read more" opens a panel its grid row kept closed, and says "Read less"', more);
+
+    /* the rows whose whole face is the button (ETDavos Immersions): the open look learned from the row open as the
+       page came, the picture and its caption beside the list following the open row */
+    var imm = function () {
+      return page.evaluate(function () {
+        var rows = Array.prototype.slice.call(document.querySelectorAll('#imm-list li'));
+        return { exp: rows.map(function (li) { return li.querySelector('button').getAttribute('aria-expanded'); }).join(','),
+          num: rows.map(function (li) { return li.querySelector('.num').className.replace(/\s*rv-\S+/g, ''); }),
+          bar: rows.map(function (li) { return li.firstElementChild.className; }),
+          panel: rows.map(function (li) { var p = li.querySelector('.grid'); return p.className + ' h' + Math.round(p.getBoundingClientRect().height); }),
+          shown: document.querySelectorAll('#imm-list .rv-shown').length,
+          side: document.getElementById('imm-side').getAttribute('src').slice(-2), alt: document.getElementById('imm-side').getAttribute('alt'),
+          cap: document.getElementById('imm-cap').textContent };
+      });
+    };
+    await page.evaluate(function () { document.getElementById('imm').scrollIntoView(); });
+    await page.click('#imm-list li:nth-child(2) button');
+    await sleep(900);
+    var i1 = await imm();
+    ok(i1.exp === 'false,true,false', 'a row whose text opens inside its button opens, and the open one closes', i1);
+    ok(i1.num[0] === 'num trans text-muted' && i1.num[1] === 'num trans text-accent' && /scale-y-0/.test(i1.bar[0]) && /scale-y-100/.test(i1.bar[1]),
+      'the row takes the open look the page came with (number, bar), the closed one the closed look', i1);
+    ok(/grid-rows-\[1fr\]/.test(i1.panel[1]) && /opacity-100/.test(i1.panel[1]) && /grid-rows-\[0fr\]/.test(i1.panel[0]) && !/ h0$/.test(i1.panel[1]) && / h0$/.test(i1.panel[0]),
+      '…its text opens by its own classes (so its transitions play), the other\'s closes', i1.panel);
+    ok(i1.side === '#b' && i1.alt === 'Promenade' && i1.cap === 'Promenade', 'the picture and its caption beside the list follow the open row', i1);
+    ok(i1.shown === 0, 'no closed row\'s text is forced shown (it fades in as it opens)', i1.shown);
+    await page.click('#imm-list li:nth-child(2) button');
+    await sleep(300);
+    var i2 = await imm();
+    ok(i2.exp === 'false,true,false', 'rows a picture follows keep one open: a click on the open row leaves it open', i2.exp);
 
     var apply = await page.evaluate(function () { return document.getElementById('apply').hasAttribute('data-register-cta'); });
     ok(apply, 'a sign-up button with no link opens the event\'s form (data-register-cta)');
