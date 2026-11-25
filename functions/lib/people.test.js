@@ -528,6 +528,28 @@ function page(url) {
     /if \(SP && d\.about === String\(recs\.bio \|\| ''\)\.trim\(\)\) d\.about = '';/.test(ADM));
   check('12 a changed box says what the records say, with the way back to them', /Changed by your team\. ETB2B\\u2019s records say/.test(ADM) && /data-revert="' \+ esc\(key\)/.test(ADM) && /if \(k === 'about'\) d\.about = ''; else if \(d\.set\) delete d\.set\[k\];/.test(ADM));
 
+  /* "Also coming up" as cards that move on (the owner, 25 Nov 2026: "show this info in card view on a caraousel … that card will
+     be embedded with that event link") */
+  var UP = PAGE._test.upcomingHtml, ev14 = function (k, o) { return Object.assign({ key: 'own:' + k, title: 'Event ' + k, date: '2027-0' + k + '-10', year: '2027', upcoming: true, portal: 'ciso', portalName: 'ETCISO', link: '/e/ev-' + k, sessions: [] }, o || {}); };
+  var u3 = UP([ev14(1, { picture: 'https://storage.googleapis.com/b/events/ev-1/share.png', place: 'Mumbai', sessions: [{ title: 'Zero trust', start: '11:30' }] }), ev14(2), ev14(3, { link: '' })]);
+  check('14 a card per event: its picture (the first at once, the rest when near), else its date; name, date and place, its first session', (u3.match(/<li class="ups-card"/g) || []).length === 3 &&
+    /<img src="https:\/\/storage\.googleapis\.com\/b\/events\/ev-1\/share\.png" alt="" width="300"/.test(u3) && /<span class="ups-date"><b>10<\/b><span>Feb 2027<\/span>/.test(u3) &&
+    /10 Jan 2027 \u00b7 Mumbai/.test(u3) && /<span class="ups-s"><time>11:30 am<\/time> Zero trust<\/span>/.test(u3), u3.slice(0, 600));
+  check('14 …each card a link to its event (one with no page is a card without a link)', /<a class="ups-a" href="\/e\/ev-1">/.test(u3) && /<a class="ups-a" href="\/e\/ev-2">/.test(u3) && /<div class="ups-a">[\s\S]*Event 3/.test(u3));
+  check('14 several: a carousel with arrows and a dot each, named for the reader', /aria-roledescription="carousel"/.test(u3) && /data-ups-prev aria-label="Previous event"/.test(u3) && /data-ups-next aria-label="Next event"/.test(u3) &&
+    (u3.match(/data-ups-to="/g) || []).length === 3 && /aria-label="2 of 3"/.test(u3));
+  var u1 = UP([ev14(1)]);
+  check('14 one: a single card, nothing to move', /Also coming up/.test(u1) && !/data-ups-next|aria-roledescription/.test(u1));
+  var JS = PAGE._test.UPS_JS;
+  check('14 the script moves on every 7 seconds, holds while pointed at or focused, never for a visitor who asked for less motion, and lets the arrows and dots move it',
+    /setInterval\(tick,7000\)/.test(JS) && /if\(!over&&!focus&&!document\.hidden\)show\(at\+1,true\)/.test(JS) && /prefers-reduced-motion: reduce/.test(JS) && /if\(reduce\)return;/.test(JS) && /data-ups-prev/.test(JS) && /data-ups-to/.test(JS));
+  check('14 …allowed by its hash alone', PAGE.UPS_HASH === "'sha256-" + require('crypto').createHash('sha256').update(JS).digest('base64') + "'");
+  var pg14 = PAGE.render(Object.assign({}, base12, { kind: 'speakers', slug: 'naven-singh', stats: {}, sections: [], links: [], auto: {}, rows: [], journey: [ev14(1), ev14(2), ev14(3)].concat(j12) }), { base: 'https://x', today: T12 });
+  var pg14b = PAGE.render(Object.assign({}, base12, { kind: 'speakers', slug: 'naven-singh', stats: {}, sections: [], links: [], auto: {}, rows: [], journey: [ev14(1), ev14(2)].concat(j12.filter(function (j) { return !j.upcoming; })) }), { base: 'https://x', today: T12 });
+  check('14 the page runs the script only with cards to move (the nearest event stands beside the name, the rest are the cards)', pg14.indexOf('<script>' + JS + '</script>') !== -1 && pg14b.indexOf('<script>' + JS + '</script>') === -1 && /Also coming up/.test(pg14b));
+  var r14 = await page('/speakers/naven-singh');
+  check('14 the page says so to the browser: no script but that one', r14.status === 200 && /default-src 'none'; script-src 'sha256-[A-Za-z0-9+\/=]+';/.test(r14.headers['content-security-policy']) && r14.headers['content-security-policy'].indexOf(PAGE.UPS_HASH) !== -1, r14.headers['content-security-policy']);
+
   /* saved from the console: kept, cleared, shown on the page with their structured data */
   var v12 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'ciso');
   var put12 = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: v12.body.version, page: Object.assign({}, v12.body.page,

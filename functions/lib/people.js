@@ -558,6 +558,10 @@ function personOf(fb, kind, slug, entry, page, o) {
       if (!o2.v) return;
       var item = { key: 'own:' + o2.k.eventId, title: str(ev.name).trim(), date: date, year: date.slice(0, 4), upcoming: !!date && date > now, award: ev.category === 'awards', role: '',
         link: o2.why ? '' : '/e/' + o2.k.eventId, portal: ev.portal || '', portalName: etEvents.PORTALS[ev.portal] || '', company: kind === 'speakers' ? str(v.comp) : '', designation: kind === 'speakers' ? str(v.desig) : '',
+        /* for the "Also coming up" cards (people-page.js upcomingHtml): the event's share picture (its banner with its logo,
+           made for link previews) when it is ready, and its place */
+        picture: ev.shareCard && ev.shareCard.state === 'ready' && /^https:\/\//.test(str(ev.shareCard.url)) ? str(ev.shareCard.url) : '',
+        place: str(ev.venue || ev.city).replace(/\s+/g, ' ').trim().slice(0, 120),
         tier: kind === 'sponsors' ? str(((o2.more || [])[0] || {}).name) : '', src: 'own', why: o2.why,
         sessions: kind === 'speakers' ? (o2.more || []).filter(function (s) { return str(s.title).trim(); }).map(function (s) {
           return { title: str(s.title).trim().slice(0, 240), start: str(s.start), end: str(s.end), about: str(s.desc).replace(/\s+/g, ' ').trim().slice(0, 320),
@@ -796,7 +800,8 @@ function sendPage(req, res, status, html, cache) {
   /* the photo and the logos from our own address, which the hosting's CDN keeps (lib/picture-cdn.js; its link preview
      picture as a full address) — as an event's page is sent */
   html = require('./picture-cdn').rewriteHtml(html);
-  res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' https: data:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
+  /* no script but the "Also coming up" carousel's own, by its hash (people-page.js UPS_JS) */
+  res.setHeader('Content-Security-Policy', "default-src 'none'; script-src " + require('./people-page').UPS_HASH + "; img-src 'self' https: data:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; base-uri 'none'; form-action 'none'; frame-ancestors 'self'");
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   H.sendHtml(req, res, status, html, cache);
 }

@@ -207,16 +207,42 @@ var CSS = [
   '.up-now .tier{margin-top:10px}',
   '.up-ss{list-style:none;margin:10px 0 0;padding:0;font-size:15px;line-height:1.4}',
   '.up-ss li{padding:4px 0 0;font-weight:600}',
-  '.up-ss li.n,.ups .up-ss li.n{font-weight:400;color:var(--muted)}',
   '.up-ss time{font-weight:700;color:var(--red-ink)}',
-  '.ups .up-ss{margin-top:4px;font-size:14px}',
+  '.up-ss li.n{font-weight:400;color:var(--muted)}',
+  /* "Also coming up": a card for each event, one at a time (upcomingHtml, UPS_JS) */
+  '.ups-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 12px}',
+  'aside .ups-head h2{margin:0}',
+  '.ups-nav{display:none;gap:6px}',
+  '.ups-on .ups-nav{display:flex}',
+  '.ups-nav button{width:36px;height:36px;padding:0;border:1px solid var(--rule);border-radius:50%;background:var(--paper);color:var(--ink);display:grid;place-items:center;cursor:pointer}',
+  '.ups-nav button:hover{border-color:var(--ink)}',
+  '.ups-nav button:focus-visible,.ups-dots button:focus-visible{outline:3px solid var(--ink);outline-offset:2px}',
+  '.ups-track{list-style:none;margin:0;padding:0;display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;overscroll-behavior-x:contain}',
+  '.ups-track::-webkit-scrollbar{display:none}',
+  /* with the script the cards settle by it (UPS_JS): the browser's own snapping went back to the card it last snapped to
+     on any restyle — a pointer resting on the second card sent the row back to the first */
+  '.ups-on .ups-track{scroll-snap-type:none}',
+  '.ups-card{flex:0 0 100%;min-width:0;scroll-snap-align:start;display:flex}',
+  '.ups-a{display:flex;flex-direction:column;width:100%;color:inherit;text-decoration:none;border:1px solid var(--rule);border-radius:8px;overflow:hidden;background:var(--paper)}',
+  'a.ups-a:hover .ups-t{text-decoration:underline}',
+  'a.ups-a:focus-visible{outline:3px solid var(--ink);outline-offset:-3px}',
+  '.ups-pic{display:block;aspect-ratio:1200/630;background:var(--wash);overflow:hidden}',
+  '.ups-pic img{display:block;width:100%;height:100%;object-fit:cover}',
+  '.ups-date{display:flex;flex-direction:column;justify-content:center;gap:4px;height:100%;padding:0 20px;background:var(--red);color:var(--on-red)}',
+  '.ups-date b{font-size:44px;font-weight:800;line-height:1;letter-spacing:-.02em}',
+  '.ups-date span{font-size:15px;font-weight:600}',
+  '.ups-body{display:block;padding:12px 14px 14px}',
+  '.ups-t{display:block;font-size:16px;font-weight:800;line-height:1.3;color:var(--ink);overflow-wrap:anywhere}',
+  '.ups-m,.ups-r{display:block;margin-top:4px;font-size:14px;line-height:1.4;color:var(--soft)}',
+  '.ups-s{display:block;margin-top:8px;font-size:14px;line-height:1.4;font-weight:600;color:var(--ink)}',
+  '.ups-s time{font-weight:700;color:var(--red-ink)}',
+  '.ups-dots{display:none;justify-content:center;margin-top:6px}',
+  '.ups-on .ups-dots{display:flex}',
+  '.ups-dots button{width:24px;height:24px;padding:0;border:0;background:none;display:grid;place-items:center;cursor:pointer}',
+  '.ups-dots button:before{content:"";width:8px;height:8px;border-radius:4px;background:var(--rule);transition:width .2s ease,background-color .2s ease}',
+  '.ups-dots button[aria-current="true"]:before{width:20px;background:var(--red)}',
+  '@media (prefers-reduced-motion:reduce){.ups-dots button:before{transition:none}}',
   /* the other events to come, in the side */
-  '.ups{list-style:none;margin:0;padding:0}',
-  '.ups li{padding:12px 0;border-top:1px solid var(--rule)}',
-  '.ups li:first-child{border-top:0;padding-top:0}',
-  '.ups a,.ups b{display:block;font-size:16px;font-weight:700;line-height:1.35;color:var(--ink);text-decoration:none}',
-  '.ups a:hover{text-decoration:underline}',
-  '.ups span{display:block;margin-top:2px;font-size:14px;color:var(--muted)}',
   /* "View more" (the owner, 19 Nov 2026: "For some of speakers the profile page is being too long"): the rest of the journey
      and of a long list of sessions, opened in place — no script */
   'details.more{margin-top:8px}',
@@ -554,14 +580,65 @@ function upNowHtml(j, today) {
     (href ? '<a class="t" href="' + esc(href) + '">' + esc(j.title) + '</a>' : '<span class="t">' + esc(j.title) + '</span>') +
     '<p class="m">' + esc([whenOf(j), j.portalName].filter(Boolean).join(', ')) + '</p>' + (role ? '<span class="tier">' + esc(role) + '</span>' : '') + comingSessions(j, 2) + '</aside>';
 }
+/* "Also coming up" (the owner, 25 Nov 2026: "we can show this info in card view on a caraousel, so if there are more that
+   one event it will automatically scroll to next card on an interval of 5-10 seconds. that card will be embedded with
+   that event link"): a card for each event still to come — its picture (the event's share picture: its banner with its
+   logo), else its date on the theme colour; its name, date and place, the vertical and their part, their first session —
+   the whole card a link to the event. Several move on one at a time every 7 seconds (UPS_JS), wrapping round; they
+   hold while pointed at or focused, and for a visitor who asked for less motion; arrows and dots move them by hand.
+   Without the script the row still swipes, a card at a time. */
+function firstSession(j) {
+  var s = (j.sessions || []).filter(function (x) { return x && str(x.title).trim(); })[0];
+  if (!s) return '';
+  var t = timeLabel(s.start);
+  return '<span class="ups-s">' + (t ? '<time>' + esc(t) + '</time> ' : '') + esc(str(s.title).trim()) + '</span>';
+}
+var ARROW = {
+  prev: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>',
+  next: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>'
+};
 function upcomingHtml(list) {
   if (!list.length) return '';
-  return '<section aria-labelledby="h-ups"><h2 id="h-ups">' + (list.length === 1 ? 'Also coming up' : 'More upcoming events') + '</h2><ul class="ups">' + list.map(function (j) {
-    var href = link(j.link), role = shownRole(j);
-    return '<li>' + (href ? '<a href="' + esc(href) + '">' + esc(j.title) + '</a>' : '<b>' + esc(j.title) + '</b>') +
-      '<span>' + esc([whenOf(j), j.portalName, role].filter(Boolean).join(', ')) + '</span>' + comingSessions(j, 1) + '</li>';
-  }).join('') + '</ul></section>';
+  var many = list.length > 1;
+  var cards = list.map(function (j, i) {
+    var href = link(j.link), role = shownRole(j), dp = dayParts(j.date), pic = picture(j.picture);
+    var face = pic ? '<img src="' + esc(pic) + '" alt=""' + (i ? ' loading="lazy"' : '') + ' width="300" height="158">'
+      : '<span class="ups-date">' + (dp ? '<b>' + esc(dp.day) + '</b><span>' + esc(dp.month + ' ' + str(j.date).slice(0, 4)) + '</span>' : '<b>' + esc(str(j.year) || '\u2014') + '</b>') + '</span>';
+    var body = '<span class="ups-pic">' + face + '</span><span class="ups-body"><b class="ups-t">' + esc(j.title) + '</b>' +
+      '<span class="ups-m">' + esc([whenOf(j), str(j.place)].filter(Boolean).join(' \u00b7 ')) + '</span>' +
+      ((j.portalName || role) ? '<span class="ups-r">' + esc([j.portalName, role].filter(Boolean).join(' \u00b7 ')) + '</span>' : '') + firstSession(j) + '</span>';
+    return '<li class="ups-card"' + (many ? ' aria-roledescription="slide" aria-label="' + (i + 1) + ' of ' + list.length + '"' : '') + '>' +
+      (href ? '<a class="ups-a" href="' + esc(href) + '">' + body + '</a>' : '<div class="ups-a">' + body + '</div>') + '</li>';
+  }).join('');
+  return '<section class="ups-c" data-ups aria-labelledby="h-ups"' + (many ? ' aria-roledescription="carousel"' : '') + '>' +
+    '<div class="ups-head"><h2 id="h-ups">Also coming up</h2>' +
+    (many ? '<div class="ups-nav"><button type="button" data-ups-prev aria-label="Previous event">' + ARROW.prev + '</button><button type="button" data-ups-next aria-label="Next event">' + ARROW.next + '</button></div>' : '') + '</div>' +
+    '<ul class="ups-track">' + cards + '</ul>' +
+    (many ? '<div class="ups-dots" role="group" aria-label="Choose an event">' + list.map(function (j, i) {
+      return '<button type="button" data-ups-to="' + i + '" aria-label="' + esc((i + 1) + ': ' + j.title) + '" aria-current="' + (i === 0) + '"></button>';
+    }).join('') + '</div>' : '') + '</section>';
 }
+/* the carousel's script: the one script these pages run, allowed by its hash alone (lib/people.js sends UPS_HASH in the
+   page's Content-Security-Policy); it reads nothing of the page but the cards */
+var UPS_JS = '(function(){var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;' +
+  'Array.prototype.forEach.call(document.querySelectorAll("[data-ups]"),function(c){' +
+  'var t=c.querySelector(".ups-track"),cards=t?t.children:[],n=cards.length;if(n<2)return;c.classList.add("ups-on");' +
+  'var at=0,over=false,focus=false,timer=null,settle=null,dots=c.querySelectorAll("[data-ups-to]");' +
+  'function mark(){Array.prototype.forEach.call(dots,function(d,j){d.setAttribute("aria-current",j===at?"true":"false");});}' +
+  'function show(k,smooth){at=(k+n)%n;t.scrollTo({left:cards[at].offsetLeft-cards[0].offsetLeft,behavior:smooth&&!reduce?"smooth":"auto"});mark();}' +
+  'function tick(){if(!over&&!focus&&!document.hidden)show(at+1,true);}' +
+  'function start(){if(reduce)return;if(timer)clearInterval(timer);timer=setInterval(tick,7000);}' +
+  'c.addEventListener("mouseenter",function(){over=true;});c.addEventListener("mouseleave",function(){over=false;});' +
+  'c.addEventListener("focusin",function(){focus=true;});c.addEventListener("focusout",function(e){if(!c.contains(e.relatedTarget))focus=false;});' +
+  't.addEventListener("scroll",function(){clearTimeout(settle);settle=setTimeout(function(){var k=Math.max(0,Math.min(n-1,Math.round(t.scrollLeft/Math.max(1,t.clientWidth))));' +
+  'if(Math.abs(t.scrollLeft-(cards[k].offsetLeft-cards[0].offsetLeft))>2)show(k,true);else{at=k;mark();}},140);},{passive:true});' +
+  't.addEventListener("pointerdown",start);' +
+  'c.querySelector("[data-ups-prev]").addEventListener("click",function(){show(at-1,true);start();});' +
+  'c.querySelector("[data-ups-next]").addEventListener("click",function(){show(at+1,true);start();});' +
+  'Array.prototype.forEach.call(dots,function(d){d.addEventListener("click",function(){show(+d.getAttribute("data-ups-to"),true);start();});});' +
+  'mark();start();});})();';
+var UPS_HASH = "'sha256-" + require('crypto').createHash('sha256').update(UPS_JS).digest('base64') + "'";
+function upsScript(html) { return /data-ups-next/.test(html) ? '<script>' + UPS_JS + '</script>' : ''; }
 /* speakers of the same industry (lib/people.js similarOf), before the questions */
 function similarHtml(list) {
   list = (list || []).filter(function (x) { return x && x.slug && x.name; });
@@ -730,7 +807,7 @@ function renderSpeaker(p, o) {
   var side = upcomingHtml(coming.slice(1)) + portalsHtml(shown, false) + alongsideHtml(shown) + linksHtml(p) + shareHtml(canonical, p.name);
   return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'profile', ld: ld, look: o.look }) +
     '<body>' + topBar(o.back, darkLook(o.look)) + who + yearsHtml(p, past, 'speakers') +
-    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + similarHtml(p.similar) + faqHtml(faqs) + footer(darkLook(o.look)) + '</body></html>\n';
+    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + similarHtml(p.similar) + faqHtml(faqs) + footer(darkLook(o.look)) + upsScript(side) + '</body></html>\n';
 }
 
 function renderSponsor(p, o) {
@@ -775,4 +852,4 @@ function render(person, o) {
 }
 function darkLook(look) { var bg = look && hexOk(look.bg); return !!bg && lum(bg) < 0.2; }
 
-module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear, commonFaqs: commonFaqs, faqsOf: faqsOf, DOMAIN: DOMAIN, listOf: listOf, domainsOf: domainsOf, topicOf: topicOf } };
+module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear, commonFaqs: commonFaqs, faqsOf: faqsOf, DOMAIN: DOMAIN, listOf: listOf, domainsOf: domainsOf, topicOf: topicOf, upcomingHtml: upcomingHtml, UPS_JS: UPS_JS }, UPS_HASH: UPS_HASH };
