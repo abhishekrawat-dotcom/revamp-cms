@@ -129,3 +129,5 @@
 .pp-cm-list span{ color:var(--muted); }
 .pp-own-h{ margin:16px 0 8px; font-size:13px; }
 .pp-common > .hint{ font-size:12px; line-height:1.45; color:var(--muted); margin:4px 0 10px; }
+.pp-revert{ appearance:none; background:none; border:0; padding:0; margin-left:4px; font:inherit; font-weight:600; color:var(--accent-strong); text-decoration:underline; cursor:pointer; }
+.pp-revert:disabled{ opacity:.5; cursor:default; }

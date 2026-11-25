@@ -518,6 +518,16 @@ function page(url) {
   check('12 the questions: one column in the middle of the page, its heading centred', /\.faq \.h\{text-align:center\}/.test(pg13) && /\.qs\{max-width:820px;margin:0 auto;/.test(pg13));
   check('12 a phone: the numbers row takes the full width so it wraps (it ran 3px past a 390px screen)', /\.tally\{flex:1 1 100%;max-width:100%;flex-wrap:wrap/.test(pg13));
 
+  /* Edit speaker: each box holds what the page shows (the owner, 25 Nov 2026: "All the speaker's details are coming blank
+     when I try to edit something of that speaker. And the visible content are help text only") */
+  var ADM = require('fs').readFileSync(require('path').join(__dirname, '..', '..', 'people-admin.js'), 'utf8');
+  check('12 the boxes hold the page\'s value — the team\'s, else the records\' — not only a grey hint', /value="' \+ esc\(mine \|\| recs\) \+ '"/.test(ADM) &&
+    ['name', 'designation', 'company', 'linkedin', 'x', 'website'].every(function (k) { return ADM.indexOf("recField('pp-", 0) !== -1 && new RegExp("recField\\('pp-[a-z]+', '[A-Za-z]+', '" + k + "'").test(ADM); }));
+  check('12 …the About holds their biography on record when the team wrote none', /esc\(d\.about \|\| auto\)/.test(ADM));
+  check('12 on Save the records\' own value is no change, and an emptied box goes back to them', /if \(v && v !== String\(recs\[k\] \|\| ''\)\.trim\(\)\) set\[k\] = v; else delete set\[k\];/.test(ADM) &&
+    /if \(SP && d\.about === String\(recs\.bio \|\| ''\)\.trim\(\)\) d\.about = '';/.test(ADM));
+  check('12 a changed box says what the records say, with the way back to them', /Changed by your team\. ETB2B\\u2019s records say/.test(ADM) && /data-revert="' \+ esc\(key\)/.test(ADM) && /if \(k === 'about'\) d\.about = ''; else if \(d\.set\) delete d\.set\[k\];/.test(ADM));
+
   /* saved from the console: kept, cleared, shown on the page with their structured data */
   var v12 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'ciso');
   var put12 = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: v12.body.version, page: Object.assign({}, v12.body.page,

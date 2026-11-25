@@ -279,6 +279,21 @@
     }
     return html + '</div>';
   }
+  /* A box the page fills from ETB2B's records unless the team changes it (the owner, 25 Nov 2026: "All the speaker's
+     details are coming blank when I try to edit something of that speaker. And the visible content are help text
+     only"). It holds what the page shows — the team's words, else the records' — so it reads and edits as any form
+     does. On Save a value the same as the records' is no change (later updates to the records keep coming: readInputs
+     put), and an emptied box goes back to the records. A changed one says what the records say, with the way back. */
+  function shortText(t) { t = String(t || ''); return t.length > 140 ? t.slice(0, 140) + '\u2026' : t; }
+  function recField(id, label, key, set, rec, o) {
+    o = o || {};
+    var mine = String(set[key] || ''), recs = String(rec || ''), changed = !!mine && mine !== recs;
+    var input = '<input class="inp" id="' + id + '" type="' + (o.type || 'text') + '" maxlength="' + (o.max || 200) + '" value="' + esc(mine || recs) + '" placeholder="' + esc(o.placeholder || '') + '"' + (o.type === 'url' ? ' inputmode="url"' : '') + '>';
+    var hint = !recs ? esc(o.hint || '')
+      : changed ? esc('Changed by your team. ETB2B\u2019s records say \u201c' + shortText(recs) + '\u201d.') + ' <button type="button" class="pp-revert" data-revert="' + esc(key) + '"' + (o.ro ? ' disabled' : '') + '>Use ETB2B\u2019s records</button>'
+      : 'From ETB2B\u2019s records' + (o.empty === false ? '.' : '; emptied, the page keeps showing them.');
+    return '<div class="field ' + (o.c || 'c6') + '"><label for="' + id + '">' + label + '</label>' + input + (hint ? '<p class="hint">' + hint + '</p>' : '') + '</div>';
+  }
   /* About: written by hand, or by ETB2B AI from what this page shows (a draft to read and change, then Save) */
   function aboutField(p, d, ro) {
     var ai = state.aboutMode === 'ai';
@@ -292,8 +307,11 @@
         '<button class="btn btn-secondary btn-sm" type="button" id="pp-ai-go"' + dis + '>' + (state.aiBusy ? 'Writing\u2026' : (d.about ? 'Write it again' : 'Write it')) + '</button></div>' +
         '<p class="hint">ETB2B AI writes only from what this page shows: its events, roles and sessions, and what the team added. It puts a draft in the box below; nothing is saved until you Save.</p>' : '') +
       (state.aiDone ? '<p class="hint pp-ai-done" role="status">' + esc(state.aiDone) + '</p>' : '') +
-      '<textarea class="inp" id="pp-about" rows="6" maxlength="4000" placeholder="' + esc(auto || (SP ? 'A few lines about them, for the page.' : 'A few lines about the company, for the page.')) + '">' + esc(d.about || '') + '</textarea>' +
-      (auto ? '<p class="hint">' + esc('Left empty, ETB2B\u2019s records say: \u201c' + auto.slice(0, 140) + (auto.length > 140 ? '\u2026' : '') + '\u201d') + '</p>' : '') + '</div>';
+      '<textarea class="inp" id="pp-about" rows="6" maxlength="4000" placeholder="' + esc(SP ? 'A few lines about them, for the page.' : 'A few lines about the company, for the page.') + '">' + esc(d.about || auto) + '</textarea>' +
+      (auto ? '<p class="hint">' + (d.about && d.about !== auto
+        ? esc('Written by your team. ETB2B\u2019s records say \u201c' + shortText(auto) + '\u201d.') + ' <button type="button" class="pp-revert" data-revert="about"' + (ro ? ' disabled' : '') + '>Use ETB2B\u2019s records</button>'
+        : 'Their biography from ETB2B\u2019s records; emptied, the page keeps showing it.') + '</p>'
+        : (!d.about ? '<p class="hint">' + (SP ? 'No biography on record, so the page has no About yet: write one here, or let ETB2B AI write it from their events and sessions.' : 'Nothing on record yet: write a few lines here, or let ETB2B AI write them.') + '</p>' : '')) + '</div>';
   }
   function wikiPanel(p, ro) {
     var w = p.wiki, st = p.wikiState || null, dis = ro || state.wikiBusy ? ' disabled' : '';
@@ -345,16 +363,17 @@
     else if (!p.hasPage) html += '<p class="pp-note">This page has nothing public to show yet (no ETB2B edition, and no live event), so its address answers “not available”.</p>';
 
     /* what the page says */
-    html += '<section class="panel"><div class="panel-head"><h3>On the page</h3><span class="sub">Anything left empty is what ETB2B’s records say.</span></div><div class="panel-body">' +
+    html += '<section class="panel"><div class="panel-head"><h3>On the page</h3><span class="sub">Each box holds what the page shows: ETB2B’s records, unless your team changed it.</span></div><div class="panel-body">' +
       '<div class="field" style="margin-bottom:14px"><span class="flabel">' + (SP ? 'Photo' : 'Logo') + '</span><div class="pp-pic">' + pic(picNow, p.name, !SP) +
       '<div class="pp-acts"><label class="btn btn-secondary"' + (ro ? ' aria-disabled="true"' : '') + '>Upload a ' + WORDS.pic + '<input type="file" id="pp-file" accept="image/jpeg,image/png,image/webp" hidden' + dis + '></label>' +
       (set[SP ? 'photo' : 'logo'] ? '<button class="btn btn-ghost" type="button" id="pp-pic-auto"' + dis + '>Use ETB2B’s ' + WORDS.pic + '</button>' : '') + '</div></div>' +
       '<p class="hint">' + (set[SP ? 'photo' : 'logo'] ? 'The team’s ' + WORDS.pic + ' is shown.' : p.auto[SP ? 'photo' : 'logo'] ? 'ETB2B’s ' + WORDS.pic + ' is shown.' : 'No ' + WORDS.pic + ' yet: ' + (SP ? 'initials are shown.' : 'the name is shown.')) + '</p></div>' +
-      '<div class="frow">' + field('pp-name', 'Name', set.name || '', p.auto.name, { max: 120, c: SP ? 'c12' : 'c6' }) +
-      (SP ? field('pp-desig', 'Designation', set.designation || '', p.auto.designation, { max: 200 }) + field('pp-co', 'Company', set.company || '', p.auto.company, { max: 160 }) +
-        field('pp-li', 'LinkedIn', set.linkedin || '', p.auto.linkedin, { type: 'url', max: 500, placeholder: 'https://www.linkedin.com/in/…' }) +
-        field('pp-x', 'X', set.x || '', '', { type: 'url', max: 500, placeholder: 'https://x.com/…', hint: 'Their profile on X, if they have one.' })
-        : field('pp-web', 'Website', set.website || '', p.auto.website, { type: 'url', max: 500, placeholder: 'https://…' })) +
+      '<div class="frow">' + recField('pp-name', 'Name', 'name', set, p.auto.name, { max: 120, c: SP ? 'c12' : 'c6', ro: ro, empty: true }) +
+      (SP ? recField('pp-desig', 'Designation', 'designation', set, p.auto.designation, { max: 200, ro: ro, placeholder: 'e.g. Chief Information Officer' }) +
+        recField('pp-co', 'Company', 'company', set, p.auto.company, { max: 160, ro: ro, placeholder: 'e.g. Acme Bank' }) +
+        recField('pp-li', 'LinkedIn', 'linkedin', set, p.auto.linkedin, { type: 'url', max: 500, ro: ro, placeholder: 'e.g. https://www.linkedin.com/in/…', hint: 'Their LinkedIn profile, if they have one.' }) +
+        recField('pp-x', 'X', 'x', set, '', { type: 'url', max: 500, ro: ro, placeholder: 'e.g. https://x.com/…', hint: 'Their profile on X, if they have one.' })
+        : recField('pp-web', 'Website', 'website', set, p.auto.website, { type: 'url', max: 500, ro: ro, placeholder: 'e.g. https://…' })) +
       aboutField(p, d, ro) + '</div></div></section>';
 
     /* the team's sections and links */
@@ -443,11 +462,14 @@
   function readInputs() {
     var d = state.draft, set = d.set || (d.set = {});
     function val(id) { var n = document.getElementById(id); return n ? n.value : ''; }
-    function put(k, id) { var v = val(id).trim(); if (v) set[k] = v; else delete set[k]; }
+    var recs = (state.view && state.view.person && state.view.person.auto) || {};
+    /* a value the same as the records' is no change: the records' later updates keep coming (recField) */
+    function put(k, id) { var v = val(id).trim(); if (v && v !== String(recs[k] || '').trim()) set[k] = v; else delete set[k]; }
     put('name', 'pp-name');
     if (SP) { put('designation', 'pp-desig'); put('company', 'pp-co'); put('linkedin', 'pp-li'); put('x', 'pp-x'); }
     else put('website', 'pp-web');
     d.about = val('pp-about').trim();
+    if (SP && d.about === String(recs.bio || '').trim()) d.about = '';    // the biography on record, unchanged
     d.sections = (d.sections || []).map(function (s, i) { return { heading: val('pp-sh-' + i), text: val('pp-st-' + i) }; });
     d.links = (d.links || []).map(function (l, i) { return { label: val('pp-ll-' + i), url: val('pp-lu-' + i) }; });
     if (SP) d.faqs = (d.faqs || []).map(function (f, i) { return { q: val('pp-fq-' + i), a: val('pp-fa-' + i) }; });
@@ -547,6 +569,14 @@
     if (auto) auto.addEventListener('click', function () { readInputs(); delete d.set[SP ? 'photo' : 'logo']; renderOne(); });
     Array.prototype.forEach.call(root.querySelectorAll('[data-mode]'), function (b) {
       b.addEventListener('click', function () { readInputs(); state.aboutMode = b.getAttribute('data-mode'); state.aiDone = ''; renderOne(); var n = document.getElementById(state.aboutMode === 'ai' ? 'pp-ai-note' : 'pp-about'); if (n) n.focus(); });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll('[data-revert]'), function (btn) {
+      btn.addEventListener('click', function () {
+        readInputs();
+        var k = btn.getAttribute('data-revert');
+        if (k === 'about') d.about = ''; else if (d.set) delete d.set[k];
+        renderOne();
+      });
     });
     var cmOn = document.getElementById('pp-cm-on');
     if (cmOn) cmOn.addEventListener('change', function () { readInputs(); state.cmDone = ''; renderOne(); });
