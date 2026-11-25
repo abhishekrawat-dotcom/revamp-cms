@@ -241,7 +241,10 @@ var CSS = [
   '.sim-list small{display:block;padding:4px 14px 0;font-size:14px;line-height:1.4;color:var(--soft)}',
   /* the page's questions, at its foot */
   '.faq .wrap{padding-top:44px;padding-bottom:56px}',
-  '.qs{max-width:820px;border-top:2px solid var(--ink)}',
+  /* one column in the middle of the page, its heading over it (the owner, 25 Nov 2026: "the FAQs are left aligned, it
+     should be in center"); the questions and answers read from the left within it */
+  '.faq .h{text-align:center}',
+  '.qs{max-width:820px;margin:0 auto;border-top:2px solid var(--ink)}',
   '.qs details{border-bottom:1px solid var(--rule)}',
   '.qs summary{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:56px;padding:12px 0;font-size:18px;font-weight:700;line-height:1.4;cursor:pointer;list-style:none}',
   '.qs summary::-webkit-details-marker{display:none}',
@@ -249,9 +252,6 @@ var CSS = [
   '.qs details[open] summary:after{content:"\\2212"}',
   '.qs .prose{padding:0 0 18px}',
   '@media (prefers-reduced-motion:reduce){.tick .dot:after{animation:none}}',
-  'footer{border-top:1px solid var(--rule)}',
-  'footer .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:72px;font-size:14px;color:var(--muted)}',
-  'footer img{height:22px;width:auto;display:block}',
   '@media (max-width:900px){',
   '.who .wrap.has-up{grid-template-columns:200px minmax(0,1fr)}',
   '.who .wrap.has-up .up-now{grid-column:2}',
@@ -274,7 +274,7 @@ var CSS = [
   '.ph span{font-size:44px}',
   '.role{font-size:18px}',
   '.years h2{max-width:none}',
-  '.tally{flex-wrap:wrap;gap:14px 22px}',
+  '.tally{flex:1 1 100%;max-width:100%;flex-wrap:wrap;gap:14px 22px}',     /* the full row, so it wraps (it held its own width: 3px past a 390px phone) */
   '.ev>li{grid-template-columns:56px minmax(0,1fr);gap:12px}',
   '.dt b{font-size:20px}',
   '.yr h3{font-size:28px}',
@@ -302,8 +302,14 @@ function topBar(back, dark) {
   /* on a dark site the mark drawn for a dark ground: its lettering white, the red ET square as it is (ETB2B's logo rule) */
   return '<header class="top"><div class="wrap"><span class="mark"><img src="' + (dark ? '/templates/_shared/img/et-business-verticals-on-dark.svg' : '/assets/et-b2b-logo.svg') + '" width="171" height="28" alt="ETB2B"></span>' + b + '</div></header>';
 }
-function footer() {
-  return '<footer><div class="wrap"><span>ETB2B, The Economic Times Business Verticals</span><img class="wm" src="/assets/et-b2b-wordmark.svg" alt="" width="152" height="22"></div></footer>';
+/* ETB2B's main footer (the owner, 25 Nov 2026: "update the footer as well from ETB2B main footer"): the one an event site
+   ends with, for The Economic Times Business Verticals itself (lib/et-footer.js, its own links, social, escalation line
+   and copyright, read from ETB2B's pages) — in this page's colours (an event's look too), its logo drawn for a dark
+   ground on a dark one. Its styles come with it (the page allows inline styles, no script). */
+function footer(dark) {
+  var f = require('./et-footer').build({ portal: '', mode: dark ? 'dark' : 'light', year: new Date().getFullYear() });
+  var vars = '.etf{--rv-bg:var(--paper);--rv-text:var(--ink);--rv-muted:var(--soft);--theme-color:var(--red-ink);margin-top:0}';
+  return '<style>' + vars + f.css + '</style>' + f.html;
 }
 
 /* ---------- the event site's look (the owner, 19 Nov 2026: "Can we keep the theme of speaker/sponsor page same from where
@@ -343,7 +349,7 @@ function lookCss(look) {
   var css = ':root{' + Object.keys(v).map(function (k) { return k + ':' + v[k]; }).join(';') + '}';
   if (look.body) css += 'body{font-family:' + look.body + ',-apple-system,"Segoe UI",Roboto,Arial,sans-serif;font-feature-settings:normal}';
   if (look.heading) css += 'h1,h2,h3,h4,.t,.tally b,.dt b,.bars .n,.sim-list b,.qs summary{font-family:' + look.heading + ',-apple-system,"Segoe UI",Roboto,Arial,sans-serif}';
-  if (dark) css += 'footer img.wm{filter:invert(1)}.ph.logo,.sim-list a{background:var(--ground)}';
+  if (dark) css += '.ph.logo,.sim-list a{background:var(--ground)}';
   return css;
 }
 
@@ -724,7 +730,7 @@ function renderSpeaker(p, o) {
   var side = upcomingHtml(coming.slice(1)) + portalsHtml(shown, false) + alongsideHtml(shown) + linksHtml(p) + shareHtml(canonical, p.name);
   return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'profile', ld: ld, look: o.look }) +
     '<body>' + topBar(o.back, darkLook(o.look)) + who + yearsHtml(p, past, 'speakers') +
-    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + similarHtml(p.similar) + faqHtml(faqs) + footer() + '</body></html>\n';
+    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + similarHtml(p.similar) + faqHtml(faqs) + footer(darkLook(o.look)) + '</body></html>\n';
 }
 
 function renderSponsor(p, o) {
@@ -757,7 +763,7 @@ function renderSponsor(p, o) {
     }).join('') + '</ul></section>' : '') + portalsHtml(shown, true) + linksHtml(p) + shareHtml(canonical, p.name);
   return head({ title: title, description: description, canonical: canonical, image: share, ogType: 'website', ld: ld, look: o.look }) +
     '<body>' + topBar(o.back, darkLook(o.look)) + who + yearsHtml(p, shown, 'sponsors') +
-    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + footer() + '</body></html>\n';
+    '<div class="page"><div class="wrap"><main>' + main + '</main><aside>' + side + '</aside></div></div>' + footer(darkLook(o.look)) + '</body></html>\n';
 }
 
 function render(person, o) {

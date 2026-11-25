@@ -506,6 +506,18 @@ function page(url) {
   var all12 = PAGE._test.faqsOf(Object.assign({}, base12, { faqs: [{ q: 'Who is Naven Singh?', a: 'The team\'s own answer.' }, { q: 'Where next?', a: 'Pune.' }] }), T12);
   check('12 the team\'s question with the same words replaces the common one; the team\'s come after the common ones', all12.length === 5 && all12[all12.length - 2].a === 'The team\'s own answer.' && all12[all12.length - 1].q === 'Where next?' && all12[0].q.indexOf('Which') === 0, all12.map(function (f) { return f.q; }));
 
+  /* ETB2B's main footer and the questions in the middle (the owner, 25 Nov 2026: "update the footer as well from ETB2B main
+     footer. Also the FAQs are left aligned, it should be in center") */
+  var pg13 = PAGE.render(Object.assign({ kind: 'speakers', slug: 'naven-singh', stats: { events: 4, awards: 1, sessions: 3, since: '2023', portals: ['ETCISO'] }, sections: [], links: [], auto: {}, rows: [] }, base12), { base: 'https://x', today: T12 });
+  check('12 the page ends with ETB2B\'s main footer: its logo, links, escalation line and copyright, once, in the page\'s colours',
+    (pg13.match(/<footer/g) || []).length === 1 && /<footer id="footer" class="etf" data-rv-et-footer="et">/.test(pg13) && /et-business-verticals-on-light\.svg/.test(pg13) &&
+    />About Us</.test(pg13) && />Privacy Policy</.test(pg13) && /shahbaz\.khan@timesinternet\.in/.test(pg13) && /Copyright © <span data-rv-year>\d{4}<\/span> EconomictimesB2B\.com\. All Rights Reserved\./.test(pg13) &&
+    /\.etf\{--rv-bg:var\(--paper\);--rv-text:var\(--ink\)/.test(pg13) && !/et-b2b-wordmark\.svg/.test(pg13));
+  var pg13d = PAGE.render(Object.assign({ kind: 'speakers', slug: 'naven-singh', stats: {}, sections: [], links: [], auto: {}, rows: [] }, base12), { base: 'https://x', today: T12, back: { href: '/e/x', name: 'X', query: '?from=x', look: { bg: '#0d1117', text: '#f0f0f0' } } });
+  check('12 …from a dark event site, its logo drawn for a dark ground (white lettering, the red square as it is)', /class="etf-logo"[^>]*src="\/templates\/_shared\/img\/et-business-verticals-on-dark\.svg"/.test(pg13d));
+  check('12 the questions: one column in the middle of the page, its heading centred', /\.faq \.h\{text-align:center\}/.test(pg13) && /\.qs\{max-width:820px;margin:0 auto;/.test(pg13));
+  check('12 a phone: the numbers row takes the full width so it wraps (it ran 3px past a 390px screen)', /\.tally\{flex:1 1 100%;max-width:100%;flex-wrap:wrap/.test(pg13));
+
   /* saved from the console: kept, cleared, shown on the page with their structured data */
   var v12 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'ciso');
   var put12 = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: v12.body.version, page: Object.assign({}, v12.body.page,
