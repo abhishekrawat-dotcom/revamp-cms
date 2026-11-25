@@ -7986,6 +7986,7 @@ var ROUTES = {
   'POST /api/people/sponsors/undo': peopleRoute('handleUndo'),
   'POST /api/people/speakers/about': peopleRoute('handleAbout'),
   'POST /api/people/sponsors/about': peopleRoute('handleAbout'),
+  'POST /api/people/speakers/common': peopleRoute('handleCommon'),   // ETB2B AI's words for a speaker's common questions
   'POST /api/people/speakers/wiki': peopleRoute('handleWiki'),
   'POST /api/people/sponsors/wiki': peopleRoute('handleWiki'),
   'GET /api/event/seo/previous': seoRoute('handleSeoPrevious'),

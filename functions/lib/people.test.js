@@ -368,7 +368,7 @@ function page(url) {
   check('6 Undo: shown again', un.status === 200 && un.body.hidden === false && r.status === 200, un.body);
   un = await call(P.handleUndo, 'POST', '/api/people/speakers/undo', 'ciso', { slug: 'naven-singh' });
   r = await page('/speakers/naven-singh');
-  check('6 …Undo again: the edit is undone too, its questions with it', un.status === 200 && !/Naven leads security/.test(r.text) && /ETCISO Decrypt 2025/.test(r.text) && !/class="faq"/.test(r.text));
+  check('6 …Undo again: the edit is undone too, its questions with it', un.status === 200 && !/Naven leads security/.test(r.text) && /ETCISO Decrypt 2025/.test(r.text) && !/Where does Naven speak next/.test(r.text));
   var mg = await call(P.handleMerge, 'POST', '/api/people/speakers/merge', 'ciso', { slug: 'naven-singh', other: 'naven-singh-globex' });
   r = await page('/speakers/naven-singh-globex');
   check('6 join: the other page\'s records come here, its address redirects (301)', mg.status === 200 && mg.body.person.rows.length === 5 && r.status === 301 && r.headers.location === '/speakers/naven-singh', [mg.status, r.status, r.headers]);
@@ -471,6 +471,68 @@ function page(url) {
   var row11 = con11.body && con11.body.person && (con11.body.person.rows || []).filter(function (x) { return x.eventId === 'ciso-secufest-summit-2027'; })[0];
   check('11 …and the console\'s list says why', con11.status === 200 && row11 && row11.public === false && /Invited or Tentative/.test(row11.why), row11 || con11.body);
   FB.docs['events/ciso-secufest-summit-2027/speakers/s1'].status = 'confirmed';
+
+  /* 12. The five common questions (the owner, 25 Nov 2026: "replace the variables with their values for that speaker"),
+     answered from the page; one with nothing on record left out; the name, never he or she */
+  var CF = PAGE._test.commonFaqs, T12 = '2026-11-25';
+  var j12 = [
+    { key: 'et:1', title: 'ETCISO Annual Conclave 2025', date: '2025-08-10', year: '2025', portal: 'ciso', portalName: 'ETCISO', role: 'PANELIST', sessions: [{ title: 'Zero trust in BFSI.' }, { title: 'Ransomware: the board\u2019s view' }] },
+    { key: 'et:2', title: 'ETCIO Annual Conclave 2024', date: '2024-05-02', year: '2024', portal: 'cio', portalName: 'ETCIO', role: 'Speakers', sessions: [{ title: 'Cloud at scale' }, { title: 'Zero trust in BFSI.' }] },
+    { key: 'et:3', title: 'ETCISO Awards 2024', date: '2024-03-01', year: '2024', portal: 'ciso', portalName: 'ETCISO', award: true, role: '', sessions: [] },
+    { key: 'et:4', title: 'ETCISO Decrypt 2023', date: '2023-01-01', year: '2023', portal: 'ciso', portalName: 'ETCISO', role: 'Moderator', sessions: [] },
+    { key: 'own:x', title: 'CISO Secufest Summit 2027', date: '2027-02-01', year: '2027', portal: 'ciso', portalName: 'ETCISO', upcoming: true, role: '', sessions: [{ title: 'Future talk' }] },
+    { key: 'et:5', title: 'Hidden one', date: '2022-01-01', year: '2022', portal: 'hr', portalName: 'ETHRWorld', hidden: true, sessions: [] }];
+  var base12 = { name: 'Naven Singh', designation: 'Group CISO', company: 'Acme Bank', journey: j12, faqs: [] };
+  var f12 = CF(base12, T12), qs = f12.map(function (f) { return f.q; });
+  check('12 four questions from the records alone (no expertise on record: that one left out)', qs.join('|') === 'Who is Naven Singh?|Which Economic Times events has Naven Singh participated in?|What topics has Naven Singh discussed at industry events?|Where can I watch Naven Singh\u2019s event sessions?', qs);
+  check('12 Q1: role and company; no industry claimed from the verticals they spoke at (only the team\'s words)', f12[0].a === 'Naven Singh is the Group CISO at Acme Bank.', f12[0].a);
+  check('12 the verticals\' industry is the box\'s hint (most appearances first)', PAGE._test.listOf(PAGE._test.domainsOf(j12.filter(function (j) { return !j.hidden; }))) === 'cybersecurity and technology');
+  var TO = PAGE._test.topicOf;
+  check('12 a topic without its format ("Panel Discussion:", "Mega Panel:", "Plenary Leader\u2019s Talk on"); a title that is only a format kept whole',
+    TO('Panel Discussion: Discovering the real potential of integrated CX') === 'Discovering the real potential of integrated CX' && TO('Mega Panel: Boardroom Battle: Speed vs Risk') === 'Boardroom Battle: Speed vs Risk' &&
+    TO('Plenary Leader\u2019s Talk on AI in Manufacturing: Moving Beyond Pilots') === 'AI in Manufacturing: Moving Beyond Pilots' && TO('Fireside Chat with the Minister') === 'Fireside Chat with the Minister' && TO('Keynote: AI') === 'Keynote: AI' &&
+    TO('Zero trust in BFSI') === 'Zero trust in BFSI', [TO('Mega Panel: Boardroom Battle: Speed vs Risk'), TO('Plenary Leader\u2019s Talk on AI in Manufacturing: Moving Beyond Pilots'), TO('Keynote: AI')]);
+  check('12 Q3: past events only (not the one to come, not a hidden one), most recent first, each with their part; more than three counted', f12[1].a ===
+    'Naven Singh has participated in 4 events organised by The Economic Times, among them ETCISO Annual Conclave 2025 as a panelist, ETCIO Annual Conclave 2024 as a speaker, and ETCISO Awards 2024 as a jury member.', f12[1].a);
+  check('12 Q4: their session titles, each once, quoted, no full stop inside', f12[2].a === 'Naven Singh has shared insights on \u201cZero trust in BFSI\u201d, \u201cRansomware: the board\u2019s view\u201d, and \u201cCloud at scale\u201d.', f12[2].a);
+  check('12 Q5: the verticals they appeared on', f12[3].a === 'Visitors can explore available event videos, session highlights, and related coverage on ETCISO and ETCIO.', f12[3].a);
+  var g12 = CF(Object.assign({}, base12, { common: { industry: 'banking security', expertise: ['zero trust', 'cloud security', 'incident response'], contributed: 'the security of India\u2019s digital payments' } }), T12);
+  check('12 the team\'s words: their industry, what they contributed to (by name), and the expertise question in its place', g12[0].a === 'Naven Singh is the Group CISO at Acme Bank, with expertise in banking security. Naven Singh has contributed to the security of India\u2019s digital payments.' &&
+    g12[1].q === 'What is Naven Singh\u2019s area of expertise?' && g12[1].a === 'Naven Singh specialises in zero trust, cloud security, and incident response.', g12.slice(0, 2));
+  check('12 never he or she in any answer', !f12.concat(g12).some(function (f) { return /\b(he|she|his|her|him)\b/i.test(f.a); }));
+  var one12 = CF({ name: 'Asha Rao', designation: 'CIO', company: '', journey: [j12[1]] }, T12);
+  check('12 one event: the owner\'s own sentence; a designation without a company', one12[0].a === 'Asha Rao is the CIO.' && one12[1].a === 'Asha Rao has participated in ETCIO Annual Conclave 2024, organised by The Economic Times, as a speaker.', one12.map(function (f) { return f.a; }));
+  check('12 nothing on record: no question at all; switched off: none', CF({ name: 'New Person', journey: [] }, T12).length === 0 && CF(Object.assign({}, base12, { common: { off: true } }), T12).length === 0);
+  var all12 = PAGE._test.faqsOf(Object.assign({}, base12, { faqs: [{ q: 'Who is Naven Singh?', a: 'The team\'s own answer.' }, { q: 'Where next?', a: 'Pune.' }] }), T12);
+  check('12 the team\'s question with the same words replaces the common one; the team\'s come after the common ones', all12.length === 5 && all12[all12.length - 2].a === 'The team\'s own answer.' && all12[all12.length - 1].q === 'Where next?' && all12[0].q.indexOf('Which') === 0, all12.map(function (f) { return f.q; }));
+
+  /* saved from the console: kept, cleared, shown on the page with their structured data */
+  var v12 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'ciso');
+  var put12 = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: v12.body.version, page: Object.assign({}, v12.body.page,
+    { common: { industry: '  banking security ', expertise: ['zero trust', '', 'cloud security', 'x', 'four'], contributed: 'the security of digital payments', junk: 1 } }) });
+  check('12 the console saves the words (trimmed, three at most, nothing else kept)', put12.status === 200 && JSON.stringify(put12.body.page.common) === JSON.stringify({ industry: 'banking security', expertise: ['zero trust', 'cloud security', 'x'], contributed: 'the security of digital payments' }), put12.body.page && put12.body.page.common);
+  check('12 …and shows the questions as the saved page has them, with the industry their verticals give', put12.body.common && put12.body.common.faqs.length >= 3 && /specialises in zero trust, cloud security, and x/.test(JSON.stringify(put12.body.common.faqs)) && /cybersecurity/.test(put12.body.common.industry), put12.body.common && put12.body.common.industry);
+  r = await page('/speakers/naven-singh');
+  check('12 the page: the common questions in its questions, and in its structured data', /<summary>Who is Naven Singh\?<\/summary>/.test(r.text) && /<summary>What is Naven Singh\u2019s area of expertise\?<\/summary>/.test(r.text) &&
+    /"@type":"FAQPage"[\s\S]*"name":"Who is Naven Singh\?"/.test(r.text), (r.text.match(/class="faq"[\s\S]{0,500}/) || [r.status])[0]);
+  var put12b = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: put12.body.version, page: Object.assign({}, put12.body.page, { common: {} }) });
+  check('12 every box emptied: the words are gone (an empty record clears them)', put12b.status === 200 && !put12b.body.page.common && !FB.docs['speakerPages/naven-singh'].common, put12b.body.page);
+  var put12c = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: put12b.body.version, page: Object.assign({}, put12b.body.page, { common: { off: true } }) });
+  r = await page('/speakers/naven-singh');
+  check('12 switched off: the page has none of the five', put12c.status === 200 && put12c.body.page.common.off === true && !/Who is Naven Singh\?/.test(r.text));
+  await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: put12c.body.version, page: Object.assign({}, put12c.body.page, { common: {} }) });
+
+  /* ETB2B AI's suggestion: from the page's facts, cleaned, never saved by it */
+  llm.callJson = function (prompt, schema, opts) { asked = { prompt: prompt, opts: opts, schema: schema };
+    return Promise.resolve({ parsed: { industry: 'banking and financial services.', expertise: ['zero trust', 'Zero trust', 'cloud security', 'a very long area of expertise that goes on and on and on far beyond anything that a field would ever hold'], contributed: '"securing digital payments at ET scale."' }, provider: 'claude' }); };
+  var before12 = JSON.stringify(FB.docs['speakerPages/naven-singh'] || null);
+  var sg = await call(P.handleCommon, 'POST', '/api/people/speakers/common', 'ciso', { slug: 'naven-singh' });
+  check('12 ETB2B AI suggests the words from the page\'s facts: cleaned (no full stop, no quotes, each once, an over-long one dropped, never "ET" alone); nothing saved',
+    sg.status === 200 && sg.body.industry === 'banking and financial services' && JSON.stringify(sg.body.expertise) === '["zero trust","cloud security"]' && sg.body.contributed === 'securing digital payments at ETB2B scale' &&
+    asked.opts.route === 'people-common' && /Use ONLY the facts/.test(asked.prompt) && /Zero trust in BFSI/.test(asked.prompt) && JSON.stringify(FB.docs['speakerPages/naven-singh'] || null) === before12, [sg.status, sg.body]);
+  check('12 …only someone who may change the page asks; never for a sponsor', (await call(P.handleCommon, 'POST', '/api/people/speakers/common', 'hr', { slug: 'naven-singh' })).status === 403 &&
+    (await call(P.handleCommon, 'POST', '/api/people/sponsors/common', 'ciso', { slug: 'acme' })).status === 400);
+  llm.callJson = realCall;
 
   process.stdout.write('people: ' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);

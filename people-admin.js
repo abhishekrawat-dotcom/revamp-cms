@@ -252,6 +252,33 @@
     var hint = auto ? (SP ? 'Left empty, ETB2B’s records say: ' : 'Left empty: ') + '“' + String(auto).slice(0, 140) + (String(auto).length > 140 ? '…' : '') + '”' : (o.hint || '');
     return '<div class="field ' + (o.c || 'c6') + '"><label for="' + id + '">' + label + '</label>' + input + (hint ? '<p class="hint">' + esc(hint) + '</p>' : '') + '</div>';
   }
+  /* The five common questions (the owner, 25 Nov 2026: "Sharing the common FAQs that can be displayed on the Speaker
+     page, replace the variables with their values for that speaker"): answered from the page itself
+     (functions/lib/people-page.js commonFaqs); these boxes give what the records do not say — the industry (else their
+     verticals'), up to three areas of expertise, what they have contributed to — with ETB2B AI's suggestion to check.
+     The list shows the questions as the saved page has them. */
+  function commonBlock(v, d, ro) {
+    var c = d.common || {}, on = !c.off, view = v.common || {}, ex = c.expertise || [];
+    var dis = ro || state.cmBusy ? ' disabled' : '';
+    var html = '<div class="pp-sec pp-common"><h4>Common questions</h4>' +
+      '<label class="pp-check"><input type="checkbox" id="pp-cm-on"' + (on ? ' checked' : '') + (ro ? ' disabled' : '') + '> Show the five common questions first: who they are, their expertise, their ETB2B events, their topics, and where to watch</label>' +
+      '<p class="hint">Each is answered from this page\u2019s records; a question with nothing on record is left out, never guessed. Fill in below what the records do not say.</p>';
+    if (on) {
+      html += '<div class="frow">' +
+        field('pp-cm-ind', 'Industry or domain', c.industry || '', '', { max: 120, c: 'c12', placeholder: 'e.g. ' + (view.industry || 'banking and financial services'),
+          hint: 'Completes \u201cwith expertise in \u2026\u201d in \u201cWho is\u2026?\u201d; left empty, that part is left out.' + (view.industry ? ' The verticals they spoke at: ' + view.industry + ' (their own field may differ).' : '') }) +
+        [0, 1, 2].map(function (i) { return field('pp-cm-ex' + i, 'Area of expertise ' + (i + 1), ex[i] || '', '', { max: 80, c: 'c4', placeholder: ['e.g. cloud security', 'e.g. digital lending', 'e.g. data governance'][i] }); }).join('') +
+        field('pp-cm-con', 'Has contributed to', c.contributed || '', '', { max: 240, c: 'c12', placeholder: 'e.g. the digitisation of public health records',
+          hint: 'Completes \u201c' + (v.person.name || 'They') + ' has contributed to \u2026\u201d in \u201cWho is\u2026?\u201d. Left empty, that sentence is left out.' }) + '</div>' +
+        '<div class="pp-ai"><button class="btn btn-secondary btn-sm" type="button" id="pp-cm-ai"' + dis + '>' + (state.cmBusy ? 'Suggesting\u2026' : 'Suggest with ETB2B AI') + '</button></div>' +
+        '<p class="hint">ETB2B AI suggests them only from this page\u2019s records: their role, biography, About and session titles. It fills the empty boxes; nothing is saved until you Save.</p>' +
+        (state.cmDone ? '<p class="hint pp-ai-done" role="status">' + esc(state.cmDone) + '</p>' : '');
+      var list = view.faqs || [];
+      html += '<h5>As the saved page shows them' + (list.length ? '' : ': none yet') + '</h5>' +
+        (list.length ? '<ol class="pp-cm-list">' + list.map(function (f) { return '<li><b>' + esc(f.q) + '</b><span>' + esc(f.a) + '</span></li>'; }).join('') + '</ol>' : '<p class="hint">They appear as this speaker gets a designation, events and sessions on record.</p>');
+    }
+    return html + '</div>';
+  }
   /* About: written by hand, or by ETB2B AI from what this page shows (a draft to read and change, then Save) */
   function aboutField(p, d, ro) {
     var ai = state.aboutMode === 'ai';
@@ -349,7 +376,8 @@
 
     /* a speaker's questions and answers, shown at the foot of their page (the owner, 19 Nov 2026: "Add FAQs section which will
        be displayed in the bottom of the page. can be managed from edit speaker section") */
-    if (SP) html += '<section class="panel"><div class="panel-head"><h3>Questions and answers</h3><span class="sub">Shown at the foot of the page as “Frequently asked questions”. Up to 12.</span></div><div class="panel-body">' +
+    if (SP) html += '<section class="panel"><div class="panel-head"><h3>Questions and answers</h3><span class="sub">Shown at the foot of the page as “Frequently asked questions”: the common questions first, then your own (up to 12). Your own question with the same words replaces the common one.</span></div><div class="panel-body">' +
+      commonBlock(v, d, ro) + '<h4 class="pp-own-h">Your own questions</h4>' +
       (d.faqs || []).map(function (f, i) {
         return '<div class="pp-sec"><div class="frow">' + field('pp-fq-' + i, 'Question', f.q, '', { max: 200, c: 'c12', placeholder: 'e.g. Where will ' + (p.name || 'they') + ' speak next?' }) +
           field('pp-fa-' + i, 'Answer', f.a, '', { area: true, rows: 3, c: 'c12', max: 1500 }) + '</div>' +
@@ -423,6 +451,20 @@
     d.sections = (d.sections || []).map(function (s, i) { return { heading: val('pp-sh-' + i), text: val('pp-st-' + i) }; });
     d.links = (d.links || []).map(function (l, i) { return { label: val('pp-ll-' + i), url: val('pp-lu-' + i) }; });
     if (SP) d.faqs = (d.faqs || []).map(function (f, i) { return { q: val('pp-fq-' + i), a: val('pp-fa-' + i) }; });
+    if (SP && document.getElementById('pp-cm-on')) {
+      var cm = {};
+      if (!document.getElementById('pp-cm-on').checked) cm.off = true;
+      var keep = d.common || {};
+      if (document.getElementById('pp-cm-ind')) {
+        var ind = val('pp-cm-ind').trim(); if (ind) cm.industry = ind;
+        var ex = [0, 1, 2].map(function (i) { return val('pp-cm-ex' + i).trim(); }).filter(Boolean); if (ex.length) cm.expertise = ex;
+        var con = val('pp-cm-con').trim(); if (con) cm.contributed = con;
+      } else {          /* switched off: the words stay for when they are switched on again */
+        ['industry', 'expertise', 'contributed'].forEach(function (k) { if (keep[k]) cm[k] = keep[k]; });
+      }
+      /* an empty record only to clear words the saved page has (the server keeps them when none is sent) */
+      if (Object.keys(cm).length || (state.view.page && state.view.page.common)) d.common = cm; else delete d.common;
+    }
   }
   function noteDirty() {
     var n = document.getElementById('pp-dirty'), on = dirty() && state.view.canChange && !state.busy;
@@ -481,7 +523,7 @@
     });
   }
   function setView(v) {
-    if (!state.view || state.view.slug !== v.slug) { state.aboutMode = 'me'; state.aiDone = ''; state.aiNoteText = ''; }
+    if (!state.view || state.view.slug !== v.slug) { state.aboutMode = 'me'; state.aiDone = ''; state.aiNoteText = ''; state.cmDone = ''; }
     state.view = v; state.draft = clone(v.page); if (!state.draft.hideEvents) state.draft.hideEvents = []; if (!state.draft.faqs) state.draft.faqs = [];
   }
   function wireOne() {
@@ -505,6 +547,25 @@
     if (auto) auto.addEventListener('click', function () { readInputs(); delete d.set[SP ? 'photo' : 'logo']; renderOne(); });
     Array.prototype.forEach.call(root.querySelectorAll('[data-mode]'), function (b) {
       b.addEventListener('click', function () { readInputs(); state.aboutMode = b.getAttribute('data-mode'); state.aiDone = ''; renderOne(); var n = document.getElementById(state.aboutMode === 'ai' ? 'pp-ai-note' : 'pp-about'); if (n) n.focus(); });
+    });
+    var cmOn = document.getElementById('pp-cm-on');
+    if (cmOn) cmOn.addEventListener('change', function () { readInputs(); state.cmDone = ''; renderOne(); });
+    var cmAi = document.getElementById('pp-cm-ai');
+    if (cmAi) cmAi.addEventListener('click', function () {
+      readInputs();
+      state.cmBusy = true; state.cmDone = ''; state.err = '';
+      renderOne();
+      C.suggestPersonCommon(v.slug).then(function (r) {
+        state.cmBusy = false;
+        var c = d.common || (d.common = {}), filled = [];
+        if (!c.industry && r.industry) { c.industry = r.industry; filled.push('the industry'); }
+        var ex = (c.expertise || []).slice();
+        (r.expertise || []).forEach(function (x) { if (ex.length < 3 && ex.map(function (e) { return e.toLowerCase(); }).indexOf(String(x).toLowerCase()) === -1) { ex.push(x); filled.push('an area of expertise'); } });
+        if (ex.length) c.expertise = ex;
+        if (!c.contributed && r.contributed) { c.contributed = r.contributed; filled.push('what they have contributed to'); }
+        state.cmDone = filled.length ? 'Suggested by ETB2B AI from this page\u2019s records. Check them, change anything, then Save.' : 'ETB2B AI had nothing to add to what the boxes already say.';
+        renderOne();
+      }, function (e) { state.cmBusy = false; state.err = errText(e); renderOne(); });
     });
     var aiGo = document.getElementById('pp-ai-go');
     if (aiGo) aiGo.addEventListener('click', function () {

@@ -567,6 +567,113 @@ function similarHtml(list) {
   }).join('') + '</ul></div></section>';
 }
 /* the page's questions (the team writes them in the console's page editor), at its foot */
+/* ---------- the common questions ----------
+   The owner, 25 Nov 2026: "Sharing the common FAQs that can be displayed on the Speaker page, replace the variables with
+   their values for that speaker" — five questions in the owner's words, each answered from what the page holds:
+     Q1 who they are     designation and company; the industry and what they have contributed to when the team has
+                         given them (Edit speaker › Common questions: typed, or ETB2B AI's suggestion checked)
+     Q2 their expertise  the team's areas of expertise (up to three)
+     Q3 the events       the ETB2B events they took part in, with their part there (speaker, panelist, jury member…)
+     Q4 the topics       their sessions' titles
+     Q5 where to watch   the verticals' sites they appeared on
+   A question whose facts are missing is left out, never answered with a gap or a guess. "[He/She]" is their name: no
+   speaker's gender is on record, and a name does not tell it. p.common: { off, industry, expertise: [], contributed }. */
+var DOMAIN = {
+  cio: 'technology', ciosea: 'technology', ciome: 'technology', ciso: 'cybersecurity', infra: 'infrastructure', cfo: 'finance',
+  hr: 'human resources', hrsea: 'human resources', hrme: 'human resources', retail: 'retail', health: 'healthcare',
+  auto: 'the automotive industry', telecom: 'telecommunications', bfsi: 'banking and financial services', energy: 'energy',
+  energymea: 'energy', government: 'governance and the public sector', legal: 'law', realty: 'real estate', education: 'education',
+  manufacturing: 'manufacturing', supplychain: 'supply chains', travel: 'travel', hospitality: 'hospitality',
+  brandequity: 'marketing and advertising', pharma: 'pharmaceuticals', gcc: 'global capability centres', enterpriseai: 'enterprise AI',
+  techmonk: 'software development', entrepreneur: 'entrepreneurship', datacenters: 'data centres', electronics: 'electronics',
+  sustainability: 'sustainability', workplace: 'workplace management', agriculture: 'agriculture', chemicals: 'chemicals',
+  climate: 'climate', construction: 'construction', crypto: 'digital assets', defence: 'defence', drones: 'drones',
+  facilities: 'facilities management', food: 'food', geospatial: 'geospatial technology', jewellery: 'jewellery',
+  machinetools: 'machine tools', packaging: 'packaging', safety: 'safety', salon: 'the salon industry', shipping: 'shipping',
+  sports: 'sports', startup: 'start-ups', textile: 'textiles', wastemanagement: 'waste management'
+};
+function listOf(items) {
+  items = items.filter(Boolean);
+  if (items.length < 2) return items[0] || '';
+  if (items.length === 2) return items[0] + ' and ' + items[1];
+  return items.slice(0, -1).join(', ') + ', and ' + items[items.length - 1];
+}
+/* the industry of the verticals they appeared on, most appearances first (two at most) */
+function domainsOf(shown) {
+  var n = {}, order = [];
+  shown.forEach(function (j) { var d = DOMAIN[str(j.portal)]; if (!d) return; if (!n[d]) { n[d] = 0; order.push(d); } n[d]++; });
+  return order.sort(function (a, b) { return n[b] - n[a]; }).slice(0, 2);
+}
+/* their part at an event, as a phrase ("a speaker", "a jury member") */
+function partOf(j) {
+  var r = str(j.role);
+  if (/jur|judg/i.test(r) || (j.award && !r)) return 'a jury member';
+  if (/moderat/i.test(r)) return 'a moderator';
+  if (/panel/i.test(r)) return 'a panelist';
+  if (/keynote/i.test(r)) return 'a keynote speaker';
+  if (/host|anchor|emcee|master of ceremon/i.test(r)) return 'a host';
+  if (/chief guest|guest of honou?r|special guest|^guests?$/i.test(r.trim())) return 'a guest';
+  return 'a speaker';
+}
+function quoted(t) { return '\u201c' + str(t).replace(/\s+/g, ' ').trim().replace(/[.\s]+$/, '') + '\u201d'; }
+/* a session's topic: its title without the format before it ("Panel Discussion: …", "Mega Panel: …", "Fireside Chat
+   with …:" stays whole, "Plenary Leader's Talk on …") */
+var FORMAT_RE = /^(?:(?:mega|plenary|power|cxo|special|leadership|closing|opening|inaugural|grand)\s+)*(?:panel(?:\s+discussion)?|discussion|fireside(?:\s+chat)?|keynote(?:\s+(?:address|session|talk))?|address|presentation|masterclass|workshop|session|talk|roundtable|debate|case\s+study|spotlight)\s*[:\-\u2013\u2014|]\s+/i;
+var TALK_ON_RE = /^(?:(?:plenary|special|guest)\s+)?leader[\u2019']?s\s+talk\s+on\s+/i;
+function topicOf(t) {
+  t = str(t).replace(/\s+/g, ' ').trim();
+  var u = t.replace(FORMAT_RE, '').replace(TALK_ON_RE, '');
+  return u.length >= 8 ? u.charAt(0).toUpperCase() + u.slice(1) : t;
+}
+function commonFaqs(p, today) {
+  var c = p.common || {};
+  if (c.off) return [];
+  var name = str(p.name).trim();
+  if (!name) return [];
+  var shown = (p.journey || []).filter(function (j) { return !j.hidden && !j.why; });
+  var past = shown.filter(function (j) { return !isComing(j, today) && str(j.title).trim(); });
+  var out = [];
+  var desig = str(p.designation).trim(), comp = str(p.company).trim();
+  /* the team's words only: the verticals someone spoke at are not their expertise (a Chief Digital Officer of an auto
+     parts maker who spoke at ETCISO events is no cybersecurity expert) — they are the box's hint in Edit speaker */
+  var industry = str(c.industry).trim();
+  var expertise = (c.expertise || []).map(function (x) { return str(x).trim(); }).filter(Boolean).slice(0, 3);
+  var contributed = str(c.contributed).trim().replace(/[.\s]+$/, '');
+  if (desig || comp) {
+    var who = name + ' is ' + (desig && comp ? 'the ' + desig + ' at ' + comp : desig ? 'the ' + desig : 'with ' + comp) +
+      (industry ? ', with expertise in ' + industry : '') + '.';
+    if (contributed) who += ' ' + name + ' has contributed to ' + contributed + '.';
+    out.push({ q: 'Who is ' + name + '?', a: who, common: 1 });
+  }
+  if (expertise.length) out.push({ q: 'What is ' + name + '\u2019s area of expertise?', a: name + ' specialises in ' + listOf(expertise) + '.', common: 2 });
+  if (past.length) {
+    var seen = {}, named = past.filter(function (j) { var k = str(j.title).toLowerCase(); if (seen[k]) return false; seen[k] = 1; return true; });
+    var three = named.slice(0, 3).map(function (j) { return str(j.title).trim() + ' as ' + partOf(j); });
+    var a3 = named.length === 1
+      ? name + ' has participated in ' + str(named[0].title).trim() + ', organised by The Economic Times, as ' + partOf(named[0]) + '.'
+      : named.length <= 3
+        ? name + ' has participated in ' + listOf(three) + (named.length === 2 ? ', both' : ', all') + ' organised by The Economic Times.'
+        : name + ' has participated in ' + named.length + ' events organised by The Economic Times, among them ' + listOf(three) + '.';
+    out.push({ q: 'Which Economic Times events has ' + name + ' participated in?', a: a3, common: 3 });
+  }
+  var topics = [];
+  shown.forEach(function (j) { (j.sessions || []).forEach(function (s) { var t = topicOf(s.title); if (t && topics.map(function (x) { return x.toLowerCase(); }).indexOf(t.toLowerCase()) === -1) topics.push(t); }); });
+  if (topics.length) out.push({ q: 'What topics has ' + name + ' discussed at industry events?', a: name + ' has shared insights on ' + listOf(topics.slice(0, 3).map(quoted)) + '.', common: 4 });
+  if (past.length) {
+    var sites = [];
+    past.forEach(function (j) { var n = str(j.portalName).trim(); if (n && sites.indexOf(n) === -1) sites.push(n); });
+    out.push({ q: 'Where can I watch ' + name + '\u2019s event sessions?', a: 'Visitors can explore available event videos, session highlights, and related coverage on ' + (listOf(sites.slice(0, 3)) || 'ETB2B') + '.', common: 5 });
+  }
+  return out;
+}
+/* the common questions first, then the team's own; a question the team wrote itself replaces the common one */
+function faqsOf(p, today) {
+  var own = (p.faqs || []).filter(function (f) { return f && str(f.q).trim() && str(f.a).trim(); });
+  var key = function (q) { return str(q).toLowerCase().replace(/[\u2019']/g, "'").replace(/[^a-z0-9']+/g, ' ').trim(); };
+  var mine = own.map(function (f) { return key(f.q); });
+  return commonFaqs(p, today).filter(function (f) { return mine.indexOf(key(f.q)) === -1; }).concat(own);
+}
+
 function faqHtml(list) {
   list = (list || []).filter(function (f) { return f && str(f.q).trim() && str(f.a).trim(); });
   if (!list.length) return '';
@@ -594,7 +701,7 @@ function renderSpeaker(p, o) {
   if (p.about || p.bio) person.description = cut(p.about || p.bio, 300);
   var ld = { '@context': 'https://schema.org', '@type': 'ProfilePage', mainEntity: person };
   if (canonical) ld.url = canonical;
-  var faqs = (p.faqs || []).filter(function (f) { return f && str(f.q).trim() && str(f.a).trim(); });
+  var faqs = faqsOf(p, today);
   if (faqs.length) ld = [ld, { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map(function (f) { return { '@type': 'Question', name: str(f.q), acceptedAnswer: { '@type': 'Answer', text: str(f.a) } }; }) }];
   var acts = [];
   if (/^https:\/\//.test(str(p.linkedin))) acts.push('<a class="btn" href="' + esc(p.linkedin) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + ' on LinkedIn (opens in a new tab)">' + ICON.li + 'LinkedIn</a>');
@@ -662,4 +769,4 @@ function render(person, o) {
 }
 function darkLook(look) { var bg = look && hexOk(look.bg); return !!bg && lum(bg) < 0.2; }
 
-module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear } };
+module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear, commonFaqs: commonFaqs, faqsOf: faqsOf, DOMAIN: DOMAIN, listOf: listOf, domainsOf: domainsOf, topicOf: topicOf } };

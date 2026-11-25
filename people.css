@@ -118,3 +118,14 @@
   .pp-pct .bar{ display:none; }
   .pp-prev{ width:46px; }
 }
+
+/* Edit speaker › Questions and answers › Common questions (people-admin.js commonBlock) */
+.pp-common h4{ margin:0 0 6px; font-size:13px; }
+.pp-common h5{ margin:14px 0 6px; font-size:12px; color:var(--muted); font-weight:600; }
+.pp-check{ display:flex; gap:8px; align-items:flex-start; font-size:13px; line-height:1.4; margin:0 0 4px; cursor:pointer; }
+.pp-check input{ margin-top:2px; }
+.pp-cm-list{ margin:0; padding-left:18px; display:grid; gap:8px; font-size:12.5px; line-height:1.45; }
+.pp-cm-list b{ display:block; }
+.pp-cm-list span{ color:var(--muted); }
+.pp-own-h{ margin:16px 0 8px; font-size:13px; }
+.pp-common > .hint{ font-size:12px; line-height:1.45; color:var(--muted); margin:4px 0 10px; }
