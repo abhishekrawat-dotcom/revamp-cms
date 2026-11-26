@@ -832,11 +832,14 @@ function handlePage(kind, req, res, slug) {
       return personOf(fb, kind, slug, entry, page, { idx: idx });
     }).then(function (person) {
       if (!person || !person.hasPage) return notHere(req, res, kind, back);
-      /* speakers of the same industry, before the questions (similarOf) */
-      if (kind === 'speakers') person.similar = similarOf(idx, slug);
-      var base = H.publicBaseFor(req, '');
-      var html = require('./people-page').render(person, { base: base, back: back, today: today() });
-      sendPage(req, res, 200, html, 'public, max-age=60');
+      /* speakers of the same industry, before the questions (similarOf), in the team's words (withTeamWords): a few more
+         chosen, so a page the team hid leaves no gap */
+      return (kind === 'speakers' ? withTeamWords(fb, kind, similarOf(idx, slug, CAPS.similar + 4)) : Promise.resolve([])).then(function (similar) {
+        if (kind === 'speakers') person.similar = similar.slice(0, CAPS.similar);
+        var base = H.publicBaseFor(req, '');
+        var html = require('./people-page').render(person, { base: base, back: back, today: today() });
+        sendPage(req, res, 200, html, 'public, max-age=60');
+      });
     });
   }).catch(function (err) {
     console.error('people: /' + kind + '/' + slug + ' failed — ' + (err && err.stack || err));
@@ -925,6 +928,30 @@ function similarOf(idx, slug, max) {
   return out.slice(0, max || CAPS.similar).map(function (x) {
     var e = idx.people[x.s];
     return { slug: x.s, name: str(e.n), designation: str(e.d), company: str(e.c), photo: photoUrl(e.ph) };
+  });
+}
+
+/* The team's own words for the people a page lists (the owner, 26 Nov 2026: "I have updated the Anirban's details from
+   backend, but it is still showing old here. but it is correct on the details page"): the index holds ETB2B's records,
+   and what the team changed in Edit speaker — name, designation, company, photo — lives on each person's page. Read
+   with the list (one read per person, at most a dozen); a page the team hid leaves it. A failed read keeps the records'
+   words. -> Promise<[{ slug, name, designation, company, photo }]> */
+function withTeamWords(fb, kind, list) {
+  if (!list.length) return Promise.resolve(list);
+  return Promise.all(list.map(function (x) {
+    return pageRef(fb, kind, x.slug).get().then(function (snap) { return snap.exists ? snap.data() || {} : null; }, function () { return null; });
+  })).then(function (pages) {
+    return list.map(function (x, i) {
+      var pg = pages[i];
+      if (!pg) return x;
+      if (pg.hidden === true) return null;
+      var set = pg.set || {}, out = Object.assign({}, x);
+      if (str(set.name).trim()) out.name = str(set.name).trim();
+      if (str(set.designation).trim()) out.designation = str(set.designation).trim();
+      if (str(set.company).trim()) out.company = str(set.company).trim();
+      if (/^https:\/\//.test(str(set.photo))) out.photo = str(set.photo);
+      return out;
+    }).filter(Boolean);
   });
 }
 
@@ -1616,7 +1643,7 @@ module.exports = {
   wire: wire, reconcile: reconcile, reconcileAll: reconcileAll, soon: soon, routePublic: routePublic, handleSitemap: handleSitemap,
   handleList: handleList, handleOne: handleOne, handleMerge: handleMerge, handleSplit: handleSplit, handleUndo: handleUndo, handleAbout: handleAbout, handleCommon: handleCommon, handleWiki: handleWiki, wikiLookup: wikiLookup, personOf: personOf, readIndex: readIndex,
   picturesFolder: picturesFolder,
-  _test: { similarOf: similarOf, cardOf: cardOf, place: place, newSlug: newSlug, summarise: summarise, joinInto: joinInto, finalSlug: finalSlug, withLookups: withLookups, cleanPage: cleanPage,
+  _test: { similarOf: similarOf, withTeamWords: withTeamWords, cardOf: cardOf, place: place, newSlug: newSlug, summarise: summarise, joinInto: joinInto, finalSlug: finalSlug, withLookups: withLookups, cleanPage: cleanPage,
     personOf: personOf, whyNotPublic: whyNotPublic, findSlug: findSlug, mayChange: mayChange, shardOf: shardOf, readIndex: readIndex, forget: forget,
     sitemapEntries: sitemapEntries, rowsOf: rowsOf, groupsOf: groupsOf, completeOf: completeOf, missingOf: missingOf, FIELDS: FIELDS, DUMMY_EVENTS: DUMMY_EVENTS, KINDS: KINDS, CAPS: CAPS, factsOf: factsOf, aboutPrompt: aboutPrompt, cleanAbout: cleanAbout }
 };

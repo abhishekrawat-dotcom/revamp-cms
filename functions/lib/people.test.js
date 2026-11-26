@@ -559,6 +559,20 @@ function page(url) {
     /h1\{[^}]*overflow-wrap:normal;word-break:normal;hyphens:manual;text-wrap:balance\}/.test(pg15) && !/h1\{[^}]*overflow-wrap:anywhere/.test(pg15) &&
     /\.nm\{container-type:inline-size;min-width:0\}/.test(pg15) && /\.nm h1\{font-size:min\(clamp\(40px,6vw,72px\),calc\(100cqi \/ var\(--nw,1\)\)\)\}/.test(pg15) && /<div class="nm">/.test(pg15));
 
+  /* the people a page lists in the team's words (the owner, 26 Nov 2026: Anirban's details changed in Edit speaker showed old
+     in "Speakers in the same industry", right on his own page) */
+  var col16 = (function () { var k = Object.keys(FB.docs).filter(function (x) { return /^[A-Za-z]*[sS]peakerPages\//.test(x); })[0]; return k ? k.split('/')[0] : 'speakerPages'; })();
+  FB.docs[col16 + '/qa-ravi'] = { set: { name: 'Ravi K. Kumar', designation: 'Group CTO', company: 'NewCo', photo: 'https://x/ravi-new.jpg' } };
+  FB.docs[col16 + '/qa-meera'] = { hidden: true, set: {} };
+  var tw = await P._test.withTeamWords(FB, 'speakers', [
+    { slug: 'qa-ravi', name: 'Ravi Kumar', designation: 'CIO', company: 'Acme', photo: 'https://x/ravi.jpg' },
+    { slug: 'qa-meera', name: 'Meera Iyer', designation: 'CISO', company: 'Beta', photo: '' },
+    { slug: 'qa-kiran', name: 'Kiran Shah', designation: 'CHRO', company: 'Gamma', photo: '' }]);
+  check('16 the cards show the team\'s name, designation, company and photo over the records\'; a page the team hid leaves the list; one untouched keeps the records\'',
+    tw.length === 2 && tw[0].name === 'Ravi K. Kumar' && tw[0].designation === 'Group CTO' && tw[0].company === 'NewCo' && tw[0].photo === 'https://x/ravi-new.jpg' &&
+    tw[1].slug === 'qa-kiran' && tw[1].designation === 'CHRO', tw);
+  delete FB.docs[col16 + '/qa-ravi']; delete FB.docs[col16 + '/qa-meera'];
+
   /* saved from the console: kept, cleared, shown on the page with their structured data */
   var v12 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'ciso');
   var put12 = await call(P.handleOne, 'PUT', '/api/people/speakers/one', 'ciso', { slug: 'naven-singh', base: v12.body.version, page: Object.assign({}, v12.body.page,
