@@ -1,0 +1,25 @@
+{
+  "name": "eventsphere-books-app",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Books (BOOKSTUDIO) editor for ETB2B EventSphere: React source, built into ../books/ by build.mjs. Not installed or served in production; the built files are committed.",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "jszip": "3.10.2",
+    "lucide-react": "0.546.0",
+    "pdf-lib": "1.17.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "esbuild": "0.25.12",
+    "tailwindcss": "4.3.5",
+    "typescript": "7.0.2"
+  }
+}

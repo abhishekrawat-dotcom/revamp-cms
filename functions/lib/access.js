@@ -157,7 +157,7 @@ function readToken(req) {
    Names are compared in lower case: on a case-insensitive filesystem /SERVER.JS is server.js.
    payment/ is not served: it is a prototype of online payment (out of scope for now) that showed another
    event's made-up figures; the rail's Payment item says "not available yet" inside the console instead. */
-const SERVED_DIRS = new Set(['assets', 'templates', 'import-figma-design', 'template-previews', 'promo-studio']);
+const SERVED_DIRS = new Set(['assets', 'templates', 'import-figma-design', 'template-previews', 'promo-studio', 'books']);
 const SERVED_TYPES = new Set(['.html', '.js', '.css', '.json', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif',
   '.ico', '.woff', '.woff2', '.ttf', '.otf', '.mp4', '.webm', '.pdf', '.txt']);
 const TOP_LEVEL_TYPES = new Set(['.html', '.js', '.css', '.ico', '.png', '.svg', '.txt']);

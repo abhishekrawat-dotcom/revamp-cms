@@ -37,6 +37,7 @@
 //                                           events/import-{importId} while lib/http.js LEGACY_IMPORT_DOCS is true
 //                                           (lib/ops-migrate-imports.js moves them)
 //     config/…                              team settings: access (lib/access-control.js), approvals
+//     books/{bookId}, bookTemplates, bookFontCollections, bookAssets   Books, the coffee table book editor (lib/api-books.js)
 //     sharePreviews, dashChats, aiChats, promoIcons, aiQuota, the speaker and sponsor pages, …   each in its module
 //   Storage (private unless storage.rules lists the prefix as public by ACL)
 //     events/{eventId}/site/                the saved site: snapshot.json, page.html, versions/, drafts/ (previews)
@@ -47,6 +48,7 @@
 //     events/import-{importId}/             a Lovable import's page and sections (section.html, sections.json:
 //                                           private, read through /api/imported-section) and assets/ (public)
 //     people/<kind>/<slug>/, promo-icons/   the speaker and sponsor pages' pictures, the mailer icons
+//     books/assets/<assetId>/, books/<bookId>/versions/   Books' photos and kept versions (private; lib/api-books.js)
 const fs = require('fs');
 const path = require('path');
 const admin = require('firebase-admin');

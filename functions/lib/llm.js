@@ -98,6 +98,16 @@ var PROFILES = {
      Gemini is trained for, so it is asked first and Claude after it (prefer) */
   'photo-find': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 70000, maxOutputTokens: 6000, prefer: 'gemini' },
   'people-about': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 45000, maxOutputTokens: 3000 },
+  /* Books (lib/books-ai.js): reading a reference book's pages into its design system, a page's suggestions, a template
+     blueprint and an infographic on Sonnet; font pairings and template picks from a list on Haiku; a whole manuscript
+     poured into the book's frames is a long answer with a large schema, so it starts in plain mode */
+  'books-analyze': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 150000, maxOutputTokens: 10000 },
+  'books-typography': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 45000, maxOutputTokens: 4000 },
+  'books-assistant': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 6000 },
+  'books-recommend': { model: CLAUDE_HAIKU, effort: 'low', timeoutMs: 45000, maxOutputTokens: 3000 },
+  'books-publication': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 170000, maxOutputTokens: 16000 },
+  'books-infographic': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 4000 },
+  'books-auto-flow': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 200000, maxOutputTokens: 32000, plain: true },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 

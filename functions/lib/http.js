@@ -163,7 +163,15 @@ var AI_RATE = {
   'POST /api/plan-structure': { max: 20, ms: TEN_MINUTES },
   'POST /api/generate-content': { max: 20, ms: TEN_MINUTES },
   'POST /api/import-lovable': { max: 20, ms: TEN_MINUTES },
-  'POST /api/promo/mailer/ai': { max: 60, ms: TEN_MINUTES }
+  'POST /api/promo/mailer/ai': { max: 60, ms: TEN_MINUTES },
+  /* Books (lib/books-ai.js): the editor's AI steps */
+  'POST /api/books/ai/analyze-template': { max: 20, ms: TEN_MINUTES },
+  'POST /api/books/ai/typography-pairing': { max: 40, ms: TEN_MINUTES },
+  'POST /api/books/ai/editorial-assistant': { max: 60, ms: TEN_MINUTES },
+  'POST /api/books/ai/recommend-templates': { max: 40, ms: TEN_MINUTES },
+  'POST /api/books/ai/generate-publication-template': { max: 20, ms: TEN_MINUTES },
+  'POST /api/books/ai/generate-infographic': { max: 40, ms: TEN_MINUTES },
+  'POST /api/books/ai/auto-flow-data': { max: 20, ms: TEN_MINUTES }
 };
 function aiRateOk(req, res, path, decoded) {
   var route = String(req.method || '').toUpperCase() + ' ' + path, rule = AI_RATE[route];

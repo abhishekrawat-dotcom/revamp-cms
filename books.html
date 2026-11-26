@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" class="dark" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Books &mdash; EventSphere</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<!-- Books (BOOKSTUDIO): the coffee table book editor inside ETB2B EventSphere (the owner, 26 Nov 2026; plan:
+     docs/bookstudio/PLAN.md). The editor is the React app in books-app/, built into books/app.js and books/app.css
+     (books-app/build.mjs); everything it keeps goes through /api/books/* (functions/lib/api-books.js). Signed in by
+     auth.js like every page; PDF manuscripts are read in the browser by pdf-reader.js. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500;600&family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="books/app.css">
+<style>
+  html, body { background: #121214; color: #ECEAE4; margin: 0; }
+  .bk-boot { min-height: 100vh; display: flex; align-items: center; justify-content: center; font: 14px/1.5 "Plus Jakarta Sans", system-ui, sans-serif; color: #A19E95; }
+</style>
+</head>
+<body class="bg-[#121214] text-[#ECEAE4] antialiased">
+<div id="root"><div class="bk-boot" role="status">Loading Books…</div></div>
+<noscript><p class="bk-boot">Books needs JavaScript. Turn it on and reload the page.</p></noscript>
+<script src="auth.js"></script>
+<script src="pdf-reader.js"></script>
+<script src="books/app.js" defer></script>
+</body>
+</html>

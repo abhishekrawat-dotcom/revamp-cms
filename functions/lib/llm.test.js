@@ -80,7 +80,11 @@ async function run() {
     'ingest-source': [CLAUDE_HAIKU, 'low', 75000, 12000], 'logo-unit': [CLAUDE_SONNET, 'low', 45000, 6000], 'picture-check': [CLAUDE_HAIKU, 'low', 30000, 2000], 'deck-photos': [CLAUDE_HAIKU, 'low', 45000, 4000],
     /* the advanced picture assistant's Director and Critic (plan of 16 Nov 2026, W2) */
     'picture-brief': [CLAUDE_SONNET, 'medium', 45000, 6000], 'picture-critic': [CLAUDE_SONNET, 'low', 30000, 3000],
-    'promo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'promo-edit': [CLAUDE_SONNET, 'low', 55000, 6000], 'promo-ai-fast': [CLAUDE_HAIKU, 'low', 60000, 12000], 'promo-ai-deep': [CLAUDE_OPUS, 'high', 150000, 32000], 'event-description': [CLAUDE_SONNET, 'low', 60000, 4000], 'dash-bot': [CLAUDE_HAIKU, 'low', 45000, 6000], 'site-heading': [CLAUDE_SONNET, 'low', 45000, 3000], 'seo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'photo-find': [CLAUDE_SONNET, 'low', 70000, 6000], 'people-about': [CLAUDE_SONNET, 'low', 45000, 3000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000]
+    'promo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'promo-edit': [CLAUDE_SONNET, 'low', 55000, 6000], 'promo-ai-fast': [CLAUDE_HAIKU, 'low', 60000, 12000], 'promo-ai-deep': [CLAUDE_OPUS, 'high', 150000, 32000], 'event-description': [CLAUDE_SONNET, 'low', 60000, 4000], 'dash-bot': [CLAUDE_HAIKU, 'low', 45000, 6000], 'site-heading': [CLAUDE_SONNET, 'low', 45000, 3000], 'seo-write': [CLAUDE_SONNET, 'low', 60000, 6000], 'photo-find': [CLAUDE_SONNET, 'low', 70000, 6000], 'people-about': [CLAUDE_SONNET, 'low', 45000, 3000], 'default': [CLAUDE_SONNET, 'low', 75000, 12000],
+    /* Books (lib/books-ai.js) */
+    'books-analyze': [CLAUDE_SONNET, 'low', 150000, 10000], 'books-typography': [CLAUDE_HAIKU, 'low', 45000, 4000], 'books-assistant': [CLAUDE_SONNET, 'low', 75000, 6000],
+    'books-recommend': [CLAUDE_HAIKU, 'low', 45000, 3000], 'books-publication': [CLAUDE_SONNET, 'low', 170000, 16000], 'books-infographic': [CLAUDE_SONNET, 'low', 75000, 4000],
+    'books-auto-flow': [CLAUDE_SONNET, 'low', 200000, 32000],
   };
   ok(Object.keys(PROFILES).sort().join() === Object.keys(want).sort().join(), 'the profiles are the routes we know', Object.keys(PROFILES).join());
   Object.keys(want).forEach(function (route) {
@@ -113,8 +117,8 @@ async function run() {
   for (var route of Object.keys(want)) {
     await ask(KEYED, [fromClaude()], [], { route: route });
     var sent = claude.seen[0].body;
-    /* a plain-mode route (chat-edit) sends no structured-output parameters, so no effort either */
-    var plainRoute = route === 'chat-edit';
+    /* a plain-mode route (chat-edit, books-auto-flow) sends no structured-output parameters, so no effort either */
+    var plainRoute = route === 'chat-edit' || route === 'books-auto-flow';
     ok(sent.model === want[route][0] && (plainRoute ? !sent.output_config : sent.output_config.effort === want[route][1]) && sent.max_tokens === want[route][3], 'route ' + route + ' uses its profile', sent.model + ' ' + (sent.output_config ? sent.output_config.effort : 'plain') + ' ' + sent.max_tokens);
   }
   await ask(KEYED, [fromClaude()], [], { route: 'never-heard-of-it' });

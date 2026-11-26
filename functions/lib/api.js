@@ -52,6 +52,8 @@
 //                                           (make, list, stop), all in lib/share-preview.js (see shareRoute()).
 //
 //   Routed here, implemented elsewhere (loaded on demand; see inModule()):
+//     lib/api-books.js     every /api/books/* route: Books (BOOKSTUDIO), the coffee table book editor at books.html
+//                          (books, photos, manuscripts, IDML, fonts, versions, templates; its AI steps in lib/books-ai.js)
 //     lib/api-events.js    POST /api/event/upload, GET /api/event/slug-available, DELETE /api/event,
 //                          POST /api/event/restore, POST /api/event/clone
 //     lib/api-audience.js  GET /api/public/site-data, POST /api/register, POST /api/track (all PUBLIC),
@@ -8105,6 +8107,15 @@ function pictureRoute(req, res) {
   return mod.handle(req, res);
 }
 
+/* Books (BOOKSTUDIO, the owner's coffee table book editor): every /api/books/ route (lib/api-books.js) */
+function booksRoute(req, res) {
+  var mod = null;
+  try { mod = require('./api-books'); }
+  catch (err) { console.error('api: could not load lib/api-books.js — ' + (err && err.stack || err)); }
+  if (mod) return mod.handle(req, res);
+  return sendJson(res, 503, { error: 'This part of the service is not available right now. Please try again shortly.', code: 'module-unavailable' });
+}
+
 function routeApi(req, res) {
   var urlPath = String(req.url || '').split('?')[0];
 
@@ -8159,6 +8170,9 @@ function routeApi(req, res) {
   /* Every /api/ answer says where the published sites are (the one setting, publicBaseFor): the pages build
      each address they show or copy from it (RevampCore.publicUrl), so no page keeps a host of its own. */
   if (urlPath.indexOf('/api/') === 0 && !res.headersSent) res.setHeader('X-Public-Base', publicBaseFor(req, ''));
+
+  /* /api/books/*: the Books editor (lib/api-books.js, which checks the caller on every route) */
+  if (urlPath.indexOf('/api/books/') === 0) return booksRoute(req, res);
 
   var handler = ROUTES[req.method + ' ' + urlPath];
   /* the routes that used to lean on the hosting sign-in gate alone check the caller here (BE-018) */

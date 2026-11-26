@@ -1,0 +1,79 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --studio-bg: #121214;
+    --studio-surface: #18181b;
+    --studio-panel: #1c1c20;
+    --studio-elevated: #232328;
+    --studio-border: rgba(255, 255, 255, 0.08);
+    --studio-border-strong: rgba(255, 255, 255, 0.14);
+    --studio-text: #eceae4;
+    --studio-muted: #98958d;
+    --studio-accent: #c6a26b;
+    --studio-accent-hover: #d5b47f;
+    --font-display: "Playfair Display", Georgia, serif;
+    --font-ui: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: var(--studio-bg);
+    color: var(--studio-text);
+    font-family: var(--font-ui);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Subtle dark editorial scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.24);
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Realistic book spread central spine shadow */
+.book-spine-shadow {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.05) 30%,
+    rgba(0, 0, 0, 0.18) 49%,
+    rgba(0, 0, 0, 0.24) 50%,
+    rgba(0, 0, 0, 0.14) 52%,
+    rgba(0, 0, 0, 0.04) 70%,
+    rgba(0, 0, 0, 0) 100%
+  );
+}
