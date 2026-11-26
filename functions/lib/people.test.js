@@ -230,7 +230,7 @@ function page(url) {
   check('4 …the jury of an awards event is not a speaker', !Object.keys(ix.byRow).some(function (k) { return /digiplus/.test(k); }) && !!ix.byRow['o~national-data-center-symposium~d1']);
   var r = await page('/speakers/naven-singh?from=ciso-secufest-summit-2027');
   var html = r.text;
-  check('4 GET /speakers/<slug>: 200, the newest details (the team\'s record on a live event), ET\'s photo', r.status === 200 && /<h1 id="h-name">Naven Singh<\/h1>/.test(html) && /Group CISO &amp; DPO/.test(html) && /naven\.jpg|naven-cio\.jpg/.test(html), html.slice(0, 400));
+  check('4 GET /speakers/<slug>: 200, the newest details (the team\'s record on a live event), ET\'s photo', r.status === 200 && /<h1 id="h-name"( style="--nw:[0-9.]+")?>Naven Singh<\/h1>/.test(html) && /Group CISO &amp; DPO/.test(html) && /naven\.jpg|naven-cio\.jpg/.test(html), html.slice(0, 400));
   /* the event to come beside the name, with its sessions; the past by year (owner, 19 Nov 2026) */
   check('4 …the live event to come beside the name ("Upcoming", its sessions), each ET edition by year, sessions under each, the CIO portal\'s edition too',
     /<aside class="up-now"[^>]*><p class="tick">[\s\S]*?Upcoming[\s\S]*?CISO Secufest Summit 2027[\s\S]*?class="up-ss"/.test(html) && /CISO Secufest Summit 2027/.test(html) && /Keynote: Cyber resilience/.test(html) && /ETCISO Annual Conclave 2026/.test(html) && /Zero trust in BFSI/.test(html) && /11:30 am/.test(html) &&
@@ -549,6 +549,15 @@ function page(url) {
   check('14 the page runs the script only with cards to move (the nearest event stands beside the name, the rest are the cards)', pg14.indexOf('<script>' + JS + '</script>') !== -1 && pg14b.indexOf('<script>' + JS + '</script>') === -1 && /Also coming up/.test(pg14b));
   var r14 = await page('/speakers/naven-singh');
   check('14 the page says so to the browser: no script but that one', r14.status === 200 && /default-src 'none'; script-src 'sha256-[A-Za-z0-9+\/=]+';/.test(r14.headers['content-security-policy']) && r14.headers['content-security-policy'].indexOf(PAGE.UPS_HASH) !== -1, r14.headers['content-security-policy']);
+
+  /* the name never breaks inside a word (the owner, 26 Nov 2026: "we can not break words of speaker's Name. We can go in two
+     lines but in case if the name is too much long then we have to reduce the font-size") */
+  var NE = PAGE._test.nameEms;
+  check('15 the longest word of the name sets the measure (a wide letter counts more)', NE('Prasad Sangameshwaran') > NE('Prasad') && NE('Prasad Sangameshwaran') === NE('Sangameshwaran') && NE('Mmmm') > NE('Iiii') && NE('') === 0);
+  var pg15 = PAGE.render(Object.assign({}, base12, { name: 'Prasad Sangameshwaran', kind: 'speakers', slug: 'p', stats: {}, sections: [], links: [], auto: {}, rows: [] }), { base: 'https://x', today: T12 });
+  check('15 the heading wraps between words only, balanced, and is no larger than lets its longest word stand on one line', /<h1 id="h-name" style="--nw:[0-9.]+">Prasad Sangameshwaran<\/h1>/.test(pg15) &&
+    /h1\{[^}]*overflow-wrap:normal;word-break:normal;hyphens:manual;text-wrap:balance\}/.test(pg15) && !/h1\{[^}]*overflow-wrap:anywhere/.test(pg15) &&
+    /\.nm\{container-type:inline-size;min-width:0\}/.test(pg15) && /\.nm h1\{font-size:min\(clamp\(40px,6vw,72px\),calc\(100cqi \/ var\(--nw,1\)\)\)\}/.test(pg15) && /<div class="nm">/.test(pg15));
 
   /* saved from the console: kept, cleared, shown on the page with their structured data */
   var v12 = await call(P.handleOne, 'GET', '/api/people/speakers/one?slug=naven-singh', 'ciso');

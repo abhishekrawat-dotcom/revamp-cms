@@ -118,7 +118,13 @@ var CSS = [
   '.ph.logo{display:grid;place-items:center;background:#fff;border:1px solid var(--rule);aspect-ratio:4/3}',
   '.ph.logo img{width:auto;height:auto;max-width:78%;max-height:62%;object-fit:contain}',
   '.since{margin:0 0 10px;font-size:16px;color:var(--soft)}',
-  'h1{margin:0;font-size:clamp(40px,6vw,72px);line-height:.98;font-weight:800;letter-spacing:-.035em;overflow-wrap:anywhere}',
+  /* the name never breaks inside a word (the owner, 26 Nov 2026: "we can not break words of speaker's Name. We can go in
+     two lines but in case if the name is too much long then we have to reduce the font-size"): it wraps between words,
+     its lines balanced, and its size is held to what lets its longest word stand on one line in its column (--nw: that
+     word's width in ems, nameEms) */
+  'h1{margin:0;font-size:clamp(40px,6vw,72px);line-height:.98;font-weight:800;letter-spacing:-.035em;overflow-wrap:normal;word-break:normal;hyphens:manual;text-wrap:balance}',
+  '.nm{container-type:inline-size;min-width:0}',
+  '.nm h1{font-size:min(clamp(40px,6vw,72px),calc(100cqi / var(--nw,1)))}',
   '.role{margin:16px 0 0;font-size:21px;line-height:1.35;color:var(--ink);max-width:34em}',
   '.role .co{font-weight:700}',
   '.co-logo{display:inline-block;vertical-align:middle;height:26px;max-width:96px;margin:0 0 0 10px;object-fit:contain}',
@@ -618,6 +624,22 @@ function upcomingHtml(list) {
       return '<button type="button" data-ups-to="' + i + '" aria-label="' + esc((i + 1) + ': ' + j.title) + '" aria-current="' + (i === 0) + '"></button>';
     }).join('') + '</div>' : '') + '</section>';
 }
+/* The width of a name's longest word in ems of a heavy display face, a little over (a wide letter counts more, a narrow
+   one less, the heading's own tighter spacing taken off), so the heading's size can let that word stand on one line. */
+function nameEms(name) {
+  return str(name).split(/[\s\u00a0]+/).reduce(function (most, w) {
+    var e = 0;
+    for (var i = 0; i < w.length; i++) {
+      var c = w.charAt(i);
+      e += (/[MW]/.test(c) ? 1.02 : /[A-Z]/.test(c) ? 0.8 : /[mw]/.test(c) ? 0.94 : /[iljtfr.,'\u2019\-]/.test(c) ? 0.4 : 0.64) - 0.035;
+    }
+    return Math.max(most, e);
+  }, 0);
+}
+function nameH1(name) {
+  var ems = Math.round(nameEms(name) * 100) / 100;
+  return '<h1 id="h-name"' + (ems > 0 ? ' style="--nw:' + ems + '"' : '') + '>' + esc(name) + '</h1>';
+}
 /* the carousel's script: the one script these pages run, allowed by its hash alone (lib/people.js sends UPS_HASH in the
    page's Content-Security-Policy); it reads nothing of the page but the cards */
 var UPS_JS = '(function(){var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;' +
@@ -798,7 +820,7 @@ function renderSpeaker(p, o) {
   var past = shown.filter(function (j) { return coming.indexOf(j) === -1; });
   var who = '<section class="who" aria-labelledby="h-name"><div class="wrap' + (coming.length ? ' has-up' : '') + '">' +
     '<div><figure class="ph">' + (photo ? '<img src="' + esc(photo) + '" alt="' + esc(p.name) + '" width="240" height="300">' : '<span aria-hidden="true">' + esc(initials(p.name)) + '</span>') + '</figure>' + credit + '</div>' +
-    '<div><p class="since">' + esc(sinceLine) + '</p><h1 id="h-name">' + esc(p.name) + '</h1>' +
+    '<div class="nm"><p class="since">' + esc(sinceLine) + '</p>' + nameH1(p.name) +
     (role ? '<p class="role">' + esc(p.designation) + (p.designation && p.company ? ', ' : '') + (p.company ? '<span class="co">' + esc(p.company) + '</span>' : '') + (logo ? '<img class="co-logo" src="' + esc(logo) + '" alt="">' : '') + '</p>' : '') +
     (acts.length ? '<div class="acts">' + acts.join('') + '</div>' : '') + '</div>' + upNowHtml(coming[0], today) + '</div></section>';
   var about = p.about || p.bio;
@@ -831,7 +853,7 @@ function renderSponsor(p, o) {
   var site = /^https?:\/\//.test(str(p.website)) ? '<div class="acts"><a class="btn" href="' + esc(p.website) + '" target="_blank" rel="noopener" aria-label="' + esc(p.name) + '’s website (opens in a new tab)">Website ' + ICON.out + '</a></div>' : '';
   var who = '<section class="who" aria-labelledby="h-name"><div class="wrap">' +
     '<div><figure class="ph logo">' + (logo ? '<img src="' + esc(logo) + '" alt="' + esc(p.name) + ' logo" width="240" height="240">' : '<span aria-hidden="true">' + esc(initials(p.name)) + '</span>') + '</figure></div>' +
-    '<div><p class="since">' + esc(st.since ? 'Partner of ETB2B events since ' + st.since : 'Partner of ETB2B events') + '</p><h1 id="h-name">' + esc(p.name) + '</h1>' + site + '</div></div></section>';
+    '<div class="nm"><p class="since">' + esc(st.since ? 'Partner of ETB2B events since ' + st.since : 'Partner of ETB2B events') + '</p>' + nameH1(p.name) + site + '</div></div></section>';
   var coming = shown.filter(function (j) { return isComing(j, today); });
   var main = nextHtml(coming, true) + (p.about ? '<section aria-labelledby="h-about"><h2 class="h" id="h-about">About</h2><div class="prose">' + paras(p.about) + '</div></section>' : '') +
     wikiHtml(p) + extrasHtml(p) + journeyHtml(p, o);
@@ -852,4 +874,4 @@ function render(person, o) {
 }
 function darkLook(look) { var bg = look && hexOk(look.bg); return !!bg && lum(bg) < 0.2; }
 
-module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear, commonFaqs: commonFaqs, faqsOf: faqsOf, DOMAIN: DOMAIN, listOf: listOf, domainsOf: domainsOf, topicOf: topicOf, upcomingHtml: upcomingHtml, UPS_JS: UPS_JS }, UPS_HASH: UPS_HASH };
+module.exports = { render: render, _test: { dayLabel: dayLabel, timeLabel: timeLabel, cut: cut, paras: paras, picture: picture, link: link, roleLabel: roleLabel, tierLabel: tierLabel, shownRole: shownRole, byYear: byYear, commonFaqs: commonFaqs, faqsOf: faqsOf, DOMAIN: DOMAIN, listOf: listOf, domainsOf: domainsOf, topicOf: topicOf, upcomingHtml: upcomingHtml, UPS_JS: UPS_JS, nameEms: nameEms }, UPS_HASH: UPS_HASH };
