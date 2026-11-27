@@ -18,17 +18,35 @@ import type {
 } from './types/bookstudio';
 import {
   deleteProjectById,
+  knownBase,
   loadBook,
   loadBookList,
   loadCustomTemplates,
   loadFontCollections,
+  loadLatest,
+  loadMe,
+  restoreDeletedPage,
   saveCustomTemplate,
   saveFontCollection,
   saveProject,
+  sendPresence,
   setBookStatus,
   uploadImageAssets,
+  type BooksMe,
+  type DeletedPage,
+  type PresenceEntry,
 } from './services/storageService';
 import { ApiError, currentUser, errorText, setActiveBookId, type SignedInUser } from './services/api';
+import {
+  designChanges,
+  mergeBooks,
+  rebaseOnto,
+  resolveConflicts,
+  sameBook,
+  type ConflictChoice,
+  type MergeConflict,
+} from './services/bookRules';
+import { personName } from './services/people';
 import { exportProjectBackupPackage } from './engines/exportEngine';
 import {
   createInitialSampleProject,
@@ -42,6 +60,7 @@ import {
   applyMasterToPage,
   createMasterFromPage,
   detachPageFromMaster,
+  newPageLook,
   syncMasterChangesAcrossBook,
 } from './engines/masterPageEngine';
 import {
@@ -69,6 +88,7 @@ import { AiAssistantDrawer } from './components/AiAssistantDrawer';
 import { ExportPreflightModal } from './components/ExportPreflightModal';
 import { VersionHistoryModal } from './components/VersionHistoryModal';
 import { AiAutoFlowModal } from './components/AiAutoFlowModal';
+import { MergeConflictsModal, type MergeDialogState } from './components/MergeConflictsModal';
 
 type ActiveModal =
   | null
@@ -113,9 +133,37 @@ function summaryOf(p: BookProject, extra?: Partial<BookSummary>): BookSummary {
 }
 
 interface Notice {
-  kind: 'error' | 'conflict' | 'info';
+  kind: 'error' | 'info';
   text: string;
   bookId?: string;
+}
+
+/* The parts of the studio that change the design: a Content editor is not offered them (the owner, 26 Nov 2026:
+   "Content editor = everything except the design"), and the guard in commitProjectUpdate refuses whatever is left. */
+const DESIGN_MODALS: Partial<Record<NonNullable<ActiveModal>, string>> = {
+  upload_template: 'Only a Designer can import a design template.',
+  dimensions: 'Only a Designer can change the page size, margins and bleed.',
+  design_system: 'Only a Designer can change the design system.',
+  typography: 'Only a Designer can change fonts and text styles.',
+  templates: 'Only a Designer can start a book or add layouts from the template library.',
+  infographics: 'Only a Designer can add a new infographic. You can change the data, labels and chart type of the ones on the page.',
+};
+
+/** what a Content editor sees on a refused change: the rules' own first reason */
+function designRefusal(why: string[]): string {
+  const first = String(why[0] || 'the design would change').replace(/[.\s]+$/, '');
+  return `Only a Designer can change the design: ${first}.`;
+}
+
+/* a merge in progress: what it was put together from, kept while the person chooses */
+interface PendingMerge {
+  bookId: string;
+  base: BookProject;
+  latest: BookProject;
+  mine: BookProject;
+  merged: BookProject;
+  conflicts: MergeConflict[];
+  updatedBy: string;
 }
 
 const DEFAULT_FONT_COLLECTION: UserFontCollection = {
@@ -498,6 +546,11 @@ function createElementFromKind(
 
 export default function App() {
   const [user, setUser] = useState<SignedInUser | null>(null);
+  /* this person's Books role (GET /api/books/me); until it is known, and if it cannot be read, nothing of the design
+     is offered (fails closed) */
+  const [me, setMe] = useState<BooksMe | null>(null);
+  const [accessError, setAccessError] = useState('');
+  const canDesign = me?.canDesign === true;
   const [view, setView] = useState<'studio' | 'dashboard'>('dashboard');
   const [projects, setProjects] = useState<BookProject[]>(() => [createInitialSampleProject()]);
   const [activeProjectId, setActiveProjectId] = useState<string>(PLACEHOLDER_ID);
@@ -527,6 +580,7 @@ export default function App() {
 
   // Modals & AI prompt
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
+  const [historyTab, setHistoryTab] = useState<'versions' | 'deleted' | 'activity'>('versions');
   const [aiInitialPrompt, setAiInitialPrompt] = useState('');
 
   // Save & History stacks
@@ -535,6 +589,29 @@ export default function App() {
   const [redoStack, setRedoStack] = useState<BookProject[]>([]);
   const autosaveTimerRef = useRef<number | null>(null);
   const hydratedRef = useRef(false);
+
+  // Who else has the open book (POST /api/books/presence every 30 s and on page change)
+  const [presence, setPresence] = useState<PresenceEntry[]>([]);
+
+  /* Putting two people's saves together (a save refused as stale): while the newest copy is read, autosave waits
+     (mergingRef); while the person chooses between conflicting changes, edits wait too (editsBlockedRef), so what
+     is saved is exactly what was put together. */
+  const [mergeDialog, setMergeDialog] = useState<MergeDialogState | null>(null);
+  const [mergeBusy, setMergeBusy] = useState(false);
+  const mergingRef = useRef<string | null>(null);
+  const editsBlockedRef = useRef(false);
+  const pendingMergeRef = useRef<PendingMerge | null>(null);
+  const mergeRunsRef = useRef(0);
+  /** the save (and any merge it led to) still running, so a page restore can wait for it */
+  const saveChainRef = useRef<Promise<boolean> | null>(null);
+
+  // the newest values, for callbacks that run after an await
+  const projectsRef = useRef(projects);
+  projectsRef.current = projects;
+  const activeProjectIdRef = useRef(activeProjectId);
+  activeProjectIdRef.current = activeProjectId;
+  const canDesignRef = useRef(canDesign);
+  canDesignRef.current = canDesign;
 
   const activeProject = useMemo(
     () =>
@@ -565,6 +642,23 @@ export default function App() {
     if (activeProject.id !== PLACEHOLDER_ID) return true;
     setNotice({ kind: 'info', text: `Open a book, or start a new one, to ${what}.` });
     return false;
+  };
+
+  /* what only a Designer may do (the server refuses it too, 403 'designer-only'): said plainly instead of tried */
+  const requireDesigner = (sentence: string): boolean => {
+    if (canDesignRef.current) return true;
+    setNotice({ kind: 'info', text: sentence });
+    return false;
+  };
+
+  const openModal = (m: NonNullable<ActiveModal>) => {
+    const locked = DESIGN_MODALS[m];
+    if (locked && !canDesignRef.current) {
+      setNotice({ kind: 'info', text: locked });
+      return;
+    }
+    if (m === 'versions') setHistoryTab('versions');
+    setActiveModal(m);
   };
 
   const activePageIndex = useMemo(() => {
@@ -616,12 +710,30 @@ export default function App() {
     }
   }, []);
 
+  // signed in (auth.js) -> this person's Books role -> the books; a person without Books sees why, and nothing else
   useEffect(() => {
     let active = true;
     const ready = window.RevampAuth ? window.RevampAuth.whenResolved() : Promise.resolve();
-    ready.then(() => {
+    ready.then(async () => {
       if (!active) return;
       setUser(currentUser());
+      try {
+        const who = await loadMe();
+        if (!active) return;
+        setMe(who);
+      } catch (err) {
+        if (!active) return;
+        if (err instanceof ApiError && err.code === 'no-books') {
+          setAccessError(err.message);
+          setListLoading(false);
+          return;
+        }
+        setMe({ role: 'content', email: currentUser()?.email || '', canDesign: false });
+        setNotice({
+          kind: 'error',
+          text: errorText(err, 'Your Books role could not be read.') + ' Until you reload the page, only content can be changed.',
+        });
+      }
       void hydrateFromStorage();
     });
     return () => {
@@ -629,27 +741,268 @@ export default function App() {
     };
   }, [hydrateFromStorage]);
 
-  // Schedule debounced autosave whenever active project mutates
-  const persistProjectNow = useCallback(
-    async (proj: BookProject) => {
-      if (proj.id === PLACEHOLDER_ID) return;
-      setSaveState('saving');
-      try {
-        await saveProject(proj);
-        setSaveState('saved');
-        upsertSummary(proj, { updatedBy: user?.email || '' });
-        setNotice((n) => (n && n.bookId === proj.id && n.kind !== 'conflict' ? null : n));
-      } catch (err) {
-        setSaveState('unsaved');
-        if (err instanceof ApiError && (err.code === 'stale' || err.code === 'exists')) {
-          setNotice({ kind: 'conflict', bookId: proj.id, text: err.message });
+  /* the person's role can be shown before any book is open, and a Content editor never sees a design tool selected */
+  useEffect(() => {
+    if (!canDesign && !['select', 'direct_select', 'hand', 'zoom'].includes(activeTool)) setActiveTool('select');
+  }, [canDesign, activeTool]);
+
+  const applyBookFromServer = useCallback(
+    (prevBase: BookProject | null, book: BookProject) => {
+      setProjects((list) => list.map((p) => (p.id === book.id ? book : p)));
+      if (activeProjectIdRef.current === book.id) {
+        if (prevBase) {
+          setUndoStack((st) => st.map((s) => rebaseOnto(prevBase, s, book)));
+          setRedoStack((st) => st.map((s) => rebaseOnto(prevBase, s, book)));
         } else {
-          setNotice({ kind: 'error', bookId: proj.id, text: errorText(err, 'The book could not be saved.') + ' Your changes are still here; they will be saved with your next change.' });
+          setUndoStack([]);
+          setRedoStack([]);
         }
       }
+      setSaveState('saved');
+      upsertSummary(book);
     },
-    [upsertSummary, user]
+    [upsertSummary]
   );
+
+  /* A save refused because someone else saved first: their newest copy is read and put together with this tab's
+     book from the copy both started at. Nothing in conflict -> saved at once; otherwise the person chooses. */
+  const mergeWithLatestRef = useRef<(bookId: string, updatedBy: string) => Promise<boolean>>(async () => false);
+
+  // Schedule debounced autosave whenever active project mutates
+  const persistProjectNow = useCallback(
+    (proj: BookProject): Promise<boolean> => {
+      const run = (async (): Promise<boolean> => {
+        if (proj.id === PLACEHOLDER_ID) return true;
+        if (mergingRef.current === proj.id) return false; // the merge under way saves when it is done
+        setSaveState('saving');
+        try {
+          await saveProject(proj);
+          mergeRunsRef.current = 0;
+          // saved, unless something newer is already in the editor (its own autosave follows)
+          const held = projectsRef.current.find((p) => p.id === proj.id);
+          setSaveState(!held || held === proj || sameBook(held, proj) ? 'saved' : 'unsaved');
+          upsertSummary(proj, { updatedBy: user?.email || me?.email || '' });
+          setNotice((n) => (n && n.bookId === proj.id ? null : n));
+          return true;
+        } catch (err) {
+          if (err instanceof ApiError && err.code === 'stale') {
+            return mergeWithLatestRef.current(proj.id, String((err.data && err.data.updatedBy) || ''));
+          }
+          setSaveState('unsaved');
+          if (err instanceof ApiError && err.code === 'design-only') {
+            const changes = Array.isArray(err.data.changes) ? (err.data.changes as string[]) : [];
+            pendingMergeRef.current = null;
+            setMergeDialog({
+              mode: 'cannot',
+              bookId: proj.id,
+              bookName: proj.name,
+              updatedBy: '',
+              conflicts: [],
+              title: 'This change cannot be saved',
+              reason: designRefusal(changes.length ? changes : [err.message]),
+            });
+            editsBlockedRef.current = true;
+            return false;
+          }
+          setNotice({
+            kind: 'error',
+            bookId: proj.id,
+            text: errorText(err, 'The book could not be saved.') + ' Your changes are still here; they will be saved with your next change.',
+          });
+          return false;
+        }
+      })();
+      saveChainRef.current = run;
+      const settle = () => {
+        if (saveChainRef.current === run) saveChainRef.current = null;
+      };
+      run.then(settle, settle);
+      return run;
+    },
+    [upsertSummary, user, me]
+  );
+
+  /** One autosave, 1.6 s after the newest change (each change moves it on); none while a merge is being made. */
+  const scheduleAutosave = useCallback(
+    (proj: BookProject) => {
+      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+      if (mergingRef.current === proj.id) return; // the merge saves the book when it is done
+      autosaveTimerRef.current = window.setTimeout(() => void persistProjectNow(proj), 1600);
+    },
+    [persistProjectNow]
+  );
+
+  /* the merged book becomes this tab's book and its new base, history moves onto it, and it is saved */
+  const finishMerge = useCallback(
+    async (pm: PendingMerge, finalBook: BookProject): Promise<boolean> => {
+      if (!canDesignRef.current) {
+        const why = designChanges(pm.latest, finalBook);
+        if (why.length) {
+          pendingMergeRef.current = pm;
+          editsBlockedRef.current = true;
+          setMergeDialog({
+            mode: 'cannot',
+            bookId: pm.bookId,
+            bookName: pm.mine.name,
+            updatedBy: pm.updatedBy,
+            conflicts: [],
+            reason: `${personName(pm.updatedBy)} changed the design, and your changes still use the old one (${why[0].replace(/[.\s]+$/, '')}). Only a Designer can put those together.`,
+          });
+          setSaveState('unsaved');
+          return false;
+        }
+      }
+      setProjects((list) => list.map((p) => (p.id === pm.bookId ? finalBook : p)));
+      if (activeProjectIdRef.current === pm.bookId) {
+        setUndoStack((st) => st.map((s) => rebaseOnto(pm.base, s, pm.latest)));
+        setRedoStack((st) => st.map((s) => rebaseOnto(pm.base, s, pm.latest)));
+      }
+      upsertSummary(finalBook);
+      pendingMergeRef.current = null;
+      editsBlockedRef.current = false;
+      mergingRef.current = null;
+      setMergeDialog(null);
+      projectsRef.current = projectsRef.current.map((p) => (p.id === pm.bookId ? finalBook : p));
+      const ok = await persistProjectNow(finalBook);
+      if (ok) setNotice({ kind: 'info', text: `Merged with ${personName(pm.updatedBy)}'s changes.` });
+      return ok;
+    },
+    [persistProjectNow, upsertSummary]
+  );
+
+  mergeWithLatestRef.current = async (bookId: string, updatedByHint: string): Promise<boolean> => {
+    if (mergingRef.current || editsBlockedRef.current) return false;
+    mergingRef.current = bookId;
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = null;
+    mergeRunsRef.current += 1;
+    setSaveState('saving');
+    const base = knownBase(bookId);
+    let latest: BookProject;
+    let updatedBy = updatedByHint;
+    try {
+      const r = await loadLatest(bookId);
+      latest = r.book;
+      updatedBy = r.updatedBy || updatedByHint;
+    } catch (err) {
+      mergingRef.current = null;
+      setSaveState('unsaved');
+      setNotice({
+        kind: 'error',
+        bookId,
+        text: 'Someone else saved this book, and their copy could not be read: ' + errorText(err, 'please try again.') + ' Your changes are still here.',
+      });
+      return false;
+    }
+    const mine = projectsRef.current.find((p) => p.id === bookId);
+    if (!mine) {
+      mergingRef.current = null;
+      return false;
+    }
+    const cannot = (reason: string) => {
+      pendingMergeRef.current = { bookId, base: base || latest, latest, mine, merged: latest, conflicts: [], updatedBy };
+      editsBlockedRef.current = true;
+      setMergeDialog({ mode: 'cannot', bookId, bookName: mine.name, updatedBy, conflicts: [], reason });
+      setSaveState('unsaved');
+      return false;
+    };
+    if (!base) return cannot('This tab has no record of the copy you started from, so your changes cannot be put together with the newer one automatically.');
+    if (mergeRunsRef.current > 4) return cannot('The book keeps changing while your changes are saved, so they could not be put together.');
+    let pm: PendingMerge;
+    try {
+      const { merged, conflicts } = mergeBooks(base, mine, latest);
+      pm = { bookId, base, latest, mine, merged, conflicts, updatedBy };
+    } catch (err) {
+      return cannot('Your changes and the newer saved copy could not be compared (' + errorText(err, 'unexpected content') + ').');
+    }
+    const { merged, conflicts } = pm;
+    if (conflicts.length) {
+      pendingMergeRef.current = pm;
+      editsBlockedRef.current = true;
+      setMergeDialog({ mode: 'conflicts', bookId, bookName: mine.name, updatedBy, conflicts });
+      setSaveState('unsaved');
+      return false;
+    }
+    return finishMerge(pm, merged);
+  };
+
+  /* the person's choice for each conflict -> the book that is saved */
+  const handleResolveMerge = async (choices: Record<string, ConflictChoice>) => {
+    const pm = pendingMergeRef.current;
+    if (!pm) return;
+    setMergeBusy(true);
+    try {
+      await finishMerge(pm, resolveConflicts(pm.merged, pm.conflicts, choices));
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
+  /* the way out that loses nothing saved: the newest copy is opened (this tab's unsaved changes are let go) */
+  const handleUseLatest = async () => {
+    const pm = pendingMergeRef.current;
+    const bookId = mergeDialog?.bookId || pm?.bookId;
+    if (!bookId) return;
+    setMergeBusy(true);
+    try {
+      const latest = pm ? pm.latest : (await loadLatest(bookId)).book;
+      setProjects((list) => list.map((p) => (p.id === bookId ? latest : p)));
+      if (activeProjectIdRef.current === bookId) {
+        setUndoStack([]);
+        setRedoStack([]);
+      }
+      setSaveState('saved');
+      upsertSummary(latest);
+      pendingMergeRef.current = null;
+      editsBlockedRef.current = false;
+      mergingRef.current = null;
+      mergeRunsRef.current = 0;
+      setMergeDialog(null);
+      setNotice({ kind: 'info', text: 'The newest saved copy of the book is open.' });
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorText(err, 'The newer copy could not be opened. Please try again.') });
+    } finally {
+      setMergeBusy(false);
+    }
+  };
+
+  /* Designers only: this tab's version kept as a new book, and the shared book read again, so neither is lost */
+  const handleKeepMineAsCopy = async () => {
+    const pm = pendingMergeRef.current;
+    const bookId = mergeDialog?.bookId || pm?.bookId;
+    if (!bookId || !requireDesigner('Only Designers can start a new book.')) return;
+    const mine = projectsRef.current.find((p) => p.id === bookId) || pm?.mine;
+    if (!mine) return;
+    setMergeBusy(true);
+    const now = new Date().toISOString();
+    const copy: BookProject = {
+      ...structuredClone(mine),
+      id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name: `${mine.name} (my version)`,
+      createdAt: now,
+      updatedAt: now,
+    };
+    pendingMergeRef.current = null;
+    editsBlockedRef.current = false;
+    mergingRef.current = null;
+    mergeRunsRef.current = 0;
+    setMergeDialog(null);
+    setProjects((prev) => [copy, ...prev]);
+    setActiveProjectId(copy.id);
+    setUndoStack([]);
+    setRedoStack([]);
+    try {
+      await persistProjectNow(copy);
+      // the book that was saved elsewhere is read again, so this tab does not keep the refused version
+      const latest = pm && pm.latest ? pm.latest : (await loadLatest(bookId)).book;
+      setProjects((prev) => prev.map((p) => (p.id === bookId ? latest : p)));
+    } catch {
+      setProjects((prev) => prev.filter((p) => p.id !== bookId));
+    } finally {
+      setMergeBusy(false);
+    }
+  };
 
   // leaving with changes that have not reached the server asks first
   useEffect(() => {
@@ -662,15 +1015,25 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', onLeave);
   }, [saveState]);
 
+  /* Every change to the open book comes here. A Content editor's change that would alter the design (the shared
+     rules' designChanges) is not applied, so the editor never sends a save the server refuses. */
   const commitProjectUpdate = useCallback(
     (updater: (prev: BookProject) => BookProject, recordHistory = true) => {
       setProjects((prevList) => {
         const current = prevList.find((p) => p.id === activeProjectId);
         if (!current || current.id === PLACEHOLDER_ID) return prevList;
+        if (editsBlockedRef.current) return prevList;
         const next = {
           ...updater(current),
           updatedAt: new Date().toISOString(),
         };
+        if (!canDesignRef.current) {
+          const why = designChanges(current, next);
+          if (why.length) {
+            setNotice({ kind: 'info', text: designRefusal(why) });
+            return prevList;
+          }
+        }
 
         if (recordHistory) {
           setUndoStack((stack) => [...stack.slice(-39), structuredClone(current)]);
@@ -678,45 +1041,174 @@ export default function App() {
         }
 
         setSaveState('unsaved');
-        if (autosaveTimerRef.current) {
-          window.clearTimeout(autosaveTimerRef.current);
-        }
-        autosaveTimerRef.current = window.setTimeout(() => {
-          void persistProjectNow(next);
-        }, 1600);
+        scheduleAutosave(next);
 
         return prevList.map((p) => (p.id === current.id ? next : p));
       });
     },
-    [activeProjectId, persistProjectNow]
+    [activeProjectId, scheduleAutosave]
+  );
+
+  /* undo and redo put back a whole earlier state; for a Content editor only one that keeps the design as it is now */
+  const applyHistoryState = useCallback(
+    (state: BookProject) => {
+      setProjects((list) => list.map((p) => (p.id === state.id ? state : p)));
+      setSaveState('unsaved');
+      // an undone change is saved like any other
+      scheduleAutosave(state);
+    },
+    [scheduleAutosave]
   );
 
   const handleUndo = useCallback(() => {
-    setUndoStack((prev) => {
-      if (prev.length === 0) return prev;
-      const previous = prev[prev.length - 1];
-      setRedoStack((r) => [...r.slice(-39), structuredClone(activeProject)]);
-      setProjects((list) => list.map((p) => (p.id === previous.id ? previous : p)));
-      setSaveState('unsaved');
-      // an undone change is saved like any other
-      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = window.setTimeout(() => void persistProjectNow(previous), 1600);
-      return prev.slice(0, -1);
-    });
-  }, [activeProject, persistProjectNow]);
+    if (editsBlockedRef.current || undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    if (previous.id !== activeProject.id) return;
+    if (!canDesignRef.current) {
+      const why = designChanges(activeProject, previous);
+      if (why.length) {
+        setNotice({ kind: 'info', text: designRefusal(why) });
+        return;
+      }
+    }
+    setUndoStack(undoStack.slice(0, -1));
+    setRedoStack((r) => [...r.slice(-39), structuredClone(activeProject)]);
+    applyHistoryState(previous);
+  }, [undoStack, activeProject, applyHistoryState]);
 
   const handleRedo = useCallback(() => {
-    setRedoStack((prev) => {
-      if (prev.length === 0) return prev;
-      const restored = prev[prev.length - 1];
-      setUndoStack((u) => [...u.slice(-39), structuredClone(activeProject)]);
-      setProjects((list) => list.map((p) => (p.id === restored.id ? restored : p)));
-      setSaveState('unsaved');
-      if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = window.setTimeout(() => void persistProjectNow(restored), 1600);
-      return prev.slice(0, -1);
-    });
-  }, [activeProject, persistProjectNow]);
+    if (editsBlockedRef.current || redoStack.length === 0) return;
+    const restored = redoStack[redoStack.length - 1];
+    if (restored.id !== activeProject.id) return;
+    if (!canDesignRef.current) {
+      const why = designChanges(activeProject, restored);
+      if (why.length) {
+        setNotice({ kind: 'info', text: designRefusal(why) });
+        return;
+      }
+    }
+    setRedoStack(redoStack.slice(0, -1));
+    setUndoStack((u) => [...u.slice(-39), structuredClone(activeProject)]);
+    applyHistoryState(restored);
+  }, [redoStack, activeProject, applyHistoryState]);
+
+  /* Who else is here: this tab says where it is every 30 s and when the page changes, and hears who else has the
+     book open (seen in the last 70 s). Stops when the book is closed. */
+  const presencePageRef = useRef('');
+  presencePageRef.current = activePage?.id || '';
+  const myEmail = (me?.email || user?.email || '').toLowerCase();
+  const presenceBookId = view === 'studio' && realBookOpen && !accessError ? activeProject.id : '';
+  useEffect(() => {
+    if (!presenceBookId) {
+      setPresence([]);
+      return;
+    }
+    let stopped = false;
+    const beat = () => {
+      if (!presencePageRef.current) return;
+      sendPresence(presenceBookId, presencePageRef.current).then(
+        (here) => {
+          if (!stopped) setPresence(here.filter((h) => h.email.toLowerCase() !== myEmail));
+        },
+        () => {
+          /* the list keeps what it had; the server forgets people after 70 s anyway */
+        }
+      );
+    };
+    // the first beat is the page effect's below (it runs whenever the book or the page changes)
+    const every = window.setInterval(beat, 30000);
+    return () => {
+      stopped = true;
+      window.clearInterval(every);
+    };
+  }, [presenceBookId, myEmail]);
+  useEffect(() => {
+    if (!presenceBookId || !activePage?.id) return;
+    const pageId = activePage.id;
+    let stopped = false;
+    const t = window.setTimeout(() => {
+      sendPresence(presenceBookId, pageId).then(
+        (here) => {
+          if (!stopped) setPresence(here.filter((h) => h.email.toLowerCase() !== myEmail));
+        },
+        () => {}
+      );
+    }, 700);
+    return () => {
+      stopped = true;
+      window.clearTimeout(t);
+    };
+  }, [presenceBookId, activePage?.id, myEmail]);
+
+  const othersHere = useMemo(
+    () =>
+      presence.map((h) => {
+        const idx = activeProject.pages.findIndex((p) => p.id === h.pageId);
+        return { email: h.email, pageId: h.pageId, name: personName(h.email), pageNumber: idx >= 0 ? idx + 1 : 0 };
+      }),
+    [presence, activeProject.pages]
+  );
+
+  /* Before a deleted page is put back, everything this tab has is saved (and merged, if it crossed someone's save):
+     the server restores on the revision this tab knows. */
+  const flushSaves = async (bookId: string): Promise<'ok' | 'merging' | 'failed'> => {
+    if (autosaveTimerRef.current) window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = null;
+    for (let i = 0; i < 4 && saveChainRef.current; i++) await saveChainRef.current.catch(() => false);
+    if (editsBlockedRef.current || mergingRef.current) return 'merging';
+    const held = projectsRef.current.find((p) => p.id === bookId);
+    const base = knownBase(bookId);
+    if (held && (!base || !sameBook(held, base))) {
+      const ok = await persistProjectNow(held);
+      if (editsBlockedRef.current || mergingRef.current) return 'merging';
+      return ok ? 'ok' : 'failed';
+    }
+    return 'ok';
+  };
+
+  const handleRestoreDeletedPage = async (p: DeletedPage): Promise<{ ok: boolean; text: string }> => {
+    const bookId = activeProject.id;
+    if (!realBookOpen) return { ok: false, text: 'Open the book first.' };
+    const label = p.label ? `"${p.label}"` : 'The page';
+    const flushed = await flushSaves(bookId);
+    if (flushed === 'merging') return { ok: false, text: 'First choose between your changes and the other person\'s, then restore the page.' };
+    if (flushed === 'failed') return { ok: false, text: 'Your latest changes could not be saved, so the page was not restored. Check the message at the top and try again.' };
+    const place = (book: BookProject) => {
+      const idx = book.pages.findIndex((x) => x.id === p.pageId);
+      if (idx >= 0) {
+        setActivePageId(p.pageId);
+        setSelectedElementIds([]);
+      }
+      return idx;
+    };
+    let prevBase = knownBase(bookId);
+    try {
+      const book = await restoreDeletedPage(bookId, p.pageId);
+      applyBookFromServer(prevBase, book);
+      const idx = place(book);
+      return { ok: true, text: `${label} is back${idx >= 0 ? ` as page ${idx + 1}` : ''}.` };
+    } catch (err) {
+      if (!(err instanceof ApiError && (err.code === 'stale' || err.code === 'exists'))) {
+        return { ok: false, text: errorText(err, 'The page could not be restored. Please try again.') };
+      }
+      // someone saved in between (or put the page back already): read the newest copy, then try once more
+      try {
+        const latest = (await loadLatest(bookId)).book;
+        applyBookFromServer(prevBase, latest);
+        if (latest.pages.some((x) => x.id === p.pageId)) {
+          const idx = place(latest);
+          return { ok: true, text: `${label} is already back in the book${idx >= 0 ? `, as page ${idx + 1}` : ''}.` };
+        }
+        prevBase = knownBase(bookId);
+        const book = await restoreDeletedPage(bookId, p.pageId);
+        applyBookFromServer(prevBase, book);
+        const idx = place(book);
+        return { ok: true, text: `${label} is back${idx >= 0 ? ` as page ${idx + 1}` : ''}.` };
+      } catch (err2) {
+        return { ok: false, text: errorText(err2, 'The page could not be restored. Please try again.') };
+      }
+    }
+  };
 
   // Compute visible pages for Facing-Page Spread vs Single-Page View
   const visiblePages = useMemo(() => {
@@ -895,6 +1387,11 @@ export default function App() {
     yMm: number,
     targetElementId?: string
   ) => {
+    // a Content editor puts photos into the frames the design has; a new frame is the design's
+    if (!targetElementId && !canDesignRef.current) {
+      setNotice({ kind: 'info', text: 'Drop the photo on a photo frame to put it in. Only a Designer can add new frames.' });
+      return;
+    }
     commitProjectUpdate((proj) => ({
       ...proj,
       pages: proj.pages.map((p) => {
@@ -957,6 +1454,8 @@ export default function App() {
   const handlePlaceOrReplaceImage = (asset: ImageAsset) => {
     if (selectedElement && selectedElement.type === 'image') {
       handleDropImageOnPage(activePage.id, asset, selectedElement.xMm, selectedElement.yMm, selectedElement.id);
+    } else if (!canDesignRef.current) {
+      setNotice({ kind: 'info', text: 'Select a photo frame on the page first, then pick the photo to put in it.' });
     } else {
       const dim = getEffectivePageDimensions(activePage, activeProject.dimensions);
       handleDropImageOnPage(activePage.id, asset, dim.margins.outer, dim.margins.top + 14);
@@ -1006,12 +1505,11 @@ export default function App() {
       let nextPage = pagesCopy[pIdx + 1];
       if (!nextPage) {
         nextPage = {
+          ...newPageLook(proj, src),
           id: `pg_cont_${Date.now()}`,
           orderIndex: pagesCopy.length,
           label: `Continued Spread`,
           role: 'editorial_text',
-          masterPageId: proj.masterPages[0]?.id,
-          backgroundColor: proj.designSystem.colors.paper,
           elements: [],
         };
         pagesCopy.push(nextPage);
@@ -1075,7 +1573,7 @@ export default function App() {
   // Save Selected Element or Infographic to Custom Reusable Templates
   const handleSaveCustomComponent = async (el?: BookElement) => {
     const target = el || selectedElement;
-    if (!target) return;
+    if (!target || !requireDesigner('Only Designers can save templates.')) return;
     const tpl: CustomSavedTemplate = {
       id: `ctpl_${Date.now()}`,
       templateKind: target.type === 'infographic' ? 'infographic' : 'component',
@@ -1088,8 +1586,12 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await saveCustomTemplate(tpl);
-    setCustomTemplates((prev) => [tpl, ...prev]);
+    try {
+      await saveCustomTemplate(tpl);
+      setCustomTemplates((prev) => [tpl, ...prev]);
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorText(err, 'The template could not be saved.') });
+    }
   };
 
   // InDesign Precision Align & Distribute
@@ -1198,6 +1700,7 @@ export default function App() {
 
   // Open Any Procedural or AI-Generated Book/Report Template Directly
   const handleCreateBookFromTemplateObject = async (tpl: BookTemplate) => {
+    if (!requireDesigner('Only Designers can start a new book.')) return;
     const newProj = createProjectFromBookTemplateObject(tpl);
     setProjects((prev) => [newProj, ...prev]);
     setActiveProjectId(newProj.id);
@@ -1210,6 +1713,7 @@ export default function App() {
 
   // Save Generated Book/Report Template to My Templates
   const handleSaveCustomBookTemplate = async (tpl: BookTemplate) => {
+    if (!requireDesigner('Only Designers can save templates.')) return;
     const pages = tpl.buildPages();
     const saved: CustomSavedTemplate = {
       id: `ctpl_book_${Date.now()}`,
@@ -1236,8 +1740,12 @@ export default function App() {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    await saveCustomTemplate(saved);
-    setCustomTemplates((prev) => [saved, ...prev]);
+    try {
+      await saveCustomTemplate(saved);
+      setCustomTemplates((prev) => [saved, ...prev]);
+    } catch (err) {
+      setNotice({ kind: 'error', text: errorText(err, 'The template could not be saved.') });
+    }
   };
 
   // Save AI-Generated Infographic to My Templates
@@ -1296,7 +1804,7 @@ export default function App() {
 
   // Keyboard shortcuts (Undo, Redo, Save, Copy, Paste, Delete, Nudge)
   useEffect(() => {
-    if (view !== 'studio' || activeModal !== null) return;
+    if (view !== 'studio' || activeModal !== null || mergeDialog !== null) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -1314,6 +1822,19 @@ export default function App() {
         return;
       }
       if (isInput) return;
+
+      // pasting, deleting and nudging frames, and the frame-drawing tools, are the design's: not a Content editor's
+      if (!canDesign) {
+        if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+          const k = e.key.toLowerCase();
+          if (k === 'v') setActiveTool('select');
+          else if (k === 'a') setActiveTool('direct_select');
+          else if (k === 'h') setActiveTool('hand');
+          else if (k === 'z') setActiveTool('zoom');
+          else if (k === 'w') setPreviewMode((p) => !p);
+        }
+        return;
+      }
 
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && selectedElementIds.length > 0) {
         const els = activePage.elements.filter((el) => selectedElementIds.includes(el.id));
@@ -1392,6 +1913,8 @@ export default function App() {
   }, [
     view,
     activeModal,
+    mergeDialog,
+    canDesign,
     activeProject,
     activePage,
     selectedElementIds,
@@ -1405,6 +1928,7 @@ export default function App() {
 
   // Dashboard Actions
   const handleCreateBookFromTemplate = async (templateId: string) => {
+    if (!requireDesigner('Only Designers can start a new book.')) return;
     const newProj = createProjectFromBookTemplate(templateId);
     setProjects((prev) => [newProj, ...prev]);
     setActiveProjectId(newProj.id);
@@ -1416,6 +1940,7 @@ export default function App() {
   };
 
   const handleCreateBlankBook = async () => {
+    if (!requireDesigner('Only Designers can start a new book.')) return;
     const base = createProjectFromBookTemplate('tpl_01_luxury_monograph', 'New Custom Coffee Table Book');
     base.pages = [
       {
@@ -1486,6 +2011,7 @@ export default function App() {
   };
 
   const handleDuplicateProject = async (projectId: string) => {
+    if (!requireDesigner('Only Designers can start a new book, so only a Designer can copy one.')) return;
     setBusyId(projectId);
     try {
       const source = await fullBook(projectId);
@@ -1519,6 +2045,7 @@ export default function App() {
   };
 
   const handleToggleArchiveProject = async (projectId: string) => {
+    if (!requireDesigner('Only Designers can archive a book.')) return;
     const target = bookList.find((b) => b.id === projectId);
     if (!target) return;
     const status: BookProject['status'] = target.status === 'archived' ? 'draft' : 'archived';
@@ -1533,6 +2060,7 @@ export default function App() {
   };
 
   const handleDeleteProject = async (projectId: string) => {
+    if (!requireDesigner('Only Designers can delete a book.')) return;
     try {
       await deleteProjectById(projectId);
       setBookList((list) => list.filter((b) => b.id !== projectId));
@@ -1546,56 +2074,17 @@ export default function App() {
     }
   };
 
-  /* after a refused save: the newest saved version, read again (this tab's unsaved changes are let go) */
-  const handleReloadBook = async (projectId: string) => {
-    setNotice(null);
-    try {
-      const book = await loadBook(projectId);
-      setProjects((prev) => prev.map((p) => (p.id === projectId ? book : p)));
-      setUndoStack([]);
-      setRedoStack([]);
-      setSaveState('saved');
-      upsertSummary(book);
-    } catch (err) {
-      setNotice({ kind: 'error', text: errorText(err, 'The book could not be reloaded.') });
-    }
-  };
-
-  /* after a refused save: this tab's version kept as a new book, so neither person's work is lost */
-  const handleSaveAsCopy = async (projectId: string) => {
-    const mine = projects.find((p) => p.id === projectId);
-    if (!mine) return;
-    setNotice(null);
-    const now = new Date().toISOString();
-    const copy: BookProject = {
-      ...structuredClone(mine),
-      id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      name: `${mine.name} (my version)`,
-      createdAt: now,
-      updatedAt: now,
-    };
-    setProjects((prev) => [copy, ...prev]);
-    setActiveProjectId(copy.id);
-    setUndoStack([]);
-    setRedoStack([]);
-    await persistProjectNow(copy);
-    // the book that was saved elsewhere is read again, so this tab does not keep the refused version
-    void loadBook(projectId).then(
-      (book) => setProjects((prev) => prev.map((p) => (p.id === projectId ? book : p))),
-      () => setProjects((prev) => prev.filter((p) => p.id !== projectId))
-    );
-  };
-
   // Page Navigator Operations
+  /* A new page is made from the book's own layouts (the owner, 26 Nov 2026), so a Content editor may add one too: the
+     first master page with its frames and its settings, else an empty page with the current page's settings. */
   const handleAddPage = () => {
     const master = activeProject.masterPages[0];
     const newPage: BookPage = {
+      ...newPageLook(activeProject, activePage),
       id: `pg_${Date.now()}`,
       orderIndex: activeProject.pages.length,
       label: `Page ${activeProject.pages.length + 1}`,
       role: 'editorial_text',
-      masterPageId: master?.id,
-      backgroundColor: activeProject.designSystem.colors.paper,
       elements: master
         ? master.elements.map((m, i) => ({
             ...structuredClone(m),
@@ -1614,10 +2103,9 @@ export default function App() {
     const mkPage = (offset: number, sideLabel: string): BookPage => ({
       id: `pg_${Date.now()}_${offset}`,
       orderIndex: activeProject.pages.length + offset,
+      ...newPageLook(activeProject, activePage),
       label: `Editorial ${sideLabel} ${baseNum + offset}`,
       role: 'editorial_text',
-      masterPageId: master?.id,
-      backgroundColor: activeProject.designSystem.colors.paper,
       elements: master
         ? master.elements.map((m, i) => ({
             ...structuredClone(m),
@@ -1704,44 +2192,39 @@ export default function App() {
           }`}
         >
           <span className="flex-1">{notice.text}</span>
-          {notice.kind === 'conflict' && notice.bookId && (
-            <>
-              <button
-                onClick={() => void handleReloadBook(notice.bookId as string)}
-                className="px-2.5 py-1 bg-[#C6A26B] hover:bg-[#D5B47F] text-[#121214] font-medium rounded cursor-pointer shrink-0"
-              >
-                Reload the latest
-              </button>
-              <button
-                onClick={() => void handleSaveAsCopy(notice.bookId as string)}
-                className="px-2.5 py-1 bg-[#2A2A31] hover:bg-[#35353E] rounded cursor-pointer shrink-0"
-              >
-                Keep mine as a copy
-              </button>
-            </>
-          )}
-          {notice.kind !== 'conflict' && (
-            <button onClick={() => setNotice(null)} aria-label="Dismiss" className="px-1.5 text-[#A19E95] hover:text-white cursor-pointer shrink-0">
-              ✕
-            </button>
-          )}
+          <button onClick={() => setNotice(null)} aria-label="Dismiss" className="px-1.5 text-[#A19E95] hover:text-white cursor-pointer shrink-0">
+            ✕
+          </button>
         </div>
+      )}
+      {mergeDialog && (
+        <MergeConflictsModal
+          state={mergeDialog}
+          canKeepCopy={canDesign}
+          busy={mergeBusy}
+          onResolve={(choices) => void handleResolveMerge(choices)}
+          onUseLatest={() => void handleUseLatest()}
+          onKeepCopy={() => void handleKeepMineAsCopy()}
+        />
       )}
       {view === 'dashboard' ? (
         <DashboardView
           projects={bookList}
           activeProjectId={realBookOpen ? activeProject.id : null}
           user={user}
-          loading={listLoading}
+          role={me ? me.role : null}
+          canDesign={canDesign}
+          accessError={accessError}
+          loading={listLoading || (!me && !accessError)}
           loadError={listError}
           onRetryLoad={() => void hydrateFromStorage()}
           busyId={busyId}
           onDownloadBackup={(id) => void handleDownloadBackup(id)}
           onOpenProject={(id) => void handleOpenProject(id)}
           onCreateBlankBook={() => void handleCreateBlankBook()}
-          onOpenTemplateUpload={() => setActiveModal('upload_template')}
-          onOpenBookTemplates={() => setActiveModal('templates')}
-          onOpenInfographicsLibrary={() => setActiveModal('infographics')}
+          onOpenTemplateUpload={() => openModal('upload_template')}
+          onOpenBookTemplates={() => openModal('templates')}
+          onOpenInfographicsLibrary={() => openModal('infographics')}
           onDuplicateProject={(id) => void handleDuplicateProject(id)}
           onToggleArchiveProject={(id) => void handleToggleArchiveProject(id)}
           onDeleteProject={(id) => void handleDeleteProject(id)}
@@ -1767,6 +2250,8 @@ export default function App() {
               totalWords={analytics.totalWords}
               overflowCount={analytics.overflowFrames.length}
               user={user}
+              canDesign={canDesign}
+              othersHere={othersHere}
               onBackToDashboard={() => setView('dashboard')}
               onRenameProject={(name) =>
                 commitProjectUpdate((proj) => ({ ...proj, name }), false)
@@ -1789,7 +2274,7 @@ export default function App() {
               onUngroupSelected={handleUngroupSelected}
               onAlignElements={handleAlignElements}
               onUpdateElement={(pageId, elId, patch) => handleUpdateElement(pageId, elId, patch)}
-              onOpenModal={(m) => setActiveModal(m)}
+              onOpenModal={openModal}
             />
           )}
 
@@ -1802,6 +2287,7 @@ export default function App() {
                 selectedElement={selectedElement}
                 primaryAccent={activeProject.designSystem.colors.primaryAccent}
                 inkColor={activeProject.designSystem.colors.ink}
+                canDesign={canDesign}
                 onSelectTool={setActiveTool}
                 onTogglePreview={() => setPreviewMode((p) => !p)}
                 onSwapFillStroke={handleSwapFillStroke}
@@ -1814,6 +2300,7 @@ export default function App() {
                 activePage={activePage}
                 selectedElementIds={selectedElementIds}
                 customComponents={customComponents}
+                canDesign={canDesign}
                 collapsed={leftCollapsed}
                 onToggleCollapse={() => setLeftCollapsed((c) => !c)}
                 onAddComponent={(kind, customPayload) => handleAddComponent(kind, customPayload)}
@@ -1891,7 +2378,7 @@ export default function App() {
                     pages: proj.pages.map((p) => (p.id === pageId ? { ...p, ...patch } : p)),
                   }))
                 }
-                onOpenInfographicsModal={() => setActiveModal('infographics')}
+                onOpenInfographicsModal={() => openModal('infographics')}
               />
             )}
 
@@ -1909,6 +2396,7 @@ export default function App() {
               snapToObjects={snapToObjects}
               previewMode={previewMode}
               activeTool={activeTool}
+              canDesign={canDesign}
               onSelectPage={(pageId) => setActivePageId(pageId)}
               onSelectElements={(pageId, ids) => {
                 setActivePageId(pageId);
@@ -1937,6 +2425,7 @@ export default function App() {
                 activePage={activePage}
                 selectedElement={selectedElement}
                 selectedCount={selectedElementIds.length}
+                canDesign={canDesign}
                 onUpdateElement={(pageId, elId, patch) => handleUpdateElement(pageId, elId, patch)}
                 onUpdatePage={(pageId, patch) =>
                   commitProjectUpdate((proj) => ({
@@ -1950,9 +2439,9 @@ export default function App() {
                   setSelectedElementIds([elId]);
                 }}
                 onContinueOverflowToNextPage={handleContinueOverflowToNextPage}
-                onOpenTypographyModal={() => setActiveModal('typography')}
-                onOpenDimensionsModal={() => setActiveModal('dimensions')}
-                onOpenInfographicsModal={() => setActiveModal('infographics')}
+                onOpenTypographyModal={() => openModal('typography')}
+                onOpenDimensionsModal={() => openModal('dimensions')}
+                onOpenInfographicsModal={() => openModal('infographics')}
                 onSaveInfographicAsTemplate={(el) => void handleSaveCustomComponent(el)}
                 onRequestAiTextFit={(el) => {
                   setAiInitialPrompt(
@@ -1978,16 +2467,22 @@ export default function App() {
               onDuplicatePage={handleDuplicatePage}
               onDeletePage={handleDeletePage}
               onReorderPages={handleReorderPages}
+              othersHere={othersHere}
+              onOpenDeletedPages={() => {
+                setHistoryTab('deleted');
+                setActiveModal('versions');
+              }}
             />
           )}
         </div>
       )}
 
       {/* MODALS & DRAWERS */}
-      {activeModal === 'upload_template' && (
+      {activeModal === 'upload_template' && canDesign && (
         <TemplateUploadModal
           onClose={() => setActiveModal(null)}
           onCreateProjectFromApprovedReport={async (newProj) => {
+            if (!requireDesigner('Only Designers can start a new book.')) return;
             setProjects((prev) => [newProj, ...prev]);
             setActiveProjectId(newProj.id);
             setActivePageId(newProj.pages[0]?.id || '');
@@ -1999,7 +2494,7 @@ export default function App() {
         />
       )}
 
-      {(activeModal === 'templates' || activeModal === 'infographics') && (
+      {(activeModal === 'templates' || activeModal === 'infographics') && canDesign && (
         <TemplateLibraryModal
           initialTab={activeModal === 'infographics' ? 'infographics' : 'books'}
           currentProject={activeProject}
@@ -2045,7 +2540,7 @@ export default function App() {
         />
       )}
 
-      {activeModal === 'typography' && (
+      {activeModal === 'typography' && canDesign && (
         <TypographyStudioModal
           project={activeProject}
           fontCollection={fontCollection}
@@ -2058,7 +2553,7 @@ export default function App() {
         />
       )}
 
-      {activeModal === 'dimensions' && (
+      {activeModal === 'dimensions' && canDesign && (
         <PageDimensionsModal
           project={activeProject}
           activePage={activePage}
@@ -2081,7 +2576,7 @@ export default function App() {
         />
       )}
 
-      {activeModal === 'design_system' && (
+      {activeModal === 'design_system' && canDesign && (
         <GlobalDesignSystemModal
           project={activeProject}
           onUpdateProject={(updated) => commitProjectUpdate(() => updated)}
@@ -2096,6 +2591,7 @@ export default function App() {
       {activeModal === 'export' && (
         <ExportPreflightModal
           project={activeProject}
+          canDesign={canDesign}
           activePage={activePage}
           activePageIndex={activePageIndex}
           onUpdateProject={(updated) => commitProjectUpdate(() => updated)}
@@ -2110,7 +2606,11 @@ export default function App() {
       {activeModal === 'versions' && (
         <VersionHistoryModal
           project={activeProject}
+          canRestoreVersion={canDesign}
+          initialTab={historyTab}
+          onRestorePage={handleRestoreDeletedPage}
           onRestoreVersion={(ver: ProjectVersion) => {
+            if (!requireDesigner('Only a Designer can restore a whole version, because it brings back its design too.')) return;
             commitProjectUpdate((proj) => ({
               ...proj,
               dimensions: structuredClone(ver.snapshot.dimensions),
@@ -2128,6 +2628,7 @@ export default function App() {
       {activeModal === 'auto_flow' && (
         <AiAutoFlowModal
           project={activeProject}
+          canDesign={canDesign}
           onApplyFlowedProject={(updated) => {
             commitProjectUpdate(() => updated, true);
             setActivePageId(updated.pages[0]?.id || activePage.id);
@@ -2143,6 +2644,7 @@ export default function App() {
           activePage={activePage}
           selectedElement={selectedElement}
           initialPrompt={aiInitialPrompt}
+          canDesign={canDesign}
           onApplySuggestion={handleApplyAiSuggestion}
           onClose={() => {
             setAiInitialPrompt('');

@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   ArrowLeft,
   Loader2,
+  Lock,
   Search,
   Trash2,
   Upload,
@@ -24,6 +25,12 @@ interface DashboardViewProps {
   projects: BookSummary[];
   activeProjectId: string | null;
   user: SignedInUser | null;
+  /** this person's Books role (null until it is known) */
+  role: 'designer' | 'content' | null;
+  /** false for a Content editor (and until the role is known): starting, copying, archiving and deleting books are a Designer's */
+  canDesign: boolean;
+  /** the server's sentence for a person without Books (403 'no-books'): shown instead of everything else */
+  accessError: string;
   /** the list is still being read, or could not be (the sentence to show) */
   loading: boolean;
   loadError: string;
@@ -45,6 +52,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   projects,
   activeProjectId,
   user,
+  role,
+  canDesign,
+  accessError,
   onOpenProject,
   onCreateBlankBook,
   onOpenTemplateUpload,
@@ -109,6 +119,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               Return to Active Studio
             </button>
           )}
+          {role === 'content' && (
+            <span
+              title="You can change words, photos in their frames, infographic data, captions and pages, and export. The design is set by a Designer."
+              className="px-2 py-0.5 text-[11px] font-medium text-[#E6CFA5] bg-[#26231D] border border-[#C6A26B]/40 rounded"
+            >
+              Content editor
+            </span>
+          )}
           <span className="flex items-center gap-2 text-xs text-[#A19E95]" title="Books are kept in EventSphere">
             <Cloud className="w-3.5 h-3.5 text-[#8AA678]" />
             <span className="hidden sm:inline">{user ? user.email : ''}</span>
@@ -117,8 +135,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </header>
 
+      {accessError ? (
+        <main className="flex-1 max-w-xl w-full mx-auto px-6 py-24">
+          <div role="alert" className="p-6 bg-[#18181B] border border-white/[0.1] rounded-md text-center space-y-3">
+            <Lock className="w-6 h-6 text-[#C6A26B] mx-auto" />
+            <p className="text-sm text-[#ECEAE4] leading-relaxed">{accessError}</p>
+          </div>
+        </main>
+      ) : (
       <main className="flex-1 max-w-7xl w-full mx-auto px-6 py-8 space-y-10">
-        {/* Creation Pathways */}
+        {/* Creation Pathways: a Designer's (a Content editor is told so in one line) */}
+        {role !== null && !canDesign && (
+          <section className="p-4 bg-[#18181B] border border-white/[0.08] rounded-md flex items-center gap-3">
+            <Lock className="w-4 h-4 text-[#C6A26B] shrink-0" />
+            <p className="text-sm text-[#D7D4CC]">Only Designers can start a new book.</p>
+          </section>
+        )}
+        {role !== null && canDesign && (
         <section className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2">
             <div>
@@ -213,6 +246,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </button>
           </div>
         </section>
+        )}
 
         {/* Saved Publications */}
         <section className="space-y-4">
@@ -277,7 +311,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <BookOpen className="w-6 h-6 text-[#7F7C75] mx-auto" />
               <p className="text-sm text-[#A19E95]">
                 {projects.length === 0
-                  ? 'No books yet. Start one with the options above.'
+                  ? canDesign
+                    ? 'No books yet. Start one with the options above.'
+                    : 'No books yet. A Designer starts each book; it appears here for you to work on.'
                   : search.trim()
                     ? `No ${filterStatus === 'archived' ? 'archived' : 'active'} books match your search.`
                     : `No ${filterStatus === 'archived' ? 'archived' : 'active'} books.`}
@@ -370,6 +406,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             <span>{busy ? 'Opening…' : 'Open Studio'}</span>
                           </button>
                           <div className="flex items-center gap-1">
+                            {canDesign && (
                             <button
                               onClick={() => onDuplicateProject(proj.id)}
                               title="Duplicate Book Project"
@@ -377,6 +414,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
+                            )}
                             <button
                               onClick={() => onDownloadBackup(proj.id)}
                               title="Download .bookstudio.zip Backup Package"
@@ -384,6 +422,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             >
                               <Download className="w-3.5 h-3.5" />
                             </button>
+                            {canDesign && (
+                            <>
                             <button
                               onClick={() => onToggleArchiveProject(proj.id)}
                               title={proj.status === 'archived' ? 'Unarchive Project' : 'Archive Project'}
@@ -402,6 +442,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
+                            </>
+                            )}
                           </div>
                         </div>
                       )}
@@ -413,6 +455,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </section>
       </main>
+      )}
     </div>
   );
 };

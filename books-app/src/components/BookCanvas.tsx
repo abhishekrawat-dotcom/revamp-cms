@@ -29,6 +29,9 @@ interface BookCanvasProps {
   snapToObjects: boolean;
   previewMode: boolean;
   activeTool: InDesignTool;
+  /** false for a Content editor: frames are selected and their words and photos edited, never moved, resized,
+      rotated or drawn (the design's) */
+  canDesign: boolean;
   onSelectPage: (pageId: string) => void;
   onSelectElements: (pageId: string, ids: string[]) => void;
   onUpdateElement: (
@@ -95,6 +98,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
   snapToObjects,
   previewMode,
   activeTool,
+  canDesign,
   onSelectPage,
   onSelectElements,
   onUpdateElement,
@@ -121,7 +125,10 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
   const viewportRef = useRef<HTMLDivElement>(null);
 
   const isPanActive = panMode || activeTool === 'hand';
-  const isDrawTool = DRAW_TOOLS.has(activeTool);
+  const isDrawTool = canDesign && DRAW_TOOLS.has(activeTool);
+  /* a locked frame stays put for a Designer; for a Content editor nothing moves anyway, so its words and photo can
+     still be edited */
+  const isFrozen = (el: BookElement) => el.locked && canDesign;
 
   const handleViewportMouseDown = (e: React.MouseEvent) => {
     if (activeTool === 'zoom' && !previewMode) {
@@ -217,7 +224,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
     dim: PageDimensions,
     el: BookElement
   ) => {
-    if (previewMode || el.locked || editingTextId === el.id || isDrawTool || isPanActive || activeTool === 'zoom') return;
+    if (previewMode || isFrozen(el) || editingTextId === el.id || isDrawTool || isPanActive || activeTool === 'zoom') return;
     e.stopPropagation();
 
     // Direct Selection Tool (A): immediately enters text edit or image crop pan
@@ -267,6 +274,11 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
     }
 
     onSelectPage(page.id);
+    // a Content editor selects a frame (to edit its words, photo or data) but never drags it
+    if (!canDesign) {
+      onSelectElements(page.id, [el.id]);
+      return;
+    }
     if (e.shiftKey) {
       const exists = selectedElementIds.includes(el.id);
       onSelectElements(
@@ -367,7 +379,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
     el: BookElement,
     handle: 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
   ) => {
-    if (el.locked) return;
+    if (el.locked || !canDesign) return;
     e.stopPropagation();
     e.preventDefault();
     const startMouseX = e.clientX;
@@ -419,7 +431,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
   };
 
   const startRotate = (e: React.MouseEvent, page: BookPage, el: BookElement) => {
-    if (el.locked) return;
+    if (el.locked || !canDesign) return;
     e.stopPropagation();
     e.preventDefault();
     const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
@@ -524,7 +536,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
             {(panOffset.x !== 0 || panOffset.y !== 0) && (
               <button
                 onClick={() => setPanOffset({ x: 0, y: 0 })}
-                className="px-1.5 py-1 text-[10px] text-[#C6A26B] hover:underline cursor-pointer"
+                className="px-1.5 py-1 text-[11px] text-[#C6A26B] hover:underline cursor-pointer"
               >
                 Center
               </button>
@@ -588,7 +600,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                     style={{ left: `${leftPx}px` }}
                     className="absolute bottom-0 flex flex-col items-start"
                   >
-                    <span className="font-mono-tabular text-[8px] text-[#8F8C84] pl-0.5">
+                    <span className="font-mono-tabular text-[11px] text-[#8F8C84] pl-0.5">
                       {Math.round(mmToUnit(mmVal, project.unit))}
                     </span>
                     <div className="w-px h-2 bg-white/25" />
@@ -608,7 +620,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                     style={{ top: `${topPx}px` }}
                     className="absolute right-0 flex items-center"
                   >
-                    <span className="font-mono-tabular text-[8px] text-[#8F8C84] pr-0.5 -rotate-90 origin-right">
+                    <span className="font-mono-tabular text-[11px] text-[#8F8C84] pr-0.5 -rotate-90 origin-right">
                       {Math.round(mmToUnit(mmVal, project.unit))}
                     </span>
                     <div className="h-px w-2 bg-white/25" />
@@ -773,7 +785,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                           key={el.id}
                           onMouseDown={(e) => startElementDrag(e, page, dim, el)}
                           onDoubleClick={(e) => {
-                            if (previewMode || el.locked) return;
+                            if (previewMode || isFrozen(el)) return;
                             e.stopPropagation();
                             if (
                               el.type === 'text' ||
@@ -816,6 +828,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                             opacity: el.opacity ?? 1,
                             zIndex: isSelected ? 30 : el.zIndex,
                           }}
+                          data-overflow={!previewMode && ov?.isOverflowing ? 'true' : undefined}
                           className={`absolute group ${
                             previewMode
                               ? ''
@@ -824,6 +837,10 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                                 : isSelected
                                   ? 'ring-1 ring-[#C6A26B]'
                                   : 'hover:ring-1 hover:ring-[#56A8D8]/60'
+                          } ${
+                            /* text that does not fit: a clear red outline on the frame, for both roles (editor only:
+                               preview and exports never show it) */
+                            !previewMode && ov?.isOverflowing ? 'outline-2 outline-dashed outline-offset-1 outline-[#D94F3D]' : ''
                           }`}
                         >
                           {/* IMAGE FRAME */}
@@ -860,7 +877,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                                   }}
                                 />
                                 ) : (
-                                  <div className="w-full h-full relative flex flex-col items-center justify-center text-[#6B6760] text-[10px] border border-[#9E998F] bg-[#EAE6DD]/80">
+                                  <div className="w-full h-full relative flex flex-col items-center justify-center text-[#6B6760] text-[11px] border border-[#9E998F] bg-[#EAE6DD]/80">
                                     <svg
                                       viewBox="0 0 100 100"
                                       preserveAspectRatio="none"
@@ -870,10 +887,10 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                                       <line x1="100" y1="0" x2="0" y2="100" stroke="#A6A096" strokeWidth="0.6" />
                                     </svg>
                                     <div className="relative z-10 bg-[#EAE6DD]/92 px-2 py-1 text-center max-w-[88%] rounded-[2px] border border-[#C9C3B8]/80">
-                                      <div className="text-[9px] font-semibold tracking-wide uppercase text-[#4B4842] truncate">
+                                      <div className="text-[11px] font-semibold tracking-wide uppercase text-[#4B4842] truncate">
                                         {el.name || 'Image Placeholder'}
                                       </div>
-                                      <div className="text-[8px] text-[#736E65] truncate">
+                                      <div className="text-[11px] text-[#736E65] truncate">
                                         {el.image?.alt && el.image.alt !== 'Empty image frame'
                                           ? el.image.alt
                                           : 'Drop photograph or select in Properties'}
@@ -960,12 +977,15 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                                       onUpdateElement(
                                         page.id,
                                         el.id,
-                                        {
-                                          text: e.target.value,
-                                          overriddenFromMaster: el.masterElementId
-                                            ? true
-                                            : el.overriddenFromMaster,
-                                        },
+                                        // the master link is the design's: a Content editor's edit changes the words only
+                                        canDesign
+                                          ? {
+                                              text: e.target.value,
+                                              overriddenFromMaster: el.masterElementId
+                                                ? true
+                                                : el.overriddenFromMaster,
+                                            }
+                                          : { text: e.target.value },
                                         false
                                       )
                                     }
@@ -1015,15 +1035,16 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                           {/* OVERFLOW WARNING INDICATOR (Never shown in Preview or Exports) */}
                           {!previewMode && ov?.isOverflowing && (
                             <div
-                              title={`Text Overflow (+${ov.overflowWords} words) — Open Properties Panel for controlled remedies`}
-                              className="absolute -bottom-2 -right-2 w-4 h-4 bg-[#D94F3D] text-white flex items-center justify-center rounded-sm shadow z-40"
+                              title={`Text doesn't fit: about ${ov.overflowWords} more words than the frame holds. Select the frame and see the Properties panel.`}
+                              className="absolute -bottom-2.5 right-0 translate-y-1/2 px-1 h-[18px] bg-[#D94F3D] text-white flex items-center gap-0.5 rounded-sm shadow z-40 text-[11px] font-semibold whitespace-nowrap pointer-events-none"
                             >
                               <AlertTriangle className="w-2.5 h-2.5" />
+                              <span>+{ov.overflowWords} words don't fit</span>
                             </div>
                           )}
 
                           {/* RESIZE & ROTATE HANDLES */}
-                          {isSelected && !el.locked && !isEditingText && !isCropping && (
+                          {isSelected && canDesign && !el.locked && !isEditingText && !isCropping && (
                             <>
                               {(
                                 [
@@ -1078,7 +1099,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
 
                 {/* Page Footer Caption below trim (Editor Only) */}
                 {!previewMode && (
-                  <div className="absolute -bottom-6 left-0 right-0 flex items-center justify-between text-[10px] text-[#8F8C84] pointer-events-none">
+                  <div className="absolute -bottom-6 left-0 right-0 flex items-center justify-between text-[11px] text-[#8F8C84] pointer-events-none">
                     <span>
                       Page {pageNumber} · {page.label}
                     </span>

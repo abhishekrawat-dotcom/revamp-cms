@@ -98,7 +98,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
                 <span className="text-xs font-semibold text-[#F4F1EA]">Master Colour Tokens</span>
                 <button
                   onClick={applyPaperToAllPages}
-                  className="text-[10px] text-[#C6A26B] hover:underline cursor-pointer"
+                  className="text-[11px] text-[#C6A26B] hover:underline cursor-pointer"
                 >
                   Apply Paper Stock to Interior Pages
                 </button>
@@ -120,7 +120,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
                   >
                     <span className="text-[11px] text-[#D7D4CC]">{label}</span>
                     <div className="flex items-center gap-1.5">
-                      <span className="font-mono-tabular text-[10px] text-[#8F8C84]">
+                      <span className="font-mono-tabular text-[11px] text-[#8F8C84]">
                         {ds.colors[key]}
                       </span>
                       <input
@@ -140,7 +140,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
               </div>
 
               <div className="pt-2 border-t border-white/[0.06] space-y-2">
-                <div className="text-[10px] text-[#98958D]">Approved Palette Swatches</div>
+                <div className="text-[11px] text-[#98958D]">Approved Palette Swatches</div>
                 <div className="flex flex-wrap items-center gap-1.5">
                   {ds.colors.palette.map((hex, i) => (
                     <button
@@ -189,7 +189,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Min Approved Body Size (pt)</span>
+                  <span className="text-[11px] text-[#98958D]">Min Approved Body Size (pt)</span>
                   <input
                     type="number"
                     step={0.5}
@@ -209,7 +209,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Baseline Rhythm (mm)</span>
+                  <span className="text-[11px] text-[#98958D]">Baseline Rhythm (mm)</span>
                   <input
                     type="number"
                     step={0.5}
@@ -225,7 +225,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Paragraph Gap (mm)</span>
+                  <span className="text-[11px] text-[#98958D]">Paragraph Gap (mm)</span>
                   <input
                     type="number"
                     step={0.5}
@@ -241,7 +241,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Caption Offset (mm)</span>
+                  <span className="text-[11px] text-[#98958D]">Caption Offset (mm)</span>
                   <input
                     type="number"
                     step={0.5}
@@ -304,7 +304,7 @@ export const GlobalDesignSystemModal: React.FC<GlobalDesignSystemModalProps> = (
                           onJumpToPage(issue.pageId!, issue.elementId);
                           onClose();
                         }}
-                        className="px-2 py-1 text-[10px] bg-[#28282F] hover:bg-[#34343D] text-[#ECEAE4] rounded shrink-0 cursor-pointer"
+                        className="px-2 py-1 text-[11px] bg-[#28282F] hover:bg-[#34343D] text-[#ECEAE4] rounded shrink-0 cursor-pointer"
                       >
                         Go to Page
                       </button>

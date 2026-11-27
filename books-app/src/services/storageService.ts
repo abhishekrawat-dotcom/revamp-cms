@@ -1,6 +1,8 @@
 // Where the Books editor keeps its work: EventSphere's server (functions/lib/api-books.js), never the browser alone
 // and never a file on a server's disk. Each book is saved whole, with the revision it was based on, so a save made
-// over somebody else's newer one is refused (409 'stale') instead of silently overwriting it.
+// over somebody else's newer one is refused (409 'stale') instead of silently overwriting it. For each book this tab
+// also keeps the last copy known to match the server (its base): when a save is refused as stale, the editor puts
+// this tab's changes and the newer saved book together from that base (services/bookRules.ts mergeBooks).
 import type {
   BookProject,
   BookSummary,
@@ -14,9 +16,37 @@ import { apiGet, apiSend, apiUpload, pdfText } from './api';
 
 /** the revision of each book as this tab last loaded or saved it */
 const REVS = new Map<string, number>();
+/** each book as the server holds it at that revision: set on load, and on each save to what was sent */
+const BASES = new Map<string, BookProject>();
 
 export function knownRevision(bookId: string): number | null {
   return REVS.has(bookId) ? (REVS.get(bookId) as number) : null;
+}
+
+/** The last copy of a book known to match the server (null when this tab has never loaded or saved it). */
+export function knownBase(bookId: string): BookProject | null {
+  return BASES.get(bookId) || null;
+}
+
+function remember(book: BookProject, rev: number): void {
+  REVS.set(book.id, rev);
+  BASES.set(book.id, structuredClone(book));
+}
+
+/** What this person may do in Books: a Designer does everything, a Content editor everything except the design. */
+export interface BooksMe {
+  role: 'designer' | 'content';
+  email: string;
+  canDesign: boolean;
+}
+
+/** GET /me. A person without Books gets ApiError code 'no-books' (its sentence is shown on the dashboard). */
+export async function loadMe(): Promise<BooksMe> {
+  const data = await apiGet<{ role?: string; email?: string; canDesign?: boolean }>('/me');
+  const role = data.role === 'designer' ? 'designer' : 'content';
+  // fails closed: only a person the server calls a Designer is offered the design
+  const canDesign = typeof data.canDesign === 'boolean' ? data.canDesign && role === 'designer' : role === 'designer';
+  return { role, email: String(data.email || ''), canDesign };
 }
 
 /** Every book the team has (not deleted), newest first: the dashboard's cards. */
@@ -28,8 +58,15 @@ export async function loadBookList(): Promise<BookSummary[]> {
 /** One whole book, as the studio edits it. */
 export async function loadBook(bookId: string): Promise<BookProject> {
   const data = await apiGet<{ book: BookProject; rev: number }>('/book?id=' + encodeURIComponent(bookId));
-  REVS.set(bookId, data.rev);
+  remember(data.book, data.rev);
   return data.book;
+}
+
+/** The newest saved copy of a book (it becomes the base), and who saved it. */
+export async function loadLatest(bookId: string): Promise<{ book: BookProject; updatedBy: string }> {
+  const data = await apiGet<{ book: BookProject; rev: number; updatedBy?: string }>('/book?id=' + encodeURIComponent(bookId));
+  remember(data.book, data.rev);
+  return { book: data.book, updatedBy: String(data.updatedBy || '') };
 }
 
 /* One save at a time per book from this tab (an autosave and a manual save at once would otherwise race each other
@@ -41,7 +78,12 @@ const waiting = new Map<string, BookProject>();
 async function putBook(project: BookProject): Promise<void> {
   const baseRev = knownRevision(project.id);
   const data = await apiSend<{ rev: number }>('PUT', '/book', { book: project, baseRev });
-  REVS.set(project.id, data.rev);
+  remember(project, data.rev);
+}
+
+/** The save of this book still on its way, if any (it resolves or fails like the save itself). */
+export function pendingSave(bookId: string): Promise<void> | null {
+  return inflight.get(bookId) || null;
 }
 
 export function saveProject(project: BookProject): Promise<void> {
@@ -70,17 +112,73 @@ export function saveProject(project: BookProject): Promise<void> {
 /** A new book: saved with no revision, so the server creates it (and refuses an id that is taken). */
 export async function createBook(project: BookProject): Promise<void> {
   REVS.delete(project.id);
+  BASES.delete(project.id);
   await saveProject(project);
 }
 
 export async function setBookStatus(bookId: string, status: BookProject['status']): Promise<void> {
   const data = await apiSend<{ rev: number }>('POST', '/status', { id: bookId, status });
   if (REVS.has(bookId)) REVS.set(bookId, data.rev);
+  const base = BASES.get(bookId);
+  if (base) BASES.set(bookId, { ...base, status });
 }
 
 export async function deleteProjectById(projectId: string): Promise<void> {
   await apiSend('DELETE', '/book?id=' + encodeURIComponent(projectId));
   REVS.delete(projectId);
+  BASES.delete(projectId);
+}
+
+/** Who else has this book open (seen in the last 70 seconds), and on which page; sent every 30 s and on page change. */
+export interface PresenceEntry {
+  email: string;
+  pageId: string;
+  at: string;
+}
+
+export async function sendPresence(bookId: string, pageId: string): Promise<PresenceEntry[]> {
+  const data = await apiSend<{ here?: PresenceEntry[] }>('POST', '/presence', { bookId, pageId });
+  return Array.isArray(data.here) ? data.here.filter((h) => h && typeof h.email === 'string') : [];
+}
+
+/** A page someone deleted from the book, kept so it can be put back. */
+export interface DeletedPage {
+  pageId: string;
+  label: string;
+  position: number;
+  deletedAt: string;
+  deletedBy: string;
+}
+
+export async function loadDeletedPages(bookId: string): Promise<DeletedPage[]> {
+  const data = await apiGet<{ pages?: DeletedPage[] }>('/trash?id=' + encodeURIComponent(bookId));
+  return Array.isArray(data.pages) ? data.pages : [];
+}
+
+/** Puts a deleted page back, on the revision this tab knows; the answer is the whole book, which becomes the base. */
+export async function restoreDeletedPage(bookId: string, pageId: string): Promise<BookProject> {
+  const data = await apiSend<{ rev: number; book: BookProject }>('POST', '/restore-page', {
+    bookId,
+    pageId,
+    baseRev: knownRevision(bookId),
+  });
+  remember(data.book, data.rev);
+  return data.book;
+}
+
+/** What has happened to the book, newest first: who, when, and a sentence. */
+export interface BookLogEntry {
+  at: string;
+  by: string;
+  action: string;
+  detail?: unknown;
+  /** a run of saves by one person is one entry: when it began */
+  firstAt?: string;
+}
+
+export async function loadBookLog(bookId: string): Promise<BookLogEntry[]> {
+  const data = await apiGet<{ entries?: BookLogEntry[] }>('/log?id=' + encodeURIComponent(bookId));
+  return Array.isArray(data.entries) ? data.entries : [];
 }
 
 /** The book's kept versions (without their contents: loadProjectVersion reads one). */

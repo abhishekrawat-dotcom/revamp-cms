@@ -19,6 +19,7 @@ import {
   Crop,
   Image as ImageIcon,
   Link2,
+  Lock,
   Maximize,
   Minimize2,
   Palette,
@@ -35,7 +36,9 @@ import type {
   BookPage,
   BookProject,
   InfographicItem,
+  InfographicVisualVariant,
 } from '../types/bookstudio';
+import { BUILTIN_INFOGRAPHIC_TEMPLATES } from '../data/infographicTemplates';
 import {
   formatNumericValue,
   getEffectivePageDimensions,
@@ -55,6 +58,9 @@ interface RightPropertiesPanelProps {
   activePage: BookPage;
   selectedElement: BookElement | null;
   selectedCount: number;
+  /** false for a Content editor: geometry, typography, styles, swatches, align, shapes, photo effects and infographic
+      colours are shown read-only or not at all; words, the photo in a frame and its crop, and infographic data stay */
+  canDesign: boolean;
   onUpdateElement: (pageId: string, elementId: string, patch: Partial<BookElement>) => void;
   onUpdatePage: (pageId: string, patch: Partial<BookPage>) => void;
   onAlignElements: (action: AlignAction) => void;
@@ -68,6 +74,20 @@ interface RightPropertiesPanelProps {
 }
 
 type InspectorTab = 'properties' | 'styles' | 'swatches' | 'align' | 'links';
+
+/* the chart types an infographic frame can be shown as (content: the data stays, only how it is drawn changes) */
+const CHART_TYPES: Array<{ variant: InfographicVisualVariant; templateId: string; name: string }> = (() => {
+  const seen = new Set<string>();
+  const out: Array<{ variant: InfographicVisualVariant; templateId: string; name: string }> = [];
+  for (const t of BUILTIN_INFOGRAPHIC_TEMPLATES) {
+    if (seen.has(t.variant)) continue;
+    seen.add(t.variant);
+    out.push({ variant: t.variant, templateId: t.id, name: String(t.variant).replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase()) });
+  }
+  return out;
+})();
+
+const LOCKED_TIP = 'This is part of the design: a Designer changes it';
 
 const EDITORIAL_SWATCH_LIBRARY = [
   { name: 'Museum Paper', hex: '#F7F4EE' },
@@ -89,6 +109,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
   activePage,
   selectedElement,
   selectedCount,
+  canDesign,
   onUpdateElement,
   onUpdatePage,
   onAlignElements,
@@ -100,7 +121,9 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
   onSaveInfographicAsTemplate,
   onRequestAiTextFit,
 }) => {
-  const [panelTab, setPanelTab] = useState<InspectorTab>('properties');
+  const [chosenPanelTab, setPanelTab] = useState<InspectorTab>('properties');
+  // styles, swatches and align only change the design: a Content editor has Properties and Links
+  const panelTab: InspectorTab = !canDesign && chosenPanelTab !== 'links' ? 'properties' : chosenPanelTab;
   const [swatchTarget, setSwatchTarget] = useState<'auto' | 'text' | 'fill' | 'stroke' | 'paper'>('auto');
   const unit = project.unit;
   const pageDim = getEffectivePageDimensions(activePage, project.dimensions);
@@ -295,7 +318,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
   };
 
   const renderTabBar = () => (
-    <div className="grid grid-cols-5 border-b border-white/[0.08] bg-[#141417] shrink-0">
+    <div className={`grid ${canDesign ? 'grid-cols-5' : 'grid-cols-2'} border-b border-white/[0.08] bg-[#141417] shrink-0`}>
       {(
         [
           ['properties', SlidersHorizontal, 'Props'],
@@ -304,11 +327,11 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           ['align', AlignCenterHorizontal, 'Align'],
           ['links', Link2, 'Links'],
         ] as const
-      ).map(([id, Icon, lbl]) => (
+      ).filter(([id]) => canDesign || id === 'properties' || id === 'links').map(([id, Icon, lbl]) => (
         <button
           key={id}
           onClick={() => setPanelTab(id)}
-          className={`py-2 flex flex-col items-center gap-0.5 text-[9px] border-b-2 transition-colors cursor-pointer ${
+          className={`py-2 flex flex-col items-center gap-0.5 text-[11px] border-b-2 transition-colors cursor-pointer ${
             panelTab === id
               ? 'border-[#C6A26B] text-[#ECEAE4] bg-[#1B1B1F]'
               : 'border-transparent text-[#8F8C84] hover:text-white'
@@ -329,13 +352,13 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           <div className="flex items-center justify-between">
             <div>
               <div className="text-xs font-semibold text-[#ECEAE4]">Paragraph Styles</div>
-              <div className="text-[10px] text-[#8F8C84]">
+              <div className="text-[11px] text-[#8F8C84]">
                 {canApply ? `Click to apply to "${selectedElement!.name}"` : 'Select any text frame to apply'}
               </div>
             </div>
             <button
               onClick={onOpenTypographyModal}
-              className="text-[10px] text-[#C6A26B] hover:underline cursor-pointer"
+              className="text-[11px] text-[#C6A26B] hover:underline cursor-pointer"
             >
               Fonts
             </button>
@@ -359,7 +382,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                 className="w-full text-left p-2.5 bg-[#121214] hover:bg-[#222228] disabled:opacity-45 border border-white/[0.07] hover:border-[#C6A26B]/50 rounded transition-colors cursor-pointer"
               >
                 <div className="text-[11px] font-medium text-[#ECEAE4]">{st.name}</div>
-                <div className="font-mono-tabular text-[10px] text-[#8F8C84] mt-0.5">{st.meta}</div>
+                <div className="font-mono-tabular text-[11px] text-[#8F8C84] mt-0.5">{st.meta}</div>
               </button>
             ))}
           </div>
@@ -372,12 +395,12 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
         <div className="p-3.5 space-y-3.5 overflow-y-auto flex-1">
           <div>
             <div className="text-xs font-semibold text-[#ECEAE4]">Swatches</div>
-            <div className="text-[10px] text-[#8F8C84]">
+            <div className="text-[11px] text-[#8F8C84]">
               Click any swatch to apply to target property
             </div>
           </div>
 
-          <div className="grid grid-cols-5 gap-1 bg-[#121214] p-0.5 rounded border border-white/[0.08] text-[10px]">
+          <div className="grid grid-cols-5 gap-1 bg-[#121214] p-0.5 rounded border border-white/[0.08] text-[11px]">
             {(
               [
                 ['auto', 'Auto'],
@@ -400,7 +423,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <div className="text-[10px] uppercase tracking-wider text-[#8F8C84]">
+            <div className="text-[11px] uppercase tracking-wider text-[#8F8C84]">
               Document Swatches ({project.designSystem.name})
             </div>
             {project.designSystem.colors.palette.map((hex, i) => (
@@ -416,13 +439,13 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                   />
                   <span className="text-[11px] text-[#ECEAE4]">Doc Swatch {i + 1}</span>
                 </div>
-                <span className="font-mono-tabular text-[10px] text-[#8F8C84]">{hex}</span>
+                <span className="font-mono-tabular text-[11px] text-[#8F8C84]">{hex}</span>
               </button>
             ))}
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-white/[0.08]">
-            <div className="text-[10px] uppercase tracking-wider text-[#8F8C84]">
+            <div className="text-[11px] uppercase tracking-wider text-[#8F8C84]">
               Editorial Print Swatch Book
             </div>
             <div className="grid grid-cols-2 gap-1.5">
@@ -436,7 +459,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                     style={{ backgroundColor: sw.hex }}
                     className="w-4 h-4 rounded-[2px] border border-white/25 shrink-0"
                   />
-                  <span className="text-[10px] text-[#D7D4CC] truncate">{sw.name}</span>
+                  <span className="text-[11px] text-[#D7D4CC] truncate">{sw.name}</span>
                 </button>
               ))}
             </div>
@@ -450,7 +473,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
         <div className="p-3.5 space-y-4 overflow-y-auto flex-1">
           <div>
             <div className="text-xs font-semibold text-[#ECEAE4]">Align & Distribute</div>
-            <div className="text-[10px] text-[#8F8C84] mt-0.5">
+            <div className="text-[11px] text-[#8F8C84] mt-0.5">
               {selectedCount === 0
                 ? 'Select 1 frame (aligns to margins) or 2+ frames (Shift+Click)'
                 : selectedCount === 1
@@ -460,7 +483,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
 
           <div className="space-y-2">
-            <div className="text-[10px] text-[#8F8C84]">Align Objects</div>
+            <div className="text-[11px] text-[#8F8C84]">Align Objects</div>
             <div className="grid grid-cols-3 gap-1.5">
               {(
                 [
@@ -476,7 +499,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                   key={act}
                   disabled={selectedCount === 0}
                   onClick={() => onAlignElements(act)}
-                  className="py-2 px-1.5 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded flex flex-col items-center gap-1 text-[10px] text-[#D7D4CC] cursor-pointer"
+                  className="py-2 px-1.5 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded flex flex-col items-center gap-1 text-[11px] text-[#D7D4CC] cursor-pointer"
                 >
                   <Icon className="w-3.5 h-3.5 text-[#C6A26B]" />
                   <span>{lbl}</span>
@@ -486,12 +509,12 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
 
           <div className="space-y-2 pt-2 border-t border-white/[0.08]">
-            <div className="text-[10px] text-[#8F8C84]">Distribute Spacing (3+ Frames)</div>
+            <div className="text-[11px] text-[#8F8C84]">Distribute Spacing (3+ Frames)</div>
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 disabled={selectedCount < 3}
                 onClick={() => onAlignElements('distribute_h')}
-                className="py-2 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded flex items-center justify-center gap-1.5 text-[10px] text-[#D7D4CC] cursor-pointer"
+                className="py-2 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded flex items-center justify-center gap-1.5 text-[11px] text-[#D7D4CC] cursor-pointer"
               >
                 <AlignHorizontalSpaceAround className="w-3.5 h-3.5 text-[#C6A26B]" />
                 <span>Horizontal</span>
@@ -499,7 +522,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               <button
                 disabled={selectedCount < 3}
                 onClick={() => onAlignElements('distribute_v')}
-                className="py-2 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded flex items-center justify-center gap-1.5 text-[10px] text-[#D7D4CC] cursor-pointer"
+                className="py-2 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded flex items-center justify-center gap-1.5 text-[11px] text-[#D7D4CC] cursor-pointer"
               >
                 <AlignVerticalSpaceAround className="w-3.5 h-3.5 text-[#C6A26B]" />
                 <span>Vertical</span>
@@ -508,19 +531,19 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
 
           <div className="space-y-2 pt-2 border-t border-white/[0.08]">
-            <div className="text-[10px] text-[#8F8C84]">Match Dimensions (2+ Frames)</div>
+            <div className="text-[11px] text-[#8F8C84]">Match Dimensions (2+ Frames)</div>
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 disabled={selectedCount < 2}
                 onClick={() => onAlignElements('match_width')}
-                className="py-1.5 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded text-[10px] text-[#D7D4CC] cursor-pointer"
+                className="py-1.5 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded text-[11px] text-[#D7D4CC] cursor-pointer"
               >
                 Same Width
               </button>
               <button
                 disabled={selectedCount < 2}
                 onClick={() => onAlignElements('match_height')}
-                className="py-1.5 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded text-[10px] text-[#D7D4CC] cursor-pointer"
+                className="py-1.5 px-2 bg-[#121214] hover:bg-[#24242C] disabled:opacity-35 border border-white/[0.08] rounded text-[11px] text-[#D7D4CC] cursor-pointer"
               >
                 Same Height
               </button>
@@ -537,7 +560,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           <div className="text-xs font-semibold text-[#ECEAE4]">
             Links ({placedImageLinks.length})
           </div>
-          <div className="text-[10px] text-[#8F8C84]">
+          <div className="text-[11px] text-[#8F8C84]">
             All placed photographs & effective print DPI
           </div>
         </div>
@@ -564,7 +587,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-[8px] text-[#7F7C75]">
+                      <div className="w-full h-full flex items-center justify-center text-[11px] text-[#7F7C75]">
                         Empty
                       </div>
                     )}
@@ -573,12 +596,12 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                     <div className="text-[11px] font-medium text-[#ECEAE4] truncate">
                       {lnk.element.name}
                     </div>
-                    <div className="font-mono-tabular text-[10px] text-[#8F8C84]">
+                    <div className="font-mono-tabular text-[11px] text-[#8F8C84]">
                       p.{lnk.pageNumber} · {Math.round(lnk.element.widthMm)}×{Math.round(lnk.element.heightMm)}mm
                     </div>
                   </div>
                   <div
-                    className={`font-mono-tabular text-[10px] shrink-0 ${
+                    className={`font-mono-tabular text-[11px] shrink-0 ${
                       !lnk.element.image?.src
                         ? 'text-[#E07A5F]'
                         : lowDpi
@@ -608,7 +631,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
     step = 0.5
   ) => (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] text-[#8F8C84]">{label} ({unit})</span>
+      <span className="text-[11px] text-[#8F8C84]">{label} ({unit})</span>
       <input
         type="number"
         step={step}
@@ -648,7 +671,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
         <div className="space-y-2.5 pt-2 border-t border-white/[0.08]">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-[#8F8C84]">Page Label</span>
+            <span className="text-[11px] text-[#8F8C84]">Page Label</span>
             <input
               type="text"
               value={activePage.label}
@@ -659,19 +682,27 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
           <div className="flex items-center justify-between">
             <span className="text-[11px] text-[#A19E95]">Paper Background</span>
-            <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={activePage.backgroundColor}
-                onChange={(e) => onUpdatePage(activePage.id, { backgroundColor: e.target.value })}
-                className="w-6 h-6 rounded border border-white/15 bg-transparent cursor-pointer"
-              />
+            <div className="flex items-center gap-2" title={canDesign ? undefined : LOCKED_TIP}>
+              {canDesign ? (
+                <input
+                  type="color"
+                  value={activePage.backgroundColor}
+                  onChange={(e) => onUpdatePage(activePage.id, { backgroundColor: e.target.value })}
+                  className="w-6 h-6 rounded border border-white/15 bg-transparent cursor-pointer"
+                />
+              ) : (
+                <span
+                  style={{ backgroundColor: activePage.backgroundColor }}
+                  className="w-6 h-6 rounded border border-white/15 inline-block"
+                />
+              )}
               <span className="font-mono-tabular text-[11px] text-[#98958D]">
                 {activePage.backgroundColor}
               </span>
             </div>
           </div>
 
+          {canDesign && (
           <div className="flex flex-wrap gap-1.5 pt-1">
             {project.designSystem.colors.palette.map((swatch, idx) => (
               <button
@@ -683,13 +714,14 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               />
             ))}
           </div>
+          )}
         </div>
 
         <div className="space-y-2 pt-3 border-t border-white/[0.08]">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-[#D7D4CC]">Physical Dimensions</span>
             {activePage.dimensionsOverride && (
-              <span className="text-[10px] text-[#C6A26B]">Mixed-Format Override</span>
+              <span className="text-[11px] text-[#C6A26B]">Mixed-Format Override</span>
             )}
           </div>
           <div className="grid grid-cols-2 gap-2 font-mono-tabular text-[11px] text-[#A19E95] bg-[#121214] p-2.5 rounded border border-white/[0.06]">
@@ -698,16 +730,20 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
             <div>Bleed: {formatNumericValue(pageDim.bleedMm, unit)} {unit}</div>
             <div>Cols: {pageDim.columns}</div>
           </div>
-          <button
-            onClick={onOpenDimensionsModal}
-            className="w-full py-1.5 px-2.5 bg-[#24242A] hover:bg-[#2E2E36] text-[11px] text-[#ECEAE4] rounded transition-colors cursor-pointer"
-          >
-            Configure Dimensions & Mixed Format
-          </button>
+          {canDesign && (
+            <button
+              onClick={onOpenDimensionsModal}
+              className="w-full py-1.5 px-2.5 bg-[#24242A] hover:bg-[#2E2E36] text-[11px] text-[#ECEAE4] rounded transition-colors cursor-pointer"
+            >
+              Configure Dimensions & Mixed Format
+            </button>
+          )}
         </div>
 
         <div className="pt-3 border-t border-white/[0.08] text-[11px] text-[#8F8C84] leading-relaxed">
-          Select any text frame, photograph, shape, or infographic on the spread to edit its exact physical coordinates, typography, crop, or live dataset.
+          {canDesign
+            ? 'Select any text frame, photograph, shape, or infographic on the spread to edit its exact physical coordinates, typography, crop, or live dataset.'
+            : 'Select a text frame to change its words, a photo frame to change the photo or how it sits in the frame, or an infographic to change its data and chart type. The design itself is set by a Designer.'}
         </div>
         </div>
       </aside>
@@ -735,13 +771,27 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <div className="text-xs font-semibold text-[#ECEAE4] truncate">{el.name}</div>
-          <div className="text-[10px] text-[#8F8C84] capitalize">
+          <div className="text-[11px] text-[#8F8C84] capitalize">
             {el.type} frame{el.masterElementId ? ' · Master Linked' : ''}
           </div>
         </div>
       </div>
 
-      {/* Geometry & Coordinates (Shared across all element types) */}
+      {/* Geometry & Coordinates: read-only for a Content editor */}
+      {!canDesign && (
+        <div className="space-y-1 pt-2 border-t border-white/[0.08]" title={LOCKED_TIP}>
+          <div className="text-[11px] font-medium text-[#D7D4CC] flex items-center gap-1.5">
+            <Lock className="w-3 h-3 text-[#7F7C75]" />
+            <span>Frame position and size</span>
+          </div>
+          <div className="font-mono-tabular text-[11px] text-[#8F8C84]">
+            X {formatNumericValue(el.xMm, unit)} · Y {formatNumericValue(el.yMm, unit)} · {formatNumericValue(el.widthMm, unit)} ×{' '}
+            {formatNumericValue(el.heightMm, unit)} {unit}
+            {el.rotation ? ` · ${Math.round(el.rotation)}°` : ''}
+          </div>
+        </div>
+      )}
+      {canDesign && (
       <div className="space-y-2 pt-2 border-t border-white/[0.08]">
         <div className="text-[11px] font-medium text-[#D7D4CC]">Frame Geometry</div>
         <div className="grid grid-cols-2 gap-2">
@@ -756,7 +806,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
         </div>
         <div className="grid grid-cols-2 gap-2">
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-[#8F8C84]">Rotation (°)</span>
+            <span className="text-[11px] text-[#8F8C84]">Rotation (°)</span>
             <input
               type="number"
               value={Math.round(el.rotation || 0)}
@@ -767,7 +817,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-[#8F8C84]">Opacity ({Math.round((el.opacity ?? 1) * 100)}%)</span>
+            <span className="text-[11px] text-[#8F8C84]">Opacity ({Math.round((el.opacity ?? 1) * 100)}%)</span>
             <input
               type="range"
               min={0.05}
@@ -782,6 +832,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </label>
         </div>
       </div>
+      )}
 
       {/* TEXT PROPERTIES */}
       {(el.type === 'text' ||
@@ -800,12 +851,16 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                     <div className="text-[11px] font-semibold text-[#F5CFC7]">
                       Text Overflow (+{overflow.overflowWords} words)
                     </div>
-                    <div className="text-[10px] text-[#D7ACA3]">
-                      Frame preserved without disturbing surrounding photography. Choose a controlled action:
+                    <div className="text-[11px] text-[#D7ACA3]">
+                      {canDesign
+                        ? 'Frame preserved without disturbing surrounding photography. Choose a controlled action:'
+                        : "The words don't fit this frame. Shorten them, or ask a Designer to change the frame or the type size."}
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-1">
+                  {canDesign && (
+                  <>
                   <button
                     onClick={() =>
                       onUpdateElement(
@@ -814,7 +869,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                         fitTextWithinApprovedLimits(el, project.designSystem.typography.minApprovedBodyPt)
                       )
                     }
-                    className="py-1 px-2 text-left text-[10px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
+                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
                   >
                     1. Reduce font size (min {project.designSystem.typography.minApprovedBodyPt}pt)
                   </button>
@@ -826,7 +881,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                         expandFrameHeightForText(el, pageDim.heightMm)
                       )
                     }
-                    className="py-1 px-2 text-left text-[10px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
+                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
                   >
                     2. Expand text frame vertically
                   </button>
@@ -834,39 +889,51 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                     onClick={() =>
                       onUpdateElement(activePage.id, el.id, tightenParagraphSpacing(el))
                     }
-                    className="py-1 px-2 text-left text-[10px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
+                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
                   >
                     3. Tighten line height & paragraph spacing
                   </button>
                   <button
                     onClick={() => onContinueOverflowToNextPage(activePage.id, el.id)}
-                    className="py-1 px-2 text-left text-[10px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
+                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
                   >
                     4. Continue overflow onto next page
                   </button>
+                  </>
+                  )}
                   <button
                     onClick={() => onRequestAiTextFit(el)}
-                    className="py-1 px-2 text-left text-[10px] bg-[#C6A26B]/20 hover:bg-[#C6A26B]/30 text-[#F1D8AE] rounded flex items-center gap-1 cursor-pointer"
+                    className="py-1 px-2 text-left text-[11px] bg-[#C6A26B]/20 hover:bg-[#C6A26B]/30 text-[#F1D8AE] rounded flex items-center gap-1 cursor-pointer"
                   >
                     <Sparkles className="w-3 h-3" />
-                    <span>5. Request optional AI copy tightening</span>
+                    <span>{canDesign ? '5. Request optional AI copy tightening' : 'Ask ETB2B AI to suggest shorter words'}</span>
                   </button>
                 </div>
               </div>
             )}
 
+            {!canDesign && (
+              <div className="text-[11px] text-[#8F8C84] flex items-center gap-1.5" title={LOCKED_TIP}>
+                <Lock className="w-3 h-3 text-[#7F7C75] shrink-0" />
+                <span className="truncate">
+                  {el.textStyle.fontFamily} · {el.textStyle.fontSizePt}pt · {el.textStyle.textAlign}
+                </span>
+              </div>
+            )}
+            {canDesign && (
+            <>
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-medium text-[#D7D4CC]">Typography</span>
               <button
                 onClick={onOpenTypographyModal}
-                className="text-[10px] text-[#C6A26B] hover:underline cursor-pointer"
+                className="text-[11px] text-[#C6A26B] hover:underline cursor-pointer"
               >
                 Google Fonts Library
               </button>
             </div>
 
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Font Family</span>
+              <span className="text-[11px] text-[#8F8C84]">Font Family</span>
               <select
                 value={el.textStyle.fontFamily}
                 onChange={(e) => {
@@ -899,7 +966,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
             <div className="grid grid-cols-3 gap-1.5">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Size (pt)</span>
+                <span className="text-[11px] text-[#8F8C84]">Size (pt)</span>
                 <input
                   type="number"
                   step={0.5}
@@ -919,7 +986,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Weight</span>
+                <span className="text-[11px] text-[#8F8C84]">Weight</span>
                 <select
                   value={el.textStyle.fontWeight}
                   onChange={(e) =>
@@ -938,7 +1005,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Colour</span>
+                <span className="text-[11px] text-[#8F8C84]">Colour</span>
                 <input
                   type="color"
                   value={el.textStyle.color}
@@ -954,7 +1021,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
             <div className="grid grid-cols-3 gap-1.5">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Leading</span>
+                <span className="text-[11px] text-[#8F8C84]">Leading</span>
                 <input
                   type="number"
                   step={0.05}
@@ -974,7 +1041,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Track (em)</span>
+                <span className="text-[11px] text-[#8F8C84]">Track (em)</span>
                 <input
                   type="number"
                   step={0.01}
@@ -994,7 +1061,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               </label>
 
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Columns</span>
+                <span className="text-[11px] text-[#8F8C84]">Columns</span>
                 <select
                   value={el.textStyle.columns}
                   onChange={(e) =>
@@ -1072,7 +1139,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Paragraph Gap (mm)</span>
+                <span className="text-[11px] text-[#8F8C84]">Paragraph Gap (mm)</span>
                 <input
                   type="number"
                   step={0.5}
@@ -1090,7 +1157,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                 />
               </label>
               <label className="flex flex-col gap-1">
-                <span className="text-[10px] text-[#8F8C84]">Frame Inset (mm)</span>
+                <span className="text-[11px] text-[#8F8C84]">Frame Inset (mm)</span>
                 <input
                   type="number"
                   step={0.5}
@@ -1108,9 +1175,11 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                 />
               </label>
             </div>
+            </>
+            )}
 
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Editorial Copy (Frame-Locked)</span>
+              <span className="text-[11px] text-[#8F8C84]">Editorial Copy (Frame-Locked)</span>
               <textarea
                 rows={4}
                 value={el.text || ''}
@@ -1130,7 +1199,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
             <span className="text-[11px] font-medium text-[#D7D4CC]">Photograph Frame</span>
             {effectiveDpi !== null && (
               <span
-                className={`font-mono-tabular text-[10px] ${
+                className={`font-mono-tabular text-[11px] ${
                   effectiveDpi < 150
                     ? 'text-[#E07A5F]'
                     : effectiveDpi < 240
@@ -1144,7 +1213,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
 
           {effectiveDpi !== null && effectiveDpi < 180 && (
-            <div className="p-2 bg-[#2B1F16] border border-[#D4A657]/40 rounded text-[10px] text-[#E6C790] flex items-start gap-1.5">
+            <div className="p-2 bg-[#2B1F16] border border-[#D4A657]/40 rounded text-[11px] text-[#E6C790] flex items-start gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
               <span>Effective resolution ({effectiveDpi} DPI) is below 300 DPI print target.</span>
             </div>
@@ -1152,7 +1221,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
           {/* Non-destructive Replace from Project Library */}
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-[#8F8C84]">Replace Image (Preserves Frame & Crop)</span>
+            <span className="text-[11px] text-[#8F8C84]">Replace Image (Preserves Frame & Crop)</span>
             <select
               value={el.image.src}
               onChange={(e) => {
@@ -1214,7 +1283,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
 
           <label className="flex flex-col gap-1">
-            <div className="flex justify-between text-[10px] text-[#8F8C84]">
+            <div className="flex justify-between text-[11px] text-[#8F8C84]">
               <span>Zoom Inside Frame</span>
               <span className="font-mono-tabular">{Math.round((el.image.zoom || 1) * 100)}%</span>
             </div>
@@ -1235,7 +1304,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Focal X ({el.image.focalX}%)</span>
+              <span className="text-[11px] text-[#8F8C84]">Focal X ({el.image.focalX}%)</span>
               <input
                 type="range"
                 min={0}
@@ -1250,7 +1319,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Focal Y ({el.image.focalY}%)</span>
+              <span className="text-[11px] text-[#8F8C84]">Focal Y ({el.image.focalY}%)</span>
               <input
                 type="range"
                 min={0}
@@ -1266,12 +1335,13 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
             </label>
           </div>
 
-          {/* Tonal Treatments */}
+          {/* Tonal Treatments (photo effects: the design's) */}
+          {canDesign && (
           <div className="space-y-2 pt-2 border-t border-white/[0.06]">
-            <span className="text-[10px] text-[#8F8C84]">Tonal Treatment</span>
+            <span className="text-[11px] text-[#8F8C84]">Tonal Treatment</span>
             <div className="grid grid-cols-2 gap-2">
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-[#8F8C84]">Grayscale ({el.image.grayscale || 0}%)</span>
+                <span className="text-[11px] text-[#8F8C84]">Grayscale ({el.image.grayscale || 0}%)</span>
                 <input
                   type="range"
                   min={0}
@@ -1286,7 +1356,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                 />
               </label>
               <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-[#8F8C84]">Contrast ({el.image.contrast ?? 100}%)</span>
+                <span className="text-[11px] text-[#8F8C84]">Contrast ({el.image.contrast ?? 100}%)</span>
                 <input
                   type="range"
                   min={60}
@@ -1302,42 +1372,58 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               </label>
             </div>
           </div>
+          )}
 
           <button
             onClick={() =>
               onUpdateElement(activePage.id, el.id, {
-                image: {
-                  ...el.image!,
-                  zoom: el.image!.originalCrop?.zoom ?? 1,
-                  focalX: el.image!.originalCrop?.focalX ?? 50,
-                  focalY: el.image!.originalCrop?.focalY ?? 50,
-                  fit: el.image!.originalCrop?.fit ?? 'cover',
-                  grayscale: 0,
-                  sepia: 0,
-                  contrast: 100,
-                  brightness: 100,
-                },
+                image: canDesign
+                  ? {
+                      ...el.image!,
+                      zoom: el.image!.originalCrop?.zoom ?? 1,
+                      focalX: el.image!.originalCrop?.focalX ?? 50,
+                      focalY: el.image!.originalCrop?.focalY ?? 50,
+                      fit: el.image!.originalCrop?.fit ?? 'cover',
+                      grayscale: 0,
+                      sepia: 0,
+                      contrast: 100,
+                      brightness: 100,
+                    }
+                  : {
+                      // a Content editor puts back how the photo sat in the frame; its effects are the design's
+                      ...el.image!,
+                      zoom: el.image!.originalCrop?.zoom ?? 1,
+                      focalX: el.image!.originalCrop?.focalX ?? 50,
+                      focalY: el.image!.originalCrop?.focalY ?? 50,
+                      fit: el.image!.originalCrop?.fit ?? 'cover',
+                    },
               })
             }
             className="w-full py-1.5 text-[11px] bg-[#24242A] hover:bg-[#2F2F37] text-[#D7D4CC] rounded flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <RotateCcw className="w-3 h-3" />
-            <span>Restore Original Crop & Tone</span>
+            <span>{canDesign ? 'Restore Original Crop & Tone' : 'Restore Original Crop'}</span>
           </button>
-          <p className="text-[10px] text-[#7F7C75] flex items-center gap-1">
+          <p className="text-[11px] text-[#7F7C75] flex items-center gap-1">
             <Crop className="w-3 h-3 shrink-0" />
             <span>Double-click image on canvas to pan crop interactively.</span>
           </p>
         </div>
       )}
 
-      {/* SHAPE & LINE PROPERTIES */}
-      {(el.type === 'shape' || el.type === 'line' || el.type === 'decorative') && el.shape && (
+      {/* SHAPE & LINE PROPERTIES (the design's) */}
+      {!canDesign && (el.type === 'shape' || el.type === 'line' || el.type === 'decorative') && (
+        <div className="pt-3 border-t border-white/[0.08] text-[11px] text-[#8F8C84] flex items-center gap-1.5">
+          <Lock className="w-3 h-3 shrink-0" />
+          <span>Shapes and rules are part of the design: a Designer changes them.</span>
+        </div>
+      )}
+      {canDesign && (el.type === 'shape' || el.type === 'line' || el.type === 'decorative') && el.shape && (
         <div className="space-y-3 pt-3 border-t border-white/[0.08]">
           <div className="text-[11px] font-medium text-[#D7D4CC]">Shape & Stroke</div>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Fill</span>
+              <span className="text-[11px] text-[#8F8C84]">Fill</span>
               <div className="flex items-center gap-1.5">
                 <input
                   type="color"
@@ -1355,14 +1441,14 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                       shape: { ...el.shape!, fill: 'transparent' },
                     })
                   }
-                  className="text-[10px] text-[#8F8C84] hover:text-white cursor-pointer"
+                  className="text-[11px] text-[#8F8C84] hover:text-white cursor-pointer"
                 >
                   None
                 </button>
               </div>
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Stroke</span>
+              <span className="text-[11px] text-[#8F8C84]">Stroke</span>
               <input
                 type="color"
                 value={el.shape.stroke === 'transparent' ? '#C6A26B' : el.shape.stroke}
@@ -1377,7 +1463,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Stroke Width (mm)</span>
+              <span className="text-[11px] text-[#8F8C84]">Stroke Width (mm)</span>
               <input
                 type="number"
                 step={0.1}
@@ -1393,7 +1479,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-[10px] text-[#8F8C84]">Corner Radius (mm)</span>
+              <span className="text-[11px] text-[#8F8C84]">Corner Radius (mm)</span>
               <input
                 type="number"
                 step={0.5}
@@ -1416,16 +1502,42 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
         <div className="space-y-3 pt-3 border-t border-white/[0.08]">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-[#D7D4CC]">Infographic Data Editor</span>
-            <button
-              onClick={onOpenInfographicsModal}
-              className="text-[10px] text-[#C6A26B] hover:underline cursor-pointer"
-            >
-              Browse 52 Templates
-            </button>
+            {canDesign && (
+              <button
+                onClick={onOpenInfographicsModal}
+                className="text-[11px] text-[#C6A26B] hover:underline cursor-pointer"
+              >
+                Browse 52 Templates
+              </button>
+            )}
           </div>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-[#8F8C84]">Title</span>
+            <span className="text-[11px] text-[#8F8C84]">Chart type</span>
+            <select
+              value={el.infographic.variant}
+              onChange={(e) => {
+                const pick = CHART_TYPES.find((c) => c.variant === e.target.value);
+                if (!pick) return;
+                onUpdateElement(activePage.id, el.id, {
+                  infographic: { ...el.infographic!, variant: pick.variant, templateId: pick.templateId },
+                });
+              }}
+              className="bg-[#121214] border border-white/[0.08] rounded px-2 py-1 text-[11px] text-[#ECEAE4]"
+            >
+              {!CHART_TYPES.some((c) => c.variant === el.infographic.variant) && (
+                <option value={el.infographic.variant}>{String(el.infographic.variant).replace(/_/g, ' ')}</option>
+              )}
+              {CHART_TYPES.map((c) => (
+                <option key={c.variant} value={c.variant}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex flex-col gap-1">
+            <span className="text-[11px] text-[#8F8C84]">Title</span>
             <input
               type="text"
               value={el.infographic.title}
@@ -1439,7 +1551,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-[#8F8C84]">Subtitle</span>
+            <span className="text-[11px] text-[#8F8C84]">Subtitle</span>
             <input
               type="text"
               value={el.infographic.subtitle}
@@ -1452,6 +1564,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
             />
           </label>
 
+          {canDesign && (
           <div className="grid grid-cols-4 gap-1.5">
             {(
               [
@@ -1462,7 +1575,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               ] as const
             ).map(([lbl, key]) => (
               <label key={key} className="flex flex-col items-center gap-1">
-                <span className="text-[9px] text-[#8F8C84]">{lbl}</span>
+                <span className="text-[11px] text-[#8F8C84]">{lbl}</span>
                 <input
                   type="color"
                   value={el.infographic![key]}
@@ -1476,11 +1589,12 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               </label>
             ))}
           </div>
+          )}
 
           {/* Data Rows */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-[#8F8C84]">
+              <span className="text-[11px] text-[#8F8C84]">
                 Data Entries ({el.infographic.items.length})
               </span>
               <button
@@ -1499,7 +1613,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                     },
                   });
                 }}
-                className="text-[10px] text-[#C6A26B] hover:text-[#DFC08E] flex items-center gap-0.5 cursor-pointer"
+                className="text-[11px] text-[#C6A26B] hover:text-[#DFC08E] flex items-center gap-0.5 cursor-pointer"
               >
                 <Plus className="w-3 h-3" />
                 <span>Add Row</span>
@@ -1523,7 +1637,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                           infographic: { ...el.infographic!, items: next },
                         });
                       }}
-                      className="flex-1 bg-[#1C1C20] px-1.5 py-0.5 text-[10px] text-[#ECEAE4] rounded"
+                      className="flex-1 bg-[#1C1C20] px-1.5 py-0.5 text-[11px] text-[#ECEAE4] rounded"
                     />
                     <input
                       type="number"
@@ -1535,7 +1649,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                           infographic: { ...el.infographic!, items: next },
                         });
                       }}
-                      className="w-14 bg-[#1C1C20] px-1.5 py-0.5 font-mono-tabular text-[10px] text-[#C6A26B] rounded"
+                      className="w-14 bg-[#1C1C20] px-1.5 py-0.5 font-mono-tabular text-[11px] text-[#C6A26B] rounded"
                     />
                     <input
                       type="text"
@@ -1548,7 +1662,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                           infographic: { ...el.infographic!, items: next },
                         });
                       }}
-                      className="w-9 bg-[#1C1C20] px-1 py-0.5 text-[10px] text-[#98958D] rounded"
+                      className="w-9 bg-[#1C1C20] px-1 py-0.5 text-[11px] text-[#98958D] rounded"
                     />
                     <button
                       onClick={() => {
@@ -1573,20 +1687,22 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
                         infographic: { ...el.infographic!, items: next },
                       });
                     }}
-                    className="w-full bg-transparent text-[10px] text-[#8F8C84] focus:bg-[#1C1C20] focus:text-white px-1 py-0.5 rounded focus:outline-none"
+                    className="w-full bg-transparent text-[11px] text-[#8F8C84] focus:bg-[#1C1C20] focus:text-white px-1 py-0.5 rounded focus:outline-none"
                   />
                 </div>
               ))}
             </div>
           </div>
 
-          <button
-            onClick={() => onSaveInfographicAsTemplate(el)}
-            className="w-full py-1.5 px-2.5 bg-[#24242A] hover:bg-[#303038] text-[11px] text-[#ECEAE4] rounded flex items-center justify-center gap-1.5 cursor-pointer"
-          >
-            <BookmarkPlus className="w-3.5 h-3.5 text-[#C6A26B]" />
-            <span>Save Infographic to My Templates</span>
-          </button>
+          {canDesign && (
+            <button
+              onClick={() => onSaveInfographicAsTemplate(el)}
+              className="w-full py-1.5 px-2.5 bg-[#24242A] hover:bg-[#303038] text-[11px] text-[#ECEAE4] rounded flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5 text-[#C6A26B]" />
+              <span>Save Infographic to My Templates</span>
+            </button>
+          )}
         </div>
       )}
       </div>

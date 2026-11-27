@@ -179,3 +179,31 @@ Each phase is released and tested on its own.
 - **Tests**
   - `functions/lib/api-books.test.js` (99 checks).
   - `functions/lib/books-build.test.js` (17 checks), which also fails when `books/` was not rebuilt after a source change. To rebuild, run `cd books-app && npm install && npm run build`.
+
+## Phase 2: what was built (27 Nov 2026, branch books-phase2)
+
+- **Roles**
+  - Settings › Access gives each person a Books role: Designer, Content editor, or none (the default). Admins are always Designers.
+  - The role is the member field `books` (`access-control.js`), passed through by `api-access.js`.
+  - Every `/api/books/` route needs only "viewer" from EventSphere's own roles; the Books role decides.
+  - The Books menu link shows to anyone with a Books role.
+- **The rule** (`functions/lib/book-rules.js`, one copy for the server and the editor)
+  - `designChanges(before, after)` lists every design change in plain words; anything not named as content is design.
+  - A new page must share a layout's settings (a page's, or a master's) and copy the book's own frames.
+  - `mergeBooks` and `resolveConflicts` do a three-way merge: an edit is never dropped silently, and the save time never asks.
+- **Server**
+  - Content editors use only an allow-list of routes; anything else is 403 `designer-only`.
+  - A Content editor's save that changes the design is 403 `design-only` with the reasons, and nothing is written. So is a new book, or a status change.
+  - New routes: `presence` (others in the book within 70 s), `trash` and `restore-page` (deleted pages kept, restored at their position), `log` (activity; a person's saves within 10 minutes fold into one line).
+- **Editor**
+  - Content editors get a "Content editor" tag and lose the design controls (frame tools, Elements and Masters tabs, geometry, styles, swatches, align, page setup, design system, typography, templates, IDML, Restore version).
+  - A guard refuses any design change before it is applied.
+  - A stale save is merged with the newest copy. With no conflicts it is saved with "Merged with …"; with conflicts a dialog asks mine or theirs for each item.
+  - "Also here" chips, and initials on page thumbnails.
+  - Deleted pages and Activity tabs in Version history.
+  - Overflowing text gets a red dashed outline with "+N words don't fit", never in exports.
+  - All text is at least 11 px.
+- **Known limits**
+  - Nothing yet clears old deleted pages or presence records.
+  - A Content editor's merge fails when they added a page while a Designer changed that layout: the dialog offers only "Open the newest saved copy".
+  - New pages are checked frame by frame: a Content editor may combine the book's own frames on a new page.

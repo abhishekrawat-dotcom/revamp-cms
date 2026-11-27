@@ -1625,8 +1625,9 @@
     /* Speakers and Sponsors across every portal (people.html; the owner, 11 Nov 2026): one page each, whichever event */
     var mic = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>';
     var medal = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="9" r="6"/><path d="M8.5 13.9L7 21.5l5-2.7 5 2.7-1.5-7.6"/></svg>';
-    /* Books (books.html, the coffee table book editor; the owner, 26 Nov 2026): admins only while it is being built
-       (docs/bookstudio/PLAN.md, Phase 1); the server refuses anybody else as well */
+    /* Books (books.html, the coffee table book editor; the owner, 26 Nov 2026): shown to whoever has a Books role —
+       Designer or Content editor, set in Settings › Access; admins are always Designers (docs/bookstudio/PLAN.md,
+       Phase 2). Everybody else has no Books role and no link; the server refuses them as well */
     var book = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>';
     var links = '<a href="Event_Listing.html" class="active" aria-current="page">' + IC.calendarSm + ' Events</a>' +
       '<a href="people.html?kind=speakers">' + mic + ' Speakers</a>' +
@@ -1640,7 +1641,8 @@
   renderMainNavLinks();
   if (window.RevampAuth && typeof window.RevampAuth.access === 'function') {
     window.RevampAuth.access().then(function(a){
-      if (a && a.you && a.you.role === 'admin' && !booksOpen){ booksOpen = true; renderMainNavLinks(); }
+      var y = a && a.you;
+      if (y && (y.books === 'designer' || y.books === 'content' || y.role === 'admin') && !booksOpen){ booksOpen = true; renderMainNavLinks(); }
     }, function(){ /* no Books link: the page still works */ });
   }
 

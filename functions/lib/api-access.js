@@ -1,18 +1,20 @@
 /* Settings › Access — who may use ETB2B EventSphere, as what, and in which portals (lib/access-control.js has the
    rule itself and the list's shape). lib/api.js routes these here.
 
-     GET  /api/access/me       anyone let in -> { you: { email, role, label, portals, sections, member }, canManage, roles,
-                               portals: [{ slug, name }], sections: [{ id, label, group }], presets, domain }
-     GET  /api/access          the same; for an admin also { members: [{ email, role, label, portals, name, company,
+     GET  /api/access/me       anyone let in -> { you: { email, role, label, portals, sections, books, member }, canManage,
+                               roles, portals: [{ slug, name }], sections: [{ id, label, group }], presets,
+                               booksRoles: [{ id, label }], domain }
+     GET  /api/access          the same; for an admin also { members: [{ email, role, label, portals, books, name, company,
                                addedBy, addedAt, updatedBy, updatedAt }], defaultRole, log: [{ at, by, action, email,
                                before, after }] }
-     POST /api/access/member   { email, role, portals, sections, name }   add someone, or change their role, portals or
-                               sections (sections left out: kept as they were)                               (admin)
+     POST /api/access/member   { email, role, portals, sections, books, name }   add someone, or change their role,
+                               portals, sections or Books role (books: 'designer' | 'content' | '' for none; sections
+                               or books left out: kept as they were)                                          (admin)
      POST /api/access/remove   { email }                        take someone off the list                     (admin)
      POST /api/access/default  { role: 'editor' | 'viewer' }    what a company account not on the list is     (admin)
    Each change answers what GET /api/access answers. A refusal is 400/403 { error, code } in words for the page:
    'not-admin', 'last-admin' (someone has to stay an admin), 'self' (an admin cannot demote or remove themselves),
-   'bad-email', 'bad-role', 'no-portals', 'no-sections', 'too-many'. lib/http.js requireAdmin has already let only an admin through
+   'bad-email', 'bad-role', 'no-portals', 'no-sections', 'bad-books', 'too-many'. lib/http.js requireAdmin has already let only an admin through
    to the three changes; access-control.js checks it again inside the change's own transaction. */
 'use strict';
 
@@ -68,7 +70,7 @@ function changeRoute(run) {
 }
 
 var handleMember = changeRoute(function (fb, actor, body) {
-  return AC.setMember(fb, actor, { email: body.email, role: body.role, portals: body.portals, sections: body.sections, name: body.name });
+  return AC.setMember(fb, actor, { email: body.email, role: body.role, portals: body.portals, sections: body.sections, books: body.books, name: body.name });
 });
 var handleRemove = changeRoute(function (fb, actor, body) { return AC.removeMember(fb, actor, body.email); });
 var handleDefault = changeRoute(function (fb, actor, body) { return AC.setDefaultRole(fb, actor, body.role); });

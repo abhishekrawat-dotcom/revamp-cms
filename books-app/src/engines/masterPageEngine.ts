@@ -102,3 +102,31 @@ export function createMasterFromPage(page: BookPage, name: string, description: 
     isBuiltIn: false,
   };
 }
+
+/* What a new page shares with one of the book's own layouts (the owner, 26 Nov 2026: a new page is made from the book's
+   layouts, so a Content editor may add one too; lib/book-rules.js checks a new page's settings whole): */
+
+/** the page settings of a page made from a master page: linked to it, with its background */
+export function pageLookFromMaster(master: MasterPage): Pick<BookPage, 'masterPageId' | 'backgroundColor'> {
+  return { masterPageId: master.id, backgroundColor: master.backgroundColor };
+}
+
+/** the page settings of a copy of an existing page: everything but its id, place, label, chapter, type and frames */
+export function pageLookFromPage(page: BookPage): Omit<BookPage, 'id' | 'orderIndex' | 'label' | 'chapterId' | 'role' | 'elements'> {
+  const { id, orderIndex, label, chapterId, role, elements, ...look } = page;
+  void id; void orderIndex; void label; void chapterId; void role; void elements;
+  return structuredClone(look);
+}
+
+/** a new page's settings when nothing says which layout: the first master page's, else the current page's (or, in a
+    book with neither, the first page's, else a plain paper page) */
+export function newPageLook(
+  project: BookProject,
+  current?: BookPage | null
+): Pick<BookPage, 'backgroundColor'> & Partial<Pick<BookPage, 'masterPageId' | 'detachedFromMaster' | 'dimensionsOverride'>> {
+  const master = project.masterPages[0];
+  if (master) return pageLookFromMaster(master);
+  const src = current || project.pages[0];
+  if (src) return pageLookFromPage(src);
+  return { backgroundColor: project.designSystem.colors.paper };
+}

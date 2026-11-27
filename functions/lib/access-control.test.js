@@ -10,7 +10,8 @@
         the ET portal list), a blocked company account and an uninvited Google account are refused, an invited one
         is let in; the approvers are the Approvers and Admins;
      4. GET/POST /api/access;
-     5. the pages: sign-in asks the server, no company-only hint, the denied messages, Settings › Access.
+     5. the pages: sign-in asks the server, no company-only hint, the denied messages, Settings › Access;
+     7. Books roles on the server (Designer, Content editor, none): stored, read, changed, logged, shown, and let in.
    No network, no real project. Exits 1 on any failure. */
 'use strict';
 
@@ -471,6 +472,110 @@ function g(email, extra) { return Object.assign({ email: email, email_verified: 
     /if \(next === 'ai' && !aiAllowed\(\)\) return;/.test(EAM6) && /accessControl\.sectionOk\(user\.access, 'ai'\)/.test(API6) && /group\('ai', 'Assistant'\)/.test(SA6));
   check('6 Settings › Access: sections they can open, All sections, the presets', /Sections they can open/.test(SA6) && /All sections/.test(SA6) && /data-preset/.test(SA6) &&
     /In each event/.test(SA6) && /Main pages/.test(SA6));
+
+  /* ================= B. Books roles on the page (the owner, 26 Nov 2026; docs/bookstudio/PLAN.md, Phase 2) ================= */
+  check('B settings-access.js: a Books role — No access, Designer, Content editor; an admin always a Designer; the one line of help',
+    /id: '', label: 'No access'/.test(SA6) && /id: 'designer', label: 'Designer'/.test(SA6) && /id: 'content', label: 'Content editor'/.test(SA6) &&
+    /Designer \(admins always are\)/.test(SA6) && /Designers set up books and their design; Content editors change pages, text, photos and infographics, not the design\./.test(SA6));
+  /* the screen itself, run with a stand-in page: what each row says and what Save sends */
+  var saB = (function () {
+    var html = '', sent = [], pick = { role: null, books: null }, els = {};
+    var stub = function (id) { return els[id] || (els[id] = { hidden: false, checked: true, value: '', focus: function () {}, scrollIntoView: function () {}, setAttribute: function () {} }); };
+    var body = { querySelectorAll: function () { return []; },
+      querySelector: function (s) { return s === 'input[name="ac-role"]:checked' ? pick.role : s === 'input[name="ac-books"]:checked' ? pick.books : null; } };
+    Object.defineProperty(body, 'innerHTML', { get: function () { return html; }, set: function (v) { html = v; } });
+    var d = { you: { email: 'boss@timesinternet.in', role: 'admin', portals: ['*'], sections: ['*'], books: 'designer' }, canManage: true, domain: 'timesinternet.in', defaultRole: 'editor',
+      roles: ['admin', 'approver', 'editor', 'viewer', 'blocked'].map(function (x) { return { id: x, label: x }; }), portals: [], sections: [], presets: [], admins: [], log: [
+        { action: 'changed', email: 'd@timesinternet.in', before: { role: 'editor', portals: ['*'], sections: ['*'], books: '' }, after: { role: 'editor', portals: ['*'], sections: ['*'], books: 'designer' } }],
+      members: [{ email: 'boss@timesinternet.in', role: 'admin', portals: ['*'], books: 'designer' }, { email: 'd@timesinternet.in', role: 'editor', portals: ['*'], books: 'designer' },
+        { email: 'c@timesinternet.in', role: 'viewer', portals: ['*'], books: 'content' }, { email: 'n@timesinternet.in', role: 'editor', portals: ['*'] },
+        { email: 'b@gmail.com', role: 'blocked', portals: ['*'], books: 'content' }] };
+    var now = function (v) { return { then: function (ok) { ok(JSON.parse(JSON.stringify(v))); } }; };
+    var Cb = { fmtDate: function () { return ''; }, errText: String, fetchAccess: function () { return now(d); }, saveAccessMember: function (m) { sent.push(m); return now(d); } };
+    try { require('vm').runInNewContext(SA6, { window: { RevampCore: Cb }, document: { getElementById: function (id) { return id === 'ac-body' ? body : stub(id); } }, JSON: JSON }); } catch (e) { return { err: e }; }
+    var row = function (email) { var i = html.indexOf('data-edit="' + email + '"'); i = i === -1 ? html.indexOf(email) : i; var s = html.lastIndexOf('<li class="ac-row', i); return html.slice(s, html.indexOf('</li>', s)); };
+    var rows = { admin: row('boss@timesinternet.in'), designer: row('d@timesinternet.in'), content: row('c@timesinternet.in'), none: row('n@timesinternet.in'), blocked: row('b@gmail.com') };
+    var formHtml = html;
+    stub('ac-email').value = 'new@timesinternet.in';
+    [['editor', 'content'], ['viewer', ''], ['admin', ''], ['blocked', 'designer']].forEach(function (p) { pick.role = { value: p[0] }; pick.books = { value: p[1] }; els['ac-save'].onclick(); });
+    return { rows: rows, form: formHtml, sent: sent };
+  })();
+  check('B the rows: an admin "Designer (admins always are)", each person their Books role, No access by default, nothing for a blocked person',
+    saB.rows && /Books: Designer \(admins always are\)/.test(saB.rows.admin) && /Books: Designer</.test(saB.rows.designer) && /Books: Content editor/.test(saB.rows.content) &&
+    /Books: No access/.test(saB.rows.none) && !/Books:/.test(saB.rows.blocked) && /Books: No access → Designer/.test(saB.form), saB.err || saB.rows);
+  check('B the form: the three choices with the help line; Save sends books — the choice, an admin designer, a blocked person none',
+    saB.form && /name="ac-books" value="" checked/.test(saB.form) && /name="ac-books" value="content"/.test(saB.form) && /id="ac-books-help"/.test(saB.form) &&
+    JSON.stringify(saB.sent.map(function (m) { return m.books; })) === '["content","","designer",""]', saB.err || saB.sent);
+  var LIST_B = read('Event_Listing.html');
+  check('B the dashboard menu shows Books by Books role (Designer or Content editor; an admin is one)', /y\.books === 'designer' \|\| y\.books === 'content' \|\| y\.role === 'admin'/.test(LIST_B) &&
+    !/a\.you\.role === 'admin' && !booksOpen/.test(LIST_B));
+
+  /* ================= 7. Books roles on the server (the owner, 26 Nov 2026; docs/bookstudio/PLAN.md, Phase 2) ================= */
+  check('7 BOOKS_ROLES: Designer and Content editor', JSON.stringify(AC.BOOKS_ROLES) === '[{"id":"designer","label":"Designer"},{"id":"content","label":"Content editor"}]');
+  var cfg7 = AC._test.normalise({ members: {
+    'd@timesinternet.in': { role: 'editor', books: 'designer' }, 'c@timesinternet.in': { role: 'viewer', books: 'content' },
+    'x@timesinternet.in': { role: 'editor', books: 'owner' }, 'n@timesinternet.in': { role: 'editor' },
+    'boss7@timesinternet.in': { role: 'admin', books: 'content' }, 'off@timesinternet.in': { role: 'blocked', books: 'designer' } } });
+  check('7 stored Books roles are read safely: unknown ones and missing are none, an admin always a Designer, a blocked person none',
+    cfg7.members['d@timesinternet.in'].books === 'designer' && cfg7.members['c@timesinternet.in'].books === 'content' && cfg7.members['x@timesinternet.in'].books === '' &&
+    cfg7.members['n@timesinternet.in'].books === '' && cfg7.members['boss7@timesinternet.in'].books === 'designer' && cfg7.members['off@timesinternet.in'].books === '', cfg7.members);
+  check('7 accessOf carries books: the member\'s own, an admin a Designer, a company account not on the list none (nobody has Books by default)',
+    AC.accessOf(cfg7, g('d@timesinternet.in')).books === 'designer' && AC.accessOf(cfg7, g('c@timesinternet.in')).books === 'content' &&
+    AC.accessOf(cfg7, g('boss7@timesinternet.in')).books === 'designer' && AC.accessOf(cfg7, g('n@timesinternet.in')).books === '' &&
+    AC.accessOf(cfg7, g('walkin@timesinternet.in')).books === '' && AC.accessOf(cfg7, g('off@timesinternet.in')).denied === 'blocked');
+  check('7 /api/books/ needs only Viewer here (Books checks its own role); everything else as before',
+    AC.needFor('PUT', '/api/books/book') === 'viewer' && AC.needFor('POST', '/api/books/presence') === 'viewer' && AC.needFor('DELETE', '/api/books/book?id=x') === 'viewer' &&
+    AC.needFor('POST', '/api/booksx') === 'editor' && AC.needFor('PATCH', '/api/event') === 'editor');
+  var pv7 = AC.publicView(cfg7, AC.accessOf(cfg7, g('c@timesinternet.in')));
+  check('7 publicView: you.books, and the roles to choose from', pv7.you.books === 'content' && JSON.stringify(pv7.booksRoles) === JSON.stringify(AC.BOOKS_ROLES) && !pv7.members, pv7.you);
+  var pv7a = AC.publicView(cfg7, AC.accessOf(cfg7, g('boss7@timesinternet.in')));
+  check('7 …an admin\'s listing shows each person\'s Books role', pv7a.you.books === 'designer' && pv7a.members.filter(function (m) { return m.email === 'c@timesinternet.in'; })[0].books === 'content' &&
+    pv7a.members.filter(function (m) { return m.email === 'n@timesinternet.in'; })[0].books === '', pv7a.members);
+  setList({ 'sachitanand.rai@timesinternet.in': M('admin'), 'bk@timesinternet.in': { role: 'editor', portals: ['*'] } });
+  var logCount = function () { return Object.keys(FB.docs).filter(function (k) { return k.indexOf('config/access/log/') === 0; }).length; };
+  var lastLog = function () { return Object.keys(FB.docs).filter(function (k) { return k.indexOf('config/access/log/') === 0; }).sort().map(function (k) { return FB.docs[k]; }).pop(); };
+  var n0 = logCount();
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'editor', portals: ['*'], books: 'content' });
+  check('7 setMember: changing only the Books role is saved and logged, before and after', FB.docs['config/access'].members['bk@timesinternet.in'].books === 'content' && logCount() === n0 + 1 &&
+    lastLog().before.books === '' && lastLog().after.books === 'content', lastLog());
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'viewer', portals: ['*'] });
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'viewer', portals: ['*'], books: null });
+  check('7 …left out (or null) keeps what the person had', FB.docs['config/access'].members['bk@timesinternet.in'].books === 'content' && FB.docs['config/access'].members['bk@timesinternet.in'].role === 'viewer');
+  var n1 = logCount();
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'viewer', portals: ['*'], books: 'content' });
+  check('7 …the same again changes and logs nothing', logCount() === n1);
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'viewer', portals: ['*'], books: '' });
+  check('7 …\'\' takes Books away', FB.docs['config/access'].members['bk@timesinternet.in'].books === '' && lastLog().before.books === 'content' && lastLog().after.books === '', lastLog());
+  var bad7 = [];
+  for (var bv of ['owner', 'Designer', 1, true, ['designer'], { id: 'designer' }]) {
+    try { await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'viewer', portals: ['*'], books: bv }); bad7.push('accepted'); } catch (e) { bad7.push(e.status + ' ' + e.code); }
+  }
+  check('7 …any other value: 400 bad-books with a sentence, nothing changed', bad7.every(function (x) { return x === '400 bad-books'; }) && FB.docs['config/access'].members['bk@timesinternet.in'].books === '', bad7);
+  err = null;
+  try { await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk@timesinternet.in', role: 'viewer', portals: ['*'], books: 'owner' }); } catch (e) { err = e; }
+  check('7 …the sentence says what to choose', err && err.message === 'Choose a Books role: Designer, Content editor, or none.', err && err.message);
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk2@timesinternet.in', role: 'admin', portals: ['*'], books: 'content' });
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk3@timesinternet.in', role: 'blocked', books: 'designer' });
+  check('7 an admin is stored as a Designer whatever is sent; a blocked person with none', FB.docs['config/access'].members['bk2@timesinternet.in'].books === 'designer' &&
+    FB.docs['config/access'].members['bk3@timesinternet.in'].books === '', [FB.docs['config/access'].members['bk2@timesinternet.in'], FB.docs['config/access'].members['bk3@timesinternet.in']]);
+  await AC.setMember(FB, 'sachitanand.rai@timesinternet.in', { email: 'bk2@timesinternet.in', role: 'editor', portals: ['*'] });
+  check('7 …and an admin made an Editor, Books left out, stays the Designer they were', FB.docs['config/access'].members['bk2@timesinternet.in'].books === 'designer');
+  await AC.removeMember(FB, 'sachitanand.rai@timesinternet.in', 'bk2@timesinternet.in');
+  check('7 taking someone off the list logs the Books role they had, and none after', lastLog().action === 'removed' && lastLog().before.books === 'designer' && lastLog().after.books === '', lastLog());
+  r = await call('POST', '/api/access/member', 'sachitanand.rai', { email: 'bk4@timesinternet.in', role: 'viewer', portals: ['*'], books: 'designer' });
+  check('7 through the route (api-access.js passes books): saved, in the answer and the log', r.status === 200 && FB.docs['config/access'].members['bk4@timesinternet.in'].books === 'designer' &&
+    r.body.members.some(function (m) { return m.email === 'bk4@timesinternet.in' && m.books === 'designer'; }) &&
+    r.body.log.some(function (l) { return l.email === 'bk4@timesinternet.in' && l.after && l.after.books === 'designer'; }), r.body && r.body.error);
+  r = await call('POST', '/api/access/member', 'sachitanand.rai', { email: 'bk4@timesinternet.in', role: 'viewer', portals: ['*'], books: 'boss' });
+  check('7 …a value that is not a Books role: 400 bad-books', r.status === 400 && r.body.code === 'bad-books' && FB.docs['config/access'].members['bk4@timesinternet.in'].books === 'designer', r.body);
+  r = await call('GET', '/api/access/me', 'bk4');
+  var r7 = await call('GET', '/api/access/me', 'walkin');
+  check('7 GET /api/access/me: you.books (the menu reads it); a company account not on the list has none', r.status === 200 && r.body.you.books === 'designer' &&
+    r7.status === 200 && r7.body.you.books === '' && JSON.stringify(r.body.booksRoles) === JSON.stringify(AC.BOOKS_ROLES), [r.body && r.body.you, r7.body && r7.body.you]);
+  r = await call('GET', '/api/books/me', 'bk4');
+  check('7 …and Books lets that Viewer in as a Designer', r.status === 200 && r.body.role === 'designer' && r.body.canDesign === true, r.body);
+  r = await call('GET', '/api/books/me', 'walkin');
+  check('7 …but not a company account not on the list', r.status === 403 && r.body.code === 'no-books', r.body);
 
   process.stdout.write('access-control: ' + passed + ' passed, ' + failed + ' failed\n');
   process.exit(failed ? 1 : 0);

@@ -7,6 +7,9 @@
    sees every change, with who made it. Everybody else sees their own access and who to ask.
    Sections (the owner, 17 Nov 2026): an admin can also give someone only some parts of the app — the event's own
    sections and the main pages' functions — all of them by default, or the Developer preset.
+   Books (the owner, 26 Nov 2026; docs/bookstudio/PLAN.md, Phase 2): each person's role in the coffee table book
+   editor (books.html) — Designer, Content editor, or No access (everyone's default). An admin is always a Designer;
+   a blocked person has none. Saving sends `books` ('designer' | 'content' | '').
    The server decides all of it (functions/lib/access-control.js, api-access.js); this page only shows and asks.
    Data: GET /api/access, POST /api/access/member|remove|default (RevampCore.fetchAccess …). ES5. */
 (function () {
@@ -24,6 +27,10 @@
     blocked: 'Cannot sign in at all — a company account included.'
   };
   var ORDER = ['admin', 'approver', 'editor', 'viewer', 'blocked'];
+  /* the Books role: '' (No access, the default), 'designer' or 'content' — the server's two labels, kept here */
+  var BOOKS = [{ id: '', label: 'No access' }, { id: 'designer', label: 'Designer' }, { id: 'content', label: 'Content editor' }];
+  var BOOKS_HELP = 'Designers set up books and their design; Content editors change pages, text, photos and infographics, not the design.';
+  var BOOKS_ADMIN = 'Designer (admins always are)';
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function when(iso) { return iso ? C.fmtDate(iso, { time: true }) : ''; }
@@ -48,18 +55,36 @@
     if (x.role === 'blocked') return 'No access';
     return label(x.role) + ' on ' + (x.role === 'admin' ? 'every portal' : where(x.portals));
   }
+  /* someone's Books role as the server holds it: anything else (missing included) is No access */
+  function booksOf(x) { var b = x && x.books; return b === 'designer' || b === 'content' ? b : ''; }
+  function booksLabel(id) { var b = BOOKS.filter(function (x) { return x.id === id; })[0]; return b ? b.label : 'No access'; }
+  /* in words, for a row or a note: an admin always a Designer, a blocked person nothing to say */
+  function booksWords(x) {
+    if (!x || x.role === 'blocked') return '';
+    return x.role === 'admin' ? BOOKS_ADMIN : booksLabel(booksOf(x));
+  }
   function el(id) { return document.getElementById(id); }
   function busy(on) { Array.prototype.forEach.call(body.querySelectorAll('button, input, select'), function (b) { b.disabled = on; }); }
 
+  /* the Books role someone really has: an admin a Designer, a blocked person none */
+  function booksIn(x) { return !x || x.role === 'blocked' ? '' : x.role === 'admin' ? 'designer' : booksOf(x); }
+  /* what an added or changed entry records beside the role: the sections, and the Books role when the entry has it
+     (entries from before Books roles do not) */
+  function logExtras(before, after) {
+    if (!after) return '';
+    var parts = [];
+    if (before ? JSON.stringify(before.sections || ['*']) !== JSON.stringify(after.sections || ['*']) : !allSections(after.sections)) parts.push('sections: ' + sectionWords(after.sections));
+    if (after.books !== undefined || (before && before.books !== undefined)) {
+      var b0 = booksIn(before), b1 = booksIn(after);
+      /* an admin or a blocked person: the role already says it */
+      if (after.role !== 'admin' && after.role !== 'blocked' && b0 !== b1) parts.push('Books: ' + (before ? booksLabel(b0) + ' → ' : '') + booksLabel(b1));
+    }
+    return parts.length ? ' (' + parts.join('; ') + ')' : '';
+  }
   /* one recorded change, in words */
   function logWords(h) {
-    if (h.action === 'added') return 'Gave ' + h.email + ' access: ' + roleWhere(h.after);
-    if (h.action === 'changed') {
-      var secBefore = h.before && h.before.sections, secAfter = h.after && h.after.sections;
-      var secs = JSON.stringify(secBefore || ['*']) !== JSON.stringify(secAfter || ['*']) ? ' (sections: ' + sectionWords(secAfter) + ')' : '';
-      return h.email + ': ' + roleWhere(h.before) + ' → ' + roleWhere(h.after) + secs;
-    }
-    if (h.action === 'added' && h.after && !allSections(h.after.sections)) return 'Gave ' + h.email + ' access: ' + roleWhere(h.after) + ' (sections: ' + sectionWords(h.after.sections) + ')';
+    if (h.action === 'added') return 'Gave ' + h.email + ' access: ' + roleWhere(h.after) + logExtras(null, h.after);
+    if (h.action === 'changed') return h.email + ': ' + roleWhere(h.before) + ' → ' + roleWhere(h.after) + logExtras(h.before, h.after);
     if (h.action === 'removed') return 'Took ' + h.email + ' off the list (was ' + roleWhere(h.before) + ')' + (h.after ? ' — now ' + roleWhere(h.after) + ', the company default' : ' — can no longer sign in');
     if (h.action === 'default') return 'Company accounts not on the list: ' + label(h.before && h.before.role) + ' → ' + label(h.after && h.after.role);
     return 'Changed the access list';
@@ -71,7 +96,8 @@
     var ask = (data.admins || []).filter(function (a) { return a !== you.email; });
     return '<div class="panel" style="margin-top:14px"><div class="panel-head"><h3>Your access</h3></div><div class="panel-body">' +
       '<p class="ac-you"><b>' + esc(roleWhere(you)) + '</b><br><span>' + esc(ROLE_TEXT[you.role] || '') + '</span>' +
-        (allSections(you.sections) ? '' : '<br><span>Sections you can open: ' + esc(sectionWords(you.sections)) + '</span>') + '</p>' +
+        (allSections(you.sections) ? '' : '<br><span>Sections you can open: ' + esc(sectionWords(you.sections)) + '</span>') +
+        (booksWords(you) ? '<br><span>Books: ' + esc(booksWords(you)) + '</span>' : '') + '</p>' +
       (data.canManage ? '' : '<p class="pa-msg">Only an admin can change who has access' + (ask.length ? ': ask ' + esc(ask.join(', ')) + '.' : '.') + '</p>') +
       '</div></div>';
   }
@@ -100,11 +126,12 @@
       '<div class="ac-who"><div class="ac-name">' + esc(m.name || m.email) + '</div>' + (m.name ? '<div class="ac-mail">' + esc(m.email) + '</div>' : '') +
       '<div class="ac-role"><span class="ac-chip ac-' + esc(m.role) + '">' + esc(label(m.role)) + '</span>' + (m.role === 'admin' || m.role === 'blocked' ? '' : ' <span>' + esc(where(m.portals)) + '</span>') + '</div>' +
       (m.role === 'admin' || m.role === 'blocked' || allSections(m.sections) ? '' : '<div class="meta">Sections: ' + esc(sectionWords(m.sections)) + '</div>') +
+      (booksWords(m) ? '<div class="meta">Books: ' + esc(booksWords(m)) + '</div>' : '') +
       '<div class="meta">' + esc(meta.join(' · ')) + '</div></div>' +
       '<div class="ac-acts">' + acts + '</div>' + ask + '</li>';
   }
   function form() {
-    var m = editing || { email: '', name: '', role: 'editor', portals: ['*'], sections: ['*'] };
+    var m = editing || { email: '', name: '', role: 'editor', portals: ['*'], sections: ['*'], books: '' };
     var isNew = !editing;
     var roles = ORDER.map(function (r) {
       return '<label class="pa-check"><input type="radio" name="ac-role" value="' + r + '"' + (m.role === r ? ' checked' : '') + '>' +
@@ -125,7 +152,7 @@
         /* the roster (some sixty portals) only once All portals is unticked */
         '<div class="ac-grid" id="ac-grid"' + (all ? ' hidden' : '') + '>' + boxes + '</div></fieldset>' +
       '<p class="pa-msg" id="ac-portals-note"' + (m.role === 'admin' ? '' : ' hidden') + '>An admin works on every portal and opens every section.</p>' +
-      sectionsBox(m) +
+      sectionsBox(m) + booksBox(m) +
       '<div id="ac-form-msg"></div>' +
       '<div class="pa-acts"><button class="btn btn-primary" type="button" id="ac-save">' + (isNew ? 'Give access' : 'Save changes') + '</button>' +
         (isNew ? '' : '<button class="btn btn-secondary" type="button" id="ac-cancel">Cancel</button>') + '</div>' +
@@ -149,6 +176,18 @@
         (presets ? '<p class="hint" style="margin:6px 0">Ready-made: ' + presets + '</p>' : '') +
         group('event', 'In each event') + group('main', 'Main pages') + group('ai', 'Assistant') +
         '<p class="hint">The sections not ticked are hidden from them, and the server refuses them too.</p></div></fieldset>';
+  }
+  /* their role in Books (books.html): No access (the default), Designer or Content editor; an admin is always a
+     Designer, and a blocked person has none, so it is not asked */
+  function booksBox(m) {
+    var b = booksOf(m);
+    var opts = BOOKS.map(function (x) {
+      return '<label class="ac-portal"><input type="radio" name="ac-books" value="' + esc(x.id) + '"' + (b === x.id ? ' checked' : '') + '><span>' + esc(x.label) + '</span></label>';
+    }).join('');
+    return '<fieldset class="ac-set" id="ac-books" aria-describedby="ac-books-help"' + (m.role === 'blocked' ? ' hidden' : '') + '><legend>Their role in Books, the coffee table book editor</legend>' +
+      '<p class="ac-books-admin" id="ac-books-admin"' + (m.role === 'admin' ? '' : ' hidden') + '>' + esc(BOOKS_ADMIN) + '</p>' +
+      '<div class="ac-books-opts" id="ac-books-pick"' + (m.role === 'admin' ? ' hidden' : '') + '>' + opts + '</div>' +
+      '<p class="hint" id="ac-books-help">' + esc(BOOKS_HELP) + '</p></fieldset>';
   }
   function logBox() {
     var log = data.log || [];
@@ -178,8 +217,10 @@
     var role = r ? r.value : '';
     var portals = el('ac-all') && el('ac-all').checked ? ['*'] : Array.prototype.map.call(body.querySelectorAll('input[name="ac-portal"]:checked'), function (b) { return b.value; });
     var sections = el('ac-sec-all') && el('ac-sec-all').checked ? ['*'] : Array.prototype.map.call(body.querySelectorAll('input[name="ac-section"]:checked'), function (b) { return b.value; });
+    var bk = body.querySelector('input[name="ac-books"]:checked');
     return { email: el('ac-email').value.trim().toLowerCase(), name: el('ac-name').value.trim(), role: role,
-      portals: role === 'admin' || role === 'blocked' ? ['*'] : portals, sections: role === 'admin' || role === 'blocked' ? ['*'] : sections };
+      portals: role === 'admin' || role === 'blocked' ? ['*'] : portals, sections: role === 'admin' || role === 'blocked' ? ['*'] : sections,
+      books: role === 'admin' ? 'designer' : role === 'blocked' ? '' : booksOf({ books: bk ? bk.value : '' }) };
   }
   function formMsg(text, isErr) { el('ac-form-msg').innerHTML = text ? '<p class="pa-msg' + (isErr ? ' err' : '') + '" role="' + (isErr ? 'alert' : 'status') + '">' + esc(text) + '</p>' : ''; }
 
@@ -190,6 +231,9 @@
         el('ac-portals').hidden = r.value === 'admin' || r.value === 'blocked';
         el('ac-portals-note').hidden = r.value !== 'admin';
         el('ac-sections').hidden = r.value === 'admin' || r.value === 'blocked';
+        el('ac-books').hidden = r.value === 'blocked';
+        el('ac-books-pick').hidden = r.value === 'admin';
+        el('ac-books-admin').hidden = r.value !== 'admin';
       };
     });
     el('ac-all').onchange = function () { el('ac-grid').hidden = el('ac-all').checked; };
@@ -215,7 +259,8 @@
         var isNew = !editing;
         editing = null;
         take(d, (isNew ? 'Gave ' + m.email + ' access: ' : m.email + ' is now ') + roleWhere(m) +
-          (m.role === 'admin' || m.role === 'blocked' || allSections(m.sections) ? '' : ', with ' + sectionWords(m.sections)) + '.');
+          (m.role === 'admin' || m.role === 'blocked' || allSections(m.sections) ? '' : ', with ' + sectionWords(m.sections)) + '.' +
+          (m.role === 'admin' || m.role === 'blocked' ? '' : ' Books: ' + booksWords(m) + '.'));
       }, function (err) { busy(false); formMsg(C.errText(err), true); });
     };
     if (el('ac-cancel')) el('ac-cancel').onclick = function () { editing = null; render(); };
@@ -230,7 +275,7 @@
       b.onclick = function () {
         var m = (data.members || []).filter(function (x) { return x.email === b.getAttribute('data-edit'); })[0];
         if (!m) return;
-        editing = { email: m.email, name: m.name, role: m.role, portals: m.portals.slice(), sections: (m.sections || ['*']).slice() };
+        editing = { email: m.email, name: m.name, role: m.role, portals: m.portals.slice(), sections: (m.sections || ['*']).slice(), books: booksOf(m) };
         confirming = '';
         render();
         el('ac-form-panel').scrollIntoView({ block: 'start', behavior: 'smooth' });

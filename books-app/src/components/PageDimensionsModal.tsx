@@ -230,7 +230,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
 
   const numBox = (label: string, mmVal: number, onMm: (mm: number) => void, step = 1) => (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] text-[#98958D]">
+      <span className="text-[11px] text-[#98958D]">
         {label} ({unit})
       </span>
       <input
@@ -402,7 +402,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Columns</span>
+                    <span className="text-[11px] text-[#98958D]">Columns</span>
                     <input
                       type="number"
                       min={1}
@@ -437,7 +437,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <div className="p-2.5 bg-[#1B1B20] rounded border border-white/[0.06] space-y-1.5">
-                    <div className="text-[10px] text-[#98958D]">1. Canvas View Only</div>
+                    <div className="text-[11px] text-[#98958D]">1. Canvas View Only</div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => onRotateCanvasView('ccw')}
@@ -458,17 +458,17 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                   </div>
 
                   <div className="p-2.5 bg-[#1B1B20] rounded border border-white/[0.06] space-y-1.5">
-                    <div className="text-[10px] text-[#98958D]">2. Rotate Page Content</div>
+                    <div className="text-[11px] text-[#98958D]">2. Rotate Page Content</div>
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleRotatePageContentNow('ccw')}
-                        className="flex-1 py-1 bg-[#26262D] hover:bg-[#32323B] text-[10px] rounded cursor-pointer"
+                        className="flex-1 py-1 bg-[#26262D] hover:bg-[#32323B] text-[11px] rounded cursor-pointer"
                       >
                         -90°
                       </button>
                       <button
                         onClick={() => handleRotatePageContentNow('cw')}
-                        className="flex-1 py-1 bg-[#26262D] hover:bg-[#32323B] text-[10px] rounded cursor-pointer"
+                        className="flex-1 py-1 bg-[#26262D] hover:bg-[#32323B] text-[11px] rounded cursor-pointer"
                       >
                         +90°
                       </button>
@@ -476,7 +476,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                   </div>
 
                   <div className="p-2.5 bg-[#1B1B20] rounded border border-white/[0.06] space-y-1.5">
-                    <div className="text-[10px] text-[#98958D]">3. Physical Orientation</div>
+                    <div className="text-[11px] text-[#98958D]">3. Physical Orientation</div>
                     <button
                       onClick={handleSwapPhysicalOrientation}
                       className="w-full py-1 bg-[#26262D] hover:bg-[#32323B] text-[11px] text-[#ECEAE4] rounded flex items-center justify-center gap-1 cursor-pointer"
@@ -512,7 +512,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                       }`}
                     >
                       <div className="text-[11px] font-medium">{title}</div>
-                      <div className="text-[9px] mt-0.5 leading-snug opacity-80">{desc}</div>
+                      <div className="text-[11px] mt-0.5 leading-snug opacity-80">{desc}</div>
                     </button>
                   ))}
                 </div>
@@ -528,7 +528,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                     >
                       <div className="absolute inset-2 border border-dashed border-[#56A8D8]/70" />
                     </div>
-                    <span className="font-mono-tabular text-[10px] text-[#98958D]">
+                    <span className="font-mono-tabular text-[11px] text-[#98958D]">
                       Before: {formatMeasurement(beforeDim.widthMm, unit, 0)} ×{' '}
                       {formatMeasurement(beforeDim.heightMm, unit, 0)}
                     </span>
@@ -544,7 +544,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                     >
                       <div className="absolute inset-2 border border-dashed border-[#C6A26B]/80" />
                     </div>
-                    <span className="font-mono-tabular text-[10px] text-[#ECEAE4]">
+                    <span className="font-mono-tabular text-[11px] text-[#ECEAE4]">
                       After: {formatMeasurement(draftDim.widthMm, unit, 0)} ×{' '}
                       {formatMeasurement(draftDim.heightMm, unit, 0)}
                     </span>
@@ -565,7 +565,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-2.5">
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Binding Type</span>
+                    <span className="text-[11px] text-[#98958D]">Binding Type</span>
                     <select
                       value={draftPrint.bindingType}
                       onChange={(e) =>
@@ -582,7 +582,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                   </label>
 
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Paper Stock Preset</span>
+                    <span className="text-[11px] text-[#98958D]">Paper Stock Preset</span>
                     <select
                       value={draftPrint.paperStockName}
                       onChange={(e) => {
@@ -606,7 +606,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
 
                 <div className="grid grid-cols-3 gap-2">
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Paper Caliper (mm/sheet)</span>
+                    <span className="text-[11px] text-[#98958D]">Paper Caliper (mm/sheet)</span>
                     <input
                       type="number"
                       step={0.005}
@@ -622,7 +622,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                     />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Cover Board (mm)</span>
+                    <span className="text-[11px] text-[#98958D]">Cover Board (mm)</span>
                     <input
                       type="number"
                       step={0.1}
@@ -638,7 +638,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                     />
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Glue Tolerance (mm)</span>
+                    <span className="text-[11px] text-[#98958D]">Glue Tolerance (mm)</span>
                     <input
                       type="number"
                       step={0.1}
@@ -655,7 +655,7 @@ export const PageDimensionsModal: React.FC<PageDimensionsModalProps> = ({
                   </label>
                 </div>
 
-                <div className="text-[10px] text-[#98958D] font-mono-tabular">
+                <div className="text-[11px] text-[#98958D] font-mono-tabular">
                   {project.pages.length} pages · Text block {spineInfo.textBlockMm} mm · Boards{' '}
                   {spineInfo.boardsMm} mm · Tolerance {draftPrint.printerToleranceMm} mm
                 </div>

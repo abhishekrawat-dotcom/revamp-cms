@@ -19,6 +19,8 @@ interface InDesignToolPaletteProps {
   selectedElement: BookElement | null;
   primaryAccent: string;
   inkColor: string;
+  /** false for a Content editor: the tools that draw new frames, and the fill/stroke swap, are off */
+  canDesign: boolean;
   onSelectTool: (tool: InDesignTool) => void;
   onTogglePreview: () => void;
   onSwapFillStroke?: () => void;
@@ -31,6 +33,8 @@ const TOOL_GROUPS: Array<
     shortcut: string;
     icon: React.FC<{ className?: string }>;
     isImageFrame?: boolean;
+    /** draws a new frame: the design's */
+    makesFrame?: boolean;
   }>
 > = [
   [
@@ -38,12 +42,12 @@ const TOOL_GROUPS: Array<
     { id: 'direct_select', label: 'Direct Selection Tool (Edit Content / Crop Photo)', shortcut: 'A', icon: Navigation },
   ],
   [
-    { id: 'type', label: 'Type Tool (Drag to Draw Text Frame)', shortcut: 'T', icon: Type },
-    { id: 'frame_image', label: 'Rectangle Image Frame Tool (Drag to Draw Photo Box)', shortcut: 'F', icon: Square, isImageFrame: true },
-    { id: 'rect', label: 'Rectangle Shape Tool', shortcut: 'M', icon: Square },
-    { id: 'ellipse', label: 'Ellipse Frame Tool', shortcut: 'O', icon: Circle },
-    { id: 'line', label: 'Line / Hairline Rule Tool', shortcut: '\\', icon: Minus },
-    { id: 'infographic', label: 'Live Infographic Frame Tool (Drag to Draw Chart)', shortcut: 'G', icon: BarChart3 },
+    { id: 'type', label: 'Type Tool (Drag to Draw Text Frame)', shortcut: 'T', icon: Type, makesFrame: true },
+    { id: 'frame_image', label: 'Rectangle Image Frame Tool (Drag to Draw Photo Box)', shortcut: 'F', icon: Square, isImageFrame: true, makesFrame: true },
+    { id: 'rect', label: 'Rectangle Shape Tool', shortcut: 'M', icon: Square, makesFrame: true },
+    { id: 'ellipse', label: 'Ellipse Frame Tool', shortcut: 'O', icon: Circle, makesFrame: true },
+    { id: 'line', label: 'Line / Hairline Rule Tool', shortcut: '\\', icon: Minus, makesFrame: true },
+    { id: 'infographic', label: 'Live Infographic Frame Tool (Drag to Draw Chart)', shortcut: 'G', icon: BarChart3, makesFrame: true },
   ],
   [
     { id: 'hand', label: 'Hand Tool (Pan Pasteboard)', shortcut: 'H', icon: Hand },
@@ -57,6 +61,7 @@ export const InDesignToolPalette: React.FC<InDesignToolPaletteProps> = ({
   selectedElement,
   primaryAccent,
   inkColor,
+  canDesign,
   onSelectTool,
   onTogglePreview,
   onSwapFillStroke,
@@ -85,15 +90,20 @@ export const InDesignToolPalette: React.FC<InDesignToolPaletteProps> = ({
             {group.map((tool) => {
               const Icon = tool.icon;
               const active = activeTool === tool.id;
+              const off = !canDesign && !!tool.makesFrame;
               return (
                 <button
                   key={tool.id}
-                  onClick={() => onSelectTool(tool.id)}
-                  title={`${tool.label} (${tool.shortcut})`}
-                  className={`relative w-8 h-8 rounded flex items-center justify-center transition-colors cursor-pointer ${
-                    active
-                      ? 'bg-[#C6A26B] text-[#121214] shadow-sm'
-                      : 'text-[#B5B2A8] hover:text-white hover:bg-white/[0.07]'
+                  onClick={() => !off && onSelectTool(tool.id)}
+                  disabled={off}
+                  aria-disabled={off}
+                  title={off ? `${tool.label}: only a Designer can add frames` : `${tool.label} (${tool.shortcut})`}
+                  className={`relative w-8 h-8 rounded flex items-center justify-center transition-colors ${
+                    off
+                      ? 'text-[#4F4D48] cursor-not-allowed'
+                      : active
+                        ? 'bg-[#C6A26B] text-[#121214] shadow-sm cursor-pointer'
+                        : 'text-[#B5B2A8] hover:text-white hover:bg-white/[0.07] cursor-pointer'
                   }`}
                 >
                   {tool.isImageFrame ? (
@@ -105,13 +115,7 @@ export const InDesignToolPalette: React.FC<InDesignToolPaletteProps> = ({
                   ) : (
                     <Icon className="w-4 h-4" />
                   )}
-                  <span
-                    className={`absolute bottom-0.5 right-0.5 font-mono-tabular text-[7px] leading-none ${
-                      active ? 'text-[#121214]/80 font-bold' : 'text-[#6F6C65]'
-                    }`}
-                  >
-                    {tool.shortcut}
-                  </span>
+                  {/* the shortcut letter is in the tooltip (a corner letter would be too small to read) */}
                 </button>
               );
             })}
@@ -122,9 +126,10 @@ export const InDesignToolPalette: React.FC<InDesignToolPaletteProps> = ({
       {/* Bottom InDesign Fill/Stroke Swatch Proxy + Screen Mode Toggle (W) */}
       <div className="flex flex-col items-center gap-2.5 w-full px-1 pt-2 border-t border-white/[0.08]">
         <button
-          onClick={onSwapFillStroke}
-          title="Fill & Stroke Swatches (Click to swap on selected shape)"
-          className="relative w-7 h-7 cursor-pointer group"
+          onClick={canDesign ? onSwapFillStroke : undefined}
+          disabled={!canDesign}
+          title={canDesign ? 'Fill & Stroke Swatches (Click to swap on selected shape)' : 'Fill and stroke colours are the design: a Designer changes them'}
+          className={`relative w-7 h-7 group ${canDesign ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
         >
           <span
             style={{ backgroundColor: strokeSwatch }}

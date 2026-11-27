@@ -17,6 +17,7 @@ import {
   Eye,
   Grid,
   LayoutGrid,
+  Lock,
   Maximize2,
   Redo2,
   Ruler,
@@ -49,6 +50,10 @@ export interface InDesignControlBarProps {
   totalWords: number;
   overflowCount: number;
   user: SignedInUser | null;
+  /** false for a Content editor: the design's menus and controls are not offered */
+  canDesign: boolean;
+  /** others with this book open (POST /api/books/presence), with the page each is on (0 = not known) */
+  othersHere: Array<{ email: string; name: string; pageNumber: number }>;
   onBackToDashboard: () => void;
   onRenameProject: (name: string) => void;
   onManualSave: () => void;
@@ -87,6 +92,10 @@ export interface InDesignControlBarProps {
 
 type MenuKey = 'file' | 'edit' | 'layout' | 'type' | 'object' | 'view' | 'window';
 
+/** what the "Content editor" tag says is locked */
+export const CONTENT_EDITOR_TIP =
+  'Content editor: you can change words, photos in their frames (choose, move, zoom), infographic data, labels and chart type, captions, the manuscript and pages, and export. Locked for you: the page size, master pages, colours, fonts and text styles, and where frames sit and how they look. A Designer changes those.';
+
 const TOOL_LABELS: Record<InDesignTool, string> = {
   select: 'Selection (V)',
   direct_select: 'Direct Select (A)',
@@ -117,6 +126,8 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
   totalWords,
   overflowCount,
   user,
+  canDesign,
+  othersHere,
   onBackToDashboard,
   onRenameProject,
   onManualSave,
@@ -158,20 +169,21 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
     setOpenMenu(null);
   };
 
-  const menus: Record<
+  /* items marked design: true change the book's design: a Content editor is not offered them */
+  const allMenus: Record<
     MenuKey,
-    { label: string; items: Array<{ label: string; shortcut?: string; divider?: boolean; disabled?: boolean; action?: () => void }> }
+    { label: string; items: Array<{ label: string; shortcut?: string; divider?: boolean; disabled?: boolean; design?: boolean; action?: () => void }> }
   > = {
     file: {
       label: 'File',
       items: [
         { label: 'Projects Dashboard', action: onBackToDashboard },
-        { label: 'New from Unlimited Books & Reports...', shortcut: 'Ctrl+N', action: () => onOpenModal('templates') },
-        { label: 'Insert Unlimited Vector Infographic...', action: () => onOpenModal('infographics') },
+        { label: 'New from Unlimited Books & Reports...', shortcut: 'Ctrl+N', design: true, action: () => onOpenModal('templates') },
+        { label: 'Insert Unlimited Vector Infographic...', design: true, action: () => onOpenModal('infographics') },
         { label: 'AI Auto-Flow My Data Into Layout...', action: () => onOpenModal('auto_flow') },
-        { label: 'Import Reference Design (PDF / IDML / Image)...', action: () => onOpenModal('upload_template') },
+        { label: 'Import Reference Design (PDF / IDML / Image)...', design: true, action: () => onOpenModal('upload_template') },
         { label: '', divider: true },
-        { label: 'Document Setup & Trim Size...', action: () => onOpenModal('dimensions') },
+        { label: 'Document Setup & Trim Size...', design: true, action: () => onOpenModal('dimensions') },
         { label: 'Save Publication', shortcut: 'Ctrl+S', action: onManualSave },
         { label: 'Version History & Snapshots...', action: () => onOpenModal('versions') },
         { label: '', divider: true },
@@ -184,9 +196,9 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
         { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !canUndo, action: onUndo },
         { label: 'Redo', shortcut: 'Ctrl+Shift+Z', disabled: !canRedo, action: onRedo },
         { label: '', divider: true },
-        { label: 'Duplicate Selected Frame', disabled: selectedCount === 0, action: onDuplicateSelected },
-        { label: 'Delete Selected Frame', shortcut: 'Del', disabled: selectedCount === 0, action: onDeleteSelected },
-        { label: '', divider: true },
+        { label: 'Duplicate Selected Frame', disabled: selectedCount === 0, design: true, action: onDuplicateSelected },
+        { label: 'Delete Selected Frame', shortcut: 'Del', disabled: selectedCount === 0, design: true, action: onDeleteSelected },
+        { label: '', divider: true, design: true },
         { label: 'Editorial Content & Word Count Manager...', action: () => onOpenModal('content') },
       ],
     },
@@ -195,15 +207,15 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
       items: [
         { label: 'Add Single Page', action: onAddPage },
         { label: 'Insert Facing Spread (2 Pages)', action: onInsertSpread },
-        { label: '', divider: true },
-        { label: 'Margins, Columns & Bleed Setup...', action: () => onOpenModal('dimensions') },
-        { label: 'Global Design System & Brand Styles...', action: () => onOpenModal('design_system') },
+        { label: '', divider: true, design: true },
+        { label: 'Margins, Columns & Bleed Setup...', design: true, action: () => onOpenModal('dimensions') },
+        { label: 'Global Design System & Brand Styles...', design: true, action: () => onOpenModal('design_system') },
       ],
     },
     type: {
       label: 'Type',
       items: [
-        { label: 'Google Fonts & Typography Studio...', action: () => onOpenModal('typography') },
+        { label: 'Google Fonts & Typography Studio...', design: true, action: () => onOpenModal('typography') },
         { label: 'Editorial Copy & Overflow Manager...', action: () => onOpenModal('content') },
         { label: 'AI Editorial Copy & Layout Assistant...', action: () => onOpenModal('ai_assistant') },
       ],
@@ -211,16 +223,16 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
     object: {
       label: 'Object',
       items: [
-        { label: 'Group Selected Frames', disabled: selectedCount < 2, action: onGroupSelected },
-        { label: 'Ungroup Selected', disabled: selectedCount === 0, action: onUngroupSelected },
-        { label: '', divider: true },
-        { label: 'Align Left Edges', disabled: selectedCount === 0, action: () => onAlignElements('left') },
-        { label: 'Align Horizontal Centers', disabled: selectedCount === 0, action: () => onAlignElements('center_h') },
-        { label: 'Align Right Edges', disabled: selectedCount === 0, action: () => onAlignElements('right') },
-        { label: 'Align Top Edges', disabled: selectedCount === 0, action: () => onAlignElements('top') },
-        { label: 'Align Vertical Centers', disabled: selectedCount === 0, action: () => onAlignElements('center_v') },
-        { label: 'Distribute Horizontal Spacing', disabled: selectedCount < 3, action: () => onAlignElements('distribute_h') },
-        { label: 'Distribute Vertical Spacing', disabled: selectedCount < 3, action: () => onAlignElements('distribute_v') },
+        { label: 'Group Selected Frames', disabled: selectedCount < 2, design: true, action: onGroupSelected },
+        { label: 'Ungroup Selected', disabled: selectedCount === 0, design: true, action: onUngroupSelected },
+        { label: '', divider: true, design: true },
+        { label: 'Align Left Edges', disabled: selectedCount === 0, design: true, action: () => onAlignElements('left') },
+        { label: 'Align Horizontal Centers', disabled: selectedCount === 0, design: true, action: () => onAlignElements('center_h') },
+        { label: 'Align Right Edges', disabled: selectedCount === 0, design: true, action: () => onAlignElements('right') },
+        { label: 'Align Top Edges', disabled: selectedCount === 0, design: true, action: () => onAlignElements('top') },
+        { label: 'Align Vertical Centers', disabled: selectedCount === 0, design: true, action: () => onAlignElements('center_v') },
+        { label: 'Distribute Horizontal Spacing', disabled: selectedCount < 3, design: true, action: () => onAlignElements('distribute_h') },
+        { label: 'Distribute Vertical Spacing', disabled: selectedCount < 3, design: true, action: () => onAlignElements('distribute_v') },
       ],
     },
     view: {
@@ -242,12 +254,19 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
       label: 'Window',
       items: [
         { label: 'Toggle Left Studio Rail (Pages / Layers / Assets)', action: onToggleLeftSidebar },
-        { label: 'Unlimited Books & Reports Library...', action: () => onOpenModal('templates') },
-        { label: 'Unlimited Infographics Studio...', action: () => onOpenModal('infographics') },
+        { label: 'Unlimited Books & Reports Library...', design: true, action: () => onOpenModal('templates') },
+        { label: 'Unlimited Infographics Studio...', design: true, action: () => onOpenModal('infographics') },
         { label: 'AI Editorial Assistant Drawer...', action: () => onOpenModal('ai_assistant') },
       ],
     },
   };
+
+  // a Content editor's menus: without the design's items (a menu left with none is not shown)
+  const menus = {} as typeof allMenus;
+  (Object.keys(allMenus) as MenuKey[]).forEach((key) => {
+    const items = allMenus[key].items.filter((it) => canDesign || !it.design);
+    if (items.some((it) => !it.divider)) menus[key] = { ...allMenus[key], items };
+  });
 
   return (
     <header className="shrink-0 bg-[#18181B] border-b border-white/[0.08] select-none z-30">
@@ -262,7 +281,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             title="Return to Publications Dashboard"
             className="h-6 px-1.5 flex items-center gap-1.5 rounded hover:bg-white/[0.06] cursor-pointer shrink-0"
           >
-            <span className="w-5 h-5 rounded-[3px] bg-[#2D1C24] border border-[#C6A26B]/60 text-[#E8CFA1] font-mono-tabular text-[10px] font-bold flex items-center justify-center">
+            <span className="w-5 h-5 rounded-[3px] bg-[#2D1C24] border border-[#C6A26B]/60 text-[#E8CFA1] font-mono-tabular text-[11px] font-bold flex items-center justify-center">
               Bs
             </span>
             <ArrowLeft className="w-3 h-3 text-[#8F8C84]" />
@@ -302,7 +321,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
                           >
                             <span className="truncate">{item.label}</span>
                             {item.shortcut && (
-                              <span className="font-mono-tabular text-[10px] opacity-65 shrink-0">
+                              <span className="font-mono-tabular text-[11px] opacity-65 shrink-0">
                                 {item.shortcut}
                               </span>
                             )}
@@ -329,7 +348,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
           <button
             onClick={onManualSave}
             title="Save Document (Ctrl+S)"
-            className="h-6 px-1.5 flex items-center gap-1 text-[10px] text-[#98958D] hover:text-[#ECEAE4] hover:bg-white/[0.05] rounded whitespace-nowrap shrink-0 cursor-pointer"
+            className="h-6 px-1.5 flex items-center gap-1 text-[11px] text-[#98958D] hover:text-[#ECEAE4] hover:bg-white/[0.05] rounded whitespace-nowrap shrink-0 cursor-pointer"
           >
             {saveState === 'saved' ? (
               <Check className="w-3 h-3 text-[#8AA678]" />
@@ -338,6 +357,42 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             )}
             <span>{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Unsaved'}</span>
           </button>
+
+          {!canDesign && (
+            <span
+              title={CONTENT_EDITOR_TIP}
+              tabIndex={0}
+              aria-label={CONTENT_EDITOR_TIP}
+              className="h-5 px-1.5 flex items-center gap-1 text-[11px] font-medium text-[#E6CFA5] bg-[#26231D] border border-[#C6A26B]/40 rounded whitespace-nowrap shrink-0 cursor-help"
+            >
+              <Lock className="w-2.5 h-2.5" />
+              <span>Content editor</span>
+            </span>
+          )}
+
+          {othersHere.length > 0 && (
+            <div className="hidden sm:flex items-center gap-1 min-w-0 ml-1" aria-label="Others with this book open">
+              <span className="text-[11px] text-[#8F8C84] whitespace-nowrap">Also here:</span>
+              {othersHere.slice(0, 3).map((o) => (
+                <span
+                  key={o.email}
+                  title={`${o.email}${o.pageNumber ? ` is on page ${o.pageNumber}` : ' has this book open'}`}
+                  className="h-5 px-1.5 flex items-center text-[11px] text-[#CFE3C2] bg-[#1F2A1C] border border-[#8AA678]/40 rounded whitespace-nowrap max-w-40 truncate"
+                >
+                  {o.name}
+                  {o.pageNumber ? ` (page ${o.pageNumber})` : ''}
+                </span>
+              ))}
+              {othersHere.length > 3 && (
+                <span
+                  title={othersHere.slice(3).map((o) => o.email).join(', ')}
+                  className="text-[11px] text-[#8F8C84] whitespace-nowrap"
+                >
+                  +{othersHere.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Right Utility Actions */}
@@ -351,26 +406,30 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             <span>Auto-Flow Data</span>
           </button>
 
-          <button
-            onClick={() => onOpenModal('templates')}
-            className="h-6 px-2 flex items-center gap-1 text-[11px] text-[#E6CFA5] bg-[#26231D] hover:bg-[#322D24] border border-[#C6A26B]/30 rounded transition-colors whitespace-nowrap cursor-pointer"
-          >
-            <LayoutGrid className="w-3 h-3 text-[#C6A26B]" />
-            <span>Books & Reports</span>
-          </button>
+          {canDesign && (
+            <>
+              <button
+                onClick={() => onOpenModal('templates')}
+                className="h-6 px-2 flex items-center gap-1 text-[11px] text-[#E6CFA5] bg-[#26231D] hover:bg-[#322D24] border border-[#C6A26B]/30 rounded transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <LayoutGrid className="w-3 h-3 text-[#C6A26B]" />
+                <span>Books & Reports</span>
+              </button>
 
-          <button
-            onClick={() => onOpenModal('infographics')}
-            className="h-6 px-2 flex items-center gap-1 text-[11px] text-[#D7D4CC] hover:text-white hover:bg-white/[0.06] rounded transition-colors whitespace-nowrap cursor-pointer"
-          >
-            <BarChart3 className="w-3 h-3 text-[#C6A26B]" />
-            <span className="hidden sm:inline">Infographics</span>
-          </button>
+              <button
+                onClick={() => onOpenModal('infographics')}
+                className="h-6 px-2 flex items-center gap-1 text-[11px] text-[#D7D4CC] hover:text-white hover:bg-white/[0.06] rounded transition-colors whitespace-nowrap cursor-pointer"
+              >
+                <BarChart3 className="w-3 h-3 text-[#C6A26B]" />
+                <span className="hidden sm:inline">Infographics</span>
+              </button>
+            </>
+          )}
 
           <button
             onClick={() => onOpenModal('content')}
             title="Editorial Content & Word Counts"
-            className="hidden xl:flex h-6 px-2 items-center gap-1 text-[10px] font-mono-tabular text-[#98958D] hover:text-white hover:bg-white/[0.06] rounded whitespace-nowrap cursor-pointer"
+            className="hidden xl:flex h-6 px-2 items-center gap-1 text-[11px] font-mono-tabular text-[#98958D] hover:text-white hover:bg-white/[0.06] rounded whitespace-nowrap cursor-pointer"
           >
             <span>{totalWords.toLocaleString()}w</span>
             {overflowCount > 0 && <span className="text-[#E07A5F] font-bold">· {overflowCount} ovf</span>}
@@ -387,7 +446,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
 
           <span
             title={user ? `Saved in EventSphere · ${user.email}` : 'Saved in EventSphere'}
-            className="h-6 px-1.5 flex items-center text-[10px] text-[#A19E95]"
+            className="h-6 px-1.5 flex items-center text-[11px] text-[#A19E95]"
           >
             <Cloud className="w-3 h-3 text-[#8AA678]" />
           </span>
@@ -427,13 +486,29 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
 
           <div className="h-4 w-px bg-white/[0.08]" />
 
-          <span className="text-[10px] font-mono-tabular text-[#C6A26B] whitespace-nowrap">
+          <span className="text-[11px] font-mono-tabular text-[#C6A26B] whitespace-nowrap">
             {TOOL_LABELS[activeTool]}
           </span>
 
           <div className="h-4 w-px bg-white/[0.08]" />
 
-          {selectedElement ? (
+          {selectedElement && !canDesign ? (
+            <div
+              className="flex items-center gap-2 text-[11px] font-mono-tabular text-[#8F8C84] whitespace-nowrap"
+              title="Where a frame sits and how it looks is the design: a Designer changes it"
+            >
+              <Lock className="w-3 h-3 text-[#7F7C75]" />
+              <span>
+                X {formatNumericValue(selectedElement.xMm, unit)} · Y {formatNumericValue(selectedElement.yMm, unit)} · W{' '}
+                {formatNumericValue(selectedElement.widthMm, unit)} · H {formatNumericValue(selectedElement.heightMm, unit)} {unit}
+              </span>
+              {selectedElement.textStyle && (
+                <span>
+                  · {selectedElement.textStyle.fontFamily} {selectedElement.textStyle.fontSizePt}pt
+                </span>
+              )}
+            </div>
+          ) : selectedElement ? (
             <div className="flex items-center gap-1.5">
               {(
                 [
@@ -444,7 +519,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
                 ] as const
               ).map(([lbl, mmVal, onSet]) => (
                 <label key={lbl} className="flex items-center gap-1">
-                  <span className="text-[10px] text-[#8F8C84] font-mono-tabular">{lbl}</span>
+                  <span className="text-[11px] text-[#8F8C84] font-mono-tabular">{lbl}</span>
                   <input
                     type="number"
                     step={0.5}
@@ -453,7 +528,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
                       const v = parseFloat(e.target.value);
                       if (!Number.isNaN(v)) onSet(Number(unitToMm(v, unit).toFixed(1)));
                     }}
-                    className="w-13 bg-[#121214] border border-white/[0.08] rounded px-1.5 py-0.5 font-mono-tabular text-[10px] text-[#ECEAE4] focus:outline-none focus:border-[#C6A26B]/60"
+                    className="w-13 bg-[#121214] border border-white/[0.08] rounded px-1.5 py-0.5 font-mono-tabular text-[11px] text-[#ECEAE4] focus:outline-none focus:border-[#C6A26B]/60"
                   />
                 </label>
               ))}
@@ -471,7 +546,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
                         textStyle: { ...selectedElement.textStyle!, fontFamily: fam },
                       });
                     }}
-                    className="h-6 max-w-32 bg-[#121214] border border-white/[0.08] rounded px-1.5 text-[10px] text-[#ECEAE4]"
+                    className="h-6 max-w-32 bg-[#121214] border border-white/[0.08] rounded px-1.5 text-[11px] text-[#ECEAE4]"
                   >
                     {Array.from(
                       new Set([
@@ -503,26 +578,37 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
                         },
                       })
                     }
-                    className="w-12 h-6 bg-[#121214] border border-white/[0.08] rounded px-1.5 font-mono-tabular text-[10px] text-[#ECEAE4]"
+                    className="w-12 h-6 bg-[#121214] border border-white/[0.08] rounded px-1.5 font-mono-tabular text-[11px] text-[#ECEAE4]"
                   />
-                  <span className="text-[10px] text-[#8F8C84]">pt</span>
+                  <span className="text-[11px] text-[#8F8C84]">pt</span>
                 </>
               )}
             </div>
           ) : (
             <div className="flex items-center gap-2 text-[11px] text-[#98958D]">
-              <button
-                onClick={() => onOpenModal('dimensions')}
-                className="flex items-center gap-1 hover:text-white cursor-pointer whitespace-nowrap"
-              >
-                <BookOpen className="w-3 h-3 text-[#C6A26B]" />
-                <span className="font-mono-tabular">
-                  {project.dimensions.widthMm}×{project.dimensions.heightMm}mm · {project.dimensions.columns} cols
+              {canDesign ? (
+                <button
+                  onClick={() => onOpenModal('dimensions')}
+                  className="flex items-center gap-1 hover:text-white cursor-pointer whitespace-nowrap"
+                >
+                  <BookOpen className="w-3 h-3 text-[#C6A26B]" />
+                  <span className="font-mono-tabular">
+                    {project.dimensions.widthMm}×{project.dimensions.heightMm}mm · {project.dimensions.columns} cols
+                  </span>
+                </button>
+              ) : (
+                <span className="flex items-center gap-1 whitespace-nowrap">
+                  <BookOpen className="w-3 h-3 text-[#C6A26B]" />
+                  <span className="font-mono-tabular">
+                    {project.dimensions.widthMm}×{project.dimensions.heightMm}mm · {project.dimensions.columns} cols
+                  </span>
                 </span>
-              </button>
+              )}
               <span className="text-white/20">·</span>
-              <span className="hidden lg:inline text-[10px] text-[#8F8C84]">
-                Drag on page with T, F, M, O, \ or G tool to draw frames directly
+              <span className="hidden lg:inline text-[11px] text-[#8F8C84]">
+                {canDesign
+                  ? 'Drag on page with T, F, M, O, \\ or G tool to draw frames directly'
+                  : 'Double-click a frame to change its words, or to move the photo inside it'}
               </span>
             </div>
           )}
@@ -530,7 +616,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
 
         {/* Right: Quick Align Bar + View / Zoom / Guides / Preview [W] */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {selectedCount > 0 && (
+          {selectedCount > 0 && canDesign && (
             <div className="hidden xl:flex items-center bg-[#121214] border border-white/[0.08] rounded p-0.5 gap-0.5">
               {(
                 [
@@ -560,7 +646,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
           <div className="flex items-center bg-[#121214] border border-white/[0.08] rounded p-0.5">
             <button
               onClick={() => onViewModeChange('spread')}
-              className={`px-1.5 py-0.5 text-[10px] rounded cursor-pointer ${
+              className={`px-1.5 py-0.5 text-[11px] rounded cursor-pointer ${
                 viewMode === 'spread' ? 'bg-[#282830] text-[#ECEAE4]' : 'text-[#8F8C84] hover:text-white'
               }`}
             >
@@ -568,7 +654,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             </button>
             <button
               onClick={() => onViewModeChange('single')}
-              className={`px-1.5 py-0.5 text-[10px] rounded cursor-pointer ${
+              className={`px-1.5 py-0.5 text-[11px] rounded cursor-pointer ${
                 viewMode === 'single' ? 'bg-[#282830] text-[#ECEAE4]' : 'text-[#8F8C84] hover:text-white'
               }`}
             >
@@ -584,7 +670,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             >
               <ZoomOut className="w-3 h-3" />
             </button>
-            <span className="font-mono-tabular text-[10px] text-[#D7D4CC] w-9 text-center">
+            <span className="font-mono-tabular text-[11px] text-[#D7D4CC] w-9 text-center">
               {Math.round(zoom * 100)}%
             </span>
             <button
@@ -606,7 +692,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
           <button
             onClick={onToggleGuides}
             title="Toggle Margin, Column & Bleed Guides"
-            className={`h-6 px-1.5 flex items-center gap-1 text-[10px] rounded border cursor-pointer ${
+            className={`h-6 px-1.5 flex items-center gap-1 text-[11px] rounded border cursor-pointer ${
               showGuides
                 ? 'bg-[#282830] border-white/[0.14] text-[#ECEAE4]'
                 : 'border-transparent text-[#8F8C84] hover:text-white'
@@ -631,7 +717,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
           <button
             onClick={onTogglePreview}
             title="Presentation Preview Mode (W)"
-            className={`h-6 px-2 flex items-center gap-1 text-[10px] rounded border cursor-pointer whitespace-nowrap ${
+            className={`h-6 px-2 flex items-center gap-1 text-[11px] rounded border cursor-pointer whitespace-nowrap ${
               previewMode
                 ? 'bg-[#C6A26B] text-[#121214] border-[#C6A26B] font-semibold'
                 : 'border-white/[0.1] text-[#D7D4CC] hover:bg-white/[0.06]'

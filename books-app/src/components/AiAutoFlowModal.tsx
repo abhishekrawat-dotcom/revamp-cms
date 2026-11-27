@@ -19,9 +19,12 @@ import {
 } from '../engines/autoFlowEngine';
 import { renderInfographicToSvgString } from '../engines/infographicEngine';
 import { requestAiAutoFlowPlan } from '../services/aiService';
+import { designChanges } from '../services/bookRules';
 
 interface AiAutoFlowModalProps {
   project: BookProject;
+  /** false for a Content editor: a flow that would add frames or change the layout is explained here, not applied */
+  canDesign: boolean;
   onApplyFlowedProject: (updatedProject: BookProject) => void;
   onClose: () => void;
 }
@@ -52,13 +55,14 @@ Over the next 48 months, Meridian will deploy $6.4 billion across offshore wind 
 
 export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
   project,
+  canDesign,
   onApplyFlowedProject,
   onClose,
 }) => {
   const [rawData, setRawData] = useState('');
   const [preserveExactText, setPreserveExactText] = useState(true);
   const [imageMode, setImageMode] = useState<'placeholders' | 'keep_photos'>('placeholders');
-  const [autoExtendPages, setAutoExtendPages] = useState(true);
+  const [autoExtendPages, setAutoExtendPages] = useState(canDesign);
   const [updateDocumentTitle, setUpdateDocumentTitle] = useState(true);
 
   const [loading, setLoading] = useState(false);
@@ -124,7 +128,18 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
     const updated = applyAutoFlowPlanToProject(project, plan, {
       imageMode,
       updateDocumentTitle,
+      keepFrameNames: !canDesign,
     });
+    if (!canDesign) {
+      const why = designChanges(project, updated);
+      if (why.length) {
+        setError(
+          `This flow would change the design (${why[0].replace(/[.\s]+$/, '')}), and only a Designer can do that.` +
+            (autoExtendPages ? ' Turn off "Auto-Extend Pages If Needed", then generate the plan again.' : ' Ask a Designer to add the frames it needs.')
+        );
+        return;
+      }
+    }
     onApplyFlowedProject(updated);
     onClose();
   };
@@ -169,13 +184,13 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setRawData(SAMPLE_USER_DATA)}
-                  className="px-2 py-1 text-[10px] bg-[#222228] hover:bg-[#2C2C34] text-[#D7D4CC] rounded cursor-pointer"
+                  className="px-2 py-1 text-[11px] bg-[#222228] hover:bg-[#2C2C34] text-[#D7D4CC] rounded cursor-pointer"
                 >
                   Load Sample Data
                 </button>
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2 py-1 text-[10px] bg-[#222228] hover:bg-[#2C2C34] text-[#E6CFA5] border border-[#C6A26B]/30 rounded flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-1 text-[11px] bg-[#222228] hover:bg-[#2C2C34] text-[#E6CFA5] border border-[#C6A26B]/30 rounded flex items-center gap-1 cursor-pointer"
                 >
                   <Upload className="w-3 h-3" />
                   <span>Upload .txt / .md / .csv</span>
@@ -219,7 +234,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                   <div className="text-[11px] font-medium text-[#ECEAE4]">
                     Flow Text As-Is (Verbatim)
                   </div>
-                  <div className="text-[10px] text-[#8F8C84]">
+                  <div className="text-[11px] text-[#8F8C84]">
                     Preserves your exact wording & numbers without rewriting.
                   </div>
                 </div>
@@ -236,7 +251,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                   <div className="text-[11px] font-medium text-[#ECEAE4]">
                     Auto-Extend Pages If Needed
                   </div>
-                  <div className="text-[10px] text-[#8F8C84]">
+                  <div className="text-[11px] text-[#8F8C84]">
                     Clones exact interior layout for extra sections or charts.
                   </div>
                 </div>
@@ -265,7 +280,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                   <div className="text-[11px] font-medium text-[#ECEAE4]">
                     Sync Document Title
                   </div>
-                  <div className="text-[10px] text-[#8F8C84]">
+                  <div className="text-[11px] text-[#8F8C84]">
                     Updates project title & subtitle from your source data.
                   </div>
                 </div>
@@ -312,25 +327,25 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
 
                 <div className="grid grid-cols-4 gap-2 font-mono-tabular">
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84]">Pages</div>
+                    <div className="text-[11px] text-[#8F8C84]">Pages</div>
                     <div className="text-base text-[#ECEAE4] font-medium">{layoutCounts.pages}</div>
                   </div>
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84]">Text Frames</div>
+                    <div className="text-[11px] text-[#8F8C84]">Text Frames</div>
                     <div className="text-base text-[#ECEAE4] font-medium">{layoutCounts.textFrames}</div>
                   </div>
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84]">Image Slots</div>
+                    <div className="text-[11px] text-[#8F8C84]">Image Slots</div>
                     <div className="text-base text-[#C6A26B] font-medium">{layoutCounts.imageFrames}</div>
                   </div>
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84]">Infographics</div>
+                    <div className="text-[11px] text-[#8F8C84]">Infographics</div>
                     <div className="text-base text-[#C6A26B] font-medium">{layoutCounts.infographicFrames}</div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-[10px] uppercase tracking-wider text-[#8F8C84]">
+                  <div className="text-[11px] uppercase tracking-wider text-[#8F8C84]">
                     Page-by-Page Slot Map
                   </div>
                   {layoutSchema.map((pg) => (
@@ -342,12 +357,12 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                         <div className="text-xs font-medium text-[#ECEAE4] truncate">
                           Page {pg.pageNumber} · {pg.label}
                         </div>
-                        <div className="text-[10px] text-[#8F8C84] mt-0.5 font-mono-tabular">
+                        <div className="text-[11px] text-[#8F8C84] mt-0.5 font-mono-tabular">
                           {pg.textFrames.length} text · {pg.imageFrames.length} image placeholder ·{' '}
                           {pg.infographicFrames.length} infographic
                         </div>
                       </div>
-                      <span className="text-[10px] text-[#C6A26B] font-mono-tabular shrink-0">
+                      <span className="text-[11px] text-[#C6A26B] font-mono-tabular shrink-0">
                         {pg.role.replace(/_/g, ' ')}
                       </span>
                     </div>
@@ -366,7 +381,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
 
                 <div className="grid grid-cols-4 gap-2 font-mono-tabular">
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84] flex items-center gap-1">
+                    <div className="text-[11px] text-[#8F8C84] flex items-center gap-1">
                       <FileText className="w-3 h-3 text-[#C6A26B]" /> Text
                     </div>
                     <div className="text-sm text-[#ECEAE4] font-medium mt-0.5">
@@ -374,7 +389,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                     </div>
                   </div>
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84] flex items-center gap-1">
+                    <div className="text-[11px] text-[#8F8C84] flex items-center gap-1">
                       <ImageIcon className="w-3 h-3 text-[#C6A26B]" /> Images
                     </div>
                     <div className="text-sm text-[#ECEAE4] font-medium mt-0.5">
@@ -382,7 +397,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                     </div>
                   </div>
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84] flex items-center gap-1">
+                    <div className="text-[11px] text-[#8F8C84] flex items-center gap-1">
                       <BarChart3 className="w-3 h-3 text-[#C6A26B]" /> Charts
                     </div>
                     <div className="text-sm text-[#ECEAE4] font-medium mt-0.5">
@@ -392,7 +407,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                     </div>
                   </div>
                   <div className="p-2.5 bg-[#121214] border border-white/[0.06] rounded">
-                    <div className="text-[10px] text-[#8F8C84] flex items-center gap-1">
+                    <div className="text-[11px] text-[#8F8C84] flex items-center gap-1">
                       <Layers className="w-3 h-3 text-[#C6A26B]" /> Extended
                     </div>
                     <div className="text-sm text-[#ECEAE4] font-medium mt-0.5">
@@ -405,7 +420,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                 {(plan.infographicUpdates.length > 0 ||
                   plan.additionalPages.some((p) => p.infographic)) && (
                   <div className="space-y-2">
-                    <div className="text-[10px] uppercase tracking-wider text-[#C6A26B]">
+                    <div className="text-[11px] uppercase tracking-wider text-[#C6A26B]">
                       Populated Live Vector Infographics
                     </div>
                     {[
@@ -420,7 +435,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                       >
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="font-medium text-[#ECEAE4]">{inf.title}</span>
-                          <span className="font-mono-tabular text-[10px] text-[#8F8C84]">
+                          <span className="font-mono-tabular text-[11px] text-[#8F8C84]">
                             {inf.variant} · {inf.items.length} data points
                           </span>
                         </div>
@@ -460,7 +475,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                 {/* Image Placeholders Preview */}
                 {plan.imageUpdates.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-[10px] uppercase tracking-wider text-[#8F8C84]">
+                    <div className="text-[11px] uppercase tracking-wider text-[#8F8C84]">
                       Labeled Image Placeholders ({imageMode === 'placeholders' ? 'Clean X-Cross Frames' : 'Keeping Existing Photos'})
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -472,7 +487,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                           <div className="text-[11px] font-medium text-[#ECEAE4] truncate">
                             {img.placeholderTitle}
                           </div>
-                          <div className="text-[10px] text-[#8F8C84] line-clamp-2 mt-0.5">
+                          <div className="text-[11px] text-[#8F8C84] line-clamp-2 mt-0.5">
                             {img.suggestedPhotoBrief}
                           </div>
                         </div>
@@ -484,7 +499,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                 {/* Text Flow Sample Preview */}
                 {plan.textUpdates.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-[10px] uppercase tracking-wider text-[#8F8C84]">
+                    <div className="text-[11px] uppercase tracking-wider text-[#8F8C84]">
                       Flowed Text Frames Preview ({plan.textUpdates.length} mapped)
                     </div>
                     <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -502,7 +517,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
 
                 {plan.additionalPages.length > 0 && (
                   <div className="space-y-1.5">
-                    <div className="text-[10px] uppercase tracking-wider text-[#C6A26B]">
+                    <div className="text-[11px] uppercase tracking-wider text-[#C6A26B]">
                       Auto-Extended Pages (+{plan.additionalPages.length} cloned in exact same layout)
                     </div>
                     {plan.additionalPages.map((ap, i) => (
@@ -513,7 +528,7 @@ export const AiAutoFlowModal: React.FC<AiAutoFlowModalProps> = ({
                         <div className="font-medium text-[#ECEAE4]">
                           {ap.label} — {ap.heading}
                         </div>
-                        <div className="text-[10px] text-[#8F8C84] line-clamp-2 mt-0.5">
+                        <div className="text-[11px] text-[#8F8C84] line-clamp-2 mt-0.5">
                           {ap.body}
                         </div>
                       </div>

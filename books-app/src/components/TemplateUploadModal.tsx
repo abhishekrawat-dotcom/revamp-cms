@@ -759,11 +759,11 @@ export const TemplateUploadModal: React.FC<TemplateUploadModalProps> = ({
                               className="w-full h-16 object-cover rounded-sm"
                             />
                           ) : (
-                            <div className="w-full h-16 bg-[#121214] rounded-sm flex items-center justify-center text-[10px] text-[#98958D]">
+                            <div className="w-full h-16 bg-[#121214] rounded-sm flex items-center justify-center text-[11px] text-[#98958D]">
                               PDF
                             </div>
                           )}
-                          <div className="text-[10px] text-[#D7D4CC] truncate">{tf.name}</div>
+                          <div className="text-[11px] text-[#D7D4CC] truncate">{tf.name}</div>
                         </div>
                       ))}
                     </div>

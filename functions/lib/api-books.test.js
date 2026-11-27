@@ -1,11 +1,14 @@
-// node functions/lib/api-books.test.js — Books (BOOKSTUDIO, the owner's coffee table book editor, 26 Nov 2026), Phase 1:
-// the server that replaces the AI Studio export's open Express server (docs/bookstudio/PLAN.md).
+// node functions/lib/api-books.test.js — Books (BOOKSTUDIO, the owner's coffee table book editor, 26 Nov 2026), Phases 1
+// and 2: the server that replaces the AI Studio export's open Express server (docs/bookstudio/PLAN.md).
 // Checks: a book is split into parts and put back exactly; only admins get in; a save based on an old revision is
 // refused and nothing is lost; a save writes only what changed and removes what nothing points to; delete, status,
 // versions, templates (the date first kept never changes), font collections (each person's own); photos (kind from
 // their bytes, sizes, the copies, private, cached); manuscripts (Word paragraphs and headings, RTF, CSV, a PDF's text);
 // IDML; the AI steps (what they are told, what is kept of their answers, failures); the wiring (router, served files,
-// rate limits, models, the page, the menu link). Firestore and Storage are in-memory; the AI is a stub. No network.
+// rate limits, models, the page, the menu link). Phase 2 (12–16): the Books role from Settings › Access (Designer,
+// Content editor, none) on every route; a Content editor's save refused whole, writing nothing, for any design change;
+// who is here; deleted pages kept and restored; the activity log and its 10-minute folding.
+// Firestore and Storage are in-memory; the AI is a stub. No network.
 'use strict';
 var fs = require('fs'), path = require('path'), zlib = require('zlib'), stream = require('stream');
 var passed = 0, failed = 0;
@@ -18,7 +21,7 @@ delete process.env.K_SERVICE;
 delete process.env.ACCESS_CONFIG_DOC;
 delete process.env.BOOKS_COL_PREFIX;
 process.env.ALLOWED_EMAIL_DOMAIN = 'timesinternet.in';
-var DOCS = {}, FILES = {}, WRITES = [];
+var DOCS = {}, FILES = {}, WRITES = [], AUTO = 0, FAIL_SET = null;
 function clone(v) { return v === undefined ? undefined : JSON.parse(JSON.stringify(v)); }
 function snapOf(p) { var d = DOCS[p]; return { id: p.split('/').pop(), ref: refOf(p), exists: !!d, data: function () { return clone(d); }, get: function (k) { return d ? d[k] : undefined; } }; }
 function applyUpdate(p, patch) {
@@ -34,7 +37,7 @@ function applyUpdate(p, patch) {
 function refOf(p) {
   return { id: p.split('/').pop(), path: p,
     get: function () { return Promise.resolve(snapOf(p)); },
-    set: function (d) { DOCS[p] = clone(d); WRITES.push('set ' + p); return Promise.resolve(); },
+    set: function (d) { if (FAIL_SET && FAIL_SET.test(p)) return Promise.reject(new Error('UNAVAILABLE (test)')); DOCS[p] = clone(d); WRITES.push('set ' + p); return Promise.resolve(); },
     create: function (d) { if (DOCS[p]) { var e = new Error('ALREADY_EXISTS'); e.code = 6; return Promise.reject(e); } DOCS[p] = clone(d); return Promise.resolve(); },
     update: function (d) { if (!DOCS[p]) return Promise.reject(new Error('NOT_FOUND')); applyUpdate(p, d); WRITES.push('update ' + p); return Promise.resolve(); },
     delete: function () { delete DOCS[p]; WRITES.push('delete ' + p); return Promise.resolve(); },
@@ -44,19 +47,24 @@ function query(p, filters, order, lim) {
   return {
     select: function () { return query(p, filters, order, lim); },
     limit: function (n) { return query(p, filters, order, n); },
-    where: function (f, op, v) { return query(p, filters.concat([[f, v]]), order, lim); },
+    where: function (f, op, v) { return query(p, filters.concat([[f, v, op]]), order, lim); },
     orderBy: function (f, dir) { return query(p, filters, [f, dir], lim); },
     get: function () {
       var depth = p.split('/').length + 1;
       var docs = Object.keys(DOCS).filter(function (k) { return k.indexOf(p + '/') === 0 && k.split('/').length === depth; })
-        .filter(function (k) { return filters.every(function (f) { return DOCS[k][f[0]] === f[1]; }); }).map(snapOf);
+        .filter(function (k) { return filters.every(function (f) { var x = DOCS[k][f[0]]; return f[2] === '>=' ? x >= f[1] : f[2] === '<=' ? x <= f[1] : f[2] === '>' ? x > f[1] : f[2] === '<' ? x < f[1] : x === f[1]; }); }).map(snapOf);
       if (order) docs.sort(function (a, b) { var x = String(a.data()[order[0]]), y = String(b.data()[order[0]]); return order[1] === 'desc' ? y.localeCompare(x) : x.localeCompare(y); });
       if (lim) docs = docs.slice(0, lim);
       return Promise.resolve({ docs: docs, size: docs.length });
     }
   };
 }
-function colOf(p) { var q = query(p, [], null, 0); q.doc = function (id) { return refOf(p + '/' + id); }; return q; }
+function colOf(p) {
+  var q = query(p, [], null, 0);
+  q.doc = function (id) { return refOf(p + '/' + (id === undefined ? 'auto' + String(++AUTO).padStart(6, '0') : id)); };
+  q.add = function (d) { var r = q.doc(); return r.set(d).then(function () { return r; }); };
+  return q;
+}
 var FB = {
   db: {
     collection: function (n) { return colOf(n); },
@@ -87,12 +95,21 @@ require.cache[LLM] = { id: LLM, filename: LLM, loaded: true, children: [], paths
 var api = require('./api');
 var B = require('./api-books'), T = B._test;
 var AI = require('./books-ai');
+var AC_FORGET = function () { require('./access-control').forget(); };
 
 var ADMIN = 'sachitanand.rai', EDITOR = 'someone';
+/* Phase 2's people: a Designer who is no admin, a Content editor who is an events Viewer (Books has its own role),
+   one who works in one portal, someone listed with no Books, and a blocked person whose Books role means nothing */
+var DESIGNER = 'des.igner', CONTENT = 'con.tent', CONTENT2 = 'con.tent2', NOBOOKS = 'no.books';
 DOCS['config/access'] = { defaultRole: 'editor', members: {
   'sachitanand.rai@timesinternet.in': { role: 'admin', portals: ['*'] },
   'other.person@timesinternet.in': { role: 'admin', portals: ['*'] },
-  'other@timesinternet.in': { role: 'admin', portals: ['*'] } } };
+  'other@timesinternet.in': { role: 'admin', portals: ['*'] },
+  'des.igner@timesinternet.in': { role: 'editor', portals: ['*'], books: 'designer' },
+  'con.tent@timesinternet.in': { role: 'viewer', portals: ['*'], books: 'content' },
+  'con.tent2@timesinternet.in': { role: 'editor', portals: ['cio'], books: 'content' },
+  'no.books@timesinternet.in': { role: 'approver', portals: ['*'] },
+  'gone.designer@timesinternet.in': { role: 'blocked', books: 'designer' } } };
 function call(method, url, body, o) {
   o = o || {};
   return new Promise(function (resolve) {
@@ -159,9 +176,10 @@ function partsOf(id) { return Object.keys(DOCS).filter(function (k) { return k.i
 
   /* ---------- 2 who gets in ---------- */
   var me = await call('GET', '/api/books/me');
-  check('2.1 an admin gets in, as Designer', me.status === 200 && me.json.role === 'designer' && me.json.email === ADMIN + '@timesinternet.in', me);
+  check('2.1 an admin gets in, as Designer', me.status === 200 && me.json.role === 'designer' && me.json.canDesign === true && me.json.email === ADMIN + '@timesinternet.in', me);
   var ed = await call('GET', '/api/books/list', null, { token: EDITOR });
-  check('2.2 anyone else is refused with the sentence (Phase 1: admins only)', ed.status === 403 && ed.json.code === 'no-books' && ed.json.error === T.NOT_OPEN, ed.json);
+  check('2.2 a company account not on the list has no Books: refused with the sentence', ed.status === 403 && ed.json.code === 'no-books' && ed.json.error === T.NOT_OPEN &&
+    T.NOT_OPEN === 'You don\'t have access to Books. Ask an admin to give you the Designer or Content editor role in Settings › Access.', ed.json);
   var anon = await call('GET', '/api/books/list', null, { token: null });
   check('2.3 nobody signed in: 401', anon.status === 401, anon.status);
   var edSave = await call('PUT', '/api/books/book', { book: book('qa_ed'), baseRev: null }, { token: EDITOR });
@@ -371,6 +389,336 @@ function partsOf(id) { return Object.keys(DOCS).filter(function (k) { return k.i
   check('10.15 an unknown step: 404; anyone without Books: 403 before any call', (await call('POST', '/api/books/ai/write-anything', {})).status === 404 &&
     (await call('POST', '/api/books/ai/typography-pairing', { style: 'x' }, { token: EDITOR })).status === 403 && AI_ASKS.length === 2);
 
+  /* ================= Phase 2 (the owner, 26 Nov 2026): roles, who is here, deleted pages, the activity log ================= */
+  function tick(ms) { return new Promise(function (r) { setTimeout(r, ms || 5); }); }
+  function under(prefix) { var out = {}; Object.keys(DOCS).sort().forEach(function (k) { if (k.indexOf(prefix) === 0) out[k] = DOCS[k]; }); return JSON.stringify(out); }
+  function logOf(id) {
+    return Object.keys(DOCS).filter(function (k) { return k.indexOf('books/' + id + '/log/') === 0; }).map(function (k) { return Object.assign({ path: k }, DOCS[k]); })
+      .sort(function (a, b) { return String(b.at).localeCompare(String(a.at)) || (b.path < a.path ? -1 : 1); });
+  }
+  function revOf(id) { return (DOCS['books/' + id] || {}).rev; }
+  function loaded(id, who) { return call('GET', '/api/books/book?id=' + id, null, { token: who || ADMIN }).then(function (r) { return r.json; }); }
+  /* a book with a master, a text page, a photo, an infographic and a rule */
+  function richBook(id) {
+    var b = book(id);
+    b.contentSections = [{ id: 's1', title: 'S1', kind: 'body', body: 'Body', orderIndex: 0 }];
+    b.masterPages = [{ id: 'm1', name: 'Text page', role: 'editorial_text', backgroundColor: '#fff', elements: [
+      { id: 'm1_t', type: 'text', name: 'Body', xMm: 10, yMm: 10, widthMm: 100, heightMm: 40, text: '' }] }];
+    b.pages = [page('p1', 'Cover', ['Forms of Light']), page('p2', 'Essay', ['One two', 'Three']),
+      { id: 'p3', orderIndex: 2, label: 'Gallery', role: 'image_led', backgroundColor: '#fff', masterPageId: 'm1', elements: [
+        { id: 'p3_i', type: 'image', name: 'Photo', xMm: 0, yMm: 0, widthMm: 240, heightMm: 300, rotation: 0, opacity: 1, zIndex: 1, locked: false, hidden: false,
+          image: { src: '/a.jpg', alt: '', fit: 'cover', zoom: 1, focalX: 50, focalY: 50, brightness: 100, grayscale: 0, borderRadiusMm: 0, captionText: 'At dusk' } },
+        { id: 'p3_g', type: 'infographic', name: 'Chart', xMm: 10, yMm: 200, widthMm: 100, heightMm: 80, zIndex: 2,
+          infographic: { templateId: 't', variant: 'kpi_grid', title: 'Visitors', subtitle: '', categoryLabel: '', sourceNote: '', fontFamily: 'Lora', backgroundColor: '#fff',
+            textColor: '#000', accentColor: '#c00', secondaryColor: '#999', items: [{ id: 'i1', label: 'A', value: 1 }], showLegend: true, showValues: true } },
+        { id: 'p3_s', type: 'shape', name: 'Rule', xMm: 10, yMm: 190, widthMm: 100, heightMm: 1, zIndex: 3, shape: { shapeKind: 'rule', fill: '#000', stroke: '#000', strokeWidthMm: 0.3, cornerRadiusMm: 0 } }] }];
+    return b;
+  }
+
+  /* ---------- 12 the Books role on every route ---------- */
+  AC_FORGET();
+  var meD = await call('GET', '/api/books/me', null, { token: DESIGNER }), meC = await call('GET', '/api/books/me', null, { token: CONTENT });
+  check('12.1 /me says the Books role: a Designer who is no admin, a Content editor (an events Viewer)', meD.status === 200 && meD.json.role === 'designer' && meD.json.canDesign === true &&
+    meC.status === 200 && meC.json.role === 'content' && meC.json.canDesign === false && meC.json.email === CONTENT + '@timesinternet.in', [meD.json, meC.json]);
+  var nb = await call('GET', '/api/books/me', null, { token: NOBOOKS }), gone = await call('GET', '/api/books/me', null, { token: 'gone.designer' });
+  check('12.2 someone on the list without a Books role (an Approver): 403 no-books with the sentence; a blocked person: no access at all', nb.status === 403 && nb.json.code === 'no-books' &&
+    nb.json.error === T.NOT_OPEN && gone.status === 403 && gone.json.code === 'no-access', [nb.json, gone.json]);
+  var everyRoute = Object.keys(T.ROUTES).concat(['GET /api/books/asset/*']).concat(AI.NAMES.map(function (n) { return 'POST /api/books/ai/' + n; }));
+  check('12.3 every route is named either a Content editor\'s or a Designer\'s, never both, and nothing named is not a route', everyRoute.every(function (k) { return !!T.CONTENT_ROUTES[k] !== !!T.DESIGNER_ACTIONS[k]; }) &&
+    Object.keys(T.CONTENT_ROUTES).concat(Object.keys(T.DESIGNER_ACTIONS)).every(function (k) { return everyRoute.indexOf(k) !== -1; }), everyRoute.filter(function (k) { return !!T.CONTENT_ROUTES[k] === !!T.DESIGNER_ACTIONS[k]; }));
+  check('12.4 the Designer\'s routes are the owner\'s list', JSON.stringify(Object.keys(T.DESIGNER_ACTIONS).sort()) === JSON.stringify(['DELETE /api/books/book', 'POST /api/books/status', 'PUT /api/books/template',
+    'DELETE /api/books/template', 'POST /api/books/idml', 'POST /api/books/ai/analyze-template', 'POST /api/books/ai/typography-pairing', 'POST /api/books/ai/recommend-templates',
+    'POST /api/books/ai/generate-publication-template'].sort()), Object.keys(T.DESIGNER_ACTIONS));
+  var rb = richBook('qa_roles');
+  var mk = await call('PUT', '/api/books/book', { book: rb, baseRev: null }, { token: DESIGNER });
+  check('12.5 a Designer who is no admin starts a book', mk.status === 200 && mk.json.rev === 1 && DOCS['books/qa_roles'].createdBy === DESIGNER + '@timesinternet.in', mk.json);
+  var mkC = await call('PUT', '/api/books/book', { book: richBook('qa_by_content'), baseRev: null }, { token: CONTENT });
+  check('12.6 a Content editor cannot start one: 403 designer-only, nothing written', mkC.status === 403 && mkC.json.code === 'designer-only' && mkC.json.error === 'Only a Designer can start a new book.' &&
+    !Object.keys(DOCS).some(function (k) { return k.indexOf('books/qa_by_content') === 0; }), mkC.json);
+  await call('PUT', '/api/books/template', { template: { id: 'ct_keep', templateKind: 'page', title: 'Keep', payload: {} } }, { token: DESIGNER });
+  /* the Designer's routes, refused to a Content editor with the action in words, before anything is written or asked */
+  var askedBefore = AI_ASKS.length;
+  var idmlZip = await idml.generateAsync({ type: 'nodebuffer' });
+  var refusedC = [
+    ['DELETE', '/api/books/book?id=qa_roles', null, 'delete a book'],
+    ['POST', '/api/books/status', { id: 'qa_roles', status: 'archived' }, 'change a book\'s status'],
+    ['PUT', '/api/books/template', { template: { id: 'ct_c', templateKind: 'page', title: 'Mine', payload: {} } }, 'save a template'],
+    ['DELETE', '/api/books/template?id=ct_keep', null, 'delete a template'],
+    ['POST', '/api/books/idml', idmlZip, 'import an InDesign file', { 'x-file-name': 'Monograph.idml' }],
+    ['POST', '/api/books/ai/analyze-template', { files: [{ mimeType: 'image/jpeg', base64: 'aGk=' }] }, 'have AI read the design of a reference book'],
+    ['POST', '/api/books/ai/typography-pairing', { style: 'x' }, 'have AI suggest font pairings'],
+    ['POST', '/api/books/ai/recommend-templates', { availableBookTemplates: [] }, 'have AI suggest templates'],
+    ['POST', '/api/books/ai/generate-publication-template', { prompt: 'x' }, 'have AI make a book design']];
+  var docsBefore = JSON.stringify(DOCS);
+  for (var rc of refusedC) {
+    var rr = await call(rc[0], rc[1], rc[2], { token: CONTENT, headers: rc[4] });
+    check('12.7 a Content editor: ' + rc[0] + ' ' + rc[1].split('?')[0] + ' — 403 "Only a Designer can ' + rc[3] + '."', rr.status === 403 && rr.json.code === 'designer-only' && rr.json.error === 'Only a Designer can ' + rc[3] + '.', rr.json);
+  }
+  check('12.8 …and none of them wrote anything or asked the AI', JSON.stringify(DOCS) === docsBefore && AI_ASKS.length === askedBefore);
+  /* the routes both roles use: never refused to a Content editor for the role */
+  AI_ANSWER = { parsed: { summary: 's', suggestions: [] }, provider: 'claude' };
+  var tinyJpg = await sharp({ create: { width: 40, height: 30, channels: 3, background: '#335577' } }).jpeg().toBuffer();
+  var realFetch = global.fetch;
+  global.fetch = function () { return Promise.reject(new Error('offline (test)')); };
+  var bothC = [
+    ['GET', '/api/books/me'], ['GET', '/api/books/list'], ['GET', '/api/books/book?id=qa_roles'], ['GET', '/api/books/versions?id=qa_roles'],
+    ['POST', '/api/books/versions', { bookId: 'qa_roles', version: { id: 'ver_c', label: 'By content', snapshot: { pages: [] } } }], ['GET', '/api/books/version?id=qa_roles&versionId=ver_c'],
+    ['GET', '/api/books/templates'], ['GET', '/api/books/font-collections'], ['PUT', '/api/books/font-collection', { collection: { id: 'mine', name: 'Mine', fonts: ['Lora'] } }],
+    ['POST', '/api/books/asset', tinyJpg, { 'x-file-name': 'c.jpg' }], ['POST', '/api/books/manuscript', Buffer.from('A heading\n\nA paragraph.'), { 'x-file-name': 'm.txt' }],
+    ['GET', '/api/books/fonts'], ['POST', '/api/books/ai/editorial-assistant', { prompt: 'tighten this', mode: 'copy_fit' }],
+    ['POST', '/api/books/ai/generate-infographic', { prompt: 'visitors by year' }], ['POST', '/api/books/ai/auto-flow-data', { rawData: 'Some text', pagesSchema: [] }],
+    ['POST', '/api/books/presence', { bookId: 'qa_roles', pageId: 'p1' }], ['GET', '/api/books/trash?id=qa_roles'], ['GET', '/api/books/log?id=qa_roles'],
+    ['POST', '/api/books/restore-page', { bookId: 'qa_roles', pageId: 'nope', baseRev: 1 }]];
+  var asset = null;
+  for (var who of [CONTENT, DESIGNER]) {
+    for (var bc of bothC) {
+      var br = await call(bc[0], bc[1], bc[2] === undefined ? null : bc[2], { token: who, headers: bc[3] });
+      if (bc[1] === '/api/books/asset' && who === CONTENT) asset = br.json && br.json.asset;
+      check('12.9 ' + (who === CONTENT ? 'a Content editor' : 'a Designer who is no admin') + ' may use ' + bc[0] + ' ' + bc[1].split('?')[0],
+        br.status !== 403 && br.status !== 401 && br.status < 500, [who, br.status, br.json]);
+    }
+  }
+  global.fetch = realFetch;
+  check('12.10 …a photo it uploaded is served to it', !!asset && (await call('GET', asset.thumbUrl, null, { token: CONTENT })).status === 200);
+  /* the same Designer routes, for a Designer who is no admin */
+  AI_ANSWER = { parsed: { pairings: [{ name: 'Classic', rationale: 'r', displayFont: 'Bodoni Moda', headingFont: 'Lora', secondaryFont: 'DM Sans', bodyFont: 'Lora', captionFont: 'DM Sans', quoteFont: 'Lora', numericalFont: 'DM Sans' }] }, provider: 'claude' };
+  var okD = [await call('POST', '/api/books/status', { id: 'qa_roles', status: 'in_review' }, { token: DESIGNER }),
+    await call('PUT', '/api/books/template', { template: { id: 'ct_d', templateKind: 'page', title: 'D', payload: {} } }, { token: DESIGNER }),
+    await call('DELETE', '/api/books/template?id=ct_d', null, { token: DESIGNER }),
+    await call('POST', '/api/books/idml', idmlZip, { token: DESIGNER, headers: { 'x-file-name': 'Monograph.idml' } }),
+    await call('POST', '/api/books/ai/typography-pairing', { style: 'Classic' }, { token: DESIGNER })];
+  check('12.11 a Designer who is no admin may do each of them', okD.every(function (r) { return r.status === 200; }) && DOCS['books/qa_roles'].status === 'in_review', okD.map(function (r) { return [r.status, r.json && r.json.error]; }));
+  await call('PUT', '/api/books/book', { book: Object.assign(book('qa_to_delete'), { name: 'To delete' }), baseRev: null }, { token: DESIGNER });
+  var delD = await call('DELETE', '/api/books/book?id=qa_to_delete', null, { token: DESIGNER });
+  check('12.12 …and delete a book', delD.status === 200 && !!DOCS['books/qa_to_delete'].deletedAt);
+
+  /* ---------- 13 a Content editor's save: content yes, design never (refused whole, nothing written) ---------- */
+  var stored = (await loaded('qa_roles', CONTENT)).book;
+  async function contentSave(change, who) {
+    await tick();
+    var now = (await loaded('qa_roles', who || CONTENT));
+    var b = clone(now.book); change(b);
+    var before = under('books/qa_roles');
+    var r = await call('PUT', '/api/books/book', { book: b, baseRev: now.rev }, { token: who || CONTENT });
+    await tick();
+    return { r: r, untouched: under('books/qa_roles') === before, rev: now.rev };
+  }
+  var DESIGN = [
+    ['the page size', function (b) { b.dimensions.widthMm = 250; }, /the page size changed/],
+    ['the design system (colours)', function (b) { b.designSystem.colors.paper = '#000000'; }, /the design system/],
+    ['a master page\'s frame', function (b) { b.masterPages[0].elements[0].xMm = 12; }, /the master pages changed/],
+    ['a master page added', function (b) { b.masterPages.push({ id: 'm2', name: 'New', elements: [] }); }, /the master pages changed/],
+    ['the master pages removed', function (b) { b.masterPages = []; }, /the master pages changed/],
+    ['the print settings', function (b) { b.printSettings.bleedMm = 5; }, /the print settings changed/],
+    ['the saved page sizes', function (b) { b.customDimensionPresets = [{ id: 'x', name: 'X', widthMm: 1, heightMm: 1 }]; }, /the saved page sizes changed/],
+    ['the approved template design', function (b) { b.templateReport = { id: 'r', approved: true }; }, /the approved template design changed/],
+    ['a page\'s background', function (b) { b.pages[0].backgroundColor = '#eeeeee'; }, /"Cover": its background changed/],
+    ['a page\'s layout type', function (b) { b.pages[0].role = 'front_cover'; }, /its layout type changed/],
+    ['a page\'s master', function (b) { b.pages[2].masterPageId = 'm9'; }, /its master page changed/],
+    ['a page\'s size', function (b) { b.pages[0].dimensionsOverride = { widthMm: 100, heightMm: 100 }; }, /its size changed/],
+    ['a page detached from its master', function (b) { b.pages[2].detachedFromMaster = true; }, /its master link changed/],
+    ['a frame\'s position', function (b) { b.pages[1].elements[0].xMm = 11; }, /frame "Body" — its position changed/],
+    ['a frame\'s size', function (b) { b.pages[1].elements[0].heightMm = 41; }, /its size changed/],
+    ['a frame\'s rotation', function (b) { b.pages[2].elements[0].rotation = 5; }, /its rotation changed/],
+    ['a frame\'s opacity', function (b) { b.pages[2].elements[0].opacity = 0.5; }, /its opacity changed/],
+    ['a frame\'s layer', function (b) { b.pages[2].elements[0].zIndex = 9; }, /its layer order changed/],
+    ['a frame locked', function (b) { b.pages[2].elements[0].locked = true; }, /its lock changed/],
+    ['a frame hidden', function (b) { b.pages[2].elements[0].hidden = true; }, /its visibility changed/],
+    ['frames grouped', function (b) { b.pages[2].elements[0].groupId = 'g1'; }, /its grouping changed/],
+    ['a frame renamed', function (b) { b.pages[2].elements[0].name = 'Hero'; }, /its name changed/],
+    ['a frame\'s kind', function (b) { b.pages[1].elements[0].type = 'image'; }, /its kind changed/],
+    ['a frame\'s text role', function (b) { b.pages[1].elements[0].textRole = 'heading'; }, /its text role changed/],
+    ['a frame\'s text style', function (b) { b.pages[1].elements[0].textStyle = { fontFamily: 'Syne', fontSizePt: 30 }; }, /its text style changed/],
+    ['a shape\'s fill', function (b) { b.pages[2].elements[2].shape.fill = '#ff0000'; }, /its shape changed/],
+    ['a photo\'s brightness', function (b) { b.pages[2].elements[0].image.brightness = 80; }, /its photo effects changed/],
+    ['a photo made greyscale', function (b) { b.pages[2].elements[0].image.grayscale = 100; }, /its photo effects changed/],
+    ['a photo\'s rounded corners', function (b) { b.pages[2].elements[0].image.borderRadiusMm = 4; }, /its photo effects changed/],
+    ['an infographic\'s colours', function (b) { b.pages[2].elements[1].infographic.accentColor = '#0000ff'; }, /its colours or font changed/],
+    ['an infographic\'s font', function (b) { b.pages[2].elements[1].infographic.fontFamily = 'Syne'; }, /its colours or font changed/],
+    ['a field nobody has named yet, on a frame', function (b) { b.pages[1].elements[0].glow = 3; }, /its glow changed/],
+    ['a frame added to a page', function (b) { b.pages[1].elements.push({ id: 'p2_new', type: 'text', name: 'Body', xMm: 10, yMm: 10, widthMm: 100, heightMm: 40, text: 'x' }); }, /a frame "Body" was added/],
+    ['a frame removed from a page', function (b) { b.pages[2].elements.pop(); }, /frame "Rule" was removed/],
+    ['a new page with a frame the book does not have', function (b) { b.pages.push({ id: 'p9', label: 'New', role: 'editorial_text', backgroundColor: '#fff', elements: [{ id: 'x', type: 'text', name: 'Body', xMm: 33, yMm: 10, widthMm: 100, heightMm: 40, text: '' }] }); }, /new "New" has a frame "Body" that is not one of the book's layouts/],
+    ['a new page with a background the book does not have', function (b) { b.pages.push({ id: 'p9', label: 'New', role: 'editorial_text', backgroundColor: '#123456', elements: [] }); }, /has a background, size or master page the book's layouts do not have/]];
+  for (var dc of DESIGN) {
+    var res1 = await contentSave(dc[1]);
+    check('13.1 a Content editor\'s design change — ' + dc[0] + ': 403 design-only, the reason given, nothing written', res1.r.status === 403 && res1.r.json.code === 'design-only' &&
+      res1.r.json.error.indexOf('Only a Designer can change the design: ') === 0 && Array.isArray(res1.r.json.changes) && res1.r.json.changes.some(function (c) { return dc[2].test(c); }) &&
+      res1.untouched && revOf('qa_roles') === res1.rev, [res1.r.status, res1.r.json]);
+  }
+  var many = await contentSave(function (b) { b.dimensions.widthMm = 251; b.pages[0].backgroundColor = '#111'; b.pages[1].elements[0].xMm = 1; b.pages[2].elements[0].rotation = 9; b.pages[1].elements[0].text = 'and some text'; });
+  check('13.2 several design changes with a text change: the whole save refused, every reason listed, the first three in the sentence', many.r.status === 403 && many.r.json.changes.length === 4 &&
+    /: the page size changed; "Cover": its background changed; "Essay": frame "Body" — its position changed \(and 1 more\)\.$/.test(many.r.json.error) && many.untouched, many.r.json);
+  var st1 = await contentSave(function (b) { b.status = 'archived'; });
+  check('13.3 the status through a save: refused too (POST status is a Designer\'s), nothing written', st1.r.status === 403 && st1.r.json.code === 'designer-only' &&
+    st1.r.json.error === 'Only a Designer can change a book\'s status.' && st1.untouched, st1.r.json);
+  var staleDesign = await (async function () { var b = clone(stored); b.dimensions.widthMm = 260; var before = under('books/qa_roles'); var r = await call('PUT', '/api/books/book', { book: b, baseRev: 0 }, { token: CONTENT }); await tick(); return { r: r, untouched: under('books/qa_roles') === before }; })();
+  check('13.4 a stale save with a design change: refused (409 stale or 403), nothing written', (staleDesign.r.status === 409 || staleDesign.r.status === 403) && staleDesign.untouched, staleDesign.r.json);
+  var CONTENT_OK = [
+    ['text in a frame', function (b) { b.pages[1].elements[0].text = 'A new first paragraph.'; }],
+    ['the manuscript section a frame shows', function (b) { b.pages[1].elements[1].contentSectionId = 's1'; }],
+    ['the photo in a frame, and where it sits', function (b) { Object.assign(b.pages[2].elements[0].image, { src: '/b.jpg', assetId: 'as_x', zoom: 1.4, focalX: 30, focalY: 70, fit: 'contain', alt: 'Courtyard', captionText: 'At dawn' }); }],
+    ['an infographic\'s data, labels, title and chart type', function (b) { Object.assign(b.pages[2].elements[1].infographic, { variant: 'horizontal_bars', title: 'Guests', items: [{ id: 'i1', label: 'B', value: 7 }], showLegend: false }); }],
+    ['a page\'s label and chapter', function (b) { b.pages[0].label = 'Front'; b.pages[0].chapterId = 'ch1'; }],
+    ['the book\'s name, subtitle, category, chapters and cover', function (b) { Object.assign(b, { name: 'Forms of Light II', subtitle: 'New', category: 'Art', chapters: [{ id: 'ch1', number: 1, title: 'One', orderIndex: 0 }], coverThumbnail: '/books/samples/y.jpg' }); }],
+    ['the manuscript and the photo library', function (b) { b.contentSections.push({ id: 's2', title: 'S2', kind: 'body', body: 'More', orderIndex: 1 }); b.imageAssets.push({ id: 'a2', name: 'q.jpg', url: '/q.jpg', widthPx: 1, heightPx: 1, mimeType: 'image/jpeg', category: 'x', tags: [], uploadedAt: '' }); }],
+    ['pages reordered', function (b) { b.pages = [b.pages[1], b.pages[0], b.pages[2]]; b.pages.forEach(function (p, i) { p.orderIndex = i; }); }],
+    ['a new page made from the master page', function (b) { b.pages.push({ id: 'p_m', orderIndex: 3, label: 'From master', role: 'editorial_text', masterPageId: 'm1', backgroundColor: '#fff',
+      elements: [Object.assign(clone(b.masterPages[0].elements[0]), { id: 'el_m_1', masterElementId: 'm1_t', text: 'Poured in' })] }); }],
+    ['a new page copied from one of the book\'s pages', function (b) { var c = clone(b.pages.filter(function (p) { return p.id === 'p3'; })[0]); c.id = 'p3_copy'; c.label = 'Gallery 2';
+      c.elements.forEach(function (el, i) { el.id = 'c' + i; el.zIndex = 10 + i; }); c.elements[0].image.src = '/c.jpg'; b.pages.push(c); }],
+    ['a page deleted', function (b) { b.pages = b.pages.filter(function (p) { return p.id !== 'p_m'; }); }],
+    ['a field the server never keeps', function (b) { b.ownerId = 'someone'; b.somethingNew = { x: 1 }; }]];
+  for (var cc of CONTENT_OK) {
+    var res2 = await contentSave(cc[1]);
+    check('13.5 a Content editor\'s content change — ' + cc[0] + ': saved', res2.r.status === 200 && res2.r.json.rev === res2.rev + 1 && revOf('qa_roles') === res2.rev + 1, [res2.r.status, res2.r.json]);
+  }
+  var afterContent = (await loaded('qa_roles', CONTENT)).book;
+  check('13.6 …and what was saved is there (the copied page, the new photo; the field the server never keeps is not)', afterContent.pages.some(function (p) { return p.id === 'p3_copy' && p.elements[0].image.src === '/c.jpg'; }) &&
+    !afterContent.pages.some(function (p) { return p.id === 'p_m'; }) && afterContent.name === 'Forms of Light II' && !('somethingNew' in afterContent), afterContent.pages.map(function (p) { return p.id; }));
+  var resC2 = await contentSave(function (b) { b.pages[0].elements[0].text = 'From one portal'; }, CONTENT2);
+  check('13.7 a Content editor who works in one portal may save too (Books is not tied to events)', resC2.r.status === 200, resC2.r.json);
+  var resD = await contentSave(function (b) { b.dimensions.widthMm = 250; b.pages[0].backgroundColor = '#fafafa'; }, DESIGNER);
+  check('13.8 a Designer\'s design change: saved', resD.r.status === 200 && JSON.parse(DOCS['books/qa_roles'].core).dimensions.widthMm === 250, resD.r.json);
+  var edView = await call('PUT', '/api/books/book', { book: (await loaded('qa_roles')).book, baseRev: revOf('qa_roles') }, { token: CONTENT });
+  check('13.9 the Content editor is an events Viewer, and Books still lets them save (its own role decides)', edView.status === 200, edView.json);
+
+  /* ---------- 14 who is here ---------- */
+  var pr1 = await call('POST', '/api/books/presence', { bookId: 'qa_roles', pageId: 'p1' }, { token: DESIGNER });
+  var key = require('crypto').createHash('sha256').update(DESIGNER + '@timesinternet.in').digest('hex').slice(0, 16);
+  var pdoc = DOCS['books/qa_roles/presence/' + key] || {};
+  check('14.1 presence: kept under the hash of the address, with the page and the time', pr1.status === 200 && pdoc.email === DESIGNER + '@timesinternet.in' && pdoc.pageId === 'p1' && !isNaN(Date.parse(pdoc.at)), [pr1.json, Object.keys(DOCS).filter(function (k) { return /presence/.test(k); })]);
+  check('14.2 …the answer: the others only (never the caller)', Array.isArray(pr1.json.here) && !pr1.json.here.some(function (h) { return h.email === DESIGNER + '@timesinternet.in'; }), pr1.json);
+  await tick(3);
+  await call('POST', '/api/books/presence', { bookId: 'qa_roles', pageId: 'p2' }, { token: CONTENT });
+  await tick(3);
+  var pr3 = await call('POST', '/api/books/presence', { bookId: 'qa_roles', pageId: 'p3' }, { token: ADMIN });
+  check('14.3 the others seen in the last 70 seconds, newest first, with their page', pr3.status === 200 && pr3.json.here.length === 2 && pr3.json.here[0].email === CONTENT + '@timesinternet.in' &&
+    pr3.json.here[0].pageId === 'p2' && pr3.json.here[1].email === DESIGNER + '@timesinternet.in' && pr3.json.here[1].pageId === 'p1' && Object.keys(pr3.json.here[0]).sort().join() === 'at,email,pageId', pr3.json);
+  DOCS['books/qa_roles/presence/' + key].at = new Date(Date.now() - 71 * 1000).toISOString();
+  var pr4 = await call('POST', '/api/books/presence', { bookId: 'qa_roles', pageId: 'p3' }, { token: ADMIN });
+  check('14.4 someone last seen over 70 seconds ago is not shown', pr4.json.here.length === 1 && pr4.json.here[0].email === CONTENT + '@timesinternet.in', pr4.json);
+  var notYet = await call('POST', '/api/books/presence', { bookId: 'qa_nope', pageId: 'p1' });
+  check('14.5a a book not saved yet (just started, its first save on the way): nobody here, nothing written, no error', notYet.status === 200 &&
+    notYet.json.here.length === 0 && !Object.keys(DOCS).some(function (k) { return k.indexOf('books/qa_nope') === 0; }), notYet);
+  check('14.5 a deleted book: 404; ids that are not ids: 400', true &&
+    (await call('POST', '/api/books/presence', { bookId: 'qa_to_delete', pageId: 'p1' })).status === 404 && (await call('POST', '/api/books/presence', { bookId: '../x', pageId: 'p1' })).status === 400 &&
+    (await call('POST', '/api/books/presence', { bookId: 'qa_roles', pageId: 'a/b' })).status === 400);
+
+  /* ---------- 15 deleted pages: kept, listed, put back ---------- */
+  var tb = richBook('qa_trash');
+  await call('PUT', '/api/books/book', { book: tb, baseRev: null }, { token: DESIGNER });
+  var t0 = await loaded('qa_trash');
+  var essayPart = DOCS['books/qa_trash'].parts.filter(function (p) { return p.k === 'page:p2'; })[0].id;
+  var tdel = clone(t0.book); tdel.pages = tdel.pages.filter(function (p) { return p.id !== 'p2'; });
+  var ts = await call('PUT', '/api/books/book', { book: tdel, baseRev: t0.rev }, { token: CONTENT });
+  var trashDoc = DOCS['books/qa_trash/trash/p2'] || {};
+  check('15.1 a page a save deletes is kept: the page as it was, its label, where it was, when and by whom', ts.status === 200 && JSON.stringify(JSON.parse(trashDoc.page || 'null')) === JSON.stringify(t0.book.pages[1]) &&
+    trashDoc.label === 'Essay' && trashDoc.position === 1 && trashDoc.deletedBy === CONTENT + '@timesinternet.in' && !!trashDoc.deletedAt, trashDoc);
+  await tick();
+  check('15.2 …and only then is its part removed', !DOCS['books/qa_trash/parts/' + essayPart], Object.keys(DOCS).filter(function (k) { return k.indexOf('books/qa_trash/parts/') === 0; }).length);
+  await tick(3);
+  var t1 = await loaded('qa_trash'); var tdel2 = clone(t1.book); tdel2.pages = tdel2.pages.filter(function (p) { return p.id !== 'p3'; });
+  await call('PUT', '/api/books/book', { book: tdel2, baseRev: t1.rev }, { token: DESIGNER });
+  var tl1 = await call('GET', '/api/books/trash?id=qa_trash', null, { token: CONTENT });
+  check('15.3 the deleted pages, newest first, without the pages themselves', tl1.status === 200 && tl1.json.pages.map(function (p) { return p.pageId; }).join() === 'p3,p2' &&
+    tl1.json.pages[1].label === 'Essay' && tl1.json.pages[1].position === 1 && !('page' in tl1.json.pages[0]) && Object.keys(tl1.json.pages[0]).sort().join() === 'deletedAt,deletedBy,label,pageId,position', tl1.json);
+  var cur = await loaded('qa_trash');
+  var beforeRestore = under('books/qa_trash');
+  var rsStale = await call('POST', '/api/books/restore-page', { bookId: 'qa_trash', pageId: 'p2', baseRev: cur.rev - 1 }, { token: CONTENT });
+  await tick();
+  check('15.4 restore based on an old revision: 409 stale, like a save, nothing written', rsStale.status === 409 && rsStale.json.code === 'stale' && rsStale.json.rev === cur.rev && under('books/qa_trash') === beforeRestore, rsStale.json);
+  var rs = await call('POST', '/api/books/restore-page', { bookId: 'qa_trash', pageId: 'p2', baseRev: cur.rev }, { token: CONTENT });
+  await tick();
+  var afterRestore = await loaded('qa_trash');
+  check('15.5 a Content editor restores the page: where it was, as it was, a new revision, the book in the answer', rs.status === 200 && rs.json.rev === cur.rev + 1 && afterRestore.rev === cur.rev + 1 &&
+    afterRestore.book.pages.map(function (p) { return p.id; }).join() === 'p1,p2' && JSON.stringify(Object.assign({}, afterRestore.book.pages[1], { orderIndex: 0 })) === JSON.stringify(Object.assign({}, t0.book.pages[1], { orderIndex: 0 })) &&
+    afterRestore.book.pages[1].orderIndex === 1 && rs.json.book.pages.map(function (p) { return p.id; }).join() === 'p1,p2', [rs.json && rs.json.rev, afterRestore.book.pages.map(function (p) { return p.id; })]);
+  check('15.6 …and it is no longer among the deleted pages', !DOCS['books/qa_trash/trash/p2'] && (await call('GET', '/api/books/trash?id=qa_trash')).json.pages.map(function (p) { return p.pageId; }).join() === 'p3');
+  DOCS['books/qa_trash/trash/p2'] = clone(trashDoc);
+  check('15.6b a deleted page that is in the book again (an undo saved) is not offered', (await call('GET', '/api/books/trash?id=qa_trash')).json.pages.map(function (p) { return p.pageId; }).join() === 'p3');
+  var rsExists = await call('POST', '/api/books/restore-page', { bookId: 'qa_trash', pageId: 'p2', baseRev: afterRestore.rev }, { token: CONTENT });
+  check('15.7 a page with that id already in the book: 409 exists', rsExists.status === 409 && rsExists.json.code === 'exists' && revOf('qa_trash') === afterRestore.rev, rsExists.json);
+  delete DOCS['books/qa_trash/trash/p2'];
+  var rsNone = await call('POST', '/api/books/restore-page', { bookId: 'qa_trash', pageId: 'p7', baseRev: afterRestore.rev });
+  check('15.8 a page not among the deleted: 404; a bad baseRev: 400', rsNone.status === 404 && (await call('POST', '/api/books/restore-page', { bookId: 'qa_trash', pageId: 'p3', baseRev: 'x' })).status === 400, rsNone.json);
+  DOCS['books/qa_trash/trash/p3'].position = 99;
+  var rsEnd = await call('POST', '/api/books/restore-page', { bookId: 'qa_trash', pageId: 'p3', baseRev: afterRestore.rev }, { token: DESIGNER });
+  check('15.9 a page that was further on than the book now is: put at the end', rsEnd.status === 200 && (await loaded('qa_trash')).book.pages.map(function (p) { return p.id; }).join() === 'p1,p2,p3', rsEnd.json);
+  await tick();
+  var t3 = await loaded('qa_trash'); var tdel3 = clone(t3.book); tdel3.pages = tdel3.pages.filter(function (p) { return p.id !== 'p1'; });
+  var coverPart = DOCS['books/qa_trash'].parts.filter(function (p) { return p.k === 'page:p1'; })[0].id;
+  FAIL_SET = /^books\/qa_trash\/trash\//;
+  var tsFail = await call('PUT', '/api/books/book', { book: tdel3, baseRev: t3.rev }, { token: DESIGNER });
+  FAIL_SET = null;
+  await tick(10);
+  check('15.10 when the deleted page cannot be kept, the save stands but its part is left in place (never lost)', tsFail.status === 200 && !DOCS['books/qa_trash/trash/p1'] && !!DOCS['books/qa_trash/parts/' + coverPart], tsFail.json);
+
+  /* ---------- 16 the activity log ---------- */
+  var lb = richBook('qa_log');
+  lb.pages.push(page('p4', 'Notes', ['Note one']));
+  await call('PUT', '/api/books/book', { book: lb, baseRev: null }, { token: DESIGNER });
+  var lg = logOf('qa_log');
+  check('16.1 a new book: "created", by whom, in words', lg.length === 1 && lg[0].action === 'created' && lg[0].by === DESIGNER + '@timesinternet.in' && lg[0].detail === 'Started the book "Forms of Light" with 4 pages', lg);
+  await tick(3);
+  var l0 = await loaded('qa_log'); var lb1 = clone(l0.book);
+  lb1.pages[0].elements[0].text = 'New cover line'; lb1.pages[1].elements[0].text = 'New one'; lb1.pages[1].elements[1].text = 'New two';
+  lb1.pages = lb1.pages.filter(function (p) { return p.id !== 'p4'; });
+  lb1.pages.push({ id: 'p5', orderIndex: 3, label: 'Gallery', role: 'image_led', backgroundColor: '#123456', elements: [] });
+  await call('PUT', '/api/books/book', { book: lb1, baseRev: l0.rev }, { token: DESIGNER });
+  lg = logOf('qa_log');
+  check('16.2 a save in one sentence: text in frames and pages, a page added, one deleted, the design', lg.length === 2 && lg[0].action === 'saved' &&
+    lg[0].detail === 'Changed text in 3 frames on 2 pages; added page "Gallery"; deleted page "Notes"; changed the design', lg[0]);
+  await tick(3);
+  var l1 = await loaded('qa_log'); var lb2 = clone(l1.book);
+  lb2.pages[1].elements[0].text = 'New one, again'; lb2.pages[2].elements[0].image.zoom = 1.5;
+  lb2.pages = lb2.pages.filter(function (p) { return p.id !== 'p5'; });
+  await call('PUT', '/api/books/book', { book: lb2, baseRev: l1.rev }, { token: DESIGNER });
+  lg = logOf('qa_log');
+  check('16.3 the same person again within 10 minutes: their entry updated, not a new one; a frame counted once, a page added then deleted is neither',
+    lg.length === 2 && lg[0].detail === 'Changed text in 3 frames on 2 pages; changed photos in 1 frame on 1 page; deleted page "Notes"; changed the design' && lg[0].firstAt !== lg[0].at, lg[0]);
+  await tick(3);
+  var l2 = await loaded('qa_log'); var lb3 = clone(l2.book); lb3.pages[0].elements[0].text = 'By someone else';
+  await call('PUT', '/api/books/book', { book: lb3, baseRev: l2.rev }, { token: CONTENT });
+  lg = logOf('qa_log');
+  check('16.4 someone else saves: a new entry', lg.length === 3 && lg[0].by === CONTENT + '@timesinternet.in' && lg[0].detail === 'Changed text in 1 frame on 1 page', lg[0]);
+  DOCS[lg[0].path].at = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+  await tick(3);
+  var l3 = await loaded('qa_log'); var lb4 = clone(l3.book); lb4.pages[0].elements[0].text = 'Later on';
+  await call('PUT', '/api/books/book', { book: lb4, baseRev: l3.rev }, { token: CONTENT });
+  lg = logOf('qa_log');
+  check('16.5 …and over 10 minutes after their last: a new entry again', lg.length === 4 && lg[0].by === CONTENT + '@timesinternet.in' && lg[0].detail === 'Changed text in 1 frame on 1 page', lg.slice(0, 2));
+  await tick(3);
+  var l4 = await loaded('qa_log'); var lb5 = clone(l4.book); lb5.pages = [lb5.pages[1], lb5.pages[0]].concat(lb5.pages.slice(2)); lb5.contentSections = [];
+  lb5.name = 'Renamed';
+  await call('PUT', '/api/books/book', { book: lb5, baseRev: l4.rev }, { token: ADMIN });
+  lg = logOf('qa_log');
+  check('16.6 other changes in words: reordered pages, the book renamed, the manuscript', /^Reordered pages/.test(lg[0].detail) && /renamed the book/.test(lg[0].detail) && /changed the manuscript/.test(lg[0].detail) && !/design/.test(lg[0].detail), lg[0].detail);
+  await tick(3);
+  await call('POST', '/api/books/status', { id: 'qa_log', status: 'print_ready' }, { token: DESIGNER });
+  await tick(3);
+  await call('POST', '/api/books/versions', { bookId: 'qa_log', version: { id: 'v_log', label: 'Proof 2', snapshot: { pages: [] } } }, { token: CONTENT });
+  await tick(3);
+  var l5 = await loaded('qa_log'); var lb6 = clone(l5.book); var gonePage = lb6.pages.pop();
+  await call('PUT', '/api/books/book', { book: lb6, baseRev: l5.rev }, { token: DESIGNER });
+  await tick(3);
+  await call('POST', '/api/books/restore-page', { bookId: 'qa_log', pageId: gonePage.id, baseRev: revOf('qa_log') }, { token: CONTENT });
+  lg = logOf('qa_log');
+  var acts = lg.map(function (e) { return e.action; });
+  check('16.7 status, a version, a restored page: each its own entry in words', acts.slice(0, 4).join() === 'page-restored,saved,version,status' && lg[3].detail === 'Changed the status from Draft to Print ready' &&
+    lg[2].detail === 'Kept the version "Proof 2"' && /^Restored page "Gallery" as page 3$/.test(lg[0].detail) && lg[1].detail === 'Deleted page "Gallery"', lg.slice(0, 4).map(function (e) { return e.action + ': ' + e.detail; }));
+  await call('PUT', '/api/books/book', { book: Object.assign(book('qa_log_del'), { name: 'Gone' }), baseRev: null }, { token: DESIGNER });
+  await call('DELETE', '/api/books/book?id=qa_log_del', null, { token: DESIGNER });
+  check('16.8 a deleted book: "deleted"', logOf('qa_log_del')[0].action === 'deleted' && logOf('qa_log_del')[0].detail === 'Deleted the book');
+  var gl = await call('GET', '/api/books/log?id=qa_log', null, { token: CONTENT });
+  check('16.9 GET log: newest first, in words, without the counts', gl.status === 200 && gl.json.entries.length === lg.length && gl.json.entries[0].action === 'page-restored' &&
+    gl.json.entries.every(function (e, i, all) { return e.id && e.at && e.by && e.action && e.detail && !('counts' in e) && (!i || all[i - 1].at >= e.at); }) &&
+    gl.json.entries.some(function (e) { return e.action === 'created'; }), gl.json);
+  check('16.10 a deleted or unknown book has no log to show: 404', (await call('GET', '/api/books/log?id=qa_log_del')).status === 404 && (await call('GET', '/api/books/log?id=qa_none')).status === 404);
+  var many2 = T.saveSentence(Object.assign(T.foldCounts(null, T.saveCounts({ pages: [] }, { pages: [] }, [])), { added: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], deleted: [1, 2, 3, 4].map(function (i) { return { id: 'd' + i, label: 'D' + i }; }) }));
+  check('16.11 sentences: two pages named, more than three counted, nothing changed said so', many2 === 'Added pages "A" and "B"; deleted 4 pages' &&
+    T.saveSentence(T.saveCounts({ pages: [] }, { pages: [] }, [])) === 'Saved with no changes', many2);
+
   /* ---------- 11 wiring ---------- */
   var access = require('./access');
   check('11.1 the built editor is served (books/), its source never is (books-app/)', access.isServableFile('books/app.js') && access.isServableFile('books/app.css') &&
@@ -383,7 +731,7 @@ function partsOf(id) { return Object.keys(DOCS).filter(function (k) { return k.i
   check('11.3 books.html: signed in by auth.js, PDF reader, the built editor; not indexed', /<script src="auth\.js"><\/script>/.test(PAGE) && /<script src="pdf-reader\.js"><\/script>/.test(PAGE) &&
     /<script src="books\/app\.js" defer><\/script>/.test(PAGE) && /<link rel="stylesheet" href="books\/app\.css">/.test(PAGE) && /<meta name="robots" content="noindex">/.test(PAGE));
   var LIST = fs.readFileSync(path.join(ROOT, 'Event_Listing.html'), 'utf8');
-  check('11.4 the dashboard menu shows Books to admins only', /\(booksOpen \? '<a href="books\.html">' \+ book \+ ' Books<\/a>' : ''\)/.test(LIST) && /a\.you\.role === 'admin' && !booksOpen/.test(LIST));
+  check('11.4 the dashboard menu shows Books to whoever has a Books role', /\(booksOpen \? '<a href="books\.html">' \+ book \+ ' Books<\/a>' : ''\)/.test(LIST) && /y\.books === 'designer' \|\| y\.books === 'content' \|\| y\.role === 'admin'/.test(LIST));
   check('11.5 nothing of the AI Studio export\'s server came along', !fs.existsSync(path.join(ROOT, 'books-app', 'server.ts')) && !fs.existsSync(path.join(ROOT, 'books-app', 'src', 'services', 'firebase.ts')) &&
     !fs.existsSync(path.join(ROOT, 'books-app', 'src', 'components', 'TopToolbar.tsx')));
 

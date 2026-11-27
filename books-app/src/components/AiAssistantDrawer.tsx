@@ -13,6 +13,8 @@ interface AiAssistantDrawerProps {
   activePage: BookPage;
   selectedElement: BookElement | null;
   initialPrompt?: string;
+  /** false for a Content editor: only a suggestion that changes words can be applied; the rest change the design */
+  canDesign: boolean;
   onApplySuggestion: (suggestion: AiEditorialSuggestion) => void;
   onClose: () => void;
 }
@@ -32,6 +34,7 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
   activePage,
   selectedElement,
   initialPrompt = '',
+  canDesign,
   onApplySuggestion,
   onClose,
 }) => {
@@ -155,13 +158,18 @@ export const AiAssistantDrawer: React.FC<AiAssistantDrawerProps> = ({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="text-xs font-semibold text-[#F4F1EA]">{sug.title}</div>
-                    <span className="text-[10px] text-[#C6A26B] capitalize">
+                    <span className="text-[11px] text-[#C6A26B] capitalize">
                       {sug.category.replace('_', ' ')}
                     </span>
                   </div>
                   <p className="text-[11px] text-[#98958D] leading-relaxed">{sug.rationale}</p>
 
-                  {sug.actionType !== 'advisory_only' && (
+                  {sug.actionType !== 'advisory_only' && !canDesign && sug.actionType !== 'update_text' && (
+                    <div className="pt-1 text-[11px] text-[#8F8C84]">
+                      This would change the design, so only a Designer can apply it.
+                    </div>
+                  )}
+                  {sug.actionType !== 'advisory_only' && (canDesign || sug.actionType === 'update_text') && (
                     <div className="flex items-center gap-2 pt-1">
                       <button
                         disabled={isApplied}

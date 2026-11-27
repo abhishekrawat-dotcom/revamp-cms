@@ -70,6 +70,8 @@ interface LeftSidebarProps {
   activePage: BookPage;
   selectedElementIds: string[];
   customComponents: CustomSavedTemplate[];
+  /** false for a Content editor: no Elements (adding frames) or Masters tab, Layers read-only, page type fixed */
+  canDesign: boolean;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onAddComponent: (kind: ComponentDragKind, customPayload?: BookElement) => void;
@@ -164,6 +166,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   activePage,
   selectedElementIds,
   customComponents,
+  canDesign,
   collapsed,
   onToggleCollapse,
   onAddComponent,
@@ -187,7 +190,12 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   onUpdatePageMeta,
   onOpenInfographicsModal,
 }) => {
-  const [tab, setTab] = useState<'components' | 'layers' | 'assets' | 'masters' | 'structure'>('components');
+  const [chosenTab, setTab] = useState<'components' | 'layers' | 'assets' | 'masters' | 'structure'>(
+    canDesign ? 'components' : 'assets'
+  );
+  // adding frames (Elements) and master pages (Masters) are the design's: a Content editor has neither tab
+  const tab = !canDesign && (chosenTab === 'components' || chosenTab === 'masters') ? 'assets' : chosenTab;
+  const designTab = (id: string) => id === 'components' || id === 'masters';
   const [assetSearch, setAssetSearch] = useState('');
   const [assetCategory, setAssetCategory] = useState('All');
   const [uploading, setUploading] = useState(false);
@@ -237,7 +245,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
             ['masters', LayoutTemplate, 'Master Pages'],
             ['structure', BookMarked, 'Book Structure'],
           ] as const
-        ).map(([id, Icon, label]) => (
+        ).filter(([id]) => canDesign || !designTab(id)).map(([id, Icon, label]) => (
           <button
             key={id}
             onClick={() => {
@@ -280,7 +288,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               ['masters', LayoutTemplate, 'Masters'],
               ['structure', BookMarked, 'Book'],
             ] as const
-          ).map(([id, Icon, label]) => (
+          ).filter(([id]) => canDesign || !designTab(id)).map(([id, Icon, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -307,8 +315,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
-        {/* 1. COMPONENTS LIBRARY */}
-        {tab === 'components' && (
+        {/* 1. COMPONENTS LIBRARY (Designers) */}
+        {tab === 'components' && canDesign && (
           <>
             <p className="text-[11px] text-[#8F8C84] leading-relaxed">
               Drag any component onto a page spread, or click to place it aligned to the active grid.
@@ -388,6 +396,16 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <span className="text-[11px] font-medium text-[#98958D]">
                 {activePage.label} · {sortedLayers.length} layers
               </span>
+              {!canDesign && (
+                <span
+                  title="The layers are the design: a Designer changes them. Click a layer to select its frame."
+                  className="flex items-center gap-1 text-[11px] text-[#7F7C75]"
+                >
+                  <Lock className="w-3 h-3" />
+                  <span>Read-only</span>
+                </span>
+              )}
+              {canDesign && (
               <div className="flex items-center gap-1">
                 <button
                   onClick={onGroupSelected}
@@ -422,6 +440,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -447,11 +466,11 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         : 'bg-[#1D1D21] border-transparent hover:border-white/[0.08] text-[#C8C5BC]'
                     }`}
                   >
-                    <span className="text-[10px] font-mono-tabular text-[#8F8C84] w-4 shrink-0 uppercase">
+                    <span className="text-[11px] font-mono-tabular text-[#8F8C84] w-4 shrink-0 uppercase">
                       {el.type.slice(0, 2)}
                     </span>
 
-                    {editingLayerId === el.id ? (
+                    {editingLayerId === el.id && canDesign ? (
                       <input
                         autoFocus
                         value={el.name}
@@ -469,18 +488,24 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       <span
                         onDoubleClick={(e) => {
                           e.stopPropagation();
-                          setEditingLayerId(el.id);
+                          if (canDesign) setEditingLayerId(el.id);
                         }}
-                        title="Double-click to rename layer"
+                        title={canDesign ? 'Double-click to rename layer' : el.name}
                         className="flex-1 truncate"
                       >
                         {el.name}
                         {el.groupId && (
-                          <span className="text-[9px] text-[#C6A26B] ml-1">· grp</span>
+                          <span className="text-[11px] text-[#C6A26B] ml-1">· grp</span>
                         )}
                       </span>
                     )}
 
+                    {!canDesign ? (
+                      <div className="flex items-center gap-1 shrink-0 text-[#6F6C65]">
+                        {el.locked && <Lock className="w-3 h-3" aria-label="Locked" />}
+                        {el.hidden && <EyeOff className="w-3 h-3" aria-label="Hidden" />}
+                      </div>
+                    ) : (
                     <div className="flex items-center gap-0.5 shrink-0">
                       <button
                         onClick={(e) => {
@@ -527,6 +552,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         {el.hidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                       </button>
                     </div>
+                    )}
                   </div>
                 );
               })}
@@ -570,7 +596,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                 <button
                   key={cat}
                   onClick={() => setAssetCategory(cat)}
-                  className={`px-2 py-0.5 text-[10px] rounded transition-colors cursor-pointer ${
+                  className={`px-2 py-0.5 text-[11px] rounded transition-colors cursor-pointer ${
                     assetCategory === cat
                       ? 'bg-[#2B2B31] text-[#ECEAE4]'
                       : 'text-[#8F8C84] hover:text-[#D7D4CC]'
@@ -581,8 +607,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               ))}
             </div>
 
-            <p className="text-[10px] text-[#8F8C84]">
-              Drag a photograph onto any existing image frame to replace it non-destructively, or click to insert/replace.
+            <p className="text-[11px] text-[#8F8C84]">
+              {canDesign
+                ? 'Drag a photograph onto any existing image frame to replace it non-destructively, or click to insert/replace.'
+                : 'Drag a photo onto a photo frame, or select a photo frame on the page and click a photo here, to put it in the frame.'}
             </p>
 
             <div className="grid grid-cols-2 gap-2">
@@ -606,10 +634,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     />
                   </div>
                   <div className="p-1.5 space-y-0.5">
-                    <div className="text-[10px] text-[#E2DFD7] truncate" title={asset.name}>
+                    <div className="text-[11px] text-[#E2DFD7] truncate" title={asset.name}>
                       {asset.name}
                     </div>
-                    <div className="font-mono-tabular text-[9px] text-[#8F8C84]">
+                    <div className="font-mono-tabular text-[11px] text-[#8F8C84]">
                       {asset.widthPx}×{asset.heightPx}px · {asset.category}
                     </div>
                     <input
@@ -625,7 +653,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         })
                       }
                       placeholder="Add tags..."
-                      className="w-full bg-transparent text-[9px] text-[#98958D] focus:bg-[#121214] focus:text-white px-1 py-0.5 rounded focus:outline-none"
+                      className="w-full bg-transparent text-[11px] text-[#98958D] focus:bg-[#121214] focus:text-white px-1 py-0.5 rounded focus:outline-none"
                     />
                   </div>
                 </div>
@@ -634,8 +662,8 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
           </div>
         )}
 
-        {/* 4. MASTER PAGES */}
-        {tab === 'masters' && (
+        {/* 4. MASTER PAGES (Designers) */}
+        {tab === 'masters' && canDesign && (
           <div className="space-y-3">
             <div className="p-2.5 bg-[#1F1F24] border border-white/[0.07] rounded space-y-2">
               <div className="text-[11px] font-medium text-[#ECEAE4]">Active Page Master</div>
@@ -698,7 +726,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="text-xs font-medium text-[#ECEAE4]">{master.name}</div>
-                        <div className="text-[10px] text-[#8F8C84] mt-0.5">
+                        <div className="text-[11px] text-[#8F8C84] mt-0.5">
                           {linkedCount} linked page{linkedCount === 1 ? '' : 's'} ·{' '}
                           {master.elements.length} master elements
                         </div>
@@ -711,7 +739,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                         className="w-5 h-5 rounded border border-white/15 bg-transparent cursor-pointer shrink-0"
                       />
                     </div>
-                    <p className="text-[10px] text-[#98958D] leading-relaxed">
+                    <p className="text-[11px] text-[#98958D] leading-relaxed">
                       {master.description}
                     </p>
                     <button
@@ -759,7 +787,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     className="px-2 py-1.5 bg-[#1F1F24] border border-white/[0.06] rounded text-[11px] text-[#E2DFD7] flex items-center justify-between"
                   >
                     <span className="truncate">{ch.title}</span>
-                    <span className="font-mono-tabular text-[10px] text-[#8F8C84]">
+                    <span className="font-mono-tabular text-[11px] text-[#8F8C84]">
                       {project.pages.filter((p) => p.chapterId === ch.id).length}p
                     </span>
                   </div>
@@ -783,20 +811,22 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono-tabular text-[10px] text-[#C6A26B]">
+                      <span className="font-mono-tabular text-[11px] text-[#C6A26B]">
                         P.{String(idx + 1).padStart(2, '0')} · {idx === 0 ? 'Cover' : idx % 2 === 1 ? 'Verso (L)' : 'Recto (R)'}
                       </span>
                       {p.dimensionsOverride && (
-                        <span className="text-[9px] text-[#C6A26B]">Custom Size</span>
+                        <span className="text-[11px] text-[#C6A26B]">Custom Size</span>
                       )}
                     </div>
                     <select
                       value={p.role}
+                      disabled={!canDesign}
+                      title={canDesign ? 'Page type' : 'The page type is part of the design: a Designer changes it'}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) =>
                         onUpdatePageMeta(p.id, { role: e.target.value as PageRole })
                       }
-                      className="w-full bg-[#121214] border border-white/[0.08] rounded px-1.5 py-1 text-[10px] text-[#D7D4CC]"
+                      className="w-full bg-[#121214] border border-white/[0.08] rounded px-1.5 py-1 text-[11px] text-[#D7D4CC] disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       {PAGE_ROLES.map((r) => (
                         <option key={r.value} value={r.value}>
@@ -810,7 +840,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       onChange={(e) =>
                         onUpdatePageMeta(p.id, { chapterId: e.target.value || undefined })
                       }
-                      className="w-full bg-[#121214] border border-white/[0.08] rounded px-1.5 py-1 text-[10px] text-[#98958D]"
+                      className="w-full bg-[#121214] border border-white/[0.08] rounded px-1.5 py-1 text-[11px] text-[#98958D]"
                     >
                       <option value="">Front / Back Matter (Unassigned)</option>
                       {project.chapters.map((ch) => (

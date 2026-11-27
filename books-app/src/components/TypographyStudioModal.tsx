@@ -520,7 +520,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="text-xs font-semibold text-[#F4F1EA]">{f.family}</div>
-                          <div className="text-[10px] text-[#8F8C84] mt-0.5">
+                          <div className="text-[11px] text-[#8F8C84] mt-0.5">
                             {f.category} · {f.weights.length} weights
                             {f.isVariable ? ' · Variable' : ''}
                             {f.hasItalic ? ' · Italic' : ''}
@@ -548,19 +548,19 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                       <div className="flex flex-wrap items-center gap-1">
                         <button
                           onClick={() => assignFontToRole('displayFont', f.family)}
-                          className="px-2 py-1 text-[10px] bg-[#232329] hover:bg-[#31313A] text-[#ECEAE4] rounded cursor-pointer"
+                          className="px-2 py-1 text-[11px] bg-[#232329] hover:bg-[#31313A] text-[#ECEAE4] rounded cursor-pointer"
                         >
                           Set Display
                         </button>
                         <button
                           onClick={() => assignFontToRole('headingFont', f.family)}
-                          className="px-2 py-1 text-[10px] bg-[#232329] hover:bg-[#31313A] text-[#ECEAE4] rounded cursor-pointer"
+                          className="px-2 py-1 text-[11px] bg-[#232329] hover:bg-[#31313A] text-[#ECEAE4] rounded cursor-pointer"
                         >
                           Set Heading
                         </button>
                         <button
                           onClick={() => assignFontToRole('bodyFont', f.family)}
-                          className="px-2 py-1 text-[10px] bg-[#232329] hover:bg-[#31313A] text-[#ECEAE4] rounded cursor-pointer"
+                          className="px-2 py-1 text-[11px] bg-[#232329] hover:bg-[#31313A] text-[#ECEAE4] rounded cursor-pointer"
                         >
                           Set Body
                         </button>
@@ -570,7 +570,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                             setCompareFontA(f.family);
                             setTab('preview');
                           }}
-                          className="ml-auto px-2 py-1 text-[10px] text-[#C6A26B] hover:underline cursor-pointer"
+                          className="ml-auto px-2 py-1 text-[11px] text-[#C6A26B] hover:underline cursor-pointer"
                         >
                           Compare
                         </button>
@@ -595,7 +595,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
             <div className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-[#141417] p-4 rounded-md border border-white/[0.08]">
                 <label className="md:col-span-2 flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Custom Specimen Text</span>
+                  <span className="text-[11px] text-[#98958D]">Custom Specimen Text</span>
                   <input
                     type="text"
                     value={previewText}
@@ -605,7 +605,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                 </label>
 
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Specimen Mode</span>
+                  <span className="text-[11px] text-[#98958D]">Specimen Mode</span>
                   <select
                     value={previewMode}
                     onChange={(e) =>
@@ -631,7 +631,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                 </label>
 
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Size ({previewSizePx}px)</span>
+                  <span className="text-[11px] text-[#98958D]">Size ({previewSizePx}px)</span>
                   <input
                     type="range"
                     min={12}
@@ -642,7 +642,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Weight ({previewWeight})</span>
+                  <span className="text-[11px] text-[#98958D]">Weight ({previewWeight})</span>
                   <input
                     type="range"
                     min={300}
@@ -654,7 +654,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Leading ({previewLeading})</span>
+                  <span className="text-[11px] text-[#98958D]">Leading ({previewLeading})</span>
                   <input
                     type="range"
                     min={1}
@@ -666,7 +666,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[10px] text-[#98958D]">Tracking ({previewTracking}em)</span>
+                  <span className="text-[11px] text-[#98958D]">Tracking ({previewTracking}em)</span>
                   <input
                     type="range"
                     min={-0.05}
@@ -782,7 +782,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                       >
                         Stone, shadow, and calibrated white space elevate editorial storytelling.
                       </p>
-                      <div className="text-[10px] text-[#98958D] space-y-0.5 pt-2 border-t border-white/[0.06]">
+                      <div className="text-[11px] text-[#98958D] space-y-0.5 pt-2 border-t border-white/[0.06]">
                         <div>Display: {p.displayFont}</div>
                         <div>Heading: {p.headingFont}</div>
                         <div>Body: {p.bodyFont}</div>
@@ -866,7 +866,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Scope</span>
+                    <span className="text-[11px] text-[#98958D]">Scope</span>
                     <select
                       value={replaceScope}
                       onChange={(e) => setReplaceScope(e.target.value as 'book' | 'selected_pages')}
@@ -877,7 +877,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                     </select>
                   </label>
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Target Text Role</span>
+                    <span className="text-[11px] text-[#98958D]">Target Text Role</span>
                     <select
                       value={replaceRole}
                       onChange={(e) => setReplaceRole(e.target.value as TextRole | 'all')}
@@ -897,7 +897,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Replace From (Optional filter)</span>
+                    <span className="text-[11px] text-[#98958D]">Replace From (Optional filter)</span>
                     <select
                       value={replaceFromFamily}
                       onChange={(e) => setReplaceFromFamily(e.target.value)}
@@ -913,7 +913,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                   </label>
 
                   <label className="flex flex-col gap-1">
-                    <span className="text-[10px] text-[#98958D]">Replace With Google Font</span>
+                    <span className="text-[11px] text-[#98958D]">Replace With Google Font</span>
                     <select
                       value={replaceToFamily}
                       onChange={(e) => setReplaceToFamily(e.target.value)}
@@ -930,7 +930,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
 
                 {replaceScope === 'selected_pages' && (
                   <div className="space-y-1.5">
-                    <span className="text-[10px] text-[#98958D]">Choose Target Pages</span>
+                    <span className="text-[11px] text-[#98958D]">Choose Target Pages</span>
                     <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto">
                       {project.pages.map((p, idx) => {
                         const checked = selectedPageIds.includes(p.id);
@@ -996,19 +996,19 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                         <div className="flex items-center gap-1.5">
                           <button
                             onClick={() => assignFontToRole('headingFont', fam)}
-                            className="px-2 py-0.5 text-[10px] bg-[#2B2B33] text-[#D7D4CC] rounded cursor-pointer"
+                            className="px-2 py-0.5 text-[11px] bg-[#2B2B33] text-[#D7D4CC] rounded cursor-pointer"
                           >
                             Heading
                           </button>
                           <button
                             onClick={() => assignFontToRole('bodyFont', fam)}
-                            className="px-2 py-0.5 text-[10px] bg-[#2B2B33] text-[#D7D4CC] rounded cursor-pointer"
+                            className="px-2 py-0.5 text-[11px] bg-[#2B2B33] text-[#D7D4CC] rounded cursor-pointer"
                           >
                             Body
                           </button>
                           <button
                             onClick={() => toggleFavoriteFont(fam)}
-                            className="text-[10px] text-[#8F8C84] hover:text-[#E07A5F] cursor-pointer"
+                            className="text-[11px] text-[#8F8C84] hover:text-[#E07A5F] cursor-pointer"
                           >
                             Remove
                           </button>
@@ -1048,7 +1048,7 @@ export const TypographyStudioModal: React.FC<TypographyStudioModalProps> = ({
                     >
                       <div>
                         <div className="text-xs font-medium text-[#ECEAE4]">{pre.name}</div>
-                        <div className="text-[10px] text-[#98958D]">
+                        <div className="text-[11px] text-[#98958D]">
                           {pre.typography.displayFont} · {pre.typography.bodyFont} ·{' '}
                           {pre.typography.captionFont}
                         </div>

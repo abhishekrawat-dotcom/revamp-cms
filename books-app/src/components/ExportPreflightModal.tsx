@@ -23,6 +23,8 @@ import { runPreflightCheck } from '../engines/preflightEngine';
 
 interface ExportPreflightModalProps {
   project: BookProject;
+  /** false for a Content editor: the print settings are the design's (shown, not changed); exporting is open to both */
+  canDesign: boolean;
   activePage: BookPage;
   activePageIndex: number;
   onUpdateProject: (updated: BookProject) => void;
@@ -32,6 +34,7 @@ interface ExportPreflightModalProps {
 
 export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
   project,
+  canDesign,
   activePage,
   activePageIndex,
   onUpdateProject,
@@ -156,7 +159,7 @@ export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
                       <div className="space-y-0.5">
                         <div className="text-xs font-medium text-[#ECEAE4]">{iss.title}</div>
                         <div className="text-[11px] text-[#98958D]">{iss.detail}</div>
-                        <div className="text-[10px] text-[#C6A26B]">{iss.suggestion}</div>
+                        <div className="text-[11px] text-[#C6A26B]">{iss.suggestion}</div>
                       </div>
                     </div>
                     {iss.pageId && (
@@ -165,7 +168,7 @@ export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
                           onJumpToPage(iss.pageId!, iss.elementId);
                           onClose();
                         }}
-                        className="px-2 py-1 text-[10px] bg-[#25252B] hover:bg-[#31313A] text-[#ECEAE4] rounded shrink-0 cursor-pointer"
+                        className="px-2 py-1 text-[11px] bg-[#25252B] hover:bg-[#31313A] text-[#ECEAE4] rounded shrink-0 cursor-pointer"
                       >
                         Jump
                       </button>
@@ -194,11 +197,18 @@ export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
                 </div>
               </div>
 
-              <div className="pt-2 border-t border-white/[0.06] space-y-2 text-xs text-[#D7D4CC]">
-                <label className="flex items-center gap-2 cursor-pointer">
+              <div
+                className="pt-2 border-t border-white/[0.06] space-y-2 text-xs text-[#D7D4CC]"
+                title={canDesign ? undefined : 'The print settings are part of the design: a Designer changes them'}
+              >
+                {!canDesign && (
+                  <div className="text-[11px] text-[#8F8C84]">Print settings are set by a Designer.</div>
+                )}
+                <label className={`flex items-center gap-2 ${canDesign ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
                     checked={project.printSettings.includeBleed}
+                    disabled={!canDesign}
                     onChange={(e) =>
                       onUpdateProject({
                         ...project,
@@ -212,10 +222,11 @@ export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
                   />
                   <span>Include {project.dimensions.bleedMm} mm Print Bleed</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className={`flex items-center gap-2 ${canDesign ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
                     checked={project.printSettings.includeCropMarks}
+                    disabled={!canDesign}
                     onChange={(e) =>
                       onUpdateProject({
                         ...project,
@@ -229,10 +240,11 @@ export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
                   />
                   <span>Include Trim & Crop Marks</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer">
+                <label className={`flex items-center gap-2 ${canDesign ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
                   <input
                     type="checkbox"
                     checked={project.printSettings.includeRegistrationMarks}
+                    disabled={!canDesign}
                     onChange={(e) =>
                       onUpdateProject({
                         ...project,

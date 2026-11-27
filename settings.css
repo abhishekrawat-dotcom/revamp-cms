@@ -23,6 +23,9 @@
 /* Sections they can open: two groups, the event's own and the main pages' */
 .ac-secgroup{ margin-top:10px; }
 .ac-secgroup-h{ font-size:12px; font-weight:600; color:var(--text-muted); }
+/* Their role in Books: the three choices in one row, wrapping on a phone; an admin's in words instead */
+.ac-books-opts{ display:flex; flex-wrap:wrap; gap:4px 20px; margin-top:6px; }
+.ac-books-admin{ margin:6px 0 0; font-size:13px; }
 
 .ac-portal input{ width:16px; height:16px; margin:0; accent-color:var(--accent); flex-shrink:0; }
 .ac-list{ list-style:none; margin:16px 0 0; padding:0; }

@@ -264,7 +264,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                   className="w-full bg-[#121214] border border-white/[0.1] rounded p-2.5 text-xs text-[#ECEAE4] leading-relaxed"
                 />
                 <div className="flex items-center justify-between">
-                  <span className="font-mono-tabular text-[10px] text-[#8F8C84]">
+                  <span className="font-mono-tabular text-[11px] text-[#8F8C84]">
                     {countWords(newBody)} words
                   </span>
                   <button
@@ -289,7 +289,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                       <div className="flex items-start justify-between gap-2">
                         <div>
                           <div className="text-xs font-semibold text-[#F4F1EA]">{sec.title}</div>
-                          <div className="font-mono-tabular text-[10px] text-[#98958D] mt-0.5">
+                          <div className="font-mono-tabular text-[11px] text-[#98958D] mt-0.5">
                             {sec.kind} · {countWords(sec.body)} words ·{' '}
                             {assignedPage ? `Assigned to ${assignedPage.label}` : 'Unassigned'}
                           </div>
@@ -364,7 +364,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                     key={label}
                     className="p-3.5 bg-[#141417] border border-white/[0.08] rounded-md"
                   >
-                    <div className="text-[10px] text-[#98958D]">{label}</div>
+                    <div className="text-[11px] text-[#98958D]">{label}</div>
                     <div className="font-mono-tabular text-xl font-semibold text-[#F4F1EA] mt-1">
                       {val}
                     </div>
@@ -410,7 +410,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                     Page-by-Page Editorial Count
                   </div>
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-[#161619] text-[10px] text-[#98958D] border-b border-white/[0.06]">
+                    <thead className="bg-[#161619] text-[11px] text-[#98958D] border-b border-white/[0.06]">
                       <tr>
                         <th className="px-3 py-2">Page</th>
                         <th className="px-3 py-2">Label</th>

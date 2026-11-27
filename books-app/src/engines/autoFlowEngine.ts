@@ -8,6 +8,7 @@ import type {
   InfographicVisualVariant,
 } from '../types/bookstudio';
 import { getEffectivePageDimensions } from './dimensionEngine';
+import { newPageLook } from './masterPageEngine';
 
 export interface AutoFlowPageSchema {
   pageId: string;
@@ -88,6 +89,9 @@ export interface ApplyAutoFlowOptions {
   /** 'placeholders' converts image frames into clean InDesign X-cross placeholders with contextual labels; 'keep_photos' preserves existing photos while updating alt/name metadata */
   imageMode: 'placeholders' | 'keep_photos';
   updateDocumentTitle: boolean;
+  /** a Content editor's flow: frames keep their names (a frame's name is part of the design); only words, photos,
+      captions and data change */
+  keepFrameNames?: boolean;
 }
 
 function estimateFrameWordCapacity(el: BookElement): number {
@@ -216,7 +220,7 @@ function buildAdditionalPagePreservingLayout(
       cloned.elements = cloned.elements.map((el, i) => {
         const nextEl: BookElement = { ...el, id: `el_af_inf_${ts}_${i}` };
         if (nextEl.type === 'infographic') {
-          nextEl.name = spec.infographic!.title;
+          if (!options.keepFrameNames) nextEl.name = spec.infographic!.title;
           nextEl.infographic = buildStyledInfographicData(
             spec.infographic!,
             project,
@@ -237,7 +241,7 @@ function buildAdditionalPagePreservingLayout(
       orderIndex: project.pages.length + index,
       label: spec.label || 'Data Infographic',
       role: 'infographic',
-      backgroundColor: ds.colors.paper,
+      ...newPageLook(project),
       elements: [
         {
           id: `el_af_ik_${ts}`,
@@ -352,7 +356,7 @@ function buildAdditionalPagePreservingLayout(
       if (nextEl.type === 'image' && nextEl.image) {
         const title = spec.imagePlaceholderTitle || `${spec.heading} Photograph`;
         const brief = spec.imagePlaceholderBrief || title;
-        nextEl.name = title;
+        if (!options.keepFrameNames) nextEl.name = title;
         nextEl.image = {
           ...nextEl.image,
           src: options.imageMode === 'placeholders' ? '' : nextEl.image.src,
@@ -428,7 +432,7 @@ function buildAdditionalPagePreservingLayout(
     orderIndex: project.pages.length + index,
     label: spec.label || spec.heading,
     role: 'editorial_text',
-    backgroundColor: ds.colors.paper,
+    ...newPageLook(project),
     elements: [
       {
         id: `el_af_h_${ts}`,
@@ -562,7 +566,7 @@ export function applyAutoFlowPlanToProject(
         const nextAlt = imgPatch?.suggestedPhotoBrief || el.image.alt;
         return {
           ...el,
-          name: nextName,
+          name: options.keepFrameNames ? el.name : nextName,
           image: {
             ...el.image,
             src: options.imageMode === 'placeholders' ? '' : el.image.src,
@@ -576,7 +580,7 @@ export function applyAutoFlowPlanToProject(
         const infPatch = infoMap.get(key)!;
         return {
           ...el,
-          name: infPatch.title || el.name,
+          name: options.keepFrameNames ? el.name : infPatch.title || el.name,
           infographic: buildStyledInfographicData(infPatch, project, el.infographic),
         };
       }

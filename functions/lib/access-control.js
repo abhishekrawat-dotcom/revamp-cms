@@ -16,12 +16,18 @@
                    (Create Event, the speaker & sponsor library, the all-events Activity log, Settings) — all of them
                    unless an admin chooses otherwise; a "Developer" preset holds the owner's list. The server refuses
                    a request for a section someone does not have (sectionsFor), the pages hide it (auth.js).
+     BOOKS         (the owner, 26 Nov 2026; docs/bookstudio/PLAN.md) the coffee table book editor has a role of its own,
+                   set per person: 'designer' (everything) or 'content' (Content editor: everything except the
+                   design), or none. Admins are always Designers; nobody else has Books unless an admin gives it
+                   (a company account not on the list has none). lib/api-books.js checks it on every /api/books/
+                   route, so those routes need only Viewer here (needFor): a Viewer may be a Books Designer.
      FIRST ADMIN   sachitanand.rai@timesinternet.in
 
    The list lives in ACCESS_DOC (config/access):
      { defaultRole: 'editor' | 'viewer',
        members: { '<email>': { role: admin|approver|editor|viewer|blocked, portals: ['*'] | [slug…],
-                               sections: ['*'] | [section id…] (SECTIONS; missing = all), name, addedBy, addedAt,
+                               sections: ['*'] | [section id…] (SECTIONS; missing = all),
+                               books: 'designer' | 'content' | '' (BOOKS; missing = none), name, addedBy, addedAt,
                                updatedBy, updatedAt } },
        updatedAt, updatedBy }
    and every change in its `log` subcollection: { at, by, action, email, before, after }.
@@ -34,7 +40,8 @@
    on every portal, nobody from outside), so an outage of the database never locks the team out nor lets anyone in.
 
      readConfig(fb)                     -> Promise<cfg>
-     accessOf(cfg, decoded)             -> { email, role, portals, sections, member } | { denied: 'blocked' | 'outside' | 'signin' }
+     accessOf(cfg, decoded)             -> { email, role, portals, sections, books, member } | { denied: 'blocked' | 'outside' | 'signin' }
+                                           (books: 'designer' for an admin, the member's own for others, '' for none)
      sectionOk(access, id)              -> boolean: may this person open section id (SECTIONS)
      sectionsFor(method, path)          -> [section id] any one of which a request needs, or null (no section)
      sectionSentence(id)                -> what a request refused for its section answers
@@ -51,8 +58,10 @@
      everywhereOnly(path)               -> true for the reports over every portal
      refusedSentence, outsideSentence, everywhereSentence -> what a refused request answers
      publicView(cfg, access)            -> what GET /api/access answers (all of it for an admin, one's own for others)
-     setMember(fb, actor, input)        -> Promise<cfg>  (input: { email, role, portals, sections, name }; sections
-                                           left out keeps what the person had)
+     setMember(fb, actor, input)        -> Promise<cfg>  (input: { email, role, portals, sections, books, name };
+                                           sections or books left out (or null) keep what the person had; books '' is
+                                           none; an admin is always 'designer', a blocked person '')
+     BOOKS_ROLES                        -> [{ id, label }] the Books roles Settings › Access offers
      removeMember(fb, actor, email)     -> Promise<cfg>
      setDefaultRole(fb, actor, role)    -> Promise<cfg>
      readLog(fb, n)                     -> Promise<[entry]>
@@ -96,6 +105,16 @@ var SECTION_IDS = SECTIONS.map(function (x) { return x.id; });
 var PRESETS = [
   { id: 'developer', label: 'Developer', sections: ['dashboard', 'content', 'speakers', 'agenda', 'sponsors', 'design', 'activity', 'settings'] }
 ];
+/* Books (BOOKS above): the roles an admin can give; '' is none */
+var BOOKS_ROLES = [{ id: 'designer', label: 'Designer' }, { id: 'content', label: 'Content editor' }];
+var BOOKS_IDS = BOOKS_ROLES.map(function (x) { return x.id; });
+/* the Books role a member has, from their access role and what is stored: an admin is always a Designer, a blocked
+   person never has Books, anything that is not one of BOOKS_ROLES is none */
+function booksOf(role, stored) {
+  if (role === 'admin') return 'designer';
+  if (role === 'blocked') return '';
+  return BOOKS_IDS.indexOf(stored) !== -1 ? stored : '';
+}
 function sectionLabel(id) { var x = SECTIONS.filter(function (s) { return s.id === id; })[0]; return x ? x.label : id; }
 function cleanSections(v) {
   if (v == null) return [ALL];
@@ -131,7 +150,7 @@ function normalise(raw) {
     if (!role) return;
     var portals = role === 'admin' || role === 'blocked' ? [ALL] : cleanPortals(m.portals);
     var sections = role === 'admin' || role === 'blocked' ? [ALL] : cleanSections(m.sections);
-    members[e] = { role: role, portals: portals.length ? portals : [ALL], sections: sections.length ? sections : [ALL], name: String(m.name || '').slice(0, 120),
+    members[e] = { role: role, portals: portals.length ? portals : [ALL], sections: sections.length ? sections : [ALL], books: booksOf(role, m.books), name: String(m.name || '').slice(0, 120),
       addedBy: String(m.addedBy || ''), addedAt: m.addedAt || null, updatedBy: String(m.updatedBy || ''), updatedAt: m.updatedAt || null };
   });
   return { defaultRole: DEFAULT_ROLES.indexOf(raw.defaultRole) !== -1 ? raw.defaultRole : 'editor', members: members,
@@ -180,9 +199,10 @@ function accessOf(cfg, decoded) {
   if (m) {
     if (m.role === 'blocked') return { denied: 'blocked' };
     return { email: email, role: m.role, portals: m.role === 'admin' ? [ALL] : m.portals,
-      sections: m.role === 'admin' ? [ALL] : (m.sections || [ALL]), member: true };
+      sections: m.role === 'admin' ? [ALL] : (m.sections || [ALL]), books: booksOf(m.role, m.books), member: true };
   }
-  if (isCompany(email)) return { email: email, role: (cfg && cfg.defaultRole) || 'editor', portals: [ALL], sections: [ALL], member: false };
+  /* a company account not on the list: the default role, and no Books (the owner: nobody has Books by default) */
+  if (isCompany(email)) return { email: email, role: (cfg && cfg.defaultRole) || 'editor', portals: [ALL], sections: [ALL], books: '', member: false };
   return { denied: 'outside' };
 }
 function can(access, need) { return !!access && !access.denied && (RANK[access.role] || 0) >= (RANK[need] || 99); }
@@ -322,6 +342,9 @@ var EVERYWHERE_ONLY = {
 function needFor(method, path) {
   method = String(method || 'GET').toUpperCase(); path = String(path || '').split('?')[0];
   if (path.indexOf('/api/access') === 0) return method === 'GET' || method === 'HEAD' ? 'viewer' : 'admin';
+  /* Books has a role of its own (BOOKS), which lib/api-books.js checks on every route and refuses without: the
+     events role does not decide it, so a Viewer given Books may still save a book */
+  if (path.indexOf('/api/books/') === 0) return 'viewer';
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') return 'viewer';
   return VIEWER_WRITES[method + ' ' + path] ? 'viewer' : 'editor';
 }
@@ -344,9 +367,9 @@ function everywhereSentence() { return 'This covers every portal, so it is for p
 
 function publicView(cfg, access) {
   var you = access && !access.denied ? { email: access.email, role: access.role, label: LABELS[access.role], portals: access.portals,
-    sections: access.role === 'admin' ? [ALL] : (access.sections || [ALL]), member: !!access.member } : null;
+    sections: access.role === 'admin' ? [ALL] : (access.sections || [ALL]), books: booksOf(access.role, access.books), member: !!access.member } : null;
   var out = { you: you, roles: ROLES.concat('blocked').map(function (r) { return { id: r, label: LABELS[r] }; }), canManage: can(access, 'admin'), defaultRole: cfg.defaultRole,
-    sections: SECTIONS, presets: PRESETS,
+    sections: SECTIONS, presets: PRESETS, booksRoles: BOOKS_ROLES,
     domain: ALLOWED_DOMAIN, stored: !!cfg.stored,
     /* who to ask */
     admins: Object.keys(cfg.members).filter(function (e) { return cfg.members[e].role === 'admin'; }).sort() };
@@ -400,18 +423,24 @@ function setMember(fb, actor, input) {
   if (!portals.length) return Promise.reject(httpErr(400, 'Choose the portals this person works in, or All portals.', 'no-portals'));
   var given = input.sections === undefined ? null : (role === 'admin' || role === 'blocked' ? [ALL] : cleanSections(input.sections));
   if (given && !given.length) return Promise.reject(httpErr(400, 'Choose the sections this person can open, or All sections.', 'no-sections'));
+  /* books: left out (or null) keeps what the person had; '' is none; anything else must be one of BOOKS_ROLES */
+  var givenBooks = input.books == null ? null : input.books;
+  if (givenBooks !== null && givenBooks !== '' && BOOKS_IDS.indexOf(givenBooks) === -1) {
+    return Promise.reject(httpErr(400, 'Choose a Books role: Designer, Content editor, or none.', 'bad-books'));
+  }
   return change(fb, actor, function (next, cfg, now, by) {
     var before = next.members[email] || null;
     if (email === by && role !== 'admin') throw httpErr(400, 'You can\'t take away your own admin access. Ask another admin.', 'self');
     var sections = role === 'admin' || role === 'blocked' ? [ALL] : (given || (before && before.sections) || [ALL]);
-    var m = { role: role, portals: portals, sections: sections, name: String(input.name != null ? input.name : (before && before.name) || '').trim().slice(0, 120),
+    var books = booksOf(role, givenBooks !== null ? givenBooks : (before && before.books) || '');
+    var m = { role: role, portals: portals, sections: sections, books: books, name: String(input.name != null ? input.name : (before && before.name) || '').trim().slice(0, 120),
       addedBy: before ? before.addedBy : by, addedAt: before ? before.addedAt : now, updatedBy: by, updatedAt: now };
     if (before && before.role === m.role && JSON.stringify(before.portals) === JSON.stringify(m.portals) &&
-      JSON.stringify(before.sections || [ALL]) === JSON.stringify(m.sections) && before.name === m.name) return null;
+      JSON.stringify(before.sections || [ALL]) === JSON.stringify(m.sections) && (before.books || '') === m.books && before.name === m.name) return null;
     next.members[email] = m;
     return { action: before ? 'changed' : 'added', email: email,
-      before: before ? { role: before.role, portals: before.portals, sections: before.sections || [ALL] } : null,
-      after: { role: m.role, portals: m.portals, sections: m.sections } };
+      before: before ? { role: before.role, portals: before.portals, sections: before.sections || [ALL], books: before.books || '' } : null,
+      after: { role: m.role, portals: m.portals, sections: m.sections, books: m.books } };
   });
 }
 function removeMember(fb, actor, email) {
@@ -422,8 +451,8 @@ function removeMember(fb, actor, email) {
     if (!before) return null;
     if (email === by) throw httpErr(400, 'You can\'t remove yourself. Ask another admin.', 'self');
     delete next.members[email];
-    return { action: 'removed', email: email, before: { role: before.role, portals: before.portals },
-      after: isCompany(email) ? { role: next.defaultRole, portals: [ALL], note: 'company default' } : null };
+    return { action: 'removed', email: email, before: { role: before.role, portals: before.portals, books: before.books || '' },
+      after: isCompany(email) ? { role: next.defaultRole, portals: [ALL], books: '', note: 'company default' } : null };
   });
 }
 function setDefaultRole(fb, actor, role) {
@@ -450,5 +479,6 @@ module.exports = {
   SECTIONS: SECTIONS, SECTION_IDS: SECTION_IDS, PRESETS: PRESETS, sectionOk: sectionOk, sectionsFor: sectionsFor, sectionSentence: sectionSentence,
   sectionLabel: sectionLabel, sectionOfUrl: sectionOfUrl, sectionOfRoute: sectionOfRoute, aiRoute: aiRoute,
   setMember: setMember, removeMember: removeMember, setDefaultRole: setDefaultRole, readLog: readLog,
+  BOOKS_ROLES: BOOKS_ROLES, booksOf: booksOf,
   _test: { normalise: normalise, startingPoint: startingPoint, cleanPortals: cleanPortals, cleanSections: cleanSections, docPath: docPath }
 };

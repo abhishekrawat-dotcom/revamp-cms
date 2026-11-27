@@ -4,11 +4,19 @@
    never touches the database or the bucket, and every route checks the caller (requireMember: the Bearer token, or
    the __session cookie a picture's <img> sends).
 
-   WHO. Phase 1: admins only (booksRole). Phase 2 gives each person a Books role (Designer, Content editor) in
-   Settings › Access and splits what each may change; booksRole is the one place that answers it.
+   WHO (Phase 2, the owner, 26 Nov 2026). Each person's Books role is set in Settings › Access (access-control.js
+   `books`): 'designer' may do everything; 'content' (Content editor) everything except the design; none is refused
+   every route (403 'no-books'). Admins are always Designers; nobody has Books by default. booksRole is the one place
+   that reads it. What a Content editor may use is CONTENT_ROUTES below, and every other route is a Designer's only
+   (403 'designer-only', "Only a Designer can …"): a route added later stays a Designer's until it is named there.
+   A Content editor's save (PUT book) is checked whole against the book as stored (saveBook): it may not start a
+   book, change its status or change its design (lib/book-rules.js designChanges says what design is) — any of
+   these refuses the whole save (403 'designer-only' / 'design-only' { changes }), and nothing is written.
+   Designer only: DELETE book, POST status, PUT/DELETE template, POST idml, ai/analyze-template, ai/typography-pairing,
+   ai/recommend-templates, ai/generate-publication-template.
 
    ROUTES (all under /api/books/, JSON unless said)
-     GET    me                              { role, email }
+     GET    me                              { role: 'designer' | 'content', email, canDesign }
      GET    list                            { books: [summary] } every book not deleted, newest first (the team's
                                             books: there is no per-person list)
      GET    book?id=                        { book, rev } the whole book as the editor holds it
@@ -28,6 +36,17 @@
      POST   idml            raw file bytes (X-File-Name)    -> { isNativeIndd:false, idml } | { isNativeIndd:true, guidance }
      GET    fonts                           { source, items } the Google Fonts library (cached a day)
      POST   ai/<step>                       lib/books-ai.js (X-Book-Id: the open book, for its AI usage)
+     POST   presence        { bookId, pageId }   "I have this page open" (the editor sends it every ~30 s)
+                                            -> { here: [{ email, pageId, at }] } the others seen in the last 70 s,
+                                            newest first (never the caller); 404 for a book missing or deleted
+     GET    trash?id=                       { pages: [{ pageId, label, position, deletedAt, deletedBy }] } the pages
+                                            saves have deleted, newest first (100)
+     POST   restore-page    { bookId, pageId, baseRev }   -> { rev, book } puts a deleted page back where it was
+                                            (at most at the end), saved like PUT book; 409 'stale' when baseRev is not
+                                            the current revision, 409 'exists' when the book has a page with that id
+     GET    log?id=                         { entries: [{ id, at, by, action, detail }] } newest first (200).
+                                            action: created | saved | status | deleted | version | page-restored;
+                                            a person's saves of one book less than 10 minutes apart make one entry
 
    WHERE THINGS LIVE (a test server sets BOOKS_COL_PREFIX=qa: qaBooks…, files under qa-books/)
      books/{bookId}                 name, status, core (JSON string: the book's settings and design system), summary
@@ -39,6 +58,11 @@
                                     parts, then moves the book to them in one transaction (checking rev), then
                                     deletes the parts nothing points to any more.
        versions/{versionId}         meta; the snapshot is books/<id>/versions/<versionId>.json.gz in the bucket
+       trash/{pageId}               { page (JSON string: the page as it was), label, position (its index then),
+                                    deletedAt, deletedBy } every page a save took out, read from its part before
+                                    that part is removed; restore-page deletes it again
+       presence/{sha256(email) 16}  { email, pageId, at } who has the book open, and on which page
+       log/{auto id}                { at, by, action, detail, firstAt, counts (saved: what the sentence counts) }
      bookTemplates/{id}             { templateKind, collectionName, category, title, description, tags, payload (JSON
                                     string), createdAt/By, updatedAt/By }
      bookFontCollections/{owner_id} { owner, id, name, fonts, presets (JSON string), updatedAt }
@@ -48,6 +72,7 @@
 var crypto = require('crypto');
 var zlib = require('zlib');
 var H = require('./http');
+var BR = require('./book-rules');
 var sendJson = H.sendJson;
 
 var ID_RE = /^[A-Za-z0-9_-]{1,100}$/;
@@ -61,7 +86,9 @@ var SECTIONS_PER_PART = 250, ASSETS_PER_PART = 400;
 var MAX_ASSET_BYTES = 30 * MB, MAX_MANUSCRIPT_BYTES = 20 * MB, MAX_IDML_BYTES = 30 * MB, MAX_AI_REQUEST = 30 * MB;
 var MAX_VERSION_BYTES = 24 * MB, MAX_TEMPLATE_BYTES = 900 * 1024;
 var BATCH_WRITES = 400, BATCH_BYTES = 8 * MB;
-var NOT_OPEN = 'Books is open to admins only for now. Ask an admin if you need it.';
+var NOT_OPEN = 'You don\'t have access to Books. Ask an admin to give you the Designer or Content editor role in Settings › Access.';
+var PRESENCE_MS = 70 * 1000, LOG_FOLD_MS = 10 * 60 * 1000, TRASH_LIST = 100, LOG_LIST = 200, MAX_CHANGES_SENT = 500;
+var STATUS_LABELS = { draft: 'Draft', in_review: 'In review', print_ready: 'Print ready', archived: 'Archived' };
 
 /* ---------- where ---------- */
 function colPrefix() { return String(process.env.BOOKS_COL_PREFIX || '').replace(/[^a-z0-9]/gi, ''); }
@@ -71,11 +98,13 @@ function bookRef(fb, id) { return fb.db.collection(col('books')).doc(id); }
 function partRef(fb, id, partId) { return bookRef(fb, id).collection('parts').doc(partId); }
 
 /* ---------- who ---------- */
-/* Phase 1: admins only, as Designers (docs/bookstudio/PLAN.md). '' = no Books at all. */
+/* the caller's Books role from Settings › Access (access-control.js accessOf: 'designer' for an admin, the member's
+   own for others, '' for everyone else). Anything that is not exactly one of the two is no Books at all. */
 function booksRole(decoded) {
-  var a = decoded && decoded.access;
-  return a && a.role === 'admin' ? 'designer' : '';
+  var b = decoded && decoded.access && decoded.access.books;
+  return b === 'designer' || b === 'content' ? b : '';
 }
+function designerOnly(action) { return httpErr(403, 'Only a Designer can ' + action + '.', { code: 'designer-only' }); }
 function whoOf(decoded) { return String((decoded && (decoded.email || decoded.uid)) || '').toLowerCase(); }
 
 /* ---------- answers ---------- */
@@ -204,41 +233,73 @@ function assemble(id, root, dataById) {
   return book;
 }
 
-function writeParts(fb, id, parts) {
+/* writes in batches Firestore takes: at most BATCH_WRITES writes and about BATCH_BYTES in each */
+function groupsOf(items, bytesOf) {
   var groups = [], cur = [], bytes = 0;
-  parts.forEach(function (p) {
-    if (cur.length && (cur.length >= BATCH_WRITES || bytes + p.data.length > BATCH_BYTES)) { groups.push(cur); cur = []; bytes = 0; }
-    cur.push(p); bytes += p.data.length;
+  items.forEach(function (x) {
+    var b = bytesOf(x);
+    if (cur.length && (cur.length >= BATCH_WRITES || bytes + b > BATCH_BYTES)) { groups.push(cur); cur = []; bytes = 0; }
+    cur.push(x); bytes += b;
   });
   if (cur.length) groups.push(cur);
+  return groups;
+}
+function inBatches(fb, groups, add) {
   return groups.reduce(function (chain, group) {
     return chain.then(function () {
       var batch = fb.db.batch();
-      group.forEach(function (p) { batch.set(partRef(fb, id, p.id), { k: p.key, data: p.data }); });
+      group.forEach(function (x) { add(batch, x); });
       return batch.commit();
     });
   }, Promise.resolve());
+}
+function writeParts(fb, id, parts) {
+  return inBatches(fb, groupsOf(parts, function (p) { return p.data.length; }), function (batch, p) { batch.set(partRef(fb, id, p.id), { k: p.key, data: p.data }); });
 }
 function deleteParts(fb, id, ids) {
-  return chunks(ids, BATCH_WRITES).reduce(function (chain, group) {
-    return chain.then(function () {
-      var batch = fb.db.batch();
-      group.forEach(function (pid) { batch.delete(partRef(fb, id, pid)); });
-      return batch.commit();
-    });
-  }, Promise.resolve());
+  return inBatches(fb, chunks(ids, BATCH_WRITES), function (batch, pid) { batch.delete(partRef(fb, id, pid)); });
 }
 
-function readParts(fb, id, root) {
-  var refs = (root.parts || []).map(function (p) { return partRef(fb, id, p.id); });
-  return chunks(refs, 100).reduce(function (chain, group) {
+/* Parts already read or written, by id. A part's id is the hash of its key and content, so what an id holds never
+   changes and a copy kept here is never out of date. A save compares the book with the one it replaces (saveBook);
+   this spares reading the whole book again for each save. At most PART_CACHE_MAX bytes, the least used dropped first. */
+var PART_CACHE = new Map(), PART_CACHE_MAX = 48 * MB, partCacheBytes = 0;
+function cachePart(pid, data) {
+  if (typeof data !== 'string' || data.length > PART_CACHE_MAX / 8) return;
+  if (PART_CACHE.has(pid)) { PART_CACHE.delete(pid); PART_CACHE.set(pid, data); return; }
+  PART_CACHE.set(pid, data); partCacheBytes += data.length;
+  while (partCacheBytes > PART_CACHE_MAX && PART_CACHE.size) {
+    var oldest = PART_CACHE.keys().next().value;
+    partCacheBytes -= PART_CACHE.get(oldest).length;
+    PART_CACHE.delete(oldest);
+  }
+}
+function cachedPart(pid) {
+  var data = PART_CACHE.get(pid);
+  if (data === undefined) return undefined;
+  PART_CACHE.delete(pid); PART_CACHE.set(pid, data);
+  return data;
+}
+
+/* -> { partId: data } for the root's parts (those that exist). useCache: take what PART_CACHE has instead of reading
+   it (a save; loading a book always reads, so a part that has gone missing is noticed) */
+function readParts(fb, id, root, useCache) {
+  var out = {}, want = [];
+  (root.parts || []).forEach(function (p) {
+    var hit = useCache ? cachedPart(p.id) : undefined;
+    if (hit !== undefined) out[p.id] = hit; else want.push(partRef(fb, id, p.id));
+  });
+  return chunks(want, 100).reduce(function (chain, group) {
     return chain.then(function (acc) {
-      return group.length ? fb.db.getAll.apply(fb.db, group).then(function (snaps) {
-        snaps.forEach(function (s) { if (s.exists) acc[s.id] = (s.data() || {}).data; });
+      return fb.db.getAll.apply(fb.db, group).then(function (snaps) {
+        snaps.forEach(function (s) {
+          var data = s.exists ? (s.data() || {}).data : undefined;
+          if (typeof data === 'string') { acc[s.id] = data; cachePart(s.id, data); }
+        });
         return acc;
-      }) : acc;
+      });
     });
-  }, Promise.resolve({}));
+  }, Promise.resolve(out));
 }
 
 /* -> { book, rev, root } or throws 404 */
@@ -274,8 +335,224 @@ function checkRev(cur, baseRev, who) {
   }
 }
 
+/* ---------- a Content editor's save ----------
+   before, after: the book as stored and as this save would store it (both put together by assemble, so a field the
+   server never keeps cannot count either way). Throws 403 when the save does more than content: a status change
+   (POST status is a Designer's), or any design change (lib/book-rules.js designChanges; `changes` all of them). */
+function contentOnly(before, after, changes) {
+  if (before.status !== after.status) throw designerOnly('change a book\'s status');
+  if (!changes.length) return;
+  var shown = changes.slice(0, 3).join('; ') + (changes.length > 3 ? ' (and ' + (changes.length - 3) + ' more)' : '');
+  var extra = { code: 'design-only', changes: changes.slice(0, MAX_CHANGES_SENT) };
+  if (changes.length > MAX_CHANGES_SENT) extra.moreChanges = changes.length - MAX_CHANGES_SENT;
+  throw httpErr(403, 'Only a Designer can change the design: ' + shown + '.', extra);
+}
+
+/* ---------- what a save changed, in words (the activity log) ---------- */
+function pageLabel(p, i) { return str(p && p.label, 60).trim() || 'Page ' + (i + 1); }
+function pick(o, keys) { var out = {}; if (o && typeof o === 'object') keys.forEach(function (k) { if (o[k] !== undefined) out[k] = o[k]; }); return out; }
+var MAX_COUNTED = 2000;
+function emptyCounts() {
+  return { text: [], photos: [], charts: [], added: [], deleted: [], pageDetails: [], reordered: false, renamed: false, details: false,
+    status: '', manuscript: false, library: false, design: false };
+}
+/* before, after: books as assemble makes them; designChanges: BR.designChanges(before, after) -> the counts a log
+   entry keeps (frames as 'pageId/elementId', pages as { id, label }) */
+function saveCounts(before, after, designChanges) {
+  var c = emptyCounts(), oldById = {}, newIds = {};
+  var oldPages = before.pages || [], newPages = after.pages || [];
+  oldPages.forEach(function (p) { if (p && p.id) oldById[p.id] = p; });
+  newPages.forEach(function (p, i) {
+    if (!p) return;
+    newIds[p.id] = 1;
+    var o = oldById[p.id];
+    if (!o) { c.added.push({ id: p.id, label: pageLabel(p, i) }); return; }
+    if (!BR.same(o.label, p.label) || !BR.same(o.chapterId, p.chapterId)) c.pageDetails.push(p.id);
+    var oldEls = {};
+    (o.elements || []).forEach(function (el) { if (el && el.id) oldEls[el.id] = el; });
+    (p.elements || []).forEach(function (el) {
+      var e0 = el && oldEls[el.id];
+      if (!e0) return;
+      var key = p.id + '/' + el.id;
+      if (!BR.same(e0.text, el.text) || !BR.same(e0.contentSectionId, el.contentSectionId)) c.text.push(key);
+      if (!BR.same(pick(e0.image, BR.CONTENT_IMAGE_KEYS), pick(el.image, BR.CONTENT_IMAGE_KEYS))) c.photos.push(key);
+      if (!BR.same(pick(e0.infographic, BR.CONTENT_INFOGRAPHIC_KEYS), pick(el.infographic, BR.CONTENT_INFOGRAPHIC_KEYS))) c.charts.push(key);
+    });
+  });
+  oldPages.forEach(function (p, i) { if (p && !newIds[p.id]) c.deleted.push({ id: p.id, label: pageLabel(p, i) }); });
+  var kept = function (list, other) { return list.filter(function (p) { return p && other[p.id]; }).map(function (p) { return p.id; }).join('|'); };
+  c.reordered = kept(oldPages, newIds) !== kept(newPages, oldById);
+  c.renamed = before.name !== after.name;
+  c.details = ['subtitle', 'category', 'unit', 'coverThumbnail', 'chapters'].some(function (k) { return !BR.same(before[k], after[k]); });
+  c.status = before.status !== after.status ? after.status : '';
+  c.manuscript = !BR.same(before.contentSections, after.contentSections);
+  c.library = !BR.same(before.imageAssets, after.imageAssets);
+  c.design = designChanges.length > 0;
+  ['text', 'photos', 'charts', 'added', 'deleted', 'pageDetails'].forEach(function (k) { c[k] = c[k].slice(0, MAX_COUNTED); });
+  return c;
+}
+/* a person's earlier saves (a) and this one (b) as one entry: frames counted once, a page added and then deleted (or
+   deleted and then put back) is neither, the rest as either said */
+function foldCounts(a, b) {
+  a = Object.assign(emptyCounts(), a || {});
+  var c = emptyCounts();
+  function union(x, y) { var seen = {}, out = []; x.concat(y).forEach(function (k) { if (!seen[k]) { seen[k] = 1; out.push(k); } }); return out.slice(0, MAX_COUNTED); }
+  function at(list, id) { for (var i = 0; i < list.length; i++) if (list[i].id === id) return i; return -1; }
+  ['text', 'photos', 'charts', 'pageDetails'].forEach(function (k) { c[k] = union(a[k] || [], b[k] || []); });
+  var added = (a.added || []).slice(), deleted = (a.deleted || []).slice();
+  (b.deleted || []).forEach(function (p) { var i = at(added, p.id); if (i !== -1) added.splice(i, 1); else if (at(deleted, p.id) === -1) deleted.push(p); });
+  (b.added || []).forEach(function (p) { var i = at(deleted, p.id); if (i !== -1) deleted.splice(i, 1); else if (at(added, p.id) === -1) added.push(p); });
+  c.added = added.slice(0, MAX_COUNTED); c.deleted = deleted.slice(0, MAX_COUNTED);
+  ['reordered', 'renamed', 'details', 'manuscript', 'library', 'design'].forEach(function (k) { c[k] = !!(a[k] || b[k]); });
+  c.status = b.status || a.status || '';
+  return c;
+}
+function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+function andList(words) { return words.length < 2 ? words.join('') : words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1]; }
+function framesPhrase(what, keys) {
+  if (!keys.length) return '';
+  var pages = {};
+  keys.forEach(function (k) { pages[String(k).split('/')[0]] = 1; });
+  return what + ' in ' + plural(keys.length, 'frame', 'frames') + ' on ' + plural(Object.keys(pages).length, 'page', 'pages');
+}
+function pagesPhrase(verb, list) {
+  if (!list.length) return '';
+  if (list.length > 3) return verb + ' ' + list.length + ' pages';
+  return verb + ' page' + (list.length > 1 ? 's ' : ' ') + andList(list.map(function (p) { return '"' + p.label + '"'; }));
+}
+/* counts -> one short sentence, e.g. 'Changed text in 3 frames on 2 pages; added page "Gallery"; deleted page "Notes";
+   changed the design' */
+function saveSentence(c) {
+  var parts = [framesPhrase('changed text', c.text), framesPhrase('changed photos', c.photos), framesPhrase('changed infographic data', c.charts),
+    pagesPhrase('added', c.added), pagesPhrase('deleted', c.deleted), c.reordered ? 'reordered pages' : '',
+    c.pageDetails.length ? 'changed the name or chapter of ' + plural(c.pageDetails.length, 'page', 'pages') : '',
+    c.renamed ? 'renamed the book' : '', c.details ? 'changed the book\'s details' : '',
+    c.status ? 'changed the status to ' + (STATUS_LABELS[c.status] || c.status) : '',
+    c.manuscript ? 'changed the manuscript' : '', c.library ? 'changed the photo library' : '', c.design ? 'changed the design' : ''].filter(Boolean);
+  var text = parts.length ? parts.join('; ') : 'saved with no changes';
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/* ---------- the activity log: books/{id}/log ---------- */
+function logCol(fb, id) { return bookRef(fb, id).collection('log'); }
+/* an entry; what it records has happened, so a failure to write it is only told to the server's log */
+function addLog(fb, id, who, at, action, detail) {
+  return Promise.resolve().then(function () { return logCol(fb, id).add({ at: at, by: who, action: action, detail: String(detail || '').slice(0, 600) }); })
+    .then(function () {}, function (err) { console.error('books: the activity log of ' + id + ' was not written — ' + (err && err.message)); });
+}
+/* a save: the person's last entry is updated instead when it is the log's latest, a save, and under 10 minutes old */
+function logSave(fb, id, who, at, counts) {
+  var col = logCol(fb, id);
+  return Promise.resolve().then(function () { return col.orderBy('at', 'desc').limit(1).get(); }).then(function (snap) {
+    var last = snap.docs[0], d = last ? last.data() || {} : null;
+    if (d && d.action === 'saved' && d.by === who && d.counts && Date.parse(at) - Date.parse(d.at) < LOG_FOLD_MS) {
+      var both = foldCounts(d.counts, counts);
+      return last.ref.update({ at: at, detail: saveSentence(both), counts: both });
+    }
+    return col.add({ at: at, by: who, action: 'saved', detail: saveSentence(counts), counts: counts, firstAt: at });
+  }).then(function () {}, function (err) { console.error('books: the activity log of ' + id + ' was not written — ' + (err && err.message)); });
+}
+
+/* ---------- deleted pages: books/{id}/trash ---------- */
+function trashCol(fb, id) { return bookRef(fb, id).collection('trash'); }
+/* the pages `before` had and `after` has not, as they were -> true once all are kept (false, told to the server's
+   log, when they could not be: their parts are then left in place) */
+function keepDeletedPages(fb, id, who, at, before, after) {
+  var ids = {};
+  (after.pages || []).forEach(function (p) { if (p) ids[p.id] = 1; });
+  var gone = [];
+  (before.pages || []).forEach(function (p, i) {
+    if (p && !ids[p.id]) gone.push({ id: p.id, doc: { page: JSON.stringify(p), label: pageLabel(p, i), position: i, deletedAt: at, deletedBy: who } });
+  });
+  if (!gone.length) return Promise.resolve(true);
+  return inBatches(fb, groupsOf(gone, function (g) { return g.doc.page.length; }), function (batch, g) { batch.set(trashCol(fb, id).doc(g.id), g.doc); })
+    .then(function () { return true; }, function (err) {
+      console.error('books: ' + gone.length + ' deleted page(s) of ' + id + ' were not kept — ' + (err && err.message) + '; their parts are left in place');
+      return false;
+    });
+}
+
+/* ---------- saving a book (PUT book, restore-page) ----------
+   The one way a book is saved. The parts it lacks are written, then the book moves to them in one transaction that
+   checks the revision. After that: the pages it no longer has are kept in its trash (read from the parts it had,
+   before those are removed), the change is logged, and the parts nothing points to any more are removed — only once
+   the trash has its pages. A save based on an old revision is refused (409 'stale') and leaves nothing behind.
+     opts.contentOnly   a Content editor's save: no new book, no status change, no design change (403, nothing written)
+     opts.action        'saved' (the default; 'created' for a new book) or 'page-restored', with opts.detail its sentence
+   -> Promise<{ rev, updatedAt, book (as stored) }> */
+function saveBook(fb, who, book, baseRev, opts) {
+  opts = opts || {};
+  var split;
+  try { split = splitBook(book); } catch (err) { return Promise.reject(err); }
+  if (opts.contentOnly && baseRev == null) return Promise.reject(designerOnly('start a new book'));
+  var id = book.id, ref = bookRef(fb, id), now = new Date().toISOString();
+  var cur = null, before = null, after = null, changes = [], fresh = [];
+  return ref.get().then(function (snap) {
+    cur = snap.exists ? snap.data() : null;
+    checkRev(cur, baseRev, who);
+    return cur ? readParts(fb, id, cur, true) : {};
+  }).then(function (oldData) {
+    var missing = cur ? (cur.parts || []).filter(function (p) { return typeof oldData[p.id] !== 'string'; }) : [];
+    if (missing.length) {
+      /* the book was saved again since it was read (its old parts already removed): this answers 409 stale */
+      return ref.get().then(function (s2) {
+        checkRev(s2.exists ? s2.data() : null, baseRev, who);
+        throw new Error(missing.length + ' part(s) of book ' + id + ' are missing: ' + missing.slice(0, 3).map(function (p) { return p.k; }).join(', '));
+      });
+    }
+    var newData = {};
+    split.parts.forEach(function (p) { newData[p.id] = p.data; });
+    after = assemble(id, { name: split.name, status: split.status, core: split.core, parts: split.parts.map(function (p) { return { k: p.key, id: p.id }; }),
+      createdAt: cur ? cur.createdAt : now, updatedAt: now }, newData);
+    if (cur) {
+      before = assemble(id, cur, oldData);
+      changes = BR.designChanges(before, after);
+      if (opts.contentOnly) contentOnly(before, after, changes);
+    }
+    var have = {};
+    (cur && cur.parts || []).forEach(function (p) { have[p.id] = 1; });
+    fresh = split.parts.filter(function (p) { return !have[p.id]; });
+    return writeParts(fb, id, fresh).then(function () {
+      return fb.db.runTransaction(function (tx) {
+        return tx.get(ref).then(function (s2) {
+          var c2 = s2.exists ? s2.data() : null;
+          checkRev(c2, baseRev, who);
+          var rev = (c2 && c2.rev || 0) + 1;
+          var doc = { name: split.name, status: split.status, core: split.core, summary: split.summary,
+            parts: split.parts.map(function (p) { return { k: p.key, id: p.id }; }), rev: rev, updatedAt: now, updatedBy: who };
+          if (c2) tx.update(ref, doc);
+          else tx.set(ref, Object.assign(doc, { createdAt: now, createdBy: who, deletedAt: null }));
+          return { rev: rev, old: c2 ? c2.parts || [] : [] };
+        });
+      });
+    }).then(null, function (err) {
+      /* this save lost: what it wrote and nothing points to is taken away again */
+      var mine = fresh.map(function (p) { return p.id; });
+      return ref.get().then(function (s3) {
+        var used = {};
+        ((s3.exists && s3.data().parts) || []).forEach(function (p) { used[p.id] = 1; });
+        return deleteParts(fb, id, mine.filter(function (x) { return !used[x]; }));
+      }).catch(function () { /* best effort */ }).then(function () { throw err; });
+    });
+  }).then(function (done) {
+    split.parts.forEach(function (p) { cachePart(p.id, p.data); });
+    var kept = before ? keepDeletedPages(fb, id, who, now, before, after) : Promise.resolve(true);
+    var logged = opts.action === 'page-restored' ? addLog(fb, id, who, now, 'page-restored', opts.detail)
+      : !before ? addLog(fb, id, who, now, 'created', 'Started the book "' + split.name + '" with ' + plural(after.pages.length, 'page', 'pages'))
+      : logSave(fb, id, who, now, saveCounts(before, after, changes));
+    var keep = {};
+    split.parts.forEach(function (p) { keep[p.id] = 1; });
+    var stale = done.old.filter(function (p) { return !keep[p.id]; }).map(function (p) { return p.id; });
+    kept.then(function (ok) {
+      if (!ok || !stale.length) return;
+      return deleteParts(fb, id, stale).catch(function (err) { console.error('books: old parts of ' + id + ' were not deleted — ' + (err && err.message)); });
+    });
+    return Promise.all([kept, logged]).then(function () { return { rev: done.rev, updatedAt: now, book: after }; });
+  });
+}
+
 /* ---------- routes: books ---------- */
-function handleMe(req, res, ctx) { sendJson(res, 200, { role: ctx.role, email: ctx.who }); }
+function handleMe(req, res, ctx) { sendJson(res, 200, { role: ctx.role, email: ctx.who, canDesign: ctx.role === 'designer' }); }
 
 function summaryOf(doc) {
   var d = doc.data() || {}, s = d.summary || {};
@@ -302,47 +579,12 @@ function handleGetBook(req, res, ctx) {
 
 function handlePutBook(req, res, ctx) {
   readJson(req, res, MAX_BOOK_REQUEST, 'This book is too large to save in one go (over 24 MB).', function (body) {
-    var split;
-    try { split = splitBook(body.book); } catch (err) { return failWith(res, 'save', err); }
-    var fb = ctx.fb, id = body.book.id, ref = bookRef(fb, id), now = new Date().toISOString();
     var baseRev = body.baseRev == null ? null : Number(body.baseRev);
     if (baseRev != null && !(baseRev >= 0)) return sendJson(res, 400, { error: 'baseRev must be a number.' });
-    var fresh = [];
-    ref.get().then(function (snap) {
-      var cur = snap.exists ? snap.data() : null;
-      checkRev(cur, baseRev, ctx.who);
-      var have = {};
-      (cur && cur.parts || []).forEach(function (p) { have[p.id] = 1; });
-      fresh = split.parts.filter(function (p) { return !have[p.id]; });
-      return writeParts(fb, id, fresh);
-    }).then(function () {
-      return fb.db.runTransaction(function (tx) {
-        return tx.get(ref).then(function (s2) {
-          var cur = s2.exists ? s2.data() : null;
-          checkRev(cur, baseRev, ctx.who);
-          var rev = (cur && cur.rev || 0) + 1;
-          var doc = { name: split.name, status: split.status, core: split.core, summary: split.summary,
-            parts: split.parts.map(function (p) { return { k: p.key, id: p.id }; }), rev: rev, updatedAt: now, updatedBy: ctx.who };
-          if (cur) tx.update(ref, doc);
-          else tx.set(ref, Object.assign(doc, { createdAt: now, createdBy: ctx.who, deletedAt: null }));
-          return { rev: rev, old: cur ? cur.parts || [] : [] };
-        });
-      }).then(function (done) {
-        var keep = {};
-        split.parts.forEach(function (p) { keep[p.id] = 1; });
-        var stale = done.old.filter(function (p) { return !keep[p.id]; }).map(function (p) { return p.id; });
-        deleteParts(fb, id, stale).catch(function (err) { console.error('books: old parts of ' + id + ' were not deleted — ' + (err && err.message)); });
-        sendJson(res, 200, { rev: done.rev, updatedAt: now });
-      }, function (err) {
-        /* this save lost: what it wrote and nothing points to is taken away again */
-        var mine = fresh.map(function (p) { return p.id; });
-        return ref.get().then(function (s3) {
-          var used = {};
-          ((s3.exists && s3.data().parts) || []).forEach(function (p) { used[p.id] = 1; });
-          return deleteParts(fb, id, mine.filter(function (x) { return !used[x]; }));
-        }).catch(function () { /* best effort */ }).then(function () { throw err; });
-      });
-    }).catch(function (err) { failWith(res, 'save ' + id, err, 'The book could not be saved. Please try again.'); });
+    var id = body.book && typeof body.book === 'object' ? str(body.book.id, 100) : '';
+    saveBook(ctx.fb, ctx.who, body.book, baseRev, { contentOnly: ctx.role !== 'designer' })
+      .then(function (r) { sendJson(res, 200, { rev: r.rev, updatedAt: r.updatedAt }); })
+      .catch(function (err) { failWith(res, 'save ' + id, err, 'The book could not be saved. Please try again.'); });
   });
 }
 
@@ -351,17 +593,20 @@ function handleStatus(req, res, ctx) {
     var id = String(body.id || ''), status = String(body.status || '');
     if (!ID_RE.test(id)) return sendJson(res, 400, { error: 'A valid book id is required.' });
     if (STATUSES.indexOf(status) === -1) return sendJson(res, 400, { error: 'status must be one of ' + STATUSES.join(', ') + '.' });
-    var ref = bookRef(ctx.fb, id), now = new Date().toISOString();
+    var ref = bookRef(ctx.fb, id), now = new Date().toISOString(), was = '';
     ctx.fb.db.runTransaction(function (tx) {
       return tx.get(ref).then(function (snap) {
         var cur = snap.exists ? snap.data() : null;
         if (!cur || cur.deletedAt) throw httpErr(404, 'This book does not exist, or it has been deleted.', { code: 'not-found' });
+        was = cur.status || 'draft';
         var rev = (cur.rev || 0) + 1;
         tx.update(ref, { status: status, rev: rev, updatedAt: now, updatedBy: ctx.who });
         return rev;
       });
-    }).then(function (rev) { sendJson(res, 200, { rev: rev, status: status, updatedAt: now }); })
-      .catch(function (err) { failWith(res, 'status ' + id, err, 'The book could not be changed. Please try again.'); });
+    }).then(function (rev) {
+      var detail = was === status ? 'Kept the status at ' + STATUS_LABELS[status] : 'Changed the status from ' + (STATUS_LABELS[was] || was) + ' to ' + STATUS_LABELS[status];
+      return addLog(ctx.fb, id, ctx.who, now, 'status', detail).then(function () { sendJson(res, 200, { rev: rev, status: status, updatedAt: now }); });
+    }).catch(function (err) { failWith(res, 'status ' + id, err, 'The book could not be changed. Please try again.'); });
   });
 }
 
@@ -375,7 +620,8 @@ function handleDeleteBook(req, res, ctx) {
       if (!cur || cur.deletedAt) throw httpErr(404, 'This book does not exist, or it has already been deleted.', { code: 'not-found' });
       tx.update(ref, { deletedAt: now, deletedBy: ctx.who, rev: (cur.rev || 0) + 1, updatedAt: now, updatedBy: ctx.who });
     });
-  }).then(function () { sendJson(res, 200, { ok: true }); })
+  }).then(function () { return addLog(ctx.fb, id, ctx.who, now, 'deleted', 'Deleted the book'); })
+    .then(function () { sendJson(res, 200, { ok: true }); })
     .catch(function (err) { failWith(res, 'delete ' + id, err, 'The book could not be deleted. Please try again.'); });
 }
 
@@ -417,6 +663,7 @@ function handleSaveVersion(req, res, ctx) {
       if (snap.exists) throw httpErr(409, 'This version has already been kept.', { code: 'exists' });
       return versionFile(fb, id, v.id).save(gz, { resumable: false, metadata: { contentType: 'application/gzip', cacheControl: 'private, no-store' } });
     }).then(function () { return docRef.create(meta); })
+      .then(function () { return addLog(fb, id, ctx.who, now, 'version', 'Kept the version "' + meta.label + '"'); })
       .then(function () { sendJson(res, 200, { version: Object.assign({ id: v.id, projectId: id }, meta) }); })
       .catch(function (err) { failWith(res, 'version ' + id, err, 'The version could not be kept. Please try again.'); });
   });
@@ -433,6 +680,89 @@ function handleGetVersion(req, res, ctx) {
     var snapshot = JSON.parse(zlib.gunzipSync(r[0]).toString('utf8'));
     sendJson(res, 200, { version: Object.assign(meta, { snapshot: snapshot }) });
   }).catch(function (err) { failWith(res, 'version ' + id + '/' + vid, err, 'This version could not be loaded. Please try again.'); });
+}
+
+/* ---------- routes: who is here, deleted pages, the activity log ---------- */
+function handlePresence(req, res, ctx) {
+  readJson(req, res, 4096, 'That request is too large.', function (body) {
+    var id = String(body.bookId || ''), pageId = body.pageId == null ? '' : String(body.pageId);
+    if (!ID_RE.test(id)) return sendJson(res, 400, { error: 'A valid book id is required.' });
+    if (pageId && !ID_RE.test(pageId)) return sendJson(res, 400, { error: 'A valid page id is required.' });
+    var fb = ctx.fb, nowMs = Date.now(), at = new Date(nowMs).toISOString(), here = bookRef(fb, id).collection('presence');
+    bookRef(fb, id).get().then(function (snap) {
+      var root = snap.exists ? snap.data() || {} : null;
+      if (root && root.deletedAt) throw httpErr(404, 'This book does not exist, or it has been deleted.', { code: 'not-found' });
+      /* a book just started is opened a moment before its first save creates it: nobody else can be in it yet, so the
+         answer is an empty list and nothing is written (the 30-second beat counts the person once it exists) */
+      if (!root) { sendJson(res, 200, { here: [] }); return null; }
+      return here.doc(ownerKey(ctx.who)).set({ email: ctx.who, pageId: pageId, at: at }).then(function () { return true; });
+    }).then(function (wrote) {
+      if (!wrote) return null;
+      return here.where('at', '>=', new Date(nowMs - PRESENCE_MS).toISOString()).limit(500).get();
+    }).then(function (snap) {
+      if (!snap) return;
+      var others = snap.docs.map(function (d) { return d.data() || {}; }).filter(function (d) {
+        return d.email && d.email !== ctx.who && nowMs - Date.parse(d.at) <= PRESENCE_MS;
+      }).map(function (d) { return { email: String(d.email), pageId: String(d.pageId || ''), at: String(d.at) }; });
+      others.sort(function (a, b) { return b.at.localeCompare(a.at); });
+      sendJson(res, 200, { here: others });
+    }).catch(function (err) { failWith(res, 'presence ' + id, err, 'Who else has this book open could not be checked. It will be tried again.'); });
+  });
+}
+function handleTrash(req, res, ctx) {
+  var id = queryOf(req).get('id') || '';
+  if (!ID_RE.test(id)) return sendJson(res, 400, { error: 'A valid book id is required.' });
+  var inBook = {};
+  liveBook(ctx.fb, id).then(function (root) {
+    /* a page put back by a later save (an undo) is in the book again, so it is not offered */
+    (root.parts || []).forEach(function (p) { if (/^page:/.test(p.k)) inBook[String(p.k).slice(5)] = 1; });
+    return trashCol(ctx.fb, id).select('label', 'position', 'deletedAt', 'deletedBy').orderBy('deletedAt', 'desc').limit(TRASH_LIST).get();
+  }).then(function (snap) {
+    sendJson(res, 200, { pages: snap.docs.filter(function (doc) { return !inBook[doc.id]; }).map(function (doc) {
+      var d = doc.data() || {};
+      return { pageId: doc.id, label: d.label || '', position: +d.position || 0, deletedAt: d.deletedAt || '', deletedBy: d.deletedBy || '' };
+    }) });
+  }).catch(function (err) { failWith(res, 'trash ' + id, err, 'The deleted pages could not be loaded. Please try again.'); });
+}
+function handleRestorePage(req, res, ctx) {
+  readJson(req, res, 4096, 'That request is too large.', function (body) {
+    var id = String(body.bookId || ''), pageId = String(body.pageId || '');
+    if (!ID_RE.test(id) || !ID_RE.test(pageId)) return sendJson(res, 400, { error: 'A valid book id and page id are required.' });
+    var baseRev = body.baseRev == null || body.baseRev === '' ? NaN : Number(body.baseRev);
+    if (!(baseRev >= 0)) return sendJson(res, 400, { error: 'baseRev must be a number.' });
+    var fb = ctx.fb, kept = trashCol(fb, id).doc(pageId);
+    loadBook(fb, id).then(function (r) {
+      checkRev(r.root, baseRev, ctx.who);
+      if (r.book.pages.some(function (p) { return p && p.id === pageId; })) throw httpErr(409, 'This page is already in the book.', { code: 'exists' });
+      return kept.get().then(function (snap) {
+        if (!snap.exists) throw httpErr(404, 'This page is no longer among the deleted pages.', { code: 'not-found' });
+        var d = snap.data() || {}, page;
+        try { page = JSON.parse(d.page); } catch (e) { page = null; }
+        if (!page || typeof page !== 'object' || page.id !== pageId) throw new Error('trash entry ' + pageId + ' of ' + id + ' does not hold its page');
+        var book = r.book, pos = Math.max(0, Math.min(Math.floor(+d.position || 0), book.pages.length));
+        book.pages.splice(pos, 0, page);
+        book.pages.forEach(function (p, i) { p.orderIndex = i; });
+        /* restoring the page as it was stored is allowed to both roles: it brings back design, it makes none */
+        return saveBook(fb, ctx.who, book, baseRev, { action: 'page-restored', detail: 'Restored page "' + (d.label || pageLabel(page, pos)) + '" as page ' + (pos + 1) });
+      });
+    }).then(function (saved) {
+      return kept.delete().catch(function (err) { console.error('books: restored page ' + pageId + ' of ' + id + ' was left among the deleted — ' + (err && err.message)); })
+        .then(function () { sendJson(res, 200, { rev: saved.rev, book: saved.book }); });
+    }).catch(function (err) { failWith(res, 'restore ' + id + '/' + pageId, err, 'The page could not be restored. Please try again.'); });
+  });
+}
+function handleLog(req, res, ctx) {
+  var id = queryOf(req).get('id') || '';
+  if (!ID_RE.test(id)) return sendJson(res, 400, { error: 'A valid book id is required.' });
+  liveBook(ctx.fb, id).then(function () {
+    return logCol(ctx.fb, id).select('at', 'by', 'action', 'detail', 'firstAt').orderBy('at', 'desc').limit(LOG_LIST).get();
+  }).then(function (snap) {
+    sendJson(res, 200, { entries: snap.docs.map(function (doc) {
+      var d = doc.data() || {}, e = { id: doc.id, at: d.at || '', by: d.by || '', action: d.action || '', detail: d.detail || '' };
+      if (d.firstAt && d.firstAt !== d.at) e.firstAt = d.firstAt;
+      return e;
+    }) });
+  }).catch(function (err) { failWith(res, 'log ' + id, err, 'The activity log could not be loaded. Please try again.'); });
 }
 
 /* ---------- routes: templates and font collections ---------- */
@@ -821,6 +1151,29 @@ function handleAi(req, res, ctx, m) {
 }
 
 /* ---------- the router ---------- */
+/* What a Content editor may use (the owner, 26 Nov 2026: everything except the design). Every other route is a
+   Designer's only — it fails closed: a route added later is refused to Content editors until it is named here. PUT
+   book is here because saveBook checks the save itself (no new book, no status change, no design change). */
+var CONTENT_ROUTES = {
+  'GET /api/books/me': 1, 'GET /api/books/list': 1, 'GET /api/books/book': 1, 'PUT /api/books/book': 1,
+  'GET /api/books/versions': 1, 'POST /api/books/versions': 1, 'GET /api/books/version': 1,
+  'GET /api/books/templates': 1, 'GET /api/books/font-collections': 1, 'PUT /api/books/font-collection': 1,
+  'POST /api/books/asset': 1, 'GET /api/books/asset/*': 1, 'POST /api/books/manuscript': 1, 'GET /api/books/fonts': 1,
+  'POST /api/books/ai/editorial-assistant': 1, 'POST /api/books/ai/generate-infographic': 1, 'POST /api/books/ai/auto-flow-data': 1,
+  'POST /api/books/presence': 1, 'GET /api/books/trash': 1, 'POST /api/books/restore-page': 1, 'GET /api/books/log': 1
+};
+/* "Only a Designer can …": what each Designer-only route does, in words */
+var DESIGNER_ACTIONS = {
+  'DELETE /api/books/book': 'delete a book',
+  'POST /api/books/status': 'change a book\'s status',
+  'PUT /api/books/template': 'save a template',
+  'DELETE /api/books/template': 'delete a template',
+  'POST /api/books/idml': 'import an InDesign file',
+  'POST /api/books/ai/analyze-template': 'have AI read the design of a reference book',
+  'POST /api/books/ai/typography-pairing': 'have AI suggest font pairings',
+  'POST /api/books/ai/recommend-templates': 'have AI suggest templates',
+  'POST /api/books/ai/generate-publication-template': 'have AI make a book design'
+};
 var ROUTES = {
   'GET /api/books/me': handleMe,
   'GET /api/books/list': handleList,
@@ -839,19 +1192,24 @@ var ROUTES = {
   'POST /api/books/asset': handleUploadAsset,
   'POST /api/books/manuscript': handleManuscript,
   'POST /api/books/idml': handleIdml,
-  'GET /api/books/fonts': handleFonts
+  'GET /api/books/fonts': handleFonts,
+  'POST /api/books/presence': handlePresence,
+  'GET /api/books/trash': handleTrash,
+  'POST /api/books/restore-page': handleRestorePage,
+  'GET /api/books/log': handleLog
 };
+/* key: the route's name in CONTENT_ROUTES and DESIGNER_ACTIONS (each AI step is its own) */
 var PATTERNS = [
-  { method: 'GET', re: /^\/api\/books\/asset\/(as_[a-f0-9]{20})\/(display|print|thumb)$/, fn: handleGetAsset },
-  { method: 'POST', re: /^\/api\/books\/ai\/([a-z-]{1,40})$/, fn: handleAi }
+  { method: 'GET', re: /^\/api\/books\/asset\/(as_[a-f0-9]{20})\/(display|print|thumb)$/, fn: handleGetAsset, key: function () { return 'GET /api/books/asset/*'; } },
+  { method: 'POST', re: /^\/api\/books\/ai\/([a-z-]{1,40})$/, fn: handleAi, key: function (path) { return 'POST ' + path; } }
 ];
 
 function find(method, path) {
   var fn = ROUTES[method + ' ' + path];
-  if (fn) return { fn: fn, m: null };
+  if (fn) return { fn: fn, m: null, key: method + ' ' + path };
   for (var i = 0; i < PATTERNS.length; i++) {
     var m = PATTERNS[i].re.exec(path);
-    if (m && PATTERNS[i].method === method) return { fn: PATTERNS[i].fn, m: m };
+    if (m && PATTERNS[i].method === method) return { fn: PATTERNS[i].fn, m: m, key: PATTERNS[i].key(path) };
   }
   return null;
 }
@@ -870,6 +1228,10 @@ function handle(req, res) {
   H.requireMember(req, res, function (fb, decoded) {
     var role = booksRole(decoded);
     if (!role) return sendJson(res, 403, { error: NOT_OPEN, code: 'no-books' });
+    if (role !== 'designer' && !CONTENT_ROUTES[hit.key]) {
+      if (req.rawBody == null && typeof req.resume === 'function') req.resume();
+      return sendJson(res, 403, { error: 'Only a Designer can ' + (DESIGNER_ACTIONS[hit.key] || 'do this') + '.', code: 'designer-only' });
+    }
     try { hit.fn(req, res, { fb: fb, decoded: decoded, role: role, who: whoOf(decoded) }, hit.m); }
     catch (err) { failWith(res, method + ' ' + path, err); }
   });
@@ -878,4 +1240,5 @@ function handle(req, res) {
 module.exports = { handle: handle, booksRole: booksRole };
 module.exports._test = { splitBook: splitBook, assemble: assemble, checkRev: checkRev, partId: partId, sniffPhoto: sniffPhoto, splitManuscript: splitManuscript,
   docxText: docxText, stripRtf: stripRtf, csvText: csvText, parseIdml: parseIdml, cmykHex: cmykHex, col: col, filePrefix: filePrefix, ROUTES: ROUTES, find: find,
-  loadFonts: loadFonts, MAX_PART_BYTES: MAX_PART_BYTES, NOT_OPEN: NOT_OPEN };
+  loadFonts: loadFonts, MAX_PART_BYTES: MAX_PART_BYTES, NOT_OPEN: NOT_OPEN, CONTENT_ROUTES: CONTENT_ROUTES, DESIGNER_ACTIONS: DESIGNER_ACTIONS,
+  saveCounts: saveCounts, foldCounts: foldCounts, saveSentence: saveSentence, PART_CACHE: PART_CACHE, LOG_FOLD_MS: LOG_FOLD_MS, PRESENCE_MS: PRESENCE_MS };

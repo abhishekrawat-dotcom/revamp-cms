@@ -487,7 +487,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                           className="w-full h-full object-cover opacity-85 group-hover:scale-105 transition-transform duration-300"
                         />
                         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/85 to-transparent" />
-                        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/70 text-[10px] font-mono-tabular uppercase tracking-wider text-[#E6CFA5] rounded">
+                        <div className="absolute top-2 left-2 px-1.5 py-0.5 bg-black/70 text-[11px] font-mono-tabular uppercase tracking-wider text-[#E6CFA5] rounded">
                           {kind}
                         </div>
                         <button
@@ -503,7 +503,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                             color={isFav ? '#C6A26B' : 'currentColor'}
                           />
                         </button>
-                        <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[10px] text-[#ECEAE4]">
+                        <div className="absolute bottom-2 left-2.5 right-2.5 flex items-center justify-between text-[11px] text-[#ECEAE4]">
                           <span className="truncate">{tpl.designSystem.typography.displayFont}</span>
                           <span className="font-mono-tabular shrink-0">
                             {tpl.dimensions.widthMm}×{tpl.dimensions.heightMm}mm
@@ -514,7 +514,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                       <div className="p-3.5 flex-1 flex flex-col justify-between gap-3">
                         <div className="space-y-1">
                           <div className="text-xs font-semibold text-[#F4F1EA]">{tpl.name}</div>
-                          <div className="text-[10px] text-[#C6A26B]">{tpl.category}</div>
+                          <div className="text-[11px] text-[#C6A26B]">{tpl.category}</div>
                           <p className="text-[11px] text-[#98958D] line-clamp-2 leading-relaxed">
                             {tpl.description}
                           </p>
@@ -818,7 +818,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                       <div className="p-3.5 flex-1 flex flex-col justify-between gap-2.5">
                         <div>
                           <div className="text-xs font-semibold text-[#F4F1EA]">{inf.name}</div>
-                          <div className="text-[10px] text-[#C6A26B] mt-0.5">{inf.category}</div>
+                          <div className="text-[11px] text-[#C6A26B] mt-0.5">{inf.category}</div>
                           <p className="text-[11px] text-[#98958D] mt-1 line-clamp-2">
                             {inf.description}
                           </p>
@@ -1007,7 +1007,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                   {aiGeneratedPub && (
                     <div className="p-5 bg-[#141417] border border-[#C6A26B]/40 rounded-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                       <div className="space-y-1.5">
-                        <div className="text-[10px] uppercase tracking-wider text-[#C6A26B]">
+                        <div className="text-[11px] uppercase tracking-wider text-[#C6A26B]">
                           Generated {aiGeneratedPub.documentKind === 'report' ? 'Report' : 'Book'} ·{' '}
                           {aiGeneratedPub.category}
                         </div>
@@ -1142,7 +1142,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                       </div>
 
                       <div className="lg:col-span-2 space-y-3">
-                        <div className="text-[10px] uppercase tracking-wider text-[#C6A26B]">
+                        <div className="text-[11px] uppercase tracking-wider text-[#C6A26B]">
                           {aiGeneratedInf.categoryLabel} · {aiGeneratedInf.variant}
                         </div>
                         <div className="text-sm font-semibold text-[#F4F1EA]">{aiGeneratedInf.title}</div>
@@ -1325,7 +1325,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                       className="p-4 bg-[#141417] border border-white/[0.08] rounded-md flex flex-col justify-between gap-3"
                     >
                       <div className="space-y-1">
-                        <div className="text-[10px] uppercase tracking-wider text-[#C6A26B]">
+                        <div className="text-[11px] uppercase tracking-wider text-[#C6A26B]">
                           {ct.templateKind} · {ct.collectionName}
                         </div>
                         <div className="text-xs font-semibold text-[#F4F1EA]">{ct.title}</div>

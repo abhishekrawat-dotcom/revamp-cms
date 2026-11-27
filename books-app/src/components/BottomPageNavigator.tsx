@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { BookPlus, Copy, Plus, Trash2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { BookPlus, Copy, FileX2, Plus, Trash2 } from 'lucide-react';
 import type { BookPage, BookProject } from '../types/bookstudio';
 import { getEffectivePageDimensions } from '../engines/dimensionEngine';
+import { initialsOf } from '../services/people';
 
 interface BottomPageNavigatorProps {
   project: BookProject;
@@ -12,6 +13,10 @@ interface BottomPageNavigatorProps {
   onDuplicatePage: (pageId: string) => void;
   onDeletePage: (pageId: string) => void;
   onReorderPages: (fromIdx: number, toIdx: number) => void;
+  /** others with this book open, and the page each is on: their initials mark that page's thumbnail */
+  othersHere: Array<{ email: string; name: string; pageId: string }>;
+  /** opens Version history on its Deleted pages tab */
+  onOpenDeletedPages: () => void;
 }
 
 export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
@@ -23,8 +28,18 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
   onDuplicatePage,
   onDeletePage,
   onReorderPages,
+  othersHere,
+  onOpenDeletedPages,
 }) => {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const othersByPage = useMemo(() => {
+    const m: Record<string, Array<{ email: string; name: string }>> = {};
+    othersHere.forEach((o) => {
+      if (!o.pageId) return;
+      (m[o.pageId] = m[o.pageId] || []).push({ email: o.email, name: o.name });
+    });
+    return m;
+  }, [othersHere]);
 
   // Group pages into realistic book spreads: Page 1 (Front Cover) solo, then pairs (2-3, 4-5, ...)
   const spreadGroups: Array<{ label: string; items: Array<{ page: BookPage; index: number }> }> = [];
@@ -63,7 +78,7 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
           <button
             onClick={onAddPage}
             title="Add Single Page"
-            className="flex-1 px-2 py-1 bg-[#1E1E22] hover:bg-[#2A2A30] text-[10px] text-[#C8C5BC] rounded flex items-center justify-center gap-1 cursor-pointer"
+            className="flex-1 px-2 py-1 bg-[#1E1E22] hover:bg-[#2A2A30] text-[11px] text-[#C8C5BC] rounded flex items-center justify-center gap-1 cursor-pointer"
           >
             <Plus className="w-3 h-3" />
             <span>Page</span>
@@ -82,6 +97,14 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
             className="p-1 bg-[#1E1E22] hover:bg-[#3A2220] text-[#C8C5BC] hover:text-[#E07A5F] disabled:opacity-30 rounded cursor-pointer"
           >
             <Trash2 className="w-3 h-3" />
+          </button>
+          <button
+            onClick={onOpenDeletedPages}
+            title="Deleted pages: put a page back"
+            aria-label="Deleted pages"
+            className="p-1 bg-[#1E1E22] hover:bg-[#2A2A30] text-[#C8C5BC] rounded cursor-pointer"
+          >
+            <FileX2 className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -105,6 +128,7 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
                   const thumbH = 62;
                   const thumbW = Math.max(36, Math.min(84, Math.round(thumbH * ratio)));
                   const isActive = page.id === activePageId;
+                  const here = othersByPage[page.id] || [];
 
                   return (
                     <div
@@ -124,7 +148,9 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
                         height: `${thumbH}px`,
                         backgroundColor: page.backgroundColor || project.designSystem.colors.paper,
                       }}
-                      title={`Page ${index + 1}: ${page.label}${page.dimensionsOverride ? ' (Mixed-Format Custom Size)' : ''} — Drag to reorder`}
+                      title={`Page ${index + 1}: ${page.label}${page.dimensionsOverride ? ' (Mixed-Format Custom Size)' : ''}${
+                        here.length ? ` — also here: ${here.map((h) => h.name).join(', ')}` : ''
+                      } — Drag to reorder`}
                       className={`relative overflow-hidden cursor-pointer border ${
                         isActive ? 'border-[#C6A26B]' : 'border-black/25'
                       }`}
@@ -186,18 +212,36 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
                       {page.dimensionsOverride && (
                         <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-[#C6A26B]" />
                       )}
+
+                      {here.length > 0 && (
+                        <div className="absolute bottom-0.5 left-0.5 flex items-center gap-0.5 pointer-events-none">
+                          {here.slice(0, 2).map((h) => (
+                            <span
+                              key={h.email}
+                              className="h-[18px] min-w-[18px] px-0.5 rounded-full bg-[#2E6B4F] text-white text-[11px] font-bold leading-none flex items-center justify-center shadow ring-1 ring-white/70"
+                            >
+                              {initialsOf(h.email)}
+                            </span>
+                          ))}
+                          {here.length > 2 && (
+                            <span className="h-[18px] px-1 rounded-full bg-[#2E6B4F] text-white text-[11px] font-bold leading-none flex items-center shadow">
+                              +{here.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
-              <span className="font-mono-tabular text-[10px] text-[#8F8C84]">{group.label}</span>
+              <span className="font-mono-tabular text-[11px] text-[#8F8C84]">{group.label}</span>
             </div>
           );
         })}
       </div>
 
       {/* Right Summary */}
-      <div className="hidden md:flex flex-col items-end text-[10px] text-[#8F8C84] font-mono-tabular shrink-0 pl-2 border-l border-white/[0.08]">
+      <div className="hidden md:flex flex-col items-end text-[11px] text-[#8F8C84] font-mono-tabular shrink-0 pl-2 border-l border-white/[0.08]">
         <span className="text-[#ECEAE4]">{project.pages.length} Pages</span>
         <span>{project.chapters.length} Chapters</span>
       </div>
