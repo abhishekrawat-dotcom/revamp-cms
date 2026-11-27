@@ -1129,6 +1129,150 @@ function handleFonts(req, res) {
   });
 }
 
+/* ---------- routes: a font file, for the print PDF (Books Phase 4, 27 Nov 2026) ----------
+   GET font-file?family=&weight=&italic=0|1[&opsz=]  -> the face's TrueType file (font/ttf, private, a year), which the
+   editor embeds in the PDF (pdfEngine.ts). Only a family in the Google Fonts list (the one GET fonts reads, loaded if
+   it isn't yet), so nothing else is ever fetched: Google's CSS2 API (fonts.googleapis.com, asked with a User-Agent it
+   answers with TrueType), then the file it names, only from https://fonts.gstatic.com, at most 15 MB. opsz: the
+   optical size a variable font's widths were measured at (the editor measures at 64 px), taken to the family's own
+   range; a family without one ignores it, and X-Font-Opsz says what was used.
+   404 { code: 'font-family' } for a family that isn't a Google font, 404 { code: 'font-weight', weights, italic } for
+   a weight or italic it doesn't have (the editor then takes the nearest, as a browser would). Kept in memory (24
+   files, 60 MB at most) and in the bucket under <books prefix>fonts/, so a restart never asks Google again. */
+var FONT_FILE_MAX = 15 * MB, FONT_MEM_MAX_FILES = 24, FONT_MEM_MAX_BYTES = 60 * MB;
+var FONT_FILES = new Map(), FONT_MEM_BYTES = 0, OPSZ_RANGES = new Map(), FONT_FILE_WAITS = new Map();
+var FONT_CSS_UA = 'Mozilla/5.0';
+function fontsList() {
+  if (FONTS.body && FONTS.body.items && FONTS.body.items.length && Date.now() - FONTS.at < FONTS_MS) return Promise.resolve(FONTS.body);
+  return loadFonts().then(function (body) {
+    if (!body || !body.items || !body.items.length) throw new Error('no fonts in the answer');
+    FONTS = { at: Date.now(), body: body };
+    return body;
+  }, function (err) {
+    if (FONTS.body && FONTS.body.items && FONTS.body.items.length) return FONTS.body;
+    throw err;
+  });
+}
+function fontSlug(family) { return String(family).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'font'; }
+function fontTimeout() { return typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? { signal: AbortSignal.timeout(15000) } : {}; }
+/* the CSS2 API's answer for one face: the gstatic URL of its TrueType file, or null when Google has no such face */
+function fontCssUrl(family, weight, italic, opsz) {
+  var spec = opsz ? 'ital,opsz,wght@' + (italic ? 1 : 0) + ',' + opsz + ',' + weight : 'ital,wght@' + (italic ? 1 : 0) + ',' + weight;
+  var url = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(family).replace(/%20/g, '+') + ':' + spec;
+  return fetch(url, Object.assign({ headers: { 'User-Agent': FONT_CSS_UA, Accept: 'text/css' } }, fontTimeout())).then(function (r) {
+    if (r.status === 400 || r.status === 404) return null;
+    if (!r.ok) throw new Error('Google Fonts answered HTTP ' + r.status);
+    return r.text().then(function (css) {
+      var blocks = String(css).split('@font-face').slice(1);
+      for (var i = 0; i < blocks.length; i++) {
+        var b = blocks[i];
+        var st = /font-style:\s*(\w+)/.exec(b), wt = /font-weight:\s*(\d+)/.exec(b), src = /src:\s*url\(([^)]+)\)/.exec(b);
+        if (!st || !wt || !src) continue;
+        if ((st[1] === 'italic') !== !!italic || +wt[1] !== weight) continue;
+        var file = src[1].replace(/^['"]|['"]$/g, '');
+        if (!/^https:\/\/fonts\.gstatic\.com\/[A-Za-z0-9_\-./]+\.(ttf|otf)$/.test(file)) continue;
+        return file;
+      }
+      return null;
+    });
+  });
+}
+/* the optical size to ask for: `want` taken into the family's opsz range, found by asking (a family without an opsz
+   axis refuses every value), remembered per family and style; 0 when there is no axis */
+function opszFor(family, weight, italic, want) {
+  if (!want) return Promise.resolve(0);
+  var key = family + '|' + (italic ? 1 : 0) + '|' + weight;
+  var known = OPSZ_RANGES.get(key);
+  function clampTo(r) { return r ? Math.min(r.max, Math.max(r.min, want)) : 0; }
+  if (known !== undefined) return Promise.resolve(clampTo(known));
+  function ok(v) { return fontCssUrl(family, weight, italic, v).then(function (u) { return !!u; }); }
+  function remember(r) { OPSZ_RANGES.set(key, r); if (OPSZ_RANGES.size > 500) OPSZ_RANGES.clear(); return clampTo(r); }
+  return ok(want).then(function (yes) {
+    if (yes) return want;
+    /* out of range, or no axis: 14 sits inside nearly every opsz range there is */
+    return ok(14).then(function (inside) {
+      if (!inside) return remember(null);
+      /* the range's end on want's side, to the whole point */
+      var lo = want > 14 ? 14 : want, hi = want > 14 ? want : 14, up = want > 14;
+      function step(n) {
+        if (hi - lo <= 1 || n > 12) return Promise.resolve(up ? lo : hi);
+        var mid = Math.floor((lo + hi) / 2);
+        return ok(mid).then(function (y) { if (up === y) lo = mid; else hi = mid; return step(n + 1); });
+      }
+      return step(0).then(function (edge) { return remember(up ? { min: 1, max: edge } : { min: edge, max: 1000 }); });
+    });
+  });
+}
+function fetchFontFile(url) {
+  return fetch(url, fontTimeout()).then(function (r) {
+    if (!r.ok) throw new Error('fonts.gstatic.com answered HTTP ' + r.status);
+    if (+r.headers.get('content-length') > FONT_FILE_MAX) throw new Error('the font file is over 15 MB');
+    return r.arrayBuffer();
+  }).then(function (ab) {
+    var buf = Buffer.from(ab);
+    if (buf.length > FONT_FILE_MAX) throw new Error('the font file is over 15 MB');
+    var tag = buf.slice(0, 4).toString('latin1'), hex = buf.slice(0, 4).toString('hex');
+    if (hex !== '00010000' && tag !== 'true' && tag !== 'OTTO') throw new Error('the file Google sent is not a font');
+    return buf;
+  });
+}
+function rememberFont(key, buf) {
+  if (FONT_FILES.has(key)) { FONT_MEM_BYTES -= FONT_FILES.get(key).length; FONT_FILES.delete(key); }
+  FONT_FILES.set(key, buf);
+  FONT_MEM_BYTES += buf.length;
+  while (FONT_FILES.size > FONT_MEM_MAX_FILES || FONT_MEM_BYTES > FONT_MEM_MAX_BYTES) {
+    var first = FONT_FILES.keys().next().value;
+    FONT_MEM_BYTES -= FONT_FILES.get(first).length;
+    FONT_FILES.delete(first);
+  }
+}
+function handleFontFile(req, res, ctx) {
+  var q = queryOf(req);
+  var asked = str(q.get('family'), 120).trim(), weight = +q.get('weight'), italic = q.get('italic') === '1', opszWant = q.get('opsz') ? Math.round(+q.get('opsz')) : 0;
+  if (!asked || asked.length > 80 || /[^A-Za-z0-9 \-]/.test(asked)) return sendJson(res, 400, { error: 'Say which font family: its Google Fonts name.', code: 'bad-request' });
+  if (!(weight >= 1 && weight <= 1000) || Math.round(weight) !== weight) return sendJson(res, 400, { error: 'Say which weight, from 1 to 1000.', code: 'bad-request' });
+  if (q.get('italic') && q.get('italic') !== '0' && q.get('italic') !== '1') return sendJson(res, 400, { error: 'italic is 0 or 1.', code: 'bad-request' });
+  if (opszWant && !(opszWant >= 1 && opszWant <= 1000)) return sendJson(res, 400, { error: 'opsz is an optical size from 1 to 1000.', code: 'bad-request' });
+  fontsList().then(function (body) {
+    var lower = asked.toLowerCase(), item = null;
+    for (var i = 0; i < body.items.length; i++) if (String(body.items[i].family).toLowerCase() === lower) { item = body.items[i]; break; }
+    if (!item) throw httpErr(404, '"' + asked + '" is not a Google font, so it can\'t be embedded in the PDF.', { code: 'font-family' });
+    var family = item.family, weights = (item.weights || []).slice();
+    var styleName = family + ' ' + weight + (italic ? ' italic' : '');
+    var missing = httpErr(404, family + ' has no ' + weight + (italic ? ' italic' : '') + ' style.', { code: 'font-weight', family: family, weights: weights, italic: !!item.hasItalic });
+    if (weights.indexOf(weight) === -1 || (italic && !item.hasItalic)) throw missing;
+    return opszFor(family, weight, italic, opszWant).then(function (opsz) {
+      var key = family + '|' + weight + '|' + (italic ? 1 : 0) + '|' + opsz;
+      var path = filePrefix() + 'fonts/' + fontSlug(family) + '/' + weight + (italic ? 'i' : '') + (opsz ? '-opsz' + opsz : '') + '.ttf';
+      function answer(buf) {
+        res.writeHead(200, { 'Content-Type': 'font/ttf', 'Content-Length': buf.length, 'Cache-Control': 'private, max-age=31536000',
+          'X-Font-Opsz': opsz ? String(opsz) : 'none', 'X-Content-Type-Options': 'nosniff' });
+        res.end(buf);
+      }
+      var hit = FONT_FILES.get(key);
+      if (hit) { rememberFont(key, hit); return answer(hit); }
+      /* one fetch per face at a time: callers asking for the same face together wait for it */
+      var wait = FONT_FILE_WAITS.get(key);
+      if (!wait) {
+        var file = ctx.fb.bucket.file(path);
+        wait = file.download().then(function (d) { return Buffer.from(d[0]); }, function () {
+          return fontCssUrl(family, weight, italic, opsz).then(function (url) {
+            if (!url) throw missing;
+            return fetchFontFile(url);
+          }).then(function (buf) {
+            file.save(buf, { resumable: false, metadata: { contentType: 'font/ttf', cacheControl: 'private, max-age=31536000' } })
+              .catch(function (err) { console.error('books: font ' + styleName + ' was not kept in the bucket — ' + (err && err.message)); });
+            return buf;
+          });
+        }).then(function (buf) { rememberFont(key, buf); return buf; });
+        FONT_FILE_WAITS.set(key, wait);
+        wait.then(function () { FONT_FILE_WAITS.delete(key); }, function () { FONT_FILE_WAITS.delete(key); });
+      }
+      return wait.then(answer);
+    });
+  }).catch(function (err) { failWith(res, 'font-file ' + asked + ' ' + weight, err, 'The font file could not be fetched from Google Fonts just now. Check the connection and try again.'); });
+}
+
 /* ---------- routes: AI ---------- */
 function usageRecorder(fb, bookId) {
   if (!ID_RE.test(bookId || '')) return null;
@@ -1159,6 +1303,7 @@ var CONTENT_ROUTES = {
   'GET /api/books/versions': 1, 'POST /api/books/versions': 1, 'GET /api/books/version': 1,
   'GET /api/books/templates': 1, 'GET /api/books/font-collections': 1, 'PUT /api/books/font-collection': 1,
   'POST /api/books/asset': 1, 'GET /api/books/asset/*': 1, 'POST /api/books/manuscript': 1, 'GET /api/books/fonts': 1,
+  'GET /api/books/font-file': 1,
   'POST /api/books/ai/editorial-assistant': 1, 'POST /api/books/ai/generate-infographic': 1, 'POST /api/books/ai/auto-flow-data': 1,
   'POST /api/books/ai/edit-text': 1,
   'POST /api/books/presence': 1, 'GET /api/books/trash': 1, 'POST /api/books/restore-page': 1, 'GET /api/books/log': 1
@@ -1194,6 +1339,7 @@ var ROUTES = {
   'POST /api/books/manuscript': handleManuscript,
   'POST /api/books/idml': handleIdml,
   'GET /api/books/fonts': handleFonts,
+  'GET /api/books/font-file': handleFontFile,
   'POST /api/books/presence': handlePresence,
   'GET /api/books/trash': handleTrash,
   'POST /api/books/restore-page': handleRestorePage,
@@ -1242,4 +1388,7 @@ module.exports = { handle: handle, booksRole: booksRole };
 module.exports._test = { splitBook: splitBook, assemble: assemble, checkRev: checkRev, partId: partId, sniffPhoto: sniffPhoto, splitManuscript: splitManuscript,
   docxText: docxText, stripRtf: stripRtf, csvText: csvText, parseIdml: parseIdml, cmykHex: cmykHex, col: col, filePrefix: filePrefix, ROUTES: ROUTES, find: find,
   loadFonts: loadFonts, MAX_PART_BYTES: MAX_PART_BYTES, NOT_OPEN: NOT_OPEN, CONTENT_ROUTES: CONTENT_ROUTES, DESIGNER_ACTIONS: DESIGNER_ACTIONS,
-  saveCounts: saveCounts, foldCounts: foldCounts, saveSentence: saveSentence, PART_CACHE: PART_CACHE, LOG_FOLD_MS: LOG_FOLD_MS, PRESENCE_MS: PRESENCE_MS };
+  saveCounts: saveCounts, foldCounts: foldCounts, saveSentence: saveSentence, PART_CACHE: PART_CACHE, LOG_FOLD_MS: LOG_FOLD_MS, PRESENCE_MS: PRESENCE_MS,
+  FONT_FILE_MAX: FONT_FILE_MAX, FONT_CSS_UA: FONT_CSS_UA,
+  fontFileState: function () { return { files: FONT_FILES.size, bytes: FONT_MEM_BYTES, opsz: OPSZ_RANGES }; },
+  resetFontFiles: function () { FONT_FILES.clear(); FONT_MEM_BYTES = 0; OPSZ_RANGES.clear(); FONT_FILE_WAITS.clear(); FONTS = { at: 0, body: null }; } };

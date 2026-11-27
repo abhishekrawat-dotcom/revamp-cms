@@ -179,7 +179,7 @@ var ALL = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
   check('3.2 the words the book\'s template put in a frame count as empty (the cover title of the template the book was made from)', el(cover.project, 'p1_title').text === 'Chapter One');
   var noTpl = P.planPour(book, { sectionIds: ['s1'], startPageId: 'p1', fit: fakeFit, placeholders: ph });
   var labels = P.collectPlaceholderTexts(book, [{ name: 'Test template', buildPages: function () { return [{ elements: [{ text: 'Contents' }, { text: 'Plate one caption words' }] }]; } }]);
-  check('3.2b …except a template\'s one-word labels ("Contents"): they are the book\'s structure, not sample copy',
+  check('3.2b …a one-word template text ("Contents") counts only in the frame the template put it in: the word on its own, or typed in another frame, is not sample copy (section 7)',
     !P.isPlaceholderText('Contents', labels) && P.isPlaceholderText('Plate one caption words', labels) && P.isPlaceholderText('Section Heading', labels));
   check('3.3 …but a title someone wrote is kept (the pour starts on page 1 and passes it by)', el(noTpl.project, 'p1_title').text === 'Test template title' && el(noTpl.project, 'p2_head').text === 'Chapter One');
   var order = P.planPour(book, { sectionIds: ['s3', 's2'], startPageId: 'p2', fit: fakeFit, placeholders: ph });
@@ -257,6 +257,57 @@ var ALL = ['s1', 's2', 's3', 's4', 's5', 's6', 's7', 's8'];
   check('6.2 under 150: too low; 150–250: low; 300 and more: fine', R.printQuality(149).level === 'too_low' && R.printQuality(150).level === 'low' &&
     R.printQuality(249).level === 'low' && R.printQuality(300).level === 'good' && /Too low for print/.test(R.printQuality(100).label) && /Low for print/.test(R.printQuality(200).label));
   check('6.3 a frame with no photo, or no pixel size, has no resolution', R.photoPrintResolution({ type: 'image', widthMm: 10, heightMm: 10, image: { src: '' } }) === null);
+})();
+
+/* ---------- 7 one-word template words (Phase 4): the template's in its own frame, a contents page's heading kept ---------- */
+(function () {
+  function pageOf(b, id) { return b.pages.filter(function (p) { return p.id === id; })[0]; }
+  function bookFromTemplate() {
+    var b = makeBook();
+    b.masterPages[0].elements.push(frame('m_kicker', 'subheading', 18, 12, 4, 'Chapter'));
+    b.pages.splice(1, 0, { id: 'toc', orderIndex: 1, label: 'Contents', role: 'table_of_contents', backgroundColor: '#F7F5F0', elements: [
+      frame('toc_head', 'heading', 20, 20, 6, 'Contents'),
+      frame('toc_entries', 'caption', 20, 40, 30, 'Introduction\nPlates\nCredits'),
+    ] });
+    b.pages.forEach(function (p, i) { p.orderIndex = i; });
+    el(b, 'p3_head').text = 'Milestones';                                   // the template's one-word heading
+    el(b, 'p3_head').masterElementId = undefined;
+    pageOf(b, 'p3').elements.push(frame('p3_kicker', 'subheading', 20, 12, 4, 'Chapter', { masterElementId: 'm_kicker' })); // the master's one word
+    return b;
+  }
+  var book = bookFromTemplate();
+  var built = JSON.parse(JSON.stringify(book.pages));                       // the template as it builds: the same frames and words
+  var tpl = [{ name: 'Test template', buildPages: function () { return JSON.parse(JSON.stringify(built)); } }];
+  // what someone typed since: the same single word in frames the template did not put it in
+  el(book, 'p4_blurb').text = 'Milestones';
+  pageOf(book, 'p2').elements.push(frame('p2_kicker', 'subheading', 120, 12, 4, 'Chapter'));
+  var ph = P.collectPlaceholderTexts(book, tpl);
+
+  check('7.1 a one-word template heading ("Milestones") is a placeholder in the frame the template put it in, whatever its word count',
+    P.isPlaceholderText('Milestones', ph, el(book, 'p3_head')));
+  check('7.2 …but not the same word typed in another frame, nor the word on its own',
+    !P.isPlaceholderText('Milestones', ph, el(book, 'p4_blurb')) && !P.isPlaceholderText('Milestones', ph));
+  check('7.3 a master page\'s one-word text is a placeholder in a page frame linked to that master frame, not in an unlinked frame',
+    P.isPlaceholderText('Chapter', ph, el(book, 'p3_kicker')) && !P.isPlaceholderText('Chapter', ph, el(book, 'p2_kicker')));
+  check('7.4 …and the key it is kept under is never a frame\'s words (no false match from the words alone)',
+    !P.isPlaceholderText('chapter', ph) && Array.from(ph).every(function (k) { return k.indexOf(' ') !== -1 || k.charCodeAt(0) === 1; }));
+
+  var plan = P.planPour(book, { sectionIds: ['s1', 's6'], startPageId: 'p3', fit: fakeFit, placeholders: ph });
+  check('7.5 the pour fills the frames still holding the master\'s and the template\'s one-word words, in reading order', el(plan.project, 'p3_kicker').text === 'Chapter One' &&
+    el(plan.project, 'p3_head').text === 'Chapter Two' && el(plan.project, 'p3_head').contentSectionId === 's6', [el(plan.project, 'p3_kicker').text, el(plan.project, 'p3_head').text]);
+  var all = P.planPour(book, { sectionIds: ALL, startPageId: 'toc', fit: fakeFit, placeholders: ph });
+  check('7.6 a contents page\'s heading ("Contents") is kept: a pour starting on the contents page passes it by, the heading goes to the next heading frame',
+    el(all.project, 'toc_head').text === 'Contents' && !el(all.project, 'toc_head').contentSectionId && el(all.project, 'p2_head').text === 'Chapter One',
+    { toc: el(all.project, 'toc_head').text, p2: el(all.project, 'p2_head').text });
+  check('7.7 …and the typed one-word blurb is never written over', el(all.project, 'p4_blurb').text === 'Milestones');
+  var chosen = P.planPour(book, { sectionIds: ['s1'], startPageId: 'toc', fit: fakeFit, placeholders: ph, replaceExisting: true });
+  check('7.8 …unless the person chose to replace words: then the contents heading is filled like any frame', el(chosen.project, 'toc_head').text === 'Chapter One');
+  var c = P.editorialCounts(book, function () { return { isOverflowing: false, overflowWords: 0 }; }, ph);
+  var sample = c.sample.map(function (r) { return r.elementId; });
+  check('7.9 word counts: the template\'s one-word heading and the master\'s word are listed as sample words; "Contents" and the typed words are not',
+    sample.indexOf('p3_head') !== -1 && sample.indexOf('p3_kicker') !== -1 && sample.indexOf('toc_head') === -1 &&
+    sample.indexOf('p4_blurb') === -1 && sample.indexOf('p2_kicker') === -1, sample);
+  check('7.10 by the shared rules the pour is still content only', rules.designChanges(book, all.project).length === 0, rules.designChanges(book, all.project));
 })();
 
 process.stdout.write('books-pour: ' + passed + ' passed, ' + failed + ' failed (' + fitCalls + ' fits measured)\n');

@@ -1,5 +1,5 @@
 import type { BookElement, BookPage, BookProject, ContentSection, TextRole, TextStyle } from '../types/bookstudio';
-import { getMeasure, measureGeneration, PT_TO_MM, type FontSpec } from './textMeasure';
+import { cssFont, getMeasure, measureGeneration, PT_TO_MM, type FontSpec } from './textMeasure';
 
 export interface TextOverflowReport {
   isOverflowing: boolean;
@@ -208,7 +208,32 @@ interface Layout {
 
 const WRAP_EPS_MM = 0.01;
 
-function runLayout(text: string, toks: Tok[], style: TextStyle, widthMm: number, heightMm: number, stopEarly: boolean): Layout {
+/* what layoutTextLines needs to know of a layout besides whether it fits: each row as it was placed (runLayout calls
+   these only when it is given one; the fit check never is) */
+interface LayoutRecorder {
+  /** a line starts with the first piece of token `tok` (or a later piece, when a word broke at a hyphen) */
+  start(tok: number, indentSpaces: number, piece: string, widthMm: number): void;
+  /** a piece joins the line: after `spaces` spaces (0 inside a word broken at a hyphen or a dash) */
+  append(tok: number, spaces: number, piece: string, widthMm: number): void;
+  /** the line is complete: why it ended, and where it went (inside: col and its top) */
+  finish(end: 'soft' | 'forced' | 'end', inside: boolean, col: number, topMm: number): void;
+  /** an empty line (between paragraphs, or typed at the start) */
+  empty(inside: boolean, col: number, topMm: number): void;
+  /** the paragraph gap above a new paragraph (drawn only inside a column, never at its top) */
+  gap(heightMm: number): void;
+  /** a new paragraph starts with the next empty lines or line */
+  paragraph(): void;
+}
+
+function runLayout(
+  text: string,
+  toks: Tok[],
+  style: TextStyle,
+  widthMm: number,
+  heightMm: number,
+  stopEarly: boolean,
+  rec?: LayoutRecorder
+): Layout {
   const box = textBoxOf(style, widthMm, heightMm);
   const font = fontOf(style);
   const measure = getMeasure();
@@ -254,21 +279,25 @@ function runLayout(text: string, toks: Tok[], style: TextStyle, widthMm: number,
   let lineTooWide: number[] = [];
   /* words whose last piece is on a line already laid (a word broken at a hyphen fits only when all of it does) */
   let done = 0;
-  const finishLine = () => {
+  const finishLine = (end: 'soft' | 'forced' | 'end' = 'soft') => {
     result.rows += 1;
-    if (place(lineH, false)) {
+    const inside = place(lineH, false);
+    if (inside) {
       result.fitted = done;
       if (lineTooWide.length) result.tooWide.push(...lineTooWide);
     }
     lineTooWide = [];
+    if (rec) rec.finish(end, inside, col, y - lineH);
   };
   const emptyLine = () => {
     result.rows += 1;
-    place(lineH, false);
+    const inside = place(lineH, false);
+    if (rec) rec.empty(inside, col, y - lineH);
   };
-  const startLine = (i: number, indentSpaces: number, w: number) => {
+  const startLine = (i: number, indentSpaces: number, w: number, piece: string) => {
     lineW = indentSpaces * spaceW + w;
     if (lineW > colW + WRAP_EPS_MM && lineTooWide[lineTooWide.length - 1] !== i) lineTooWide.push(i);
+    if (rec) rec.start(i, indentSpaces, piece, w);
   };
 
   for (let i = 0; i < toks.length; i++) {
@@ -280,30 +309,40 @@ function runLayout(text: string, toks: Tok[], style: TextStyle, widthMm: number,
         // inside a word, after a hyphen or at a dash: no space between the pieces
         if (lineW + w > colW - WRAP_EPS_MM) {
           finishLine();
-          startLine(i, 0, w);
-        } else lineW += w;
+          startLine(i, 0, w, pieces[p]);
+        } else {
+          lineW += w;
+          if (rec) rec.append(i, 0, pieces[p], w);
+        }
       } else if (i === 0) {
         for (let k = 0; k < t.blank; k++) emptyLine();
-        startLine(0, t.spaces, w);
+        startLine(0, t.spaces, w, pieces[p]);
       } else if (t.brk === 0) {
         const next = lineW + t.spaces * spaceW + w;
         if (next > colW - WRAP_EPS_MM) {
           finishLine();
-          startLine(i, 0, w);
-        } else lineW = next;
+          startLine(i, 0, w, pieces[p]);
+        } else {
+          lineW = next;
+          if (rec) rec.append(i, t.spaces, pieces[p], w);
+        }
       } else {
-        finishLine();
+        finishLine('forced');
         if (t.brk === 2) {
-          if (box.extraParagraphGapMm > 0) place(box.extraParagraphGapMm, true);
+          if (rec) rec.paragraph();
+          if (box.extraParagraphGapMm > 0) {
+            place(box.extraParagraphGapMm, true);
+            if (rec) rec.gap(box.extraParagraphGapMm);
+          }
           for (let k = 0; k < t.blank; k++) emptyLine();
         }
-        startLine(i, t.spaces, w);
+        startLine(i, t.spaces, w, pieces[p]);
       }
     }
     done = i + 1;
     if (stopEarly && out) return result;
   }
-  finishLine();
+  finishLine('end');
   return result;
 }
 
@@ -401,6 +440,371 @@ export function measureTextOverflow(el: BookElement): TextOverflowReport {
   const report = reportOf(layoutOf(text, el.textStyle, el.widthMm, el.heightMm));
   REPORTS.set(el, { gen, text, sig, w: el.widthMm, h: el.heightMm, report });
   return { ...report };
+}
+
+/* =====================================================================================================================
+   The lines of a frame as the canvas draws them (Books Phase 4: the vector PDF draws them, and the PNG/JPG exports).
+   The same layout as measureTextOverflow above (the same measure, breaks, columns and paragraph gaps), plus where each
+   line sits, as BookCanvas's CSS puts it:
+     - a line box is the leading high; the glyphs sit on a baseline half the leading's slack below the box's top
+       (CSS half-leading: top + (leading − (ascent + descent)) ÷ 2 + ascent, the font's own ascent and descent);
+     - left, centre and right inside the column; justified lines stretch every space to the column's width, except a
+       paragraph's last line and a line before a typed return (CSS text-align-last); a line wider than its column is
+       left at the start, as CSS does;
+     - the text block sits at the top, middle or bottom of the frame inside its inset (BookCanvas's flex column); text
+       that doesn't fit is laid from the top;
+     - in two or more columns CSS balances the columns (column-fill: balance, the block's height is the text's): the
+       columns are made as short as lets the text fit, keeping 2 lines of a paragraph at the foot of a column and 2 at
+       the head of the next where Chrome keeps them (orphans and widows), and a paragraph gap is dropped at the top of
+       a column. Text that doesn't fit fills the columns one after another, as the fit is measured.
+   Checked against Chrome's own layout of BookCanvas's markup (2,000 random frames, real Google fonts): the same
+   lines and columns, words within 0.25 mm. Where they differ it is the measure's own rounding at a line's very end
+   (it wraps on the safe side), which the fit check shares.
+   Only the lines that fit are returned; what doesn't fit (the "+N words don't fit") is not.
+   ===================================================================================================================== */
+
+/** one word (or the pieces of one word) on a line, where it is drawn: x from the frame's left, in mm */
+export interface LaidWord {
+  text: string;
+  xMm: number;
+  widthMm: number;
+}
+
+export interface LaidLine {
+  /** the line as drawn (in capitals when the frame is set in capitals), indentation and spaces between words kept */
+  text: string;
+  /** where its first character starts, from the frame's left (inset, column, alignment and indentation included) */
+  xMm: number;
+  /** the line box's top, from the frame's top */
+  yMm: number;
+  /** its width as drawn: the column's width for a justified line, else the text's own */
+  widthMm: number;
+  /** the baseline the glyphs sit on, from the frame's top */
+  baselineMm: number;
+  /** stretched to the column's width (spaces widened) */
+  justify: boolean;
+  /** the last line of its paragraph, or before a typed return */
+  lastInParagraph: boolean;
+  /** 0 for the first column */
+  column: number;
+  /** each word where it is drawn (justification applied): draw these to place words exactly */
+  words?: LaidWord[];
+}
+
+export interface LaidText {
+  lines: LaidLine[];
+  font: FontSpec;
+  color: string;
+  sizePt: number;
+  lineHeightMm: number;
+  overflow: boolean;
+}
+
+/** a font's ascent and descent, as fractions of its size (descent positive, below the baseline) */
+export type FontMetricsFn = (font: FontSpec) => { ascent: number; descent: number };
+
+let injectedMetrics: FontMetricsFn | null = null;
+/** replaces how a font's ascent and descent are read (tests; the PDF passes its own per call); null: the browser's */
+export function setFontMetrics(fn: FontMetricsFn | null): void {
+  injectedMetrics = fn;
+}
+
+const METRICS = new Map<string, { ascent: number; descent: number }>();
+const METRIC_PX = 1000;
+let metricsCtx: CanvasRenderingContext2D | null | undefined;
+/* the browser's own (the canvas's fontBoundingBox, the box CSS lines use), taken at 1000 px so its rounding to whole
+   pixels is far below a hair; where there is no browser, the usual 0.8 and 0.2 */
+const browserMetrics: FontMetricsFn = (font) => {
+  const key = cssFont(font, METRIC_PX);
+  const hit = METRICS.get(key);
+  if (hit) return hit;
+  if (metricsCtx === undefined) {
+    try {
+      metricsCtx = typeof document !== 'undefined' ? document.createElement('canvas').getContext('2d') : null;
+    } catch {
+      metricsCtx = null;
+    }
+  }
+  let out = { ascent: 0.8, descent: 0.2 };
+  if (metricsCtx) {
+    metricsCtx.font = key;
+    const m = metricsCtx.measureText('Hg');
+    const a = Number(m.fontBoundingBoxAscent);
+    const d = Number(m.fontBoundingBoxDescent);
+    if (a > 0 && Number.isFinite(d)) out = { ascent: a / METRIC_PX, descent: d / METRIC_PX };
+  }
+  if (METRICS.size > 400) METRICS.clear();
+  METRICS.set(key, out);
+  return out;
+};
+
+/** the words a frame shows: a page number frame its page's number, two digits at least, as BookCanvas draws it */
+export function drawnTextOf(el: BookElement, pageNumber?: number): string {
+  const text = el.text || '';
+  if (el.type !== 'pageNumber') return text;
+  return (text || '{{page}}').replace('{{page}}', pageNumber === undefined ? '00' : String(pageNumber).padStart(2, '0'));
+}
+
+/* a row of the text block as CSS stacks it */
+interface Row {
+  kind: 'line' | 'empty' | 'gap';
+  h: number;
+  /** the CSS block it belongs to (one block, or one per paragraph when paragraph gaps are drawn) */
+  block: number;
+  /** index in `laid` for a line, -1 otherwise */
+  line: number;
+}
+
+interface PendingLine {
+  pieces: Array<{ tok: number; spaces: number; text: string; w: number }>;
+  indent: number;
+  end: 'soft' | 'forced' | 'end';
+  col: number;
+  top: number;
+}
+
+/* balanced columns, as Chrome fills a multi-column block whose height is its content's: the shortest column height that
+   lets every row fit in `cols` columns (a paragraph gap is dropped at a column's top) -> each row's column and top,
+   or null when even then it doesn't fit. A paragraph keeps 2 lines at the foot of a column (orphans) and 2 at the head
+   of the next (widows), as Chrome keeps them: the part of a paragraph that would leave fewer than 2 lines behind moves
+   on whole (unless it began the column); a break that would leave fewer than 2 lines to go moves up while 2 stay
+   behind, else it stays; and no column is shorter than 2 lines of a paragraph (so one of 2 lines is never cut). */
+function balanceColumns(rows: Row[], cols: number, maxMm: number): { at: Array<{ col: number; top: number }>; height: number } | null {
+  const lineRows = rows.filter((r) => r.kind !== 'gap');
+  if (!lineRows.length) return { at: [], height: 0 };
+  const total = rows.reduce((s, r) => s + r.h, 0);
+  /* the tallest piece no break may cut: a paragraph's first 2 lines (orphans) */
+  let tallest = Math.max(...lineRows.map((r) => r.h));
+  for (let i = 0; i < rows.length; ) {
+    if (rows[i].kind === 'gap') {
+      i += 1;
+      continue;
+    }
+    let j = i;
+    let h = 0;
+    while (j < rows.length && rows[j].kind !== 'gap' && rows[j].block === rows[i].block) {
+      if (j - i < 2) h += rows[j].h;
+      j += 1;
+    }
+    tallest = Math.max(tallest, h);
+    i = j;
+  }
+  let H = Math.max(tallest, total / cols);
+  const EPS = 1e-6;
+  for (let attempt = 0; attempt < 400 && H <= maxMm + EPS; attempt++) {
+    const at: Array<{ col: number; top: number }> = rows.map(() => ({ col: 0, top: 0 }));
+    let col = 0;
+    let y = 0;
+    let shortage = Infinity;
+    let ok = true;
+    let i = 0;
+    let colStart = 0; // the first row of this column
+    while (i < rows.length) {
+      const r = rows[i];
+      if (r.kind === 'gap') {
+        at[i] = { col, top: y };
+        if (y > 0 && y + r.h <= H + EPS) y += r.h;
+        else if (y > 0) {
+          // a gap at a break is dropped; the next paragraph starts the next column
+          shortage = Math.min(shortage, y + r.h - H);
+          col += 1;
+          y = 0;
+          colStart = i + 1;
+          if (col >= cols) {
+            ok = false;
+            break;
+          }
+        }
+        i += 1;
+        continue;
+      }
+      if (y + r.h <= H + EPS) {
+        at[i] = { col, top: y };
+        y += r.h;
+        i += 1;
+        continue;
+      }
+      shortage = Math.min(shortage, y + r.h - H);
+      let k = i;
+      const sameBlock = (j: number) => rows[j].kind !== 'gap' && rows[j].block === r.block;
+      let after = 0;
+      for (let j = i; j < rows.length && sameBlock(j); j++) after += 1;
+      let before = 0;
+      for (let j = i - 1; j >= colStart && sameBlock(j); j--) before += 1;
+      if (before > 0 && before < 2) {
+        // orphans: the paragraph's part moves on whole, unless it began the column
+        const first = i - before;
+        if (first > colStart) k = first;
+      } else if (before >= 2 && after < 2) {
+        // widows: lines move on with the last, while 2 stay behind
+        const move = 2 - after;
+        if (before - move >= 2) k = i - move;
+      }
+      col += 1;
+      y = 0;
+      colStart = k;
+      if (col >= cols) {
+        ok = false;
+        break;
+      }
+      i = k;
+    }
+    if (ok) return { at, height: H };
+    if (!(shortage > EPS) || !Number.isFinite(shortage)) shortage = Math.max(0.01, tallest * 0.01);
+    H += shortage;
+  }
+  return null;
+}
+
+/**
+ * The lines of a text frame as the canvas draws them, for the PDF and the PNG/JPG exports. Positions are in mm from
+ * the frame's top-left (before its rotation). `pageNumber` resolves a page number frame's {{page}} as the canvas does;
+ * `metrics` gives the font's ascent and descent (default: the browser's, as CSS uses them).
+ */
+export function layoutTextLines(
+  el: BookElement,
+  opts: { pageNumber?: number; metrics?: FontMetricsFn } = {}
+): LaidText {
+  const style = el.textStyle;
+  const font: FontSpec = style
+    ? fontOf(style)
+    : { family: '', sizePt: 0, weight: 400, italic: false, letterSpacingEm: 0 };
+  const out: LaidText = {
+    lines: [],
+    font,
+    color: style?.color || '#1C1917',
+    sizePt: font.sizePt,
+    lineHeightMm: 0,
+    overflow: false,
+  };
+  if (!style) return out;
+  const text = drawnTextOf(el, opts.pageNumber);
+  const box = textBoxOf(style, el.widthMm, el.heightMm);
+  out.lineHeightMm = box.lineHeightMm;
+  if (!text.trim() || !(box.lineHeightMm > 0)) return out;
+
+  const toks = tokensOf(text);
+  const pending: PendingLine[] = [];
+  const rows: Row[] = [];
+  let cur: PendingLine | null = null;
+  let block = 0;
+  const lineH = box.lineHeightMm;
+  const blocksArePara = box.extraParagraphGapMm > 0;
+  const rec: LayoutRecorder = {
+    start(tok, indent, piece, w) {
+      cur = { pieces: [{ tok, spaces: 0, text: piece, w }], indent, end: 'soft', col: 0, top: 0 };
+    },
+    append(tok, spaces, piece, w) {
+      if (cur) cur.pieces.push({ tok, spaces, text: piece, w });
+    },
+    finish(end, inside, col, top) {
+      if (!cur) return;
+      cur.end = end;
+      rows.push({ kind: 'line', h: lineH, block, line: inside ? pending.length : -1 });
+      if (inside) {
+        cur.col = col;
+        cur.top = top;
+        pending.push(cur);
+      }
+      cur = null;
+    },
+    empty() {
+      rows.push({ kind: 'empty', h: lineH, block, line: -1 });
+    },
+    gap(h) {
+      rows.push({ kind: 'gap', h, block: block + 1, line: -1 });
+    },
+    paragraph() {
+      if (blocksArePara) block += 1;
+    },
+  };
+  const lay = runLayout(text, toks, style, el.widthMm, el.heightMm, false, rec);
+  out.overflow = reportOf(lay).isOverflowing;
+
+  /* where each laid line goes: as laid (one column, or text that doesn't fit), or the columns balanced */
+  let place: Array<{ col: number; top: number }> = pending.map((p) => ({ col: p.col, top: p.top }));
+  let blockH = 0;
+  if (box.columns > 1 && !out.overflow) {
+    const tol = Math.max(0.05, lineH * 0.04);
+    const balanced = balanceColumns(rows, box.columns, box.heightMm + tol);
+    if (balanced) {
+      /* the block is as tall as its balanced columns (CSS), which may be taller than what is in them */
+      place = [];
+      rows.forEach((r, ri) => {
+        if (r.kind === 'line' && r.line >= 0) place[r.line] = balanced.at[ri];
+      });
+      blockH = balanced.height;
+    } else {
+      blockH = box.heightMm;
+    }
+  } else if (out.overflow) {
+    blockH = box.heightMm;
+  } else {
+    blockH = rows.reduce((s, r) => s + r.h, 0);
+  }
+  const inset = Math.max(0, Number(style.insetMm) || 0);
+  const slack = Math.max(0, box.heightMm - blockH);
+  const shift = style.verticalAlign === 'middle' ? slack / 2 : style.verticalAlign === 'bottom' ? slack : 0;
+
+  const measure = getMeasure();
+  const spaceW = measure(' ', font);
+  const m = (opts.metrics || injectedMetrics || browserMetrics)(font);
+  const sizeMm = box.fontSizeMm;
+  const baselineInLine = (lineH - (m.ascent + m.descent) * sizeMm) / 2 + m.ascent * sizeMm;
+  const colW = box.columnWidthMm;
+
+  pending.forEach((p, li) => {
+    const at = place[li] || { col: p.col, top: p.top };
+    const x0 = inset + at.col * (colW + box.columnGapMm);
+    const top = inset + shift + at.top;
+    /* words: pieces of one token on this line join into one word */
+    const words: Array<{ text: string; spacesBefore: number; w: number }> = [];
+    let lastTok = -1;
+    for (const pc of p.pieces) {
+      if (pc.tok === lastTok && pc.spaces === 0 && words.length) {
+        words[words.length - 1].text += pc.text;
+        words[words.length - 1].w += pc.w;
+      } else words.push({ text: pc.text, spacesBefore: pc.spaces, w: pc.w });
+      lastTok = pc.tok;
+    }
+    const indentW = p.indent * spaceW;
+    let natural = indentW;
+    words.forEach((w, wi) => {
+      natural += (wi ? w.spacesBefore * spaceW : 0) + w.w;
+    });
+    const gaps = words.reduce((s, w, wi) => s + (wi ? w.spacesBefore : 0), 0);
+    const fitsColumn = natural <= colW + WRAP_EPS_MM;
+    const justify = style.textAlign === 'justify' && p.end === 'soft' && gaps > 0 && fitsColumn;
+    const lastInParagraph = p.end !== 'soft';
+    let startX = x0;
+    if (fitsColumn && style.textAlign === 'center') startX = x0 + (colW - natural) / 2;
+    else if (fitsColumn && style.textAlign === 'right') startX = x0 + colW - natural;
+    const perSpace = justify ? (colW - natural) / gaps : 0;
+    const laidWords: LaidWord[] = [];
+    let x = startX + indentW;
+    let lineText = ' '.repeat(p.indent);
+    words.forEach((w, wi) => {
+      if (wi) {
+        x += w.spacesBefore * (spaceW + perSpace);
+        lineText += ' '.repeat(w.spacesBefore);
+      }
+      laidWords.push({ text: w.text, xMm: x, widthMm: w.w });
+      lineText += w.text;
+      x += w.w;
+    });
+    out.lines.push({
+      text: lineText,
+      xMm: startX,
+      yMm: top,
+      widthMm: justify ? colW : natural,
+      baselineMm: top + baselineInLine,
+      justify,
+      lastInParagraph,
+      column: at.col,
+      words: laidWords,
+    });
+  });
+  return out;
 }
 
 /* ---------- splitting text at what fits ---------- */

@@ -1,30 +1,17 @@
-import { PDFDocument, rgb, StandardFonts, degrees } from 'pdf-lib';
+/* The page and spread images (PNG, JPG) and the backup (.bookstudio.zip). The print-ready and review PDFs are
+   pdfEngine.ts's (Books Phase 4: vector text, embedded fonts); the old PDF made of JPEG pictures of the pages is gone.
+   Text is drawn from textEngine's layoutTextLines, the layout the canvas shows and the fit is measured with, so an image
+   wraps exactly as the screen does: the real font's widths, letter spacing, breaks after hyphens and at dashes,
+   paragraph gaps, justified lines, balanced columns and vertical alignment. Never drawn: word counts, guides, the red
+   "doesn't fit" outlines, or words that don't fit their frame. */
 import JSZip from 'jszip';
+import { imagePlacement } from './pdf/images';
 import type { BookElement, BookPage, BookProject } from '../types/bookstudio';
-import { getEffectivePageDimensions, MM_PER_INCH, PT_PER_INCH } from './dimensionEngine';
+import { getEffectivePageDimensions, MM_PER_INCH } from './dimensionEngine';
 import { renderInfographicToSvgString } from './infographicEngine';
-
-function mmToPt(mm: number): number {
-  return (mm / MM_PER_INCH) * PT_PER_INCH;
-}
-
-function hexToRgb01(hex: string): { r: number; g: number; b: number } {
-  const clean = (hex || '#1C1917').replace('#', '').trim();
-  const full =
-    clean.length === 3
-      ? clean
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : clean.padEnd(6, '0').slice(0, 6);
-  const num = parseInt(full, 16);
-  if (Number.isNaN(num)) return { r: 0.1, g: 0.1, b: 0.1 };
-  return {
-    r: ((num >> 16) & 255) / 255,
-    g: ((num >> 8) & 255) / 255,
-    b: (num & 255) / 255,
-  };
-}
+import { layoutTextLines } from './textEngine';
+import { cssFont, PT_TO_MM, type FontSpec } from './textMeasure';
+import { backupFileName, imageFileName } from './exportGate';
 
 /* An uploaded photo is shown in the editor from its screen copy (at most 2400 px); an export draws the full-size copy
    the server keeps beside it, so the print resolution is the photo's own. */
@@ -42,37 +29,42 @@ function loadImageElement(src: string): Promise<HTMLImageElement> {
   });
 }
 
-function wrapCanvasText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  maxWidth: number
-): string[] {
-  const paragraphs = text.split('\n');
-  const allLines: string[] = [];
-  for (const para of paragraphs) {
-    if (!para.trim()) {
-      allLines.push('');
-      continue;
-    }
-    const words = para.split(/\s+/);
-    let current = '';
-    for (const w of words) {
-      const test = current ? `${current} ${w}` : w;
-      if (ctx.measureText(test).width > maxWidth && current) {
-        allLines.push(current);
-        current = w;
-      } else {
-        current = test;
-      }
-    }
-    if (current) allLines.push(current);
+/* the fonts of a page's text, loaded before it is drawn (a canvas draws with whatever has loaded); when one arrives
+   only now, the measure's widths are taken again (textMeasure refreshes 30 ms after a font loads) before laying out */
+const TEXT_TYPES = new Set(['text', 'header', 'footer', 'pageNumber', 'logo']);
+async function loadPageFonts(page: BookPage): Promise<void> {
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  if (!fonts) return;
+  const wanted = new Set<string>();
+  for (const el of page.elements) {
+    if (el.hidden || !TEXT_TYPES.has(el.type) || !el.textStyle?.fontFamily) continue;
+    const st = el.textStyle;
+    wanted.add(cssFont({ family: st.fontFamily, weight: Number(st.fontWeight) || 400, italic: st.fontStyle === 'italic' }, 16));
   }
-  return allLines;
+  let arrived = false;
+  await Promise.all(
+    Array.from(wanted).map(async (f) => {
+      try {
+        if (!fonts.check(f)) {
+          await fonts.load(f);
+          arrived = true;
+        }
+      } catch {
+        /* a font that can't load is drawn with the fallback, as the screen shows it */
+      }
+    })
+  );
+  try {
+    await fonts.ready;
+  } catch {
+    /* nothing more to wait for */
+  }
+  if (arrived) await new Promise((r) => setTimeout(r, 80));
 }
 
 /**
- * Renders a single BookPage onto a crisp high-resolution HTML5 Canvas.
- * Strictly excludes backend word counts, editorial notes, and workspace guides.
+ * Draws one page on a canvas at `dpi`: the page's colour, then its visible frames in their stacking order.
+ * Never drawn: word counts, editorial notes, guides, outlines.
  */
 export async function renderPageToCanvas(
   page: BookPage,
@@ -94,6 +86,7 @@ export async function renderPageToCanvas(
   ctx.fillStyle = page.backgroundColor || project.designSystem.colors.paper || '#FBF9F5';
   ctx.fillRect(0, 0, widthPx, heightPx);
 
+  await loadPageFonts(page);
   const sorted = [...page.elements].filter((e) => !e.hidden).sort((a, b) => a.zIndex - b.zIndex);
 
   for (const el of sorted) {
@@ -175,35 +168,9 @@ async function drawElementOnCanvas(
       if (el.image.sepia) filters.push(`sepia(${el.image.sepia}%)`);
       if (filters.length) ctx.filter = filters.join(' ');
 
-      const imgRatio = img.naturalWidth / Math.max(1, img.naturalHeight);
-      const frameRatio = w / Math.max(1, h);
-      const zoom = el.image.zoom || 1;
-      let drawW = w;
-      let drawH = h;
-
-      if (el.image.fit === 'contain') {
-        if (imgRatio > frameRatio) {
-          drawW = w * zoom;
-          drawH = (w / imgRatio) * zoom;
-        } else {
-          drawH = h * zoom;
-          drawW = h * imgRatio * zoom;
-        }
-      } else {
-        if (imgRatio > frameRatio) {
-          drawH = h * zoom;
-          drawW = h * imgRatio * zoom;
-        } else {
-          drawW = w * zoom;
-          drawH = (w / imgRatio) * zoom;
-        }
-      }
-
-      const fx = (el.image.focalX ?? 50) / 100;
-      const fy = (el.image.focalY ?? 50) / 100;
-      const dx = x + (w - drawW) * fx;
-      const dy = y + (h - drawH) * fy;
-      ctx.drawImage(img, dx, dy, drawW, drawH);
+      /* placed as the canvas and the PDF place it (zoom about the frame's centre: pdf/images.ts imagePlacement) */
+      const r = imagePlacement(w, h, img.naturalWidth, img.naturalHeight, el.image.fit, el.image.zoom, el.image.focalX, el.image.focalY);
+      ctx.drawImage(img, x + r.x, y + r.y, r.w, r.h);
       ctx.restore();
     } catch {
       ctx.fillStyle = '#E5E2DC';
@@ -229,67 +196,75 @@ async function drawElementOnCanvas(
       el.type === 'logo') &&
     el.textStyle
   ) {
-    const st = el.textStyle;
-    const inset = (st.insetMm || 0) * pxPerMm;
-    const fontPx = (st.fontSizePt / PT_PER_INCH) * MM_PER_INCH * pxPerMm;
-    const lineHeightPx = fontPx * (st.lineHeight || 1.4);
-    const rawText =
-      el.type === 'pageNumber'
-        ? (el.text || '{{page}}').replace('{{page}}', String(pageNumber).padStart(2, '0'))
-        : el.text || '';
-    const displayText =
-      st.textTransform === 'uppercase'
-        ? rawText.toUpperCase()
-        : st.textTransform === 'lowercase'
-          ? rawText.toLowerCase()
-          : rawText;
-
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-
-    ctx.fillStyle = st.color || '#1C1917';
-    ctx.font = `${st.fontStyle === 'italic' ? 'italic ' : ''}${st.fontWeight || 400} ${fontPx}px "${st.fontFamily}", serif`;
-    ctx.textBaseline = 'top';
-
-    const cols = Math.max(1, st.columns || 1);
-    const colGapPx = (st.columnGapMm || 5) * pxPerMm;
-    const colW = Math.max(20, (w - inset * 2 - colGapPx * (cols - 1)) / cols);
-    const lines = wrapCanvasText(ctx, displayText, colW);
-
-    const maxLinesPerCol = Math.max(1, Math.floor((h - inset * 2) / lineHeightPx));
-    let startY = y + inset;
-    if (cols === 1) {
-      const totalH = lines.length * lineHeightPx;
-      if (st.verticalAlign === 'middle') startY = y + Math.max(inset, (h - totalH) / 2);
-      if (st.verticalAlign === 'bottom') startY = y + Math.max(inset, h - inset - totalH);
-    }
-
-    lines.forEach((line, idx) => {
-      const colIdx = Math.min(cols - 1, Math.floor(idx / maxLinesPerCol));
-      const rowIdx = idx - colIdx * maxLinesPerCol;
-      const colX = x + inset + colIdx * (colW + colGapPx);
-      const drawY = startY + rowIdx * lineHeightPx;
-      if (drawY > y + h) return;
-
-      let drawX = colX;
-      if (st.textAlign === 'center') {
-        const lw = ctx.measureText(line).width;
-        drawX = colX + (colW - lw) / 2;
-      } else if (st.textAlign === 'right') {
-        const lw = ctx.measureText(line).width;
-        drawX = colX + colW - lw;
-      }
-      ctx.fillText(line, drawX, drawY);
-    });
-    ctx.restore();
+    drawTextFrame(ctx, el, pageNumber, pxPerMm, x, y, w, h);
   }
 
   ctx.restore();
 }
 
-function downloadBlob(blob: Blob, filename: string) {
+/* letter spacing as CSS draws it (after every character): the canvas's own where the browser has it, else letter by
+   letter */
+type SpacedContext = CanvasRenderingContext2D & { letterSpacing?: string };
+function applyLetterSpacing(ctx: CanvasRenderingContext2D, px: number): boolean {
+  const c = ctx as SpacedContext;
+  if (!px) return true;
+  if (typeof c.letterSpacing !== 'string') return false;
+  c.letterSpacing = `${px}px`;
+  return true;
+}
+
+function drawRun(ctx: CanvasRenderingContext2D, text: string, x: number, baseline: number, spacingPx: number, native: boolean) {
+  if (!text) return;
+  if (native || !spacingPx) {
+    ctx.fillText(text, x, baseline);
+    return;
+  }
+  let cx = x;
+  for (const ch of text) {
+    ctx.fillText(ch, cx, baseline);
+    cx += ctx.measureText(ch).width + spacingPx;
+  }
+}
+
+/** a text frame's lines where layoutTextLines puts them (mm from the frame's top-left), clipped to the frame */
+function drawTextFrame(
+  ctx: CanvasRenderingContext2D,
+  el: BookElement,
+  pageNumber: number,
+  pxPerMm: number,
+  x: number,
+  y: number,
+  w: number,
+  h: number
+) {
+  const laid = layoutTextLines(el, { pageNumber });
+  if (!laid.lines.length) return;
+  const font: FontSpec = laid.font;
+  const fontPx = (Number(laid.sizePt) || 0) * PT_TO_MM * pxPerMm;
+  if (!(fontPx > 0)) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  ctx.fillStyle = laid.color || '#1C1917';
+  ctx.font = cssFont(font, fontPx);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  const spacingPx = (Number(font.letterSpacingEm) || 0) * fontPx;
+  const native = applyLetterSpacing(ctx, spacingPx);
+  for (const line of laid.lines) {
+    const baseline = y + line.baselineMm * pxPerMm;
+    if (line.words && line.words.length) {
+      // each word where the layout puts it: a justified line's widened spaces included
+      for (const word of line.words) drawRun(ctx, word.text, x + word.xMm * pxPerMm, baseline, spacingPx, native);
+    } else {
+      drawRun(ctx, line.text, x + line.xMm * pxPerMm, baseline, spacingPx, native);
+    }
+  }
+  ctx.restore();
+}
+
+export function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -298,116 +273,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1500);
-}
-
-/**
- * Exports Print-Ready PDF (with exact trim size, bleed, crop marks, registration marks)
- * or Standard PDF matching actual physical page dimensions.
- */
-export async function exportBookPdf(
-  project: BookProject,
-  options: { printReady: boolean; dpi?: number }
-): Promise<void> {
-  if (typeof document !== 'undefined' && document.fonts) {
-    await document.fonts.ready;
-  }
-
-  const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(project.name);
-  pdfDoc.setCreator('BOOKSTUDIO Editorial Publishing Studio');
-  pdfDoc.setProducer('BOOKSTUDIO PDF Engine');
-
-  const markMarginMm = options.printReady && project.printSettings.includeCropMarks ? 10 : 0;
-  const dpi = options.dpi || (options.printReady ? 220 : 150);
-
-  for (let i = 0; i < project.pages.length; i++) {
-    const page = project.pages[i];
-    const dim = getEffectivePageDimensions(page, project.dimensions);
-    const bleedMm = options.printReady && project.printSettings.includeBleed ? dim.bleedMm : 0;
-
-    const totalWidthMm = dim.widthMm + (bleedMm + markMarginMm) * 2;
-    const totalHeightMm = dim.heightMm + (bleedMm + markMarginMm) * 2;
-
-    const pdfPage = pdfDoc.addPage([mmToPt(totalWidthMm), mmToPt(totalHeightMm)]);
-
-    // Fill bleed/background under trim box
-    const bg = hexToRgb01(page.backgroundColor || project.designSystem.colors.paper);
-    const trimXPt = mmToPt(markMarginMm + bleedMm);
-    const trimYPt = mmToPt(markMarginMm + bleedMm);
-    const trimWPt = mmToPt(dim.widthMm);
-    const trimHPt = mmToPt(dim.heightMm);
-
-    pdfPage.drawRectangle({
-      x: mmToPt(markMarginMm),
-      y: mmToPt(markMarginMm),
-      width: mmToPt(dim.widthMm + bleedMm * 2),
-      height: mmToPt(dim.heightMm + bleedMm * 2),
-      color: rgb(bg.r, bg.g, bg.b),
-    });
-
-    // Render crisp page artwork (preserves exact typography, loaded Google Fonts, cropped images & SVG infographics)
-    const pageCanvas = await renderPageToCanvas(page, i + 1, project, dpi);
-    const jpegDataUrl = pageCanvas.toDataURL('image/jpeg', 0.94);
-    const jpegBytes = await fetch(jpegDataUrl).then((r) => r.arrayBuffer());
-    const embedded = await pdfDoc.embedJpg(jpegBytes);
-
-    pdfPage.drawImage(embedded, {
-      x: trimXPt,
-      y: trimYPt,
-      width: trimWPt,
-      height: trimHPt,
-    });
-
-    // Draw precision vector crop marks and registration marks for print-ready PDF
-    if (options.printReady && project.printSettings.includeCropMarks) {
-      const markColor = rgb(0.15, 0.15, 0.15);
-      const offset = mmToPt(2);
-      const len = mmToPt(6);
-      const corners = [
-        { x: trimXPt, y: trimYPt, dx: -1, dy: -1 },
-        { x: trimXPt + trimWPt, y: trimYPt, dx: 1, dy: -1 },
-        { x: trimXPt, y: trimYPt + trimHPt, dx: -1, dy: 1 },
-        { x: trimXPt + trimWPt, y: trimYPt + trimHPt, dx: 1, dy: 1 },
-      ];
-      for (const c of corners) {
-        pdfPage.drawLine({
-          start: { x: c.x + c.dx * offset, y: c.y },
-          end: { x: c.x + c.dx * (offset + len), y: c.y },
-          thickness: 0.4,
-          color: markColor,
-        });
-        pdfPage.drawLine({
-          start: { x: c.x, y: c.y + c.dy * offset },
-          end: { x: c.x, y: c.y + c.dy * (offset + len) },
-          thickness: 0.4,
-          color: markColor,
-        });
-      }
-
-      if (project.printSettings.includeRegistrationMarks) {
-        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        pdfPage.drawText(
-          `${project.name}  |  Page ${i + 1}  |  Trim ${dim.widthMm}x${dim.heightMm}mm  |  Bleed ${bleedMm}mm`,
-          {
-            x: trimXPt,
-            y: mmToPt(3),
-            size: 6,
-            font,
-            color: rgb(0.35, 0.35, 0.35),
-            rotate: degrees(0),
-          }
-        );
-      }
-    }
-  }
-
-  const pdfBytes = await pdfDoc.save();
-  const safeName = project.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const suffix = options.printReady ? 'PRINT_READY' : 'STANDARD';
-  downloadBlob(
-    new Blob([new Uint8Array(pdfBytes)], { type: 'application/pdf' }),
-    `${safeName}_${suffix}.pdf`
-  );
 }
 
 /**
@@ -424,9 +289,8 @@ export async function exportSinglePageImage(
   const blob = await new Promise<Blob | null>((resolve) =>
     canvas.toBlob(resolve, mime, 0.95)
   );
-  if (!blob) return;
-  const safeName = project.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-  downloadBlob(blob, `${safeName}_Page_${String(pageNumber).padStart(2, '0')}.${format}`);
+  if (!blob) throw new Error('the image is too large for this browser');
+  downloadBlob(blob, imageFileName(project.name, pageNumber, null, format));
 }
 
 /**
@@ -458,12 +322,8 @@ export async function exportSpreadImage(
   const blob = await new Promise<Blob | null>((resolve) =>
     spreadCanvas.toBlob(resolve, mime, 0.95)
   );
-  if (!blob) return;
-  const safeName = project.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-  downloadBlob(
-    blob,
-    `${safeName}_Spread_${String(leftPageNumber).padStart(2, '0')}-${String(leftPageNumber + 1).padStart(2, '0')}.${format}`
-  );
+  if (!blob) throw new Error('the image is too large for this browser');
+  downloadBlob(blob, imageFileName(project.name, leftPageNumber, leftPageNumber + 1, format));
 }
 
 /**
@@ -484,6 +344,5 @@ export async function exportProjectBackupPackage(project: BookProject): Promise<
     `BOOKSTUDIO Project Backup\nProject: ${project.name}\nPages: ${project.pages.length}\nExported: ${new Date().toISOString()}\n`
   );
   const content = await zip.generateAsync({ type: 'blob' });
-  const safeName = project.name.replace(/[^a-zA-Z0-9_-]/g, '_');
-  downloadBlob(content, `${safeName}.bookstudio.zip`);
+  downloadBlob(content, backupFileName(project.name));
 }

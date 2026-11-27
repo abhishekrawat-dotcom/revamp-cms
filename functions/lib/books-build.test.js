@@ -9,6 +9,10 @@
 // Phase 3 (the content workflow, section 5): word counts beside the canvas, never exported; "Pour manuscript into
 // frames" from the Content manager, previewed and applied as one change; a new page's layout chosen in a picker; photo
 // resolution in the Images tab. The pour's own logic is tested in functions/lib/books-pour.test.js.
+// Phase 4 (export, section 6): the export dialog around the vector PDF (print-ready and review), the pre-export check
+// as the print-ready PDF's gate, progress with Cancel, the summary; page and spread images drawn from textEngine's
+// layout; the word counts drawer, the pour's one-word template words, the "Also here" chips and the fitted zoom.
+// The gate's own logic is tested in functions/lib/books-export.test.js.
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
 var passed = 0, failed = 0;
@@ -87,7 +91,7 @@ check('4.5 …the inspector keeps words, photo, crop and infographic data but no
   /Content editor/.test(BAR) && /CONTENT_EDITOR_TIP/.test(BAR) &&
   ['upload_template', 'typography', 'dimensions', 'design_system'].every(function (m) { return new RegExp("\\{activeModal === '" + m + "' && canDesign && \\(").test(APPX); }) &&
   /\(activeModal === 'templates' \|\| activeModal === 'infographics'\) && canDesign && \(/.test(APPX) &&
-  /\{canRestoreVersion && \(/.test(HIST) && /canRestoreVersion=\{canDesign\}/.test(APPX) && /disabled=\{!canDesign\}/.test(EXPM) &&
+  /\{canRestoreVersion && \(/.test(HIST) && /canRestoreVersion=\{canDesign\}/.test(APPX) && !/onUpdateProject/.test(EXPM) &&
   /if \(!canDesign\) \{\n\s*onSelectElements\(page\.id, \[el\.id\]\);\n\s*return;/.test(CANVAS) && /isSelected && canDesign && !el\.locked/.test(CANVAS));
 check('4.6 designer-only actions are said plainly instead of tried (new book, copy, archive, delete, templates)',
   ['Only Designers can start a new book.', 'Only Designers can archive a book.', 'Only Designers can delete a book.', 'Only Designers can save templates.'].every(function (t) { return APPX.indexOf("requireDesigner('" + t + "')") !== -1; }));
@@ -181,6 +185,86 @@ check('4.11 text that does not fit: a red outline on the frame and a "+N words d
     /Selected photo frame: \{selectedPhoto\.name\}/.test(LEFT5) && /<PhotoResolutionBadge element=\{selectedPhoto\}/.test(LEFT5));
   var small = [ED, PM, PICK, BADGE, CM, LEFT5, NAV5].join('\n').match(/text-\[(?:[0-9]|10)(?:\.\d+)?px\]/g) || [];
   check('5.8 the new screens\' words are 11 px or more', small.length === 0, small);
+})();
+
+/* ---------- 6 Phase 4: export ---------- */
+(function () {
+  var C6 = function (f) { return read(path.join(APP, 'src', 'components', f)); };
+  var EXPM6 = C6('ExportPreflightModal.tsx'), ED6 = C6('EditorialDashboard.tsx'), BAR6 = C6('InDesignControlBar.tsx'), CANVAS6 = C6('BookCanvas.tsx');
+  var GATE = read(path.join(APP, 'src', 'engines', 'exportGate.ts')), PRE6 = read(path.join(APP, 'src', 'engines', 'preflightEngine.ts'));
+  var POUR6 = read(path.join(APP, 'src', 'engines', 'pourEngine.ts'));
+  check('6.1 the export dialog offers the print-ready PDF, the review PDF, page and spread images and the backup; the PDFs are pdfEngine\'s',
+    /title: 'Print-ready PDF'/.test(EXPM6) && /title: 'Review PDF'/.test(EXPM6) && /title: 'Page and spread images'/.test(EXPM6) && /title: 'Backup'/.test(EXPM6) &&
+    /import \{ defaultPdfOptions, exportBookPdf, PdfFontError, type PdfExportOptions \} from '\.\.\/engines\/pdfEngine';/.test(EXPM6) &&
+    /exportSinglePageImage\(activePage, pageNo, project, fmt\)/.test(EXPM6) && /exportSpreadImage\(spreadLeftPage, spreadRightPage, spreadLeftIdx \+ 1, project, fmt\)/.test(EXPM6) &&
+    /exportProjectBackupPackage\(project\)/.test(EXPM6));
+  check('6.1b …opened from the top bar, and from the File menu ("Export PDF, Images or Backup…") or Ctrl/Cmd+E, which now work; the menu no longer promises an IDML export',
+    /\{ label: 'Export PDF, Images or Backup\.\.\.', shortcut: 'Ctrl\+E', action: \(\) => onOpenModal\('export'\) \}/.test(BAR6) && !/IDML \/ Package/.test(BAR6) &&
+    /e\.key\.toLowerCase\(\) === 'e'\) \{\n\s*e\.preventDefault\(\);\n\s*setActiveModal\('export'\);/.test(APPX));
+  check('6.2 …the old PDF made of JPEG pictures of the pages is gone: not in the dialog, not in exportEngine',
+    !/exportBookPdf|PDFDocument|embedJpg|from 'pdf-lib'/.test(EXP) && !/printReady/.test(EXPM6) &&
+    !/import \{[^}]*exportBookPdf[^}]*\} from '\.\.\/engines\/exportEngine'/.test(EXPM6));
+  check('6.3 print-ready options: pages (all or a range), spreads, crop, bleed, registration and slug marks, the photo resolution target (300 by default), and the plain RGB line',
+    /name="export-range"/.test(EXPM6) && /aria-label="First page"/.test(EXPM6) && /aria-label="Last page"/.test(EXPM6) && /As spreads \(facing pages side by side\)/.test(EXPM6) &&
+    ["setMark('crop'", "setMark('bleed'", "setMark('registration'", "setMark('slug'"].every(function (t) { return EXPM6.indexOf(t) !== -1; }) &&
+    /Photo resolution target/.test(EXPM6) && /\(usual for print\)/.test(EXPM6) &&
+    EXPM6.indexOf('RGB PDF: your printer converts it to CMYK. Ask them for their PDF requirements.') !== -1 &&
+    /resolvePageRange\(\{ all: rangeAll, from: rangeFrom, to: rangeTo \}, pageCount\)/.test(EXPM6) && /pages: range\.pages/.test(EXPM6));
+  check('6.4 the gate: the check (with the template\'s words) runs again when fonts load; its errors stop the print-ready PDF, warnings wait for "I\'ve checked these warnings"; the button says what to fix; review and images are never stopped',
+    /runPreflightCheck\(project, \{ placeholders \}\), \[project, placeholders, fontsVersion\]/.test(EXPM6) && /const gate = exportGate\(issues, kind, ticked\);/.test(EXPM6) &&
+    /disabled=\{busy \|\| !gate\.canExport \|\| !range\.ok\}/.test(EXPM6) && /\{TICK_LABEL\} \(\{warnings\.length\}\)/.test(EXPM6) &&
+    /if \(!exportGate\(issues, m, ticked\)\.canExport\) return;/.test(EXPM6) && /buttonLabel: `Fix \$\{plural\(errors\.length, 'problem'\)\} to export`/.test(GATE) &&
+    /if \(kind !== 'print'\) \{/.test(GATE) && /const ticked = tickedFor !== null && tickedFor === signature;/.test(EXPM6));
+  check('6.5 …each problem with "Go to" (the existing jump), never while an export runs',
+    /onJumpToPage\(i\.pageId, i\.elementId\);\n\s*onClose\(\);/.test(EXPM6) && /if \(busy \|\| !i\.pageId\) return;/.test(EXPM6) && />\s*Go to\s*</.test(EXPM6) &&
+    /onJumpToPage=\{\(pageId, elId\) => \{\n\s*setActivePageId\(pageId\);/.test(APPX));
+  check('6.6 while a PDF is made: a progress bar with the step, and Cancel (AbortSignal); the dialog can\'t be closed meanwhile (close button and Escape)',
+    /const controller = new AbortController\(\);/.test(EXPM6) && /controller\.signal\n\s*\);/.test(EXPM6) && /const cancel = \(\) => abortRef\.current\?\.abort\(\);/.test(EXPM6) &&
+    /onClick=\{cancel\}/.test(EXPM6) && />\s*Cancel\s*</.test(EXPM6) && /role="progressbar"/.test(EXPM6) && /progressLabel\(done, total, what\)/.test(EXPM6) &&
+    /const close = \(\) => \{\n\s*if \(busy\) return;/.test(EXPM6) && /if \(e\.key === 'Escape' && !busy\) onClose\(\);/.test(EXPM6) && /disabled=\{busy\}\n\s*aria-label=\{busy \? 'Cancel the export first' : 'Close'\}/.test(EXPM6) &&
+    /Export cancelled\. Nothing was downloaded\./.test(EXPM6));
+  check('6.7 afterwards: the summary (pages, size, fonts, photos below the target, warnings) and the file "<Book name> – print-ready.pdf" or "– review.pdf"; fonts that can\'t be embedded are named, with why and the fix',
+    /const summary = summarizePdf\(result, \{/.test(EXPM6) && /downloadBlob\(result\.blob, summary\.fileName\);/.test(EXPM6) &&
+    /return `\$\{safeFileBase\(bookName\)\} – \$\{mode === 'print' \? 'print-ready' : 'review'\}\.pdf`;/.test(GATE) &&
+    /err instanceof PdfFontError/.test(EXPM6) && /fontErrorAdvice\(\(err as PdfFontError\)\.fonts \|\| \[\], canDesign\)/.test(EXPM6) && /Download again/.test(EXPM6));
+  check('6.8 the check covers what the gate needs: missing photos (template frames too), fonts that can\'t load, measured overflow, ppi with zoom, page sizes, the page count for the binding, bleed, frames off the page, safe margin, template words',
+    /isMissingPhoto\(el\)/.test(PRE6) && /missingPhotoText\(el, pageNum\)/.test(PRE6) && /f\.status === 'error'/.test(PRE6) && /measureTextOverflow\(el\)/.test(PRE6) &&
+    /\/ zoom;/.test(PRE6) && /sizeProblem\(dim\)/.test(PRE6) && /count % 2 === 1/.test(PRE6) && /binding === 'saddle_stitch' && count % 4 !== 0/.test(PRE6) &&
+    /pf_bleed_/.test(PRE6) && /pf_offpage_/.test(PRE6) && /pf_safe_/.test(PRE6) && /isPlaceholderText\(el\.text, placeholders, el\)/.test(PRE6) &&
+    /'Add the photo or delete the frame\.'/.test(GATE));
+  check('6.9 page and spread images draw text from textEngine\'s layoutTextLines (letter spacing, breaks after hyphens and at dashes, paragraph gaps, justify), no wrapping of their own',
+    /const laid = layoutTextLines\(el, \{ pageNumber \}\);/.test(EXP) && /for \(const word of line\.words\) drawRun\(/.test(EXP) && /letterSpacing = `\$\{px\}px`/.test(EXP) &&
+    /ctx\.font = cssFont\(font, fontPx\);/.test(EXP) && !/wrapCanvasText|measureText\(test\)/.test(EXP) && /await loadPageFonts\(page\);/.test(EXP) &&
+    /imageFileName\(project\.name, pageNumber, null, format\)/.test(EXP) && /backupFileName\(project\.name\)/.test(EXP));
+  check('6.10 the word counts drawer fits its Characters column: wider, and a fixed table whose name column gives way',
+    /w-\[440px\] max-w-full/.test(ED6) && /<table className="w-full table-fixed text-left text-\[11px\]">/.test(ED6) && /<col className="w-\[84px\]" \/>/.test(ED6) && !/max-w-\[220px\]/.test(ED6));
+  check('6.11 the pour: a one-word template text is a placeholder in its own frame; a contents page\'s heading is kept unless the person chose to replace words',
+    /const usable = replace \|\| \(!isBookLabel\(el, pages\[i\]\) && isPlaceholderText\(el\.text, options\.placeholders, el\)\);/.test(POUR6) &&
+    /page\.role === 'table_of_contents' && groupOfFrame\(el\) === 'heading'/.test(POUR6) && !/n\.split\(' '\)\.length > 1\) out\.add\(n\);\n\s*\};/.test(POUR6));
+  check('6.12 "Also here": fixed-size initial circles that never shrink away (names and pages in tooltips), the words only where there is room',
+    /className="flex shrink-0 items-center gap-1 ml-1 rounded/.test(BAR6) && /title=\{`Also here: \$\{othersHere\.map/.test(BAR6) &&
+    /className="flex items-center justify-center w-6 h-6 rounded-full/.test(BAR6) && /<span className="hidden 2xl:inline text-\[11px\] text-\[#8F8C84\] whitespace-nowrap">Also here:<\/span>/.test(BAR6));
+  var baseOk = /const BASE_PX_PER_MM = 2\.05;/.test(CANVAS6) && /const CANVAS_PX_PER_MM = 2\.05; \/\/ BookCanvas\.tsx BASE_PX_PER_MM/.test(APPX) &&
+    /className="relative my-14 mx-12 transition-transform duration-150"/.test(CANVAS6);
+  check('6.13 the zoom is fitted when a book opens and when the view switches (the canvas area measured; BookCanvas\'s scale and stage margins), and kept once the person zooms',
+    baseOk && /<div ref=\{canvasAreaRef\} className="relative flex-1 min-w-0 min-h-0 flex">/.test(APPX) && /new ResizeObserver\(measure\)/.test(APPX) &&
+    /useEffect\(\(\) => \{\n\s*zoomChosenRef\.current = false;\n\s*\}, \[activeProjectId, studioOpen, viewMode\]\);/.test(APPX) &&
+    /if \(!zoomChosenRef\.current && fitZoom !== null\) setZoom\(fitZoom\);/.test(APPX) && /onZoomChange=\{setZoomByPerson\}/.test(APPX) &&
+    /onFitToScreen=\{fitToScreen\}/.test(APPX) && /setZoomByPerson\(\(z\) => Math\.max\(0\.3, Math\.min\(2\.2/.test(APPX) && (APPX.match(/\bsetZoom\(/g) || []).length === 3);
+  (function () {
+    var m = /const CANVAS_PX_PER_MM[\s\S]*?\nexport function fitZoomFor[\s\S]*?\n\}\n/.exec(APPX);
+    var fit = null;
+    try {
+      var esb = require(path.join(APP, 'node_modules', 'esbuild'));
+      var js6 = esb.transformSync(m[0].replace('export function', 'function'), { loader: 'ts' }).code;
+      fit = new Function(js6 + '\nreturn fitZoomFor;')();
+    } catch (e) { fit = null; }
+    var wide = fit && fit(1000, 700, 606, 306); // a 600 mm landscape spread and its 3 mm bleed, in a 1000 × 700 px canvas
+    check('6.14 …a wide 600 mm landscape spread opens wholly visible (it was cut off at 76%), never past 30–220%',
+      !!fit && wide === 0.72 && 606 * 2.05 * wide + 104 <= 1000 && fit(4000, 3000, 100, 100) === 2.2 && fit(150, 150, 600, 300) === 0.3 && fit(0, 700, 600, 300) === null, wide);
+  })();
+  var small6 = [EXPM6, ED6, BAR6].join('\n').match(/text-\[(?:[0-9]|10)(?:\.\d+)?px\]/g) || [];
+  check('6.15 the export dialog\'s, the drawer\'s and the top bar\'s words are 11 px or more, and never a bare "ET"', small6.length === 0 && !/\bET\b/.test(EXPM6 + GATE + PRE6), small6);
 })();
 
 /* ---------- 3 the sample photos ---------- */

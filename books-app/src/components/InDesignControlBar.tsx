@@ -189,7 +189,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
         { label: 'Save Publication', shortcut: 'Ctrl+S', action: onManualSave },
         { label: 'Version History & Snapshots...', action: () => onOpenModal('versions') },
         { label: '', divider: true },
-        { label: 'Export Print PDF / IDML / Package...', shortcut: 'Ctrl+E', action: () => onOpenModal('export') },
+        { label: 'Export PDF, Images or Backup...', shortcut: 'Ctrl+E', action: () => onOpenModal('export') },
       ],
     },
     edit: {
@@ -339,19 +339,21 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             })}
           </nav>
 
-          <span className="text-white/15 mx-1 shrink-0">|</span>
+          <span className="hidden min-[1200px]:inline text-white/15 mx-1 shrink-0">|</span>
 
           <input
             type="text"
             value={project.name}
             onChange={(e) => onRenameProject(e.target.value)}
             aria-label="Document title"
-            className="bg-transparent text-[11px] font-medium text-[#ECEAE4] hover:bg-white/[0.04] focus:bg-[#232328] focus:outline-none focus:ring-1 focus:ring-[#C6A26B]/60 rounded px-1.5 py-0.5 w-40 xl:w-52 truncate"
+            title={project.name}
+            className="bg-transparent text-[11px] font-medium text-[#ECEAE4] hover:bg-white/[0.04] focus:bg-[#232328] focus:outline-none focus:ring-1 focus:ring-[#C6A26B]/60 rounded px-1.5 py-0.5 w-20 min-[1200px]:w-28 min-[1400px]:w-40 min-[1600px]:w-52 min-w-0 truncate"
           />
 
           <button
             onClick={onManualSave}
-            title="Save Document (Ctrl+S)"
+            title={`${saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Unsaved'} — save the book (Ctrl+S)`}
+            aria-label={`${saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Unsaved'}: save the book`}
             className="h-6 px-1.5 flex items-center gap-1 text-[11px] text-[#98958D] hover:text-[#ECEAE4] hover:bg-white/[0.05] rounded whitespace-nowrap shrink-0 cursor-pointer"
           >
             {saveState === 'saved' ? (
@@ -359,7 +361,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
             ) : (
               <Save className="w-3 h-3 text-[#C6A26B]" />
             )}
-            <span>{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Unsaved'}</span>
+            <span className="hidden min-[1400px]:inline">{saveState === 'saving' ? 'Saving' : saveState === 'saved' ? 'Saved' : 'Unsaved'}</span>
           </button>
 
           {!canDesign && (
@@ -370,29 +372,42 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
               className="h-5 px-1.5 flex items-center gap-1 text-[11px] font-medium text-[#E6CFA5] bg-[#26231D] border border-[#C6A26B]/40 rounded whitespace-nowrap shrink-0 cursor-help"
             >
               <Lock className="w-2.5 h-2.5" />
-              <span>Content editor</span>
+              <span className="hidden min-[1400px]:inline">Content editor</span>
             </span>
           )}
 
+          {/* "Also here": a small circle with each person's initials (their name and page in its tooltip), the words "Also
+              here" only where there is room. Fixed-size and never shrunk, so it can't be squeezed out of sight or run under
+              the buttons on the right at any window width (names cut to "qa" at 1366 px and gone at 1280 px before) */}
           {othersHere.length > 0 && (
-            <div className="hidden sm:flex items-center gap-1 min-w-0 ml-1" aria-label="Others with this book open">
-              <span className="text-[11px] text-[#8F8C84] whitespace-nowrap">Also here:</span>
+            <div
+              role="group"
+              tabIndex={0}
+              title={`Also here: ${othersHere.map((o) => `${o.name}${o.pageNumber ? ` (page ${o.pageNumber})` : ''}`).join(', ')}`}
+              aria-label={`Also here: ${othersHere.map((o) => `${o.name}${o.pageNumber ? ` on page ${o.pageNumber}` : ''}`).join(', ')}`}
+              className="flex shrink-0 items-center gap-1 ml-1 rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-[#C6A26B]/60"
+            >
+              <span className="hidden 2xl:inline text-[11px] text-[#8F8C84] whitespace-nowrap">Also here:</span>
               {othersHere.slice(0, 3).map((o) => (
                 <span
                   key={o.email}
-                  title={`${o.email}${o.pageNumber ? ` is on page ${o.pageNumber}` : ' has this book open'}`}
-                  className="h-5 px-1.5 flex items-center text-[11px] text-[#CFE3C2] bg-[#1F2A1C] border border-[#8AA678]/40 rounded whitespace-nowrap max-w-40 truncate"
+                  title={`${o.name} (${o.email})${o.pageNumber ? ` is on page ${o.pageNumber}` : ' has this book open'}`}
+                  className="flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-semibold text-[#CFE3C2] bg-[#1F2A1C] border border-[#8AA678]/60 uppercase"
                 >
-                  {o.name}
-                  {o.pageNumber ? ` (page ${o.pageNumber})` : ''}
+                  {String(o.name || o.email || '?')
+                    .split(/[\s._-]+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((w) => w.charAt(0))
+                    .join('') || '?'}
                 </span>
               ))}
               {othersHere.length > 3 && (
                 <span
                   title={othersHere.slice(3).map((o) => o.email).join(', ')}
-                  className="text-[11px] text-[#8F8C84] whitespace-nowrap"
+                  className="flex items-center justify-center w-6 h-6 rounded-full text-[11px] text-[#8F8C84] bg-white/[0.04] border border-white/[0.1]"
                 >
-                  +{othersHere.length - 3} more
+                  +{othersHere.length - 3}
                 </span>
               )}
             </div>

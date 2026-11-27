@@ -247,3 +247,40 @@ Each phase is released and tested on its own.
 - **Later:**
   - `exportEngine.ts` still draws text its own way (no letter spacing, breaks only at spaces). Phase 4's vector PDF should draw from `textEngine`'s layout.
   - Small portrait placeholders cut their label short.
+
+## Phase 4: what was built (27 Nov 2026, branch books-phase4)
+
+- **Vector PDF** (`engines/pdfEngine.ts`, `engines/pdf/*`)
+  - **Text:** each line comes from `textEngine.layoutTextLines`, the editor's own layout (checked against Chrome on about 2,000 random frames: within 0.24 mm per word). It is real, selectable text with kerning, letter spacing (Tc) and justified words placed one by one.
+  - **Fonts:** Google fonts are embedded as subsets, from the new server route `GET /api/books/font-file`. That route serves only families in the Google Fonts list, downloads only from fonts.gstatic.com, and is cached in memory and in the bucket. The engine works around a fontkit 1.1.1 subsetting bug.
+    - Print mode refuses a font it can't embed (`PdfFontError`); review mode uses Helvetica and warns.
+  - **Photos:** from their print copies, placed exactly as the canvas places them (`imagePlacement`), clipped, filtered, and downsized to the target ppi.
+  - **Charts:** the canvas's own SVG compiled to vectors.
+  - **Page geometry:**
+    - Print: MediaBox = trim + bleed + 12 mm slug; TrimBox and BleedBox set.
+    - Crop and bleed marks, registration targets and a slug line ("Book · Page N · date · RGB") sit outside the bleed.
+    - Review: trim only.
+    - Spreads and page ranges.
+  - A streaming writer keeps memory flat: a 150-page photo book exported in 20 s with a 15 MB JS heap.
+- **Export dialog** (`ExportPreflightModal.tsx`, `engines/exportGate.ts`)
+  - Choices: Print-ready PDF, Review PDF, page and spread images, backup.
+  - **The gate:** problems block a print-ready PDF ("Fix N problems to export"): missing photos (template placeholders included), fonts that can't load, text that doesn't fit, unprintable sizes. Warnings need one tick; an odd page count is a warning. Review PDFs and images are never blocked.
+  - **During and after export:** a progress bar with Cancel; a summary of pages, size, fonts, photos below the target and warnings; file names "<Book> – print-ready.pdf" / "– review.pdf". One line says the PDF is RGB.
+- **Page and spread images:** text and photos drawn exactly as the screen (`layoutTextLines`, `imagePlacement`).
+- **Fixes:**
+  - the Word Counts drawer fits its columns;
+  - "Also here" truncates instead of overlapping;
+  - a book opens fitted, wide spreads included;
+  - Ctrl/Cmd+E opens Export;
+  - the pour treats one-word template headings as placeholders;
+  - ovals are drawn as ovals.
+- **Tests:**
+  - `books-pdf` (78)
+  - `books-export` (48)
+  - `api-books` (266)
+  - `books-pour` (59)
+  - `books-build` (55)
+- **Later:**
+  - Load the PDF code only when exporting (`app.js` is 2.5 MB, about 850 KB gzipped).
+  - Set fonts' optical size explicitly in the canvas and the measure.
+  - Chrome breaks "2019-2020" after the hyphen, which `piecesOf` does not.

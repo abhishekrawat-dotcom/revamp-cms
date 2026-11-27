@@ -38,28 +38,39 @@ export function normText(t?: string | null): string {
   return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+/* a one-word template text ("Milestones", "Contents") is the template's only in the frame the template or a master
+   page put it in: it is kept per frame, under a key no frame's words can be (normText leaves no control character) */
+const KEY = '\u0001';
+function frameKey(kind: 'el' | 'master', id: string, normalised: string): string {
+  return `${KEY}${kind}${KEY}${id}${KEY}${normalised}`;
+}
+
 /**
  * The words a template put in the book's frames, which count as empty: the master pages' frames, the pages of the
  * built-in template the book was made from (matched by its design system's sourceTemplateName), and the editor's own
- * new-frame words. A template's one-word labels ("Contents", "Index") are left out: they are the book's structure,
- * not sample copy.
+ * new-frame words. Words of two or more count as the template's in any frame; a one-word text ("Milestones",
+ * "Contents") only in the frame it was put in (that frame of the template, or a page's frame linked to that master
+ * frame), so the same word someone typed in another frame stays theirs. A contents page's own heading is kept by the
+ * pour all the same (isBookLabel).
  */
 export function collectPlaceholderTexts(
   project: BookProject,
   templates?: Array<{ name: string; buildPages: () => BookPage[] }>
 ): Set<string> {
   const out = new Set<string>();
-  const add = (t?: string) => {
-    const n = normText(t);
-    if (n && n.split(' ').length > 1) out.add(n);
+  const add = (el: Pick<BookElement, 'id' | 'text'>, kind: 'el' | 'master') => {
+    const n = normText(el.text);
+    if (!n) return;
+    if (n.split(' ').length > 1) out.add(n);
+    else if (el.id) out.add(frameKey(kind, el.id, n));
   };
   NEW_FRAME_TEXTS.forEach((t) => out.add(normText(t)));
-  (project.masterPages || []).forEach((m) => (m.elements || []).forEach((el) => add(el.text)));
+  (project.masterPages || []).forEach((m) => (m.elements || []).forEach((el) => add(el, 'master')));
   const source = project.designSystem?.sourceTemplateName;
   const tpl = source && templates ? templates.find((t) => t.name === source) : undefined;
   if (tpl) {
     try {
-      tpl.buildPages().forEach((p) => p.elements.forEach((el) => add(el.text)));
+      tpl.buildPages().forEach((p) => (p.elements || []).forEach((el) => add(el, 'el')));
     } catch {
       /* a template that cannot be built adds nothing */
     }
@@ -67,12 +78,33 @@ export function collectPlaceholderTexts(
   return out;
 }
 
-/** true when a frame's words are empty or are a template's sample words (placeholders) */
-export function isPlaceholderText(text: string | undefined | null, placeholders?: Set<string>): boolean {
+/**
+ * true when a frame's words are empty or are a template's sample words (placeholders). Pass the frame to match a
+ * one-word template text, which counts only in the frame the template or its master page put it in.
+ */
+export function isPlaceholderText(
+  text: string | undefined | null,
+  placeholders?: Set<string>,
+  frame?: Pick<BookElement, 'id' | 'masterElementId'>
+): boolean {
   const n = normText(text);
   if (!n) return true;
   if (SAMPLE_WORDS.test(n)) return true;
-  return !!placeholders && placeholders.has(n);
+  if (!placeholders) return false;
+  if (placeholders.has(n)) return true;
+  if (frame && n.indexOf(' ') === -1) {
+    if (frame.masterElementId && placeholders.has(frameKey('master', frame.masterElementId, n))) return true;
+    if (frame.id && placeholders.has(frameKey('el', frame.id, n))) return true;
+  }
+  return false;
+}
+
+/**
+ * A contents page's heading ("Contents"): the book's own label, not sample words. The pour leaves it alone, and the
+ * word counts do not list it, unless the person chose "Replace text in frames that already have words".
+ */
+export function isBookLabel(el: BookElement, page: Pick<BookPage, 'role'>): boolean {
+  return page.role === 'table_of_contents' && groupOfFrame(el) === 'heading' && wordsIn(el.text) > 0;
 }
 
 /* ---------- frames and their kinds ---------- */
@@ -519,7 +551,7 @@ export function planPour(project: BookProject, options: PourOptions): PourPlan {
   for (let i = startIdx; i < pages.length; i++) {
     for (const el of readingOrder(pages[i].elements.filter((e) => groupOfFrame(e) !== null))) {
       const group = groupOfFrame(el)!;
-      const usable = replace || isPlaceholderText(el.text, options.placeholders);
+      const usable = replace || (!isBookLabel(el, pages[i]) && isPlaceholderText(el.text, options.placeholders, el));
       if (!usable && groupsWanted.has(group)) framesKeptWithWords += 1;
       seq.push({ pageIdx: i, isNew: false, el, group, pos: seq.length, usable, text: null });
     }
@@ -903,7 +935,7 @@ export function editorialCounts(project: BookProject, measure: OverflowMeasure, 
         empty.push(ref);
         continue;
       }
-      if (groupOfFrame(el) && isPlaceholderText(el.text, placeholders)) {
+      if (groupOfFrame(el) && !isBookLabel(el, page) && isPlaceholderText(el.text, placeholders, el)) {
         sa += 1;
         sample.push(ref);
       }

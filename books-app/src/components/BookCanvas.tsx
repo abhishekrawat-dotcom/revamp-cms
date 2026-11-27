@@ -931,7 +931,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                                     borderColor: el.shape.stroke || 'transparent',
                                     borderRadius:
                                       el.shape.shapeKind === 'ellipse'
-                                        ? '9999px'
+                                        ? '50%'
                                         : `${(el.shape.cornerRadiusMm || 0) * pxPerMm}px`,
                                   }}
                                 />
@@ -1099,7 +1099,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                         top: `${drawDraft.yMm * pxPerMm}px`,
                         width: `${Math.max(2, drawDraft.widthMm * pxPerMm)}px`,
                         height: `${Math.max(2, drawDraft.heightMm * pxPerMm)}px`,
-                        borderRadius: drawDraft.tool === 'ellipse' ? '9999px' : '0px',
+                        borderRadius: drawDraft.tool === 'ellipse' ? '50%' : '0px',
                       }}
                       className="absolute border border-[#C6A26B] bg-[#C6A26B]/12 pointer-events-none z-50 overflow-hidden"
                     >

@@ -767,6 +767,92 @@ function partsOf(id) { return Object.keys(DOCS).filter(function (k) { return k.i
     !T.DESIGNER_ACTIONS['POST /api/books/ai/edit-text'] && /'POST \/api\/books\/ai\/edit-text': \{ max: 60, ms: TEN_MINUTES \}/.test(HTTP_SRC) &&
     /'books-edit-text': \{ model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 \}/.test(LLM_SRC));
 
+  /* ---------- 18 Phase 4: a font file for the print PDF (GET font-file), Google stubbed ---------- */
+  T.resetFontFiles();
+  var FETCHED = [], GSTATIC_BODY = null, CSS_ELSEWHERE = false, BIG_FONT = false;
+  var TTF = Buffer.concat([Buffer.from([0, 1, 0, 0]), Buffer.alloc(200, 7)]);
+  /* Lora: 400, 700 and italics, no optical size; DM Sans: 400 only, optical sizes 9–40 */
+  var META = ')]}\'\n' + JSON.stringify({ familyMetadataList: [
+    { family: 'Lora', category: 'Serif', popularity: 1, fonts: { '400': {}, '700': {}, '400i': {}, '700i': {} }, axes: [{ tag: 'wght', min: 400, max: 700 }], subsets: ['latin'] },
+    { family: 'DM Sans', category: 'Sans Serif', popularity: 2, fonts: { '400': {} }, axes: [{ tag: 'opsz', min: 9, max: 40 }, { tag: 'wght', min: 100, max: 1000 }], subsets: ['latin'] }] });
+  function answer(status, body, headers) {
+    var h = Object.assign({}, headers || {});
+    return Promise.resolve({ ok: status >= 200 && status < 300, status: status, headers: { get: function (k) { return h[k.toLowerCase()] || null; } },
+      text: function () { return Promise.resolve(String(body)); }, arrayBuffer: function () { var b = Buffer.isBuffer(body) ? body : Buffer.from(String(body)); return Promise.resolve(b.buffer.slice(b.byteOffset, b.byteOffset + b.length)); } });
+  }
+  var realFetch2 = global.fetch;
+  global.fetch = function (url, opts) {
+    FETCHED.push({ url: String(url), ua: opts && opts.headers && opts.headers['User-Agent'] });
+    var u = new URL(String(url));
+    if (u.host === 'fonts.google.com') return answer(200, META);
+    if (u.host === 'fonts.googleapis.com') {
+      var fam = u.searchParams.get('family'), m = /^([^:]+):(ital,(?:opsz,)?wght)@(\d),(?:(\d+),)?(\d+)$/.exec(fam);
+      if (!m) return answer(400, '<html>400</html>');
+      var name = m[1], hasOpsz = /opsz/.test(m[2]), it = m[3] === '1', opsz = hasOpsz ? +m[4] : 0, w = +m[5];
+      var ok = name === 'Lora' ? !hasOpsz && [400, 700].indexOf(w) !== -1 : name === 'DM Sans' ? (!hasOpsz || (opsz >= 9 && opsz <= 40)) && w === 400 && !it : false;
+      if (!ok) return answer(400, '<html>400: Font family not found</html>');
+      var file = CSS_ELSEWHERE ? 'https://evil.example/x.ttf' : 'https://fonts.gstatic.com/s/' + name.toLowerCase().replace(/ /g, '') + '/v1/' + w + (it ? 'i' : '') + (opsz ? '-o' + opsz : '') + '.ttf';
+      return answer(200, '/* latin */\n@font-face {\n  font-family: \'' + name + '\';\n  font-style: ' + (it ? 'italic' : 'normal') + ';\n  font-weight: ' + w + ';\n  src: url(' + file + ') format(\'truetype\');\n}\n');
+    }
+    if (u.host === 'fonts.gstatic.com') return answer(200, GSTATIC_BODY || TTF, BIG_FONT ? { 'content-length': String(16 * 1024 * 1024) } : {});
+    return Promise.reject(new Error('unexpected fetch ' + url));
+  };
+  var ff = await call('GET', '/api/books/font-file?family=Lora&weight=400&italic=0&opsz=64', null, { token: CONTENT });
+  var hosts = FETCHED.map(function (f) { return new URL(f.url).host; });
+  check('18.1 a Content editor gets the face\'s TrueType file: font/ttf, private, kept a year', ff.status === 200 && ff.headers['content-type'] === 'font/ttf' &&
+    ff.headers['cache-control'] === 'private, max-age=31536000' && Buffer.compare(ff.body, TTF) === 0 && T.CONTENT_ROUTES['GET /api/books/font-file'] === 1, [ff.status, ff.headers]);
+  check('18.2 …fetched only from Google Fonts: the list, the CSS2 API (with a User-Agent it answers with TrueType), then the file from fonts.gstatic.com',
+    hosts.every(function (h) { return ['fonts.google.com', 'fonts.googleapis.com', 'fonts.gstatic.com'].indexOf(h) !== -1; }) && hosts.indexOf('fonts.gstatic.com') !== -1 &&
+    FETCHED.filter(function (f) { return /googleapis/.test(f.url); }).every(function (f) { return f.ua === T.FONT_CSS_UA; }), FETCHED);
+  check('18.3 …Lora has no optical size: X-Font-Opsz none, and the CSS was asked without one in the end', ff.headers['x-font-opsz'] === 'none' &&
+    FETCHED.some(function (f) { return /family=Lora:ital,wght@0,400$/.test(decodeURIComponent(f.url)); }), FETCHED.map(function (f) { return decodeURIComponent(f.url); }));
+  check('18.4 …kept in the bucket under the Books prefix (fonts/), private', !!FILES['books/fonts/lora/400.ttf'] && FILES['books/fonts/lora/400.ttf'].opts.metadata.contentType === 'font/ttf' &&
+    /private/.test(FILES['books/fonts/lora/400.ttf'].opts.metadata.cacheControl), Object.keys(FILES).filter(function (k) { return /fonts\//.test(k); }));
+  var before = FETCHED.length;
+  var again = await call('GET', '/api/books/font-file?family=lora&weight=400&italic=0&opsz=64', null, { token: DESIGNER });
+  check('18.5 asked again (any case): from memory, Google not asked', again.status === 200 && Buffer.compare(again.body, TTF) === 0 && FETCHED.length === before);
+  T.resetFontFiles();
+  FETCHED = [];
+  var fromBucket = await call('GET', '/api/books/font-file?family=Lora&weight=400&italic=0&opsz=64', null, { token: DESIGNER });
+  check('18.6 after a restart: from the bucket (no file from Google)', fromBucket.status === 200 && Buffer.compare(fromBucket.body, TTF) === 0 &&
+    !FETCHED.some(function (f) { return /gstatic/.test(f.url); }), FETCHED.map(function (f) { return f.url; }));
+  var dm = await call('GET', '/api/books/font-file?family=DM%20Sans&weight=400&italic=0&opsz=64', null, { token: DESIGNER });
+  check('18.7 a variable font with optical sizes: 64 taken into its range (9–40) → 40, said in X-Font-Opsz, kept as its own file', dm.status === 200 && dm.headers['x-font-opsz'] === '40' &&
+    !!FILES['books/fonts/dm-sans/400-opsz40.ttf'], [dm.status, dm.headers['x-font-opsz'], Object.keys(FILES).filter(function (k) { return /fonts\//.test(k); })]);
+  var nf = await call('GET', '/api/books/font-file?family=Georgia&weight=400&italic=0', null, { token: DESIGNER });
+  check('18.8 a family that isn\'t a Google font: 404 font-family with the sentence; Google never asked for it', nf.status === 404 && nf.json.code === 'font-family' &&
+    /"Georgia" is not a Google font, so it can't be embedded in the PDF\./.test(nf.json.error) && !FETCHED.some(function (f) { return /Georgia/.test(f.url); }), nf.json);
+  var nw = await call('GET', '/api/books/font-file?family=Lora&weight=450&italic=1', null, { token: DESIGNER });
+  check('18.9 a weight it doesn\'t have: 404 font-weight with its weights and whether it has italics (the editor takes the nearest)', nw.status === 404 && nw.json.code === 'font-weight' &&
+    JSON.stringify(nw.json.weights) === '[400,700]' && nw.json.italic === true && nw.json.family === 'Lora' && /Lora has no 450 italic style\./.test(nw.json.error), nw.json);
+  var nit = await call('GET', '/api/books/font-file?family=DM%20Sans&weight=400&italic=1', null, { token: DESIGNER });
+  check('18.10 …an italic it doesn\'t have: the same', nit.status === 404 && nit.json.code === 'font-weight' && nit.json.italic === false, nit.json);
+  var bads = [];
+  for (var bq of ['family=&weight=400', 'family=Lora&weight=abc', 'family=Lora&weight=400&italic=2', 'family=Lo%3Cra&weight=400', 'family=Lora&weight=400&opsz=99999']) bads.push(await call('GET', '/api/books/font-file?' + bq, null, { token: DESIGNER }));
+  check('18.11 a request without a family, a weight from 1 to 1000, italic 0 or 1, or a sensible opsz: 400 with the sentence', bads.every(function (b) { return b.status === 400 && b.json.code === 'bad-request' && b.json.error; }), bads.map(function (b) { return [b.status, b.json]; }));
+  var nb = await call('GET', '/api/books/font-file?family=Lora&weight=400', null, { token: NOBOOKS });
+  check('18.12 someone without Books: 403', nb.status === 403 && nb.json.code === 'no-books');
+  T.resetFontFiles();
+  Object.keys(FILES).forEach(function (k) { if (/fonts\//.test(k)) delete FILES[k]; });
+  CSS_ELSEWHERE = true;
+  var elsewhere = await call('GET', '/api/books/font-file?family=Lora&weight=700&italic=0', null, { token: DESIGNER });
+  check('18.13 a CSS answer pointing anywhere but fonts.gstatic.com is never fetched (404, as no such face)', elsewhere.status === 404 && !FETCHED.some(function (f) { return /evil/.test(f.url); }), elsewhere.json);
+  CSS_ELSEWHERE = false;
+  GSTATIC_BODY = Buffer.from('<html>not a font</html>');
+  var notFont = await call('GET', '/api/books/font-file?family=Lora&weight=700&italic=0', null, { token: DESIGNER });
+  check('18.14 a file that isn\'t a font: 500 with the sentence, nothing kept', notFont.status === 500 && /could not be fetched from Google Fonts/.test(notFont.json.error) && !FILES['books/fonts/lora/700.ttf'], notFont.json);
+  GSTATIC_BODY = null;
+  BIG_FONT = true;
+  var bigF = await call('GET', '/api/books/font-file?family=Lora&weight=700&italic=1', null, { token: DESIGNER });
+  check('18.15 a file over 15 MB is refused', bigF.status === 500 && !FILES['books/fonts/lora/700i.ttf'] && T.FONT_FILE_MAX === 15 * 1024 * 1024, bigF.json);
+  BIG_FONT = false;
+  FETCHED = [];
+  var together = await Promise.all([1, 2, 3].map(function () { return call('GET', '/api/books/font-file?family=Lora&weight=700&italic=0', null, { token: DESIGNER }); }));
+  check('18.16 asked for three times at once: one fetch from fonts.gstatic.com', together.every(function (b) { return b.status === 200; }) &&
+    FETCHED.filter(function (f) { return /gstatic.*\/700\.ttf$/.test(f.url); }).length === 1, FETCHED.map(function (f) { return f.url; }));
+  global.fetch = realFetch2;
+  T.resetFontFiles();
+
   /* ---------- 11 wiring ---------- */
   var access = require('./access');
   check('11.1 the built editor is served (books/), its source never is (books-app/)', access.isServableFile('books/app.js') && access.isServableFile('books/app.css') &&

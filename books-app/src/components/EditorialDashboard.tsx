@@ -224,12 +224,19 @@ export const EditorialCountsPanel: React.FC<PanelProps> = ({ project, onGoTo, on
           ))}
         </div>
       </div>
-      <table className="w-full text-left text-[11px]">
+      {/* a fixed layout: the numbers keep their columns (sized for six figures and the "Characters" heading), and the
+          name takes what is left, cut short with "…" (its full text in the tooltip), so no column is ever cut off */}
+      <table className="w-full table-fixed text-left text-[11px]">
+        <colgroup>
+          <col />
+          <col className="w-[64px]" />
+          <col className="w-[84px]" />
+        </colgroup>
         <thead className="bg-[#161619] text-[#A19E95] border-b border-white/[0.06]">
           <tr>
             <th className="px-3 py-1.5 font-medium">{table === 'pages' ? 'Page' : table === 'spreads' ? 'Spread' : 'Chapter'}</th>
-            <th className="px-3 py-1.5 font-medium text-right">Words</th>
-            <th className="px-3 py-1.5 font-medium text-right">Characters</th>
+            <th className="pl-1 pr-2 py-1.5 font-medium text-right">Words</th>
+            <th className="pl-1 pr-3 py-1.5 font-medium text-right">Characters</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-white/[0.05]">
@@ -247,18 +254,20 @@ export const EditorialCountsPanel: React.FC<PanelProps> = ({ project, onGoTo, on
               className={r.go ? 'hover:bg-white/[0.03] cursor-pointer' : ''}
               title={r.go ? 'Go to this page' : undefined}
             >
-              <td className="px-3 py-1.5 text-[#ECEAE4]">
-                <div className="truncate max-w-[220px]">{r.label}</div>
+              <td className="px-3 py-1.5 text-[#ECEAE4] min-w-0">
+                <div className="truncate" title={r.label}>
+                  {r.label}
+                </div>
                 {(r.sub || r.flag) && (
-                  <div className="text-[11px] text-[#A19E95] truncate max-w-[220px]">
+                  <div className="text-[11px] text-[#A19E95] truncate">
                     {r.sub}
                     {r.sub && r.flag ? ' · ' : ''}
                     {r.flag && <span className={r.flagTone}>{r.flag}</span>}
                   </div>
                 )}
               </td>
-              <td className="px-3 py-1.5 text-right font-mono-tabular text-[#ECEAE4]">{n(r.words)}</td>
-              <td className="px-3 py-1.5 text-right font-mono-tabular text-[#A19E95]">{n(r.characters)}</td>
+              <td className="pl-1 pr-2 py-1.5 text-right font-mono-tabular text-[#ECEAE4] whitespace-nowrap">{n(r.words)}</td>
+              <td className="pl-1 pr-3 py-1.5 text-right font-mono-tabular text-[#A19E95] whitespace-nowrap">{n(r.characters)}</td>
             </tr>
           ))}
         </tbody>
@@ -266,8 +275,8 @@ export const EditorialCountsPanel: React.FC<PanelProps> = ({ project, onGoTo, on
           <tfoot className="border-t border-white/[0.08] bg-[#141417]">
             <tr>
               <td className="px-3 py-1.5 font-semibold text-[#ECEAE4]">The book</td>
-              <td className="px-3 py-1.5 text-right font-mono-tabular font-semibold text-[#ECEAE4]">{n(c.totalWords)}</td>
-              <td className="px-3 py-1.5 text-right font-mono-tabular text-[#A19E95]">{n(c.totalCharacters)}</td>
+              <td className="pl-1 pr-2 py-1.5 text-right font-mono-tabular font-semibold text-[#ECEAE4] whitespace-nowrap">{n(c.totalWords)}</td>
+              <td className="pl-1 pr-3 py-1.5 text-right font-mono-tabular text-[#A19E95] whitespace-nowrap">{n(c.totalCharacters)}</td>
             </tr>
           </tfoot>
         )}
@@ -308,7 +317,7 @@ export const EditorialCountsPanel: React.FC<PanelProps> = ({ project, onGoTo, on
 export const EditorialDashboard: React.FC<Omit<PanelProps, 'variant'> & { onClose: () => void }> = ({ project, onGoTo, onOpenPour, onClose }) => (
   <aside
     aria-label="Word counts"
-    className="absolute right-0 top-0 bottom-0 z-[45] w-[400px] max-w-full bg-[#18181B] border-l border-white/[0.1] shadow-2xl flex flex-col"
+    className="absolute right-0 top-0 bottom-0 z-[45] w-[440px] max-w-full bg-[#18181B] border-l border-white/[0.1] shadow-2xl flex flex-col"
   >
     <div className="px-4 py-3 border-b border-white/[0.08] flex items-start justify-between gap-3">
       <div>

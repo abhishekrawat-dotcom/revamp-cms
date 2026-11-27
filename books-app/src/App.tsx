@@ -551,6 +551,19 @@ function createElementFromKind(
   }
 }
 
+/* Fitting the zoom to the page or spread (Books Phase 4): BookCanvas draws a page at BASE_PX_PER_MM px per mm at 100%,
+   on a stage with 48 px margins at the sides and 56 px above and below (they hold the rulers, the canvas strip, the
+   bleed guide and the page captions). The fit is the largest zoom (whole hundredths, 30% to 220%) at which the page or
+   spread and its bleed are wholly inside the canvas. */
+const CANVAS_PX_PER_MM = 2.05; // BookCanvas.tsx BASE_PX_PER_MM
+const STAGE_X_PX = 48 * 2 + 8;
+const STAGE_Y_PX = 56 * 2 + 8;
+export function fitZoomFor(areaW: number, areaH: number, widthMm: number, heightMm: number): number | null {
+  if (!(areaW > 0 && areaH > 0 && widthMm > 0 && heightMm > 0)) return null;
+  const z = Math.min((areaW - STAGE_X_PX) / (widthMm * CANVAS_PX_PER_MM), (areaH - STAGE_Y_PX) / (heightMm * CANVAS_PX_PER_MM));
+  return Math.max(0.3, Math.min(2.2, Math.floor(z * 100) / 100));
+}
+
 export default function App() {
   const [user, setUser] = useState<SignedInUser | null>(null);
   /* this person's Books role (GET /api/books/me); until it is known, and if it cannot be read, nothing of the design
@@ -1247,6 +1260,66 @@ export default function App() {
     return list;
   }, [viewMode, activePage, activePageIndex, activeProject.pages]);
 
+  /* The zoom: fitted so the page or spread is wholly visible when a book opens and when the view switches between
+     single pages and spreads; while the person hasn't chosen a zoom it follows the canvas's size (a panel opened or
+     closed, the window resized). Once they zoom in or out, their zoom is kept until the next book, a view switch or
+     "Fit". In spread view the size fitted is at least a spread of the book's pages, so the zoom stays put from the cover
+     to the spreads; a larger page (a fold-out) is fitted whole. */
+  const [canvasArea, setCanvasArea] = useState<{ w: number; h: number } | null>(null);
+  const canvasObserverRef = useRef<ResizeObserver | null>(null);
+  const canvasAreaRef = useCallback((node: HTMLDivElement | null) => {
+    canvasObserverRef.current?.disconnect();
+    canvasObserverRef.current = null;
+    if (!node) return;
+    const measure = () => {
+      const r = node.getBoundingClientRect();
+      setCanvasArea((prev) =>
+        prev && Math.abs(prev.w - r.width) < 1 && Math.abs(prev.h - r.height) < 1 ? prev : { w: r.width, h: r.height }
+      );
+    };
+    measure();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(measure);
+      ro.observe(node);
+      canvasObserverRef.current = ro;
+    }
+  }, []);
+  const fitZoom = useMemo(() => {
+    if (!canvasArea) return null;
+    const book = activeProject.dimensions;
+    let wMm = 0;
+    let hMm = 0;
+    let bleed = 0;
+    for (const vp of visiblePages) {
+      const d = getEffectivePageDimensions(vp.page, book);
+      wMm += d.widthMm;
+      hMm = Math.max(hMm, d.heightMm);
+      bleed = Math.max(bleed, Number(d.bleedMm) || 0);
+    }
+    const pagesAcross = viewMode === 'spread' && activeProject.pages.length > 1 ? 2 : 1;
+    wMm = Math.max(wMm, book.widthMm * pagesAcross) + bleed * 2;
+    hMm = Math.max(hMm, book.heightMm) + bleed * 2;
+    const turned = canvasViewRotation === 90 || canvasViewRotation === 270;
+    return fitZoomFor(canvasArea.w, canvasArea.h, turned ? hMm : wMm, turned ? wMm : hMm);
+  }, [canvasArea, visiblePages, activeProject.dimensions, activeProject.pages.length, viewMode, canvasViewRotation]);
+  /* true once the person has chosen a zoom in this book and view */
+  const zoomChosenRef = useRef(false);
+  const studioOpen = view === 'studio';
+  useEffect(() => {
+    zoomChosenRef.current = false;
+  }, [activeProjectId, studioOpen, viewMode]);
+  useEffect(() => {
+    if (!zoomChosenRef.current && fitZoom !== null) setZoom(fitZoom);
+  }, [fitZoom, activeProjectId, studioOpen, viewMode]);
+  const setZoomByPerson = useCallback((next: number | ((z: number) => number)) => {
+    zoomChosenRef.current = true;
+    setZoom(next);
+  }, []);
+  const fitToScreen = () => {
+    zoomChosenRef.current = false;
+    if (fitZoom !== null) setZoom(fitZoom);
+  };
+
   // Element CRUD Handlers
   const handleUpdateElement = useCallback(
     (pageId: string, elementId: string, patch: Partial<BookElement>, recordHistory = true) => {
@@ -1834,6 +1907,12 @@ export default function App() {
         void persistProjectNow(activeProject);
         return;
       }
+      // the File menu's "Export PDF, Images or Backup…" (both roles export)
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault();
+        setActiveModal('export');
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !isInput) {
         e.preventDefault();
         if (e.shiftKey) handleRedo();
@@ -2268,8 +2347,8 @@ export default function App() {
               onManualSave={() => void persistProjectNow(activeProject)}
               onUndo={handleUndo}
               onRedo={handleRedo}
-              onZoomChange={setZoom}
-              onFitToScreen={() => setZoom(viewMode === 'spread' ? 0.72 : 0.92)}
+              onZoomChange={setZoomByPerson}
+              onFitToScreen={fitToScreen}
               onViewModeChange={setViewMode}
               onTogglePreview={() => setPreviewMode((p) => !p)}
               onToggleGuides={() => setShowGuides((g) => !g)}
@@ -2391,41 +2470,43 @@ export default function App() {
               />
             )}
 
-            {/* ZONE 3: Central Book Spread Canvas */}
-            <BookCanvas
-              project={activeProject}
-              visiblePages={visiblePages}
-              activePageId={activePage.id}
-              selectedElementIds={selectedElementIds}
-              zoom={zoom}
-              canvasViewRotation={canvasViewRotation}
-              showGuides={showGuides}
-              showRulers={showRulers}
-              snapToGrid={snapToGrid}
-              snapToObjects={snapToObjects}
-              previewMode={previewMode}
-              activeTool={activeTool}
-              canDesign={canDesign}
-              onSelectPage={(pageId) => setActivePageId(pageId)}
-              onSelectElements={(pageId, ids) => {
-                setActivePageId(pageId);
-                setSelectedElementIds(ids);
-              }}
-              onUpdateElement={handleUpdateElement}
-              onDropComponent={(pageId, kind, xMm, yMm) =>
-                handleAddComponent(kind, undefined, { pageId, xMm, yMm })
-              }
-              onDropImageOnPage={handleDropImageOnPage}
-              onCreateDrawnElement={handleCreateDrawnElement}
-              onZoomStep={(delta) =>
-                setZoom((z) => Math.max(0.3, Math.min(2.2, Number((z + delta).toFixed(2)))))
-              }
-              onSelectTool={setActiveTool}
-              onRotateCanvasView={handleRotateCanvasView}
-              onToggleSnapGrid={() => setSnapToGrid((s) => !s)}
-              onToggleSnapObjects={() => setSnapToObjects((s) => !s)}
-              onExitPreview={() => setPreviewMode(false)}
-            />
+            {/* ZONE 3: Central Book Spread Canvas (its area is measured to fit the zoom) */}
+            <div ref={canvasAreaRef} className="relative flex-1 min-w-0 min-h-0 flex">
+              <BookCanvas
+                project={activeProject}
+                visiblePages={visiblePages}
+                activePageId={activePage.id}
+                selectedElementIds={selectedElementIds}
+                zoom={zoom}
+                canvasViewRotation={canvasViewRotation}
+                showGuides={showGuides}
+                showRulers={showRulers}
+                snapToGrid={snapToGrid}
+                snapToObjects={snapToObjects}
+                previewMode={previewMode}
+                activeTool={activeTool}
+                canDesign={canDesign}
+                onSelectPage={(pageId) => setActivePageId(pageId)}
+                onSelectElements={(pageId, ids) => {
+                  setActivePageId(pageId);
+                  setSelectedElementIds(ids);
+                }}
+                onUpdateElement={handleUpdateElement}
+                onDropComponent={(pageId, kind, xMm, yMm) =>
+                  handleAddComponent(kind, undefined, { pageId, xMm, yMm })
+                }
+                onDropImageOnPage={handleDropImageOnPage}
+                onCreateDrawnElement={handleCreateDrawnElement}
+                onZoomStep={(delta) =>
+                  setZoomByPerson((z) => Math.max(0.3, Math.min(2.2, Number((z + delta).toFixed(2)))))
+                }
+                onSelectTool={setActiveTool}
+                onRotateCanvasView={handleRotateCanvasView}
+                onToggleSnapGrid={() => setSnapToGrid((s) => !s)}
+                onToggleSnapObjects={() => setSnapToObjects((s) => !s)}
+                onExitPreview={() => setPreviewMode(false)}
+              />
+            </div>
 
             {/* ZONE 4: Right Docked InDesign Inspector (Properties · Styles · Swatches · Align · Links) */}
             {!previewMode && (
@@ -2635,7 +2716,6 @@ export default function App() {
           canDesign={canDesign}
           activePage={activePage}
           activePageIndex={activePageIndex}
-          onUpdateProject={(updated) => commitProjectUpdate(() => updated)}
           onJumpToPage={(pageId, elId) => {
             setActivePageId(pageId);
             setSelectedElementIds(elId ? [elId] : []);
