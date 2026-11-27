@@ -1,6 +1,7 @@
 import type { BookProject, MasterPage } from '../types/bookstudio';
 import { BUILTIN_BOOK_TEMPLATES } from './bookTemplates';
 import { CURATED_IMAGE_ASSETS, EDITORIAL_PHOTOS } from './curatedAssets';
+import { applyPremiumTemplate } from './premiumTemplates';
 
 export function createDefaultMasterPages(project: {
   paper: string;
@@ -315,7 +316,8 @@ export function createProjectFromBookTemplate(
 
   const now = new Date().toISOString();
 
-  return {
+  /* a Premium Editorial template brings its own master pages, chapters and photos (premiumTemplates.ts) */
+  return applyPremiumTemplate({
     id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     name: customName || tpl.name,
     subtitle: tpl.description,
@@ -390,7 +392,7 @@ export function createProjectFromBookTemplate(
     customDimensionPresets: [],
     createdAt: now,
     updatedAt: now,
-  };
+  }, tpl.id);
 }
 
 export function createInitialSampleProject(): BookProject {

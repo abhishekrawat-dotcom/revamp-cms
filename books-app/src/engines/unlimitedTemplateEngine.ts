@@ -15,6 +15,7 @@ import type {
 import { CURATED_IMAGE_ASSETS, EDITORIAL_PHOTOS } from '../data/curatedAssets';
 import { BUILTIN_INFOGRAPHIC_TEMPLATES } from '../data/infographicTemplates';
 import { createDefaultMasterPages } from '../data/sampleProject';
+import { applyPremiumTemplate } from '../data/premiumTemplates';
 import { inferOrientation } from './dimensionEngine';
 
 // ---------------------------------------------------------------------------
@@ -912,7 +913,8 @@ export function createProjectFromBookTemplateObject(tpl: BookTemplate): BookProj
   });
 
   const now = new Date().toISOString();
-  return {
+  /* a Premium Editorial template brings its own master pages, chapters and photos (premiumTemplates.ts) */
+  return applyPremiumTemplate({
     id: `proj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     name: tpl.name,
     subtitle: tpl.description,
@@ -968,5 +970,5 @@ export function createProjectFromBookTemplateObject(tpl: BookTemplate): BookProj
     customDimensionPresets: [],
     createdAt: now,
     updatedAt: now,
-  };
+  }, tpl.id);
 }

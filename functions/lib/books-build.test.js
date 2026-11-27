@@ -6,6 +6,9 @@
 // Phase 2 (roles, section 4): the editor takes in the shared rules (functions/lib/book-rules.js) and never sends a
 // Content editor's design change; the design's controls are not offered to a Content editor; a save that crossed
 // someone else's is merged (a dialog for what both changed); who else is here; deleted pages; the activity log.
+// Phase 3 (the content workflow, section 5): word counts beside the canvas, never exported; "Pour manuscript into
+// frames" from the Content manager, previewed and applied as one change; a new page's layout chosen in a picker; photo
+// resolution in the Images tab. The pour's own logic is tested in functions/lib/books-pour.test.js.
 'use strict';
 var fs = require('fs'), path = require('path'), vm = require('vm');
 var passed = 0, failed = 0;
@@ -124,7 +127,8 @@ check('4.11 text that does not fit: a red outline on the frame and a "+N words d
   check('4.12 by the shared rules, a text edit and a page made from a master (with its background) are content; a drag, and marking a master frame overridden, are design',
     rules.designChanges(book, edited).length === 0 && rules.designChanges(book, added).length === 0 &&
     rules.designChanges(book, dragged).length === 1 && rules.designChanges(book, marked).length === 1 &&
-    (APPX.match(/\.\.\.newPageLook\((activeProject, activePage|proj, src)\),/g) || []).length === 3 && /: \{ text: e\.target\.value \},/.test(CANVAS),
+    /elements: sourcePage\.elements\.filter\(keep\)\.map/.test(APPX) && /pagesCopy\.splice\(pIdx \+ 1, 0, nextPage\);/.test(APPX) && /const page = pageFromLayout\(activeProject, choiceId, \{/.test(APPX) &&
+    /commitProjectUpdate\(\(proj\) => insertPagesAfter\(proj, activePage\.id, made\)\)/.test(APPX) && /: \{ text: e\.target\.value \},/.test(CANVAS),
     { edited: rules.designChanges(book, edited), added: rules.designChanges(book, added), dragged: rules.designChanges(book, dragged), marked: rules.designChanges(book, marked) });
   var b2 = Object.assign({}, book, { updatedAt: '1' }), m2 = Object.assign({}, edited, { updatedAt: '2' }), t2 = Object.assign({}, book, { updatedAt: '3', name: 'Theirs' });
   var mg = rules.mergeBooks(b2, m2, t2);
@@ -141,6 +145,42 @@ check('4.11 text that does not fit: a red outline on the frame and a "+N words d
     !/backgroundColor: ds\.colors\.paper/.test(AFE) && /keepFrameNames: !canDesign,/.test(AFM) && /const why = designChanges\(project, updated\);/.test(AFM) &&
     rules.designChanges(book, copied).length === 0 && rules.designChanges(book, paper).length === 1,
     { copied: rules.designChanges(book, copied), paper: rules.designChanges(book, paper) });
+})();
+
+/* ---------- 5 Phase 3: the content workflow ---------- */
+(function () {
+  var C5 = function (f) { return read(path.join(APP, 'src', 'components', f)); };
+  var POUR = read(path.join(APP, 'src', 'engines', 'pourEngine.ts'));
+  var ED = C5('EditorialDashboard.tsx'), PM = C5('PourManuscriptModal.tsx'), PICK = C5('NewPageLayoutPicker.tsx'), BADGE = C5('PhotoResolutionBadge.tsx'),
+    CM = C5('ContentManagerModal.tsx'), LEFT5 = C5('LeftSidebar.tsx'), NAV5 = C5('BottomPageNavigator.tsx'), BAR5 = C5('InDesignControlBar.tsx'), PRE = read(path.join(APP, 'src', 'engines', 'preflightEngine.ts'));
+  check('5.1 word counts: the top bar\'s word count and two menu items open them beside the canvas (not a modal, so the book stays editable), hidden in preview',
+    /onClick=\{\(\) => onOpenModal\('editorial'\)\}/.test(BAR5) && (BAR5.match(/action: \(\) => onOpenModal\('editorial'\)/g) || []).length === 2 &&
+    /if \(m === 'editorial'\) \{\n\s*setShowEditorial\(\(o\) => !o\);/.test(APPX) && /\{!previewMode && showEditorial && \(\n\s*<EditorialDashboard/.test(APPX));
+  check('5.2 …per page, spread and chapter, with the text that doesn\'t fit (measured with the real font, again when fonts load), empty frames and the manuscript on no page, each with "Go to"; the same panel is the Content manager\'s tab',
+    /editorialCounts\(project, measureTextOverflow, placeholders\)/.test(ED) && /useFontsVersion\(\)/.test(ED) && /editorialCounts\(activeProject, measureTextOverflow\)/.test(APPX) &&
+    /Text that doesn't fit/.test(ED) && /Empty text frames/.test(ED) && /Manuscript not on any page/.test(ED) && /'pages' \| 'spreads' \| 'chapters'/.test(ED) && />\s*Go to\s*</.test(ED) &&
+    /<EditorialCountsPanel\n\s*project=\{project\}\n\s*variant="wide"/.test(CM) && !/computeEditorialAnalytics/.test(CM));
+  check('5.3 …and they are editorial information only: nothing of them is in the export',
+    !/editorialCounts|EditorialDashboard|EditorialCountsPanel|computeEditorialAnalytics/.test(EXP) && /Never printed or exported\./.test(ED));
+  check('5.4 the pour: from the Content manager, the sections (not yet placed by default) and the start page chosen, the fit measured with the real font, "Replace text in frames that already have words" off by default, stop or add pages from a layout',
+    /<PourManuscriptModal/.test(CM) && /Pour into frames/.test(CM) && /useState<Set<string>>\(\(\) => new Set\(notPlacedIds\)\)/.test(PM) &&
+    /fit: fitTextToFrame/.test(PM) && /const \[replace, setReplace\] = useState\(false\);/.test(PM) && /Replace text in frames that already have words/.test(PM) &&
+    /Stop, and tell me how many words were not placed/.test(PM) && /Add pages from layout/.test(PM) && /planPour\(project, \{ \.\.\.base, addPagesFrom: chosenLayout \}\)/.test(PM));
+  check('5.5 …a preview first, a Content editor\'s pour checked by the shared rules before Apply, and Apply is one change through the guard (Undo takes it back)',
+    /plan\.summary/.test(PM) && /designChanges\(project, plan\.project\)/.test(PM) && /const canApply = plan\.sectionsPlaced > 0 && refusal\.length === 0;/.test(PM) &&
+    /onUpdateProject\(updated\);\n\s*setPourOpen\(false\);/.test(CM) && /onUpdateProject=\{\(updated\) => commitProjectUpdate\(\(\) => updated\)\}\n\s*onJumpToPage[\s\S]{0,200}onUndo=\{handleUndo\}/.test(APPX) &&
+    /^import type \{[^}]+\} from '\.\.\/types\/bookstudio';$/m.test(POUR) && !/^import (?!type)/m.test(POUR));
+  check('5.6 a new page\'s layout: "Add page" and "Insert spread" open a picker of the master pages and a copy of the current page (an empty page for Designers only); the page is made by pageFromLayout and goes in after the current page',
+    /setPagePicker\(\{ count: 1 \}\)/.test(APPX) && /setPagePicker\(\{ count: 2 \}\)/.test(APPX) && /<NewPageLayoutPicker/.test(APPX) &&
+    /pageLayoutChoices\(project, currentPage, \{ includeBlank: canDesign \}\)/.test(PICK) && /aria-haspopup="dialog"/.test(NAV5) && /layoutPickerOpen=\{pagePicker !== null\}/.test(APPX) &&
+    /label: `A copy of page \$\{idx \+ 1\}/.test(POUR) && /with its words and photos left out/.test(POUR));
+  check('5.7 photo resolution: each library photo shows its pixels and, where placed, its print resolution (the pre-export check\'s maths, over the zoom); red under 150 ppi, amber to 250; the selected photo frame says the same',
+    /Math\.min\(pw \/ widthIn, ph \/ heightIn\) \/ zoom/.test(BADGE) && /Math\.min\(\n\s*el\.image\.naturalWidth \/ Math\.max\(0\.1, widthIn\)/.test(PRE) &&
+    /if \(ppi < 150\) return \{ level: 'too_low', label: 'Too low for print' \};/.test(BADGE) && /if \(ppi < 250\) return \{ level: 'low', label: 'Low for print' \};/.test(BADGE) &&
+    /<AssetPrintLine asset=\{asset\} use=\{photoUse\.get\(asset\.id\) \|\| \[\]\} \/>/.test(LEFT5) && /\{asset\.widthPx\}×\{asset\.heightPx\} px/.test(LEFT5) &&
+    /Selected photo frame: \{selectedPhoto\.name\}/.test(LEFT5) && /<PhotoResolutionBadge element=\{selectedPhoto\}/.test(LEFT5));
+  var small = [ED, PM, PICK, BADGE, CM, LEFT5, NAV5].join('\n').match(/text-\[(?:[0-9]|10)(?:\.\d+)?px\]/g) || [];
+  check('5.8 the new screens\' words are 11 px or more', small.length === 0, small);
 })();
 
 /* ---------- 3 the sample photos ---------- */

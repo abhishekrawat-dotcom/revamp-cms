@@ -503,6 +503,7 @@ export interface UserFontCollection {
 }
 
 export type BookTemplateCategory =
+  | 'Premium Editorial'
   | 'Luxury & Premium Editorial'
   | 'Architecture & Interior Design'
   | 'Corporate & Institutional'

@@ -1,7 +1,9 @@
 /* Books (BOOKSTUDIO): the editor's AI steps, through the one door to a text model (lib/llm.js: Claude first, Gemini
    as its fallback). The owner's AI Studio export called a model named gemini-4-hydrogen straight from an open
    Express server; these are the same seven steps, with the same request and answer shapes the editor reads, behind
-   EventSphere's sign-in (lib/api-books.js checks the caller before any of these runs).
+   EventSphere's sign-in (lib/api-books.js checks the caller before any of these runs). Phase 3 adds an eighth,
+   edit-text: one text frame's words shortened, corrected, made clearer or changed as the person asks ("Edit with AI"
+   in the Properties panel), returned as a suggestion the person applies or discards.
 
      run(name, body, ctx) -> Promise<{ status, json }>   name: one of NAMES; ctx: { user, bookId, onUsage }
      NAMES, ROUTE (each step's lib/llm.js PROFILES entry), _test: { PROMPTS, SCHEMAS, CLEAN }
@@ -17,7 +19,8 @@ var ROUTE = {
   'recommend-templates': 'books-recommend',
   'generate-publication-template': 'books-publication',
   'generate-infographic': 'books-infographic',
-  'auto-flow-data': 'books-auto-flow'
+  'auto-flow-data': 'books-auto-flow',
+  'edit-text': 'books-edit-text'
 };
 var NAMES = Object.keys(ROUTE);
 
@@ -82,13 +85,18 @@ var SCHEMAS = {
       ['pageId', 'elementId', 'variant', 'title', 'subtitle', 'items'])),
     additionalPages: A(O({ label: S, kicker: S, heading: S, body: S, quote: S, imagePlaceholderTitle: S, imagePlaceholderBrief: S,
       isInfographicPage: B, infographic: INFOGRAPHIC }, ['label', 'heading', 'body']))
-  }, ['documentTitle', 'summary', 'textUpdates', 'imageUpdates', 'infographicUpdates', 'additionalPages'])
+  }, ['documentTitle', 'summary', 'textUpdates', 'imageUpdates', 'infographicUpdates', 'additionalPages']),
+  'edit-text': O({ text: S })
 };
 
 /* ---------- what each step is asked (request body -> { prompt, opts } or { error }) ---------- */
 var REF_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 var MAX_REF_IMAGES = 6, MAX_REF_PDFS = 3, MAX_REF_BYTES = 24 * 1024 * 1024;
 var MAX_FLOW_CHARS = 150000;
+/* edit-text: one frame's words (a long essay frame is well under this), and the answer kept to about as long again */
+var MAX_EDIT_CHARS = 20000, MAX_EDIT_ANSWER = 24000, MAX_EDIT_REQUEST = 1000;
+var EDIT_TASKS = ['shorten', 'grammar', 'clarify', 'custom'];
+function wordCount(t) { t = String(t || '').trim(); return t ? t.split(/\s+/).length : 0; }
 
 var PROMPTS = {
   'analyze-template': function (b) {
@@ -196,6 +204,37 @@ var PROMPTS = {
       '6. Use only pageId and elementId values that appear in "pagesSchema".\n\n' +
       'Document Title: ' + str(b.projectTitle || 'Untitled Publication', 200) + '\nTemplate Layout Schema:\n' + json(arr(b.pagesSchema, 400), 120000) + '\n\n' +
       'Content (flow ALL of this):\n"""\n' + raw + '\n"""' };
+  },
+  'edit-text': function (b) {
+    var text = typeof b.text === 'string' ? b.text.replace(/\r\n?/g, '\n') : '';
+    if (!text.trim()) return { status: 400, error: 'There are no words in this frame for ETB2B AI to work on.' };
+    if (text.length > MAX_EDIT_CHARS) return { status: 413, error: 'That is more text than ETB2B AI edits at once (about ' + Math.round(MAX_EDIT_CHARS / 6000) + ',000 words). Edit it in parts.' };
+    var task = String(b.instruction || '');
+    if (EDIT_TASKS.indexOf(task) === -1) return { status: 400, error: 'Choose what ETB2B AI should do: shorten, fix grammar and spelling, make it clearer, or ask for a change.' };
+    var have = wordCount(text), line;
+    if (task === 'shorten') {
+      var target = Math.floor(Number(b.targetWords));
+      if (!isFinite(target) || target < 1) return { status: 400, error: 'Say how many words the frame holds, so ETB2B AI knows how short to make it.' };
+      target = Math.min(target, 20000);
+      line = 'Shorten the text to at most ' + target + ' words (it has ' + have + ' now). Count your words: the shortened text must not be longer than ' + target +
+        ' words. Cut repetition, filler and the least important detail first; keep every fact that matters. Do not shorten names, figures or quotations.';
+    } else if (task === 'grammar') {
+      line = 'Correct the grammar, spelling and punctuation only. Change nothing else: keep every word that is already right, and keep the length.';
+    } else if (task === 'clarify') {
+      line = 'Make the text clearer and easier to read: plainer words, shorter sentences, and a better order where that helps. Keep about the same length.';
+    } else {
+      var request = str(b.request, MAX_EDIT_REQUEST).trim();
+      if (!request) return { status: 400, error: 'Type the change you would like first.' };
+      line = 'The person asks: "' + request.replace(/"/g, '\'') + '". Make that change, as far as it keeps to the rules above.';
+    }
+    return { prompt: 'You are a careful copy editor for a printed coffee table book. Edit the text below as asked.\nRULES:\n' +
+      '- Keep its meaning, and keep every fact, name, number, date and quotation exactly as written.\n' +
+      '- Never add facts, figures, names, quotes, claims or sources that are not in the text.\n' +
+      '- Keep the language and the voice of the text. Keep its paragraphs, separated by one empty line.\n' +
+      '- Plain text only: no Markdown, no headings, no bullet symbols, no quotation marks around the whole text, no notes or explanations.\n' +
+      '- Answer with the edited text alone in "text".\n\n' +
+      'Task: ' + line + '\n\n' +
+      'Text:\n"""\n' + text + '\n"""' };
   }
 };
 
@@ -316,6 +355,21 @@ var CLEAN = {
         return out;
       })
     };
+  },
+  /* plain words only: what a model wraps text in (a code fence, quotes around all of it, Markdown emphasis, a heading
+     mark, a "Here is…" line) is taken off; control characters go; runs of empty lines become one; kept to a length */
+  'edit-text': function (r) {
+    var t = r && typeof r.text === 'string' ? r.text : '';
+    t = t.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '');
+    t = t.replace(/^\s*```[a-z]*\n?/i, '').replace(/\n?```\s*$/, '');
+    t = t.replace(/^\s*(?:here is|here's)[^\n]{0,80}:\s*\n/i, '');
+    t = t.replace(/\*\*([^*\n]+)\*\*/g, '$1').replace(/__([^_\n]+)__/g, '$1').replace(/^#{1,6}\s+/gm, '');
+    t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    var q = /^(["“”])([\s\S]*)(["“”])$/.exec(t);
+    if (q && q[2].indexOf('\n\n') === -1 && !/["“”]/.test(q[2])) t = q[2].trim();
+    if (t.length > MAX_EDIT_ANSWER) t = t.slice(0, MAX_EDIT_ANSWER).replace(/\s+\S*$/, '');
+    if (!t) return { error: 'ETB2B AI gave back no text. Please try again.', code: 'ai-empty', retryable: true };
+    return { text: t };
   }
 };
 
@@ -339,6 +393,8 @@ function run(name, body, ctx) {
       return { status: f.status || 502, json: out };
     }
     var cleaned = CLEAN[name](r.parsed, body || {});
+    /* an answer with nothing usable in it is a failed call, said as one */
+    if (cleaned && cleaned.code === 'ai-empty') return { status: 502, json: cleaned };
     if (asked.skipped) cleaned.skippedFiles = asked.skipped;
     return { status: 200, json: cleaned };
   }).catch(function (err) {
@@ -348,4 +404,4 @@ function run(name, body, ctx) {
 }
 
 module.exports = { run: run, NAMES: NAMES, ROUTE: ROUTE, NO_DATA_NOTE: NO_DATA_NOTE,
-  _test: { PROMPTS: PROMPTS, SCHEMAS: SCHEMAS, CLEAN: CLEAN, INFOGRAPHIC_VARIANTS: INFOGRAPHIC_VARIANTS } };
+  _test: { PROMPTS: PROMPTS, SCHEMAS: SCHEMAS, CLEAN: CLEAN, INFOGRAPHIC_VARIANTS: INFOGRAPHIC_VARIANTS, MAX_EDIT_CHARS: MAX_EDIT_CHARS, MAX_EDIT_ANSWER: MAX_EDIT_ANSWER } };

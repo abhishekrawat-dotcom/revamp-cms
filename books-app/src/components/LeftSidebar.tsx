@@ -45,6 +45,12 @@ import type {
   MasterPage,
   PageRole,
 } from '../types/bookstudio';
+import {
+  PhotoResolutionBadge,
+  photoPrintResolution,
+  printQuality,
+  sharpPrintSizeCm,
+} from './PhotoResolutionBadge';
 
 export type ComponentDragKind =
   | 'heading'
@@ -161,6 +167,41 @@ const PAGE_ROLES: Array<{ value: PageRole; label: string }> = [
   { value: 'blank', label: 'Blank Page' },
 ];
 
+/** under a library photo: how sharp it prints where it is placed (the softest place first), or where it would be sharp */
+const AssetPrintLine: React.FC<{ asset: ImageAsset; use: Array<{ pageNumber: number; ppi: number | null }> }> = ({ asset, use }) => {
+  if (!use.length) {
+    const cm = sharpPrintSizeCm(asset.widthPx || 0, asset.heightPx || 0);
+    return (
+      <div className="text-[11px] text-[#8F8C84] leading-snug" title="300 pixels per inch is sharp in print">
+        Not placed{asset.widthPx && asset.heightPx ? ` · sharp up to ${cm.widthCm}×${cm.heightCm} cm` : ''}
+      </div>
+    );
+  }
+  const measured = use.filter((u) => u.ppi !== null) as Array<{ pageNumber: number; ppi: number }>;
+  const pages = [...new Set(use.map((u) => u.pageNumber))].sort((a, b) => a - b);
+  const where = `${pages.length === 1 ? 'page' : 'pages'} ${pages.slice(0, 4).join(', ')}${pages.length > 4 ? '…' : ''}`;
+  if (!measured.length) return <div className="text-[11px] text-[#8F8C84]">On {where}</div>;
+  const worst = measured.reduce((a, u) => (u.ppi < a.ppi ? u : a), measured[0]);
+  const q = printQuality(worst.ppi);
+  const tone =
+    q.level === 'too_low'
+      ? 'bg-[#3A1F1A] border-[#E07A5F]/60 text-[#F7D6CB]'
+      : q.level === 'low'
+        ? 'bg-[#33281A] border-[#D4A657]/60 text-[#F2DDB3]'
+        : '';
+  const detail = `${Math.round(worst.ppi)} ppi${measured.length > 1 ? ' at the least' : ''} · ${where}`;
+  return (
+    <div className="space-y-0.5" title={`${Math.round(worst.ppi)} pixels per inch where it prints${measured.length > 1 ? ' (its softest place)' : ''}. 300 ppi is sharp.`}>
+      {tone ? (
+        <span className={`inline-block px-1.5 py-px rounded border text-[11px] font-medium leading-tight ${tone}`}>{q.label}</span>
+      ) : (
+        <span className={`text-[11px] ${q.level === 'good' ? 'text-[#A9C79A]' : 'text-[#C8C5BC]'}`}>{q.label}</span>
+      )}
+      <div className="font-mono-tabular text-[11px] text-[#8F8C84] leading-snug">{detail}</div>
+    </div>
+  );
+};
+
 export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   project,
   activePage,
@@ -226,6 +267,40 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
     () => [...activePage.elements].sort((a, b) => b.zIndex - a.zIndex),
     [activePage.elements]
   );
+
+  /* where each library photo is placed, and how sharp it prints there (pixels over the frame's print size) */
+  const assetOfImage = useMemo(() => {
+    const byId = new Map<string, ImageAsset>();
+    const byUrl = new Map<string, ImageAsset>();
+    project.imageAssets.forEach((a) => {
+      byId.set(a.id, a);
+      byUrl.set(a.url, a);
+      if (a.printUrl) byUrl.set(a.printUrl, a);
+    });
+    return (el: BookElement): ImageAsset | undefined =>
+      (el.image?.assetId && byId.get(el.image.assetId)) || (el.image?.src ? byUrl.get(el.image.src) : undefined);
+  }, [project.imageAssets]);
+  const photoUse = useMemo(() => {
+    const use = new Map<string, Array<{ pageNumber: number; ppi: number | null }>>();
+    project.pages.forEach((page, i) =>
+      page.elements.forEach((el) => {
+        if (el.type !== 'image' || !el.image?.src) return;
+        const asset = assetOfImage(el);
+        if (!asset) return;
+        const r = photoPrintResolution(el, asset);
+        const list = use.get(asset.id) || [];
+        list.push({ pageNumber: i + 1, ppi: r ? r.ppi : null });
+        use.set(asset.id, list);
+      })
+    );
+    return use;
+  }, [project.pages, assetOfImage]);
+  const selectedPhoto =
+    selectedElementIds.length === 1
+      ? activePage.elements.find((e) => e.id === selectedElementIds[0] && e.type === 'image') || null
+      : null;
+  const selectedPhotoRes = selectedPhoto ? photoPrintResolution(selectedPhoto, assetOfImage(selectedPhoto)) : null;
+  const selectedPhotoLow = !!selectedPhotoRes && ['too_low', 'low'].includes(printQuality(selectedPhotoRes.ppi).level);
 
   if (collapsed) {
     return (
@@ -315,6 +390,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
       {/* Tab Content */}
       <div className="flex-1 overflow-y-auto p-3 space-y-4">
+        {/* a selected photo that would print soft is said on every tab (the Images tab says more) */}
+        {tab !== 'assets' && selectedPhoto && selectedPhotoLow && (
+          <div className="p-2 bg-[#2A1E1A] border border-[#E07A5F]/40 rounded space-y-1">
+            <div className="text-[11px] font-medium text-[#F7D6CB] truncate">Selected photo: {selectedPhoto.name}</div>
+            <PhotoResolutionBadge element={selectedPhoto} pixels={assetOfImage(selectedPhoto)} />
+          </div>
+        )}
         {/* 1. COMPONENTS LIBRARY (Designers) */}
         {tab === 'components' && canDesign && (
           <>
@@ -607,10 +689,28 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               ))}
             </div>
 
+            {selectedPhoto && (
+              <div className="p-2.5 bg-[#1F1F24] border border-white/[0.08] rounded space-y-1.5" aria-label="Selected photo frame">
+                <div className="text-[11px] font-medium text-[#ECEAE4] truncate" title={selectedPhoto.name}>
+                  Selected photo frame: {selectedPhoto.name}
+                </div>
+                {!selectedPhoto.image?.src ? (
+                  <p className="text-[11px] text-[#A19E95]">This frame has no photo yet: click a photo below to put it in.</p>
+                ) : selectedPhotoRes ? (
+                  <PhotoResolutionBadge element={selectedPhoto} pixels={assetOfImage(selectedPhoto)} />
+                ) : (
+                  <p className="text-[11px] text-[#A19E95]">This photo's pixel size is not known, so how sharp it prints cannot be worked out.</p>
+                )}
+              </div>
+            )}
+
             <p className="text-[11px] text-[#8F8C84]">
               {canDesign
                 ? 'Drag a photograph onto any existing image frame to replace it non-destructively, or click to insert/replace.'
                 : 'Drag a photo onto a photo frame, or select a photo frame on the page and click a photo here, to put it in the frame.'}
+            </p>
+            <p className="text-[11px] text-[#8F8C84]">
+              Under each photo: its pixels, and where it is placed, how sharp it prints there. 300 ppi is sharp; under 150 looks soft in print.
             </p>
 
             <div className="grid grid-cols-2 gap-2">
@@ -638,8 +738,9 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       {asset.name}
                     </div>
                     <div className="font-mono-tabular text-[11px] text-[#8F8C84]">
-                      {asset.widthPx}×{asset.heightPx}px · {asset.category}
+                      {asset.widthPx}×{asset.heightPx} px · {asset.category}
                     </div>
+                    <AssetPrintLine asset={asset} use={photoUse.get(asset.id) || []} />
                     <input
                       type="text"
                       value={asset.tags.join(', ')}

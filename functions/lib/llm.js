@@ -108,6 +108,8 @@ var PROFILES = {
   'books-publication': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 170000, maxOutputTokens: 16000 },
   'books-infographic': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 4000 },
   'books-auto-flow': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 200000, maxOutputTokens: 32000, plain: true },
+  /* one text frame's words shortened, corrected, made clearer or changed as asked (Phase 3's "Edit with AI") */
+  'books-edit-text': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 },
   'default': { model: CLAUDE_SONNET, effort: 'low', timeoutMs: 75000, maxOutputTokens: 12000 }
 };
 

@@ -7,7 +7,8 @@
 // IDML; the AI steps (what they are told, what is kept of their answers, failures); the wiring (router, served files,
 // rate limits, models, the page, the menu link). Phase 2 (12–16): the Books role from Settings › Access (Designer,
 // Content editor, none) on every route; a Content editor's save refused whole, writing nothing, for any design change;
-// who is here; deleted pages kept and restored; the activity log and its 10-minute folding.
+// who is here; deleted pages kept and restored; the activity log and its 10-minute folding. Phase 3 (17): "Edit with AI"
+// on a text frame (edit-text) for both roles — what it is told, what is kept of its answer, refusals.
 // Firestore and Storage are in-memory; the AI is a stub. No network.
 'use strict';
 var fs = require('fs'), path = require('path'), zlib = require('zlib'), stream = require('stream');
@@ -349,7 +350,7 @@ function partsOf(id) { return Object.keys(DOCS).filter(function (k) { return k.i
 
   /* ---------- 10 the AI steps ---------- */
   var P = AI._test.PROMPTS, C = AI._test.CLEAN;
-  check('10.1 seven steps, each with its own model profile', AI.NAMES.length === 7 && AI.NAMES.every(function (n) { return /^books-/.test(AI.ROUTE[n]); }));
+  check('10.1 eight steps (Phase 3 added edit-text), each with its own model profile', AI.NAMES.length === 8 && AI.NAMES.indexOf('edit-text') !== -1 && AI.NAMES.every(function (n) { return /^books-/.test(AI.ROUTE[n]); }));
   var LLM_SRC = fs.readFileSync(path.join(__dirname, 'llm.js'), 'utf8'), HTTP_SRC = fs.readFileSync(path.join(__dirname, 'http.js'), 'utf8');
   check('10.2 …in lib/llm.js (Claude, Gemini as fallback; no "gemini-4-hydrogen") and rate-limited per person', AI.NAMES.every(function (n) {
     return LLM_SRC.indexOf("'" + AI.ROUTE[n] + "': { model:") !== -1 && HTTP_SRC.indexOf("'POST /api/books/ai/" + n + "': { max:") !== -1; }) && !/['"]gemini-4-hydrogen/.test(LLM_SRC + fs.readFileSync(path.join(__dirname, 'books-ai.js'), 'utf8')));
@@ -718,6 +719,53 @@ function partsOf(id) { return Object.keys(DOCS).filter(function (k) { return k.i
   var many2 = T.saveSentence(Object.assign(T.foldCounts(null, T.saveCounts({ pages: [] }, { pages: [] }, [])), { added: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], deleted: [1, 2, 3, 4].map(function (i) { return { id: 'd' + i, label: 'D' + i }; }) }));
   check('16.11 sentences: two pages named, more than three counted, nothing changed said so', many2 === 'Added pages "A" and "B"; deleted 4 pages' &&
     T.saveSentence(T.saveCounts({ pages: [] }, { pages: [] }, [])) === 'Saved with no changes', many2);
+
+  /* ---------- 17 Phase 3: "Edit with AI" on a text frame (edit-text), for both roles ---------- */
+  var ET = P['edit-text'], ETC = C['edit-text'];
+  var essay = 'The Basalt Residences opened in 2019 with 42 homes.\n\nArchitect Meera Rao chose local stone.';
+  var shortP = ET({ text: essay, instruction: 'shorten', targetWords: 12 });
+  check('17.1 the prompt keeps the meaning, facts, names and numbers, adds no facts, asks for plain text; shorten names the target and the count now',
+    /Keep its meaning, and keep every fact, name, number, date and quotation exactly as written/.test(shortP.prompt) && /Never add facts, figures, names, quotes, claims or sources/.test(shortP.prompt) &&
+    /Plain text only/.test(shortP.prompt) && /at most 12 words \(it has 15 now\)/.test(shortP.prompt) && shortP.prompt.indexOf(essay) !== -1, shortP.prompt);
+  check('17.2 …grammar changes nothing else; clarify keeps the length; a custom change carries the request (its quotes made safe)',
+    /grammar, spelling and punctuation only/.test(ET({ text: essay, instruction: 'grammar' }).prompt) && /Keep about the same length/.test(ET({ text: essay, instruction: 'clarify' }).prompt) &&
+    /The person asks: "make it 'warmer'"/.test(ET({ text: essay, instruction: 'custom', request: 'make it "warmer"' }).prompt));
+  var refused = [ET({ text: '  ', instruction: 'grammar' }), ET({ text: essay, instruction: 'rewrite-everything' }), ET({ text: essay, instruction: 'shorten' }),
+    ET({ text: essay, instruction: 'shorten', targetWords: 0 }), ET({ text: essay, instruction: 'custom', request: ' ' }), ET({ text: new Array(AI._test.MAX_EDIT_CHARS + 2).join('a'), instruction: 'grammar' })];
+  check('17.3 refused before any call: no words, an unknown instruction, shorten with no target, a custom change with no request (400), too long (413)',
+    refused.slice(0, 5).every(function (r) { return r.status === 400 && r.error; }) && refused[5].status === 413 && /in parts/.test(refused[5].error) &&
+    /no words in this frame/.test(refused[0].error) && /Type the change/.test(refused[4].error), refused);
+  var cleaned = ETC({ text: '```text\nHere is the shorter version:\n**The Basalt Residences** opened in 2019.  \n\n\n\n## Meera Rao chose stone.\u0007\n```' });
+  check('17.4 the answer is cleaned: no code fence, "Here is" line, Markdown, control characters or runs of empty lines',
+    cleaned.text === 'The Basalt Residences opened in 2019.\n\nMeera Rao chose stone.', cleaned);
+  check('17.5 …quotes around the whole of it go, quotes inside stay; kept to a length; nothing usable is "ai-empty"',
+    ETC({ text: '“Forty-two homes.”' }).text === 'Forty-two homes.' && ETC({ text: 'She said “yes”.' }).text === 'She said “yes”.' &&
+    ETC({ text: new Array(30000).join('word ') }).text.length <= AI._test.MAX_EDIT_ANSWER && ETC({ text: ' ``` ``` ' }).code === 'ai-empty' && ETC(null).code === 'ai-empty' &&
+    ETC({ text: 42 }).code === 'ai-empty');
+  AI_ASKS = [];
+  AI_ANSWER = { parsed: { text: '**Opened in 2019** with 42 homes.\n\n\n\nMeera Rao chose stone.' }, provider: 'claude' };
+  var etC = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'shorten', targetWords: 12 }, { token: CONTENT, headers: { 'x-book-id': 'qa_roles' } });
+  var etD = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'clarify' }, { token: DESIGNER });
+  check('17.6 a Content editor and a Designer may both use it: the cleaned text, on its own model profile', etC.status === 200 && etD.status === 200 &&
+    etC.json.text === 'Opened in 2019 with 42 homes.\n\nMeera Rao chose stone.' && Object.keys(etC.json).join() === 'text' &&
+    AI_ASKS.length === 2 && AI_ASKS[0].opts.route === 'books-edit-text' && AI_ASKS[0].prompt.indexOf(essay) !== -1 && AI_ASKS[0].schema.properties.text.type === 'STRING', [etC.json, etD.json]);
+  check('17.7 …its cost counted against the open book', DOCS['books/qa_roles'].aiUsage && DOCS['books/qa_roles'].aiUsage.calls >= 1, DOCS['books/qa_roles'].aiUsage);
+  AI_ANSWER = { parsed: { text: '   ' }, provider: 'claude' };
+  var etEmpty = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'grammar' }, { token: CONTENT });
+  check('17.8 an answer with no words: 502 with a sentence to try again (never an empty frame)', etEmpty.status === 502 && etEmpty.json.code === 'ai-empty' && etEmpty.json.retryable === true &&
+    /gave back no text/.test(etEmpty.json.error), etEmpty.json);
+  AI_ANSWER = { error: 'ETB2B AI is busy. Please try again in a minute.', code: 'ai-quota', status: 429, retryable: true };
+  var etBusy = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'grammar' }, { token: DESIGNER });
+  check('17.9 a failed call: the model layer\'s status and sentence', etBusy.status === 429 && etBusy.json.code === 'ai-quota', etBusy.json);
+  var askedNow = AI_ASKS.length;
+  var etBad = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'custom' }, { token: CONTENT });
+  var etNo = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'grammar' }, { token: NOBOOKS });
+  var etOut = await call('POST', '/api/books/ai/edit-text', { text: essay, instruction: 'grammar' }, { token: EDITOR });
+  check('17.10 a request with nothing to work on is 400 with the sentence; anyone without Books 403; neither asks the AI', etBad.status === 400 && /Type the change/.test(etBad.json.error) &&
+    etNo.status === 403 && etNo.json.code === 'no-books' && etOut.status === 403 && AI_ASKS.length === askedNow, [etBad.json, etNo.json, etOut.json]);
+  check('17.11 the step is a Content editor\'s route (both roles) and rate-limited per person (60 in 10 minutes)', T.CONTENT_ROUTES['POST /api/books/ai/edit-text'] === 1 &&
+    !T.DESIGNER_ACTIONS['POST /api/books/ai/edit-text'] && /'POST \/api\/books\/ai\/edit-text': \{ max: 60, ms: TEN_MINUTES \}/.test(HTTP_SRC) &&
+    /'books-edit-text': \{ model: CLAUDE_SONNET, effort: 'low', timeoutMs: 60000, maxOutputTokens: 6000 \}/.test(LLM_SRC));
 
   /* ---------- 11 wiring ---------- */
   var access = require('./access');

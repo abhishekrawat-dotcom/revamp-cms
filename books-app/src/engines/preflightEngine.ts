@@ -110,9 +110,10 @@ export function runPreflightCheck(project: BookProject): PreflightIssue[] {
               pageId: page.id,
               pageNumber: pageNum,
               elementId: el.id,
-              title: `Text overflow on Page ${pageNum} (${ov.overflowWords} words)`,
-              detail: `"${el.name}" exceeds frame capacity (${ov.estimatedLines}/${ov.maxLines} lines).`,
-              suggestion: 'Use Fit Text, Expand Frame, or Continue on Next Page from the Properties panel.',
+              title: `Text doesn't fit on page ${pageNum}: ${ov.overflowWords} ${ov.overflowWords === 1 ? 'word' : 'words'}`,
+              detail: `"${el.name}" needs ${ov.estimatedLines} lines and holds ${ov.maxLines} (measured with its font).`,
+              suggestion:
+                'Select the frame and use the box in the Properties panel: continue on the next page, shorten with ETB2B AI or edit the words yourself. A Designer can also shrink the type, tighten the spacing or make the frame taller.',
             });
           }
         }
@@ -149,10 +150,12 @@ export function runPreflightCheck(project: BookProject): PreflightIssue[] {
         } else if (el.image.naturalWidth && el.image.naturalHeight) {
           const widthIn = el.widthMm / MM_PER_INCH;
           const heightIn = el.heightMm / MM_PER_INCH;
+          // zoomed in inside its frame, each pixel prints larger (the photo badge's maths, PhotoResolutionBadge.tsx)
+          const zoom = Math.max(0.1, el.image.zoom || 1);
           const effectiveDpi = Math.min(
             el.image.naturalWidth / Math.max(0.1, widthIn),
             el.image.naturalHeight / Math.max(0.1, heightIn)
-          );
+          ) / zoom;
           if (effectiveDpi < 150) {
             issues.push({
               id: `pf_dpi_err_${page.id}_${el.id}`,
@@ -162,8 +165,10 @@ export function runPreflightCheck(project: BookProject): PreflightIssue[] {
               pageNumber: pageNum,
               elementId: el.id,
               title: `Low effective print resolution (${Math.round(effectiveDpi)} DPI) on Page ${pageNum}`,
-              detail: `"${el.name}" is placed at ${Math.round(el.widthMm)}×${Math.round(el.heightMm)} mm with ${el.image.naturalWidth}×${el.image.naturalHeight} px source.`,
-              suggestion: 'Replace with a higher-resolution photograph (target 300 DPI) or reduce frame size.',
+              detail: `"${el.name}" is placed at ${Math.round(el.widthMm)}×${Math.round(el.heightMm)} mm with ${el.image.naturalWidth}×${el.image.naturalHeight} px source${zoom !== 1 ? `, zoomed to ${Math.round(zoom * 100)}%` : ''}.`,
+              suggestion: zoom > 1
+                ? 'Replace with a higher-resolution photograph (target 300 DPI), zoom out inside the frame, or reduce the frame size.'
+                : 'Replace with a higher-resolution photograph (target 300 DPI) or reduce frame size.',
             });
           }
         }

@@ -13,7 +13,7 @@ import type {
 import { EDITORIAL_PHOTOS } from '../data/curatedAssets';
 import { inferOrientation } from '../engines/dimensionEngine';
 import { buildPublicationPagesFromBlueprint } from '../engines/unlimitedTemplateEngine';
-import { apiSend } from './api';
+import { ApiError, apiSend } from './api';
 
 export async function analyzeUploadedTemplates(payload: {
   files: Array<{ name: string; mimeType: string; base64: string }>;
@@ -107,6 +107,22 @@ export async function askEditorialAssistant(payload: {
     })
   );
   return { summary: String(data.summary || ''), suggestions };
+}
+
+export type EditTextInstruction = 'shorten' | 'grammar' | 'clarify' | 'custom';
+
+/** "Edit with AI" on one text frame: ETB2B AI's version of the words, as a suggestion (nothing in the book changes
+    until the person applies it). shorten: at most targetWords; custom: the person's own request. */
+export async function editTextWithAi(payload: {
+  text: string;
+  instruction: EditTextInstruction;
+  targetWords?: number;
+  request?: string;
+}): Promise<{ text: string }> {
+  const data = await apiSend<{ text?: unknown }>('POST', '/ai/edit-text', payload);
+  const text = typeof data.text === 'string' ? data.text : '';
+  if (!text.trim()) throw new ApiError('ETB2B AI gave back no text. Please try again.', 502, 'ai-empty', {});
+  return { text };
 }
 
 export async function fetchAiTemplateRecommendations(payload: {

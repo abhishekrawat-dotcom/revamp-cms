@@ -1,32 +1,50 @@
 import React, { useMemo, useState } from 'react';
 import {
-  AlertTriangle,
   ArrowRight,
   BarChart2,
+  CheckCircle2,
   FileText,
   Plus,
   Trash2,
   Upload,
+  Wand2,
   X,
 } from 'lucide-react';
 import type { BookProject, ContentSection } from '../types/bookstudio';
 import { uploadManuscript } from '../services/storageService';
-import { computeEditorialAnalytics, countWords, findTextElementsOnPage } from '../engines/textEngine';
+import { countWords, findTextElementsOnPage } from '../engines/textEngine';
+import { sectionPlacement } from '../engines/pourEngine';
+import { EditorialCountsPanel, useEditorialCounts } from './EditorialDashboard';
+import { PourManuscriptModal } from './PourManuscriptModal';
 
 interface ContentManagerModalProps {
   project: BookProject;
+  /** the page open on the canvas (the pour starts there) */
+  activePageId: string;
+  /** false for a Content editor: a section is put only into a frame the page has */
+  canDesign: boolean;
+  /** which part opens first: the manuscript, the word counts, or "Pour manuscript into frames" */
+  initialView?: 'manuscript' | 'analytics' | 'pour';
   onUpdateProject: (updated: BookProject) => void;
   onJumpToPage: (pageId: string, elementId?: string) => void;
+  /** takes back the last change (after a pour) */
+  onUndo?: () => void;
   onClose: () => void;
 }
 
 export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
   project,
+  activePageId,
+  canDesign,
+  initialView = 'manuscript',
   onUpdateProject,
   onJumpToPage,
+  onUndo,
   onClose,
 }) => {
-  const [tab, setTab] = useState<'manuscript' | 'analytics'>('manuscript');
+  const [tab, setTab] = useState<'manuscript' | 'analytics'>(initialView === 'analytics' ? 'analytics' : 'manuscript');
+  const [pourOpen, setPourOpen] = useState(initialView === 'pour');
+  const [poured, setPoured] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [newBody, setNewBody] = useState('');
   const [newKind, setNewKind] = useState<ContentSection['kind']>('body');
@@ -34,7 +52,8 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [assignPageMap, setAssignPageMap] = useState<Record<string, string>>({});
 
-  const analytics = useMemo(() => computeEditorialAnalytics(project), [project]);
+  const counts = useEditorialCounts(project);
+  const placement = useMemo(() => sectionPlacement(project), [project]);
 
   const handleUploadManuscript = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -93,6 +112,13 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
       textFrames.find((f) => f.textRole === section.kind) ||
       textFrames.find((f) => f.textRole === 'body') ||
       textFrames[0];
+    // a new frame is the design's: a Content editor puts the section into a frame the page already has
+    if (!chosenFrame && !canDesign) {
+      const n = project.pages.findIndex((p) => p.id === targetPageId) + 1;
+      setUploadError(`Page ${n} has no text frame to put this section in. Choose another page, or use "Pour into frames", which finds the frames for you.`);
+      return;
+    }
+    setUploadError(null);
 
     const updatedPages = project.pages.map((p) => {
       if (p.id !== targetPageId) return p;
@@ -106,7 +132,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
           ),
         };
       }
-      // If page has no text frame yet, place a new clean text frame aligned to margins
+      // If page has no text frame yet, place a new clean text frame aligned to margins (a Designer's only: see above)
       const m = project.dimensions.margins;
       const w = Math.max(60, project.dimensions.widthMm - m.inner - m.outer);
       return {
@@ -168,14 +194,15 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
         <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between">
           <div>
             <h2 className="font-display text-lg font-medium text-[#F4F1EA]">
-              Editorial Content Manager & Backend Word Count Analytics
+              Manuscript and word counts
             </h2>
             <p className="text-[11px] text-[#98958D]">
-              Content is cleanly decoupled from page geometry. All word & character statistics below remain strictly backend editorial data — never printed on pages or exported PDFs.
+              Import or write the book's text here, then put it into the page frames. The word counts are for editing only: they are never printed or exported.
             </p>
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="p-1.5 text-[#98958D] hover:text-white rounded cursor-pointer"
           >
             <X className="w-4 h-4" />
@@ -194,7 +221,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
               }`}
             >
               <FileText className="w-3.5 h-3.5 text-[#C6A26B]" />
-              <span>Manuscript & Sections ({project.contentSections.length})</span>
+              <span>Manuscript ({project.contentSections.length} sections)</span>
             </button>
             <button
               onClick={() => setTab('analytics')}
@@ -206,28 +233,63 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
             >
               <BarChart2 className="w-3.5 h-3.5 text-[#C6A26B]" />
               <span>
-                Backend Word Count Analytics ({analytics.totalWords.toLocaleString()} words)
+                Word counts ({counts.totalWords.toLocaleString()} words)
               </span>
             </button>
           </div>
 
-          <label className="px-3 py-1.5 bg-[#C6A26B] hover:bg-[#D5B47F] text-[#121214] text-xs font-medium rounded flex items-center gap-1.5 cursor-pointer">
-            <Upload className="w-3.5 h-3.5" />
-            <span>{uploading ? 'Importing...' : 'Import DOCX / PDF / TXT / RTF / CSV'}</span>
-            <input
-              type="file"
-              accept=".docx,.pdf,.txt,.rtf,.csv"
-              onChange={handleUploadManuscript}
-              className="hidden"
-            />
-          </label>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPourOpen(true)}
+              disabled={project.contentSections.length === 0}
+              title={
+                project.contentSections.length === 0
+                  ? 'Import or add the manuscript first'
+                  : 'Put the manuscript into the book\'s text frames in reading order, without moving any frame'
+              }
+              className="px-3 py-1.5 bg-[#26262C] hover:bg-[#32323B] border border-[#C6A26B]/40 text-[#ECEAE4] text-xs font-medium rounded flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+            >
+              <Wand2 className="w-3.5 h-3.5 text-[#C6A26B]" />
+              <span>Pour into frames{counts.notPlaced.length ? ` (${counts.notPlaced.length} not placed)` : ''}</span>
+            </button>
+            <label className="px-3 py-1.5 bg-[#C6A26B] hover:bg-[#D5B47F] text-[#121214] text-xs font-medium rounded flex items-center gap-1.5 cursor-pointer">
+              <Upload className="w-3.5 h-3.5" />
+              <span>{uploading ? 'Importing...' : 'Import Word, PDF, text, RTF or CSV'}</span>
+              <input
+                type="file"
+                accept=".docx,.pdf,.txt,.rtf,.csv"
+                onChange={handleUploadManuscript}
+                className="hidden"
+              />
+            </label>
+          </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
           {uploadError && (
-            <div className="p-3 bg-[#2B1B19] border border-[#D94F3D]/50 rounded text-xs text-[#F5CFC7]">
+            <div role="alert" className="p-3 bg-[#2B1B19] border border-[#D94F3D]/50 rounded text-xs text-[#F5CFC7]">
               {uploadError}
+            </div>
+          )}
+          {poured && (
+            <div role="status" className="p-3 bg-[#1F2A1C] border border-[#8AA678]/45 rounded text-xs text-[#CFE3C2] flex items-center gap-3">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span className="flex-1">Placed: {poured}.</span>
+              {onUndo && (
+                <button
+                  onClick={() => {
+                    onUndo();
+                    setPoured(null);
+                  }}
+                  className="px-2.5 py-1 rounded bg-white/[0.08] hover:bg-white/[0.14] text-[#ECEAE4] cursor-pointer"
+                >
+                  Undo
+                </button>
+              )}
+              <button onClick={() => setPoured(null)} aria-label="Dismiss" className="px-1 text-[#A19E95] hover:text-white cursor-pointer">
+                ✕
+              </button>
             </div>
           )}
 
@@ -280,7 +342,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
               {/* Sections List */}
               <div className="lg:col-span-2 space-y-3">
                 {project.contentSections.map((sec) => {
-                  const assignedPage = project.pages.find((p) => p.id === sec.assignedPageId);
+                  const where = placement[sec.id];
                   return (
                     <div
                       key={sec.id}
@@ -291,7 +353,9 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                           <div className="text-xs font-semibold text-[#F4F1EA]">{sec.title}</div>
                           <div className="font-mono-tabular text-[11px] text-[#98958D] mt-0.5">
                             {sec.kind} · {countWords(sec.body)} words ·{' '}
-                            {assignedPage ? `Assigned to ${assignedPage.label}` : 'Unassigned'}
+                            {where?.placed
+                              ? `On page${where.pageNumbers.length === 1 ? '' : 's'} ${where.pageNumbers.join(', ')}`
+                              : 'Not on any page'}
                           </div>
                         </div>
                         <button
@@ -301,6 +365,8 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                               contentSections: project.contentSections.filter((s) => s.id !== sec.id),
                             })
                           }
+                          aria-label={`Delete the section ${sec.title}`}
+                          title="Delete this section from the manuscript (the words already on pages stay)"
                           className="p-1 text-[#7F7C75] hover:text-[#E07A5F] cursor-pointer"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -339,7 +405,7 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
                           onClick={() => handleAssignToPage(sec)}
                           className="px-3 py-1 bg-[#26262C] hover:bg-[#32323B] text-[11px] text-[#ECEAE4] rounded flex items-center gap-1 cursor-pointer"
                         >
-                          <span>Assign to Page Frame</span>
+                          <span>Put into a frame on this page</span>
                           <ArrowRight className="w-3 h-3 text-[#C6A26B]" />
                         </button>
                       </div>
@@ -349,155 +415,33 @@ export const ContentManagerModal: React.FC<ContentManagerModalProps> = ({
               </div>
             </div>
           ) : (
-            /* BACKEND WORD COUNT & EDITORIAL ANALYTICS DASHBOARD */
-            <div className="space-y-6">
-              {/* Top Metric Strip */}
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                {[
-                  ['Total Book Words', analytics.totalWords.toLocaleString()],
-                  ['Total Characters', analytics.totalCharacters.toLocaleString()],
-                  ['Overflow Frames', String(analytics.overflowFrames.length)],
-                  ['Empty Text Frames', String(analytics.emptyTextFrames.length)],
-                  ['Unassigned Sections', String(analytics.unassignedSections.length)],
-                ].map(([label, val]) => (
-                  <div
-                    key={label}
-                    className="p-3.5 bg-[#141417] border border-white/[0.08] rounded-md"
-                  >
-                    <div className="text-[11px] text-[#98958D]">{label}</div>
-                    <div className="font-mono-tabular text-xl font-semibold text-[#F4F1EA] mt-1">
-                      {val}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Overflow & Empty Alerts */}
-              {analytics.overflowFrames.length > 0 && (
-                <div className="p-4 bg-[#2B1B19] border border-[#D94F3D]/50 rounded-md space-y-2">
-                  <div className="text-xs font-semibold text-[#F5CFC7] flex items-center gap-1.5">
-                    <AlertTriangle className="w-4 h-4 text-[#E07A5F]" />
-                    <span>Overflowing Text Frames Requiring Editorial Action</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {analytics.overflowFrames.map((ov) => (
-                      <div
-                        key={ov.elementId}
-                        className="flex items-center justify-between text-xs text-[#EED5D0]"
-                      >
-                        <span>
-                          Page {ov.pageNumber} · {ov.elementName} (+{ov.overflowWords} overflow words)
-                        </span>
-                        <button
-                          onClick={() => {
-                            onJumpToPage(ov.pageId, ov.elementId);
-                            onClose();
-                          }}
-                          className="px-2.5 py-1 bg-[#442824] hover:bg-[#57322D] rounded text-[11px] cursor-pointer"
-                        >
-                          Inspect Frame
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Page-wise & Chapter-wise Tables */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                <div className="lg:col-span-2 border border-white/[0.08] rounded-md overflow-hidden">
-                  <div className="px-4 py-2.5 bg-[#141417] border-b border-white/[0.08] text-xs font-semibold text-[#ECEAE4]">
-                    Page-by-Page Editorial Count
-                  </div>
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-[#161619] text-[11px] text-[#98958D] border-b border-white/[0.06]">
-                      <tr>
-                        <th className="px-3 py-2">Page</th>
-                        <th className="px-3 py-2">Label</th>
-                        <th className="px-3 py-2 text-right">Words</th>
-                        <th className="px-3 py-2 text-right">Chars</th>
-                        <th className="px-3 py-2 text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/[0.05]">
-                      {analytics.pageStats.map((ps) => (
-                        <tr
-                          key={ps.pageId}
-                          onClick={() => {
-                            onJumpToPage(ps.pageId);
-                            onClose();
-                          }}
-                          className="hover:bg-white/[0.03] cursor-pointer"
-                        >
-                          <td className="px-3 py-2 font-mono-tabular text-[#C6A26B]">
-                            P.{String(ps.pageNumber).padStart(2, '0')}
-                          </td>
-                          <td className="px-3 py-2 text-[#ECEAE4]">{ps.label}</td>
-                          <td className="px-3 py-2 text-right font-mono-tabular text-[#ECEAE4]">
-                            {ps.words.toLocaleString()}
-                          </td>
-                          <td className="px-3 py-2 text-right font-mono-tabular text-[#98958D]">
-                            {ps.characters.toLocaleString()}
-                          </td>
-                          <td className="px-3 py-2 text-right text-[11px]">
-                            {ps.overflowCount > 0 ? (
-                              <span className="text-[#E07A5F]">Overflow</span>
-                            ) : ps.emptyTextFrames > 0 ? (
-                              <span className="text-[#D4A657]">{ps.emptyTextFrames} Empty</span>
-                            ) : (
-                              <span className="text-[#8AA678]">Balanced</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <div className="space-y-4">
-                  <div className="border border-white/[0.08] rounded-md overflow-hidden">
-                    <div className="px-4 py-2.5 bg-[#141417] border-b border-white/[0.08] text-xs font-semibold text-[#ECEAE4]">
-                      Spread Totals
-                    </div>
-                    <div className="divide-y divide-white/[0.05]">
-                      {analytics.spreadStats.map((sp) => (
-                        <div
-                          key={sp.spreadLabel}
-                          className="px-3.5 py-2 flex items-center justify-between text-xs"
-                        >
-                          <span className="text-[#A19E95]">{sp.spreadLabel}</span>
-                          <span className="font-mono-tabular text-[#ECEAE4]">
-                            {sp.words.toLocaleString()} w
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="border border-white/[0.08] rounded-md overflow-hidden">
-                    <div className="px-4 py-2.5 bg-[#141417] border-b border-white/[0.08] text-xs font-semibold text-[#ECEAE4]">
-                      Chapter Totals
-                    </div>
-                    <div className="divide-y divide-white/[0.05]">
-                      {analytics.chapterStats.map((ch) => (
-                        <div
-                          key={ch.chapterId}
-                          className="px-3.5 py-2 flex items-center justify-between text-xs gap-2"
-                        >
-                          <span className="text-[#A19E95] truncate">{ch.title}</span>
-                          <span className="font-mono-tabular text-[#ECEAE4] shrink-0">
-                            {ch.words.toLocaleString()} w
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            /* the word counts: the same panel as the drawer beside the canvas */
+            <EditorialCountsPanel
+              project={project}
+              variant="wide"
+              onGoTo={(pageId, elId) => {
+                onJumpToPage(pageId, elId);
+                onClose();
+              }}
+              onOpenPour={() => setPourOpen(true)}
+            />
           )}
         </div>
       </div>
+      {pourOpen && (
+        <PourManuscriptModal
+          project={project}
+          activePageId={activePageId}
+          canDesign={canDesign}
+          onApply={(updated, plan) => {
+            onUpdateProject(updated);
+            setPourOpen(false);
+            setTab('manuscript');
+            setPoured(plan.summary);
+          }}
+          onClose={() => setPourOpen(false)}
+        />
+      )}
     </div>
   );
 };

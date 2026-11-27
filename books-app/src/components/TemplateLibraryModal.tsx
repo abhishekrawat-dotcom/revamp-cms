@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   BarChart3,
   BookmarkPlus,
@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import type {
+  BookElement,
   BookPage,
   BookProject,
   BookTemplate,
@@ -28,6 +29,13 @@ import type {
 } from '../types/bookstudio';
 import { BUILTIN_BOOK_TEMPLATES } from '../data/bookTemplates';
 import { BUILTIN_INFOGRAPHIC_TEMPLATES } from '../data/infographicTemplates';
+import {
+  PREMIUM_BOOK_TEMPLATES,
+  PREMIUM_CATEGORY,
+  PREMIUM_TEMPLATE_DETAILS,
+  isPremiumTemplateId,
+} from '../data/premiumTemplates';
+import { loadGoogleFont } from '../engines/fontEngine';
 import { renderInfographicToSvgString } from '../engines/infographicEngine';
 import {
   generateUnlimitedInfographicBatch,
@@ -55,6 +63,7 @@ interface TemplateLibraryModalProps {
 
 const BOOK_CATEGORIES: Array<'All' | BookTemplateCategory> = [
   'All',
+  PREMIUM_CATEGORY,
   'Reports & Research',
   'Consulting & ESG',
   'Luxury & Premium Editorial',
@@ -101,6 +110,209 @@ const INFOGRAPHIC_VARIANT_CHOICES = [
   { value: 'india_map_data', label: 'India Regional Data Map' },
   { value: 'world_map_data', label: 'Global World Data Map' },
 ];
+
+/* ---------- page previews ---------- */
+
+const PT_TO_MM = 25.4 / 72;
+
+/** an infographic's SVG, sized to fill its frame */
+function fittedInfographicSvg(el: BookElement): string {
+  if (!el.infographic) return '';
+  return renderInfographicToSvgString(el.infographic, Math.round(el.widthMm * 3.2), Math.round(el.heightMm * 3.2)).replace(
+    /^<svg([^>]*?) width="[\d.]+" height="[\d.]+"/,
+    '<svg$1 width="100%" height="100%" preserveAspectRatio="xMidYMid meet"'
+  );
+}
+
+function PreviewElement({ el, pxPerMm, pageNumber }: { el: BookElement; pxPerMm: number; pageNumber: number }) {
+  const box: React.CSSProperties = {
+    position: 'absolute',
+    left: el.xMm * pxPerMm,
+    top: el.yMm * pxPerMm,
+    width: el.widthMm * pxPerMm,
+    height: el.heightMm * pxPerMm,
+    opacity: el.opacity ?? 1,
+    transform: el.rotation ? `rotate(${el.rotation}deg)` : undefined,
+    overflow: 'hidden',
+  };
+  if (el.type === 'image') {
+    const im = el.image;
+    if (!im?.src) {
+      /* an empty frame: the tint behind it shows, as it prints; its name only when the page is large enough to read */
+      return (
+        <div style={{ ...box, outline: '1px dashed rgba(0,0,0,0.18)', outlineOffset: -1 }}>
+          {pxPerMm >= 1.2 && (
+            <div className="w-full h-full flex items-center justify-center px-2 text-center text-[11px] leading-snug text-black/45">
+              {el.name}
+            </div>
+          )}
+        </div>
+      );
+    }
+    const filter = [
+      im.brightness !== undefined && im.brightness !== 100 ? `brightness(${im.brightness}%)` : '',
+      im.contrast !== undefined && im.contrast !== 100 ? `contrast(${im.contrast}%)` : '',
+      im.grayscale ? `grayscale(${im.grayscale}%)` : '',
+      im.sepia ? `sepia(${im.sepia}%)` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return (
+      <div style={{ ...box, borderRadius: (im.borderRadiusMm || 0) * pxPerMm }}>
+        <img
+          src={im.src}
+          alt={im.alt || el.name}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          draggable={false}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: im.fit || 'cover',
+            objectPosition: `${im.focalX ?? 50}% ${im.focalY ?? 50}%`,
+            transform: `scale(${im.zoom || 1})`,
+            filter: filter || undefined,
+          }}
+        />
+      </div>
+    );
+  }
+  if ((el.type === 'shape' || el.type === 'line' || el.type === 'decorative') && el.shape) {
+    const sh = el.shape;
+    if (el.type === 'line' || sh.shapeKind === 'rule') {
+      return (
+        <div style={{ ...box, display: 'flex', alignItems: 'center' }}>
+          <div
+            style={{
+              width: '100%',
+              borderTopWidth: Math.max(0.5, (sh.strokeWidthMm || 0.4) * pxPerMm),
+              borderTopStyle: sh.dashStyle || 'solid',
+              borderTopColor: sh.stroke || '#C6A26B',
+            }}
+          />
+        </div>
+      );
+    }
+    return (
+      <div
+        style={{
+          ...box,
+          backgroundColor: sh.fill || 'transparent',
+          borderWidth: sh.strokeWidthMm > 0 ? sh.strokeWidthMm * pxPerMm : 0,
+          borderStyle: sh.dashStyle || 'solid',
+          borderColor: sh.stroke || 'transparent',
+          borderRadius: sh.shapeKind === 'ellipse' ? '9999px' : (sh.cornerRadiusMm || 0) * pxPerMm,
+        }}
+      />
+    );
+  }
+  if (el.type === 'infographic' && el.infographic) {
+    return <div style={box} dangerouslySetInnerHTML={{ __html: fittedInfographicSvg(el) }} />;
+  }
+  if (el.textStyle && (el.type === 'text' || el.type === 'header' || el.type === 'footer' || el.type === 'pageNumber' || el.type === 'logo')) {
+    const ts = el.textStyle;
+    return (
+      <div
+        style={{
+          ...box,
+          display: 'flex',
+          flexDirection: 'column',
+          padding: (ts.insetMm || 0) * pxPerMm,
+          justifyContent: ts.verticalAlign === 'middle' ? 'center' : ts.verticalAlign === 'bottom' ? 'flex-end' : 'flex-start',
+        }}
+      >
+        <div
+          style={{
+            fontFamily: `"${ts.fontFamily}", serif`,
+            fontSize: ts.fontSizePt * PT_TO_MM * pxPerMm,
+            fontWeight: ts.fontWeight,
+            fontStyle: ts.fontStyle || 'normal',
+            color: ts.color,
+            lineHeight: ts.lineHeight,
+            letterSpacing: `${ts.letterSpacingEm}em`,
+            textAlign: ts.textAlign,
+            textTransform: ts.textTransform || 'none',
+            columnCount: ts.columns || 1,
+            columnGap: (ts.columnGapMm || 5) * pxPerMm,
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {el.type === 'pageNumber'
+            ? (el.text || '{{page}}').replace('{{page}}', String(pageNumber).padStart(2, '0'))
+            : el.text || ''}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+/** one page drawn as the editor's preview draws it: photos with their crop, text with its styles, live charts */
+export const PagePreview = React.memo(function PagePreview({
+  page,
+  widthMm,
+  heightMm,
+  pxPerMm,
+  pageNumber,
+}: {
+  page: BookPage;
+  widthMm: number;
+  heightMm: number;
+  pxPerMm: number;
+  pageNumber: number;
+}) {
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: widthMm * pxPerMm,
+        height: heightMm * pxPerMm,
+        backgroundColor: page.backgroundColor,
+        overflow: 'hidden',
+        flexShrink: 0,
+      }}
+    >
+      {[...page.elements]
+        .filter((e) => !e.hidden)
+        .sort((a, b) => a.zIndex - b.zIndex)
+        .map((el) => (
+          <PreviewElement key={el.id} el={el} pxPerMm={pxPerMm} pageNumber={pageNumber} />
+        ))}
+    </div>
+  );
+});
+
+/** the cover and a few spreads of a template, side by side, scaled to fit the given box */
+export function TemplateShowcase({
+  template,
+  pages,
+  showcase,
+  maxHeightPx,
+  maxWidthPx,
+}: {
+  template: BookTemplate;
+  pages: BookPage[];
+  showcase: number[][];
+  maxHeightPx: number;
+  maxWidthPx: number;
+}) {
+  const { widthMm: W, heightMm: H } = template.dimensions;
+  const groups = showcase.map((g) => g.filter((i) => pages[i]));
+  const gapPx = 12;
+  const totalMm = groups.reduce((s, g) => s + g.length * W, 0);
+  const pxPerMm = Math.min(maxHeightPx / H, (maxWidthPx - gapPx * Math.max(0, groups.length - 1)) / Math.max(1, totalMm));
+  return (
+    <div className="flex items-end" style={{ gap: gapPx }}>
+      {groups.map((g) => (
+        <div key={g.join('-')} className="flex shadow-[0_8px_24px_rgba(0,0,0,0.45)]">
+          {g.map((i) => (
+            <PagePreview key={pages[i].id} page={pages[i]} widthMm={W} heightMm={H} pxPerMm={pxPerMm} pageNumber={i + 1} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
   initialTab = 'books',
@@ -215,7 +427,7 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
     });
   };
 
-  const filteredBooks = useMemo(() => {
+  const filteredAllBooks = useMemo(() => {
     const q = search.trim().toLowerCase();
     return allPublicationTemplates.filter((t) => {
       const kind = t.documentKind || 'book';
@@ -231,6 +443,21 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
       );
     });
   }, [allPublicationTemplates, docKindFilter, search, bookCat, onlyFavorites, favorites]);
+
+  /* the Premium Editorial books get their own section, first; the grid holds the rest */
+  const filteredPremium = useMemo(() => filteredAllBooks.filter((t) => isPremiumTemplateId(t.id)), [filteredAllBooks]);
+  const filteredBooks = useMemo(() => filteredAllBooks.filter((t) => !isPremiumTemplateId(t.id)), [filteredAllBooks]);
+  const premiumPages = useMemo(
+    () => Object.fromEntries(PREMIUM_BOOK_TEMPLATES.map((t) => [t.id, t.buildPages()])) as Record<string, BookPage[]>,
+    []
+  );
+
+  /* the fonts the previews are set in, loaded as the editor loads them */
+  useEffect(() => {
+    const families = new Set<string>();
+    Object.values(PREMIUM_TEMPLATE_DETAILS).forEach((d) => d.fonts.forEach((f) => families.add(f)));
+    families.forEach((f) => void loadGoogleFont(f));
+  }, []);
 
   const filteredInfographics = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -252,6 +479,10 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
     setPreviewPages(tpl.buildPages());
     setPreviewPageIdx(0);
     setTab('books');
+    const t = tpl.designSystem.typography;
+    new Set([t.displayFont, t.headingFont, t.bodyFont, t.captionFont, t.quoteFont, t.numericalFont]).forEach(
+      (f) => void loadGoogleFont(f)
+    );
   };
 
   const handleUsePublicationTemplate = (tpl: BookTemplate) => {
@@ -466,6 +697,84 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                 ))}
               </div>
 
+              {filteredPremium.length > 0 && (
+                <section aria-label="Premium Editorial templates" className="space-y-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-[#F4F1EA]">Premium Editorial</h3>
+                    <p className="text-[11px] text-[#98958D]">
+                      Complete books, each with its own page size, grid, typefaces and master pages
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    {filteredPremium.map((tpl) => {
+                      const d = PREMIUM_TEMPLATE_DETAILS[tpl.id];
+                      const isFav = favorites.includes(tpl.id);
+                      return (
+                        <div
+                          key={tpl.id}
+                          className="bg-[#141417] border border-[#C6A26B]/30 hover:border-[#C6A26B]/70 rounded-md overflow-hidden flex flex-col lg:flex-row"
+                        >
+                          <div className="lg:w-72 shrink-0 p-4 flex flex-col justify-between gap-3 border-b lg:border-b-0 lg:border-r border-white/[0.06]">
+                            <div className="space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <span className="px-1.5 py-0.5 rounded-sm border border-[#C6A26B]/60 text-[11px] font-medium text-[#E6CFA5]">
+                                  Premium
+                                </span>
+                                <button
+                                  onClick={() => toggleFav(tpl.id)}
+                                  aria-label={isFav ? 'Remove from favourites' : 'Add to favourites'}
+                                  className="ml-auto p-1 rounded text-[#98958D] hover:text-[#C6A26B] cursor-pointer"
+                                >
+                                  <Heart className="w-3.5 h-3.5" fill={isFav ? '#C6A26B' : 'none'} color={isFav ? '#C6A26B' : 'currentColor'} />
+                                </button>
+                              </div>
+                              <div className="text-sm font-semibold text-[#F4F1EA]">{tpl.name}</div>
+                              <p className="text-[11px] text-[#B8B5AD] leading-relaxed">{d?.tagline || tpl.description}</p>
+                              <p className="text-[11px] text-[#98958D] font-mono-tabular">
+                                {d?.pageCount ?? ''} pages, {tpl.dimensions.widthMm} × {tpl.dimensions.heightMm} mm
+                                {d ? `, ${d.masterCount} master pages` : ''}
+                              </p>
+                              {d && <p className="text-[11px] text-[#98958D]">Set in {d.fonts.join(' and ')}</p>}
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => openBookPreview(tpl)}
+                                className="flex-1 py-1.5 text-[11px] bg-[#232329] hover:bg-[#2F2F37] text-[#ECEAE4] rounded cursor-pointer"
+                              >
+                                Preview Pages
+                              </button>
+                              <button
+                                onClick={() => handleUsePublicationTemplate(tpl)}
+                                className="flex-1 py-1.5 text-[11px] bg-[#C6A26B] hover:bg-[#D5B47F] text-[#121214] font-medium rounded cursor-pointer"
+                              >
+                                Use Template
+                              </button>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => openBookPreview(tpl)}
+                            aria-label={`Preview the pages of ${tpl.name}`}
+                            className="flex-1 min-w-0 p-4 bg-[#0E0E10] overflow-x-auto flex items-center cursor-pointer"
+                          >
+                            <TemplateShowcase
+                              template={tpl}
+                              pages={premiumPages[tpl.id] || []}
+                              showcase={d?.showcase || [[0]]}
+                              maxHeightPx={150}
+                              maxWidthPx={760}
+                            />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {filteredBooks.length > 0 && filteredPremium.length > 0 && (
+                <h3 className="pt-2 text-sm font-semibold text-[#F4F1EA]">More templates</h3>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {filteredBooks.map((tpl) => {
                   const isFav = favorites.includes(tpl.id);
@@ -549,8 +858,9 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                       Unlimited Procedural Book & Report Engine
                     </div>
                     <div className="text-[11px] text-[#98958D]">
-                      Showing {allPublicationTemplates.length} unique multi-page layouts (32 curated +{' '}
-                      {generatedPublications.length} procedural variations). Generate endless fresh grids, palettes, and report structures.
+                      Showing {allPublicationTemplates.length} unique multi-page layouts ({PREMIUM_BOOK_TEMPLATES.length} premium,{' '}
+                      {BUILTIN_BOOK_TEMPLATES.length - PREMIUM_BOOK_TEMPLATES.length} curated and {generatedPublications.length} procedural
+                      variations). Generate endless fresh grids, palettes, and report structures.
                     </div>
                   </div>
                 </div>
@@ -580,10 +890,16 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                     <h3 className="text-sm font-semibold text-[#F4F1EA]">{previewBook.name}</h3>
                     <div className="text-[11px] text-[#98958D] font-mono-tabular">
                       {previewBook.category} · {previewBook.dimensions.widthMm}×
-                      {previewBook.dimensions.heightMm}mm · Display:{' '}
-                      {previewBook.designSystem.typography.displayFont} · Body:{' '}
+                      {previewBook.dimensions.heightMm}mm · {previewPages.length} pages
+                      {PREMIUM_TEMPLATE_DETAILS[previewBook.id]
+                        ? ` · ${PREMIUM_TEMPLATE_DETAILS[previewBook.id].masterCount} master pages`
+                        : ''}{' '}
+                      · Display: {previewBook.designSystem.typography.displayFont} · Body:{' '}
                       {previewBook.designSystem.typography.bodyFont}
                     </div>
+                    {PREMIUM_TEMPLATE_DETAILS[previewBook.id] && (
+                      <div className="text-[11px] text-[#B8B5AD]">{PREMIUM_TEMPLATE_DETAILS[previewBook.id].signature}</div>
+                    )}
                   </div>
                 </div>
 
@@ -633,98 +949,15 @@ export const TemplateLibraryModal: React.FC<TemplateLibraryModalProps> = ({
                     <ChevronLeft className="w-4 h-4" />
                   </button>
 
-                  {(() => {
-                    const pg = previewPages[previewPageIdx];
-                    const scale = 1.45;
-                    const pw = previewBook.dimensions.widthMm * scale;
-                    const ph = previewBook.dimensions.heightMm * scale;
-                    return (
-                      <div
-                        style={{
-                          width: `${pw}px`,
-                          height: `${ph}px`,
-                          backgroundColor: pg.backgroundColor,
-                        }}
-                        className="relative overflow-hidden shadow-2xl border border-white/15"
-                      >
-                        {pg.elements
-                          .filter((e) => !e.hidden)
-                          .sort((a, b) => a.zIndex - b.zIndex)
-                          .map((el) => (
-                            <div
-                              key={el.id}
-                              style={{
-                                left: `${el.xMm * scale}px`,
-                                top: `${el.yMm * scale}px`,
-                                width: `${el.widthMm * scale}px`,
-                                height: `${el.heightMm * scale}px`,
-                                opacity: el.opacity ?? 1,
-                              }}
-                              className="absolute overflow-hidden"
-                            >
-                              {el.type === 'image' && el.image?.src && (
-                                <img
-                                  src={el.image.src}
-                                  alt={el.name}
-                                  referrerPolicy="no-referrer"
-                                  className="w-full h-full object-cover"
-                                />
-                              )}
-                              {el.type === 'infographic' && el.infographic && (
-                                <div
-                                  className="w-full h-full"
-                                  dangerouslySetInnerHTML={{
-                                    __html: renderInfographicToSvgString(
-                                      el.infographic,
-                                      Math.round(el.widthMm * 3),
-                                      Math.round(el.heightMm * 3)
-                                    ),
-                                  }}
-                                />
-                              )}
-                              {el.type === 'shape' && el.shape && (
-                                <div
-                                  className="w-full h-full"
-                                  style={{
-                                    backgroundColor: el.shape.fill,
-                                    border:
-                                      el.shape.strokeWidthMm > 0
-                                        ? `${el.shape.strokeWidthMm * scale}px solid ${el.shape.stroke}`
-                                        : 'none',
-                                  }}
-                                />
-                              )}
-                              {el.type === 'line' && el.shape && (
-                                <div
-                                  className="w-full mt-0.5"
-                                  style={{
-                                    borderTop: `${Math.max(1, el.shape.strokeWidthMm * scale)}px solid ${el.shape.stroke}`,
-                                  }}
-                                />
-                              )}
-                              {(el.type === 'text' || el.type === 'pageNumber') && el.textStyle && (
-                                <div
-                                  style={{
-                                    fontFamily: `"${el.textStyle.fontFamily}", serif`,
-                                    fontSize: `${(el.textStyle.fontSizePt / 72) * 25.4 * scale}px`,
-                                    fontWeight: el.textStyle.fontWeight,
-                                    fontStyle: el.textStyle.fontStyle || 'normal',
-                                    color: el.textStyle.color,
-                                    lineHeight: el.textStyle.lineHeight,
-                                    textAlign: el.textStyle.textAlign,
-                                    whiteSpace: 'pre-wrap',
-                                  }}
-                                >
-                                  {el.type === 'pageNumber'
-                                    ? String(previewPageIdx + 1).padStart(2, '0')
-                                    : el.text}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    );
-                  })()}
+                  <div className="shadow-2xl border border-white/15">
+                    <PagePreview
+                      page={previewPages[previewPageIdx]}
+                      widthMm={previewBook.dimensions.widthMm}
+                      heightMm={previewBook.dimensions.heightMm}
+                      pxPerMm={Math.min(1.45, 460 / previewBook.dimensions.heightMm)}
+                      pageNumber={previewPageIdx + 1}
+                    />
+                  </div>
 
                   <button
                     disabled={previewPageIdx >= previewPages.length - 1}

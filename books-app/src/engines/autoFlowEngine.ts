@@ -9,6 +9,7 @@ import type {
 } from '../types/bookstudio';
 import { getEffectivePageDimensions } from './dimensionEngine';
 import { newPageLook } from './masterPageEngine';
+import { frameCapacityWords } from './textEngine';
 
 export interface AutoFlowPageSchema {
   pageId: string;
@@ -94,16 +95,10 @@ export interface ApplyAutoFlowOptions {
   keepFrameNames?: boolean;
 }
 
+/* how many words the frame holds, measured with its real font (textEngine.frameCapacityWords) */
 function estimateFrameWordCapacity(el: BookElement): number {
   if (!el.textStyle) return 40;
-  const fontMm = (el.textStyle.fontSizePt / 72) * 25.4;
-  const lineH = Math.max(2.5, fontMm * (el.textStyle.lineHeight || 1.45));
-  const avgCharW = Math.max(1.2, fontMm * 0.52);
-  const usableW = Math.max(12, el.widthMm - (el.textStyle.insetMm || 0) * 2);
-  const usableH = Math.max(6, el.heightMm - (el.textStyle.insetMm || 0) * 2);
-  const charsPerLine = Math.max(4, Math.floor(usableW / avgCharW));
-  const lines = Math.max(1, Math.floor(usableH / lineH));
-  return Math.max(4, Math.round((charsPerLine * lines) / 5.8));
+  return Math.max(1, frameCapacityWords(el));
 }
 
 /**

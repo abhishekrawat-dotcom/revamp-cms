@@ -8,8 +8,11 @@ interface BottomPageNavigatorProps {
   project: BookProject;
   activePageId: string;
   onSelectPage: (pageId: string) => void;
+  /** "Add page" and "Insert spread" open the layout picker (which of the book's layouts the new page is made from) */
   onAddPage: () => void;
   onInsertSpread: () => void;
+  /** the layout picker is open */
+  layoutPickerOpen?: boolean;
   onDuplicatePage: (pageId: string) => void;
   onDeletePage: (pageId: string) => void;
   onReorderPages: (fromIdx: number, toIdx: number) => void;
@@ -25,6 +28,7 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
   onSelectPage,
   onAddPage,
   onInsertSpread,
+  layoutPickerOpen = false,
   onDuplicatePage,
   onDeletePage,
   onReorderPages,
@@ -69,6 +73,9 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
       <div className="flex flex-col gap-1.5 shrink-0 pr-3 border-r border-white/[0.08]">
         <button
           onClick={onInsertSpread}
+          aria-haspopup="dialog"
+          aria-expanded={layoutPickerOpen}
+          title="Insert two facing pages after this page: choose their layout"
           className="px-2.5 py-1.5 bg-[#24242A] hover:bg-[#2F2F37] text-[11px] text-[#ECEAE4] rounded flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
         >
           <BookPlus className="w-3.5 h-3.5 text-[#C6A26B]" />
@@ -77,7 +84,9 @@ export const BottomPageNavigator: React.FC<BottomPageNavigatorProps> = ({
         <div className="flex items-center gap-1">
           <button
             onClick={onAddPage}
-            title="Add Single Page"
+            aria-haspopup="dialog"
+            aria-expanded={layoutPickerOpen}
+            title="Add a page after this page: choose its layout"
             className="flex-1 px-2 py-1 bg-[#1E1E22] hover:bg-[#2A2A30] text-[11px] text-[#C8C5BC] rounded flex items-center justify-center gap-1 cursor-pointer"
           >
             <Plus className="w-3 h-3" />

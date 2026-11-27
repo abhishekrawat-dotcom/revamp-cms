@@ -11,7 +11,8 @@ import type {
 } from '../types/bookstudio';
 import { formatMeasurement, getEffectivePageDimensions, mmToUnit } from '../engines/dimensionEngine';
 import { renderInfographicToSvgString } from '../engines/infographicEngine';
-import { measureTextOverflow } from '../engines/textEngine';
+import { measureTextOverflow, paragraphExtraMm, paragraphsForDrawing } from '../engines/textEngine';
+import { useFontsVersion } from '../engines/textMeasure';
 import type { ComponentDragKind } from './LeftSidebar';
 
 const BASE_PX_PER_MM = 2.05; // crisp desktop viewing scale at 100% zoom
@@ -113,6 +114,8 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
   onExitPreview,
 }) => {
   const pxPerMm = BASE_PX_PER_MM * zoom;
+  // fit is measured with each frame's real font: once a font has loaded, every frame is measured again
+  useFontsVersion();
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [croppingImageId, setCroppingImageId] = useState<string | null>(null);
   const [panMode, setPanMode] = useState(false);
@@ -936,9 +939,11 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                             )}
 
                           {/* INFOGRAPHIC SVG */}
+                          {/* the chart fills its frame at any zoom (its SVG has a viewBox; drawn at its own pixel size it showed
+                              oversized and cut off) */}
                           {el.type === 'infographic' && el.infographic && (
                             <div
-                              className="w-full h-full overflow-hidden pointer-events-none"
+                              className="w-full h-full overflow-hidden pointer-events-none [&>svg]:w-full [&>svg]:h-full"
                               dangerouslySetInnerHTML={{
                                 __html: renderInfographicToSvgString(
                                   el.infographic,
@@ -1018,15 +1023,26 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                                       columnCount: el.textStyle.columns || 1,
                                       columnGap: `${(el.textStyle.columnGapMm || 5) * pxPerMm}px`,
                                       whiteSpace: 'pre-wrap',
+                                      // the font's own widths at every zoom, as the fit is measured (no rounding to screen pixels)
+                                      textRendering: 'geometricPrecision',
                                     }}
                                     className="w-full select-none pointer-events-none"
                                   >
-                                    {el.type === 'pageNumber'
-                                      ? (el.text || '{{page}}').replace(
-                                          '{{page}}',
-                                          String(pageNumber).padStart(2, '0')
-                                        )
-                                      : el.text || ''}
+                                    {(() => {
+                                      const shown =
+                                        el.type === 'pageNumber'
+                                          ? (el.text || '{{page}}').replace('{{page}}', String(pageNumber).padStart(2, '0'))
+                                          : el.text || '';
+                                      /* paragraphs are an empty line apart; a Paragraph Gap wider than that line adds the
+                                         difference above each paragraph (textEngine measures exactly this) */
+                                      const extraMm = paragraphExtraMm(el.textStyle);
+                                      if (!(extraMm > 0)) return shown;
+                                      return paragraphsForDrawing(shown).map((para, pi) => (
+                                        <div key={pi} style={pi ? { marginTop: `${extraMm * pxPerMm}px` } : undefined}>
+                                          {para}
+                                        </div>
+                                      ));
+                                    })()}
                                   </div>
                                 )}
                               </div>
@@ -1035,7 +1051,7 @@ export const BookCanvas: React.FC<BookCanvasProps> = ({
                           {/* OVERFLOW WARNING INDICATOR (Never shown in Preview or Exports) */}
                           {!previewMode && ov?.isOverflowing && (
                             <div
-                              title={`Text doesn't fit: about ${ov.overflowWords} more words than the frame holds. Select the frame and see the Properties panel.`}
+                              title={`${ov.overflowWords} ${ov.overflowWords === 1 ? "word doesn't" : "words don't"} fit this frame (measured with its font). Select the frame to fix it in the Properties panel.`}
                               className="absolute -bottom-2.5 right-0 translate-y-1/2 px-1 h-[18px] bg-[#D94F3D] text-white flex items-center gap-0.5 rounded-sm shadow z-40 text-[11px] font-semibold whitespace-nowrap pointer-events-none"
                             >
                               <AlertTriangle className="w-2.5 h-2.5" />

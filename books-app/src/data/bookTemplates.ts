@@ -8,6 +8,7 @@ import type {
 } from '../types/bookstudio';
 import { EDITORIAL_PHOTOS } from './curatedAssets';
 import { BUILTIN_INFOGRAPHIC_TEMPLATES } from './infographicTemplates';
+import { PREMIUM_BOOK_TEMPLATES, PREMIUM_CATEGORY } from './premiumTemplates';
 
 interface BookTemplateSpec {
   id: string;
@@ -2034,7 +2035,7 @@ const BOOK_SPECS: BookTemplateSpec[] = [
   },
 ];
 
-export const BUILTIN_BOOK_TEMPLATES: BookTemplate[] = BOOK_SPECS.map((spec) => {
+const CURATED_BOOK_TEMPLATES: BookTemplate[] = BOOK_SPECS.map((spec) => {
   const ds = buildDesignSystem(spec);
   const dim = buildDimensions(spec);
   const isReport =
@@ -2053,7 +2054,12 @@ export const BUILTIN_BOOK_TEMPLATES: BookTemplate[] = BOOK_SPECS.map((spec) => {
   };
 });
 
+/* the curated templates first (their order is relied on: a book made from an unknown id falls back to the sixth), then the
+   five Premium Editorial books (premiumTemplates.ts), which the template library shows first */
+export const BUILTIN_BOOK_TEMPLATES: BookTemplate[] = [...CURATED_BOOK_TEMPLATES, ...PREMIUM_BOOK_TEMPLATES];
+
 export const BOOK_TEMPLATE_CATEGORIES: BookTemplateCategory[] = [
+  PREMIUM_CATEGORY,
   'Luxury & Premium Editorial',
   'Architecture & Interior Design',
   'Corporate & Institutional',

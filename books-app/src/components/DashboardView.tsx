@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import type { BookSummary } from '../types/bookstudio';
 import { formatMeasurement } from '../engines/dimensionEngine';
+import { BUILTIN_BOOK_TEMPLATES } from '../data/bookTemplates';
+import { PREMIUM_BOOK_TEMPLATES } from '../data/premiumTemplates';
 import { mountAccountMenu, type SignedInUser } from '../services/api';
 
 interface DashboardViewProps {
@@ -197,7 +199,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   Unlimited Books & Reports
                 </div>
                 <p className="text-xs text-[#98958D] leading-relaxed">
-                  32 curated Book & Executive Report templates plus infinite procedural variations and on-demand AI publication generation.
+                  {PREMIUM_BOOK_TEMPLATES.length} premium editorial books, each with its own layouts and master pages, and{' '}
+                  {BUILTIN_BOOK_TEMPLATES.length - PREMIUM_BOOK_TEMPLATES.length} curated Book & Executive Report templates, plus
+                  infinite procedural variations and on-demand AI publication generation.
                 </p>
               </div>
               <div className="text-[11px] text-[#D7D4CC] group-hover:text-white">

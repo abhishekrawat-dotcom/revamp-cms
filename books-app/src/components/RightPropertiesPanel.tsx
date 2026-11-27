@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   AlignCenter,
@@ -16,19 +16,23 @@ import {
   ArrowDownToLine,
   ArrowUpToLine,
   BookmarkPlus,
+  Check,
   Crop,
   Image as ImageIcon,
   Link2,
+  Loader2,
   Lock,
   Maximize,
   Minimize2,
   Palette,
+  PenLine,
   Plus,
   RotateCcw,
   SlidersHorizontal,
   Sparkles,
   Trash2,
   Type as TypeIcon,
+  X,
 } from 'lucide-react';
 import type {
   AlignAction,
@@ -47,11 +51,20 @@ import {
 } from '../engines/dimensionEngine';
 import { GOOGLE_FONTS_CATALOG, loadGoogleFont } from '../engines/fontEngine';
 import {
-  expandFrameHeightForText,
-  fitTextWithinApprovedLimits,
+  countWords,
+  fitTextToFrame,
+  frameCapacityWords,
+  growFrameToFit,
   measureTextOverflow,
-  tightenParagraphSpacing,
+  minimumSizePt,
+  shrinkTextToFit,
+  splitOverflowTextForContinuation,
+  tightenSpacingToFit,
 } from '../engines/textEngine';
+import { useFontsVersion } from '../engines/textMeasure';
+import { editTextWithAi, type EditTextInstruction } from '../services/aiService';
+import { PhotoResolutionBadge } from './PhotoResolutionBadge';
+import { errorText } from '../services/api';
 
 interface RightPropertiesPanelProps {
   project: BookProject;
@@ -70,7 +83,8 @@ interface RightPropertiesPanelProps {
   onOpenDimensionsModal: () => void;
   onOpenInfographicsModal: () => void;
   onSaveInfographicAsTemplate: (el: BookElement) => void;
-  onRequestAiTextFit: (el: BookElement) => void;
+  /** no longer used: the overflow box's "Shorten with ETB2B AI" is the panel's own "Edit with AI" (Phase 3) */
+  onRequestAiTextFit?: (el: BookElement) => void;
 }
 
 type InspectorTab = 'properties' | 'styles' | 'swatches' | 'align' | 'links';
@@ -88,6 +102,41 @@ const CHART_TYPES: Array<{ variant: InfographicVisualVariant; templateId: string
 })();
 
 const LOCKED_TIP = 'This is part of the design: a Designer changes it';
+
+/* "Edit with AI" on a text frame: ETB2B AI's version of the words, shown as a suggestion until Apply or Discard */
+interface AiEditState {
+  status: 'idle' | 'working' | 'ready' | 'error';
+  elementId: string;
+  task: EditTextInstruction | null;
+  /** the frame's words when ETB2B AI was asked */
+  baseText: string;
+  suggestion: string;
+  error: string;
+}
+const IDLE_AI: AiEditState = { status: 'idle', elementId: '', task: null, baseText: '', suggestion: '', error: '' };
+const AI_TASK_NAMES: Record<EditTextInstruction, string> = {
+  shorten: 'Shorten to fit',
+  grammar: 'Fix grammar and spelling',
+  clarify: 'Make it clearer',
+  custom: 'Your change',
+};
+function wordsLabel(n: number): string {
+  return `${n} ${n === 1 ? 'word' : 'words'}`;
+}
+function dontFit(n: number): string {
+  return `${wordsLabel(n)} ${n === 1 ? "doesn't" : "don't"} fit`;
+}
+
+/* where "Continue on the next page" pours the rest: an empty text frame of the same kind on the next page (its words
+   are content, so both roles can fill it) */
+function continuationFrame(next: BookPage, source: BookElement): BookElement | null {
+  const role = source.textRole || 'body';
+  const empty = next.elements.filter(
+    (e) => e.type === 'text' && !e.hidden && !e.locked && !!e.textStyle && countWords(e.text) === 0 && (e.textRole || 'body') === role
+  );
+  if (!empty.length) return null;
+  return empty.reduce((a, b) => (b.widthMm * b.heightMm > a.widthMm * a.heightMm ? b : a));
+}
 
 const EDITORIAL_SWATCH_LIBRARY = [
   { name: 'Museum Paper', hex: '#F7F4EE' },
@@ -119,7 +168,6 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
   onOpenDimensionsModal,
   onOpenInfographicsModal,
   onSaveInfographicAsTemplate,
-  onRequestAiTextFit,
 }) => {
   const [chosenPanelTab, setPanelTab] = useState<InspectorTab>('properties');
   // styles, swatches and align only change the design: a Content editor has Properties and Links
@@ -127,6 +175,23 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
   const [swatchTarget, setSwatchTarget] = useState<'auto' | 'text' | 'fill' | 'stroke' | 'paper'>('auto');
   const unit = project.unit;
   const pageDim = getEffectivePageDimensions(activePage, project.dimensions);
+  // fit is measured with the frame's real font: once a font has loaded, the overflow box is measured again
+  useFontsVersion();
+  const copyRef = useRef<HTMLTextAreaElement | null>(null);
+  // manual editing is the default; ETB2B AI sits beside it
+  const [editMode, setEditMode] = useState<'manual' | 'ai'>('manual');
+  const [ai, setAi] = useState<AiEditState>(IDLE_AI);
+  const [aiRequest, setAiRequest] = useState('');
+  const aiSeq = useRef(0);
+  /* what the last fix did, said in a sentence under the overflow box */
+  const [fixNote, setFixNote] = useState<{ elementId: string; kind: 'ok' | 'warn'; text: string } | null>(null);
+  const selectedId = selectedElement?.id || '';
+  useEffect(() => {
+    // another frame: an answer still on its way is for the old one
+    aiSeq.current += 1;
+    setAi(IDLE_AI);
+    setFixNote(null);
+  }, [selectedId]);
 
   const placedImageLinks = useMemo(() => {
     const links: Array<{
@@ -752,16 +817,160 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
 
   const el = selectedElement;
   const overflow = el.type === 'text' ? measureTextOverflow(el) : null;
+  const minBodyPt = project.designSystem.typography.minApprovedBodyPt;
+  const say = (kind: 'ok' | 'warn', text: string) => setFixNote({ elementId: el.id, kind, text });
+  const aiBusy = ai.status === 'working';
 
-  // Calculate effective print DPI for image frames
-  let effectiveDpi: number | null = null;
-  if (el.type === 'image' && el.image?.naturalWidth && el.image?.naturalHeight) {
-    const wIn = Math.max(0.1, el.widthMm / MM_PER_INCH);
-    const hIn = Math.max(0.1, el.heightMm / MM_PER_INCH);
-    effectiveDpi = Math.round(
-      Math.min(el.image.naturalWidth / wIn, el.image.naturalHeight / hIn) / (el.image.zoom || 1)
+  /* how short "Shorten to fit" asks for: what the frame holds of typical copy, and no more than fits of these words */
+  const shortenTarget = (target: BookElement): number => {
+    const fitted = countWords(fitTextToFrame(target, target.text || '').fittingText);
+    const capacity = frameCapacityWords(target);
+    return Math.max(1, Math.min(capacity || fitted, fitted || capacity));
+  };
+
+  const runAi = async (target: BookElement, task: EditTextInstruction, request?: string) => {
+    const text = target.text || '';
+    setEditMode('ai');
+    if (!text.trim()) {
+      setAi({ ...IDLE_AI, status: 'error', elementId: target.id, task, error: 'There are no words in this frame yet. Type some first.' });
+      return;
+    }
+    const seq = ++aiSeq.current;
+    setAi({ status: 'working', elementId: target.id, task, baseText: text, suggestion: '', error: '' });
+    try {
+      const answer = await editTextWithAi(
+        task === 'shorten'
+          ? { text, instruction: task, targetWords: shortenTarget(target) }
+          : task === 'custom'
+            ? { text, instruction: task, request: request || '' }
+            : { text, instruction: task }
+      );
+      if (aiSeq.current !== seq) return;
+      setAi({ status: 'ready', elementId: target.id, task, baseText: text, suggestion: answer.text, error: '' });
+    } catch (err) {
+      if (aiSeq.current !== seq) return;
+      setAi({
+        status: 'error',
+        elementId: target.id,
+        task,
+        baseText: text,
+        suggestion: '',
+        error: errorText(err, 'ETB2B AI could not answer just now. Please try again.'),
+      });
+    }
+  };
+
+  const applyAi = () => {
+    if (ai.status !== 'ready' || ai.elementId !== el.id) return;
+    onUpdateElement(activePage.id, el.id, { text: ai.suggestion });
+    aiSeq.current += 1;
+    setAi(IDLE_AI);
+    say('ok', "ETB2B AI's version is in the frame. Undo brings the earlier words back.");
+  };
+
+  const discardAi = () => {
+    aiSeq.current += 1;
+    setAi(IDLE_AI);
+  };
+
+  const editMyself = () => {
+    setEditMode('manual');
+    window.requestAnimationFrame(() => {
+      copyRef.current?.focus();
+      copyRef.current?.scrollIntoView({ block: 'nearest' });
+    });
+  };
+
+  /* the Designer's fixes: each changes the design, says what it did, and never moves anything else */
+  const shrinkToFit = () => {
+    const r = shrinkTextToFit(el, minBodyPt);
+    if (!r.changed) {
+      say(
+        'warn',
+        `Even at ${r.minimumPt} pt, the smallest size allowed for this text, about ${dontFit(r.overflowWords)}. Tighten the spacing, make the frame taller, continue on the next page or shorten the words.`
+      );
+      return;
+    }
+    onUpdateElement(activePage.id, el.id, { textStyle: r.element.textStyle });
+    say('ok', `The type is now ${r.element.textStyle!.fontSizePt} pt and the words fit.`);
+  };
+
+  const tightenSpacing = () => {
+    const r = tightenSpacingToFit(el);
+    if (!r.changed) {
+      say('warn', 'The spacing is already as tight as it sensibly goes. Shrink the type, make the frame taller, continue on the next page or shorten the words.');
+      return;
+    }
+    onUpdateElement(activePage.id, el.id, { textStyle: r.element.textStyle });
+    const st = r.element.textStyle!;
+    say(
+      r.fits ? 'ok' : 'warn',
+      r.fits
+        ? `Leading ${st.lineHeight}, paragraph gap ${st.paragraphSpacingMm} mm: the words fit.`
+        : `The spacing is now as tight as it sensibly goes (leading ${st.lineHeight}); about ${dontFit(r.overflowWords)} yet.`
     );
-  }
+  };
+
+  const makeTaller = () => {
+    const r = growFrameToFit(el, pageDim.heightMm - pageDim.margins.bottom);
+    if (!r.changed) {
+      say('warn', "The frame already reaches the page's bottom margin. Shrink the type, tighten the spacing, continue on the next page or shorten the words.");
+      return;
+    }
+    onUpdateElement(activePage.id, el.id, { heightMm: r.element.heightMm });
+    say(
+      r.fits ? 'ok' : 'warn',
+      r.fits
+        ? `The frame is now ${formatNumericValue(r.element.heightMm, unit)} ${unit} tall and the words fit.`
+        : `The frame now reaches the page's bottom margin; about ${dontFit(r.overflowWords)} yet.`
+    );
+  };
+
+  /* both roles: the words that do not fit go on into an empty text frame of the same kind on the next page; with
+     none there, a Designer gets a new frame (or a new page), a Content editor is told what to add */
+  const continueOnNextPage = () => {
+    const idx = project.pages.findIndex((p) => p.id === activePage.id);
+    const next = idx >= 0 ? project.pages[idx + 1] : undefined;
+    const split = splitOverflowTextForContinuation(el);
+    if (!split.continuationText) {
+      say('warn', 'There are not enough words to split. Shorten them or edit them yourself.');
+      return;
+    }
+    const frame = next ? continuationFrame(next, el) : null;
+    if (next && frame) {
+      // the rest is put on the next page first, then this frame keeps what fits: at every step all the words are in the book
+      onUpdateElement(next.id, frame.id, { text: split.continuationText });
+      onUpdateElement(activePage.id, el.id, { text: split.fittingText });
+      say('ok', `The rest (${wordsLabel(countWords(split.continuationText))}) now continues in "${frame.name}" on page ${idx + 2}.`);
+      return;
+    }
+    if (canDesign) {
+      onContinueOverflowToNextPage(activePage.id, el.id);
+      say(
+        'ok',
+        next
+          ? `The rest (${wordsLabel(countWords(split.continuationText))}) now continues in a new frame on page ${idx + 2}.`
+          : `The rest (${wordsLabel(countWords(split.continuationText))}) now continues on a new page after this one.`
+      );
+      return;
+    }
+    say(
+      'warn',
+      next
+        ? `Page ${idx + 2} has no empty text frame like this one to continue in. Add a page after this one from a layout with a text frame, then try again.`
+        : 'This is the last page. Add a page after it from a layout with a text frame, then try again.'
+    );
+  };
+
+  const fixBtn = 'py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer';
+  const aiBtn =
+    'py-1 px-2 text-left text-[11px] bg-[#C6A26B]/15 hover:bg-[#C6A26B]/25 text-[#F1D8AE] rounded cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed';
+
+  // the photo's own pixels, from the library when the frame does not carry them (for its print resolution)
+  const photoAsset =
+    el.type === 'image' && el.image
+      ? project.imageAssets.find((a) => (el.image!.assetId && a.id === el.image!.assetId) || a.url === el.image!.src)
+      : undefined;
 
   return (
     <aside className="w-[288px] shrink-0 bg-[#18181B] border-l border-white/[0.08] flex flex-col select-none">
@@ -842,73 +1051,206 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
         el.type === 'logo') &&
         el.textStyle && (
           <div className="space-y-3 pt-3 border-t border-white/[0.08]">
-            {/* Overflow Alert & Controlled Remedies */}
+            {/* Text that does not fit: what each role can do about it (measured with the frame's font) */}
             {overflow?.isOverflowing && (
               <div className="p-2.5 bg-[#2B1B19] border border-[#D94F3D]/50 rounded space-y-2">
                 <div className="flex items-start gap-2">
                   <AlertTriangle className="w-4 h-4 text-[#E07A5F] shrink-0 mt-0.5" />
                   <div>
                     <div className="text-[11px] font-semibold text-[#F5CFC7]">
-                      Text Overflow (+{overflow.overflowWords} words)
+                      {dontFit(overflow.overflowWords)} this frame
                     </div>
                     <div className="text-[11px] text-[#D7ACA3]">
                       {canDesign
-                        ? 'Frame preserved without disturbing surrounding photography. Choose a controlled action:'
-                        : "The words don't fit this frame. Shorten them, or ask a Designer to change the frame or the type size."}
+                        ? 'Measured with its font. Fix it here; nothing else on the page moves.'
+                        : 'Measured with its font. Carry the rest to the next page or shorten the words. The type size and the frame are set by a Designer.'}
                     </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-1">
                   {canDesign && (
-                  <>
-                  <button
-                    onClick={() =>
-                      onUpdateElement(
-                        activePage.id,
-                        el.id,
-                        fitTextWithinApprovedLimits(el, project.designSystem.typography.minApprovedBodyPt)
-                      )
-                    }
-                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
-                  >
-                    1. Reduce font size (min {project.designSystem.typography.minApprovedBodyPt}pt)
-                  </button>
-                  <button
-                    onClick={() =>
-                      onUpdateElement(
-                        activePage.id,
-                        el.id,
-                        expandFrameHeightForText(el, pageDim.heightMm)
-                      )
-                    }
-                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
-                  >
-                    2. Expand text frame vertically
-                  </button>
-                  <button
-                    onClick={() =>
-                      onUpdateElement(activePage.id, el.id, tightenParagraphSpacing(el))
-                    }
-                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
-                  >
-                    3. Tighten line height & paragraph spacing
-                  </button>
-                  <button
-                    onClick={() => onContinueOverflowToNextPage(activePage.id, el.id)}
-                    className="py-1 px-2 text-left text-[11px] bg-[#3B2522] hover:bg-[#4B2E2A] text-[#F5E6E3] rounded cursor-pointer"
-                  >
-                    4. Continue overflow onto next page
-                  </button>
-                  </>
+                    <>
+                      <button type="button" onClick={shrinkToFit} className={fixBtn}>
+                        Shrink to fit <span className="text-[#D7ACA3]">(not below {minimumSizePt(el, minBodyPt)} pt)</span>
+                      </button>
+                      <button type="button" onClick={tightenSpacing} className={fixBtn}>
+                        Tighten spacing <span className="text-[#D7ACA3]">(paragraph gap, then leading)</span>
+                      </button>
+                      <button type="button" onClick={makeTaller} className={fixBtn}>
+                        Make the frame taller <span className="text-[#D7ACA3]">(up to the bottom margin)</span>
+                      </button>
+                    </>
                   )}
+                  <button type="button" onClick={continueOnNextPage} className={fixBtn}>
+                    Continue on the next page
+                  </button>
                   <button
-                    onClick={() => onRequestAiTextFit(el)}
-                    className="py-1 px-2 text-left text-[11px] bg-[#C6A26B]/20 hover:bg-[#C6A26B]/30 text-[#F1D8AE] rounded flex items-center gap-1 cursor-pointer"
+                    type="button"
+                    onClick={() => void runAi(el, 'shorten')}
+                    disabled={aiBusy}
+                    className={`${aiBtn} flex items-center gap-1`}
                   >
                     <Sparkles className="w-3 h-3" />
-                    <span>{canDesign ? '5. Request optional AI copy tightening' : 'Ask ETB2B AI to suggest shorter words'}</span>
+                    <span>Shorten with ETB2B AI</span>
+                  </button>
+                  <button type="button" onClick={editMyself} className={`${fixBtn} flex items-center gap-1`}>
+                    <PenLine className="w-3 h-3" />
+                    <span>Edit myself</span>
                   </button>
                 </div>
+              </div>
+            )}
+            <div role="status" aria-live="polite">
+              {fixNote && fixNote.elementId === el.id && (
+                <div
+                  className={`text-[11px] leading-relaxed rounded px-2 py-1.5 border ${
+                    fixNote.kind === 'ok'
+                      ? 'text-[#BFD6B2] bg-[#1B2419] border-[#8AA678]/40'
+                      : 'text-[#E6C790] bg-[#2B1F16] border-[#D4A657]/40'
+                  }`}
+                >
+                  {fixNote.text}
+                </div>
+              )}
+            </div>
+
+            {/* "Edit with AI | Edit myself": manual editing is the default; ETB2B AI only ever suggests */}
+            {el.type === 'text' && (
+              <div
+                role="radiogroup"
+                aria-label="How to change the words"
+                className="grid grid-cols-2 bg-[#121214] border border-white/[0.08] rounded p-0.5"
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    const next = editMode === 'ai' ? 'manual' : 'ai';
+                    setEditMode(next);
+                    (e.currentTarget.querySelector(`[data-mode="${next}"]`) as HTMLButtonElement | null)?.focus();
+                  }
+                }}
+              >
+                {(
+                  [
+                    ['ai', Sparkles, 'Edit with AI', 'Ask ETB2B AI for new words for this frame; nothing changes until you apply them'],
+                    ['manual', PenLine, 'Edit myself', 'Type the words yourself'],
+                  ] as const
+                ).map(([mode, Icon, label, tip]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    data-mode={mode}
+                    aria-checked={editMode === mode}
+                    tabIndex={editMode === mode ? 0 : -1}
+                    title={tip}
+                    onClick={() => (mode === 'manual' ? editMyself() : setEditMode('ai'))}
+                    className={`py-1.5 rounded text-[11px] flex items-center justify-center gap-1 cursor-pointer ${
+                      editMode === mode ? 'bg-[#28282F] text-[#ECEAE4]' : 'text-[#8F8C84] hover:text-white'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {el.type === 'text' && editMode === 'ai' && (
+              <div className="p-2.5 bg-[#1E1B16] border border-[#C6A26B]/30 rounded space-y-2">
+                <div className="text-[11px] text-[#CFC6B5] leading-relaxed">
+                  ETB2B AI suggests new words for this frame. Nothing changes until you press Apply.
+                </div>
+                <div className="grid grid-cols-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void runAi(el, 'shorten')}
+                    disabled={aiBusy || !overflow?.isOverflowing}
+                    title={overflow?.isOverflowing ? 'Shorten the words to what the frame holds' : 'The words already fit this frame'}
+                    className={aiBtn}
+                  >
+                    Shorten to fit
+                    {overflow?.isOverflowing ? ` (about ${wordsLabel(shortenTarget(el))})` : ' (the words already fit)'}
+                  </button>
+                  <button type="button" onClick={() => void runAi(el, 'grammar')} disabled={aiBusy} className={aiBtn}>
+                    Fix grammar and spelling
+                  </button>
+                  <button type="button" onClick={() => void runAi(el, 'clarify')} disabled={aiBusy} className={aiBtn}>
+                    Make it clearer
+                  </button>
+                </div>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] text-[#8F8C84]">Ask for a change</span>
+                  <textarea
+                    rows={2}
+                    maxLength={1000}
+                    value={aiRequest}
+                    onChange={(e) => setAiRequest(e.target.value)}
+                    placeholder="For example: make it warmer, or start with the year"
+                    className="bg-[#121214] border border-white/[0.08] rounded p-2 text-[11px] text-[#ECEAE4] leading-relaxed focus:outline-none focus:border-[#C6A26B]/60 select-text"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void runAi(el, 'custom', aiRequest.trim())}
+                  disabled={aiBusy || !aiRequest.trim()}
+                  className={`${aiBtn} flex items-center gap-1`}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>Ask ETB2B AI</span>
+                </button>
+
+                {ai.elementId === el.id && ai.status === 'working' && (
+                  <div role="status" className="text-[11px] text-[#CFC6B5] flex items-center gap-1.5">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>ETB2B AI is working on it…</span>
+                  </div>
+                )}
+                {ai.elementId === el.id && ai.status === 'error' && (
+                  <div role="alert" className="text-[11px] text-[#F5CFC7] bg-[#2B1B19] border border-[#D94F3D]/40 rounded px-2 py-1.5">
+                    {ai.error}
+                  </div>
+                )}
+                {ai.elementId === el.id && ai.status === 'ready' && (() => {
+                  const sugFit = fitTextToFrame(el, ai.suggestion);
+                  return (
+                    <div className="space-y-1.5 pt-2 border-t border-white/[0.08]">
+                      <div className="text-[11px] font-medium text-[#ECEAE4]">
+                        {ai.task ? AI_TASK_NAMES[ai.task] : 'Suggestion'}: ETB2B AI suggests
+                      </div>
+                      <div className={`text-[11px] ${sugFit.fits ? 'text-[#BFD6B2]' : 'text-[#E6C790]'}`}>
+                        {countWords(ai.baseText)} → {wordsLabel(countWords(ai.suggestion))} ·{' '}
+                        {sugFit.fits ? 'fits the frame' : `about ${dontFit(sugFit.overflowWords)} yet`}
+                      </div>
+                      <div className="max-h-48 overflow-y-auto whitespace-pre-wrap bg-[#121214] border border-white/[0.08] rounded p-2 text-[11px] text-[#ECEAE4] leading-relaxed select-text">
+                        {ai.suggestion}
+                      </div>
+                      {(el.text || '') !== ai.baseText && (
+                        <div className="text-[11px] text-[#E6C790]">
+                          The frame's words changed after you asked. Apply replaces them with this suggestion.
+                        </div>
+                      )}
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={applyAi}
+                          className="py-1.5 rounded text-[11px] font-medium bg-[#C6A26B] text-[#121214] hover:bg-[#D4B27D] cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Apply</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={discardAi}
+                          className="py-1.5 rounded text-[11px] bg-[#28282F] text-[#ECEAE4] hover:bg-[#33333B] cursor-pointer flex items-center justify-center gap-1"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Discard</span>
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-[#8F8C84]">After Apply, Undo brings the earlier words back.</div>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1141,6 +1483,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
               <label className="flex flex-col gap-1">
                 <span className="text-[11px] text-[#8F8C84]">Paragraph Gap (mm)</span>
                 <input
+                  title="Space between paragraphs (an empty line between words starts a new one). Paragraphs are always at least that empty line apart; a larger gap adds the difference."
                   type="number"
                   step={0.5}
                   min={0}
@@ -1181,6 +1524,7 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
             <label className="flex flex-col gap-1">
               <span className="text-[11px] text-[#8F8C84]">Editorial Copy (Frame-Locked)</span>
               <textarea
+                ref={copyRef}
                 rows={4}
                 value={el.text || ''}
                 onChange={(e) =>
@@ -1197,27 +1541,10 @@ export const RightPropertiesPanel: React.FC<RightPropertiesPanelProps> = ({
         <div className="space-y-3 pt-3 border-t border-white/[0.08]">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-[#D7D4CC]">Photograph Frame</span>
-            {effectiveDpi !== null && (
-              <span
-                className={`font-mono-tabular text-[11px] ${
-                  effectiveDpi < 150
-                    ? 'text-[#E07A5F]'
-                    : effectiveDpi < 240
-                      ? 'text-[#D4A657]'
-                      : 'text-[#8AA678]'
-                }`}
-              >
-                {effectiveDpi} DPI
-              </span>
-            )}
           </div>
 
-          {effectiveDpi !== null && effectiveDpi < 180 && (
-            <div className="p-2 bg-[#2B1F16] border border-[#D4A657]/40 rounded text-[11px] text-[#E6C790] flex items-start gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-              <span>Effective resolution ({effectiveDpi} DPI) is below 300 DPI print target.</span>
-            </div>
-          )}
+          {/* its sharpness where it prints (pixels over the frame's size, over the zoom), and what to do when low */}
+          <PhotoResolutionBadge element={el} pixels={photoAsset} />
 
           {/* Non-destructive Replace from Project Library */}
           <label className="flex flex-col gap-1">

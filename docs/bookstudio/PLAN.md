@@ -207,3 +207,43 @@ Each phase is released and tested on its own.
   - Nothing yet clears old deleted pages or presence records.
   - A Content editor's merge fails when they added a page while a Designer changed that layout: the dialog offers only "Open the newest saved copy".
   - New pages are checked frame by frame: a Content editor may combine the book's own frames on a new page.
+
+## Phase 3 and premium templates: what was built (27 Nov 2026, branch books-phase3)
+
+- **Text measured with the real font** (`engines/textMeasure.ts`, `textEngine.ts`)
+  - A hidden canvas measures with the loaded Google font. The layout matches the canvas: columns, insets, leading, paragraph gaps, letter spacing, capitals, and breaks after hyphens and dashes.
+  - It is re-measured when fonts load (`useFontsVersion`).
+  - Checked against Chrome on 1,200 random frames: whether text fits matched on all of them.
+  - `fitTextToFrame` and `frameCapacityWords` are shared with the pour.
+- **Overflow box**
+  - Designers: Shrink to fit (never below the approved minimum), Tighten spacing, Make the frame taller.
+  - Both roles: Continue on the next page, Shorten with ETB2B AI, Edit myself.
+- **"Edit with AI | Edit myself"** on text frames
+  - Shorten to fit, grammar, clearer, or a free request, from the new AI step `edit-text` (both roles).
+  - Answers are suggestions: Apply is undoable, Discard drops them.
+- **Word Counts panel:** pages, spreads and chapters; text that doesn't fit, empty frames, template sample words, unplaced manuscript. It never appears in exports.
+- **Pour manuscript into frames** (`engines/pourEngine.ts`, no AI)
+  - Fills frames in reading order, matching kinds, only up to what fits.
+  - Never moves frames, and never overwrites real words unless asked.
+  - Can add pages from a layout.
+  - Shows a preview, then applies as one undoable step.
+- **New page layout picker:** master pages and "A copy of page N" for both roles; an empty page for Designers only.
+- **Photo resolution badges:** Too low under 150 ppi, Low 150–249, Fair 250–299, Good 300+. Zoom is counted, and the pre-export check agrees.
+- **Charts** now fill their frame on the canvas (they showed oversized before).
+- **Five Premium Editorial templates** (`data/premiumTemplates.ts`), first in the template library:
+  - Awards Annual
+  - Leadership Conversations
+  - Legacy Monograph
+  - Architecture & Place
+  - Impact Report
+
+  Each has 16–18 pages, 4–5 own master pages, its own size, type and palette. Portrait and drawing frames are placeholders. Sample figures are marked. Five more sample photos are in `books/samples/`.
+- **Tests:**
+  - `books-text` (68)
+  - `books-pour` (49)
+  - `books-templates` (224)
+  - `api-books` (250)
+  - `books-build` (39)
+- **Later:**
+  - `exportEngine.ts` still draws text its own way (no letter spacing, breaks only at spaces). Phase 4's vector PDF should draw from `textEngine`'s layout.
+  - Small portrait placeholders cut their label short.

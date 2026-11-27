@@ -87,6 +87,8 @@ export interface InDesignControlBarProps {
       | 'export'
       | 'versions'
       | 'ai_assistant'
+      /** the word counts beside the canvas (not a modal) */
+      | 'editorial'
   ) => void;
 }
 
@@ -200,6 +202,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
         { label: 'Delete Selected Frame', shortcut: 'Del', disabled: selectedCount === 0, design: true, action: onDeleteSelected },
         { label: '', divider: true, design: true },
         { label: 'Editorial Content & Word Count Manager...', action: () => onOpenModal('content') },
+        { label: "Word Counts & Text That Doesn't Fit", action: () => onOpenModal('editorial') },
       ],
     },
     layout: {
@@ -217,6 +220,7 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
       items: [
         { label: 'Google Fonts & Typography Studio...', design: true, action: () => onOpenModal('typography') },
         { label: 'Editorial Copy & Overflow Manager...', action: () => onOpenModal('content') },
+        { label: "Word Counts & Text That Doesn't Fit", action: () => onOpenModal('editorial') },
         { label: 'AI Editorial Copy & Layout Assistant...', action: () => onOpenModal('ai_assistant') },
       ],
     },
@@ -427,12 +431,13 @@ export const InDesignControlBar: React.FC<InDesignControlBarProps> = ({
           )}
 
           <button
-            onClick={() => onOpenModal('content')}
-            title="Editorial Content & Word Counts"
+            onClick={() => onOpenModal('editorial')}
+            title="Word counts per page, spread and chapter, and the text that doesn't fit"
+            aria-label={`Word counts: ${totalWords.toLocaleString()} words${overflowCount ? `, ${overflowCount} frames with text that doesn't fit` : ''}`}
             className="hidden xl:flex h-6 px-2 items-center gap-1 text-[11px] font-mono-tabular text-[#98958D] hover:text-white hover:bg-white/[0.06] rounded whitespace-nowrap cursor-pointer"
           >
-            <span>{totalWords.toLocaleString()}w</span>
-            {overflowCount > 0 && <span className="text-[#E07A5F] font-bold">· {overflowCount} ovf</span>}
+            <span>{totalWords.toLocaleString()} words</span>
+            {overflowCount > 0 && <span className="text-[#E07A5F] font-bold">· {overflowCount} don't fit</span>}
           </button>
 
           <button

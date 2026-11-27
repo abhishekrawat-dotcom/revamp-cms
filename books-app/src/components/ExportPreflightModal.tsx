@@ -20,6 +20,7 @@ import {
   exportSpreadImage,
 } from '../engines/exportEngine';
 import { runPreflightCheck } from '../engines/preflightEngine';
+import { useFontsVersion } from '../engines/textMeasure';
 
 interface ExportPreflightModalProps {
   project: BookProject;
@@ -45,7 +46,9 @@ export const ExportPreflightModal: React.FC<ExportPreflightModalProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<'all' | 'error' | 'warning' | 'info'>('all');
 
-  const issues = useMemo(() => runPreflightCheck(project), [project]);
+  // checked again once fonts finish loading: text that doesn't fit is measured with the real font
+  const fontsVersion = useFontsVersion();
+  const issues = useMemo(() => runPreflightCheck(project), [project, fontsVersion]);
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warnCount = issues.filter((i) => i.severity === 'warning').length;
   const infoCount = issues.filter((i) => i.severity === 'info').length;

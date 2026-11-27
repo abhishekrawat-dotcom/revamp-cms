@@ -1160,6 +1160,7 @@ var CONTENT_ROUTES = {
   'GET /api/books/templates': 1, 'GET /api/books/font-collections': 1, 'PUT /api/books/font-collection': 1,
   'POST /api/books/asset': 1, 'GET /api/books/asset/*': 1, 'POST /api/books/manuscript': 1, 'GET /api/books/fonts': 1,
   'POST /api/books/ai/editorial-assistant': 1, 'POST /api/books/ai/generate-infographic': 1, 'POST /api/books/ai/auto-flow-data': 1,
+  'POST /api/books/ai/edit-text': 1,
   'POST /api/books/presence': 1, 'GET /api/books/trash': 1, 'POST /api/books/restore-page': 1, 'GET /api/books/log': 1
 };
 /* "Only a Designer can …": what each Designer-only route does, in words */

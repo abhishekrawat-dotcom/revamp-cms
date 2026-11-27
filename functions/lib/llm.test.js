@@ -84,7 +84,7 @@ async function run() {
     /* Books (lib/books-ai.js) */
     'books-analyze': [CLAUDE_SONNET, 'low', 150000, 10000], 'books-typography': [CLAUDE_HAIKU, 'low', 45000, 4000], 'books-assistant': [CLAUDE_SONNET, 'low', 75000, 6000],
     'books-recommend': [CLAUDE_HAIKU, 'low', 45000, 3000], 'books-publication': [CLAUDE_SONNET, 'low', 170000, 16000], 'books-infographic': [CLAUDE_SONNET, 'low', 75000, 4000],
-    'books-auto-flow': [CLAUDE_SONNET, 'low', 200000, 32000],
+    'books-auto-flow': [CLAUDE_SONNET, 'low', 200000, 32000], 'books-edit-text': [CLAUDE_SONNET, 'low', 60000, 6000],
   };
   ok(Object.keys(PROFILES).sort().join() === Object.keys(want).sort().join(), 'the profiles are the routes we know', Object.keys(PROFILES).join());
   Object.keys(want).forEach(function (route) {

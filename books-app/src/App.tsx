@@ -64,9 +64,11 @@ import {
   syncMasterChangesAcrossBook,
 } from './engines/masterPageEngine';
 import {
-  computeEditorialAnalytics,
+  measureTextOverflow,
   splitOverflowTextForContinuation,
 } from './engines/textEngine';
+import { useFontsVersion } from './engines/textMeasure';
+import { editorialCounts, insertPagesAfter, pageFromLayout } from './engines/pourEngine';
 import {
   alignAndDistributeElements,
   createProjectFromBookTemplateObject,
@@ -89,6 +91,8 @@ import { ExportPreflightModal } from './components/ExportPreflightModal';
 import { VersionHistoryModal } from './components/VersionHistoryModal';
 import { AiAutoFlowModal } from './components/AiAutoFlowModal';
 import { MergeConflictsModal, type MergeDialogState } from './components/MergeConflictsModal';
+import { EditorialDashboard } from './components/EditorialDashboard';
+import { NewPageLayoutPicker } from './components/NewPageLayoutPicker';
 
 type ActiveModal =
   | null
@@ -103,6 +107,9 @@ type ActiveModal =
   | 'export'
   | 'versions'
   | 'ai_assistant';
+
+/** what the top bar and menus open: a modal, or the word counts beside the canvas ('editorial', not a modal) */
+type OpenTarget = NonNullable<ActiveModal> | 'editorial';
 
 /* The studio always holds one book in memory so its panels have something to draw; until a real book is opened that
    is this sample, which is never listed, never saved and never edited (requireBook). */
@@ -581,6 +588,12 @@ export default function App() {
   // Modals & AI prompt
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [historyTab, setHistoryTab] = useState<'versions' | 'deleted' | 'activity'>('versions');
+  /* the word counts beside the canvas: not a modal, so the book stays editable and the counts follow every change */
+  const [showEditorial, setShowEditorial] = useState(false);
+  /* the Content manager opens on its manuscript, its word counts, or "Pour manuscript into frames" */
+  const [contentView, setContentView] = useState<'manuscript' | 'analytics' | 'pour'>('manuscript');
+  /* "Add page" (1) and "Insert spread" (2) first ask which of the book's layouts the new page is made from */
+  const [pagePicker, setPagePicker] = useState<{ count: 1 | 2 } | null>(null);
   const [aiInitialPrompt, setAiInitialPrompt] = useState('');
 
   // Save & History stacks
@@ -651,7 +664,12 @@ export default function App() {
     return false;
   };
 
-  const openModal = (m: NonNullable<ActiveModal>) => {
+  const openModal = (m: OpenTarget) => {
+    if (m === 'editorial') {
+      setShowEditorial((o) => !o);
+      return;
+    }
+    if (m === 'content') setContentView('manuscript');
     const locked = DESIGN_MODALS[m];
     if (locked && !canDesignRef.current) {
       setNotice({ kind: 'info', text: locked });
@@ -673,7 +691,12 @@ export default function App() {
     return activePage.elements.find((e) => e.id === selectedElementIds[0]) || null;
   }, [activePage.elements, selectedElementIds]);
 
-  const analytics = useMemo(() => computeEditorialAnalytics(activeProject), [activeProject]);
+  /* the top bar's word count and "don't fit" count: the word counts' own figures (measured again when fonts load) */
+  const fontsVersion = useFontsVersion();
+  const analytics = useMemo(() => {
+    void fontsVersion;
+    return editorialCounts(activeProject, measureTextOverflow);
+  }, [activeProject, fontsVersion]);
 
   // Ensure activePageId is always valid
   useEffect(() => {
@@ -1495,41 +1518,37 @@ export default function App() {
     const { fittingText, continuationText } = splitOverflowTextForContinuation(sourceEl);
     if (!continuationText) return;
 
+    /* The rest goes on a new page right after this one, laid out like it: the same text frame in the same place, with
+       the page's running heads, page numbers and rules; its other frames are left out, so nothing is covered and no
+       empty photo frame is left behind. (It used to drop a page-high frame onto whatever the next page already held.)
+       A Content editor's continue fills an empty frame of the same kind on the next page instead (RightPropertiesPanel). */
+    const stamp = Date.now();
     commitProjectUpdate((proj) => {
       const pagesCopy = structuredClone(proj.pages);
       const src = pagesCopy[pIdx];
       src.elements = src.elements.map((e) =>
         e.id === elementId ? { ...e, text: fittingText } : e
       );
-
-      let nextPage = pagesCopy[pIdx + 1];
-      if (!nextPage) {
-        nextPage = {
-          ...newPageLook(proj, src),
-          id: `pg_cont_${Date.now()}`,
-          orderIndex: pagesCopy.length,
-          label: `Continued Spread`,
-          role: 'editorial_text',
-          elements: [],
-        };
-        pagesCopy.push(nextPage);
-      }
-
-      const dim = getEffectivePageDimensions(nextPage, proj.dimensions);
-      nextPage.elements.push({
-        ...structuredClone(sourceEl),
-        id: `el_cont_${Date.now()}`,
-        name: `${sourceEl.name} (Continued)`,
-        xMm: dim.margins.inner,
-        yMm: dim.margins.top + 8,
-        widthMm: Math.min(sourceEl.widthMm, dim.widthMm - dim.margins.inner - dim.margins.outer),
-        heightMm: Math.max(60, dim.heightMm - dim.margins.top - dim.margins.bottom - 20),
-        text: continuationText,
-        zIndex: nextPage.elements.length + 2,
+      const keep = (e: BookElement) =>
+        e.id === elementId || e.type === 'header' || e.type === 'footer' || e.type === 'pageNumber' || e.type === 'shape' || e.type === 'line';
+      const nextPage: BookPage = {
+        ...structuredClone(sourcePage),
+        id: `pg_cont_${stamp}`,
+        label: `${sourcePage.label || 'Page'} (continued)`,
+        elements: sourcePage.elements.filter(keep).map((e, i) => ({
+          ...structuredClone(e),
+          id: e.id === elementId ? `el_cont_${stamp}` : `el_cont_${stamp}_${i}`,
+          name: e.id === elementId ? `${e.name} (continued)` : e.name,
+          ...(e.id === elementId ? { text: continuationText } : {}),
+        })),
+      };
+      pagesCopy.splice(pIdx + 1, 0, nextPage);
+      pagesCopy.forEach((p, i) => {
+        p.orderIndex = i;
       });
-
       return { ...proj, pages: pagesCopy };
     });
+    setActivePageId(`pg_cont_${stamp}`);
   };
 
   // Insert Infographic from 52-Template Library
@@ -1804,7 +1823,7 @@ export default function App() {
 
   // Keyboard shortcuts (Undo, Redo, Save, Copy, Paste, Delete, Nudge)
   useEffect(() => {
-    if (view !== 'studio' || activeModal !== null || mergeDialog !== null) return;
+    if (view !== 'studio' || activeModal !== null || mergeDialog !== null || pagePicker !== null) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -1914,6 +1933,7 @@ export default function App() {
     view,
     activeModal,
     mergeDialog,
+    pagePicker,
     canDesign,
     activeProject,
     activePage,
@@ -2075,49 +2095,38 @@ export default function App() {
   };
 
   // Page Navigator Operations
-  /* A new page is made from the book's own layouts (the owner, 26 Nov 2026), so a Content editor may add one too: the
-     first master page with its frames and its settings, else an empty page with the current page's settings. */
+  /* A new page is made from the book's own layouts (the owner, 26 Nov 2026), so a Content editor may add one too.
+     "Add page" and "Insert spread" first ask which layout (NewPageLayoutPicker): a master page, or a copy of the current
+     page (Designers also: an empty page like it); pourEngine.pageFromLayout makes it with new frame ids, and it goes in
+     after the current page. */
   const handleAddPage = () => {
-    const master = activeProject.masterPages[0];
-    const newPage: BookPage = {
-      ...newPageLook(activeProject, activePage),
-      id: `pg_${Date.now()}`,
-      orderIndex: activeProject.pages.length,
-      label: `Page ${activeProject.pages.length + 1}`,
-      role: 'editorial_text',
-      elements: master
-        ? master.elements.map((m, i) => ({
-            ...structuredClone(m),
-            id: `el_m_${Date.now()}_${i}`,
-            masterElementId: m.id,
-          }))
-        : [],
-    };
-    commitProjectUpdate((proj) => ({ ...proj, pages: [...proj.pages, newPage] }));
-    setActivePageId(newPage.id);
+    if (!requireBook('add a page to it')) return;
+    setPagePicker({ count: 1 });
   };
 
   const handleInsertSpread = () => {
-    const master = activeProject.masterPages[0];
-    const baseNum = activeProject.pages.length + 1;
-    const mkPage = (offset: number, sideLabel: string): BookPage => ({
-      id: `pg_${Date.now()}_${offset}`,
-      orderIndex: activeProject.pages.length + offset,
-      ...newPageLook(activeProject, activePage),
-      label: `Editorial ${sideLabel} ${baseNum + offset}`,
-      role: 'editorial_text',
-      elements: master
-        ? master.elements.map((m, i) => ({
-            ...structuredClone(m),
-            id: `el_m_${Date.now()}_${offset}_${i}`,
-            masterElementId: m.id,
-          }))
-        : [],
-    });
-    const left = mkPage(0, 'Verso');
-    const right = mkPage(1, 'Recto');
-    commitProjectUpdate((proj) => ({ ...proj, pages: [...proj.pages, left, right] }));
-    setActivePageId(left.id);
+    if (!requireBook('add pages to it')) return;
+    setPagePicker({ count: 2 });
+  };
+
+  const handleAddPagesFromLayout = (choiceId: string, count: 1 | 2) => {
+    setPagePicker(null);
+    const at = activeProject.pages.findIndex((p) => p.id === activePage.id);
+    const made: BookPage[] = [];
+    for (let i = 0; i < count; i++) {
+      const page = pageFromLayout(activeProject, choiceId, {
+        label: `Page ${at + 2 + i}`,
+        chapterId: activePage.chapterId,
+      });
+      if (page) made.push(page);
+    }
+    if (!made.length) {
+      setNotice({ kind: 'error', text: 'That layout is no longer in the book. Choose another one.' });
+      return;
+    }
+    commitProjectUpdate((proj) => insertPagesAfter(proj, activePage.id, made));
+    setActivePageId(made[0].id);
+    setSelectedElementIds([]);
   };
 
   const handleDuplicatePage = (pageId: string) => {
@@ -2248,7 +2257,7 @@ export default function App() {
               showGuides={showGuides}
               showRulers={showRulers}
               totalWords={analytics.totalWords}
-              overflowCount={analytics.overflowFrames.length}
+              overflowCount={analytics.overflowing.length}
               user={user}
               canDesign={canDesign}
               othersHere={othersHere}
@@ -2279,7 +2288,7 @@ export default function App() {
           )}
 
           {/* MIDDLE ROW: InDesign Tool Palette + Left Studio Rail + Central Spread Canvas + Right Docked Inspector */}
-          <div className="flex-1 flex min-h-0 overflow-hidden">
+          <div className="relative flex-1 flex min-h-0 overflow-hidden">
             {!previewMode && (
               <InDesignToolPalette
                 activeTool={activeTool}
@@ -2451,6 +2460,22 @@ export default function App() {
                 }}
               />
             )}
+
+            {/* Word counts: editorial information beside the canvas, never on a page or in an export */}
+            {!previewMode && showEditorial && (
+              <EditorialDashboard
+                project={activeProject}
+                onGoTo={(pageId, elId) => {
+                  setActivePageId(pageId);
+                  setSelectedElementIds(elId ? [elId] : []);
+                }}
+                onOpenPour={() => {
+                  setContentView('pour');
+                  setActiveModal('content');
+                }}
+                onClose={() => setShowEditorial(false)}
+              />
+            )}
           </div>
 
           {/* ZONE 5: Bottom Spread & Page Navigator */}
@@ -2464,6 +2489,7 @@ export default function App() {
               }}
               onAddPage={handleAddPage}
               onInsertSpread={handleInsertSpread}
+              layoutPickerOpen={pagePicker !== null}
               onDuplicatePage={handleDuplicatePage}
               onDeletePage={handleDeletePage}
               onReorderPages={handleReorderPages}
@@ -2567,12 +2593,27 @@ export default function App() {
       {activeModal === 'content' && (
         <ContentManagerModal
           project={activeProject}
+          activePageId={activePage.id}
+          canDesign={canDesign}
+          initialView={contentView}
           onUpdateProject={(updated) => commitProjectUpdate(() => updated)}
           onJumpToPage={(pageId, elId) => {
             setActivePageId(pageId);
             setSelectedElementIds(elId ? [elId] : []);
           }}
+          onUndo={handleUndo}
           onClose={() => setActiveModal(null)}
+        />
+      )}
+
+      {pagePicker && view === 'studio' && realBookOpen && (
+        <NewPageLayoutPicker
+          project={activeProject}
+          currentPage={activePage}
+          count={pagePicker.count}
+          canDesign={canDesign}
+          onChoose={(choiceId) => handleAddPagesFromLayout(choiceId, pagePicker.count)}
+          onClose={() => setPagePicker(null)}
         />
       )}
 
